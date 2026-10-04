@@ -40,6 +40,7 @@
  * @module ZeropsTurnAdmission
  */
 import {
+  ProviderInstanceId,
   agentIdForDriverKind,
   agentIdForProviderInstance,
   OrchestrationDispatchCommandError,
@@ -134,12 +135,25 @@ export const CREW_THREAD_REFUSALS = {
   retired:
     "This crewmate conversation is retired; message the crewmate in its current conversation.",
   notRunning: "Crew mode is not running this crewmate's conversation, so it cannot take a turn.",
+  /** The thread's agent never reads a thread's profile, so the turn would run ungated. */
+  modeKept: "A crewmate's conversation runs in the crew's own mode, so its mode can't be changed.",
+  ungated: (agent: string) =>
+    `${agent} can't run a crewmate: it would work without the crew's rules. Give this crewmate another login.`,
 } as const;
 
 const CREW_KEPT_COMMANDS: ReadonlySet<OrchestrationCommand["type"]> = new Set([
   "thread.archive",
   "thread.unarchive",
   "thread.delete",
+]);
+
+/**
+ * Commands no principal may run on a crewmate's conversation: a new runtime
+ * mode would restart its session in a mode that approves calls on its own,
+ * past the crew's gate.
+ */
+const CREW_FIXED_COMMANDS: ReadonlySet<OrchestrationCommand["type"]> = new Set([
+  "thread.runtime-mode.set",
 ]);
 
 /**
@@ -315,6 +329,12 @@ export const make = Effect.gen(function* () {
     principal,
   }) {
     if (!isZeropsEnvironment(config)) return;
+    if (CREW_FIXED_COMMANDS.has(command.type)) {
+      if ((yield* threadOf(command))?.crew !== undefined) {
+        return yield* refuse(CREW_THREAD_REFUSALS.modeKept);
+      }
+      return;
+    }
     const kept = CREW_KEPT_COMMANDS.has(command.type);
     if (!kept && !(yield* startsTurn(command))) return;
     const thread = yield* threadOf(command);
@@ -329,11 +349,16 @@ export const make = Effect.gen(function* () {
       if (principal.kind === "session" && crewThread.archivedAt !== null) {
         return yield* refuse(CREW_THREAD_REFUSALS.retired);
       }
-      const profile = yield* threadProfileFor(policies, {
-        threadId: crewThread.id,
-        instanceId: crewThread.modelSelection.instanceId,
-      });
+      // The turn runs on the instance it names, else on its thread's.
+      const instanceId = ProviderInstanceId.make(
+        instanceIdOf(command, crewThread) ?? crewThread.modelSelection.instanceId,
+      );
+      const profile = yield* threadProfileFor(policies, { threadId: crewThread.id, instanceId });
       if (profile === undefined) return yield* refuse(CREW_THREAD_REFUSALS.notRunning);
+      const agent = yield* providerInstances.agentOf(instanceId);
+      if (agent?.threadProfile === undefined) {
+        return yield* refuse(CREW_THREAD_REFUSALS.ungated(agent?.displayName ?? instanceId));
+      }
     }
     if (principal.kind !== "session") yield* refuseWithoutAccess(principal.startedBy);
     yield* refuseSomeoneElsesAgent(command, thread, principal);

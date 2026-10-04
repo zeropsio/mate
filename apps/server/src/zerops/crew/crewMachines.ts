@@ -283,6 +283,8 @@ export type TurnEnding = "rotation" | "infrastructure" | "budget" | "agent";
 const TURN_ENDINGS: Readonly<Record<string, TurnEnding>> = {
   prompt_too_long: "rotation",
   rapid_refill_breaker: "rotation",
+  // An ACP agent's turn that ran out of tokens (`acpTerminalReason`).
+  max_tokens: "rotation",
   api_error: "infrastructure",
   model_error: "infrastructure",
   turn_setup_failed: "infrastructure",

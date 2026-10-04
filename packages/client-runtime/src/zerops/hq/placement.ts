@@ -47,10 +47,18 @@ export const isRoleProjectKind = (kind: string): kind is RoleProjectKind =>
 export function placementsOf(
   structure: HqStructure,
   logins: ReadonlyMap<string, OverviewLogins> = new Map(),
+  readyAgents: ReadonlyMap<string, boolean> = new Map(),
 ): ReadonlyMap<string, HqPlacement> {
   const withLogins = (projectId: string, mate: HqMate): HqMate => {
     const told = logins.get(projectId);
-    return told === undefined ? mate : { ...mate, logins: told };
+    const ready = readyAgents.get(projectId);
+    return told === undefined && ready === undefined
+      ? mate
+      : {
+          ...mate,
+          ...(told === undefined ? {} : { logins: told }),
+          ...(ready === undefined ? {} : { runsWithoutSignIn: ready }),
+        };
   };
   const placements = new Map<string, HqPlacement>();
   for (const app of structure.apps) {

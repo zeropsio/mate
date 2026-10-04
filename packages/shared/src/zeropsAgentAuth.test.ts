@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   classifyZeropsAgentAuth,
+  isAgentWithoutSignInReady,
+  isProviderReadyToRun,
   zeropsAgentUnavailableReason,
   zeropsLoginTitle,
   zeropsLoginUnavailableReason,
@@ -149,5 +151,55 @@ describe("latestSucceededSignIn", () => {
     },
   ] as const)("$name", ({ login, expected }) => {
     expect(latestSucceededSignIn(login)).toEqual(expected);
+  });
+});
+
+// One readiness test, the browser's and the server's: an instance a turn can start on.
+describe("isProviderReadyToRun / isAgentWithoutSignInReady", () => {
+  const MODELS = [{ slug: "m" }];
+  const instance = (overrides: Record<string, unknown> = {}) => ({
+    driver: "cursor",
+    enabled: true,
+    installed: true,
+    status: "ready",
+    auth: { status: "authenticated" },
+    models: MODELS,
+    ...overrides,
+  });
+  it.each([
+    { name: "a ready, signed-in Cursor with models", over: {}, ready: true, other: true },
+    { name: "turned off", over: { enabled: false }, ready: false, other: false },
+    { name: "not installed", over: { installed: false }, ready: false, other: false },
+    {
+      name: "unavailable on this server",
+      over: { availability: "unavailable" },
+      ready: false,
+      other: false,
+    },
+    { name: "not ready", over: { status: "warning" }, ready: false, other: false },
+    {
+      name: "signed out",
+      over: { auth: { status: "unauthenticated" } },
+      ready: false,
+      other: false,
+    },
+    // Grok and Cursor can say ready with a sign-in they could not read: not one to count on.
+    {
+      name: "ready, its sign-in unknown",
+      over: { auth: { status: "unknown" } },
+      ready: true,
+      other: false,
+    },
+    { name: "listing no models", over: { models: [] }, ready: false, other: false },
+    // Claude Code and Codex: the feed answers for them, never this.
+    { name: "Claude Code", over: { driver: "claudeAgent" }, ready: true, other: false },
+    { name: "Codex", over: { driver: "codex" }, ready: true, other: false },
+    { name: "OpenCode", over: { driver: "opencode" }, ready: true, other: true },
+    { name: "Grok", over: { driver: "grok" }, ready: true, other: true },
+    { name: "Antigravity", over: { driver: "antigravity" }, ready: true, other: true },
+  ])("$name: ready $ready, an agent without sign-in $other", ({ over, ready, other }) => {
+    const provider = instance(over) as unknown as Parameters<typeof isProviderReadyToRun>[0];
+    expect(isProviderReadyToRun(provider)).toBe(ready);
+    expect(isAgentWithoutSignInReady(provider)).toBe(other);
   });
 });

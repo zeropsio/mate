@@ -327,6 +327,27 @@ describe("jumpMateOf and withLiveMates — a Mate as its row says it, read afres
     });
   });
 
+  // As on its row (`candidateContainerRuns`): a container that runs wears the face awake while
+  // this browser's socket to it opens, and nothing of its conversation is read before it does.
+  it("wears a running Mate awake before its socket opens, reading nothing of it yet", () => {
+    expect(
+      jumpMateOf({ ...base, connected: false, runs: true, activity: undefined }),
+    ).toMatchObject({ face: "idle", subject: undefined, conversation: undefined });
+    expect(jumpMateOf({ ...base, connected: false, runs: false, activity: undefined }).face).toBe(
+      "sleep",
+    );
+  });
+
+  it("keeps HQ's live activity before this tab opens the Mate socket", () => {
+    expect(
+      jumpMateOf({ ...base, connected: false, runs: true, activity: activity() }),
+    ).toMatchObject({
+      face: "working",
+      subject: "Run the build",
+      conversation: undefined,
+    });
+  });
+
   // Its pose as on its row (`mateFaceFor`): waking while it comes up and arrives, read afresh too.
   it.each([
     {

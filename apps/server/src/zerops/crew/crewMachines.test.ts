@@ -210,6 +210,10 @@ describe("turnEndingOf", () => {
     ["model_error", "infrastructure"],
     ["turn_setup_failed", "infrastructure"],
     ["budget_exhausted", "budget"],
+    // The ACP agents' terminal reasons (their stop reasons).
+    ["max_tokens", "rotation"],
+    ["max_turn_requests", "agent"],
+    ["refusal", "agent"],
     ["a-reason-a-later-cli-adds", "agent"],
   ] as const)("a turn ending with %s is an %s ending", (reason, ending) => {
     expect(turnEndingOf(reason)).toBe(ending);

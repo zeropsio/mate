@@ -474,6 +474,20 @@ describe("rightPanelStore", () => {
     });
   });
 
+  it("opens the MCP tab as a singleton surface beside what is open", () => {
+    useRightPanelStore.getState().open(refA, "agents");
+    useRightPanelStore.getState().open(refA, "mcp");
+    useRightPanelStore.getState().open(refA, "mcp");
+    expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
+      isOpen: true,
+      activeSurfaceId: "mcp",
+      surfaces: [
+        { id: "agents", kind: "agents" },
+        { id: "mcp", kind: "mcp" },
+      ],
+    });
+  });
+
   it("replaces the standalone explorer with peer file surfaces", () => {
     useRightPanelStore.getState().open(refA, "files");
     useRightPanelStore.getState().openFile(refA, "src/index.ts");

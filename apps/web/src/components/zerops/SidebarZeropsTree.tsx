@@ -79,6 +79,7 @@ import {
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
+import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
@@ -960,7 +961,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           projectName: groupName,
           environmentId: item.environmentId,
           owner: getOwner?.(item),
-          connected: mateUp(item, hqMates),
+          connected: mateUp(item, hqMates) || candidateContainerRuns(item),
           activity: getActivity?.(item),
           reviewWaits: mateReviewWaits(input.flow, item.project.id),
           mine: mateIsViewers(item.project, viewer),
@@ -1237,7 +1238,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             const live = getActivity?.(item);
             const coming = getComing?.(item);
             const read = mateRowReading({
-              connected: mateUp(item, hqMates),
+              connected: mateUp(item, hqMates) || candidateContainerRuns(item),
               activity: live,
               reviewWaits: reviewWaits(item),
               mine: mateIsViewers(item.project, viewer),
@@ -2466,7 +2467,7 @@ function MateRow<T extends RosterCandidate>({
   const viewer = useZeropsSessionOptional()?.user?.id;
   const nowMs = useNowMs();
   const read = mateRowReading({
-    connected: up,
+    connected: up || candidateContainerRuns(candidate),
     activity,
     reviewWaits,
     mine: mateIsViewers(candidate.project, viewer),
@@ -2514,7 +2515,7 @@ function MateRow<T extends RosterCandidate>({
   const notYours = mateNotYours({
     seat: seated.seat,
     isViewer: owner?.isViewer === true,
-    signer: records.signer,
+    signer: records.person,
     viewer,
   });
   const known = activity !== undefined && activity.remembered !== true;

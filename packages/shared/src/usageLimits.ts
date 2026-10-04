@@ -187,6 +187,160 @@ export function collectLimitAccounts(
   return { accounts, notices: [...notices.values()] };
 }
 
+/** How far one environment's limits have come: in, on their way, or not coming this time. */
+export type LimitsRead = "read" | "reading" | "unread";
+
+interface LimitsPresentation {
+  readonly entry: { readonly target: { readonly label: string } };
+  readonly connection: {
+    readonly phase: "available" | "offline" | "connecting" | "reconnecting" | "connected" | "error";
+    readonly error: string | null;
+  };
+  readonly serverConfig: {
+    readonly providers: readonly ServerProvider[];
+    readonly usageLimitSources?: UsageLimitSourceSnapshots | undefined;
+  } | null;
+}
+
+/**
+ * An environment's limits are in once its config is; on their way while it connects — its first
+ * connect, a session renewing, or the frame between its registering and its connect starting (a
+ * registered environment is connected at once); not coming this time once a connect failed, it is
+ * blocked, or the network is down: its own retry brings it back as an answer.
+ */
+export function limitsReadOf(presentation: LimitsPresentation): LimitsRead {
+  if (presentation.serverConfig !== null) return "read";
+  const { phase, error } = presentation.connection;
+  if (phase === "connecting" || phase === "available") return "reading";
+  if (phase === "reconnecting" && error === null) return "reading";
+  return "unread";
+}
+
+/**
+ * How long the limits wait for every environment before painting what answered: an environment
+ * still on its way after it — a slow Mate, one disconnected by hand — joins at the end.
+ */
+export const LIMITS_READ_DEADLINE_MS = 4_000;
+
+/** One thing the limits page draws, keyed so its place is kept once painted. */
+export type LimitsEntry =
+  | {
+      readonly kind: "source";
+      readonly key: string;
+      readonly source: ReturnType<typeof collectLimitSources>[number];
+    }
+  | { readonly kind: "account"; readonly key: string; readonly account: LimitAccount }
+  | { readonly kind: "notice"; readonly key: string; readonly notice: LimitNoticeGroup };
+
+export interface LimitsPage<P> {
+  /**
+   * `wait` until the page is first painted — every environment settled, or the deadline passed —
+   * then `shown`, or `none` when nothing reports limits.
+   */
+  readonly state: "wait" | "shown" | "none";
+  /** An environment is still on its way, or the list is not whole: the reading line stands. */
+  readonly reading: boolean;
+  /** The environments whose limits are painted; empty until the page is. */
+  readonly shown: ReadonlyMap<EnvironmentId, P>;
+  /**
+   * What stands, in order: first painted as the sources, the accounts least quota left first,
+   * then what could not be read; whatever comes later joins at the very end.
+   */
+  readonly entries: readonly LimitsEntry[];
+  /** More than one environment is listed: each account names where it is signed in. */
+  readonly tellApart: boolean;
+  /** Whether this page is painted: once it is, it never goes back to waiting. */
+  readonly painted: boolean;
+  /** The entries' keys as painted, for the next read to keep (`placed`). */
+  readonly placed: readonly string[];
+}
+
+/**
+ * Keys in the order they stood (`placed`), those not placed yet after them in their own order:
+ * nothing painted ever moves, a newcomer joins at the end.
+ */
+export function keepPlaced<T>(
+  placed: readonly string[],
+  items: readonly T[],
+  keyOf: (item: T) => string,
+): readonly T[] {
+  const byKey = new Map(items.map((item) => [keyOf(item), item] as const));
+  const kept = placed.flatMap((key) => {
+    const item = byKey.get(key);
+    return item === undefined ? [] : [item];
+  });
+  const standing = new Set(placed);
+  return [...kept, ...items.filter((item) => !standing.has(keyOf(item)))];
+}
+
+/**
+ * The limits page (unknown is not empty): painted once — when every environment has settled, or
+ * `LIMITS_READ_DEADLINE_MS` after the page's first read — and never back to waiting after. Then
+ * everything stands as painted (`placed`): a late source, account or notice joins at the very
+ * end. Until the first paint the reading line; "none" only once nothing reports and nothing more
+ * is waited for, or the deadline passed.
+ */
+export function limitsPage<P extends LimitsPresentation>(input: {
+  /** The environments are listed whole: none is still to be registered. */
+  readonly listed: boolean;
+  readonly presentations: ReadonlyMap<EnvironmentId, P>;
+  /** `LIMITS_READ_DEADLINE_MS` has passed since the page's first read. */
+  readonly deadlinePassed: boolean;
+  /** The page was painted before — "none" included: it stays painted. */
+  readonly painted: boolean;
+  /** The entries' keys as painted so far, in order. */
+  readonly placed: readonly string[];
+}): LimitsPage<P> {
+  const shown = new Map<EnvironmentId, P>();
+  let pending = false;
+  for (const [environmentId, presentation] of input.presentations) {
+    const read = limitsReadOf(presentation);
+    if (read === "reading") pending = true;
+    if (read === "read") shown.set(environmentId, presentation);
+  }
+  const reading = pending || !input.listed;
+  const tellApart = input.presentations.size > 1;
+  if (reading && !input.deadlinePassed && !input.painted) {
+    return {
+      state: "wait",
+      reading,
+      shown: new Map(),
+      entries: [],
+      tellApart,
+      painted: false,
+      placed: [],
+    };
+  }
+  const { accounts, notices } = collectLimitAccounts(shown);
+  const fresh: LimitsEntry[] = [
+    ...collectLimitSources(shown).map((source): LimitsEntry => ({
+      kind: "source",
+      key: `source:${source.key}`,
+      source,
+    })),
+    ...accounts.map((account): LimitsEntry => ({
+      kind: "account",
+      key: `account:${account.key}`,
+      account,
+    })),
+    ...notices.map((notice): LimitsEntry => ({
+      kind: "notice",
+      key: `notice:${notice.driver}\n${notice.notice}`,
+      notice,
+    })),
+  ];
+  const entries = keepPlaced(input.placed, fresh, (entry) => entry.key);
+  return {
+    state: entries.length > 0 ? "shown" : "none",
+    reading,
+    shown,
+    entries,
+    tellApart,
+    painted: true,
+    placed: entries.map((entry) => entry.key),
+  };
+}
+
 function checkedAtMillis(limits: ServerProviderUsageLimits): number {
   const at = Date.parse(limits.checkedAt);
   return Number.isFinite(at) ? at : Number.NEGATIVE_INFINITY;

@@ -75,6 +75,13 @@ import {
   extractPlanMarkdown,
   extractTodosAsPlan,
 } from "../acp/CursorAcpExtension.ts";
+import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
+import {
+  acpTerminalReason,
+  acpThreadSetup,
+  acpTurnProfile,
+  readAcpThreadPolicies,
+} from "../../spi/acpThreadProfile.ts";
 import { type CursorAdapterShape } from "../Services/CursorAdapter.ts";
 import { resolveCursorAcpBaseModelId } from "./CursorProvider.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
@@ -87,6 +94,8 @@ const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.fromJsonStri
 
 const PROVIDER = ProviderDriverKind.make("cursor");
 const CURSOR_RESUME_VERSION = 1 as const;
+/** The model option a thread profile's effort sets (`CursorProvider.ts`). */
+const CURSOR_EFFORT_OPTION = "reasoning";
 const ACP_PLAN_MODE_ALIASES = ["plan", "architect"];
 const ACP_IMPLEMENT_MODE_ALIASES = ["code", "agent", "default", "chat", "implement"];
 const ACP_APPROVAL_MODE_ALIASES = ["ask"];
@@ -332,6 +341,7 @@ export function makeCursorAdapter(
     const path = yield* Path.Path;
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const serverConfig = yield* Effect.service(ServerConfig);
+    const threadPolicies = yield* readAcpThreadPolicies;
     const crypto = yield* Crypto.Crypto;
     const nativeEventLogger =
       options?.nativeEventLogger ??
@@ -508,8 +518,13 @@ export function makeCursorAdapter(
           }
 
           const cwd = path.resolve(input.cwd.trim());
-          const cursorModelSelection =
-            input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined;
+          const threadRef = { threadId: input.threadId, instanceId: boundInstanceId, cwd };
+          const cursorModelSelection = (yield* acpTurnProfile(
+            threadPolicies,
+            threadRef,
+            input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined,
+            CURSOR_EFFORT_OPTION,
+          )).modelSelection;
           const existing = sessions.get(input.threadId);
           if (existing && !existing.stopped) {
             yield* stopSessionInternal(existing);
@@ -523,6 +538,12 @@ export function makeCursorAdapter(
             sessionScopeTransferred ? Effect.void : Scope.close(sessionScope, Exit.void),
           );
           let ctx!: CursorSessionContext;
+          // A crewmate's thread: its tools served for this session, its gate in the person's place.
+          const profileSetup = yield* acpThreadSetup(threadPolicies, threadRef).pipe(
+            Effect.provideService(Scope.Scope, sessionScope),
+          );
+          // A crewmate asks before every call, whatever mode its thread names.
+          const runtimeMode = profiledRuntimeMode(profileSetup !== undefined, input.runtimeMode);
 
           const resumeSessionId = parseCursorResume(input.resumeCursor)?.sessionId;
           const acpNativeLoggers = makeAcpNativeLoggers({
@@ -548,8 +569,9 @@ export function makeCursorAdapter(
             ...(options?.environment ? { environment: options.environment } : {}),
             childProcessSpawner,
             cwd,
-            runtimeMode: input.runtimeMode,
+            runtimeMode,
             ...(resumeSessionId ? { resumeSessionId } : {}),
+            ...(profileSetup ? { mcpServers: profileSetup.mcpServers } : {}),
             clientInfo: { name: "t3-code", version: "0.0.0" },
             ...acpNativeLoggers,
           }).pipe(
@@ -667,7 +689,8 @@ export function makeCursorAdapter(
                     params,
                     "acp.jsonrpc",
                   );
-                  if (input.runtimeMode === "full-access") {
+                  if (profileSetup) return yield* profileSetup.decidePermission(params);
+                  if (runtimeMode === "full-access") {
                     const autoApprovedOptionId = selectAutoApprovedPermissionOption(params);
                     if (autoApprovedOptionId !== undefined) {
                       return {
@@ -738,7 +761,7 @@ export function makeCursorAdapter(
 
           yield* applyRequestedSessionConfiguration({
             runtime: acp,
-            runtimeMode: input.runtimeMode,
+            runtimeMode,
             interactionMode: undefined,
             modelSelection: cursorModelSelection,
             mapError: ({ cause, method }) =>
@@ -750,7 +773,7 @@ export function makeCursorAdapter(
             provider: PROVIDER,
             providerInstanceId: boundInstanceId,
             status: "ready",
-            runtimeMode: input.runtimeMode,
+            runtimeMode,
             cwd,
             model: cursorModelSelection?.model,
             threadId: input.threadId,
@@ -952,8 +975,13 @@ export function makeCursorAdapter(
         ctx.promptsInFlight += 1;
 
         return yield* Effect.gen(function* () {
-          const turnModelSelection =
-            input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined;
+          const turnProfile = yield* acpTurnProfile(
+            threadPolicies,
+            { threadId: input.threadId, instanceId: boundInstanceId },
+            input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection : undefined,
+            CURSOR_EFFORT_OPTION,
+          );
+          const turnModelSelection = turnProfile.modelSelection;
           const model = turnModelSelection?.model ?? ctx.session.model;
           const resolvedModel = resolveCursorAcpBaseModelId(model);
           yield* applyRequestedSessionConfiguration({
@@ -1073,6 +1101,9 @@ export function makeCursorAdapter(
                       type: "text",
                       text: buildRuntimeInstructions({ harness: "Cursor", model: resolvedModel }),
                     },
+                    ...(turnProfile.instructions
+                      ? [{ type: "text" as const, text: turnProfile.instructions }]
+                      : []),
                   ],
             })
             .pipe(
@@ -1118,6 +1149,7 @@ export function makeCursorAdapter(
               payload: {
                 state: result.stopReason === "cancelled" ? "cancelled" : "completed",
                 stopReason: result.stopReason ?? null,
+                ...acpTerminalReason(result.stopReason),
               },
             });
           }
@@ -1244,6 +1276,9 @@ export function makeCursorAdapter(
 
     return {
       provider: PROVIDER,
+      // No `threadProfile`: zcp pre-approves the zerops tools in the project's .cursor/cli.json
+      // (`Mcp(zerops:*)`), so a crewmate's Zerops calls would never reach the crew's gate. A crew
+      // is refused on Cursor until that is closed and seen live (spi/acpThreadProfile.ts is ready).
       capabilities: { sessionModelSwitch: "in-session", supportsConversationRollback: false },
       compaction: { type: "slash-command", command: "/compress" },
       startSession,

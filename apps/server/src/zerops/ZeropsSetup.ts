@@ -12,7 +12,8 @@
  *   signed an agent in here (`ZeropsProjectSigners`) for the sign-in; the
  *   durable record for the stand-up.
  * - **It starts the stand-up**: once HQ names the person who asked for it and
- *   that person signed an agent in here, it sends the ask into the Mate's main
+ *   that person signed an agent in here, or another agent is ready to run,
+ *   it sends the ask into the Mate's main
  *   conversation, admitted as that person's session exactly as their send
  *   would be (D6). Once: the record lives in the server's database, so a
  *   restart repeats nothing. No client sends one.
@@ -35,6 +36,7 @@ import {
   type ModelSelection,
   type OrchestrationCommand,
   type OrchestrationThreadShell,
+  type ServerProvider,
   type ZeropsAgentId,
 } from "@t3tools/contracts";
 import type { MateState } from "@t3tools/shared/mateLink";
@@ -54,7 +56,11 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as ServerConfig from "../config.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
+import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
+import { pickReadyAgentWithoutSignIn, resolveBootstrapModelSlug } from "./ZeropsBootstrapModel.ts";
+import { overlayZeropsAgentAuth } from "./zeropsAgentProviderOverlay.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
@@ -95,6 +101,11 @@ export class ZeropsSetupReads extends Context.Service<
     readonly serviceVariables: Effect.Effect<ReadonlyArray<string> | undefined>;
     /** zcp's status file, parsed as JSON; `undefined` when absent or unreadable. */
     readonly statusFile: Effect.Effect<unknown>;
+    /**
+     * The provider instances as the model picker sees them: Claude Code and Codex by the
+     * agent-auth feed (`overlayZeropsAgentAuth`), every other driver by its own probe.
+     */
+    readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
   }
 >()("t3/zerops/ZeropsSetup/ZeropsSetupReads") {}
 
@@ -149,6 +160,25 @@ export const standUpModelSelection = (
     instanceId: ProviderInstanceId.make(instance),
     model: DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make(instance)] ?? DEFAULT_MODEL,
   };
+};
+
+/**
+ * The model the stand-up runs on when it runs on a ready agent Mate signs nobody in to: the
+ * conversation's own when it is on that instance, else the project's default there, else the
+ * model a new conversation would open on it (`resolveBootstrapModelSlug`).
+ */
+export const standUpModelSelectionOn = (
+  provider: ServerProvider,
+  thread: Pick<OrchestrationThreadShell, "modelSelection"> | undefined,
+  projectDefault: ModelSelection | null,
+): ModelSelection => {
+  if (thread !== undefined && thread.modelSelection.instanceId === provider.instanceId) {
+    return thread.modelSelection;
+  }
+  if (projectDefault !== null && projectDefault.instanceId === provider.instanceId) {
+    return projectDefault;
+  }
+  return { instanceId: provider.instanceId, model: resolveBootstrapModelSlug(provider) };
 };
 
 export interface ZeropsSetupTimings {
@@ -322,8 +352,11 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           : Option.none<MateState>();
       const requestedBy = Option.getOrUndefined(mate)?.standupRequestedBy ?? undefined;
       const signers = yield* reads.signers;
+      const readyWithoutSignIn =
+        marked && pickReadyAgentWithoutSignIn(yield* reads.providers) !== undefined;
       const signedIn =
         ran ||
+        readyWithoutSignIn ||
         (Option.isSome(mate) &&
           (requestedBy === undefined
             ? Object.keys(signers).length > 0
@@ -378,6 +411,8 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         const hq = yield* reads.hq;
         if (hq.kind !== "linked") return false;
         const asker = hq.mate.standupRequestedBy ?? undefined;
+        const providers = yield* reads.providers;
+        const ready = pickReadyAgentWithoutSignIn(providers);
         const signers = yield* reads.signers;
         // A claim resumed is sent as whoever can send it now: the person it was claimed for,
         // else the person who asked for the stand-up — the first of them who holds an agent
@@ -390,7 +425,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
                 (userId): userId is string =>
                   userId !== undefined &&
                   userId !== "" &&
-                  standUpSigners(signers, userId).length > 0,
+                  (standUpSigners(signers, userId).length > 0 || ready !== undefined),
               );
         if (requestedBy === undefined && resuming !== undefined) {
           const thread = Option.getOrUndefined(
@@ -426,10 +461,13 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           yield* confirm(resuming.commandId);
           return true;
         }
+        // The conversation's own instance when it is one of the ready ones.
+        const readyHere = pickReadyAgentWithoutSignIn(providers, main?.modelSelection.instanceId);
         const decision = standUpDecision({
           recorded: false,
           requestedBy,
           signers: standUpSigners(signers, requestedBy),
+          ready: readyHere?.instanceId,
           spoken: resuming === undefined && main?.latestUserMessageAt != null,
         });
         if (decision.kind === "spoken") return yield* settle("skipped");
@@ -439,11 +477,19 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         const threadId = ThreadId.make(
           resuming?.threadId ?? main?.id ?? (yield* crypto.randomUUIDv4),
         );
-        const modelSelection = standUpModelSelection(
-          decision.agentId,
-          main,
-          project.defaultModelSelection,
-        );
+        // On the agent the person signed in, else on the ready one that needs no sign-in.
+        let modelSelection: ModelSelection;
+        if ("agentId" in decision) {
+          modelSelection = standUpModelSelection(
+            decision.agentId,
+            main,
+            project.defaultModelSelection,
+          );
+        } else if (readyHere !== undefined) {
+          modelSelection = standUpModelSelectionOn(readyHere, main, project.defaultModelSelection);
+        } else {
+          return false;
+        }
         const ids =
           resuming === undefined
             ? standUpCommandIds(threadId)
@@ -602,6 +648,8 @@ export const liveReadsLayer = Layer.effect(
     const fs = yield* FileSystem.FileSystem;
     const link = yield* ZeropsHqLink;
     const projectSigners = yield* ZeropsProjectSigners;
+    const instances = yield* ProviderInstances;
+    const agentAuth = yield* ZeropsAgentAuth;
     const statusFilePath = process.env[ZCP_STATUS_FILE_VARIABLE];
     return ZeropsSetupReads.of({
       hq: link.standing,
@@ -613,6 +661,7 @@ export const liveReadsLayer = Layer.effect(
         statusFilePath === undefined || statusFilePath.length === 0
           ? Effect.succeed(undefined)
           : readFileJson(fs, statusFilePath),
+      providers: Effect.zipWith(instances.providers, agentAuth.latest, overlayZeropsAgentAuth),
     });
   }),
 );

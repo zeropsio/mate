@@ -33,7 +33,7 @@ import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
 import type { ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 
-import { groupMateOf, ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
+import { detailTrail, groupMateOf, ZeropsGroupPane, ZeropsStopPane } from "./ZeropsGroupDetail";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 
 /** The rows' one clock, fixed: an age is the producer's to test, not the minute this ran in. */
@@ -92,7 +92,7 @@ function render(
   who: Pick<
     React.ComponentProps<typeof ZeropsGroupPane>,
     "mates" | "matesNotice" | "onMatesNoticeAct"
-  > = {
+  > & { readonly name?: string | undefined } = {
     mates: [
       mate("theo", "Theo", "Cache the link previews"),
       mate("iris", "Iris", "Split the checkout"),
@@ -114,9 +114,9 @@ function render(
       crumbs={[{ label: "Projects", onClick: () => {} }]}
       history={{ kind: "reading" }}
       groupId="shop"
+      name="Shop"
       {...who}
       {...stops}
-      name="Shop"
       names={{ mateNames: new Map() }}
       onAct={() => {}}
       onAddMate={() => {}}
@@ -235,6 +235,15 @@ describe("ZeropsGroupPane", () => {
       );
       expect(cell(markup)).toBe(expected);
     });
+  });
+
+  it("holds its title's line while the listing has not named the project: no id, no placeholder", () => {
+    const markup = render({ mates: [], name: undefined });
+    const title = markup.slice(markup.indexOf("<h1"), markup.indexOf("</h1>"));
+
+    expect(title).not.toContain("grp7Kq2");
+    expect(title).not.toContain("Project");
+    expect(title.replace(/<[^>]*>/gu, "")).toBe("\u00a0");
   });
 
   // SPEC §1: the page stands in the frame /zerops stands in, its trail in the bar.
@@ -1257,5 +1266,16 @@ describe("groupMateOf — a Mate on the project, as its page draws it", () => {
       });
     expect(at(born + 60_000).face).toBe("waking");
     expect(at(born + 31 * 60_000).face).toBe("sleep");
+  });
+});
+
+describe("detailTrail: where a detail page sits", () => {
+  it.each([
+    ["the projects page", undefined, ["Projects"]],
+    ["a project whose name is known", { groupId: "grp7Kq2", name: "Shop" }, ["Projects", "Shop"]],
+    // Before the listing is read the project's crumb waits: its id is never a name.
+    ["a project whose name is not read yet", { groupId: "grp7Kq2", name: undefined }, ["Projects"]],
+  ] as const)("%s", (_case, inside, labels) => {
+    expect(detailTrail(inside).map((crumb) => crumb.label)).toEqual(labels);
   });
 });

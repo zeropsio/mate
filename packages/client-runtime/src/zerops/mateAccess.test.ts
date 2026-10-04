@@ -6,6 +6,7 @@ import {
   mateMemberName,
   mateOnlyOwnerOpensIt,
   mateOwnerRecords,
+  mateIsViewers,
   resolveMateOwnerPerson,
   resolveMateVerbs,
   resolveMateVisibility,
@@ -240,13 +241,13 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
       name: "a signer that names no user",
       userRoles: undefined,
       signers: { codex: "" },
-      records: { named: false, signedIn: false },
+      records: { named: undefined, signedIn: false },
     },
     {
-      name: "no summary relayed: no signer known",
+      name: "no overview relayed: no signer known",
       userRoles: undefined,
       signers: undefined,
-      records: { named: false, signedIn: false },
+      records: { named: undefined, signedIn: false },
     },
   ])("$name", ({ userRoles, signers, records }) => {
     expect(
@@ -254,7 +255,11 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
         userRoles,
         ...(signers === undefined ? {} : { hq: placedWith(signers) }),
       }),
-    ).toEqual(records);
+    ).toEqual({
+      ...records,
+      person: "signer" in records ? records.signer : undefined,
+      runsWithoutSignIn: false,
+    });
   });
 });
 
@@ -370,5 +375,31 @@ describe("withMateProjectRole — handing a Mate over", () => {
     expect(
       withMateProjectRole([{ projectId: "p-fen", roleCode: "OWNER" }], "p-fen", "READ_ONLY"),
     ).toEqual([{ projectId: "p-fen", roleCode: "READ_ONLY" }]);
+  });
+});
+
+describe("a ready agent's person from HQ", () => {
+  it.each([
+    ["ready: its maker", true, {}, "u-maker"],
+    ["not ready: no signer", false, {}, undefined],
+    ["signed in: the signer first", true, { codex: "u-signer" }, "u-signer"],
+  ] as const)("%s", (_case, ready, signers, person) => {
+    const placement = placedWith(signers);
+    const project = {
+      id: PROJECT,
+      hq: {
+        ...placement,
+        mate: { ...placement.mate!, madeBy: "u-maker", runsWithoutSignIn: ready },
+      },
+    };
+    expect(mateOwnerRecords(project).person).toBe(person);
+    expect(mateOwnerRecords(project).runsWithoutSignIn).toBe(ready);
+    expect(mateIsViewers(project, "u-maker")).toBe(person === "u-maker");
+    expect(
+      resolveMateOwnerPerson({
+        project,
+        people: { "u-maker": { name: "Maker" }, "u-signer": { name: "Signer" } },
+      })?.userId,
+    ).toBe(person);
   });
 });

@@ -89,6 +89,8 @@ export interface HqMate extends HqMateRecord {
   readonly closedOff?: boolean;
   /** Who signed each of its agents' logins in, as its overview says; absent where HQ holds none. */
   readonly logins?: OverviewLogins;
+  /** A ready agent outside Mate's sign-in flow, relayed in its overview. */
+  readonly runsWithoutSignIn?: boolean;
 }
 
 /** What `GET /api/structure` answers: the applications as the reader sees them in Zerops. */

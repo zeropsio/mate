@@ -540,6 +540,9 @@ export function buildOpenCodePermissionRules(runtimeMode: RuntimeMode): Permissi
     { permission: "external_directory", pattern: "*", action: "ask" },
     { permission: "doom_loop", pattern: "*", action: "ask" },
     { permission: "question", pattern: "*", action: "allow" },
+    // zcp's Zerops tools, pre-approved for every agent zcp sets up; these
+    // rules override the allowance zcp writes into OpenCode's config.
+    { permission: "zerops_*", pattern: "*", action: "allow" },
   ];
 }
 

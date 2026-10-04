@@ -128,6 +128,9 @@ export interface ZeropsProjectFlowValue {
    * anchor is resolved, and nothing is read as one of its changes until then.
    */
   readonly hqAddress: string | undefined;
+  readonly readFailure?: string | undefined;
+  readonly groupsRead?: boolean;
+  readonly knownGroups?: ReadonlySet<string>;
   readonly flows: ReadonlyMap<string, ZeropsProjectFlow>;
   /**
    * Why HQ's last read of an application's releases and repositories did not answer, by its id;

@@ -85,9 +85,10 @@ export type CrewPromptVersion = typeof CrewPromptVersion.Type;
 export const CrewLogin = Schema.Struct({
   /** The provider instance id. */
   id: TrimmedNonEmptyString,
-  /** What the section shows beside a non-default login, e.g. "work". */
+  /** What *Runs on* names it: a Mate login's label, e.g. "work", else its agent's name. */
   label: Schema.String,
-  agent: ZeropsAgentId,
+  /** Absent for an agent Mate signs nobody in to (Cursor, OpenCode, Grok, Antigravity). */
+  agent: Schema.optional(ZeropsAgentId),
 });
 export type CrewLogin = typeof CrewLogin.Type;
 

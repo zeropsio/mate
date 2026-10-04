@@ -114,14 +114,23 @@ const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
  * 2026-09-30). One state, one phrase whichever flow made it (run 4, 2026-10-02). A Mate whose
  * sign-in somebody is waited for never reads like a failure (the owner, 2026-10-01): anybody else
  * reads that it waits for a sign-in, quietly, and a viewer not known yet reads nothing. A Mate
- * that names nobody reads the fact.
+ * that names nobody reads the fact. A Mate that runs on an agent that needs no sign-in (Cursor,
+ * OpenCode…: HQ's overview) waits on nobody's sign-in and says none of it; its maker holds its
+ * seat, as its records name them.
  */
 export function mateOwnerView(input: {
   readonly owner:
     | { readonly name: string; readonly initials: string; readonly avatarUrl: string | null }
     | undefined;
-  /** What its records say (`mateOwnerRecords`). */
-  readonly records: { readonly named: boolean; readonly signedIn: boolean };
+  /**
+   * What its records say (`mateOwnerRecords`): `named` unknown while its roles are not read; a
+   * Mate that runs on an agent Mate signs nobody in to (HQ's overview) waits on no sign-in.
+   */
+  readonly records: {
+    readonly named: boolean | undefined;
+    readonly signedIn: boolean;
+    readonly runsWithoutSignIn?: boolean | undefined;
+  };
   /** The row already says what was asked under the name. */
   readonly asked: boolean;
   /** Who added it, as HQ's stand-up record names them (`readZeropsMembership(…).standUp`). */
@@ -141,10 +150,12 @@ export function mateOwnerView(input: {
   const seat: OwnerSeat =
     owner !== undefined
       ? { kind: "person", mark: ownerMark(owner) }
-      : records.named
-        ? { kind: "unnamed" }
-        : { kind: "nobody", label: NOBODY_OWNS };
-  if (records.signedIn || input.asked) return { seat, signInLine: undefined, waitsOnViewer: false };
+      : records.named === false
+        ? { kind: "nobody", label: NOBODY_OWNS }
+        : { kind: "unnamed" };
+  if (records.signedIn || input.asked || records.runsWithoutSignIn === true) {
+    return { seat, signInLine: undefined, waitsOnViewer: false };
+  }
   const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;
   const awaited = input.madeBy ?? input.standUpBy;
   if (awaited === undefined) {

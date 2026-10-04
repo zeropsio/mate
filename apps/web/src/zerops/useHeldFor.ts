@@ -16,3 +16,21 @@ export function useHeldFor(active: boolean, ms: number): boolean {
   }, [active, ms]);
   return active && held;
 }
+
+/**
+ * Whether the same `key` has stood for `ms` without a break: a different key starts its own
+ * stretch at once — a wait of one organization is never carried into another's — and `null`
+ * holds nothing.
+ */
+export function useHeldForKey(key: string | null, ms: number): boolean {
+  const [heldKey, setHeldKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (key === null) return;
+    const timer = setTimeout(() => setHeldKey(key), ms);
+    return () => {
+      clearTimeout(timer);
+      setHeldKey(null);
+    };
+  }, [key, ms]);
+  return key !== null && heldKey === key;
+}

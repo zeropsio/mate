@@ -25,7 +25,7 @@ function digest(
       lead: mate.kind === "lead",
       threadId: mate.currentThreadId,
       threadKind: mate.currentThreadId === null ? null : (input.kinds?.[mate.handle] ?? "idle"),
-      loginKey: mate.login.agent,
+      loginKey: mate.login.agent ?? null,
     })),
     attention: snapshot.attention.map(({ id, kind, handle }) => ({ id, kind, handle })),
     readyTasks: snapshot.board.tasks

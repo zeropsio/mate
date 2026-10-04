@@ -1066,6 +1066,17 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const value = useMemo<ZeropsProjectFlowValue>(
     () => ({
       hqAddress,
+      readFailure:
+        changesFailure ??
+        (accountHq.status === "failed"
+          ? "The organization's HQ could not be read."
+          : accountHq.status === "ready" && accountHq.hq.kind !== "official"
+            ? "This organization has no HQ."
+            : lapsed
+              ? "Project access is being checked."
+              : undefined),
+      groupsRead: hqStructure?.current === true && !registry.loading,
+      knownGroups: new Set(registry.registry.groups.map(({ groupId }) => groupId)),
       flows: lapsed ? EMPTY_FLOWS : flows,
       releaseFailures: lapsed ? NO_FAILURES : releaseFailures,
       deployments,
@@ -1086,6 +1097,11 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       flows,
       hqAddress,
       lapsed,
+      registry,
+      changesFailure,
+      accountHq.hq.kind,
+      accountHq.status,
+      hqStructure,
       mateNames,
       merge,
       pendingOrHeld,

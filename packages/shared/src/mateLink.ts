@@ -92,6 +92,8 @@ export type MateThreadKind = typeof MateThreadKind.Type;
 
 /** Who the Mate is, as its descriptor says it, and its update line (spec-mate §2.9). */
 export const OverviewIdentity = Schema.Struct({
+  /** A ready agent outside Mate's personal sign-in flow; absent on older Mates. */
+  runsWithoutSignIn: Schema.optionalKey(Schema.Boolean),
   environmentId: ExecutionEnvironmentDescriptor.fields.environmentId,
   serverVersion: ExecutionEnvironmentDescriptor.fields.serverVersion,
   update: Schema.NullOr(ExecutionEnvironmentUpdate),

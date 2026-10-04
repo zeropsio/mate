@@ -26,11 +26,13 @@
  *
  * @module ZeropsHqLink
  */
+import { isAgentWithoutSignInReady } from "@t3tools/shared/zeropsAgentAuth";
+import { ProviderInstances } from "../spi/providerInstances.ts";
 import * as NodeDns from "node:dns";
 import type * as NodeNet from "node:net";
 
 import { NodeWS } from "@effect/platform-node/NodeSocket";
-import type { CrewSnapshot, OrchestrationThreadShell } from "@t3tools/contracts";
+import type { CrewSnapshot, OrchestrationThreadShell, ServerProvider } from "@t3tools/contracts";
 import {
   MATE_OVERVIEW_EVERY_MS,
   MateLinkDown,
@@ -416,6 +418,10 @@ const OutcomeFile = Schema.fromJsonString(
 export interface OverviewSources {
   readonly environmentId: OverviewIdentity["environmentId"];
   readonly serverVersion: string;
+  readonly providers?: {
+    readonly latest: Effect.Effect<ReadonlyArray<ServerProvider>>;
+    readonly changes: Stream.Stream<unknown>;
+  };
   /** The thread shells of the project at the workspace root. */
   readonly threads: Effect.Effect<
     ReadonlyArray<OrchestrationThreadShell>,
@@ -461,6 +467,13 @@ export const mateOverviewFeed = (
           environmentId: sources.environmentId,
           serverVersion: sources.serverVersion,
           update: (yield* sources.update.current) ?? null,
+          ...(sources.providers === undefined
+            ? {}
+            : {
+                runsWithoutSignIn: (yield* sources.providers.latest).some(
+                  isAgentWithoutSignInReady,
+                ),
+              }),
         },
         threads: yield* sources.threads,
         auth: combineAgentAuth(snapshot, extras, logins),
@@ -472,6 +485,7 @@ export const mateOverviewFeed = (
       changes: Stream.mergeAll(
         [
           sources.domainEvents,
+          ...(sources.providers === undefined ? [] : [sources.providers.changes]),
           Stream.fromPubSub(crewMoved),
           sources.agentAuth.changes,
           sources.agentLogin.changes,
@@ -505,7 +519,9 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const paths = yield* Path.Path;
       const projection = yield* ProjectionSnapshotQuery;
       const engine = yield* OrchestrationEngineService;
+      const providers = yield* ProviderInstances;
       const feed = yield* mateOverviewFeed({
+        providers: { latest: providers.providers, changes: providers.changes },
         environmentId: yield* (yield* ServerEnvironment).getEnvironmentId,
         serverVersion: packageJson.version,
         threads: Effect.gen(function* () {

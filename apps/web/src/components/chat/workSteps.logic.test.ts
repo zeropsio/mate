@@ -138,6 +138,26 @@ describe("trackCommands", () => {
     expect(tracked.byCommand.get("1")?.description).toBe("Run the tests");
   });
 
+  // Grok names a background command's task by the command's first line, and
+  // Antigravity by the command itself: no words of its own to lend.
+  it.each([
+    { name: "Grok's first line", command: "npm run dev\necho done", description: "npm run dev" },
+    { name: "Antigravity's whole command", command: "npm run dev", description: "npm run dev" },
+    { name: "a shell-wrapped one", command: "bash -lc 'npm run dev'", description: "npm run dev" },
+    {
+      name: "a long one Grok cut",
+      command: `node ${"x".repeat(300)}`,
+      description: `node ${"x".repeat(195)}`,
+    },
+  ])("lends no words from a task named by its command: $name", ({ command: text, description }) => {
+    const run = command("1", text);
+    const tracker = task("t1", description, { taskToolUseId: "toolu_1" });
+    const tracked = trackCommands([run, tracker]);
+    expect(tracked.byCommand.get("1")?.description).toBeUndefined();
+    expect([...tracked.trackers]).toEqual(["t1"]);
+    expect(stepOf(run, tracked).words).toBeNull();
+  });
+
   it.each([
     {
       name: "a helper",
@@ -393,6 +413,211 @@ describe("stepOf", () => {
       toolLifecycleStatus: "inProgress",
     });
     expect(stepOf(run, trackCommands([run, tracker])).state).toBe("running");
+  });
+});
+
+/**
+ * Every driver's calls, as the server hands them over (`projectActivityPayload`):
+ * the tool's name at `toolName` — Claude's own, OpenCode's (`read`, `grep`,
+ * `webfetch`, ...), an ACP agent's kind (`read`, `search`, `fetch`, ...) —
+ * and what it names in Claude's keys. Each reads as Claude's would.
+ */
+describe("stepOf — every driver", () => {
+  const done = (partial: Partial<WorkLogEntry>) =>
+    stepOf(entry({ id: "1", toolCallId: "call-1", ...partial }), undefined, false);
+
+  it.each<{
+    readonly name: string;
+    readonly partial: Partial<WorkLogEntry>;
+    readonly kind: string;
+    readonly words: string;
+  }>([
+    {
+      name: "an ACP read",
+      partial: {
+        label: "Read file",
+        itemType: "dynamic_tool_call",
+        toolName: "read",
+        detail: "/app/src/app.ts",
+        callInput: { filePath: "/app/src/app.ts" },
+        changedFiles: ["/app/src/app.ts"],
+      },
+      kind: "read",
+      words: "Read app.ts",
+    },
+    {
+      name: "an ACP grep, which comes typed as a web search",
+      partial: {
+        label: "Searched files",
+        itemType: "web_search",
+        toolName: "search",
+        callInput: { pattern: "TODO" },
+      },
+      kind: "search",
+      words: "Searched the code for TODO",
+    },
+    {
+      name: "an ACP fetch",
+      partial: {
+        label: "Searched files",
+        itemType: "web_search",
+        toolName: "fetch",
+        callInput: { url: "https://example.com/docs" },
+      },
+      kind: "web",
+      words: "Read example.com/docs",
+    },
+    {
+      name: "an ACP edit",
+      partial: {
+        label: "Changed files",
+        itemType: "file_change",
+        toolName: "edit",
+        changedFiles: ["/app/src/app.ts"],
+      },
+      kind: "edit",
+      words: "Edited app.ts",
+    },
+    {
+      name: "an OpenCode read",
+      partial: {
+        label: "src/app.ts",
+        itemType: "dynamic_tool_call",
+        toolName: "read",
+        detail: "<file>\n00001| export {}\n</file>",
+        callInput: { filePath: "/app/src/app.ts" },
+      },
+      kind: "read",
+      words: "Read app.ts",
+    },
+    {
+      name: "an OpenCode grep",
+      partial: {
+        label: "TODO",
+        itemType: "dynamic_tool_call",
+        toolName: "grep",
+        callInput: { pattern: "TODO", path: "src" },
+        changedFiles: ["src"],
+      },
+      kind: "search",
+      words: "Searched the code for TODO",
+    },
+    {
+      name: "an OpenCode glob",
+      partial: {
+        label: "src",
+        itemType: "dynamic_tool_call",
+        toolName: "glob",
+        callInput: { pattern: "**/*.ts" },
+      },
+      kind: "search",
+      words: "Looked for **/*.ts",
+    },
+    {
+      name: "an OpenCode list",
+      partial: { label: "src", itemType: "dynamic_tool_call", toolName: "list" },
+      kind: "search",
+      words: "Looked for files",
+    },
+    {
+      name: "an OpenCode webfetch",
+      partial: {
+        label: "https://example.com",
+        itemType: "web_search",
+        toolName: "webfetch",
+        callInput: { url: "https://example.com/" },
+      },
+      kind: "web",
+      words: "Read example.com",
+    },
+    {
+      name: "an OpenCode todo list",
+      partial: { label: "3 todos", itemType: "dynamic_tool_call", toolName: "todowrite" },
+      kind: "tool",
+      words: "Updated its list",
+    },
+    {
+      name: "an OpenCode helper",
+      partial: { label: "Explore", itemType: "collab_agent_tool_call", toolName: "task" },
+      kind: "tool",
+      words: "Started a helper",
+    },
+    {
+      name: "a Zerops tool with no card, from any driver",
+      partial: {
+        label: "Running zerops_knowledge",
+        itemType: "dynamic_tool_call",
+        toolName: "zerops_knowledge",
+      },
+      kind: "tool",
+      words: "Read the Zerops guides",
+    },
+    {
+      name: "another MCP tool, by its name",
+      partial: {
+        label: "Running create_issue",
+        itemType: "dynamic_tool_call",
+        toolName: "create_issue",
+      },
+      kind: "tool",
+      words: "Used create issue",
+    },
+    {
+      name: "an MCP tool named as a native one",
+      partial: { label: "db_execute", itemType: "dynamic_tool_call", toolName: "mcp__db__execute" },
+      kind: "tool",
+      words: "Used execute",
+    },
+    {
+      name: "OpenCode's own underscored tool",
+      partial: { label: "plan_exit", itemType: "dynamic_tool_call", toolName: "plan_exit" },
+      kind: "tool",
+      words: "Used plan exit",
+    },
+    {
+      name: "an ACP search of the web",
+      partial: {
+        label: "Searched files",
+        itemType: "web_search",
+        toolName: "websearch",
+        callInput: { query: "zerops yaml" },
+      },
+      kind: "web",
+      words: "Searched the web for zerops yaml",
+    },
+    {
+      name: "a Zerops tool by its MCP name",
+      partial: {
+        label: "Running zerops_knowledge",
+        itemType: "dynamic_tool_call",
+        toolName: "mcp__zerops__zerops_knowledge",
+      },
+      kind: "tool",
+      words: "Read the Zerops guides",
+    },
+    {
+      name: "a Grok tool its title names",
+      partial: { label: "enter_plan_mode", itemType: "dynamic_tool_call" },
+      kind: "tool",
+      words: "Used enter plan mode",
+    },
+  ])("$name reads $words", ({ partial, kind, words }) => {
+    const step = done(partial);
+    expect({ kind: step.kind, words: step.words }).toEqual({ kind, words });
+  });
+
+  it("folds an ACP agent's edits of one file into one step of one file", () => {
+    const edit = (id: string) =>
+      entry({
+        id,
+        toolCallId: `call-${id}`,
+        label: "Changed files",
+        itemType: "file_change",
+        toolName: "edit",
+        changedFiles: ["/app/src/app.ts"],
+      });
+    const steps = foldSteps(["1", "2", "3", "4", "5"].map(edit), undefined, false);
+    expect(steps.map((step) => step.words)).toEqual(["Edited app.ts"]);
   });
 });
 

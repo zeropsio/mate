@@ -441,8 +441,7 @@ const toCrewmate = (
     },
     login: runtime.logins.get(row.handle) ?? {
       id: row.login ?? "claudeAgent",
-      label: "",
-      agent: "claude-code",
+      label: row.login ?? "claudeAgent",
     },
     model: row.model,
     effort: row.effort,

@@ -11,21 +11,22 @@ import type {
   UsageProviderKind,
 } from "@t3tools/contracts";
 import {
-  collectLimitSources,
-  collectLimitsGroups,
   elapsedShare,
   formatDuration,
   formatResetsIn,
+  LIMITS_READ_DEADLINE_MS,
   limitsNotice,
+  limitsPage,
   paceOf,
   providerLimitsLabel,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
-import { type ReactNode, useState } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { type ReactNode, useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 
 import { AppText as Text } from "../../components/AppText";
 import { ProviderIcon } from "../../components/ProviderIcon";
+import { environmentCatalog } from "../../connection/catalog";
 import { environmentPresentations } from "../../state/presentation";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -387,14 +388,40 @@ export function UsageLimitsSection(props: {
 }) {
   const { now } = props;
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
-  const groups = collectLimitsGroups(presentations);
-  const sources = collectLimitSources(presentations);
+  const listed = useAtomValue(environmentCatalog.catalogValueAtom).isReady;
+  // Painted once, when every environment has answered or the deadline passed, least quota left
+  // first; then everything stands where it was painted, a late one joining at the very end
+  // (`limitsPage`, as the web's).
+  const deadlinePassed = useDeadlinePassed(LIMITS_READ_DEADLINE_MS);
+  // What was painted, kept for the next read: once painted it never waits again, nothing moves.
+  const [kept, setKept] = useState<{
+    readonly painted: boolean;
+    readonly placed: readonly string[];
+  }>({ painted: false, placed: [] });
+  const page = limitsPage({
+    listed,
+    presentations,
+    deadlinePassed,
+    painted: kept.painted,
+    placed: kept.placed,
+  });
+  const { state, reading, entries, tellApart } = page;
+  if (page.painted !== kept.painted || page.placed.join("\n") !== kept.placed.join("\n")) {
+    setKept({ painted: page.painted, placed: page.placed });
+  }
+  const readingLine = useReadingLine(reading);
 
-  if (groups.length === 0 && sources.length === 0) {
+  if (state === "wait") {
+    return <View className="py-16">{readingLine}</View>;
+  }
+  if (state === "none") {
     return (
-      <Text className="py-16 text-center text-base text-foreground-muted">
-        No provider on a connected environment reports subscription limits.
-      </Text>
+      <>
+        <Text className="py-16 text-center text-base text-foreground-muted">
+          No provider on a connected environment reports subscription limits.
+        </Text>
+        {readingLine}
+      </>
     );
   }
 
@@ -407,46 +434,92 @@ export function UsageLimitsSection(props: {
           </Text>
         </View>
       ) : null}
-      {groups.map((group) => (
-        <SettingsSection
-          key={group.environmentId}
-          title={group.environmentLabel ?? "Providers"}
-          card
-        >
-          {group.providers.map((provider, index) => (
-            <ProviderLimits
-              key={provider.instanceId}
-              provider={provider}
-              environmentId={group.environmentId}
-              now={now}
-              first={index === 0}
-            />
-          ))}
-        </SettingsSection>
-      ))}
-      {sources.map((source) => (
-        <SettingsSection key={source.key} card>
-          {source.error ? (
-            <Text className="p-4 text-sm text-foreground-muted">{source.error}</Text>
-          ) : source.accounts.length === 0 ? (
-            <Text className="p-4 text-sm text-foreground-muted">
-              {source.hiddenAccountCount > 0
-                ? "All accounts are shown by connected providers."
-                : "No accounts reported."}
-            </Text>
-          ) : (
-            source.accounts.map((account, index) => (
-              <SourceAccountLimits
-                key={account.id}
-                account={account}
-                source={source}
+      {entries.map((entry) => {
+        if (entry.kind === "account") {
+          const { account } = entry;
+          return (
+            <SettingsSection
+              key={entry.key}
+              card
+              {...(tellApart
+                ? { title: presentations.get(account.environmentId)?.entry.target.label }
+                : {})}
+            >
+              <ProviderLimits
+                provider={account.provider}
+                environmentId={account.environmentId}
                 now={now}
-                first={index === 0}
+                first
               />
-            ))
-          )}
-        </SettingsSection>
-      ))}
+            </SettingsSection>
+          );
+        }
+        if (entry.kind === "notice") {
+          const { notice } = entry;
+          return (
+            <View key={entry.key} className="rounded-[16px] border-continuous bg-card px-4 py-3">
+              <Text className="text-sm text-foreground-muted">
+                {`${DRIVER_LABEL[notice.driver] ?? String(notice.driver)}: ${notice.notice}`}
+              </Text>
+            </View>
+          );
+        }
+        const { source } = entry;
+        return (
+          <SettingsSection key={entry.key} card>
+            {source.error ? (
+              <Text className="p-4 text-sm text-foreground-muted">{source.error}</Text>
+            ) : source.accounts.length === 0 ? (
+              <Text className="p-4 text-sm text-foreground-muted">
+                {source.hiddenAccountCount > 0
+                  ? "All accounts are shown by connected providers."
+                  : "No accounts reported."}
+              </Text>
+            ) : (
+              source.accounts.map((account, index) => (
+                <SourceAccountLimits
+                  key={account.id}
+                  account={account}
+                  source={source}
+                  now={now}
+                  first={index === 0}
+                />
+              ))
+            )}
+          </SettingsSection>
+        );
+      })}
+      {reading ? readingLine : null}
     </>
+  );
+}
+
+/** Whether `ms` has passed since this mounted: false, then true for good. */
+function useDeadlinePassed(ms: number): boolean {
+  const [passed, setPassed] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setPassed(true), ms);
+    return () => clearTimeout(timer);
+  }, [ms]);
+  return passed;
+}
+
+/** The wait's beat before its line, as the web's (`BOOT_WAIT_LINE_MS`). */
+const READING_LINE_MS = 600;
+
+/** "Reading subscription limits…" past the wait's beat, while an environment's read is out. */
+function useReadingLine(reading: boolean): ReactNode {
+  const [due, setDue] = useState(false);
+  useEffect(() => {
+    if (!reading || due) return;
+    const timer = setTimeout(() => setDue(true), READING_LINE_MS);
+    return () => clearTimeout(timer);
+  }, [due, reading]);
+  if (!reading || !due) return null;
+  return (
+    <View className="flex-row items-center justify-center gap-2">
+      <ActivityIndicator size="small" />
+      <Text className="text-sm text-foreground-muted">Reading subscription limits…</Text>
+    </View>
   );
 }

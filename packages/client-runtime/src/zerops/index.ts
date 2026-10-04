@@ -88,6 +88,7 @@ export {
   deriveZeropsGroups,
   formatMateFace,
   generateZeropsGroupId,
+  heldGroupLabel,
   kindOfRole,
   readMateFace,
   readZeropsMembership,

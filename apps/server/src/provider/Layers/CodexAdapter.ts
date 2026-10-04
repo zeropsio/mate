@@ -59,6 +59,7 @@ import {
   codexTurnModelSelection,
   readCodexThreadPolicies,
 } from "../../spi/codexThreadProfile.ts";
+import { codexMcpControl } from "../../spi/mcpControl.ts";
 import {
   CodexResumeCursorSchema,
   CodexSessionRuntimeThreadIdMissingError,
@@ -106,6 +107,8 @@ interface CodexAdapterSessionContext {
   readonly threadId: ThreadId;
   readonly scope: Scope.Closeable;
   readonly runtime: CodexSessionRuntimeShape;
+  /** It runs a thread tool profile (a crewmate): never reloaded from `config.toml`. */
+  readonly profiled: boolean;
   readonly eventFiber: Fiber.Fiber<void, never>;
   stopped: boolean;
 }
@@ -1935,6 +1938,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           threadId: input.threadId,
           scope: sessionScope,
           runtime,
+          profiled: thread.setup !== undefined,
           eventFiber,
           stopped: false,
         });
@@ -2161,6 +2165,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
+      threadProfile: { tools: false, reportsSpend: false },
     },
     startSession,
     sendTurn,
@@ -2175,6 +2180,18 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
     listSessions,
     hasSession,
     stopAll,
+    mcp: codexMcpControl({
+      get: (threadId) => {
+        const session = sessions.get(threadId);
+        return session === undefined || session.stopped
+          ? undefined
+          : { runtime: session.runtime, profiled: session.profiled };
+      },
+      all: () =>
+        [...sessions.values()]
+          .filter((session) => !session.stopped)
+          .map((session) => ({ runtime: session.runtime, profiled: session.profiled })),
+    }),
     get streamEvents() {
       return Stream.fromQueue(runtimeEventQueue);
     },

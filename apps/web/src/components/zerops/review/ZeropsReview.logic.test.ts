@@ -542,6 +542,24 @@ describe("changeReadVerdict: a change the flow does not hold, until it is read",
   it.each([
     ["a read in flight", { read: { kind: "reading" } }, "busy", "Reading this change"],
     [
+      "no read sent: the organization has no HQ",
+      { read: { kind: "idle" }, failure: "This organization has no HQ." },
+      "attention",
+      "This change could not be read",
+    ],
+    [
+      "no read sent: HQ has no public address",
+      { read: { kind: "idle" }, failure: "HQ has no public address." },
+      "attention",
+      "This change could not be read",
+    ],
+    [
+      "no read sent: HQ is not discovered yet",
+      { read: { kind: "idle" } },
+      "quiet",
+      "Waiting for the organization's HQ",
+    ],
+    [
       "no change by that number",
       { read: { kind: "gone" } },
       "attention",
@@ -558,6 +576,18 @@ describe("changeReadVerdict: a change the flow does not hold, until it is read",
       { read: { kind: "idle" } },
       "quiet",
       "Waiting for the organization's HQ",
+    ],
+    [
+      "HQ is down before a read",
+      { read: { kind: "idle" }, failure: "HQ is down." },
+      "attention",
+      "This change could not be read",
+    ],
+    [
+      "HQ knows no such project",
+      { read: { kind: "idle" }, projectKnown: false },
+      "attention",
+      "This change's project isn't known here",
     ],
     [
       "no read sent: nothing to read it with",

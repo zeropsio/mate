@@ -1,10 +1,13 @@
 import { assert, describe, it } from "@effect/vitest";
-import type {
-  CrewSnapshot,
-  ExecutionEnvironmentUpdate,
-  ZeropsAgentAuthSnapshot,
+import {
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerProvider,
+  type CrewSnapshot,
+  type ExecutionEnvironmentUpdate,
+  type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
-import type { MateOverview, MateState } from "@t3tools/shared/mateLink";
+import { MateLinkUp, type MateOverview, type MateState } from "@t3tools/shared/mateLink";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -32,6 +35,7 @@ import {
 
 const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
 const encodeHeard = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
+const decodeMateLinkUp = Schema.decodeUnknownEffect(MateLinkUp);
 
 type Sent = { readonly type: string } & Readonly<Record<string, unknown>>;
 
@@ -526,7 +530,12 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
     const crew = yield* SubscriptionRef.make<CrewSnapshot>(CREW_OFF_SNAPSHOT);
     const auth = yield* SubscriptionRef.make<ZeropsAgentAuthSnapshot>(NO_AUTH);
     const update = yield* SubscriptionRef.make<ExecutionEnvironmentUpdate | undefined>(undefined);
+    const providers = yield* SubscriptionRef.make<ReadonlyArray<ServerProvider>>([]);
     const feed = yield* mateOverviewFeed({
+      providers: {
+        latest: SubscriptionRef.get(providers),
+        changes: SubscriptionRef.changes(providers).pipe(Stream.drop(1)),
+      },
       environmentId: "env-1" as OverviewSources["environmentId"],
       serverVersion: "0.11.90",
       threads: Effect.succeed([]),
@@ -565,12 +574,41 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
     socket.emit("open");
     // Settled: whatever the feeds said as the link subscribed has been looked at, and was sent.
     yield* TestClock.adjust(Duration.seconds(1));
-    return { socket, crew, auth, update };
+    return { socket, crew, auth, update, providers };
   });
 
   /** The sections of every frame after the first, whole. */
   const sectionsSent = (socket: FakeSocket) =>
     socket.sent.slice(1).map((frame) => frame["sections"]);
+
+  it.effect("relays a ready agent without a sign-in when its provider snapshot changes", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { socket, providers } = yield* feedRig;
+        const provider: ServerProvider = {
+          driver: ProviderDriverKind.make("cursor"),
+          instanceId: ProviderInstanceId.make("cursor"),
+          enabled: true,
+          installed: true,
+          status: "ready",
+          auth: { status: "authenticated" },
+          version: "1.0.0",
+          checkedAt: "2026-10-04T10:00:00.000Z",
+          models: [{ slug: "cursor-model", name: "Cursor", isCustom: false, capabilities: null }],
+          slashCommands: [],
+          skills: [],
+        };
+        yield* SubscriptionRef.set(providers, [provider]);
+        yield* TestClock.adjust(Duration.seconds(1));
+        const overview = yield* decodeMateLinkUp(socket.sent.at(-1));
+        assert.isTrue(
+          overview.type === "overview" &&
+            !overview.full &&
+            overview.sections.identity?.runsWithoutSignIn === true,
+        );
+      }),
+    ),
+  );
 
   it.effect("sends again when the crew's snapshot moves", () =>
     Effect.scoped(
@@ -622,7 +660,14 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
         yield* SubscriptionRef.set(update, line);
         yield* TestClock.adjust(Duration.seconds(1));
         assert.deepStrictEqual(sectionsSent(socket), [
-          { identity: { environmentId: "env-1", serverVersion: "0.11.90", update: line } },
+          {
+            identity: {
+              environmentId: "env-1",
+              serverVersion: "0.11.90",
+              update: line,
+              runsWithoutSignIn: false,
+            },
+          },
         ]);
       }),
     ),

@@ -19,13 +19,18 @@ const textOf = (html: string) =>
 
 const RUN = crewSnapshotFixture().run!;
 
-function renderStart(hasLead: boolean, lastRun: CrewRun | null = RUN) {
+function renderStart(
+  hasLead: boolean,
+  lastRun: CrewRun | null = RUN,
+  spendBlocker: string | null = null,
+) {
   return renderToStaticMarkup(
     <Dialog open>
       <CrewStartBody
         canAct
         error={null}
         hasLead={hasLead}
+        spendBlocker={spendBlocker}
         initial={crewRunDraft(lastRun, hasLead)}
         mateName="Fen"
         onCancel={() => undefined}
@@ -41,6 +46,7 @@ function renderResume(run: CrewRun) {
       <CrewResumeBody
         canAct
         error={null}
+        spendBlocker={null}
         onCancel={() => undefined}
         onResume={() => undefined}
         run={run}
@@ -70,6 +76,12 @@ describe("CrewStartBody — Let the crew work on its own", () => {
         "Cancel Start",
       ].join(" "),
     );
+  });
+
+  it("says beside the budget why a crew whose agent hides its spend can't keep one", () => {
+    const blocker = "Grok doesn't report what it spends, so this crew can't keep a budget.";
+    const text = textOf(renderStart(true, RUN, blocker));
+    expect(text).toContain(`Stop when it has spent $ No limit ${blocker}`);
   });
 
   it("offers adding work once its checks pass, and no lead's leave, without a lead", () => {

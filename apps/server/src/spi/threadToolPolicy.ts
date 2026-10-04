@@ -15,7 +15,7 @@
  *
  * @module threadToolPolicy
  */
-import type { ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import type { ModelSelection, ProviderInstanceId, RuntimeMode, ThreadId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type * as JsonSchema from "effect/JsonSchema";
@@ -69,6 +69,61 @@ export interface ThreadToolProfile {
   }) => Effect.Effect<ToolDecision>;
   readonly tools: ReadonlyArray<ThreadTool>;
 }
+
+/**
+ * What a driver's adapter declares it does with a thread's profile
+ * (`ProviderAdapterCapabilities.threadProfile`). An adapter that declares
+ * none never asks for one, so a thread that has one would run on it
+ * ungated: owned code refuses to put such a thread on it.
+ */
+export interface ThreadProfileSupport {
+  /**
+   * It serves the profile's `tools` to the model. Without them it still
+   * runs the context, the gate, read-only and the overrides.
+   */
+  readonly tools: boolean;
+  /**
+   * Its turns report what they cost (`turn.completed`'s `totalCostUsd`), so a
+   * dollar budget over its threads can be kept.
+   */
+  readonly reportsSpend: boolean;
+}
+
+/**
+ * The model selection a profiled thread runs with on a driver whose effort
+ * option is `effortOption`: the profile's model and effort over the thread's
+ * own choice, the thread's other options kept. Effort needs a model, so an
+ * effort-only profile on a thread with no selection changes nothing.
+ */
+export function profileModelSelection(
+  profile: ThreadToolProfile | undefined,
+  instanceId: ProviderInstanceId,
+  selection: ModelSelection | undefined,
+  effortOption: string | undefined,
+): ModelSelection | undefined {
+  const effort = effortOption === undefined ? undefined : profile?.effort;
+  const model = profile?.model ?? selection?.model;
+  if (!profile || !model || (profile.model === undefined && effort === undefined)) {
+    return selection;
+  }
+  const kept = (selection?.options ?? []).filter(
+    (option) => effort === undefined || option.id !== effortOption,
+  );
+  const options =
+    effort === undefined || effortOption === undefined
+      ? kept
+      : [...kept, { id: effortOption, value: effort }];
+  return { instanceId, model, ...(options.length > 0 ? { options } : {}) };
+}
+
+/**
+ * The runtime mode a profiled thread runs in on a driver whose gate is its
+ * own permission ask (the ACP agents, OpenCode): the asking one, whatever the
+ * thread names, since a mode that approves on its own (`full-access`,
+ * accepting edits) would let calls run without ever reaching the gate.
+ */
+export const profiledRuntimeMode = (profiled: boolean, mode: RuntimeMode): RuntimeMode =>
+  profiled ? "approval-required" : mode;
 
 export interface ThreadToolPolicy {
   readonly profileFor: (thread: {

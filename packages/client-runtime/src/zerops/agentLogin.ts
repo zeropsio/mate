@@ -21,6 +21,8 @@ import type {
 } from "@t3tools/contracts";
 import {
   classifyZeropsAgentAuth,
+  isAgentWithoutSignInReady,
+  type ProviderReadinessFields,
   type ZeropsAgentAuthFields,
 } from "@t3tools/shared/zeropsAgentAuth";
 
@@ -216,19 +218,24 @@ export function zeropsAgentAuthNeedsAttention(snapshot: ZeropsAgentAuthSnapshot)
 }
 
 /**
- * Whether the band below the thread header should demand a sign-in. One
- * authorized agent is enough to work, so the band asks only when the
- * environment has none: every listed agent is `not-authorized`, `reconnect`,
- * or `needs-reauth`. An agent still `checking`/`registering` is on its way to
- * authorized and must not flash the band while the provider answers; an empty
- * or unavailable feed has nothing to ask for. The per-agent card
+ * Whether a Mate has nothing to work with until somebody signs an agent in — the one question
+ * every gate asks (the band below the thread header, the empty conversation's sign-in, the
+ * composer held back, the Crew tab). One authorized agent is enough to work, so it asks only when
+ * the environment has none: every listed agent is `not-authorized`, `reconnect`, or
+ * `needs-reauth`, and no agent outside the feed is ready (`zeropsOtherAgentReady`). An agent still
+ * `checking`/`registering` is on its way to authorized and must not flash the band while the
+ * provider answers; an empty or unavailable feed has nothing to ask for. The per-agent card
  * (`zeropsAgentAuthNeedsAttention`) keeps the wider "any agent" rule.
  *
  * A credential that lands while its own login is still checking the code is
  * not a sign-in yet: the sign-in stays until that login ends, so the view the
  * person is signing in on never trades places with the conversation mid-check.
  */
-export function zeropsAgentSignInRequired(snapshot: ZeropsAgentAuthSnapshot): boolean {
+export function zeropsAgentSignInRequired(
+  snapshot: ZeropsAgentAuthSnapshot,
+  /** The environment's provider instances (`ServerConfig.providers`); undefined while unread. */
+  providers: ReadonlyArray<OtherAgentFields> | undefined,
+): boolean {
   return (
     snapshot.available &&
     snapshot.agents.length > 0 &&
@@ -236,8 +243,24 @@ export function zeropsAgentSignInRequired(snapshot: ZeropsAgentAuthSnapshot): bo
       const kind = classifyAgentAuth(agent).kind;
       if (kind === "registering") return loginInFlight(agent.login?.phase);
       return kind === "not-authorized" || kind === "reconnect" || kind === "needs-reauth";
-    })
+    }) &&
+    !zeropsOtherAgentReady(providers)
   );
+}
+
+/** What `zeropsOtherAgentReady` reads of a provider instance (`ServerProvider`). */
+export type OtherAgentFields = ProviderReadinessFields;
+
+/**
+ * Whether the Mate can run an agent Mate never signs anybody in to — Cursor, OpenCode, Grok,
+ * Antigravity: an instance ready by the one test the server's stand-up uses too
+ * (`isAgentWithoutSignInReady`), its sign-in read as signed in. Claude Code and Codex never count
+ * here: the feed speaks for them, whatever their driver's probe says.
+ */
+export function zeropsOtherAgentReady(
+  providers: ReadonlyArray<OtherAgentFields> | undefined,
+): boolean {
+  return (providers ?? []).some(isAgentWithoutSignInReady);
 }
 
 /** A login that has not ended: its credential is not a sign-in until it does. */

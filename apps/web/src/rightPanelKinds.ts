@@ -21,6 +21,7 @@ export const RIGHT_PANEL_KINDS = [
   "data",
   "git",
   "crew",
+  "mcp",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -148,6 +149,16 @@ export const RIGHT_PANEL_KIND_META = {
       (input.crewStatus === "none" || input.crewStatus === "applied")
         ? "available"
         : "hidden",
+  },
+  mcp: {
+    launcher: {
+      label: "MCP",
+      description: "Add and check the tools your agents can call.",
+      shortcut: "M",
+      unavailableHint: "Available from a conversation.",
+    },
+    // Every Mate's agents take MCP servers; the tab asks the Mate, not Zerops.
+    availability: () => "available",
   },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
 

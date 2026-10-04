@@ -54,7 +54,8 @@ export function CrewPanel({
   const whoLivesHere = useZeropsMate(environmentId);
   const askMate = useAskMate();
   const projectId = useEnvironmentProjectRef(environmentId)?.projectId;
-  const treeCwd = useServerConfigs().get(environmentId)?.cwd ?? null;
+  const serverConfig = useServerConfigs().get(environmentId);
+  const treeCwd = serverConfig?.cwd ?? null;
   // An ask for the Mate goes into this chat when it is a person chat, else the main one:
   // offered only where that chat is the viewer's to run.
   const askChat = askMateThread(
@@ -63,7 +64,12 @@ export function CrewPanel({
   );
   const askLock = askChat === undefined ? null : access.login(askChat.modelSelection.instanceId);
   const agentAuth = zeropsAgentAuthView(useZeropsAgentAuth(environmentId)).snapshot;
-  if (whoLivesHere.kind === "mate" && agentAuth !== null && zeropsAgentSignInRequired(agentAuth)) {
+  // No agent to run — none signed in, and none outside the sign-in ready: the Mate's sign-in.
+  if (
+    whoLivesHere.kind === "mate" &&
+    agentAuth !== null &&
+    zeropsAgentSignInRequired(agentAuth, serverConfig?.providers)
+  ) {
     return (
       <div className="h-full" data-crew-panel="no-agent">
         <ZeropsMateEmptyState

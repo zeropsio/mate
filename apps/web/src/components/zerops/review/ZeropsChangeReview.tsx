@@ -163,6 +163,9 @@ export function ZeropsChangeReview({
           number: target.number,
           read: landed.kind === "read" ? { kind: "reading" } : landed,
           provided: flowValue !== null,
+          failure: flowValue?.readFailure,
+          projectKnown:
+            flowValue?.groupsRead === true ? flowValue.knownGroups?.has(target.groupId) : undefined,
         })}
       />
     );

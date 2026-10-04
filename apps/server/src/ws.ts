@@ -52,6 +52,7 @@ import {
   ProjectSearchContentsError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
+  McpServersError,
   ProviderUploadFeedbackError,
   ProviderSetupError,
   RelayClientInstallFailedError,
@@ -138,6 +139,7 @@ import { withoutUnworkableSlashCommands } from "./zerops/providerSlashCommands.t
 import { ZeropsTurnAdmission } from "./zerops/ZeropsTurnAdmission.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
+import { McpServers } from "./zerops/mcp/McpServers.ts";
 import * as ZeropsSignOutModule from "./zerops/ZeropsSignOut.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import { ZeropsCli } from "./zerops/ZeropsCli.ts";
@@ -649,6 +651,17 @@ const makeWsRpcLayer = (
       // A Mate's own server starts its stand-up; absent where no Zerops layer runs.
       const zeropsAgentLogin = yield* ZeropsAgentLoginModule.ZeropsAgentLogin;
       const zeropsLogins = yield* ZeropsLoginsModule.ZeropsLogins;
+      // The MCP tab's servers; absent where no Zerops layer runs.
+      const mcpServers = yield* Effect.serviceOption(McpServers);
+      const withMcpServers = <A>(
+        operation: string,
+        run: (service: McpServers["Service"]) => Effect.Effect<A, McpServersError>,
+      ) =>
+        Option.isSome(mcpServers)
+          ? run(mcpServers.value)
+          : Effect.fail(
+              new McpServersError({ operation, detail: "MCP servers can't be managed here." }),
+            );
       const zeropsSignOut = yield* ZeropsSignOutModule.ZeropsSignOut;
       const zeropsBrowserStream = yield* ZeropsBrowserStreamModule.ZeropsBrowserStream;
       const zeropsCli = yield* ZeropsCli;
@@ -1949,6 +1962,37 @@ const makeWsRpcLayer = (
               }
               return { providers: yield* withZeropsAgentAuth(providers) };
             }),
+            { "rpc.aggregate": "server" },
+          ),
+        // The MCP tab's methods (`zerops/mcp/McpServers.ts`).
+        [WS_METHODS.mcpServersList]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpServersList,
+            withMcpServers(WS_METHODS.mcpServersList, (mcp) => mcp.list(input)),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.mcpServersAdd]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpServersAdd,
+            withMcpServers(WS_METHODS.mcpServersAdd, (mcp) => mcp.add(input)),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.mcpServersRemove]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpServersRemove,
+            withMcpServers(WS_METHODS.mcpServersRemove, (mcp) => mcp.remove(input)),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.mcpServersSetEnabled]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpServersSetEnabled,
+            withMcpServers(WS_METHODS.mcpServersSetEnabled, (mcp) => mcp.setEnabled(input)),
+            { "rpc.aggregate": "server" },
+          ),
+        [WS_METHODS.mcpServersReconnect]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.mcpServersReconnect,
+            withMcpServers(WS_METHODS.mcpServersReconnect, (mcp) => mcp.reconnect(input)),
             { "rpc.aggregate": "server" },
           ),
         [WS_METHODS.providerUploadFeedback]: (input) =>

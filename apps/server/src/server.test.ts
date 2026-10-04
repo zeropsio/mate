@@ -563,6 +563,7 @@ const buildAppUnderTest = (options?: {
     | ServerConfig.ServerConfig
     | ProjectionSnapshotQuery.ProjectionSnapshotQuery
     | ProviderRegistry.ProviderRegistry
+    | ProviderInstanceRegistry
   >;
   layers?: {
     keybindings?: Partial<Keybindings.Keybindings["Service"]>;
@@ -1124,7 +1125,13 @@ const buildAppUnderTest = (options?: {
       ),
       Layer.provide(
         options?.fixtureZeropsLayer?.pipe(
-          Layer.provide(Layer.mergeAll(projectionSnapshotQueryLayer, providerRegistryLayer)),
+          Layer.provide(
+            Layer.mergeAll(
+              projectionSnapshotQueryLayer,
+              providerRegistryLayer,
+              Layer.mock(ProviderInstanceRegistry)({ getInstance: () => Effect.undefined }),
+            ),
+          ),
         ) ??
           Layer.mergeAll(
             // A test machine is not a Zerops environment, which is exactly the
@@ -1269,7 +1276,15 @@ const buildAppUnderTest = (options?: {
               Layer.provide(
                 Layer.mergeAll(
                   projectionSnapshotQueryLayer,
-                  providerInstancesLayer.pipe(Layer.provide(providerRegistryLayer)),
+                  providerInstancesLayer.pipe(
+                    Layer.provide(providerRegistryLayer),
+                    Layer.provide(
+                      Layer.mock(ProviderInstanceRegistry)({
+                        getInstance: () => Effect.undefined,
+                        ...options?.layers?.providerInstanceRegistry,
+                      }),
+                    ),
+                  ),
                 ),
               ),
             ),
