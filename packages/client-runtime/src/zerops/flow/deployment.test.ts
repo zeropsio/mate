@@ -617,7 +617,7 @@ describe("stopServices", () => {
       name: "a refused process demand fails the none it could not prove",
       read: listed([record("s1", "app", deployed(null))]),
       processes: processesRead([], { coverage: { kind: "none" }, project: PROJECT }),
-      refused: { reason: "account-capacity", attempt: 1, retryAtMs: NOW + 2_000 },
+      refused: { reason: "account-capacity", attempt: 1 },
       expected: [["app", "failed"]],
     },
     {
