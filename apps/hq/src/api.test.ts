@@ -1711,7 +1711,7 @@ describe("HQ API", () => {
           const none = { appId: null, appName: null, changes: [] };
           assert.deepStrictEqual(yield* self, [
             200,
-            { ...born, standupRequestedBy: "owner", closedOff: false, ...none },
+            { ...born, standupRequestedBy: "owner", closedOff: false, signers: {}, ...none },
           ]);
           const standup = yield* call("POST", "/api/mates/P_MATE/standup", { session: owner });
           assert.strictEqual(standup.status, 404);
@@ -1722,7 +1722,7 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual(yield* self, [
             200,
-            { ...born, standupRequestedBy: "owner", closedOff: true, ...none },
+            { ...born, standupRequestedBy: "owner", closedOff: true, signers: {}, ...none },
           ]);
 
           const dev = yield* sessionFor(call, "door-dev");
@@ -1819,6 +1819,60 @@ describe("HQ API", () => {
           const reused = yield* socket(`/api/mate/link?ticket=${ticket.ticket}`);
           assert.isFalse(reused.opened);
         }),
+    );
+
+    it.effect("a Mate's link keeps who signed in each login where it reads its own state", () =>
+      Effect.gen(function* () {
+        const { call, fake, socket } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        yield* setUpMate(call, "P_MATE");
+        const credential = yield* enrollMate(call, fake, "P_MATE");
+        const mateAuth = { authorization: `Mate ${credential}` };
+        const signers = Effect.map(
+          call("GET", "/api/mate/self", { headers: mateAuth }),
+          (answer) => (answer.body as { readonly signers?: unknown }).signers,
+        );
+        assert.deepStrictEqual(yield* signers, {});
+        const ticket = (yield* call("POST", "/api/mate/link-ticket", { headers: mateAuth }))
+          .body as { readonly ticket: string };
+        const link = yield* socket(`/api/mate/link?ticket=${ticket.ticket}`);
+        yield* link.next("state");
+        const login = (signedInBy: string | null, lastSignedInBy?: string | null) => ({
+          signedInBy,
+          ...(lastSignedInBy === undefined ? {} : { lastSignedInBy }),
+          present: true,
+          token: false,
+        });
+        yield* link.send({
+          type: "overview",
+          full: true,
+          overview: overviewOf({
+            logins: { "claude-code": login("U1", "U1"), codex: login(null, null) },
+          }),
+        });
+        assert.deepStrictEqual((yield* link.next("state")) as unknown, {
+          mate: {
+            projectId: "P_MATE",
+            name: "P_MATE",
+            face: "face-1",
+            standupRequestedBy: null,
+            closedOff: false,
+            signers: { "claude-code": "U1" },
+            appId: null,
+            appName: null,
+            changes: [],
+          },
+        });
+        assert.deepStrictEqual(yield* signers, { "claude-code": "U1" });
+        // A later sign-in replaces the earlier one; a login that lost its signer keeps the record.
+        yield* link.send({
+          type: "overview",
+          full: false,
+          sections: { logins: { "claude-code": login(null, null), codex: login("U2", undefined) } },
+        });
+        yield* link.next("state");
+        assert.deepStrictEqual(yield* signers, { "claude-code": "U1", codex: "U2" });
+      }),
     );
 
     it.effect(

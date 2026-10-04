@@ -70,7 +70,7 @@ export const MateState = Schema.Struct({
   standupRequestedBy: Schema.NullOr(Schema.String),
   /** Whether the Mate's project is closed off: its runtimes may be imported. */
   closedOff: Schema.Boolean,
-  /** Signers preserved at HQ by the one-off metadata port, keyed by login id. */
+  /** Who signed in each login (`claude-code`, `codex`), keyed by login id: the port's, then the Mate's own link's. */
   signers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   ...MateChanges.fields,
 });
