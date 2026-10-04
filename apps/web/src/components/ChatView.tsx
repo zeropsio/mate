@@ -203,7 +203,7 @@ import {
   crewMessagePlaceholder,
   crewRunsOnWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import { useMateCommand } from "../zerops/accountEnvironments";
+import { useMateCommand, useTryMateAgain } from "../zerops/accountEnvironments";
 import { crewCommands } from "../zerops/crew/crewCommands";
 import { openCrewView } from "../zerops/crew/crewTab";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
@@ -2345,6 +2345,7 @@ export default function ChatView(props: ChatViewProps) {
   const knownMateHere = useKnownMate(environmentId);
   const mateLinkVoice = useMateVoice();
   const reviveFailedMate = useReviveFailedMate();
+  const tryMateAgain = useTryMateAgain();
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const items: ComposerBannerStackItem[] = [];
     const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
@@ -2360,11 +2361,10 @@ export default function ChatView(props: ChatViewProps) {
       const banner = mateVoiceBannerItem({
         environmentId,
         voice: mateLinkVoice,
-        // A container that failed is stopped and started; any other link is asked again.
+        // A container that failed is stopped and started; any other Mate is asked again, its
+        // exchange as well as its link.
         onRetry: () => {
-          if (!reviveFailedMate(routeMateAt.mate.serviceId)) {
-            void handleReconnectActiveEnvironment(environmentId);
-          }
+          if (!reviveFailedMate(routeMateAt.mate.serviceId)) tryMateAgain(environmentId);
         },
         projects: <Link to="/zerops" />,
       });
@@ -2389,6 +2389,7 @@ export default function ChatView(props: ChatViewProps) {
     mateLinkVoice,
     reconnectWarningGraceElapsed,
     reviveFailedMate,
+    tryMateAgain,
     handleReconnectActiveEnvironment,
     zeropsMates,
   ]);

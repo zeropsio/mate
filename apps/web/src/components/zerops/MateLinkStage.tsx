@@ -9,11 +9,9 @@
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 
-import { useMateDetailRead } from "~/zerops/accountEnvironments";
+import { useMateDetailRead, useTryMateAgain } from "~/zerops/accountEnvironments";
 import { MateDetailFailure } from "./MateDetailFailure";
 
-import { environmentCatalog } from "~/connection/catalog";
-import { useAtomCommand } from "~/state/use-atom-command";
 import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
 import { mateOpeningAwake, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { stageSpeaks } from "~/zerops/mateOpeningStage";
@@ -87,8 +85,8 @@ function MateLinkStageOf({
   readonly composer: ReactNode;
 }) {
   const at = useZeropsMate(environmentId);
-  // Try now asks the link again, as the banner's does.
-  const retry = useAtomCommand(environmentCatalog.retryNow);
+  // Try now asks its Mate again, its exchange as well as its link, as the banner's does.
+  const tryAgain = useTryMateAgain();
   // Before the catalog names it, the Mate this browser last knew there: a reload draws its page
   // from the first frame, and the listing's word replaces it once read.
   const known =
@@ -99,7 +97,7 @@ function MateLinkStageOf({
         : undefined;
   if (known === undefined) return <MateLinkWords voice={voice} />;
   const mate = { ...known, connected: false };
-  const onTryNow = voice.actions.includes("try-now") ? () => void retry(environmentId) : undefined;
+  const onTryNow = voice.actions.includes("try-now") ? () => tryAgain(environmentId) : undefined;
   if (!stageSpeaks(voice)) {
     return (
       <MateOpeningPage
