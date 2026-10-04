@@ -23,7 +23,7 @@ export function ZeropsBrowserSurface({
     <div className="min-h-0 flex-1 overflow-y-auto" data-zerops-browser-surface>
       <div className="flex flex-col gap-6 p-4">
         {addresses.length === 0 ? null : (
-          <section aria-label="Sites" className="flex flex-col gap-1.5">
+          <section aria-label="Sites" className="flex flex-col gap-0.5">
             <MicroLabel className="px-1">Sites</MicroLabel>
             <ul className="flex flex-col">
               {addresses.map((address) => (
