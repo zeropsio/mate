@@ -240,11 +240,12 @@ Each machine is `transition(state, event, ctx) → {state, effects}` with
 `ctx = {now: {wall, mono}, policy}`. Effects are `run`, `schedule`, `cancel`, `invalidate`,
 `observe` and `log`. Timers are hints: guards are re-checked against both clocks when an event is
 delivered, and wake events reach every machine. Every result carries its `(epoch, attemptId)` and is
-dropped when superseded. HQ structure makes one attempt and shows failure with a manual action.
-Inventory retries on its recovery backoff and access verification on its ladders while the tab is
-visible, at once on a visible wake or `online`, beside the manual action. Healthy demand can resume after a background
-pause. Other machines retain
-their own declared policies. Waiting for a capability happens before an attempt starts.
+dropped when superseded. HQ's structure stream reconnects by itself (`hqStructure.ts`): 1 s doubling
+to 30 s, and every 30 s at the cap with its failure shown; a going-away (1001) gets one immediate
+attempt, and a refusal waits for the manual action. Its last known data stands meanwhile. Inventory
+retries on its recovery backoff and access verification on its ladders while the tab is visible, at
+once on a visible wake or `online`, beside the manual action. Healthy demand can resume after a
+background pause. Other machines retain their own declared policies. Waiting for a capability happens before an attempt starts.
 
 ### Zerops account session
 
@@ -590,7 +591,7 @@ stream owner for a fresh snapshot.
 | Inventory, activity                               | None: resnapshot on reconnect, foreground and explicit refresh                                 | —                                   |
 | Tags                                              | Re-read after our own writes and on a cross-tab invalidation                                   | —                                   |
 | An application's releases and repositories        | None: values in HQ's snapshot and release-revision messages (`useZeropsAppReleases`)           | An official HQ is known             |
-| HQ's structure, environments and a Mate's changes | None: HQ's stream, its snapshot again only on manual request after failure                     | —                                   |
+| HQ's structure, environments and a Mate's changes | None: HQ's stream, reconnecting by itself 1 s → 30 s; a refusal waits for a manual again       | —                                   |
 | HQ's standing (the projects page's HQ line)       | None: HQ's stream and its `official` verdict; `/health` once per failed stream attempt         | The tab is visible                  |
 | A recipe's tiers on `main`                        | None: tiers in the snapshot and messages; Mate tier once per open dialog where they lack it    | Or HQ's stream is down; shown tab   |
 | A comparison of two commits                       | None: asked once and held; one that failed is asked again a minute later (`useZeropsCompares`) | Still wanted                        |
