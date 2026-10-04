@@ -29,7 +29,7 @@ const checkpointOrder = O.mapInput(
     cp.checkpointTurnCount ?? Number.MAX_SAFE_INTEGER,
 );
 
-const activityOrder = O.combineAll<OrchestrationThreadActivity>([
+export const activityOrder = O.combineAll<OrchestrationThreadActivity>([
   O.mapInput(O.Number, (a) => a.sequence ?? Number.MAX_SAFE_INTEGER),
   O.mapInput(O.String, (a) => a.createdAt),
   O.mapInput(O.String, (a) => a.id),

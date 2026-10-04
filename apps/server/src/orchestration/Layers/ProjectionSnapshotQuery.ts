@@ -46,6 +46,7 @@ import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import * as SqlSchema from "effect/unstable/sql/SqlSchema";
+import type * as Statement from "effect/unstable/sql/Statement";
 
 import {
   isPersistenceError,
@@ -69,6 +70,7 @@ import {
   encodeThreadDetailPageCursor,
 } from "../threadDetailCursor.ts";
 import { projectActivityPayload } from "../ActivityPayloadProjection.ts";
+import { fitTurnWindow } from "../threadDetailWindow.ts";
 import * as RepositoryIdentityResolver from "../../project/RepositoryIdentityResolver.ts";
 import { ORCHESTRATION_PROJECTOR_NAMES } from "./ProjectionPipeline.ts";
 import {
@@ -88,12 +90,23 @@ const decodeThread = Schema.decodeUnknownEffect(OrchestrationThread);
 // activity window. Applying the limit in SQL avoids decoding an unbounded
 // payload_json set before the projector can enforce that invariant.
 const THREAD_DETAIL_ACTIVITY_LIMIT = 500;
+// A page of history (a windowed read) holds whole turns: as many of the
+// requested user turns as fit THREAD_DETAIL_PAGE_STEP_BUDGET of the Mate's
+// rows, and always the newest, however long. The hard cap only bites on one
+// turn longer than it, and then trims that turn's oldest rows.
+const THREAD_DETAIL_PAGE_STEP_BUDGET = 1_000;
+const THREAD_DETAIL_PAGE_ACTIVITY_LIMIT = 3_000;
+// How far back a read that doesn't page looks for its 500 rows.
+const THREAD_DETAIL_UNPAGED_SCAN_LIMIT = 3_000;
 // A helper's steps (its calls' rows, tagged with its agentId) sit outside that
 // window: a helper is quick to make hundreds of calls, which pushed the Mate's
 // own record out of it. Each helper keeps its latest steps on a budget of its
 // own, and all helpers together on one more.
 const HELPER_STEP_ACTIVITY_LIMIT = 150;
 const HELPER_STEP_ACTIVITY_TOTAL_LIMIT = 600;
+// A task's progress ticks a snapshot keeps besides its first: the Agents
+// surface's recent activity holds six.
+const TASK_PROGRESS_KEEP = 6;
 // Snapshot payloads are decoded and projected in small sequential batches so
 // one client read does not retain the raw payloads for the full activity window.
 const THREAD_DETAIL_ACTIVITY_PAYLOAD_BATCH_SIZE = 25;
@@ -247,6 +260,12 @@ const ProjectionTurnWindowRowSchema = Schema.Struct({
   // (user messages and turnless activities) to the same page window.
   anchorAt: Schema.String,
   turnKey: Schema.String,
+});
+const ProjectionTurnWindowCandidateRowSchema = Schema.Struct({
+  anchorAt: Schema.String,
+  turnKey: Schema.String,
+  isUserTurn: Schema.Number,
+  steps: Schema.Number,
 });
 const ThreadTurnRangeLookupInput = Schema.Struct({
   threadId: ThreadId,
@@ -1405,49 +1424,226 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
       ),
     );
 
+  // The rows `scope` bounds, with the payload fields the budget reads (the
+  // projection's generated columns, read off an index without parsing a
+  // payload): a page's work is bounded by its own rows, never the whole
+  // thread's.
+  //
+  // Of them, the rows a later row of the same kind supersedes. The snapshot
+  // drops them (`projectThreadDetailSnapshot`) or the clients fold them away,
+  // so they must not take a step's place in a page's budget: a long run
+  // streams far more of them than steps (one measured run: 60% of its rows),
+  // and they pushed whole cards' steps out of the window.
+  // - A context-window reading: all but each turn's latest.
+  // - A task's progress tick: all but its first (where its row stands) and
+  //   its latest TASK_PROGRESS_KEEP (the Agents surface's recent activity).
+  // - A call's in-flight update: one its completion supersedes, past the
+  //   call's first sight.
+  const scopedActivitiesCtes = (threadId: string, scopes: ReadonlyArray<Statement.Fragment>) => sql`
+scoped_activities AS MATERIALIZED (
+          ${sql.join(
+            " UNION ALL ",
+            false,
+          )(
+            scopes.map(
+              (scope) => sql`
+          SELECT
+            activity_id,
+            turn_id,
+            kind,
+            sequence,
+            created_at,
+            agent_id,
+            call_id,
+            task_id,
+            CASE WHEN used_tokens >= 0 THEN 1 ELSE 0 END AS is_reading
+          FROM projection_thread_activities
+          WHERE thread_id = ${threadId}
+            AND ${scope}`,
+            ),
+          )}
+        ),
+        superseded_activity_ids AS MATERIALIZED (
+          SELECT activity_id
+          FROM (
+            SELECT
+              activity_id,
+              ROW_NUMBER() OVER (
+                PARTITION BY turn_id
+                ORDER BY COALESCE(sequence, -1) DESC, created_at DESC, activity_id DESC
+              ) AS newer
+            FROM scoped_activities
+            WHERE is_reading = 1
+          )
+          WHERE newer > 1
+          UNION ALL
+          SELECT activity_id
+          FROM (
+            SELECT
+              activity_id,
+              ROW_NUMBER() OVER (
+                PARTITION BY task_id
+                ORDER BY COALESCE(sequence, -1) DESC, created_at DESC, activity_id DESC
+              ) AS newer,
+              ROW_NUMBER() OVER (
+                PARTITION BY task_id
+                ORDER BY COALESCE(sequence, -1) ASC, created_at ASC, activity_id ASC
+              ) AS older
+            FROM scoped_activities
+            WHERE kind = 'task.progress' AND task_id IS NOT NULL
+          )
+          WHERE newer > ${TASK_PROGRESS_KEEP} AND older > 1
+          UNION ALL
+          SELECT activity_id
+          FROM (
+            SELECT
+              activity_id,
+              kind,
+              sight,
+              MAX(CASE WHEN kind = 'tool.completed' THEN sight END) OVER (
+                PARTITION BY turn_id, call_id
+              ) AS last_completion
+            FROM (
+              SELECT
+                activity_id,
+                kind,
+                turn_id,
+                call_id,
+                ROW_NUMBER() OVER (
+                  PARTITION BY turn_id, call_id
+                  ORDER BY COALESCE(sequence, -1) ASC, created_at ASC, activity_id ASC
+                ) AS sight
+              FROM scoped_activities
+              WHERE call_id IS NOT NULL
+            )
+          )
+          WHERE kind = 'tool.updated' AND sight > 1 AND last_completion > sight
+        ),
+        mate_activities AS (
+          SELECT activity_id, turn_id, sequence, created_at
+          FROM scoped_activities
+          WHERE agent_id IS NULL
+            AND activity_id NOT IN (SELECT activity_id FROM superseded_activity_ids)
+        )`;
+
+  // The rows of a page whose turns `scope` bounds: the Mate's own (its
+  // superseded rows aside) up to `limit`, the newest first; each helper's
+  // latest steps on a budget of their own (a helper is quick to make hundreds
+  // of calls, which pushed the Mate's own record out); and the start of
+  // every helper whose later rows the page holds. A helper's result often
+  // lands turns after the one that sent it, and without its start the
+  // helpers block lands on the turn that received it.
+  const pageActivityIdsSql = (
+    threadId: string,
+    scopes: ReadonlyArray<Statement.Fragment>,
+    limit: number,
+  ) => sql`
+        WITH ${scopedActivitiesCtes(threadId, scopes)},
+        page_activity_ids AS (
+          SELECT activity_id
+          FROM (
+            SELECT activity_id
+            FROM mate_activities
+            ORDER BY
+              sequence DESC,
+              created_at DESC,
+              activity_id DESC
+            LIMIT ${limit}
+          )
+          UNION ALL
+          SELECT activity_id
+          FROM (
+            SELECT activity_id
+            FROM (
+              SELECT
+                activity_id,
+                sequence,
+                created_at,
+                ROW_NUMBER() OVER (
+                  PARTITION BY agent_id
+                  ORDER BY sequence DESC, created_at DESC, activity_id DESC
+                ) AS step
+              FROM scoped_activities
+              WHERE agent_id IS NOT NULL
+            )
+            WHERE step <= ${HELPER_STEP_ACTIVITY_LIMIT}
+            ORDER BY sequence DESC, created_at DESC, activity_id DESC
+            LIMIT ${HELPER_STEP_ACTIVITY_TOTAL_LIMIT}
+          )
+        )
+        SELECT activity_id AS "activityId"
+        FROM page_activity_ids
+        UNION
+        SELECT starts.activity_id AS "activityId"
+        FROM projection_thread_activities AS starts
+        WHERE starts.thread_id = ${threadId}
+          AND starts.task_id IN (
+            SELECT scoped.task_id
+            FROM page_activity_ids AS page
+            JOIN scoped_activities AS scoped ON scoped.activity_id = page.activity_id
+            WHERE scoped.task_id IS NOT NULL
+          )
+          AND starts.kind = 'task.started'
+          AND json_extract(starts.payload_json, '$.agentKind') = 'agent'
+      `;
+
+  // Turn-linked rows of the turns in the keyset range [min, before), and the
+  // turnless rows of the matching time range [minAnchorAt, beforeAnchorAt):
+  // two scopes, each a seek on the budget index (one OR of them scans the
+  // thread).
+  const turnRangeScopes = ({
+    threadId,
+    minAnchorAt,
+    minTurnKey,
+    beforeAnchorAt,
+    beforeTurnKey,
+  }: typeof ThreadTurnRangeLookupInput.Encoded): ReadonlyArray<Statement.Fragment> => [
+    sql`turn_id IN (
+          SELECT turn_id FROM projection_turns
+          WHERE thread_id = ${threadId}
+            AND turn_id IS NOT NULL
+            AND (
+              requested_at > ${minAnchorAt}
+              OR (
+                requested_at = ${minAnchorAt}
+                AND turn_id >= ${minTurnKey}
+              )
+            )
+            AND (
+              requested_at < ${beforeAnchorAt}
+              OR (
+                requested_at = ${beforeAnchorAt}
+                AND turn_id < ${beforeTurnKey}
+              )
+            )
+        )`,
+    sql`turn_id IS NULL
+          AND created_at >= ${minAnchorAt}
+          AND created_at < ${beforeAnchorAt}`,
+  ];
+
   const listThreadActivityIdsByThread = SqlSchema.findAll({
     Request: ThreadIdLookupInput,
     Result: ProjectionThreadActivityIdRowSchema,
     execute: ({ threadId }) =>
-      sql`
-        SELECT activity_id AS "activityId"
-        FROM (
-          SELECT activity_id
-          FROM projection_thread_activities
-          WHERE thread_id = ${threadId}
-            AND NOT (
-              kind IN ('tool.started', 'tool.updated', 'tool.completed')
-              AND json_extract(payload_json, '$.agentId') IS NOT NULL
-            )
-          ORDER BY
-            sequence DESC,
-            created_at DESC,
-            activity_id DESC
-          LIMIT ${THREAD_DETAIL_ACTIVITY_LIMIT}
-        )
-        UNION ALL
-        SELECT activity_id AS "activityId"
-        FROM (
-          SELECT activity_id, step
-          FROM (
-            SELECT
-              activity_id,
-              sequence,
-              created_at,
-              ROW_NUMBER() OVER (
-                PARTITION BY json_extract(payload_json, '$.agentId')
-                ORDER BY sequence DESC, created_at DESC, activity_id DESC
-              ) AS step
+      // A client that doesn't page reads the newest rows; the budget looks
+      // no further back than its scan.
+      pageActivityIdsSql(
+        threadId,
+        [
+          sql`COALESCE(sequence, -1) >= COALESCE(
+          (
+            SELECT sequence
             FROM projection_thread_activities
             WHERE thread_id = ${threadId}
-              AND kind IN ('tool.started', 'tool.updated', 'tool.completed')
-              AND json_extract(payload_json, '$.agentId') IS NOT NULL
-          )
-          WHERE step <= ${HELPER_STEP_ACTIVITY_LIMIT}
-          ORDER BY sequence DESC, created_at DESC, activity_id DESC
-          LIMIT ${HELPER_STEP_ACTIVITY_TOTAL_LIMIT}
-        )
-      `,
+            ORDER BY sequence DESC, created_at DESC, activity_id DESC
+            LIMIT 1 OFFSET ${THREAD_DETAIL_UNPAGED_SCAN_LIMIT - 1}
+          ),
+          -1
+        )`,
+        ],
+        THREAD_DETAIL_ACTIVITY_LIMIT,
+      ),
   });
 
   const listThreadActivityRowsByIds = SqlSchema.findAll({
@@ -1897,97 +2093,71 @@ pending_approval_requests AS (
   const listThreadActivityIdsByThreadWindow = SqlSchema.findAll({
     Request: ThreadTurnRangeLookupInput,
     Result: ProjectionThreadActivityIdRowSchema,
-    execute: ({ threadId, minAnchorAt, minTurnKey, beforeAnchorAt, beforeTurnKey }) =>
+    execute: (range) =>
+      pageActivityIdsSql(range.threadId, turnRangeScopes(range), THREAD_DETAIL_PAGE_ACTIVITY_LIMIT),
+  });
+
+  // The turns of a range, newest first, each with the rows it shows: the
+  // Mate's own (superseded rows aside), turn-linked and the turnless ones
+  // that follow the turn up to the next. `fitTurnWindow` picks the page from
+  // them, whole turns only. Bounded by the range, never the whole thread.
+  const listTurnWindowCandidates = SqlSchema.findAll({
+    Request: ThreadTurnRangeLookupInput,
+    Result: ProjectionTurnWindowCandidateRowSchema,
+    execute: (range) =>
       sql`
-        SELECT activity_id AS "activityId"
-        FROM (
-          SELECT activity_id
-          FROM projection_thread_activities
-          WHERE thread_id = ${threadId}
-            AND NOT (
-              kind IN ('tool.started', 'tool.updated', 'tool.completed')
-              AND json_extract(payload_json, '$.agentId') IS NOT NULL
+        WITH ${scopedActivitiesCtes(range.threadId, turnRangeScopes(range))},
+        spans AS (
+          SELECT
+            turns.requested_at AS anchor_at,
+            COALESCE(turns.turn_id, '') AS turn_key,
+            turns.turn_id,
+            CASE WHEN messages.role = 'user' THEN 1 ELSE 0 END AS is_user_turn,
+            COALESCE(
+              LAG(turns.requested_at) OVER (
+                ORDER BY turns.requested_at DESC, COALESCE(turns.turn_id, '') DESC
+              ),
+              ${range.beforeAnchorAt}
+            ) AS span_end
+          FROM projection_turns AS turns
+          LEFT JOIN projection_thread_messages AS messages
+            ON messages.message_id = turns.pending_message_id
+          WHERE turns.thread_id = ${range.threadId}
+            AND (
+              turns.requested_at > ${range.minAnchorAt}
+              OR (
+                turns.requested_at = ${range.minAnchorAt}
+                AND COALESCE(turns.turn_id, '') >= ${range.minTurnKey}
+              )
             )
             AND (
-              turn_id IN (
-                SELECT turn_id FROM projection_turns
-                WHERE thread_id = ${threadId}
-                  AND turn_id IS NOT NULL
-                  AND (
-                    requested_at > ${minAnchorAt}
-                    OR (
-                      requested_at = ${minAnchorAt}
-                      AND turn_id >= ${minTurnKey}
-                    )
-                  )
-                  AND (
-                    requested_at < ${beforeAnchorAt}
-                    OR (
-                      requested_at = ${beforeAnchorAt}
-                      AND turn_id < ${beforeTurnKey}
-                    )
-                  )
-              )
+              turns.requested_at < ${range.beforeAnchorAt}
               OR (
-                turn_id IS NULL
-                AND created_at >= ${minAnchorAt}
-                AND created_at < ${beforeAnchorAt}
+                turns.requested_at = ${range.beforeAnchorAt}
+                AND COALESCE(turns.turn_id, '') < ${range.beforeTurnKey}
               )
             )
-          ORDER BY
-            sequence DESC,
-            created_at DESC,
-            activity_id DESC
-          LIMIT ${THREAD_DETAIL_ACTIVITY_LIMIT}
+        ),
+        turn_steps AS (
+          SELECT turn_id, COUNT(*) AS steps
+          FROM mate_activities
+          WHERE turn_id IS NOT NULL
+          GROUP BY turn_id
         )
-        UNION ALL
-        SELECT activity_id AS "activityId"
-        FROM (
-          SELECT activity_id, step
-          FROM (
-            SELECT
-              activity_id,
-              sequence,
-              created_at,
-              ROW_NUMBER() OVER (
-                PARTITION BY json_extract(payload_json, '$.agentId')
-                ORDER BY sequence DESC, created_at DESC, activity_id DESC
-              ) AS step
-            FROM projection_thread_activities
-            WHERE thread_id = ${threadId}
-              AND kind IN ('tool.started', 'tool.updated', 'tool.completed')
-              AND json_extract(payload_json, '$.agentId') IS NOT NULL
-              AND (
-                turn_id IN (
-                  SELECT turn_id FROM projection_turns
-                  WHERE thread_id = ${threadId}
-                    AND turn_id IS NOT NULL
-                    AND (
-                      requested_at > ${minAnchorAt}
-                      OR (
-                        requested_at = ${minAnchorAt}
-                        AND turn_id >= ${minTurnKey}
-                      )
-                    )
-                    AND (
-                      requested_at < ${beforeAnchorAt}
-                      OR (
-                        requested_at = ${beforeAnchorAt}
-                        AND turn_id < ${beforeTurnKey}
-                      )
-                    )
-                )
-                OR (
-                  turn_id IS NULL
-                  AND created_at >= ${minAnchorAt}
-                  AND created_at < ${beforeAnchorAt}
-                )
-              )
-          )
-          WHERE step <= ${HELPER_STEP_ACTIVITY_LIMIT}
-          ORDER BY sequence DESC, created_at DESC, activity_id DESC
-          LIMIT ${HELPER_STEP_ACTIVITY_TOTAL_LIMIT}
-        )
+        SELECT
+          spans.anchor_at AS "anchorAt",
+          spans.turn_key AS "turnKey",
+          spans.is_user_turn AS "isUserTurn",
+          COALESCE(turn_steps.steps, 0) + (
+            SELECT COUNT(*)
+            FROM mate_activities
+            WHERE mate_activities.turn_id IS NULL
+              AND mate_activities.created_at >= spans.anchor_at
+              AND mate_activities.created_at < spans.span_end
+          ) AS "steps"
+        FROM spans
+        LEFT JOIN turn_steps ON turn_steps.turn_id = spans.turn_id
+        ORDER BY spans.anchor_at DESC, spans.turn_key DESC
       `,
   });
 
@@ -3538,6 +3708,8 @@ pending_approval_requests AS (
               : decodeThreadDetailPageCursor(window.beforeCursor);
           const cursor = decodedCursor?.threadId === threadId ? decodedCursor : null;
 
+          // The asked-for turns first; then the page keeps as many of them,
+          // whole, as its budget holds.
           const windowRows = yield* listTurnWindowRows({
             threadId,
             beforeAnchorAt: cursor?.beforeAnchorAt ?? ANCHOR_UNBOUNDED,
@@ -3552,8 +3724,33 @@ pending_approval_requests AS (
               ),
             ),
           );
+          const reach = windowRows[0];
+          const candidates =
+            reach === undefined
+              ? []
+              : yield* listTurnWindowCandidates({
+                  threadId,
+                  minAnchorAt: reach.anchorAt,
+                  minTurnKey: reach.turnKey,
+                  beforeAnchorAt: cursor?.beforeAnchorAt ?? ANCHOR_UNBOUNDED,
+                  beforeTurnKey: cursor?.beforeTurnId ?? "",
+                }).pipe(
+                  Effect.mapError(
+                    toPersistenceSqlOrDecodeError(
+                      "ProjectionSnapshotQuery.getThreadDetailSnapshot:listTurnSteps:query",
+                      "ProjectionSnapshotQuery.getThreadDetailSnapshot:listTurnSteps:decodeRows",
+                    ),
+                  ),
+                );
+          const taken = fitTurnWindow(
+            candidates.map((candidate) => ({
+              isUserTurn: candidate.isUserTurn === 1,
+              steps: candidate.steps,
+            })),
+            { userTurnLimit: window.turnLimit, stepBudget: THREAD_DETAIL_PAGE_STEP_BUDGET },
+          );
 
-          const oldest = windowRows[0];
+          const oldest = taken === 0 ? undefined : candidates[taken - 1];
           // An empty window (no turns before the cursor, or a thread with no
           // turns at all) still returns thread metadata with empty collections
           // for turn-linked rows; turnless rows are bounded to the same empty

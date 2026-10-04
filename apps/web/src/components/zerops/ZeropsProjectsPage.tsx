@@ -195,8 +195,10 @@ import {
   groupFlowInputOf,
   groupMemberFactsOf,
   lastMergedCode,
+  matesKnownOf,
   parseProjectsSearch,
   productionAddable,
+  rowMateActivitiesOf,
   TOOL_LABEL,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
@@ -2676,22 +2678,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             nowMs,
           }),
         ),
-        activities: environments.flatMap(({ item }, index) => {
-          const name = members[index]?.mate?.name;
-          const mateActivity =
-            item.environmentId === undefined ? undefined : activity.get(item.environmentId);
-          if (name === undefined || mateActivity === undefined) return [];
-          return [
-            {
-              name,
-              working: mateActivity.kind === "working",
-              subject: mateActivity.subject,
-              at: mateActivity.at,
-            },
-          ];
-        }),
+        activities: rowMateActivitiesOf(
+          environments.flatMap(({ item }, index) => {
+            const name = members[index]?.mate?.name;
+            return name === undefined ? [] : [{ item, name }];
+          }),
+          (environmentId) => activity.get(environmentId),
+        ),
+        matesKnown: matesKnownOf(
+          environments.filter(({ item }) => hasMate(item)).map(({ item }) => item),
+          (environmentId) => withConversations.has(environmentId),
+        ),
         awaiting: awaiting.steps,
         changesAwaiting: awaiting.changes,
+        changesFailed: reads?.changesFailure !== undefined,
         mates: new Map(
           environments
             .filter(({ item }) => hasMate(item))

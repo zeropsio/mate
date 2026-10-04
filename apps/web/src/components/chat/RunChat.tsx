@@ -2068,11 +2068,13 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
           </span>
           <span className={cn("shrink-0 text-muted-foreground tabular-nums", META)}>
             {word}
-            {" · "}
             {since !== null ? (
-              <ElapsedSince since={since} />
+              <>
+                {" · "}
+                <ElapsedSince since={since} />
+              </>
             ) : ranMs !== null && ranMs >= 1000 ? (
-              formatWorkDuration(ranMs)
+              ` · ${formatWorkDuration(ranMs)}`
             ) : null}
           </span>
         </span>
@@ -2081,6 +2083,15 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
         )}
       </button>
     </li>
+  );
+}
+
+/** A helper's mark where the Mate's face stands in its own run: it works under the Mate. */
+function HelperFace() {
+  return (
+    <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center">
+      <BotIcon className="size-4 text-muted-foreground" />
+    </span>
   );
 }
 
@@ -2409,6 +2420,7 @@ const THOUGHT_MARK = (
 /** Its words' mark: its own face, at rest — who is speaking, beside what it said. */
 function SpeakerMark() {
   const ctx = use(TimelineRowCtx);
+  if (ctx.speaker.helper) return <HelperFace />;
   return <MateFace shape={ctx.speaker.shape} size="sm" state="idle" tint={ctx.speaker.tint} />;
 }
 
@@ -2925,15 +2937,19 @@ function NowLine({
         line.kind === "worked" ? status.face : line.kind === "waiting" ? "waiting" : "working"
       }
     >
-      <MateFace
-        gaze={face.gaze}
-        greets
-        known={ctx.arrivedAfter !== null && !ctx.syncing}
-        shape={ctx.speaker.shape}
-        size="sm"
-        state={face.state}
-        tint={ctx.speaker.tint}
-      />
+      {ctx.speaker.helper ? (
+        <HelperFace />
+      ) : (
+        <MateFace
+          gaze={face.gaze}
+          greets
+          known={ctx.arrivedAfter !== null && !ctx.syncing}
+          shape={ctx.speaker.shape}
+          size="sm"
+          state={face.state}
+          tint={ctx.speaker.tint}
+        />
+      )}
       <div className="run-now-words" data-work-line={status.face}>
         {leaving === null ? null : (
           <span aria-hidden="true" className="run-now-head run-now-leaving" key={leaving.words}>
@@ -3276,15 +3292,19 @@ function LiveSlot({
       data-work-line={status.face}
     >
       <span className="run-slot-face">
-        <MateFace
-          gaze={face.gaze}
-          greets
-          known={ctx.arrivedAfter !== null && !ctx.syncing}
-          shape={ctx.speaker.shape}
-          size="sm"
-          state={face.state}
-          tint={ctx.speaker.tint}
-        />
+        {ctx.speaker.helper ? (
+          <HelperFace />
+        ) : (
+          <MateFace
+            gaze={face.gaze}
+            greets
+            known={ctx.arrivedAfter !== null && !ctx.syncing}
+            shape={ctx.speaker.shape}
+            size="sm"
+            state={face.state}
+            tint={ctx.speaker.tint}
+          />
+        )}
       </span>
       <InSlotContext value>
         <SlotStandsOpenContext value={standsOpen}>
