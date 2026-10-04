@@ -1315,6 +1315,34 @@ describe("makeZeropsDataRuntime", () => {
     }),
   );
 
+  it.effect("shutdown finishes while a registration still awaits its answer", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const harness = makeAdapterHarness();
+      const sent = yield* Deferred.make<void>();
+      let interrupted = 0;
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter: {
+          ...harness.adapter,
+          register: () =>
+            Deferred.succeed(sent, undefined).pipe(
+              Effect.andThen(Effect.never),
+              Effect.onInterrupt(() => Effect.sync(() => interrupted++)),
+            ),
+        },
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+      });
+      yield* runtime.acquire(topologyDescriptor);
+      yield* Deferred.await(sent);
+      yield* runtime.shutdown("application-close");
+      expect(interrupted).toBe(1);
+      expect((yield* runtime.state).closed).toBe(true);
+      registry.dispose();
+    }),
+  );
+
   it.effect("keeps required topology observing when optional current metrics fail", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
