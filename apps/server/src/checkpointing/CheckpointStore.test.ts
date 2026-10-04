@@ -1,4 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -489,6 +491,34 @@ it.layer(TestLayer)("CheckpointStore.layer", (it) => {
           }),
       );
     }
+
+    /** A filter that fails must fail the snapshot, never record a short one as captured. */
+    it.effect("refuses the snapshot when filtering the candidates fails", () =>
+      Effect.gen(function* () {
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+        yield* writeTextFile(NodePath.join(tmp, "app.js"), "source");
+        const realGrep = NodeChildProcess.execFileSync("sh", ["-c", "command -v grep"])
+          .toString()
+          .trim();
+        const bin = yield* makeTmpDir();
+        yield* writeTextFile(
+          NodePath.join(bin, "grep"),
+          `#!/bin/sh\ncase "$1" in -zvE) cat >/dev/null; exit 2;; esac\nexec ${realGrep} "$@"\n`,
+        );
+        NodeFS.chmodSync(NodePath.join(bin, "grep"), 0o755);
+        const path = process.env.PATH;
+        process.env.PATH = `${bin}:${path ?? ""}`;
+        const store = yield* CheckpointStore.CheckpointStore;
+        const result = yield* Effect.result(
+          store.captureSnapshot({
+            cwd: tmp,
+            checkpointRef: CheckpointRef.make("refs/t3/checkpoints/test/runs/filter/before"),
+          }),
+        ).pipe(Effect.ensuring(Effect.sync(() => (process.env.PATH = path))));
+        expect(String(result)).toContain("candidate filtering failed");
+      }),
+    );
   });
 
   describe("isGitRepository", () => {
