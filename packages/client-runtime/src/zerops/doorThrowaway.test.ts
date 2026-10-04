@@ -1,5 +1,4 @@
 // @effect-diagnostics globalDate:off -- fake timers own `Date.now()`; the clients under test read it.
-import * as DateTime from "effect/DateTime";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.ts";
@@ -21,68 +20,69 @@ import {
   makeThrowawayMintBudgets,
   planThrowawaySweep,
   THROWAWAY_REUSE_MS,
-  THROWAWAY_SWEEP_AGE_MS,
   zeropsThrowawayPlatform,
 } from "./doorThrowaway.ts";
 import type { ZeropsSession } from "./session.ts";
 import { makeFakeZeropsRest } from "./testing/fakeZeropsRest.ts";
 
 const NOW = Date.parse("2026-09-16T10:00:00.000Z");
-const at = (msAgo: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - msAgo));
 
 describe("planThrowawaySweep", () => {
-  // Only ours, only stale. Everything else on the account's token list is
-  // somebody's working credential.
-  for (const [name, token, swept] of [
+  // Exactly what this browser owes, by its handle: everything else on the account's token list is
+  // somebody's — another tab's, another device's, a working credential — however old.
+  for (const [name, token, owed, swept] of [
     [
-      "a door throwaway older than five minutes",
-      { id: "a", name: "mate-door:p1:n", created: at(THROWAWAY_SWEEP_AGE_MS + 1_000) },
+      "an owed throwaway, by the id its mint answered",
+      { id: "a", name: "mate-door:p1:n1" },
+      [{ attempt: "mate-door:p1:n1", tokenId: "a" }],
       true,
     ],
     [
-      "a token named like main's Gitea sign-in, whatever its age",
-      { id: "b", name: "gitea-signin:git.example.com:n", created: at(600_000) },
+      "an owed throwaway whose mint answer was lost, by its name",
+      { id: "b", name: "mate-door:p1:n2" },
+      [{ attempt: "mate-door:p1:n2" }],
+      true,
+    ],
+    [
+      "another tab's or device's throwaway",
+      { id: "c", name: "mate-door:p1:n3" },
+      [{ attempt: "mate-door:p1:n1", tokenId: "a" }],
       false,
     ],
     [
-      "a throwaway another tab may still be mid-flight with",
-      { id: "c", name: "mate-door:p1:n", created: at(30_000) },
+      "a throwaway named like an owed one, but not it",
+      { id: "d", name: "mate-door:p1:n4" },
+      [{ attempt: "mate-door:p1:n44" }],
       false,
     ],
     [
-      "a Mate's own key, whatever its age",
-      { id: "d", name: "zcp-acme", created: at(90 * 24 * 60 * 60 * 1000) },
+      "a throwaway whose name an owed id's mint used, under another id",
+      { id: "e2", name: "mate-door:p1:n5" },
+      [{ attempt: "mate-door:p1:n5", tokenId: "e" }],
       false,
     ],
     [
-      "something merely named like one",
-      { id: "e", name: "mate-doorstop", created: at(600_000) },
+      "a Mate's own key, whatever is owed",
+      { id: "f", name: "zcp-acme" },
+      [{ attempt: "zcp-acme" }],
       false,
     ],
-    ["a token with no name at all", { id: "f", created: at(600_000) }, false],
-    // A token nobody can date is a token nobody can call stale.
-    [
-      "a throwaway whose created stamp does not parse",
-      { id: "g", name: "mate-door:p1:n", created: "recently" },
-      false,
-    ],
-    ["a throwaway with no created stamp", { id: "h", name: "mate-door:p1:n" }, false],
+    ["a token with no name at all", { id: "g" }, [{ attempt: "mate-door:p1:n7" }], false],
   ] as const) {
     it(`${swept ? "sweeps" : "leaves"} ${name}`, () => {
-      expect(planThrowawaySweep({ tokens: [token], nowEpochMs: NOW })).toEqual(
-        swept ? [token.id] : [],
-      );
+      expect(planThrowawaySweep({ tokens: [token], owed })).toEqual(swept ? [token.id] : []);
     });
   }
 
-  it("sweeps every stale throwaway in one pass", () => {
+  it("sweeps every owed throwaway in one pass", () => {
     const stale = planThrowawaySweep({
       tokens: [
-        { id: "a", name: "mate-door:p1:n", created: at(600_000) },
-        { id: "b", name: "zcp-acme", created: at(600_000) },
-        { id: "c", name: "mate-door:p2:n", created: at(600_000) },
+        { id: "a", name: "mate-door:p1:n1" },
+        { id: "b", name: "zcp-acme" },
+        { id: "c", name: "mate-door:p2:n2" },
+        { id: "d", name: "mate-door:p3:n3" },
       ],
-      nowEpochMs: NOW,
+      owed: [{ attempt: "mate-door:p1:n1", tokenId: "a" }, { attempt: "mate-door:p2:n2" }],
     });
     expect(stale).toEqual(["a", "c"]);
   });
@@ -319,6 +319,37 @@ describe("zeropsThrowawayPlatform's debt", () => {
       name: "mate-door:crash:n1",
     });
     expect(debt.failedAt("org-1")).toBe(NOW);
+  });
+
+  it("keeps the id its mint answered with its debt, through a reload", async () => {
+    vi.useFakeTimers({ now: NOW });
+    const entries = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => entries.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        entries.set(key, value);
+      },
+      removeItem: (key: string) => {
+        entries.delete(key);
+      },
+    };
+    const debt = makeThrowawayDebt(storage);
+    const client = {
+      mintThrowaway: async () => ({ id: "door-1", token: "throwaway", mintingToken: "minting" }),
+    } as unknown as ZeropsApiClient;
+    debt.owe("org-1", NOW - 1, "mate-door:lost:n0");
+    await zeropsThrowawayPlatform(client, { debt }).mint({
+      clientId: "org-1",
+      name: "mate-door:p1:n1",
+    });
+    const owed = [
+      { attempt: "mate-door:lost:n0" },
+      { attempt: "mate-door:p1:n1", tokenId: "door-1" },
+    ];
+    expect(debt.owed("org-1", NOW)).toEqual(owed);
+    expect(makeThrowawayDebt(storage).owed("org-1", NOW)).toEqual(owed);
+    // Only what was owed by then: a mint since is another door's, still in its window.
+    expect(debt.owed("org-1", NOW - 1)).toEqual([{ attempt: "mate-door:lost:n0" }]);
   });
 
   it("successful cleanup never settles another door's outstanding token", async () => {
