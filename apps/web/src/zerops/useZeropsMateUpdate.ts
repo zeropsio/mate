@@ -9,10 +9,11 @@
  * instead, within the same budget.
  *
  * `idle → updating → updated/already-current → idle`, or `→ failed` from an
- * `exec:operate` refusal, the RPC's own `ZeropsMateUpdateResult.error`, or an
- * update past its budget. `already-current`/`updated` settle back to `idle`
- * on their own after a few seconds — nothing here is dismissable, nothing is
- * stored (MU-1).
+ * `exec:operate` refusal or the RPC's own `ZeropsMateUpdateResult.error`. An
+ * update past its budget is still updating, taking longer than usual: its
+ * outcome is the server it comes back as, never a clock, and Update stays off
+ * meanwhile. `already-current`/`updated` settle back to `idle` on their own
+ * after a few seconds — nothing here is dismissable, nothing is stored (MU-1).
  *
  * **The person is asked before the call, in the app's confirm dialog** —
  * never in a state of its own here. A confirmation drawn on the line lived
@@ -146,9 +147,7 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-const NOT_BACK = "The server has not come back yet. Check the connection again.";
-
-/** The one timer a Mate has at a time: the display settling back to idle, or a budget. */
+/** The one timer a Mate has at a time: the display settling back to idle, or a budget's label. */
 function schedule(environmentId: EnvironmentId, ms: number, run: () => void): void {
   clearTimer(environmentId);
   timers.set(
@@ -226,8 +225,8 @@ export function useZeropsMateUpdate(
     if (following.kind === "container") {
       if (following.key !== container.key) return;
       if (updating) {
-        if (overdue && current.state.phase === "updating") {
-          write(environmentId, { ...current, state: { phase: "failed", message: NOT_BACK } });
+        if (overdue && current.state.phase === "updating" && current.state.overdue !== true) {
+          write(environmentId, { ...current, state: { ...current.state, overdue: true } });
         }
         return;
       }
@@ -282,7 +281,7 @@ export function useZeropsMateUpdate(
         schedule(environmentId, CONTAINER_CAPS_MS.updating, () => {
           const waited = entryFor(environmentId);
           if (waited.generation !== generation || waited.state.phase !== "updating") return;
-          write(environmentId, { ...waited, state: { phase: "failed", message: NOT_BACK } });
+          write(environmentId, { ...waited, state: { ...waited.state, overdue: true } });
         });
       };
 
