@@ -15,7 +15,7 @@
  *   the view hands the route to the Mate's own (`/mate/$projectId`), in its place.
  *
  * Until then this tab holds the creation — how far it got, and where it stopped and why — and
- * nothing else does: a reload forgets it, as it forgets an Add a Mate the platform has not taken
+ * its tab retains the non-secret context through reload, including an Add a Mate the platform has not taken
  * (`newMate.ts`). Each creation is keyed by an id made on the press. A step that stops says why on
  * the view, with *Try again*, which resumes from that step — except a creation the platform may
  * have taken anyway (`uncertain`), which a second try could make twice.
@@ -52,7 +52,12 @@ import type {
   BirthLineStep,
 } from "../components/zerops/ZeropsBirthProgress.logic";
 import { COMING_UP_LINE, NOT_SET_UP_LINE } from "../components/zerops/ZeropsProjectRow.logic";
-import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
+import {
+  captureAccountLifetime,
+  onAccountLifetimeClose,
+  onAccountLifetimeOpen,
+} from "./accountLifetime";
+import { restoreCreations, saveCreations } from "./creationMemory";
 import type { ArrivalSubstep } from "./mateArrival";
 import { asSentence, type MateComing } from "./mateComing";
 import { newMateView, useNewMate, type NewMateAgain } from "./newMate";
@@ -114,10 +119,15 @@ export interface NewProjectBirth extends NewProjectAsk {
   readonly projectId: string | null;
   /** Its Mate's press, each step's state as it moves; null before it is heard. */
   readonly progress: ReadonlyArray<EnvironmentCreationStepProgress> | null;
+  /** Presentation retained across reload; full plans may contain private configuration. */
+  readonly retainedSubsteps?: ReadonlyArray<ArrivalSubstep> | undefined;
 }
 
 export type NewProjectPatch = Partial<
-  Pick<NewProjectBirth, "step" | "appId" | "intent" | "failed" | "projectId" | "progress">
+  Pick<
+    NewProjectBirth,
+    "step" | "appId" | "intent" | "failed" | "projectId" | "progress" | "retainedSubsteps"
+  >
 >;
 
 /**
@@ -602,10 +612,14 @@ export function startAddOver(birthId: string): void {
 }
 
 /** *Try again* on a creation a step stopped: it resumes from that step, with the same project. */
-export function retryNewProjectBirth(birthId: string): void {
+export function retryNewProjectBirth(birthId: string, ports?: NewProjectPorts): void {
   const birth = useNewProjectBirths.getState().births[birthId];
   if (birth === undefined || birth.failed === null || birth.failed.uncertain) return;
-  patchBirth(birthId, { failed: null });
+  if (!driving.has(birthId) && ports !== undefined) {
+    driving.set(birthId, { ports, isCurrent: captureAccountLifetime(), running: false });
+  }
+  if (!driving.has(birthId)) return;
+  patchBirth(birthId, { failed: null, retainedSubsteps: undefined });
   void drive(birthId);
 }
 
@@ -653,9 +667,21 @@ export function newProjectBirthOf(
   return Object.values(births).find((birth) => birth.projectId === projectId);
 }
 
+let clearingCreations = false;
+useNewProjectBirths.subscribe((state) => {
+  if (!clearingCreations) saveCreations(state.births);
+});
+onAccountLifetimeOpen(() => {
+  useNewProjectBirths.setState({ births: restoreCreations() });
+});
+
 onAccountLifetimeClose(() => {
+  saveCreations(useNewProjectBirths.getState().births);
   driving.clear();
+  // Clearing the renderer must not erase the tab's saved context.
+  clearingCreations = true;
   useNewProjectBirths.setState({ births: {} });
+  clearingCreations = false;
 });
 
 /** The managed services a recipe's yaml names, in its order: none where it names none. */
@@ -758,6 +784,8 @@ function pressedStep(
  * state and the full reason when it stops. A refused registration offers Finish setup.
  */
 export function creationSubsteps(birth: NewProjectBirth): ReadonlyArray<ArrivalSubstep> {
+  if (birth.progress === null && birth.retainedSubsteps !== undefined)
+    return birth.retainedSubsteps;
   const said = (
     id: string,
     label: string,

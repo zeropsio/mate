@@ -13,6 +13,15 @@ const app = vi.hoisted(() => ({
   navigate: vi.fn(async (_to: unknown) => undefined),
 }));
 
+vi.mock("~/zerops/useNewProjectBirthPorts", () => ({
+  useNewProjectBirthPorts: () => () => ({
+    registerGroup: () => new Promise(() => undefined),
+    recordBirth: () => new Promise(() => undefined),
+    createProject: () => new Promise(() => undefined),
+    accepted: () => undefined,
+  }),
+}));
+
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => app.navigate,
   Link: ({ children }: { readonly children?: ReactNode }) => h("a", null, children),

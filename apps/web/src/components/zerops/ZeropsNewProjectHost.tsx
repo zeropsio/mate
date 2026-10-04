@@ -52,28 +52,16 @@ import {
   generateZeropsGroupId,
   newMateTint,
   resolveAddProjectVerb,
-  mateBirthTag,
-  withZeropsMateTag,
   type ZeropsOrganization,
 } from "@t3tools/client-runtime/zerops";
 
-import { accountHqApi, officialHq, useAccountHq } from "~/zerops/accountHq";
-import { useNewMate } from "~/zerops/newMate";
-import {
-  beginNewProjectBirth,
-  newProjectPlacement,
-  newProjectView,
-  progressNewProjectBirth,
-  type NewProjectAsk,
-} from "~/zerops/newProjectBirth";
+import { officialHq, useAccountHq } from "~/zerops/accountHq";
+import { beginNewProjectBirth, newProjectView, type NewProjectAsk } from "~/zerops/newProjectBirth";
+import { useNewProjectBirthPorts } from "~/zerops/useNewProjectBirthPorts";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
 import { sessionOfferViewer } from "~/zerops/offerViewer";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
-import { invalidateZerops } from "~/zerops/accountInvalidations";
-import { captureAccountLifetime } from "~/zerops/accountLifetime";
-import { beginPress, finishMateSetup } from "~/zerops/matePress";
-import { whilePressing } from "~/zerops/matePress";
-import { runZeropsCommand, useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
+import { useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -103,15 +91,10 @@ export function ZeropsNewProjectHost() {
 
 function NewProjectDialog() {
   const dismiss = useNewProjectAsk((state) => state.dismiss);
-  const {
-    activeOrganization,
-    client,
-    organizationStatus,
-    organizations,
-    selectOrganization,
-    user,
-  } = useZeropsSession();
-  const { organizationRef, projectRef, runtime } = useZeropsData();
+  const birthPorts = useNewProjectBirthPorts();
+  const { activeOrganization, organizationStatus, organizations, selectOrganization, user } =
+    useZeropsSession();
+  const { organizationRef, runtime } = useZeropsData();
   const navigate = useNavigate();
   // The account's Mates: the names a new one may not take, and the tints its face walks past.
   const { listing } = useZeropsCandidates();
@@ -128,7 +111,6 @@ function NewProjectDialog() {
   } | null>(null);
   // Create was pressed: its first Mate's view is on its way, and a second press makes nothing.
   const [creating, setCreating] = useState(false);
-  const created = useNewMate((state) => state.created);
 
   // The registry lives in the organization's HQ, where only its owners and admins create an
   // application — a stricter gate than *can create projects*, and the one HQ applies.
@@ -225,7 +207,6 @@ function NewProjectDialog() {
     if (creating) return;
     setCreating(true);
     const organizationId = activeOrganization.id;
-    const organization = organizationRef(organizationId);
     const ask: NewProjectAsk = {
       organizationId,
       birthId: generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
@@ -236,75 +217,13 @@ function NewProjectDialog() {
       // Every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`).
       agents: [],
     };
-    const isCurrent = captureAccountLifetime();
     // The creation's id is its group's: its view is there from the press.
     const birthId = ask.birthId;
     beginNewProjectBirth({
       ask,
       hq: officialHq(accountHq),
       now: Date.now(),
-      ports: {
-        registerGroup: async ({ hq, name: groupName }) => ({
-          appId: (await accountHqApi(client, organizationId, hq).createApp(groupName)).id,
-        }),
-        recordBirth: ({ hq, ...birth }) =>
-          accountHqApi(client, organizationId, hq).recordBirth(birth),
-        // The project alone, born a Mate under its birth intent (its marker on before anything
-        // else): its press attaches it to its application, then imports its container (F6b). In
-        // flight as a press: the background mints no throwaway while it reads the token list.
-        createProject: ({ name: projectName, location, birth }) =>
-          whilePressing(() =>
-            runZeropsCommand(
-              runtime.commands.createProject({
-                organization,
-                name: projectName,
-                tagList: withZeropsMateTag(birth === undefined ? [] : [mateBirthTag(birth)]),
-                ...(location === undefined ? {} : { location }),
-              }),
-            ),
-          ).then((project) => ({ project })),
-        accepted: (projectId, registration, startedAt) => {
-          if (registration === null) return;
-          const { hq, appId, intent } = registration;
-          // The press goes on: the Mate attached to its application in HQ, its container imported
-          // and the project closed off. The listing is read again so the project's group catches
-          // up with it. Its row stands where the creation's stood, with the same face and name.
-          const placement = newProjectPlacement({ ...ask, appId });
-          beginPress({
-            projectId,
-            organizationId,
-            startedAt,
-            container: true,
-            placement,
-          });
-          invalidateZerops({ topic: "inventory", organization });
-          void finishMateSetup({
-            inputs: { client, data: { runtime, organizationRef, projectRef }, organizationId },
-            projectId,
-            projectName: placement.displayName,
-            // After its attach: a press that stops before it leaves a Mate HQ holds in its
-            // application, which any browser finishes.
-            container: { agents: ask.agents },
-            registration: {
-              hq,
-              groupId: appId,
-              kind: "mate",
-              mate: { face },
-              standUp: false,
-              intent,
-            },
-            hq,
-            isCurrent,
-            // Kept on the creation, whose view draws each step under the project's row.
-            onProgress: (progress) => {
-              if (isCurrent()) progressNewProjectBirth(birthId, progress);
-            },
-          });
-          // Who it is until the listing names it, as Add a Mate's are: its
-          // view's face, name and stand-up.
-          created({ projectId, groupId: appId, groupName: name, botName, face });
-        },
-      },
+      ports: birthPorts(ask),
     });
     // The dialog gives way to the first Mate's view at once: the steps run on without it.
     dismiss();
