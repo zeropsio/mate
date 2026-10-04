@@ -155,30 +155,60 @@ describe("homeGuess: the Mate the home will land on, as remembered", () => {
 });
 
 describe("homeDoor: the home paints the projects page only when it stays there", () => {
+  const base = {
+    noEnvironments: false,
+    matesSettled: false,
+    projectsShown: false,
+    organization: "selected",
+    accountTrouble: false,
+    catalogFailed: false,
+  } as const;
   it.each([
-    [
-      "Mates registered, still reading: the landing",
-      { noEnvironments: false, matesSettled: false },
-      "landing",
-    ],
-    [
-      "Mates registered, read whole: the landing",
-      { noEnvironments: false, matesSettled: true },
-      "landing",
-    ],
+    ["Mates registered, still reading: the landing", {}, "landing"],
+    ["Mates registered, read whole: the landing", { matesSettled: true }, "landing"],
     // A cold load counts no environment until the account's Mates register: the projects page
-    // painted then is taken back a second later, when the landing moves to a Mate.
-    [
-      "no Mate registered yet, still reading: the landing waits",
-      { noEnvironments: true, matesSettled: false },
-      "landing",
-    ],
+    // painted then is taken back a second later, when the landing moves to a Mate. Nor does it
+    // land anywhere meanwhile: with no usable environment, a cached thread is a dead Mate's.
+    ["no Mate registered yet, still reading: it waits", { noEnvironments: true }, "wait"],
     [
       "no Mate to land on, read whole: the projects",
       { noEnvironments: true, matesSettled: true },
       "projects",
     ],
-  ] as const)("%s", (_name, input, expected) => {
-    expect(homeDoor(input)).toBe(expected);
+    // The Mates are never listed until something happens: the projects page says what.
+    [
+      "no organization chosen: the projects page, which asks for one",
+      { noEnvironments: true, organization: "needs-selection" },
+      "projects",
+    ],
+    [
+      "the organizations still loading: it waits",
+      { noEnvironments: true, organization: "loading" },
+      "wait",
+    ],
+    [
+      "the account's access failed: the projects page, which says so",
+      { noEnvironments: true, accountTrouble: true },
+      "projects",
+    ],
+    [
+      "the environment catalog failed to load: the projects page",
+      { noEnvironments: true, catalogFailed: true },
+      "projects",
+    ],
+    // Once painted it stays until a Mate is counted: a registration on its way or an organization
+    // switch unsettles the Mates again, and must not tear the page down.
+    [
+      "the projects page shown, the Mates unsettled again: it stays",
+      { noEnvironments: true, projectsShown: true },
+      "projects",
+    ],
+    [
+      "the projects page shown, a Mate counted: the landing",
+      { projectsShown: true, matesSettled: true },
+      "landing",
+    ],
+  ] as const)("%s", (_name, over, expected) => {
+    expect(homeDoor({ ...base, ...over })).toBe(expected);
   });
 });
