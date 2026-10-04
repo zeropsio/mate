@@ -2083,6 +2083,15 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
   );
 }
 
+/** A helper's mark where the Mate's face stands in its own run: it works under the Mate. */
+function HelperFace() {
+  return (
+    <span aria-hidden="true" className="flex size-5 shrink-0 items-center justify-center">
+      <BotIcon className="size-4 text-muted-foreground" />
+    </span>
+  );
+}
+
 /** The helpers a launch started, as the agents panel knows them. */
 function spawnAgents(model: AgentPanelModel, spawn: NonNullable<WorkLogEntry["agentSpawn"]>) {
   const memberIds = new Set(spawn.agentTaskIds);
@@ -2408,6 +2417,7 @@ const THOUGHT_MARK = (
 /** Its words' mark: its own face, at rest — who is speaking, beside what it said. */
 function SpeakerMark() {
   const ctx = use(TimelineRowCtx);
+  if (ctx.speaker.helper) return <HelperFace />;
   return <MateFace shape={ctx.speaker.shape} size="sm" state="idle" tint={ctx.speaker.tint} />;
 }
 
@@ -2924,15 +2934,19 @@ function NowLine({
         line.kind === "worked" ? status.face : line.kind === "waiting" ? "waiting" : "working"
       }
     >
-      <MateFace
-        gaze={face.gaze}
-        greets
-        known={ctx.arrivedAfter !== null && !ctx.syncing}
-        shape={ctx.speaker.shape}
-        size="sm"
-        state={face.state}
-        tint={ctx.speaker.tint}
-      />
+      {ctx.speaker.helper ? (
+        <HelperFace />
+      ) : (
+        <MateFace
+          gaze={face.gaze}
+          greets
+          known={ctx.arrivedAfter !== null && !ctx.syncing}
+          shape={ctx.speaker.shape}
+          size="sm"
+          state={face.state}
+          tint={ctx.speaker.tint}
+        />
+      )}
       <div className="run-now-words" data-work-line={status.face}>
         {leaving === null ? null : (
           <span aria-hidden="true" className="run-now-head run-now-leaving" key={leaving.words}>
@@ -3245,15 +3259,19 @@ function LiveSlot({
       data-work-line={status.face}
     >
       <span className="run-slot-face">
-        <MateFace
-          gaze={face.gaze}
-          greets
-          known={ctx.arrivedAfter !== null && !ctx.syncing}
-          shape={ctx.speaker.shape}
-          size="sm"
-          state={face.state}
-          tint={ctx.speaker.tint}
-        />
+        {ctx.speaker.helper ? (
+          <HelperFace />
+        ) : (
+          <MateFace
+            gaze={face.gaze}
+            greets
+            known={ctx.arrivedAfter !== null && !ctx.syncing}
+            shape={ctx.speaker.shape}
+            size="sm"
+            state={face.state}
+            tint={ctx.speaker.tint}
+          />
+        )}
       </span>
       <InSlotContext value>
         <SlotStandsOpenContext value={standsOpen}>

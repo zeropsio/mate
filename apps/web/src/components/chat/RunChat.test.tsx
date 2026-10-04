@@ -15,6 +15,7 @@ import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
 import { foldsLikeAMessage, RunChat } from "./RunChat";
+import { MateFace } from "../zerops/primitives";
 import { useHelperFocus } from "./helperFocus";
 import { SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
@@ -1404,6 +1405,30 @@ describe("RunChat, as the person uses it", () => {
       .map((node) => node.children.filter((child) => typeof child === "string").join(""));
     expect(words.length).toBeGreaterThan(0);
     for (const said of words) expect(said).toBe(state);
+  });
+
+  // A helper's own run, in its card: it works under the Mate and wears no
+  // face of the Mate's, live or settled.
+  it.each([
+    { name: "at work", row: record([], { live: true, status: status() }) },
+    {
+      name: "settled",
+      row: record([thought("t1", "Looked at the schema.")], {
+        status: status({ live: false, endedAt: at(9), face: "idle" }),
+      }),
+    },
+  ])("a helper's run $name wears no face of the Mate's", ({ row }) => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(
+        <TimelineRowCtx value={{ ...SHARED, speaker: { ...SHARED.speaker, helper: true } }}>
+          <TimelineRowActivityCtx value={ACTIVITY}>
+            <RunChat row={row} />
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>,
+      );
+    });
+    expect(renderer.root.findAllByType(MateFace)).toEqual([]);
   });
 
   it("opens what a step printed under its words, in place, and closes it again", () => {
