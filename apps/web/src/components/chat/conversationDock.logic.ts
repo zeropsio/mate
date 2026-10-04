@@ -19,6 +19,7 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ActivePlanState, TimelineEntry } from "../../session-logic";
 import { readUsageLimitNotice, splitBatchDeploy } from "./conversation.logic";
+import { helperNowWords } from "./helpers.logic";
 
 /** Operations that run long enough to watch: a pipeline, a multi-step setup, a stand-up's builds. */
 export const DOCKED_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
@@ -348,7 +349,8 @@ export function dockHelpers(
       id: agent.id,
       title: helperTitle(agent),
       tone: state.tone,
-      word: state.word,
+      // Working, it says what it does now (`helperNowWords`); settled, how it ended.
+      word: helperNowWords(agent) ?? state.word,
       startedAt: agent.startedAt ?? agent.firstSeenAt,
       endedAt: agent.completedAt,
     };

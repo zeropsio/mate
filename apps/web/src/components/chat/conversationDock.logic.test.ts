@@ -96,6 +96,26 @@ describe("dockHelpers", () => {
 
   it.each([
     {
+      name: "a working helper says what it does now",
+      helper: { ...agent("h1", "running", "tests"), progress: "Running the unit tests" },
+      word: "Running the unit tests",
+    },
+    {
+      name: "a working helper that says nothing yet is working",
+      helper: agent("h1", "running", "tests"),
+      word: "Working",
+    },
+    {
+      name: "a settled helper says how it ended",
+      helper: { ...agent("h1", "completed", "tests"), progress: "Running the unit tests" },
+      word: "Done",
+    },
+  ])("$name", ({ helper, word }) => {
+    expect(dockHelpers(panel([helper])).map((row) => row.word)).toEqual([word]);
+  });
+
+  it.each([
+    {
       name: "a helper an earlier turn finished is that turn's history",
       helper: { ...agent("h1", "completed", "old work"), startedAt: at(1), completedAt: at(2) },
       shown: false,
