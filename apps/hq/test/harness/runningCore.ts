@@ -302,6 +302,12 @@ export const startCore = (
             Effect.timeout(Duration.seconds(15)),
             Effect.orDie,
           );
+        /** The first message of `type`, leaving every other message where it is. */
+        const take = (type: string) =>
+          until(() => {
+            const found = messages.findIndex((message) => message.type === type);
+            return found < 0 ? undefined : messages.splice(found, 1)[0];
+          }, type).pipe(Effect.map(({ type: _type, ...rest }) => rest));
         const next = (type: string) =>
           until(() => {
             const found = messages.findIndex((message) => message.type === type);
@@ -311,6 +317,7 @@ export const startCore = (
           opened,
           pings,
           next,
+          take,
           /** What arrived within `window`. */
           quiet: (window: Duration.Input) =>
             Effect.andThen(

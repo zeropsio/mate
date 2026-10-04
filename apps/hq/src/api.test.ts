@@ -903,14 +903,14 @@ describe("HQ API", () => {
               births: [],
             },
           });
-          assert.deepStrictEqual(yield* owner.next("change"), shopWith("sky:flower"));
+          assert.deepStrictEqual(yield* owner.take("change"), shopWith("sky:flower"));
           // Its maker is named beside the structure, by the name Zerops gives them, with the member
           // id a project's OWNER entry would name them by.
-          assert.deepStrictEqual(yield* owner.next("people"), {
+          assert.deepStrictEqual(yield* owner.take("people"), {
             people: { owner: { name: "owner", clientUserId: "C-owner" } },
           });
           yield* call("PATCH", "/api/mates/P_MATE", { session, body: { face: "rose:seal" } });
-          assert.deepStrictEqual(yield* owner.next("change"), shopWith("rose:seal"));
+          assert.deepStrictEqual(yield* owner.take("change"), shopWith("rose:seal"));
 
           // Deleted in Zerops: while HQ still holds its rows the app says the deletion is under
           // way, then the reconcile drops it, and the socket says so.
@@ -918,12 +918,12 @@ describe("HQ API", () => {
             fake.projects.findIndex((project) => project.id === "P_MATE"),
             1,
           );
-          let dropped: unknown = yield* owner.next("change");
+          let dropped: unknown = yield* owner.take("change");
           const deleting = (dropped as { readonly value: { readonly contents: object } }).value
             .contents;
           if (!("empty" in deleting) || deleting.empty === false) {
             assert.deepStrictEqual(deleting, { empty: false, deletingProjectIds: ["P_MATE"] });
-            dropped = yield* owner.next("change");
+            dropped = yield* owner.take("change");
           }
           assert.deepStrictEqual(dropped, {
             key: appId,
@@ -937,7 +937,7 @@ describe("HQ API", () => {
             },
           });
           // Nothing names its maker any more.
-          assert.deepStrictEqual(yield* owner.next("people"), { people: {} });
+          assert.deepStrictEqual(yield* owner.take("people"), { people: {} });
           // Three pings answered: still open.
           yield* Effect.sleep(Duration.millis(1100));
           assert.isAtLeast(owner.pings.seen, 3);
