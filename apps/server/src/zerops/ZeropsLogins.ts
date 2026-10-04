@@ -39,6 +39,7 @@ import {
   type ZeropsLoginAddInput,
   type ZeropsLoginKind,
   type ZeropsLoginState,
+  type ZeropsAuthVerification,
 } from "@t3tools/contracts";
 import { classifyZeropsAgentAuth, zeropsLoginTitle } from "@t3tools/shared/zeropsAgentAuth";
 import * as Clock from "effect/Clock";
@@ -60,7 +61,11 @@ import * as ProcessRunner from "../processRunner.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
-import { spawnAgentAuthProbe, verifyAgentAuth } from "./ZeropsAgentAuthVerify.ts";
+import {
+  spawnAgentAuthProbe,
+  verifyAgentAuth,
+  type AgentAuthVerification,
+} from "./ZeropsAgentAuthVerify.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { zeropsUserIdOf } from "./ZeropsMembershipWatch.ts";
@@ -176,6 +181,7 @@ export function mateLoginState(facts: {
   readonly keyStored: boolean;
   readonly credPresent: boolean;
   readonly providerAuth: ServerProviderAuthStatus;
+  readonly verification?: ZeropsAuthVerification;
 }): ZeropsLoginState {
   if (facts.kind === "apiKey") return facts.keyStored ? "authorized" : "not-authorized";
   if (!facts.credPresent) return "not-authorized";
@@ -193,6 +199,7 @@ export function mateLoginState(facts: {
 export interface MateLoginFacts {
   readonly credPresent: boolean;
   readonly providerAuth: ServerProviderAuthStatus;
+  readonly verification?: ZeropsAuthVerification;
 }
 
 /**
@@ -214,6 +221,7 @@ export function mateLoginRow(
     default: false,
     state: mateLoginState({ ...facts, kind: login.kind, keyStored: login.keyStored }),
     token: false,
+    ...(facts.verification === undefined ? {} : { verification: facts.verification }),
     ...(held && signer !== undefined && signer.length > 0 ? { signedInBy: signer } : {}),
   };
 }
@@ -227,6 +235,8 @@ const defaultLoginRow = (agent: ZeropsAgentAuthSnapshot["agents"][number]): Zero
   default: true,
   state: classifyZeropsAgentAuth(agent).kind,
   token: agent.flagToken,
+  ...(agent.verification === undefined ? {} : { verification: agent.verification }),
+  ...(agent.registration === undefined ? {} : { registration: agent.registration }),
   ...(agent.authorizedBy === undefined ? {} : { signedInBy: agent.authorizedBy.subject }),
   ...(agent.login === undefined ? {} : { login: agent.login }),
 });
@@ -306,9 +316,6 @@ export const mateLoginEnvironment = (
 /** How long a burst of credential events waits before the one check it asks for. */
 const CHECK_DEBOUNCE = Duration.seconds(1);
 
-/** How often a credential whose check could not answer is asked again. */
-export const UNKNOWN_LOGIN_RECHECK_INTERVAL = Duration.minutes(1);
-
 type Instances = Readonly<Record<string, ProviderInstanceConfig>>;
 
 const decodeUnknownJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
@@ -366,7 +373,7 @@ export interface ZeropsLoginsOptions {
   /** Replaces the whole map, as a settings patch of `providerInstances` does. */
   readonly writeInstances: (next: Instances) => Effect.Effect<unknown, ServerSettingsError>;
   /** The login's own CLI status, run with its home ({@link mateLoginEnvironment}). */
-  readonly verify: (login: MateLogin) => Effect.Effect<ServerProviderAuthStatus>;
+  readonly verify: (login: MateLogin) => Effect.Effect<AgentAuthVerification>;
   /** Told when a login's verified status changes, so the model picker's snapshot catches up. */
   readonly reconcile?: (id: string, verified: ServerProviderAuthStatus) => Effect.Effect<void>;
   /** Who this server saw sign each login in (`ZeropsProjectSigners.signers`); absent, none names one. */
@@ -376,8 +383,6 @@ export interface ZeropsLoginsOptions {
   readonly watch: (target: string, fallbackDir: string, onChange: () => void) => WatcherHandle;
   /** Defaults to {@link CHECK_DEBOUNCE}; shortened by tests. */
   readonly checkDebounce?: Duration.Duration;
-  /** Defaults to {@link UNKNOWN_LOGIN_RECHECK_INTERVAL}. */
-  readonly unknownRecheckInterval?: Duration.Duration;
 }
 
 const UNKNOWN_FACTS: MateLoginFacts = { credPresent: false, providerAuth: "unknown" };
@@ -391,6 +396,10 @@ const rowsEqual = (a: ReadonlyArray<ZeropsLogin>, b: ReadonlyArray<ZeropsLogin>)
       row.label === other.label &&
       row.kind === other.kind &&
       row.state === other.state &&
+      row.verification?.status === other.verification?.status &&
+      row.verification?.checkedAt === other.verification?.checkedAt &&
+      row.verification?.reason === other.verification?.reason &&
+      row.verification?.generation === other.verification?.generation &&
       row.signedInBy === other.signedInBy
     );
   });
@@ -437,7 +446,6 @@ export const make = (options: ZeropsLoginsOptions) =>
       signIns,
       watch,
       checkDebounce = CHECK_DEBOUNCE,
-      unknownRecheckInterval = UNKNOWN_LOGIN_RECHECK_INTERVAL,
     } = options;
     const fs = yield* FileSystem.FileSystem;
 
@@ -451,6 +459,7 @@ export const make = (options: ZeropsLoginsOptions) =>
     // once, one at a time — single-flight without a fiber per login, and with
     // nothing to interrupt when a login goes away.
     const pending = new Set<string>();
+    const generations = new Map<string, number>();
     const checks = yield* Queue.unbounded<void>();
     // Settings writes are whole-map replacements: one at a time.
     const writeLock = yield* Semaphore.make(1);
@@ -474,9 +483,18 @@ export const make = (options: ZeropsLoginsOptions) =>
     }).pipe(publishMutex.withPermits(1));
 
     const requestCheck = (id: string) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
+        generations.set(id, (generations.get(id) ?? 0) + 1);
+        yield* Ref.update(facts, (current) => ({
+          ...current,
+          [id]: {
+            ...(current[id] ?? UNKNOWN_FACTS),
+            verification: { status: "checking" as const },
+          },
+        }));
         pending.add(id);
         Queue.offerUnsafe(checks, undefined);
+        yield* publish;
       });
 
     const probeCredential = (login: MateLogin) =>
@@ -486,20 +504,34 @@ export const make = (options: ZeropsLoginsOptions) =>
       Effect.gen(function* () {
         const login = (yield* Ref.get(logins)).find((entry) => entry.id === id);
         if (login === undefined) return;
+        const generation = generations.get(id) ?? 0;
         const credPresent = yield* probeCredential(login);
         const before = (yield* Ref.get(facts))[id] ?? UNKNOWN_FACTS;
         // An API key has nothing for a CLI to confirm; an absent credential
         // is signed out without asking.
-        const providerAuth: ServerProviderAuthStatus =
+        const verification: AgentAuthVerification | undefined =
           login.kind === "apiKey"
-            ? "unknown"
+            ? undefined
             : credPresent
               ? yield* verify(login)
-              : "unauthenticated";
+              : { status: "unauthenticated", checkedAt: yield* Clock.currentTimeMillis };
+        // A check belongs to the login home and credential generation it started with.
+        if (
+          generations.get(id) !== generation ||
+          !(yield* Ref.get(logins)).some((entry) => entry.id === id && entry.home === login.home)
+        )
+          return;
+        const providerAuth = verification?.status ?? "unknown";
         yield* Effect.logInfo("zerops logins: verification", { id, credPresent, providerAuth });
         yield* Ref.update(facts, (current) => ({
           ...current,
-          [id]: { credPresent, providerAuth },
+          [id]: {
+            credPresent,
+            providerAuth,
+            ...(verification === undefined
+              ? {}
+              : { verification: { ...verification, generation } }),
+          },
         }));
         // An API key login's credential is its stored key, not a file it never has.
         yield* PubSub.publish(credentialAnswers, [
@@ -541,6 +573,8 @@ export const make = (options: ZeropsLoginsOptions) =>
           if (nextIds.has(id)) continue;
           handle.dispose();
           watchers.delete(id);
+          generations.delete(id);
+          pending.delete(id);
         }
         yield* Ref.set(logins, next);
         const gone = Object.keys(yield* Ref.get(facts)).filter((id) => !nextIds.has(id));
@@ -558,6 +592,7 @@ export const make = (options: ZeropsLoginsOptions) =>
             watchers.set(
               login.id,
               watch(mateLoginCredentialPath(login), login.home, () => {
+                generations.set(login.id, (generations.get(login.id) ?? 0) + 1);
                 pending.add(login.id);
                 Queue.offerUnsafe(checks, undefined);
               }),
@@ -594,23 +629,6 @@ export const make = (options: ZeropsLoginsOptions) =>
       Effect.forkScoped,
     );
 
-    // A credential whose check could not answer is asked again.
-    yield* Effect.gen(function* () {
-      const known = yield* Ref.get(facts);
-      for (const login of yield* Ref.get(logins)) {
-        const found = known[login.id];
-        if (found?.credPresent && found.providerAuth === "unknown" && login.kind !== "apiKey") {
-          yield* requestCheck(login.id);
-        }
-      }
-    }).pipe(
-      Effect.delay(unknownRecheckInterval),
-      Effect.forever,
-      Effect.catchCause((cause) =>
-        Effect.logWarning("zerops logins: unknown recheck stopped", { cause }),
-      ),
-      Effect.forkScoped,
-    );
     const recheckNow = (id: string) => requestCheck(id);
 
     const resolve = (id: string) =>

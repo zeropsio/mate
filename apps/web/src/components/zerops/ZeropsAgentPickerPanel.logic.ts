@@ -115,6 +115,18 @@ export function resolveZeropsAgentPickerPanelView(input: {
       ? undefined
       : `This session runs on ${input.lockedToAgentName}. ${agentName} is used after Archive and start fresh.`;
 
+  if (availability.ended !== undefined) {
+    const checking = availability.ended.action === "check-again";
+    const action = checking ? "Check again" : "Register again";
+    return {
+      agentName,
+      statusLine:
+        `${checking ? "Couldn't verify" : "Registration failed"}. ${availability.ended.reason ?? ""} ${action} in Coding agents.`.trim(),
+      primaryAction: null,
+      showCancel: false,
+      sessionLockNotice,
+    };
+  }
   switch (availability.kind) {
     case "unknown":
       return {

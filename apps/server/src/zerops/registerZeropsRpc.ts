@@ -37,6 +37,7 @@ import type * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 type ZeropsRpcTag =
   | typeof WS_METHODS.zeropsStandUpRetry
   | typeof WS_METHODS.zeropsLifecycleGet
+  | typeof WS_METHODS.zeropsAgentAuthCheck
   | typeof WS_METHODS.zeropsAgentLoginStart
   | typeof WS_METHODS.zeropsAgentLoginCancel
   | typeof WS_METHODS.zeropsAgentLoginSubmitCode
@@ -199,6 +200,53 @@ export const resolveLoginTarget = (
     return { id: login.id, env: ZeropsLoginsModule.mateLoginEnvironment(login) };
   });
 
+/** An operator asks once; the feed carries the resulting verification/registration receipt. */
+export const runAgentAuthCheck = (
+  deps: {
+    readonly zeropsAgentAuth: Pick<
+      ZeropsAgentAuth.ZeropsAgentAuth["Service"],
+      "latest" | "recheckNow"
+    >;
+    readonly zeropsLogins: Pick<
+      ZeropsLoginsModule.ZeropsLogins["Service"],
+      "latest" | "resolve" | "recheckNow"
+    >;
+    readonly subject: string;
+  },
+  input: { readonly agentId: ZeropsAgentId; readonly loginId?: string | undefined },
+) =>
+  Effect.gen(function* () {
+    const userId = deps.subject.startsWith("zerops-user:")
+      ? deps.subject.slice("zerops-user:".length)
+      : deps.subject;
+    let signer: string | undefined;
+    if (input.loginId === undefined) {
+      const snapshot = yield* deps.zeropsAgentAuth.latest;
+      const agent = snapshot.agents.find((row) => row.agentId === input.agentId);
+      if (!snapshot.available || agent === undefined) {
+        return yield* new ZeropsAgentLoginError({
+          reason: "unavailable",
+          detail: "This environment cannot check this login.",
+        });
+      }
+      signer = agent.authorizedBy?.subject;
+    } else {
+      yield* resolveLoginTarget(deps.zeropsLogins, input.agentId, input.loginId);
+      signer = (yield* deps.zeropsLogins.latest).find(
+        (row) => row.id === input.loginId,
+      )?.signedInBy;
+    }
+    if (signer !== undefined && signer !== userId) {
+      return yield* new ZeropsAgentLoginError({
+        reason: "invalid-login",
+        detail: "Only the member who signed this login in can check or register it again.",
+      });
+    }
+    yield* input.loginId === undefined
+      ? deps.zeropsAgentAuth.recheckNow(input.agentId)
+      : deps.zeropsLogins.recheckNow(input.loginId);
+  });
+
 /** Registers the Zerops feed RPCs. Called once from `ws.ts`. */
 export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandlers => {
   const {
@@ -224,6 +272,10 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       ),
     [WS_METHODS.zeropsLifecycleGet]: (input) =>
       observeRpcEffect(WS_METHODS.zeropsLifecycleGet, zeropsLifecycle.get(input.threadId), {
+        "rpc.aggregate": "zerops",
+      }),
+    [WS_METHODS.zeropsAgentAuthCheck]: (input) =>
+      observeRpcEffect(WS_METHODS.zeropsAgentAuthCheck, runAgentAuthCheck(deps, input), {
         "rpc.aggregate": "zerops",
       }),
     [WS_METHODS.zeropsAgentLoginStart]: (input) =>

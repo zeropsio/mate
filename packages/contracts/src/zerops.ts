@@ -354,6 +354,29 @@ export const ZeropsAgentLoginState = Schema.Struct({
 });
 export type ZeropsAgentLoginState = typeof ZeropsAgentLoginState.Type;
 
+/** One login check, including an inconclusive ending; timestamps describe the source read. */
+export const ZeropsAuthVerification = Schema.Struct({
+  status: Schema.Literals(["checking", "authenticated", "unauthenticated", "unknown"]),
+  reason: Schema.optional(Schema.String),
+  checkedAt: Schema.optional(Schema.Number),
+  generation: Schema.optional(Schema.Number),
+});
+export type ZeropsAuthVerification = typeof ZeropsAuthVerification.Type;
+
+/** Local sign-in and platform registration are separate outcomes. Accepted writes retain their handle. */
+export const ZeropsAuthRegistration = Schema.Struct({
+  status: Schema.Literals(["pending", "accepted", "registered", "failed"]),
+  reason: Schema.optional(Schema.String),
+  process: Schema.optional(
+    Schema.Struct({
+      id: Schema.String,
+      status: Schema.optional(Schema.String),
+      reason: Schema.optional(Schema.String),
+    }),
+  ),
+});
+export type ZeropsAuthRegistration = typeof ZeropsAuthRegistration.Type;
+
 export const ZeropsAgentAuth = Schema.Struct({
   agentId: ZeropsAgentId,
   /** Whether the local credential artifact exists. Presence only — its contents are never read. */
@@ -372,6 +395,8 @@ export const ZeropsAgentAuth = Schema.Struct({
    * actually gates the flag write, never `credPresent` alone.
    */
   providerAuth: ServerProviderAuthStatus,
+  verification: Schema.optional(ZeropsAuthVerification),
+  registration: Schema.optional(ZeropsAuthRegistration),
   state: ZeropsAgentAuthState,
   /** A server-driven login attempt in progress (or just finished) for this agent — see {@link ZeropsAgentLoginState}. Absent when none has ever run this process's lifetime. */
   login: Schema.optional(ZeropsAgentLoginState),
@@ -453,6 +478,8 @@ export const ZeropsLogin = Schema.Struct({
   /** One of the two default instances, whose sign-in is the agent row's. */
   default: Schema.Boolean,
   state: ZeropsLoginState,
+  verification: Schema.optional(ZeropsAuthVerification),
+  registration: Schema.optional(ZeropsAuthRegistration),
   /** A project token authorizes it (a default only): it is nobody's login, and D6 does not apply. */
   token: Schema.Boolean,
   /** The Zerops user id of whoever signed it in (or stored its key), as the Mate's server saw them. */

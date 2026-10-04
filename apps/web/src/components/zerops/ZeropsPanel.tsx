@@ -1,3 +1,5 @@
+import { useAtomCommand } from "~/state/use-atom-command";
+import { zeropsCommands } from "~/state/zeropsCommands";
 import { serviceForPreview } from "../../zerops/serviceBrowserPolicy";
 import { ServiceBrowserLinkContext } from "../ServiceBrowserLink";
 import { ZeropsDataLinkContext } from "./dataLink";
@@ -80,6 +82,7 @@ export function ZeropsPanel({
     ZeropsAgentAuthSnapshot["agents"][number]["agentId"] | null
   >(null);
   const cancelAgentLogin = useAgentLoginCancel(threadRef);
+  const checkAuth = useAtomCommand(zeropsCommands.agentAuthCheck, "zerops agent auth check");
   const agentSignOut = useAgentSignOut(threadRef?.environmentId ?? null);
   // Absent on an older Mate: missing means unsupported, as for every capability.
   const signOutSupported =
@@ -162,6 +165,13 @@ export function ZeropsPanel({
       )
     ) : (
       <ZeropsAgentAuthCard
+        onRecheck={(agentId, loginId) => {
+          if (threadRef === null) return;
+          void checkAuth({
+            environmentId: threadRef.environmentId,
+            input: { agentId, ...(loginId === undefined ? {} : { loginId }) },
+          });
+        }}
         onCancel={cancelAgentLogin}
         onSignIn={setAuthorizationAgentId}
         onSignOut={agentSignOut.signOut}

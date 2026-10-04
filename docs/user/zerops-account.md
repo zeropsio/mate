@@ -92,3 +92,11 @@ If HQ's stream is unavailable, the confirmation waits for a current answer.
 Signing out of a provider keeps the Mate's owner badge. It remembers the last person who signed
 that provider in; the badge does not mean its provider account is still signed in. A later successful
 sign-in updates that record.
+
+A login check that cannot answer ends with **Couldn't verify** and its reason. In **Coding agents**,
+press **Check again** to make one new check for that login. If the CLI signed you in but Zerops
+registration failed, the row keeps the local sign-in and offers **Register again**. Registration
+shows its accepted Zerops process and follows that process to its outcome; a failed read ends with
+the handle and a reason. Inspect that process before registering again. These actions belong to
+the member who signed the login in (or an operator when no signer was recorded). Mate never
+repeats failed checks or registration writes automatically.

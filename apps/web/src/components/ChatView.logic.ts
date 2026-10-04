@@ -438,6 +438,8 @@ export function resolveZeropsProviderAvailability(input: {
     credPresent: agent.credPresent,
     flagToken: agent.flagToken,
     providerAuth: agent.providerAuth,
+    verification: agent.verification,
+    registration: agent.registration,
     state: agent.state,
     loginPhase: agent.login?.phase,
     authorizedBy: resolveAgentAuthorizer(agent, input.viewerSubject),

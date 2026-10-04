@@ -5,6 +5,7 @@ import type {
   ZeropsAgentAuthSnapshot,
   ZeropsAgentLoginState,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import { AsyncResult } from "effect/unstable/reactivity";
 
 import {
@@ -601,5 +602,39 @@ describe("zeropsAgentAuthView", () => {
     },
   ])("$name", ({ read, expected }) => {
     expect(zeropsAgentAuthView(read)).toEqual(expected);
+  });
+});
+
+describe("ended login checks", () => {
+  it("offers Check again after an inconclusive verification, including a succeeded login", () => {
+    const row = agent({
+      agentId: "codex",
+      state: "local-only",
+      credPresent: true,
+      verification: { status: "unknown", reason: "The login check timed out.", checkedAt: 1 },
+    });
+    expect(agentAuthLabel(row)).toBe("Couldn't verify");
+    expect(agentAuthAction(row)).toBe("check-again");
+    expect(
+      classifyAgentRowLogin({
+        ...row,
+        login: {
+          phase: "succeeded",
+          terminalId: "auth-terminal",
+          startedAt: DateTime.makeUnsafe("2026-10-04T00:00:00Z"),
+        },
+      }),
+    ).toEqual({ kind: "none" });
+  });
+  it("keeps local success separate from a failed platform registration", () => {
+    const row = agent({
+      agentId: "codex",
+      state: "local-only",
+      credPresent: true,
+      providerAuth: "authenticated",
+      registration: { status: "failed", reason: "Could not write the flag." },
+    });
+    expect(agentAuthLabel(row)).toBe("Signed in — registration failed");
+    expect(agentAuthAction(row)).toBe("register-again");
   });
 });

@@ -28,11 +28,10 @@
  * `unknown` is the result for every failure mode that is not a confirmed
  * "signed in" / "signed out" answer: the binary is missing, the process
  * could not be spawned or timed out, or the output does not parse — never a
- * thrown error. {@link spawnAgentAuthProbe} is what collapses every
- * process-runner failure into that same empty-output shape, so
- * {@link verifyAgentAuth} has exactly one failure mode to reduce, not two.
+ * thrown error. The receipt retains a fixed, sanitized reason without CLI output.
  */
 import type { ServerProviderAuthStatus, ZeropsAgentId } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
@@ -103,27 +102,24 @@ export interface AgentAuthProbeOutcome {
   readonly stdout: string;
   readonly stderr: string;
   readonly code: number | null;
+  readonly timedOut?: boolean;
+  readonly reason?: string;
 }
 
 /**
  * Runs one probe command and reports what it printed. Never fails — see the
  * module header for why every process-runner error reduces to the same
- * empty-output outcome here rather than a distinct error channel.
+ * sanitized outcome here rather than a distinct error channel.
  */
 export type AgentAuthProbeSpawn = (
   command: string,
   args: ReadonlyArray<string>,
 ) => Effect.Effect<AgentAuthProbeOutcome>;
 
-/** An outcome no probe command would ever legitimately print — every parser reduces it to `unknown`. */
-const EMPTY_PROBE_OUTCOME: AgentAuthProbeOutcome = { stdout: "", stderr: "", code: null };
-
 /**
  * The real spawn: {@link ProcessRunner}, an argv list, never a shell. A
- * missing binary, a timeout, or any other process-runner failure all reduce
- * to {@link EMPTY_PROBE_OUTCOME} — logged as a warning here, since the
- * caller only ever sees "no usable output" and cannot distinguish "the
- * binary is missing" from "the process failed some other way" on its own.
+ * missing binary or spawn failure has a sanitized reason; timeouts retain
+ * their own outcome. Raw output and exception text never enter the receipt.
  */
 export const spawnAgentAuthProbe =
   (
@@ -155,7 +151,12 @@ export const spawnAgentAuthProbe =
             cause,
           }),
         ),
-        Effect.orElseSucceed(() => EMPTY_PROBE_OUTCOME),
+        Effect.orElseSucceed(() => ({
+          stdout: "",
+          stderr: "",
+          code: null,
+          reason: "The login check could not be started.",
+        })),
       );
 
 /**
@@ -168,11 +169,34 @@ export const spawnAgentAuthProbe =
 export const verifyAgentAuth = (
   agentId: ZeropsAgentId,
   spawn: AgentAuthProbeSpawn,
-): Effect.Effect<ServerProviderAuthStatus> =>
+): Effect.Effect<AgentAuthVerification> =>
   Effect.gen(function* () {
     const { command, args } = AGENT_AUTH_PROBE_COMMAND[agentId];
     const outcome = yield* spawn(command, args);
-    return agentId === "claude-code"
-      ? parseClaudeAuthStatus(outcome.stdout)
-      : parseCodexLoginStatus(outcome.stdout, outcome.stderr);
+    const status =
+      outcome.timedOut || outcome.reason
+        ? "unknown"
+        : agentId === "claude-code"
+          ? parseClaudeAuthStatus(outcome.stdout)
+          : parseCodexLoginStatus(outcome.stdout, outcome.stderr);
+    return {
+      status,
+      checkedAt: yield* Clock.currentTimeMillis,
+      ...(status === "unknown"
+        ? {
+            reason: outcome.timedOut
+              ? "The login check timed out."
+              : (outcome.reason ??
+                (outcome.code === null
+                  ? "The login check did not finish."
+                  : "The login check returned an unrecognized answer.")),
+          }
+        : {}),
+    };
   });
+
+export interface AgentAuthVerification {
+  readonly status: ServerProviderAuthStatus;
+  readonly checkedAt: number;
+  readonly reason?: string;
+}

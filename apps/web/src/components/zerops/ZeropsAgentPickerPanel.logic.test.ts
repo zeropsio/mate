@@ -235,3 +235,23 @@ describe("zeropsAgentPickerSomeoneElseStatus", () => {
     );
   });
 });
+
+describe("ended auth attempts", () => {
+  it.each(["check-again", "register-again"] as const)(
+    "shows %s as ended and points to Coding agents",
+    (action) => {
+      const view = resolveZeropsAgentPickerPanelView({
+        agentId: "codex",
+        availability: { kind: "registering", ended: { action, reason: "The attempt failed." } },
+      });
+      expect(view.statusLine).toContain(
+        action === "check-again" ? "Couldn't verify" : "Registration failed",
+      );
+      expect(view.statusLine).toContain(
+        action === "check-again" ? "Check again" : "Register again",
+      );
+      expect(view.statusLine).toContain("Coding agents");
+      expect(view.primaryAction).toBeNull();
+    },
+  );
+});

@@ -54,12 +54,14 @@ import {
   type ZeropsAgentAuthKind,
 } from "@t3tools/shared/zeropsAgentAuth";
 import type {
+  ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
   ZeropsAgentId,
   ZeropsAgentLoginPhase,
 } from "@t3tools/contracts";
 
 import type { ZeropsAgentAuthorizer } from "./agentOwnership.ts";
+import { agentAuthAction } from "./agentLogin.ts";
 import { mateLoginAsAgentRow } from "./logins.ts";
 import type { Known } from "./knowledge/index.ts";
 
@@ -69,7 +71,7 @@ export type ZeropsAgentSignInKind = Exclude<
   "authorized" | "registering"
 >;
 
-export type ZeropsAgentAvailability =
+export type ZeropsAgentAvailability = (
   | { readonly kind: "ready" }
   /** Signed in inside this container, the project flag seconds away — the CLI works, only ownership decides. */
   | { readonly kind: "registering" }
@@ -81,7 +83,13 @@ export type ZeropsAgentAvailability =
   /** Signed in on the project, but no signer was recorded for it. */
   | { readonly kind: "unrecorded" }
   /** The agent's row is not known yet, or its read failed: the read says which. */
-  | { readonly kind: "unknown"; readonly read: ZeropsAgentAuthUnknown };
+  | { readonly kind: "unknown"; readonly read: ZeropsAgentAuthUnknown }
+) & {
+  readonly ended?: {
+    readonly action: "check-again" | "register-again";
+    readonly reason?: string | undefined;
+  };
+};
 
 const IN_PROGRESS_LOGIN_PHASES: ReadonlySet<ZeropsAgentLoginPhase> = new Set([
   "starting",
@@ -91,7 +99,8 @@ const IN_PROGRESS_LOGIN_PHASES: ReadonlySet<ZeropsAgentLoginPhase> = new Set([
 ]);
 
 /** One agent's row of the agent-auth feed (C13), with the signer of record (C14). */
-export interface ZeropsAgentAuthFacts extends ZeropsAgentAuthFields {
+export interface ZeropsAgentAuthFacts
+  extends ZeropsAgentAuthFields, Pick<ZeropsAgentAuth, "verification" | "registration"> {
   readonly flagToken: boolean;
   /** Only the phase matters here — the rest of the login session is presentation. */
   readonly loginPhase?: ZeropsAgentLoginPhase | undefined;
@@ -203,6 +212,17 @@ export function resolveZeropsAgentAvailability(
     return { kind: "signing-in" };
   }
 
+  const action = agentAuthAction(agent);
+  if (
+    otherwise.kind !== "ready" &&
+    otherwise.kind !== "someone-else" &&
+    (action === "check-again" || action === "register-again")
+  ) {
+    return {
+      ...otherwise,
+      ended: { action, reason: agent.verification?.reason ?? agent.registration?.reason },
+    };
+  }
   return otherwise;
 }
 

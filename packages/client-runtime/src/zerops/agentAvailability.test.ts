@@ -405,3 +405,29 @@ describe("zeropsLoginAuthReads", () => {
     ).toBeUndefined();
   });
 });
+
+describe("ended auth attempts in the picker", () => {
+  it("carries the recovery outcome without changing ownership or admission", () => {
+    const row = {
+      ...signedIn,
+      state: "local-only" as const,
+      providerAuth: "unknown" as const,
+      verification: {
+        status: "unknown" as const,
+        checkedAt: 1,
+        reason: "The login check timed out.",
+      },
+      authorizedBy: { subject: JAN },
+    };
+    const result = resolveZeropsAgentAvailability({ agent: known(row), viewerSubject: JAN });
+    expect(result).toEqual({
+      kind: "registering",
+      ended: { action: "check-again", reason: "The login check timed out." },
+    });
+    expect(zeropsAgentAvailabilityIsRunnable(result)).toBe(true);
+    expect(resolveZeropsAgentAvailability({ agent: known(row), viewerSubject: EVA })).toEqual({
+      kind: "someone-else",
+      signerId: JAN,
+    });
+  });
+});

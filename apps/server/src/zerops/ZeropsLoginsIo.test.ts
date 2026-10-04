@@ -7,6 +7,7 @@ import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as TestClock from "effect/testing/TestClock";
 import * as Stream from "effect/Stream";
 
 import type {
@@ -88,7 +89,13 @@ const makeHarness = (input: {
       homeDir,
       verify: (login) =>
         Ref.update(verifies, (all) => [...all, login.id]).pipe(
-          Effect.as(input.verified ?? "authenticated"),
+          Effect.as({
+            status: input.verified ?? "authenticated",
+            checkedAt: 0,
+            ...(input.verified === "unknown"
+              ? { reason: "The login check returned an unrecognized answer." }
+              : {}),
+          }),
         ),
       reconcile: (id, verified) => Ref.update(reconciled, (all) => [...all, `${id}:${verified}`]),
       signIns,
@@ -223,6 +230,43 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
 
   // Eva signs in over Jan: the walker keeps her sign-in, then asks for the re-check whose
   // publish names her.
+  it.effect("an extra login ends an inconclusive check, and Check again asks once", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fs, homeDir, logins, fakeWatch, verifies } = yield* makeHarness({
+          verified: "unknown",
+        });
+        const subscription = yield* logins.subscribe;
+        const { id } = yield* logins.add(
+          { agent: "codex", kind: "subscription", label: "work" },
+          SESSION,
+        );
+        const target = `${homeDir}/.mate/logins/${id}/auth.json`;
+        yield* fs.writeFileString(target, "{}");
+        fakeWatch.trigger(target);
+        const ended = yield* listWhere(subscription, (rows) =>
+          rows.some((row) => row.id === id && row.verification?.status === "unknown"),
+        );
+        assert.strictEqual(
+          ended.find((row) => row.id === id)?.verification?.reason,
+          "The login check returned an unrecognized answer.",
+        );
+        assert.deepEqual(yield* Ref.get(verifies), [id]);
+        yield* logins.recheckNow(id);
+        yield* listWhere(subscription, (rows) =>
+          rows.some(
+            (row) =>
+              row.id === id &&
+              row.verification?.generation ===
+                (ended.find((entry) => entry.id === id)?.verification?.generation ?? 0) + 1 &&
+              row.verification.status === "unknown",
+          ),
+        );
+        assert.deepEqual(yield* Ref.get(verifies), [id, id]);
+      }),
+    ),
+  );
+
   it.effect("names who signed in here with the re-check that follows the sign-in", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -275,7 +319,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           ...before.settings.options,
           isZeropsEnvironment: true,
           homeDir: before.homeDir,
-          verify: () => Effect.succeed("authenticated" as const),
+          verify: () => Effect.succeed({ status: "authenticated" as const, checkedAt: 0 }),
           watch: makeFakeWatch().watch,
           checkDebounce: Duration.millis(10),
         });
@@ -460,6 +504,39 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           logins.add({ agent: "codex", kind: "subscription", label: "home" }, SESSION),
         );
         assert.strictEqual(refused.reason, "unavailable");
+      }),
+    ),
+  );
+});
+
+it.layer(NodeServices.layer)("extra login attempts stay ended", (it) => {
+  it.effect("time passing makes no check; a manual check makes one", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { fs, homeDir, logins, fakeWatch, verifies } = yield* makeHarness({
+          verified: "unknown",
+        });
+        const subscription = yield* logins.subscribe;
+        const { id } = yield* logins.add(
+          { agent: "codex", kind: "subscription", label: "work" },
+          SESSION,
+        );
+        const target = `${homeDir}/.mate/logins/${id}/auth.json`;
+        yield* fs.writeFileString(target, "{}");
+        fakeWatch.trigger(target);
+        yield* TestClock.adjust("1 second");
+        yield* listWhere(subscription, (rows) =>
+          rows.some((row) => row.id === id && row.verification?.status === "unknown"),
+        );
+        assert.deepEqual(yield* Ref.get(verifies), [id]);
+        yield* TestClock.adjust("1 day");
+        assert.deepEqual(yield* Ref.get(verifies), [id]);
+        yield* logins.recheckNow(id);
+        yield* TestClock.adjust("1 second");
+        yield* listWhere(subscription, (rows) =>
+          rows.some((row) => row.id === id && row.verification?.status === "unknown"),
+        );
+        assert.deepEqual(yield* Ref.get(verifies), [id, id]);
       }),
     ),
   );
