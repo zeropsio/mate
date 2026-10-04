@@ -316,11 +316,16 @@ include those IDs; releasing one project cannot erase another project's table ro
 unopened service answered. Absent metadata is a single attempt, re-read only for a causal source
 change or a person's manual action.
 
-Each active organization has a navigation receiver and each opened project has a detail receiver.
-When demand shrinks, close/rebuild the detail lane to stop released registrations on the wire;
-retain the navigation lane. A failed sibling remains failed during rebuilding. Metrics and metric
-history are separate leases held only while the opened Mate panel and browser tab are visible.
-Panel **Try again** targets that project's held demand, leaving navigation untouched.
+Each active organization has one receiver: one socket login carries navigation and every drawn or
+opened project's subscriptions, each under its own subscription name. When demand shrinks, its
+registrations stop being routed and the socket stays; the platform has no unsubscribe, so a
+released subscription keeps sending until the socket closes. The socket closes with the
+organization's last demand, and is replaced once the subscriptions released on it reach
+`releasedRegistrationsPerReceiver`. A socket failure reconnects that one socket and re-registers
+everything it carried with fresh baselines. A failed sibling remains failed during rebuilding.
+Metrics and metric history are separate leases held only while the opened Mate panel and browser
+tab are visible. Panel **Try again** re-registers that project's held demand on the same socket,
+leaving navigation untouched; on a failed socket it replaces the socket for all it carried.
 
 Desktop source shares the web behavior. Retained mobile source selects an organization and a project
 before reading detail; its first **View project** press supplies that detail demand. Mobile has no

@@ -92,6 +92,16 @@ describe("Zerops data runtime policy", () => {
         registrationAttemptsPerReceiver: 4,
       }),
     ).toThrow("desiredInterestsPerReceiver cannot exceed registrationAttemptsPerReceiver");
+    expect(() =>
+      makeZeropsDataPolicy({
+        desiredInterestsPerReceiver: 1,
+        activeRegistrationsPerAccount: 8,
+        releasedRegistrationsPerReceiver: 4,
+        registrationAttemptsPerReceiver: 11,
+      }),
+    ).toThrow(
+      "activeRegistrationsPerAccount plus releasedRegistrationsPerReceiver cannot exceed registrationAttemptsPerReceiver",
+    );
   });
 });
 
