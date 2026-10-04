@@ -15,6 +15,7 @@ describe("homeView: the home never stands blank while it waits", () => {
     targeted: false,
     remembered: null,
     projectsRead: false,
+    hqMatesRead: true,
   } as const;
   it.each([
     ["landing unknown, nothing remembered: the wait line", {}, { kind: "wait" }],
@@ -45,6 +46,16 @@ describe("homeView: the home never stands blank while it waits", () => {
       "no landing, the projects read whole: the hero",
       { landing: "none", projectsRead: true, remembered: ref },
       { kind: "hero" },
+    ],
+    [
+      "platform and catalog settled, HQ unread: keep waiting",
+      { landing: "none", projectsRead: true, hqMatesRead: false },
+      { kind: "wait" },
+    ],
+    [
+      "platform and catalog settled, HQ unread: keep the remembered opening",
+      { landing: "none", projectsRead: true, hqMatesRead: false, remembered: ref },
+      { kind: "opening", ref },
     ],
     [
       "the draft would not start",
