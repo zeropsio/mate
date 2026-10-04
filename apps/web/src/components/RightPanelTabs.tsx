@@ -204,6 +204,9 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
 function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
   // -1 means no highlight: it only appears on hover or arrow use.
   const [highlight, setHighlight] = useState(-1);
+  // Only an arrow key scrolls the lit card into view: a hovered one is
+  // already where the pointer is.
+  const arrowMovedRef = useRef(false);
 
   const availableActions = props.actions.filter((action) => action.available);
   const highlightIndex =
@@ -237,11 +240,13 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
     if (availableActions.length === 0) return;
     if (event.key === "ArrowDown" || event.key === "ArrowRight") {
       event.preventDefault();
+      arrowMovedRef.current = true;
       setHighlight((highlightIndex + 1) % availableActions.length);
       return;
     }
     if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
       event.preventDefault();
+      arrowMovedRef.current = true;
       setHighlight(
         highlightIndex === -1
           ? availableActions.length - 1
@@ -262,9 +267,21 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
 
   // Stable identity so React only runs this callback ref on mount/unmount;
   // an inline arrow would re-attach and re-focus on every render.
+  const launcherRef = useRef<HTMLDivElement | null>(null);
   const focusOnMount = useCallback((node: HTMLDivElement | null) => {
+    launcherRef.current = node;
     node?.focus();
   }, []);
+
+  // A one-column launcher outgrows a narrow panel and scrolls: the lit card
+  // comes into view, or Enter would open a card the person can't see.
+  useEffect(() => {
+    if (highlightIndex === -1 || !arrowMovedRef.current) return;
+    arrowMovedRef.current = false;
+    launcherRef.current
+      ?.querySelector("[data-surface-launcher-highlighted]")
+      ?.scrollIntoView({ block: "nearest" });
+  }, [highlightIndex]);
 
   const isHighlighted = (action: SurfaceAction) =>
     highlightIndex !== -1 && availableActions[highlightIndex] === action;
@@ -326,12 +343,15 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
                 key={action.label}
                 type="button"
                 onClick={action.onClick}
-                onMouseEnter={() => setHighlight(availableActions.indexOf(action))}
+                // Move, not enter: a list the arrow keys scroll slides cards under a
+                // resting pointer, and an enter would take the highlight back.
+                onMouseMove={() => setHighlight(availableActions.indexOf(action))}
                 onMouseLeave={() =>
                   setHighlight((current) =>
                     current === availableActions.indexOf(action) ? -1 : current,
                   )
                 }
+                data-surface-launcher-highlighted={isHighlighted(action) ? "" : undefined}
                 className={cn(
                   "cursor-pointer transition hover:border-border hover:bg-accent/60",
                   cardShellClass,
