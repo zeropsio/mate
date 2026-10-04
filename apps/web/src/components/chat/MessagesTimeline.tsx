@@ -44,6 +44,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { createEndFollow, type EndFollow } from "./timelineEndFollow";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { FileDiff } from "@pierre/diffs/react";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
@@ -247,14 +248,6 @@ function TimelineLoadEarlierHeader({
 }
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
-const TIMELINE_MAINTAIN_SCROLL_AT_END = {
-  animated: false,
-  on: {
-    dataChange: true,
-    itemLayout: true,
-    layout: true,
-  },
-} as const;
 /**
  * How far from the end growth at the end is still followed, in viewports.
  * Following is ours to switch off — every gesture that moves the viewport
@@ -424,6 +417,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const restoringReadingPosition = !positionRestored;
   const [minimapStripMap] = useState(() => new Map<string, HTMLSpanElement>());
   const endRepinFrameRef = useRef<number | null>(null);
+
   const previousContentInsetEndAdjustmentRef = useRef(contentInsetEndAdjustment);
 
   useLayoutEffect(() => {
@@ -666,6 +660,39 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   useLayoutEffect(() => {
     followingEndRef.current = followingEnd;
   }, [followingEnd]);
+  // What keeps the list at its end while it follows (`createEndFollow`): at
+  // once for growth that comes a few pixels a frame, by a glide for a step.
+  // The list's own keeping is off: it jumps.
+  const endFollowRef = useRef<EndFollow | null>(null);
+  useEffect(() => {
+    const endFollow = createEndFollow({
+      viewport: () => listRef.current?.getScrollableNode() ?? null,
+      // Within a viewport of its end, as the list reads it: a place put back
+      // further up is the reader's, however follow stands.
+      follows: () =>
+        followingEndRef.current &&
+        listRef.current?.getState?.().isWithinMaintainScrollAtEndThreshold !== false,
+    });
+    endFollowRef.current = endFollow;
+    return () => {
+      endFollow.stop();
+      endFollowRef.current = null;
+    };
+  }, [listRef]);
+  const followEnd = useCallback(() => endFollowRef.current?.follow(), []);
+  // Rows arriving, and the viewport resizing, move the end too.
+  useLayoutEffect(() => {
+    if (!followingEnd || !listPlaced || rows.length === 0) return;
+    const frame = requestAnimationFrame(followEnd);
+    return () => cancelAnimationFrame(frame);
+  }, [followEnd, followingEnd, listPlaced, rows]);
+  useEffect(() => {
+    const viewport = timelineViewportElement;
+    if (viewport === null || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(followEnd);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [followEnd, timelineViewportElement]);
   // LegendList re-pins the end itself only for a measurement that moved a row
   // by more than 5 px, so a row easing taller is followed here too — on the
   // next frame, as LegendList does: the scroll range takes the growth once the
@@ -684,24 +711,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       ) {
         return;
       }
-      const pin = () => {
-        const viewport = listRef.current?.getScrollableNode();
-        // A gesture since the growth handed the viewport to the person.
-        if (!followingEndRef.current || !viewport) return;
-        viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight;
-      };
       // In the frame the row grew, once the list has drawn its new size (its
       // render runs in a microtask queued before this one), so nothing under
       // the reader moves for a frame; and again on the next frame, for a
       // render the list put off.
-      queueMicrotask(pin);
+      queueMicrotask(followEnd);
       if (endRepinFrameRef.current !== null) return;
       endRepinFrameRef.current = requestAnimationFrame(() => {
         endRepinFrameRef.current = null;
-        pin();
+        followEnd();
       });
     },
-    [listRef],
+    [followEnd, listRef],
   );
 
   // Where the person is, kept as they move, by row: the row at the reading
@@ -1341,7 +1362,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               // Off, no band: an end scroll LegendList queued before the person
               // left is dropped once their scroll lands.
               maintainScrollAtEndThreshold={followingEnd ? TIMELINE_FOLLOW_THRESHOLD : 0}
-              maintainScrollAtEnd={followingEnd ? TIMELINE_MAINTAIN_SCROLL_AT_END : false}
+              // The end is kept here (`createEndFollow`), never by the list: its keeping jumps.
+              maintainScrollAtEnd={false}
               onItemSizeChanged={onItemSizeChanged}
               maintainVisibleContentPosition={
                 restoringReadingPosition ? false : MAINTAIN_VISIBLE_CONTENT_POSITION
