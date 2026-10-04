@@ -747,6 +747,7 @@ describe("the recipe's proposal, as HQ holds it", () => {
     updatedAt: "2026-10-02T09:00:00.000Z",
     mergeability: "clean",
     behind: false,
+    comments: 0,
     ...over,
   });
   const flow = (changes: ReadonlyArray<HqChange>) =>
