@@ -310,6 +310,12 @@ export {
   type FlowRelease,
   type FlowReleaseRow,
 } from "./release.ts";
+
+export {
+  releaseVersionField,
+  releaseVersionSuggestions,
+  type ReleaseVersionSuggestion,
+} from "./releaseVersion.ts";
 export {
   appRecipeOf,
   deployWord,

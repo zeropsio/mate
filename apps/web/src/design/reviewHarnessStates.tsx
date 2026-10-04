@@ -5,6 +5,7 @@
 import {
   changeReadout,
   changeRemarks,
+  releaseVersionField,
   type ChangeReadout,
   type FlowPullRequest,
   type ReviewClose,
@@ -549,7 +550,9 @@ function Release({
   onOpenChange,
   onClose = noop,
   over,
+  initialVersion,
 }: {
+  readonly initialVersion?: string;
   readonly over?: Partial<Parameters<typeof ReleaseReviewView>[0]>;
   readonly outcome?: Parameters<typeof ReleaseReviewView>[0]["outcome"];
   readonly press?: ReviewPress;
@@ -557,6 +560,8 @@ function Release({
   readonly onOpenChange?: Parameters<typeof ReleaseReviewView>[0]["onOpenChange"];
   readonly onClose?: () => void;
 }) {
+  const [version, setVersion] = useState(initialVersion ?? "0.1.57");
+  const tag = releaseVersionField(version, ["v0.1.56"]).tag ?? "v0.1.57";
   return (
     <ReleaseReviewView
       onOpenChange={onOpenChange}
@@ -575,7 +580,14 @@ function Release({
       press={press}
       rows={RELEASE_ROWS}
       services={["app", "api"]}
-      tag="v0.1.57"
+      tag={tag}
+      version={{
+        value: version,
+        onChange: setVersion,
+        nextPatch: "v0.1.57",
+        tags: ["v0.1.56"],
+        suggestions: [{ tag: "v1.0.0", source: "appdev/package.json" }],
+      }}
       untold={[]}
       where={WHERE}
       {...over}
@@ -1049,6 +1061,16 @@ export const REVIEW_STATES: ReadonlyArray<{
     ),
   },
   { id: "release", label: "A release", node: <Release /> },
+  {
+    id: "release-version",
+    label: "The person's version, with the code's declaration",
+    node: <Release initialVersion="1.0.0" />,
+  },
+  {
+    id: "release-version-invalid",
+    label: "A version that already exists",
+    node: <Release initialVersion="0.1.56" />,
+  },
   {
     id: "releasing",
     label: "Releasing",

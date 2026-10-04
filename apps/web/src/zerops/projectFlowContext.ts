@@ -147,9 +147,9 @@ export interface ZeropsProjectFlowValue {
   readonly trouble: string | null;
   /**
    * A release made in HQ as the person, of what the offer shows: its `entries`, named its
-   * `suggestion`, tagging the `groupHead` it was read with (`release.ts`).
+   * chosen tag (the next patch by default), tagging the `groupHead` it was read with (`release.ts`).
    */
-  readonly release: (groupId: string) => Promise<FlowVerbOutcome>;
+  readonly release: (groupId: string, tag?: string) => Promise<FlowVerbOutcome>;
   /** A new release made in HQ as the person, listing an earlier release's entries (guide 5.6). */
   readonly rollBack: (groupId: string, tag: string) => Promise<FlowVerbOutcome>;
   /**

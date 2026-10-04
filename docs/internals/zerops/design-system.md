@@ -572,6 +572,12 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     closing · close refused · closed without merging; a release: ready · blocked · releasing · released ·
     failed; a roll back: ready · rolling back · rolled back · refused; a crew task: ready · add what
     it has · conflict · check failed · in Fen's code
+  - A release offered to the person has a Version field after the verdict. It defaults to the
+    next patch; a typed version updates the title, consequence and release button together. A
+    root `VERSION` or `package.json` declaration from main is an optional suggestion, with its
+    source. Invalid or existing versions explain the problem at the field and disable Release.
+    The field leaves when the release starts; the reviewed changes and prior production version
+    are captured at the press. Harness: `release-version`, `release-version-invalid`.
   - _Phrase source:_ client-runtime `reviewVerdict.ts` (`changeReview`, `releaseReview`,
     `rollbackReview`, `crewTaskReview`)
   - _Lands:_ landed 2026-09-29 (pass 16)
