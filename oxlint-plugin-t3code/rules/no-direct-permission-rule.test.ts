@@ -29,6 +29,14 @@ describe("t3code/no-direct-permission-rule", () => {
     `import { type Reason, type Decision } from '@t3tools/shared/zeropsPermissions';`,
   );
   webFile.valid(
+    "allows the reasons, the wire contract's one value",
+    `import { REASONS, type Decision } from "@t3tools/shared/zeropsPermissions";`,
+  );
+  runtimeFile.valid(
+    "allows the wire contract passed on by name",
+    `export { REASONS, type Reason } from "@t3tools/shared/zeropsPermissions";`,
+  );
+  webFile.valid(
     "allows a type re-export",
     `export type { Reason } from "@t3tools/shared/zeropsPermissions";`,
   );
@@ -53,8 +61,8 @@ describe("t3code/no-direct-permission-rule", () => {
     `import { can } from "@t3tools/shared/zeropsPermissions";`,
   );
   webFile.invalid(
-    "reports one in single quotes",
-    `import { REASONS } from '@t3tools/shared/zeropsPermissions';`,
+    "reports a value beyond the wire contract",
+    `import { REASONS, decide } from '@t3tools/shared/zeropsPermissions';`,
   );
   webFile.invalid(
     "reports a namespace import",

@@ -9,10 +9,15 @@ import { getPropertyName, resolveVariable, unwrapExpression } from "../utils.ts"
  * HQ's permission rule (`can`, `apps/hq/src/permissions.ts`) is HQ's alone: HQ decides every verb,
  * enforces each write by it and streams what it offers (`@t3tools/shared/hqOffers`); the client
  * draws those decisions and decides none. In the client and shared sources, any import of HQ's
- * module at all, any value imported or re-exported from the rule's wire contract
- * (`@t3tools/shared/zeropsPermissions`, whose reasons and decision shape come in as types), and any
- * facts built `fresh` are reported — with no exception. HQ and the server are not client sources;
- * tests are not either.
+ * module at all, anything from the rule's wire contract (`@t3tools/shared/zeropsPermissions`) but
+ * its reasons and a decision's shape (`REASONS`, `Reason`, `Decision`), and any facts built `fresh`
+ * are reported — with no exception. HQ and the server are not client sources; tests are not either.
+ *
+ * Not HQ's rule, and not reported: the Mate door's own (`zeropsRoleAnswer`, which
+ * `resolveMateVisibility` in `client-runtime/src/zerops/mateAccess.ts` asks — on web, in mobile and
+ * in `data/access/verifier.ts`, one implementation with the door that enforces it), and the role
+ * floors of what Zerops itself executes (`resolveMateVerbs`, `resolveMateProjectRole`), whose
+ * refusal Zerops words.
  */
 const RULE_NAME = "no-direct-permission-rule";
 
@@ -55,15 +60,24 @@ const namesRuleModule = (source: unknown): boolean => MODULE_SOURCE.test(sourceO
 
 const namesHq = (source: unknown): boolean => HQ_SOURCE.test(sourceOf(source) ?? "");
 
-/** Whether every specifier brings in a type alone. */
-const typesOnly = (
+/** The rule's wire contract: what a client may take from its module. */
+const WIRE_CONTRACT: ReadonlySet<string> = new Set(["REASONS", "Reason", "Decision"]);
+
+const specifierName = (name: ESTree.IdentifierName | ESTree.StringLiteral): string =>
+  name.type === "Literal" ? String(name.value) : name.name;
+
+/** Whether every specifier brings in a type alone, or a part of the wire contract. */
+const contractOnly = (
   specifiers: ReadonlyArray<ESTree.ImportDeclarationSpecifier | ESTree.ExportSpecifier>,
 ): boolean =>
   specifiers.length > 0 &&
   specifiers.every(
     (specifier) =>
-      (specifier.type === "ImportSpecifier" && specifier.importKind === "type") ||
-      (specifier.type === "ExportSpecifier" && specifier.exportKind === "type"),
+      (specifier.type === "ImportSpecifier" &&
+        (specifier.importKind === "type" ||
+          WIRE_CONTRACT.has(specifierName(specifier.imported)))) ||
+      (specifier.type === "ExportSpecifier" &&
+        (specifier.exportKind === "type" || WIRE_CONTRACT.has(specifierName(specifier.local)))),
   );
 
 const isFreshLiteral = (node: Option.Option<ESTree.Node>): boolean =>
@@ -114,27 +128,24 @@ export default defineRule({
       ImportDeclaration(node) {
         if (namesHq(node.source)) return report(node, HQ_ALONE);
         if (!namesRuleModule(node.source)) return;
-        if (node.importKind === "type" || typesOnly(node.specifiers)) return;
-        report(
-          node,
-          "Import the rule's wire contract as types alone: HQ decides, the client draws.",
-        );
+        if (node.importKind === "type" || contractOnly(node.specifiers)) return;
+        report(node, "Import the rule's wire contract alone: HQ decides, the client draws.");
       },
       ExportNamedDeclaration(node) {
         if (namesHq(node.source)) return report(node, HQ_ALONE);
         if (!namesRuleModule(node.source)) return;
-        if (node.exportKind === "type" || typesOnly(node.specifiers)) return;
-        report(node, "Re-export the rule's wire contract as types alone.");
+        if (node.exportKind === "type" || contractOnly(node.specifiers)) return;
+        report(node, "Re-export the rule's wire contract alone.");
       },
       ExportAllDeclaration(node) {
         if (namesHq(node.source)) return report(node, HQ_ALONE);
         if (!namesRuleModule(node.source) || node.exportKind === "type") return;
-        report(node, "Re-export the rule's wire contract as types alone.");
+        report(node, "Re-export the rule's wire contract alone, by name.");
       },
       ImportExpression(node) {
         if (namesHq(node.source)) return report(node, HQ_ALONE);
         if (!namesRuleModule(node.source)) return;
-        report(node, "Never load the rule's wire contract here: import its types.");
+        report(node, "Never load the rule's wire contract here: import it by name.");
       },
       Property(node) {
         if (Option.getOrUndefined(getPropertyName(node.key)) !== "freshness") return;
