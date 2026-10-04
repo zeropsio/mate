@@ -172,7 +172,8 @@ both; receiver replacement and replay of desired interests is the conservative
 fallback for registration churn. Never recycle another account's receiver.
 A shared physical observation is admitted once, using a still-current dependent selected when
 ingestion runs. A failed interest retains no automatic retry budget or intermediate recovering state.
-A late successful completion cannot move a failed or paused interest back to observing.
+A late successful completion cannot move a failed or paused interest back to observing; a failed
+hydration or metadata read that answers on its retry lifts only the failure it caused.
 
 Registration requests share one account-wide concurrency bound. The organization
 inventory's own registrations, its project feed and project list, are admitted
