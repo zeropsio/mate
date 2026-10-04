@@ -17,7 +17,7 @@ import { Atom } from "effect/unstable/reactivity";
 
 import type { ZeropsPublicAccess } from "../publicRoutes.ts";
 import type { ZeropsLocation, ZeropsOrganizationMember } from "../api.ts";
-import type { ZeropsIntegrationToken, ZeropsProjectGrant } from "../groupReach.ts";
+import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import {
   advance,
   newCell,
@@ -97,15 +97,12 @@ export type ZeropsCellRequest =
 
 export type ZeropsCellKind = ZeropsCellRequest["kind"];
 
-/** Grant metadata contains no integration-token credential. */
-export interface ZeropsIntegrationTokenGrantMetadata {
+/** A token as the door's throwaway sweep reads it: no credential, no grant. */
+export interface ZeropsIntegrationTokenMetadata {
   readonly tokenId: ZeropsIntegrationToken["id"];
   readonly name: ZeropsIntegrationToken["name"];
-  readonly grants: ReadonlyArray<ZeropsProjectGrant>;
   /** When the platform minted it: the start-up throwaway sweep dates rows by it. */
   readonly created?: string | undefined;
-  /** The token's own org role, written back unchanged with its projects. */
-  readonly roleCode?: string | undefined;
   /** Who minted it: besides an org owner, the one person who may write it. */
   readonly createdByUser?: string | undefined;
 }
@@ -120,7 +117,7 @@ export interface ZeropsCellValues {
    * offering Enable off an `"unknown"` flag would be back to inferring.
    */
   readonly "mate-flag": { readonly enabled: boolean | "unknown" };
-  readonly tokens: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
+  readonly tokens: ReadonlyArray<ZeropsIntegrationTokenMetadata>;
   readonly members: ReadonlyArray<ZeropsOrganizationMember>;
 }
 
@@ -198,7 +195,7 @@ export interface ZeropsCellAdapter {
     request: MateFlagCellRequest,
     context: ZeropsCellReadContext,
   ) => Effect.Effect<ZeropsCellValues["mate-flag"], ZeropsCellSourceError>;
-  readonly readOrganizationIntegrationTokenGrants: (
+  readonly readOrganizationIntegrationTokens: (
     request: TokensCellRequest,
     context: ZeropsCellReadContext,
   ) => Effect.Effect<ZeropsCellValues["tokens"], ZeropsCellSourceError>;
@@ -476,7 +473,7 @@ function readCell(
     case "mate-flag":
       return adapter.readServiceMateFlag(request, context);
     case "tokens":
-      return adapter.readOrganizationIntegrationTokenGrants(request, context);
+      return adapter.readOrganizationIntegrationTokens(request, context);
     case "members":
       return adapter.readOrganizationMembers(request, context);
   }

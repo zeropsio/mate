@@ -55,7 +55,7 @@ import { makeProjectTagWriter, type ProjectTagLocks } from "./tagWriter.ts";
 import type {
   ZeropsCellAdapter,
   ZeropsCellSourceError,
-  ZeropsIntegrationTokenGrantMetadata,
+  ZeropsIntegrationTokenMetadata,
 } from "./cells.ts";
 
 const PUBLIC_WS_PATH = "/api/rest/public/web-socket";
@@ -1474,15 +1474,11 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
   };
 }
 
-/** A token as grant metadata: a token's value never leaves the API client. */
-const tokenGrantMetadata = (
-  token: ZeropsIntegrationToken,
-): ZeropsIntegrationTokenGrantMetadata => ({
+/** A token as metadata: its value never leaves the API client, its grants are not read here. */
+const tokenMetadata = (token: ZeropsIntegrationToken): ZeropsIntegrationTokenMetadata => ({
   tokenId: token.id,
   name: token.name,
-  grants: token.projects ?? [],
   ...(token.created === undefined ? {} : { created: token.created }),
-  ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
   ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
 });
 
@@ -1644,11 +1640,11 @@ export function makeZeropsCellReads(client: ZeropsApiClient): ZeropsCellAdapter 
           return { enabled: "unknown" as const };
         }
       }),
-    readOrganizationIntegrationTokenGrants: (input, context) =>
+    readOrganizationIntegrationTokens: (input, context) =>
       cellRead(async () =>
         (
           await client.listIntegrationTokens(input.organization.organizationId, context.abortSignal)
-        ).map(tokenGrantMetadata),
+        ).map(tokenMetadata),
       ),
     readOrganizationMembers: (input, context) =>
       cellRead(() =>

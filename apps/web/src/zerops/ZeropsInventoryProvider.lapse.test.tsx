@@ -83,7 +83,7 @@ function locationsSource() {
       }),
     readServiceAuthorizedAgents: unavailable,
     readServiceMateFlag: unavailable,
-    readOrganizationIntegrationTokenGrants: unavailable,
+    readOrganizationIntegrationTokens: unavailable,
     readOrganizationMembers: unavailable,
   };
   return { adapter, reads: () => reads };

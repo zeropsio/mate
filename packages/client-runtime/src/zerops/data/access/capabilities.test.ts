@@ -65,7 +65,7 @@ const cellAdapter: ZeropsCellAdapter = {
   readOrganizationLocations: () => Effect.succeed([]),
   readServiceAuthorizedAgents: () => Effect.succeed(["codex"]),
   readServiceMateFlag: () => Effect.succeed({ enabled: "unknown" }),
-  readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
+  readOrganizationIntegrationTokens: () => Effect.succeed([]),
   readOrganizationMembers: () => Effect.succeed([]),
 };
 

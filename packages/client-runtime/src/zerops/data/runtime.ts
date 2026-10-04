@@ -786,7 +786,7 @@ const unavailableCellAdapter: ZeropsCellAdapter = {
   readOrganizationLocations: unavailableResource,
   readServiceAuthorizedAgents: unavailableResource,
   readServiceMateFlag: unavailableResource,
-  readOrganizationIntegrationTokenGrants: unavailableResource,
+  readOrganizationIntegrationTokens: unavailableResource,
   readOrganizationMembers: unavailableResource,
 };
 
