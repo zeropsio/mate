@@ -124,7 +124,7 @@ export interface Cell<T> {
   /**
    * A read is owed: the value was invalidated during a read (M3), or no source stated its
    * coverage. Only a value admitted with stated coverage, newer than every admitted
-   * invalidation, settles it; a failed read leaves it owed under the retry schedule.
+   * invalidation, settles it; a failed read leaves it owed until Read again or a new input.
    */
   readonly dirty: boolean;
 }
