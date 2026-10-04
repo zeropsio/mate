@@ -19,10 +19,10 @@
  *   envelope, a failed one carries none by design, and the strip still has to
  *   read "deploying". A log, not a state machine.
  */
-import * as Clock from "effect/Clock";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
-import * as Duration from "effect/Duration";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -102,10 +102,6 @@ const withRecentTool = (
       : recentTools.map((tool, position) => (position === index ? entry : tool));
   return next.slice(-ZEROPS_RECENT_TOOLS_LIMIT);
 };
-
-const INGEST_RESTART_FIRST = Duration.seconds(1);
-/** The longest wait between two restarts, and the run length that counts as healthy. */
-const INGEST_RESTART_CAP = Duration.seconds(30);
 
 export interface ZeropsLifecycleOptions {
   readonly toolEvents: Stream.Stream<SpiEvent>;
@@ -262,30 +258,38 @@ export const make = (options: ZeropsLifecycleOptions) =>
         ),
       );
 
-    // The ingest is the feed's only writer, so it must not end quietly: a
-    // failure of the event stream itself is logged and the stream
-    // resubscribed, backing off to one attempt every 30 s. A run that lasted
-    // longer than that was healthy, so the failure that ended it starts the
-    // backoff from the first rung again.
-    yield* Effect.gen(function* () {
-      let delay = INGEST_RESTART_FIRST;
-      while (true) {
-        const startedAt = yield* Clock.currentTimeMillis;
-        const exit = yield* Effect.exit(Stream.runForEach(toolEvents, ingest));
+    // The source cannot replay events missed while unsubscribed. A failure
+    // ends every reader of this attempt, with the gap named in its reason.
+    // Reopening a subscription is the explicit Read again action; it starts
+    // one shared attempt. A clean segment end may continue once, but a failed
+    // continuation never starts another stream.
+    const serviceScope = yield* Effect.scope;
+    let stopped = yield* Deferred.make<void>();
+    const start = (ending: Deferred.Deferred<void>) =>
+      Effect.gen(function* () {
+        let exit = yield* Effect.exit(Stream.runForEach(toolEvents, ingest));
         if (Exit.isSuccess(exit)) {
-          return;
+          exit = yield* Effect.exit(Stream.runForEach(toolEvents, ingest));
         }
-        const ranFor = Duration.millis((yield* Clock.currentTimeMillis) - startedAt);
-        if (Duration.isGreaterThan(ranFor, INGEST_RESTART_CAP)) {
-          delay = INGEST_RESTART_FIRST;
-        }
-        yield* Effect.logError("Zerops lifecycle ingest failed; restarting it", {
-          cause: exit.cause,
-        });
-        yield* Effect.sleep(delay);
-        delay = Duration.min(Duration.times(delay, 2), INGEST_RESTART_CAP);
-      }
-    }).pipe(Effect.forkScoped);
+        const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined;
+        const reason =
+          failure === undefined
+            ? "the provider activity stream ended"
+            : failure instanceof Error
+              ? failure.message
+              : String(failure);
+        yield* Effect.logError(
+          "Activity feed stopped",
+          Exit.isFailure(exit) ? { cause: exit.cause } : { reason },
+        );
+        yield* Deferred.die(
+          ending,
+          new Error(
+            `Activity feed stopped: ${reason}. Some activity unavailable. Read again by reopening the activity feed.`,
+          ),
+        );
+      }).pipe(Effect.forkIn(serviceScope));
+    yield* start(stopped);
 
     return {
       get: (threadId) => writeMutex.withPermits(1)(loadOrEmpty(threadId)),
@@ -294,9 +298,19 @@ export const make = (options: ZeropsLifecycleOptions) =>
       subscribe: (threadId) =>
         writeMutex.withPermits(1)(
           Effect.gen(function* () {
+            if (yield* Deferred.isDone(stopped)) {
+              stopped = yield* Deferred.make<void>();
+              yield* start(stopped);
+            }
+            const ending = stopped;
             const subscription = yield* PubSub.subscribe(yield* channel(threadId));
             const latest = yield* loadOrEmpty(threadId);
-            return { latest, changes: Stream.fromSubscription(subscription) };
+            return {
+              latest,
+              changes: Stream.fromSubscription(subscription).pipe(
+                Stream.interruptWhen(Deferred.await(ending)),
+              ),
+            };
           }),
         ),
       ingest,
