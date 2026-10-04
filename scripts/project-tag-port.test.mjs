@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { planProjectTagPort } from "./project-tag-port.mjs";
+import { originMateFaces } from "./port-mate-faces.ts";
 const snapshot = {
   apps: [
     {
@@ -108,5 +109,18 @@ describe("cleanup admission", () => {
     } finally {
       log.mockRestore();
     }
+  });
+});
+
+it("fills a missing face with the parallel face port's whole-org origin assignment", () => {
+  const projects = [
+    { id: "p", name: "New name", tags: ["mate", "mate:bot:Original"] },
+    { id: "q", name: "Other", tags: ["mate"] },
+  ];
+  const expected = originMateFaces(projects).get("p");
+  const read = { apps: [], ungrouped: [{ projectId: "p", mate: { face: "" } }], mates: {} };
+  expect(planProjectTagPort(projects[0], read, projects).fill).toContainEqual({
+    field: "face",
+    value: expected,
   });
 });

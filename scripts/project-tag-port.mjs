@@ -1,4 +1,5 @@
 /** One-off port only: legacy Zerops tags are admitted here, never by product readers. */
+import { originMateFaces } from "./port-mate-faces.ts";
 const valueOf = (tags, prefix) => tags.find((tag) => tag.startsWith(prefix))?.slice(prefix.length);
 const rowsOf = (snapshot) => [
   ...(snapshot.ungrouped ?? []).map((row) => ({ ...row, kind: "mate", appId: null })),
@@ -15,7 +16,18 @@ export function planProjectTagPort(project, snapshot, projects = []) {
     if (value !== undefined && (current === undefined || current === null || current === ""))
       fill.push({ field, value });
   };
-  fact("face", valueOf(tags, "mate:face:"), held?.mate?.face);
+  const pool = projects.length === 0 ? [project] : projects;
+  const faces = originMateFaces(
+    pool
+      .filter((candidate) => typeof candidate.name === "string")
+      .map((candidate) => ({
+        ...candidate,
+        hasMateContainer: rowsOf(snapshot).some(
+          (row) => row.projectId === candidate.id && row.mate != null,
+        ),
+      })),
+  );
+  fact("face", faces.get(project.id) ?? valueOf(tags, "mate:face:"), held?.mate?.face);
   fact("madeBy", valueOf(tags, "mate:by:"), held?.mate?.madeBy);
   fact("birthId", valueOf(tags, "mate:birth:"), held?.mate?.birthId);
   fact("standupRequestedBy", valueOf(tags, "mate:standup:"), held?.mate?.standupRequestedBy);

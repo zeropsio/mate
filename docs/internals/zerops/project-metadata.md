@@ -16,8 +16,11 @@ receipts until the organization anchor names the official HQ. Recovery reads tha
 project id, never a project tag. A project with HQ's services and no readable journal stops setup
 for inspection instead of authorizing another import.
 
-`scripts/project-tag-port.mjs` is the sole legacy-tag reader, used by the local cleanup command.
-It preserves absent HQ facts through the admin-only `/api/project-metadata/port` endpoint,
+The local cleanup command reads legacy tags only through `scripts/project-tag-port.mjs` and
+`scripts/port-mate-faces.ts`.
+It resolves missing faces with `scripts/port-mate-faces.ts` from the whole organization’s origin
+pool, sharing the face port’s assignment. It preserves absent HQ facts through the admin-only
+`/api/project-metadata/port` endpoint,
 verifies the HQ structure, then removes tags in one checked attempt. Existing HQ facts win.
 Unknown metadata and unresolved application ids block removal. The command defaults to dry-run;
 its apply guard comes from the cutover tooling's project allowlists. Old Gitea registry records
