@@ -185,8 +185,6 @@ export {
   ENVIRONMENT_SERVICE_WAIT_CAP_MS,
   PROJECT_CREATE_POLL_INTERVAL_MS,
   PROJECT_CREATE_WAIT_CAP_MS,
-  PRESS_STEP_ATTEMPTS,
-  PRESS_STEP_RETRY_MS,
   resumableEnvironmentCreationStep,
   runEnvironmentCreation,
   type EnvironmentCreationOutcome,

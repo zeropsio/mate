@@ -1,6 +1,5 @@
 import {
   finishMateSetupVerb,
-  PRESS_STEP_ATTEMPTS,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
@@ -33,9 +32,7 @@ import {
   PRESS_CALL_CAP_MS,
   PRESS_CALL_SILENT,
   pressPlatform,
-  STOPPED_SHOWN_MS,
   whilePressing,
-  withPressTries,
   type MatePress,
   type MatePressState,
 } from "./matePress";
@@ -315,7 +312,7 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
 
   it("settles a press that stopped with Try again, which resumes it at the step that stopped", async () => {
     begin();
-    const refusals = Array.from({ length: 4 }, () => "refused" as const);
+    const refusals: Array<"ok" | "refused"> = ["refused", "ok"];
     expect(await press(refusals)).toMatchObject({ ok: false, failedStep: { kind: "close-off" } });
     const stopped = readMatePress("p-1")?.state;
     expect(stopped).toMatchObject({
@@ -324,7 +321,8 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
       reason: "The tag was refused.",
     });
     if (stopped?.kind !== "failed" || stopped.retry === null) throw new Error("no retry");
-    // The platform now takes it: refusals spent, the retry runs through, and the press ends.
+    expect(refusals).toEqual(["ok"]);
+    // Only the manual action consumes the next attempt.
     await stopped.retry();
     expect(readMatePress("p-1")).toBeUndefined();
   });
@@ -419,7 +417,7 @@ describe("a press whose platform never answers", () => {
         resume: { from: 0, projectId: "p-1", projectName: "Acme - Dan" },
         locks: undefined,
       });
-      await vi.advanceTimersByTimeAsync(PRESS_STEP_ATTEMPTS * (PRESS_CALL_CAP_MS + 2_000));
+      await vi.advanceTimersByTimeAsync(PRESS_CALL_CAP_MS);
       expect(await outcome).toMatchObject({
         ok: false,
         failedStep: { kind: "import-container" },
@@ -434,37 +432,6 @@ describe("a press whose platform never answers", () => {
       forgetPress("p-1");
       vi.useRealTimers();
     }
-  });
-});
-
-describe("withPressTries — the harden, tried again", () => {
-  it("goes on once an attempt takes", async () => {
-    let tries = 0;
-    const waits: Array<number> = [];
-    const outcome = await withPressTries(
-      async () => {
-        tries += 1;
-        if (tries < 3) throw new Error("not yet");
-      },
-      async (ms) => {
-        waits.push(ms);
-      },
-    );
-    expect(outcome).toEqual({ ok: true });
-    expect(waits).toHaveLength(2);
-  });
-
-  it("says why, after the press's own tries", async () => {
-    let tries = 0;
-    const outcome = await withPressTries(
-      async () => {
-        tries += 1;
-        throw new Error("Refused.");
-      },
-      async () => undefined,
-    );
-    expect(outcome).toEqual({ ok: false, error: "Refused." });
-    expect(tries).toBe(PRESS_STEP_ATTEMPTS);
   });
 });
 
@@ -509,6 +476,25 @@ describe("a press's end", () => {
     ).toEqual(["p-up"]);
   });
 
+  it("keeps a stopped Add's receipts even if its accepted container connects", () => {
+    expect(
+      connectedPresses(
+        [
+          {
+            projectId: "p-stopped",
+            state: {
+              kind: "failed",
+              step: "close-off",
+              reason: "HQ isn't answering.",
+              retry: null,
+            },
+          },
+        ],
+        [{ project: { id: "p-stopped" }, group: "connected" }],
+      ),
+    ).toEqual([]);
+  });
+
   // Live, 2026-10-02: Finish setup on a Mate whose container was up — its press was ended the
   // moment it began, so nothing anywhere said its setup was being finished.
   it("leaves a Finish setup on a connected Mate to end on its own", () => {
@@ -533,10 +519,8 @@ describe("a press's end", () => {
   });
 });
 
-// Review, pass 32: a Finish setup that stopped on a Mate with its container stood for good — its
-// row said "Setup stopped" in place of its sign-in line, and once its link dropped the Mate read
-// "Could not be set up". It says it stopped, then the row is the Mate's again; its menu still
-// offers Finish setup, from the platform's facts.
+// A stopped Finish setup keeps its reason and manual continuation, including after bringing
+// its container. Its coming-up projection still distinguishes what it brought.
 describe("a Finish setup that stopped", () => {
   const STOPPED: MatePressState = {
     kind: "failed",
@@ -572,14 +556,14 @@ describe("a Finish setup that stopped", () => {
   // its harden and the lock of another tab stop it before any step, naming its close-off.
   it.each([
     {
-      case: "on a Mate with its container: said, then gone",
+      case: "on a Mate with its container: the stop stays",
       container: false,
       progress: undefined,
       stopped: STOPPED,
       stands: false,
     },
     {
-      case: "after bringing its container: said, then gone, and no longer coming",
+      case: "after bringing its container: the stop stays without saying it is coming",
       container: true,
       progress: BROUGHT,
       stopped: STOPPED,
@@ -611,8 +595,8 @@ describe("a Finish setup that stopped", () => {
         press: { startedAt: 0, container: stands, retryable: false },
         setUpFailed: stands ? "Zerops refused the change" : undefined,
       });
-      vi.advanceTimersByTime(STOPPED_SHOWN_MS);
-      expect(readMatePress("p-stop")?.state.kind).toBe(stands ? "failed" : undefined);
+      vi.advanceTimersByTime(60_000);
+      expect(readMatePress("p-stop")?.state).toEqual(stopped);
     } finally {
       forgetPress("p-stop");
       vi.useRealTimers();
@@ -672,7 +656,7 @@ describe("finishSetupRowLine — Finish setup as its Mate's row says it, from an
   });
 });
 
-// Finish setup on an older Mate, or a pool-claimed one: its harden first, tried again; then its
+// Finish setup on an older Mate, or a pool-claimed one: one harden first; then its
 // close-off, which trusts the harden and reads nothing (pass 28 review).
 /** A zcp service of a project, as the platform lists it. */
 const zcp = (id: string, name: string) => ({
@@ -800,21 +784,13 @@ describe("finishMateSetup — the harden path", () => {
         sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true });
-    expect(calls).toEqual([
-      "attach app-d",
-      "container",
-      "read isolation",
-      "read isolation",
-      "mark",
-    ]);
+    expect(calls).toEqual(["attach app-d", "container", "read isolation", "mark"]);
     forgetPress("p-old");
   });
 
-  // Audit B2: a press goes on past a registration that failed after its tries, not only one HQ
-  // refused — its container imported, its project closed off — and leaves the Mate in no
-  // application. Settled here: the application it was meant for is not lost. HQ holds it in the
-  // birth intent its project names (F6c), so another browser's Finish setup attaches it there.
-  it("a Mate whose registration failed after its tries goes into its intended application through another browser's Finish setup", async () => {
+  // The stopped registration retains the application in its birth intent (F6c), so another
+  // browser's Finish setup can attach it there and continue the unattempted steps.
+  it("a stopped registration retains its birth intent for another browser's Finish setup", async () => {
     begin();
     const calls: Array<string> = [];
     const base = inputs(() => true, calls) as unknown as {
@@ -844,7 +820,7 @@ describe("finishMateSetup — the harden path", () => {
       status: 503,
       message: "HQ isn't serving right now.",
     });
-    // The first browser's press, past its project: HQ answers 503 to every try of its attach.
+    // The first browser's press stops at the one attach HQ answers with 503.
     const pressed = await finishMateSetup({
       inputs: withContainer as never,
       projectId: "gus-project",
@@ -864,14 +840,8 @@ describe("finishMateSetup — the harden path", () => {
       locks: undefined,
       sleep: async () => undefined,
     });
-    expect(pressed).toMatchObject({ ok: true });
-    expect(calls).toEqual([
-      ...Array.from({ length: PRESS_STEP_ATTEMPTS }, () => "attach failed"),
-      "container",
-      "read isolation",
-      "read isolation",
-      "mark",
-    ]);
+    expect(pressed).toMatchObject({ ok: false, failedStep: { kind: "register" } });
+    expect(calls).toEqual(["attach failed"]);
     forgetPress("gus-project");
 
     // Another browser, with no press of its own, once the grace a running press has is past: HQ
@@ -929,10 +899,10 @@ describe("finishMateSetup — the harden path", () => {
     });
     expect(
       await finishMateSetup({
-        inputs: inputs(() => true, calls),
+        inputs: withContainer as never,
         projectId: "gus-project",
         projectName: "mate-rig-e2e-g - Gus",
-        container: null,
+        container: { agents: [] },
         registration,
         hq: HQ_ENDPOINT,
         isCurrent: () => true,
@@ -1030,13 +1000,12 @@ describe("finishMateSetup — the harden path", () => {
     forgetPress("p-old");
   });
 
-  // Every other close-off goes through the one procedure: two reads two seconds apart that say
-  // closed, then the mark.
+  // Every other close-off checks isolation once before the mark.
   it("closes a Mate off through the whole procedure where nothing hardened it", async () => {
     begin();
     const calls: Array<string> = [];
     expect(await finish(() => true, calls, { harden: false })).toMatchObject({ ok: true });
-    expect(calls).toEqual(["read isolation", "read isolation", "mark"]);
+    expect(calls).toEqual(["read isolation", "mark"]);
     forgetPress("p-old");
   });
 
@@ -1281,7 +1250,110 @@ describe("finishMateSetup — the harden path", () => {
     forgetPress("p-old");
   });
 
-  it("tries the harden again, and stops with Try again where it still fails", async () => {
+  it("Finish setup resumes a retained stopped press without repeating its accepted writes", async () => {
+    begin();
+    const calls: Array<string> = [];
+    const steps: ReadonlyArray<EnvironmentCreationStep> = [
+      { kind: "register" },
+      { kind: "import-container", agents: [] },
+      { kind: "close-off", isolated: true },
+    ];
+    const platform = {
+      register: async () => {
+        calls.push("register");
+      },
+      importDevelopmentContainer: async () => {
+        calls.push("container");
+        return { serviceName: "zcp", imported: true };
+      },
+      readIsolation: async () => "service",
+      markClosedOff: async () => {
+        calls.push("failed mark");
+        throw new Error("HQ isn't answering.");
+      },
+    } as unknown as EnvironmentCreationPlatform;
+    expect(
+      await runPress({
+        organizationId: "org-acme",
+        steps,
+        platform,
+        isCurrent: () => true,
+        resume: { from: 0, projectId: "p-old", projectName: "Acme - Ada" },
+        locks: undefined,
+        sleep: async () => undefined,
+      }),
+    ).toMatchObject({ ok: false, serviceName: "zcp", failedStep: { kind: "close-off" } });
+    expect(calls).toEqual(["register", "container", "failed mark"]);
+    // The menu begins a new presentation before calling Finish setup.
+    begin();
+    hq.calls = calls;
+    expect(
+      await finishMateSetup({
+        inputs: inputs(() => true, calls, [zcp("svc-1", "zcp")]),
+        projectId: "p-old",
+        projectName: "Acme - Ada",
+        container: { agents: [] },
+        registration: {
+          hq: { projectId: "hq-project", address: "https://hq.test" },
+          kind: "mate-record",
+          record: { face: "sky:seal" },
+          standUp: false,
+        },
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        harden: true,
+        isCurrent: () => true,
+        locks: undefined,
+        sleep: async () => undefined,
+      }),
+    ).toMatchObject({ ok: true, serviceName: "zcp" });
+    expect(calls).toEqual(["register", "container", "failed mark", "mark"]);
+    forgetPress("p-old");
+  });
+
+  it("reads the project's services once and exposes a manual continuation after failure", async () => {
+    begin();
+    const calls: Array<string> = [];
+    let reads = 0;
+    const base = inputs(() => true, calls) as unknown as { client: Record<string, unknown> };
+    const finishing = {
+      inputs: {
+        ...base,
+        client: {
+          ...base.client,
+          listProjectServices: async () => {
+            reads += 1;
+            if (reads === 1) throw new Error("Zerops isn't answering.");
+            return [];
+          },
+        },
+      } as never,
+      projectId: "p-old",
+      projectName: "Acme - Ada",
+      container: null,
+      registration: null,
+      hq: null,
+      isCurrent: () => true,
+      locks: undefined,
+      sleep: async () => {
+        throw new Error("A failed read must not wait and repeat.");
+      },
+    };
+    expect(await finishMateSetup(finishing)).toMatchObject({
+      ok: false,
+      error: "Zerops isn't answering.",
+    });
+    expect(reads).toBe(1);
+    expect(calls).toEqual([]);
+    const stopped = readMatePress("p-old")?.state;
+    if (stopped?.kind !== "failed" || stopped.retry === null)
+      throw new Error("no manual continuation");
+    await stopped.retry();
+    expect(reads).toBe(2);
+    expect(readMatePress("p-old")?.state).toEqual({ kind: "pressed" });
+    forgetPress("p-old");
+  });
+
+  it("hardens once, stops visibly, and hardens once more only on Try again", async () => {
     begin();
     const calls: Array<string> = [];
     let refusing = true;
@@ -1290,12 +1362,13 @@ describe("finishMateSetup — the harden path", () => {
       failedStep: { kind: "close-off" },
       error: "The isolation was refused.",
     });
-    expect(calls.filter((call) => call === "harden")).toHaveLength(PRESS_STEP_ATTEMPTS);
+    expect(calls).toEqual(["harden"]);
     const stopped = readMatePress("p-old")?.state;
     if (stopped?.kind !== "failed" || stopped.retry === null) throw new Error("no retry");
     refusing = false;
     await stopped.retry();
     expect(readMatePress("p-old")?.state).toEqual({ kind: "pressed" });
+    expect(calls).toEqual(["harden", "harden", "mark"]);
     forgetPress("p-old");
   });
 });

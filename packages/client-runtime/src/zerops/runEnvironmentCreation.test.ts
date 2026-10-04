@@ -4,8 +4,6 @@ import { ZeropsApiError } from "./api.ts";
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
-  PRESS_STEP_ATTEMPTS,
-  PRESS_STEP_RETRY_MS,
   resumableEnvironmentCreationStep,
   runEnvironmentCreation,
   type EnvironmentCreationPlatform,
@@ -210,8 +208,6 @@ describe("runEnvironmentCreation", () => {
       `container:proj-1:Go Hello World - dev:claude-code:${"services:\n  - hostname: api\n    startWithoutCode: true\n".length}`,
       // Read back closed — the recipe already left it so, nothing written — and marked: zcp
       // imports the runtimes on the mark alone, and the Mate needs no browser any more.
-      "isolation:proj-1",
-      // Read back again two seconds on: one read of a trailing index is not the project.
       "isolation:proj-1",
       "closedOff:proj-1",
     ]);
@@ -478,46 +474,78 @@ describe("runEnvironmentCreation — the platform's verdict on the project", () 
   });
 });
 
-describe("runEnvironmentCreation — a Mate's container", () => {
-  // Its import is safe to ask again — a project with its container makes no write, an earlier key
-  // is reused — so a try that stopped (a slow key list, 2026-10-02) is tried again, as the other
-  // idempotent steps are.
+describe("runEnvironmentCreation — one attempt per step", () => {
   it.each([
-    { name: "a try that failed is tried again, a little apart", fails: 1, ok: true, tries: 2 },
-    {
-      name: "past the press's tries the step stops",
-      fails: PRESS_STEP_ATTEMPTS,
-      ok: false,
-      tries: PRESS_STEP_ATTEMPTS,
+    "importDevelopmentContainer",
+    "markClosedOff",
+    "register",
+    "readIsolation",
+    "closeOff",
+  ] as const)(
+    "stops on the first failed %s, retaining the project and completed steps",
+    async (operation) => {
+      let attempts = 0;
+      const { platform, calls } = fakePlatform({
+        ...(operation === "closeOff" ? { readIsolation: async () => "none" } : {}),
+        [operation]: async () => {
+          attempts += 1;
+          throw new Error("Refused.");
+        },
+      });
+      const { outcome, reports, slept } = await run(plan("dev"), platform);
+      expect(outcome).toMatchObject({ ok: false, projectId: "proj-1", error: "Refused." });
+      expect(attempts).toBe(1);
+      expect(slept).toEqual([]);
+      const progress = reports.at(-1)!;
+      const failed = progress.findIndex((entry) => entry.state === "failed");
+      expect(progress.slice(0, failed).every((entry) => entry.state === "done")).toBe(true);
+      expect(progress.slice(failed + 1).every((entry) => entry.state === "queued")).toBe(true);
+      if (operation === "register")
+        expect(calls.some((call) => call.startsWith("container:"))).toBe(false);
     },
-  ])("$name", async ({ fails, ok, tries }) => {
-    let failed = 0;
+  );
+
+  it("retains the imported container when its mark fails and resumes only the stopped step", async () => {
+    let marks = 0;
     const { platform, calls } = fakePlatform({
-      importDevelopmentContainer: async (input) => {
-        calls.push(`container:${input.projectId}`);
-        if (failed < fails) {
-          failed += 1;
-          throw new Error("Zerops command exceeded its deadline.");
-        }
-        return { serviceName: "zcp", imported: true };
+      markClosedOff: async () => {
+        marks += 1;
+        if (marks === 1) throw new Error("HQ is unavailable.");
       },
     });
-    const { outcome, slept } = await run(plan("dev"), platform);
-    expect(outcome.ok).toBe(ok);
-    if (!ok) expect(outcome).toMatchObject({ failedStep: { kind: "import-container" } });
-    expect(calls.filter((call) => call.startsWith("container:"))).toHaveLength(tries);
-    // Nothing before the container waits: its tries' waits come first, the close-off's after.
-    expect(slept.slice(0, tries - 1)).toEqual(
-      Array.from({ length: tries - 1 }, () => PRESS_STEP_RETRY_MS),
-    );
+    const steps = plan("dev");
+    const { outcome } = await run(steps, platform);
+    expect(outcome).toMatchObject({
+      ok: false,
+      projectId: "proj-1",
+      serviceName: "zcp",
+      failedStep: { kind: "close-off" },
+    });
+    if (outcome.ok) throw new Error("expected a stop");
+    const before = calls.length;
+    const resumed = await runEnvironmentCreation({
+      clientId: "client-1",
+      steps,
+      platform,
+      resume: {
+        from: steps.indexOf(outcome.failedStep),
+        projectId: "proj-1",
+        projectName: "Go Hello World - dev",
+        serviceName: "zcp",
+      },
+      sleep: async () => undefined,
+    });
+    expect(resumed).toMatchObject({ ok: true, serviceName: "zcp", awaitingAgent: true });
+    expect(marks).toBe(2);
+    expect(calls.slice(before)).toEqual(["isolation:proj-1"]);
   });
 });
 
 describe("runEnvironmentCreation — closing the project off", () => {
   // The container recipe leaves the project `service service@zcp`, and a new project starts
   // `service`; but the read trails the platform, so the mark — which zcp imports the runtimes on —
-  // is written only once the recipe's own write is through and two reads two seconds apart say
-  // closed. Isolation is written only where a read says anything else.
+  // is written only after isolation reads closed. An open project gets one write and read-back;
+  // unavailable or failed reads stop for the creator to continue explicitly.
   const table: ReadonlyArray<{
     readonly name: string;
     /** What each read of `envIsolation` answers, in turn; the last one stands. */
@@ -532,21 +560,21 @@ describe("runEnvironmentCreation — closing the project off", () => {
       marked: true,
     },
     {
-      name: "a read that has not caught up is asked again, a second apart",
+      name: "an unavailable isolation read stops for manual continuation",
       reads: [undefined, undefined, "service"],
       writes: 0,
-      marked: true,
+      marked: false,
     },
     {
-      name: "a project that reads open is closed, read back twice, then marked",
+      name: "an open project gets one isolation write and one read-back before the mark",
       reads: ["none", "service"],
       writes: 1,
       marked: true,
     },
     {
-      name: "a closed read the next one takes back is closed and read back again",
+      name: "a closed isolation read ends the check",
       reads: ["service", "none", "service"],
-      writes: 1,
+      writes: 0,
       marked: true,
     },
     {
@@ -562,10 +590,10 @@ describe("runEnvironmentCreation — closing the project off", () => {
       marked: false,
     },
     {
-      name: "a project that reads closed once and open after is never marked",
+      name: "a closed isolation is marked from its one read",
       reads: ["service", "none"],
-      writes: 1,
-      marked: false,
+      writes: 0,
+      marked: true,
     },
   ];
 
@@ -582,12 +610,7 @@ describe("runEnvironmentCreation — closing the project off", () => {
     if (!row.marked) expect(outcome).toMatchObject({ failedStep: { kind: "close-off" } });
     expect(calls.filter((call) => call.startsWith("closeOff:"))).toHaveLength(row.writes);
     expect(calls.includes("closedOff:proj-1")).toBe(row.marked);
-    if (row.marked) {
-      // At least two reads before the mark, two seconds apart.
-      const beforeMark = calls.slice(0, calls.indexOf("closedOff:proj-1"));
-      expect(beforeMark.filter((call) => call === "isolation:proj-1").length).toBeGreaterThan(1);
-      expect(slept).toContain(2_000);
-    }
+    expect(slept).toEqual([]);
   });
 
   // Finish setup on an older Mate isolates it first (`hardenMate`): its close-off trusts that and
@@ -607,12 +630,12 @@ describe("runEnvironmentCreation — closing the project off", () => {
 
   // Nothing waits on a process: the platform stalled a project's recipe write for minutes while
   // its isolation read closed throughout (a live press, 2026-10-01).
-  it("reads no process, and closes off in two reads two seconds apart", async () => {
+  it("reads isolation once and marks the project without a timed compare loop", async () => {
     const { platform, calls } = fakePlatform();
     const { outcome, slept } = await run(plan("dev"), platform);
     expect(outcome.ok).toBe(true);
-    expect(calls.filter((call) => call === "isolation:proj-1")).toHaveLength(2);
-    expect(slept.filter((ms) => ms === 2_000)).toHaveLength(1);
+    expect(calls.filter((call) => call === "isolation:proj-1")).toHaveLength(1);
+    expect(slept).toEqual([]);
   });
 
   it("stops, to be tried again, where the isolation never answers", async () => {
@@ -637,7 +660,7 @@ describe("runEnvironmentCreation — closing the project off", () => {
       resume: { from: 0, projectId: "proj-1", projectName: "Go Hello World - dev" },
       sleep: async () => undefined,
     });
-    expect(calls.filter((call) => call === "isolation:proj-1").length).toBeGreaterThan(1);
+    expect(calls.filter((call) => call === "isolation:proj-1").length).toBe(1);
     expect(calls.at(-1)).toBe("closedOff:proj-1");
   });
 
@@ -649,19 +672,21 @@ describe("runEnvironmentCreation — closing the project off", () => {
     expect(at("container:")).toBeLessThan(at("closedOff:"));
   });
 
-  // A member who may make a Mate but not write the registry: its attach refused, the press goes
-  // on — its container imported, its project closed off — and it stays bare, waiting for an
-  // owner, as a Mate whose record never came.
-  it("imports a Mate's container and closes it off when its registration is refused", async () => {
+  // A refused registration leaves the accepted project and birth intent for Finish setup.
+  it("stops a Mate before its container when its registration is refused", async () => {
     const { platform, calls } = fakePlatform({
       register: async () => {
         throw new Error("Only an owner may register it.");
       },
     });
     const { outcome, reports } = await run(plan("dev"), platform);
-    expect(outcome).toMatchObject({ ok: true, projectId: "proj-1", awaitingAgent: true });
-    expect(calls.some((call) => call.startsWith("container:proj-1"))).toBe(true);
-    expect(calls).toContain("closedOff:proj-1");
+    expect(outcome).toMatchObject({
+      ok: false,
+      projectId: "proj-1",
+      failedStep: { kind: "register" },
+    });
+    expect(calls.some((call) => call.startsWith("container:proj-1"))).toBe(false);
+    expect(calls).not.toContain("closedOff:proj-1");
     expect(reports.at(-1)!.find((entry) => entry.step.kind === "register")).toMatchObject({
       state: "failed",
       error: "Only an owner may register it.",
@@ -697,12 +722,11 @@ describe("runEnvironmentCreation — a press tried again", () => {
       "register:proj-1",
       `container:proj-1:Go Hello World - dev:claude-code:${"services:\n  - hostname: api\n    startWithoutCode: true\n".length}`,
       "isolation:proj-1",
-      "isolation:proj-1",
       "closedOff:proj-1",
     ]);
   });
 
-  it("resumed at its close-off, reads it back twice, then marks it", async () => {
+  it("resumed at its close-off, reads it once, then marks it", async () => {
     const { platform, calls } = fakePlatform();
     const steps = plan("dev");
     const from = steps.findIndex((step) => step.kind === "close-off");
@@ -714,7 +738,7 @@ describe("runEnvironmentCreation — a press tried again", () => {
       sleep: async () => undefined,
     });
     expect(outcome).toMatchObject({ ok: true, projectId: "proj-1" });
-    expect(calls).toEqual(["isolation:proj-1", "isolation:proj-1", "closedOff:proj-1"]);
+    expect(calls).toEqual(["isolation:proj-1", "closedOff:proj-1"]);
   });
 
   it("says the project the press made the moment the platform takes it", async () => {
