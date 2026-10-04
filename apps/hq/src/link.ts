@@ -20,6 +20,7 @@ import {
   MATE_LINK_FRAME_MAX,
   type MateLinkDown,
   type MateState,
+  type OverviewLogins,
   linkFrameBytes,
   readLinkUp,
 } from "@t3tools/shared/mateLink";
@@ -45,6 +46,15 @@ export interface LinkOptions {
   /** How often HQ checks that it still leads and the credential still holds; 30 s. */
   readonly recheck?: Duration.Duration;
 }
+
+/** Who the logins an overview names were last signed in by; a login nobody signed in names none. */
+const signersOf = (logins: OverviewLogins | undefined): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(logins ?? {}).flatMap(([login, digest]) => {
+      const user = digest.lastSignedInBy ?? digest.signedInBy;
+      return user === null ? [] : [[login, user]];
+    }),
+  );
 
 const encodeDown = (message: MateLinkDown) => JSON.stringify(message);
 
@@ -105,6 +115,15 @@ export const serveMateLink = (
             if (read.kind === "invalid") return yield* close(1007, "no link message");
             if (read.kind === "message" && read.message.type === "overview") {
               yield* overviews.report(projectId, link, read.message);
+              // A write that fails is the next overview's to repeat; it never ends the link.
+              yield* Effect.ignore(
+                structure.recordSigners(
+                  projectId,
+                  signersOf(
+                    read.message.full ? read.message.overview.logins : read.message.sections.logins,
+                  ),
+                ),
+              );
             }
           }
         }

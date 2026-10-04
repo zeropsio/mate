@@ -350,6 +350,14 @@ export class Structure extends Context.Service<
       userId: string,
       birth: { readonly appId: string; readonly face: string; readonly standUp?: boolean },
     ) => Effect.Effect<BirthIntent, WriteError>;
+    /**
+     * Keeps who signed in each login of a Mate as the Mate reports it: a login named here takes
+     * the new signer, one not named keeps its record.
+     */
+    readonly recordSigners: (
+      projectId: string,
+      signers: Readonly<Record<string, string>>,
+    ) => Effect.Effect<void, NotLeader | SqlError>;
     /** Sets a Mate up: its record, in no application until it is moved into one, and its ask. */
     readonly portProjectMetadata: (
       userId: string,
@@ -776,6 +784,18 @@ export const structureLayer = (options: {
             return { projectId };
           }),
         ),
+        recordSigners: (projectId, signers) =>
+          Effect.gen(function* () {
+            if (Object.keys(signers).length === 0) return;
+            const kept = yield* leader.write(sql`
+              UPDATE hq_mate SET signers = signers || ${encodeSigners(signers)}::jsonb
+              WHERE project_id = ${projectId}
+                AND signers || ${encodeSigners(signers)}::jsonb IS DISTINCT FROM signers
+              RETURNING 1`);
+            if (kept.length === 0) return;
+            yield* changed;
+            yield* PubSub.publish(mateChanged, projectId);
+          }),
         markClosedOff: confirmed((userId, projectId) =>
           Effect.gen(function* () {
             const view = yield* roles.forWrite;

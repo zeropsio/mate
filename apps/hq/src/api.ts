@@ -1008,7 +1008,14 @@ const routes = (
           const { projectId } = yield* mate;
           const state = yield* (yield* Structure).mateState(projectId);
           return Option.isSome(state)
-            ? json({ ...state.value, ...(yield* (yield* Changes).mateChanges(projectId)) }, 200)
+            ? json(
+                {
+                  ...state.value,
+                  signers: state.value.signers ?? {},
+                  ...(yield* (yield* Changes).mateChanges(projectId)),
+                },
+                200,
+              )
             : json({ code: "mate_not_found", reason: "mate_not_found" }, 404);
         }),
       ),
