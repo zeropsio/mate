@@ -1,6 +1,7 @@
 /**
  * The sole project-record writer: serialized per project across this browser's tabs, based on
- * a fresh platform read. Zerops owns the name; only the Mate marker is written to tags.
+ * a fresh platform read. Zerops owns the name; only the Mate marker is written to tags, beside the
+ * project's own.
  * One PUT and one read-back: a concurrent replacement fails visibly for a manual Again.
  */
 import type { ZeropsApiClient, ZeropsProject } from "../api.ts";
@@ -99,8 +100,13 @@ export function makeProjectTagWriter(options: {
         const { signal, beforeWrite } = writeOptions;
         const project = await source.fetchProject(projectId, signal);
         if (project.name === name) return { kind: "unchanged", project };
-        const tags = project.tagList?.includes("mate") ? ["mate"] : [];
-        await source.writeProject(project, { name, tagList: tags }, signal, beforeWrite);
+        // Every tag the fresh read holds goes back as it is: a rename writes no tag.
+        await source.writeProject(
+          project,
+          { name, tagList: project.tagList ?? [] },
+          signal,
+          beforeWrite,
+        );
         const confirmed = await source.fetchProject(projectId, signal);
         if (confirmed.name !== name) throw replacedTooOften("name");
         return { kind: "written", project: confirmed };

@@ -11,18 +11,18 @@ describe("applyProjectTagPatch", () => {
     readonly removes: ReadonlyArray<string>;
   }>([
     {
-      name: "a Mate declared carries the marker, and no metadata tags",
+      name: "a Mate declared carries the marker, and keeps its project's own tags",
       tags: ["person:own"],
       patch: { kind: "mate" },
-      adds: ["mate"],
-      removes: ["person:own"],
+      adds: ["mate", "person:own"],
+      removes: [],
     },
     {
-      name: "a Mate declared again is left as it is",
-      tags: ["mate", "person:own"],
+      name: "a Mate declared again drops only the obsolete metadata tags",
+      tags: ["mate", "person:own", "mate:face:rose:seal"],
       patch: { kind: "mate" },
-      adds: ["mate"],
-      removes: ["person:own"],
+      adds: ["mate", "person:own"],
+      removes: ["mate:face:rose:seal"],
     },
   ])("$name, and changes nothing applied again", ({ tags, patch, adds, removes }) => {
     const once = applyProjectTagPatch(tags, patch);
