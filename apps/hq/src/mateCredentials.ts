@@ -80,18 +80,40 @@ export class MateCredentials extends Context.Service<
       nonce: string,
       named?: { readonly keyTokenId?: string; readonly serviceId?: string },
     ) => Effect.Effect<
-      { readonly credential: string },
+      {
+        readonly credential: string;
+        /** Whether HQ's word that the Mate's key reads other projects changed ({@link keyWider}). */
+        readonly keyWiderMoved: boolean;
+      },
       MateRefused | NotLeader | SqlError | ZeropsError
     >;
     /** The project a live credential is bound to; none for an unknown or revoked one. */
     readonly whoami: (
       credential: string,
     ) => Effect.Effect<Option.Option<{ readonly projectId: string }>, SqlError>;
-    /** The id of the key its container holds, as the Mate of a live `credential` names it now. */
+    /**
+     * The id of the key its container holds, as the Mate of a live `credential` names it now; true
+     * where HQ's word that the key reads other projects changed ({@link keyWider}).
+     */
     readonly keepKey: (
       credential: string,
       keyTokenId: string,
-    ) => Effect.Effect<void, MateRefused | NotLeader | SqlError | ZeropsError>;
+    ) => Effect.Effect<boolean, MateRefused | NotLeader | SqlError | ZeropsError>;
+    /**
+     * Whether the key the Mate of `projectId` last named reads other projects too — the READ_ONLY
+     * grants on siblings an earlier client gave a Mate's key (ADR 0003's fallout): it needs Finish
+     * setup, whose harden takes them off. Read when the Mate names its key, never on a page's read.
+     */
+    readonly keyWider: (projectId: string) => Effect.Effect<boolean, SqlError>;
+    /**
+     * That key read again, for the person `userId` where they may edit the Mate's record — who
+     * just finished its setup: once it reads its own project alone, HQ no longer says it is wider,
+     * and keeps it as the Mate's key where its live credential names none. True where that changed.
+     */
+    readonly recheckKey: (
+      userId: string,
+      projectId: string,
+    ) => Effect.Effect<boolean, StructureRefused | NotLeader | SqlError | ZeropsError>;
     /** The id of the key the Mate of `projectId` named with its live credential; none unnamed. */
     readonly keyOf: (projectId: string) => Effect.Effect<string | null, SqlError>;
     /**
@@ -195,20 +217,54 @@ export const mateCredentialsLayer = (options: {
           }),
         );
       /**
-       * Whether `keyTokenId` names a key whose one grant is the project `projectId`, read by its id
-       * with HQ's own credential — never a deploy key, a person's token, nor another Mate's key. A
-       * token Zerops refuses to show HQ, whatever its reason, is none.
+       * What `keyTokenId` reaches, read by its id with HQ's own credential: `own` where its one
+       * grant is the project `projectId` — the Mate's key, never a deploy key, a person's token,
+       * nor another Mate's key; `wider` where it holds that project and reads others, nothing
+       * more — a Mate's key an earlier client widened, never taken for its key; `none` otherwise.
+       * A token Zerops refuses to show HQ, whatever its reason, is none.
        */
-      const keyOfProject = (projectId: string, keyTokenId: string) =>
+      const keyReach = (projectId: string, keyTokenId: string) =>
         Effect.gen(function* () {
           const { orgId } = yield* roles.view;
           const credential = yield* own;
           const grants = api.tokenProjects(orgId, keyTokenId);
           return yield* grants(credential).pipe(
-            Effect.map((projects) => projects.length === 1 && projects[0]?.projectId === projectId),
-            Effect.catchTag("ZeropsRefused", () => Effect.succeed(false)),
+            Effect.map((projects): "own" | "wider" | "none" => {
+              if (projects.length === 1 && projects[0]?.projectId === projectId) return "own";
+              const holdsOwn = projects.some((grant) => grant.projectId === projectId);
+              const readsOthers = projects.every(
+                (grant) => grant.projectId === projectId || grant.roleCode === "READ_ONLY",
+              );
+              return holdsOwn && readsOthers && projects.length > 1 ? "wider" : "none";
+            }),
+            Effect.catchTag("ZeropsRefused", () => Effect.succeed("none" as const)),
           );
         });
+      /**
+       * HQ's word that the Mate's key reads other projects, from what the key it named reaches:
+       * said for a wider key, unsaid for its own; true where the word changed.
+       */
+      const noteReach = (
+        sqlClient: SqlClient.SqlClient,
+        projectId: string,
+        keyTokenId: string,
+        reach: "own" | "wider" | "none",
+      ) =>
+        reach === "none"
+          ? Effect.succeed(false)
+          : Effect.map(
+              reach === "wider"
+                ? sqlClient`
+                    UPDATE hq_mate SET key_wider_token_id = ${keyTokenId}
+                    WHERE project_id = ${projectId}
+                      AND key_wider_token_id IS DISTINCT FROM ${keyTokenId}
+                    RETURNING 1`
+                : sqlClient`
+                    UPDATE hq_mate SET key_wider_token_id = NULL
+                    WHERE project_id = ${projectId} AND key_wider_token_id IS NOT NULL
+                    RETURNING 1`,
+              (rows) => rows.length > 0,
+            );
       /**
        * The Mate of the project as HQ holds it ({@link enrollmentVerdict}): the zcp service its
        * record names, and the one its live credential was issued to.
@@ -290,14 +346,16 @@ export const mateCredentialsLayer = (options: {
               return yield* new MateRefused({ code: "not_this_projects_mate" });
             }
             // A key id its Mate names is kept only where it names the Mate's own key; the
-            // enrollment goes on without it otherwise, and Zerops not answering keeps none.
-            const namedKey =
-              keyTokenId !== undefined &&
-              (yield* keyOfProject(projectId, keyTokenId).pipe(
-                Effect.catchTag("ZeropsUnavailable", () => Effect.succeed(false)),
-              ))
-                ? keyTokenId
-                : undefined;
+            // enrollment goes on without it otherwise, and Zerops not answering keeps none. A key
+            // an earlier client widened is said (`keyWider`), and never kept.
+            const reach =
+              keyTokenId === undefined
+                ? ("none" as const)
+                : yield* keyReach(projectId, keyTokenId).pipe(
+                    Effect.catchTag("ZeropsUnavailable", () => Effect.succeed("none" as const)),
+                  );
+            const namedKey = reach === "own" ? keyTokenId : undefined;
+            let keyWiderMoved = false;
             const credential = secret();
             // The nonce is spent in the transaction that issues: of two presentations racing, one
             // finds it already spent. Enrollments of one project are decided one after another,
@@ -331,11 +389,14 @@ export const mateCredentialsLayer = (options: {
                     (credential_hash, project_id, key_token_id, service_id)
                   VALUES (${hashOf(credential)}, ${projectId},
                     ${namedKey ?? before?.key_token_id ?? null}, ${serviceId ?? null})`;
+                if (keyTokenId !== undefined) {
+                  keyWiderMoved = yield* noteReach(sql, projectId, keyTokenId, reach);
+                }
                 return true;
               }),
             );
             if (!issued) return yield* new MateRefused({ code: "unknown_nonce" });
-            return { credential };
+            return { credential, keyWiderMoved };
           }),
         keepKey: (credential, keyTokenId) =>
           Effect.gen(function* () {
@@ -345,9 +406,11 @@ export const mateCredentialsLayer = (options: {
             if (held === undefined) {
               return yield* new MateRefused({ code: "mate_credential_required" });
             }
-            if (!(yield* keyOfProject(held.project_id, keyTokenId))) {
-              return yield* new MateRefused({ code: "key_not_its_own" });
-            }
+            const reach = yield* keyReach(held.project_id, keyTokenId);
+            // A key an earlier client widened is said (`keyWider`), and never kept as its key.
+            const moved = yield* leader.write(noteReach(sql, held.project_id, keyTokenId, reach));
+            // The structure shows the word on its next read: a refusal pushes nothing.
+            if (reach !== "own") return yield* new MateRefused({ code: "key_not_its_own" });
             const kept = yield* leader.write(sql`
               UPDATE hq_mate_credential SET key_token_id = ${keyTokenId}
               WHERE credential_hash = ${hashOf(credential)} AND revoked_at IS NULL
@@ -355,8 +418,52 @@ export const mateCredentialsLayer = (options: {
             if (kept.length === 0) {
               return yield* new MateRefused({ code: "mate_credential_required" });
             }
+            return moved;
           }),
         keyOf,
+        keyWider: (projectId) =>
+          Effect.map(
+            sql<{ readonly wider: boolean }>`
+              SELECT key_wider_token_id IS NOT NULL AS wider FROM hq_mate
+              WHERE project_id = ${projectId}`,
+            (rows) => rows[0]?.wider === true,
+          ),
+        recheckKey: (userId, projectId) =>
+          confirmingRefusal(
+            Effect.gen(function* () {
+              const decision = can(
+                { kind: "person", userId },
+                "edit_mate_record",
+                { projectId, held: yield* heldOf(sql, projectId) },
+                yield* roles.forWrite,
+              );
+              if (!decision.allow) {
+                return yield* new StructureRefused({ code: "forbidden", reason: decision.reason });
+              }
+              const [row] = yield* sql<{ readonly key: string | null }>`
+                SELECT key_wider_token_id AS key FROM hq_mate WHERE project_id = ${projectId}`;
+              const wider = row?.key ?? null;
+              if (wider === null) return false;
+              const reach = yield* keyReach(projectId, wider);
+              if (reach === "wider") return false;
+              return yield* leader.write(
+                Effect.gen(function* () {
+                  // Its own key now: kept as the Mate's where its live credential names none.
+                  if (reach === "own") {
+                    yield* sql`
+                      UPDATE hq_mate_credential SET key_token_id = ${wider}
+                      WHERE project_id = ${projectId} AND revoked_at IS NULL
+                        AND key_token_id IS NULL`;
+                  }
+                  const cleared = yield* sql`
+                    UPDATE hq_mate SET key_wider_token_id = NULL
+                    WHERE project_id = ${projectId} AND key_wider_token_id = ${wider}
+                    RETURNING 1`;
+                  return cleared.length > 0;
+                }),
+              );
+            }),
+          ),
         keyFor: (userId, projectId) =>
           confirmingRefusal(
             Effect.gen(function* () {
