@@ -236,6 +236,7 @@ export {
   makeTokenWriteLock,
   planMateKey,
   tokenWriteLockName,
+  type MateKeyPlan,
   TOKEN_WRITE_HOLD_MS,
   type TokenWriteHold,
   type TokenWriteLocks,

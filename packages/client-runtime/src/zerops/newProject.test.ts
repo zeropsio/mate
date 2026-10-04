@@ -534,6 +534,30 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     ]);
   });
 
+  // Found by its name, a key widened between the list and the read under its lock is not the
+  // Mate's by then: the press says so and neither narrows it nor hands it to the container.
+  it("refuses to reuse a key that reaches another project by the time it is read under its lock", async () => {
+    const own = {
+      id: "token-old",
+      name: "zcp-Acme Docs - Ada",
+      roleCode: "NO_ACCESS",
+      projects: [{ projectId: "project-9", roleCode: "ADMIN" }],
+    };
+    const state: { tokens: ReadonlyArray<Record<string, unknown>>; holdToken: TokenWriteHold } = {
+      tokens: [own],
+      holdToken: async (_tokenId, run) => {
+        state.tokens = [
+          { ...own, projects: [...own.projects, { projectId: "stage", roleCode: "READ_ONLY" }] },
+        ];
+        return run();
+      },
+    };
+    const { client, requests } = platformClient(state);
+
+    await expect(client.importDevelopmentContainer(INPUT)).rejects.toThrow(/not reused/u);
+    expect(writesOf(requests)).toEqual([]);
+  });
+
   // A zcp the platform is still creating holds the key already: regenerating it would cut the
   // container off (pass 28 review).
   it("regenerates no key while a container is being created", async () => {
