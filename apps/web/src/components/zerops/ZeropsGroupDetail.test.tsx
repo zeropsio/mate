@@ -25,6 +25,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { Window } from "happy-dom";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -53,6 +54,12 @@ vi.mock("@tanstack/react-router", async (actual) => {
     useNavigate: () => () => undefined,
   };
 });
+
+// Render the popup in place so the stop page's project link is visible in SSR.
+vi.mock("../ui/menu", async (actual) => ({
+  ...(await actual<typeof import("../ui/menu")>()),
+  MenuPopup: ({ children }: { children: ReactNode }) => children,
+}));
 
 const CHECKING = "Checking your access to this project…";
 
@@ -546,7 +553,6 @@ function renderStop(input: StopCase): string {
       history={input.history ?? { kind: "reading" }}
       groupId="shop"
       names={{ mateNames: new Map() }}
-      onOpenProject={() => {}}
       onRollBack={() => {}}
       pending={new Set()}
       release={
@@ -787,6 +793,19 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
 });
 
 describe("ZeropsStopPane", () => {
+  it.each(["stage", "production"] as const)(
+    "opens the %s environment's own Zerops project from its menu",
+    (tier) => {
+      const document = new Window().document;
+      document.body.innerHTML = renderStop({ tier, services: [] });
+      const link = Array.from(document.querySelectorAll("a")).find(
+        (entry) => entry.textContent === "Open in Zerops",
+      );
+      expect(link?.getAttribute("href")).toBe(`https://app.zerops.io/project/shop-${tier}`);
+      expect(link?.getAttribute("target")).toBe("_blank");
+      expect(link?.getAttribute("rel")).toBe("noreferrer");
+    },
+  );
   it.each<{
     readonly name: string;
     readonly input: StopCase;

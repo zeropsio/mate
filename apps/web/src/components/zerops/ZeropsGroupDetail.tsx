@@ -923,7 +923,6 @@ export function ZeropsStopDetailPage({
   const stopGroupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: stopGroupName });
   const names = useHistoryNames();
-  const openProjects = useOpenProjects();
   const { routes, offers } = useStopRoutes(projectId);
   const route = useEnableRoute();
   const inventory = useZeropsInventory();
@@ -1028,7 +1027,6 @@ export function ZeropsStopDetailPage({
       }}
       onOpenCarriedChange={openCarried}
       onOpenChange={openChange}
-      onOpenProject={openProjects}
       onRollBack={(tag, from) => {
         openReview({ kind: "rollback", groupId, tag }, { from });
       }}
@@ -1251,7 +1249,6 @@ export function ZeropsStopPane({
   onEnableRoute,
   onOpenCarriedChange,
   onOpenChange,
-  onOpenProject,
   onRollBack,
   pending,
   release,
@@ -1298,7 +1295,6 @@ export function ZeropsStopPane({
   readonly untold: ReadonlyArray<string>;
   /** Every public address of the stop, for its menu; each service row lists its own. */
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  readonly onOpenProject: () => void;
   /** A production's releases, newest first; empty for a stage. */
   readonly releases: ReadonlyArray<FlowReleaseRow>;
   /**
@@ -1361,7 +1357,7 @@ export function ZeropsStopPane({
       actions={
         <ZeropsStopMenu
           name={title}
-          onOpenProject={onOpenProject}
+          projectId={stop.projectId}
           onOpenStop={undefined}
           routes={routes}
           stop={view}

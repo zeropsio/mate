@@ -1,5 +1,6 @@
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import type { StopView } from "@t3tools/client-runtime/zerops/flow";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { MoreHorizontalIcon } from "lucide-react";
 
 import {
@@ -29,7 +30,7 @@ export function ZeropsStopMenu({
   name,
   stop,
   routes,
-  onOpenProject,
+  projectId,
   onOpenStop,
   triggerClassName,
 }: {
@@ -37,7 +38,7 @@ export function ZeropsStopMenu({
   /** What the stop runs, or the line that stands in for it while that is not known. */
   readonly stop: StopView;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  readonly onOpenProject: () => void;
+  readonly projectId: string;
   readonly onOpenStop: (() => void) | undefined;
   /** The trigger's look, which is the surface's: sidebar tokens there, page tokens on a page. */
   readonly triggerClassName: string;
@@ -75,7 +76,11 @@ export function ZeropsStopMenu({
           )}
         </MenuGroup>
         <MenuSeparator />
-        <MenuItem onClick={onOpenProject}>Open in Zerops</MenuItem>
+        <MenuItem
+          render={<a href={zeropsProjectUrl(projectId)} rel="noreferrer" target="_blank" />}
+        >
+          Open in Zerops
+        </MenuItem>
         {routes.length === 0 ? null : (
           <>
             <MenuSeparator />
