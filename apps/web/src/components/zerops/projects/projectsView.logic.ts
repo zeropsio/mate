@@ -153,7 +153,7 @@ export function groupPlacement(entry: FoldedGroupInput): GroupPlacement {
     flow.nextStep.kind === "first-task" &&
     flow.stages.length === 0 &&
     flow.production.kind === "absent" &&
-    flow.recipeChanges.length === 0;
+    flow.pullRequests.length === 0;
   return onlyAMate ? "tile" : "row";
 }
 

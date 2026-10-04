@@ -2381,21 +2381,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 
   /**
    * The rows of a project that are not one of its four steps: why *Release*
-   * is not offered, what it would carry, the releases (each with the way back
-   * to it) and the changes waiting on its recipe. `null` where it has none.
+   * is not offered, what it would carry and the releases (each with the way back
+   * to it). `null` where it has none.
    */
   const renderGroupRows = (group: ZeropsGroup): React.ReactNode => {
     const gate = releaseGateLine(group);
     const contents = releaseContentLines(group);
     const releases = groupDeploys.get(group.groupId)?.releases ?? [];
-    // The recipe changes waiting on somebody: last, under the environments
-    // they would change.
-    const recipes = (groupDeploys.get(group.groupId)?.pullRequests ?? [])
-      .filter((pull) => pull.kind === "recipe")
-      .map((pull) => pullRequestRowOf(group, pull, { withMerge: true, compact: false }));
-    if (gate === null && contents === null && releases.length === 0 && recipes.length === 0) {
-      return null;
-    }
+    if (gate === null && contents === null && releases.length === 0) return null;
     return (
       <>
         {gate}
@@ -2408,7 +2401,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           pending={projectFlow.pending}
           releases={releases}
         />
-        {recipes}
       </>
     );
   };

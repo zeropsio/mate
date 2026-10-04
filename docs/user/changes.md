@@ -4,6 +4,14 @@ A Mate delivers work through a change in HQ. After a change is squash-merged, th
 starts from current main and reports that it kept the previous history. Newer work is carried into
 the next change; learning that a merge happened does not change the checkout in the background.
 
+The projects page's **Overview**, its **Next steps**, and the sidebar include both code and recipe
+changes. If a Mate leaves the listing, its open changes remain under the application with its
+Mate identifier and **Review**.
+
+**Other containers** starts collapsed. A container the current HQ does not hold says **Not in this
+HQ**. **Set up Mate** is offered for development environments and declared Mates, rather than
+unrecorded projects that may be somebody else's stage or production.
+
 When main already has the delivered content, the agent receives “nothing to deliver: main already
 has this.” No change is opened or updated for that delivery. Previously landed work is excluded
 from the next change's commit list.
