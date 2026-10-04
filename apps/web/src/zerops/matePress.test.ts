@@ -870,6 +870,67 @@ describe("finishMateSetup — the harden path", () => {
     forgetPress("p-old");
   });
 
+  // The 09-05 offer, end to end: Set up Mate on an existing plain project HQ holds nothing of
+  // writes the new Mate's record in no application, then its container, and closes it off at HQ —
+  // which the record lets HQ mark, so the close-off gate lets it in.
+  it("brings a Mate into an existing plain project: its record, its container, its close-off", async () => {
+    begin();
+    const calls: Array<string> = [];
+    const base = inputs(() => true, calls) as unknown as {
+      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
+    };
+    const withContainer = {
+      ...base,
+      data: {
+        ...base.data,
+        runtime: {
+          ...base.data.runtime,
+          commands: {
+            ...base.data.runtime.commands,
+            importDevelopmentContainer: () => {
+              calls.push("container");
+              return Effect.succeed({ value: { serviceName: "zcp", imported: true } });
+            },
+          },
+        },
+      },
+    };
+    const endpoint = { projectId: "hq-project", address: "https://hq.test" };
+    const registration = mateFinishRegistration({
+      hq: endpoint,
+      hqKnown: true,
+      structure: { ungrouped: [], apps: [] } as never,
+      project: { id: "p-old", name: "shop", status: "ACTIVE", tagList: [] },
+      press: readMatePress("p-old"),
+      writer: false,
+      mayCreateRecord: true,
+      standUp: false,
+      candidates: [],
+    });
+    expect(registration).toMatchObject({ kind: "mate-record", standUp: false });
+    hq.calls = calls;
+    expect(
+      await finishMateSetup({
+        inputs: withContainer as never,
+        projectId: "p-old",
+        projectName: "shop",
+        container: { agents: [] },
+        registration,
+        hq: endpoint,
+        isCurrent: () => true,
+        locks: undefined,
+        sleep: async () => undefined,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(calls).toEqual([
+      expect.stringMatching(/^record \S+:\S+$/u),
+      "container",
+      "read isolation",
+      "mark",
+    ]);
+    forgetPress("p-old");
+  });
+
   // The stopped registration retains the application in its birth intent (F6c), so another
   // browser's Finish setup can attach it there and continue the unattempted steps.
   it("a stopped registration retains its birth intent for another browser's Finish setup", async () => {

@@ -270,14 +270,51 @@ describe("deriveZeropsRowAction", () => {
       });
     });
 
+    // The 09-05 offer (restored over 116a2c54c): an existing plain Zerops project — no Mate, no
+    // place in HQ, no metadata of an earlier group — is offered Set up Mate, to whoever may write
+    // its Mate's record at HQ once HQ's structure is known (`setUpPlainProject`).
+    const plain = (name: string, tagList: ReadonlyArray<string>): ZeropsRowCandidate => ({
+      ...bare,
+      project: { ...bare.project, name, tagList: [...tagList] },
+    });
+    const PLAIN = { ...ALL, setUpPlainProject: true };
+
     it.each([
-      ["central-prometheus", []],
+      ["shop", []],
+      ["central-prometheus", ["billing:team-a"]],
+    ])("is offered on an existing plain project (%s)", (name, tagList) => {
+      expect(deriveZeropsRowAction(input(plain(name, tagList), undefined, PLAIN))).toEqual({
+        kind: "set-up-mate",
+        label: "Set up Mate",
+      });
+    });
+
+    it("is not offered on a plain project to whoever may not write its Mate's record", () => {
+      expect(deriveZeropsRowAction(input(plain("shop", []), undefined, ALL))).toEqual({
+        kind: "none",
+      });
+    });
+
+    it.each([
       ["Beviro - production", ["mate:g:foreign", "mate:role:prod"]],
       ["ZIT - stage", ["mate:g:foreign", "mate:role:stage"]],
       ["Imperial Titan - production", ["mate:g:foreign", "mate:role:prod"]],
-    ])("does not offer to convert an unrecorded environment (%s)", (name, tagList) => {
-      const foreign = { ...bare, project: { ...bare.project, name, tagList } };
-      expect(deriveZeropsRowAction(input(foreign, undefined))).toEqual({ kind: "none" });
+      ["Headquarters", ["mate:hq"]],
+    ])("does not offer to convert an environment an earlier group tagged (%s)", (name, tagList) => {
+      expect(deriveZeropsRowAction(input(plain(name, tagList), undefined, PLAIN))).toEqual({
+        kind: "none",
+      });
+    });
+
+    it("does not offer it on a project HQ places as another application's environment", () => {
+      const placed = {
+        ...plain("shop - stage", []),
+        project: {
+          ...plain("shop - stage", []).project,
+          hq: { appId: "app-1", appName: "shop", kind: "stage", mate: null },
+        },
+      } as ZeropsRowCandidate;
+      expect(deriveZeropsRowAction(input(placed, undefined, PLAIN))).toEqual({ kind: "none" });
     });
 
     it("is never offered to a tool, which has no container by design", () => {
@@ -958,7 +995,24 @@ describe("mateRowCan — a row's verbs, where its Mate's door opens for this per
     ["a read-only member, whose row is listed", "READ_ONLY", false],
     ["a member with no access", "NO_ACCESS", false],
   ])("%s: %s", (_name, roleCode, opens) => {
-    expect(mateRowCan(asker(roleCode), "p1")).toEqual(opens ? ALL : NONE);
+    expect(mateRowCan(asker(roleCode), "p1")).toEqual({
+      ...(opens ? ALL : NONE),
+      setUpPlainProject: false,
+    });
+  });
+
+  // Set up Mate on a plain project writes its Mate's record at HQ first: only for whoever HQ's
+  // rule lets write it (an admin of the project), once HQ's structure is known.
+  it.each([
+    ["the project's owner, HQ known", "cu-ada", true, true],
+    ["the project's owner, HQ not known yet", "cu-ada", false, false],
+    ["a member with no role on the project", "cu-other", true, false],
+  ])("brings a Mate into a plain project: %s", (_name, clientUserId, hqKnown, want) => {
+    const viewer = offerAsker(
+      { userId: "u-ada", clientUserId, roleCode: "BASIC_USER", canCreateProjects: true },
+      PROJECTS,
+    );
+    expect(mateRowCan(viewer, "p1", hqKnown).setUpPlainProject).toBe(want);
   });
 
   it("offers a row's owner all of it through their grant on its project", () => {
@@ -970,6 +1024,9 @@ describe("mateRowCan — a row's verbs, where its Mate's door opens for this per
   });
 
   it("offers nothing where the client knows no one: unknown is no", () => {
-    expect(mateRowCan(offerAsker(undefined, PROJECTS), "p1")).toEqual(NONE);
+    expect(mateRowCan(offerAsker(undefined, PROJECTS), "p1")).toEqual({
+      ...NONE,
+      setUpPlainProject: false,
+    });
   });
 });

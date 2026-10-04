@@ -1025,7 +1025,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       firstBuildOverdue: firstBuildOverdue(candidate, nowMs),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
-      can: mateRowCan(asker, candidate.project.id),
+      can: mateRowCan(asker, candidate.project.id, hqKnown),
       ...(role === undefined ? {} : { role }),
       ...(visibility === undefined ? {} : { visibility }),
       ...(ownerName === undefined ? {} : { ownerName }),

@@ -738,6 +738,19 @@ describe("the Overview's ungrouped projects", () => {
     const ordinary = row("central-prometheus", [], false);
     expect(shownUngrouped([production, ordinary, mate, lostMate])).toEqual([mate, lostMate]);
   });
+
+  // The 09-05 offer: a plain project its viewer may bring a Mate into is listed with Set up Mate.
+  it("lists a plain project its row offers Set up Mate", () => {
+    const shop = {
+      item: {
+        key: "shop",
+        group: "unavailable" as const,
+        project: { id: "shop", name: "shop", status: "ACTIVE", tagList: [] },
+      },
+      action: "set-up-mate" as const,
+    };
+    expect(shownUngrouped([shop])).toEqual([shop]);
+  });
 });
 
 describe("projectRowLine — a project row's second line", () => {

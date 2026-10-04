@@ -1005,8 +1005,9 @@ still to come says so.
   - _Built in:_ mate 0.11.0 `b296a0139`
   - _Proven by:_ `hacks.md` H-26, H-27
 - **7** — _Set up Mate_
-  - _State:_ partial — still offered on a project with no container, to whoever may open its Mate
-    (`ZeropsProjectRow.logic.ts`); it registers the Mate in HQ
+  - _State:_ partial — offered on a dev environment or a declared Mate with no container, to
+    whoever may open its Mate, and on an existing plain project to whoever may write its Mate's
+    record at HQ (`ZeropsProjectRow.logic.ts`, `plainZeropsProject`); it registers the Mate in HQ
 - **7** — zcp's delegated launch and the GitHub `prodCd` track for group Mates
   - _State:_ **open** — `launch_delegation.go` and the build-integration track remain in zcp
 
