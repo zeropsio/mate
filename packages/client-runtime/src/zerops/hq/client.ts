@@ -27,6 +27,7 @@ import {
   type ChangeLink,
   type CompareQuery,
 } from "@t3tools/shared/hqChanges";
+import { RepositorySource, type RepositoryQuery } from "@t3tools/shared/hqGit";
 import { type HqDeployAnswer, WithDeploys } from "@t3tools/shared/hqDeploys";
 import { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import {
@@ -264,6 +265,12 @@ export interface HqApi {
     service: string,
   ) => Promise<HqDeployAnswer>;
   /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
+  readonly repositorySource: (
+    appId: string,
+    repo: string,
+    query: RepositoryQuery,
+    signal?: AbortSignal,
+  ) => Promise<RepositorySource>;
   readonly change: (
     link: ChangeLink,
     signal?: AbortSignal,
@@ -936,6 +943,13 @@ export function makeHqApi(input: {
           ...(signal === undefined ? {} : { signal }),
         })
       ).blob(),
+    repositorySource: async (appId, repo, query, signal) =>
+      decoded(RepositorySource)(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/source?${new URLSearchParams({ ...query })}`,
+          signal === undefined ? {} : { signal },
+        ),
+      ),
     compare: async (appId, repo, query, signal) =>
       readCompare(
         await authorized(comparePath(appId, repo, query), signal === undefined ? {} : { signal }),

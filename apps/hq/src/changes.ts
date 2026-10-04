@@ -32,6 +32,7 @@ import {
   type MateChanges,
   type OpenChangeResponse,
   type RepoListEntry,
+  Sha,
   attachmentPath,
   mergeSubject,
 } from "@t3tools/shared/hqChanges";
@@ -43,6 +44,11 @@ import {
   hasServices,
 } from "@t3tools/shared/hqRecipe";
 import { type Decision, type Facts, REASONS, can } from "@t3tools/shared/zeropsPermissions";
+import {
+  SOURCE_FILE_MAX_BYTES,
+  type RepositoryQuery,
+  type RepositorySource,
+} from "@t3tools/shared/hqGit";
 import { readReleaseVersion } from "./releaseVersion.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -92,6 +98,7 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
   ]),
 }) {}
 
+const isSha = Schema.is(Sha);
 const isChangeRefused = Schema.is(ChangeRefused);
 
 /** The verbs a Mate does in its application, beside editing its change and fetching. */
@@ -201,6 +208,12 @@ export class Changes extends Context.Service<
      * commit with the change whose merge it is; `commit_not_found` for either end the repository
      * lacks.
      */
+    readonly repositorySource: (
+      userId: string,
+      appId: string,
+      repo: string,
+      query: RepositoryQuery,
+    ) => Effect.Effect<RepositorySource, ReadError | NotLeader | GitError>;
     readonly compare: (
       userId: string,
       appId: string,
@@ -1058,6 +1071,62 @@ export const changesLayer: Layer.Layer<
               };
             }),
           );
+        }),
+      repositorySource: (userId, appId, repo, query) =>
+        Effect.gen(function* () {
+          yield* personApp(userId, appId, "read_change");
+          const known =
+            yield* sql`SELECT 1 FROM hq_repo WHERE app_id::text = ${appId} AND name = ${repo}`;
+          if (known.length === 0) return yield* refuse("repo_not_found", "repo_not_found");
+          const git = yield* gitHost.git;
+          const target = { appId, id: repo };
+          const branches = yield* git.branches(target);
+          // Resolve a moving branch once; every following read in this response uses its commit.
+          const selected = query.rev ?? "refs/heads/main";
+          const branch = branches.items.find(
+            (branch) => branch.ref === selected || branch.ref === `refs/heads/${selected}`,
+          );
+          const revision =
+            branch?.sha ??
+            (query.rev === undefined && branches.items.length === 0 ? null : selected);
+          const common = {
+            branches: branches.items,
+            branchesTruncated: branches.truncated,
+            path: query.path,
+          };
+          if (revision === null)
+            return {
+              ...common,
+              kind: "tree" as const,
+              revision: null,
+              entries: [],
+              truncated: false,
+            };
+          // A missing commit is an earned negative; a git process failure stays unavailable.
+          if (!isSha(revision)) return yield* refuse("commit_not_found", "commit_not_found");
+          if (branch === undefined && (yield* git.missingCommits(target, [revision])).length > 0) {
+            return yield* refuse("commit_not_found", "commit_not_found");
+          }
+          const commit = { sha: revision };
+          if (query.kind === "file") {
+            const file = yield* git.file(target, commit.sha, query.path, SOURCE_FILE_MAX_BYTES);
+            return {
+              ...common,
+              kind: "file" as const,
+              revision: commit.sha,
+              content: file.binary ? null : file.content.toString("utf8"),
+              binary: file.binary,
+              truncated: file.truncated,
+            };
+          }
+          const tree = yield* git.tree(target, commit.sha, query.path);
+          return {
+            ...common,
+            kind: "tree" as const,
+            revision: commit.sha,
+            entries: tree.items,
+            truncated: tree.truncated,
+          };
         }),
       compare: (userId, appId, repo, query) =>
         Effect.gen(function* () {

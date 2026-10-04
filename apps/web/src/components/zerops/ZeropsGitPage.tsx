@@ -18,9 +18,10 @@
  * is the view alone.
  */
 import { changeKindTag, changeState, gitRepositoryLine } from "@t3tools/client-runtime/zerops";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useMemo } from "react";
 
+import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
 import { StatusDot } from "./primitives";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { useChangeOffers } from "~/zerops/useChangeOffers";
@@ -130,6 +131,7 @@ export function ZeropsGitPage() {
   const registry = useZeropsRegistry();
   const offersOf = useChangeOffers();
   const navigate = useNavigate();
+  const search = useSearch({ from: "/git" });
   // Every application the person may read the changes of: the one whose changes HQ's rule keeps
   // from them is listed elsewhere, and is not read here.
   const apps = useMemo(
@@ -177,15 +179,37 @@ export function ZeropsGitPage() {
         <h1 className="text-xl font-medium text-foreground">Git</h1>
         <p className="text-sm text-muted-foreground">Every change open across your projects.</p>
       </div>
-      <ZeropsGitOverview
-        onOpenChange={(appId, repository, number) => {
-          void navigate({
-            to: "/change/$groupId/$repository/$number",
-            params: { groupId: appId, repository, number: String(number) },
-          });
-        }}
-        state={state}
-      />
+      {search.appId !== undefined && search.repo !== undefined ? (
+        <ZeropsRepositoryBrowser
+          key={`${activeOrganization?.id}:${search.appId}:${search.repo}`}
+          appId={search.appId}
+          repo={search.repo}
+          query={{
+            ...(search.rev === undefined ? {} : { rev: search.rev }),
+            path: search.path ?? "",
+            kind: search.kind ?? "tree",
+          }}
+          onBack={() => {
+            void navigate({ to: "/git", search: {} });
+          }}
+          onNavigate={(query) => {
+            void navigate({
+              to: "/git",
+              search: (previous) => ({ ...previous, ...query }),
+            });
+          }}
+        />
+      ) : (
+        <ZeropsGitOverview
+          onOpenChange={(appId, repository, number) => {
+            void navigate({
+              to: "/change/$groupId/$repository/$number",
+              params: { groupId: appId, repository, number: String(number) },
+            });
+          }}
+          state={state}
+        />
+      )}
     </ZeropsHostedFrame>
   );
 }
