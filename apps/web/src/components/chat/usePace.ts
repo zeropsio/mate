@@ -60,14 +60,17 @@ export function usePace({
 }
 
 /** Whether the page is out of sight (a tab in the background). */
+function readOutOfSight(): boolean {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
+
 function useOutOfSight(): boolean {
-  const read = () => typeof document !== "undefined" && document.visibilityState === "hidden";
-  const [hidden, setHidden] = useState(read);
+  const [hidden, setHidden] = useState(readOutOfSight);
   useEffect(() => {
     if (typeof document === "undefined" || typeof document.addEventListener !== "function") {
       return;
     }
-    const heard = () => setHidden(read());
+    const heard = () => setHidden(readOutOfSight());
     document.addEventListener("visibilitychange", heard);
     return () => document.removeEventListener("visibilitychange", heard);
   }, []);
