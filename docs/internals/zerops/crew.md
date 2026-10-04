@@ -460,7 +460,9 @@ relative, a dirty lane's work saved as a WIP commit, an unreadable ref or a tip 
 write parked. A copy whose task passed its check (`ready`, `review`, `landing`, `waiting-on-you`)
 is never committed, at boot or at a turn's end: a tracked edit on it stops the task, "its copy has
 edits made after its check", and stays where it is; untracked files are neither edits nor landed. A
-landing that went through is landed, whatever its copy holds. A passed check records the tip it ran on, and Land
+landing that went through is landed, whatever its copy holds. A check judges the committed tree:
+the copy's untracked files are set aside while it runs and put back after (`CrewChecks`), so none
+can make it pass for a tree that lands without them. A passed check records the tip it ran on, and Land
 refuses any other tip ("its copy moved after its check"), so nothing unchecked lands. A copy missing at boot or after a self-deploy comes back from its branch
 (`CrewWorkspace.recover`) only where its branch, every recorded landing's trailer and its saved
 tip remain, so no work is lost; otherwise the loss is named and the copy offers Rebuild crew copy, a selected rebuild that refuses a missing or changed saved branch and

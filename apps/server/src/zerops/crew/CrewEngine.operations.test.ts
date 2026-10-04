@@ -232,7 +232,7 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
               !frame.operations?.some((row) => row.id === `crashed-${kind}`) &&
               (kind === "dispatch" || kind === "checkpoint"
                 ? frame.board.tasks[0]?.attempts === 1 && frame.board.tasks[0]?.state === "working"
-                : frame.board.tasks[0]?.state === (kind === "check" ? "ready" : "landed")),
+                : frame.board.tasks[0]?.state === (kind === "check" ? "ready" : "rework")),
           );
           const operation = yield* (yield* CrewStore).getOperation(`crashed-${kind}`);
           assert.strictEqual(
@@ -246,8 +246,10 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
             "dirty work\n",
           );
           if (kind === "landing") {
-            // Its untracked file is no edit after the check: the landing goes on, without it.
+            // The re-check runs on the committed tree: the untracked ok.txt cannot make it pass,
+            // nothing lands, and the file is back in the copy as it was.
             assert.isFalse(NodeFS.existsSync(NodePath.join(world.root, "ok.txt")));
+            assert.include(git(copy, ["status", "--porcelain"]), "?? ok.txt");
           }
           if (kind === "checkpoint") {
             // Its turn had ended: the save is redone, and no turn goes out outside a run.
