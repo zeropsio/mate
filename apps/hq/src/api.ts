@@ -95,6 +95,7 @@ import {
   ATTACHMENT_MAX_BYTES,
   ChangeNumber,
   CompareQuery,
+  ChangeDetailQuery,
   EditChangeRequest,
   EnsureRepoRequest,
   MergeChangeRequest,
@@ -449,6 +450,7 @@ const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
 /** A repository as a path names it, `:repo`, and a comparison as its query asks it. */
 const decodeRepoName = Schema.decodeUnknownEffect(RepoName);
 const decodeCompareQuery = Schema.decodeUnknownEffect(CompareQuery);
+const decodeChangeDetailQuery = Schema.decodeUnknownEffect(ChangeDetailQuery);
 
 /** A recipe's tier as a path names it, `:tier`: `mate`, `stage` or `production`. */
 const decodeRecipeTier = Schema.decodeUnknownEffect(RecipeTier);
@@ -590,7 +592,13 @@ const routes = (
         Effect.gen(function* () {
           const { userId } = yield* principal;
           const { appId, repo, number } = yield* appChangePath;
-          return json(yield* (yield* Changes).changeDetail(userId, appId, repo, number), 200);
+          const search = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://hq")
+            .searchParams;
+          const query = yield* decodeChangeDetailQuery(Object.fromEntries(search));
+          return json(
+            yield* (yield* Changes).changeDetail(userId, appId, repo, number, query),
+            200,
+          );
         }),
       ),
     ),

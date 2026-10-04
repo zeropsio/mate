@@ -975,6 +975,15 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
   });
 
+  it("asks HQ for the head and main displayed in the review", async () => {
+    const { hq, api: hqApi } = api(() => json(200, DETAIL));
+    const snapshot = { expectedHead: "a".repeat(40), expectedMain: "b".repeat(40) };
+    await hqApi.change(LINK, undefined, snapshot);
+    expect(hq.seen.at(-1)?.search).toBe(
+      `?expectedHead=${snapshot.expectedHead}&expectedMain=${snapshot.expectedMain}`,
+    );
+  });
+
   it("refuses an answer this version of Mate cannot read, rather than drawing half of it", async () => {
     const { api: hqApi } = api(() => json(200, { ...DETAIL, mergeability: { kind: "maybe" } }));
     await expect(hqApi.change(LINK)).rejects.toMatchObject({

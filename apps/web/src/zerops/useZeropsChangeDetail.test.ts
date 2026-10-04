@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { TestNode } from "./__fixtures__/testDom";
 import {
   forgetChangeDetails,
+  mergedMain,
   useZeropsChangeDetail,
   type ZeropsChangeDetail,
   type ZeropsChangeDetailRequest,
@@ -17,6 +18,7 @@ const MAIN = "a".repeat(40);
 const hq = vi.hoisted(() => ({
   answers: [] as Array<"detail" | "failed">,
   reads: [] as Array<string>,
+  snapshots: [] as Array<unknown>,
 }));
 
 const DETAIL = {
@@ -41,7 +43,12 @@ const DETAIL = {
 const official = vi.hoisted(() => ({
   address: "https://hq.example.test",
   api: {
-    change: async (link: { appId: string; repo: string; number: number }) => {
+    change: async (
+      link: { appId: string; repo: string; number: number },
+      _signal?: AbortSignal,
+      snapshot?: unknown,
+    ) => {
+      hq.snapshots.push(snapshot);
       hq.reads.push(`${link.appId}/${link.repo}#${String(link.number)}`);
       const answer = hq.answers[Math.min(hq.reads.length - 1, hq.answers.length - 1)];
       if (answer === "failed") throw new Error("HQ is not answering right now.");
@@ -96,6 +103,7 @@ describe("useZeropsChangeDetail", () => {
   afterEach(() => {
     hq.answers = [];
     hq.reads = [];
+    hq.snapshots = [];
     forgetChangeDetails();
     vi.unstubAllGlobals();
   });
@@ -109,6 +117,7 @@ describe("useZeropsChangeDetail", () => {
       value: { mergeability: "mergeable", commits: [{ sha: HEAD, subject: "Add a /status page" }] },
     });
     expect(hq.reads).toEqual(["g1/appdev#2"]);
+    expect(hq.snapshots).toEqual([{ expectedHead: HEAD, expectedMain: MAIN }]);
     await probe.unmount();
   });
 
@@ -146,4 +155,15 @@ describe("useZeropsChangeDetail", () => {
     expect(hq.reads).toEqual([]);
     await probe.unmount();
   });
+});
+
+it("uses only this repository's latest merge for its main, even when another repo merged later", () => {
+  const changes = [
+    { repository: "webdev", mergeCommitSha: "b".repeat(40) },
+    { repository: "apidev", mergeCommitSha: MAIN },
+    { repository: "apidev", mergeCommitSha: "d".repeat(40) },
+  ];
+  expect(mergedMain("apidev", changes)).toBe(MAIN);
+  expect(mergedMain("missing", changes)).toBeUndefined();
+  expect(mergedMain("apidev", undefined)).toBeUndefined();
 });

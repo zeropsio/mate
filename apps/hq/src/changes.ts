@@ -16,6 +16,7 @@ import type { GitError, HqGit, Repo } from "@t3tools/hq-git";
 import {
   type AttachmentResponse,
   type ChangeDetailResponse,
+  type ChangeDetailQuery,
   type ChangesSnapshot,
   COMPARE_COMMITS_MAX,
   type CompareQuery,
@@ -210,6 +211,7 @@ export class Changes extends Context.Service<
       appId: string,
       repo: string,
       number: number,
+      query?: ChangeDetailQuery,
     ) => Effect.Effect<ChangeDetailResponse, ReadError | NotLeader | GitError>;
     /** What people said about a change, oldest first. */
     readonly listComments: (
@@ -1102,7 +1104,7 @@ export const changesLayer: Layer.Layer<
             total: between.total,
           };
         }),
-      changeDetail: (userId, appId, repo, number) =>
+      changeDetail: (userId, appId, repo, number, query = {}) =>
         Effect.gen(function* () {
           yield* personApp(userId, appId, "read_change");
           const change = yield* changeIn(appId, repo, number);
@@ -1110,9 +1112,18 @@ export const changesLayer: Layer.Layer<
           // As the change's record names it, never as the path spelled it.
           const at = { appId: change.appId, id: change.repo };
           const mate = change.mateProjectId;
+          const mainHead = yield* mainOf(git, at);
+          if (query.expectedHead !== undefined && query.expectedHead !== change.head) {
+            return yield* refuse("conflict", "head_moved");
+          }
+          if (query.expectedMain !== undefined && query.expectedMain !== mainHead) {
+            return yield* refuse("conflict", "main_moved");
+          }
+          const snapshot = { head: change.head, main: mainHead };
           const diff = yield* git.changeDiff(at, mate, number, {
             maxFiles: 300,
             maxBytesPerFile: 256 * 1024,
+            snapshot,
           });
           // A squash lands content without its original commits. The preceding landing of this
           // Mate is the change's own base, independent of a later merge-base with main.
@@ -1124,11 +1135,11 @@ export const changesLayer: Layer.Layer<
             ORDER BY number DESC LIMIT 1`;
           const log = yield* git.changeLog(at, mate, number, {
             limit: 100,
+            snapshot,
             ...(previous?.landed_head == null ? {} : { base: previous.landed_head }),
           });
-          const mainHead = yield* mainOf(git, at);
-          const mergeBase = yield* git.mergeBase(at, mate, number);
-          const mergeability = yield* git.mergeability(at, mate, number);
+          const mergeBase = yield* git.mergeBase(at, mate, number, snapshot);
+          const mergeability = yield* git.mergeability(at, mate, number, snapshot);
           // Read in full, the change is judged: its record keeps what was just read.
           const judged = {
             mergeability: mergeability.kind === "no_change" ? "unknown" : mergeability.kind,
@@ -1141,7 +1152,9 @@ export const changesLayer: Layer.Layer<
                 UPDATE hq_change
                 SET mergeability = ${judged.mergeability}, behind = ${judged.behind}
                 WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
-                  AND number = ${number}`),
+                  AND number = ${number} AND head IS NOT DISTINCT FROM ${change.head}
+                  AND EXISTS (SELECT 1 FROM hq_repo WHERE app_id = ${change.appId}::uuid
+                    AND name = ${change.repo} AND main_head IS NOT DISTINCT FROM ${mainHead})`),
             );
           }
           return {

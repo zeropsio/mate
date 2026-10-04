@@ -43,6 +43,12 @@ export interface Change {
 }
 
 type Awaitable<A> = A | Promise<A>;
+/** Immutable commits captured for every part of a change's review. */
+export interface ChangeSnapshot {
+  readonly head: string | null;
+  readonly main: string | null;
+}
+
 export interface HqGitOptions {
   /** One instance per root: opening sweeps reservations and staging left by a crashed instance. */
   readonly rootDir: string;
@@ -273,6 +279,7 @@ export interface HqGit {
     repo: Repo,
     mateId: string,
     number: number,
+    snapshot?: ChangeSnapshot,
   ) => Effect.Effect<Mergeability, GitError>;
   /** Mergeability's verdict, then one commit on main by CAS: never a moved main or change head. */
   readonly squashMerge: (
@@ -382,6 +389,7 @@ export interface HqGit {
     repo: Repo,
     mateId: string,
     number: number,
+    snapshot?: ChangeSnapshot,
   ) => Effect.Effect<string | null, GitError>;
   /**
    * The commits `base..head` names — reachable from `head` and not from `base`, every one up to
@@ -404,7 +412,7 @@ export interface HqGit {
     repo: Repo,
     mateId: string,
     number: number,
-    options: { readonly limit: number; readonly base?: string },
+    options: { readonly limit: number; readonly base?: string; readonly snapshot?: ChangeSnapshot },
   ) => Effect.Effect<Bounded<CommitSummary>, GitError>;
   /**
    * What squashing the change into main would do to main now: each file of the merged tree that
@@ -438,7 +446,11 @@ export interface HqGit {
     repo: Repo,
     mateId: string,
     number: number,
-    options: { readonly maxFiles: number; readonly maxBytesPerFile: number },
+    options: {
+      readonly maxFiles: number;
+      readonly maxBytesPerFile: number;
+      readonly snapshot?: ChangeSnapshot;
+    },
   ) => Effect.Effect<Bounded<DiffFile>, GitError>;
   /** Stream belongs to the consumer: destroy it on cancellation; layer scope also stops git. */
   readonly archive: (repo: Repo, sha: string) => Effect.Effect<NodeStream.Readable, GitError>;

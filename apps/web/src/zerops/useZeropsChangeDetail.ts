@@ -9,10 +9,14 @@
  * so opening it again paints at once with nothing to wait for. A read that failed is asked again on
  * *Try again* (`retry`), or the next time it opens. What is kept is bounded by count and by size.
  */
-import { changeReadout, type ChangeReadout } from "@t3tools/client-runtime/zerops";
+import {
+  changeReadout,
+  type ChangeReadout,
+  type FlowPullRequest,
+} from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
-import type { ChangeLink } from "@t3tools/shared/hqChanges";
+import type { ChangeDetailQuery, ChangeLink } from "@t3tools/shared/hqChanges";
 import { useCallback, useEffect, useState } from "react";
 
 import { LRUCache } from "~/lib/lruCache";
@@ -54,10 +58,11 @@ function readOnce(
   key: string,
   api: Pick<HqApi, "change">,
   link: ChangeLink,
+  snapshot: ChangeDetailQuery,
 ): Promise<ReadoutPart<ChangeReadout>> {
   const running = inflight.get(key);
   if (running !== undefined) return running;
-  const next = api.change(link).then(
+  const next = api.change(link, undefined, snapshot).then(
     (detail): ReadoutPart<ChangeReadout> => {
       const part = { kind: "read", value: changeReadout(detail) } as const;
       // Held as lines, a diff weighs about three times its text.
@@ -111,11 +116,19 @@ export function useZeropsChangeDetail(
   const appId = link?.appId;
   const repo = link?.repo;
   const number = link?.number;
+  const head = request?.head;
+  const main = request?.main;
   useEffect(() => {
     if (!reading || key === null || hq === null) return;
-    if (appId === undefined || repo === undefined || number === undefined) return;
+    if (appId === undefined || repo === undefined || number === undefined || head === undefined)
+      return;
     let live = true;
-    void readOnce(key, hq.api, { appId, repo, number }).then((answer) => {
+    void readOnce(
+      key,
+      hq.api,
+      { appId, repo, number },
+      { expectedHead: head, ...(main === undefined ? {} : { expectedMain: main }) },
+    ).then((answer) => {
       if (!live) return;
       setHeld((current) =>
         current.key === key && current.attempt === attempt ? { ...current, part: answer } : current,
@@ -124,6 +137,14 @@ export function useZeropsChangeDetail(
     return () => {
       live = false;
     };
-  }, [appId, attempt, hq, key, number, reading, repo]);
+  }, [appId, attempt, head, hq, key, main, number, reading, repo]);
   return { readout: part, retry };
+}
+
+/** The main commit of this repository, independent of merges in the application's other repos. */
+export function mergedMain(
+  repository: string,
+  merged: ReadonlyArray<Pick<FlowPullRequest, "repository" | "mergeCommitSha">> | undefined,
+): string | undefined {
+  return merged?.find((change) => change.repository === repository)?.mergeCommitSha;
 }

@@ -353,6 +353,12 @@ export type CompareResponse = typeof CompareResponse.Type;
  * the change's merge base with it (behind when they differ), its mergeability, its files with their
  * patches, and its commits, newest first. Reads are bounded; a `…Truncated` flag says one was cut.
  */
+export const ChangeDetailQuery = Schema.Struct({
+  expectedHead: Schema.optionalKey(Sha),
+  expectedMain: Schema.optionalKey(Sha),
+});
+export type ChangeDetailQuery = typeof ChangeDetailQuery.Type;
+
 export const ChangeDetailResponse = Schema.Struct({
   change: HqChange,
   mainHead: Schema.NullOr(Sha),

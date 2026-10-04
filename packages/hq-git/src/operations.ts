@@ -14,6 +14,7 @@ import {
   type Repo,
   type GitEvent,
   type Mergeability,
+  type ChangeSnapshot,
 } from "./api.ts";
 import { GitRunner, terminate } from "./git.ts";
 
@@ -31,6 +32,15 @@ const error = (message: string) =>
 const pathError = (message: string) =>
   new GitError({ operation: "operations", reason: "invalid_path", message });
 const validSha = (sha: string) => /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(sha);
+const checkedSnapshot = (snapshot: ChangeSnapshot | undefined) => {
+  if (
+    snapshot !== undefined &&
+    [snapshot.head, snapshot.main].some((sha) => sha !== null && !validSha(sha))
+  ) {
+    throw error("Invalid review commit");
+  }
+  return snapshot;
+};
 const bound = (n: number, ceiling: number) => {
   if (!Number.isSafeInteger(n) || n < 1) throw error("Read bounds must be positive integers");
   return Math.min(n, ceiling);
@@ -328,11 +338,22 @@ export const makeOperations = (
   };
   const changeHead: HqGit["changeHead"] = (repo, mateId, number) =>
     inRepo("changeHead", repo, (dir, signal) => refHead(dir, changeRef(mateId, number), signal));
-  const mergeability: HqGit["mergeability"] = (repo, mateId, number) =>
+  const mergeability: HqGit["mergeability"] = (repo, mateId, number, captured) =>
     inRepo("mergeability", repo, async (dir, signal) => {
-      const head = await refHead(dir, changeRef(mateId, number), signal);
+      const snapshot = checkedSnapshot(captured);
+      const head =
+        snapshot === undefined
+          ? await refHead(dir, changeRef(mateId, number), signal)
+          : snapshot.head;
       if (!head) return { kind: "no_change" };
-      const main = await bornMain("mergeability", dir, signal);
+      const main =
+        snapshot === undefined ? await bornMain("mergeability", dir, signal) : snapshot.main;
+      if (main === null)
+        throw new GitError({
+          operation: "mergeability",
+          reason: "no_main",
+          message: "Main has no commit",
+        });
       const { tree: _tree, ...result } = await inspect(
         dir,
         repo,
@@ -740,10 +761,15 @@ export const makeOperations = (
       if (!validSha(sha)) throw error("Invalid commit");
       return text(dir, ["rev-parse", "--verify", `${sha}^{tree}`], signal);
     });
-  const mergeBase: HqGit["mergeBase"] = (repo, mateId, number) =>
+  const mergeBase: HqGit["mergeBase"] = (repo, mateId, number, captured) =>
     inRepo("mergeBase", repo, async (dir, signal) => {
-      const head = await refHead(dir, changeRef(mateId, number), signal);
-      const main = await refHead(dir, "refs/heads/main", signal);
+      const snapshot = checkedSnapshot(captured);
+      const head =
+        snapshot === undefined
+          ? await refHead(dir, changeRef(mateId, number), signal)
+          : snapshot.head;
+      const main =
+        snapshot === undefined ? await refHead(dir, "refs/heads/main", signal) : snapshot.main;
       if (!head || !main) return null;
       const base = (await run(dir, ["merge-base", main, head], signal, undefined, undefined, [1]))
         .toString()
@@ -795,9 +821,14 @@ export const makeOperations = (
     inRepo("changeLog", repo, async (dir, signal) => {
       const limit = bound(opts.limit, readLimits.log);
       if (opts.base !== undefined && !validSha(opts.base)) throw error("Invalid change base");
-      const head = await refHead(dir, changeRef(mateId, number), signal);
+      const snapshot = checkedSnapshot(opts.snapshot);
+      const head =
+        snapshot === undefined
+          ? await refHead(dir, changeRef(mateId, number), signal)
+          : snapshot.head;
       if (!head) return { items: [], truncated: false };
-      const main = await refHead(dir, "refs/heads/main", signal);
+      const main =
+        snapshot === undefined ? await refHead(dir, "refs/heads/main", signal) : snapshot.main;
       const shas = (
         await text(
           dir,
@@ -963,9 +994,20 @@ export const makeOperations = (
     inRepo("changeDiff", repo, async (dir, signal) => {
       const maxFiles = bound(opts.maxFiles, readLimits.entries);
       const maxBytes = bound(opts.maxBytesPerFile, readLimits.bytes);
-      const head = await refHead(dir, changeRef(mateId, number), signal);
+      const snapshot = checkedSnapshot(opts.snapshot);
+      const head =
+        snapshot === undefined
+          ? await refHead(dir, changeRef(mateId, number), signal)
+          : snapshot.head;
       if (!head) return { items: [], truncated: false };
-      const main = await bornMain("changeDiff", dir, signal);
+      const main =
+        snapshot === undefined ? await bornMain("changeDiff", dir, signal) : snapshot.main;
+      if (main === null)
+        throw new GitError({
+          operation: "changeDiff",
+          reason: "no_main",
+          message: "Main has no commit",
+        });
       const base = await text(dir, ["merge-base", main, head], signal);
       const result = await prefix(
         dir,

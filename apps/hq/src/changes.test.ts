@@ -807,6 +807,15 @@ describe("a Mate's changes in HQ", () => {
         const detail = yield* call("GET", `/api/apps/${appId}/changes/appdev/1`, {
           session: owner,
         });
+        for (const [query, reason] of [
+          [`expectedHead=${first}&expectedMain=${main}`, "head_moved"],
+          [`expectedHead=${second}&expectedMain=${first}`, "main_moved"],
+        ]) {
+          const stale = yield* call("GET", `/api/apps/${appId}/changes/appdev/1?${query}`, {
+            session: owner,
+          });
+          assert.deepStrictEqual([stale.status, stale.body], [409, { code: "conflict", reason }]);
+        }
         assert.strictEqual(detail.status, 200);
         const review = detail.body as Record<string, unknown> & {
           readonly files: ReadonlyArray<Record<string, unknown>>;

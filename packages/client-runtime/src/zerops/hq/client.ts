@@ -17,6 +17,7 @@
 import {
   attachmentPath,
   ChangeDetailResponse,
+  type ChangeDetailQuery,
   CommentListResponse,
   CompareResponse,
   HqChange,
@@ -262,7 +263,11 @@ export interface HqApi {
     service: string,
   ) => Promise<HqDeployAnswer>;
   /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
-  readonly change: (link: ChangeLink, signal?: AbortSignal) => Promise<ChangeDetailResponse>;
+  readonly change: (
+    link: ChangeLink,
+    signal?: AbortSignal,
+    snapshot?: ChangeDetailQuery,
+  ) => Promise<ChangeDetailResponse>;
   /** What was said on a change, oldest first. */
   readonly changeComments: (
     link: ChangeLink,
@@ -695,8 +700,19 @@ export function makeHqApi(input: {
   // Only a lost release/rollback write answer needs this direct confirmation, never a load.
   const releasesOf = async (appId: string) =>
     (await readReleases(await authorized(releasesPath(appId)))).releases;
-  const changeOf = async (link: ChangeLink, signal?: AbortSignal) =>
-    readChangeDetail(await authorized(changePath(link), signal === undefined ? {} : { signal }));
+  const changeOf = async (
+    link: ChangeLink,
+    signal?: AbortSignal,
+    snapshot: ChangeDetailQuery = {},
+  ) => {
+    const search = new URLSearchParams(snapshot).toString();
+    return readChangeDetail(
+      await authorized(
+        `${changePath(link)}${search === "" ? "" : `?${search}`}`,
+        signal === undefined ? {} : { signal },
+      ),
+    );
+  };
   const commentsOf = async (link: ChangeLink, signal?: AbortSignal) =>
     (
       await readComments(
