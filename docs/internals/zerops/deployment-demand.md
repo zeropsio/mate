@@ -16,10 +16,12 @@ stop identities even while HQ changes and release detail is unavailable.
 Undemanded refs do not hold Refresh in a loading state. The last view releasing a stop ends its demand. There is no polling or automatic capacity retry.
 
 Overview, Projects, the app flow, production/stage detail and the sidebar read the same
-`Shown<Deployment>`. HQ release history may name an observed running version, but cannot replace an
-unread or failed runtime answer. A failed recheck is visible even when an older answer is held.
+`Shown<Deployment>`. While the platform is unread, the flow's own known version still stands,
+including a known inability to tell what a service runs. A complete platform answer takes precedence
+over the flow. A failed recheck is visible even when an older answer is held.
 Again renews access when refused, renews the visible demand and asks the data runtime for one manual project refresh. A sidebar
-chip whose runtime is unverified cannot inherit a remembered healthy label.
+chip with a failed runtime answer cannot inherit a remembered healthy label. While serving status
+is unread, it keeps its remembered facts until a new answer arrives.
 
 Desktop uses the same web surfaces. Mobile does not currently render these group-flow or stop-detail
 surfaces; the shared runtime's demand and failure behavior applies to its consumers too. No wire

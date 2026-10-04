@@ -1676,6 +1676,9 @@ const HQ_OPEN = {
       "crm-prod",
       {
         state: "known",
+        asOf: { ordinal: 1, atMs: 0 },
+        coverage: "complete",
+        freshness: { kind: "live" },
         value: {
           kind: "running",
           activatedAt: null,

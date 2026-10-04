@@ -231,7 +231,16 @@ describe("ZeropsGroupPane", () => {
     const markup = render(undefined, {
       environments: [
         environment("stage", "Shop stage"),
-        environment("prod", "Harbor live", "production"),
+        {
+          ...environment("prod", "Harbor live", "production"),
+          version: {
+            name: undefined,
+            label: "9e8d7c6",
+            commit: "9e8d7c6",
+            sha: "9e8d7c6".padEnd(40, "0"),
+            taggedBy: undefined,
+          },
+        },
       ],
       withheldNotice: (projectId) => (projectId === "prod" ? CHECKING : null),
     });
@@ -239,7 +248,8 @@ describe("ZeropsGroupPane", () => {
     expect(markup).toContain("production");
     expect(markup).toContain(CHECKING);
     expect(markup).not.toContain("Harbor live");
-    expect(markup).not.toContain("3f9c1b2");
+    expect(markup).not.toContain("9e8d7c6");
+    expect(markup).toContain("3f9c1b2");
     expect(markup.match(/<button/g)?.length).toBe(render().match(/<button/g)!.length - 1);
   });
 
