@@ -125,7 +125,8 @@ export interface AttachInput {
 
 /**
  * A Mate's birth intent, recorded before its Zerops project exists: where it goes and with which
- * face. Its project is created tagged with its id, so whoever finishes the Mate attaches it so.
+ * face. Once its project exists, HQ binds the two by project id (`bindBirth`), so whoever finishes
+ * the Mate attaches it so.
  */
 export interface BirthIntent {
   readonly projectId?: string;

@@ -1,7 +1,7 @@
 /**
  * The events that ask for deploys (the deploy-jobs design): a merge that moved `main`, a release, an
  * environment added, a deploy key kept — and, written by `deploys.ts` itself, a person's Run again
- * or Add service and an import's hold. Nothing else asks, and nothing asks on a timer.
+ * or Add service. Nothing else asks, and nothing asks on a timer.
  *
  * Each is one `hq_rollout` row, written inside the event's own write ({@link addRollout}), so an
  * event that happened is never without its rollout. The request that made the event runs it
