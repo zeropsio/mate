@@ -104,6 +104,30 @@ describe("mateArriving", () => {
     },
     created,
   };
+  const withLogins = (
+    logins: Record<
+      string,
+      {
+        signedInBy: string | null;
+        lastSignedInBy?: string | null;
+        present: boolean;
+        token: boolean;
+      }
+    >,
+  ) => ({ hq: { ...signedOnce.hq, mate: { ...signedOnce.hq.mate, logins } }, created });
+  // A sign-out keeps the last signer; HQ's saved signers arrive the same way before its live logins.
+  const signedOutSince = withLogins({
+    "claude-code": { signedInBy: null, lastSignedInBy: "u-eva", present: false, token: false },
+  });
+  const signedInOnOpenCode = withLogins({
+    opencode: { signedInBy: "u-eva", present: true, token: false },
+  });
+  const signedOutOfOpenCode = withLogins({
+    opencode: { signedInBy: null, lastSignedInBy: "u-eva", present: false, token: false },
+  });
+  const nobodyYet = withLogins({
+    "claude-code": { signedInBy: null, lastSignedInBy: null, present: false, token: false },
+  });
 
   const cases: ReadonlyArray<{
     readonly name: string;
@@ -152,6 +176,30 @@ describe("mateArriving", () => {
       candidate: { project: signedOnce, group: "connected" },
       atMs: born + 60_000,
       arriving: false,
+    },
+    {
+      name: "signed in once, signed out since, a minute old",
+      candidate: { project: signedOutSince, group: "connected" },
+      atMs: born + 60_000,
+      arriving: false,
+    },
+    {
+      name: "signed in on another agent, a minute old",
+      candidate: { project: signedInOnOpenCode, group: "connected" },
+      atMs: born + 60_000,
+      arriving: false,
+    },
+    {
+      name: "signed out of another agent since, a minute old",
+      candidate: { project: signedOutOfOpenCode, group: "connected" },
+      atMs: born + 60_000,
+      arriving: false,
+    },
+    {
+      name: "its logins told, nobody signed in yet, a minute old",
+      candidate: { project: nobodyYet, group: "connected" },
+      atMs: born + 60_000,
+      arriving: true,
     },
     {
       name: "signed in once, old",
