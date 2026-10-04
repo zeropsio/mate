@@ -1337,6 +1337,13 @@ describe("deriveMessagesTimelineRows", () => {
     });
   it.each([
     {
+      // Bodhi: its word landed a moment after the run it woke began.
+      name: "a helper whose finish landed a moment after the run it woke began",
+      during: [helperDone("h1", "t1", 2, 6.05)],
+      after: [],
+      woke: { entries: [{ id: "h1" }], tasks: 1, failed: 0, helpers: true, title: "Review h1" },
+    },
+    {
       name: "a helper that finished after the run before it ended",
       during: [helperDone("h1", "t1", 2, 5)],
       after: [],
@@ -1478,6 +1485,34 @@ describe("deriveMessagesTimelineRows", () => {
     ];
     const list = rows({ entries, settled: "t2", helperFinishes });
     expect(list.some((row) => row.id.startsWith("woke:"))).toBe(false);
+  });
+
+  // Bodhi woke into "thought 5s" cards with nothing above them: the
+  // platform's word that a helper finished can land a moment after the run
+  // it woke began.
+  it("says a helper woke a run when its finish lands a moment after the run began", () => {
+    const launch = tool("l1", "t1", 2, {
+      label: "List routes",
+      toolTitle: "List routes",
+      taskId: "task-routes",
+      agentRole: "Explore",
+      sourceActivityKind: "task.completed",
+      tone: "info",
+      agentSpawn: { workflowId: null, agentTaskIds: ["task-routes", "task-components"] },
+    });
+    const entries = [
+      user("m0", 0),
+      assistant("a1", "t1", 1, "Started them."),
+      launch,
+      assistant("a2", "t1", 4, "They report back when done."),
+      assistant("a3", "t2", 6, "One is back."),
+    ];
+    const helperFinishes: ReadonlyArray<HelperFinish> = [
+      { id: "task-routes", title: "List routes", finishedAt: at(6, 4), failed: false },
+    ];
+    expect(
+      rows({ entries, settled: "t2", helperFinishes }).find((row) => row.id === "woke:turn:t2"),
+    ).toMatchObject({ kind: "background", title: "List routes" });
   });
 
   // Run 9: commands sent to the background reported after their turn ended,

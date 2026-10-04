@@ -1757,6 +1757,13 @@ function turnActivity(turn: ConversationTurn): OutcomeActivity[] {
 }
 
 /**
+ * How long after a run nobody wrote to start the word that woke it may land:
+ * a helper's finish reaches the thread a moment after the run it woke began
+ * (Bodhi woke into "thought 5s" cards with nothing above them).
+ */
+const WOKE_LAG_MS = 10_000;
+
+/**
  * A run of background work, by task: a watch that reported three times and
  * then finished is one task, and it failed if its last word was a failure.
  */
@@ -2048,10 +2055,13 @@ export function deriveMessagesTimelineRows(input: {
   // One that finished while a run worked was that run's to take in, never
   // what woke a later one (run 9: a helper done mid-run woke a run twenty
   // minutes on, as a line of its own).
+  // A run nobody wrote to start may have been woken by one whose word
+  // landed a moment after it began (`WOKE_LAG_MS`): that is not taken in.
   const working = structure.turns.map((turn) => {
     const end = turn.stretches.at(-1)?.endedAt ?? null;
+    const woken = turn.stretches[0]?.lead == null;
     return [
-      Date.parse(turn.stretches[0]?.startedAt ?? ""),
+      Date.parse(turn.stretches[0]?.startedAt ?? "") + (woken ? WOKE_LAG_MS : 0),
       end === null ? Number.POSITIVE_INFINITY : Date.parse(end),
     ] as const;
   });
@@ -2065,7 +2075,9 @@ export function deriveMessagesTimelineRows(input: {
   /** The next gathered helper that finished before a run nothing else woke began, taken. */
   const helperWoke = (startedAt: string): HelperFinish | null => {
     const next = helperQueue[0];
-    if (next === undefined || Date.parse(next.finishedAt) > Date.parse(startedAt)) return null;
+    if (next === undefined || Date.parse(next.finishedAt) > Date.parse(startedAt) + WOKE_LAG_MS) {
+      return null;
+    }
     helperQueue.shift();
     return next;
   };
@@ -2098,7 +2110,7 @@ export function deriveMessagesTimelineRows(input: {
         !tracked.trackers.has(entry.entry.id) &&
         (entry.entry.agentSpawn?.agentTaskIds.length ?? 1) <= 1 &&
         finishedAt(entry.entry) > fromMs &&
-        finishedAt(entry.entry) <= untilMs
+        finishedAt(entry.entry) <= untilMs + WOKE_LAG_MS
           ? [entry.entry]
           : [],
       )
@@ -2155,6 +2167,8 @@ export function deriveMessagesTimelineRows(input: {
     // where each reached the Mate (the owner, 2026-09-28, of the card
     // breaking around them: "these split working groups have no chance to
     // stay like this when the work is done").
+    const woke = lead === null ? wokeBy(turn) : [];
+    const wokeIds = new Set(woke.map((entry) => entry.id));
     const exchanges: MessagesTimelineRow[] = [];
     // What the card holds besides its record: a plan to approve, a pause.
     const extras: MessagesTimelineRow[] = [];
@@ -2187,7 +2201,10 @@ export function deriveMessagesTimelineRows(input: {
         reading,
         batch,
       });
-      items.push(...built.items);
+      // What woke the run is said once, over it (`wokeBy`), never again as its line.
+      items.push(
+        ...built.items.filter((item) => item.kind !== "task" || !wokeIds.has(item.entry.id)),
+      );
       extras.push(...built.rows);
     });
     const hasRecord = items.some((item) => item.kind !== "person");
@@ -2219,7 +2236,6 @@ export function deriveMessagesTimelineRows(input: {
       // shows anything at all. One that did nothing to see is nothing to
       // announce (the owner, 2026-09-27, of a lone "Background task
       // finished" line: "why does it say here?").
-      const woke = wokeBy(turn);
       // Taken even by a run that shows nothing: it was woken all the same.
       const helper = woke.length === 0 ? helperWoke(first.startedAt) : null;
       if (!carded && answer === null) {
