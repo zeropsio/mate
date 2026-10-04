@@ -107,13 +107,17 @@ describe("usageMates", () => {
     ["p-fern", "Fern"],
     ["p-old", "Old"],
   ]);
-  const read = (listed: boolean): ReadonlyArray<UsageMate> =>
+  const read = (
+    listed: boolean,
+    missingBefore: ReadonlySet<string> = new Set(),
+  ): ReadonlyArray<UsageMate> =>
     usageMates({
       mates: ORG_MATES,
       names,
       connected: new Set([ENV_JUNO]),
       verdictOf: (projectId) => verdicts.get(projectId) ?? null,
       listed,
+      missingBefore,
     });
 
   it("counts a connected Mate, waits on one on its way, and names the ones it cannot count", () => {
@@ -123,5 +127,15 @@ describe("usageMates", () => {
       { projectId: "p-lena", name: "Lena", state: "connecting" },
       { projectId: "p-old", name: "Old", state: "missing" },
     ]);
+  });
+
+  // A Mate the driver retries reads connecting again on each attempt: once missing, it stays
+  // missing until it is counted, so the totals do not drop to the skeleton on every retry.
+  it("keeps a Mate it already called missing missing while it retries", () => {
+    expect(read(true, new Set(["p-lena"])).find((mate) => mate.projectId === "p-lena")).toEqual({
+      projectId: "p-lena",
+      name: "Lena",
+      state: "missing",
+    });
   });
 });

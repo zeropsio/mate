@@ -15,7 +15,7 @@ import {
 import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { EnvironmentId } from "@t3tools/contracts";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { hqMatesAtom } from "../state/zerops";
 import { useAccountEnvironments, useEnvironmentMachines } from "./accountEnvironments";
@@ -55,6 +55,11 @@ export function usageMates(input: {
   readonly verdictOf: (projectId: string, environmentId: EnvironmentId) => Reachability | null;
   /** No Mate is still to be listed or registered (`useMatesSettled`). */
   readonly listed: boolean;
+  /**
+   * The projects already read missing since the page opened: a retry reads connecting again on
+   * each attempt, so one stays missing until it is counted rather than hold the totals each time.
+   */
+  readonly missingBefore: ReadonlySet<string>;
 }): ReadonlyArray<UsageMate> {
   const read: UsageMate[] = [];
   for (const [projectId, mate] of input.mates ?? []) {
@@ -69,7 +74,7 @@ export function usageMates(input: {
             ? input.listed
               ? "missing"
               : "connecting"
-            : ON_ITS_WAY.has(verdict.kind)
+            : ON_ITS_WAY.has(verdict.kind) && !input.missingBefore.has(projectId)
               ? "connecting"
               : "missing";
     read.push({ projectId, name: input.names.get(projectId) ?? projectId, state });
@@ -96,17 +101,24 @@ export function useUsageMates(
     return () => environments.setDrawn([]);
   }, [environments, drawnKey]);
 
+  // The projects read missing on the last render, as one key: kept from render to render.
+  const [missingKey, setMissingKey] = useState("");
+  const missingBefore = useMemo(
+    () => new Set(missingKey === "" ? [] : missingKey.split("\n")),
+    [missingKey],
+  );
   const names = useMemo(
     () => new Map(heldCandidates(listing).rows.map((row) => [row.project.id, row.project.name])),
     [listing],
   );
-  return useMemo(
+  const read = useMemo(
     () =>
       usageMates({
         mates,
         names,
         connected,
         listed,
+        missingBefore,
         verdictOf: (projectId, environmentId) => {
           const target =
             environmentTarget(machines, environmentId) ??
@@ -116,6 +128,11 @@ export function useUsageMates(
           return target === undefined ? null : selectReachability(target.machine, environmentId);
         },
       }),
-    [mates, names, connected, listed, machines],
+    [mates, names, connected, listed, missingBefore, machines],
   );
+  const missingNow = read
+    .flatMap((mate) => (mate.state === "missing" ? [mate.projectId] : []))
+    .join("\n");
+  if (missingNow !== missingKey) setMissingKey(missingNow);
+  return read;
 }
