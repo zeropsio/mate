@@ -1,9 +1,9 @@
 /**
  * The organization's HQ on the Tools row (SPEC §3.1, §4): healthy; serving while it cannot check
  * Zerops right now, which is no outage; or unavailable since when — the rest of the page still
- * drawn from what was read last. Nothing before its health is first read. An owner or an admin is
- * offered its update beside it when its health names an older Core than this app carries
- * (`ZeropsHqUpdate`).
+ * drawn from what was read last. Nothing before its health is first read. An owner or an admin sees
+ * beside it its update when its health names an older Core than this app carries, else that it is
+ * up to date, and opens either (`ZeropsHqUpdate`).
  */
 import { canWriteRegistry } from "@t3tools/client-runtime/zerops";
 
@@ -12,7 +12,7 @@ import { sessionOfferViewer } from "~/zerops/offerViewer";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ZeropsHqUpdate } from "./ZeropsHqUpdate";
-import { offersHqUpdate } from "./ZeropsHqUpdate.logic";
+import { hqUpdateTrigger } from "./ZeropsHqUpdate.logic";
 
 export function ZeropsHqTool() {
   const { activeOrganization, user } = useZeropsSession();
@@ -21,15 +21,23 @@ export function ZeropsHqTool() {
     accountHq.hq.kind === "official" ? accountHq.hq.address : undefined,
   );
   const carried = useCarriedCoreBuild();
+  const trigger = hqUpdateTrigger({
+    admin: canWriteRegistry(sessionOfferViewer(user, activeOrganization ?? null)),
+    standing,
+    carried,
+  });
+  // Mounted while HQ answers at all, so a dialog left open sees an update through to HQ answering.
   const update =
     accountHq.hq.kind === "official" &&
     carried !== undefined &&
-    offersHqUpdate({
-      admin: canWriteRegistry(sessionOfferViewer(user, activeOrganization ?? null)),
-      standing,
-      carried,
-    }) ? (
-      <ZeropsHqUpdate carried={carried} projectId={accountHq.hq.projectId} />
+    trigger !== null &&
+    (standing.kind === "healthy" || standing.kind === "unchecked") ? (
+      <ZeropsHqUpdate
+        answering={standing.build}
+        carried={carried}
+        projectId={accountHq.hq.projectId}
+        trigger={trigger}
+      />
     ) : null;
 
   switch (standing.kind) {

@@ -36,10 +36,13 @@ type Read =
   | { readonly kind: "unread"; readonly reason: string };
 
 export function ZeropsHqUpdatePanel({
+  answering,
   read,
   run,
   onBusy,
 }: {
+  /** The Core HQ's health names; `undefined` while unread. */
+  readonly answering: string | undefined;
   /** Where HQ stands, read from Zerops. */
   readonly read: () => Promise<HqUpdateState>;
   /** Deploys the carried Core and follows it to its end. */
@@ -49,6 +52,8 @@ export function ZeropsHqUpdatePanel({
   const [shown, setShown] = useState<Read>({ kind: "reading" });
   const [running, setRunning] = useState(false);
   const [stopped, setStopped] = useState<string | null>(null);
+  /** The Core an update pressed here deployed: Zerops may offer it again for a few seconds. */
+  const [ran, setRan] = useState<string | null>(null);
 
   /** Zerops' answer, as the panel shows it. */
   const settle = useCallback(
@@ -79,13 +84,23 @@ export function ZeropsHqUpdatePanel({
     onBusy?.(true);
     const outcome = await run();
     setStopped(outcome.ok ? null : outcome.reason);
+    if (outcome.ok && shown.kind === "read" && shown.state.kind !== "current") {
+      setRan(shown.state.kind === "updating" ? null : shown.state.carried);
+    }
     setRunning(false);
     onBusy?.(false);
     setShown({ kind: "reading" });
     setShown(await settle());
   };
 
-  const words = shown.kind === "read" ? hqUpdateWords(shown.state) : null;
+  const state: HqUpdateState | null =
+    shown.kind !== "read"
+      ? null
+      : (shown.state.kind === "available" || shown.state.kind === "failed") &&
+          shown.state.carried === ran
+        ? { kind: "current", running: ran }
+        : shown.state;
+  const words = state === null ? null : hqUpdateWords(state, answering);
   const line = running
     ? "Updating HQ… It keeps serving until the new Core answers."
     : shown.kind === "reading"
@@ -130,11 +145,16 @@ export function ZeropsHqUpdatePanel({
 export function ZeropsHqUpdate({
   projectId,
   carried,
+  answering,
+  trigger,
 }: {
   /** HQ's project. */
   readonly projectId: string;
   /** The Core this app carries. */
   readonly carried: string;
+  /** The Core HQ's health names. */
+  readonly answering: string;
+  readonly trigger: "Update available" | "Up to date";
 }) {
   const { client } = useZeropsSession();
   const [open, setOpen] = useState(false);
@@ -158,7 +178,7 @@ export function ZeropsHqUpdate({
   return (
     <>
       <Button onClick={() => setOpen(true)} size="xs" variant="link">
-        Update available
+        {trigger}
       </Button>
       <Dialog
         onOpenChange={(next) => {
@@ -169,7 +189,9 @@ export function ZeropsHqUpdate({
         open={open}
       >
         <DialogPopup className="max-w-md">
-          {open ? <ZeropsHqUpdatePanel onBusy={setBusy} read={read} run={run} /> : null}
+          {open ? (
+            <ZeropsHqUpdatePanel answering={answering} onBusy={setBusy} read={read} run={run} />
+          ) : null}
         </DialogPopup>
       </Dialog>
     </>

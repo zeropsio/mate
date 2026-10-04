@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { coreLabel, hqUpdateWords, offersHqUpdate } from "./ZeropsHqUpdate.logic";
+import { coreLabel, hqUpdateTrigger, hqUpdateWords } from "./ZeropsHqUpdate.logic";
 
 const CARRIED = "20261004T100000Z.0123456789ab";
 const OLDER = "20261003T080500Z.ba9876543210";
@@ -52,75 +52,93 @@ describe("hqUpdateWords", () => {
         action: "Update again",
       },
     },
-    {
-      name: "nothing to offer",
-      state: { kind: "current", running: CARRIED } as const,
-      words: { line: "HQ is up to date.", action: null },
-    },
   ])("$name", ({ state, words }) => {
-    expect(hqUpdateWords(state)).toEqual(words);
+    expect(hqUpdateWords(state, OLDER)).toEqual(words);
+  });
+
+  it.each([
+    {
+      name: "HQ answering with the Core it runs",
+      answering: CARRIED,
+      line: "HQ runs Core 2026-10-04 10:00 UTC · 0123456789ab. It is up to date.",
+    },
+    {
+      name: "HQ's health not read",
+      answering: undefined,
+      line: "HQ runs Core 2026-10-04 10:00 UTC · 0123456789ab. It is up to date.",
+    },
+    {
+      name: "a finished deploy HQ does not answer with yet",
+      answering: OLDER,
+      line: "HQ's update to Core 2026-10-04 10:00 UTC · 0123456789ab finished. Waiting for HQ to answer with it.",
+    },
+  ])("nothing to offer: $name", ({ answering, line }) => {
+    expect(hqUpdateWords({ kind: "current", running: CARRIED }, answering)).toEqual({
+      line,
+      action: null,
+    });
   });
 });
 
-describe("offersHqUpdate", () => {
+describe("hqUpdateTrigger", () => {
   it.each([
     {
       name: "an admin, HQ on an older Core",
       admin: true,
       standing: { kind: "healthy", build: OLDER },
       carried: CARRIED,
-      offered: true,
+      trigger: "Update available",
     },
     {
       name: "an admin, HQ on a legacy stamp",
       admin: true,
       standing: { kind: "healthy", build: "b6e65699e0.20261003T120000" },
       carried: CARRIED,
-      offered: true,
+      trigger: "Update available",
     },
     {
       name: "an admin, HQ serving unchecked",
       admin: true,
       standing: { kind: "unchecked", build: OLDER },
       carried: CARRIED,
-      offered: true,
+      trigger: "Update available",
     },
     {
       name: "an admin, HQ on this Core",
       admin: true,
       standing: { kind: "healthy", build: CARRIED },
       carried: CARRIED,
-      offered: false,
+      trigger: "Up to date",
     },
     {
       name: "an admin, HQ unavailable",
       admin: true,
       standing: { kind: "unavailable", since: 1 },
       carried: CARRIED,
-      offered: false,
+      trigger: null,
     },
     {
       name: "an admin, health not read yet",
       admin: true,
       standing: { kind: "unknown" },
       carried: CARRIED,
-      offered: false,
+      trigger: null,
     },
     {
       name: "an admin, this app's Core not read yet",
       admin: true,
       standing: { kind: "healthy", build: OLDER },
       carried: undefined,
-      offered: false,
+      trigger: null,
     },
     {
       name: "a developer",
       admin: false,
       standing: { kind: "healthy", build: OLDER },
       carried: CARRIED,
-      offered: false,
+      trigger: null,
     },
-  ] as const)("$name", ({ admin, standing, carried, offered }) => {
-    expect(offersHqUpdate({ admin, standing, carried })).toBe(offered);
+  ] as const)("$name", ({ admin, standing, carried, trigger }) => {
+    expect(hqUpdateTrigger({ admin, standing, carried })).toBe(trigger);
   });
 });
