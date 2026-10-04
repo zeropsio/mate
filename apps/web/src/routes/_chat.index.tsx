@@ -24,7 +24,7 @@ import { useEnvironments } from "../state/environments";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell, environmentsWithSnapshotAtom } from "../state/shell";
 import { buildThreadRouteParams } from "../threadRoutes";
-import { homeView } from "../zerops/homeLanding.logic";
+import { homeDoor, homeView } from "../zerops/homeLanding.logic";
 import { rememberedHomeLanding } from "../zerops/lastConversationMemory";
 import { useMatesSettled } from "../zerops/useMatesSettled";
 import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "../zerops/waitLine.logic";
@@ -34,12 +34,16 @@ function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
   const { environments } = useEnvironments();
 
+  const matesSettled = useMatesSettled();
+
   const door = resolveDoor(authGateState, {
     pathname: "/",
     environmentCount: countDoorEnvironments(environments),
   });
 
-  if (door.surface === "zerops-onboarding") {
+  if (
+    homeDoor({ noEnvironments: door.surface === "zerops-onboarding", matesSettled }) === "projects"
+  ) {
     // Upstream's empty state is kept whole and handed to the landing, which
     // offers it as the manual fallback.
     return <ZeropsHostedLanding />;
