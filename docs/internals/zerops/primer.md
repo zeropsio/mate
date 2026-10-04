@@ -128,7 +128,8 @@ delivery (§5, T13).
   organization that ran the release: kept as it is, written by nothing new (§1)
 
 The hosted build packs Core under `hq-core/` beside the web bundle (`apps/hq/scripts/pack-core.ts`,
-the root `zerops.yml`), so an HQ is born with the Core of the client that bore it.
+the root `zerops.yml`), so an HQ is born with the Core of the client that bore it. Later, an owner or
+an admin updates it from the Tools row to the Core the client carries (`client-runtime hq/update.ts`).
 
 ## 3. Who holds what
 
@@ -1253,7 +1254,11 @@ re-checked against passes 27 and later, nor against the rebuild.
   builds of zcp and the Mate server pushed into a Mate. Only `mate-rig-*` projects; a stage or a
   token a run makes is deleted after it, and a credential never reaches a transcript.
 - **HQ Core.** Built with the web app (`apps/hq/scripts/pack-core.ts`) and deployed by an HQ's birth
-  with `apps/hq/zerops.yml`, setup `hq`. Its contract tests run against the real API with
+  or update with `apps/hq/zerops.yml`, setup `hq`, as app version `hq-core.<identity>`. The identity
+  is `<commit UTC>.<sha256 of the deployed bundle and zerops.yml, first 12 hex>`
+  (`apps/hq/src/coreIdentity.ts`): `/health`'s `build` and `hq-core/build.json`. A Core of the same
+  digest is never offered, whatever its commit; the digest holds only while `vp pack` is
+  byte-deterministic across machines (another Node or bundler build would offer the same Core). Its contract tests run against the real API with
   `HQ_ZEROPS_CONTRACT=1` and an org Read only token read from a file.
 - **Release.** Fork: bump the three `package.json` versions, tag `vX.Y.Z` on `main`; the workflow
   publishes the tarball, `SHA256SUMS` and `stable.json`; zcp installs the latest release's
