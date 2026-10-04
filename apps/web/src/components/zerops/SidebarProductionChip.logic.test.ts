@@ -331,14 +331,6 @@ describe("productionChip — production's chip: the word, its tone, its state in
     },
   );
 
-  it("settles on the platform's facts alone where no HQ is open", () => {
-    expect(chip(productionChip(input({ releases: { kind: "absent" } })))).toEqual({
-      label: "prod",
-      state: "ok",
-      version: "v0.1.44",
-    });
-  });
-
   it("says down at once, whatever else is still to be read", () => {
     expect(
       chip(
@@ -1518,7 +1510,7 @@ it("keeps unread stops unknown while their serving status is also unread", () =>
     stageStopChip({
       stop: stop({ state: "checking", version: undefined }),
       serving,
-      releases: { kind: "absent" },
+      releases: { kind: "waiting" },
     }),
   ).toEqual({ kind: "unknown" });
 });
@@ -1544,7 +1536,7 @@ it("shows a failed runtime attempt even while serving metadata is unread", () =>
     kind: "chip",
     chip: { label: "prod", state: "unverified", readLine },
   });
-  expect(stageStopChip({ stop: failed, serving, releases: { kind: "absent" } })).toEqual({
+  expect(stageStopChip({ stop: failed, serving, releases: { kind: "waiting" } })).toEqual({
     kind: "chip",
     chip: { label: "stage", state: "unverified", readLine },
   });

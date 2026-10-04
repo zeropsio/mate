@@ -218,22 +218,22 @@ export type ChipView =
   | { readonly kind: "chip"; readonly chip: ProductionChip };
 
 /**
- * What HQ said of the application's releases: answered (with the failed release it read), not
- * yet, or never — no HQ open here.
+ * What HQ said of the application's releases: answered (with the failed release it read), or not
+ * yet — its flow not read, or not answered.
  */
 export type ReleasesAnswer =
   | { readonly kind: "answered"; readonly failure: ReleaseFailure | undefined }
-  | { readonly kind: "waiting" }
-  | { readonly kind: "absent" };
+  | { readonly kind: "waiting" };
 
 const NONE: ChipView = { kind: "none" };
 const UNKNOWN: ChipView = { kind: "unknown" };
 
 /**
- * HQ has not answered the releases yet: the chip the platform's facts alone make, as where no HQ
- * is coming.
+ * The chip the platform's facts alone make, as HQ's releases answer stands: itself once answered;
+ * while HQ has not answered, only partial — drawn where nothing is remembered, never remembered.
  */
-function untilReleases(alone: ChipView): ChipView {
+function asReleasesStand(alone: ChipView, releases: ReleasesAnswer): ChipView {
+  if (releases.kind === "answered") return alone;
   return alone.kind === "chip" ? { kind: "unknown", partial: alone.chip } : UNKNOWN;
 }
 
@@ -315,29 +315,27 @@ export function productionChip(input: {
     return UNKNOWN;
   if (production.kind === "checking")
     return chipOf("prod", "unverified", { readLine: production.line });
-  if (input.releases.kind === "waiting") {
-    return untilReleases(productionChip({ ...input, releases: { kind: "absent" } }));
-  }
-  if (production.kind === "releasing") {
-    return chipOf("prod", "releasing", { version: served, next: production.tag });
-  }
-  if (input.building !== undefined || production.kind === "deploying") {
-    const next = input.building?.to;
-    return chipOf("prod", "releasing", {
-      version: served,
-      next: next === served ? undefined : next,
-    });
-  }
-  if (
+  const failed =
     (input.releases.kind === "answered" && input.releases.failure !== undefined) ||
-    production.kind === "deploy-failed"
-  ) {
-    return chipOf("prod", "failed", { version: served, untold });
-  }
-  if (served === undefined) return chipOf("prod", "empty", { waiting, waitingAtLeast });
-  if (waiting !== undefined)
-    return chipOf("prod", "waiting", { version: served, waiting, waitingAtLeast, untold });
-  return chipOf("prod", "ok", { version: served, untold });
+    production.kind === "deploy-failed";
+  const chip = (): ChipView => {
+    if (production.kind === "releasing") {
+      return chipOf("prod", "releasing", { version: served, next: production.tag });
+    }
+    if (input.building !== undefined || production.kind === "deploying") {
+      const next = input.building?.to;
+      return chipOf("prod", "releasing", {
+        version: served,
+        next: next === served ? undefined : next,
+      });
+    }
+    if (failed) return chipOf("prod", "failed", { version: served, untold });
+    if (served === undefined) return chipOf("prod", "empty", { waiting, waitingAtLeast });
+    if (waiting !== undefined)
+      return chipOf("prod", "waiting", { version: served, waiting, waitingAtLeast, untold });
+    return chipOf("prod", "ok", { version: served, untold });
+  };
+  return asReleasesStand(chip(), input.releases);
 }
 
 /**
@@ -387,19 +385,20 @@ export function stageStopChip(input: {
   if (serving.kind === "unknown" && stop.readFailed !== true) return UNKNOWN;
   if (stop.state === "checking")
     return chipOf("stage", "unverified", { readLine: stop.readLine ?? "Checking what runs here…" });
-  if (input.releases.kind === "waiting") {
-    return untilReleases(stageStopChip({ ...input, releases: { kind: "absent" } }));
-  }
-  switch (stop.state) {
-    case "deploying":
-      return chipOf("stage", "releasing", { version });
-    case "failed":
-      return chipOf("stage", "failed", { version });
-    case "empty":
-      return chipOf("stage", "empty");
-    case "deployed":
-      return chipOf("stage", "ok", { version });
-  }
+  const state = stop.state;
+  const chip = (): ChipView => {
+    switch (state) {
+      case "deploying":
+        return chipOf("stage", "releasing", { version });
+      case "failed":
+        return chipOf("stage", "failed", { version });
+      case "empty":
+        return chipOf("stage", "empty");
+      case "deployed":
+        return chipOf("stage", "ok", { version });
+    }
+  };
+  return asReleasesStand(chip(), input.releases);
 }
 
 /**
