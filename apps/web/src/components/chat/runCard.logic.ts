@@ -546,6 +546,36 @@ export function nowLineWords(line: NowLine): string {
   }
 }
 
+/**
+ * What a screen reader hears of the live slot: the words of what its first
+ * line shows, so they change when the slot does and never between (a probe
+ * read them flip to "Thinking" for 200 ms while a step still stood).
+ */
+export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
+  if (item === null) {
+    switch (filler.kind) {
+      case "waiting":
+        return nowLineWords({ kind: "waiting", on: filler.on });
+      case "thinking":
+        return nowLineWords({ kind: "thinking", thought: null });
+      default:
+        return nowLineWords({ kind: filler.kind });
+    }
+  }
+  switch (item.kind) {
+    case "step":
+      return stepNowWords(item.step);
+    case "operation":
+      return operationNowWords(item.operation);
+    case "question":
+      return nowLineWords({ kind: "waiting", on: "answer" });
+    case "note":
+      return "Writing";
+    default:
+      return "Thinking";
+  }
+}
+
 /** A run that is over, as its face wears it. */
 const SETTLED_FACE: Record<RunStatus["face"], MateMarkState> = {
   working: "working",

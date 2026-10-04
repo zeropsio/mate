@@ -35,6 +35,7 @@ import {
   thoughtTicker,
   workedWords,
   noteText,
+  slotWords,
   thoughtTail,
 } from "./runCard.logic";
 import { stepOf } from "./workSteps.logic";
@@ -1107,5 +1108,30 @@ describe("thoughtTail", () => {
     ["One sentence that is far too long to fit at all here", 20, "…to fit at all here"],
   ])("%j in %j characters reads %j", (run, chars, expected) => {
     expect(thoughtTail(run, chars)).toBe(expected);
+  });
+});
+
+describe("slotWords", () => {
+  it.each([
+    {
+      name: "nothing standing, thinking",
+      item: null,
+      filler: { kind: "thinking" },
+      words: "Thinking",
+    },
+    {
+      name: "nothing standing, a wait",
+      item: null,
+      filler: { kind: "waiting", on: "approval" },
+      words: "Waiting for your approval",
+    },
+    {
+      name: "a thought standing",
+      item: { kind: "thought", key: "t", at: "", messages: [], durationMs: null },
+      filler: { kind: "writing" },
+      words: "Thinking",
+    },
+  ] as const)("$name", ({ item, filler, words }) => {
+    expect(slotWords(item as RecordItem | null, filler)).toBe(words);
   });
 });

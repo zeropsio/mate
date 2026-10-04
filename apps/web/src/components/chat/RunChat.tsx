@@ -171,6 +171,7 @@ import {
   nowLineOf,
   nowLineWords,
   noteText,
+  slotWords,
   thoughtTail,
   operationNowWords,
   reachesEarlier,
@@ -3358,9 +3359,9 @@ function LiveSlot({
       <span className="run-slot-clock">
         {ticker === null ? null : <RunTicker status={ticker} />}
       </span>
-      {/* What a screen reader hears: what the Mate is on, as it changes. */}
+      {/* What a screen reader hears: what the slot shows, as it changes. */}
       <span className="sr-only" role="status">
-        {nowLineWords(latest)}
+        {slotWords(firstDrawn?.item ?? null, said)}
       </span>
     </div>
   );
