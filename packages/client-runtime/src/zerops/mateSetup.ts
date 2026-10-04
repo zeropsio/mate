@@ -12,8 +12,14 @@
  *                        "reason": "no_hq|refused", "code": "…" },
  *   { "id": "runtimes",  "state": "none|waiting|running|done|failed|unknown", "at": "" },
  *   { "id": "signin",    "state": "waiting|done", "at": "" },
- *   { "id": "standup",   "state": "none|waiting|running|done|failed", "at": "" } ] }
+ *   { "id": "standup",   "state": "none|waiting|running|done|failed", "at": "",
+ *                        "reason": "send_failed|process_gone|stage_not_built" } ] }
  * ```
+ *
+ * A failed stand-up says why where its server knows: its ask never went out (`send_failed`, the
+ * one failure the server's manual retry is for); the process running it stopped
+ * (`process_gone`); its turn ended before the previews were built (`stage_not_built`) —
+ * development stands.
  *
  * A step that has not run is never `done`: a Mate nobody asked a stand-up of (a New project's
  * first) says `none`, as its runtimes do with nothing to import.
@@ -37,6 +43,32 @@ export type MateSetupStepId = "container" | "git" | "runtimes" | "signin" | "sta
 
 export type MateSetupRuntimesState = "none" | "waiting" | "running" | "done" | "failed" | "unknown";
 
+/** Why a stand-up failed, as its server said it. */
+export type MateSetupStandUpFailure = "send_failed" | "process_gone" | "stage_not_built";
+
+const STAND_UP_FAILURES: ReadonlySet<string> = new Set<MateSetupStandUpFailure>([
+  "send_failed",
+  "process_gone",
+  "stage_not_built",
+]);
+
+/**
+ * A failed stand-up's reason as the person reads it; none for an ask that never went out, whose
+ * retry says it, or for a failure whose reason is not known.
+ */
+export function standUpFailureWords(
+  failure: MateSetupStandUpFailure | undefined,
+): string | undefined {
+  switch (failure) {
+    case "process_gone":
+      return "The stand-up's process stopped.";
+    case "stage_not_built":
+      return "Development is up; the previews were not built — ask the agent to build them, or deploy them by hand.";
+    default:
+      return undefined;
+  }
+}
+
 /**
  * Why the Mate's Git access — its enrollment with HQ — failed, as zcp said: no official HQ in the
  * organization, or HQ's refusal with its code.
@@ -53,8 +85,11 @@ export interface MateSetup {
   readonly gitFailure?: MateSetupGitFailure;
   readonly runtimes?: MateSetupRuntimesState;
   readonly signin?: "waiting" | "done";
-  /** The ask never went out; only this failure offers the server's manual retry. */
-  readonly standupFailure?: "send_failed";
+  /**
+   * Why, with `standup: "failed"` and a reason this build knows; never guessed. Only
+   * `send_failed` offers the server's manual retry.
+   */
+  readonly standupFailure?: MateSetupStandUpFailure;
   readonly standup?: "none" | "waiting" | "running" | "done" | "failed";
 }
 
@@ -81,12 +116,11 @@ export function parseMateSetup(body: unknown): MateSetup | undefined {
     const { id, state } = step as { id?: unknown; state?: unknown };
     if (!isStepId(id) || typeof state !== "string" || !STATES[id].has(state)) continue;
     read[id] = state;
-    if (
-      id === "standup" &&
-      state === "failed" &&
-      (step as { reason?: unknown }).reason === "send_failed"
-    )
-      read["standupFailure"] = "send_failed";
+    if (id === "standup" && state === "failed") {
+      const reason = (step as { reason?: unknown }).reason;
+      if (typeof reason === "string" && STAND_UP_FAILURES.has(reason))
+        read["standupFailure"] = reason;
+    }
     if (id === "git" && state === "failed") {
       const failure = gitFailureOf(step as { reason?: unknown; code?: unknown });
       if (failure !== undefined) read["gitFailure"] = failure;

@@ -151,6 +151,47 @@ describe("arrivalSteps — Git access that failed", () => {
   });
 });
 
+// A stand-up that ended short says why, where the Mate's own server says it.
+describe("arrivalSteps — a stand-up that failed", () => {
+  const standUpStep = (setup: Parameters<typeof arrivalSteps>[0]["setup"]) =>
+    arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN, NOW).find(
+      (step) => step.id === "standup",
+    );
+
+  it.each([
+    {
+      case: "its process stopped",
+      standupFailure: "process_gone",
+      why: "The stand-up's process stopped.",
+    },
+    {
+      case: "its turn ended before the previews were built",
+      standupFailure: "stage_not_built",
+      why: "Development is up; the previews were not built — ask the agent to build them, or deploy them by hand.",
+    },
+    {
+      case: "its ask never went out: the retry says it",
+      standupFailure: "send_failed",
+      why: undefined,
+    },
+    { case: "why not said", standupFailure: undefined, why: undefined },
+  ] as const)("$case", ({ standupFailure, why }) => {
+    expect(
+      standUpStep({
+        git: "done",
+        signin: "done",
+        standup: "failed",
+        ...(standupFailure === undefined ? {} : { standupFailure }),
+      }),
+    ).toEqual({
+      id: "standup",
+      label: "Wren stands up development",
+      state: "failed",
+      ...(why === undefined ? {} : { why }),
+    });
+  });
+});
+
 describe("arrivalSteps", () => {
   it("reads a Mate's six birth steps as its copy, its workspace and the person's sign-in", () => {
     const steps = arrivalSteps(deriveBirthProgress(CREATING, NOW), WREN, NOW);

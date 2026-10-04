@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { parseMateSetup, readMateSetup } from "./mateSetup.ts";
+import { parseMateSetup, readMateSetup, standUpFailureWords } from "./mateSetup.ts";
 
 const ORIGIN = "https://zcp-1a2b-8080.prg1.zerops.app";
 
@@ -126,8 +126,40 @@ describe("readMateSetup", () => {
   });
 });
 
-it("keeps a failed stand-up send distinct from an agent turn that failed", () => {
-  expect(
-    parseMateSetup(document([{ id: "standup", state: "failed", at: "", reason: "send_failed" }])),
-  ).toMatchObject({ standup: "failed", standupFailure: "send_failed" });
+describe("a failed stand-up's reason", () => {
+  it.each([
+    { reason: "send_failed", failure: "send_failed" },
+    { reason: "process_gone", failure: "process_gone" },
+    { reason: "stage_not_built", failure: "stage_not_built" },
+    { reason: "a_reason_this_build_does_not_know", failure: undefined },
+    { reason: undefined, failure: undefined },
+  ])("reads $reason as $failure", ({ reason, failure }) => {
+    const setup = parseMateSetup(
+      document([
+        { id: "standup", state: "failed", at: "", ...(reason === undefined ? {} : { reason }) },
+      ]),
+    );
+    expect(setup?.standup).toBe("failed");
+    expect(setup?.standupFailure).toBe(failure);
+  });
+
+  it("is read only off a stand-up that failed", () => {
+    expect(
+      parseMateSetup(document([{ id: "standup", state: "done", at: "", reason: "process_gone" }]))
+        ?.standupFailure,
+    ).toBeUndefined();
+  });
+
+  it.each([
+    { failure: "process_gone", words: "The stand-up's process stopped." },
+    {
+      failure: "stage_not_built",
+      words:
+        "Development is up; the previews were not built — ask the agent to build them, or deploy them by hand.",
+    },
+    { failure: "send_failed", words: undefined },
+    { failure: undefined, words: undefined },
+  ] as const)("words $failure for the person", ({ failure, words }) => {
+    expect(standUpFailureWords(failure)).toBe(words);
+  });
 });
