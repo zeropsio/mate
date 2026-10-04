@@ -1300,9 +1300,15 @@ describe("merging and closing a change in HQ", () => {
       act(async () => {
         atoms.set(hqStructureAtom, streamed(changes));
       });
-    const stall = () =>
+    const stall = (refused: boolean) =>
       act(async () => {
-        atoms.set(hqStructureAtom, { ...streamed([open(7)]), current: false, unavailableSince: 2 });
+        atoms.set(hqStructureAtom, {
+          ...streamed([open(7)]),
+          current: false,
+          unavailableSince: 2,
+          failure: refused ? "HQ refused the stream." : null,
+          reconnecting: refused ? null : { delayMs: 1_000, capped: false },
+        });
       });
     const unmount = () =>
       act(async () => {
@@ -1342,15 +1348,20 @@ describe("merging and closing a change in HQ", () => {
     await unmount();
   });
 
-  it("lets a merge go once HQ's stream stops answering: nothing is left to hold it", async () => {
+  // A stream that blinks reconnects and brings the change back: a second merge meanwhile would be
+  // a second ask. Only HQ refusing its stream leaves nothing to hold it.
+  it.each([
+    { case: "holds a merge while HQ's stream reconnects", refused: false, pending: true },
+    { case: "lets a merge go once HQ refuses its stream", refused: true, pending: false },
+  ])("$case", async ({ refused, pending }) => {
     hq.answer = () => Promise.resolve({ made: {}, deploys: DEPLOYS });
     const { seen, stall, unmount } = await mount();
     await act(async () => {
       await seen.at(-1)!.merge("g1", CHANGE, HEAD);
     });
     expect(seen.at(-1)?.pending.has(MERGE)).toBe(true);
-    await stall();
-    expect(seen.at(-1)?.pending.has(MERGE)).toBe(false);
+    await stall(refused);
+    expect(seen.at(-1)?.pending.has(MERGE)).toBe(pending);
     await unmount();
   });
 

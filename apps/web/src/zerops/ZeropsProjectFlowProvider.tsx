@@ -851,9 +851,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
 
   /**
    * A verb whose call landed, by its key, with the effect it waits to read. The verb stays pending
-   * until HQ's answer reads it, or HQ stops answering — the group's releases fail to read, or its
-   * stream does: until then a second press would do it twice — a second release, a second
-   * deploy. No clock lets it go. A settled entry is dropped.
+   * until HQ's answer reads it, or HQ can no longer say it — the group's releases fail to read, or
+   * HQ refuses its stream: until then a second press would do it twice — a second release, a second
+   * deploy. A stream that blinks reconnects and brings the effect back; no clock lets it go. A
+   * settled entry is dropped.
    */
   const [awaiting, setAwaiting] = useState<ReadonlyMap<string, HeldVerb>>(() => new Map());
   const hold = useCallback((verb: FlowVerb, groupId: string, against: HeldVerb["against"]) => {
@@ -1045,18 +1046,23 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   // While the account's access lapses, the groups the registry names and what was read of them
   // are withheld with every project (§3.1); the reads themselves are kept for the next grant.
   const lapsed = inventory.account.kind === "withheld";
-  // A held verb waits for its effect in the group's flow, or for its streamed release read or
-  // HQ's stream to fail: the wait then has nothing left to hold.
+  // A held verb waits for its effect in the group's flow, or for its streamed release read to
+  // fail or HQ to refuse its stream — not reconnecting it: the wait then has nothing left to hold.
+  const streamRefused =
+    hqStructure !== null &&
+    !hqStructure.current &&
+    hqStructure.unavailableSince !== null &&
+    hqStructure.reconnecting === null;
   const settled = useMemo(
     () =>
       [...awaiting].filter(([, entry]) =>
         effectRead(
           entry,
-          releaseFailures.has(entry.groupId) || changesFailure !== undefined,
+          releaseFailures.has(entry.groupId) || streamRefused,
           flows.get(entry.groupId),
         ),
       ),
-    [awaiting, changesFailure, flows, releaseFailures],
+    [awaiting, flows, releaseFailures, streamRefused],
   );
   useEffect(() => {
     if (settled.length === 0) return;
