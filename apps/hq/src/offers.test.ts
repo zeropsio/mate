@@ -184,11 +184,15 @@ describe("HQ's offers on a Mate", () => {
       { id: "P_SEEN", userRoles: [{ clientUserId: "C-maker", roleCode: "READ_ONLY" }] },
       { id: "P_OTHER", userRoles: [] },
       { id: "P_ADA", userRoles: [{ clientUserId: "C-ada", roleCode: "ADMIN" }] },
+      { id: "P_LIVE", userRoles: [] },
     ],
   };
+  /** app-live holds a production Zerops still has; app-lost one it no longer has. */
   const APPS = [
     { id: "app-seen", projects: [{ project_id: "P_SEEN", kind: "stage" }] },
     { id: "app-other", projects: [{ project_id: "P_OTHER", kind: "stage" }] },
+    { id: "app-live", projects: [{ project_id: "P_LIVE", kind: "production" }] },
+    { id: "app-lost", projects: [{ project_id: "P_LOST", kind: "production" }] },
   ];
 
   it.each<[string, string, string, boolean, Record<string, ReadonlyArray<string>>]>([
@@ -196,13 +200,34 @@ describe("HQ's offers on a Mate", () => {
     ["the Mate's maker", "maker", "P_MADE", true, { "app-seen": ["mate", "devstage"] }],
     // A Mate HQ holds no record of takes no Mate kind anywhere.
     ["a Mate without its record", "maker", "P_MADE", false, {}],
-    // A writer moves it anywhere, as anything, or into a new application.
+    // A writer moves it anywhere, as anything, or into a new application — but into a production
+    // place a production Zerops still has holds, which the move would refuse (`production_taken`).
     [
       "the org's owner",
       "owner",
       "P_MADE",
       true,
-      { "app-seen": KINDS, "app-other": KINDS, new: KINDS },
+      {
+        "app-seen": KINDS,
+        "app-other": KINDS,
+        "app-live": ["mate", "devstage", "stage"],
+        "app-lost": KINDS,
+        new: KINDS,
+      },
+    ],
+    // The production itself stays offered where it is.
+    [
+      "the org's owner, of the production",
+      "owner",
+      "P_LIVE",
+      true,
+      {
+        "app-seen": KINDS,
+        "app-other": KINDS,
+        "app-live": KINDS,
+        "app-lost": KINDS,
+        new: KINDS,
+      },
     ],
     ["a reader", "reader", "P_MADE", true, {}],
   ])("moves for %s as the write decides", (_, userId, projectId, recorded, expected) => {

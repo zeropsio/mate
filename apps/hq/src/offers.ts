@@ -108,6 +108,26 @@ export const moveTarget = (
   appProjects: ReadonlyArray<Pick<AppProjectRow, "project_id">>,
 ): PlacementTarget => ({ projectId, held, to, appProjectIds: appTarget(appProjects).projectIds });
 
+/**
+ * Whether moving `projectId` into an application of `appProjects` as `to` takes a production's
+ * place another production Zerops still has (`facts`) holds: an application has one production
+ * (`hq_app_one_production`), and only one Zerops no longer has makes room. The move refuses it
+ * (`production_taken`), and is never offered it.
+ */
+export const productionTaken = (
+  projectId: string,
+  to: string,
+  appProjects: ReadonlyArray<AppProjectRow>,
+  facts: Facts,
+): boolean =>
+  to === "production" &&
+  appProjects.some(
+    (row) =>
+      row.kind === "production" &&
+      row.project_id !== projectId &&
+      facts.projects.some((project) => project.id === row.project_id),
+  );
+
 export type MateVerb = "observe_mate" | "edit_mate_record" | "detach";
 
 /** What the person may do with the Mate of `projectId`, held as `held`. */
@@ -127,7 +147,8 @@ const KINDS: ReadonlyArray<RoleProjectKind> = ["mate", "devstage", "stage", "pro
 /**
  * Where a Mate may be moved, by the write's own rule: each application by id — and `new`, one the
  * person makes for it — with the kinds it may take there, none where it may take none. A Mate kind
- * only for a Mate HQ holds a record of (`mate_record_missing`).
+ * only for a Mate HQ holds a record of (`mate_record_missing`); a production only where no other
+ * production holds the place (`productionTaken`).
  */
 export const moveOffers = (
   userId: string,
@@ -139,6 +160,7 @@ export const moveOffers = (
     KINDS.filter(
       (kind) =>
         (mate.recorded || !isMateKind(kind)) &&
+        !productionTaken(mate.projectId, kind, appProjects, facts) &&
         offer(userId, "move", moveTarget(mate.projectId, mate.held, kind, appProjects), facts)
           .allow,
     );

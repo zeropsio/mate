@@ -61,6 +61,7 @@ import {
   moveOffers,
   moveTarget,
   orgOffers,
+  productionTaken,
   recordOffers,
 } from "./offers.ts";
 import { Roles, confirmingRefusal, decidedFresh } from "./roles.ts";
@@ -1064,8 +1065,12 @@ export const structureLayer = (options: {
               }
               return { projectId, appId, kind: null };
             }
-            const target = yield* sql<{ readonly project_id: string }>`
-              SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
+            const target = yield* sql<{ readonly project_id: string; readonly kind: string }>`
+              SELECT project_id, kind FROM hq_app_project WHERE app_id::text = ${appId}`;
+            // A production Zerops still has holds the place, as its offer says (`moveTo`).
+            if (productionTaken(projectId, kind, target, view)) {
+              return yield* refuse("conflict", "production_taken");
+            }
             // The application's environments of the tier, if gone from Zerops, make room as on
             // attach, the first one's environment taken over.
             const tier = tierOf(kind);

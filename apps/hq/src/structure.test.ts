@@ -345,6 +345,43 @@ describe("structure", () => {
         ),
     );
 
+    it.effect(
+      "offers moving a Mate into a production's place only where the move takes it: none held",
+      () =>
+        withStructure((view) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const shop = yield* structure.createApp("owner", "Shop");
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_PROD",
+              kind: "production",
+            });
+            yield* structure.createMate("owner", { projectId: "P_MATE", face: "face-1" });
+            const offered = Effect.map(
+              structure.read("owner"),
+              (read) => read.ungrouped.find((entry) => entry.projectId === "P_MATE")?.moveTo,
+            );
+            const intoProduction = reasonOf(
+              structure.moveProject("owner", "P_MATE", { appId: shop.id, kind: "production" }),
+            );
+            // Shop's production holds the place: not offered, and refused.
+            assert.deepStrictEqual(
+              [(yield* offered)?.[shop.id], yield* intoProduction],
+              [["mate", "devstage", "stage"], "production_taken"],
+            );
+            // Zerops no longer has it: it makes room, offered and taken.
+            yield* Ref.update(view, (org) => ({
+              ...org,
+              projects: org.projects.filter((project) => project.id !== "P_PROD"),
+            }));
+            assert.deepStrictEqual(
+              [(yield* offered)?.[shop.id], yield* intoProduction],
+              [["mate", "devstage", "stage", "production"], "ok"],
+            );
+          }),
+        ),
+    );
+
     it.effect("a devstage holds the stage's place; a project Zerops no longer has holds none", () =>
       withStructure((view) =>
         Effect.gen(function* () {
