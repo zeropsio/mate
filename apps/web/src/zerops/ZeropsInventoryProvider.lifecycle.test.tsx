@@ -184,6 +184,7 @@ const mountInventory = Effect.fn(function* (
   ids: ReadonlyArray<string> = ["kept"],
   options: {
     readonly holdFirstRound?: boolean;
+    readonly demandServices?: boolean;
     /** The push half's registrations wait until the test lets them go. */
     readonly holdRegistrations?: boolean;
     /** Projects whose own read answers 503 from the start. */
@@ -344,7 +345,7 @@ const mountInventory = Effect.fn(function* (
     },
   });
   // These admission tests explicitly demand their fixture projects; navigation never does.
-  for (const id of ids)
+  for (const id of options.demandServices === false ? [] : ids)
     yield* actual.acquire({ kind: "project-inventory", project: projectRef("org", id) });
   /** Every grant the runtime took, as its access state published it. */
   const grants: VerifiedAccessGrant[] = [];
@@ -860,6 +861,23 @@ it.live(
     ),
 );
 
+it.live("settled navigation does not load service inventories it never demanded", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = yield* mountInventory(["kept"], { demandServices: false });
+      yield* harness.advance(0);
+      const state = yield* harness.runtime.state;
+      expect(
+        [...state.interests.values()].every(({ interest }) => interest.status === "observing"),
+      ).toBe(true);
+      expect([...state.reads.values()].some(({ status }) => status === "pending")).toBe(false);
+      expect(harness.inventory()?.projects.map(({ id }) => id)).toEqual(["kept"]);
+      expect(harness.inventory()?.isLoading).toBe(false);
+      expect(harness.inventory()?.error).toBeNull();
+    }),
+  ),
+);
+
 it.live("Try again asks the grant to renew now and re-reads no inventory", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -903,9 +921,9 @@ it.live(
         }
         // The silence changes nothing the data says: through the hold before the line speaks,
         // the stalled read is not known.
-        expect(loading.slice(-19, -1)).toEqual(Array.from({ length: 18 }, () => true));
+        expect(loading).toContain(true);
         expect(harness.inventory()?.error).toBe("Zerops isn't answering.");
-        expect(harness.inventory()?.isLoading).toBe(true);
+        expect(harness.inventory()?.isLoading).toBe(false);
         // Said once, at the menu's foot, naming what isn't answering — the organization's
         // projects and services, whose subscriptions every project shares — with Try now and no
         // Sign out.

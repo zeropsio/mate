@@ -456,12 +456,11 @@ export function ZeropsInventoryProvider({
     const blocked = new Map<string, OrganizationRef>();
     /** Each failed or stalled read: its organization, and its project when it is one's. */
     const blockedReads: Array<{ organizationId: string; projectId: string | null }> = [];
-    /** The organizations some of whose demanded reads are not observing yet: not answered. */
+    /** Only an establishing interest owns a read still in flight. */
     const pending = new Set<string>();
     for (const { organization, projectId, interest } of demanded) {
       if (interest === undefined) continue;
-      if (interest?.status !== "observing" && interest?.status !== "paused")
-        pending.add(organization.organizationId);
+      if (interest.status === "establishing") pending.add(organization.organizationId);
       if (isInterestBlocked(interest, Date.now(), documentHidden)) {
         blocked.set(organizationKeyOf(organization), organization);
         blockedReads.push({ organizationId: organization.organizationId, projectId });
@@ -650,7 +649,7 @@ export function ZeropsInventoryProvider({
     account,
     lost,
     // Only the active organization's held reads affect its loading and failure notices.
-    isLoading: known.loading || projected.pendingOrganizations.has(activeOrganization?.id ?? ""),
+    isLoading: projected.pendingOrganizations.has(activeOrganization?.id ?? ""),
     error: shownError,
   });
   useEffect(() => {
