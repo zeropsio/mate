@@ -2089,8 +2089,10 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   - _Why:_ the plan's note ("down since 09:12, both containers stopped, exit 137") needs reads the
     client does not make
 - **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: releases are Core's (T9a),
-  and the chip reads them from HQ (T9b); it waits while HQ's releases are coming
-  (`releasesComing`, `SidebarZeropsTree.tsx:812`), never on Gitea.**
+  and the chip reads them from HQ (T9b); it waits while HQ's releases are coming, never on Gitea.
+  Superseded 2026-10-05 in part: with HQ mandatory, `releasesComing` and the chip settling on the
+  platform's facts alone are gone — until HQ's releases are read the chip is only partial
+  (`asReleasesStand`, `SidebarProductionChip.logic.ts`).**
   **A chip is drawn only once what decides it is read.** Until then the menu draws
   the chip it remembers, else — while only Gitea's answer is missing — what the platform alone says,
   never remembered, else nothing; down and stopped settle at once, and without a Gitea session the
@@ -3541,7 +3543,9 @@ no-cache`.
   reads "replaces what production runs", with the generic roll-back line.
   - _Why:_ read from the project, "production runs v0.1.1" turned false the moment the release
     landed, and the review turned to the next offer without saying how its own release ended
-- **2026-10-02** — **Every release review ends.** A tag with neither a landing nor a failure 30 min
+- **2026-10-02** — **Superseded 2026-10-05 in part: the 30 min cutoff is gone; a review ends when
+  HQ ends the release's rollout (`ReleaseRollout.ended`, `releaseEnded`), never by a client
+  clock.** **Every release review ends.** A tag with neither a landing nor a failure 30 min
   after it was tagged reads "v0.1.1 hasn't landed · Tagged … · production doesn't run it", its next
   step "find out why", and its clock stops. A newer tag above it reads "v0.1.2 was tagged after
   v0.1.1", and the project's line in the menu follows the newer one.
