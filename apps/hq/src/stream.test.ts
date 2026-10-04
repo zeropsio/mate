@@ -83,6 +83,7 @@ const OWNER_CAN: StructureRead["can"] = {
 const STRUCTURE: StructureRead = {
   can: OWNER_CAN,
   unheld: {},
+  presses: {},
   ungrouped: [
     {
       projectId: "P_MATE",

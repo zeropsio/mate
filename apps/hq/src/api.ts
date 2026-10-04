@@ -202,6 +202,11 @@ const AttachBody = Schema.Struct({
   birth: Schema.optionalKey(Schema.String),
   created: Schema.optionalKey(Schema.Boolean),
 });
+/** A Mate's press held, or renewed, by the browser running it (`holdPress`). */
+const PressBody = Schema.Struct({
+  owner: Schema.String,
+  importProcessId: Schema.optionalKey(Schema.String),
+});
 const BirthBody = Schema.Struct({
   appId: Schema.String,
   face: Schema.String,
@@ -1417,6 +1422,40 @@ const routes = (
             }),
           );
         }),
+      ),
+    ),
+    HttpRouter.add(
+      "PUT",
+      "/api/presses/:projectId",
+      handle(
+        Effect.gen(function* () {
+          const press = yield* jsonBody(PressBody, BODY_LIMIT);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
+              return json(yield* (yield* Structure).holdPress(userId, projectId, press), 200);
+            }),
+          );
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "DELETE",
+      "/api/presses/:projectId/:owner",
+      handle(
+        outliving(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            const params = yield* HttpRouter.params;
+            yield* (yield* Structure).releasePress(
+              userId,
+              params["projectId"] ?? "",
+              params["owner"] ?? "",
+            );
+            return json({}, 200);
+          }),
+        ),
       ),
     ),
     HttpRouter.add(

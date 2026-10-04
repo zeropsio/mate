@@ -108,6 +108,8 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "birth_with_kind",
     "birth_not_found",
     "birth_project_taken",
+    "press_owner_length",
+    "press_held",
   ]),
 }) {}
 
@@ -277,6 +279,12 @@ export interface StructureRead {
    * Mate's record (`offers.ts`).
    */
   readonly unheld: Readonly<Record<string, HqOffersOf<"create_mate_record">>>;
+  /**
+   * Each Mate's press a browser holds (`holdPress`), by its project, for every project the reader
+   * reads: how long its hold runs on from this read — none left where its press stopped renewing it
+   * — and the container import it asked for, once Zerops answered it.
+   */
+  readonly presses: Readonly<Record<string, PressView>>;
   readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
   /** The Mates in no application: their project's name in Zerops, their record and offers. */
   readonly ungrouped: ReadonlyArray<
@@ -400,6 +408,24 @@ export class Structure extends Context.Service<
      * Records that a Mate's project is closed off, as the client that set it up does: the press's
      * close-off step done. By whoever may edit the Mate's record.
      */
+    /**
+     * Holds a Mate's press for the browser running it (`hq_mate_press`): taken, or renewed by the
+     * same press (`owner`), for {@link PRESS_HOLD_MS} from now, with the Zerops process of the
+     * container import it asked for once Zerops answered it — kept where a renewal names none.
+     * Another press's hold still running refuses it (`press_held`); one that ran out is taken over.
+     * By whoever reads the project (`hold_press`).
+     */
+    readonly holdPress: (
+      userId: string,
+      projectId: string,
+      press: { readonly owner: string; readonly importProcessId?: string },
+    ) => Effect.Effect<PressView, WriteError>;
+    /** Lets a press's hold go at its end: only the press that holds it; none held is let go. */
+    readonly releasePress: (
+      userId: string,
+      projectId: string,
+      owner: string,
+    ) => Effect.Effect<void, WriteError>;
     readonly markClosedOff: (
       userId: string,
       projectId: string,
@@ -447,6 +473,32 @@ export class Structure extends Context.Service<
 
 const refuse = (code: StructureRefused["code"], reason: StructureRefused["reason"]) =>
   Effect.fail(new StructureRefused({ code, reason }));
+
+/**
+ * How long a Mate's press is held from its last renewal (`holdPress`): its press renews it well
+ * inside this while it runs, so a hold that runs out is a press that stopped — its tab closed.
+ */
+export const PRESS_HOLD_MS = 60_000;
+
+/** A Mate's press as a reader sees it (`StructureRead.presses`). */
+export interface PressView {
+  /** How long its hold runs on from the read that said it, ms; 0 where it ran out. */
+  readonly heldForMs: number;
+  /** The Zerops process of the container import its press asked for, once Zerops answered it. */
+  readonly importProcessId?: string;
+}
+
+/** A press row, its hold measured on HQ's own clock. */
+interface PressRow {
+  readonly project_id: string;
+  readonly held_for_ms: number;
+  readonly import_process_id: string | null;
+}
+
+const pressView = (row: PressRow): PressView => ({
+  heldForMs: row.held_for_ms,
+  ...(row.import_process_id === null ? {} : { importProcessId: row.import_process_id }),
+});
 
 const fitsName = (name: string) => name.length >= 1 && name.length <= 100;
 
@@ -591,6 +643,7 @@ export const structureLayer = (options: {
               sql`DELETE FROM hq_mate WHERE ${sql.in("project_id", gone)}`,
               sql`DELETE FROM hq_app_project WHERE ${sql.in("project_id", gone)}`,
               sql`DELETE FROM hq_mate_challenge WHERE ${sql.in("project_id", gone)}`,
+              sql`DELETE FROM hq_mate_press WHERE ${sql.in("project_id", gone)}`,
               sql`
                 UPDATE hq_mate_credential SET revoked_at = now()
                 WHERE ${sql.in("project_id", gone)} AND revoked_at IS NULL`,
@@ -816,6 +869,38 @@ export const structureLayer = (options: {
             if (kept.length === 0) return;
             yield* changed;
             yield* PubSub.publish(mateChanged, projectId);
+          }),
+        holdPress: (userId, projectId, press) =>
+          Effect.gen(function* () {
+            if (press.owner.length < 1 || press.owner.length > 100)
+              return yield* refuse("invalid", "press_owner_length");
+            yield* allowed(userId, "hold_press", { projectId }, yield* roles.forWrite);
+            const importProcessId = press.importProcessId ?? null;
+            const rows = yield* leader.write(sql<PressRow>`
+              INSERT INTO hq_mate_press (project_id, owner, held_by, until, import_process_id)
+              VALUES (${projectId}, ${press.owner}, ${userId},
+                now() + ${`${PRESS_HOLD_MS} milliseconds`}::interval, ${importProcessId})
+              ON CONFLICT (project_id) DO UPDATE SET
+                owner = EXCLUDED.owner, held_by = EXCLUDED.held_by, until = EXCLUDED.until,
+                import_process_id = COALESCE(
+                  EXCLUDED.import_process_id,
+                  CASE WHEN hq_mate_press.owner = EXCLUDED.owner
+                    THEN hq_mate_press.import_process_id END)
+              WHERE hq_mate_press.owner = EXCLUDED.owner OR hq_mate_press.until <= now()
+              RETURNING project_id, import_process_id,
+                GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms`);
+            const held = rows[0];
+            if (held === undefined) return yield* refuse("conflict", "press_held");
+            yield* changed;
+            return pressView(held);
+          }),
+        releasePress: (userId, projectId, owner) =>
+          Effect.gen(function* () {
+            yield* allowed(userId, "hold_press", { projectId }, yield* roles.forWrite);
+            const let_go = yield* leader.write(sql`
+              DELETE FROM hq_mate_press WHERE project_id = ${projectId} AND owner = ${owner}
+              RETURNING 1`);
+            if (let_go.length > 0) yield* changed;
           }),
         markClosedOff: confirmed((userId, projectId) =>
           Effect.gen(function* () {
@@ -1296,6 +1381,10 @@ export const structureLayer = (options: {
               FROM hq_mate m
               WHERE NOT EXISTS (SELECT 1 FROM hq_app_project p WHERE p.project_id = m.project_id)
               ORDER BY m.seq`;
+            const presses = yield* sql<PressRow>`
+              SELECT project_id, import_process_id,
+                GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms
+              FROM hq_mate_press ORDER BY project_id`;
             const tools = yield* sql<{ readonly projectId: string; readonly kind: "gitea" }>`
               SELECT project_id AS "projectId", kind FROM hq_tool ORDER BY project_id`;
             const environments = yield* sql<{
@@ -1476,6 +1565,11 @@ export const structureLayer = (options: {
                 view.projects
                   .filter((project) => !held.has(project.id) && reads(project.id))
                   .map((project) => [project.id, recordOffers(userId, project.id, view)]),
+              ),
+              presses: Object.fromEntries(
+                presses
+                  .filter((row) => reads(row.project_id))
+                  .map((row) => [row.project_id, pressView(row)]),
               ),
               ...(tools.length === 0
                 ? {}

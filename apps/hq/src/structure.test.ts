@@ -23,6 +23,7 @@ import { migrate } from "./migrations.ts";
 import { type OrgView, Roles, WriteConfirm } from "./roles.ts";
 import {
   JOBS_SHOWN,
+  PRESS_HOLD_MS,
   type MateRecord,
   Structure,
   type StructureRead,
@@ -1153,6 +1154,52 @@ describe("structure", () => {
             assert.deepStrictEqual(yield* birthsOf, []);
           }),
         ),
+    );
+
+    // B5: a Mate's press in one browser, read in another — held while its press renews it, taken
+    // over once it ran out, and following the container import it asked for.
+    it.effect("holds a Mate's press for the browser running it, and lets it go at its end", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const pressOf = (userId: string) =>
+            Effect.map(structure.read(userId), (read) => read.presses["P_OWN"]);
+          const held = yield* structure.holdPress("maker", "P_OWN", { owner: "press-a" });
+          assert.isTrue(held.heldForMs > PRESS_HOLD_MS - 5_000 && held.heldForMs <= PRESS_HOLD_MS);
+          // Another browser's press is refused while the first one's hold runs.
+          assert.strictEqual(
+            yield* reasonOf(structure.holdPress("maker", "P_OWN", { owner: "press-b" })),
+            "press_held",
+          );
+          // Renewed by its own press, with the import Zerops answered, kept through a renewal.
+          yield* structure.holdPress("maker", "P_OWN", {
+            owner: "press-a",
+            importProcessId: "imp-1",
+          });
+          yield* structure.holdPress("maker", "P_OWN", { owner: "press-a" });
+          assert.strictEqual((yield* pressOf("owner"))?.importProcessId, "imp-1");
+          // Nobody who does not read the project holds it, or reads it.
+          assert.strictEqual(
+            yield* reasonOf(structure.holdPress("nobody", "P_OWN", { owner: "press-c" })),
+            "not_project_reader",
+          );
+          assert.isUndefined(yield* pressOf("nobody"));
+          // A hold that ran out — its tab closed — reads none left, and another press takes it over.
+          yield* sql`UPDATE hq_mate_press SET until = now() - interval '1 second'`;
+          assert.deepStrictEqual(yield* pressOf("owner"), {
+            heldForMs: 0,
+            importProcessId: "imp-1",
+          });
+          yield* structure.holdPress("maker", "P_OWN", { owner: "press-b" });
+          assert.isUndefined((yield* pressOf("owner"))?.importProcessId);
+          // Only the press holding it lets it go.
+          yield* structure.releasePress("maker", "P_OWN", "press-a");
+          assert.isDefined(yield* pressOf("owner"));
+          yield* structure.releasePress("maker", "P_OWN", "press-b");
+          assert.isUndefined(yield* pressOf("owner"));
+        }),
+      ),
     );
 
     it.effect("reads the tool projects HQ holds", () =>
