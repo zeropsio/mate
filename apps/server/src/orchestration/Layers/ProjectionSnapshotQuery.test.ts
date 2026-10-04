@@ -3016,6 +3016,73 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
     }),
   );
 
+  // A helper's steps are many — one helper made 133 calls in 58 minutes — and
+  // never crowd the Mate's own record out of a snapshot; each helper keeps its
+  // latest steps on a budget of its own.
+  it.effect("keeps the Mate's record whole beside its helpers' steps", () =>
+    Effect.gen(function* () {
+      yield* seedFanOutThread();
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_thread_activities`;
+      // 400 rows of the Mate's own, then 2 × 300 rows of two helpers' steps.
+      yield* sql`
+        WITH RECURSIVE activity_rows(sequence) AS (
+          SELECT 1
+          UNION ALL
+          SELECT sequence + 1 FROM activity_rows WHERE sequence < 1000
+        )
+        INSERT INTO projection_thread_activities (
+          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
+        )
+        SELECT
+          printf('activity-%04d', sequence),
+          'thread-w',
+          'turn-5',
+          'tool',
+          CASE WHEN sequence % 2 = 0 THEN 'tool.completed' ELSE 'tool.started' END,
+          'ran tool',
+          CASE
+            WHEN sequence <= 400 THEN json_object('itemType', 'command_execution')
+            ELSE json_object(
+              'itemType', 'command_execution',
+              'agentId', CASE WHEN sequence % 4 < 2 THEN 'helper-a' ELSE 'helper-b' END,
+              'parentToolUseId', 'toolu-parent'
+            )
+          END,
+          sequence,
+          '2026-03-01T00:04:00.000Z'
+        FROM activity_rows
+      `;
+
+      const reads = [
+        yield* snapshotQuery.getThreadDetailSnapshot(threadW),
+        yield* snapshotQuery.getThreadDetailSnapshot(threadW, { turnLimit: 2 }),
+      ];
+      for (const read of reads) {
+        assert.equal(read._tag, "Some");
+        if (read._tag !== "Some") continue;
+        const activities = read.value.thread.activities;
+        const owner = (activity: (typeof activities)[number]) =>
+          (activity.payload as { agentId?: string }).agentId ?? "mate";
+        const count = (who: string) => activities.filter((activity) => owner(activity) === who);
+        assert.equal(count("mate").length, 400);
+        assert.equal(count("helper-a").length, 150);
+        assert.equal(count("helper-b").length, 150);
+        // Each helper's newest steps.
+        assert.equal(count("helper-a").at(-1)?.id, asEventId("activity-1000"));
+        assert.equal(count("helper-b").at(-1)?.id, asEventId("activity-0999"));
+        // In the record's order.
+        const sequences = activities.map((activity) => activity.sequence ?? 0);
+        assert.deepStrictEqual(
+          sequences,
+          sequences.toSorted((left, right) => left - right),
+        );
+      }
+    }),
+  );
+
   it.effect("bounds activity hydration and preserves unresolved requests", () =>
     Effect.gen(function* () {
       yield* seedFanOutThread();

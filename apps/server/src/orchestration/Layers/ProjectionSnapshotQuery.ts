@@ -88,6 +88,12 @@ const decodeThread = Schema.decodeUnknownEffect(OrchestrationThread);
 // activity window. Applying the limit in SQL avoids decoding an unbounded
 // payload_json set before the projector can enforce that invariant.
 const THREAD_DETAIL_ACTIVITY_LIMIT = 500;
+// A helper's steps (its calls' rows, tagged with its agentId) sit outside that
+// window: a helper is quick to make hundreds of calls, which pushed the Mate's
+// own record out of it. Each helper keeps its latest steps on a budget of its
+// own, and all helpers together on one more.
+const HELPER_STEP_ACTIVITY_LIMIT = 150;
+const HELPER_STEP_ACTIVITY_TOTAL_LIMIT = 600;
 // Snapshot payloads are decoded and projected in small sequential batches so
 // one client read does not retain the raw payloads for the full activity window.
 const THREAD_DETAIL_ACTIVITY_PAYLOAD_BATCH_SIZE = 25;
@@ -1405,13 +1411,42 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
     execute: ({ threadId }) =>
       sql`
         SELECT activity_id AS "activityId"
-        FROM projection_thread_activities
-        WHERE thread_id = ${threadId}
-        ORDER BY
-          sequence DESC,
-          created_at DESC,
-          activity_id DESC
-        LIMIT ${THREAD_DETAIL_ACTIVITY_LIMIT}
+        FROM (
+          SELECT activity_id
+          FROM projection_thread_activities
+          WHERE thread_id = ${threadId}
+            AND NOT (
+              kind IN ('tool.started', 'tool.updated', 'tool.completed')
+              AND json_extract(payload_json, '$.agentId') IS NOT NULL
+            )
+          ORDER BY
+            sequence DESC,
+            created_at DESC,
+            activity_id DESC
+          LIMIT ${THREAD_DETAIL_ACTIVITY_LIMIT}
+        )
+        UNION ALL
+        SELECT activity_id AS "activityId"
+        FROM (
+          SELECT activity_id, step
+          FROM (
+            SELECT
+              activity_id,
+              sequence,
+              created_at,
+              ROW_NUMBER() OVER (
+                PARTITION BY json_extract(payload_json, '$.agentId')
+                ORDER BY sequence DESC, created_at DESC, activity_id DESC
+              ) AS step
+            FROM projection_thread_activities
+            WHERE thread_id = ${threadId}
+              AND kind IN ('tool.started', 'tool.updated', 'tool.completed')
+              AND json_extract(payload_json, '$.agentId') IS NOT NULL
+          )
+          WHERE step <= ${HELPER_STEP_ACTIVITY_LIMIT}
+          ORDER BY sequence DESC, created_at DESC, activity_id DESC
+          LIMIT ${HELPER_STEP_ACTIVITY_TOTAL_LIMIT}
+        )
       `,
   });
 
@@ -1865,39 +1900,94 @@ pending_approval_requests AS (
     execute: ({ threadId, minAnchorAt, minTurnKey, beforeAnchorAt, beforeTurnKey }) =>
       sql`
         SELECT activity_id AS "activityId"
-        FROM projection_thread_activities
-        WHERE thread_id = ${threadId}
-          AND (
-            turn_id IN (
-              SELECT turn_id FROM projection_turns
-              WHERE thread_id = ${threadId}
-                AND turn_id IS NOT NULL
-                AND (
-                  requested_at > ${minAnchorAt}
-                  OR (
-                    requested_at = ${minAnchorAt}
-                    AND turn_id >= ${minTurnKey}
-                  )
-                )
-                AND (
-                  requested_at < ${beforeAnchorAt}
-                  OR (
-                    requested_at = ${beforeAnchorAt}
-                    AND turn_id < ${beforeTurnKey}
-                  )
-                )
+        FROM (
+          SELECT activity_id
+          FROM projection_thread_activities
+          WHERE thread_id = ${threadId}
+            AND NOT (
+              kind IN ('tool.started', 'tool.updated', 'tool.completed')
+              AND json_extract(payload_json, '$.agentId') IS NOT NULL
             )
-            OR (
-              turn_id IS NULL
-              AND created_at >= ${minAnchorAt}
-              AND created_at < ${beforeAnchorAt}
+            AND (
+              turn_id IN (
+                SELECT turn_id FROM projection_turns
+                WHERE thread_id = ${threadId}
+                  AND turn_id IS NOT NULL
+                  AND (
+                    requested_at > ${minAnchorAt}
+                    OR (
+                      requested_at = ${minAnchorAt}
+                      AND turn_id >= ${minTurnKey}
+                    )
+                  )
+                  AND (
+                    requested_at < ${beforeAnchorAt}
+                    OR (
+                      requested_at = ${beforeAnchorAt}
+                      AND turn_id < ${beforeTurnKey}
+                    )
+                  )
+              )
+              OR (
+                turn_id IS NULL
+                AND created_at >= ${minAnchorAt}
+                AND created_at < ${beforeAnchorAt}
+              )
             )
+          ORDER BY
+            sequence DESC,
+            created_at DESC,
+            activity_id DESC
+          LIMIT ${THREAD_DETAIL_ACTIVITY_LIMIT}
+        )
+        UNION ALL
+        SELECT activity_id AS "activityId"
+        FROM (
+          SELECT activity_id, step
+          FROM (
+            SELECT
+              activity_id,
+              sequence,
+              created_at,
+              ROW_NUMBER() OVER (
+                PARTITION BY json_extract(payload_json, '$.agentId')
+                ORDER BY sequence DESC, created_at DESC, activity_id DESC
+              ) AS step
+            FROM projection_thread_activities
+            WHERE thread_id = ${threadId}
+              AND kind IN ('tool.started', 'tool.updated', 'tool.completed')
+              AND json_extract(payload_json, '$.agentId') IS NOT NULL
+              AND (
+                turn_id IN (
+                  SELECT turn_id FROM projection_turns
+                  WHERE thread_id = ${threadId}
+                    AND turn_id IS NOT NULL
+                    AND (
+                      requested_at > ${minAnchorAt}
+                      OR (
+                        requested_at = ${minAnchorAt}
+                        AND turn_id >= ${minTurnKey}
+                      )
+                    )
+                    AND (
+                      requested_at < ${beforeAnchorAt}
+                      OR (
+                        requested_at = ${beforeAnchorAt}
+                        AND turn_id < ${beforeTurnKey}
+                      )
+                    )
+                )
+                OR (
+                  turn_id IS NULL
+                  AND created_at >= ${minAnchorAt}
+                  AND created_at < ${beforeAnchorAt}
+                )
+              )
           )
-        ORDER BY
-          sequence DESC,
-          created_at DESC,
-          activity_id DESC
-        LIMIT ${THREAD_DETAIL_ACTIVITY_LIMIT}
+          WHERE step <= ${HELPER_STEP_ACTIVITY_LIMIT}
+          ORDER BY sequence DESC, created_at DESC, activity_id DESC
+          LIMIT ${HELPER_STEP_ACTIVITY_TOTAL_LIMIT}
+        )
       `,
   });
 
