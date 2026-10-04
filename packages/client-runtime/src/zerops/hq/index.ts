@@ -11,6 +11,7 @@ export {
   HQ_BIRTH_STEPS,
   HQ_BIRTH_WAITS,
   HQ_PROJECT_NAME,
+  HQ_SERVICE,
   hqImportYaml,
   runHqBirth,
   type HqBirthDeps,
@@ -33,7 +34,11 @@ export {
   type HqBirth,
   type HqMate,
   type HqEndpoint,
+  type HqBackup,
+  type HqBackupUsage,
   type HqHealth,
+  type HqKeys,
+  type HqParts,
   type HqSocket,
   type HqStructure,
   type HqAppContents,
@@ -50,6 +55,7 @@ export { deployLogTarget, inspectDeployLog, type DeployLogTarget } from "./deplo
 export { applyMatesEvent, applyPeopleEvent } from "./mates.ts";
 export {
   hqUpdateOffered,
+  hqUpdateState,
   readHqUpdate,
   runHqUpdate,
   type HqUpdateOutcome,

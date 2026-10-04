@@ -6,8 +6,10 @@
  *   `hq-core.<identity>`. One digest is one Core whatever the commit; the commit time only orders
  *   two different ones, so an older tab never offers its Core as an update. A stamp of the old
  *   scheme (`<sha>.<build UTC>`) reads as older: its first update moves it onto this one.
- * - **Where it stands:** Zerops alone — the `hq` service's active app version and its newest
- *   build process — never a flag of this browser's.
+ * - **Where it stands:** the Core HQ's health answers with, and Zerops' newest build of its `hq`
+ *   service — never a flag of this browser's. The service list embeds the active app version
+ *   without its name (KRLS, 2026-10-04), so Zerops names the running Core only through the build
+ *   that deployed it, while the project's newest processes still hold it.
  */
 import type { ActivityProcess } from "../activity/dto.ts";
 import { ZeropsApiError, type ZeropsApiClient, type ZeropsService } from "../api.ts";
@@ -78,20 +80,38 @@ export function hqUpdateState(input: {
   readonly processes: ReadonlyArray<ActivityProcess>;
   /** The Core this app carries. */
   readonly carried: string;
+  /** The Core HQ's health names; `undefined` while it does not answer. */
+  readonly answering: string | undefined;
 }): HqUpdateState {
   const { carried } = input;
-  const newest = input.processes
+  const deploys = input.processes
     .filter(
       (process) =>
         DEPLOY_ACTIONS.has(process.actionName) &&
         process.serviceStackIds.includes(input.service.id),
     )
-    .sort((left, right) => Date.parse(right.created) - Date.parse(left.created))[0];
+    .sort((left, right) => Date.parse(right.created) - Date.parse(left.created));
+  const newest = deploys[0];
+  const activeId = input.service.activeAppVersion?.id;
+  // No id names no build: an active version without one matches none, never one without one.
+  const answered =
+    input.answering ??
+    namedCore(
+      activeId === undefined
+        ? undefined
+        : deploys.find((process) => process.appVersion?.id === activeId)?.appVersion?.name,
+    );
+  // A deploy of a newer Core that FINISHED runs it, though HQ may answer with the one before it
+  // for a few seconds (KRLS, 2026-10-04).
+  const deployed = newest?.status === "FINISHED" ? namedCore(newest.appVersion?.name) : "";
+  const running = hqUpdateOffered(answered, deployed) ? deployed : answered;
   if (newest !== undefined && LIVE_STATUSES.has(newest.status)) {
     const target = namedCore(newest.appVersion?.name);
-    return { kind: "updating", target: target === "" ? undefined : target };
+    // HQ may answer with the new Core before Zerops ends its build (KRLS, 2026-10-04).
+    if (target === "" || hqUpdateOffered(running, target)) {
+      return { kind: "updating", target: target === "" ? undefined : target };
+    }
   }
-  const running = namedCore(input.service.activeAppVersion?.name);
   if (!hqUpdateOffered(running, carried)) return { kind: "current", running };
   if (newest !== undefined && FAILED_STATUSES.has(newest.status)) {
     return {
@@ -115,14 +135,19 @@ export type HqUpdatePlatform = Pick<
   | "readProcessStatus"
 >;
 
-async function readHq(platform: HqUpdatePlatform, projectId: string, carried: string) {
+async function readHq(
+  platform: HqUpdatePlatform,
+  projectId: string,
+  carried: string,
+  answering: string | undefined,
+) {
   const [services, processes] = await Promise.all([
     platform.listProjectServices(projectId),
     platform.listProjectProcesses(projectId),
   ]);
   const service = services.find((entry) => entry.name === HQ_SERVICE);
   if (service === undefined) throw new Error("Zerops lists no hq service in HQ's project.");
-  return { service, state: hqUpdateState({ service, processes, carried }) };
+  return { service, state: hqUpdateState({ service, processes, carried, answering }) };
 }
 
 /** Where HQ's Core stands against `carried`, read from Zerops now. */
@@ -130,8 +155,10 @@ export async function readHqUpdate(input: {
   readonly platform: HqUpdatePlatform;
   readonly projectId: string;
   readonly carried: string;
+  /** The Core HQ's health names; `undefined` while it does not answer. */
+  readonly answering: string | undefined;
 }): Promise<HqUpdateState> {
-  return (await readHq(input.platform, input.projectId, input.carried)).state;
+  return (await readHq(input.platform, input.projectId, input.carried, input.answering)).state;
 }
 
 export type HqUpdateOutcome =
@@ -146,6 +173,8 @@ export type HqUpdateOutcome =
 export async function runHqUpdate(input: {
   readonly platform: HqUpdatePlatform;
   readonly projectId: string;
+  /** The Core HQ's health names; `undefined` while it does not answer. */
+  readonly answering: string | undefined;
   /** Read once the update is to run: the archive is the size of Core. */
   readonly core: () => Promise<HqCoreArtifact>;
   readonly sleep: (ms: number) => Promise<void>;
@@ -154,7 +183,7 @@ export async function runHqUpdate(input: {
   const { platform } = input;
   try {
     const core = await input.core();
-    const { service, state } = await readHq(platform, input.projectId, core.build);
+    const { service, state } = await readHq(platform, input.projectId, core.build, input.answering);
     if (state.kind === "updating") {
       return { ok: false, reason: "HQ is being updated already. Wait for that update to end." };
     }

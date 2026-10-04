@@ -1,0 +1,280 @@
+/**
+ * The organization's HQ at the projects page's end (SPEC §3.1, §4): its state and what it holds,
+ * for everybody; for an owner or an admin, what is wrong with it, its update, and — opened — the
+ * Core it runs, its last backup and its services in Zerops (`ZeropsHqCard.logic.ts`).
+ *
+ * Everything it shows comes from reads already made — HQ's health every 30 s, the inventory's
+ * services, HQ's structure stream — but one: an admin opening it reads HQ's builds from Zerops
+ * once, so an update another started, or one that failed, is told. Nothing is read again while it
+ * stays open, and a read that failed says so.
+ */
+import { useAtomValue } from "@effect/atom-react";
+import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
+import { canWriteRegistry } from "@t3tools/client-runtime/zerops";
+import { HQ_SERVICE, hqUpdateState } from "@t3tools/client-runtime/zerops/hq";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { Atom } from "effect/unstable/reactivity";
+import { ChevronRightIcon } from "lucide-react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
+
+import { useClientSettings } from "~/hooks/useSettings";
+import { cn } from "~/lib/utils";
+import { hqMatesViewAtom, hqStructureAtom } from "~/state/zerops";
+import { formatDayAwareTimestamp } from "~/timestampFormat";
+import { useAccountHq, useCarriedCoreBuild, useHqStanding } from "~/zerops/accountHq";
+import { useZeropsInventory } from "~/zerops/inventoryContext";
+import { sessionOfferViewer } from "~/zerops/offerViewer";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+
+import { Button } from "../ui/button";
+import { FlatCard, MicroLabel, StatusDot } from "./primitives";
+import { hqCardView, type HqCardUpdateRead, type HqCardView } from "./ZeropsHqCard.logic";
+import { ZeropsHqUpdate } from "./ZeropsHqUpdate";
+import { hqUpdateTrigger } from "./ZeropsHqUpdate.logic";
+
+/**
+ * How many of the Mates the viewer observes in `organizationId` are online, while HQ's view of them
+ * is live: a number, so the card is not drawn again each time a Mate at work moves its overview.
+ */
+const hqOnlineMatesAtom = Atom.family((organizationId: string) =>
+  Atom.make((get): number | undefined => {
+    const view = get(hqMatesViewAtom);
+    if (view?.organizationId !== organizationId || !view.current || view.mates === null) {
+      return undefined;
+    }
+    let online = 0;
+    for (const mate of view.mates.values()) if (mate.presence.online) online += 1;
+    return online;
+  }).pipe(Atom.withLabel(`zerops:hq-online-mates:${organizationId}`)),
+);
+
+/** HQ's builds as the opened card read them, before they are weighed against its services. */
+type BuildsRead =
+  | { readonly kind: "reading" }
+  | { readonly kind: "read"; readonly processes: ReadonlyArray<ActivityProcess> }
+  | { readonly kind: "failed"; readonly reason: string };
+
+export function ZeropsHqCard() {
+  const { activeOrganization, client, user } = useZeropsSession();
+  const organizationId = activeOrganization?.id;
+  const accountHq = useAccountHq(organizationId);
+  const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
+  const standing = useHqStanding(hq?.address);
+  const carried = useCarriedCoreBuild();
+  const admin = canWriteRegistry(sessionOfferViewer(user, activeOrganization ?? null));
+  const outcome = useZeropsInventory().services.get(hq?.projectId ?? "");
+  const services = outcome?.status === "resolved" ? outcome.services : undefined;
+  const service = services?.find((entry) => entry.name === HQ_SERVICE);
+  const structureView = useAtomValue(hqStructureAtom);
+  const structure =
+    structureView !== null && structureView.organizationId === organizationId
+      ? structureView.structure
+      : null;
+  const online = useAtomValue(hqOnlineMatesAtom(organizationId ?? ""));
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  const [open, setOpen] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [builds, setBuilds] = useState<BuildsRead | undefined>(undefined);
+  /** The newest read of HQ's builds: an older one's answer lands nowhere. */
+  const reading = useRef<object | null>(null);
+
+  // HQ's builds say something only beside its `hq` service and the Core this app carries.
+  const projectId = service === undefined || carried === undefined ? undefined : hq?.projectId;
+  const openCard = useCallback(
+    (next: boolean) => {
+      setOpen(next);
+      if (!next || projectId === undefined) return;
+      const read = {};
+      reading.current = read;
+      setBuilds({ kind: "reading" });
+      void client.listProjectProcesses(projectId).then(
+        (processes) => {
+          if (reading.current === read) setBuilds({ kind: "read", processes });
+        },
+        (cause: unknown) => {
+          if (reading.current !== read) return;
+          setBuilds({
+            kind: "failed",
+            reason:
+              cause instanceof Error && cause.message.length > 0
+                ? cause.message
+                : "Zerops could not be reached.",
+          });
+        },
+      );
+    },
+    [client, projectId],
+  );
+  // An update pressed here that ended leaves the builds read before it behind: they say nothing
+  // more until the card is opened again.
+  const onBusy = useCallback((busy: boolean) => {
+    setUpdating(busy);
+    if (!busy) {
+      reading.current = null;
+      setBuilds(undefined);
+    }
+  }, []);
+
+  if (hq === undefined) return null;
+  const update: HqCardUpdateRead | undefined =
+    builds === undefined || builds.kind !== "read"
+      ? builds
+      : service === undefined || carried === undefined
+        ? undefined
+        : {
+            kind: "read",
+            // Weighed against the Core HQ answers with now: a new answer needs no new read.
+            state: hqUpdateState({
+              service,
+              processes: builds.processes,
+              carried,
+              answering:
+                standing.kind === "healthy" || standing.kind === "unchecked"
+                  ? standing.build
+                  : undefined,
+            }),
+          };
+  const view = hqCardView({
+    admin,
+    standing,
+    services,
+    structure,
+    online,
+    update,
+    updating,
+    time: (ms) => formatDayAwareTimestamp(new Date(ms).toISOString(), timestampFormat),
+  });
+  const trigger = hqUpdateTrigger({ admin, standing, carried });
+  return (
+    <ZeropsHqCardView
+      onOpenChange={openCard}
+      open={open}
+      projectUrl={zeropsProjectUrl(hq.projectId)}
+      update={
+        // Mounted while HQ answers at all, so a dialog left open sees an update through to HQ
+        // answering.
+        carried !== undefined &&
+        trigger !== null &&
+        (standing.kind === "healthy" || standing.kind === "unchecked") ? (
+          <ZeropsHqUpdate
+            answering={standing.build}
+            carried={carried}
+            onBusy={onBusy}
+            projectId={hq.projectId}
+            trigger={trigger}
+          />
+        ) : null
+      }
+      view={view}
+    />
+  );
+}
+
+/** One of the opened card's rows: its `MicroLabel`, then what it says. */
+function DetailRow({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+  return (
+    <div className="flex items-baseline gap-3">
+      <MicroLabel className="w-16 shrink-0 text-muted-foreground">{label}</MicroLabel>
+      <span className="flex min-w-0 flex-col gap-0.5">{children}</span>
+    </div>
+  );
+}
+
+export function ZeropsHqCardView({
+  view,
+  open,
+  onOpenChange,
+  update,
+  projectUrl,
+}: {
+  readonly view: HqCardView;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  /** The update's offer and its dialog (`ZeropsHqUpdate`), an admin's. */
+  readonly update: ReactNode;
+  /** HQ's project in Zerops. */
+  readonly projectUrl: string;
+}) {
+  return (
+    <FlatCard
+      className="px-3 py-2"
+      data-hq-state={view.state?.kind ?? "unknown"}
+      data-zerops-surface="hq-card"
+    >
+      <div className="flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        {view.opens ? (
+          <button
+            aria-expanded={open}
+            className="-ms-1 inline-flex items-center gap-1 rounded-md px-1 font-medium"
+            onClick={() => onOpenChange(!open)}
+            type="button"
+          >
+            <ChevronRightIcon
+              aria-hidden="true"
+              className={cn(
+                "size-3.5 text-muted-foreground transition-transform duration-200 ease-out",
+                open && "rotate-90",
+              )}
+            />
+            HQ
+          </button>
+        ) : (
+          <span className="font-medium">HQ</span>
+        )}
+        {view.state === null ? null : (
+          <StatusDot label={view.state.word} sentence tone={view.state.tone} />
+        )}
+        {view.counts === null ? null : <span className="text-muted-foreground">{view.counts}</span>}
+        {update}
+      </div>
+      {view.troubles.length === 0 ? null : (
+        <ul className="flex flex-col gap-0.5 pb-1 text-xs text-status-attention-text" role="status">
+          {view.troubles.map((trouble) => (
+            <li data-hq-trouble key={trouble}>
+              {trouble}
+            </li>
+          ))}
+        </ul>
+      )}
+      {open && view.opens ? (
+        <div className="flex flex-col gap-1.5 border-t border-border/50 pt-2 pb-1 text-xs">
+          {view.core === null ? null : (
+            <DetailRow label="Core">
+              <span>{view.core}</span>
+              {view.coreNote === null ? null : (
+                <span className="text-muted-foreground">{view.coreNote}</span>
+              )}
+            </DetailRow>
+          )}
+          {view.backup === null ? null : (
+            <DetailRow label="Backup">
+              <span>{view.backup}</span>
+            </DetailRow>
+          )}
+          {view.services.length === 0 ? null : (
+            <DetailRow label="Services">
+              <span className="flex flex-wrap gap-x-3 gap-y-1">
+                {view.services.map((service) => (
+                  <StatusDot
+                    key={service.name}
+                    label={`${service.name} · ${service.word}`}
+                    sentence
+                    tone={service.tone}
+                  />
+                ))}
+              </span>
+            </DetailRow>
+          )}
+          <Button
+            className="self-start"
+            render={<a href={projectUrl} rel="noreferrer" target="_blank" />}
+            size="xs"
+            variant="link"
+          >
+            Open in Zerops
+          </Button>
+        </div>
+      ) : null}
+    </FlatCard>
+  );
+}

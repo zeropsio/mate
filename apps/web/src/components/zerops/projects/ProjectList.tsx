@@ -21,7 +21,7 @@ import { formatElapsedDurationLabel } from "~/timestampFormat";
 import { Button } from "../../ui/button";
 import { Skeleton } from "../../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
-import { FlatCard, MicroLabel, StatusDot } from "../primitives";
+import { FlatCard, StatusDot } from "../primitives";
 import { StopReadAgain } from "../StopReadAgain";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { heldLine } from "./emptyApps.logic";
@@ -524,14 +524,5 @@ export function OtherContainers<T>({
 
 /** The page's end, quietly: the organization's HQ. */
 export function QuietEnd<T>({ props }: { readonly props: ZeropsProjectsFlowProps<T> }) {
-  return (
-    <section data-zerops-surface="quiet-end">
-      <ul className="flex flex-col px-3">
-        <li className="flex min-h-10 items-center gap-x-4 py-1.5" data-zerops-tools="true">
-          <MicroLabel className="text-muted-foreground">Tools</MicroLabel>
-          <span className="flex min-w-0 flex-wrap items-center gap-3 text-xs">{props.hqTool}</span>
-        </li>
-      </ul>
-    </section>
-  );
+  return <section data-zerops-surface="quiet-end">{props.hqCard}</section>;
 }

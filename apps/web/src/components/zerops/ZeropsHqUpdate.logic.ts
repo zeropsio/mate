@@ -23,7 +23,11 @@ export interface HqUpdateWords {
   readonly action: "Update HQ" | "Update again" | null;
 }
 
-export function hqUpdateWords(state: HqUpdateState): HqUpdateWords {
+/**
+ * `answering` is the Core HQ's health names, `undefined` while unread: a deploy that finished in
+ * Zerops runs beside the old Core until the new one answers (rolling deploy).
+ */
+export function hqUpdateWords(state: HqUpdateState, answering: string | undefined): HqUpdateWords {
   switch (state.kind) {
     case "available":
       return {
@@ -44,22 +48,29 @@ export function hqUpdateWords(state: HqUpdateState): HqUpdateWords {
         action: "Update again",
       };
     case "current":
-      return { line: "HQ is up to date.", action: null };
+      return {
+        line:
+          answering === undefined || !hqUpdateOffered(answering, state.running)
+            ? `HQ runs ${coreLabel(state.running)}. It is up to date.`
+            : `HQ's update to ${coreLabel(state.running)} finished. Waiting for HQ to answer with it.`,
+        action: null,
+      };
   }
 }
 
 /**
- * Whether the Tools row offers HQ's update: to an owner or an admin, while HQ's health names the
- * Core it runs and that Core is older than the one this app carries — data already read.
+ * What HQ's card offers an owner or an admin beside HQ's health: its update while HQ's health
+ * names an older Core than this app carries, else the way to see that it is up to date — both from
+ * data already read. `null` for anybody else, and while either Core is unread.
  */
-export function offersHqUpdate(input: {
+export function hqUpdateTrigger(input: {
   readonly admin: boolean;
   readonly standing: HqStanding;
   /** The Core this app carries; `undefined` until read. */
   readonly carried: string | undefined;
-}): boolean {
+}): "Update available" | "Up to date" | null {
   const { standing, carried } = input;
-  if (!input.admin || carried === undefined) return false;
-  if (standing.kind !== "healthy" && standing.kind !== "unchecked") return false;
-  return hqUpdateOffered(standing.build, carried);
+  if (!input.admin || carried === undefined) return null;
+  if (standing.kind !== "healthy" && standing.kind !== "unchecked") return null;
+  return hqUpdateOffered(standing.build, carried) ? "Update available" : "Up to date";
 }

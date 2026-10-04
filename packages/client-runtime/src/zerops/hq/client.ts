@@ -557,10 +557,130 @@ const changePath = ({ appId, repo, number }: ChangeLink): string =>
  * missing; `unreachable` while nothing answers as Core does.
  */
 export type HqHealth =
-  | { readonly kind: "healthy"; readonly build: string }
-  | { readonly kind: "unchecked"; readonly build: string }
+  | { readonly kind: "healthy"; readonly build: string; readonly parts: HqParts }
+  | { readonly kind: "unchecked"; readonly build: string; readonly parts: HqParts }
   | { readonly kind: "not-ready"; readonly state: string; readonly official: string }
   | { readonly kind: "unreachable" };
+
+/**
+ * How HQ's parts stand while it serves, as its health reports them (`apps/hq/src/health.ts`):
+ * `db` its database's answer to a fresh probe, `quarantined` the repositories it withholds until
+ * they converge (`<appId>/<repo>`), `backup` its newest set's outcome, `keys` where its key for
+ * deploy tokens stands. A part an older Core does not report, or reports in a shape this build
+ * cannot read, is absent.
+ */
+export interface HqParts {
+  readonly db?: "up" | "down";
+  readonly quarantined: ReadonlyArray<string>;
+  readonly backup?: HqBackup;
+  readonly keys?: HqKeys;
+}
+
+/** What a backup set needed beside what the backup bucket holds (`apps/hq/src/backup.ts`). */
+export interface HqBackupUsage {
+  readonly usedBytes: number;
+  readonly neededBytes: number;
+  readonly quotaBytes: number;
+}
+
+/**
+ * HQ's backup by its newest set (`apps/hq/src/backup.ts` `BackupStatus`): `off` with no bucket,
+ * `pending` before a first set, `ok` with the time the newest set was taken (wall ms), `degraded`
+ * when that set cost a set the retention targets keep, `failed` with HQ's reason — a quarantined
+ * repository's name, or the bucket's usage when it is full.
+ */
+export type HqBackup =
+  | { readonly state: "off" | "pending" }
+  | { readonly state: "ok"; readonly takenAt: number }
+  | { readonly state: "degraded"; readonly takenAt: number; readonly usage: HqBackupUsage }
+  | {
+      readonly state: "failed";
+      readonly reason: string;
+      readonly repo?: string;
+      readonly usage?: HqBackupUsage;
+    };
+
+/**
+ * HQ's key for deploy tokens (`apps/hq/src/deployKeys.ts` `KeysStatus`): none, one that is no key,
+ * the key, or the key beside tokens sealed under another.
+ */
+export type HqKeys = "ok" | "no_secret" | "bad_secret" | "other_secret";
+
+const HQ_KEYS: ReadonlySet<string> = new Set(["ok", "no_secret", "bad_secret", "other_secret"]);
+
+/** A set's id is the time it was taken, ISO without its separators: `20261004T120000.000Z`. */
+const SET_ID = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(?:\.(\d{3}))?Z$/u;
+
+function setTakenAt(set: unknown): number | undefined {
+  const match = typeof set === "string" ? SET_ID.exec(set) : null;
+  if (match === null) return undefined;
+  const [, year, month, day, hour, minute, second, ms] = match.map(Number);
+  return Date.UTC(year!, month! - 1, day!, hour!, minute!, second!, ms ?? 0);
+}
+
+function readUsage(backup: Record<string, unknown>): HqBackupUsage | undefined {
+  const { usedBytes, neededBytes, quotaBytes } = backup;
+  return typeof usedBytes === "number" &&
+    typeof neededBytes === "number" &&
+    typeof quotaBytes === "number"
+    ? { usedBytes, neededBytes, quotaBytes }
+    : undefined;
+}
+
+function readBackup(raw: unknown): HqBackup | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const backup = raw as Record<string, unknown>;
+  switch (backup.state) {
+    case "off":
+    case "pending":
+      return { state: backup.state };
+    case "ok": {
+      const takenAt = setTakenAt(backup.set);
+      return takenAt === undefined ? undefined : { state: "ok", takenAt };
+    }
+    case "degraded": {
+      const takenAt = setTakenAt(backup.set);
+      const usage = readUsage(backup);
+      return takenAt === undefined || usage === undefined
+        ? undefined
+        : { state: "degraded", takenAt, usage };
+    }
+    case "failed": {
+      if (typeof backup.reason !== "string") return undefined;
+      const usage = readUsage(backup);
+      return {
+        state: "failed",
+        reason: backup.reason,
+        ...(typeof backup.repo === "string" ? { repo: backup.repo } : {}),
+        ...(usage === undefined ? {} : { usage }),
+      };
+    }
+    default:
+      return undefined;
+  }
+}
+
+/** The repositories HQ withholds, by name: `[{ repo, reason }]` on the wire. */
+function readQuarantined(raw: unknown): ReadonlyArray<string> {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((entry: unknown) => {
+    const repo =
+      typeof entry === "object" && entry !== null ? (entry as { repo?: unknown }).repo : undefined;
+    return typeof repo === "string" ? [repo] : [];
+  });
+}
+
+function readParts(body: Record<string, unknown>): HqParts {
+  const backup = readBackup(body.backup);
+  return {
+    ...(body.db === "up" || body.db === "down" ? { db: body.db } : {}),
+    quarantined: readQuarantined(body.quarantined),
+    ...(backup === undefined ? {} : { backup }),
+    ...(typeof body.keys === "string" && HQ_KEYS.has(body.keys)
+      ? { keys: body.keys as HqKeys }
+      : {}),
+  };
+}
 
 export async function readHqHealth(
   fetch: FetchImplementation,
@@ -572,20 +692,16 @@ export async function readHqHealth(
       cache: "no-store",
       signal: signal ?? AbortSignal.timeout(CALL_TIMEOUT_MS),
     });
-    const body = (await response.json()) as {
-      readonly state?: unknown;
-      readonly official?: unknown;
-      readonly build?: unknown;
-    };
+    const body = (await response.json()) as Record<string, unknown>;
     if (typeof body.state !== "string" || typeof body.official !== "string") {
       return { kind: "unreachable" };
     }
     const build = typeof body.build === "string" ? body.build : "";
     if (response.ok && body.state === "active" && body.official === "ok") {
-      return { kind: "healthy", build };
+      return { kind: "healthy", build, parts: readParts(body) };
     }
     return response.ok && body.state === "active" && body.official === "unknown"
-      ? { kind: "unchecked", build }
+      ? { kind: "unchecked", build, parts: readParts(body) }
       : { kind: "not-ready", state: body.state, official: body.official };
   } catch {
     return { kind: "unreachable" };

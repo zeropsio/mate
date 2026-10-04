@@ -430,13 +430,13 @@ describe("readHqHealth", () => {
     [
       "the official HQ leading",
       json(200, { state: "active", official: "ok", db: "up", epoch: 8, build: "b1" }),
-      { kind: "healthy", build: "b1" },
+      { kind: "healthy", build: "b1", parts: { db: "up", quarantined: [] } },
     ],
     [
       // Inside HQ's grace (`official.ts`): it leads and serves, Zerops just does not answer its check.
       "the official HQ leading, its check of Zerops unanswered",
       json(200, { state: "active", official: "unknown", db: "up", epoch: 8, build: "b1" }),
-      { kind: "unchecked", build: "b1" },
+      { kind: "unchecked", build: "b1", parts: { db: "up", quarantined: [] } },
     ],
     [
       "a standby that is not the official HQ yet",
@@ -457,6 +457,94 @@ describe("readHqHealth", () => {
       return answer;
     };
     await expect(readHqHealth(fetch, `${ADDRESS}/`)).resolves.toEqual(expected);
+  });
+});
+
+describe("readHqHealth — how HQ's parts stand", () => {
+  const leading = { state: "active", official: "ok", db: "up", epoch: 8, build: "b1" };
+  it.each<[string, Record<string, unknown>, unknown]>([
+    [
+      "its newest backup, its key and its database",
+      { backup: { state: "ok", set: "20261004T120000.000Z" }, keys: "ok" },
+      {
+        db: "up",
+        quarantined: [],
+        backup: { state: "ok", takenAt: Date.UTC(2026, 9, 4, 12) },
+        keys: "ok",
+      },
+    ],
+    [
+      "the repositories it withholds, by name",
+      {
+        quarantined: [
+          { repo: "a1/api", reason: "fsck" },
+          { repo: "a2/web", reason: "refs" },
+        ],
+      },
+      { db: "up", quarantined: ["a1/api", "a2/web"] },
+    ],
+    [
+      "a set that cost one the retention keeps, with the bucket's usage",
+      {
+        backup: {
+          state: "degraded",
+          set: "20261004T120000.000Z",
+          usedBytes: 70,
+          neededBytes: 9,
+          quotaBytes: 80,
+        },
+      },
+      {
+        db: "up",
+        quarantined: [],
+        backup: {
+          state: "degraded",
+          takenAt: Date.UTC(2026, 9, 4, 12),
+          usage: { usedBytes: 70, neededBytes: 9, quotaBytes: 80 },
+        },
+      },
+    ],
+    [
+      "a set refused for the bucket's room",
+      {
+        backup: { state: "failed", reason: "quota", usedBytes: 78, neededBytes: 9, quotaBytes: 80 },
+      },
+      {
+        db: "up",
+        quarantined: [],
+        backup: {
+          state: "failed",
+          reason: "quota",
+          usage: { usedBytes: 78, neededBytes: 9, quotaBytes: 80 },
+        },
+      },
+    ],
+    [
+      "a set refused for a repository it withholds",
+      { backup: { state: "failed", reason: "repo_quarantined", repo: "a1/api" } },
+      {
+        db: "up",
+        quarantined: [],
+        backup: { state: "failed", reason: "repo_quarantined", repo: "a1/api" },
+      },
+    ],
+    [
+      "a set that failed for HQ's own reason",
+      { backup: { state: "failed", reason: "store" } },
+      { db: "up", quarantined: [], backup: { state: "failed", reason: "store" } },
+    ],
+    [
+      "what this build cannot read, left out",
+      { db: "maybe", backup: { state: "ok", set: "latest" }, keys: "rotated", quarantined: "x" },
+      { quarantined: [] },
+    ],
+  ])("%s", async (_name, body, parts) => {
+    const fetch = async () => json(200, { ...leading, ...body });
+    await expect(readHqHealth(fetch, ADDRESS)).resolves.toEqual({
+      kind: "healthy",
+      build: "b1",
+      parts,
+    });
   });
 });
 

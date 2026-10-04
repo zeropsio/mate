@@ -128,7 +128,8 @@ code is gone.
 
 The hosted build packs Core under `hq-core/` beside the web bundle (`apps/hq/scripts/pack-core.ts`,
 the root `zerops.yml`), so an HQ is born with the Core of the client that bore it. Later, an owner or
-an admin updates it from the Tools row to the Core the client carries (`client-runtime hq/update.ts`).
+an admin updates it from HQ's card at the projects page's end to the Core the client carries
+(`client-runtime hq/update.ts`).
 
 ## 3. Who holds what
 
