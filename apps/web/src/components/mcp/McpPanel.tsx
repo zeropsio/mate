@@ -100,7 +100,10 @@ export function McpPanelBody(props: {
 
   return (
     <ScrollArea className="h-full">
-      <div className="flex min-h-full w-full max-w-3xl flex-col px-4 pt-3 pb-8" data-mcp-panel>
+      <div
+        className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 pt-3 pb-8"
+        data-mcp-panel
+      >
         <div className="mt-1 flex h-7 items-center gap-2">
           <h2 className="font-semibold text-base leading-6">{MCP_WORDS.title}</h2>
           <span className="grow" />

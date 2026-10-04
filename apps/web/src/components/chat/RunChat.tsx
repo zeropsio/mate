@@ -36,6 +36,7 @@
  * is. Nothing opens a dialog.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   isActiveSubagentStatus,
@@ -137,7 +138,10 @@ import {
   showsCardInSlot,
   slotOpenDeployLine,
 } from "./operationBar.logic";
-import { HELPER_LINE_CHARS, helperReportPreview, opensOnto, stepOutput } from "./opens.logic";
+import { opensOnto, stepOutput } from "./opens.logic";
+import { showHelper } from "./helperFocus";
+import { ElapsedSince } from "./ConversationRows";
+import { helperNowWords, helperReportLine, helperSpan } from "./helpers.logic";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
@@ -2036,78 +2040,51 @@ const AGENT_STATUS_WORD: Record<RuntimeSubagent["status"], string> = {
 };
 
 /**
- * One helper: its task in the words it was given, its state and how long it
- * ran — never the model or the harness's role name — and what it said, whole,
- * under it once opened.
+ * One helper: its task in the words it was given, its state and its clock —
+ * never the model or the harness's role name — and under it what it does
+ * now, or what it came to. Pressed, its own card opens in the helpers panel:
+ * its steps, its clock, its report whole.
  */
 function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
-  const hold = useHoldReading();
-  const [open, setOpen] = useState(false);
+  const ctx = use(TimelineRowCtx);
   const active = isActiveSubagentStatus(agent.status);
-  const said = (
-    active ? (agent.progress ?? null) : (agent.error ?? agent.result ?? agent.progress ?? null)
-  )?.trim();
-  const durationMs =
-    agent.startedAt && agent.completedAt
-      ? Date.parse(agent.completedAt) - Date.parse(agent.startedAt)
-      : null;
-  const state =
-    !active && durationMs !== null && durationMs >= 1000
-      ? `${AGENT_STATUS_WORD[agent.status]} · ${formatWorkDuration(durationMs)}`
-      : AGENT_STATUS_WORD[agent.status];
   const word = AGENT_STATUS_WORD[agent.status];
-  // Its report's first line under it, unless it says its state again; it
-  // opens only onto more than that line says.
-  const firstLine = helperReportPreview(said ?? null, word);
-  // Cut short at the card's width, as measured — a first frame guesses by its length.
-  const [previewCut, watchPreview] = useRunsPast(
-    (firstLine?.length ?? 0) > HELPER_LINE_CHARS,
-    true,
-  );
-  const opens = opensOnto({ control: "helper", report: said ?? null, state: word, previewCut });
-  const line = (
-    <span className={cn("flex min-w-0 items-baseline gap-3", META)}>
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate",
-          agent.status === "failed" ? "text-status-failed-text" : "text-foreground/90",
-        )}
-      >
-        {agent.title}
-      </span>
-      <span className={cn("shrink-0 text-muted-foreground tabular-nums", META)}>{state}</span>
-    </span>
-  );
+  const { since, ranMs } = helperSpan(agent);
+  const line = active ? helperNowWords(agent) : helperReportLine(agent);
   return (
-    <li className="grid min-w-0 gap-1">
-      {opens ? (
-        <button
-          aria-expanded={open}
-          className="grid min-w-0 cursor-pointer gap-0.5 rounded-lg px-1.5 py-1 text-start transition-colors hover:bg-foreground/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-          onClick={() => {
-            hold(!open);
-            setOpen((value) => !value);
-          }}
-          type="button"
-        >
-          {line}
-          {open || firstLine === null ? null : (
-            <span ref={watchPreview} className={cn("truncate text-muted-foreground", META)}>
-              {firstLine}
-            </span>
-          )}
-        </button>
-      ) : (
-        <div className="grid min-w-0 gap-0.5 px-1.5 py-1">
-          {line}
-          {firstLine === null ? null : (
-            <span ref={watchPreview} className={cn("truncate text-muted-foreground", META)}>
-              {firstLine}
-            </span>
-          )}
-        </div>
-      )}
-      {open && opens && said ? <OutputBlock mono={false} text={said} /> : null}
+    <li className="grid min-w-0">
+      <button
+        aria-label={`${agent.title}: ${word}. Open its work`}
+        className="grid min-w-0 cursor-pointer gap-0.5 rounded-lg px-1.5 py-1 text-start transition-colors hover:bg-foreground/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+        onClick={() => {
+          if (ctx.threadRef !== null) showHelper(scopedThreadKey(ctx.threadRef), agent.id);
+          ctx.onOpenAgents();
+        }}
+        type="button"
+      >
+        <span className={cn("flex min-w-0 items-baseline gap-3", META)}>
+          <span
+            className={cn(
+              "min-w-0 flex-1",
+              agent.status === "failed" ? "text-status-failed-text" : "text-foreground/90",
+            )}
+          >
+            {agent.title}
+          </span>
+          <span className={cn("shrink-0 text-muted-foreground tabular-nums", META)}>
+            {word}
+            {" · "}
+            {since !== null ? (
+              <ElapsedSince since={since} />
+            ) : ranMs !== null && ranMs >= 1000 ? (
+              formatWorkDuration(ranMs)
+            ) : null}
+          </span>
+        </span>
+        {line === null ? null : (
+          <span className={cn("line-clamp-2 text-muted-foreground", META)}>{line}</span>
+        )}
+      </button>
     </li>
   );
 }
@@ -2188,16 +2165,6 @@ function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
               <HelperRow key={agent.id} agent={agent} />
             ))}
           </ul>
-          <button
-            className={cn(
-              META,
-              "cursor-pointer justify-self-start rounded px-1.5 text-info-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-            )}
-            onClick={ctx.onOpenAgents}
-            type="button"
-          >
-            Open the helpers panel
-          </button>
         </div>
       ) : null}
     </CallRow>

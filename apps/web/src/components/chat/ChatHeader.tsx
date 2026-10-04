@@ -48,6 +48,7 @@ import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import type { ZeropsMateAt } from "~/zerops/mateIdentities";
 import { useKnownMate, useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMark } from "../ZeropsMark";
+import { ChatHeaderLinks } from "./ChatHeaderLinks";
 import { ConversationStrip } from "./ConversationStrip";
 import { registerThreadSyncSlot } from "./threadSyncSlot";
 import {
@@ -673,6 +674,7 @@ export const ChatHeader = memo(function ChatHeader({
             ) : null}
           </MenuPopup>
         </Menu>
+        <ChatHeaderLinks environmentId={activeThreadEnvironmentId} threadId={activeThreadId} />
         {mate === undefined ? null : <ZeropsProjectLink projectUrl={mate.projectUrl} />}
       </div>
     </div>

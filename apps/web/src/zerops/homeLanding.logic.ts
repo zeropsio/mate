@@ -35,6 +35,21 @@ export function homeView(input: {
 }
 
 /**
+ * Which home `/` paints: the account's projects, or the landing that moves on to a Mate. A cold
+ * load counts no environment until the account's Mates register, so "nothing to land on" is an
+ * answer only once the Mates are read whole (`useMatesSettled`); until then the landing waits with
+ * its guess, and the projects page never paints just to be taken back. Pure.
+ */
+export function homeDoor(input: {
+  /** The door counts no usable environment: by itself, the projects page. */
+  readonly noEnvironments: boolean;
+  /** Every Mate this tab will register is registered or will not be. */
+  readonly matesSettled: boolean;
+}): "landing" | "projects" {
+  return input.noEnvironments && input.matesSettled ? "projects" : "landing";
+}
+
+/**
  * The Mate the home will land on, as this browser remembers it: the landing's own rule — the most
  * recently active Mate among those whose container is up, else among all — over the menu's
  * remembered rows, so a Mate working in the background is guessed, not the conversation open last

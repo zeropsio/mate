@@ -172,7 +172,7 @@ export function CrewPanelFrame({
   return (
     <ScrollArea className="h-full">
       <div
-        className="@container flex min-h-full w-full max-w-3xl flex-col"
+        className="@container mx-auto flex min-h-full w-full max-w-3xl flex-col"
         data-crew-panel={status}
       >
         {children}

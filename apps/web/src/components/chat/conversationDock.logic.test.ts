@@ -45,6 +45,10 @@ function agent(id: string, status: RuntimeSubagent["status"], title: string): Ru
     phases: [],
     runHandles: null,
     recentActivity: [],
+    prompt: null,
+    toolUseId: null,
+    spawnedBy: null,
+    liveCall: null,
     firstSeenAt: at(1),
     startedAt: at(1),
     completedAt: status === "completed" ? at(9) : null,
@@ -88,6 +92,26 @@ describe("dockHelpers", () => {
       { id: "h1", title: "Titan models", tone: "busy", word: "Working" },
       { id: "h2", title: "Fire and destruction", tone: "ok", word: "Done" },
     ]);
+  });
+
+  it.each([
+    {
+      name: "a working helper says what it does now",
+      helper: { ...agent("h1", "running", "tests"), progress: "Running the unit tests" },
+      word: "Running the unit tests",
+    },
+    {
+      name: "a working helper that says nothing yet is working",
+      helper: agent("h1", "running", "tests"),
+      word: "Working",
+    },
+    {
+      name: "a settled helper says how it ended",
+      helper: { ...agent("h1", "completed", "tests"), progress: "Running the unit tests" },
+      word: "Done",
+    },
+  ])("$name", ({ helper, word }) => {
+    expect(dockHelpers(panel([helper])).map((row) => row.word)).toEqual([word]);
   });
 
   it.each([

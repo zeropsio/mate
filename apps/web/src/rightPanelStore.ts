@@ -87,7 +87,9 @@ const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v18 drops v13's Zerops default record: the panel opens only when the person opens it.
 // v19 adds the "crew" surface kind (the crew's board).
 // v20 adds the "mcp" surface kind (the Mate's MCP servers).
-const RIGHT_PANEL_STORAGE_VERSION = 20;
+// v21 drops the address tabs Browser opened by itself: a tab exists only for an address a person opened.
+const RIGHT_PANEL_STORAGE_VERSION = 21;
+const FIRST_VERSION_OPENING_ADDRESSES_ONLY_BY_HAND = 21;
 
 /** Legacy shared review-workspace panel keys are discarded during migration. */
 const isPullRequestsPanelKey = (threadKey: string) => threadKey.endsWith(":pull-requests-panel");
@@ -216,41 +218,15 @@ function normalizeRevealLine(line: number | undefined): number | null {
   return Math.max(1, Math.trunc(line));
 }
 
-/**
- * The tabs the Browser view opens with: one per service that answers on a
- * public URL, in the topology's own order.
- *
- * Picking "Browser" used to open a single empty surface — the view existed
- * and nothing was in it, and the services that DO answer publicly were
- * reachable only by finding a link in the conversation to click. A service's
- * FIRST browsable route is the tab; a second port on the same service is the
- * same page to a reader, not another thing to look at.
- */
-export function serviceBrowserTabs(
-  services: ReadonlyArray<{
-    readonly hostname: string;
-    readonly group?: string;
-    readonly routes: ReadonlyArray<{ readonly url: string }>;
-  }>,
-): ReadonlyArray<{ readonly service: string; readonly url: string }> {
-  const tabs: Array<{ service: string; url: string }> = [];
-  const seen = new Set<string>();
-  for (const service of services) {
-    // The control plane serves Mate itself; browsing it from inside Mate is noise.
-    if (service.group === "infrastructure") continue;
-    const route = service.routes.find(
-      (entry) => isServiceBrowserUrl(entry.url) && !seen.has(entry.url),
-    );
-    if (route === undefined) continue;
-    seen.add(route.url);
-    tabs.push({ service: service.hostname, url: route.url });
-  }
-  return tabs;
-}
-
-export function migratePersistedRightPanelState(persistedState: unknown): {
+export function migratePersistedRightPanelState(
+  persistedState: unknown,
+  /** The version the state was stored at; `undefined` reads it as the current one. */
+  version?: number,
+): {
   byThreadKey: Record<string, ThreadRightPanelState>;
 } {
+  const dropsAddressTabs =
+    version !== undefined && version < FIRST_VERSION_OPENING_ADDRESSES_ONLY_BY_HAND;
   if (!persistedState || typeof persistedState !== "object") {
     return { byThreadKey: {} };
   }
@@ -286,6 +262,7 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                     }
                     if (surface.kind === "browser" && surface.id !== "browser") {
                       if (
+                        dropsAddressTabs ||
                         !("url" in surface) ||
                         typeof surface.url !== "string" ||
                         !isServiceBrowserUrl(surface.url) ||

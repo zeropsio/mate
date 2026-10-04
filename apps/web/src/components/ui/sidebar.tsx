@@ -245,7 +245,10 @@ function Sidebar({
         <Sheet onOpenChange={setOpenMobile} open={openMobile} {...props}>
           <SheetPopup
             className={cn(
-              "w-(--sidebar-width) max-w-none bg-sidebar surface-grain p-0 text-sidebar-foreground",
+              // The sheet is portalled out of the wrapper, so it restates the
+              // phone's control size: its toggle stands where the closed
+              // one did, the same size.
+              "w-(--sidebar-width) max-w-none bg-sidebar surface-grain p-0 text-sidebar-foreground max-sm:[--workspace-titlebar-control-size:--spacing(8)]",
               className,
             )}
             data-mobile="true"

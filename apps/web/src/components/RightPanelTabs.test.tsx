@@ -76,7 +76,7 @@ describe("RightPanelTabs launcher", () => {
   });
 
   it("draws a crew card only while the crew kind is not hidden", () => {
-    expect(renderLauncher()).toContain("Set up this Mate&#x27;s crew and follow its tasks.");
+    expect(renderLauncher()).toContain("Set up a crew and follow its tasks.");
     const hidden = renderLauncher({ ...ALL_AVAILABLE, crew: "hidden" });
     expect(hidden).toContain('data-surface-launcher-keys="TFDAZBVGM"');
     expect(hidden).not.toContain(">Crew<");

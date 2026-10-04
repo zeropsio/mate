@@ -32,7 +32,8 @@ import {
   THREAD_SIDEBAR_MIN_WIDTH,
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "./threadSidebarWidth";
-import { Sidebar, SidebarProvider, SidebarRail, useSidebar } from "./ui/sidebar";
+import { Sidebar, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "./ui/sidebar";
+import { resolveSidebarOpenerPlacement } from "./ui/sidebarState";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { SidebarRevealBridge } from "./zerops/SidebarRevealBridge";
 
@@ -61,7 +62,7 @@ function readInitialThreadSidebarWidth(): number {
 
 function SidebarControl() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const { state, toggleSidebar } = useSidebar();
+  const { isMobile, state, toggleSidebar } = useSidebar();
   const shortcutLabel = shortcutLabelForCommand(keybindings, "sidebar.toggle");
 
   useEffect(() => {
@@ -85,12 +86,34 @@ function SidebarControl() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [keybindings, toggleSidebar]);
 
-  // Open, the panel carries its own controls: the lockup in its header, the
-  // collapse control at the right of its footer row. Closed, both keep a
-  // corner of the screen — the mark where the lockup was, the control at the
-  // foot of the column the panel had.
-  if (state === "expanded") return null;
+  const placement = resolveSidebarOpenerPlacement({ isMobile, state });
+  if (placement === "none") return null;
 
+  // On a phone the composer is the screen's last thing: the opener is the
+  // sheet's own toggle, in the corner where the open sheet's header holds it
+  // and in the box every page header leaves for it
+  // (`--workspace-titlebar-content-left`), as the right panel's toggle stands
+  // at the other edge. The kit's 44 px touch target reaches toward the
+  // screen's edge rather than over the header's first control. Fixed to the
+  // screen, it steps below the status bar as `#root` does, so it stays on the
+  // header's line in a home-screen install.
+  if (placement === "top") {
+    return (
+      <div
+        className="fixed left-[var(--workspace-controls-left)] top-[calc(var(--workspace-controls-top)+env(safe-area-inset-top,0px))] z-50 flex h-[var(--workspace-topbar-height)] items-center"
+        data-sidebar-open-control=""
+      >
+        <SidebarTrigger
+          aria-label="Open main sidebar"
+          className="pointer-coarse:after:top-1/2 pointer-coarse:after:-left-2 pointer-coarse:after:-translate-y-1/2"
+        />
+      </div>
+    );
+  }
+
+  // Closed on a wider window, both keep a corner of the screen — the mark
+  // where the open panel's lockup was, the control at the foot of the column
+  // the panel had.
   return (
     <>
       <SidebarCornerMark />

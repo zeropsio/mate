@@ -331,19 +331,23 @@ export function ZeropsDataPanel({
 
   if (!dataConsoleSupported) {
     return (
-      <FlatCard
-        className="space-y-2 p-3"
-        data-zerops-data-panel="picker"
-        data-zerops-surface="data-console-unsupported"
-      >
-        <MicroLabel>Data</MicroLabel>
-        <p className="text-muted-foreground text-xs">
-          This Mate doesn't include the data console yet.
-        </p>
-        <ZeropsMateUpdateControl environmentId={environmentId}>
-          {({ line }) => line}
-        </ZeropsMateUpdateControl>
-      </FlatCard>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="mx-auto w-full max-w-3xl">
+          <FlatCard
+            className="space-y-2 p-3"
+            data-zerops-data-panel="picker"
+            data-zerops-surface="data-console-unsupported"
+          >
+            <MicroLabel>Data</MicroLabel>
+            <p className="text-muted-foreground text-xs">
+              This Mate doesn't include the data console yet.
+            </p>
+            <ZeropsMateUpdateControl environmentId={environmentId}>
+              {({ line }) => line}
+            </ZeropsMateUpdateControl>
+          </FlatCard>
+        </div>
+      </div>
     );
   }
   const env = environmentId;
@@ -991,67 +995,76 @@ export function ZeropsDataPanel({
 
   if (service === undefined) {
     return (
-      <FlatCard className="space-y-3 p-3" data-zerops-data-panel="picker">
-        <div className="flex items-center justify-between gap-2">
-          <MicroLabel>Data</MicroLabel>
-          <Button data-zerops-data-refresh onClick={requestServices} size="micro" variant="ghost">
-            Refresh
-          </Button>
-        </div>
-        {sessionLine ??
-          (services !== undefined && services.length === 0 ? (
-            /* A project with no managed data service rendered a label, a
-               Refresh and eight hundred pixels of nothing. Saying so is not
-               an error — most projects have no database — so it is a line,
-               not a warning. */
-            <p className="text-muted-foreground text-xs" data-zerops-data-empty>
-              This project has no database or storage service. Add one and it will be browsable
-              here.
-            </p>
-          ) : (
-            <div className="space-y-1" data-zerops-data-services>
-              {joinServicesWithTopology(services ?? [], topology.view?.services).map((row) => {
-                const entry = row.service;
-                const rowAffordances = resolveServiceAffordances(entry);
-                return (
-                  <button
-                    className="flex w-full flex-col items-start gap-0.5 rounded-[var(--zerops-card-radius)] px-2 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
-                    data-zerops-data-service={entry.hostname}
-                    disabled={!rowAffordances.canBrowse}
-                    key={entry.hostname}
-                    onClick={() =>
-                      rowAffordances.canBrowse ? onOpenService(entry.hostname) : undefined
-                    }
-                    type="button"
-                  >
-                    <span className="flex w-full items-center justify-between gap-1">
-                      <span className="flex min-w-0 items-center gap-1.5">
-                        {row.topologyService !== undefined ? (
-                          <StatusDot
-                            data-zerops-data-service-status
-                            label={zeropsStatusWord(row.topologyService.status)}
-                            tone={STATUS_DOT_TONE[serviceStatusTone(row.topologyService)]}
-                          />
-                        ) : null}
-                        <span className="truncate">{entry.hostname}</span>
-                      </span>
-                      {entry.support !== "supported" ? (
-                        <Chip data-zerops-data-service-view-only label="View only" tone="off" />
-                      ) : null}
-                    </span>
-                    <span className="text-muted-foreground">{entry.family}</span>
-                    {rowAffordances.vpnGateReason !== undefined ? (
-                      <span className="text-muted-foreground" data-zerops-data-service-vpn-hint>
-                        {rowAffordances.vpnGateReason}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="mx-auto w-full max-w-3xl">
+          <FlatCard className="space-y-3 p-3" data-zerops-data-panel="picker">
+            <div className="flex items-center justify-between gap-2">
+              <MicroLabel>Data</MicroLabel>
+              <Button
+                data-zerops-data-refresh
+                onClick={requestServices}
+                size="micro"
+                variant="ghost"
+              >
+                Refresh
+              </Button>
             </div>
-          ))}
-        {errorLine}
-      </FlatCard>
+            {sessionLine ??
+              (services !== undefined && services.length === 0 ? (
+                /* A project with no managed data service rendered a label, a
+                 Refresh and eight hundred pixels of nothing. Saying so is not
+                 an error — most projects have no database — so it is a line,
+                 not a warning. */
+                <p className="text-muted-foreground text-xs" data-zerops-data-empty>
+                  This project has no database or storage service. Add one and it will be browsable
+                  here.
+                </p>
+              ) : (
+                <div className="space-y-1" data-zerops-data-services>
+                  {joinServicesWithTopology(services ?? [], topology.view?.services).map((row) => {
+                    const entry = row.service;
+                    const rowAffordances = resolveServiceAffordances(entry);
+                    return (
+                      <button
+                        className="flex w-full flex-col items-start gap-0.5 rounded-[var(--zerops-card-radius)] px-2 py-1 text-left text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+                        data-zerops-data-service={entry.hostname}
+                        disabled={!rowAffordances.canBrowse}
+                        key={entry.hostname}
+                        onClick={() =>
+                          rowAffordances.canBrowse ? onOpenService(entry.hostname) : undefined
+                        }
+                        type="button"
+                      >
+                        <span className="flex w-full items-center justify-between gap-1">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            {row.topologyService !== undefined ? (
+                              <StatusDot
+                                data-zerops-data-service-status
+                                label={zeropsStatusWord(row.topologyService.status)}
+                                tone={STATUS_DOT_TONE[serviceStatusTone(row.topologyService)]}
+                              />
+                            ) : null}
+                            <span className="truncate">{entry.hostname}</span>
+                          </span>
+                          {entry.support !== "supported" ? (
+                            <Chip data-zerops-data-service-view-only label="View only" tone="off" />
+                          ) : null}
+                        </span>
+                        <span className="text-muted-foreground">{entry.family}</span>
+                        {rowAffordances.vpnGateReason !== undefined ? (
+                          <span className="text-muted-foreground" data-zerops-data-service-vpn-hint>
+                            {rowAffordances.vpnGateReason}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            {errorLine}
+          </FlatCard>
+        </div>
+      </div>
     );
   }
 
@@ -1449,80 +1462,84 @@ export function ZeropsDataPanel({
   const showBrowse = sessionLine === null && notBrowsableLine === null;
 
   return (
-    <FlatCard
-      className="flex h-full min-h-0 flex-col overflow-hidden"
-      data-zerops-data-panel="service"
-      data-zerops-data-layout={layout}
-      ref={measureRef.current}
-    >
-      <div className="flex shrink-0 items-center justify-between gap-2 px-3 pt-3 pb-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <ZeropsDataBreadcrumbs
-            collapsedPrefix={treeCollapsedPrefix}
-            onNavigate={handleNavigatePath}
-            path={currentPath}
-          />
-          {selectedService !== null && selectedService.support !== "supported" ? (
-            <Chip data-zerops-data-view-only label="View only" tone="off" />
-          ) : null}
+    // The panel's gutter round the card: a full-bleed card put its rounded
+    // corners on the panel's own edges.
+    <div className="flex h-full min-h-0 flex-col p-4">
+      <FlatCard
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        data-zerops-data-panel="service"
+        data-zerops-data-layout={layout}
+        ref={measureRef.current}
+      >
+        <div className="flex shrink-0 items-center justify-between gap-2 px-3 pt-3 pb-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <ZeropsDataBreadcrumbs
+              collapsedPrefix={treeCollapsedPrefix}
+              onNavigate={handleNavigatePath}
+              path={currentPath}
+            />
+            {selectedService !== null && selectedService.support !== "supported" ? (
+              <Chip data-zerops-data-view-only label="View only" tone="off" />
+            ) : null}
+          </div>
+          <div className="flex items-center gap-1">
+            {showBrowse && layout === "wide" ? (
+              <Button
+                data-zerops-data-tree-toggle-rail
+                onClick={() => setTreeCollapsed((current) => !current)}
+                size="micro"
+                variant="ghost"
+              >
+                {treeCollapsed ? "Show tree" : "Hide tree"}
+              </Button>
+            ) : null}
+            {onToggleMaximized !== undefined ? (
+              <Button
+                aria-label={maximized ? "Restore panel" : "Maximize panel"}
+                data-zerops-data-maximize
+                onClick={onToggleMaximized}
+                size="icon-xs"
+                variant="ghost"
+              >
+                {maximized ? <Minimize2Icon /> : <Maximize2Icon />}
+              </Button>
+            ) : null}
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          {showBrowse && layout === "wide" ? (
-            <Button
-              data-zerops-data-tree-toggle-rail
-              onClick={() => setTreeCollapsed((current) => !current)}
-              size="micro"
-              variant="ghost"
-            >
-              {treeCollapsed ? "Show tree" : "Hide tree"}
-            </Button>
-          ) : null}
-          {onToggleMaximized !== undefined ? (
-            <Button
-              aria-label={maximized ? "Restore panel" : "Maximize panel"}
-              data-zerops-data-maximize
-              onClick={onToggleMaximized}
-              size="icon-xs"
-              variant="ghost"
-            >
-              {maximized ? <Minimize2Icon /> : <Maximize2Icon />}
-            </Button>
-          ) : null}
-        </div>
-      </div>
 
-      {!showBrowse ? (
-        <div className="shrink-0 px-3 pb-3">{sessionLine ?? notBrowsableLine}</div>
-      ) : layout === "wide" ? (
-        <div className="flex min-h-0 flex-1 gap-3 px-3" data-zerops-data-browse>
-          {treeCollapsed ? null : (
-            <div
-              className="w-60 shrink-0 overflow-y-auto"
-              data-zerops-data-tree-rail
-              ref={treeScrollRef}
-            >
-              {treeView}
-            </div>
-          )}
-          {contentPane}
-          {drawerView === null ? null : (
-            <div className="min-h-0 shrink-0 overflow-y-auto">{drawerView}</div>
-          )}
-        </div>
-      ) : (
-        <div className="relative flex min-h-0 flex-1 flex-col px-3" data-zerops-data-browse>
-          {selectedNode === null && queryState === undefined && nodeListing === null ? (
-            <div className="min-h-0 flex-1 overflow-y-auto" ref={treeScrollRef}>
-              {treeView}
-            </div>
-          ) : (
-            contentPane
-          )}
-          {drawerView}
-        </div>
-      )}
+        {!showBrowse ? (
+          <div className="shrink-0 px-3 pb-3">{sessionLine ?? notBrowsableLine}</div>
+        ) : layout === "wide" ? (
+          <div className="flex min-h-0 flex-1 gap-3 px-3" data-zerops-data-browse>
+            {treeCollapsed ? null : (
+              <div
+                className="w-60 shrink-0 overflow-y-auto"
+                data-zerops-data-tree-rail
+                ref={treeScrollRef}
+              >
+                {treeView}
+              </div>
+            )}
+            {contentPane}
+            {drawerView === null ? null : (
+              <div className="min-h-0 shrink-0 overflow-y-auto">{drawerView}</div>
+            )}
+          </div>
+        ) : (
+          <div className="relative flex min-h-0 flex-1 flex-col px-3" data-zerops-data-browse>
+            {selectedNode === null && queryState === undefined && nodeListing === null ? (
+              <div className="min-h-0 flex-1 overflow-y-auto" ref={treeScrollRef}>
+                {treeView}
+              </div>
+            ) : (
+              contentPane
+            )}
+            {drawerView}
+          </div>
+        )}
 
-      {errorLine === null ? null : <div className="shrink-0 px-3 py-2">{errorLine}</div>}
-    </FlatCard>
+        {errorLine === null ? null : <div className="shrink-0 px-3 py-2">{errorLine}</div>}
+      </FlatCard>
+    </div>
   );
 }

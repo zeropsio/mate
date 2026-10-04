@@ -1,20 +1,13 @@
 /**
- * The projects page's decisions over `groupFlow` — which view, which steps
- * the strip lifts, which groups fold away, which cell a verb belongs in — the
- * words and the placement, not the pixels. The groups' order is the tree's
- * (`projectOrderPreference.ts`); nothing here reorders them.
- *
- * Every group is drawn in the one order its code travels: Mates (with their
- * preview) → pull requests → `main` → production, a group stage as an
- * optional side branch of `main` (the owner, 2026-09-23). What each step holds
- * and the one next step are `groupFlow`'s; this only decides how the page
- * lays a set of them out.
+ * The projects page's decisions over `groupFlow` — what a project's row says and whether it
+ * rises, production's version beside its name, the containers' one line — the words and the
+ * placement, not the pixels. The rows' order is the person's (`projectOrderPreference.ts`); the
+ * rows that need the person rise first within it (`risenFirst`), and nothing else reorders them.
  */
 
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
   botDisplayName,
-  changesNotLive,
   deployWord,
   environmentNameUnderGroup,
   firstDeployLine,
@@ -62,21 +55,16 @@ import { COMING_UP_LINE, NOT_SET_UP_LINE, type ZeropsRowAction } from "../Zerops
 /** What a tool is called where there is no project to name yet — the add verb. */
 export const TOOL_LABEL: Record<ZeropsToolKind, string> = { gitea: "Gitea" };
 
-/** The page's URL, shared with a Mate's conversation (the thread links here). */
+/** The page's URL: `/zerops?group=<groupId>` opens that project's row. */
 export interface ProjectsSearch {
-  /** Absent is the Overview. */
-  readonly view?: "projects";
-  /** The group whose card the Projects view scrolls to. */
+  /** The group whose row opens and scrolls into view. */
   readonly group?: string;
 }
 
-/** `/zerops?view=projects&group=<groupId>`: anything else is the Overview. */
+/** `/zerops?group=<groupId>`; anything else is the list as it stands. */
 export function parseProjectsSearch(raw: Record<string, unknown>): ProjectsSearch {
   const group = typeof raw.group === "string" && raw.group.length > 0 ? raw.group : undefined;
-  return {
-    ...(raw.view === "projects" ? { view: "projects" as const } : {}),
-    ...(group === undefined ? {} : { group }),
-  };
+  return group === undefined ? {} : { group };
 }
 
 /**
@@ -100,112 +88,6 @@ export function nextStepAwaitsSomebody(kind: GroupNextStepKind): boolean {
 }
 
 /**
- * How many columns the wide "Next steps" strip takes for `count` steps: as
- * few rows as three columns allow, then as few columns as fill those rows
- * evenly — four steps are two by two, not three and one left alone.
- */
-export function stripColumns(count: number): 1 | 2 | 3 {
-  const rows = Math.max(1, Math.ceil(count / 3));
-  return Math.min(3, Math.max(1, Math.ceil(count / rows))) as 1 | 2 | 3;
-}
-
-/** Where a group is drawn: a row (a card in Projects), or an "Only a Mate so far" tile. */
-export type GroupPlacement = "row" | "tile";
-
-/**
- * A group the page lays out, with what is settled about it. A group moves
- * between the rows and the tiles only on settled facts — never because a read
- * is still out or a Mate is reconnecting — so the list never reshuffles on its
- * own (design-system, 2026-09-10).
- */
-export interface FoldedGroupInput {
-  readonly flow: GroupFlow;
-  /** Its Gitea side answered. Unread is not empty: a group is folded only on an answer. */
-  readonly read: boolean;
-  /** Every Mate's talk is known (`GroupMemberFacts.mate.talked`), so a first task is one. */
-  readonly talkSettled: boolean;
-  /** Where it was last drawn in this account's lifetime; `undefined` if never. */
-  readonly placed: GroupPlacement | undefined;
-}
-
-export interface FoldedGroups<E> {
-  /** One row (Overview) or one card (Projects) each. */
-  readonly active: ReadonlyArray<E>;
-  /** Only a Mate so far, nobody has spoken to it: a tile each. */
-  readonly early: ReadonlyArray<E>;
-  /** The ones whose next step is somebody's to take, in the order given. */
-  readonly nextSteps: ReadonlyArray<E>;
-}
-
-/** Every Mate among a group's members is known to have been spoken to or not. */
-export function talkSettled(members: ReadonlyArray<GroupMemberFacts>): boolean {
-  return members.every((member) => member.mate === undefined || member.mate.talked !== undefined);
-}
-
-/**
- * A group with a Mate and nothing else — no pull request, nothing merged, no
- * stage, no production, nobody has spoken to its Mate — has one thing to say
- * ("give it a first task"), so it is a tile rather than a row of four empty
- * steps. Decided only on settled facts; until then it stays where it was last
- * drawn, and a group never drawn is a row.
- */
-export function groupPlacement(entry: FoldedGroupInput): GroupPlacement {
-  if (!entry.read || !entry.talkSettled) return entry.placed ?? "row";
-  const { flow } = entry;
-  const onlyAMate =
-    flow.nextStep.kind === "first-task" &&
-    flow.stages.length === 0 &&
-    flow.production.kind === "absent" &&
-    flow.recipeChanges.length === 0;
-  return onlyAMate ? "tile" : "row";
-}
-
-export function foldGroups<E extends FoldedGroupInput>(entries: ReadonlyArray<E>): FoldedGroups<E> {
-  return {
-    active: entries.filter((entry) => groupPlacement(entry) === "row"),
-    early: entries.filter((entry) => groupPlacement(entry) === "tile"),
-    nextSteps: entries.filter((entry) => nextStepAwaitsSomebody(entry.flow.nextStep.kind)),
-  };
-}
-
-/** The four steps of a group's flow, as the page's cells. */
-export type FlowCell = "mates" | "pull-requests" | "main" | "production";
-
-/**
- * The cell a group's next step is taken in, so its verb stands beside the
- * thing it acts on: a merge on the pull request, a release on production, an
- * answer on the Mate. A failed stage deploy sits under `main`, where the stage
- * is drawn. `undefined` where nothing waits, and for a first task: the Mate
- * itself is the way in, so no cell carries a verb for it.
- */
-export function nextStepCell(flow: GroupFlow): FlowCell | undefined {
-  const { nextStep } = flow;
-  switch (nextStep.kind) {
-    case "answer-mate":
-    case "fix-mate":
-      return "mates";
-    case "merge":
-    case "unblock":
-      return "pull-requests";
-    case "release":
-    case "add-production":
-      return "production";
-    case "fix-deploy": {
-      const target = nextStep.target;
-      const onProduction =
-        flow.production.kind !== "absent" &&
-        flow.production.kind !== "creating" &&
-        target?.kind === "stop" &&
-        target.projectId === flow.production.stop.projectId;
-      return onProduction ? "production" : "main";
-    }
-    case "first-task":
-    case "none":
-      return undefined;
-  }
-}
-
-/**
  * A step's tone, the ladder the attention panel runs down: red broken, amber
  * waiting on a person, blue moving forward, nothing for a first task.
  */
@@ -226,7 +108,7 @@ export function nextStepTone(kind: GroupNextStepKind): ServiceStatusToneId {
   return NEXT_STEP_TONE[kind];
 }
 
-type ContainerState = "ready" | "coming-up" | "not-answering" | "stopped" | "other";
+type ContainerState = "ready" | "coming-up" | "not-answering" | "stopped" | "no-mate" | "other";
 
 /** A container's state, from the one verb its row offers (`deriveZeropsRowAction`). */
 function containerStateOf(kind: ZeropsRowAction["kind"]): ContainerState {
@@ -239,8 +121,9 @@ function containerStateOf(kind: ZeropsRowAction["kind"]): ContainerState {
       return "not-answering";
     case "start":
       return "stopped";
-    case "enable":
     case "set-up-mate":
+      return "no-mate";
+    case "enable":
     case "remove":
     case "restart":
     case "none":
@@ -253,6 +136,7 @@ const CONTAINER_STATE_WORD: ReadonlyArray<readonly [ContainerState, string]> = [
   ["coming-up", "coming up"],
   ["not-answering", "not answering"],
   ["stopped", "stopped"],
+  ["no-mate", "without a Mate"],
   ["other", "need a look"],
 ];
 
@@ -283,20 +167,6 @@ export function containersSummary(kinds: ReadonlyArray<ZeropsRowAction["kind"]>)
 }
 
 /**
- * The ungrouped projects, split: the containers fold into one line, and a
- * project with no Mate container at all (*Set up Mate*) keeps a quiet line of
- * its own at the page's end.
- */
-export function foldUngrouped<E extends { readonly action: ZeropsRowAction["kind"] }>(
-  rows: ReadonlyArray<E>,
-): { readonly containers: ReadonlyArray<E>; readonly withoutMate: ReadonlyArray<E> } {
-  return {
-    containers: rows.filter((row) => row.action !== "set-up-mate"),
-    withoutMate: rows.filter((row) => row.action === "set-up-mate"),
-  };
-}
-
-/**
  * Which of a project's steps wait on a read that is out, and so hold a skeleton rather than an
  * empty word. The pull requests and `main` are Gitea's changes half: "None yet" and "Nothing
  * merged" from a flow whose deploy half alone answered are claims the page then takes back —
@@ -321,30 +191,6 @@ export function flowStepsAwaiting(input: {
   return { steps: readOut && !read, changes: readOut && !answered };
 }
 
-/**
- * Whether the "Next steps" strip holds its place: a group's next step may be one its changes say
- * (a pull request to merge), so the strip waits until every group's changes answered too — not
- * only either half of its flow. A group whose read is not out (`flowStepsAwaiting`) waits on
- * nothing.
- */
-export function nextStepsPending(
-  groups: ReadonlyArray<{ readonly awaiting: boolean; readonly changesAwaiting: boolean }>,
-): boolean {
-  return groups.some((group) => group.awaiting || group.changesAwaiting);
-}
-
-/** What the changes' steps say where Gitea never answered for the project. */
-export const CHANGES_UNREAD_LINE = "Gitea didn’t answer";
-
-/**
- * The pull requests' step with none open: "yet" until something has landed — and where the
- * changes' read failed (`changesFailed`), that, since none is known either way.
- */
-export function pullRequestsLine(flow: GroupFlow, changesFailed = false): string {
-  if (changesFailed) return CHANGES_UNREAD_LINE;
-  return flow.main.hasCode === true ? "None open" : "None yet";
-}
-
 /** The newest code change that landed — what `main`'s step names. */
 export function lastMergedCode(
   merged: ReadonlyArray<FlowPullRequest>,
@@ -358,57 +204,12 @@ export function lastMergedCode(
     );
 }
 
-export interface MainCell {
-  /** Nothing on it that anybody knows of: the step is drawn empty. */
-  readonly empty: boolean;
-  readonly head: string | undefined;
-  /** The last change that landed, as `Title (#4)`. */
-  readonly title: string | undefined;
-  readonly state: string;
-}
-
-/** `main`'s step: where it is, the last change that landed, and how much of it is not live. */
-export function mainCell(
-  flow: GroupFlow,
-  lastMerged: FlowPullRequest | undefined,
-  /** The changes' read failed (`ZeropsProjectFlow.changesFailure`): nothing merged is not known. */
-  changesFailed = false,
-): MainCell {
-  const { main } = flow;
-  const title =
-    lastMerged === undefined ? undefined : `${lastMerged.title} (#${String(lastMerged.number)})`;
-  const empty =
-    main.head === undefined && title === undefined && main.notLive === 0 && main.hasCode !== true;
-  const state =
-    main.notLive > 0
-      ? changesNotLive(main.notLive)
-      : empty
-        ? changesFailed
-          ? CHANGES_UNREAD_LINE
-          : "Nothing merged"
-        : "Nothing waiting to release";
-  return { empty, head: main.head, title, state };
-}
-
 /**
  * A Mate being created, in the words its card says while it comes up. One whose creation stopped
  * before the platform took it says that instead; its own view says why.
  */
 export function comingMateLine(coming: GroupFlowComing): string {
   return coming.failed === true ? NOT_SET_UP_LINE : COMING_UP_LINE;
-}
-
-/** What a group is, in one muted line under its name. */
-export function groupMetaLine(flow: GroupFlow): string {
-  const mates = flow.mates.length;
-  const open = flow.pullRequests.length;
-  const parts = [
-    ...(mates === 0 ? [] : [mates === 1 ? "1 Mate" : `${String(mates)} Mates`]),
-    ...(open === 0
-      ? []
-      : [open === 1 ? "1 open pull request" : `${String(open)} open pull requests`]),
-  ];
-  return parts.length === 0 ? "No Mate yet" : parts.join(" · ");
 }
 
 const STOP_TONE: Record<GroupFlowStopState, ServiceStatusToneId> = {
@@ -459,60 +260,6 @@ export function stopLine(stop: GroupFlowStop): {
         version: stop.version?.label,
         tone,
       };
-  }
-}
-
-export interface ProductionCell {
-  /** No production: the step is drawn as a place, not a thing. */
-  readonly empty: boolean;
-  readonly line: string;
-  readonly detail: string | undefined;
-  readonly tone: ServiceStatusToneId;
-}
-
-/**
- * Production's step. Its line is `groupFlow`'s; the detail names the
- * release that would go. That production is the person's to add, not the
- * Mate's, is the add verb's to say (its tooltip), not the cell's. While
- * something is under way on it — its creation, a deploy, a release — that is
- * line 1, and what it runs is the detail: a narrow row reads line 1 only.
- */
-export function productionCell(flow: GroupFlow): ProductionCell {
-  const { production } = flow;
-  switch (production.kind) {
-    case "absent":
-      return { empty: true, line: production.line, detail: undefined, tone: "off" };
-    case "creating":
-      return { empty: false, line: production.line, detail: undefined, tone: "busy" };
-    case "deploying":
-      return {
-        empty: false,
-        line: production.line,
-        detail: production.stop.version?.label,
-        tone: "busy",
-      };
-    case "ready-to-release":
-      // How much it carries is `main`'s line 2 (`1 change not live`), beside it.
-      return {
-        empty: false,
-        line: production.line,
-        detail: `${production.candidate.tag} ready`,
-        tone: "busy",
-      };
-    case "releasing":
-      return {
-        empty: false,
-        line: releaseInFlightReason(production.tag),
-        detail: production.line,
-        tone: "busy",
-      };
-    case "deploy-failed":
-      return { empty: false, line: production.line, detail: undefined, tone: "failed" };
-    case "live":
-      return { empty: false, line: production.line, detail: undefined, tone: "ok" };
-    case "checking":
-    case "empty":
-      return { empty: false, line: production.line, detail: undefined, tone: "off" };
   }
 }
 
@@ -731,4 +478,158 @@ export function groupFlowInputOf(input: {
     runner: input.runner,
     nowMs: input.nowMs,
   };
+}
+
+/** A Mate's activity as a project's row reads it (`agentActivity.ts`). */
+export interface RowMateActivity {
+  readonly name: string;
+  /** It is on a turn now: its face says so, and its line says what on. */
+  readonly working: boolean;
+  /** What it is on, or was last on; absent before anybody spoke to it. */
+  readonly subject: string | undefined;
+  /** When it last did something. */
+  readonly at: string | undefined;
+}
+
+/**
+ * A project row's second line: the one thing that needs the person, as a full sentence (its verb
+ * at the row's end), else the latest meaningful fact — never a word for nothing.
+ */
+export type ProjectRowLine =
+  | {
+      readonly kind: "needs-you";
+      readonly text: string;
+      /** The change it names, by its title. */
+      readonly detail?: string;
+      readonly tone: ServiceStatusToneId;
+    }
+  /** A deploy or a release on its way. */
+  | { readonly kind: "under-way"; readonly text: string }
+  /** What a Mate is on (working), or was last on. */
+  | { readonly kind: "mate"; readonly mate: string; readonly text: string; readonly at?: string }
+  /** A change: open, or the last that landed. */
+  | {
+      readonly kind: "change";
+      readonly text: string;
+      readonly detail?: string;
+      readonly at?: string;
+    }
+  | { readonly kind: "first-task"; readonly text: string }
+  /** Its reads are out: the line holds its place and claims nothing. */
+  | { readonly kind: "pending" }
+  | { readonly kind: "none" };
+
+/** The steps a Mate's own state decides: known without the project's reads. */
+const MATE_STEPS: ReadonlySet<GroupNextStepKind> = new Set(["answer-mate", "fix-mate"]);
+
+function newer(a: string | undefined, b: string | undefined): boolean {
+  if (a === undefined) return false;
+  if (b === undefined) return true;
+  return Date.parse(a) > Date.parse(b);
+}
+
+export function projectRowLine(input: {
+  readonly flow: GroupFlow;
+  readonly lastMerged: FlowPullRequest | undefined;
+  readonly activities: ReadonlyArray<RowMateActivity>;
+  /** The project's reads answered (`flowStepsAwaiting`): its next step is known. */
+  readonly settled: boolean;
+}): ProjectRowLine {
+  const { flow, activities } = input;
+  const step = flow.nextStep;
+  const needsYou = (): ProjectRowLine => {
+    const target = step.target;
+    const pull =
+      target?.kind === "change"
+        ? flow.pullRequests.find(
+            (entry) =>
+              entry.pull.repository === target.repository && entry.pull.number === target.number,
+          )?.pull
+        : undefined;
+    return {
+      kind: "needs-you",
+      text: step.text,
+      ...(pull === undefined ? {} : { detail: pull.title }),
+      tone: nextStepTone(step.kind),
+    };
+  };
+  if (MATE_STEPS.has(step.kind)) return needsYou();
+  if (!input.settled) return { kind: "pending" };
+  if (nextStepAwaitsSomebody(step.kind)) return needsYou();
+
+  const { production } = flow;
+  if (production.kind === "creating") return { kind: "under-way", text: production.line };
+  if (production.kind === "releasing")
+    return { kind: "under-way", text: releaseInFlightReason(production.tag) };
+  if (production.kind === "deploying") return { kind: "under-way", text: "Deploying production…" };
+  const deployingStage = flow.stages.find((stage) => stage.state === "deploying");
+  if (deployingStage !== undefined)
+    return { kind: "under-way", text: `Deploying ${deployingStage.name}…` };
+
+  const working = activities.find((mate) => mate.working && mate.subject !== undefined);
+  if (working?.subject !== undefined)
+    return { kind: "mate", mate: working.name, text: working.subject };
+
+  const open = flow.pullRequests[0]?.pull;
+  if (open !== undefined)
+    return {
+      kind: "change",
+      text: `#${String(open.number)} ${open.title}`,
+      ...(open.checkWord === undefined ? {} : { detail: open.checkWord }),
+    };
+
+  const merged = input.lastMerged;
+  const lastTalk = activities
+    .filter((mate) => mate.subject !== undefined)
+    .reduce<RowMateActivity | undefined>(
+      (latest, mate) => (latest === undefined || newer(mate.at, latest.at) ? mate : latest),
+      undefined,
+    );
+  if (
+    lastTalk?.subject !== undefined &&
+    (merged === undefined || newer(lastTalk.at, merged.mergedAt))
+  )
+    return {
+      kind: "mate",
+      mate: lastTalk.name,
+      text: lastTalk.subject,
+      ...(lastTalk.at === undefined ? {} : { at: lastTalk.at }),
+    };
+  if (merged !== undefined)
+    return {
+      kind: "change",
+      text: `Merged #${String(merged.number)} ${merged.title}`,
+      ...(merged.mergedAt === undefined ? {} : { at: merged.mergedAt }),
+    };
+  if (step.kind === "first-task") return { kind: "first-task", text: step.text };
+  return { kind: "none" };
+}
+
+/**
+ * Production's version beside the project's name, where production exists and runs one: what it
+ * runs and the tone of its last deploy. Nothing at all without production — adding one is the
+ * row's menu's offer, never a word in the row.
+ */
+export function productionMark(
+  flow: GroupFlow,
+): { readonly version: string; readonly tone: ServiceStatusToneId } | undefined {
+  const { production } = flow;
+  if (production.kind === "absent" || production.kind === "creating") return undefined;
+  const version = production.stop.version?.label;
+  if (version === undefined) return undefined;
+  return { version, tone: STOP_TONE[production.stop.state] };
+}
+
+/** Whether a row rises: it needs the person, or — its answer still out — it was drawn risen. */
+export function rowRises(line: ProjectRowLine, remembered: boolean | undefined): boolean {
+  if (line.kind === "pending") return remembered === true;
+  return line.kind === "needs-you";
+}
+
+/** The rows that rise first, then the rest, each keeping the order it was given. */
+export function risenFirst<E>(
+  rows: ReadonlyArray<E>,
+  rises: (row: E) => boolean,
+): ReadonlyArray<E> {
+  return [...rows.filter(rises), ...rows.filter((row) => !rises(row))];
 }

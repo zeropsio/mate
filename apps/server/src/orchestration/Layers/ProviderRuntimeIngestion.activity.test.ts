@@ -225,3 +225,75 @@ describe("runtimeEventToActivities a call's response", () => {
     expect(payload.unreturned).toBe(true);
   });
 });
+
+describe("runtimeEventToActivities a helper's words", () => {
+  const taskId = RuntimeTaskId.make("helper-1");
+  const longReport = Array.from(
+    { length: 40 },
+    (_, line) => `Table ${line} has a primary key and two indexes.`,
+  ).join("\n");
+  const longPrompt = Array.from(
+    { length: 30 },
+    (_, line) => `Step ${line}: read the schema file and list its tables.`,
+  ).join("\n");
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly event: ProviderRuntimeEvent;
+    readonly field: "prompt" | "result";
+    readonly expected: string | undefined;
+  }> = [
+    {
+      name: "a helper starts with its prompt, whole",
+      event: {
+        ...base,
+        type: "task.started",
+        eventId: EventId.make("evt-started"),
+        payload: { taskId, taskType: "local_agent", description: "Check", prompt: longPrompt },
+      },
+      field: "prompt",
+      expected: longPrompt,
+    },
+    {
+      name: "a helper's report is kept whole beside its one-line summary",
+      event: {
+        ...base,
+        type: "task.completed",
+        eventId: EventId.make("evt-completed"),
+        payload: { taskId, taskType: "local_agent", status: "completed", summary: longReport },
+      },
+      field: "result",
+      expected: longReport,
+    },
+    {
+      name: "a background command's end keeps no report of its own",
+      event: {
+        ...base,
+        type: "task.completed",
+        eventId: EventId.make("evt-shell"),
+        payload: { taskId, taskType: "local_bash", status: "completed", summary: longReport },
+      },
+      field: "result",
+      expected: undefined,
+    },
+  ];
+  for (const { name, event, field, expected } of cases) {
+    it(name, () => {
+      const [activity] = runtimeEventToActivities(event);
+      const payload = projectActivityPayload(activity!).payload as Record<string, unknown>;
+      expect(payload[field]).toBe(expected);
+    });
+  }
+
+  it("bounds a report past any reader's need", () => {
+    const huge = "word ".repeat(20_000);
+    const [activity] = runtimeEventToActivities({
+      ...base,
+      type: "task.completed",
+      eventId: EventId.make("evt-huge"),
+      payload: { taskId, taskType: "local_agent", status: "completed", summary: huge },
+    });
+    const result = (activity!.payload as Record<string, unknown>).result as string;
+    expect(result.length).toBeLessThan(huge.length);
+    expect(result.length).toBeGreaterThan(10_000);
+  });
+});

@@ -16,6 +16,7 @@
  * until the work ends.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
@@ -57,6 +58,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
 import { DetailRow, spanOf } from "./DetailRow";
+import { showHelper } from "./helperFocus";
 import { standupBar } from "./standupBar.logic";
 import { OperationDetail, PlanSteps, useHoldReading } from "./RunChat";
 import { drawerEase, stepHeight, type CarriedRow } from "./stepHeight";
@@ -700,6 +702,11 @@ function Instruments({
                 {helpers.rows.map((helper) => (
                   <DetailRow
                     key={helper.id}
+                    long="word"
+                    onOpen={() => {
+                      if (threadRef !== null) showHelper(scopedThreadKey(threadRef), helper.id);
+                      onOpenAgents();
+                    }}
                     time={spanOf(helper.startedAt, helper.endedAt)}
                     title={helper.title}
                     tone={helper.tone}

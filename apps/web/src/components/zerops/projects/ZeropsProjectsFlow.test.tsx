@@ -17,7 +17,10 @@ vi.mock("@tanstack/react-router", async () => {
 });
 
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
-import { item, MERGING, renderFlow } from "./flowTestFixtures";
+import { act } from "react";
+
+import { FLOW_PROPS, item, MERGING, mount, renderFlow, type Item } from "./flowTestFixtures";
+import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 
 const render = renderFlow;
 
@@ -38,27 +41,22 @@ describe("the containers no project holds", () => {
     expect(line).not.toContain("data-test-mate=");
   });
 
-  it("keeps their summary for a container with room for it, never a cut 'Not in a…'", () => {
-    const html = render({ ungrouped: rows(["open", "start"]) });
-    const summary = html.slice(
-      html.lastIndexOf("<span", html.indexOf("Not in a project")),
-      html.indexOf("Not in a project"),
-    );
-    expect(summary).toContain("hidden");
-    expect(summary).toContain("@2xl/flow:block");
-  });
-
   it("offers no re-probe when every container answers", () => {
     expect(render({ ungrouped: rows(["open"]) })).not.toContain("Try again");
   });
 
-  it("keeps a project with no Mate container for the quiet line at the end", () => {
-    const html = render({
-      ungrouped: [{ item: item("zerops-ads", [], false), action: "set-up-mate" }],
-    });
-    expect(html).not.toContain('data-zerops-surface="other-containers"');
-    const end = html.slice(html.indexOf('data-zerops-surface="quiet-end"'));
-    expect(end).toContain('data-test-environment="zerops-ads"');
+  it("count a project with no Mate in the one folded group, its row inside it", () => {
+    const rows = [
+      { item: item("loose", []), action: "open" as const },
+      { item: item("zerops-ads", [], false), action: "set-up-mate" as const },
+    ];
+    const tree = mount(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} ungrouped={rows} />);
+    const fold = tree.root.findByProps({ "data-zerops-surface": "other-containers" });
+    expect(fold.findAll((node) => node.children.join("") === "2")).not.toHaveLength(0);
+    expect(tree.root.findAllByProps({ "data-test-environment": "zerops-ads" })).toHaveLength(0);
+    act(() => fold.findByProps({ "aria-expanded": false }).props.onClick());
+    expect(tree.root.findAllByProps({ "data-test-environment": "zerops-ads" })).toHaveLength(1);
+    expect(tree.root.findAllByProps({ "data-test-mate": "loose" })).toHaveLength(1);
   });
 });
 
@@ -109,16 +107,5 @@ describe("first run", () => {
 
   it("gives nothing to a view with no way to create", () => {
     expect(render()).not.toContain('data-zerops-surface="first-run"');
-  });
-});
-
-describe("the view switch", () => {
-  it("draws every group with work on it as a card in the Projects view, as a row in the Overview", () => {
-    const projects = render({ view: "projects", groups: [MERGING] });
-    expect(projects).toContain('id="project-aaa"');
-    expect(projects).not.toContain('id="flow-row-aaa"');
-    const overview = render({ view: "overview", groups: [MERGING] });
-    expect(overview).toContain('id="flow-row-aaa"');
-    expect(overview).not.toContain('id="project-aaa"');
   });
 });

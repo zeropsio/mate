@@ -31,7 +31,7 @@ import { cn } from "~/lib/utils";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { zeropsCommands } from "../../state/zeropsCommands";
 import { useZeropsBrowserStream, useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
-import { FlatCard, MicroLabel, StatusDot } from "./primitives";
+import { MicroLabel, StatusDot } from "./primitives";
 
 export interface ZeropsBrowserPanelProps {
   readonly threadRef: ScopedThreadRef | null;
@@ -170,9 +170,13 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
       : driving.agentUnknown;
 
   return (
-    <FlatCard className="space-y-2 p-3" data-zerops-browser-panel>
-      <div className="flex items-center justify-between gap-2">
-        <MicroLabel>Browser</MicroLabel>
+    <section
+      aria-label="The agent's browser"
+      className="flex flex-col gap-1.5"
+      data-zerops-browser-panel
+    >
+      <div className="flex min-h-6 items-center justify-between gap-2 px-1">
+        <MicroLabel>Agent's browser</MicroLabel>
         {driving.agentDriving ? (
           <button
             className="text-[10px] text-muted-foreground underline decoration-dotted underline-offset-2"
@@ -188,7 +192,7 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
       {drivingLine !== null ? (
         <p
           className={cn(
-            "text-muted-foreground text-xs",
+            "px-1 text-muted-foreground text-xs",
             // A placeholder waits a beat before it says anything, so a quick
             // answer never flickers "Checking…".
             drivingLine.afterMs > 0 && "animate-zerops-appear",
@@ -203,13 +207,13 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
       ) : null}
 
       {read === undefined ? null : read === "unavailable" ? (
-        <p className="text-muted-foreground text-xs" data-zerops-browser-unavailable>
+        <p className="px-1 text-muted-foreground text-xs" data-zerops-browser-unavailable>
           Live browser view isn't available on this server yet.
         </p>
       ) : read.status === "no-browser" ? (
-        <p className="text-muted-foreground text-xs">The agent hasn't opened a browser yet.</p>
+        <p className="px-1 text-muted-foreground text-xs">The agent hasn't opened a browser yet.</p>
       ) : frame === undefined ? (
-        <StatusDot label="Connecting" pulse tone="busy" />
+        <StatusDot className="px-1" label="Connecting" pulse tone="busy" />
       ) : (
         <div className="relative overflow-hidden rounded-[var(--zerops-card-radius)] border border-[var(--zerops-flat-card-border)]">
           {/** biome-ignore lint/a11y/noNoninteractiveElementInteractions: the frame is a live remote viewport, not a static image. */}
@@ -235,6 +239,6 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
           />
         </div>
       )}
-    </FlatCard>
+    </section>
   );
 }
