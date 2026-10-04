@@ -32,11 +32,33 @@ vi.mock("./ZeropsSessionProvider", () => ({
 }));
 
 describe("zeropsMateOwnerOf", () => {
-  it("is the person's name and its initials: HQ keeps no picture", () => {
-    expect(zeropsMateOwnerOf({ userId: "u-jan", name: "Jan Novák" })).toEqual({
+  // HQ names the person; their picture is the platform's, off the member list by user id.
+  it.each([
+    {
+      case: "the member's picture",
+      members: [
+        { id: "cu-jan", user: { id: "u-jan", avatar: { smallAvatarUrl: "https://img/jan.png" } } },
+      ],
+      avatarUrl: "https://img/jan.png",
+    },
+    {
+      case: "initials where the member has no picture",
+      members: [{ id: "cu-jan", user: { id: "u-jan", avatar: null } }],
+      avatarUrl: null,
+    },
+    {
+      case: "initials where the list does not have them",
+      members: [
+        { id: "cu-ada", user: { id: "u-ada", avatar: { smallAvatarUrl: "https://img/ada.png" } } },
+      ],
+      avatarUrl: null,
+    },
+    { case: "initials before the list is read", members: [], avatarUrl: null },
+  ])("is the person's name, initials and $case", ({ members, avatarUrl }) => {
+    expect(zeropsMateOwnerOf({ userId: "u-jan", name: "Jan Novák" }, undefined, members)).toEqual({
       name: "Jan Novák",
       initials: "JN",
-      avatarUrl: null,
+      avatarUrl,
       isViewer: false,
     });
   });
@@ -137,7 +159,7 @@ describe("useZeropsOrganizationMembersRead", () => {
 });
 
 describe("useZeropsMateOwners", () => {
-  it("names an owner without reading the member list", async () => {
+  it("names an owner from HQ and wears their platform picture, off one member read", async () => {
     const scope: AccountScope = {
       account: {
         apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
@@ -156,7 +178,17 @@ describe("useZeropsMateOwners", () => {
       organization: organizationRef("org-1"),
       members: async () => {
         reads += 1;
-        return [] as never;
+        // The platform knows Eva by another name; the badge keeps HQ's, and takes her picture.
+        return [
+          {
+            id: "cu-eva",
+            user: {
+              id: "u-eva",
+              fullName: "Eva D.",
+              avatar: { smallAvatarUrl: "https://storage.example.test/eva-small.jpg" },
+            },
+          },
+        ];
       },
     });
     const data = {
@@ -213,10 +245,10 @@ describe("useZeropsMateOwners", () => {
     expect(owners.at(-1)).toEqual({
       name: "Eva Dvořák",
       initials: "ED",
-      avatarUrl: null,
+      avatarUrl: "https://storage.example.test/eva-small.jpg",
       isViewer: true,
     });
-    expect(reads).toBe(0);
+    expect(reads).toBe(1);
   });
 });
 
