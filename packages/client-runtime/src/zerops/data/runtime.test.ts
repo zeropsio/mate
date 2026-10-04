@@ -1870,12 +1870,7 @@ describe("makeZeropsDataRuntime", () => {
       }),
   );
 
-  const tokenWrite = {
-    organization: topologyDescriptor.project.organization,
-    tokenId: "token-a",
-    name: "t",
-    projects: [],
-  };
+  const importWrite = [topologyDescriptor.project.organization, "project: {}"] as const;
 
   it.effect(
     "a command answered as the runtime shuts down settles rather than waiting for ever",
@@ -1889,12 +1884,12 @@ describe("makeZeropsDataRuntime", () => {
             Effect.as({
               processRefs: [],
               observations: [],
-              result: { kind: command.kind, value: undefined },
+              result: { kind: command.kind, value: { projectId: "imported" } },
             } as never),
           ),
         );
         const write = yield* Effect.forkChild(
-          Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite)),
+          Effect.exit(runtime.commands.importProject(...importWrite)),
         );
         for (let turn = 0; turn < 50; turn++) yield* Effect.yieldNow;
         expect(write.pollUnsafe()).toBeDefined();
@@ -1909,7 +1904,7 @@ describe("makeZeropsDataRuntime", () => {
         Effect.succeed({
           processRefs: [],
           observations: [],
-          result: { kind: command.kind, value: undefined },
+          result: { kind: command.kind, value: { projectId: "imported" } },
         } as never),
       );
       let armed = true;
@@ -1917,12 +1912,12 @@ describe("makeZeropsDataRuntime", () => {
         if (armed) throw new Error("a subscriber's own bug");
       });
       const first = yield* Effect.forkChild(
-        Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite)),
+        Effect.exit(runtime.commands.importProject(...importWrite)),
       );
       for (let turn = 0; turn < 50; turn++) yield* Effect.yieldNow;
       armed = false;
       const second = yield* Effect.forkChild(
-        Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite)),
+        Effect.exit(runtime.commands.importProject(...importWrite)),
       );
       for (let turn = 0; turn < 50; turn++) yield* Effect.yieldNow;
 
@@ -1945,7 +1940,7 @@ describe("makeZeropsDataRuntime", () => {
         Effect.succeed({
           processRefs: [],
           observations: [],
-          result: { kind: command.kind, value: undefined },
+          result: { kind: command.kind, value: { projectId: "imported" } },
         } as never),
       );
       let armed = false;
@@ -1961,9 +1956,9 @@ describe("makeZeropsDataRuntime", () => {
       );
       const stopHealthy = registry.subscribe(healthy, () => undefined, { immediate: true });
       armed = true;
-      yield* Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite));
+      yield* Effect.exit(runtime.commands.importProject(...importWrite));
       armed = false;
-      yield* Effect.exit(runtime.commands.setIntegrationTokenProjects(tokenWrite));
+      yield* Effect.exit(runtime.commands.importProject(...importWrite));
       for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
 
       const size = registry.get(runtime.stateAtom).commands.size;
@@ -1977,49 +1972,11 @@ describe("makeZeropsDataRuntime", () => {
     }),
   );
 
-  it.effect("a token's read answers beside a stuck write, and is no write itself", () =>
-    Effect.gen(function* () {
-      const registry = AtomRegistry.make();
-      const runtime = yield* commandRuntime(registry, (command) =>
-        command.kind === "read-integration-token-grant"
-          ? Effect.succeed({
-              processRefs: [],
-              observations: [],
-              result: { kind: command.kind, value: null },
-            } as never)
-          : Effect.never,
-      );
-      const write = yield* Effect.forkChild(
-        runtime.commands.setIntegrationTokenProjects(tokenWrite),
-      );
-      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
-      const reading = yield* Effect.forkChild(
-        runtime.commands.readIntegrationTokenGrant({
-          organization: topologyDescriptor.project.organization,
-          tokenId: "token-a",
-        }),
-      );
-      for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
-
-      expect(reading.pollUnsafe()).toBeDefined();
-      expect((yield* Fiber.join(reading)).value).toBeNull();
-      const commands = [...registry.get(runtime.stateAtom).commands.values()];
-      expect(commands.map((attempt) => attempt.commandKind)).toEqual([
-        "set-integration-token-projects",
-      ]);
-      yield* Fiber.interrupt(write);
-      yield* runtime.shutdown("application-close");
-      registry.dispose();
-    }),
-  );
-
   it.effect("an interrupted command is no longer counted as pending", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
       const runtime = yield* commandRuntime(registry, () => Effect.never);
-      const write = yield* Effect.forkChild(
-        runtime.commands.setIntegrationTokenProjects(tokenWrite),
-      );
+      const write = yield* Effect.forkChild(runtime.commands.importProject(...importWrite));
       for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
       yield* Fiber.interrupt(write);
       for (let turn = 0; turn < 20; turn++) yield* Effect.yieldNow;
