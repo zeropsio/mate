@@ -4,10 +4,10 @@ import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
-import { PlusIcon, RotateCcwIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AsyncResult } from "effect/unstable/reactivity";
+import { RotateCcwIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { openCommandPalette } from "../commandPaletteBus";
 import { HomeOpeningView } from "../components/zerops/MateLinkStage";
 import { PageWaitLine } from "../components/zerops/WaitLine";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
@@ -16,11 +16,8 @@ import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset } from "../components/ui/sidebar";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
-import {
-  useAllEnvironmentShellsBootstrapped,
-  useProjects,
-  useThreadShells,
-} from "../state/entities";
+import { useProjects, useThreadShells } from "../state/entities";
+import { environmentCatalog } from "../connection/catalog";
 import { useEnvironments } from "../state/environments";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell, environmentsWithSnapshotAtom } from "../state/shell";
@@ -28,9 +25,10 @@ import { buildThreadRouteParams } from "../threadRoutes";
 import { mateDeleting, useDeletingMates } from "../zerops/deletingMates";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useOpenMate } from "../zerops/useOpenMate";
+import { useZeropsInventory } from "../zerops/inventoryContext";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { hqMatesAtom } from "../state/zerops";
-import { hqHomeMate, homeView } from "../zerops/homeLanding.logic";
+import { homeTarget, homeView, hqHomeMate } from "../zerops/homeLanding.logic";
 import { rememberedHomeLanding } from "../zerops/lastConversationMemory";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { useMatesSettled } from "../zerops/useMatesSettled";
@@ -65,7 +63,8 @@ function ChatIndexRouteView() {
  * because that one happened to be cached first.
  *
  * Without one, HQ names the most recently active Mate, preferring an online one. Opening it
- * holds just its route lease. Local environments fall back to their connected projects.
+ * holds just its route lease. Else the connected environments' projects; a registration that does
+ * not answer never claims the landing with its cached projects (`homeTarget`).
  *
  * Either way the landing is the environment's main chat when it has one
  * (`resolvePrimaryConversation`), else a draft in the project: a Mate's other
@@ -86,7 +85,7 @@ type IndexLanding =
 /**
  * Landing on the index route drops straight into the conversation or a draft
  * for the right project, so the first screen is a prompt instead of a dead
- * end. Falls back to an add-project hero when no project exists yet.
+ * end. With nowhere to land it is the projects page, where New project works.
  */
 function IndexDraftLanding() {
   const projects = useProjects();
@@ -96,7 +95,9 @@ function IndexDraftLanding() {
   const { settled: hqMatesRead } = useHqMatesRead();
   const hqMates = useAtomValue(hqMatesAtom);
   const openMate = useOpenMate();
-  const { activeOrganization } = useZeropsSession();
+  const { activeOrganization, organizationStatus } = useZeropsSession();
+  const inventory = useZeropsInventory();
+  const catalogFailed = AsyncResult.isFailure(useAtomValue(environmentCatalog.catalogAtom));
   const deleting = useDeletingMates();
   const { listing } = useZeropsCandidates();
   const unavailable = useMemo(
@@ -111,7 +112,6 @@ function IndexDraftLanding() {
   );
   // Read once, as the page opens: what it waits with never changes under the eye.
   const [remembered] = useState(() => rememberedHomeLanding(activeOrganization?.id));
-  const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const handleNewThread = useNewThreadHandler();
   const navigate = useNavigate();
   const { environmentId: targetSearch } = Route.useSearch();
@@ -129,6 +129,9 @@ function IndexDraftLanding() {
   // to supersede an earlier pick.
   const startedForKeyRef = useRef<string | null>(null);
   const [startState, setStartState] = useState({ failed: false, retryRequest: 0 });
+  const [projectsShown, setProjectsShown] = useState<{
+    readonly organizationId: string | null;
+  } | null>(null);
 
   const landing = useMemo((): IndexLanding | null => {
     /** The environment's one conversation when it has one, else a draft in the project. */
@@ -144,51 +147,46 @@ function IndexDraftLanding() {
         : { kind: "thread", ref: scopeThreadRef(project.environmentId, primary.id) };
     };
 
-    if (targetEnvironmentId !== null) {
-      if (!targetBootstrapped) return null;
+    const target = homeTarget({
+      target:
+        targetEnvironmentId === null
+          ? null
+          : { environmentId: targetEnvironmentId, bootstrapped: targetBootstrapped },
+      // HQ names unopened Mates too; opening only the chosen route holds its lease (A9).
+      hqMate: hqHomeMate(hqMates?.mates ?? null, unavailable),
+      hqMatesRead,
+      environments: environments.map((environment) => ({
+        environmentId: environment.environmentId,
+        phase: environment.connection.phase,
+        snapshot: withSnapshot.has(environment.environmentId),
+      })),
+    });
+    if (target === null || target.kind === "none" || target.kind === "mate") return target;
+    if (target.kind === "environment") {
       const environmentThreads = threads.filter(
-        (thread) => thread.environmentId === targetEnvironmentId,
+        (thread) => thread.environmentId === target.environmentId,
       );
       const { primary } = resolvePrimaryConversation(environmentThreads);
       if (primary !== undefined) {
-        return { kind: "thread", ref: scopeThreadRef(targetEnvironmentId, primary.id) };
+        return { kind: "thread", ref: scopeThreadRef(target.environmentId, primary.id) };
       }
       return landingIn(
         sortScopedProjectsForSidebar(
-          projects.filter((entry) => entry.environmentId === targetEnvironmentId),
+          projects.filter((entry) => entry.environmentId === target.environmentId),
           environmentThreads,
           "updated_at",
         )[0],
       );
     }
-
-    // HQ names unopened Mates too; opening only the chosen route holds its lease (A9).
-    const projectId = hqHomeMate(hqMates?.mates ?? null, unavailable);
-    if (projectId !== undefined) return { kind: "mate", projectId };
-    if (!hqMatesRead) return null;
-
-    // A socket on its first attempt is about to tell us something; a live
-    // one whose shell has not arrived yet is about to hand us its projects.
-    // Either is worth a moment. A registration stuck reconnecting is not.
-    if (environments.some((environment) => environment.connection.phase === "connecting")) {
-      return null;
-    }
-    const live = environments.filter((environment) => environment.connection.phase === "connected");
-    if (live.some((environment) => !withSnapshot.has(environment.environmentId))) return null;
-    if (live.length > 0) {
-      const liveIds = new Set(live.map((environment) => environment.environmentId));
-      return landingIn(
-        sortScopedProjectsForSidebar(
-          projects.filter((entry) => liveIds.has(entry.environmentId)),
-          threads,
-          "updated_at",
-        )[0],
-      );
-    }
-    if (!bootstrapped) return null;
-    return landingIn(sortScopedProjectsForSidebar(projects, threads, "updated_at")[0]);
+    const among = new Set<EnvironmentId>(target.environmentIds);
+    return landingIn(
+      sortScopedProjectsForSidebar(
+        projects.filter((entry) => among.has(entry.environmentId)),
+        threads,
+        "updated_at",
+      )[0],
+    );
   }, [
-    bootstrapped,
     hqMates,
     hqMatesRead,
     unavailable,
@@ -200,10 +198,34 @@ function IndexDraftLanding() {
     withSnapshot,
   ]);
 
+  const view = homeView({
+    landing: landing === null ? "unknown" : landing.kind === "none" ? "none" : "going",
+    startFailed: startState.failed,
+    targeted: targetEnvironmentId !== null,
+    remembered,
+    hqMatesRead,
+    organizationId: activeOrganization?.id ?? null,
+    organization: organizationStatus,
+    accountTrouble: inventory.error !== null,
+    catalogFailed,
+    // A negative answer needs both the platform/registration read and HQ's unopened Mates.
+    projectsRead: matesSettled,
+    projectsShown,
+  });
+  // Kept from the render that painted it, so nothing it holds — an open row, a dialog — is torn
+  // down by a read unsettled again.
+  if (
+    view.kind === "projects" &&
+    (projectsShown === null || projectsShown.organizationId !== view.organizationId)
+  ) {
+    setProjectsShown({ organizationId: view.organizationId });
+  }
+  const held = view.kind === "projects";
+
   useEffect(() => {
     // A retry re-runs this effect; the key below was cleared by the failure.
     void startState.retryRequest;
-    if (landing === null || landing.kind === "none") return;
+    if (held || landing === null || landing.kind === "none") return;
     const key =
       landing.kind === "mate"
         ? `mate:${landing.projectId}`
@@ -232,17 +254,8 @@ function IndexDraftLanding() {
       startedForKeyRef.current = null;
       setStartState((state) => ({ ...state, failed: true }));
     });
-  }, [handleNewThread, landing, navigate, openMate, startState.retryRequest]);
+  }, [handleNewThread, held, landing, navigate, openMate, startState.retryRequest]);
 
-  const view = homeView({
-    landing: landing === null ? "unknown" : landing.kind === "none" ? "none" : "going",
-    startFailed: startState.failed,
-    targeted: targetEnvironmentId !== null,
-    remembered,
-    hqMatesRead,
-    // A negative answer needs both the platform/registration read and HQ's unopened Mates.
-    projectsRead: matesSettled,
-  });
   switch (view.kind) {
     case "start-failed":
       return (
@@ -255,8 +268,8 @@ function IndexDraftLanding() {
           }}
         />
       );
-    case "hero":
-      return <NoProjectsHero />;
+    case "projects":
+      return <ZeropsHostedLanding />;
     // While it works out where to land, and on its way there: its guess, never blank — nothing
     // in it takes input, so a wrong guess gives way, without motion, losing nothing typed.
     case "opening":
@@ -287,35 +300,6 @@ function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {
           </div>
         </EmptyHeader>
       </Empty>
-    </SidebarInset>
-  );
-}
-
-function NoProjectsHero() {
-  const openAddProject = useCallback(() => openCommandPalette({ open: "add-project" }), []);
-
-  return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
-        <Empty className="flex-1">
-          <div className="w-full max-w-lg px-8 py-12">
-            <EmptyHeader className="max-w-none">
-              <EmptyTitle className="text-foreground text-2xl sm:text-3xl">
-                What should we work on?
-              </EmptyTitle>
-              <EmptyDescription className="mt-2 text-muted-foreground/78">
-                Add a project to start your first thread.
-              </EmptyDescription>
-              <div className="mt-6 flex justify-center">
-                <Button size="sm" onClick={openAddProject}>
-                  <PlusIcon className="size-4" />
-                  Add project
-                </Button>
-              </div>
-            </EmptyHeader>
-          </div>
-        </Empty>
-      </div>
     </SidebarInset>
   );
 }
