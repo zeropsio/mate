@@ -46,3 +46,7 @@ history and agent work belong to the container; the browser cache is not a backu
 
 If an operation's response is lost, inspect the project and its services before starting it again.
 Mate reports uncertainty rather than assuming the operation failed or creating another project.
+
+If a provider sign-in says it could not be recorded, that attempt did not finish. Press **Try again**
+to sign in again after the server can write its record. The login cannot start personal turns until
+its signer is recorded.

@@ -74,12 +74,10 @@ it.layer(NodeServices.layer)("zeropsSignIns", (it) => {
           remove: Effect.succeed(false),
         }).pipe(Effect.flatMap((fresh) => fresh.load));
 
-      yield* store.save("claude-code", { by: "u-eva", at: 2 });
+      const failure = yield* store.save("claude-code", { by: "u-eva", at: 2 }).pipe(Effect.flip);
+      assert.equal(failure._tag, "SignInSaveError");
       assert.deepStrictEqual(yield* reread(), { codex: { by: "u-ada", at: 1 } });
-      assert.deepStrictEqual(yield* store.load, {
-        "claude-code": { by: "u-eva", at: 2 },
-        codex: { by: "u-ada", at: 1 },
-      });
+      assert.deepStrictEqual(yield* store.load, { codex: { by: "u-ada", at: 1 } });
     }),
   );
 

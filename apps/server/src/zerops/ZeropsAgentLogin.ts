@@ -512,7 +512,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
 
         // The credential its CLI wrote moves into the login's own home before anything hears of
         // the success; a success that wrote none fails, and the login stays as it was.
-        const result =
+        let result =
           stepped.nextPhase === "succeeded"
             ? yield* homes.commit(session.home).pipe(
                 Effect.as(stepped),
@@ -530,16 +530,28 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           return;
         }
 
-        if (result.nextPhase === "succeeded" && signIns !== undefined) {
+        const credentialCommitted = result.nextPhase === "succeeded";
+        if (credentialCommitted && signIns !== undefined) {
           // Kept before anything else hears of the success: the gate, the rows and the Mate's
           // overview go by it, and it outlives this process (`zeropsSignIns`).
-          yield* signIns.save(key, {
-            by: session.startedBy,
-            at: DateTime.toEpochMillis(before?.startedAt ?? (yield* DateTime.now)),
-          });
+          result = yield* signIns
+            .save(key, {
+              by: session.startedBy,
+              at: DateTime.toEpochMillis(before?.startedAt ?? (yield* DateTime.now)),
+            })
+            .pipe(
+              Effect.as(result),
+              Effect.catch((error) =>
+                Effect.succeed({
+                  ...result,
+                  nextPhase: "failed" as const,
+                  message: error.detail,
+                }),
+              ),
+            );
         }
 
-        if (result.nextPhase === "succeeded") {
+        if (credentialCommitted) {
           // The re-check republishes the login with who signed it in. A login beyond the
           // defaults is its own feed's to re-check.
           yield* key === session.agentId
@@ -563,7 +575,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
 
         if (result.nextPhase === "succeeded" || result.nextPhase === "failed") {
           disposeSession(key, token);
-          if (result.nextPhase === "succeeded") {
+          if (credentialCommitted) {
             // Claude stays at its prompt once signed in: nothing keeps running in a scratch home
             // that goes.
             yield* terminalManager

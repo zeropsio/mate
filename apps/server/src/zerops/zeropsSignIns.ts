@@ -34,10 +34,16 @@ export interface SignInRecord {
 
 export type SignInRecords = Readonly<Record<string, SignInRecord>>;
 
+export class SignInSaveError extends Schema.TaggedError<SignInSaveError>()("SignInSaveError", {
+  key: Schema.String,
+}) {
+  readonly detail = "Your sign-in could not be recorded. Try signing in again.";
+}
+
 export interface SignInStore {
   /** Every login's kept sign-in, by signer key. */
   readonly load: Effect.Effect<SignInRecords>;
-  readonly save: (key: string, record: SignInRecord) => Effect.Effect<void>;
+  readonly save: (key: string, record: SignInRecord) => Effect.Effect<void, SignInSaveError>;
   readonly clear: (key: string) => Effect.Effect<void>;
 }
 
@@ -85,7 +91,7 @@ export interface SignInDocument {
  * The store over one document, read once: a read that fails is nothing kept. A save that cannot
  * be written never leaves the sign-in before it standing on disk — after a restart that one would
  * be trusted: the login's entry goes instead, and failing that, the whole document. This server
- * goes by the sign-in it saw either way.
+ * refuses to authorize a login whose new signer could not be kept.
  */
 export const makeSignInStore = (document: SignInDocument) =>
   Effect.gen(function* () {
@@ -115,8 +121,9 @@ export const makeSignInStore = (document: SignInDocument) =>
         Effect.gen(function* () {
           const current = yield* Ref.updateAndGet(records, (held) => ({ ...held, [key]: record }));
           if (yield* document.write(encodeJson(current))) return;
-          yield* Effect.logWarning("zerops sign-ins: could not keep who signed in", { key });
+          yield* Ref.set(records, without(current, key));
           yield* forget(current, key);
+          return yield* new SignInSaveError({ key });
         }).pipe(lock.withPermits(1)),
       clear: (key) =>
         Effect.gen(function* () {
