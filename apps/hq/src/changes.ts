@@ -40,6 +40,7 @@ import {
   hasServices,
 } from "@t3tools/shared/hqRecipe";
 import { type Decision, type Facts, REASONS, can } from "@t3tools/shared/zeropsPermissions";
+import { readReleaseVersion } from "./releaseVersion.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -1024,24 +1025,35 @@ export const changesLayer: Layer.Layer<
       listChanges: (userId, appId) =>
         Effect.andThen(personApp(userId, appId, "read_change"), windowOf([appId])),
       listRepos: (userId, appId) =>
-        Effect.andThen(
-          personApp(userId, appId, "read_change"),
-          Effect.map(
-            sql<{
-              readonly name: string;
-              readonly main_head: string | null;
-              readonly updated_at: string;
-            }>`
+        Effect.gen(function* () {
+          yield* personApp(userId, appId, "read_change");
+          const rows = yield* sql<{
+            readonly name: string;
+            readonly main_head: string | null;
+            readonly updated_at: string;
+          }>`
               SELECT name, main_head, ${sql.literal(instant("updated_at"))}
-              FROM hq_repo WHERE app_id::text = ${appId} ORDER BY name`,
-            (rows) =>
-              rows.map((row) => ({
+              FROM hq_repo WHERE app_id::text = ${appId} ORDER BY name`;
+          if (rows.length === 0) return [];
+          // Listing remains a database read while git opens or this Core is a standby.
+          const git = yield* gitHost.git.pipe(
+            Effect.catchTag("NotLeader", () => Effect.succeed(undefined)),
+          );
+          return yield* Effect.forEach(rows, (row) =>
+            Effect.gen(function* () {
+              const releaseVersion =
+                git === undefined
+                  ? undefined
+                  : yield* readReleaseVersion(git, { appId, id: row.name }, row.main_head);
+              return {
                 name: row.name,
                 mainHead: row.main_head,
                 updatedAt: row.updated_at,
-              })),
-          ),
-        ),
+                ...(releaseVersion === undefined ? {} : { releaseVersion }),
+              };
+            }),
+          );
+        }),
       compare: (userId, appId, repo, query) =>
         Effect.gen(function* () {
           yield* personApp(userId, appId, "read_change");

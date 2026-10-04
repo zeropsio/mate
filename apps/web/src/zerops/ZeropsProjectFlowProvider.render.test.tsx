@@ -903,6 +903,27 @@ describe("ZeropsProjectFlowProvider", () => {
       });
     });
 
+    it("sends the person's chosen tag to HQ with the offered heads and entries", async () => {
+      const { seen, root } = await mountRelease();
+      await act(async () => {
+        await seen.at(-1)!.release("g1", "v1.0.0");
+      });
+      expect(hq.asked).toEqual([
+        [
+          "release",
+          {
+            appId: "g1",
+            request: {
+              tag: "v1.0.0",
+              groupHead: GROUP_MAIN,
+              entries: [{ service: "app", sha: MERGED }],
+            },
+          },
+        ],
+      ]);
+      await act(async () => root.unmount());
+    });
+
     it("refuses what its offer refuses, in HQ's words for who may, and asks HQ nothing", async () => {
       permission.gate = {
         allowed: false,

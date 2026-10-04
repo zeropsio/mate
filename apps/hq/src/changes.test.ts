@@ -651,6 +651,64 @@ describe("a Mate's changes in HQ", () => {
     );
 
     it.effect(
+      "still reads repository records while optional version metadata has no git leader",
+      () =>
+        Effect.gen(function* () {
+          const first = yield* startCore(true);
+          yield* untilHealth(first.call, "active");
+          const owner = yield* sessionFor(first.call, "door-owner");
+          const { appId, auth } = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+          yield* first.call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
+          const listed = yield* first.call("GET", `/api/apps/${appId}/repos`, { session: owner });
+          const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+          yield* untilHealth(next.call, "standby");
+          assert.isTrue(Exit.isFailure(yield* Effect.exit(next.gitHost.git)));
+          // The HTTP door refuses a standby; the database read also serves an active Core whose
+          // git is still opening after a takeover.
+          const repos = yield* next.changes.listRepos("owner", appId);
+          assert.deepStrictEqual({ repos }, listed.body);
+        }),
+    );
+
+    it.effect("lists a bounded version declaration from main, never an unmerged branch", () =>
+      Effect.gen(function* () {
+        const { call, fake, gitHost, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, auth } = yield* mateInApp(call, fake, owner, "P_MATE", "Shop");
+        yield* call("POST", "/api/mate/repos", { headers: auth, body: { name: "appdev" } });
+        const git = yield* gitHost.git;
+        const repo = { appId, id: "appdev" };
+        const head = yield* git.commitFiles(repo, "refs/heads/main", {
+          files: { "package.json": '{"version":"1.0.0"}' },
+          expectedHead:
+            (yield* git.branches(repo)).items.find((entry) => entry.ref === "refs/heads/main")
+              ?.sha ?? null,
+          message: "App declares 1.0.0",
+          author: { name: "Ada", email: "ada@mate.test" },
+        });
+        yield* rowsWhere(
+          url,
+          `SELECT main_head FROM hq_repo WHERE app_id = '${appId}' AND name = 'appdev'`,
+          (rows) => "sha" in head && rows[0]?.["main_head"] === head.sha,
+        );
+        yield* git.commitFiles(repo, "refs/heads/core/unmerged", {
+          files: { VERSION: "9.0.0" },
+          expectedHead: null,
+          message: "Unmerged version",
+          author: { name: "Ada", email: "ada@mate.test" },
+        });
+        const answer = yield* call("GET", `/api/apps/${appId}/repos`, { session: owner });
+        const listed = (answer.body as { repos: Array<{ name: string; releaseVersion?: unknown }> })
+          .repos;
+        assert.deepStrictEqual(
+          [answer.status, listed.find((entry) => entry.name === "appdev")?.releaseVersion],
+          [200, { tag: "v1.0.0", path: "package.json" }],
+        );
+      }),
+    );
+
+    it.effect(
       "lists an application's repositories, its recipe's too, to whoever reads its changes",
       () =>
         Effect.gen(function* () {

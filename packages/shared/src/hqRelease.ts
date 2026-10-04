@@ -37,6 +37,13 @@ const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
 /** A release's name: `v{major}.{minor}.{patch}`, nothing before or after. */
 export const ReleaseTag = Schema.String.check(Schema.isPattern(TAG));
 
+/** A version typed by a person or declared by code, in the release format HQ accepts. */
+export function releaseTagOfVersion(version: string): string | undefined {
+  const value = version.trim();
+  const match = /^(?:v)?((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/u.exec(value);
+  return match === null ? undefined : `v${match[1]}`;
+}
+
 /** A production service a release lists, by its hostname. */
 export const ServiceName = Schema.String.check(Schema.isPattern(HOSTNAME));
 

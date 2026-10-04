@@ -870,12 +870,13 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   }, []);
 
   /**
-   * A release made in HQ as the person, of exactly what its offer shows: its entries, named its
-   * suggestion, tagging the recipe's `main` it was read with — HQ refuses one that moved since.
+   * A release made in HQ as the person, of exactly what its offer shows: its entries and chosen
+   * name (the next patch by default), tagging the recipe's `main` it was read with — HQ refuses
+   * one that moved since and checks the name against every release under its lock.
    * Held until the application's releases list it; HQ's refusal is said in its words.
    */
   const release = useCallback(
-    async (groupId: string): Promise<FlowVerbOutcome> => {
+    async (groupId: string, tag?: string): Promise<FlowVerbOutcome> => {
       if (hqApi === null) return refused(HQ_NOT_OPEN);
       const offer = flows.get(groupId)?.release;
       if (offer === undefined) return refused(NOT_READ_YET);
@@ -886,7 +887,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       return run(verb, async () => {
         try {
           const { made, deploys } = await hqApi.release(groupId, {
-            tag: offer.suggestion,
+            tag: tag ?? offer.suggestion,
             groupHead,
             entries: offer.entries.map(({ service, commit }) => ({ service, sha: commit })),
           });

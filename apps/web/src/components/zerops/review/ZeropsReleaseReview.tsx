@@ -30,6 +30,8 @@ import {
   releaseReview,
   releaseStageMarks,
   releaseStep,
+  releaseVersionField,
+  releaseVersionSuggestions,
   reviewAge,
   rollbackReads,
   rollbackReview,
@@ -45,10 +47,13 @@ import {
   type ReleaseGate,
   type ReleaseOutcome,
   type ReleaseReplaces,
+  type ReleaseVersionSuggestion,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useId, useMemo, useState, type ReactNode } from "react";
+
+import { Input } from "~/components/ui/input";
 
 import { useFixMates } from "~/zerops/fixMates";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
@@ -253,12 +258,21 @@ function ReleaseData({
   // What the release is — its tag, what it replaces, what goes out and where — held from the
   // press, or from the first look at it on its way: once it lands, the reads are the state it made.
   const [held, setHeld] = useState<ReleaseFacts | undefined>(undefined);
+  const [typedVersion, setTypedVersion] = useState<string | undefined>(undefined);
+  const versionValue = typedVersion ?? flow.release.suggestion.slice(1);
+  const versionTags = flow.releases.map((entry) => entry.tag);
+  const chosen = releaseVersionField(versionValue, versionTags);
+  const suggestions = releaseVersionSuggestions({
+    repos: flow.repos ?? [],
+    repositories: flow.release.repositories ?? new Map(),
+    tags: versionTags,
+  });
   const follows = releaseFollows({
     made,
     held,
     press,
     inFlight: flow.release.inFlight,
-    suggestion: flow.release.suggestion,
+    suggestion: chosen.tag ?? flow.release.suggestion,
     releases: flow.releases,
     nowMs: now,
   });
@@ -324,17 +338,19 @@ function ReleaseData({
   });
 
   const release = async () => {
-    if (flowValue === null) return;
-    setMade(flow.release.suggestion);
+    if (flowValue === null || chosen.tag === undefined || chosen.error !== undefined) return;
+    // Capture the offer in the press. HQ's stream may change it before React draws "running".
+    setHeld({ ...facts, tag: chosen.tag });
+    setMade(chosen.tag);
     setPress({ kind: "running" });
-    const answer = await flowValue.release(flow.groupId);
+    const answer = await flowValue.release(flow.groupId, chosen.tag);
     setPress(
       answer.ok
         ? { kind: "done", deploys: answer.deploys }
         : { kind: "refused", reason: answer.reason },
     );
     // The tag it made is the one the review follows from here.
-    setMade(answer.ok ? (answer.tag ?? flow.release.suggestion) : undefined);
+    setMade(answer.ok ? (answer.tag ?? chosen.tag) : undefined);
   };
 
   return (
@@ -364,6 +380,13 @@ function ReleaseData({
       untold={flow.release.untold}
       services={facts.services}
       tag={facts.tag}
+      version={{
+        value: versionValue,
+        onChange: setTypedVersion,
+        tags: versionTags,
+        suggestions,
+        nextPatch: flow.release.suggestion,
+      }}
       titleId={titleId}
       where={facts.where}
     />
@@ -374,6 +397,16 @@ export interface ReleaseReviewViewProps {
   /** The project's name: the title is it and the version. */
   readonly name: string | undefined;
   readonly tag: string;
+  /** The person's editable name, shown only while this review offers a release. */
+  readonly version?:
+    | {
+        readonly value: string;
+        readonly onChange: (value: string) => void;
+        readonly tags: ReadonlyArray<string>;
+        readonly suggestions: ReadonlyArray<ReleaseVersionSuggestion>;
+        readonly nextPatch: string;
+      }
+    | undefined;
   readonly gate: ReleaseGate;
   /** HQ's rule for this person, its refusal in words; `undefined` while it cannot be asked. */
   readonly permission: ReleaseGate | undefined;
@@ -402,6 +435,10 @@ export interface ReleaseReviewViewProps {
 
 export function ReleaseReviewView(props: ReleaseReviewViewProps) {
   const { rows, press, tag } = props;
+  const versionId = useId();
+  const version = props.outcome.kind === "offered" ? props.version : undefined;
+  const checkedVersion =
+    version === undefined ? undefined : releaseVersionField(version.value, version.tags);
   const model = releaseReview({
     tag,
     gate: props.gate,
@@ -458,6 +495,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           ? undefined
           : {
               ...model.primary,
+              enabled: model.primary.enabled && checkedVersion?.error === undefined,
               icon: "tag",
               busy: press.kind === "running",
               label: press.kind === "running" ? `Releasing ${tag}` : model.primary.label,
@@ -468,6 +506,46 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       titleId={props.titleId}
       verdict={model.verdict}
     >
+      {version === undefined ? null : (
+        <ReviewSection title="Version">
+          <div className="flex flex-col gap-2">
+            <div className="w-44">
+              <Input
+                aria-label="Version"
+                aria-describedby={`${versionId}-help`}
+                aria-invalid={checkedVersion?.error !== undefined}
+                autoComplete="off"
+                disabled={press.kind === "running"}
+                font="mono"
+                id={versionId}
+                nativeInput
+                onChange={(event) => version.onChange(event.target.value)}
+                spellCheck={false}
+                value={version.value}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground" id={`${versionId}-help`}>
+              {checkedVersion?.error ??
+                `Must be newer than every release. Next patch is ${version.nextPatch}.`}
+            </p>
+            {version.suggestions.map((suggestion) => (
+              <div
+                className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                key={suggestion.source}
+              >
+                <button
+                  className="rv-textbtn"
+                  onClick={() => version.onChange(suggestion.tag.slice(1))}
+                  type="button"
+                >
+                  Use {suggestion.tag}
+                </button>
+                <span>Declared on main in {suggestion.source}</span>
+              </div>
+            ))}
+          </div>
+        </ReviewSection>
+      )}
       {rows.length === 0 && untold.length === 0 && untoldDeploying.length === 0 ? null : (
         <ReviewSection
           aside={`${String(rows.length)} ${rows.length === 1 ? "change" : "changes"}`}

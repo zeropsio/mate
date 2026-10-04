@@ -212,7 +212,7 @@ export const releasesLayer: Layer.Layer<
             const tags = (yield* releasesOf(appId)).map((release) => release.tag);
             const tag = wanted.tag ?? nextPatch(tags);
             if (tags.includes(tag)) return yield* refuse("conflict", "tag_taken");
-            if (tags.some((other) => compareReleaseTags(other, tag) > 0)) {
+            if (tags.some((other) => compareReleaseTags(other, tag) >= 0)) {
               return yield* refuse("conflict", "tag_not_newer");
             }
             const main = yield* mainOf(git, group);

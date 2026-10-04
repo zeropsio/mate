@@ -288,6 +288,7 @@ describe("an application's releases in HQ", () => {
           const rows = [
             ["a name taken", ask("dev", { tag: "v0.1.0" })],
             ["a name older than a release", ask("dev", { tag: "v0.0.9" })],
+            ["the same version under a different spelling", ask("dev", { tag: "v00.1.0" })],
             ["main moved since the offer", ask("dev", { groupHead: app })],
             [
               "a service production has not",
@@ -322,6 +323,7 @@ describe("an application's releases in HQ", () => {
           assert.deepStrictEqual(answered, [
             ["a name taken", "conflict", "tag_taken"],
             ["a name older than a release", "conflict", "tag_not_newer"],
+            ["the same version under a different spelling", "conflict", "tag_not_newer"],
             ["main moved since the offer", "conflict", "group_moved"],
             ["a service production has not", "conflict", "unknown_service"],
             ["a service no repository of the application builds", "conflict", "unknown_service"],
