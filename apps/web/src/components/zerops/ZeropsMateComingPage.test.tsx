@@ -180,7 +180,9 @@ vi.mock("~/zerops/useZeropsBirthProgress", async () => {
           },
   };
 });
-vi.mock("~/zerops/useMateSetup", () => ({ useMateSetup: () => undefined }));
+vi.mock("~/zerops/useMateSetup", () => ({
+  useMateSetup: () => ({ setup: undefined, failure: undefined }),
+}));
 vi.mock("~/zerops/useUsualAgent", () => ({
   useUsualAgent: () => ({ usual: null, settled: true }),
 }));

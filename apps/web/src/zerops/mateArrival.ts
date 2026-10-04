@@ -18,7 +18,11 @@
  */
 import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
 import { enrollmentRefusalWords, NO_HQ_WORDS } from "@t3tools/client-runtime/zerops/hq";
-import { standUpFailureWords, type MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
+import {
+  standUpFailureWords,
+  type MateSetup,
+  type MateSetupFailure,
+} from "@t3tools/client-runtime/zerops/mateSetup";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
 import {
@@ -362,6 +366,8 @@ export function arrivalSteps(
     readonly setup?:
       | Pick<MateSetup, "git" | "gitFailure" | "signin" | "standup" | "standupFailure">
       | undefined;
+    /** Why its setup can't be read, where its container serves one (`useMateSetup`). */
+    readonly setupFailure?: MateSetupFailure | undefined;
     /** The steps this tab runs for it, while it holds them. */
     readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
     /**
@@ -466,6 +472,14 @@ export function arrivalSteps(
       ),
     });
   }
+  if (progress.setupFailure !== undefined) {
+    steps.push({
+      id: "setup",
+      label: `${mate.name}'s setup`,
+      state: "failed",
+      why: SETUP_FAILURE_WORDS[progress.setupFailure],
+    });
+  }
   if (progress.agentReady === true) {
     steps.push({ id: "you", label: `${mate.name}'s agent is ready`, state: "done" });
   } else {
@@ -491,6 +505,12 @@ export function arrivalSteps(
   }
   return steps;
 }
+
+/** Why a Mate's setup can't be read, in the setup step's words. */
+const SETUP_FAILURE_WORDS: Readonly<Record<MateSetupFailure, string>> = {
+  refused: "Its container turned the read of its setup away.",
+  invalid: "Its container answered with something that isn't its setup.",
+};
 
 /** The stand-up as the Mate's setup says it, as a step. */
 const STANDUP_STATES: Readonly<

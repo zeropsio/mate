@@ -122,7 +122,7 @@ import { useReviveFailedMate } from "~/zerops/mateRestart";
 import { useMateSetup } from "~/zerops/useMateSetup";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
-import type { MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
+import type { MateSetup, MateSetupFailure } from "@t3tools/client-runtime/zerops/mateSetup";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -484,9 +484,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         };
 
   // What its container says of its own setup, in any browser (`/mate/setup.json`): read only
-  // while its card is on screen and its setup is under way — every read of an older Mate costs
-  // it a tag read of its own.
-  const setup = useMateSetup(arrival !== undefined ? candidate?.containerOrigin : undefined);
+  // while its card is on screen and its setup is under way, and why where it can't be read.
+  const { setup, failure: setupFailure } = useMateSetup(
+    arrival !== undefined ? candidate?.containerOrigin : undefined,
+  );
   // What it brings, named before its project lists them: its press's, then its creation's — a
   // press over never takes a line back before the project's own read or its setup answers.
   const planned = useMemo(() => comingPlanned(press, made), [press, made]);
@@ -537,6 +538,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
             : newProjectProgress(made, progress.progress, progress.nowMs)),
           ...(managed === undefined ? {} : { managed }),
           ...(setup === undefined ? {} : { setup }),
+          ...(setupFailure === undefined ? {} : { setupFailure }),
           ...(made === undefined ? {} : { press: creationSubsteps(made) }),
           ...(empty.agentReady ? { agentReady: true } : {}),
         };
@@ -1098,6 +1100,8 @@ function stoppedStep(step: ArrivalStep): ArrivalStep {
 export type ArrivalProgress = BirthLineProgress & {
   readonly managed?: ReadonlyArray<BirthCopyService> | undefined;
   readonly setup?: MateSetup | undefined;
+  /** Why its setup can't be read (`useMateSetup`). */
+  readonly setupFailure?: MateSetupFailure | undefined;
   /** The steps this tab runs for it, while it holds them (`creationSubsteps`). */
   readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
   /** It runs on an agent that needs no sign-in, ready (`MateEmptyState.agentReady`). */
