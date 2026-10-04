@@ -710,8 +710,6 @@ describe("access grant reducer", () => {
     expect(sim.state.phase).toEqual({
       phase: "unverified-failed",
       failure: { kind: "timeout", afterMs: 30 * SECOND },
-      retryAt: null,
-      attempt: 1,
     });
     sim.elapse(2 * SECOND);
     sim.send({ type: "USER_RETRY" });
@@ -720,7 +718,7 @@ describe("access grant reducer", () => {
       round: sim.round(),
       failure: { kind: "server", status: 502 },
     });
-    expect(sim.state.phase).toMatchObject({ phase: "unverified-failed", attempt: 1 });
+    expect(sim.state.phase).toMatchObject({ phase: "unverified-failed" });
     sim.send({ type: "USER_RETRY" });
     expect(sim.state.phase.phase).toBe("verifying");
   });
@@ -1452,3 +1450,69 @@ it.each([false, true])(
     expect(sim.read(B)).toEqual({ allowed: true });
   },
 );
+
+describe("named membership samples", () => {
+  it("retains the next sample after failure without extending evidence or retrying cleanup", () => {
+    const sim = grantedSim();
+    sim.send({ type: "PROJECT_DENIED", project: A, evidence: "direct-forbidden" });
+    sim.elapse(policy.denialConfirmationDelayMs);
+    sim.send({ type: "TICK" });
+    const confirm = sim.lastRun("confirm-denial");
+    sim.send({ type: "PROJECT_RESULT", project: A, attempt: confirm.attempt, outcome: failed });
+    sim.elapse(12 * MINUTE - 2 * SECOND - policy.denialConfirmationDelayMs);
+    sim.send({ type: "TICK" });
+    const sample = sim.round();
+    sim.send({ type: "ROUND_FAILED", round: sample, failure: { kind: "server", status: 503 } });
+    expect(sim.state.phase).toMatchObject({
+      phase: "granted",
+      failure: { kind: "server", status: 503 },
+    });
+    const count = sim.runs.length;
+    sim.elapse(3 * MINUTE);
+    sim.send({ type: "TICK" });
+    expect(sim.write(B).allowed).toBe(false);
+    expect(sim.runs).toHaveLength(count);
+    sim.elapse(9 * MINUTE);
+    sim.send({ type: "TICK" });
+    expect(sim.runs).toHaveLength(count + 1);
+    expect(sim.lastRun("verify-round").attempt).not.toBe(sample);
+    sim.answerRound([
+      [A, forbidden],
+      [B, verified(B)],
+    ]);
+    expect(
+      sim.effects.filter(
+        ({ effect }) => effect.kind === "observe" && effect.observation.kind === "project-gone",
+      ),
+    ).toHaveLength(0);
+    expect(sim.runs.filter(({ op }) => op.kind === "confirm-denial")).toHaveLength(1);
+  });
+});
+
+it("retains a confirmation failure delivered after lapse until manual Check access again", () => {
+  const sim = grantedSim();
+  sim.elapse(12 * MINUTE - 2 * SECOND);
+  sim.send({ type: "TICK" });
+  sim.send({ type: "ROUND_FAILED", round: sim.round(), failure: { kind: "server", status: 503 } });
+  sim.elapse(3 * MINUTE - 10 * SECOND);
+  sim.send({ type: "PROJECT_DENIED", project: A, evidence: "direct-forbidden" });
+  sim.elapse(policy.denialConfirmationDelayMs);
+  sim.send({ type: "TICK" });
+  const confirm = sim.lastRun("confirm-denial");
+  sim.elapse(6 * SECOND);
+  sim.send({ type: "PROJECT_RESULT", project: A, attempt: confirm.attempt, outcome: failed });
+  expect(sim.state.phase).toMatchObject({ phase: "lapsed" });
+  if (sim.state.phase.phase !== "lapsed") throw new Error("expected lapse");
+  expect(sim.state.phase.last.closedProjects.get(A.projectId)?.confirmation).toMatchObject({
+    failure: failed.failure,
+  });
+  sim.elapse(9 * MINUTE - SECOND);
+  sim.send({ type: "TICK" });
+  sim.answerRound([
+    [A, forbidden],
+    [B, verified(B)],
+  ]);
+  expect(sim.runs.filter(({ op }) => op.kind === "confirm-denial")).toHaveLength(1);
+  sim.send({ type: "USER_RETRY" });
+  expect(sim.runs.filter(({ op }) => op.kind === "confirm-denial")).toHaveLength(2);
+});

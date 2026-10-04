@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
+import { afterEach, vi } from "vite-plus/test";
 
 import { ZeropsApiError, type ZeropsUser } from "../api.ts";
-import { INITIAL_BACKOFF, RETRY_RUNGS_MS } from "../knowledge/retryPolicy.ts";
 import type { ZeropsSession } from "../session.ts";
 import {
   ZEROPS_SESSION_OWNER_STORAGE_KEY,
@@ -23,7 +23,6 @@ const stored: ZeropsSession = { accessToken: "access-1", refreshToken: "refresh-
 const next: ZeropsSession = { accessToken: "access-2", refreshToken: "refresh-2" };
 const owner: ZeropsSessionOwner = { userId: "user-1", loginGeneration: "g1" };
 
-const ctx = { nowMs: 1_000, random: () => 0.5 };
 const user = (u: ZeropsUser): ZeropsPrincipalVerdict => ({ kind: "user", user: u });
 const unauthorized: ZeropsPrincipalVerdict = { kind: "unauthorized" };
 const unavailable: ZeropsPrincipalVerdict = { kind: "unavailable" };
@@ -34,24 +33,21 @@ const signedIn = (generation: string | null = "g1"): ZeropsSessionState => ({
   generation,
   token: { status: "current" },
 });
-const adopting = (retryAt: number | null = null, generation: string | null = "g1") =>
+const adopting = (
+  status: "adopting" | "unavailable" = "adopting",
+  generation: string | null = "g1",
+) =>
   ({
     status: "signed-in",
     user: person,
     generation,
-    token: { status: "adopting", next, backoff: INITIAL_BACKOFF, retryAt },
+    token: { status, next },
   }) satisfies ZeropsSessionState;
 const verifying = (session = stored): ZeropsSessionState => ({
   status: "verifying",
   session,
-  backoff: INITIAL_BACKOFF,
 });
-const unavailableAt = (retryAt: number): ZeropsSessionState => ({
-  status: "unavailable",
-  session: stored,
-  backoff: { rung: 1 },
-  retryAt,
-});
+const unavailableState: ZeropsSessionState = { status: "unavailable", session: stored };
 
 describe("transitionZeropsSession", () => {
   const rows: ReadonlyArray<
@@ -88,16 +84,11 @@ describe("transitionZeropsSession", () => {
       ],
     ],
     [
-      "waits for a retry when the platform cannot answer",
+      "ends unavailable when the platform cannot answer",
       verifying(),
       { type: "VERIFIED", session: stored, verdict: unavailable },
-      {
-        status: "unavailable",
-        session: stored,
-        backoff: { rung: 1 },
-        retryAt: 1_000 + RETRY_RUNGS_MS[0]!,
-      },
-      [{ kind: "schedule", at: 1_000 + RETRY_RUNGS_MS[0]! }],
+      unavailableState,
+      [],
     ],
     [
       "is signed out when the stored session is refused",
@@ -114,32 +105,25 @@ describe("transitionZeropsSession", () => {
       [],
     ],
     [
-      "keeps waiting on an early tick",
-      unavailableAt(5_000),
-      { type: "WAKE", trigger: "tick" },
-      unavailableAt(5_000),
-      [{ kind: "schedule", at: 5_000 }],
-    ],
-    [
-      "verifies again when its retry time comes",
-      unavailableAt(1_000),
-      { type: "WAKE", trigger: "tick" },
-      { status: "verifying", session: stored, backoff: { rung: 1 } },
+      "verifies again only on the person's action",
+      unavailableState,
+      { type: "VERIFY_AGAIN" },
+      verifying(),
       [{ kind: "verify", session: stored }],
     ],
     [
-      "verifies again at once when the tab comes online",
-      unavailableAt(60_000),
-      { type: "WAKE", trigger: "online" },
-      verifying(),
-      [{ kind: "cancel-schedule" }, { kind: "verify", session: stored }],
+      "does not reverify the same failed stored session",
+      unavailableState,
+      { type: "STORAGE_CHANGED", next: stored, held: false },
+      unavailableState,
+      [],
     ],
     [
       "follows a sign-in in another tab while unavailable",
-      unavailableAt(60_000),
+      unavailableState,
       { type: "STORAGE_CHANGED", next, held: false },
       verifying(next),
-      [{ kind: "cancel-schedule" }, { kind: "verify", session: next }],
+      [{ kind: "verify", session: next }],
     ],
     [
       "follows a sign-in in another tab while signed out",
@@ -192,7 +176,7 @@ describe("transitionZeropsSession", () => {
     ],
     [
       "adopts and takes the generation when it held none yet",
-      adopting(null, null),
+      adopting("adopting", null),
       { type: "PROBED", session: next, verdict: user(person), owner },
       signedIn("g1"),
       [{ kind: "adopt", session: next }],
@@ -229,35 +213,25 @@ describe("transitionZeropsSession", () => {
       [{ kind: "close-account" }, { kind: "verify", session: next }],
     ],
     [
-      "stays signed in and retries when the probe cannot answer",
+      "retains the account after the probe fails without a timer",
       adopting(),
       { type: "PROBED", session: next, verdict: unavailable, owner },
-      {
-        status: "signed-in",
-        user: person,
-        generation: "g1",
-        token: {
-          status: "adopting",
-          next,
-          backoff: { rung: 1 },
-          retryAt: 1_000 + RETRY_RUNGS_MS[0]!,
-        },
-      },
-      [{ kind: "schedule", at: 1_000 + RETRY_RUNGS_MS[0]! }],
+      adopting("unavailable"),
+      [],
     ],
     [
-      "probes again when its retry time comes",
-      adopting(1_000),
-      { type: "WAKE", trigger: "tick" },
+      "probes again only on the person's action",
+      adopting("unavailable"),
+      { type: "VERIFY_AGAIN" },
       adopting(),
       [{ kind: "probe", session: next }],
     ],
     [
-      "probes again at once on a visible wake",
-      adopting(60_000),
-      { type: "WAKE", trigger: "visible" },
-      adopting(),
-      [{ kind: "cancel-schedule" }, { kind: "probe", session: next }],
+      "does not reprobe the same failed stored session",
+      adopting("unavailable"),
+      { type: "STORAGE_CHANGED", next, held: false },
+      adopting("unavailable"),
+      [],
     ],
     [
       "drops a probe answer for a session it no longer adopts",
@@ -275,10 +249,10 @@ describe("transitionZeropsSession", () => {
     ],
     [
       "stops adopting when another tab signs out",
-      adopting(60_000),
+      adopting("unavailable"),
       { type: "STORAGE_CHANGED", next: null, held: false },
       { status: "signed-out" },
-      [{ kind: "cancel-schedule" }, { kind: "close-account" }, { kind: "forget-session" }],
+      [{ kind: "close-account" }, { kind: "forget-session" }],
     ],
     [
       "closes the account when its own session ends",
@@ -346,7 +320,7 @@ describe("transitionZeropsSession", () => {
   ];
 
   it.each(rows)("%s", (_name, from, event, to, effects) => {
-    const result = transitionZeropsSession(from, event, ctx);
+    const result = transitionZeropsSession(from, event);
     expect(result.state).toEqual(to);
     expect(result.effects).toEqual(effects);
   });
@@ -383,8 +357,6 @@ function makeOrigin(initial: { session: ZeropsSession | null; owner: ZeropsSessi
       ownerRecord = value;
     },
     tab: (overrides: Partial<ZeropsSessionPorts> = {}) => {
-      const timers: Array<{ at: number; fire: () => void; cancelled: boolean }> = [];
-      let now = 0;
       const events: string[] = [];
       const ports: ZeropsSessionPorts = {
         loadStored: async () => session,
@@ -408,15 +380,6 @@ function makeOrigin(initial: { session: ZeropsSession | null; owner: ZeropsSessi
           );
           return run;
         },
-        nowMs: () => now,
-        setTimer: (delayMs, fire) => {
-          const timer = { at: now + delayMs, fire, cancelled: false };
-          timers.push(timer);
-          return () => {
-            timer.cancelled = true;
-          };
-        },
-        random: () => 0.5,
         newGeneration: () => `g${++generations}`,
         ...overrides,
       };
@@ -424,14 +387,6 @@ function makeOrigin(initial: { session: ZeropsSession | null; owner: ZeropsSessi
       return {
         driver,
         events,
-        /** Time passes; the timers that come due fire in order. */
-        advance: (ms: number) => {
-          now += ms;
-          for (const timer of timers.splice(0))
-            if (timer.cancelled) continue;
-            else if (timer.at <= now) timer.fire();
-            else timers.push(timer);
-        },
       };
     },
   };
@@ -442,18 +397,58 @@ const flush = async () => {
 };
 
 describe("makeZeropsSessionDriver", () => {
-  it("retries a boot the platform could not answer when its retry time comes", async () => {
+  afterEach(() => vi.useRealTimers());
+  it("ends a failed boot until Verify again makes one attempt", async () => {
+    vi.useFakeTimers();
     const origin = makeOrigin({ session: stored, owner: null });
-    const answers: ZeropsPrincipalVerdict[] = [unavailable, user(person)];
-    const tab = origin.tab({ verify: async () => answers.shift()! });
+    let calls = 0;
+    const tab = origin.tab({
+      verify: async () => {
+        calls += 1;
+        return unavailable;
+      },
+    });
     tab.driver.start();
     await flush();
     expect(tab.driver.state().status).toBe("unavailable");
-
-    tab.advance(RETRY_RUNGS_MS[0]!);
+    await vi.advanceTimersByTimeAsync(60_000);
     await flush();
+    expect(calls).toBe(1);
+    tab.driver.send({ type: "VERIFY_AGAIN" });
+    tab.driver.send({ type: "VERIFY_AGAIN" });
+    await flush();
+    expect(calls).toBe(2);
+    expect(tab.driver.state().status).toBe("unavailable");
+    await vi.advanceTimersByTimeAsync(60_000);
+    await flush();
+    expect(calls).toBe(2);
+  });
 
-    expect(tab.driver.state().status).toBe("signed-in");
+  it("keeps the open account after a failed adoption, with one manual probe", async () => {
+    vi.useFakeTimers();
+    const origin = makeOrigin({ session: stored, owner });
+    let calls = 0;
+    const tab = origin.tab({
+      probe: async () => {
+        calls += 1;
+        return unavailable;
+      },
+    });
+    tab.driver.start();
+    await flush();
+    tab.driver.send({ type: "STORAGE_CHANGED", next, held: false });
+    await flush();
+    expect(tab.driver.state()).toMatchObject({
+      status: "signed-in",
+      token: { status: "unavailable", next },
+    });
+    await vi.advanceTimersByTimeAsync(60_000);
+    await flush();
+    expect(calls).toBe(1);
+    tab.driver.send({ type: "VERIFY_AGAIN" });
+    tab.driver.send({ type: "VERIFY_AGAIN" });
+    await flush();
+    expect(calls).toBe(2);
     expect(tab.events).toEqual(["open user-1"]);
   });
 

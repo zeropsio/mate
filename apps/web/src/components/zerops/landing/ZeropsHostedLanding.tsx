@@ -11,7 +11,7 @@ import { ZeropsFrameWait, ZeropsHandoverActions, ZeropsLandingShell } from "./Ze
 
 /** Registration and second factors belong to the Zerops account application. */
 export function ZeropsHostedLanding() {
-  const { status, adoptHandover, signOut } = useZeropsSession();
+  const { status, adoptHandover, signOut, verifyAgain } = useZeropsSession();
   const [nativeState, setNativeState] = useState<ZeropsNativeSignInState>({ kind: "idle" });
   const generation = useRef(0);
   if (status === "signed-in") return <ZeropsProjectsPage />;
@@ -23,8 +23,8 @@ export function ZeropsHostedLanding() {
         title="Could not verify your account"
         description="Zerops is currently unreachable. Your saved work is still on this device."
       >
-        <button type="button" onClick={() => window.location.reload()}>
-          Try again
+        <button type="button" onClick={verifyAgain}>
+          Verify again
         </button>
         <button
           type="button"

@@ -67,9 +67,8 @@ export interface ProjectEvidence {
 export interface UnverifiedProject {
   readonly project: ProjectRef;
   readonly failure: GrantFailure | null;
-  readonly retryAt: Instant | null;
-  /** Failed reads so far; only a manual retry resets them. */
-  readonly attempt: number;
+  /** One requested read; null after its terminal answer. */
+  readonly dueAt: Instant | null;
 }
 
 /** A 403/404 was seen: writes are closed, content is withheld until a confirming read. */
@@ -77,7 +76,7 @@ export interface ClosedProject {
   readonly project: ProjectRef;
   readonly deniedAt: Instant;
   readonly confirmation:
-    | { readonly status: "due"; readonly at: Instant; readonly attempt: number }
+    | { readonly status: "due"; readonly at: Instant; readonly failure: GrantFailure | null }
     | { readonly status: "confirmed"; readonly evidence: DenialEvidence };
 }
 
@@ -100,8 +99,6 @@ export interface GrantRound {
   readonly startedAt: Instant;
   /** Base deadline until the account part answers, then scaled to the listed projects. */
   readonly deadline: Instant;
-  /** Consecutive failed rounds before this one; picks the rung if it fails too. */
-  readonly failures: number;
   /** Null until the account part answers. */
   readonly organizations: ReadonlyArray<OrganizationEffectiveAccess> | null;
   readonly targets: ReadonlyArray<ProjectRef> | null;
@@ -125,8 +122,8 @@ export type Renewal =
   | {
       readonly status: "failed";
       readonly failure: GrantFailure;
-      readonly retryAt: Instant | null;
-      readonly attempt: number;
+      /** Next named membership sample, independent of this failed attempt. */
+      readonly nextSampleAt: Instant;
     }
   /** Hidden longer than the policy: no round until a visible wake (D5). */
   | { readonly status: "dormant" };
@@ -137,12 +134,10 @@ export type GrantState =
   | {
       readonly phase: "unverified-failed";
       readonly failure: GrantFailure;
-      readonly retryAt: Instant | null;
-      readonly attempt: number;
     }
   /**
-   * `failure` is the renewal's last failure since its evidence was admitted: a wake, `online`, a
-   * user retry or the lapse itself starts a round without clearing it, so only a grant does.
+   * `failure` is the renewal's last failure since its evidence was admitted: a new membership sample or a
+   * user retry starts a round without clearing it, so only a grant does.
    */
   | {
       readonly phase: "granted";
@@ -495,7 +490,6 @@ const withRenewal = (machine: GrantMachine, renewal: Renewal): GrantMachine => {
 /** Starts a round now; the caller puts it in the phase's round slot. */
 const newRound = (
   machine: GrantMachine,
-  failures: number,
   ctx: GrantContext,
   out: Effects,
 ): { readonly machine: GrantMachine; readonly round: GrantRound } => {
@@ -504,7 +498,6 @@ const newRound = (
     id: machine.nextAttempt,
     startedAt: ctx.now,
     deadline: after(ctx.now, roundDeadlineMs(ctx.policy, carried.length)),
-    failures,
     organizations: null,
     targets: null,
     outcomes: new Map(),
@@ -513,26 +506,16 @@ const newRound = (
   return { machine: { ...machine, nextAttempt: machine.nextAttempt + 1 }, round };
 };
 
-const startVerifying = (
-  machine: GrantMachine,
-  failures: number,
-  ctx: GrantContext,
-  out: Effects,
-): GrantMachine => {
-  const started = newRound(machine, failures, ctx, out);
+const startVerifying = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantMachine => {
+  const started = newRound(machine, ctx, out);
   return { ...started.machine, phase: { phase: "verifying", round: started.round } };
 };
 
 /** A renewal that is due: dormant when hidden too long, paused offline, otherwise a round. */
-const startRenewal = (
-  machine: GrantMachine,
-  failures: number,
-  ctx: GrantContext,
-  out: Effects,
-): GrantMachine => {
+const startRenewal = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantMachine => {
   if (dormant(machine, ctx)) return withRenewal(machine, { status: "dormant" });
   if (!machine.signals.online) return machine;
-  const started = newRound(machine, failures, ctx, out);
+  const started = newRound(machine, ctx, out);
   return withRenewal(started.machine, { status: "running", round: started.round });
 };
 
@@ -540,8 +523,8 @@ const failRound = (
   machine: GrantMachine,
   round: GrantRound,
   failure: GrantFailure,
+  ctx: GrantContext,
 ): GrantMachine => {
-  const attempt = round.failures + 1;
   const phase = machine.phase;
   if (phase.phase === "verifying") {
     return {
@@ -549,15 +532,25 @@ const failRound = (
       phase: {
         phase: "unverified-failed",
         failure,
-        retryAt: null,
-        attempt,
       },
     };
   }
   if (phase.phase !== "granted" && phase.phase !== "lapsed") return machine;
+  // Membership has no event feed: keep its named cadence, skipping samples missed while frozen.
+  // This failed attempt ends now; neither its cleanup nor its evidence is renewed by the timer.
+  const period = Math.max(
+    ctx.policy.renewalLeadFloorMs,
+    ctx.policy.windowMs - renewalLeadMs(ctx.policy, p95(machine.roundDurationsMs)),
+  );
+  const elapsed = Math.max(
+    0,
+    ctx.now.wall - round.startedAt.wall,
+    ctx.now.mono - round.startedAt.mono,
+  );
+  const nextSampleAt = after(round.startedAt, period * (Math.floor(elapsed / period) + 1));
   return {
     ...machine,
-    phase: { ...phase, renewal: { status: "failed", failure, retryAt: null, attempt }, failure },
+    phase: { ...phase, renewal: { status: "failed", failure, nextSampleAt }, failure },
   };
 };
 
@@ -581,11 +574,12 @@ const closeProject = (
       confirmation: {
         status: "due",
         at: after(ctx.now, ctx.policy.denialConfirmationDelayMs),
-        attempt: 0,
+        failure: null,
       },
     });
   } else if (
     closed.confirmation.status === "due" &&
+    closed.confirmation.failure === null &&
     readStartedAt !== null &&
     reached(after(closed.deniedAt, ctx.policy.denialConfirmationDelayMs), readStartedAt)
   ) {
@@ -635,15 +629,18 @@ const completeRound = (
         phase: {
           phase: "unverified-failed",
           failure: { kind: "timeout", afterMs: ctx.now.mono - round.startedAt.mono },
-          retryAt: null,
-          attempt: round.failures + 1,
         },
       };
     }
-    return failRound(machine, round, {
-      kind: "timeout",
-      afterMs: ctx.now.mono - round.startedAt.mono,
-    });
+    return failRound(
+      machine,
+      round,
+      {
+        kind: "timeout",
+        afterMs: ctx.now.mono - round.startedAt.mono,
+      },
+      ctx,
+    );
   }
 
   const previous = heldEvidence(machine);
@@ -674,7 +671,7 @@ const completeRound = (
             confirmation: {
               status: "due",
               at: after(deniedAt, ctx.policy.denialConfirmationDelayMs),
-              attempt: 0,
+              failure: null,
             },
           });
         }
@@ -686,8 +683,7 @@ const completeRound = (
         unverified.set(id, {
           project: target,
           failure: outcome.failure,
-          retryAt: null,
-          attempt: 1,
+          dueAt: null,
         });
         break;
       }
@@ -784,11 +780,9 @@ const projectResult = (
   if (outcome.kind === "denied") {
     return closeProject(machine, attempt.project, outcome.evidence, attempt.startedAt, ctx, out);
   }
-  // Positive evidence joins the admitted account evidence, and so carries its stamp.
-  if (phase.phase !== "granted" || expired(phase.evidence.account.startedAt, ctx.now, ctx.policy)) {
-    return machine;
-  }
-  const held = phase.evidence;
+  // Failure belongs to the accepted read even if authority lapsed while it ran.
+  const held = heldEvidence(machine);
+  if (held === null) return machine;
   // §4.0: a read that started before the admitted round is superseded by it; joined to that
   // round, its evidence would be stamped later than itself (G2). Ordered on the monotonic clock,
   // so a wall clock set back within the tolerance cannot make every fresh read look stale.
@@ -797,14 +791,13 @@ const projectResult = (
   if (attempt.kind === "confirm") {
     if (closed === undefined || closed.confirmation.status !== "due") return machine;
     if (outcome.kind === "failed") {
-      const tries = closed.confirmation.attempt + 1;
       const closedProjects = new Map(held.closedProjects);
       closedProjects.set(id, {
         ...closed,
         confirmation: {
           status: "due",
           at: ctx.now,
-          attempt: tries,
+          failure: outcome.failure,
         },
       });
       return withEvidence(machine, { ...held, closedProjects });
@@ -819,11 +812,13 @@ const projectResult = (
     unverified.set(id, {
       ...entry,
       failure: outcome.failure,
-      retryAt: null,
-      attempt: entry.attempt + 1,
+      dueAt: null,
     });
     return withEvidence(machine, { ...held, unverified });
   }
+  // Only fresh account evidence may admit a positive project answer.
+  if (phase.phase !== "granted" || expired(held.account.startedAt, ctx.now, ctx.policy))
+    return machine;
   const projects = new Map(held.projects);
   projects.set(id, {
     access: outcome.access,
@@ -840,7 +835,7 @@ const projectResult = (
 const wake = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantMachine => {
   const phase = machine.phase;
   if (phase.phase === "unverified-failed") {
-    return machine.signals.online ? startVerifying(machine, 0, ctx, out) : machine;
+    return machine.signals.online ? startVerifying(machine, ctx, out) : machine;
   }
   if (phase.phase !== "granted" && phase.phase !== "lapsed") return machine;
   // A waiting renewal is due now; a granted idle one keeps its schedule (renew if due).
@@ -853,14 +848,14 @@ const wake = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantMach
       : machine;
   const held = heldEvidence(next)!;
   const unverified = new Map(
-    [...held.unverified].map(([id, entry]) => [id, { ...entry, retryAt: ctx.now, attempt: 0 }]),
+    [...held.unverified].map(([id, entry]) => [id, { ...entry, dueAt: ctx.now }]),
   );
   // A confirmation retrying after a failure restarts now; a first one keeps its G6 delay.
   const closedProjects = new Map(
     [...held.closedProjects].map(([id, entry]): [ZeropsProjectId, ClosedProject] => [
       id,
-      entry.confirmation.status === "due" && entry.confirmation.attempt > 0
-        ? { ...entry, confirmation: { status: "due", at: ctx.now, attempt: 0 } }
+      entry.confirmation.status === "due" && entry.confirmation.failure !== null
+        ? { ...entry, confirmation: { status: "due", at: ctx.now, failure: null } }
         : entry,
     ]),
   );
@@ -876,14 +871,12 @@ const apply = (
   switch (event.type) {
     case "START":
       if (machine.phase.phase !== "unverified") return machine;
-      if (machine.signals.online) return startVerifying(machine, 0, ctx, out);
+      if (machine.signals.online) return startVerifying(machine, ctx, out);
       return {
         ...machine,
         phase: {
           phase: "unverified-failed",
           failure: { kind: "offline" },
-          retryAt: null,
-          attempt: 1,
         },
       };
     case "TICK":
@@ -952,7 +945,7 @@ const apply = (
     case "ROUND_FAILED": {
       const round = grantRoundInFlight(machine);
       if (round === null || round.id !== event.round) return machine;
-      return failRound(machine, round, event.failure);
+      return failRound(machine, round, event.failure, ctx);
     }
     case "PROJECT_RESULT": {
       const id = event.project.projectId;
@@ -1017,8 +1010,7 @@ const demandProjects = (
     unverified.set(project.projectId, {
       project,
       failure: null,
-      retryAt: ctx.now,
-      attempt: 0,
+      dueAt: ctx.now,
     });
   }
   return withEvidence(machine, { ...evidence, unverified });
@@ -1045,8 +1037,7 @@ const dropExpiredProjects = (
       unverified.set(id, {
         project: own.access.project,
         failure: { kind: "timeout", afterMs: ctx.policy.windowMs },
-        retryAt: ctx.now,
-        attempt: 0,
+        dueAt: ctx.now,
       });
     }
   }
@@ -1078,7 +1069,7 @@ const settle = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantMa
         // A lapse starts a round at once (G9); a round already running is that round.
         renewal:
           renewal.status === "running"
-            ? { status: "running", round: { ...renewal.round, failures: 0 } }
+            ? { status: "running", round: renewal.round }
             : renewal.status === "failed"
               ? renewal
               : { status: "idle", dueAt: ctx.now },
@@ -1093,10 +1084,15 @@ const settle = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantMa
   if (round !== null && reached(round.deadline, ctx.now)) {
     next =
       round.targets === null
-        ? failRound(next, round, {
-            kind: "timeout",
-            afterMs: round.deadline.mono - round.startedAt.mono,
-          })
+        ? failRound(
+            next,
+            round,
+            {
+              kind: "timeout",
+              afterMs: round.deadline.mono - round.startedAt.mono,
+            },
+            ctx,
+          )
         : completeRound(next, round, ctx, out);
   }
 
@@ -1119,14 +1115,17 @@ const settle = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantMa
   const phase = next.phase;
   if (phase.phase === "granted" || phase.phase === "lapsed") {
     const renewal = phase.renewal;
-    if (renewal.status === "idle" && reached(renewal.dueAt, ctx.now))
-      next = startRenewal(next, 0, ctx, out);
+    if (
+      (renewal.status === "idle" && reached(renewal.dueAt, ctx.now)) ||
+      (renewal.status === "failed" && reached(renewal.nextSampleAt, ctx.now))
+    )
+      next = startRenewal(next, ctx, out);
   }
 
   return startProjectReads(next, ctx, out);
 };
 
-/** Per-project retries and denial confirmations run only under a fresh account grant. */
+/** Requested project checks and denial confirmations run only under a fresh account grant. */
 const startProjectReads = (
   machine: GrantMachine,
   ctx: GrantContext,
@@ -1147,10 +1146,9 @@ const startProjectReads = (
     for (const [id, entry] of phase.evidence.unverified) {
       if (
         machine.demandedProjects.some((project) => project.projectId === id) &&
-        entry.attempt === 0 &&
         !machine.projectAttempts.has(id) &&
-        entry.retryAt !== null &&
-        reached(entry.retryAt, ctx.now)
+        entry.dueAt !== null &&
+        reached(entry.dueAt, ctx.now)
       ) {
         reads.push({ kind: "verify", project: entry.project });
       }
@@ -1159,7 +1157,7 @@ const startProjectReads = (
   for (const [id, entry] of phase.evidence.closedProjects) {
     if (
       entry.confirmation.status === "due" &&
-      entry.confirmation.attempt === 0 &&
+      entry.confirmation.failure === null &&
       !machine.projectAttempts.has(id) &&
       reached(entry.confirmation.at, ctx.now)
     ) {
@@ -1210,8 +1208,7 @@ const publish = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantM
       ? null
       : {
           failure: phase.failure,
-          retryAtMs:
-            phase.renewal.status === "failed" ? (phase.renewal.retryAt?.wall ?? null) : null,
+          retryAtMs: null,
         };
   const account = lapsed ? withheld("access-lapsed", lapseCause) : AUTHORIZED;
 
@@ -1247,7 +1244,7 @@ const publish = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantM
                   "access-unverified",
                   entry === undefined || entry.failure === null
                     ? null
-                    : { failure: entry.failure, retryAtMs: entry.retryAt?.wall ?? null },
+                    : { failure: entry.failure, retryAtMs: null },
                 );
     projects.set(id, { project, authority });
     if (!sameAuthority(before, authority)) {
@@ -1274,6 +1271,7 @@ const reschedule = (machine: GrantMachine, ctx: GrantContext, out: Effects): Gra
   if (phase.phase === "granted" || phase.phase === "lapsed") {
     const renewal = phase.renewal;
     if (online && renewal.status === "idle") candidates.push(renewal.dueAt);
+    if (online && renewal.status === "failed") candidates.push(renewal.nextSampleAt);
   }
   if (phase.phase === "granted") {
     const evidence = phase.evidence;
@@ -1284,18 +1282,17 @@ const reschedule = (machine: GrantMachine, ctx: GrantContext, out: Effects): Gra
     if (online && !dormant(machine, ctx)) {
       for (const [id, entry] of evidence.unverified) {
         if (
-          entry.attempt === 0 &&
           machine.demandedProjects.some((project) => project.projectId === id) &&
           round === null &&
           !machine.projectAttempts.has(id)
         ) {
-          if (entry.retryAt !== null) candidates.push(entry.retryAt);
+          if (entry.dueAt !== null) candidates.push(entry.dueAt);
         }
       }
       for (const [id, entry] of evidence.closedProjects) {
         if (
           entry.confirmation.status === "due" &&
-          entry.confirmation.attempt === 0 &&
+          entry.confirmation.failure === null &&
           !machine.projectAttempts.has(id)
         ) {
           candidates.push(entry.confirmation.at);

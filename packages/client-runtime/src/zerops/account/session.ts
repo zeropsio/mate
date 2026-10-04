@@ -1,6 +1,6 @@
 /**
  * The Zerops account session (DESIGN §4.1): one pure machine,
- * `transitionZeropsSession(state, event, ctx) → { state, effects }`, and the
+ * `transitionZeropsSession(state, event) → { state, effects }`, and the
  * driver that runs its effects over a tab's ports.
  *
  * - A tab opens the account only on a principal the platform named
@@ -13,10 +13,10 @@
  *   session names this tab's principal and the owner record still carries
  *   this tab's generation (or none, for a session an older build stored).
  *   Anything else closes the account before the new session renders a frame.
- * - Every wait has an exit: an unreachable platform leaves `unavailable` and
- *   `adopting` on the retry ladder, on `online` and on a visible wake.
+ * - Failed verification ends unavailable until Verify again or a new stored session.
+ *   Failed adoption retains the open account and its evidence until their own deadlines.
  *
- * UI-free and platform-free: storage, locks, timers and the network are ports.
+ * UI-free and platform-free: storage, locks and the network are ports.
  */
 import {
   ZeropsApiClient,
@@ -24,13 +24,6 @@ import {
   type FetchImplementation,
   type ZeropsUser,
 } from "../api.ts";
-import {
-  INITIAL_BACKOFF,
-  backoffOn,
-  scheduleRetry,
-  type Backoff,
-  type RetryTrigger,
-} from "../knowledge/retryPolicy.ts";
 import type { ZeropsSession } from "../session.ts";
 
 export const ZEROPS_SESSION_OWNER_STORAGE_KEY = "zerops-mate.zerops-session-owner.v1";
@@ -68,11 +61,8 @@ export type ZeropsPrincipalVerdict =
 export type ZeropsTokenState =
   | { readonly status: "current" }
   | {
-      readonly status: "adopting";
+      readonly status: "adopting" | "unavailable";
       readonly next: ZeropsSession;
-      readonly backoff: Backoff;
-      /** When the next probe is due after one failed; `null` while one is in flight. */
-      readonly retryAt: number | null;
     };
 
 export type ZeropsSessionState =
@@ -83,13 +73,10 @@ export type ZeropsSessionState =
   | {
       readonly status: "verifying";
       readonly session: ZeropsSession;
-      readonly backoff: Backoff;
     }
   | {
       readonly status: "unavailable";
       readonly session: ZeropsSession;
-      readonly backoff: Backoff;
-      readonly retryAt: number;
     }
   | {
       readonly status: "signed-in";
@@ -98,9 +85,6 @@ export type ZeropsSessionState =
       readonly generation: string | null;
       readonly token: ZeropsTokenState;
     };
-
-/** What sends a waiting session back to work. */
-export type ZeropsSessionWake = "tick" | "online" | "visible";
 
 export type ZeropsSessionEvent =
   | { readonly type: "LOADED"; readonly session: ZeropsSession | null }
@@ -131,7 +115,7 @@ export type ZeropsSessionEvent =
   | { readonly type: "USER_UPDATED"; readonly user: ZeropsUser }
   /** This tab's client dropped its session: sign-out, or a refresh that failed. */
   | { readonly type: "SESSION_ENDED" }
-  | { readonly type: "WAKE"; readonly trigger: ZeropsSessionWake };
+  | { readonly type: "VERIFY_AGAIN" };
 
 export type ZeropsSessionEffect =
   /** Hold `session` in the client and read `user/info` with it, refreshing on a 401. */
@@ -146,73 +130,34 @@ export type ZeropsSessionEffect =
   | { readonly kind: "close-account" }
   /** Under the refresh lock: take the record for `userId`, or create it when missing. */
   | { readonly kind: "claim-owner"; readonly userId: string }
-  | { readonly kind: "write-owner"; readonly owner: ZeropsSessionOwner }
-  | { readonly kind: "schedule"; readonly at: number }
-  | { readonly kind: "cancel-schedule" };
-
-export interface ZeropsSessionContext {
-  readonly nowMs: number;
-  readonly random: () => number;
-}
+  | { readonly kind: "write-owner"; readonly owner: ZeropsSessionOwner };
 
 export interface ZeropsSessionTransition {
   readonly state: ZeropsSessionState;
   readonly effects: ReadonlyArray<ZeropsSessionEffect>;
 }
 
-const RETRY_TRIGGER: Record<ZeropsSessionWake, RetryTrigger> = {
-  tick: "retry-at-reached",
-  online: "online",
-  visible: "visible-wake",
-};
-
 const stay = (state: ZeropsSessionState): ZeropsSessionTransition => ({ state, effects: [] });
 
-/** A retry timer is armed while the state waits for one. */
-function waitsForRetry(state: ZeropsSessionState): boolean {
-  return (
-    state.status === "unavailable" ||
-    (state.status === "signed-in" &&
-      state.token.status === "adopting" &&
-      state.token.retryAt !== null)
-  );
-}
-
-/** The effects that leave `state`: its retry timer and its open account. */
+/** Close the open account when leaving its principal. */
 function leaving(
   state: ZeropsSessionState,
   options: { readonly closeAccount: boolean },
 ): ZeropsSessionEffect[] {
-  return [
-    ...(waitsForRetry(state) ? [{ kind: "cancel-schedule" } as const] : []),
-    ...(options.closeAccount && state.status === "signed-in"
-      ? [{ kind: "close-account" } as const]
-      : []),
-  ];
+  return options.closeAccount && state.status === "signed-in"
+    ? [{ kind: "close-account" } as const]
+    : [];
 }
 
-function verify(
-  from: ZeropsSessionState,
-  session: ZeropsSession,
-  backoff: Backoff = INITIAL_BACKOFF,
-): ZeropsSessionTransition {
+function verify(from: ZeropsSessionState, session: ZeropsSession): ZeropsSessionTransition {
   return {
-    state: { status: "verifying", session, backoff },
+    state: { status: "verifying", session },
     effects: [...leaving(from, { closeAccount: true }), { kind: "verify", session }],
   };
 }
 
 function signedIn(user: ZeropsUser, generation: string | null): ZeropsSessionState {
   return { status: "signed-in", user, generation, token: { status: "current" } };
-}
-
-/** A retry that is due now, or the timer that waits for it. */
-function onWake(
-  retryAt: number,
-  trigger: ZeropsSessionWake,
-  ctx: ZeropsSessionContext,
-): "now" | "later" {
-  return trigger !== "tick" || ctx.nowMs >= retryAt ? "now" : "later";
 }
 
 function onStorageChanged(
@@ -239,18 +184,23 @@ function onStorageChanged(
     case "booting":
     case "signed-out":
     case "second-factor":
-    case "unavailable":
       return verify(state, next);
+    case "unavailable":
+      return next.accessToken === state.session.accessToken ? stay(state) : verify(state, next);
     case "verifying":
       return held || next.accessToken === state.session.accessToken
         ? stay(state)
         : verify(state, next);
     case "signed-in":
-      if (held) return stay(state);
+      if (
+        held ||
+        (state.token.status !== "current" && state.token.next.accessToken === next.accessToken)
+      )
+        return stay(state);
       return {
         state: {
           ...state,
-          token: { status: "adopting", next, backoff: INITIAL_BACKOFF, retryAt: null },
+          token: { status: "adopting", next },
         },
         effects: [...leaving(state, { closeAccount: false }), { kind: "probe", session: next }],
       };
@@ -278,17 +228,15 @@ function isSameLogin(
 
 function onProbed(
   state: Extract<ZeropsSessionState, { status: "signed-in" }>,
-  token: Extract<ZeropsTokenState, { status: "adopting" }>,
+  token: Exclude<ZeropsTokenState, { status: "current" }>,
   verdict: ZeropsPrincipalVerdict,
   owner: ZeropsSessionOwner | null,
-  ctx: ZeropsSessionContext,
 ): ZeropsSessionTransition {
   const cancel = leaving(state, { closeAccount: false });
   if (verdict.kind === "unavailable") {
-    const { retryAtMs, backoff } = scheduleRetry(token.backoff, ctx.nowMs, ctx.random);
     return {
-      state: { ...state, token: { ...token, backoff, retryAt: retryAtMs } },
-      effects: [...cancel, { kind: "schedule", at: retryAtMs }],
+      state: { ...state, token: { status: "unavailable", next: token.next } },
+      effects: [],
     };
   }
   if (!isSameLogin(state, verdict, owner)) return verify(state, token.next);
@@ -315,53 +263,9 @@ function onOwnSignIn(
   };
 }
 
-function onWakeEvent(
-  state: ZeropsSessionState,
-  trigger: ZeropsSessionWake,
-  ctx: ZeropsSessionContext,
-): ZeropsSessionTransition {
-  if (state.status === "unavailable") {
-    if (onWake(state.retryAt, trigger, ctx) === "later")
-      return { state, effects: [{ kind: "schedule", at: state.retryAt }] };
-    const backoff = backoffOn(state.backoff, RETRY_TRIGGER[trigger]);
-    return {
-      state: { status: "verifying", session: state.session, backoff },
-      effects: [
-        ...(trigger === "tick" ? [] : [{ kind: "cancel-schedule" } as const]),
-        { kind: "verify", session: state.session },
-      ],
-    };
-  }
-  if (
-    state.status === "signed-in" &&
-    state.token.status === "adopting" &&
-    state.token.retryAt !== null
-  ) {
-    const { token } = state;
-    if (onWake(token.retryAt!, trigger, ctx) === "later")
-      return { state, effects: [{ kind: "schedule", at: token.retryAt! }] };
-    return {
-      state: {
-        ...state,
-        token: {
-          ...token,
-          backoff: backoffOn(token.backoff, RETRY_TRIGGER[trigger]),
-          retryAt: null,
-        },
-      },
-      effects: [
-        ...(trigger === "tick" ? [] : [{ kind: "cancel-schedule" } as const]),
-        { kind: "probe", session: token.next },
-      ],
-    };
-  }
-  return stay(state);
-}
-
 export function transitionZeropsSession(
   state: ZeropsSessionState,
   event: ZeropsSessionEvent,
-  ctx: ZeropsSessionContext,
 ): ZeropsSessionTransition {
   switch (event.type) {
     case "LOADED":
@@ -382,10 +286,9 @@ export function transitionZeropsSession(
           ],
         };
       if (verdict.kind === "unauthorized") return { state: { status: "signed-out" }, effects: [] };
-      const { retryAtMs, backoff } = scheduleRetry(state.backoff, ctx.nowMs, ctx.random);
       return {
-        state: { status: "unavailable", session: state.session, backoff, retryAt: retryAtMs },
-        effects: [{ kind: "schedule", at: retryAtMs }],
+        state: { status: "unavailable", session: state.session },
+        effects: [],
       };
     }
     case "PROBED":
@@ -395,7 +298,7 @@ export function transitionZeropsSession(
         state.token.next.accessToken !== event.session.accessToken
       )
         return stay(state);
-      return onProbed(state, state.token, event.verdict, event.owner, ctx);
+      return onProbed(state, state.token, event.verdict, event.owner);
     case "OWNER_CLAIMED":
     case "OWNER_CHANGED": {
       // Only a tab that holds no generation yet takes one from the record.
@@ -427,8 +330,14 @@ export function transitionZeropsSession(
         state: { status: "signed-out" },
         effects: leaving(state, { closeAccount: true }),
       };
-    case "WAKE":
-      return onWakeEvent(state, event.trigger, ctx);
+    case "VERIFY_AGAIN":
+      if (state.status === "unavailable") return verify(state, state.session);
+      if (state.status === "signed-in" && state.token.status === "unavailable")
+        return {
+          state: { ...state, token: { ...state.token, status: "adopting" } },
+          effects: [{ kind: "probe", session: state.token.next }],
+        };
+      return stay(state);
   }
 }
 
@@ -449,9 +358,6 @@ export interface ZeropsSessionPorts {
   };
   /** Runs `work` holding `ZEROPS_REFRESH_LOCK`, shared by every tab of the origin. */
   readonly withRefreshLock: <T>(work: () => Promise<T>) => Promise<T>;
-  readonly nowMs: () => number;
-  readonly setTimer: (delayMs: number, fire: () => void) => () => void;
-  readonly random: () => number;
   readonly newGeneration: () => string;
 }
 
@@ -483,13 +389,6 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
   let live = false;
   let draining = false;
   const queue: ZeropsSessionEvent[] = [];
-  let cancelTimer: (() => void) | null = null;
-
-  const clearTimer = () => {
-    cancelTimer?.();
-    cancelTimer = null;
-  };
-
   /** Delivers an async answer only while the run that asked for it is live. */
   const answer = (asked: number, event: ZeropsSessionEvent) => {
     if (asked === run) send(event);
@@ -543,16 +442,6 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
       case "write-owner":
         ports.owner.write(effect.owner);
         return;
-      case "schedule":
-        clearTimer();
-        cancelTimer = ports.setTimer(Math.max(0, effect.at - ports.nowMs()), () => {
-          cancelTimer = null;
-          send({ type: "WAKE", trigger: "tick" });
-        });
-        return;
-      case "cancel-schedule":
-        clearTimer();
-        return;
     }
   };
 
@@ -564,10 +453,7 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
     draining = true;
     try {
       for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-        const result = transitionZeropsSession(state, next, {
-          nowMs: ports.nowMs(),
-          random: ports.random,
-        });
+        const result = transitionZeropsSession(state, next);
         const changed = result.state !== state;
         state = result.state;
         for (const effect of result.effects) perform(effect);
@@ -601,7 +487,6 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
         run += 1;
         live = false;
         queue.length = 0;
-        clearTimer();
         state = { status: "booting" };
       };
     },
