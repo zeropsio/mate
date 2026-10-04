@@ -67,7 +67,15 @@ it("demands the open review's projects once, ends a failed read visibly, and Aga
     projects: new Map(),
     closedProjects: new Map(),
     unverified: new Map([
-      [ref.projectId, { project: ref, failure: { kind: "server", status: 503 }, dueAt: null }],
+      [
+        ref.projectId,
+        {
+          project: ref,
+          failure: { kind: "server", status: 503 },
+          dueAt: { wall: 0, mono: 0 },
+          attempt: 1,
+        },
+      ],
     ]),
   };
   await act(async () => {

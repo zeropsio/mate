@@ -1181,44 +1181,54 @@ describe("the account runtime", () => {
       ),
   );
 
-  it.effect("a failed grant remains failed across wake until a manual again", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
-        const registry = AtomRegistry.make();
-        const page = yield* makePage(clock);
-        const grant = heldVerifier();
-        const built = yield* Effect.gen(function* () {
-          const data = yield* makeZeropsDataRuntime({
-            scope: scope(),
-            adapter: inertAdapter,
-            atomRegistry: registry,
-            makeOpaqueId: () => "opaque",
-          });
-          return yield* makeAccountRuntime({
-            data,
-            verifier: grant.verifier,
-            signals: page.signals,
-            atomRegistry: registry,
-            environments: inertEnvironments(clock),
-          }).pipe(
-            Effect.tap((runtime) =>
-              Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
-            ),
-          );
-        }).pipe(Effect.provideService(Clock.Clock, clock));
-        yield* Effect.addFinalizer(() => built.close("application-close"));
-        yield* settle;
-        yield* grant.answer({ kind: "server", status: 503 });
-        yield* clock.advance(60 * SECOND);
-        yield* page.emit({ type: "visibility", hidden: true });
-        yield* clock.advance(31 * SECOND);
-        yield* page.emit({ type: "visibility", hidden: false });
-        expect(grant.rounds()).toBe(1);
-        yield* built.data.access.signal({ type: "USER_RETRY" });
-        expect(grant.rounds()).toBe(2);
-      }),
-    ),
+  it.effect(
+    "a visible wake after 30 s hidden retries the grant at once; a quick switch does not (§6.4)",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+          const registry = AtomRegistry.make();
+          const page = yield* makePage(clock);
+          const grant = heldVerifier();
+          const built = yield* Effect.gen(function* () {
+            const data = yield* makeZeropsDataRuntime({
+              scope: scope(),
+              adapter: inertAdapter,
+              atomRegistry: registry,
+              makeOpaqueId: () => "opaque",
+            });
+            return yield* makeAccountRuntime({
+              data,
+              verifier: grant.verifier,
+              signals: page.signals,
+              atomRegistry: registry,
+              environments: inertEnvironments(clock),
+            });
+          }).pipe(Effect.provideService(Clock.Clock, clock));
+          yield* Effect.addFinalizer(() => built.close("application-close"));
+          yield* settle;
+          // Rounds fail up the session backoff until the next one waits 60 s.
+          for (const rung of [2, 4, 8, 15, 30]) {
+            yield* grant.answer({ kind: "server", status: 503 });
+            yield* clock.advance(rung * SECOND);
+            yield* settle;
+          }
+          yield* grant.answer({ kind: "server", status: 503 });
+          expect(grant.rounds()).toBe(6);
+
+          yield* page.emit({ type: "visibility", hidden: true });
+          yield* page.emit({ type: "visibility", hidden: false });
+          expect(grant.rounds()).toBe(6);
+
+          yield* page.emit({ type: "visibility", hidden: true });
+          yield* clock.advance(31 * SECOND);
+          yield* settle;
+          expect(grant.rounds()).toBe(6);
+          // Back before the backoff's 60 s: the wake alone starts the round.
+          yield* page.emit({ type: "visibility", hidden: false });
+          expect(grant.rounds()).toBe(7);
+        }),
+      ),
   );
 
   it.effect("an account runtime whose grant cannot start fails and leaves nothing running", () =>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  INVENTORY_TROUBLE_HOLD_MS,
   accountFootLine,
   inventoryTroubleVoice,
   organizationKnowledge,
@@ -9,7 +10,7 @@ import {
   type InventoryTroubleVoice,
 } from "./inventoryTrouble.logic";
 
-const SAYS = { sentence: "Zerops isn't answering.", tryNow: true } as const;
+const SAYS = { sentence: "Zerops isn't answering. Trying again…", tryNow: true } as const;
 
 /** A mounted product on a grant still held, its session alive, and nothing wrong. */
 const calm: InventoryTroubleInput = {
@@ -17,17 +18,8 @@ const calm: InventoryTroubleInput = {
   lapsed: false,
   sessionEnded: false,
   trouble: null,
+  troubledForMs: 0,
 };
-
-it.each(["grant", "organization"] as const)(
-  "shows %s failure immediately without claiming another request",
-  (trouble) => {
-    expect(inventoryTroubleVoice({ ...calm, trouble })).toEqual({
-      sentence: "Zerops isn't answering.",
-      tryNow: true,
-    });
-  },
-);
 
 describe("when the inventory's trouble speaks", () => {
   it.each<{
@@ -37,43 +29,43 @@ describe("when the inventory's trouble speaks", () => {
   }>([
     { name: "nothing wrong: silence", input: {}, voice: null },
     {
-      name: "a round failed: says so immediately",
-      input: { trouble: "grant" },
-      voice: SAYS,
-    },
-    {
-      name: "a failure that cleared: silence",
-      input: { trouble: null },
+      name: "a round that failed a moment ago: silence, the retry runs on its own",
+      input: { trouble: "grant", troubledForMs: 3_000 },
       voice: null,
     },
     {
-      name: "an organization's read failed: says so immediately",
-      input: { trouble: "organization" },
-      voice: SAYS,
+      name: "a failure that cleared: silence",
+      input: { trouble: null, troubledForMs: 0 },
+      voice: null,
+    },
+    {
+      name: "an organization's data refused a moment ago: silence",
+      input: { trouble: "organization", troubledForMs: 3_000 },
+      voice: null,
     },
     {
       name: "a round failing past the hold: says so, and offers Try now",
-      input: { trouble: "grant" },
+      input: { trouble: "grant", troubledForMs: INVENTORY_TROUBLE_HOLD_MS },
       voice: SAYS,
     },
     {
       name: "an organization's data blocked past the hold: the same words",
-      input: { trouble: "organization" },
+      input: { trouble: "organization", troubledForMs: INVENTORY_TROUBLE_HOLD_MS },
       voice: SAYS,
     },
     {
       name: "the grant it runs on has lapsed: the lapse's one banner speaks, not this",
-      input: { trouble: "grant", lapsed: true },
+      input: { trouble: "grant", troubledForMs: INVENTORY_TROUBLE_HOLD_MS, lapsed: true },
       voice: null,
     },
     {
       name: "the sign-in ended: the sign-in screen speaks, and nothing here offers Sign out",
-      input: { trouble: "grant", sessionEnded: true },
+      input: { trouble: "grant", troubledForMs: INVENTORY_TROUBLE_HOLD_MS, sessionEnded: true },
       voice: null,
     },
     {
       name: "before the product mounts: the gate's own wait speaks",
-      input: { trouble: "grant", mounted: false },
+      input: { trouble: "grant", troubledForMs: INVENTORY_TROUBLE_HOLD_MS, mounted: false },
       voice: null,
     },
   ])("$name", ({ input, voice }) => {
@@ -105,10 +97,10 @@ describe("what the account says at the menu's foot", () => {
       name: "the inventory's lasting trouble: Try now only",
       lapse: null,
       trouble: SAYS,
-      said: { sentence: "Zerops isn't answering.", actions: ["try-now"] },
+      said: { sentence: "Zerops isn't answering. Trying again…", actions: ["try-now"] },
     },
   ])("$name", ({ lapse, trouble, said }) => {
-    expect(accountFootLine({ lapse, trouble, running: false })).toEqual(said);
+    expect(accountFootLine({ lapse, trouble, attempt: "idle" })).toEqual(said);
   });
 });
 
@@ -162,12 +154,17 @@ describe("Try now, and what the line names", () => {
   }>([
     {
       name: "pressed: the button says it is trying, and takes no second press",
-      input: { lapse: null, trouble: SAYS, running: true },
-      said: { sentence: "Zerops isn't answering.", actions: ["trying"] },
+      input: { lapse: null, trouble: SAYS, attempt: "trying" },
+      said: { sentence: "Zerops isn't answering. Trying again…", actions: ["trying"] },
+    },
+    {
+      name: "the trouble outlived the try: the line says so, and offers it again",
+      input: { lapse: null, trouble: SAYS, attempt: "still" },
+      said: { sentence: "Still not answering. Trying again…", actions: ["try-now"] },
     },
     {
       name: "a lapse being tried: trying, and the way out stays",
-      input: { lapse, trouble: null, running: true },
+      input: { lapse, trouble: null, attempt: "trying" },
       said: { sentence: "Zerops isn't answering.", actions: ["trying", "sign-out"] },
     },
   ])("$name", ({ input, said }) => {

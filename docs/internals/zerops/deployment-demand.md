@@ -19,7 +19,8 @@ ids and reads no app-version list. The account's access demand admits each deman
 confirmed gone project leaves the inventory. HQ flow reads cannot hide a stop's runtime answer.
 App and stop detail pages show runtime from known stop identities even while HQ changes and release
 detail is unavailable.
-Undemanded refs do not hold Refresh in a loading state. The last view releasing a stop ends its demand. There is no polling or automatic capacity retry.
+Undemanded refs do not hold Refresh in a loading state. The last view releasing a stop ends its demand. There is no polling; a
+key waiting for a data slot takes the next one that frees, and a full queue asks again on the retry ladder.
 
 Overview, Projects, the app flow, production/stage detail and the sidebar read the same
 `Shown<Deployment>`. While the platform is unread, the flow's own known version still stands,
@@ -36,7 +37,8 @@ the navigation candidate listing. One read obtains `/project/:id`, `/project/:id
 id and includes enabled HTTP subdomains. Concurrent surfaces share the same answer and demand.
 An unread answer says reading; a failed answer offers Again and never claims there are no addresses.
 A failed recheck retains its previous links with the failure. Publishing a subdomain invalidates the
-cell once. Unmounting the last surface releases demand; there is no polling or automatic retry.
+cell once. Unmounting the last surface releases demand; there is no polling. A failed read retries on
+the shared ladder while a surface holds it and the tab is visible; Again reads at once.
 
 Desktop uses the same web surfaces. Mobile does not currently render these group-flow or stop-detail
 surfaces; the shared runtime's demand and failure behavior applies to its consumers too. No wire

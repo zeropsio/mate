@@ -12,6 +12,7 @@ import {
   pendingDenials,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
+  DEFAULT_ZEROPS_DATA_POLICY,
   interestKeyOf,
   organizationKeyOf,
   projectRecordToZeropsProject,
@@ -59,10 +60,12 @@ import {
 } from "./inventoryContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import {
+  INVENTORY_TROUBLE_HOLD_MS,
   inventoryTroubleVoice,
   organizationKnowledge,
   troubleSubject,
 } from "./inventoryTrouble.logic";
+import { useHeldFor } from "./useHeldFor";
 import {
   stabilizeZeropsAtom,
   useZeropsAtomSelections,
@@ -107,10 +110,23 @@ function demandedInterest(
       );
 }
 
-/** A render can report an overdue attempt, without scheduling recovery or a second request. */
+/**
+ * How long past an interest's own published deadline or retry time a render is given before a
+ * stall reads as one: the runtime's own max backoff, so the ordinary gap between a backoff timer
+ * waking and the re-establishment it starts never flips the screen to an error mid-recovery.
+ */
 const STALL_GRACE_MS = 30_000;
 
-/** A failed or overdue required interest has a visible manual action; background waits do not. */
+/**
+ * Whether a demanded interest has stopped making progress for long enough that a spinner is no
+ * longer honest — the Try again belongs here instead (H5). A failure the runtime retries on its
+ * own is recovering, not stuck: only one past its attempt limit, or whose own published retry time
+ * passed by `STALL_GRACE_MS` with nothing since, reads as a stall. One the reducer published
+ * before the runtime stamped its retry (`retryAtMs: null`, retryable) is never already elapsed; one
+ * no retry follows (not retryable) is stuck at once. A hidden document is never stuck: the runtime
+ * pauses recovery in the background on purpose. No timer is started to notice a stall: it is
+ * re-evaluated on whatever re-render the runtime's own publications already cause.
+ */
 export function isInterestBlocked(
   interest: InterestState | undefined,
   nowMs: number,
@@ -119,7 +135,11 @@ export function isInterestBlocked(
   if (interest === undefined || documentHidden) return false;
   switch (interest.status) {
     case "failed":
-      return true;
+      if (interest.retryAtMs === null) return !interest.retryable;
+      return (
+        interest.attempts > DEFAULT_ZEROPS_DATA_POLICY.recoveryAttemptLimit ||
+        nowMs >= interest.retryAtMs + STALL_GRACE_MS
+      );
     case "establishing":
       return interest.deadlineMs > 0 && nowMs >= interest.deadlineMs + STALL_GRACE_MS;
     case "observing":
@@ -479,11 +499,12 @@ export function ZeropsInventoryProvider({
     const blocked = new Map<string, OrganizationRef>();
     /** Each failed or stalled read: its organization, and its project when it is one's. */
     const blockedReads: Array<{ organizationId: string; projectId: string | null }> = [];
-    /** Only an establishing interest owns a read still in flight. */
+    /** An establishing interest, or a failed one its retry has not answered yet: not answered. */
     const pending = new Set<string>();
     for (const { organization, projectId, interest } of demanded) {
       if (interest === undefined) continue;
-      if (interest.status === "establishing") pending.add(organization.organizationId);
+      if (interest.status === "establishing" || interest.status === "failed")
+        pending.add(organization.organizationId);
       if (isInterestBlocked(interest, Date.now(), documentHidden)) {
         blocked.set(organizationKeyOf(organization), organization);
         blockedReads.push({ organizationId: organization.organizationId, projectId });
@@ -497,7 +518,6 @@ export function ZeropsInventoryProvider({
       blockedOrganizations: [...blocked.values()],
       blockedReads,
       pendingOrganizations: pending,
-      reading: demanded.some(({ interest }) => interest?.status === "establishing"),
     };
   }, [
     denied,
@@ -550,20 +570,20 @@ export function ZeropsInventoryProvider({
   // chosen yet. It never covers or freezes the product; it speaks only once it has lasted
   // (`inventoryTroubleVoice`).
   const known = organizationKnowledge({
-    grantFailed:
-      phase.phase === "unverified-failed" ||
-      (phase.phase === "granted" && phase.renewal.status === "failed"),
+    grantFailed: phase.phase === "unverified-failed",
     blocked: projected.blockedOrganizations.map(({ organizationId }) => organizationId),
     // No evidence yet reads nothing at all.
     unread: evidence === null ? organizations.map(({ id }) => id) : projected.unreadOrganizations,
     active: activeOrganization?.id ?? null,
   });
   const trouble = known.trouble;
+  const troubleHeld = useHeldFor(ready && trouble !== null, INVENTORY_TROUBLE_HOLD_MS);
   const voice = inventoryTroubleVoice({
     mounted: ready,
     lapsed: lapse !== null,
     sessionEnded: status !== "signed-in",
     trouble,
+    troubledForMs: troubleHeld ? INVENTORY_TROUBLE_HOLD_MS : 0,
   });
   const shownError = voice?.sentence ?? null;
   const retry = () => {
@@ -586,6 +606,13 @@ export function ZeropsInventoryProvider({
   // The account speaks from one place, the menu's foot: its lapse, which withholds every region
   // meanwhile, or its inventory's lasting trouble — never over the product. This publishes the
   // facts and the actions; the line (`useAccountVoice`) owns what Try now says while it runs.
+  // Answered is the grant held and every read of the organization in view observing again.
+  const unanswered =
+    lapse !== null ||
+    voice !== null ||
+    [...projected.pendingOrganizations].some(
+      (organizationId) => activeOrganization === null || organizationId === activeOrganization.id,
+    );
   // What isn't answering, named under the line's sentence (`troubleSubject`).
   const inView = activeOrganization ?? null;
   const subject =
@@ -619,16 +646,12 @@ export function ZeropsInventoryProvider({
     (): AccountTrouble => ({
       lapse: lapseSentence === null ? null : { sentence: lapseSentence, retry: lapseRetry },
       trouble: voice,
-      running:
-        (phase.phase !== "lapsed" && projected.reading) ||
-        phase.phase === "verifying" ||
-        ((phase.phase === "granted" || phase.phase === "lapsed") &&
-          phase.renewal.status === "running"),
+      unanswered,
       subject,
       retry: retryNow,
       signOut: signOutNow,
     }),
-    [lapseRetry, lapseSentence, retryNow, signOutNow, subject, voice, projected.reading, phase],
+    [lapseRetry, lapseSentence, retryNow, signOutNow, subject, unanswered, voice],
   );
 
   // Each project where the organization's HQ places it (ADR 0002), as last known, with its own
