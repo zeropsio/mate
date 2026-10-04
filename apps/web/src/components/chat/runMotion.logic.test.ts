@@ -6,6 +6,7 @@ import {
   ROOM_TAU_MS,
   SETTLED_PX,
   approach,
+  movesAsPerson,
 } from "./runMotion.logic";
 
 const FRAME_MS = 1000 / 60;
@@ -94,5 +95,56 @@ describe("approach", () => {
 
   it("settles within the half pixel it calls settled", () => {
     expect(SETTLED_PX).toBeLessThanOrEqual(0.5);
+  });
+});
+
+// A run's scroll moves while its own motion runs (its room easing, its glide):
+// such a move is the page's, unless the person just gave an input — or it
+// brings a scroll they had left back onto its foot, as a phone's flick
+// coasting there does, long after its last touch (the review, 2026-10-04).
+describe("movesAsPerson", () => {
+  it.each([
+    {
+      what: "no motion of its own",
+      moving: false,
+      sinceInput: 5000,
+      atFoot: false,
+      follows: true,
+      person: true,
+    },
+    {
+      what: "its motion, no input near",
+      moving: true,
+      sinceInput: 5000,
+      atFoot: false,
+      follows: true,
+      person: false,
+    },
+    {
+      what: "its motion, right after an input",
+      moving: true,
+      sinceInput: 100,
+      atFoot: false,
+      follows: true,
+      person: true,
+    },
+    {
+      what: "its motion, at its foot while following",
+      moving: true,
+      sinceInput: 5000,
+      atFoot: true,
+      follows: true,
+      person: false,
+    },
+    {
+      what: "a flick coasting onto the foot it had left",
+      moving: true,
+      sinceInput: 1500,
+      atFoot: true,
+      follows: false,
+      person: true,
+    },
+  ])("$what: the person's $person", ({ moving, sinceInput, atFoot, follows, person }) => {
+    expect(movesAsPerson({ moving, msSinceInput: sinceInput, atFoot, follows })).toBe(person);
   });
 });

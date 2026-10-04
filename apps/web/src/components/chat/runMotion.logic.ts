@@ -45,3 +45,28 @@ export function approach(current: number, target: number, dtMs: number, tauMs: n
   const next = current + Math.max(-most, Math.min(most, share));
   return Math.abs(target - next) < SETTLED_PX ? target : next;
 }
+
+/** How long after the person's input a move of a run's scroll is still theirs. */
+export const PERSON_INPUT_MS = 500;
+
+/**
+ * Whether a move of a run's scroll is the person's: always, unless its own
+ * motion runs (its room easing, its glide) with no input of theirs near — then
+ * it is that motion's, the browser clamping it — but for a move onto the foot
+ * they had left: a phone's flick coasting there sends no touch, and it is
+ * their way back.
+ */
+export function movesAsPerson({
+  moving,
+  msSinceInput,
+  atFoot,
+  follows,
+}: {
+  readonly moving: boolean;
+  readonly msSinceInput: number;
+  readonly atFoot: boolean;
+  readonly follows: boolean;
+}): boolean {
+  if (!moving || msSinceInput <= PERSON_INPUT_MS) return true;
+  return atFoot && !follows;
+}
