@@ -1328,6 +1328,22 @@
     "expires": "F6"
   },
   {
+    "path": "apps/web/src/components/zerops/projects/OverviewView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> @2xl/flow:ps-[calc(1.75rem+1rem+0.75rem)] in \"flex flex-col gap-3 px-3 pb-3 @2xl/flow:ps-[calc(1.75rem+1rem+0.75rem)]\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/OverviewView.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> after:rounded-[var(--zerops-card-radius)] in \"min-w-0 rounded-sm text-left outline-none after:absolute after:inset-0 after:rounded-[var(--zerops-card-radius)] after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring\"",
+    "owner": "web-intake",
+    "reason": "Zerops surface's own value; its look is the owner's and moves to a theme token or scale step in its own surface round",
+    "expires": "F6"
+  },
+  {
     "path": "apps/web/src/design/detailHarness.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[11px] in \"text-[11px] font-semibold tracking-wide text-muted-foreground uppercase\"",
