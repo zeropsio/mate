@@ -8161,6 +8161,7 @@ export default function ChatView(props: ChatViewProps) {
               return (
                 <AgentsPanel
                   model={agentPanelModel}
+                  activities={threadActivities}
                   environmentId={activeThreadRef.environmentId}
                   threadId={activeThreadRef.threadId}
                 />

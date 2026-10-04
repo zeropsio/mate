@@ -2837,40 +2837,17 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     for (const [index, tool] of context.inFlightTools.entries()) {
-      const toolStamp = yield* makeEventStamp();
-      yield* offerRuntimeEvent({
-        type: "item.completed",
-        eventId: toolStamp.eventId,
-        provider: PROVIDER,
-        createdAt: toolStamp.createdAt,
-        threadId: context.session.threadId,
+      // A helper still at work outlives the Mate's turn, and so do its calls:
+      // the helper's own end closes them (`closeHelperCalls`).
+      if (tool.agentId && context.liveTaskIds.has(tool.agentId)) continue;
+      yield* closeUnreturnedCall(context, tool, {
+        status: status === "completed" ? "completed" : "failed",
         turnId: turnState.turnId,
-        itemId: asRuntimeItemId(tool.itemId),
-        payload: {
-          itemType: tool.itemType,
-          status: status === "completed" ? "completed" : "failed",
-          title: tool.title,
-          ...(tool.detail ? { detail: tool.detail } : {}),
-          data: {
-            toolName: tool.toolName,
-            input: tool.input,
-          },
-          // Mate: its result never came; the turn's end closes it.
-          unreturned: true,
-        },
-        providerRefs: nativeProviderRefs(context, {
-          providerItemId: tool.itemId,
-        }),
-        raw: {
-          source: "claude.sdk.message",
-          method: "claude/result",
-          payload: result ?? { status },
-        },
+        rawMethod: "claude/result",
+        rawPayload: result ?? { status },
       });
       context.inFlightTools.delete(index);
     }
-    // Clear any remaining stale entries (e.g. from interrupted content blocks)
-    context.inFlightTools.clear();
 
     for (const block of turnState.assistantTextBlockOrder) {
       yield* completeAssistantTextBlock(context, block, {
@@ -3246,6 +3223,144 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
   });
 
+  /** Mate: a call whose result never came; what ended around it closes it. */
+  const closeUnreturnedCall = Effect.fn("closeUnreturnedCall")(function* (
+    context: ClaudeSessionContext,
+    tool: ToolInFlight,
+    options: {
+      readonly status: "completed" | "failed";
+      readonly turnId: TurnId | undefined;
+      readonly rawMethod: string;
+      readonly rawPayload: unknown;
+    },
+  ) {
+    const toolStamp = yield* makeEventStamp();
+    yield* offerRuntimeEvent({
+      type: "item.completed",
+      eventId: toolStamp.eventId,
+      provider: PROVIDER,
+      createdAt: toolStamp.createdAt,
+      threadId: context.session.threadId,
+      ...(options.turnId ? { turnId: asCanonicalTurnId(options.turnId) } : {}),
+      itemId: asRuntimeItemId(tool.itemId),
+      payload: {
+        itemType: tool.itemType,
+        status: options.status,
+        title: tool.title,
+        ...(tool.detail ? { detail: tool.detail } : {}),
+        ...(tool.agentId ? { agentId: tool.agentId } : {}),
+        ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
+        data: {
+          toolName: tool.toolName,
+          input: tool.input,
+        },
+        unreturned: true,
+      },
+      providerRefs: nativeProviderRefs(context, {
+        providerItemId: tool.itemId,
+      }),
+      raw: {
+        source: "claude.sdk.message",
+        method: options.rawMethod,
+        payload: options.rawPayload,
+      },
+    });
+  });
+
+  /** A helper that ended closes the calls it never saw return. */
+  const closeHelperCalls = Effect.fn("closeHelperCalls")(function* (
+    context: ClaudeSessionContext,
+    taskId: string,
+    status: "completed" | "failed",
+    rawPayload: unknown,
+  ) {
+    for (const [index, tool] of context.inFlightTools.entries()) {
+      if (tool.agentId !== taskId) continue;
+      yield* closeUnreturnedCall(context, tool, {
+        status,
+        turnId: context.turnState?.turnId,
+        rawMethod: "claude/system/task_notification",
+        rawPayload,
+      });
+      context.inFlightTools.delete(index);
+    }
+  });
+
+  /**
+   * A helper's calls, from its snapshot: the SDK streams no events for a
+   * helper's response, so its snapshot is the first sight of each call. Each
+   * starts as a step of the helper that made it (the owner of its parent
+   * call), and its result completes it (`handleUserMessage`). A call its
+   * stream already started is left alone.
+   */
+  const startHelperCalls = Effect.fn("startHelperCalls")(function* (
+    context: ClaudeSessionContext,
+    message: Extract<SDKMessage, { type: "assistant" }>,
+    parentToolUseId: string,
+  ) {
+    const content = (message.message as { content?: unknown }).content;
+    if (!Array.isArray(content)) return;
+    for (const entry of content) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const block = entry as { type?: unknown; id?: unknown; name?: unknown; input?: unknown };
+      if (
+        block.type !== "tool_use" &&
+        block.type !== "server_tool_use" &&
+        block.type !== "mcp_tool_use"
+      ) {
+        continue;
+      }
+      if (typeof block.id !== "string" || typeof block.name !== "string") continue;
+      const itemId = block.id;
+      if (Array.from(context.inFlightTools.values()).some((tool) => tool.itemId === itemId)) {
+        continue;
+      }
+      const toolInput =
+        typeof block.input === "object" && block.input !== null
+          ? (block.input as Record<string, unknown>)
+          : {};
+      const itemType = classifyToolItemType(block.name, toolInput);
+      const owningAgentId = agentIdForParentToolUse(context.taskAgents, parentToolUseId);
+      const tool: ToolInFlight = {
+        itemId,
+        itemType,
+        toolName: block.name,
+        title: titleForTool(itemType),
+        detail: summarizeToolRequest(block.name, toolInput),
+        input: toolInput,
+        partialInputJson: "",
+        ...(owningAgentId ? { agentId: owningAgentId } : {}),
+        parentToolUseId,
+      };
+      context.inFlightTools.set(`${parentToolUseId}#${itemId}`, tool);
+      const stamp = yield* makeEventStamp();
+      yield* offerRuntimeEvent({
+        type: "item.started",
+        eventId: stamp.eventId,
+        provider: PROVIDER,
+        createdAt: stamp.createdAt,
+        threadId: context.session.threadId,
+        ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+        itemId: asRuntimeItemId(itemId),
+        payload: {
+          itemType,
+          status: "inProgress",
+          title: tool.title,
+          ...(tool.detail ? { detail: tool.detail } : {}),
+          ...(owningAgentId ? { agentId: owningAgentId } : {}),
+          parentToolUseId,
+          data: { toolName: block.name, input: toolInput },
+        },
+        providerRefs: nativeProviderRefs(context, { providerItemId: itemId }),
+        raw: {
+          source: "claude.sdk.message",
+          method: "claude/assistant",
+          payload: message,
+        },
+      });
+    }
+  });
+
   const handleUserMessage = Effect.fn("handleUserMessage")(function* (
     context: ClaudeSessionContext,
     message: SDKMessage,
@@ -3275,33 +3390,35 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         result: toolResult.block,
       };
 
-      const updatedStamp = yield* makeEventStamp();
-      yield* offerRuntimeEvent({
-        type: "item.updated",
-        eventId: updatedStamp.eventId,
-        provider: PROVIDER,
-        createdAt: updatedStamp.createdAt,
-        threadId: context.session.threadId,
-        ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
-        itemId: asRuntimeItemId(tool.itemId),
-        payload: {
-          itemType: tool.itemType,
-          status: toolResult.isError ? "failed" : "inProgress",
-          title: tool.title,
-          ...(tool.detail ? { detail: tool.detail } : {}),
-          ...(tool.agentId ? { agentId: tool.agentId } : {}),
-          ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
-          data: toolData,
-        },
-        providerRefs: nativeProviderRefs(context, {
-          providerItemId: tool.itemId,
-        }),
-        raw: {
-          source: "claude.sdk.message",
-          method: "claude/user",
-          payload: message,
-        },
-      });
+      // A helper's call has its result in its completion: no update row of its own.
+      if (!tool.agentId) {
+        const updatedStamp = yield* makeEventStamp();
+        yield* offerRuntimeEvent({
+          type: "item.updated",
+          eventId: updatedStamp.eventId,
+          provider: PROVIDER,
+          createdAt: updatedStamp.createdAt,
+          threadId: context.session.threadId,
+          ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
+          itemId: asRuntimeItemId(tool.itemId),
+          payload: {
+            itemType: tool.itemType,
+            status: toolResult.isError ? "failed" : "inProgress",
+            title: tool.title,
+            ...(tool.detail ? { detail: tool.detail } : {}),
+            ...(tool.parentToolUseId ? { parentToolUseId: tool.parentToolUseId } : {}),
+            data: toolData,
+          },
+          providerRefs: nativeProviderRefs(context, {
+            providerItemId: tool.itemId,
+          }),
+          raw: {
+            source: "claude.sdk.message",
+            method: "claude/user",
+            payload: message,
+          },
+        });
+      }
 
       const streamKind = toolResultStreamKind(tool.itemType);
       if (streamKind && toolResult.text.length > 0 && context.turnState) {
@@ -3442,6 +3559,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           );
         }
       }
+      yield* startHelperCalls(context, message, assistantParentToolUseId);
       context.lastAssistantUuid = message.uuid;
       yield* updateResumeCursor(context);
       return;
@@ -3889,6 +4007,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             ...(effort ? { effort } : {}),
             ...(message.tool_use_id ? { toolUseId: message.tool_use_id } : {}),
             ...(message.workflow_name ? { workflowName: message.workflow_name } : {}),
+            ...(trimmedString(message.prompt) ? { prompt: trimmedString(message.prompt) } : {}),
           },
         });
         return;
@@ -3961,6 +4080,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       }
       case "task_notification": {
         context.liveTaskIds.delete(message.task_id);
+        yield* closeHelperCalls(
+          context,
+          message.task_id,
+          message.status === "completed" ? "completed" : "failed",
+          message,
+        );
         yield* emitThreadTokenUsage(
           context,
           normalizeClaudeTaskProgressTokenUsage(message.usage, context),

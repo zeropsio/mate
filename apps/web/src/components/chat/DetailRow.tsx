@@ -1,7 +1,8 @@
 /**
  * A row of a list under a status bar — a helper, a background task, a
- * service a stand-up builds: its state's dot, its name, its state in a word,
- * and its time.
+ * service a stand-up builds: its state's dot, its name, its state in a word
+ * (a helper at work: what it does now), and its time. A helper's row opens
+ * its own card.
  */
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
@@ -34,6 +35,7 @@ export function DetailRow({
   word,
   time,
   long = "title",
+  onOpen,
 }: {
   readonly tone: ServiceStatusToneId;
   readonly title: string;
@@ -44,9 +46,11 @@ export function DetailRow({
    * title, or — a failed service — the reason its word says.
    */
   readonly long?: "title" | "word";
+  /** It opens onto its own work elsewhere (a helper's card): the row is its button. */
+  readonly onOpen?: (() => void) | undefined;
 }) {
-  return (
-    <li className="run-bar">
+  const cells = (
+    <>
       <span className="flex justify-center">
         <span className={cn("size-1.5 rounded-full", TONE_DOT[tone])} />
       </span>
@@ -68,6 +72,20 @@ export function DetailRow({
         )}
       </span>
       <span className="text-muted-foreground tabular-nums">{time}</span>
+    </>
+  );
+  return onOpen === undefined ? (
+    <li className="run-bar">{cells}</li>
+  ) : (
+    <li>
+      <button
+        aria-label={`${title}: ${word}. Open its work`}
+        className="run-bar cursor-pointer transition-colors hover:bg-foreground/4"
+        onClick={onOpen}
+        type="button"
+      >
+        {cells}
+      </button>
     </li>
   );
 }

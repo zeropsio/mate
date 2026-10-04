@@ -1,14 +1,13 @@
 /**
- * Agents right-panel surface: the fleet view over the native subagent fold.
- * The chat carries one expandable row per spawn batch and links here.
+ * The helpers panel: a map of the Mate's helpers and theirs — each with its
+ * state, its clock and what it does now — where a helper's row opens its own
+ * card (`HelperCard`): its task, its run as the Mate's run card draws one,
+ * and its report whole. A workflow keeps its phases.
  *
- * Visualization rules (from live-test feedback):
- * - Spawn order is stable. Activity and completion update rows in place.
- * - Agent rows reserve three fixed lines for identity, activity, and metrics;
- *   changing data must never change their height.
- * - Workflow expansion is presentation state. A live run stays expanded when
- *   it settles; older collapsed runs can still be opened at run granularity.
- * - Static status dots, DOM-write elapsed timers, plain token counters.
+ * - Spawn order is stable; activity and completion update rows in place.
+ * - A row's name and its line wrap, never cut; its clock keeps the panel's
+ *   gutter. The model and the tokens stay, quiet, under it.
+ * - Live clocks tick by DOM writes, not commits.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type {
@@ -16,15 +15,35 @@ import type {
   AgentPanelWorkflowGroup,
   RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
+import { formatSubagentTokenCount } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
-  formatSubagentModelLabel,
-  formatSubagentTokenCount,
+  isActiveSubagentStatus,
+  isTerminalSubagentStatus,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { Bot, Braces, Check, ChevronDown, ChevronRight, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import type {
+  EnvironmentId,
+  OrchestrationThreadActivity,
+  ScopedThreadRef,
+  ThreadId,
+} from "@t3tools/contracts";
+import { Bot, Braces, Check, ChevronDown, ChevronRight, Minus, X } from "lucide-react";
+import {
+  createContext,
+  use,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 
 import { cn } from "~/lib/utils";
+import { MateMark } from "~/components/MateMark";
+import { HelperCard, HelperClock, helperCostWords } from "~/components/chat/HelperCard";
+import { useHelperFocus } from "~/components/chat/helperFocus";
+import { helperMap, helperNowWords, helperReportLine } from "~/components/chat/helpers.logic";
+import { useKnownMate } from "~/zerops/useZeropsMates";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
@@ -79,115 +98,123 @@ function elapsedBetween(startedAt: string, endIso: string | null): string {
   return formatElapsedSeconds((end - start) / 1000);
 }
 
-/**
- * Elapsed time for the current activation. Live agents self-tick via DOM
- * writes (zero React commits per tick); settled agents freeze at completedAt.
- */
-function AgentElapsed({ agent }: { agent: RuntimeSubagent }) {
-  const textRef = useRef<HTMLSpanElement>(null);
-  const live = agent.status === "running" || agent.status === "waiting";
-  const startedAt = agent.startedAt;
-
-  useEffect(() => {
-    if (!live || !startedAt) {
-      return;
-    }
-    const update = () => {
-      if (textRef.current) {
-        textRef.current.textContent = elapsedBetween(startedAt, null);
-      }
-    };
-    update();
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
-  }, [live, startedAt]);
-
-  if (!startedAt) {
-    return null;
+/** Its state at a glance, where its name starts: no word says it again. */
+function HelperMark({ status }: { status: RuntimeSubagent["status"] }) {
+  if (status === "completed") {
+    return <Check aria-hidden className="size-3.5 text-status-ok-text" strokeWidth={2.5} />;
+  }
+  if (status === "failed") {
+    return <X aria-hidden className="size-3.5 text-status-failed-text" strokeWidth={2.5} />;
+  }
+  if (status === "cancelled" || status === "interrupted") {
+    return <Minus aria-hidden className="size-3.5 text-muted-foreground" strokeWidth={2.5} />;
   }
   return (
-    <span ref={textRef} className="tabular-nums">
-      {elapsedBetween(startedAt, live ? null : agent.completedAt)}
-    </span>
+    <span
+      aria-hidden
+      className={cn(
+        "size-2 rounded-full",
+        status === "waiting"
+          ? "bg-status-attention"
+          : status === "idle"
+            ? "bg-muted-foreground/50"
+            : "bg-status-busy",
+      )}
+    />
   );
 }
 
+const STATE_WORDS: Record<RuntimeSubagent["status"], string> = {
+  pending: "Starting",
+  running: "Working",
+  waiting: "Waiting for you",
+  idle: "Idle",
+  completed: "Done",
+  failed: "Failed",
+  cancelled: "Stopped",
+  interrupted: "Stopped",
+};
+
 /**
- * Status-dependent activity line. Live rows lead with what is happening now;
- * settled rows lead with the outcome. Errors are the only inline previews on
- * failed rows because they explain a red row at a glance.
+ * Its line under its name: live, what it does now; settled, its report's
+ * first line, or why it failed. Waiting says so, as nothing else does.
  */
-function agentActivityText(agent: RuntimeSubagent): string | null {
-  const live =
-    agent.status === "running" || agent.status === "pending" || agent.status === "waiting";
-  if (live) {
-    return (
-      agent.progress ??
-      (agent.lastToolName ? `▸ ${agent.lastToolName}` : null) ??
-      agent.result ??
-      agent.error
-    );
+function helperLine(agent: RuntimeSubagent): string | null {
+  if (agent.status === "waiting") return "Waits for you";
+  if (isActiveSubagentStatus(agent.status)) {
+    return helperNowWords(agent) ?? agent.prompt?.split("\n")[0] ?? null;
   }
-  return (
-    agent.error ??
-    agent.result ??
-    agent.progress ??
-    (agent.lastToolName ? `▸ ${agent.lastToolName}` : null)
-  );
+  return helperReportLine(agent);
 }
 
-/** Flat, non-interactive agent status line. No unfold. */
-function AgentRow({ agent }: { agent: RuntimeSubagent }) {
-  const visuals = STATUS_VISUALS[agent.status];
-  const statusLabel =
-    agent.kind === "subagent_batch" && agent.status === "idle" ? "Idle" : visuals.label;
-  const activity = agentActivityText(agent);
-  const modelLabel = formatSubagentModelLabel(agent.model, agent.effort);
-  const role =
-    agent.role?.trim().toLocaleLowerCase() === agent.title.trim().toLocaleLowerCase()
-      ? null
-      : agent.role;
-  const metadata = [
-    modelLabel,
-    agent.usage ? `${formatSubagentTokenCount(agent.usage.totalTokens)} tok` : "— tok",
-    agent.usage?.toolUses !== undefined ? `${agent.usage.toolUses} tools` : null,
-    agent.activationCount > 1 ? `run ${agent.activationCount}` : null,
-  ].filter((value): value is string => value !== null);
+/**
+ * One helper on the map: its mark, its name, its clock at the right edge;
+ * what it does now (or what it came to) under its name; what it ran on and
+ * cost, quiet. Pressed, its own card opens under it.
+ */
+interface MapState {
+  readonly openId: string | null;
+  readonly onToggle: (id: string) => void;
+  readonly activities: ReadonlyArray<OrchestrationThreadActivity>;
+  readonly threadRef: ScopedThreadRef | null;
+}
 
+const MapCtx = createContext<MapState>({
+  openId: null,
+  onToggle: () => undefined,
+  activities: [],
+  threadRef: null,
+});
+
+function HelperRow({ agent, depth = 0 }: { agent: RuntimeSubagent; depth?: number }) {
+  const { openId, onToggle, activities, threadRef } = use(MapCtx);
+  const open = openId === agent.id;
+  const line = helperLine(agent);
+  const cost = helperCostWords(agent);
+  const rowRef = useRef<HTMLLIElement>(null);
   return (
-    <div className="grid h-[3.875rem] grid-cols-[0.375rem_minmax(0,1fr)_auto] grid-rows-[1.25rem_1.125rem_1rem] items-center gap-x-2 rounded-md px-1.5 py-1">
-      <span className="col-start-1 row-start-1 flex items-center">
-        <StatusDot status={agent.status} />
-      </span>
-      <span className="col-start-2 row-start-1 flex min-w-0 items-baseline gap-2">
-        <span className="min-w-0 truncate text-sm font-medium">{agent.title}</span>
-        {role ? (
-          <span className="max-w-28 shrink-0 truncate rounded-sm border border-border/60 px-1 font-mono text-3xs text-muted-foreground">
-            {role}
+    <li
+      ref={rowRef}
+      className="helper-row"
+      data-helper-row={agent.id}
+      data-nested={depth > 0 ? "" : undefined}
+      data-open={open ? "" : undefined}
+      style={{ "--helper-depth": depth } as CSSProperties}
+    >
+      <button
+        aria-expanded={threadRef === null ? undefined : open}
+        className="helper-row-head"
+        disabled={threadRef === null}
+        onClick={() => onToggle(agent.id)}
+        type="button"
+      >
+        <span className="helper-row-mark">
+          <HelperMark status={agent.status} />
+        </span>
+        <span className="helper-row-name">{agent.title}</span>
+        <span className="helper-row-clock">
+          <HelperClock helper={agent} />
+        </span>
+        {line !== null ? (
+          <span
+            className={cn(
+              "helper-row-line",
+              agent.status === "failed" && "text-status-failed-text",
+              agent.status === "waiting" && "text-status-attention-text",
+            )}
+          >
+            {line}
           </span>
         ) : null}
-      </span>
-      <span className="col-start-3 row-start-1 min-w-14 text-right font-mono text-2xs text-muted-foreground/80">
-        <span className="inline-flex items-center gap-1">
-          <AgentElapsed agent={agent} />
-          {agent.status === "completed" ? (
-            <Check aria-hidden className="size-3 text-success" />
-          ) : null}
-        </span>
-      </span>
-      <span
-        className={cn(
-          "col-start-2 col-end-4 row-start-2 block truncate text-xs",
-          agent.status === "failed" ? "text-destructive-foreground" : "text-muted-foreground",
-        )}
-      >
-        {activity ?? statusLabel}
-      </span>
-      <span className="col-start-2 col-end-4 row-start-3 truncate font-mono text-2xs tabular-nums text-muted-foreground/70">
-        {metadata.join(" · ")}
-      </span>
-      <span className="sr-only">{statusLabel}</span>
-    </div>
+        {cost !== null ? <span className="helper-row-cost">{cost}</span> : null}
+        <span className="sr-only">{STATE_WORDS[agent.status]}</span>
+      </button>
+      {open && threadRef !== null ? (
+        <div className="helper-row-card">
+          <HelperCard activities={activities} helper={agent} threadRef={threadRef} />
+        </div>
+      ) : null}
+    </li>
   );
 }
 
@@ -369,7 +396,13 @@ function PhaseSection({
           </span>
         ) : null}
       </button>
-      {open ? phase.members.map((member) => <AgentRow key={member.id} agent={member} />) : null}
+      {open ? (
+        <ul className="helper-map">
+          {phase.members.map((member) => (
+            <HelperRow key={member.id} agent={member} />
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -441,11 +474,16 @@ function ExpandedWorkflowSection({
       {group.phases.map((phase) => (
         <PhaseSection key={phase.index} phase={phase} defaultOpen={!workflowIsLive(group)} />
       ))}
-      {group.unphasedMembers.map((member) => (
-        <AgentRow key={member.id} agent={member} />
-      ))}
-      {group.phases.length === 0 && group.unphasedMembers.length === 0 ? (
-        <AgentRow agent={group.workflow} />
+      {group.unphasedMembers.length > 0 ||
+      (group.phases.length === 0 && group.unphasedMembers.length === 0) ? (
+        <ul className="helper-map">
+          {group.unphasedMembers.map((member) => (
+            <HelperRow key={member.id} agent={member} />
+          ))}
+          {group.phases.length === 0 && group.unphasedMembers.length === 0 ? (
+            <HelperRow agent={group.workflow} />
+          ) : null}
+        </ul>
       ) : null}
     </section>
   );
@@ -521,64 +559,175 @@ function WorkflowSection({
   );
 }
 
+/**
+ * The Mate at the top of its map: its face and name, and how many of its
+ * helpers work now and how many are done.
+ */
+function MateRoot({
+  environmentId,
+  model,
+}: {
+  environmentId: EnvironmentId | null;
+  model: AgentPanelModel;
+}) {
+  const mate = useKnownMate(environmentId ?? ("" as EnvironmentId));
+  const counts = [
+    model.liveCount > 0 ? `${model.liveCount} working` : null,
+    model.idleCount > 0 ? `${model.idleCount} idle` : null,
+    model.settledCount > 0 ? `${model.settledCount} done` : null,
+  ].filter((part): part is string => part !== null);
+  return (
+    <div className="helper-map-root">
+      <MateMark className="size-4 shrink-0" tint={mate?.tint} />
+      <span className="font-medium text-foreground">{mate?.name ?? "The Mate"}</span>
+      <span className="text-muted-foreground tabular-nums">{counts.join(" · ")}</span>
+    </div>
+  );
+}
+
+/**
+ * Helpers an earlier run finished, folded once newer ones work: the map
+ * opens on what runs now, and keeps the rest a press away.
+ */
+function splitEarlier(roots: ReadonlyArray<RuntimeSubagent>): {
+  earlier: ReadonlyArray<RuntimeSubagent>;
+  now: ReadonlyArray<RuntimeSubagent>;
+} {
+  const live = roots.filter((agent) => !isTerminalSubagentStatus(agent.status));
+  if (live.length === 0) return { earlier: [], now: roots };
+  const since = Math.min(...live.map((agent) => Date.parse(agent.startedAt ?? agent.firstSeenAt)));
+  const earlier = roots.filter(
+    (agent) =>
+      isTerminalSubagentStatus(agent.status) &&
+      agent.completedAt !== null &&
+      Date.parse(agent.completedAt) < since,
+  );
+  return earlier.length < 2
+    ? { earlier: [], now: roots }
+    : { earlier, now: roots.filter((agent) => !earlier.includes(agent)) };
+}
+
+function HelperTree({ agents }: { agents: ReadonlyArray<RuntimeSubagent> }) {
+  const rows = useMemo(() => helperMap(agents), [agents]);
+  const roots = useMemo(
+    () => rows.filter((row) => row.depth === 0).map((row) => row.helper),
+    [rows],
+  );
+  const { earlier } = splitEarlier(roots);
+  const [showEarlier, setShowEarlier] = useState(false);
+  // A row under an earlier root folds with it.
+  const hidden = new Set<string>();
+  if (!showEarlier) {
+    let hiding = false;
+    for (const row of rows) {
+      if (row.depth === 0) hiding = earlier.includes(row.helper);
+      if (hiding) hidden.add(row.helper.id);
+    }
+  }
+  return (
+    <>
+      {earlier.length > 0 ? (
+        <button
+          aria-expanded={showEarlier}
+          className="helper-map-earlier"
+          onClick={() => setShowEarlier((value) => !value)}
+          type="button"
+        >
+          {showEarlier ? (
+            <ChevronDown aria-hidden className="size-3.5" />
+          ) : (
+            <ChevronRight aria-hidden className="size-3.5" />
+          )}
+          {`${earlier.length} earlier, done`}
+        </button>
+      ) : null}
+      <ul className="helper-map">
+        {rows.map((row) =>
+          hidden.has(row.helper.id) ? null : (
+            <HelperRow key={row.helper.id} agent={row.helper} depth={row.depth} />
+          ),
+        )}
+      </ul>
+    </>
+  );
+}
+
+const NO_ACTIVITIES: ReadonlyArray<OrchestrationThreadActivity> = [];
+
 export function AgentsPanel({
   model,
+  activities = NO_ACTIVITIES,
   environmentId = null,
   threadId = null,
 }: {
   model: AgentPanelModel;
+  /** The thread's activities: each helper's steps are read off them. */
+  activities?: ReadonlyArray<OrchestrationThreadActivity>;
   environmentId?: EnvironmentId | null;
   threadId?: ThreadId | null;
 }) {
+  const threadRef = useMemo<ScopedThreadRef | null>(
+    () => (environmentId !== null && threadId !== null ? { environmentId, threadId } : null),
+    [environmentId, threadId],
+  );
+  const threadKey = threadRef === null ? null : scopedThreadKey(threadRef);
+  // What the person opened here, and when: a helper asked for from the run
+  // card since then opens instead.
+  const [opened, setOpened] = useState<{ id: string | null; at: number }>({ id: null, at: 0 });
+  const focus = useHelperFocus(threadKey);
+  const openId = focus !== null && focus.at > opened.at ? focus.helperId : opened.id;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // A helper asked for from the run card comes into view.
+  useEffect(() => {
+    if (focus === null) return;
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current
+        ?.querySelector(`[data-helper-row="${CSS.escape(focus.helperId)}"]`)
+        ?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focus]);
+  const map = useMemo<MapState>(
+    () => ({
+      openId,
+      onToggle: (id) => setOpened({ id: openId === id ? null : id, at: focus?.at ?? 0 }),
+      activities,
+      threadRef,
+    }),
+    [openId, focus?.at, activities, threadRef],
+  );
+
   if (!model.hasAgents) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
         <Bot aria-hidden className="size-6 text-muted-foreground/60" />
-        <p className="text-sm font-medium">No agents yet</p>
+        <p className="text-sm font-medium">No helpers yet</p>
         <p className="max-w-56 text-xs text-muted-foreground">
-          When this thread spawns subagents or runs a workflow, they show up here with live status,
-          activity, and token usage.
+          When the Mate starts helpers, each shows here with what it does now, and opens onto its
+          own work.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-2 p-2">
-          {model.workflows.map((group) => (
-            <WorkflowSection
-              key={group.workflow.id}
-              group={group}
-              environmentId={environmentId}
-              threadId={threadId}
-            />
-          ))}
-          {model.directAgents.length > 0 ? (
-            <section>
-              <div className="px-1.5 pt-1 text-3xs font-medium uppercase tracking-wider text-muted-foreground">
-                Direct spawns
-              </div>
-              {model.directAgents.map((agent) => (
-                <AgentRow key={agent.id} agent={agent} />
-              ))}
-            </section>
-          ) : null}
-        </div>
-      </ScrollArea>
-      <footer className="flex items-center justify-between border-t border-border/60 px-3 py-1.5 font-mono text-2xs text-muted-foreground">
-        <span className="flex items-center gap-2">
-          {model.runningCount + model.waitingCount > 0 ? (
-            <span className="text-info-foreground">
-              ● {model.runningCount + model.waitingCount} working
-            </span>
-          ) : null}
-          {model.idleCount > 0 ? <span>{model.idleCount} idle</span> : null}
-          {model.settledCount > 0 ? <span>{model.settledCount} settled</span> : null}
-        </span>
-        <span className="tabular-nums">Σ {formatSubagentTokenCount(model.totalTokens)} tok</span>
-      </footer>
-    </div>
+    <MapCtx value={map}>
+      <div className="flex h-full min-h-0 flex-col">
+        <ScrollArea className="min-h-0 flex-1">
+          <div ref={scrollRef} className="helper-panel">
+            <MateRoot environmentId={environmentId} model={model} />
+            {model.workflows.map((group) => (
+              <WorkflowSection
+                key={group.workflow.id}
+                group={group}
+                environmentId={environmentId}
+                threadId={threadId}
+              />
+            ))}
+            {model.directAgents.length > 0 ? <HelperTree agents={model.directAgents} /> : null}
+          </div>
+        </ScrollArea>
+      </div>
+    </MapCtx>
   );
 }

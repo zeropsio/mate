@@ -4525,6 +4525,148 @@ button.run-bar:focus-visible {
   padding: 15px;
 }
 
+/* p39/helpers — the helpers map (the Agents panel) and a helper's own card.
+   A row: its mark in a 16 px column, its name wrapping beside it, its clock
+   at the right edge inside the panel's gutter; what it does now (or what it
+   came to) under its name, two lines at most; what it ran on and cost,
+   quiet. A helper a helper started hangs 20 px in, on a hairline from its
+   parent. Opened, its card stands under it on its name's edge. */
+.helper-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px 24px;
+}
+.helper-map-root {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-inline: 8px;
+  font-size: var(--text-line);
+  line-height: var(--text-line--line-height);
+}
+.helper-map {
+  display: grid;
+  gap: 2px;
+}
+.helper-row {
+  position: relative;
+  min-width: 0;
+  padding-inline-start: calc(var(--helper-depth, 0) * 20px);
+}
+.helper-row[data-nested]::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: calc(var(--helper-depth, 0) * 20px - 8px);
+  width: 1px;
+  background: var(--run-tray-ring);
+}
+.helper-row-head {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  row-gap: 2px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+.helper-row-head:disabled {
+  cursor: default;
+}
+.helper-row-head:not(:disabled):hover,
+.helper-row[data-open] > .helper-row-head {
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+.helper-row-head:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
+  outline-offset: -2px;
+}
+.helper-row-mark {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+}
+.helper-row-name {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  font-size: var(--text-line);
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+.helper-row-clock {
+  grid-column: 3;
+  grid-row: 1;
+  font-size: var(--text-line);
+  line-height: 20px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.helper-row-line {
+  grid-column: 2 / 4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: var(--text-line);
+  line-height: var(--text-line--line-height);
+  color: color-mix(in oklab, var(--foreground) 72%, transparent);
+  overflow-wrap: anywhere;
+}
+.helper-row-cost {
+  grid-column: 2 / 4;
+  font-size: var(--text-2xs);
+  line-height: var(--text-2xs--line-height);
+  color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+.helper-row-card {
+  padding: 8px 8px 16px 32px;
+}
+.helper-map-earlier {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: var(--text-line);
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.helper-map-earlier:hover {
+  color: var(--foreground);
+}
+.helper-card {
+  min-width: 0;
+}
+.helper-card-heading {
+  font-size: var(--text-2xs);
+  line-height: var(--text-2xs--line-height);
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.helper-card-run {
+  min-width: 0;
+}
+/* Opened, its card says what it does now and its clock: the row keeps its
+   name and what it cost. */
+.helper-row[data-open] > .helper-row-head > .helper-row-clock {
+  visibility: hidden;
+}
+.helper-row[data-open] > .helper-row-head > .helper-row-line {
+  display: none;
+}
+
 /* The run's one scroll (the owner, 2026-09-29: "open with scroll and all
    events"): everything the run said and did, the newest at its foot, as tall
    as a run's usual stretch before it scrolls. Its lines' outlines are drawn

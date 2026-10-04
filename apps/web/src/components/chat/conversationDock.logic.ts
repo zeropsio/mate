@@ -19,6 +19,7 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ActivePlanState, TimelineEntry } from "../../session-logic";
 import { readUsageLimitNotice, splitBatchDeploy } from "./conversation.logic";
+import { helperNowWords, helperSpan } from "./helpers.logic";
 
 /** Operations that run long enough to watch: a pipeline, a multi-step setup, a stand-up's builds. */
 export const DOCKED_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
@@ -325,6 +326,15 @@ function helperTitle(agent: RuntimeSubagent): string {
   return agent.role ? `A ${agent.role.replace(/[-_]/g, " ")} helper` : "A helper";
 }
 
+function spanStart(agent: RuntimeSubagent): string {
+  const { since, ranMs } = helperSpan(agent);
+  if (since !== null) return since;
+  if (agent.completedAt !== null && ranMs !== null) {
+    return new Date(Date.parse(agent.completedAt) - ranMs).toISOString();
+  }
+  return agent.startedAt ?? agent.firstSeenAt;
+}
+
 /**
  * The helpers of the turn running now, flattened: the direct ones and each
  * workflow's members — those it started, and any from before still working.
@@ -348,8 +358,10 @@ export function dockHelpers(
       id: agent.id,
       title: helperTitle(agent),
       tone: state.tone,
-      word: state.word,
-      startedAt: agent.startedAt ?? agent.firstSeenAt,
+      // Working, it says what it does now (`helperNowWords`); settled, how it ended.
+      word: helperNowWords(agent) ?? state.word,
+      // Its clock by its driver's own count where it keeps one (`helperSpan`).
+      startedAt: spanStart(agent),
       endedAt: agent.completedAt,
     };
   });
