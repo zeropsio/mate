@@ -4307,6 +4307,11 @@ code {
 .run-now-worked {
   color: color-mix(in oklab, var(--color-foreground) 76%, transparent);
 }
+/* p39/content: the worked line says what the run came to whole — narrow, it
+   wraps rather than cut ("Dara worked 18s · 1 file e…" on a phone). */
+.run-now[data-run-now="worked"] .run-now-head {
+  white-space: normal;
+}
 .run-now-effort {
   color: var(--color-muted-foreground);
 }
