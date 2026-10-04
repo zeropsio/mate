@@ -30,6 +30,7 @@
  *
  * @module groupReach
  */
+import { mateKeyReach } from "@t3tools/shared/mateKeyReach";
 
 /** The platform's project roles, as its own validation error enumerates them. */
 export type ZeropsProjectRole = "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY" | "NO_ACCESS";
@@ -57,16 +58,6 @@ const MATE_KEY_NAME_PREFIXES: ReadonlyArray<string> = ["zcp-", "zerops-zcp-"];
  * Mate that can promote itself.
  */
 export const MATE_SELF_PROJECT_ROLE = "BASIC_USER" satisfies ZeropsProjectRole;
-
-/**
- * The roles a Mate's own token may hold on its project: the one the platform
- * mints it with, and the one 0.2 lowers it to. Both, or the search would lose
- * every Mate at the moment it was secured.
- */
-const MATE_SELF_GRANT_ROLES: ReadonlySet<ZeropsProjectRole> = new Set<ZeropsProjectRole>([
-  "ADMIN",
-  MATE_SELF_PROJECT_ROLE,
-]);
 
 export interface ZeropsProjectGrant {
   readonly projectId: string;
@@ -111,14 +102,9 @@ export interface ZeropsTokenDelegation {
  * id once the Mate enrolled it with HQ, and by this rule only until then.
  */
 function isMateKeyOf(token: ZeropsIntegrationToken, projectId: string): boolean {
-  const grants = token.projects ?? [];
-  const [grant] = grants;
   return (
     MATE_KEY_NAME_PREFIXES.some((prefix) => token.name.startsWith(prefix)) &&
-    grants.length === 1 &&
-    grant !== undefined &&
-    grant.projectId === projectId &&
-    MATE_SELF_GRANT_ROLES.has(grant.roleCode)
+    mateKeyReach(token.projects ?? [], projectId) === "own"
   );
 }
 
@@ -170,18 +156,12 @@ export function findWiderMateKey(
 ): ZeropsIntegrationToken | undefined {
   const container = containerCreated === undefined ? Number.NaN : Date.parse(containerCreated);
   return newestFirst(
-    tokens.filter((token) => {
-      const grants = token.projects ?? [];
-      return (
+    tokens.filter(
+      (token) =>
         MATE_KEY_NAME_PREFIXES.some((prefix) => token.name.startsWith(prefix)) &&
-        grants.length > 1 &&
-        grants.some(
-          (grant) => grant.projectId === projectId && MATE_SELF_GRANT_ROLES.has(grant.roleCode),
-        ) &&
-        grants.every((grant) => grant.projectId === projectId || grant.roleCode === "READ_ONLY") &&
-        madeBefore(token, container)
-      );
-    }),
+        mateKeyReach(token.projects ?? [], projectId) === "wider" &&
+        madeBefore(token, container),
+    ),
   )[0];
 }
 
@@ -213,8 +193,9 @@ const PRESS_KEY_NAME_PREFIX = "zcp-";
 
 /**
  * The key a press reuses where no container holds one yet: the newest of the keys a press mints,
- * by the name it gives them, writing this project at a Mate's own role — whatever else an earlier
- * client let it reach, so a press never mints a second key beside one it made.
+ * by the name it gives them, that is a Mate's key (`mateKeyReach`) — its own project alone, or
+ * READ_ONLY siblings an earlier client gave it, which its reuse takes off. A key that holds more
+ * elsewhere is never reused, and so never stripped: the press mints a new one (security review 7).
  */
 export function newestMateKey(
   tokens: ReadonlyArray<ZeropsIntegrationToken>,
@@ -224,9 +205,7 @@ export function newestMateKey(
     tokens.filter(
       (token) =>
         token.name.startsWith(PRESS_KEY_NAME_PREFIX) &&
-        (token.projects ?? []).some(
-          (grant) => grant.projectId === projectId && MATE_SELF_GRANT_ROLES.has(grant.roleCode),
-        ),
+        mateKeyReach(token.projects ?? [], projectId) !== "none",
     ),
   )[0];
 }
@@ -242,7 +221,8 @@ function sameGrants(
 
 /**
  * The write that lowers a Mate's key, or `undefined` when it holds what it
- * should: `MATE_SELF_PROJECT_ROLE` on its own project, and nothing else — a
+ * should, or is no Mate's key (`mateKeyReach`: one that may write another
+ * project, or holds no Mate's role on its own) — never written: `MATE_SELF_PROJECT_ROLE` on its own project, and nothing else — a
  * Mate's key reaches only its own project (ADR 0003), so a grant an earlier
  * client gave it on a sibling is taken off. A key the platform minted with
  * `ADMIN` is lowered in place, its string unchanged; a key already holding
@@ -256,6 +236,8 @@ export function planMateKey(input: {
   readonly selfProjectId: string;
 }): { readonly tokenId: string; readonly projects: ReadonlyArray<ZeropsProjectGrant> } | undefined {
   const current = input.token.projects ?? [];
+  // Only a Mate's key is written (`mateKeyReach`): one that may write elsewhere is not its.
+  if (mateKeyReach(current, input.selfProjectId) === "none") return undefined;
   const own: ZeropsProjectGrant = {
     projectId: input.selfProjectId,
     roleCode: MATE_SELF_PROJECT_ROLE,

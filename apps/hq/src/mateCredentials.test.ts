@@ -506,6 +506,36 @@ describe("mate credentials", () => {
         ),
     );
 
+    // Security review 9: the word that a Mate's key reads other projects goes only on a positive
+    // reading of it narrow; a key gone, refused, or now writing elsewhere keeps the word.
+    it.effect(
+      "keeps saying a key is wider until it reads narrow, never on a key it cannot read",
+      () =>
+        withMates((fake) =>
+          Effect.gen(function* () {
+            keyWith(fake, "tok-wide", [
+              { projectId: "P_MATE", roleCode: "BASIC_USER" },
+              { projectId: "P_STAGE", roleCode: "READ_ONLY" },
+            ]);
+            const mates = yield* MateCredentials;
+            const { nonce } = yield* mates.challenge("P_MATE");
+            writeChallenge(fake, "P_MATE", nonce);
+            yield* mates.issue("P_MATE", nonce, { keyTokenId: "tok-wide" });
+
+            keyWith(fake, "tok-wide", [
+              { projectId: "P_MATE", roleCode: "BASIC_USER" },
+              { projectId: "P_STAGE", roleCode: "ADMIN" },
+            ]);
+            assert.isFalse(yield* mates.recheckKey("owner", "P_MATE"));
+            assert.isTrue(yield* mates.keyWider("P_MATE"));
+
+            fake.tokens.delete("value-of-tok-wide");
+            assert.isFalse(yield* mates.recheckKey("owner", "P_MATE"));
+            assert.isTrue(yield* mates.keyWider("P_MATE"));
+          }),
+        ),
+    );
+
     it.effect("reads a Mate's key again only for whoever may edit its record", () =>
       withMates((fake) =>
         Effect.gen(function* () {
