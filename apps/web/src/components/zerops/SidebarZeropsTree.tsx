@@ -2537,8 +2537,14 @@ function MateRow<T extends RosterCandidate>({
   const deletingIds = useDeletingMates();
   const deleting = mateDeleting(candidate.project, deletingIds);
   // *Finish setup* running on it, from whichever screen it was pressed (`finishSetupRowLine`):
-  // its own view draws the steps only while its container is missing, so its row says so.
+  // its own view draws the steps only while its container is missing, so its row says so. A stop
+  // is said for a moment, and never over a Mate that is connected: this tab's socket to it, or its
+  // link to HQ — not a container that only runs, whose stop is what the row says.
   const press = useMatePress(candidate.project.id);
+  const hqWord = useAtomValue(hqMatesAtom);
+  const linkedNow =
+    candidate.group === "connected" ||
+    (hqWord?.current === true && hqWord.mates?.get(candidate.project.id)?.presence.online === true);
   const structure = useAtomValue(hqStructureAtom);
   const placements = useAtomValue(hqPlacementsAtom);
   const outsideHq = mateOutsideHq(
@@ -2546,7 +2552,8 @@ function MateRow<T extends RosterCandidate>({
     placements !== null && structure?.current === true,
     coming !== undefined || press !== undefined,
   );
-  const finishing = deleting || coming !== undefined ? undefined : finishSetupRowLine(press);
+  const finishing =
+    deleting || coming !== undefined ? undefined : finishSetupRowLine(press, { up: linkedNow });
   // What the row says in its state (`mateRowView`, M7): the face, the right of
   // the name, what was asked and the third line — the face and the words from
   // the one reading of it (`mateRowReading`): what it is on, or was last on,

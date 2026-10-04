@@ -98,6 +98,7 @@ function shellStage(): AccountEnvironments {
   } | null = null;
   return {
     setDeleting: (projectId, deleting) => driver().setDeleting(projectId, deleting),
+    closeOffHolds: () => new Map(),
     detailProjects: () => new Set(),
     detailFailure: () => null,
     retryDetail: () => undefined,

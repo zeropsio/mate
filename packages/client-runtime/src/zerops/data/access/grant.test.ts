@@ -270,32 +270,44 @@ const expiredObservations = (effects: ReadonlyArray<GrantEffect>) =>
     (effect) => effect.kind === "observe" && effect.observation.kind === "access-expired",
   );
 
-describe("manual access recovery", () => {
-  it.each(["tick", "online", "wake"])(
-    "a failed first read stays failed on %s until manual again",
-    (signal) => {
-      const sim = new GrantSim();
-      sim.send({ type: "START" });
-      sim.send({
-        type: "ROUND_FAILED",
-        round: sim.round(),
-        failure: { kind: "server", status: 503 },
-      });
-      const before = sim.runs.length;
-      sim.elapse(MINUTE);
-      sim.send(
-        signal === "online"
-          ? { type: "ONLINE" }
-          : signal === "wake"
-            ? { type: "WAKE", visible: true }
-            : { type: "TICK" },
-      );
-      expect(sim.runs).toHaveLength(before);
-      expect(sim.state.phase.phase).toBe("unverified-failed");
-      sim.send({ type: "USER_RETRY" });
-      expect(sim.runs).toHaveLength(before + 1);
-    },
-  );
+describe("a failed first read recovers by itself", () => {
+  const failedFirst = (): GrantSim => {
+    const sim = new GrantSim();
+    sim.send({ type: "START" });
+    sim.send({
+      type: "ROUND_FAILED",
+      round: sim.round(),
+      failure: { kind: "server", status: 503 },
+    });
+    return sim;
+  };
+
+  it.each([
+    ["its retry time", (sim: GrantSim) => (sim.elapse(2 * SECOND), sim.send({ type: "TICK" }))],
+    ["online", (sim: GrantSim) => sim.send({ type: "ONLINE" })],
+    ["a visible wake", (sim: GrantSim) => sim.send({ type: "WAKE", visible: true })],
+    ["a manual again", (sim: GrantSim) => sim.send({ type: "USER_RETRY" })],
+  ] as const)("starts a round again at %s", (_signal, signal) => {
+    const sim = failedFirst();
+    const before = sim.runs.length;
+    sim.elapse(SECOND);
+    signal(sim);
+    expect(sim.runs).toHaveLength(before + 1);
+    expect(sim.state.phase.phase).toBe("verifying");
+  });
+
+  it("waits out a hidden tab: its retry comes due and nothing runs until the visible wake", () => {
+    const sim = failedFirst();
+    sim.send({ type: "VISIBILITY", hidden: true });
+    const before = sim.runs.length;
+    sim.elapse(MINUTE);
+    sim.send({ type: "TICK" });
+    sim.send({ type: "WAKE", visible: false });
+    expect(sim.runs).toHaveLength(before);
+    sim.send({ type: "VISIBILITY", hidden: false });
+    sim.send({ type: "WAKE", visible: true });
+    expect(sim.runs).toHaveLength(before + 1);
+  });
 });
 
 describe("access grant reducer", () => {
@@ -425,7 +437,7 @@ describe("access grant reducer", () => {
     ["the first round", 0],
     ["a renewal round", 12 * MINUTE],
   ])(
-    "discards %s that a frozen tab completes after its evidence expired, until manual retry (G3)",
+    "discards %s that a frozen tab completes after its evidence expired, and starts another (G3)",
     (_label, startAfterMs) => {
       const sim = startAfterMs === 0 ? new GrantSim() : grantedSim();
       if (startAfterMs === 0) sim.send({ type: "START" });
@@ -442,8 +454,6 @@ describe("access grant reducer", () => {
       sim.send({ type: "ROUND_PROJECT", round: late, project: B, outcome: verified(B) });
       expect(sim.write(A).allowed).toBe(false);
       expect(sim.state.phase.phase).not.toBe("granted");
-      expect(grantRoundInFlight(sim.state)).toBeNull();
-      sim.send({ type: "USER_RETRY" });
       expect(sim.round()).not.toBe(late);
       expect(grantRoundInFlight(sim.state)?.startedAt).toEqual(sim.now);
       expect(sim.effectsSince(0)).toContainEqual({
@@ -608,7 +618,9 @@ describe("access grant reducer", () => {
     const projectRetries = sim.effects
       .filter((entry) => entry.effect.kind === "run" && entry.effect.op.kind === "verify-project")
       .map((entry) => entry.at.mono);
-    expect(projectRetries).toEqual([]);
+    const gaps = projectRetries.slice(1, 4).map((at, index) => at - projectRetries[index]!);
+    // The 20, 40, 60 s rungs, each counted from the failed answer one second after its start.
+    expect(gaps).toEqual([21 * SECOND, 41 * SECOND, 61 * SECOND]);
   });
 
   it.each([
@@ -702,7 +714,7 @@ describe("access grant reducer", () => {
     expect(sim.write(listed[1]!)).toEqual({ allowed: true });
   });
 
-  it("fails a round whose account part misses the deadline until a manual retry", () => {
+  it("fails a round whose account part misses the deadline and retries by the session backoff", () => {
     const sim = new GrantSim();
     sim.send({ type: "START" });
     sim.elapse(30 * SECOND);
@@ -710,22 +722,100 @@ describe("access grant reducer", () => {
     expect(sim.state.phase).toEqual({
       phase: "unverified-failed",
       failure: { kind: "timeout", afterMs: 30 * SECOND },
+      retryAt: { wall: sim.now.wall + 2 * SECOND, mono: sim.now.mono + 2 * SECOND },
+      attempt: 1,
     });
     sim.elapse(2 * SECOND);
-    sim.send({ type: "USER_RETRY" });
+    sim.send({ type: "TICK" });
     sim.send({
       type: "ROUND_FAILED",
       round: sim.round(),
       failure: { kind: "server", status: 502 },
     });
-    expect(sim.state.phase).toMatchObject({ phase: "unverified-failed" });
+    expect(sim.state.phase).toMatchObject({ phase: "unverified-failed", attempt: 2 });
     sim.send({ type: "USER_RETRY" });
     expect(sim.state.phase.phase).toBe("verifying");
+  });
+  it("never closes writes during a failing renewal before the held deadline, and retries at 10, 20, 40, 60 s bounded by it (G4, T-L3)", () => {
+    const sim = grantedSim();
+    sim.elapse(12 * MINUTE - 2 * SECOND);
+    sim.send({ type: "TICK" });
+    const retryStarts: Array<number> = [];
+    for (let failures = 0; failures < 5; failures++) {
+      retryStarts.push(grantRoundInFlight(sim.state)!.startedAt.mono - T0.mono);
+      sim.send({
+        type: "ROUND_FAILED",
+        round: sim.round(),
+        failure: { kind: "server", status: 503 },
+      });
+      expect(sim.write(A)).toEqual({ allowed: true });
+      const timer = sim.state.timer!;
+      sim.elapse(timer.mono - sim.now.mono);
+      sim.send({ type: "TICK" });
+    }
+    retryStarts.push(grantRoundInFlight(sim.state)!.startedAt.mono - T0.mono);
+    // The fifth retry was due at 15:10; it was bounded to the deadline, where the grant lapsed
+    // and the lapse started a round at once.
+    expect(retryStarts).toEqual(
+      [0, 10, 30, 70, 130, 180].map((seconds) => 12 * MINUTE + seconds * SECOND),
+    );
+    expect(sim.state.phase.phase).toBe("lapsed");
+    expect(sim.write(A)).toEqual({ allowed: false, reason: "access-lapsed", waitable: true });
+    const lapsedAt = sim.effects.length;
+    sim.send({
+      type: "ROUND_FAILED",
+      round: sim.round(),
+      failure: { kind: "server", status: 503 },
+    });
+    expect(sim.effectsSince(lapsedAt)).toContainEqual({
+      kind: "withhold",
+      scope: { kind: "account" },
+      reason: "access-lapsed",
+      cause: {
+        failure: { kind: "server", status: 503 },
+        retryAtMs: sim.now.wall + 2 * SECOND,
+      },
+    });
+    sim.elapse(MINUTE);
+    sim.send({ type: "WAKE", visible: true });
+    sim.elapse(SECOND);
+    sim.answerRound([
+      [A, verified(A)],
+      [B, verified(B)],
+    ]);
+    expect(sim.write(A)).toEqual({ allowed: true });
+  });
+  it("retries a lapsed grant at 2, 5, 15, 30, 60 s and at once on a visible wake (G9)", () => {
+    const sim = grantedSim();
+    sim.elapse(20 * MINUTE);
+    sim.send({ type: "TICK" });
+    const starts: Array<number> = [];
+    for (let failures = 0; failures < 6; failures++) {
+      starts.push(sim.now.mono);
+      sim.send({
+        type: "ROUND_FAILED",
+        round: sim.round(),
+        failure: { kind: "transport", detail: "reset" },
+      });
+      sim.elapse(sim.state.timer!.mono - sim.now.mono);
+      sim.send({ type: "TICK" });
+    }
+    expect(starts.slice(1).map((at, index) => at - starts[index]!)).toEqual(
+      [2, 5, 15, 30, 60].map((seconds) => seconds * SECOND),
+    );
+    sim.send({
+      type: "ROUND_FAILED",
+      round: sim.round(),
+      failure: { kind: "transport", detail: "reset" },
+    });
+    sim.elapse(10 * SECOND);
+    sim.send({ type: "WAKE", visible: true });
+    expect(grantRoundInFlight(sim.state)?.startedAt).toEqual(sim.now);
   });
 
   const unavailable: GrantFailure = { kind: "server", status: 503 };
 
-  /** A lapse whose first round failed. */
+  /** A lapse whose first round failed, one second into its backoff. */
   const failedLapse = (): GrantSim => {
     const sim = grantedSim();
     sim.elapse(20 * MINUTE);
@@ -740,10 +830,10 @@ describe("access grant reducer", () => {
     readonly cause: GrantWithholdingCause;
   }>([
     {
-      name: "a manual retry starts a round after the lapse's failure",
+      name: "a visible wake starts a round after the lapse's failure",
       lapse: () => {
         const sim = failedLapse();
-        sim.send({ type: "USER_RETRY" });
+        sim.send({ type: "WAKE", visible: true });
         return sim;
       },
       cause: { failure: unavailable, retryAtMs: null },
@@ -758,14 +848,13 @@ describe("access grant reducer", () => {
       cause: { failure: unavailable, retryAtMs: null },
     },
     {
-      name: "a manual retry after coming online starts a round",
+      name: "the network's return starts a round after the lapse's failure",
       lapse: () => {
         const sim = failedLapse();
         sim.send({ type: "OFFLINE" });
         sim.elapse(10 * SECOND);
         sim.send({ type: "TICK" });
         sim.send({ type: "ONLINE" });
-        sim.send({ type: "USER_RETRY" });
         return sim;
       },
       cause: { failure: unavailable, retryAtMs: null },
@@ -778,7 +867,7 @@ describe("access grant reducer", () => {
         sim.send({ type: "TICK" });
         sim.send({ type: "ROUND_FAILED", round: sim.round(), failure: unavailable });
         sim.elapse(3 * MINUTE - 10 * SECOND);
-        sim.send({ type: "USER_RETRY" });
+        sim.send({ type: "WAKE", visible: true });
         sim.elapse(10 * SECOND);
         sim.send({ type: "TICK" });
         return sim;
@@ -793,7 +882,7 @@ describe("access grant reducer", () => {
         sim.send({ type: "TICK" });
         sim.send({ type: "ROUND_FAILED", round: sim.round(), failure: unavailable });
         sim.elapse(10 * SECOND);
-        sim.send({ type: "USER_RETRY" });
+        sim.send({ type: "TICK" });
         sim.answerRound([
           [A, verified(A)],
           [B, verified(B)],
@@ -991,6 +1080,49 @@ describe("access grant reducer", () => {
       sim.send(listed([A, B, C]));
       sim.elapse(SECOND);
       sim.send(listed([C]));
+      expect(verifyRuns(sim, C)).toHaveLength(1);
+    });
+
+    it("is read again on the project rungs while its read fails, never given up", () => {
+      const sim = grantedSim();
+      const failingC: Responder = (run) =>
+        run.op.kind === "verify-project" && run.op.project.projectId === C.projectId
+          ? [
+              {
+                afterMs: SECOND,
+                event: {
+                  type: "PROJECT_RESULT",
+                  attempt: run.attempt,
+                  project: C,
+                  outcome: failed,
+                },
+              },
+            ]
+          : healthyPlatform(2 * SECOND)(run);
+      sim.send(listed([A, B, C]));
+      play(sim, 5 * MINUTE, failingC);
+      const starts = verifyRuns(sim, C).map(({ at }) => at.mono);
+      const gaps = starts.slice(1).map((at, index) => at - starts[index]!);
+      // Each rung counted from the failed answer a second after its start; the last one repeats.
+      expect(gaps.slice(0, 5)).toEqual([11, 21, 41, 61, 61].map((s) => s * SECOND));
+      expect(sim.read(C).allowed).toBe(false);
+    });
+
+    it("demanded while the grant is lapsed, is read once a round grants again", () => {
+      const sim = grantedSim();
+      sim.elapse(16 * MINUTE);
+      sim.send({ type: "TICK" });
+      expect(sim.state.phase.phase).toBe("lapsed");
+      sim.send(listed([A, B, C]));
+      // Offered while lapsed, and ignored there: the grant reads no project then.
+      expect(verifyRuns(sim, C)).toHaveLength(0);
+      sim.elapse(SECOND);
+      // The lapse's round answers for the projects its search listed, which C is not yet.
+      const round = sim.round();
+      sim.send({ type: "ROUND_ACCOUNT", round, organizations, projects: [A, B] });
+      sim.send({ type: "ROUND_PROJECT", round, project: A, outcome: verified(A) });
+      sim.send({ type: "ROUND_PROJECT", round, project: B, outcome: verified(B) });
+      expect(sim.state.phase.phase).toBe("granted");
       expect(verifyRuns(sim, C)).toHaveLength(1);
     });
 
@@ -1468,45 +1600,57 @@ it.each([false, true])(
   },
 );
 
-describe("named membership samples", () => {
-  it("retains the next sample after failure without extending evidence or retrying cleanup", () => {
+describe("a failed check retries on its rungs", () => {
+  it("reads a denial's failed confirmation again on the project rungs", () => {
     const sim = grantedSim();
     sim.send({ type: "PROJECT_DENIED", project: A, evidence: "direct-forbidden" });
     sim.elapse(policy.denialConfirmationDelayMs);
     sim.send({ type: "TICK" });
     const confirm = sim.lastRun("confirm-denial");
     sim.send({ type: "PROJECT_RESULT", project: A, attempt: confirm.attempt, outcome: failed });
-    sim.elapse(12 * MINUTE - 2 * SECOND - policy.denialConfirmationDelayMs);
+    const confirms = () => sim.runs.filter(({ op }) => op.kind === "confirm-denial");
+    sim.elapse(10 * SECOND - 1);
     sim.send({ type: "TICK" });
-    const sample = sim.round();
-    sim.send({ type: "ROUND_FAILED", round: sample, failure: { kind: "server", status: 503 } });
-    expect(sim.state.phase).toMatchObject({
-      phase: "granted",
-      failure: { kind: "server", status: 503 },
+    expect(confirms()).toHaveLength(1);
+    sim.elapse(1);
+    sim.send({ type: "TICK" });
+    expect(confirms()).toHaveLength(2);
+    sim.send({
+      type: "PROJECT_RESULT",
+      project: A,
+      attempt: sim.lastRun("confirm-denial").attempt,
+      outcome: forbidden,
     });
-    const count = sim.runs.length;
-    sim.elapse(3 * MINUTE);
-    sim.send({ type: "TICK" });
-    expect(sim.write(B).allowed).toBe(false);
-    expect(sim.runs).toHaveLength(count);
-    sim.elapse(9 * MINUTE);
-    sim.send({ type: "TICK" });
-    expect(sim.runs).toHaveLength(count + 1);
-    expect(sim.lastRun("verify-round").attempt).not.toBe(sample);
-    sim.answerRound([
-      [A, forbidden],
-      [B, verified(B)],
-    ]);
     expect(
       sim.effects.filter(
         ({ effect }) => effect.kind === "observe" && effect.observation.kind === "project-gone",
       ),
-    ).toHaveLength(0);
-    expect(sim.runs.filter(({ op }) => op.kind === "confirm-denial")).toHaveLength(1);
+    ).toHaveLength(1);
+  });
+
+  it("retries a failed renewal on its rungs, never waiting for the next sample", () => {
+    const sim = grantedSim();
+    sim.elapse(12 * MINUTE - 2 * SECOND);
+    sim.send({ type: "TICK" });
+    const first = sim.round();
+    sim.send({ type: "ROUND_FAILED", round: first, failure: { kind: "server", status: 503 } });
+    expect(sim.state.phase).toMatchObject({
+      phase: "granted",
+      failure: { kind: "server", status: 503 },
+    });
+    expect(sim.write(B).allowed).toBe(true);
+    sim.elapse(10 * SECOND);
+    sim.send({ type: "TICK" });
+    expect(sim.round()).not.toBe(first);
+    sim.answerRound([
+      [A, verified(A)],
+      [B, verified(B)],
+    ]);
+    expect(sim.state.phase).toMatchObject({ phase: "granted", failure: null });
   });
 });
 
-it("retains a confirmation failure delivered after lapse until manual Check access again", () => {
+it("reads a confirmation that failed during a lapse again once a round grants, and on Check access again", () => {
   const sim = grantedSim();
   sim.elapse(12 * MINUTE - 2 * SECOND);
   sim.send({ type: "TICK" });
@@ -1523,13 +1667,23 @@ it("retains a confirmation failure delivered after lapse until manual Check acce
   expect(sim.state.phase.last.closedProjects.get(A.projectId)?.confirmation).toMatchObject({
     failure: failed.failure,
   });
+  // The lapse's round outlives its deadline; the next waits its 2 s rung.
   sim.elapse(9 * MINUTE - SECOND);
   sim.send({ type: "TICK" });
+  sim.elapse(2 * SECOND);
+  sim.send({ type: "TICK" });
+  // The round's own read of A fails too: nothing confirms the denial but its own read.
   sim.answerRound([
-    [A, forbidden],
+    [A, failed],
     [B, verified(B)],
   ]);
-  expect(sim.runs.filter(({ op }) => op.kind === "confirm-denial")).toHaveLength(1);
-  sim.send({ type: "USER_RETRY" });
   expect(sim.runs.filter(({ op }) => op.kind === "confirm-denial")).toHaveLength(2);
+  sim.send({
+    type: "PROJECT_RESULT",
+    project: A,
+    attempt: sim.lastRun("confirm-denial").attempt,
+    outcome: failed,
+  });
+  sim.send({ type: "USER_RETRY" });
+  expect(sim.runs.filter(({ op }) => op.kind === "confirm-denial")).toHaveLength(3);
 });

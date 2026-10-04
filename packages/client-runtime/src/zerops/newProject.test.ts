@@ -486,7 +486,8 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     expect(importOf(requests).serviceImportYaml).toContain(`ZCP_API_KEY: "${REGENERATED_KEY}"`);
   });
 
-  it("lowers a reused key still ADMIN on its project, keeping every other grant it holds", async () => {
+  // ADR 0003: a key the press reuses reaches its own project alone after the write.
+  it("lowers a reused key still ADMIN on its project, taking off the siblings it reads", async () => {
     const { client, requests } = platformClient({
       tokens: [
         {
@@ -507,12 +508,9 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
       (request) =>
         request.method === "PUT" && request.url === "/client/org-1/integration-token/token-old",
     );
-    expect(JSON.parse(write?.body ?? "{}")).toMatchObject({
-      projects: [
-        { projectId: "project-9", roleCode: "BASIC_USER" },
-        { projectId: "project-stage", roleCode: "READ_ONLY" },
-      ],
-    });
+    expect(JSON.parse(write?.body ?? "{}").projects).toEqual([
+      { projectId: "project-9", roleCode: "BASIC_USER" },
+    ]);
   });
 
   // A zcp the platform is still creating holds the key already: regenerating it would cut the

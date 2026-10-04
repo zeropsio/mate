@@ -222,6 +222,28 @@ describe("the REST access verifier's round", () => {
     }),
   );
 
+  it.effect("reads at most `concurrency` projects at once", () =>
+    Effect.gen(function* () {
+      let inFlight = 0;
+      let most = 0;
+      yield* round(
+        {
+          fetchProject: async (id) => {
+            inFlight++;
+            most = Math.max(most, inFlight);
+            await Promise.resolve();
+            inFlight--;
+            return project(id);
+          },
+        },
+        ["a", "b", "c", "d", "e", "f"].map((id) => projectRef(id)),
+        4,
+      );
+
+      expect(most).toBe(4);
+    }),
+  );
+
   it.effect("an unavailable project read is that project's failure, and the round goes on", () =>
     Effect.gen(function* () {
       const { outcomes, result } = yield* round(

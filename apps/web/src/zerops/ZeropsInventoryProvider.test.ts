@@ -93,21 +93,56 @@ describe("isInterestBlocked", () => {
     ).toBe(false);
   });
 
-  it("is blocked once an interest reaches `failed`, regardless of retryAtMs (H5)", () => {
+  it.each([
+    { name: "no retry follows it", retryable: false, attempts: 1, retryAtMs: null, blocked: true },
+    {
+      name: "past its attempt limit",
+      retryable: true,
+      attempts: 6,
+      retryAtMs: 5_000,
+      blocked: true,
+    },
+    { name: "its retry waits", retryable: true, attempts: 2, retryAtMs: 5_000, blocked: false },
+  ])("a failed interest is blocked when $name: $blocked (H5)", ({ blocked, ...failure }) => {
     expect(
       isInterestBlocked(
-        {
-          status: "failed",
-          identity,
-          reason: "gone",
-          retryable: true,
-          attempts: 3,
-          retryAtMs: 5_000,
-        },
+        { status: "failed", identity, reason: "refused", ...failure },
         1_000,
         false,
       ),
-    ).toBe(true);
+    ).toBe(blocked);
+  });
+
+  it("stays unblocked while recovering before its own published retry time plus grace (H5)", () => {
+    const state: InterestState = {
+      status: "failed",
+      identity,
+      reason: "disconnect",
+      retryable: true,
+      attempts: 2,
+      retryAtMs: 8_000,
+    };
+    expect(isInterestBlocked(state, 8_000, false)).toBe(false);
+    expect(isInterestBlocked(state, 8_000 + GRACE_MS - 1, false)).toBe(false);
+    // Past the runtime's own published retry time by the full grace margin with no state change
+    // since: read as a stall, using only the already-published field — no new timer.
+    expect(isInterestBlocked(state, 8_000 + GRACE_MS, false)).toBe(true);
+  });
+
+  it("never treats a failure whose retry is not stamped yet as already elapsed", () => {
+    // The reducer publishes this before the runtime's own backoff stamps a real retry time
+    // (registration/malformed failure, membership overflow): a render in that gap must not flip
+    // to the error UI.
+    const state: InterestState = {
+      status: "failed",
+      identity,
+      reason: "malformed",
+      retryable: true,
+      attempts: 1,
+      retryAtMs: null,
+    };
+    expect(isInterestBlocked(state, 0, false)).toBe(false);
+    expect(isInterestBlocked(state, Date.now(), false)).toBe(false);
   });
 
   it("stays unblocked while establishing before its own published deadline plus grace", () => {

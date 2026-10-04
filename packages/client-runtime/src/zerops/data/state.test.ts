@@ -545,7 +545,7 @@ describe("Zerops data model coordination", () => {
     });
   });
 
-  it("bounds long pending-baseline membership deltas and fails the affected interest until manual again", () => {
+  it("bounds long pending-baseline membership deltas and fails the affected interest for its retry", () => {
     const tiny = makeZeropsDataPolicy({ membershipMarkersPerQuery: 2 });
     const id = identity();
     const descriptor = {

@@ -14,6 +14,7 @@ import {
   liveCarryOverSources,
   loginCredentialPath,
   planSignerCarryOver,
+  type CarryOverMarker,
   type CarryOverSources,
 } from "./zeropsSignerCarryOver.ts";
 import { memorySignInStore, type SignInRecords } from "./zeropsSignIns.ts";
@@ -123,54 +124,59 @@ describe("loginCredentialPath", () => {
 });
 
 describe("carrySignersOver", () => {
-  const sources = (input: {
-    readonly done?: boolean;
+  /** One container across starts: its marker, its credentials, and what Zerops and HQ answer. */
+  const container = (input: {
     readonly held?: ReadonlyArray<string>;
     readonly tags?: ReadonlyArray<string> | undefined;
     readonly saved?: Readonly<Record<string, string>> | undefined;
+    readonly marker?: CarryOverMarker;
+    readonly keeps?: boolean;
   }) =>
     Effect.gen(function* () {
-      const done = yield* Ref.make(input.done ?? false);
+      const marker = yield* Ref.make<CarryOverMarker | undefined>(input.marker);
+      const held = yield* Ref.make<ReadonlyArray<string>>(input.held ?? []);
+      const tags = yield* Ref.make("tags" in input ? input.tags : []);
+      const saved = yield* Ref.make("saved" in input ? input.saved : {});
       const reads = yield* Ref.make(0);
-      const read = <A>(value: A) => Ref.update(reads, (n) => n + 1).pipe(Effect.as(value));
-      const held = new Set(input.held ?? []);
-      return {
-        done,
-        reads,
-        sources: {
-          done: Ref.get(done),
-          markDone: () => Ref.set(done, true),
-          credentialHeld: (key) => Effect.succeed(held.has(key)),
-          readTags: read("tags" in input ? input.tags : []),
-          readSaved: read("saved" in input ? input.saved : {}),
-        } satisfies CarryOverSources,
+      const read = <A>(ref: Ref.Ref<A>) =>
+        Ref.update(reads, (n) => n + 1).pipe(Effect.andThen(Ref.get(ref)));
+      const sources: CarryOverSources = {
+        marker: Ref.get(marker),
+        keepMarker: (next) =>
+          input.keeps === false
+            ? Effect.succeed(false)
+            : Ref.set(marker, next).pipe(Effect.as(true)),
+        heldLogins: Ref.get(held),
+        readTags: read(tags),
+        readSaved: read(saved),
       };
+      return { sources, marker, held, tags, saved, reads };
     });
 
   it.effect("keeps the old signer once, and is done", () =>
     Effect.gen(function* () {
       const store = yield* memorySignInStore();
-      const { sources: from, done } = yield* sources({
+      const { sources, marker } = yield* container({
         held: ["claude-code"],
         tags: [tag("claude-code", JAN)],
       });
 
-      assert.deepStrictEqual(yield* carrySignersOver(store, from), ["claude-code"]);
+      assert.deepStrictEqual(yield* carrySignersOver(store, sources), ["claude-code"]);
       assert.strictEqual((yield* store.load)["claude-code"]?.by, JAN);
-      assert.isTrue(yield* Ref.get(done));
+      assert.deepStrictEqual(yield* Ref.get(marker), { state: "done" });
     }),
   );
 
   it.effect("reads nothing at a start after it is done", () =>
     Effect.gen(function* () {
       const store = yield* memorySignInStore();
-      const { sources: from, reads } = yield* sources({
-        done: true,
+      const { sources, reads } = yield* container({
+        marker: { state: "done" },
         held: ["claude-code"],
         tags: [tag("claude-code", JAN)],
       });
 
-      assert.deepStrictEqual(yield* carrySignersOver(store, from), []);
+      assert.deepStrictEqual(yield* carrySignersOver(store, sources), []);
       assert.deepStrictEqual(yield* store.load, {});
       assert.strictEqual(yield* Ref.get(reads), 0);
     }),
@@ -178,41 +184,96 @@ describe("carrySignersOver", () => {
 
   it.effect("is done even when there was nothing to carry", () =>
     Effect.gen(function* () {
-      const { sources: from, done } = yield* sources({ tags: [tag("claude-code", JAN)] });
+      const { sources, marker } = yield* container({ tags: [tag("claude-code", JAN)] });
 
-      assert.deepStrictEqual(yield* carrySignersOver(yield* memorySignInStore(), from), []);
-      assert.isTrue(yield* Ref.get(done));
+      assert.deepStrictEqual(yield* carrySignersOver(yield* memorySignInStore(), sources), []);
+      assert.deepStrictEqual(yield* Ref.get(marker), { state: "done" });
     }),
   );
 
-  it.effect("tags that cannot be read carry nothing, and leave it to the next start", () =>
+  it.effect("carries nothing when it cannot keep which logins it may carry", () =>
     Effect.gen(function* () {
       const store = yield* memorySignInStore();
-      const { sources: from, done } = yield* sources({
+      const { sources, reads } = yield* container({
+        held: ["claude-code"],
+        tags: [tag("claude-code", JAN)],
+        keeps: false,
+      });
+
+      assert.deepStrictEqual(yield* carrySignersOver(store, sources), []);
+      assert.deepStrictEqual(yield* store.load, {});
+      assert.strictEqual(yield* Ref.get(reads), 0);
+    }),
+  );
+
+  it.effect("tags that cannot be read carry nothing, and leave it open", () =>
+    Effect.gen(function* () {
+      const store = yield* memorySignInStore();
+      const { sources, marker } = yield* container({
         held: ["codex"],
         tags: undefined,
         saved: { codex: EVA },
       });
 
-      assert.deepStrictEqual(yield* carrySignersOver(store, from), []);
+      assert.deepStrictEqual(yield* carrySignersOver(store, sources), []);
       assert.deepStrictEqual(yield* store.load, {});
-      assert.isFalse(yield* Ref.get(done));
+      assert.deepStrictEqual(yield* Ref.get(marker), {
+        state: "open",
+        eligible: ["codex"],
+        starts: 1,
+      });
+    }),
+  );
+
+  // HQ fails at the update's start; a terminal login turns up before the next one. The tags
+  // still name Jan for it, but it held no credential when the carry-over began.
+  it.effect("a login whose credential turns up while it is open is never carried", () =>
+    Effect.gen(function* () {
+      const store = yield* memorySignInStore();
+      const { sources, held, saved } = yield* container({
+        held: ["claude-code"],
+        tags: [tag("claude-code", JAN), tag("codex", JAN)],
+        saved: undefined,
+      });
+
+      assert.deepStrictEqual(yield* carrySignersOver(store, sources), ["claude-code"]);
+      yield* Ref.set(held, ["claude-code", "codex"]);
+      assert.deepStrictEqual(yield* carrySignersOver(store, sources), []);
+      yield* Ref.set(saved, { codex: JAN });
+      assert.deepStrictEqual(yield* carrySignersOver(store, sources), []);
+      assert.deepStrictEqual(Object.keys(yield* store.load), ["claude-code"]);
+    }),
+  );
+
+  it.effect("an HQ that never answers closes it at the third start", () =>
+    Effect.gen(function* () {
+      const { sources, marker } = yield* container({ saved: undefined });
+      const store = yield* memorySignInStore();
+
+      for (const starts of [1, 2]) {
+        yield* carrySignersOver(store, sources);
+        assert.deepStrictEqual(yield* Ref.get(marker), { state: "open", eligible: [], starts });
+      }
+      yield* carrySignersOver(store, sources);
+      assert.deepStrictEqual(yield* Ref.get(marker), { state: "done" });
     }),
   );
 
   it.effect(
-    "an HQ that does not answer leaves the tags' signers carried, and the rest to later",
+    "an HQ that answers at a later start adds its signer for a login held from the first",
     () =>
       Effect.gen(function* () {
         const store = yield* memorySignInStore();
-        const { sources: from, done } = yield* sources({
-          held: ["claude-code"],
-          tags: [tag("claude-code", JAN)],
+        const { sources, saved, marker } = yield* container({
+          held: ["codex"],
+          tags: ["mate"],
           saved: undefined,
         });
 
-        assert.deepStrictEqual(yield* carrySignersOver(store, from), ["claude-code"]);
-        assert.isFalse(yield* Ref.get(done));
+        assert.deepStrictEqual(yield* carrySignersOver(store, sources), []);
+        yield* Ref.set(saved, { codex: EVA });
+        assert.deepStrictEqual(yield* carrySignersOver(store, sources), ["codex"]);
+        assert.deepStrictEqual(yield* Ref.get(marker), { state: "done" });
       }),
   );
 
@@ -220,12 +281,12 @@ describe("carrySignersOver", () => {
     Effect.gen(function* () {
       const kept: SignInRecords = { "claude-code": { by: EVA, at: 1, credentialCleared: true } };
       const store = yield* memorySignInStore(kept);
-      const { sources: from } = yield* sources({
+      const { sources } = yield* container({
         held: ["claude-code"],
         tags: [tag("claude-code", JAN)],
       });
 
-      assert.deepStrictEqual(yield* carrySignersOver(store, from), []);
+      assert.deepStrictEqual(yield* carrySignersOver(store, sources), []);
       assert.deepStrictEqual(yield* store.load, {});
       assert.deepStrictEqual(yield* store.lastSigners, { "claude-code": EVA });
     }),
@@ -301,14 +362,17 @@ describe("liveCarryOverSources", () => {
       { project, hq: [{ code: "mate_not_found" }, 404] },
       { tags: ["mate", tag("codex", JAN)], saved: {} },
     ],
+    ...[401, 403, 408, 429, 503].map(
+      (status) =>
+        [
+          `an HQ that answers ${status}: no answer`,
+          { project, hq: [{ code: "refused" }, status] },
+          { tags: ["mate", tag("codex", JAN)], saved: undefined },
+        ] as const,
+    ),
     [
-      "an HQ that refuses this Mate: nothing saved",
-      { project, hq: [{ code: "mate_credential_required" }, 401] },
-      { tags: ["mate", tag("codex", JAN)], saved: {} },
-    ],
-    [
-      "an HQ that fails: no answer",
-      { project, hq: [{}, 503] },
+      "a 200 that is not HQ's Mate: no answer",
+      { project, hq: [{ ok: true }, 200] },
       { tags: ["mate", tag("codex", JAN)], saved: undefined },
     ],
     [
@@ -323,4 +387,61 @@ describe("liveCarryOverSources", () => {
       }),
     );
   }
+});
+
+describe("liveCarryOverSources on the container", () => {
+  const environment = resolveZeropsEnvironment({
+    projectId: "project-fixture",
+    apiHost: undefined,
+    allowedOrigins: [],
+    apiToken: "mate-key",
+  })!;
+  const sourcesIn = (home: string) =>
+    liveCarryOverSources({ homeDir: home, environment }).pipe(
+      Effect.provideService(
+        HttpClient.HttpClient,
+        HttpClient.make(() => Effect.die("no read")),
+      ),
+      Effect.provideService(
+        ZeropsMateKeyModule.ZeropsMateKey,
+        ZeropsMateKeyModule.snapshotOnlyReader("mate-key"),
+      ),
+    );
+
+  it.effect("finds every login whose credential is here, the further ones by their homes", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "mate-carry-" });
+      const file = (relative: string) =>
+        Effect.gen(function* () {
+          const at = `${home}/${relative}`;
+          yield* fs.makeDirectory(at.slice(0, at.lastIndexOf("/")), { recursive: true });
+          yield* fs.writeFileString(at, "{}");
+        });
+      yield* file(".claude/.credentials.json");
+      yield* file(".mate/logins/codex-work/auth.json");
+      yield* file(".mate/logins/not-a-login/auth.json");
+      yield* fs.makeDirectory(`${home}/.mate/logins/claudeAgent-empty`, { recursive: true });
+
+      assert.deepStrictEqual(yield* (yield* sourcesIn(home)).heldLogins, [
+        "claude-code",
+        "codex-work",
+      ]);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("keeps its marker across starts, and reads one it cannot make out as done", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "mate-carry-" });
+      const sources = yield* sourcesIn(home);
+      const open: CarryOverMarker = { state: "open", eligible: ["codex"], starts: 2 };
+
+      assert.isUndefined(yield* sources.marker);
+      assert.isTrue(yield* sources.keepMarker(open));
+      assert.deepStrictEqual(yield* (yield* sourcesIn(home)).marker, open);
+      yield* fs.writeFileString(`${home}/.mate/signers-carried.json`, "{ not json");
+      assert.deepStrictEqual(yield* sources.marker, { state: "done" });
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
 });

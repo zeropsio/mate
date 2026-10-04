@@ -230,6 +230,20 @@ describe("finishMateSetupVerb", () => {
       viewerRole: "OWNER",
       expected: undefined,
     },
+    // ADR 0003's fallout: HQ says its key reads other projects — Finish setup takes that off, for
+    // an owner or an admin, at once; nobody else may write the key.
+    {
+      name: "an owner, on a Mate whose key reads other projects",
+      input: { ...HALF_MADE, keyWider: true, pastGrace: false },
+      viewerRole: "OWNER",
+      expected: "Finish setup",
+    },
+    {
+      name: "a member, on a Mate whose key reads other projects",
+      input: { ...HALF_MADE, keyWider: true, viewerIsAdder: true },
+      viewerRole: "BASIC_USER",
+      expected: undefined,
+    },
     {
       name: "somebody whose role has not been read yet",
       input: { ...HALF_MADE, registration: "awaiting-owner" },

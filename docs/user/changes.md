@@ -9,8 +9,9 @@ changes. If a Mate leaves the listing, its open changes remain under the applica
 Mate identifier and **Review**.
 
 **Other containers** starts collapsed. A container the current HQ does not hold says **Not in this
-HQ**. **Set up Mate** is offered for development environments and declared Mates, rather than
-unrecorded projects that may be somebody else's stage or production.
+HQ**. **Set up Mate** is offered for development environments, declared Mates, and your own plain
+projects — never for a project an earlier application tagged, which may be somebody else's stage or
+production, nor for the organization's HQ.
 
 When main already has the delivered content, the agent receives “nothing to deliver: main already
 has this.” No change is opened or updated for that delivery. Previously landed work is excluded

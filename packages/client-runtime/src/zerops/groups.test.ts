@@ -163,10 +163,29 @@ describe("kindOfRole — what HQ calls a project placed for a role", () => {
   });
 });
 
+// Set up Mate on a plain project (restored over 116a2c54c) brings a Mate into a project its
+// person tagged for themselves: their tags stay. Only the obsolete `mate:*` metadata tags an earlier
+// client wrote on a Mate go, now that HQ holds that metadata.
 describe("withZeropsMateTag", () => {
-  it("declares the Mate with its only allowed tag", () => {
-    expect(withZeropsMateTag(["billing:team-a", "mate:standup:u-ada"])).toEqual(["mate"]);
-    expect(withZeropsMateTag(undefined)).toEqual(["mate"]);
+  it.each([
+    {
+      case: "a plain project keeps its own tags",
+      tags: ["billing:team-a", "env:shop"],
+      want: ["billing:team-a", "env:shop", "mate"],
+    },
+    {
+      case: "an old Mate's metadata tags go",
+      tags: ["mate:standup:u-ada", "mate:face:rose:seal"],
+      want: ["mate"],
+    },
+    {
+      case: "both at once",
+      tags: ["billing:team-a", "mate", "mate:g:abc"],
+      want: ["billing:team-a", "mate"],
+    },
+    { case: "no tags", tags: undefined, want: ["mate"] },
+  ])("$case", ({ tags, want }) => {
+    expect(withZeropsMateTag(tags)).toEqual(want);
   });
 
   it("is idempotent — every set-up path may write it without looking", () => {

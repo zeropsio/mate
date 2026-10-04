@@ -5,6 +5,7 @@ import {
   newestMateKey,
   makeTokenWriteLock,
   planMateKey,
+  findWiderMateKey,
   type TokenWriteLocks,
   type ZeropsIntegrationToken,
 } from "./groupReach.ts";
@@ -144,6 +145,8 @@ describe("findHeldMateKey — a key the platform made, by either of its names", 
 // ADR 0003: a Mate's key holds its own project and nothing this client adds beside it. The plan
 // lowers a key the platform minted with ADMIN, and keeps every other grant it holds exactly as it
 // is — a grant on a sibling is neither added nor taken away here.
+// ADR 0003: a Mate's key reaches only its own project. The harden Finish setup runs takes off the
+// READ_ONLY grants on siblings — production included — an earlier client gave a Mate's key.
 describe("planMateKey", () => {
   it.each([
     {
@@ -152,36 +155,87 @@ describe("planMateKey", () => {
       written: [{ projectId: DEV, roleCode: "BASIC_USER" }],
     },
     {
-      case: "a key that reads a sibling keeps it, and gains nothing",
+      case: "a key that reads a sibling has it taken off",
       projects: [
         { projectId: DEV, roleCode: "ADMIN" },
         { projectId: PROD, roleCode: "READ_ONLY" },
       ],
-      written: [
-        { projectId: DEV, roleCode: "BASIC_USER" },
-        { projectId: PROD, roleCode: "READ_ONLY" },
-      ],
+      written: [{ projectId: DEV, roleCode: "BASIC_USER" }],
     },
     {
-      case: "a key already lowered plans nothing, whatever else it holds",
+      case: "a key already lowered still has its siblings taken off",
       projects: [
         { projectId: PROD, roleCode: "READ_ONLY" },
         { projectId: DEV, roleCode: "BASIC_USER" },
       ],
+      written: [{ projectId: DEV, roleCode: "BASIC_USER" }],
+    },
+    {
+      case: "a key lowered and on its own project alone plans nothing",
+      projects: [{ projectId: DEV, roleCode: "BASIC_USER" }],
       written: null,
     },
     {
-      case: "a key with no grant on its own project is given one",
+      case: "a key with no grant on its own project is given one, and nothing else",
       projects: [{ projectId: STAGE, roleCode: "READ_ONLY" }],
-      written: [
-        { projectId: DEV, roleCode: "BASIC_USER" },
-        { projectId: STAGE, roleCode: "READ_ONLY" },
-      ],
+      written: [{ projectId: DEV, roleCode: "BASIC_USER" }],
     },
   ] as const)("$case", ({ projects, written }) => {
     const token: ZeropsIntegrationToken = { ...MATE_TOKEN, projects };
     expect(planMateKey({ token, selfProjectId: DEV })).toEqual(
       written === null ? undefined : { tokenId: "tok-mate", projects: written },
+    );
+  });
+});
+
+// The keys an earlier client widened with READ_ONLY on siblings: found only by their Mate's
+// Finish setup, which takes the extra grants off — never a deploy key, a person's token, nor a key
+// that writes anything beyond its own project.
+describe("findWiderMateKey — a Mate's key an earlier client widened", () => {
+  const CONTAINER = "2026-09-20T10:00:00Z";
+  const wide = (over: Partial<ZeropsIntegrationToken> = {}): ZeropsIntegrationToken => ({
+    ...MATE_TOKEN,
+    created: "2026-09-20T09:59:00Z",
+    projects: [
+      { projectId: DEV, roleCode: "BASIC_USER" },
+      { projectId: PROD, roleCode: "READ_ONLY" },
+      { projectId: STAGE, roleCode: "READ_ONLY" },
+    ],
+    ...over,
+  });
+  it.each([
+    { case: "its own project and READ_ONLY siblings", token: wide(), found: true },
+    {
+      case: "as the Zerops GUI names it",
+      token: wide({ name: "zerops-zcp-zcp" }),
+      found: true,
+    },
+    { case: "a key on its own project alone", token: LOWERED_MATE_TOKEN, found: false },
+    { case: "a deploy key", token: wide({ name: "gitea-deploy-aurora-prod" }), found: false },
+    { case: "a person's token", token: wide({ name: "mate-demo-owner" }), found: false },
+    {
+      case: "a key that writes a sibling",
+      token: wide({
+        projects: [
+          { projectId: DEV, roleCode: "BASIC_USER" },
+          { projectId: PROD, roleCode: "ADMIN" },
+        ],
+      }),
+      found: false,
+    },
+    {
+      case: "a key that reads siblings and not its own project",
+      token: wide({ projects: [{ projectId: PROD, roleCode: "READ_ONLY" }] }),
+      found: false,
+    },
+    {
+      case: "a key made after its container",
+      token: wide({ created: "2026-09-20T11:00:00Z" }),
+      found: false,
+    },
+  ])("$case: $found", ({ token, found }) => {
+    expect(findWiderMateKey([OWNER_TOKEN, token, DEPLOY_TOKEN], DEV, CONTAINER)?.id).toBe(
+      found ? token.id : undefined,
     );
   });
 });

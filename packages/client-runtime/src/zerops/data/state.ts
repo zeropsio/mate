@@ -21,7 +21,7 @@ import {
 } from "./inventory.ts";
 import {
   activeVersionOf,
-  finishTableRowRead,
+  deferFailedTableRowRead,
   makeInitialEntityTableState,
   reduceTableObservation,
   releaseTableLists,
@@ -535,13 +535,16 @@ function completeRead(
   ) {
     const entity =
       target.descriptor.kind === "active-versions-of-services" ? "app-version" : "user-data";
-    table = finishTableRowRead(
-      state.table,
-      entity,
-      target.descriptor.organization,
-      target.descriptor.ids,
-      ticket.receiptOrdinalAtStart,
-    );
+    // A failed read asks again after its wait; a read that answered settled each id itself.
+    if (input.completion.kind === "read-failed")
+      table = deferFailedTableRowRead(
+        state.table,
+        entity,
+        target.descriptor.organization,
+        target.descriptor.ids,
+        ticket.receiptOrdinalAtStart,
+        input.stamp.observedAtMs,
+      );
     incomplete = target.descriptor.ids.some((id) => {
       const owed = table.wanted.get(`${entity}:${id}`);
       return owed !== undefined && owed.since <= ticket.receiptOrdinalAtStart;

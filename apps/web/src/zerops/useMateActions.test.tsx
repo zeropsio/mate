@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { ZeropsMenuAction } from "../components/zerops/ZeropsProjectMenu";
 import { hqMatesViewAtom, hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
+import { KEY_WIDER_WHY, mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 
 interface AssignDialogProps {
@@ -725,6 +725,60 @@ describe("useMateActions — Finish setup on a Mate its press left open", () => 
     listing(candidate);
     mount();
     expect([offered(candidate), mock.asked.includes("tokens")]).toEqual([false, false]);
+  });
+});
+
+// ADR 0003's fallout: HQ says the key of a Mate it holds still reads other projects. No page's read
+// repairs it (2026-10-03): its menu offers Finish setup, saying why, and Finish setup's harden takes
+// those grants off.
+describe("useMateActions — Finish setup on a Mate whose key reads other projects", () => {
+  const wider = (() => {
+    const base = mate("Ivo");
+    return {
+      ...base,
+      project: {
+        ...base.project,
+        created: "2026-09-01T10:00:00Z",
+        hq: { ...base.project.hq!, mate: { face: "", keyWider: true } },
+      },
+    } as ZeropsCandidatePresentation;
+  })();
+  const finishVerb = () =>
+    verbs(wider).find((verb): verb is ZeropsMenuAction => verb.id === "finish-setup");
+  const listing = () => {
+    mock.listing.current = {
+      state: "known",
+      value: [wider],
+      asOf: { ordinal: 1, atMs: 1_000 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+  };
+
+  it.each([
+    { who: "an owner", role: "OWNER", want: KEY_WIDER_WHY },
+    { who: "a member", role: "BASIC_USER", want: undefined },
+  ])("$who: offered, saying why: $want", ({ role, want }) => {
+    mock.roleCode = role;
+    listing();
+    mount();
+    expect(finishVerb()?.why).toBe(want);
+    expect(mock.asked.includes("tokens")).toBe(false);
+  });
+
+  it("hardens it, finding its widened key as it runs", async () => {
+    mock.roleCode = "OWNER";
+    mock.finishMateSetup.mockResolvedValue({ ok: true });
+    listing();
+    mount();
+    await act(async () => {
+      finishVerb()!.onSelect();
+    });
+    expect(mock.finishMateSetup.mock.calls[0]![0]).toMatchObject({
+      projectId: wider.project.id,
+      harden: true,
+      keyWider: true,
+    });
   });
 });
 

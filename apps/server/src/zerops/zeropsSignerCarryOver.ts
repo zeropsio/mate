@@ -13,12 +13,23 @@
  * So the server carries the old record over, once: for each login whose credential is here and
  * that its record has never named — not even as history — the one person the tags and HQ's saved
  * signer name becomes its signer, as if the record had existed when they signed in. Anything
- * unsure carries nothing: two people named, no credential, a key no build signs in. Once the tags
- * and HQ have both answered, it never runs again, so a credential that turns up later — a terminal
- * login — is nobody's until somebody signs it in through Mate, as D6 has it.
+ * unsure carries nothing: two people named, no credential, a key no build signs in.
+ *
+ * What it covers, and what not:
+ *
+ * - **A login made after the carry-over began is never carried.** Its first attempt keeps which
+ *   logins held a credential then, before it reads anything, and no later start carries any
+ *   other; it closes for good once the tags and HQ have both answered, or at its third start. A
+ *   terminal or copied login made after that is nobody's until somebody signs it in through Mate,
+ *   as D6 has it.
+ * - **A credential already here at the update is taken to be the one its tag was written for.**
+ *   Nothing on the container dates it against the tag. 0.12.3 deleted a login's entry when it
+ *   signed out and kept the tag, so a terminal login made on 0.12.3 after the tag's signer signed
+ *   out is carried as theirs — exactly as 0.12.3 itself admitted it. This is 0.12.3's trust model,
+ *   kept on purpose for this one carry-over, not a new one.
  *
  * It runs before anything reads the record (the gate, the logins' rows, the login walker and the
- * Mate's overview to HQ), and reads Zerops and HQ only at a start that has not finished it.
+ * Mate's overview to HQ), and reads Zerops and HQ only at a start while it is open.
  *
  * @module zeropsSignerCarryOver
  */
@@ -104,14 +115,29 @@ export function planSignerCarryOver(input: {
   return carried;
 }
 
-/** Where the carry-over reads the old record from, and where it keeps that it is done. */
+/**
+ * How far the carry-over got: open since its first attempt, with the logins whose credential was
+ * here then — the only ones it may ever carry — and how many starts have tried; or done.
+ */
+export type CarryOverMarker =
+  | {
+      readonly state: "open";
+      readonly eligible: ReadonlyArray<string>;
+      readonly starts: number;
+    }
+  | { readonly state: "done" };
+
+/** The most starts the carry-over stays open for while Zerops or HQ does not answer. */
+export const CARRY_OVER_STARTS = 3;
+
+/** Where the carry-over reads the old record from, and where it keeps how far it got. */
 export interface CarryOverSources {
-  /** Whether an earlier start has finished it. */
-  readonly done: Effect.Effect<boolean>;
-  /** Keeps that it is finished, with the logins it carried. */
-  readonly markDone: (carried: ReadonlyArray<string>) => Effect.Effect<void>;
-  /** Whether the login keyed `key` holds a credential now. */
-  readonly credentialHeld: (key: string) => Effect.Effect<boolean>;
+  /** How far an earlier start got; `undefined` when none has tried. */
+  readonly marker: Effect.Effect<CarryOverMarker | undefined>;
+  /** Keeps how far it got, atomically; `false` when it could not. */
+  readonly keepMarker: (marker: CarryOverMarker) => Effect.Effect<boolean>;
+  /** The logins whose credential is here now, by signer key. */
+  readonly heldLogins: Effect.Effect<ReadonlyArray<string>>;
   /** The project's tags as the Mate reads them; `undefined` when they could not be read. */
   readonly readTags: Effect.Effect<ReadonlyArray<string> | undefined>;
   /** HQ's saved signers of this Mate; `{}` with no HQ, `undefined` when HQ did not answer. */
@@ -119,46 +145,60 @@ export interface CarryOverSources {
 }
 
 /**
- * Carries the old signers into `store` unless an earlier start has: answers the logins it
- * carried. Tags that cannot be read carry nothing, and the next start tries again; an HQ that
- * does not answer leaves the tags' signers carried and the rest to the next start.
+ * Carries the old signers into `store` while the carry-over is open: answers the logins it
+ * carried.
+ *
+ * Its first attempt keeps the logins whose credential is here then before it reads anything, and
+ * no later start carries any other: a credential that turns up afterwards is never carried,
+ * whatever Zerops or HQ answer. A start that cannot keep that carries nothing. Tags that cannot
+ * be read carry nothing that start. The carry-over closes at the first start both the tags and HQ
+ * answer, and at its {@link CARRY_OVER_STARTS}th start whatever they answered: an HQ that never
+ * answers leaves only the tags' signers carried.
  */
 export const carrySignersOver = (store: SignInStore, sources: CarryOverSources) =>
   Effect.gen(function* () {
-    if (yield* sources.done) return [];
+    const before = yield* sources.marker;
+    if (before?.state === "done") return [];
+    const eligible = new Set(before?.eligible ?? (yield* sources.heldLogins));
+    const starts = (before?.starts ?? 0) + 1;
+    if (!(yield* sources.keepMarker({ state: "open", eligible: [...eligible], starts }))) {
+      yield* Effect.logWarning("zerops sign-ins: the old signers' carry-over could not start");
+      return [];
+    }
     const [tags, saved] = yield* Effect.all([sources.readTags, sources.readSaved], {
       concurrency: "unbounded",
     });
+    let carried: ReadonlyArray<string> = [];
     if (tags === undefined) {
-      yield* Effect.logWarning("zerops sign-ins: the old signers could not be read; next start");
-      return [];
+      yield* Effect.logWarning("zerops sign-ins: the old signers could not be read", { starts });
+    } else {
+      const present = new Set(yield* sources.heldLogins);
+      const plan = planSignerCarryOver({
+        named: new Set(Object.keys(yield* store.lastSigners)),
+        held: new Set([...eligible].filter((key) => present.has(key))),
+        tags,
+        saved: saved ?? {},
+      });
+      const at = yield* Clock.currentTimeMillis;
+      for (const [key, by] of Object.entries(plan)) yield* store.save(key, { by, at });
+      carried = Object.keys(plan);
+      if (carried.length > 0) {
+        yield* Effect.logInfo("zerops sign-ins: carried old signers over", { logins: carried });
+      }
     }
-    const candidates = new Set([...Object.keys(readSignerTags(tags)), ...Object.keys(saved ?? {})]);
-    const held = new Set<string>();
-    for (const key of candidates) if (yield* sources.credentialHeld(key)) held.add(key);
-    const plan = planSignerCarryOver({
-      named: new Set(Object.keys(yield* store.lastSigners)),
-      held,
-      tags,
-      saved: saved ?? {},
-    });
-    const at = yield* Clock.currentTimeMillis;
-    for (const [key, by] of Object.entries(plan)) yield* store.save(key, { by, at });
-    const carried = Object.keys(plan);
-    if (carried.length > 0) {
-      yield* Effect.logInfo("zerops sign-ins: carried old signers over", { logins: carried });
+    if ((tags !== undefined && saved !== undefined) || starts >= CARRY_OVER_STARTS) {
+      yield* sources.keepMarker({ state: "done" });
     }
-    if (saved !== undefined) yield* sources.markDone(carried);
     return carried;
   }).pipe(
     Effect.catchTag("SignInSaveError", (error) =>
-      Effect.logWarning("zerops sign-ins: an old signer could not be kept; next start", {
+      Effect.logWarning("zerops sign-ins: an old signer could not be kept", {
         key: error.key,
       }).pipe(Effect.as([])),
     ),
   );
 
-/** Where the carry-over keeps that it is done, beside the record. */
+/** Where the carry-over keeps how far it got, beside the record. */
 export const carriedMarkerPath = (path: Path.Path, homeDir: string): string =>
   path.join(homeDir, ".mate", "signers-carried.json");
 
@@ -178,18 +218,28 @@ const EnrollmentFile = Schema.fromJsonString(
 const decodeEnrollment = Schema.decodeUnknownEffect(EnrollmentFile);
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
-const savedSignersOf = (body: unknown): Readonly<Record<string, string>> => {
+/** HQ's saved signers out of its answer; `undefined` for a body that is not HQ's Mate. */
+const savedSignersOf = (body: unknown): Readonly<Record<string, string>> | undefined => {
   const signers =
     typeof body === "object" && body !== null
       ? (body as { readonly signers?: unknown }).signers
       : undefined;
-  if (typeof signers !== "object" || signers === null || Array.isArray(signers)) return {};
+  if (typeof signers !== "object" || signers === null || Array.isArray(signers)) return undefined;
   return Object.fromEntries(
     Object.entries(signers).filter((entry): entry is [string, string] => {
       return typeof entry[1] === "string";
     }),
   );
 };
+
+const OpenMarker = Schema.fromJsonString(
+  Schema.Struct({
+    state: Schema.Literal("open"),
+    eligible: Schema.Array(Schema.String),
+    starts: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  }),
+);
+const decodeOpenMarker = Schema.decodeUnknownEffect(OpenMarker);
 
 /** The carry-over's sources in a Zerops container: its home, its project, its HQ. */
 export const liveCarryOverSources = (input: {
@@ -234,38 +284,45 @@ export const liveCarryOverSources = (input: {
           headers: { authorization: `Mate ${enrollment.credential}`, accept: "application/json" },
         });
         if (response.status === 200) return savedSignersOf(yield* response.json);
-        // HQ knows no such Mate, or refuses it: there is nothing of this Mate's it could save.
-        // Busy or failing, it has not answered.
-        return response.status >= 400 && response.status < 500 && response.status !== 429
-          ? {}
-          : undefined;
+        // HQ keeps no such Mate: nothing of this Mate's is saved. Any other answer — a refusal
+        // that may pass, a timeout, a busy or failing HQ — is none, for the next start.
+        return response.status === 404 ? {} : undefined;
       }),
     );
 
+    const held = (key: string) => {
+      const file = loginCredentialPath(input.homeDir, key);
+      return file === undefined
+        ? Effect.succeed(false)
+        : fs.exists(file).pipe(Effect.orElseSucceed(() => false));
+    };
+
     return {
-      done: fs.exists(marker).pipe(Effect.orElseSucceed(() => false)),
-      markDone: (carried) =>
-        Effect.gen(function* () {
-          const at = yield* Clock.currentTimeMillis;
-          yield* writeFileStringAtomically({
-            filePath: marker,
-            contents: encodeJson({ at, carried }),
-          }).pipe(
-            Effect.provideService(FileSystem.FileSystem, fs),
-            Effect.provideService(Path.Path, path),
-            Effect.catchCause((cause) =>
-              Effect.logWarning("zerops sign-ins: could not keep that old signers are carried", {
-                cause,
-              }),
-            ),
-          );
-        }),
-      credentialHeld: (key) => {
-        const file = loginCredentialPath(input.homeDir, key);
-        return file === undefined
-          ? Effect.succeed(false)
-          : fs.exists(file).pipe(Effect.orElseSucceed(() => false));
-      },
+      // A marker that is there but cannot be read as open closes the carry-over.
+      marker: Effect.gen(function* () {
+        if (!(yield* fs.exists(marker))) return undefined;
+        return yield* decodeOpenMarker(yield* fs.readFileString(marker));
+      }).pipe(Effect.orElseSucceed((): CarryOverMarker => ({ state: "done" }))),
+      keepMarker: (next) =>
+        writeFileStringAtomically({ filePath: marker, contents: encodeJson(next) }).pipe(
+          Effect.provideService(FileSystem.FileSystem, fs),
+          Effect.provideService(Path.Path, path),
+          Effect.as(true),
+          Effect.catchCause((cause) =>
+            Effect.logWarning("zerops sign-ins: could not keep the carry-over's marker", {
+              cause,
+            }).pipe(Effect.as(false)),
+          ),
+        ),
+      heldLogins: Effect.gen(function* () {
+        const others = yield* fs
+          .readDirectory(path.join(input.homeDir, ".mate", "logins"))
+          .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
+        const keys = ["claude-code", "codex", ...others.filter(isSignerKey)];
+        const present: Array<string> = [];
+        for (const key of keys) if (yield* held(key)) present.push(key);
+        return present;
+      }),
       readTags,
       readSaved,
     } satisfies CarryOverSources;

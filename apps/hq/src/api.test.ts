@@ -1629,6 +1629,49 @@ describe("HQ API", () => {
       }),
     );
 
+    // ADR 0003's fallout: a Mate naming a key an earlier client widened gets its credential as any
+    // other — the word that its key reads other projects stays HQ's — and the project's admin, who
+    // finished its setup, asks HQ to read the key again; nobody else.
+    it.effect(
+      "a Mate's widened key is said, never answered back, and read again by its admin",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* setUpMate(call, "P_MATE");
+          fake.tokens.set("value-of-tok-wide", {
+            id: "tok-wide",
+            name: "zcp-P_MATE",
+            orgId: "ORG",
+            roleCode: "NO_ACCESS",
+            canCreateProjects: false,
+            canViewFinances: false,
+            canEditFinances: false,
+            projects: [
+              { projectId: "P_MATE", roleCode: "BASIC_USER" },
+              { projectId: "P_ELSE", roleCode: "READ_ONLY" },
+            ],
+            createdMs: 0,
+            createdByUser: "owner",
+          });
+          const { nonce } = (yield* call("POST", "/api/mate/challenge", {
+            body: { projectId: "P_MATE" },
+          })).body as { readonly nonce: string };
+          fake.env.set("P_MATE", [{ key: "MATE_HQ_CHALLENGE", value: nonce, sensitive: false }]);
+          const issued = yield* call("POST", "/api/mate/credential", {
+            body: { projectId: "P_MATE", nonce, keyTokenId: "tok-wide" },
+          });
+          assert.deepStrictEqual(Object.keys(issued.body as object), ["credential"]);
+          const dev = yield* sessionFor(call, "door-dev");
+          const check = (session: string) =>
+            Effect.map(
+              call("POST", "/api/mates/P_MATE/key-check", { session }),
+              (answer) => answer.status,
+            );
+          assert.deepStrictEqual([yield* check(owner), yield* check(dev)], [204, 403]);
+        }),
+    );
+
     it.effect(
       "answers each refusal of a Mate's proof with its code, and limits the Mate's door per address",
       () =>

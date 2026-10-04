@@ -137,7 +137,13 @@ export function finishMateSetupVerb(input: {
   readonly recordMissing: boolean;
   /** HQ's rule lets the viewer create its record (`create_mate_record`). */
   readonly mayCreateRecord: boolean;
+  /**
+   * HQ says its key reads other projects too (`keyWider`, ADR 0003's fallout): *Finish setup*'s
+   * harden takes those grants off — for a registry writer, who may write the key.
+   */
+  readonly keyWider?: boolean;
 }): string | undefined {
+  if (input.keyWider === true && input.writer) return FINISH_MATE_SETUP_VERB;
   // Its record, and its birth after it, are whoever HQ's rule lets create the record.
   if (input.recordMissing && input.mayCreateRecord && (input.pressStopped || input.pastGrace)) {
     return FINISH_MATE_SETUP_VERB;

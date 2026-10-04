@@ -403,7 +403,7 @@ describe("the access grant inside the data runtime", () => {
     ["the first round", false],
     ["a renewal round", true],
   ] as const)(
-    "discards %s that a frozen tab completes after its evidence expired, and waits for manual retry (G3)",
+    "discards %s that a frozen tab completes after its evidence expired, and starts another (G3)",
     ([, renewal]) =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -418,9 +418,6 @@ describe("the access grant inside the data runtime", () => {
           expect(opened.write(A).allowed).toBe(false);
           expect(opened.phase()).not.toBe("granted");
           expect(grantRoundInFlight(opened.view().machine)?.id).not.toBe(late);
-          expect(opened.platform.rounds.at(-1)?.round).toBe(late);
-          yield* opened.runtime.access.signal({ type: "USER_RETRY" });
-          yield* settle;
           expect(opened.platform.rounds.at(-1)?.round).not.toBe(late);
           expect((yield* opened.access()).status).not.toBe("verified");
         }),
@@ -637,9 +634,6 @@ describe("the access grant inside the data runtime", () => {
           expect(platform.interrupted).toEqual([1]);
 
           yield* opened.pass(2 * SECOND);
-          expect(platform.rounds).toHaveLength(1);
-          yield* opened.runtime.access.signal({ type: "USER_RETRY" });
-          yield* settle;
           expect(platform.rounds).toHaveLength(2);
           expect(platform.interrupted).toEqual([1]);
         }),
@@ -709,14 +703,11 @@ describe("the access grant inside the data runtime", () => {
           expect(opened.phase()).toBe("verifying");
           expect(opened.view().overdue).toBe(true);
 
-          // The round's own deadline ends it; only a manual check starts another.
+          // The round's own deadline fails it; the retry 2 s later waits afresh.
           yield* opened.pass(10 * SECOND);
           expect(opened.phase()).toBe("unverified-failed");
           expect(opened.view().overdue).toBe(false);
           yield* opened.pass(2 * SECOND);
-          expect(platform.rounds).toHaveLength(1);
-          yield* opened.runtime.access.signal({ type: "USER_RETRY" });
-          yield* settle;
           expect(platform.rounds).toHaveLength(2);
           yield* opened.pass(20 * SECOND - 1);
           expect(opened.view().overdue).toBe(false);
@@ -727,7 +718,7 @@ describe("the access grant inside the data runtime", () => {
   );
 
   it.effect(
-    "ends the first failed round with the platform's words until the person checks again",
+    "fails the first round with the platform's words and retries it by the session backoff",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -741,9 +732,6 @@ describe("the access grant inside the data runtime", () => {
 
           platform.roundFailure = null;
           yield* opened.pass(2 * SECOND);
-          expect(opened.platform.rounds).toHaveLength(1);
-          yield* opened.runtime.access.signal({ type: "USER_RETRY" });
-          yield* settle;
           expect(opened.platform.rounds).toHaveLength(2);
           expect(opened.view().failure).toBeNull();
           yield* opened.pass(2 * SECOND);
@@ -818,11 +806,11 @@ describe("the access grant inside the data runtime", () => {
   );
 
   it.effect.each([
-    ["a fresh lapse", 1500, false, [0]],
-    ["a lapse on its 60 s cadence", 3 * MINUTE, false, [0]],
+    ["a fresh lapse", 1500, false, [0, 3 * SECOND, 9 * SECOND]],
+    ["a lapse on its 60 s cadence", 3 * MINUTE, false, [0, 3 * SECOND, 9 * SECOND]],
     ["a lapse on its 60 s cadence, the round answering", 3 * MINUTE, true, [0]],
   ] as const)(
-    "a manual check in a lapse starts one round and a failure stays terminal: %s",
+    "a user retry in a lapse starts one round, and no second round before the first rung of the ladder after it fails: %s",
     ([, lapsedMs, answers, startsAfterRetry]) =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -846,7 +834,7 @@ describe("the access grant inside the data runtime", () => {
           const clicked = retried[0]!.startedAtMono;
           yield* opened.pass(10 * SECOND - INVALIDATION_COALESCE_MS);
 
-          // A failed manual check starts no automatic failure retry.
+          // Each round fails 1 s after it starts; the ladder waits 2 s, then 5 s.
           expect(
             opened.platform.rounds
               .slice(before)
@@ -866,10 +854,10 @@ describe("the access grant inside the data runtime", () => {
       ["first", "scheduled"],
     ],
     [
-      "a failure stays failed",
+      "a retry on the ladder",
       { ...healthy(), roundFailure: serverDown },
       (opened: Tab) => opened.pass(3 * SECOND),
-      ["first"],
+      ["first", "scheduled"],
     ],
     [
       "a person's retry",
@@ -896,7 +884,7 @@ describe("the access grant inside the data runtime", () => {
             Effect.andThen(opened.runtime.access.signal({ type: "ONLINE" })),
             Effect.andThen(settle),
           ),
-      ["first"],
+      ["first", "wake-online"],
     ],
     [
       "a visible wake",
@@ -908,7 +896,7 @@ describe("the access grant inside the data runtime", () => {
             Effect.andThen(opened.runtime.access.signal({ type: "WAKE", visible: true })),
             Effect.andThen(settle),
           ),
-      ["first"],
+      ["first", "wake-visible"],
     ],
   ] as const)("the diagnostics record the round's cause: %s", ([, platform, act, causes]) =>
     Effect.scoped(

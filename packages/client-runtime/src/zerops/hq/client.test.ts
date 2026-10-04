@@ -888,6 +888,12 @@ describe("makeHqApi — application name and a project's application", () => {
       (api) => api.recordClosedOff("p1"),
       { method: "POST", path: "/api/mates/p1/closed-off" },
     ],
+    // ADR 0003's fallout: once Finish setup took a widened key's siblings off, HQ reads it again.
+    [
+      "asks HQ to read a Mate's widened key again",
+      (api) => api.recheckKey("p1"),
+      { method: "POST", path: "/api/mates/p1/key-check" },
+    ],
     // SPEC §3.2b: a stage or a production attached as an environment of the application, named.
     [
       "attaches a stage under the environment's name",

@@ -108,21 +108,24 @@ At most one round runs; its deadline is 30 s plus 15 s for every four demanded p
 Evidence is stamped when the round's first request is sent, on both wall and monotonic clocks.
 Authority ends 15 minutes after its stamp on whichever clock reaches that first. A wall clock
 set back by more than 60 s counts as a lapse. A result arriving after its own deadline is discarded
-and shown as failed. Every write/action admission and wake checks the absolute deadline.
+and a new round starts. Every write/action admission and wake checks the absolute deadline.
 
 The account is admitted by `user/info`; each opened project's content and writes require its own
 role and evidence stamp. READ_ONLY can be verified without mutation authority; NO_ACCESS cannot
 admit project content. A transient project failure keeps older evidence until its own deadline,
-then withholds content and closes writes until a manual attempt succeeds. A 403/404 closes writes
-immediately and withholds content. One direct read of the same demanded project at least 5 s later
-confirms the denial before removal. Failure of that confirmation requires a manual attempt.
+then withholds content and closes writes until a per-project retry (10, 20, 40, 60 s) of the demanded
+project succeeds. A 403/404 closes writes immediately and withholds content. One direct read of the
+same project at least 5 s later confirms the denial before removal; a confirmation that fails retries
+on the same rungs.
 A lowered role applies as soon as a round admits it. HQ navigation grants no mutation authority.
 
 Healthy renewal is due before expiry, with a lead of at least 3 minutes, widened for slower rounds.
-A running renewal leaves writes open until the old evidence expires. A failed initial round or
-renewal stays failed: ticks, online and visible wake do not retry it. The person uses **Try now**.
-A tab hidden for 60 minutes stops healthy renewal; its grant still expires on time. Returning from
-that pause can start a healthy renewal, but cannot clear an existing failure.
+A running renewal leaves writes open until the old evidence expires. A failed initial round retries
+on the session backoff (2, 4, 8, 15, 30, 60 s); a failed renewal at 10, 20, 40 and 60 s within the
+held deadline; a lapsed grant at 2, 5, 15, 30 and 60 s. Failed checks retry only in a visible tab:
+a visible wake or `online` starts them again at once, from the first rung, and **Try now** does the
+same. A tab hidden for 60 minutes stops healthy renewal; its grant still expires on time, and its
+visible wake starts a round.
 
 ## Server door and compatibility
 
