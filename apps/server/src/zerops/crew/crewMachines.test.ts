@@ -475,11 +475,18 @@ describe("taskTransition", () => {
       moved("rework", c({ remerges: 3, reworks: 1 })),
     ],
     [
-      "not a fast-forward redoes at once, not counted",
+      "not a fast-forward redoes at once, counted as a re-merge",
       "landing",
-      c(),
+      c({ remerges: 1 }),
       { type: "not-fast-forward" },
-      moved("merging"),
+      moved("merging", c({ remerges: 2 })),
+    ],
+    [
+      "not a fast-forward past three re-merges is a rework",
+      "landing",
+      c({ remerges: 3 }),
+      { type: "not-fast-forward" },
+      moved("rework", c({ remerges: 3, reworks: 1 })),
     ],
     [
       "a dirty tracked path waits on you",
@@ -500,8 +507,15 @@ describe("taskTransition", () => {
       "a missing object retries from ready",
       "landing",
       c(),
-      { type: "missing-object" },
+      { type: "missing-object", retried: false },
       moved("ready"),
+    ],
+    [
+      "a missing object a second time parks",
+      "landing",
+      c(),
+      { type: "missing-object", retried: true },
+      moved("parked", c(), "missing-object"),
     ],
     ["ENOSPC parks", "landing", c(), { type: "disk-full" }, moved("parked", c(), "disk-full")],
     [
@@ -531,7 +545,7 @@ describe("taskTransition", () => {
       "parked",
       c({ attempt: 2, reworks: 3, remerges: 2, requeues: 1, rotations: 2 }),
       { type: "retry" },
-      moved("queued", c({ attempt: 3, reworks: 0, remerges: 0, requeues: 1, rotations: 0 })),
+      moved("queued", c({ attempt: 3, reworks: 0, remerges: 0, requeues: 0, rotations: 0 })),
     ],
     ...(
       [
@@ -606,7 +620,7 @@ describe("taskTransition", () => {
       { type: "dirty-tree" },
       { type: "untracked-in-way" },
       { type: "index-lock" },
-      { type: "missing-object" },
+      { type: "missing-object", retried: false },
       { type: "disk-full" },
       { type: "tree-clean" },
       { type: "wait-expired" },

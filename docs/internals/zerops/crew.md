@@ -56,8 +56,8 @@ or with the switch off, it builds the inert engine (the feed says `off` once, ev
 Otherwise the live engine runs, and with no crew applied it opens no ssh session and installs
 nothing into the thread policy registries, so every thread's adapter options stay byte-identical.
 An applied crew, at boot or by Apply, installs the crew's thread policies and a watch on sign-ins
-for the engine's life: a queued task admission refused starts again once a login's sign-in or a
-signer changes, and one refused again keeps its _Can't start_ row with the new words.
+for the engine's life: a queued task admission refused starts again once its crewmate's login's
+sign-in or signer changes (another login's change leaves it waiting), and one refused again keeps its _Can't start_ row with the new words.
 
 ## 3. Where the code lives
 
@@ -429,17 +429,23 @@ changed since the row was read refuses the action. New stints record their copy 
 `crew_operation` owns dispatch, checkpoint, merge/check, landing and selected copy rebuilds.
 An identity, actor, exact thread command or copy/ref target, and pending stage are durable before
 that stage runs. Its receipt confirms the stage afterward; the handle remains running until the
-consumer has recorded the task outcome. A fatal restart marks running handles interrupted and
+consumer has recorded the task outcome. A restart marks running handles interrupted — after a crash, or a graceful shutdown,
+which leaves a handle in flight running with its stage confirmed — and
 reads copy status and known landing trailers; a running run stays running, its clock counting
-again once its crew works. Once the server accepts commands, the engine carries each interrupted
-handle on from its last confirmed stage as its crewmate is free, as Continue would
-(`resumeAfterRestart` in `crewContinue.ts`): a died turn continues in its copy as the run's
-starter or the task's creator, a checkpoint commits, a check merges and checks again, a landing
-records an outcome its trailer already shows or lands again as the person who pressed Land.
-Only an ambiguous resume waits for a person: a rebuild a person chose, a conversation's own turn
-outside a run (the lead's in a running run is woken again on its spacing), a changed task, or a
-resume admission refuses, whose row says why. A writer's conversation that records no copy at all
-gets its crew copy back.
+again once its crew works. Once the server accepts commands, the engine first adopts what an
+interrupted handle finished on the service after the Mate stopped — a lane commit carrying its
+`Crew-Operation:` trailer, a dispatch's reset to your tree, a landing your branch took — as the
+copy's recorded tip, then carries each handle on as its crewmate is free, by the task's state, as
+Continue would (`resumeAfterRestart` in `crewContinue.ts`), never forcing a rework: a died turn
+continues in the attempt it stood in, as the run's starter or the task's creator; a turn-end save
+is redone with no new turn outside a run; a merging, checking or landing task merges and checks
+again, and a landing lands as the person who pressed Land or records an outcome its trailer
+already shows; a blocked report waits for its answer, and a ready or review task stays as it is.
+A run the person paused or stopped gets no turn: Resume carries its task on. Only an ambiguous
+resume waits for a person: a rebuild a person chose, a person's own turn in a conversation (the
+lead's wake in a running run is woken again on its spacing), a changed task, or a resume admission
+refuses, whose row says why. A copy save outside any task is redone, or dropped by Drop it. A
+writer's conversation that records no copy at all gets its crew copy back.
 
 Rows still interrupted offer Continue and, before landing, Drop it. Continue operates on the selected
 handle under the crewmate's lock, rejects a changed attempt or newer handle, and records a new
@@ -447,16 +453,21 @@ operation for its side effects. An already landed receipt only records the task'
 Drop it ends the task's records while leaving its dirty files and HEAD in place. Before any of
 that, the boot sweeps each writer's service from git (`CrewWorkspace.sweep`): a lane gitdir made
 relative, a dirty lane's work saved as a WIP commit, an unreadable ref or a tip the engine did not
-write parked. A copy missing at boot or after a self-deploy comes back from its branch
+write parked. A copy whose task passed its check (`ready`, `review`, `landing`, `waiting-on-you`)
+is never committed, at boot or at a turn's end: edits on it stop the task, "its copy has edits made
+after its check", and stay where they are. A passed check records the tip it ran on, and Land
+refuses any other tip ("its copy moved after its check"), so nothing unchecked lands. A copy missing at boot or after a self-deploy comes back from its branch
 (`CrewWorkspace.recover`) only where its branch, every recorded landing's trailer and its saved
-tip remain, so no work is lost; otherwise the loss is named, the host stays frozen, and the copy
-offers Rebuild crew copy, a selected rebuild that refuses a missing or changed saved branch and
-never resets an existing directory. A turn the provider broke off (`api_error`, `model_error`,
+tip remain, so no work is lost; otherwise the loss is named and the copy offers Rebuild crew copy, a selected rebuild that refuses a missing or changed saved branch and
+never resets an existing directory. Nothing leaves a host frozen with no way out: a self-deploy's
+end thaws its host before the recovery, a recovery thaws it whatever it finds, and boot thaws a
+host whose deploy the restart cut off. Each landing is verified on the host it landed on. A turn the provider broke off (`api_error`, `model_error`,
 `turn_setup_failed`) saves its work in the turn's WIP commit and queues its task again once, the
 second time it stops; an overflowed context (`prompt_too_long`, `rapid_refill_breaker`) saves its
 work and rotates at once into a fresh conversation, which a running run carries the task on in, at
 most twice an attempt (`crewTurns.endedHow`).
 Checks run once; a killed or timed-out command is a visible ending. A failed operation holds the
-crewmate's queue until a person acts; a check that ran and failed is not one — its verdict sends
-the task back as rework, which a running run hands to its crewmate at once. Desktop uses these same web controls; mobile currently has
+crewmate's queue until a person acts; a check that ran and failed, or a merge of your tree that
+stopped on conflicts, is not one — its verdict sends the task back as a counted rework, which a
+running run hands to its crewmate at once. Desktop uses these same web controls; mobile currently has
 no crew controls and accepts the optional operation and assignment detail fields in the contract.

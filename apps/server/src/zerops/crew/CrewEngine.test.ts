@@ -36,6 +36,7 @@ import {
 } from "./testing/crewEngineFixture.ts";
 import {
   AS_CREW,
+  commandWhenFree,
   KAREL,
   applied,
   command,
@@ -687,6 +688,31 @@ describe("CrewEngine", () => {
     ),
   );
 
+  it.live("a refused queued task waits through another login's sign-in", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* Ref.set(world.refusal, "not the login's signer");
+        yield* command({
+          _tag: "taskCreate",
+          owner: "backend",
+          title: "Refused",
+          brief: "Try it.",
+          doneWhen: "",
+          dependsOn: [],
+        });
+        yield* snapshotWhere((current) => current.attention.length === 1);
+        const tries = (yield* Ref.get(world.admitted)).length;
+        yield* world.signedInAs("codex");
+        yield* Effect.sleep("300 millis");
+        assert.deepStrictEqual(
+          [(yield* Ref.get(world.admitted)).length, (yield* latest).board.tasks[0]!.state],
+          [tries, "queued"],
+        );
+      }),
+    ),
+  );
+
   it.live("a refused queued task starts again once a login's sign-in changes", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
@@ -1073,6 +1099,71 @@ describe("CrewEngine", () => {
       ),
   );
 
+  const deployEvent = (type: "item.started" | "item.completed") =>
+    spiEvent(
+      type,
+      "person-thread",
+      {
+        itemType: "mcp_tool_call",
+        status: type === "item.started" ? "inProgress" : "completed",
+      } as never,
+      {
+        itemId: "deploy-1",
+        toolCall: {
+          name: "zerops_deploy",
+          rawName: "mcp__zerops__zerops_deploy",
+          server: "zerops",
+          arguments: { targetService: "appdev" },
+        },
+      } as never,
+    );
+
+  it.live("a self-deploy that lost a copy's branch unfreezes the service and names the loss", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* world.publish(deployEvent("item.started"));
+        yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+        NodeFS.rmSync(NodePath.join(world.root, ".crew/backend"), { recursive: true });
+        git(world.root, ["worktree", "prune"]);
+        git(world.root, ["branch", "-D", "-q", "crew/backend"]);
+        yield* world.publish(deployEvent("item.completed"));
+        const after = yield* snapshotWhere(
+          (snapshot) => snapshot.lastError?.includes("crew/backend") === true,
+        );
+        const lane = yield* (yield* CrewStore).getLane(CREW_ID, "backend");
+        assert.deepStrictEqual(
+          [after.crewmates[0]!.lane?.state === "frozen", Option.getOrThrow(lane).frozenSince],
+          [false, null],
+        );
+      }),
+    ),
+  );
+
+  it.live("a restart during a self-deploy does not leave the service frozen", () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* world.publish(deployEvent("item.started"));
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* (yield* ServerCommandReadiness).complete;
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "ready");
+          yield* commandWhenFree({
+            _tag: "message",
+            handle: "backend",
+            text: "Work",
+            attachments: [],
+          });
+          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
+          assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, 1);
+        }),
+    ]),
+  );
+
   it.live("a writer's conversation without its copy as its worktree gets it back at boot", () =>
     withCrewEngines([
       (world) =>
@@ -1152,21 +1243,12 @@ describe("CrewEngine", () => {
               source: "crew-stint",
             });
             // The restart's turn carries on first; the press waits for its copy to be free.
-            yield* eventually(
-              command({
-                _tag: "useCrewCopy",
-                handle: "backend",
-                threadId: created!.threadId,
-                expectedPath: path,
-              }).pipe(
-                Effect.as(true),
-                Effect.catchTag("CrewCommandError", (error) =>
-                  error.detail?.includes("is busy") === true
-                    ? Effect.succeed(false)
-                    : Effect.fail(error),
-                ),
-              ),
-            );
+            yield* commandWhenFree({
+              _tag: "useCrewCopy",
+              handle: "backend",
+              threadId: created!.threadId,
+              expectedPath: path,
+            });
             const [update] = yield* dispatchedOf(world, "thread.meta.update");
             assert.deepStrictEqual(
               [update?.worktreePath, update?.expectedWorktreePath],
@@ -1226,10 +1308,18 @@ describe("CrewEngine", () => {
               turnsBefore,
             );
             yield* (yield* ServerCommandReadiness).complete;
+            yield* eventually(
+              Effect.map(
+                dispatchedOf(world, "thread.turn.start"),
+                (turns) => turns.length === turnsBefore + 1,
+              ),
+            );
+            // Its turn died: it carries on in the attempt it stood in, never a forced rework.
             const snapshot = yield* snapshotWhere(
               (current) =>
-                current.board.tasks[0]?.attempts === 2 &&
-                current.board.tasks[0]?.state === "working",
+                current.board.tasks[0]?.attempts === 1 &&
+                current.board.tasks[0]?.state === "working" &&
+                current.attention.length === 0,
             );
             assert.deepStrictEqual(
               [

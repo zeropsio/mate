@@ -6,7 +6,7 @@
  * |----------------|------------------|---------------------------------------------------------|
  * | `card_json`    | {@link TaskCard} | what the task asks: its brief, Done when, the fan-out note |
  * | `report_json`  | {@link TaskReport} | the crewmate's last `crew_report`                     |
- * | `check_json`   | `CrewCheck`      | the last check on the tree that would land              |
+ * | `check_json`   | `CrewCheck`      | the last check on the tree that would land, and its tip |
  * | `review_json`  | `CrewReview`     | the last review (phase C)                               |
  * | `waiting_json` | {@link TaskWait} | why it is not moving: rework, park, or your tree's files |
  *
@@ -57,4 +57,9 @@ export const readTaskCard = read(Schema.decodeUnknownOption(TaskCard));
 export const readTaskReport = read(Schema.decodeUnknownOption(TaskReport));
 export const readTaskWait = read(Schema.decodeUnknownOption(TaskWait));
 export const readTaskCheck = read(Schema.decodeUnknownOption(CrewCheck));
+
+/** The copy's tip a passed check ran on, which a landing must find unchanged; the wire never carries it. */
+const CheckedTip = Schema.Struct({ state: Schema.Literal("passed"), tip: Schema.String });
+const readCheckedRun = read(Schema.decodeUnknownOption(CheckedTip));
+export const readCheckedTip = (value: unknown): string | undefined => readCheckedRun(value)?.tip;
 export const readTaskReview = read(Schema.decodeUnknownOption(CrewReview));

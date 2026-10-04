@@ -10,10 +10,10 @@
  * |-------------------------------|----------------------------------------------------|
  * | a tracked path is dirty       | `wait`: retry when the paths are clean or HEAD moves |
  * | an untracked file in the way  | `wait`                                             |
- * | not a fast-forward            | `redo` merge-in, check and land at once, uncounted |
+ * | not a fast-forward            | `redo` merge-in, check and land, a counted re-merge |
  * | `index.lock` present          | `backoff`; never delete the lock                   |
  * | ENOSPC                        | `park` and name the disk                           |
- * | missing object                | `retry` once                                       |
+ * | missing object                | `retry` once, then `park`                          |
  * | anything else                 | `park` with git's first error line                 |
  *
  * Every crew git line runs under `LC_ALL=C`, so these are git's own words.

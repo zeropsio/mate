@@ -26,6 +26,7 @@ import {
   type CrewCommandResult,
   type CrewLogin,
   type CrewSnapshot,
+  type ZeropsLogin,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -522,12 +523,23 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     const watchSignIns = Effect.suspend(() => {
       if (watching) return Effect.void;
       watching = true;
+      // Each login's sign-in as last seen: only a login whose state or signer moved retries.
+      const seen = new Map<string, string>();
+      const moved = (logins: ReadonlyArray<ZeropsLogin>) => {
+        const changed = new Set<string>();
+        for (const login of logins) {
+          const now = `${login.state}|${login.signedInBy ?? ""}`;
+          if (seen.get(login.id) !== now) changed.add(login.id);
+          seen.set(login.id, now);
+        }
+        return changed;
+      };
       return Stream.merge(
-        Stream.map(core.logins.changes, () => undefined),
-        Stream.map(agentAuth.changes, () => undefined),
+        core.logins.changes,
+        Stream.map(agentAuth.changes, (snapshot) => snapshot.logins ?? []),
       ).pipe(
-        Stream.runForEach(() =>
-          retryRefused(core).pipe(
+        Stream.runForEach((logins) =>
+          retryRefused(core, moved(logins)).pipe(
             Effect.catch((error) =>
               Effect.sync(() => {
                 core.memory.lastError = failureWords(error);

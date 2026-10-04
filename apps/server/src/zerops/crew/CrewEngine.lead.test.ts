@@ -800,6 +800,36 @@ describe("CrewEngine lead", () => {
     },
   );
 
+  it.live("a person's own turn to the lead in a run keeps its row after a restart", () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* withLead(world);
+          yield* startRun();
+          yield* snapshotWhere((current) => current.run?.state === "running");
+          yield* command({ _tag: "message", handle: "lead", text: "Plan it", attachments: [] });
+          yield* leadThread(world);
+        }),
+      () =>
+        Effect.gen(function* () {
+          yield* (yield* ServerCommandReadiness).complete;
+          const kept = yield* snapshotWhere((current) =>
+            current.attention.some((need) => need.kind === "interrupted" && need.handle === "lead"),
+          );
+          yield* Effect.sleep("300 millis");
+          const still = yield* snapshotWhere(() => true);
+          assert.isTrue(
+            still.attention.some(
+              (need) =>
+                need.kind === "interrupted" &&
+                need.operation?.id ===
+                  kept.attention.find((row) => row.kind === "interrupted")!.operation!.id,
+            ),
+          );
+        }),
+    ]),
+  );
+
   it.live("the lead's own question still waits on you after a restart", () =>
     withCrewEngines([
       (world) =>

@@ -54,7 +54,8 @@ import { readDeclaredPorts } from "./crewPorts.ts";
 import { leadReviews } from "./crewRuns.ts";
 import { appendSeam } from "./crewSeamLines.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
-import { readTaskCheck, readTaskReview, readTaskWait } from "./crewTaskData.ts";
+import { EDITED_AFTER_CHECK, MOVED_AFTER_CHECK } from "./crewMachines.ts";
+import { readCheckedTip, readTaskCheck, readTaskReview, readTaskWait } from "./crewTaskData.ts";
 import {
   continueTask,
   parkTask,
@@ -128,6 +129,10 @@ const runCheck = (
   Effect.gen(function* () {
     const command = member.spec.check;
     {
+      // The tree the check runs on: the one tip a landing of this task may take.
+      const checkedTip = Option.getOrUndefined(
+        yield* asRefusal(core.store.getLane(CREW_ID, member.row.handle)),
+      )?.recordedTip;
       const outcome = yield* operationStep(
         core,
         operationId,
@@ -165,7 +170,7 @@ const runCheck = (
                   { type: "check-passed", reviewed },
                   (next) => ({
                     ...next,
-                    check: { state: "passed", output: outcome.tail },
+                    check: { state: "passed", output: outcome.tail, tip: checkedTip ?? null },
                   }),
                 ),
               } as const;
@@ -272,9 +277,10 @@ const integrateMerging = (core: CrewCore, taskId: string, inCopy: InCopy, setupA
                 core,
                 operation.id,
                 "merging",
-                asRefusal(core.integration.mergeIn(key)),
+                asRefusal(core.integration.mergeIn(key, operation.id)),
               );
-              if (!["merged", "current"].includes(merged._tag))
+              // A conflict is the merge's verdict, sent back to its crewmate as a failed check is.
+              if (!["merged", "current", "conflict"].includes(merged._tag))
                 yield* updateOperation(core, operation.id, {
                   detail: `Preparing the check stopped: ${merged._tag}`,
                 });
@@ -577,6 +583,7 @@ const landReady = (
                 handle: member.row.handle,
                 assignment: landing.assignment,
                 title: landing.title,
+                checkedTip: readCheckedTip(task.check),
               }),
             ),
           );
@@ -706,8 +713,15 @@ const landReady = (
                     landing,
                     "an object the landing needs was missing; it lands again",
                   );
-                  const missing = yield* stepTask(core, landing, { type: "missing-object" });
-                  return { next: "land", assignment: missing.assignment } as const;
+                  const key = `${landing.assignment}:${landing.attempt}`;
+                  const missing = yield* stepTask(core, landing, {
+                    type: "missing-object",
+                    retried: core.memory.landRetried.has(key),
+                  });
+                  core.memory.landRetried.add(key);
+                  return missing.state === "ready"
+                    ? ({ next: "land", assignment: missing.assignment } as const)
+                    : undefined;
                 }
                 case "park":
                   if (refusal.kind === "no-space") {
@@ -719,9 +733,14 @@ const landReady = (
               }
               return;
             }
+            case "uncommitted":
+              yield* parkTask(core, landing, EDITED_AFTER_CHECK);
+              return;
+            case "unchecked":
+              yield* parkTask(core, landing, MOVED_AFTER_CHECK);
+              return;
             case "frozen":
             case "lane-missing":
-            case "uncommitted":
             case "unknown-tip":
               yield* parkTask(core, landing, `its copy could not land (${outcome._tag})`);
               return;

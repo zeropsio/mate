@@ -314,7 +314,7 @@ export interface CrewStoreService {
     crew: string,
     member: string,
   ) => Effect.Effect<ReadonlyArray<string>, CrewStoreError>;
-  /** Every recorded landing by a crewmate on `host`, oldest first. */
+  /** Every recorded landing made on `host` (its landing operation's host), oldest first. */
   readonly landingsOnHost: (
     host: string,
   ) => Effect.Effect<ReadonlyArray<CrewLanding>, CrewStoreError>;
@@ -943,13 +943,24 @@ export const make = Effect.gen(function* () {
         Effect.map((rows) => rows.map((row) => row.assignment)),
       ),
     landingsOnHost: (host) =>
+      // Each landing on the host it landed on (its landing operation's), else its crewmate's.
       sql<CrewLanding>`
         SELECT
           a.crew, a.member, a.assignment, a.title,
           a.landed_commit AS "landedCommit"
         FROM crew_assignment a
-        JOIN crew_member m ON m.crew = a.crew AND m.handle = a.member
-        WHERE m.host = ${host} AND a.landed_commit IS NOT NULL
+        LEFT JOIN crew_member m ON m.crew = a.crew AND m.handle = a.member
+        WHERE a.landed_commit IS NOT NULL AND COALESCE(
+          (
+            SELECT json_extract(o.data, '$.targets.host') FROM crew_operation o
+            WHERE o.crew = a.crew
+              AND json_extract(o.data, '$.kind') = 'landing'
+              AND json_extract(o.data, '$.taskId') = a.assignment
+              AND json_extract(o.data, '$.targets.host') IS NOT NULL
+            ORDER BY o.rowid DESC LIMIT 1
+          ),
+          m.host
+        ) = ${host}
         ORDER BY a.updated_at, a.number
       `.pipe(Effect.mapError(sqlError("landingsOnHost"))),
     putHost: (row) =>

@@ -246,7 +246,8 @@ export type TaskEvent =
   | { readonly type: "dirty-tree" }
   | { readonly type: "untracked-in-way" }
   | { readonly type: "index-lock" }
-  | { readonly type: "missing-object" }
+  /** `retried`: this landing already took its one retry after a missing object. */
+  | { readonly type: "missing-object"; readonly retried: boolean }
   | { readonly type: "disk-full" }
   | { readonly type: "tree-clean" }
   | { readonly type: "wait-expired" }
@@ -393,6 +394,23 @@ export const initialTaskState = (input: {
 }): CrewTaskState => (input.source === "lead" && !input.leadMayStart ? "proposed" : "queued");
 
 const TERMINAL: ReadonlySet<CrewTaskState> = new Set(["landed", "discarded"]);
+
+/**
+ * A task whose check passed: its copy's tip is the tree that lands, so no
+ * edit is ever committed onto it (a boot sweep, a turn's end) and none lands.
+ */
+export const CHECKED_STATES: ReadonlySet<CrewTaskState> = new Set([
+  "ready",
+  "review",
+  "landing",
+  "waiting-on-you",
+]);
+
+/** Why a checked task stopped: its copy changed after the check. */
+export const EDITED_AFTER_CHECK =
+  "its copy has edits made after its check; they stay in its copy and do not land";
+export const MOVED_AFTER_CHECK =
+  "its copy moved after its check; the change stays in its copy and does not land";
 const RETURNS_TO_WORK_ON_MESSAGE: ReadonlySet<CrewTaskState> = new Set([
   "working",
   "blocked",
@@ -511,18 +529,19 @@ export const taskTransition = (task: CrewTask, event: TaskEvent): TaskStep => {
     case "fast-forward":
       return from === "landing" ? to("landed") : illegal;
     case "head-moved":
+    case "not-fast-forward":
       if (from !== "landing") return illegal;
       return counters.remerges >= CREW_REMERGES_MAX
         ? rework()
         : to("merging", { ...counters, remerges: counters.remerges + 1 });
-    case "not-fast-forward":
-      return from === "landing" ? to("merging") : illegal;
     case "dirty-tree":
     case "untracked-in-way":
       return from === "landing" ? to("waiting-on-you") : illegal;
     case "index-lock":
-    case "missing-object":
       return from === "landing" ? to("ready") : illegal;
+    case "missing-object":
+      if (from !== "landing") return illegal;
+      return event.retried ? park("missing-object") : to("ready");
     case "disk-full":
       return from === "landing" ? park("disk-full") : illegal;
     case "tree-clean":
@@ -542,6 +561,7 @@ export const taskTransition = (task: CrewTask, event: TaskEvent): TaskStep => {
             attempt: counters.attempt + 1,
             reworks: 0,
             remerges: 0,
+            requeues: 0,
             rotations: 0,
           })
         : illegal;

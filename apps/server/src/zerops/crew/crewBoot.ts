@@ -20,7 +20,7 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
-import { ThreadId } from "@t3tools/contracts";
+import { ThreadId, type CrewOperation } from "@t3tools/contracts";
 
 import { crewLane } from "./CrewDefinition.ts";
 import { grantAfterTurn, refreshClaims } from "./crewClaims.ts";
@@ -35,11 +35,13 @@ import {
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { refreshLaneStats } from "./crewLanding.ts";
-import { NO_REPORT } from "./crewMachines.ts";
+import { CHECKED_STATES, EDITED_AFTER_CHECK, NO_REPORT } from "./crewMachines.ts";
+import { openTaskOf, parkTask } from "./crewTasks.ts";
 import { beginOperation, updateOperation } from "./crewOperations.ts";
 import { advanceAll, takeUpWaiting } from "./crewRunFlow.ts";
 import { runOnAfterRestart } from "./crewRuns.ts";
 import { repairUnsetCopies } from "./CrewStints.ts";
+import { adoptOwnWrites, readLandedEvidence } from "./crewContinue.ts";
 import { recoverLanes } from "./crewTurns.ts";
 
 /** A task whose turn was running when the server stopped: its session died with it. */
@@ -56,6 +58,22 @@ const turnDied = (core: CrewCore, threadId: string | null) =>
         ),
         Effect.orElseSucceed(() => false),
       );
+
+/** What the restart stopped, by the operation it found running: a turn, or what came after it. */
+const restartWords = (kind: CrewOperation["kind"]): string => {
+  switch (kind) {
+    case "dispatch":
+      return "The Mate restarted during its turn.";
+    case "checkpoint":
+      return "Its turn had ended; the Mate restarted while saving its work.";
+    case "check":
+      return "Its turn had ended; the Mate restarted during its check.";
+    case "landing":
+      return "Its turn had ended; the Mate restarted during its landing.";
+    case "rebuild":
+      return "The Mate restarted while rebuilding its copy.";
+  }
+};
 
 export const boot = (core: CrewCore) =>
   Effect.gen(function* () {
@@ -91,9 +109,10 @@ export const boot = (core: CrewCore) =>
         );
       }
       if (attempt === undefined || attempt.endedAt !== null) continue;
-      const interrupted = operations.some(
+      const running = operations.filter(
         (operation) => operation.taskId === task.assignment && operation.status === "running",
       );
+      const interrupted = running.length > 0;
       // A turn that ended unseen ends its attempt when the task last moved.
       yield* asRefusal(
         core.store.putAttempt(
@@ -101,7 +120,7 @@ export const boot = (core: CrewCore) =>
             ? {
                 ...attempt,
                 ending: "interrupted",
-                endingDetail: "The Mate restarted during its turn.",
+                endingDetail: restartWords(running.at(-1)!.kind),
                 endedAt: yield* core.now,
               }
             : {
@@ -175,7 +194,29 @@ export const inspectBoot = (core: CrewCore) =>
  */
 const sweepHost = (core: CrewCore, applied: AppliedCrew, host: string) =>
   Effect.gen(function* () {
-    const swept = yield* asRefusal(core.workspace.sweep(host));
+    // A self-deploy the restart cut off has nobody left to see it end: the host thaws, and
+    // the sweep and recovery below read what the deploy left.
+    yield* asRefusal(core.workspace.unfreeze(host));
+    const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
+    const open = (handle: string) => openTaskOf(tasks, handle);
+    const checked = new Set(
+      [...applied.members.keys()].filter((handle) => {
+        const task = open(handle);
+        return task !== undefined && CHECKED_STATES.has(task.state);
+      }),
+    );
+    const swept = yield* asRefusal(core.workspace.sweep(host, checked));
+    // Edits on a copy its check passed: never committed, never landed, and its landing stops.
+    for (const lane of swept.lanes) {
+      const task = lane._tag === "held" ? open(lane.handle) : undefined;
+      if (task === undefined) continue;
+      for (const row of yield* asRefusal(core.store.operations(CREW_ID))) {
+        if (row.taskId !== task.assignment || row.status !== "interrupted") continue;
+        core.memory.resumeAtBoot.delete(row.id);
+        yield* updateOperation(core, row.id, { status: "continued" });
+      }
+      yield* parkTask(core, task, EDITED_AFTER_CHECK);
+    }
     const missing = swept.lanes
       .filter((lane) => lane._tag === "missing")
       .map((lane) => lane.handle);
@@ -193,8 +234,37 @@ export const carryOnAtBoot = (core: CrewCore) =>
     const applied = yield* core.applied;
     if (applied === undefined) return;
     yield* runOnAfterRestart(core);
+    // A git write an interrupted operation finished after the Mate stopped is its own, not a stranger's.
+    const interrupted = (yield* asRefusal(core.store.operations(CREW_ID))).filter((row) =>
+      core.memory.resumeAtBoot.has(row.id),
+    );
+    for (const handle of applied.members.keys()) {
+      const member = memberOf(applied, handle);
+      const own = interrupted.filter((row) => row.handle === handle);
+      if (member === undefined || own.length === 0) continue;
+      const landed = own
+        .map((row) => readLandedEvidence(row.result))
+        .find((evidence) => evidence !== undefined)?.commit;
+      yield* core
+        .crewmate(handle)(adoptOwnWrites(core, member, own, landed))
+        .pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              core.memory.lastError = failureWords(error);
+            }),
+          ),
+        );
+    }
     for (const host of applied.repositories.keys()) {
-      yield* sweepHost(core, applied, host).pipe(
+      // Every copy on the host is held while it is swept: a person's press waits its turn.
+      const writers = [...applied.members.values()]
+        .filter((row) => row.kind === "writer" && row.host === host)
+        .map((row) => row.handle);
+      const held = writers.reduce(
+        (effect, handle) => core.crewmate(handle)(effect),
+        sweepHost(core, applied, host),
+      );
+      yield* held.pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
             core.memory.lastError = failureWords(error);

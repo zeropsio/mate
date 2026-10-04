@@ -27,6 +27,7 @@ import {
  */
 import { CommandId, ThreadId, type CrewRunReason, type SpiEvent } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 import {
   asRefusal,
@@ -56,7 +57,12 @@ import {
 import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { continueAfterSave, openTaskOf, parkTask, requeueTask, stepTask } from "./crewTasks.ts";
-import { attemptEndingOf, turnEndingOf } from "./crewMachines.ts";
+import {
+  attemptEndingOf,
+  CHECKED_STATES,
+  EDITED_AFTER_CHECK,
+  turnEndingOf,
+} from "./crewMachines.ts";
 import { settleLeadWake } from "./crewLead.ts";
 import { flushState } from "./crewState.ts";
 import { CREW_ROTATE_AFTER_DEFAULT } from "./rotationDecision.ts";
@@ -89,10 +95,16 @@ export const laneSpecsOn = (applied: AppliedCrew, host: string): ReadonlyArray<L
  * A host whose copies went missing (a self-deploy, a container replacement,
  * a restart): `recover` re-adds them only when every branch, recorded
  * landing and saved tip is still there, so no work is lost; otherwise it
- * names what was lost, keeps the host frozen, and the copies stay missing
- * for a person's Rebuild crew copy.
+ * names what was lost, and those copies stay missing for a person's Rebuild
+ * crew copy. The host thaws either way.
  */
 export const recoverLanes = (core: CrewCore, applied: AppliedCrew, host: string, when: string) =>
+  recoverLanesOnce(core, applied, host, when).pipe(
+    // A recovery that fails still thaws the host: nothing freezes it with no way out.
+    Effect.ensuring(core.workspace.unfreeze(host).pipe(Effect.ignore)),
+  );
+
+const recoverLanesOnce = (core: CrewCore, applied: AppliedCrew, host: string, when: string) =>
   Effect.gen(function* () {
     yield* core.repositories.refresh;
     const outcome = yield* asRefusal(core.workspace.recover(host, laneSpecsOn(applied, host)));
@@ -135,6 +147,16 @@ export const commitAndPolice = (
   withOperation(core, { kind: "checkpoint", handle: member.row.handle, task }, (operation) =>
     Effect.gen(function* () {
       const key = { crew: CREW_ID, handle: member.row.handle };
+      // A checked task's copy is the tree that lands: an edit on it is never committed.
+      if (task !== undefined && CHECKED_STATES.has(task.state) && member.row.host !== null) {
+        const stats = yield* core.reads
+          .laneStats(member.row.host, member.row.handle)
+          .pipe(Effect.option);
+        if (Option.isSome(stats) && stats.value.dirty) {
+          yield* parkTask(core, task, EDITED_AFTER_CHECK);
+          return;
+        }
+      }
       const turnKey = task === undefined ? "" : `${task.assignment}:${task.attempt}`;
       const committed = yield* operationStep(
         core,
@@ -144,6 +166,7 @@ export const commitAndPolice = (
           core.workspace.commitTurn(key, {
             assignment: task?.assignment ?? "idle",
             turn: core.memory.turns.get(turnKey) ?? 1,
+            operation: operation.id,
           }),
         ),
       );
@@ -494,6 +517,8 @@ export const makeTurnHandler = (core: CrewCore) => {
           deploys.set(event.itemId, target);
           yield* freeze(applied, target);
         } else if (event.type === "item.completed" && deploys.delete(event.itemId)) {
+          yield* asRefusal(core.workspace.unfreeze(target));
+          yield* core.changed;
           yield* core.background(
             recoverLanes(core, applied, target, "came back from its deploy").pipe(
               Effect.andThen(advanceAll(core)),

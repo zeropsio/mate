@@ -30,6 +30,7 @@ import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 
 import { carriedCard, nudgeCard } from "./crewCards.ts";
 import {
+  DEFAULT_CREW_LOGIN,
   asRefusal,
   currentStint,
   dispatchPrincipal,
@@ -263,17 +264,25 @@ export const takeUpWaiting = (core: CrewCore) =>
   });
 
 /**
- * Starts again every queued task admission refused, once a sign-in or a
- * signer changed: the cause may have cleared. One refused again keeps its
- * *Can't start* row with the new words.
+ * Starts again every queued task admission refused whose crewmate runs on a
+ * login whose sign-in or signer changed: the cause may have cleared. Another
+ * login's change leaves it waiting. One refused again keeps its *Can't
+ * start* row with the new words.
  */
-export const retryRefused = (core: CrewCore) =>
+export const retryRefused = (core: CrewCore, logins: ReadonlySet<string>) =>
   Effect.gen(function* () {
-    if (core.memory.cantStart.size === 0) return;
+    if (core.memory.cantStart.size === 0 || logins.size === 0) return;
+    const applied = yield* core.applied;
+    if (applied === undefined) return;
     const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
     const handles = new Set(
       tasks
-        .filter((task) => task.state === "queued" && core.memory.cantStart.has(task.assignment))
+        .filter(
+          (task) =>
+            task.state === "queued" &&
+            core.memory.cantStart.has(task.assignment) &&
+            logins.has(applied.members.get(task.member)?.login ?? DEFAULT_CREW_LOGIN),
+        )
         .map((task) => task.member),
     );
     for (const handle of handles) yield* advanceWhenFree(core, handle);
