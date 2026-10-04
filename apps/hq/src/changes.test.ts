@@ -969,6 +969,26 @@ describe("a Mate's changes in HQ", () => {
         assert.strictEqual((yield* say(owner, "\u0001".repeat(20_000))).status, 200);
         assert.strictEqual((yield* say(owner, "a\u0000b")).status, 400);
 
+        for (const [type, bytes] of RASTERS) {
+          const uploaded = yield* call("POST", "/api/mate/changes/appdev/1/attachments", {
+            headers: { ...auth, "content-type": type },
+            body: bytes,
+          });
+          const path = (uploaded.body as { path: string }).path;
+          const picture = yield* call("GET", path, { session: reader });
+          assert.deepStrictEqual(
+            [
+              picture.status,
+              picture.headers.get("content-type"),
+              picture.headers.get("x-content-type-options"),
+              [...picture.bytes],
+            ],
+            [200, type, "nosniff", [...bytes]],
+          );
+          assert.include(picture.headers.get("cache-control") ?? "", "private");
+          assert.strictEqual((yield* call("GET", path)).status, 401);
+          assert.strictEqual((yield* call("GET", path, { session: dev })).status, 403);
+        }
         const kept = (yield* call("POST", "/api/mate/changes/appdev/1/attachments", {
           headers: { ...auth, "content-type": "image/png" },
           body: PNG,

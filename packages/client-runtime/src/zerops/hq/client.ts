@@ -1,3 +1,4 @@
+import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
 /**
  * HQ's API as the client calls it (`apps/hq/src/api.ts`), through HQ's door.
  *
@@ -931,7 +932,7 @@ export function makeHqApi(input: {
     changeAttachment: async (link, signal) =>
       (
         await authorized(attachmentPath(link.appId, link.repo, link.number, link.id), {
-          headers: { Accept: "image/png" },
+          headers: { Accept: RASTER_CONTENT_TYPES.join(", ") },
           ...(signal === undefined ? {} : { signal }),
         })
       ).blob(),

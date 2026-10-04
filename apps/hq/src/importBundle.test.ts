@@ -31,6 +31,19 @@ describe("a migration bundle", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect.each([
+    ["JPEG", new Uint8Array([0xff, 0xd8, 0xff, 0xe0])],
+    ["GIF", new TextEncoder().encode("GIF89a")],
+    ["WebP", new Uint8Array([82, 73, 70, 70, 4, 0, 0, 0, 87, 69, 66, 80])],
+    ["AVIF", new Uint8Array([0, 0, 0, 16, 102, 116, 121, 112, 97, 118, 105, 102, 0, 0, 0, 0])],
+  ] as const)("preserves an imported %s attachment", ([, picture]) =>
+    Effect.gen(function* () {
+      const written = yield* syntheticBundle(yield* tempDir, undefined, picture);
+      const bundle = yield* checkBundle(written.dir);
+      assert.strictEqual(bundle.changes.flatMap((change) => change.attachments).length, 1);
+    }).pipe(Effect.scoped),
+  );
+
   type Parts = Parameters<NonNullable<Parameters<typeof syntheticBundle>[1]>>[0];
   type Row = Record<string, unknown>;
   const rows = (value: unknown) => value as Array<Row>;
@@ -65,9 +78,9 @@ describe("a migration bundle", () => {
       finding: "notes.txt is not in the manifest",
     },
     {
-      name: "a picture that is no PNG",
+      name: "a picture that is no raster",
       picture: new Uint8Array([0x47, 0x49, 0x46, 0x38]),
-      finding: "attachments/u1.png is no PNG",
+      finding: "attachments/u1.png is no supported raster",
     },
     {
       name: "a change of a project that is no Mate",
