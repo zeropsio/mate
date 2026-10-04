@@ -5,6 +5,7 @@ import * as Fiber from "effect/Fiber";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as Queue from "effect/Queue";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -493,6 +494,33 @@ describe("serveStructureSocket: who ended a socket, and with what code", () => {
     });
     return { socket, closeBy: (code: number) => Deferred.succeed(closing, code) };
   });
+
+  it.effect("ends a healthy segment cleanly at 100 seconds, even with pongs", () =>
+    Effect.gen(function* () {
+      const incoming = yield* Queue.unbounded<readonly [Uint8Array]>();
+      const closes: Array<{ code: number; reason: string }> = [];
+      const socket = Socket.make({
+        reader: Effect.succeed({ pull: Queue.take(incoming), upgrade: () => Effect.void }),
+        writer: Effect.succeed({
+          write: (frame) =>
+            Effect.gen(function* () {
+              if (Socket.isCloseEvent(frame))
+                closes.push({ code: frame.code, reason: frame.reason ?? "" });
+              else yield* Queue.offer(incoming, [new TextEncoder().encode('{"type":"pong"}')]);
+            }),
+          writeAll: () => Effect.void,
+        }),
+      });
+      const serving = yield* Effect.forkChild(
+        serveStructureSocket(socket, Stream.never, Duration.seconds(20)),
+      );
+      yield* TestClock.adjust("99999 millis");
+      assert.deepStrictEqual(closes, []);
+      yield* TestClock.adjust("1 millis");
+      assert.deepStrictEqual(closes, [{ code: 4410, reason: "segment over" }]);
+      assert.deepStrictEqual(yield* Fiber.join(serving), { by: "hq", code: 4410 });
+    }).pipe(Effect.provide(liveSocketsLayer)),
+  );
 
   it.effect("the client, with the code its close carried", () =>
     Effect.gen(function* () {

@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./hqStream": {
+      "types": "./src/hqStream.ts",
+      "import": "./src/hqStream.ts"
+    },
     "./hqObservation": {
       "types": "./src/hqObservation.ts",
       "import": "./src/hqObservation.ts"

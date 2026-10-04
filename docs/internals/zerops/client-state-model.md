@@ -212,6 +212,28 @@ Mates sleep or are gone would lose it, and a Mate's rights are not the person's.
 | Persisted UI state                                                                                                                                                                                             | The owning store, under `accountStorageKey`                                                                                                                                                                                                                                                                                    | Personal context                                                                                                                                                                   | Account                                                                                                           |
 | Platform signals                                                                                                                                                                                               | One `PlatformSignals` port and one `DeadlineClock` port per account runtime                                                                                                                                                                                                                                                    | Visibility, focus, online, freeze/resume, wall and monotonic clocks                                                                                                                | Renderer                                                                                                          |
 
+HQ's structure socket is a sequence of planned 100-second segments. HQ closes each with `4410`
+(`segment over`), ahead of the shared IPv4's 120-second cut measured in
+[`verified.md`](verified.md) ("A WebSocket through a project's shared IPv4 is cut 120 s after it
+opens"). Only that code asks `cr/zerops/hq/client.ts` to mint one fresh stream ticket and open the
+next segment immediately. The stream call remains pending, and the structure, changes, app reads,
+Mates and people remain live until its replacement snapshot arrives. There is no client rotation
+timer, retry or backoff. A failed next ticket or socket, any other close, or silence ends visibly;
+the last data stands as unavailable until **Try again**. Session close `4401` also forgets the old
+session for that manual attempt; leader/shutdown `1001` does not continue automatically.
+
+Pongs are sent directly in the browser message handler before the liveness callback can remember
+data in local storage; they use no timer or React scheduling. A busy main thread or a suspended
+browser can still delay the message event itself. Missing pongs remain a distinct `4408` failure;
+the observed missing-pong sockets have no client correlation establishing that delay's cause.
+
+HQ has only two WebSocket routes: the structure and `/api/mate/link`. The Mate link already resolves
+HQ's public address IPv6 first, retaining IPv6 connections, and replaces IPv4 or unknown-family
+connections at 100 seconds (`server/zerops/ZeropsHqLink.ts`). Its successor opens beside the old
+link, and the old link ends after HQ answers on the successor; that route needs no new rotation.
+Desktop uses the web stream owner and the shared client. Mobile has no separate HQ structure
+stream owner today; the shared client's segment contract applies to any caller it adds.
+
 ## Machines
 
 Each machine is `transition(state, event, ctx) → {state, effects}` with

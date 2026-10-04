@@ -16,7 +16,8 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  *   deploy, whose services then get their subdomain on their first deploy (audit R1).
  * - `GET /api/structure` → `{ apps }`, as the caller sees them in Zerops: each with its projects,
  *   and its environments with their deploys.
- * - `GET /api/structure/ws?ticket=`: the same, then its changes, over a WebSocket (`stream.ts`);
+ * - `GET /api/structure/ws?ticket=`: the same, then its changes, in 100 s WebSocket segments
+ *   (`stream.ts`); close 4410 ("segment over") asks for a fresh ticket and the next snapshot;
  *   the ticket from `POST /api/stream-ticket` → `{ ticket, expiresIn }`.
  * - `PATCH /api/apps/:id` `{ name }` → the application.
  * - `PUT /api/projects/:projectId/app` `{ appId | null, kind }` → `{ projectId, appId, kind }`:

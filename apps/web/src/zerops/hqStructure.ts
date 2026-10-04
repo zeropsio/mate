@@ -11,7 +11,9 @@
  *   Mates as HQ last told them, at rest, until HQ answers.
  * - **HQ down:** the last known structure stands, and the view says since when HQ does not answer
  *   (SPEC §4); chat and terminal to the Mates do not go through HQ and keep working.
- * - A stream that breaks, ends or stays silent shows a failure; a manual again starts a snapshot.
+ * - Planned 100 s segments continue inside `streamStructure`; the live atoms remain current
+ *   until the next snapshot. A stream that breaks, ends otherwise or stays silent shows a failure;
+ *   a manual again starts a snapshot.
  */
 import { RegistryContext } from "@effect/atom-react";
 import {
