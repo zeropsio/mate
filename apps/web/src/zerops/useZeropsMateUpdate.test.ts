@@ -62,9 +62,27 @@ const { useZeropsMateUpdate, useZeropsMateUpdateStates } = await import("./useZe
 let environments = 0;
 let ENVIRONMENT_ID = EnvironmentId.make("environment-0");
 
-function render(serverVersion: string | undefined, environmentId: EnvironmentId = ENVIRONMENT_ID) {
+/** The server's descriptor as the socket holds it: its version and its boot. */
+type Descriptor = { readonly serverVersion: string; readonly bootId?: string };
+let boot = 1;
+
+/** The server process starts again: every descriptor from now on names another boot. */
+const restart = () => {
+  boot += 1;
+};
+
+/**
+ * Renders against the server on `version`, in the boot it runs now — a new descriptor object at
+ * every render, as a remount reads one; `null` while the socket holds none.
+ */
+function render(
+  version: string | Descriptor | null,
+  environmentId: EnvironmentId = ENVIRONMENT_ID,
+) {
   reactHookHarness.beginRender();
-  return useZeropsMateUpdate(environmentId, serverVersion);
+  const descriptor =
+    typeof version === "string" ? { serverVersion: version, bootId: `boot-${boot}` } : version;
+  return useZeropsMateUpdate(environmentId, descriptor);
 }
 
 beforeEach(() => {
@@ -74,6 +92,7 @@ beforeEach(() => {
   container.verdict = { level: "ready" };
   container.intents = [];
   container.takes = true;
+  boot = 1;
   environments += 1;
   ENVIRONMENT_ID = EnvironmentId.make(`environment-${environments}`);
   vi.useFakeTimers();
@@ -441,6 +460,98 @@ describe("useZeropsMateUpdate", () => {
       cause: Cause.die(new Error("read scope required")),
     });
     await expect(render("0.8.0").check()).resolves.toBeUndefined();
+  });
+
+  const ACCEPTED = {
+    _tag: "Success",
+    value: {
+      action: "updated",
+      from: "0.8.0",
+      to: "0.8.1",
+      restarted: true,
+      serverVersion: "0.8.0",
+    },
+  } as const;
+
+  // The server it comes back as is the answer: on another boot of the version it left, the update
+  // did not take.
+  it.each([
+    { name: "no container follows it", takes: false },
+    { name: "its container follows it", takes: true },
+  ])(
+    "a server restarted on the version it left says the update did not take, and offers Update again ($name)",
+    async ({ takes }) => {
+      container.takes = takes;
+      commandSpy.mockResolvedValue(ACCEPTED);
+      let hook = render("0.8.0");
+      hook.update("0.8.1");
+      await vi.advanceTimersByTimeAsync(0);
+
+      container.verdict = { level: "ready" };
+      restart();
+      render("0.8.0");
+      hook = render("0.8.0");
+      expect(hook.state).toEqual({
+        phase: "failed",
+        message: "The update did not take: this Mate is still on 0.8.0.",
+      });
+
+      hook.update("0.8.1");
+      expect(commandSpy).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  // Its container says it is back, but the descriptor is still the boot the update was pressed
+  // in: that server has not restarted yet, so it never reads as updated to the version it left.
+  it("a container back while the descriptor is still the old boot stays updating", async () => {
+    commandSpy.mockResolvedValue(ACCEPTED);
+    let hook = render("0.8.0");
+    hook.update("0.8.1");
+    await vi.advanceTimersByTimeAsync(0);
+
+    container.verdict = { level: "ready" };
+    render("0.8.0");
+    hook = render("0.8.0");
+    expect(hook.state).toMatchObject({ phase: "updating", to: "0.8.1" });
+
+    restart();
+    render("0.8.1");
+    hook = render("0.8.1");
+    expect(hook.state).toEqual({ phase: "updated", to: "0.8.1" });
+  });
+
+  // A socket that only blinked under the call comes back to the server it left, not restarted:
+  // the update is still on its way, never "did not take".
+  it("a socket that blinked under the call and came back to the same boot is still updating", async () => {
+    container.takes = false;
+    commandSpy.mockResolvedValue({
+      _tag: "Failure",
+      cause: Cause.die(new Error("RpcClientError: SocketCloseError: 1006")),
+    });
+    let hook = render("0.8.0");
+    hook.update("0.8.1");
+    await vi.advanceTimersByTimeAsync(0);
+    render(null);
+    render("0.8.0");
+    hook = render("0.8.0");
+    expect(hook.state).toMatchObject({ phase: "updating", to: "0.8.1" });
+
+    restart();
+    render("0.8.1");
+    hook = render("0.8.1");
+    expect(hook.state).toEqual({ phase: "updated", to: "0.8.1" });
+  });
+
+  // A server older than the boot cannot say whether it restarted: the same version is no answer.
+  it("a server that names no boot is no answer on the version it left", async () => {
+    container.takes = false;
+    commandSpy.mockResolvedValue(ACCEPTED);
+    let hook = render({ serverVersion: "0.8.0" });
+    hook.update("0.8.1");
+    await vi.advanceTimersByTimeAsync(0);
+    render({ serverVersion: "0.8.0" });
+    hook = render({ serverVersion: "0.8.0" });
+    expect(hook.state).toMatchObject({ phase: "updating", to: "0.8.1" });
   });
 
   it("every Mate's state reads as one snapshot, a new one on every change", () => {

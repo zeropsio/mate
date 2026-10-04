@@ -196,6 +196,10 @@ export const ExecutionEnvironmentDescriptor = Schema.Struct({
   label: TrimmedNonEmptyString,
   platform: ExecutionEnvironmentPlatform,
   serverVersion: TrimmedNonEmptyString,
+  /** This server process, a new value at every start: the same version on another boot is a
+      restart that kept it, so a client can tell an update that did not take from a server not
+      restarted yet. Absent from older servers. */
+  bootId: Schema.optionalKey(TrimmedNonEmptyString),
   capabilities: ExecutionEnvironmentCapabilities,
   /** The public path prefix this server is published under (`/mate`), absent at
       an origin root and on older servers. A client that loaded the app from a

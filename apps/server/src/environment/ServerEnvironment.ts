@@ -184,6 +184,8 @@ export const make = Effect.gen(function* () {
   const environmentId = EnvironmentId.make(environmentIdRaw);
   const cwdBaseName = path.basename(serverConfig.cwd).trim();
   const label = yield* resolveServerEnvironmentLabel({ cwdBaseName });
+  // This process: never persisted, so every start names a boot of its own.
+  const bootId = yield* crypto.randomUUIDv4;
   const descriptor: ExecutionEnvironmentDescriptor = {
     environmentId,
     label,
@@ -192,6 +194,7 @@ export const make = Effect.gen(function* () {
       arch: platformArch(hostArchitecture),
     },
     serverVersion: packageJson.version,
+    bootId,
     ...(serverConfig.basePath === "" ? {} : { basePath: serverConfig.basePath }),
     ...(serverConfig.zerops === undefined
       ? {}
