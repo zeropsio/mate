@@ -19,7 +19,7 @@ import { ZeropsApiClient } from "../api.ts";
 import { account, organization, project, scope } from "../data/__fixtures__/index.ts";
 import { makeRestAccessVerifier, type AccessVerifier } from "../data/access/verifier.ts";
 import { grantPlatformWrite, type GrantFailure } from "../data/access/grant.ts";
-import { DEFAULT_ZEROPS_GRANT_POLICY } from "../data/policy.ts";
+import { DEFAULT_ZEROPS_GRANT_POLICY, makeZeropsDataPolicy } from "../data/policy.ts";
 import { makeZeropsDataRuntime } from "../data/runtime.ts";
 import {
   decodeEntityDirectResponse,
@@ -1363,6 +1363,8 @@ describe("the post-grant stage's Mate environments", () => {
     admitted: ReadonlyArray<Mate> = mates,
     /** Ports the case adds to the rig's. */
     extra: Partial<AccountEnvironmentPorts> = {},
+    /** The data runtime's budgets the case narrows. */
+    policy = makeZeropsDataPolicy(),
   ) {
     const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
     const registry = AtomRegistry.make();
@@ -1379,6 +1381,7 @@ describe("the post-grant stage's Mate environments", () => {
         scope: scope(),
         adapter,
         atomRegistry: registry,
+        policy,
         makeOpaqueId: (() => {
           let next = 0;
           return () => `opaque-${++next}`;
@@ -1427,12 +1430,19 @@ describe("the post-grant stage's Mate environments", () => {
   it.effect("a refused cold route read ends visibly and waits for manual Again", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const opened = yield* openAccount([], [A_MATE], undefined, undefined, {
-          hqIndex: {
-            projectOf: (id) => (id === ENV_A ? A_MATE.projectId : null),
-            subscribe: () => () => undefined,
+        const opened = yield* openAccount(
+          [],
+          [A_MATE],
+          undefined,
+          undefined,
+          {
+            hqIndex: {
+              projectOf: (id) => (id === ENV_A ? A_MATE.projectId : null),
+              subscribe: () => () => undefined,
+            },
           },
-        });
+          makeZeropsDataPolicy({ activeInterestsPerAccount: 16 }),
+        );
         const background = yield* Scope.make();
         yield* opened.built.data.acquire({ kind: "organization-inventory", organization });
         for (let i = 0; i < 15; i++) {

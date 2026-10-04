@@ -49,6 +49,11 @@ export interface ZeropsDataPolicy {
   readonly activeInterestsPerAccount: number;
   readonly activeRegistrationsPerAccount: number;
   readonly registrationAttemptsPerReceiver: number;
+  /**
+   * Released subscriptions an organization's socket keeps on the wire before it is replaced: the
+   * platform has no unsubscribe, so only a fresh socket stops their frames.
+   */
+  readonly releasedRegistrationsPerReceiver: number;
   readonly receiversPerAccount: number;
   readonly activeQueriesPerAccount: number;
   readonly membershipMarkersPerQuery: number;
@@ -105,10 +110,11 @@ export const DEFAULT_ZEROPS_DATA_POLICY: ZeropsDataPolicy = Object.freeze({
   activeLogSessionsPerAccount: 32,
   logPublicationCoalescingMs: 100,
   logStreamSettleMs: 1_000,
-  desiredInterestsPerReceiver: 128,
+  desiredInterestsPerReceiver: 512,
   activeInterestsPerAccount: 512,
   activeRegistrationsPerAccount: 2_048,
-  registrationAttemptsPerReceiver: 256,
+  registrationAttemptsPerReceiver: 4_096,
+  releasedRegistrationsPerReceiver: 256,
   receiversPerAccount: 16,
   activeQueriesPerAccount: 512,
   membershipMarkersPerQuery: 2_048,
@@ -149,6 +155,15 @@ export function makeZeropsDataPolicy(overrides: Partial<ZeropsDataPolicy> = {}):
   if (policy.desiredInterestsPerReceiver > policy.registrationAttemptsPerReceiver) {
     throw new RangeError(
       "desiredInterestsPerReceiver cannot exceed registrationAttemptsPerReceiver.",
+    );
+  }
+  // A socket's registrations are its live ones plus those released on it before replacement.
+  if (
+    policy.activeRegistrationsPerAccount + policy.releasedRegistrationsPerReceiver >
+    policy.registrationAttemptsPerReceiver
+  ) {
+    throw new RangeError(
+      "activeRegistrationsPerAccount plus releasedRegistrationsPerReceiver cannot exceed registrationAttemptsPerReceiver.",
     );
   }
   return Object.freeze(policy);

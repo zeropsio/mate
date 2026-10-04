@@ -1443,10 +1443,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     };
   };
 
+  /** One socket per organization carries navigation and every opened project's subscriptions. */
   const receiverKeyOf = (descriptor: RuntimeInterestDescriptor): string =>
-    "project" in descriptor
-      ? `${organizationKeyOf(descriptor.project.organization)}:detail:${descriptor.project.projectId}`
-      : `${organizationKeyOf(descriptor.organization)}:navigation`;
+    organizationKeyOf(organizationOfInterest(descriptor));
   const receiverFor = (descriptor: RuntimeInterestDescriptor): RuntimeReceiver => {
     const key = receiverKeyOf(descriptor);
     const existing = receivers.get(key);
@@ -2671,6 +2670,44 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     yield* handleVisibility("hidden").pipe(forkOwned);
   }
 
+  /**
+   * Stops routing `interestKey`'s registrations on the socket; a registration nobody else depends
+   * on leaves it. The platform has no unsubscribe: its subscription stays on the wire, its frames
+   * dropped by name, until the socket closes.
+   */
+  const detachRegistrations = (
+    receiver: RuntimeReceiver,
+    interestKey: InterestKey,
+  ): Effect.Effect<void> =>
+    Effect.gen(function* () {
+      for (const [registrationKey, registration] of receiver.registrations) {
+        if (!registration.dependents.delete(interestKey)) continue;
+        if (registration.status === "registering" && registration.ticket?.owner.kind === "shared") {
+          if (registration.dependents.size === 0) {
+            yield* applyControl({
+              kind: "shared-read-released",
+              requestId: registration.ticket.requestId,
+            });
+          } else {
+            yield* applyControl({
+              kind: "shared-read-upserted",
+              requestId: registration.ticket.requestId,
+              ownership: {
+                owner: registration.ticket.owner,
+                target: registration.ticket.target,
+                dependents: new Map(registration.dependents),
+                status: "active",
+              },
+            });
+          }
+        }
+        if (registration.dependents.size === 0) {
+          receiver.registrations.delete(registrationKey);
+          receiver.registrationOwners.delete(registration.request.subscriptionName);
+        }
+      }
+    });
+
   const releaseLease = (leaseId: string): Effect.Effect<void> =>
     lifecycleLock.withPermit(
       Effect.gen(function* () {
@@ -2702,37 +2739,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         const inactiveQueryKeys = releasedQueryKeys.filter((key) => !remainingQueryKeys.has(key));
         const organizationKey = receiverKeyOf(runtimeInterest.descriptor);
         const receiver = receivers.get(organizationKey);
-        if (receiver !== undefined) {
-          for (const [registrationKey, registration] of receiver.registrations) {
-            if (!registration.dependents.delete(runtimeInterest.key)) continue;
-            if (
-              registration.status === "registering" &&
-              registration.ticket?.owner.kind === "shared"
-            ) {
-              if (registration.dependents.size === 0) {
-                yield* applyControl({
-                  kind: "shared-read-released",
-                  requestId: registration.ticket.requestId,
-                });
-              } else {
-                yield* applyControl({
-                  kind: "shared-read-upserted",
-                  requestId: registration.ticket.requestId,
-                  ownership: {
-                    owner: registration.ticket.owner,
-                    target: registration.ticket.target,
-                    dependents: new Map(registration.dependents),
-                    status: "active",
-                  },
-                });
-              }
-            }
-            if (registration.dependents.size === 0) {
-              receiver.registrations.delete(registrationKey);
-              receiver.registrationOwners.delete(registration.request.subscriptionName);
-            }
-          }
-        }
+        if (receiver !== undefined) yield* detachRegistrations(receiver, runtimeInterest.key);
         for (const [hydrationKey, hydration] of hydrations) {
           if (!hydration.ownership.dependents.has(runtimeInterest.key)) continue;
           const dependents = new Map(hydration.ownership.dependents);
@@ -2784,9 +2791,27 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           (interest) =>
             interest.leases.size > 0 && receiverKeyOf(interest.descriptor) === organizationKey,
         );
-        if (!hasOtherInterest || (inactiveQueryKeys.length > 0 && receiver?.openFailure === null)) {
+        // The socket closes with its organization's last demand, or is replaced once the
+        // subscriptions released on it reach the bound: only a fresh socket stops their frames.
+        const released =
+          receiver === undefined ? 0 : receiver.registrationAttempts - receiver.registrations.size;
+        if (
+          !hasOtherInterest ||
+          (released >= policy.releasedRegistrationsPerReceiver && receiver?.openFailure === null)
+        ) {
           receivers.delete(organizationKey);
-          if (receiver !== undefined) yield* stopReceiver(receiver);
+          if (receiver !== undefined) {
+            yield* stopReceiver(receiver);
+            // A hydration read for the replaced socket's demand starts again on the fresh one.
+            for (const [key, hydration] of hydrations) {
+              if (
+                [...hydration.ownership.dependents.values()].some(
+                  (identity) => identity.receiver === receiver.identity,
+                )
+              )
+                yield* cancelHydration(key, hydration);
+            }
+          }
           for (const remaining of interests.values()) {
             if (
               remaining.leases.size === 0 ||
@@ -2872,19 +2897,36 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           serviceIds,
           atMs: yield* Clock.currentTimeMillis,
         });
-        const receiverKeys = new Set(held.map((interest) => receiverKeyOf(interest.descriptor)));
-        const affected = [...receivers.values()].filter((receiver) =>
-          receiverKeys.has(receiver.key),
-        );
+        // A project's again re-registers only its own subscriptions on the organization's healthy
+        // socket. The organization's again, or a project's on a failed socket, replaces the socket
+        // and re-establishes everything it carried.
+        const current = receivers.get(organizationKey);
+        const replace =
+          scope.kind === "organization" ||
+          current === undefined ||
+          current.failed ||
+          current.openFailure !== null;
+        const reestablished = replace
+          ? [...interests.values()].filter(
+              (interest) =>
+                interest.leases.size > 0 && receiverKeyOf(interest.descriptor) === organizationKey,
+            )
+          : held;
         const matchesEntity = (target: EntityRef) =>
           organizationKeyOf(organizationOfEntityRef(target)) === organizationKey &&
-          (scope.kind === "organization" ||
+          (replace ||
             (target.kind === "project" ? target : target.project).projectId === scope.projectId);
-        for (const stale of affected) {
-          receivers.delete(stale.key);
-          yield* stopReceiver(stale);
+        if (current !== undefined) {
+          if (replace) {
+            receivers.delete(organizationKey);
+            yield* stopReceiver(current);
+          } else {
+            for (const runtimeInterest of held) {
+              yield* detachRegistrations(current, runtimeInterest.key);
+            }
+          }
         }
-        for (const runtimeInterest of held) {
+        for (const runtimeInterest of reestablished) {
           const desired = yield* updateInterestIdentity(
             runtimeInterest,
             receiverFor(runtimeInterest.descriptor),
@@ -2892,7 +2934,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           yield* applyControl({ kind: "interest-upserted", interest: desired });
         }
 
-        // The stale receiver's registrations went with it: an in-flight
+        // The detached registrations went with their identity: an in-flight
         // hydration is cancelled so scheduleHydration starts it fresh once the
         // interests are re-established. Manual refresh releases terminal coverage too.
         yield* Effect.forEach(
@@ -2904,7 +2946,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           if (matchesEntity(record.target)) hydrationAttempts.delete(entityKey);
         }
         yield* Effect.forEach(
-          held,
+          reestablished,
           (runtimeInterest) => establishInterest(runtimeInterest).pipe(forkOwned),
           { discard: true },
         );
@@ -3014,7 +3056,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           key,
           leases: new Set(),
           // Metrics and history enrich what the inventory interests hold: their
-          // failures stay visible and never replace the navigation receiver.
+          // failures stay visible and never replace the organization's receiver.
           required:
             descriptor.kind !== "project-current-metrics" &&
             descriptor.kind !== "project-process-history" &&

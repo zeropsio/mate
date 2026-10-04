@@ -113,15 +113,16 @@ Terminal records remain available to retained history/operation views.
    completions have crossed the ingestion queue's completion markers. Do not wait
    for a quiet source, empty queue or uncontested field replacement.
 8. On disconnect, registration failure, malformed data or overflow, fence affected work and
-   publish a failed attempt immediately. A named subscription fails only its dependents; a socket
-   failure or uncertain ownership fails the receiver's demand. Optional metrics can fail without
+   publish a failed attempt immediately. A registration refusal fails only its dependents; a
+   socket failure, malformed frame or uncertain ownership fails the receiver's demand. Optional metrics can fail without
    withholding service topology. No automatic recovery cycle or retry ladder runs. A visible
    manual **again** re-establishes the held scope with new identities and baselines.
 9. Bound establishment/token/open/greeting/read deadlines. The first failed attempt has a
    visible cause and manual action. Foreground return re-establishes healthy paused demand and
-   checks expired access, but preserves failed interests. Removing project or metric demand closes
-   its detail receiver and rebuilds any surviving healthy registrations, because no safe native
-   unsubscribe has been established. Navigation has its own receiver and stays observing.
+   checks expired access, but preserves failed interests. Removing project or metric demand stops
+   routing its registrations on the organization's one receiver; no safe native unsubscribe has
+   been established, so the receiver is replaced once its released registrations reach the
+   policy bound, rebuilding the surviving healthy registrations.
 
 Example: GET starts → push observes FINISHED → GET returns RUNNING. Retain FINISHED,
 record the GET's successful completion and finish recovery when other prerequisites
