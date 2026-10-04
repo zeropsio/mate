@@ -171,7 +171,6 @@ describe("HQ API", () => {
                     name: "P_MATE",
                     kind: "mate",
                     mate: {
-                      name: "P_MATE",
                       face: "face-3",
                       madeBy: "owner",
                       standupRequestedBy: null,
@@ -904,7 +903,6 @@ describe("HQ API", () => {
                   name: "P_MATE",
                   kind: "mate",
                   mate: {
-                    name: "P_MATE",
                     face,
                     madeBy: "owner",
                     standupRequestedBy: null,
@@ -1055,10 +1053,10 @@ describe("HQ API", () => {
           );
           const read = (yield* call("GET", "/api/structure", { session })).body as {
             readonly apps: ReadonlyArray<{
-              readonly projects: ReadonlyArray<{ readonly mate: { readonly name: string } | null }>;
+              readonly projects: ReadonlyArray<{ readonly name: string }>;
             }>;
           };
-          assert.strictEqual(read.apps[0]?.projects[0]?.mate?.name, "P_MATE");
+          assert.strictEqual(read.apps[0]?.projects[0]?.name, "P_MATE");
         }),
     );
 
@@ -1125,7 +1123,6 @@ describe("HQ API", () => {
           const ada = { face: "sky:flower" };
           // Who made it is the session that set it up, never a field the client sends.
           const adaView = {
-            name: "P_MATE",
             ...ada,
             madeBy: "owner",
             standupRequestedBy: null,

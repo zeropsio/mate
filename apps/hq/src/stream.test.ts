@@ -78,7 +78,6 @@ const STRUCTURE: StructureRead = {
       projectId: "P_MATE",
       name: "Ada's project",
       mate: {
-        name: "Ada's project",
         face: "face-1",
         madeBy: "owner",
         standupRequestedBy: "dev",
