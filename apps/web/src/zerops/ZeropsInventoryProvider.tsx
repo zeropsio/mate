@@ -232,7 +232,13 @@ const AUTHORIZED: ScopeAuthority = { kind: "authorized" };
  * project and for the whole account while it lapses (§3.1, G12); a lapse is
  * the app's one banner, never a cover over the product.
  */
-export function ZeropsInventoryProvider({ children }: { readonly children: ReactNode }) {
+export function ZeropsInventoryProvider({
+  children,
+  pending,
+}: {
+  readonly children: ReactNode;
+  readonly pending?: ReactNode;
+}) {
   const { activeOrganization, organizationStatus, organizations, signOut, status } =
     useZeropsSession();
   const { runtime, organizationRef } = useZeropsData();
@@ -692,6 +698,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
 
   return (
     <>
+      {!ready ? pending : null}
       {!ready ? (
         error !== null ? (
           <ZeropsFrameWait label="Could not load your Zerops projects." signedIn>

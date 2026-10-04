@@ -507,6 +507,7 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * Since when HQ does not answer and how old the structure drawn is (`hqOutageLine`), at the
    * menu's top while it lasts; `null` while HQ answers.
    */
+  readonly onHqAgain?: (() => void) | undefined;
   readonly hqOutage?: string | null | undefined;
   /**
    * What each Mate's own menu can do (`useSidebarMateMenus`). Absent — a
@@ -606,6 +607,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   notice = null,
   onNoticeAct,
   hqOutage = null,
+  onHqAgain,
   className,
   births = NO_BIRTHS,
   timestampFormat = "locale",
@@ -614,8 +616,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   shown,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
-  const emptyReason = mateEnvironmentsEmptyReason(candidates);
-  const hqMates = useAtomValue(hqMatesAtom)?.mates;
+  const emptyReason = candidates.some((candidate) => candidate.project.hq !== undefined)
+    ? undefined
+    : mateEnvironmentsEmptyReason(candidates);
+  const hqView = useAtomValue(hqMatesAtom);
+  const hqMates = hqView?.current === true ? hqView.mates : null;
   const [openLists, setOpenLists] = useState<ReadonlySet<string>>(() => new Set());
   // Collapsed projects survive a reload: a person who collapsed one had a
   // reason, and a menu that expands everything on every boot makes them do it
@@ -839,10 +844,12 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // the menu's own left edge, never an empty state it has not earned.
   if (nothing !== undefined && !complete) {
     if (notice === null)
-      return hqOutage === null ? null : <HqOutage className={className} line={hqOutage} />;
+      return hqOutage === null ? null : (
+        <HqOutage className={className} line={hqOutage} onAgain={onHqAgain} />
+      );
     return (
       <>
-        {hqOutage === null ? null : <HqOutage line={hqOutage} />}
+        {hqOutage === null ? null : <HqOutage line={hqOutage} onAgain={onHqAgain} />}
         <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />
       </>
     );
@@ -851,7 +858,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // No project at all: nothing to list, and nothing to say — the one thing to
   // do is *New project*, at the menu's foot (`SidebarNewProject`).
   if (nothing === "no-projects") {
-    return hqOutage === null ? null : <HqOutage className={className} line={hqOutage} />;
+    return hqOutage === null ? null : (
+      <HqOutage className={className} line={hqOutage} onAgain={onHqAgain} />
+    );
   }
 
   // Projects, but none with a Mate: one quiet line on the menu's own left
@@ -863,7 +872,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         className={cn("flex flex-col items-start gap-1.5 px-2.5 py-2", className)}
         data-zerops-surface="sidebar-environments-empty"
       >
-        {hqOutage === null ? null : <HqOutage className="px-0 py-0" line={hqOutage} />}
+        {hqOutage === null ? null : (
+          <HqOutage className="px-0 py-0" line={hqOutage} onAgain={onHqAgain} />
+        )}
         <span className="text-xs text-sidebar-muted-foreground">No environment has Mate yet</span>
         <button
           className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
@@ -1023,7 +1034,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // Its Mates being created, after the listed ones: the listing holds none of them yet.
     const coming = group?.pending.filter((member) => member.kind === "mate") ?? [];
     const mateCount = mateEntries.length + coming.length;
-    if (mateCount === 0) return null;
+    if (mateCount === 0 && (group === undefined || everyMate.length > 0)) return null;
     const others = entries.filter(({ item }) => !hasMate(item));
     // The one derivation the projects page draws from too (`groupFlow.ts`),
     // fed through the page's own input (`groupFlowInputOf`) and gate
@@ -1497,10 +1508,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     );
   };
 
-  // A project is drawn where a Mate the viewer asked to see lives in it — or
-  // one is being created there; an empty section would still take its gap.
+  // HQ applications remain visible when they hold only stage/production placements.
+  // The viewer's Mate filter still hides applications whose Mates are all filtered out.
   const groups = view.groups.filter(
     ({ group, environments }) =>
+      !environments.some(({ item }) => hasMate(item)) ||
       environments.some(({ item }) => hasMate(item) && (shown?.(item) ?? true)) ||
       group.pending.some((member) => member.kind === "mate"),
   );
@@ -1662,7 +1674,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       ref={treeRef}
     >
       <SidebarSelectedBand current={activeProjectId} />
-      {hqOutage === null ? null : <HqOutage className="mb-2" line={hqOutage} />}
+      {hqOutage === null ? null : <HqOutage className="mb-2" line={hqOutage} onAgain={onHqAgain} />}
       {groupSections}
       {ungroupedSection}
 
@@ -1780,8 +1792,10 @@ function scrollingAncestor(element: HTMLElement | null): HTMLElement | null {
 function HqOutage({
   line,
   className,
+  onAgain,
 }: {
   readonly line: string;
+  readonly onAgain?: (() => void) | undefined;
   readonly className?: string | undefined;
 }) {
   return (
@@ -1790,7 +1804,12 @@ function HqOutage({
       data-zerops-surface="sidebar-hq-outage"
       role="status"
     >
-      {line}
+      {line}{" "}
+      {onAgain === undefined ? null : (
+        <button type="button" onClick={onAgain}>
+          Try again
+        </button>
+      )}
     </div>
   );
 }

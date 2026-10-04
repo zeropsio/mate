@@ -72,6 +72,15 @@ export class TestNode extends EventTarget {
     return node;
   }
 
+  getElementById(id: string): TestNode | null {
+    if (this.getAttribute("id") === id) return this;
+    for (const child of this.childNodes) {
+      const found = child.getElementById(id);
+      if (found !== null) return found;
+    }
+    return null;
+  }
+
   get activeElement(): null {
     return null;
   }

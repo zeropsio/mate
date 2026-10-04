@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { ZeropsProjectFlowProvider } from "./zerops/ZeropsProjectFlowProvider";
 import { ZeropsDataProvider } from "./zerops/ZeropsDataProvider";
 import { ZeropsInventoryProvider } from "./zerops/ZeropsInventoryProvider";
+import { ZeropsMenuPreview } from "./zerops/useZeropsMenu";
 import { ZeropsHqStructure } from "./zerops/hqStructure";
 import { ZEROPS_HANDOVER_CALLBACK_PATH } from "@t3tools/client-runtime/zerops/handover";
 import { ZeropsHostedLanding } from "./components/zerops/landing/ZeropsHostedLanding";
@@ -31,11 +32,9 @@ export function ZeropsProductHosts({ status }: { readonly status: ZeropsSessionS
  */
 export function ZeropsAccountDataBoundary({ children }: { readonly children: ReactNode }) {
   return (
-    <ZeropsDataProvider>
-      <ZeropsInventoryProvider>
-        <ZeropsHqStructure />
-        {children}
-      </ZeropsInventoryProvider>
+    <ZeropsDataProvider pending={<ZeropsMenuPreview />}>
+      <ZeropsHqStructure />
+      <ZeropsInventoryProvider pending={<ZeropsMenuPreview />}>{children}</ZeropsInventoryProvider>
     </ZeropsDataProvider>
   );
 }

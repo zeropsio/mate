@@ -178,9 +178,11 @@ function accountRefs(
  */
 export function ZeropsDataProvider({
   children,
+  pending,
   makeRuntime = defaultMakeZeropsDataRuntime,
 }: {
   readonly children: ReactNode;
+  readonly pending?: ReactNode;
   /** Test-only seam: substitutes the real adapter/runtime construction. */
   readonly makeRuntime?: MakeZeropsDataRuntime;
 }) {
@@ -329,14 +331,19 @@ export function ZeropsDataProvider({
 
   const startupError = startupFailure?.accountId === accountId ? startupFailure.message : null;
   if (value === null)
-    return startupError === null ? (
-      <ZeropsFrameWait label="Starting Zerops data…" signedIn />
-    ) : (
-      <ZeropsDataStartupFailure
-        message={startupError}
-        retry={() => setStartupAttempt((attempt) => attempt + 1)}
-        signOut={() => void signOut()}
-      />
+    return (
+      <>
+        {pending}
+        {startupError === null ? (
+          <ZeropsFrameWait label="Starting Zerops data…" signedIn />
+        ) : (
+          <ZeropsDataStartupFailure
+            message={startupError}
+            retry={() => setStartupAttempt((attempt) => attempt + 1)}
+            signOut={() => void signOut()}
+          />
+        )}
+      </>
     );
   return <ZeropsDataContext value={value}>{children}</ZeropsDataContext>;
 }

@@ -11,8 +11,7 @@
  *   Mates as HQ last told them, at rest, until HQ answers.
  * - **HQ down:** the last known structure stands, and the view says since when HQ does not answer
  *   (SPEC §4); chat and terminal to the Mates do not go through HQ and keep working.
- * - **A stream that breaks, ends or stays silent** past HQ's pings (every 20 s) is opened
- *   again, a little later each time it fails, and starts over from a fresh snapshot.
+ * - A stream that breaks, ends or stays silent shows a failure; a manual again starts a snapshot.
  */
 import { RegistryContext } from "@effect/atom-react";
 import {
@@ -21,7 +20,6 @@ import {
   applyPeopleEvent,
   applyAppReadsEvent,
   applyStructureEvent,
-  HqError,
   type HqApi,
   type HqChanges,
   type HqMates,
@@ -48,19 +46,6 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** A stream nothing came down for this long — three pings — is given up. */
 export const HQ_STREAM_SILENCE_MS = 60_000;
-/**
- * How long HQ may go unanswered before the outage is said: a stream cut on its way and read again
- * at once — measured every 120 s (F26) — is no outage, and HQ's last word stands meanwhile.
- */
-export const HQ_OUTAGE_GRACE_MS = 10_000;
-/**
- * How long a stream is followed before its successor opens. The Zerops L7 closes every WebSocket
- * 120 s after it opened, with no close frame, whatever passes over it (measured on KRLS's HQ, F26,
- * 2026-10-03): 100 s leaves the successor 20 s to open and send its snapshot.
- */
-export const HQ_STREAM_ROTATE_MS = 100_000;
-/** How long a stream that failed waits before it is opened again, by failures in a row. */
-export const HQ_STREAM_RETRY_MS: ReadonlyArray<number> = [1_000, 2_000, 5_000, 10_000, 30_000];
 /** How often at most the Mates are remembered while they move: a reload's first paint needs no more. */
 const HQ_MATES_REMEMBER_MS = 10_000;
 
@@ -89,7 +74,6 @@ export async function driveHqStructure(input: {
    */
   readonly rememberMates: (mates: HqMates, people: HqPeople | null) => void;
   readonly now: () => number;
-  readonly sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   /** Told how each stream ended — the close code a break carried — and how long it lived (F26). */
   readonly log: (line: string) => void;
   readonly signal: AbortSignal;
@@ -120,214 +104,120 @@ export async function driveHqStructure(input: {
     input.publishMates(matesView);
   };
 
-  /** When HQ last stopped answering, while it has not answered since. */
-  let stoppedAt: number | null = null;
-  let sayOutage: ReturnType<typeof setTimeout> | undefined;
-  const stopped = () => {
-    if (stoppedAt !== null) return;
-    const since = input.now();
-    stoppedAt = since;
-    sayOutage = setTimeout(() => {
-      publish({ ...view, current: false, unavailableSince: since });
-      if (matesView.current) publishMates({ ...matesView, current: false });
-    }, HQ_OUTAGE_GRACE_MS);
-  };
-  input.signal.addEventListener("abort", () => clearTimeout(sayOutage), { once: true });
-
-  /** A stream opened, its own state, and how it stands with the one it may replace. */
-  interface Followed {
-    readonly openedAt: number;
-    /** Settles as the stream ends: whether it broke, and why. */
-    readonly ended: Promise<{ readonly broke: boolean; readonly cause: unknown }>;
-    /** Its snapshot came: HQ answered on it. */
-    readonly answered: () => boolean;
-    readonly silent: () => boolean;
-    /** Its successor took over, or it is let go: it is closed, and nothing it says counts. */
-    readonly letGo: () => void;
-    readonly handedOff: () => boolean;
-  }
-  /** The stream whose word stands, and the successor opened beside it before the L7's cut. */
-  let current: Followed | null = null;
-  let successor: Followed | null = null;
-  /** A successor not answered yet goes with the stream it was to replace. */
-  const letSuccessorGo = () => {
-    successor?.letGo();
-    successor = null;
-  };
-  let failures = 0;
-
-  const follow = (): Followed => {
-    const attempt = new AbortController();
-    const abort = () => attempt.abort();
-    input.signal.addEventListener("abort", abort);
-    let silence = setTimeout(abort, silenceMs);
-    let rotation: ReturnType<typeof setTimeout> | undefined;
-    /** This stream's own structure, changes, Mates and people: a reconnect starts from its snapshot. */
-    let streamed: HqStructure | null = null;
-    let changes: HqChanges | null = null;
-    let appReads: HqAppReads | null = view.appReads;
-    let mates: HqMates | null = null;
-    let people: HqPeople | null = null;
-    let rememberedAt: number | null = null;
-    let unremembered = false;
-    let handedOff = false;
-    const rememberMates = (atOnce: boolean) => {
-      if (mates === null || !unremembered || handedOff) return;
-      const now = input.now();
-      if (!atOnce && rememberedAt !== null && now - rememberedAt < HQ_MATES_REMEMBER_MS) return;
-      input.rememberMates(mates, people);
-      rememberedAt = now;
-      unremembered = false;
-    };
-    const openedAt = input.now();
-    let ended: Followed["ended"] = Promise.resolve({ broke: false, cause: undefined });
-    const self: Followed = {
-      openedAt,
-      get ended() {
-        return ended;
-      },
-      answered: () => streamed !== null,
-      silent: () => attempt.signal.aborted && !handedOff,
-      letGo: () => {
-        handedOff = true;
-        attempt.abort();
-      },
-      handedOff: () => handedOff,
-    };
-    ended = input.api
-      .streamStructure(
-        {
-          onAlive: () => {
-            if (handedOff) return;
-            clearTimeout(silence);
-            silence = setTimeout(abort, silenceMs);
-            if (self !== current) return;
-            rememberMates(false);
-            // HQ still answers: what it last sent stands as of now, should it stop answering.
-            if (streamed === null) return;
-            const readAt = input.now();
-            view = { ...view, readAt };
-            input.remember(streamed, readAt);
-          },
-          onEvent: (event) => {
-            if (handedOff) return;
-            if (self !== current) {
-              // A successor counts from its snapshot on, and the stream it replaces goes then.
-              if (event.kind !== "snapshot") return;
-              const replaced = current;
-              current = self;
-              successor = null;
-              replaced?.letGo();
-            }
-            const matesBefore = mates;
-            const peopleBefore = people;
-            mates = applyMatesEvent(mates, event);
-            people = applyPeopleEvent(people, event);
-            if (event.kind === "snapshot" || mates !== matesBefore) {
-              publishMates({ organizationId: input.organizationId, mates, current: true });
-            }
-            if (event.kind === "snapshot" || people !== peopleBefore) {
-              input.publishPeople({ organizationId: input.organizationId, people });
-            }
-            if (event.kind === "snapshot" || mates !== matesBefore || people !== peopleBefore) {
-              unremembered = true;
-              rememberMates(event.kind === "snapshot");
-            }
-            // A Mate's or the people's message moves nothing of the structure.
-            if (event.kind === "mate" || event.kind === "people") return;
-            const first = streamed === null;
-            streamed = applyStructureEvent(streamed, event);
-            changes = applyChangesEvent(changes, event);
-            appReads = applyAppReadsEvent(
-              event.kind === "snapshot" ? view.appReads : appReads,
-              event,
-            );
-            if (streamed === null) return;
-            failures = 0;
-            stoppedAt = null;
-            clearTimeout(sayOutage);
-            // Its successor opens before the L7's cut, counted from this stream's opening.
-            if (first) {
-              rotation = setTimeout(
-                () => {
-                  if (current === self && successor === null) successor = follow();
-                },
-                Math.max(0, openedAt + HQ_STREAM_ROTATE_MS - input.now()),
-              );
-            }
-            const readAt = input.now();
-            input.remember(streamed, readAt);
-            publish({
-              ...view,
-              structure: streamed,
-              changes,
-              appReads,
-              readAt,
-              current: true,
-              unavailableSince: null,
-            });
-          },
-        },
-        attempt.signal,
-      )
-      .then(
-        () => ({ broke: false, cause: undefined }),
-        (cause: unknown) => ({ broke: true, cause }),
-      )
-      .finally(() => {
-        rememberMates(true);
-        clearTimeout(silence);
-        clearTimeout(rotation);
-        input.signal.removeEventListener("abort", abort);
-        // A successor that ended unanswered is let go; the stream it was to replace stays.
-        if (successor === self) successor = null;
-      });
-    return self;
-  };
-
+  let attempt: AbortController | null = null;
+  let requested = false;
+  let again: (() => void) | null = null;
   const reread = () => {
-    if (!input.signal.aborted && current !== null && successor === null) successor = follow();
+    requested = true;
+    attempt?.abort();
+    again?.();
   };
   const readers = snapshotReaders.get(input.organizationId) ?? new Set();
   readers.add(reread);
   snapshotReaders.set(input.organizationId, readers);
+  const abort = () => {
+    attempt?.abort();
+    again?.();
+  };
+  input.signal.addEventListener("abort", abort);
   try {
     while (!input.signal.aborted) {
-      current = follow();
-      for (;;) {
-        const followed: Followed = current;
-        const { broke, cause } = await followed.ended;
-        if (input.signal.aborted) return;
-        const lived = `after ${String(input.now() - followed.openedAt)} ms`;
-        // Its successor took over: the stream it hands to is followed from here on.
-        if (followed.handedOff()) {
-          input.log(`HQ's structure stream rotated ${lived}`);
-          continue;
-        }
-        // The stream itself ended: a successor still unanswered goes with it.
-        letSuccessorGo();
-        input.log(
-          !broke
-            ? `HQ's structure stream ended ${lived}`
-            : `HQ's structure stream ${followed.silent() ? "went silent" : "broke"} ${lived}: ${
-                cause instanceof HqError ? cause.code : String(cause)
-              }`,
+      requested = false;
+      const controller = new AbortController();
+      attempt = controller;
+      const openedAt = input.now();
+      let silence = setTimeout(() => controller.abort(), silenceMs);
+      let streamed: HqStructure | null = null;
+      let changes: HqChanges | null = null;
+      let appReads: HqAppReads | null = view.appReads;
+      let mates: HqMates | null = null;
+      let people: HqPeople | null = null;
+      let rememberedAt: number | null = null;
+      let dirty = false;
+      const rememberMates = (force: boolean) => {
+        if (mates === null || !dirty) return;
+        const now = input.now();
+        if (!force && rememberedAt !== null && now - rememberedAt < HQ_MATES_REMEMBER_MS) return;
+        input.rememberMates(mates, people);
+        rememberedAt = now;
+        dirty = false;
+      };
+      if (view.current || view.unavailableSince !== null)
+        publish({ ...view, current: false, unavailableSince: null });
+      try {
+        await input.api.streamStructure(
+          {
+            onAlive: () => {
+              if (controller.signal.aborted) return;
+              clearTimeout(silence);
+              silence = setTimeout(() => controller.abort(), silenceMs);
+              rememberMates(false);
+              if (streamed !== null) {
+                view = { ...view, readAt: input.now() };
+                input.remember(streamed, view.readAt!);
+              }
+            },
+            onEvent: (event) => {
+              if (controller.signal.aborted) return;
+              const previousMates = mates;
+              const previousPeople = people;
+              mates = applyMatesEvent(mates, event);
+              people = applyPeopleEvent(people, event);
+              if (event.kind === "snapshot" || mates !== previousMates)
+                publishMates({ organizationId: input.organizationId, mates, current: true });
+              if (event.kind === "snapshot" || people !== previousPeople)
+                input.publishPeople({ organizationId: input.organizationId, people });
+              if (
+                event.kind === "snapshot" ||
+                mates !== previousMates ||
+                people !== previousPeople
+              ) {
+                dirty = true;
+                rememberMates(event.kind === "snapshot");
+              }
+              if (event.kind === "mate" || event.kind === "people") return;
+              streamed = applyStructureEvent(streamed, event);
+              changes = applyChangesEvent(changes, event);
+              appReads = applyAppReadsEvent(
+                event.kind === "snapshot" ? view.appReads : appReads,
+                event,
+              );
+              if (streamed === null) return;
+              const readAt = input.now();
+              input.remember(streamed, readAt);
+              publish({
+                ...view,
+                structure: streamed,
+                changes,
+                appReads,
+                readAt,
+                current: true,
+                unavailableSince: null,
+              });
+            },
+          },
+          controller.signal,
         );
-        // A stream that ended after its snapshot is HQ restarting: read again at once. One that broke
-        // or never answered is HQ not answering: read again a little later each time. Either way the
-        // outage is said once HQ has not answered for `HQ_OUTAGE_GRACE_MS`, since it stopped.
-        const failed = broke || !followed.answered();
-        if (failed) failures += 1;
-        current = null;
-        stopped();
-        if (failed) {
-          const wait = HQ_STREAM_RETRY_MS[Math.min(failures, HQ_STREAM_RETRY_MS.length) - 1]!;
-          await input.sleep(wait, input.signal);
-        }
-        break;
+      } catch {
+        // The failure belongs to the retained view; only a person's request starts another attempt.
+      } finally {
+        clearTimeout(silence);
+        rememberMates(true);
+      }
+      if (input.signal.aborted) return;
+      if (!requested) {
+        input.log(`HQ's structure stream stopped after ${String(input.now() - openedAt)} ms`);
+        publish({ ...view, current: false, unavailableSince: input.now() });
+        publishMates({ ...matesView, current: false });
+        await new Promise<void>((resolve) => {
+          again = resolve;
+        });
+        again = null;
       }
     }
   } finally {
+    input.signal.removeEventListener("abort", abort);
+    attempt?.abort();
     readers.delete(reread);
     if (readers.size === 0) snapshotReaders.delete(input.organizationId);
   }
@@ -342,23 +232,18 @@ export function hqOutageLine(
   timestampFormat: TimestampFormat,
   nowMs: number,
 ): string | null {
-  if (view === null || view.unavailableSince === null) return null;
+  if (view === null || view.current) return null;
   const at = (ms: number) =>
     formatDayAwareTimestamp(new Date(ms).toISOString(), timestampFormat, nowMs);
+  if (view.unavailableSince === null)
+    return view.readAt === null || view.structure === null
+      ? null
+      : `Last known · as of ${at(view.readAt)} · Updating…`;
   const since = `HQ unavailable since ${at(view.unavailableSince)}.`;
   return view.readAt === null || view.structure === null
     ? since
     : `${since} Projects as of ${at(view.readAt)}.`;
 }
-
-const sleep = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
-      clearTimeout(timer);
-      resolve();
-    });
-  });
 
 /**
  * Whether the organization has an official HQ, once its verdict is decided: kept, or read off its
@@ -433,7 +318,6 @@ export function ZeropsHqStructure(): null {
       rememberMates: (mates, people) =>
         rememberMenu((memory) => withMates(memory, organizationId, mates, people)),
       now: () => Date.now(),
-      sleep,
       log: (line) => console.info(line),
       signal: stop.signal,
     });

@@ -215,7 +215,12 @@ export const hqPeopleViewAtom = Atom.make<HqPeopleView | null>(null).pipe(
 /** The Mates of the organization in view, as HQ last told them; null while none is known. */
 export const hqMatesAtom = Atom.make((get): HqMatesView | null => {
   const view = get(hqMatesViewAtom);
-  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
+  const session = get(zeropsSessionAtom);
+  const organizationId =
+    get(hqStructureAtom)?.organizationId ??
+    (session?.status === "signed-in" && session.organizationStatus === "selected"
+      ? (session.activeOrganization?.organizationId ?? null)
+      : null);
   return view === null || view.organizationId !== organizationId ? null : view;
 }).pipe(Atom.withLabel("zerops:hq-mates"));
 

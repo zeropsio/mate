@@ -47,19 +47,13 @@ describe("AppRoot", () => {
     expect(isValidElement(host) && host.type).toBe(QuitHoldOverlay);
   });
 
-  it("mounts the account runtime before inventory consumers", () => {
+  it("starts HQ before runtime admission and inventory", () => {
     const boundary = ZeropsAccountDataBoundary({ children: "product" });
     expect(boundary.type).toBe(ZeropsDataProvider);
-    const inventory = childrenOf(boundary)[0];
+    const parts = childrenOf(boundary);
+    expect(isValidElement(parts[0]) && parts[0].type).toBe(ZeropsHqStructure);
+    const inventory = parts[1];
     expect(isValidElement(inventory) && inventory.type).toBe(ZeropsInventoryProvider);
-  });
-
-  it("holds the organization's HQ structure beside the product, inside the account runtime", () => {
-    const boundary = ZeropsAccountDataBoundary({ children: "product" });
-    const inside = childrenOf(childrenOf(boundary)[0]);
-    expect(inside.map((child) => (isValidElement(child) ? child.type : child))).toEqual([
-      ZeropsHqStructure,
-      "product",
-    ]);
+    expect(childrenOf(inventory)).toEqual(["product"]);
   });
 });
