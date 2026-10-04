@@ -304,11 +304,12 @@ export interface StructureRead {
     /**
      * Its stage and production, in the order they were declared, with their deploys: to whoever
      * reads its changes (`read_change`), as main's commit statuses and `environments.yaml` went to
-     * whoever read its repositories; none to one who only sees the application.
+     * whoever read its repositories. To one who only sees the application, refused with why —
+     * never an empty list, which would read as none declared.
      */
-    readonly environments: ReadonlyArray<
-      EnvironmentView & { readonly can: HqOffersOf<"keep_deploy_token"> }
-    >;
+    readonly environments:
+      | ReadonlyArray<EnvironmentView & { readonly can: HqOffersOf<"keep_deploy_token"> }>
+      | { readonly refused: Reason };
     /** The Mates on their way into it whose attach has not landed yet, oldest first. */
     readonly births: ReadonlyArray<BirthIntent>;
   }>;
@@ -1500,7 +1501,7 @@ export const structureLayer = (options: {
                             ...environmentView(row),
                             can: environmentOffers(userId, row.project_id, view),
                           }))
-                      : [],
+                      : { refused: can.read_change.reason },
                     births: births
                       .filter((row) => row.app_id === app.id)
                       .map(({ id, face, projectId }) => ({

@@ -136,6 +136,13 @@ function unheldOf(value: unknown): Readonly<Record<string, HqOffers>> | undefine
   );
 }
 
+/** Environments HQ refused the reader, with its reason; none where HQ sent them. */
+function refusedOf(value: unknown): { readonly refused: string } | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const { refused } = value as { readonly refused?: unknown };
+  return typeof refused === "string" ? { refused } : undefined;
+}
+
 /** When Zerops answered the view HQ's offers are decided over; none where HQ named no time. */
 const answeredOf = (value: unknown): string | null => (typeof value === "string" ? value : null);
 
@@ -194,7 +201,7 @@ function appOf(value: HqApp): HqApp {
     readonly births?: unknown;
     readonly contents?: unknown;
   };
-  const environments = sent === undefined ? undefined : environmentsOf(sent);
+  const environments = sent === undefined ? undefined : (refusedOf(sent) ?? environmentsOf(sent));
   const can = offersOf(offered);
   return {
     ...app,

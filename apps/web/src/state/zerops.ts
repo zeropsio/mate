@@ -162,7 +162,10 @@ export const hqEnvironmentsAtom = Atom.make(
       ? null
       : new Map(
           view.structure.apps.flatMap((app) =>
-            app.environments === undefined ? [] : [[app.id, app.environments] as const],
+            // Refused the reader, they are not theirs to finish: as missing as unreadable ones.
+            app.environments === undefined || "refused" in app.environments
+              ? []
+              : [[app.id, app.environments] as const],
           ),
         );
   },

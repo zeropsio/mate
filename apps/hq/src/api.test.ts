@@ -534,12 +534,13 @@ describe("HQ API", () => {
                 `/api/structure/ws?ticket=${yield* ticketFor(call, dev)}`,
               );
               const snapshot = (yield* watching.next("snapshot")) as {
-                readonly apps: ReadonlyArray<{ readonly environments: ReadonlyArray<unknown> }>;
+                readonly apps: ReadonlyArray<{ readonly environments: unknown }>;
               };
               yield* watching.close;
               return snapshot.apps.map((app) => app.environments);
             });
-          assert.deepStrictEqual(yield* snapshotAs("READ_ONLY"), [[]]);
+          // Refused, and said so: never an empty list that reads as "no environments".
+          assert.deepStrictEqual(yield* snapshotAs("READ_ONLY"), [{ refused: "changes_not_seen" }]);
           assert.deepStrictEqual(yield* snapshotAs("BASIC_USER"), [
             [
               {

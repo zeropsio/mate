@@ -71,7 +71,9 @@ export function useKeepDeployKeyOffer(): (projectId: string) => boolean | undefi
   return useCallback(
     (projectId) => {
       const environment = structure?.apps
-        .flatMap((app) => app.environments ?? [])
+        .flatMap((app) =>
+          app.environments === undefined || "refused" in app.environments ? [] : app.environments,
+        )
         .find((candidate) => candidate.projectId === projectId);
       const offer = state(environment?.can, "keep_deploy_token");
       return offer.kind === "allowed" ? true : offer.kind === "refused" ? false : undefined;

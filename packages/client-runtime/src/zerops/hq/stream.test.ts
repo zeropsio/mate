@@ -198,6 +198,21 @@ describe("structureEventOf", () => {
       },
     ],
     [
+      "an application whose environments HQ refused the reader has them refused, with why",
+      { type: "snapshot", apps: [{ ...ACME, environments: { refused: "changes_not_seen" } }] },
+      {
+        kind: "snapshot",
+        appReads: null,
+        structure: {
+          ungrouped: [],
+          apps: [{ ...ACME, environments: { refused: "changes_not_seen" } }],
+        },
+        changes: null,
+        mates: null,
+        people: null,
+      },
+    ],
+    [
       "a snapshot carries each application's birth intents, each read through its shape",
       {
         type: "snapshot",
@@ -373,7 +388,7 @@ describe("applyStructureEvent", () => {
       structure?.can,
       structure?.rolesAnsweredAt,
       structure?.apps.map((app) => app.can),
-      structure?.apps[0]?.environments?.[0]?.can,
+      (structure?.apps[0]?.environments as ReadonlyArray<HqEnvironment> | undefined)?.[0]?.can,
     ]).toEqual([
       { create_app: refused },
       "2026-10-04T10:00:00.000Z",

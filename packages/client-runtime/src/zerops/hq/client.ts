@@ -163,9 +163,10 @@ export interface HqStructure {
     readonly contents?: HqAppContents;
     /**
      * Its stage and production with their deploys (`hq/environments.ts`), to whoever reads its
-     * changes — none to one who only sees it; absent where HQ sent none this build can read.
+     * changes; refused, with HQ's reason, to one who only sees it — never an empty list; absent
+     * where HQ sent none this build can read.
      */
-    readonly environments?: ReadonlyArray<HqEnvironment>;
+    readonly environments?: ReadonlyArray<HqEnvironment> | { readonly refused: string };
     /** The Mates on their way into it whose attach has not landed; absent from an older HQ. */
     readonly births?: ReadonlyArray<HqBirth>;
   }>;
