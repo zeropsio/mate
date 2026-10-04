@@ -43,6 +43,15 @@ describe("RPC authorization scopes", () => {
     );
   });
 
+  it("allows browser reconnect with viewing permission while input needs operate", () => {
+    expect(requiredScopeForRpcMethod(WS_METHODS.zeropsBrowserReconnect)).toBe(
+      AuthOrchestrationReadScope,
+    );
+    expect(requiredScopeForRpcMethod(WS_METHODS.zeropsBrowserInput)).toBe(
+      AuthOrchestrationOperateScope,
+    );
+  });
+
   it("rejects unknown RPC method names", () => {
     for (const method of ["server.notRegistered", "toString", "constructor"]) {
       expect(() => requiredScopeForRpcMethod(method)).toThrow(

@@ -5,7 +5,7 @@
  *
  * zcp learns nothing (§0 rule 3): this reads `~/.agent-browser/default.stream`
  * — a bare localhost port number the daemon itself publishes — fresh on
- * every connect attempt, and writes nothing back to it or to zcp. The daemon
+ * every explicit opening attempt, and writes nothing back to it or to zcp. The daemon
  * socket is localhost-only and unauthenticated by design; it refuses a
  * browser-origin client with 403 (its own CORS-style guard), but accepts the
  * mate server, which — being Node, not a browser — sends no `Origin` header
@@ -15,11 +15,10 @@
  * everyone else.
  *
  * On demand: connects on the FIRST subscriber, disconnects on the LAST
- * unsubscribe — never keeps a browser session alive for the user's sake
- * (spec §0 rule 3). While at least one subscriber remains, a dropped
- * connection (daemon restart, no browser open yet) retries with backoff,
- * re-reading the port file every attempt, so a daemon that comes back on a
- * new port is picked up without restarting mate.
+ * unsubscribe. Observes the daemon's published endpoint lifecycle while a
+ * viewer remains: each new publication may open one stream. Failure or close
+ * is terminal for that opening, with a visible reason; only a new endpoint
+ * publication or the viewer's Reconnect permits another attempt.
  *
  * ## Wire shapes — agent-browser's own streaming reference
  *
@@ -85,9 +84,7 @@ import type {
   ZeropsBrowserStreamEvent,
   ZeropsBrowserStreamStatus,
 } from "@t3tools/contracts";
-import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
@@ -102,6 +99,8 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
+import { observeStreamPorts } from "./browserStreamEndpoint.ts";
+
 /**
  * The subset of the browser (and Node's native) `WebSocket` API this module
  * needs, injectable so a test never opens a real socket. The real
@@ -113,20 +112,18 @@ export interface BrowserSocket {
   close(): void;
   onopen: (() => void) | null;
   onmessage: ((event: { readonly data: unknown }) => void) | null;
-  onclose: (() => void) | null;
+  onclose: ((event?: { readonly code?: number; readonly reason?: string }) => void) | null;
   onerror: ((event: unknown) => void) | null;
 }
 
 export type ConnectSocket = (url: string) => BrowserSocket;
 
 export interface ZeropsBrowserStreamOptions {
-  /** Reads `~/.agent-browser/default.stream`; `undefined` when absent or unparsable. Called fresh on every connect attempt — never cached. */
+  /** Reads `~/.agent-browser/default.stream`; `undefined` when absent or unparsable. Read for the initial snapshot when no publication stream is supplied. */
   readonly readStreamPort: Effect.Effect<number | undefined>;
   readonly connect: ConnectSocket;
-  /** Backoff schedule while a subscriber remains and the daemon is unreachable; the last entry repeats. Defaults to {@link DEFAULT_RECONNECT_DELAYS_MS}. */
-  readonly reconnectDelaysMs?: ReadonlyArray<number>;
-  /** How long a connection must stay open to count as recovered (resets backoff to the first delay). Defaults to {@link DEFAULT_CONNECTION_STABLE_THRESHOLD_MS}. */
-  readonly connectionStableThresholdMs?: number;
+  /** Published endpoint lifecycle, including the initial snapshot. Each emission permits one opening; no timer rereads the port. */
+  readonly endpointPublications?: Stream.Stream<number | undefined, string>;
 }
 
 export class ZeropsBrowserStream extends Context.Service<
@@ -134,24 +131,17 @@ export class ZeropsBrowserStream extends Context.Service<
   {
     /** Connects on the first subscription, disconnects when the last one's scope closes. */
     readonly subscribe: Effect.Effect<Stream.Stream<ZeropsBrowserStreamEvent>, never, Scope.Scope>;
+    /** One explicit opening attempt while a viewer remains. */
+    readonly reconnect: Effect.Effect<void>;
     /** Forwards one input event to the daemon's current connection; a no-op (never throws) when nothing is connected. */
     readonly sendInput: (input: ZeropsBrowserInput) => Effect.Effect<void>;
   }
 >()("t3/zerops/ZeropsBrowserStream") {}
 
-const DEFAULT_RECONNECT_DELAYS_MS = [200, 500, 1000, 2000, 5000] as const;
-
-/** A connection open for less than this never resets backoff — otherwise a daemon that opens then immediately closes (repeatedly) would spin with no delay at all between attempts. */
-export const DEFAULT_CONNECTION_STABLE_THRESHOLD_MS = 5000;
-
-/** Pure: whether a connection that stayed open for `openedForMs` counts as recovered. */
-export const isConnectionStable = (openedForMs: number, thresholdMs: number): boolean =>
-  openedForMs >= thresholdMs;
-
 type SocketEvent =
   | { readonly _tag: "open" }
   | { readonly _tag: "message"; readonly raw: string }
-  | { readonly _tag: "close" }
+  | { readonly _tag: "close"; readonly reason: string }
   | { readonly _tag: "error"; readonly error: unknown };
 
 /**
@@ -293,10 +283,11 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
   Effect.gen(function* () {
     const events = yield* PubSub.unbounded<InternalEvent>();
     const subscriberCount = yield* Ref.make(0);
+    const observerFiber = yield* Ref.make<Fiber.Fiber<void, never> | undefined>(undefined);
     const connectionFiber = yield* Ref.make<Fiber.Fiber<void, never> | undefined>(undefined);
     // Serializes every subscribe-start (0→1: fork) and subscribe-end (1→0:
     // interrupt) transition so a resubscribe racing the outgoing unsubscribe
-    // can never fork a new loop and then have the FINISHING subscriber's
+    // can never fork a new observer and then have the FINISHING subscriber's
     // finalizer interrupt that new fiber instead of its own (a bare
     // check-then-act on separate Refs would allow exactly that race).
     const lifecycleMutex = yield* Semaphore.make(1);
@@ -314,18 +305,13 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
     >(undefined);
     /** Shared across every subscriber — acks are cumulative, so the daemon only ever needs the highest seq any subscriber has reached. */
     const lastAckedSeq = yield* Ref.make<number | undefined>(undefined);
-    const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
-    const stableThresholdMs =
-      options.connectionStableThresholdMs ?? DEFAULT_CONNECTION_STABLE_THRESHOLD_MS;
-
     const sendQuietly = (socket: BrowserSocket, data: string): Effect.Effect<void> =>
       Effect.sync(() => {
         try {
           socket.send(data);
         } catch {
           // Best-effort — a send raced with the socket closing or a
-          // reconnect; the connection loop already notices the close/error
-          // and retries, so this never needs to propagate.
+          // new opening; the socket lifecycle reports close/error separately.
         }
       });
 
@@ -333,6 +319,7 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
       readonly status?: ZeropsBrowserStreamStatus;
       readonly url?: string;
       readonly title?: string;
+      readonly reason?: string;
     }) =>
       Effect.gen(function* () {
         const current = yield* Ref.get(lastState);
@@ -340,6 +327,7 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
         const event: ZeropsBrowserStateEvent = {
           type: "state",
           status,
+          ...(patch.reason !== undefined ? { reason: patch.reason } : {}),
           // Sticky: every published state event carries the complete known
           // page info, not just what this particular patch changed — a late
           // subscriber's own initial read (below) then never has to guess.
@@ -402,70 +390,109 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
         }
       });
 
-    /** One connection attempt: opens the socket, relays until it closes. Returns how long it stayed open, in ms (`0` when it never even opened). */
-    const runOneConnection = (port: number): Effect.Effect<number> =>
+    const socketFailureReason = (error: unknown): string => {
+      if (error instanceof Error) return error.message;
+      if (isRecord(error)) {
+        if (error.error instanceof Error) return error.error.message;
+        if (typeof error.message === "string") return error.message;
+      }
+      return "Browser stream socket failed.";
+    };
+
+    /** Owns the socket even during CONNECTING; interruption always releases it. */
+    const runOneConnection = (port: number): Effect.Effect<void> =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const queue = yield* Queue.unbounded<SocketEvent>();
+          const socket = yield* Effect.acquireRelease(
+            Effect.try({
+              try: () => options.connect(`ws://127.0.0.1:${port}/?pacing=ack&maxFps=10`),
+              catch: socketFailureReason,
+            }),
+            (socket) =>
+              closeSocketQuietly(socket).pipe(Effect.andThen(Ref.set(activeSocket, undefined))),
+          );
+          socket.onopen = () => Queue.offerUnsafe(queue, { _tag: "open" });
+          socket.onmessage = (event) =>
+            Queue.offerUnsafe(queue, {
+              _tag: "message",
+              raw: typeof event.data === "string" ? event.data : String(event.data),
+            });
+          socket.onclose = (event) =>
+            Queue.offerUnsafe(queue, {
+              _tag: "close",
+              reason:
+                event?.reason ||
+                `Browser stream closed${event?.code !== undefined ? ` (code ${event.code})` : ""}.`,
+            });
+          socket.onerror = (error) => Queue.offerUnsafe(queue, { _tag: "error", error });
+          let opened = false;
+          while (true) {
+            const event = yield* Queue.take(queue);
+            if (event._tag === "open") {
+              opened = true;
+              yield* Ref.set(activeSocket, socket);
+              yield* sendQuietly(
+                socket,
+                encodeConfigMessage({ type: "config", maxFps: 10, pacing: "ack" }),
+              );
+              yield* publishState({ status: "live" });
+            } else if (event._tag === "message" && opened) {
+              yield* handleDaemonMessage(event.raw);
+            } else if (event._tag === "close" || event._tag === "error") {
+              yield* closeSocketQuietly(socket);
+              yield* Ref.set(activeSocket, undefined);
+              yield* publishState({
+                status: opened && event._tag === "close" ? "closed" : "failed",
+                reason: event._tag === "error" ? socketFailureReason(event.error) : event.reason,
+              });
+              return;
+            }
+          }
+        }),
+      ).pipe(Effect.catch((reason) => publishState({ status: "failed", reason })));
+
+    const stopConnection = Effect.gen(function* () {
+      const fiber = yield* Ref.getAndSet(connectionFiber, undefined);
+      if (fiber !== undefined) yield* Fiber.interrupt(fiber);
+    });
+
+    /** Called under the lifecycle mutex, by a publication or a user's Reconnect. */
+    const openEndpoint = (port: number | undefined) =>
       Effect.gen(function* () {
-        const queue = yield* Queue.unbounded<SocketEvent>();
-        const socket = options.connect(`ws://127.0.0.1:${port}/?pacing=ack&maxFps=10`);
-        socket.onopen = () => Queue.offerUnsafe(queue, { _tag: "open" });
-        socket.onmessage = (event) =>
-          Queue.offerUnsafe(queue, {
-            _tag: "message",
-            raw: typeof event.data === "string" ? event.data : String(event.data),
-          });
-        socket.onclose = () => Queue.offerUnsafe(queue, { _tag: "close" });
-        socket.onerror = (error) => Queue.offerUnsafe(queue, { _tag: "error", error });
-
-        const first = yield* Queue.take(queue);
-        if (first._tag !== "open") {
-          yield* closeSocketQuietly(socket);
-          return 0;
-        }
-
-        const openedAt = yield* Clock.currentTimeMillis;
-        yield* Ref.set(activeSocket, socket);
-        yield* sendQuietly(
-          socket,
-          encodeConfigMessage({ type: "config", maxFps: 10, pacing: "ack" }),
-        );
-        yield* publishState({ status: "live" });
-
-        yield* Stream.fromQueue(queue).pipe(
-          Stream.mapEffect((socketEvent) =>
-            socketEvent._tag === "message"
-              ? handleDaemonMessage(socketEvent.raw).pipe(Effect.as(true))
-              : Effect.succeed(false),
-          ),
-          Stream.takeWhile((keepGoing) => keepGoing),
-          Stream.runDrain,
-        );
-
-        yield* closeSocketQuietly(socket);
-        yield* Ref.set(activeSocket, undefined);
-        return (yield* Clock.currentTimeMillis) - openedAt;
-      });
-
-    /** Runs for as long as at least one subscriber exists — forked on 0→1, interrupted on 1→0. */
-    const connectionLoop: Effect.Effect<void> = Effect.gen(function* () {
-      let attempt = 0;
-      while (true) {
-        const port = yield* options.readStreamPort;
-        let openedForMs = 0;
+        yield* stopConnection;
         if (port === undefined) {
           yield* publishState({ status: "no-browser" });
-        } else {
-          yield* publishState({ status: "connecting" });
-          openedForMs = yield* runOneConnection(port);
+          return;
         }
-        if (isConnectionStable(openedForMs, stableThresholdMs)) {
-          attempt = 0;
-          continue;
-        }
-        const delayMs = delays[Math.min(attempt, delays.length - 1)]!;
-        attempt += 1;
-        yield* Effect.sleep(Duration.millis(delayMs));
-      }
-    });
+        yield* publishState({ status: "connecting" });
+        const fiber = yield* Effect.forkDetach(runOneConnection(port));
+        yield* Ref.set(connectionFiber, fiber);
+      });
+
+    const observeEndpoints = (
+      options.endpointPublications ?? Stream.fromEffect(options.readStreamPort)
+    ).pipe(
+      Stream.runForEach((port) => lifecycleMutex.withPermits(1)(openEndpoint(port))),
+      Effect.catch((reason) =>
+        lifecycleMutex.withPermits(1)(
+          stopConnection.pipe(Effect.andThen(publishState({ status: "failed", reason }))),
+        ),
+      ),
+    );
+
+    const reconnect = lifecycleMutex.withPermits(1)(
+      Effect.gen(function* () {
+        if ((yield* Ref.get(subscriberCount)) === 0) return;
+        const observer = yield* Ref.getAndSet(observerFiber, undefined);
+        if (observer !== undefined) yield* Fiber.interrupt(observer);
+        yield* stopConnection;
+        // Re-observe the initial publication so a failed watcher also gets one
+        // explicit new attempt; its duplicate notifications remain deduplicated.
+        const fiber = yield* Effect.forkDetach(observeEndpoints);
+        yield* Ref.set(observerFiber, fiber);
+      }),
+    );
 
     /** Sent from inside a subscriber's own stream, only once THAT subscriber actually pulls the marker — see the module doc comment's "Ack pacing" section. Deduplicated across subscribers via `lastAckedSeq` (acks are cumulative): the compare-and-set is one `Ref.modify` so two subscribers' concurrent pulls of the same seq can never both read "not yet acked" before either writes. */
     const ackDaemonFrame = (seq: number): Effect.Effect<void> =>
@@ -496,8 +523,8 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
         Effect.gen(function* () {
           const count = yield* Ref.updateAndGet(subscriberCount, (n) => n + 1);
           if (count === 1) {
-            const fiber = yield* Effect.forkDetach(connectionLoop);
-            yield* Ref.set(connectionFiber, fiber);
+            const fiber = yield* Effect.forkDetach(observeEndpoints);
+            yield* Ref.set(observerFiber, fiber);
           }
         }),
       );
@@ -508,14 +535,9 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
             if (remaining > 0) {
               return;
             }
-            const fiber = yield* Ref.get(connectionFiber);
-            yield* Ref.set(connectionFiber, undefined);
-            if (fiber !== undefined) {
-              yield* Fiber.interrupt(fiber);
-            }
-            const socket = yield* Ref.get(activeSocket);
-            yield* closeSocketQuietly(socket);
-            yield* Ref.set(activeSocket, undefined);
+            const observer = yield* Ref.getAndSet(observerFiber, undefined);
+            if (observer !== undefined) yield* Fiber.interrupt(observer);
+            yield* stopConnection;
             // The NEXT first subscriber reads `lastState`/`latestFrame` as
             // its own initial snapshot (above) — without this, it would
             // briefly see this torn-down session's stale "live" state and
@@ -583,7 +605,7 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
         yield* sendQuietly(socket, toDaemonInputMessage(input));
       });
 
-    return { subscribe, sendInput } satisfies ZeropsBrowserStream["Service"];
+    return { subscribe, sendInput, reconnect } satisfies ZeropsBrowserStream["Service"];
   });
 
 const STREAM_PORT_FILE_SEGMENTS = [".agent-browser", "default.stream"] as const;
@@ -614,6 +636,7 @@ export const layer = Layer.effect(
     return yield* make({
       readStreamPort: readStreamPortFromFile(fs, path, NodeOS.homedir()),
       connect: connectReal,
+      endpointPublications: observeStreamPorts(NodeOS.homedir()),
     });
   }),
 );

@@ -36,7 +36,10 @@ vi.mock("../../state/use-atom-command", () => ({
 }));
 
 vi.mock("../../state/zeropsCommands", () => ({
-  zeropsCommands: { browserInput: Symbol("browserInput") },
+  zeropsCommands: {
+    browserInput: Symbol("browserInput"),
+    browserReconnect: Symbol("browserReconnect"),
+  },
 }));
 
 import { ZeropsBrowserPanel } from "./ZeropsBrowserPanel";
@@ -119,6 +122,19 @@ describe("ZeropsBrowserPanel", () => {
     commandSpy.mockClear();
     feedState.browserStream = undefined;
     feedState.lifecycle = undefined;
+  });
+
+  it.each(["failed", "closed"])("shows %s reason and reconnects only on click", (status) => {
+    feedState.browserStream = { status, reason: "daemon stopped" };
+    hooks.beginRender();
+    const tree = ZeropsBrowserPanel({ threadRef: THREAD_REF });
+    const reason = visitElements(tree, (e) => e.props.children === "daemon stopped");
+    expect(reason).not.toBeNull();
+    const button = visitElements(tree, (e) => e.props.children === "Reconnect");
+    expect(button).not.toBeNull();
+    expect(commandSpy).not.toHaveBeenCalled();
+    (button!.props.onClick as () => void)();
+    expect(commandSpy).toHaveBeenCalledWith({ environmentId: THREAD_REF.environmentId, input: {} });
   });
 
   it("panel disables input while the agent drives and enables it on take-over", () => {

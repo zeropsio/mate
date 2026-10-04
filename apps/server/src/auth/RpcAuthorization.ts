@@ -117,6 +117,7 @@ export const RPC_REQUIRED_SCOPES = {
   // authority as any other environment-mutating RPC.
   [WS_METHODS.subscribeZeropsBrowserStream]: AuthOrchestrationReadScope,
   [WS_METHODS.zeropsBrowserInput]: AuthOrchestrationOperateScope,
+  [WS_METHODS.zeropsBrowserReconnect]: AuthOrchestrationReadScope,
   // Runs a real update on the container — the same authority as exec.run,
   // not a read (spec-mate.md §2.9 MU-2).
   [WS_METHODS.zeropsMateUpdate]: AuthExecOperateScope,
