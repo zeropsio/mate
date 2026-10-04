@@ -297,7 +297,10 @@ export function backgroundJobOf(
   if (track === undefined || command.toolLifecycleStatus === "inProgress") return null;
   const { task } = track;
   const ended = task.sourceActivityKind === "task.completed";
-  if (ended && endOf(task) - endOf(command) <= TRACK_TOLERANCE_MS) return null;
+  // Its call says it went to the background (Claude Code's notice); else a
+  // task that ended with its call was the command itself.
+  const sent = /running in (?:the )?background/iu.test(command.detail ?? "");
+  if (!sent && ended && endOf(task) - endOf(command) <= TRACK_TOLERANCE_MS) return null;
   const title = (
     track.description ??
     command.callInput?.description ??

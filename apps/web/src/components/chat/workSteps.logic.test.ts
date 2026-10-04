@@ -505,6 +505,20 @@ describe("backgroundJobOf", () => {
     expect(stepOf(launch, tracked, false)).toMatchObject(step);
   });
 
+  // A quick job (npm view, 2.5 s) ended within the tolerance of its call:
+  // the call's own notice says it went to the background.
+  it("is a job however quickly it ended, when its call said it went to the background", () => {
+    const run = command("1", "npm view express version", {
+      updatedAt: "2026-09-27T08:00:01.000Z",
+      detail: "Command running in background with ID: b1. Output is being written to: /tmp/x",
+    });
+    const tracker = task("t1", "Look up versions", {
+      taskToolUseId: "toolu_1",
+      createdAt: "2026-09-27T08:00:02.500Z",
+    });
+    expect(backgroundJobOf(run, trackCommands([run, tracker]))).toMatchObject({ state: "done" });
+  });
+
   it("is no job when the command waited on its task: a long command Claude Code tracks", () => {
     const run = command("1", "npm test", { updatedAt: "2026-09-27T08:00:40.000Z" });
     const tracker = task("t1", "Run the tests", {
