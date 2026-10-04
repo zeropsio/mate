@@ -731,23 +731,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     });
     endFollowRef.current = endFollow;
     // Where the list stands as it is drawn is the first thing heard.
-    endFollow.heard();
+    endFollow.heard(false);
     return () => {
       endFollow.stop();
       endFollowRef.current = null;
     };
   }, [listRef]);
   const followEnd = useCallback(() => endFollowRef.current?.follow(), []);
-  // Every scroll of the list, whoever made it, tells the follower where it stands.
-  useEffect(() => {
-    const wrapper = timelineViewportElement;
-    if (!wrapper) return;
-    const onScroll = (event: Event) => {
-      if (event.target === listRef.current?.getScrollableNode()) endFollowRef.current?.heard();
-    };
-    wrapper.addEventListener("scroll", onScroll, { capture: true, passive: true });
-    return () => wrapper.removeEventListener("scroll", onScroll, { capture: true });
-  }, [listRef, timelineViewportElement]);
   // Rows arriving, and the viewport resizing, move the end too.
   useLayoutEffect(() => {
     if (!followingEnd || !listPlaced || rows.length === 0) return;
@@ -1028,6 +1018,22 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       wrapper.removeEventListener("pointerdown", onPointerDown);
       wrapper.ownerDocument.removeEventListener("keydown", onKey);
     };
+  }, [listRef, timelineViewportElement]);
+
+  // Every scroll of the list, whoever made it, tells the follower where it
+  // stands, and whether it was a person's.
+  useEffect(() => {
+    const wrapper = timelineViewportElement;
+    if (!wrapper) return;
+    const onScroll = (event: Event) => {
+      const node = listRef.current?.getScrollableNode();
+      if (!node || event.target !== node) return;
+      const byPerson =
+        !isOwnScroll(node) && personIsScrolling(personSessionRef.current, performance.now());
+      endFollowRef.current?.heard(byPerson);
+    };
+    wrapper.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => wrapper.removeEventListener("scroll", onScroll, { capture: true });
   }, [listRef, timelineViewportElement]);
 
   // Where the list stood at the last read: what tells which way it moved since.

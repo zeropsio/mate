@@ -11,7 +11,7 @@
  * stands as each scroll is heard (`heard`), never from the list's own reading
  * of it, which goes stale mid-glide: it stands at its end once a scroll puts it
  * there — its own, the way back to the end, the person's — and leaves it only
- * on a move up that the page did not make (`scrollOwn`). A person's move away
+ * on a move up of the person's. A person's move away
  * (`follows()` false) stops it where it stands.
  */
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
@@ -43,8 +43,13 @@ export function isOwnScroll(element: HTMLElement): boolean {
 export interface EndFollow {
   /** Something may have moved the end: the list stands at it, or glides there. */
   readonly follow: () => void;
-  /** The list scrolled: where it stands now says whether it stands at its end. */
-  readonly heard: () => void;
+  /**
+   * The list scrolled — `byPerson`: a person's scroll — and where it stands
+   * now says whether it stands at its end: it reaches its end by any move,
+   * and leaves it only by a person's move up. The list re-anchoring its rows,
+   * the view shrinking under a taller composer, a fold: none of them leave it.
+   */
+  readonly heard: (byPerson: boolean) => void;
   readonly stop: () => void;
 }
 
@@ -107,7 +112,7 @@ export function createEndFollow({
       said(element, true);
       frame = requestAnimationFrame(step);
     },
-    heard: () => {
+    heard: (byPerson) => {
       const element = viewport();
       if (element === null) return;
       const top = element.scrollTop;
@@ -116,7 +121,7 @@ export function createEndFollow({
       if (isOwnScroll(element)) return;
       if (endOf(element) - top <= AT_END_PX) {
         atEnd = true;
-      } else if (movedUp) {
+      } else if (movedUp && byPerson) {
         atEnd = false;
         stopGlide(element);
       }

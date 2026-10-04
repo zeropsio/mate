@@ -13,7 +13,9 @@ const FRAME_MS = 1000 / 60;
  */
 function list({ top, height, client }: { top: number; height: number; client: number }) {
   let scrollTop = top;
-  let heard: (() => void) | null = null;
+  let heard: ((byPerson: boolean) => void) | null = null;
+  // Whether the moves now being made are a person's.
+  let person = false;
   const element = {
     scrollHeight: height,
     clientHeight: client,
@@ -27,14 +29,21 @@ function list({ top, height, client }: { top: number; height: number; client: nu
       scrollTop = clamped;
       element.withinThreshold =
         element.scrollHeight - element.clientHeight - scrollTop <= element.clientHeight;
-      queue.push(() => heard?.());
+      const byPerson = person;
+      queue.push(() => heard?.(byPerson));
     },
   };
   const queue: Array<() => void> = [];
   return {
     element,
-    listen: (callback: () => void) => {
+    listen: (callback: (byPerson: boolean) => void) => {
       heard = callback;
+    },
+    /** The moves made in `act` are a person's. */
+    byPerson: (act: () => void) => {
+      person = true;
+      act();
+      person = false;
     },
     /** The scroll events since, delivered. */
     events: () => {
@@ -159,7 +168,9 @@ describe("createEndFollow", () => {
     for (const frame of frames.splice(0)) frame(now);
     scroll.events();
     // The person's wheel, up.
-    scroll.element.scrollTop -= 120;
+    scroll.byPerson(() => {
+      scroll.element.scrollTop -= 120;
+    });
     scroll.events();
     const stood = scroll.element.scrollTop;
     play(scroll);
@@ -185,7 +196,9 @@ describe("createEndFollow", () => {
     if (move === "pill") {
       scroll.element.scrollTop = 2400;
     } else {
-      for (let top = 300; top <= 2500; top += 200) scroll.element.scrollTop = Math.min(top, 2400);
+      scroll.byPerson(() => {
+        for (let top = 300; top <= 2500; top += 200) scroll.element.scrollTop = Math.min(top, 2400);
+      });
     }
     scroll.events();
     grow(scroll, 300);
@@ -204,6 +217,22 @@ describe("createEndFollow", () => {
     scroll.element.scrollHeight -= 50;
     scroll.events();
     grow(scroll, 300);
+    follow.follow();
+    play(scroll);
+    expect(scroll.element.scrollTop).toBe(
+      scroll.element.scrollHeight - scroll.element.clientHeight,
+    );
+  });
+
+  // Rosa on a phone, 2026-10-04: the composer grew under a pause notice, the
+  // view shrank and the list moved up 28 px as it re-anchored — nobody's
+  // move — and the end was left 230 px under the composer.
+  it("stays at its end through a move up nobody made, and follows on", () => {
+    const { scroll, follow } = atItsEnd();
+    scroll.element.clientHeight -= 82;
+    scroll.element.scrollHeight += 120;
+    scroll.element.scrollTop -= 28;
+    scroll.events();
     follow.follow();
     play(scroll);
     expect(scroll.element.scrollTop).toBe(
