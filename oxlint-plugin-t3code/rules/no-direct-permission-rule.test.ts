@@ -29,6 +29,7 @@ const OFFERS_IMPORT = `import {
   type FactsFor,
   type Held,
   type Principal,
+  type Reason,
   type Targets,
   type Verb,
 } from "@t3tools/shared/zeropsPermissions";`;
