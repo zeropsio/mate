@@ -37,18 +37,6 @@ describe("buildZeropsAuthorizeUrl", () => {
     expect(url.searchParams.has("nonce")).toBe(false);
   });
 
-  it("names the project a dev instance belongs to, when it was built with one", () => {
-    const url = new URL(
-      buildZeropsAuthorizeUrl({
-        nonce: "n",
-        origin: "https://app-1abc.prg1.zerops.app",
-        path: "",
-        project: "proj-1",
-      }),
-    );
-    expect(url.searchParams.get("project")).toBe("proj-1");
-  });
-
   it("asks for the sign-up entry when that is what the user pressed", () => {
     const url = new URL(buildZeropsAuthorizeUrl({ ...here, nonce: "nonce-1", intent: "register" }));
     expect(url.searchParams.get("intent")).toBe("register");

@@ -6,8 +6,8 @@ import { rememberSignInReturn } from "./navigationStorage";
  * `client-runtime/zerops/handover` owns the wire contract and is pure; this
  * file owns what a browser has to supply — the nonce's randomness, somewhere
  * to keep it while the tab navigates to the Zerops app and back, and where
- * this tab lives: its origin and base path, plus the build's project hint
- * (`VITE_MATE_SIGNIN_PROJECT`) and Zerops app (`VITE_ZEROPS_APP_URL`).
+ * this tab lives: its origin and base path, plus the build's Zerops app
+ * (`VITE_ZEROPS_APP_URL`).
  *
  * **Why the nonce is stored at all.** Without it, `…/zerops/authorized#token=<attacker's>`
  * is a working link: whoever opens it signs this browser into the attacker's
@@ -112,20 +112,17 @@ export function startZeropsHandover(
     readonly intent?: ZeropsHandoverIntent;
     readonly origin?: string;
     readonly path?: string;
-    readonly project?: string;
     readonly guiBaseUrl?: string;
   } = {},
 ): string {
   if (!input.store) rememberSignInReturn();
   const store = input.store ?? sessionHandoverNonceStore;
   const nonce = mintZeropsHandoverNonce({ store });
-  const project = input.project ?? import.meta.env.VITE_MATE_SIGNIN_PROJECT;
   const guiBaseUrl = input.guiBaseUrl ?? import.meta.env.VITE_ZEROPS_APP_URL;
   return buildZeropsAuthorizeUrl({
     nonce,
     origin: input.origin ?? currentOrigin(),
     path: input.path ?? appBasePath(),
-    ...(project ? { project } : {}),
     ...(input.intent ? { intent: input.intent } : {}),
     ...(guiBaseUrl ? { guiBaseUrl } : {}),
   });

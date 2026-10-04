@@ -148,6 +148,8 @@ describe("startZeropsHandover names where this tab lives", () => {
       const url = new URL(startZeropsHandover({ store: fakeStore(), ...row }));
       expect(url.searchParams.get("origin")).toBe(row.origin);
       expect(url.searchParams.get("path")).toBe(row.path);
+      // The Zerops app finds the project by origin; no hint is sent.
+      expect(url.searchParams.get("project")).toBeNull();
     });
   }
 
@@ -165,11 +167,6 @@ describe("startZeropsHandover names where this tab lives", () => {
       startZeropsHandover({ ...here, store: fakeStore(), guiBaseUrl: "https://app.zerops.dev" }),
     );
     expect(url.origin).toBe("https://app.zerops.dev");
-  });
-
-  it("names the project hint this build carries", () => {
-    const url = new URL(startZeropsHandover({ ...here, store: fakeStore(), project: "proj-1" }));
-    expect(url.searchParams.get("project")).toBe("proj-1");
   });
 });
 

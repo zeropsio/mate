@@ -7,8 +7,8 @@ itself.
 ## How a person signs in
 
 - The client sends the tab to `{VITE_ZEROPS_APP_URL}/authorize-app` (default
-  `https://app.zerops.io`) with `app=zerops-code`, its own `origin`, its base `path`, a per-tab
-  nonce as `state` and, for a dev instance, `project` (`VITE_MATE_SIGNIN_PROJECT`). Code:
+  `https://app.zerops.io`) with `app=zerops-code`, its own `origin`, its base `path` and a per-tab
+  nonce as `state`. Code:
   `packages/client-runtime/src/zerops/handover.ts`.
 - The Zerops app checks the origin, mints a personal access token named
   `Zerops Code · <device> · <origin>`, and redirects to

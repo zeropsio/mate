@@ -78,11 +78,6 @@ export function buildZeropsAuthorizeUrl(input: {
   readonly origin: string;
   /** The base path this bundle is served under; empty at the origin root. */
   readonly path: string;
-  /**
-   * The project this instance runs in, when the build names one (a dev
-   * instance). A hint for the platform's origin check, never a destination.
-   */
-  readonly project?: string;
   readonly intent?: ZeropsHandoverIntent;
   readonly guiBaseUrl?: string;
 }): string {
@@ -107,9 +102,6 @@ export function buildZeropsAuthorizeUrl(input: {
   url.searchParams.set("origin", input.origin);
   url.searchParams.set("path", input.path);
   url.searchParams.set("state", nonce);
-  if (input.project) {
-    url.searchParams.set("project", input.project);
-  }
   if (input.intent) {
     url.searchParams.set("intent", input.intent);
   }
