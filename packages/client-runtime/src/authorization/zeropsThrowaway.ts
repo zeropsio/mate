@@ -49,11 +49,6 @@
 
 /** A throwaway minted to open one Mate: `mate-door:{projectId}:{nonce}`. */
 export const DOOR_THROWAWAY_PREFIX = "mate-door";
-/**
- * A throwaway main's client mints for its Gitea sign-in: `gitea-signin:{host}:{nonce}`. This
- * client mints none; it only takes the person's own leftovers back (`isThrowawayName`).
- */
-export const GITEA_THROWAWAY_PREFIX = "gitea-signin";
 
 /**
  * Names a throwaway after the Mate it is for. The receiver checks the name
@@ -64,14 +59,9 @@ export function doorThrowawayName(projectId: string, nonce: string): string {
   return `${DOOR_THROWAWAY_PREFIX}:${projectId}:${nonce}`;
 }
 
-/**
- * Whether a token on the account is a throwaway left behind by a crash: one of ours, or a Gitea
- * sign-in's that main's client left in the same organization.
- */
+/** Whether a token on the account is one of our throwaways, left behind by a crash. */
 export function isThrowawayName(name: string): boolean {
-  return (
-    name.startsWith(`${DOOR_THROWAWAY_PREFIX}:`) || name.startsWith(`${GITEA_THROWAWAY_PREFIX}:`)
-  );
+  return name.startsWith(`${DOOR_THROWAWAY_PREFIX}:`);
 }
 
 /**

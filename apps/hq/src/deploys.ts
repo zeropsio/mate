@@ -14,8 +14,7 @@
  *   production tier builds at the commit the release lists (C15/C16), named `<tag> <7 hex>`. An
  *   environment added, and a deploy key kept for one, ask for what the environment is wanted at
  *   now: a stage the head of `main`, a production the newest release. A person's Run again asks for
- *   one deploy again, and Add service for one service the tier declares. The import's hold records
- *   what its environments run. Nothing else asks.
+ *   one deploy again, and Add service for one service the tier declares. Nothing else asks.
  * - **The request that asked runs it** (`run`): its rollout planned into jobs once, then each of its
  *   environments' next job submitted where none builds, and it answers where each job stands
  *   (`@t3tools/shared/hqDeploys`). A rollout no request runs — a merge Core landed, a move found
@@ -111,7 +110,7 @@ import { Releases } from "./releases.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { type RolloutCause, Rollouts, rolloutOf } from "./rollouts.ts";
 import { tierRuntimes } from "./tierRuntimes.ts";
-import { sameCommit, versionName, versionSha } from "./versionNames.ts";
+import { versionName } from "./versionNames.ts";
 import {
   ZeropsApi,
   ZeropsDeploy,
@@ -134,20 +133,6 @@ export interface DeploysOptions {
    * for its archive before HQ takes it that Zerops never took the submission; 1 min.
    */
   readonly untakenAfter?: Duration.Duration;
-}
-
-/** An environment the migration brought, as `Deploys.hold` left each of its services. */
-export interface HeldEnvironment {
-  readonly projectId: string;
-  readonly name: string;
-  readonly services: ReadonlyArray<{
-    readonly service: string;
-    /** The commit it is wanted at. */
-    readonly sha: string;
-    readonly state: "live" | "held";
-    /** What it runs: the commit its version's name spells, else that name. */
-    readonly runs: string;
-  }>;
 }
 
 /** A person's ask HQ refused: a code, and the reason (a permission's, or the deploy's own). */
@@ -200,23 +185,6 @@ export class Deploys extends Context.Service<
     ) => Effect.Effect<HqDeployAnswer, DeployRefused | NotLeader | SqlError | ZeropsError>;
     /** Ticks after every change of a job, starting with the current tick. */
     readonly changes: Stream.Stream<number>;
-    /**
-     * Migration only (T13; it goes with T14): the environments of `projectIds` as the import
-     * brought them — no key yet, so read with HQ's own `credential`. A service that runs the
-     * commit it is wanted at is live, as the version it runs; any other is held: its job is the
-     * build's own failure, final until a person's Run (B37), in HQ's words for why. Whatever waited
-     * there is superseded, so a first key deploys nothing nobody asked for.
-     */
-    readonly hold: (
-      projectIds: ReadonlyArray<string>,
-      credential: Redacted.Redacted,
-    ) => Effect.Effect<ReadonlyArray<HeldEnvironment>, NotLeader | SqlError | ZeropsError>;
-    /**
-     * Migration only (T13; it goes with T14): every tier of the applications `appIds`' environments
-     * seen as it is now, as a tier first seen would be — so the recipe the import rewrote is the
-     * baseline, and no merge takes the rewrite for a change to import.
-     */
-    readonly baseline: (appIds: ReadonlyArray<string>) => Effect.Effect<void, NotLeader | SqlError>;
   }
 >()("@t3tools/hq/deploys") {}
 
@@ -361,24 +329,6 @@ const VERSION_FAILURES: ReadonlySet<string> = new Set([
   "DEPLOY_FAILED",
   "CANCELLED",
 ]);
-
-/**
- * Whether a service runs `sha` as a version's name spells it: the version it names is the one it
- * runs, and its name spells the commit. Read only where HQ made no version — the import's hold
- * (T13) — never as what HQ's own deploy runs (audit N7).
- */
-const spellsRunning = (service: ZeropsService, sha: string) =>
-  service.named !== null &&
-  service.activeVersionId === service.named.id &&
-  sameCommit(versionSha(service.named.name), sha);
-
-/** What a service runs, in a person's words: the commit its version's name spells, else that name. */
-const runningOf = (service: ZeropsService | undefined) => {
-  if (service === undefined) return "nothing";
-  if (service.named === null) return "a version with no name";
-  const spelled = versionSha(service.named.name);
-  return spelled === "" ? service.named.name : short(spelled);
-};
 
 /** How a Zerops failure ends a job: a no to the deploy itself is its failure; any other, refused. */
 const zeropsEnd = (envName: string, error: ZeropsError): Ended => {
@@ -1731,81 +1681,6 @@ export const deploysLayer = (
         ),
       );
 
-      const baseline: Deploys["Service"]["baseline"] = (appIds) =>
-        Effect.gen(function* () {
-          const tiers = yield* sql<{
-            readonly app_id: string;
-            readonly tier: "stage" | "production";
-          }>`
-            SELECT DISTINCT app_id::text AS app_id, tier FROM hq_environment
-            WHERE ${sql.in("app_id", appIds)}`;
-          for (const { app_id: appId, tier } of tiers) {
-            const declared = yield* declaredOf(appId, tier);
-            if (declared === undefined) continue;
-            yield* leader.write(seen(appId, tier, declared.digest, declared.services));
-          }
-        });
-
-      const hold: Deploys["Service"]["hold"] = (projectIds, credential) =>
-        Effect.gen(function* () {
-          const held: Array<HeldEnvironment> = [];
-          for (const projectId of projectIds) {
-            const [environment] = yield* environmentsOf({ projectId });
-            if (environment === undefined) continue;
-            const { targets } = yield* wantedOf(environment);
-            if (targets.length === 0) continue;
-            const services = yield* zerops.services(projectId)(credential);
-            const states: Array<HeldEnvironment["services"][number]> = [];
-            yield* leader.write(
-              Effect.gen(function* () {
-                const [rollout] = yield* sql<{ readonly id: string }>`
-                  INSERT INTO hq_rollout (app_id, cause, project_id, planned_at)
-                  VALUES (${environment.app_id}::uuid, 'import', ${projectId}, now())
-                  RETURNING id::text AS id`;
-                for (const target of targets) {
-                  const service = services.find((candidate) => candidate.name === target.service);
-                  const now = runningOf(service);
-                  // Kept as the version HQ knows it runs, so nothing deploys it again (audit N7).
-                  const running =
-                    service !== undefined && spellsRunning(service, target.sha)
-                      ? service.activeVersionId
-                      : null;
-                  const [made] = yield* sql<{ readonly id: string }>`
-                    INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, service_id,
-                      repo, sha, label, ord, state, reason, app_version_id, ended_at)
-                    VALUES (${rollout!.id}::bigint, 'deploy', ${projectId}, ${target.service},
-                      ${service?.id ?? null}, ${target.repo}, ${target.sha}, ${target.label},
-                      ${target.ord}, ${running === null ? "failed" : "live"},
-                      ${
-                        running === null
-                          ? cut(
-                              `Held at migration: ${target.service} runs ${now}; Run brings it to ${short(target.sha)}.`,
-                            )
-                          : null
-                      },
-                      ${running}, now())
-                    RETURNING id::text AS id`;
-                  yield* sql`
-                    UPDATE hq_deploy_job
-                    SET state = 'superseded', superseded_by = ${made!.id}::bigint,
-                        reason = 'held at migration', ended_at = now(), updated_at = now()
-                    WHERE project_id = ${projectId} AND kind = 'deploy'
-                      AND service = ${target.service} AND state = 'queued'`;
-                  states.push({
-                    service: target.service,
-                    sha: target.sha,
-                    state: running === null ? "held" : "live",
-                    runs: now,
-                  });
-                }
-              }),
-            );
-            yield* tick;
-            held.push({ projectId, name: environment.name, services: states });
-          }
-          return held;
-        });
-
       /**
        * A person's ask in the application's environment `name`, refused unless they may Run again
        * there (`redeploy`): the environment's project.
@@ -1857,8 +1732,6 @@ export const deploysLayer = (
           Effect.flatMap(rolloutOf(sql, event), (id) =>
             id === undefined ? Effect.succeed(NO_DEPLOYS) : run(id),
           ),
-        baseline,
-        hold,
         changes: SubscriptionRef.changes(ticks),
         redeploy: (userId, appId, name, service, sha) =>
           confirmingRefusal(

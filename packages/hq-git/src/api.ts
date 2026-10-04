@@ -100,13 +100,6 @@ export interface ImportCredentials {
   readonly username: string;
   readonly password: string;
 }
-/** A change's head brought in by an import: the source's `ref`, at `sha`, as the change's branch. */
-export interface ImportedChangeHead {
-  readonly mateId: string;
-  readonly number: number;
-  readonly ref: string;
-  readonly sha: string;
-}
 export class GitError extends Schema.TaggedError<GitError>()("GitError", {
   operation: Schema.String,
   reason: Schema.Literals([
@@ -181,23 +174,6 @@ export interface CommitFilesOptions {
   /** null creates an unborn ref. Only refs/heads/* outside mate/* are Core-owned here. */
   readonly expectedHead: string | null;
 }
-/**
- * A migration's merge of main into a change (T13 import, migration-only: it goes with T14): the
- * merge's tree is `from`'s with `files` over it, its parents the change head and main.
- */
-export interface ChangeMergeOptions {
-  /** The change's head as the caller read it: a moved head is `head_moved`. */
-  readonly expectedHead: string;
-  /** Main's head, the merge's second parent: a moved main is `main_moved`. */
-  readonly expectedMain: string;
-  /** The commit or tree the merge's tree starts from. */
-  readonly from: string;
-  /** Content or null to delete an existing file, as `commitFiles` takes them. */
-  readonly files: Readonly<Record<string, string | Uint8Array | null>>;
-  /** A `Mate-Change` trailer is refused: it would mark the change merged. */
-  readonly message: string;
-  readonly author: Author;
-}
 export interface Bounded<A> {
   readonly items: ReadonlyArray<A>;
   readonly truncated: boolean;
@@ -246,16 +222,13 @@ export interface HqGit {
   readonly restore: (repo: Repo, bundle: string | null) => Effect.Effect<Repo, GitError>;
   /**
    * Fetches branches (except `mate/*`) and tags; HEAD is always main, so a source without main is
-   * refused. Credentials travel in environment config, never in a URL or argv. Each of
-   * `changeHeads` becomes its change's branch, only where Core's record of the change exists
-   * (`lookupChange`) and only at the commit it names: a change branch never exists without its
-   * record, and the repository appears with all its refs at once or not at all.
+   * refused. Credentials travel in environment config, never in a URL or argv. The repository
+   * appears with all its refs at once or not at all.
    */
   readonly import: (
     repo: Repo,
     source: string,
     credentials?: ImportCredentials,
-    changeHeads?: ReadonlyArray<ImportedChangeHead>,
   ) => Effect.Effect<Repo, GitError>;
   readonly list: (appId?: string) => Effect.Effect<ReadonlyArray<Repo>, GitError>;
   /**
@@ -299,28 +272,6 @@ export interface HqGit {
     ref: string,
     options: CommitFilesOptions,
   ) => Effect.Effect<{ readonly sha: string } | { readonly kind: "head_moved" }, GitError>;
-  /**
-   * Main merged into a change by Core, its branch moved by CAS: no event, the caller records the
-   * head (T13 import; migration-only, it goes with T14).
-   */
-  readonly mergeIntoChange: (
-    repo: Repo,
-    mateId: string,
-    number: number,
-    options: ChangeMergeOptions,
-  ) => Effect.Effect<
-    { readonly sha: string } | { readonly kind: "head_moved" | "main_moved" | "no_change" },
-    GitError
-  >;
-  /** The merge of two commits read, never written: its tree, or the paths that conflict. */
-  readonly mergeTree: (
-    repo: Repo,
-    ours: string,
-    theirs: string,
-  ) => Effect.Effect<
-    { readonly tree: string } | { readonly conflicts: ReadonlyArray<string> },
-    GitError
-  >;
   /** An existing tag is `exists_same` when it peels to the same commit, else `conflict`. */
   readonly createTag: (
     repo: Repo,

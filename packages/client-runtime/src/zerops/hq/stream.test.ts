@@ -268,6 +268,9 @@ describe("structureEventOf", () => {
       official: "ok",
     });
     expect(structureEventOf({ type: "official", official: 7 })).toBeUndefined();
+    expect(
+      structureEventOf({ type: "snapshot", apps: [ACME], official: "ok", build: "b1" }),
+    ).toMatchObject({ kind: "snapshot", official: "ok", build: "b1" });
     // Before the Core's first check: no verdict, which is not a Core that never says one.
     expect(structureEventOf({ type: "snapshot", apps: [ACME], official: null })).toMatchObject({
       kind: "snapshot",

@@ -215,9 +215,9 @@ function readActivityProcess(entry: Record<string, unknown>): ActivityProcess | 
  * is a valid observation that just found nothing. A process entry that is
  * missing an identifying field is dropped, not allowed to corrupt the read.
  *
- * No production caller remains: it now serves only as the test-only parity
- * oracle `apps/web/src/zerops/topologyDataParity.test.ts` decodes the same
- * raw process document against, to prove the migrated
+ * HQ's update reads its deploys through it (`ZeropsApiClient.listProjectProcesses`);
+ * `apps/web/src/zerops/topologyDataParity.test.ts` also decodes the same raw
+ * process document against it, to prove the migrated
  * `decodeEntityDirectResponse` pipeline reproduces this reader's output.
  */
 export function readProjectProcesses(

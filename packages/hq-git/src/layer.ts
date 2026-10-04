@@ -9,7 +9,6 @@ import {
   type HqGit,
   type HqGitOptions,
   type ImportCredentials,
-  type ImportedChangeHead,
   type Repo,
 } from "./api.ts";
 import { GitRunner, converge, scratch, sweep } from "./git.ts";
@@ -96,7 +95,6 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
       signal: AbortSignal,
       source?: string,
       credentials?: ImportCredentials,
-      changeHeads: ReadonlyArray<ImportedChangeHead> = [],
       bundle?: string,
     ) => {
       const dest = directory(repo);
@@ -193,22 +191,6 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
             "+refs/tags/*:refs/tags/*",
             "^refs/heads/mate/*",
           ]);
-          const heads = await changeBranches(repo, changeHeads);
-          if (heads.length > 0) {
-            await fetch(heads.map(({ head, branch }) => `+${head.ref}:${branch}`));
-            for (const { head, branch } of heads) {
-              const at = await runner.run(
-                ["-C", repoPath, "for-each-ref", "--format=%(objectname)", branch],
-                { signal },
-              );
-              if (at.toString().trim() !== head.sha)
-                throw new GitError({
-                  operation: "import",
-                  reason: "source_refused",
-                  message: "A change head is not at the commit named",
-                });
-            }
-          }
           const main = await runner.run(
             ["-C", repoPath, "for-each-ref", "--format=%(objectname)", "refs/heads/main"],
             { signal },
@@ -230,50 +212,13 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
         if (staging) await NodeFSP.rm(staging, { recursive: true, force: true });
       }
     };
-    /** Each head's branch, once Core's record of its change is found; refused otherwise. */
-    const changeBranches = async (repo: Repo, changeHeads: ReadonlyArray<ImportedChangeHead>) => {
-      const branches = new Set<string>();
-      const found: Array<{ readonly head: ImportedChangeHead; readonly branch: string }> = [];
-      for (const head of changeHeads) {
-        const branch = `refs/heads/mate/${head.mateId}/${String(head.number)}`;
-        if (
-          !validId(head.mateId) ||
-          !Number.isSafeInteger(head.number) ||
-          head.number < 1 ||
-          !/^refs\/[A-Za-z0-9._/-]+$/.test(head.ref) ||
-          head.ref.includes("..") ||
-          !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(head.sha) ||
-          branches.has(branch)
-        )
-          throw new GitError({
-            operation: "import",
-            reason: "invalid_config",
-            message: "Invalid change head",
-          });
-        const change = await options.lookupChange(repo, head.mateId, head.number);
-        if (
-          change === null ||
-          change.appId !== repo.appId ||
-          change.mateId !== head.mateId ||
-          change.number !== head.number
-        )
-          throw new GitError({
-            operation: "import",
-            reason: "not_found",
-            message: "A change head names no change",
-          });
-        branches.add(branch);
-        found.push({ head, branch });
-      }
-      return found;
-    };
     const create: HqGit["create"] = (repo) => attempt("create", (signal) => build(repo, signal));
     const restore: HqGit["restore"] = (repo, bundle) =>
       attempt("restore", (signal) =>
-        build(repo, signal, undefined, undefined, [], bundle === null ? undefined : bundle),
+        build(repo, signal, undefined, undefined, bundle === null ? undefined : bundle),
       );
-    const importRepo: HqGit["import"] = (repo, source, credentials, changeHeads) =>
-      attempt("import", (signal) => build(repo, signal, source, credentials, changeHeads));
+    const importRepo: HqGit["import"] = (repo, source, credentials) =>
+      attempt("import", (signal) => build(repo, signal, source, credentials));
     const list: HqGit["list"] = (appId) =>
       attempt("list", async () => {
         if (appId !== undefined && !validId(appId))

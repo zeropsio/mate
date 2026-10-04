@@ -217,7 +217,7 @@ describe("inventory throwaway cleanup", () => {
 
   it("does not list tokens without debt; explicit cleanup discovers legacy leftovers", async () => {
     mocks.read.mockResolvedValue([
-      { tokenId: "legacy", name: "gitea-signin:nonce", created: new Date(0).toISOString() },
+      { tokenId: "legacy", name: "mate-door:p1:nonce", created: new Date(0).toISOString() },
     ]);
     await mount();
     expect(mocks.read).not.toHaveBeenCalled();

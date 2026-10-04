@@ -73,6 +73,8 @@ export type HqStructureEvent =
        * absent from a Core whose stream does not say it.
        */
       readonly official?: string | null;
+      /** The Core HQ runs, as its bundle stamps it; absent from a Core whose stream does not name it. */
+      readonly build?: string;
     }
   | { readonly kind: "official"; readonly official: string | null }
   | { readonly kind: "change"; readonly appId: string; readonly app: HqApp | null }
@@ -191,6 +193,7 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       mates,
       people,
       official,
+      build,
     } = message as {
       readonly apps?: unknown;
       readonly ungrouped?: unknown;
@@ -199,6 +202,7 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       readonly mates?: unknown;
       readonly people?: unknown;
       readonly official?: unknown;
+      readonly build?: unknown;
     };
     // An HQ from before the Mates in no application names none of them.
     if (!(Array.isArray(apps) && apps.every(isApp) && isUngrouped(ungrouped))) return undefined;
@@ -216,6 +220,7 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       mates: matesOf(mates),
       people: Option.getOrNull(readPeople(people)),
       ...(typeof official === "string" || official === null ? { official } : {}),
+      ...(typeof build === "string" ? { build } : {}),
     };
   }
   if (type === "official") {

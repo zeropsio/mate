@@ -39,7 +39,7 @@ import {
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
-import { useCallback, useContext, useEffect, useMemo } from "react";
+import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { appBasePath } from "~/basePath";
 import { randomUUID } from "~/lib/utils";
@@ -266,15 +266,21 @@ export function useOfficialHq(): { readonly address: string; readonly api: HqApi
 /** Where an HQ stands, as its stream last said it (`hqStandingAtom`). */
 export type HqStanding =
   | { readonly kind: "unknown" }
-  | { readonly kind: "healthy" }
+  /**
+   * `build` the Core it runs (`hq/update.ts`), as its stream or its health says it; absent while
+   * neither has yet.
+   */
+  | { readonly kind: "healthy"; readonly build?: string }
   /** Serving, while it cannot check Zerops right now: no outage, everything keeps using it. */
-  | { readonly kind: "unchecked" }
+  | { readonly kind: "unchecked"; readonly build?: string }
   /** Not answering as the official HQ since `since` (wall ms): the last known state stays shown. */
   | { readonly kind: "unavailable"; readonly since: number };
 
 /** The standing a health read leaves: an outage keeps the time it began. */
 export function nextHqStanding(previous: HqStanding, health: HqHealth, nowMs: number): HqStanding {
-  if (health.kind === "healthy" || health.kind === "unchecked") return { kind: health.kind };
+  if (health.kind === "healthy" || health.kind === "unchecked") {
+    return { kind: health.kind, build: health.build };
+  }
   return previous.kind === "unavailable" ? previous : { kind: "unavailable", since: nowMs };
 }
 
@@ -291,21 +297,85 @@ async function asGzip(bytes: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayB
 }
 
 /**
+ * Which Core this build carries under `base` (`hq-core/build.json`, `apps/hq/scripts/pack-core.ts`):
+ * its identity, or `""` where it carries none — a dev server, a build that packed no Core.
+ */
+export async function readCarriedCoreBuild(
+  fetch: typeof globalThis.fetch,
+  base: string,
+): Promise<string> {
+  try {
+    const response = await fetch(`${base}/build.json`, { cache: "no-store" });
+    if (!response.ok) return "";
+    const body = (await response.json()) as { readonly build?: unknown };
+    return typeof body.build === "string" ? body.build : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * This tab's one read of the Core it carries — its build does not change under it — made for the
+ * first reader in a shown tab, never in a hidden one.
+ */
+const carried: {
+  build: string | undefined;
+  /** Waiting for a shown tab, or sent. */
+  asked: boolean;
+  sent: boolean;
+  readonly listeners: Set<() => void>;
+  unwait: () => void;
+} = { build: undefined, asked: false, sent: false, listeners: new Set(), unwait: () => undefined };
+
+function subscribeCarried(listener: () => void): () => void {
+  carried.listeners.add(listener);
+  if (!carried.asked) {
+    carried.asked = true;
+    carried.unwait = whenShown(() => {
+      carried.sent = true;
+      void readCarriedCoreBuild(
+        (input, init) => fetch(input, init),
+        `${appBasePath()}/hq-core`,
+      ).then((build) => {
+        carried.build = build;
+        for (const heard of carried.listeners) heard();
+      });
+    });
+  }
+  return () => {
+    carried.listeners.delete(listener);
+    if (carried.listeners.size > 0 || carried.sent) return;
+    // Let go of before it went out: the next reader asks again.
+    carried.unwait();
+    carried.asked = false;
+  };
+}
+
+const carriedBuild = () => carried.build;
+
+/** The Core this build carries (`readCarriedCoreBuild`); `undefined` until read. */
+export function useCarriedCoreBuild(): string | undefined {
+  return useSyncExternalStore(subscribeCarried, carriedBuild, carriedBuild);
+}
+
+/**
  * Core as this build carries it under `base` (`apps/hq/scripts/pack-core.ts`): its archive, by a
- * name no server takes for an encoding, and the `zerops.yml` it deploys with.
+ * name no server takes for an encoding, the `zerops.yml` it deploys with, and its identity.
  */
 export async function readBundledCore(
   fetch: typeof globalThis.fetch,
   base: string,
 ): Promise<HqCoreArtifact> {
-  const [archive, yaml] = await Promise.all([
+  const [archive, yaml, build] = await Promise.all([
     fetch(`${base}/core.tgz.bin`, { cache: "no-store" }),
     fetch(`${base}/zerops.yml`, { cache: "no-store" }),
+    readCarriedCoreBuild(fetch, base),
   ]);
-  if (!archive.ok || !yaml.ok) {
+  if (!archive.ok || !yaml.ok || build === "") {
     throw new Error("This build of the app carries no HQ to deploy.");
   }
   return {
+    build,
     archive: await asGzip(new Uint8Array(await archive.arrayBuffer())),
     zeropsYaml: await yaml.text(),
   };
