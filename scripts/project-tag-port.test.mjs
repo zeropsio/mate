@@ -60,6 +60,33 @@ describe("the one-off project tag port", () => {
       "Unknown Mate metadata: mate:future:fact",
     ]);
   });
+  // Two signers on one login are unsettled: tag order is no evidence of whose the credential is.
+  for (const [name, tags, fill] of [
+    [
+      "one signer fills its login",
+      ["mate:signer:codex:ada"],
+      [{ field: "signers.codex", value: "ada" }],
+    ],
+    [
+      "the same signer twice fills it once",
+      ["mate:signer:codex:ada", "mate:signer:codex:ada"],
+      [{ field: "signers.codex", value: "ada" }],
+    ],
+    [
+      "two signers for one login fill nothing",
+      ["mate:signer:codex:ada", "mate:signer:codex:bo"],
+      [],
+    ],
+    [
+      "two signers on one login leave another login's alone",
+      ["mate:signer:codex:ada", "mate:signer:codex:bo", "mate:signer:claude-code:cy"],
+      [{ field: "signers.claude-code", value: "cy" }],
+    ],
+  ]) {
+    it(name, () => {
+      expect(planProjectTagPort({ id: "p", tags: ["mate", ...tags] }, snapshot).fill).toEqual(fill);
+    });
+  }
   it("does not invent a signer from a live HQ login or overwrite HQ's signer", () => {
     const read = {
       ...snapshot,
