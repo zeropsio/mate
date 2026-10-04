@@ -83,21 +83,30 @@ export type HomeTarget =
 /**
  * Where the home lands (null: not known yet). A connect's environment first, once its shell is
  * here; else the Mate HQ names; else, once HQ has answered, the projects of the environments whose
- * socket is up. A registration that does not answer keeps its cached projects, and those never
- * claim the landing: with HQ naming none, its old conversation may be a Mate that is gone. A
- * socket on its first attempt, or a live one whose shell has not arrived, is worth a moment. Pure.
+ * socket is up. Only the organization in view lands anything: HQ's Mates are another
+ * organization's for a render after a switch, and the registrations are the account's, every
+ * organization's — a server outside Zerops is nobody's, and lands. A registration that does not
+ * answer keeps its cached projects, and those never claim the landing: with HQ naming none, its
+ * old conversation may be a Mate that is gone. A socket on its first attempt, or a live one whose
+ * shell has not arrived, is worth a moment. Pure.
  */
 export function homeTarget(input: {
+  /** The organization in view; null while none is chosen. */
+  readonly organizationId: string | null;
   readonly target: { readonly environmentId: EnvironmentId; readonly bootstrapped: boolean } | null;
-  /** The Mate HQ names (`hqHomeMate`). */
-  readonly hqMate: string | undefined;
-  /** HQ has answered for this organization, or its absence/failure is known. */
+  /** The Mate HQ names (`hqHomeMate`), and the organization whose HQ named it. */
+  readonly hqMate: { readonly organizationId: string; readonly projectId: string } | null;
+  /** HQ has answered for the organization in view, or its absence/failure is known. */
   readonly hqMatesRead: boolean;
+  /** The Zerops projects the organization in view lists. */
+  readonly organizationProjects: ReadonlySet<string>;
   readonly environments: ReadonlyArray<{
     readonly environmentId: EnvironmentId;
     readonly phase: EnvironmentConnectionPhase;
     /** Its shell has arrived. */
     readonly snapshot: boolean;
+    /** The Zerops project its server states: null outside Zerops, undefined until it says. */
+    readonly zeropsProjectId: string | null | undefined;
   }>;
 }): HomeTarget | null {
   if (input.target !== null) {
@@ -105,10 +114,17 @@ export function homeTarget(input: {
       ? { kind: "environment", environmentId: input.target.environmentId }
       : null;
   }
-  if (input.hqMate !== undefined) return { kind: "mate", projectId: input.hqMate };
+  if (input.hqMate !== null && input.hqMate.organizationId === input.organizationId) {
+    return { kind: "mate", projectId: input.hqMate.projectId };
+  }
   if (!input.hqMatesRead) return null;
-  if (input.environments.some((environment) => environment.phase === "connecting")) return null;
-  const live = input.environments.filter((environment) => environment.phase === "connected");
+  const ours = input.environments.filter(
+    ({ zeropsProjectId }) =>
+      zeropsProjectId === null ||
+      (zeropsProjectId !== undefined && input.organizationProjects.has(zeropsProjectId)),
+  );
+  if (ours.some((environment) => environment.phase === "connecting")) return null;
+  const live = ours.filter((environment) => environment.phase === "connected");
   if (live.some((environment) => !environment.snapshot)) return null;
   return live.length === 0
     ? { kind: "none" }

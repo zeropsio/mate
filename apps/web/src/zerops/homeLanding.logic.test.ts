@@ -298,63 +298,97 @@ describe("homeTarget: where the home lands, and never on a Mate that is gone", (
   const quill = EnvironmentId.make("env-quill");
   const fern = EnvironmentId.make("env-fern");
   const base = {
+    organizationId: "org-moss",
     target: null,
-    hqMate: undefined,
+    hqMate: null,
     hqMatesRead: true,
+    organizationProjects: new Set(["proj-quill", "proj-fern"]),
     environments: [],
   } as const;
+  const ivy = { organizationId: "org-moss", projectId: "proj-ivy" } as const;
+  const env = (
+    environmentId: EnvironmentId,
+    phase: "connecting" | "connected" | "reconnecting" | "available" | "error",
+    snapshot: boolean,
+    zeropsProjectId: { readonly is: string | null | undefined } = {
+      is: environmentId === quill ? "proj-quill" : "proj-fern",
+    },
+  ) => ({ environmentId, phase, snapshot, zeropsProjectId: zeropsProjectId.is });
   it.each([
     [
       "a connect names an environment whose shell has not arrived: unknown",
-      { target: { environmentId: quill, bootstrapped: false }, hqMate: "proj-ivy" },
+      { target: { environmentId: quill, bootstrapped: false }, hqMate: ivy },
       null,
     ],
     [
       "a connect names an environment, its shell here: that one, before HQ's",
-      { target: { environmentId: quill, bootstrapped: true }, hqMate: "proj-ivy" },
+      { target: { environmentId: quill, bootstrapped: true }, hqMate: ivy },
       { kind: "environment", environmentId: quill },
     ],
     [
       "HQ names a Mate: that Mate",
-      { hqMate: "proj-ivy", hqMatesRead: false },
+      { hqMate: ivy, hqMatesRead: false },
       { kind: "mate", projectId: "proj-ivy" },
     ],
     ["HQ not read yet, naming none: unknown", { hqMatesRead: false }, null],
+    // Switching organization on the projects page: HQ's Mates are the previous organization's
+    // for a render, until its stream is keyed to the new one. They are not this one's landing.
+    [
+      "just switched organization, HQ's Mates still the previous one's: unknown",
+      { hqMate: { organizationId: "org-fern", projectId: "proj-ivy" }, hqMatesRead: false },
+      null,
+    ],
+    [
+      "just switched to an organization without HQ, the previous one's Mate still named: nowhere",
+      { hqMate: { organizationId: "org-fern", projectId: "proj-ivy" } },
+      { kind: "none" },
+    ],
     [
       "a socket on its first attempt: unknown",
-      { environments: [{ environmentId: quill, phase: "connecting", snapshot: false }] },
+      { environments: [env(quill, "connecting", false)] },
       null,
     ],
     [
       "a live socket whose shell has not arrived: unknown",
-      { environments: [{ environmentId: quill, phase: "connected", snapshot: false }] },
+      { environments: [env(quill, "connected", false)] },
       null,
     ],
     [
       "live sockets: among them only",
-      {
-        environments: [
-          { environmentId: quill, phase: "connected", snapshot: true },
-          { environmentId: fern, phase: "error", snapshot: true },
-        ],
-      },
+      { environments: [env(quill, "connected", true), env(fern, "error", true)] },
+      { kind: "among", environmentIds: [quill] },
+    ],
+    // The registrations are the account's, every organization's: only this one's claim it.
+    [
+      "another organization's live Mate: never",
+      { environments: [env(quill, "connected", true, { is: "proj-elsewhere" })] },
+      { kind: "none" },
+    ],
+    [
+      "another organization's socket on its first attempt: no reason to wait",
+      { environments: [env(quill, "connecting", false, { is: "proj-elsewhere" })] },
+      { kind: "none" },
+    ],
+    [
+      "a live server whose project is not said yet: never",
+      { environments: [env(quill, "connected", true, { is: undefined })] },
+      { kind: "none" },
+    ],
+    [
+      "a live server outside Zerops, no organization's: among them",
+      { environments: [env(quill, "connected", true, { is: null })] },
       { kind: "among", environmentIds: [quill] },
     ],
     // Restores f3c9cba48's rule: a registration that does not answer keeps its cached projects,
     // and with HQ down naming none of them, its old conversation is a Mate that may be gone.
     [
       "HQ down, a dead registration still cached: nowhere",
-      {
-        environments: [
-          { environmentId: quill, phase: "error", snapshot: true },
-          { environmentId: fern, phase: "reconnecting", snapshot: true },
-        ],
-      },
+      { environments: [env(quill, "error", true), env(fern, "reconnecting", true)] },
       { kind: "none" },
     ],
     [
       "a registration held but not opened: nowhere, HQ names the Mates",
-      { environments: [{ environmentId: quill, phase: "available", snapshot: true }] },
+      { environments: [env(quill, "available", true)] },
       { kind: "none" },
     ],
     ["no environment at all: nowhere", {}, { kind: "none" }],
