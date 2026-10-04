@@ -140,9 +140,9 @@ export type EnvironmentCreationStep =
       readonly isolated?: true;
     }
   /**
-   * The environment's group registration: its registry entry, and for a stage
-   * or a production its deploy token and its declaration. Each write is safe to
-   * make again.
+   * The environment's registration in the organization's HQ: a Mate's record
+   * in its application, and for a stage or a production its attachment and its
+   * deploy key. Each write is safe to make again.
    */
   | { readonly kind: "register" }
   /**
