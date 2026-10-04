@@ -202,6 +202,12 @@ describe("hqMateOffers — what HQ offers of a Mate, or of a project it holds no
     ]);
   });
 
+  it("keeps what HQ said, moves included, while it is read again before any outage", () => {
+    expect(
+      hqMateOffers(OFFERED, "p-ada", { current: false, unavailableSince: null }),
+    ).toMatchObject({ held: true, observe: { kind: "allowed" }, moveTo: { "app-1": ["mate"] } });
+  });
+
   it("is unavailable since HQ stopped answering, moves included", () => {
     expect(hqMateOffers(OFFERED, "p-ada", { current: false, unavailableSince: 9 })).toEqual({
       held: true,

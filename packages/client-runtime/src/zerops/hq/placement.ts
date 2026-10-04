@@ -250,6 +250,7 @@ export function hqMateOffers(
     observe: hqOffer(mate.can, "observe_mate", hq),
     edit: hqOffer(mate.can, "edit_mate_record", hq),
     detach: hqOffer(mate.can, "detach", hq),
-    moveTo: hq.current ? mate.moveTo : undefined,
+    // Its moves are HQ's last word while it is only being read again; none once it stopped answering.
+    moveTo: hq.current || hq.unavailableSince === null ? mate.moveTo : undefined,
   };
 }
