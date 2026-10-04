@@ -1223,3 +1223,20 @@ it("the embedded name of the active version settles a summary even when source i
     ],
   });
 });
+
+it("a completed summary with an omitted deployment facet ends visibly", () => {
+  const answer = stopServices(
+    {
+      services: servicesRead([record("app", "app", UNRESOLVED_DEPLOYMENT)]),
+      processes: null,
+      names: new Map(),
+      refused: null,
+      stated: new Map(),
+    },
+    NOW,
+  );
+  expect(answer).toMatchObject({
+    state: "known",
+    value: [{ deployment: { state: "failed", retryAtMs: null } }],
+  });
+});

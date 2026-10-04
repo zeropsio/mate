@@ -460,6 +460,19 @@ function activeDeployment(
   }
 }
 
+/** A completed summary must end with an answer or a manual failure, never an idle placeholder. */
+function pendingDeployment(context: StopContext): Known<Deployment> {
+  if (context.summary && context.source.kind === "observing")
+    return {
+      state: "failed",
+      failure: { kind: "malformed", detail: "Zerops did not state the active version." },
+      atMs: context.nowMs,
+      attempt: 1,
+      retryAtMs: null,
+    };
+  return notYetKnown(context.source, context.nowMs);
+}
+
 function serviceDeployment(
   answer: Exclude<ServiceAnswer, { readonly kind: "not-a-stop" }>,
   serviceId: string,
@@ -493,15 +506,7 @@ function serviceDeployment(
         // A direct read that failed says why nothing states the version, and when it is tried again.
         const read = directReadOf(answer, stated);
         if (read?.state === "failed") return read;
-        if (context.summary && source.kind === "observing")
-          return {
-            state: "failed",
-            failure: { kind: "malformed", detail: "Zerops did not state the active version." },
-            atMs: nowMs,
-            attempt: 1,
-            retryAtMs: null,
-          };
-        return notYetKnown(source, nowMs);
+        return pendingDeployment(context);
       }
       // Nothing active is no proof while a build for it may be running unseen.
       if (settled.kind === "none" && !complete) return notYetKnown(source, nowMs);
@@ -516,7 +521,7 @@ function serviceDeployment(
         retryAtMs: null,
       };
     case "pending":
-      return notYetKnown(source, nowMs);
+      return pendingDeployment(context);
   }
 }
 
