@@ -184,6 +184,14 @@ export async function driveHqStructure(input: {
       let appReads: HqAppReads | null = view.appReads;
       let mates: HqMates | null = null;
       let people: HqPeople | null = null;
+      /** Whether HQ could check Zerops, as this stream last said; none from an HQ that sends none. */
+      let official: string | undefined;
+      const servingStanding = () =>
+        nextHqStanding(
+          view.standing ?? { kind: "unknown" },
+          healthOfOfficial(official),
+          input.now(),
+        );
       let rememberedAt: number | null = null;
       let dirty = false;
       const rememberMates = (force: boolean) => {
@@ -228,6 +236,12 @@ export async function driveHqStructure(input: {
                 dirty = true;
                 rememberMates(event.kind === "snapshot");
               }
+              if (event.kind === "official") {
+                official = event.official;
+                if (streamed !== null) publish({ ...view, standing: servingStanding() });
+                return;
+              }
+              if (event.kind === "snapshot") official = event.official;
               if (event.kind === "mate" || event.kind === "people") return;
               streamed = applyStructureEvent(streamed, event);
               changes = applyChangesEvent(changes, event);
@@ -251,7 +265,7 @@ export async function driveHqStructure(input: {
                 unavailableSince: null,
                 failure: null,
                 reconnecting: null,
-                standing: { kind: "healthy" },
+                standing: servingStanding(),
               });
             },
           },
@@ -308,6 +322,18 @@ export async function driveHqStructure(input: {
     readers.delete(reread);
     if (readers.size === 0) snapshotReaders.delete(input.organizationId);
   }
+}
+
+/**
+ * What a serving HQ's verdict of itself says of it, as `/health` would: the official HQ, one that
+ * serves while it cannot check Zerops right now, or one that is not the official HQ. An HQ that
+ * sends no verdict serves, and is taken as the official one.
+ */
+function healthOfOfficial(official: string | undefined): HqHealth {
+  if (official === undefined || official === "ok") return { kind: "healthy", build: "" };
+  return official === "unknown"
+    ? { kind: "unchecked", build: "" }
+    : { kind: "not-ready", state: "active", official };
 }
 
 /**

@@ -12,6 +12,7 @@
 import { readMateSetup, type MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
 import { useCallback, useSyncExternalStore } from "react";
 import { onAccountLifetimeClose } from "./accountLifetime";
+import { whenShown } from "./whenShown";
 
 /** How often a Mate's setup is read while something in it is still to happen. */
 export const MATE_SETUP_POLL_MS = 4_000;
@@ -84,26 +85,17 @@ async function ask(held: SetupObservation): Promise<void> {
   ) {
     held.timer = setTimeout(() => {
       held.timer = undefined;
-      whenShown(held);
+      whenShownAsk(held);
     }, MATE_SETUP_POLL_MS);
   }
 }
 
-const tabHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
-
 /** Reads now while the tab is shown, else once it is shown again. */
-function whenShown(held: SetupObservation): void {
-  if (!tabHidden()) {
+function whenShownAsk(held: SetupObservation): void {
+  held.unwait = whenShown(() => {
+    held.unwait = undefined;
     void ask(held);
-    return;
-  }
-  const shown = () => {
-    if (tabHidden()) return;
-    unwait(held);
-    void ask(held);
-  };
-  document.addEventListener("visibilitychange", shown);
-  held.unwait = () => document.removeEventListener("visibilitychange", shown);
+  });
 }
 
 function unwait(held: SetupObservation): void {

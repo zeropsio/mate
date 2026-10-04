@@ -57,6 +57,7 @@ import {
 } from "./hqVerdict";
 import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
+import { whenShown } from "./whenShown";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
@@ -122,12 +123,22 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     Effect.runFork(data.runtime.cells.invalidate(request));
     forgetNoHqVerdict(owner);
   }, [data, owner]);
-  // A verdict of no official HQ stands a day, then the member list is read again.
+  // A verdict of no official HQ stands a day, then the member list is read again — in a hidden
+  // tab, once it is shown again.
   const keptNone = kept !== undefined && keptNoHq(kept) ? kept : undefined;
   useEffect(() => {
     if (keptNone === undefined) return;
-    const timer = setTimeout(reread, Math.max(0, keptNone.noneAt + NO_HQ_RECHECK_MS - Date.now()));
-    return () => clearTimeout(timer);
+    let unwait: () => void = () => undefined;
+    const timer = setTimeout(
+      () => {
+        unwait = whenShown(reread);
+      },
+      Math.max(0, keptNone.noneAt + NO_HQ_RECHECK_MS - Date.now()),
+    );
+    return () => {
+      clearTimeout(timer);
+      unwait();
+    };
   }, [keptNone, reread]);
   return { status: kept === undefined ? status : "ready", hq, admins, reread };
 }

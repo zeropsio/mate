@@ -573,6 +573,36 @@ describe("useAccountHq — no official HQ, kept too", () => {
     expect([open.reads(), open.last().hq.kind]).toEqual([1, "none"]);
   });
 
+  it("waits for the tab to be shown before the day's read, and reads once then", async () => {
+    const listeners = new Set<() => void>();
+    const page = {
+      visibilityState: "hidden" as DocumentVisibilityState,
+      addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+    };
+    vi.stubGlobal("document", page);
+    try {
+      keepNoHqVerdict(
+        { account: scope.account, clientId: "org-hidden" },
+        Date.now() - NO_HQ_RECHECK_MS + 30,
+      );
+      const open = await loaded("org-hidden", () => []);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      });
+      expect(open.reads()).toBe(0);
+      await act(async () => {
+        page.visibilityState = "visible";
+        for (const listener of listeners) listener();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect([open.reads(), open.last().hq.kind]).toEqual([1, "none"]);
+      expect(listeners.size).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("reads it again at once for this browser's own birth or a press, and keeps what it names", async () => {
     let members: ReadonlyArray<ZeropsOrganizationMember> = [];
     const hq = await loaded("org-born", () => members);

@@ -3,7 +3,7 @@
  * A caller's structure over a WebSocket (KONCEPT §3 rule 4: the whole state, then changes by key;
  * after a break, the whole state again). JSON messages:
  *
- * - `{ type: "snapshot", ungrouped, apps, changes, appReads, mates, people }` — what
+ * - `{ type: "snapshot", ungrouped, apps, changes, appReads, mates, people, official }` — what
  *   `GET /api/structure` answers; beside it the changes of every application the caller may read
  *   them of, by application id (`@t3tools/shared/hqChanges` `ChangesSnapshot`), and where each of
  *   those applications' releases, repository heads and Mate/stage/production recipes (`hqAppReads`); and
@@ -21,6 +21,9 @@
  * - `{ type: "people", people }` — the people the view names, whenever they differ: its Mates'
  *   makers and stand-up askers, their logins' signers, and whoever an `OWNER` entry names on its
  *   projects, each by user id with their member id — never a token;
+ * - `{ type: "official", official }` — whether this HQ is the official one as its last check of
+ *   Zerops said (`official.ts`), whenever that changes: `unknown` while Zerops does not answer
+ *   it, which HQ's grace serves through (`@t3tools/shared/hqStream` `HqOfficialVerdict`);
  * - `{ type: "ping" }` every 20 s, so the Zerops L7 (which cuts an idle connection at 60 s) never
  *   sees one; the client answers `{ type: "pong" }`. Any message counts: a client silent through
  *   three pings is closed (4408).
@@ -41,7 +44,7 @@
  */
 import * as NodeCrypto from "node:crypto";
 
-import { HQ_STREAM_SEGMENT_CLOSE } from "@t3tools/shared/hqStream";
+import { HQ_STREAM_SEGMENT_CLOSE, type HqOfficialVerdict } from "@t3tools/shared/hqStream";
 import type { ChangesMessage, ChangesSnapshot } from "@t3tools/shared/hqChanges";
 import type { AppRead, AppReads, ReleaseRevisionMessage } from "@t3tools/shared/hqAppReads";
 import type {
@@ -68,6 +71,7 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
 import { type MateOverviewEntry, MateOverviews } from "./mateOverviews.ts";
+import { Official } from "./official.ts";
 import { Recomputes } from "./recomputes.ts";
 import { Releases } from "./releases.ts";
 import { type OrgView, Roles } from "./roles.ts";
@@ -89,8 +93,10 @@ export type StructureMessage =
       readonly type: "snapshot";
       readonly changes: ChangesSnapshot;
       readonly appReads: AppReads;
+      readonly official: HqOfficialVerdict;
     } & StructureRead &
       HqMatesSnapshot)
+  | { readonly type: "official"; readonly official: HqOfficialVerdict }
   | ChangesMessage
   | ReleaseRevisionMessage
   | { readonly type: "change"; readonly key: string; readonly value: unknown }
@@ -183,6 +189,8 @@ interface Sent {
   /** Each observed Mate's parts, encoded. */
   readonly mates: ReadonlyMap<string, ReadonlyMap<string, string>>;
   readonly people: string;
+  /** Whether this HQ is the official one, as its last check of Zerops said. */
+  readonly official: HqOfficialVerdict;
 }
 
 /**
@@ -198,7 +206,7 @@ export const structureMessages = <R>(
 ): Stream.Stream<
   Outgoing,
   SqlError | ZeropsError,
-  Structure | Changes | Releases | Deploys | MateOverviews | Roles | R
+  Structure | Changes | Releases | Deploys | MateOverviews | Roles | Official | R
 > =>
   Stream.unwrap(
     Effect.gen(function* () {
@@ -208,6 +216,7 @@ export const structureMessages = <R>(
       const deploys = yield* Deploys;
       const overviews = yield* MateOverviews;
       const roles = yield* Roles;
+      const officialHq = yield* Official;
       const person = { kind: "person", userId } as const;
       const one = yield* Semaphore.make(1);
       const sent = yield* Ref.make<Sent | undefined>(undefined);
@@ -355,6 +364,7 @@ export const structureMessages = <R>(
           named,
           mates: new Map([...mates].map(([projectId, entry]) => [projectId, encodedParts(entry)])),
           people: toJson(people),
+          official: (yield* officialHq.status).official,
         };
         yield* Ref.set(sent, now);
         if (before === undefined) {
@@ -368,10 +378,14 @@ export const structureMessages = <R>(
                 [...mates].map(([projectId, entry]) => [projectId, partsOf(entry)]),
               ) as HqMatesSnapshot["mates"],
               people,
+              official: now.official,
             },
           ];
         }
         return [
+          ...(now.official === before.official
+            ? []
+            : [{ type: "official" as const, official: now.official }]),
           ...differing(before.changes, now.changes).map((appId): Outgoing => ({
             type: "changes",
             appId,
