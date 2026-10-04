@@ -608,6 +608,21 @@ describe("a read of a background job's output", () => {
     const reading = read(path);
     expect(stepOf(reading, trackCommands([reading, job]), false).words).toBe(words);
   });
+
+  // Review of pass 39: a running job's task is not in the log until it ends;
+  // the command that sent it away names it.
+  it("names a job still running by the command that sent it away", () => {
+    const sent = command("9", "sleep 60", {
+      callInput: { description: "Sleep a minute" },
+      sentToBackground: "zz9",
+    });
+    const reading = read(
+      "/tmp/claude-1000/-srv/0a1b2c3d-1111-4222-8333-444455556666/tasks/zz9.output",
+    );
+    expect(stepOf(reading, trackCommands([sent, reading]), false).words).toBe(
+      "Read the output of Sleep a minute",
+    );
+  });
 });
 
 describe("taskReportWords", () => {

@@ -266,6 +266,12 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
   const byCommand = new Map<string, TrackedCommand>();
   const trackers = new Set<string>();
   const jobTitles = new Map<string, string>();
+  // A job still running has no task in the log yet: its command names it.
+  for (const command of commands) {
+    const words = command.callInput?.description?.trim();
+    if (command.sentToBackground !== undefined && words)
+      jobTitles.set(command.sentToBackground, words);
+  }
   for (const task of entries) {
     if (!isTask(task)) continue;
     const words = (task.toolTitle ?? task.label).trim();
