@@ -396,21 +396,24 @@ describe("applyStructureEvent", () => {
       [{ release: { allow: true } }, undefined],
       {},
     ]);
-    // The organization's move with the view they are decided over, the applications as they were.
-    const org = structureEventOf({
-      type: "org",
-      can: { create_app: { allow: true } },
-      rolesAnsweredAt: "2026-10-04T10:00:30.000Z",
-    });
+    // The organization's move, the applications and the time as they were.
+    const org = structureEventOf({ type: "org", can: { create_app: { allow: true } } });
     structure = applyStructureEvent(structure, org!);
     expect([structure?.can, structure?.rolesAnsweredAt, structure?.apps.length]).toEqual([
       { create_app: { allow: true } },
-      "2026-10-04T10:00:30.000Z",
+      "2026-10-04T10:00:00.000Z",
       2,
+    ]);
+    // Each view Zerops answers moves its time alone.
+    const roles = structureEventOf({ type: "roles", rolesAnsweredAt: "2026-10-04T10:00:30.000Z" });
+    structure = applyStructureEvent(structure, roles!);
+    expect([structure?.can, structure?.rolesAnsweredAt]).toEqual([
+      { create_app: { allow: true } },
+      "2026-10-04T10:00:30.000Z",
     ]);
     // A record this build cannot read leaves the organization's unknown.
     structure = applyStructureEvent(structure, structureEventOf({ type: "org", can: 7 })!);
-    expect([structure?.can, structure?.rolesAnsweredAt]).toEqual([undefined, null]);
+    expect(structure?.can).toBeUndefined();
   });
 
   it("reads each Mate's offers and moves, and each project HQ holds nowhere, through their shapes", () => {
