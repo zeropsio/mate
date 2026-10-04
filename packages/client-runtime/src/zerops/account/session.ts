@@ -335,7 +335,7 @@ function onWakeEvent(
   ctx: ZeropsSessionContext,
 ): ZeropsSessionTransition {
   // A background retry still in flight is no reason to wait: the person's check starts now, and
-  // whichever answers first decides.
+  // supersedes it (the driver delivers only the latest check's answer).
   if (state.status === "verifying" && state.retry === true && trigger === "verify-again")
     return {
       state: {
@@ -521,6 +521,8 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
   let draining = false;
   const queue: ZeropsSessionEvent[] = [];
   let cancelTimer: (() => void) | null = null;
+  /** The latest check sent: an earlier one's answer is superseded, never delivered. */
+  let checks = 0;
 
   const clearTimer = () => {
     cancelTimer?.();
@@ -535,11 +537,14 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
   const perform = (effect: ZeropsSessionEffect) => {
     const asked = run;
     switch (effect.kind) {
-      case "verify":
-        void ports
-          .verify(effect.session)
-          .then((verdict) => answer(asked, { type: "VERIFIED", session: effect.session, verdict }));
+      case "verify": {
+        const check = ++checks;
+        void ports.verify(effect.session).then((verdict) => {
+          if (check === checks)
+            answer(asked, { type: "VERIFIED", session: effect.session, verdict });
+        });
         return;
+      }
       case "probe":
         void ports.probe(effect.session).then((verdict) =>
           answer(asked, {
