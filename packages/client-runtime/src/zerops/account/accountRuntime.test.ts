@@ -1975,7 +1975,7 @@ describe("the post-grant stage's Mate environments", () => {
           const { clock, built } = yield* granted([]);
           const stage = yield* built.postGrant;
           const { deployments, services } = stage;
-          /** Whether a lease holds project A's services and running processes. */
+          /** Whether a lease holds project A's services and running processes: opened detail only. */
           const followsTopology = built.data.state.pipe(
             Effect.map((state) =>
               [...state.interests.values()].some(
@@ -1994,7 +1994,11 @@ describe("the post-grant stage's Mate environments", () => {
           expect(deployments.stop(projectA)).toMatchObject({ state: "known", value: [] });
           // The account builds no Gitea sessions: the stage holds no forge on any host.
           expect(stage).not.toHaveProperty("forge");
-          // A shown stop owns both listings, and only while it is shown.
+          // A shown (summary) stop demands services alone; processes wait for opened detail (R7).
+          expect(yield* followsTopology).toBe(false);
+          const releaseDetail = deployments.demand(projectA, "detail");
+          yield* clock.advance(SECOND);
+          yield* settle;
           expect(yield* followsTopology).toBe(true);
 
           const zcp = services.serviceOf(A_MATE.projectId, "zcp");
@@ -2010,10 +2014,11 @@ describe("the post-grant stage's Mate environments", () => {
           yield* settle;
           expect(heard).toEqual([A_MATE.projectId]);
 
-          release();
+          releaseDetail();
           yield* clock.advance(SECOND);
           yield* settle;
           expect(yield* followsTopology).toBe(false);
+          release();
         }),
       ),
   );
