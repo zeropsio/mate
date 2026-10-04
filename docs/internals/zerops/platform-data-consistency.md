@@ -186,9 +186,10 @@ inventory's own registrations, its project feed and project list, are admitted
 ahead of waiting project registrations; a registration's deadline starts when it
 is sent, not while it waits for its turn. A registration the platform refused
 with an HTTP error status took no effect. A refusal (400/401/403/404/410) registers again only
-at a manual attempt or once each grant round; any other registers again on the same
-receiver on its own backoff, sending only the failed subscription, and a socket whose released
-subscriptions reach the bound is replaced. A required interest's registration without an answer, or with an
+at a manual attempt or once each grant round, unless an entity read's refusal failed it, which
+that read's own retry lifts; any other registers again on the same receiver on its own backoff,
+sending only the failed subscription, and a socket whose released subscriptions (refused ones
+never count) reach the bound is replaced. A required interest's registration without an answer, or with an
 answer that could not be read, may have left a subscription nobody owns, so its
 receiver fails and reconnects. A subscription nobody owns names no registration the
 adapter holds: should a refused or optional registration have taken effect after
