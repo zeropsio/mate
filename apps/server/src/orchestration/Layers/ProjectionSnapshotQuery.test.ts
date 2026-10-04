@@ -30,6 +30,7 @@ import * as ThreadLiveStep from "../ThreadLiveStep.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import { encodeThreadDetailPageCursor } from "../threadDetailCursor.ts";
 import { projectThreadDetailSnapshot } from "../ActivityPayloadProjection.ts";
+import { activityBudgetColumns } from "../../persistence/activityBudgetColumns.ts";
 import { makeSqlStatementCounter } from "../../../integration/SqlStatementCounter.integration.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
@@ -43,6 +44,18 @@ const encodeChatAttachments = Schema.encodeEffect(
 const encodeUsagePause = Schema.encodeEffect(Schema.fromJsonString(ThreadUsagePauseState));
 const encodeCrewOrigin = Schema.encodeEffect(Schema.fromJsonString(ThreadCrewOrigin));
 const encodeActivityPayload = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
+const decodeActivityPayload = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
+// The columns the activity repository writes beside a payload, for rows a
+// test stores itself (`fillBudgetColumns` for rows stored by SQL).
+const budgetColumnsOf = (kind: string, payload: unknown) => {
+  const columns = activityBudgetColumns(kind, payload);
+  return {
+    agent_id: columns.agentId,
+    call_id: columns.callId,
+    task_id: columns.taskId,
+    used_tokens: columns.usedTokens,
+  };
+};
 
 const projectionSnapshotLayer = it.layer(
   OrchestrationProjectionSnapshotQueryLive.pipe(
@@ -2669,6 +2682,22 @@ it.effect(
   },
 );
 
+const fillBudgetColumns = Effect.fnUntraced(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const rows = yield* sql<{ activityId: string; kind: string; payload: string }>`
+    SELECT activity_id AS "activityId", kind, payload_json AS "payload"
+    FROM projection_thread_activities
+  `;
+  for (const row of rows) {
+    const columns = budgetColumnsOf(row.kind, yield* decodeActivityPayload(row.payload));
+    yield* sql`
+      UPDATE projection_thread_activities
+      SET ${sql.update(columns)}
+      WHERE activity_id = ${row.activityId}
+    `;
+  }
+});
+
 projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) => {
   // A thread shaped like real fan-out usage: user turns interleaved with
   // subagent turns (no user pending message), plus a turnless straggler user
@@ -3056,6 +3085,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
           '2026-03-01T00:04:00.000Z'
         FROM activity_rows
       `;
+      yield* fillBudgetColumns();
 
       const reads = [
         yield* snapshotQuery.getThreadDetailSnapshot(threadW),
@@ -3187,6 +3217,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
           '2026-03-01T00:04:00.000Z'
         FROM activity_rows
       `;
+      yield* fillBudgetColumns();
 
       const fullDetail = yield* snapshotQuery.getThreadDetailById(threadW);
       assert.equal(fullDetail._tag, "Some");
@@ -3482,6 +3513,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery a long conversation's history",
         payload_json: JSON.stringify(payload),
         sequence,
         created_at: at(seconds),
+        ...budgetColumnsOf(kind, payload),
       });
       return id;
     };

@@ -429,6 +429,76 @@ describe("thread pagination state", () => {
     }),
   );
 
+  const loadOlderPage = Effect.fnUntraced(function* (
+    harness: Effect.Success<ReturnType<typeof makeHarness>>,
+  ) {
+    yield* harness.awaitState((value) => Option.isSome(value.page));
+    requestOlderThreadTurns(TARGET.environmentId, THREAD_ID);
+    yield* harness.awaitState((value) =>
+      Option.match(value.page, { onNone: () => false, onSome: (page) => page.loadingOlder }),
+    );
+    yield* harness.resolveNextPage(Option.some(OLDER_PAGE));
+    yield* harness.awaitState((value) => hasMessage(value, "message-old"));
+  });
+  const freshFirstPage = (checkpoints: OrchestrationThread["checkpoints"]) =>
+    ({
+      kind: "snapshot",
+      snapshot: {
+        snapshotSequence: 20,
+        thread: {
+          ...BASE_THREAD,
+          title: "Fresh first page",
+          messages: [
+            RECENT_MESSAGE,
+            message("message-newer", "turn-3", "2026-04-01T02:00:00.000Z"),
+          ],
+          checkpoints,
+        },
+        page: { beforeCursor: "cursor-2", hasMore: true, snapshotSequence: 20 },
+      },
+    }) satisfies OrchestrationThreadStreamItem;
+  const isFresh = (value: EnvironmentThreadState) =>
+    Option.match(value.data, {
+      onNone: () => false,
+      onSome: (thread) => thread.title === "Fresh first page",
+    });
+
+  it.effect("a fresh first page keeps the older turns the client already holds", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ initialResponse: Option.some(WINDOWED_SNAPSHOT) });
+      yield* loadOlderPage(harness);
+
+      yield* Queue.offer(
+        harness.inputs,
+        freshFirstPage([checkpoint("turn-1", 1), checkpoint("turn-2", 2)]),
+      );
+      const state = yield* harness.awaitState(isFresh);
+      expect(Option.getOrThrow(state.data).messages.map((entry) => entry.id)).toEqual([
+        "message-old",
+        "message-recent",
+        "message-newer",
+      ]);
+      // Nothing older to load: the held history already reached the start.
+      expect(Option.getOrThrow(state.page)).toEqual({
+        beforeCursor: null,
+        hasMore: false,
+        loadingOlder: false,
+      });
+    }),
+  );
+
+  it.effect("a fresh first page drops held turns a revert rewrote while away", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ initialResponse: Option.some(WINDOWED_SNAPSHOT) });
+      yield* loadOlderPage(harness);
+
+      yield* Queue.offer(harness.inputs, freshFirstPage([checkpoint("turn-2", 2)]));
+      const state = yield* harness.awaitState(isFresh);
+      expect(hasMessage(state, "message-old")).toBe(false);
+      expect(Option.getOrThrow(state.page).beforeCursor).toBe("cursor-2");
+    }),
+  );
+
   it.effect("keeps a new page loading when a snapshot replaced a parked older page", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({ initialResponse: Option.some(WINDOWED_SNAPSHOT) });
