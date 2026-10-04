@@ -21,6 +21,7 @@ export type Prerequisite =
   | "mate-session"
   | "presence"
   | "visible"
+  | "data-slot"
   | "online";
 
 export type FailureReason =
