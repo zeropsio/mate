@@ -40,8 +40,6 @@ import {
   kindOfRole,
   rankZeropsCandidateForListing,
   readZeropsMembership,
-  heldOf,
-  canWriteRegistry,
   finishMateSetupScope,
   finishMateSetupVerb,
   resolveMateRegistration,
@@ -51,7 +49,7 @@ import {
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import { heldOf, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   mateIsViewers,
   resolveMateOwnerPerson,
@@ -63,7 +61,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { RestartMateConfirmation } from "./RestartMateConfirmation";
-import { useMateOffers } from "./useHqOffers";
+import { useMateOffers, useOrgOffers } from "./useHqOffers";
 import { useComposerDraftStore } from "../composerDraftStore";
 import {
   deriveZeropsRestartAction,
@@ -138,7 +136,6 @@ import {
   useMatePresses,
 } from "./matePress";
 import { mateRestartPorts, restartMateContainer } from "./mateRestart";
-import { sessionOfferViewer } from "./offerViewer";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -293,8 +290,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           },
     [activeOrganization],
   );
-  /** What HQ offers of each project (`useMateOffers`): drawn here, decided by HQ. */
+  /** What HQ offers of each project and of the organization: drawn here, decided by HQ. */
   const mateOffersOf = useMateOffers();
+  const orgOffer = useOrgOffers();
   /**
    * Where a Mate may be moved, as HQ offers it (`moveTo`, `detach`): each application listed, a
    * new one, or none.
@@ -588,17 +586,17 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         pastGrace: mateProjectPastGrace(candidate.project, Date.now()),
         viewerIsAdder: mateAddedBy(candidate.project, user?.id),
         hasContainer: candidate.service !== undefined,
-        writer: canWriteRegistry(sessionOfferViewer(user, activeOrganization)),
+        writer: orgOffer("create_app").kind === "allowed",
         recordMissing: recordMissing(candidate),
         mayCreateRecord: mayCreateRecord(candidate),
       });
     },
     [
-      activeOrganization,
       births,
       groupTree.groups,
       interrupted,
       mayCreateRecord,
+      orgOffer,
       presses,
       recordMissing,
       registry.registry,
@@ -614,9 +612,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const press = readMatePress(projectId);
       const pressStopped = press?.state.kind === "failed";
       // An owner or an admin finishes all of it; the Mate's own adder, its close-off.
-      const whole =
-        finishMateSetupScope(canWriteRegistry(sessionOfferViewer(user, activeOrganization))) ===
-        "whole";
+      const whole = finishMateSetupScope(orgOffer("create_app").kind === "allowed") === "whole";
       // A Mate HQ holds no record of is adopted, and only then is its key lowered from ADMIN — by
       // the harden itself, which reads its key as it runs; never from a token list read on a load
       // (step A, A11).
@@ -690,10 +686,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       mayCreateRecord,
       organizationRef,
       projectRef,
+      orgOffer,
       recordMissing,
       refresh,
       runtime,
-      user,
       write,
     ],
   );

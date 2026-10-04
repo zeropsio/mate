@@ -1,8 +1,7 @@
-import { canWriteRegistry, type ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import { type ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import { useState } from "react";
 
-import { sessionOfferViewer } from "~/zerops/offerViewer";
-import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { useOrgOffers } from "~/zerops/useHqOffers";
 
 import { ZeropsProjectMenu, type ZeropsMenuEntry } from "./ZeropsProjectMenu";
 import { ZeropsRenameProjectDialog } from "./ZeropsRenameProjectDialog";
@@ -15,18 +14,20 @@ export function ZeropsProjectRenameMenu({
   readonly group: ZeropsGroup;
   readonly actions?: ReadonlyArray<ZeropsMenuEntry>;
 }) {
-  const { user, activeOrganization } = useZeropsSession();
-  const mayRename = canWriteRegistry(sessionOfferViewer(user, activeOrganization));
+  // HQ offers renaming it (`rename_app`); while HQ does not answer, drawn and not pressable.
+  const rename = useOrgOffers()("rename_app").kind;
+  const mayRename = rename === "allowed";
   const [renaming, setRenaming] = useState(false);
   return (
     <>
       <ZeropsProjectMenu
         actions={[
-          ...(mayRename
+          ...(mayRename || rename === "unavailable"
             ? [
                 {
                   id: "rename-group",
                   label: "Rename project",
+                  disabled: !mayRename,
                   onSelect: () => setRenaming(true),
                 },
               ]

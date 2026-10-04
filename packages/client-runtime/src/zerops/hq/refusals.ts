@@ -184,15 +184,23 @@ export function hqRefusalWords(refusal: {
   return `HQ refused this (${reason ?? refusal.code}).`;
 }
 
+/** How a verb's state is worded: a wall time, and when Zerops answered HQ's view of the roles. */
+interface OfferWording {
+  readonly at: (ms: number) => string;
+  readonly rolesAnsweredAt: string | null;
+}
+
 /**
  * What a control says beside a verb HQ does not offer (`hqOffer`): HQ's refusal, as of when Zerops
  * answered the roles it was decided over; that HQ has not said; since when HQ does not answer.
  * Nothing for an offered one. `at` words a wall time; nothing here compares one with now.
  */
 export function hqOfferWords(
-  state: HqOfferState,
-  input: { readonly at: (ms: number) => string; readonly rolesAnsweredAt: string | null },
-): string | undefined {
+  state: Exclude<HqOfferState, { readonly kind: "allowed" }>,
+  input: OfferWording,
+): string;
+export function hqOfferWords(state: HqOfferState, input: OfferWording): string | undefined;
+export function hqOfferWords(state: HqOfferState, input: OfferWording): string | undefined {
   switch (state.kind) {
     case "allowed":
       return undefined;

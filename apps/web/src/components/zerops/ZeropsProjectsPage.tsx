@@ -142,13 +142,11 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsMembership,
-  canWriteRegistry,
   firstDeployLine,
   type FirstDeploy,
   matePoseOf,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
-import { sessionOfferViewer } from "~/zerops/offerViewer";
 
 import { MateFace, MicroLabel, StatusDot } from "./primitives";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
@@ -1089,7 +1087,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           structure: hqStructure?.structure ?? null,
           project: candidate.project,
           press: held,
-          writer: canWriteRegistry(sessionOfferViewer(user, activeOrganization)),
+          writer: orgOffer("create_app").kind === "allowed",
           mayCreateRecord: (() => {
             const offers = mateOffersOf(projectId);
             return offers?.held === false && offers.createRecord.kind === "allowed";
@@ -1145,11 +1143,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       hqStructure,
       organizationRef,
       projectRef,
+      orgOffer,
       readGroupAgents,
       setConnectError,
       settingUpKey,
       runtime,
-      user,
     ],
   );
 

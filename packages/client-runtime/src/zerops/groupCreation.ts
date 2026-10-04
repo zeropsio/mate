@@ -10,20 +10,22 @@
  * ## Who may
  *
  * HQ lets only org owners and admins create an application, as main let only
- * them write the registry (D3) — so an offered verb a member cannot finish
- * would be an error message after the fact (guide 0.8). The gate here is
- * therefore stricter than `canCreateMates`: a `READ_ONLY` member with *can
- * create projects* may add a **Mate** to a group that exists, and may not make
- * a group.
+ * them write the registry (D3), and says so beside its structure (`create_app`)
+ * — so an offered verb a member cannot finish would be an error message after
+ * the fact (guide 0.8). The gate is therefore stricter than Zerops' own *can
+ * create projects* (`mayCreateProjects`): a `READ_ONLY` member with the flag
+ * may add a **Mate** to a group that exists, and may not make a group.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
  * @module groupCreation
  */
 
+import type { HqOfferState } from "@t3tools/shared/hqOffers";
+
+import { hqOfferWords } from "./hq/refusals.ts";
 import type { ZeropsRegistry } from "./hq/registry.ts";
 import { mateMemberName, type MateOwnerCandidate } from "./mateAccess.ts";
-import { mayOffer, offerAsker, type OfferViewer } from "./offers.ts";
 
 /** A verb is either offered, or refused in words that name who can do it. */
 export type GroupVerb =
@@ -32,25 +34,26 @@ export type GroupVerb =
 
 const OFFERED: GroupVerb = { offered: true };
 
-/** Who may write the registry: whom HQ's rule lets make an application (`create_app`). */
-export function canWriteRegistry(viewer: OfferViewer | undefined): boolean {
-  return mayOffer(offerAsker(viewer, []), "create_app", null);
-}
-
 /**
- * Whether this person is offered *Add project*, and what the row says instead: a member simply is
- * not the one who does this.
+ * Whether this person is offered *Add project* — HQ's offer of making an application
+ * (`create_app`) — and what the row says instead: a member HQ refuses simply is not the one who
+ * does this; before HQ has said, or while it does not answer, that.
  */
 export function resolveAddProjectVerb(input: {
-  /** Nobody where the session names nobody: then it is not offered. */
-  readonly viewer: OfferViewer | undefined;
+  readonly offer: HqOfferState;
   /** The org's owners and admins, for the refusal that names them. */
   readonly admins?: ReadonlyArray<MateOwnerCandidate> | undefined;
+  /** Words a wall time, for since when HQ does not answer. */
+  readonly at: (ms: number) => string;
 }): GroupVerb {
-  if (!canWriteRegistry(input.viewer)) {
+  if (input.offer.kind === "allowed") return OFFERED;
+  if (input.offer.kind === "refused") {
     return { offered: false, reason: onlyTheseCanAddAProject(input.admins ?? []) };
   }
-  return OFFERED;
+  return {
+    offered: false,
+    reason: hqOfferWords(input.offer, { at: input.at, rolesAnsweredAt: null }),
+  };
 }
 
 /**
@@ -128,7 +131,7 @@ export function finishMateSetupVerb(input: {
   readonly viewerIsAdder: boolean;
   /** Its project has its container: without one there is nothing for a close-off to finish. */
   readonly hasContainer: boolean;
-  /** The viewer writes the registry (`canWriteRegistry`). */
+  /** HQ offers the viewer writing the registry (`create_app`). */
   readonly writer: boolean;
   /**
    * HQ, its structure known, holds no record of this Mate: the record's write failed mid-way, or

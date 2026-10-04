@@ -59,7 +59,7 @@ import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { beginNewProjectBirth, newProjectView, type NewProjectAsk } from "~/zerops/newProjectBirth";
 import { useNewProjectBirthPorts } from "~/zerops/useNewProjectBirthPorts";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
-import { sessionOfferViewer } from "~/zerops/offerViewer";
+import { useHqOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
@@ -92,7 +92,7 @@ export function ZeropsNewProjectHost() {
 function NewProjectDialog() {
   const dismiss = useNewProjectAsk((state) => state.dismiss);
   const birthPorts = useNewProjectBirthPorts();
-  const { activeOrganization, organizationStatus, organizations, selectOrganization, user } =
+  const { activeOrganization, organizationStatus, organizations, selectOrganization } =
     useZeropsSession();
   const { organizationRef, runtime } = useZeropsData();
   const navigate = useNavigate();
@@ -113,11 +113,13 @@ function NewProjectDialog() {
   const [creating, setCreating] = useState(false);
 
   // The registry lives in the organization's HQ, where only its owners and admins create an
-  // application — a stricter gate than *can create projects*, and the one HQ applies.
+  // application — a stricter gate than *can create projects*, and HQ's offer (`create_app`).
   const accountHq = useAccountHq(activeOrganization?.id);
+  const { at } = useHqOffers();
   const addProject = resolveAddProjectVerb({
-    viewer: sessionOfferViewer(user, activeOrganization),
+    offer: useOrgOffers()("create_app"),
     admins: accountHq.admins,
+    at,
   });
   const canCreate = addProject.offered;
   const locationRequest = useMemo<LocationsCellRequest | null>(

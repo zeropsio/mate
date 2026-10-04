@@ -3,6 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import type { Known } from "../knowledge/known.ts";
 import {
   birthIntentOf,
+  heldOf,
   hqMateOffers,
   placeListing,
   placeProjects,
@@ -209,5 +210,28 @@ describe("hqMateOffers — what HQ offers of a Mate, or of a project it holds no
       detach: { kind: "unavailable", since: 9 },
       moveTo: undefined,
     });
+  });
+});
+
+describe("heldOf — what HQ holds a project as, from where it places it", () => {
+  it.each([
+    ["nothing it places", {}, "none"],
+    [
+      "a Mate in no application",
+      { hq: { appId: null, appName: null, kind: "mate", mate: { name: "Ada", face: "" } } },
+      "mate",
+    ],
+    [
+      "an application's stage",
+      { hq: { appId: "a", appName: "Acme", kind: "stage", mate: null } },
+      "stage",
+    ],
+    [
+      "a dev/stage",
+      { hq: { appId: "a", appName: "Acme", kind: "devstage", mate: null } },
+      "devstage",
+    ],
+  ] as const)("%s → %s", (_name, project, held) => {
+    expect(heldOf(project)).toBe(held);
   });
 });

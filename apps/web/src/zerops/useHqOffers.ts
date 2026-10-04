@@ -35,6 +35,7 @@ export function useHqOffers() {
     return {
       structure,
       hq,
+      at,
       state: (can: HqOffers | undefined, verb: string) => hqOffer(can, verb, hq),
       words: (state: HqOfferState) =>
         hqOfferWords(state, { at, rolesAnsweredAt: structure?.rolesAnsweredAt ?? null }),

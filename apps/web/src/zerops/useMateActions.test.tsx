@@ -129,7 +129,14 @@ const mock = vi.hoisted(() => ({
 }));
 
 vi.mock("../state/entities", () => ({ useThreadShells: () => mock.threads }));
-vi.mock("./useHqOffers", () => ({ useMateOffers: () => mock.mateOffers }));
+vi.mock("./useHqOffers", () => ({
+  useMateOffers: () => mock.mateOffers,
+  // HQ offers writing the structure to the org's owners and admins (`create_app`).
+  useOrgOffers: () => () =>
+    mock.roleCode === "OWNER" || mock.roleCode === "ADMIN"
+      ? { kind: "allowed" }
+      : { kind: "refused", reason: "not_structure_writer" },
+}));
 vi.mock("./mateRestart", async (original) => ({
   ...(await original<typeof import("./mateRestart")>()),
   restartMateContainer: mock.restartContainer,

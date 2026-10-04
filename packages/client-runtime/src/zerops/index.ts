@@ -523,7 +523,6 @@ export {
   type GitOverviewChange,
   type GitOverviewRepository,
 } from "./gitOverview.ts";
-export { heldOf, mayOffer, offerAsker, type OfferAsker, type OfferViewer } from "./offers.ts";
 export {
   grantListing,
   projectGrantsOf,
@@ -531,7 +530,6 @@ export {
   type ProjectGrants,
 } from "./projectGrants.ts";
 export {
-  canWriteRegistry,
   onlyTheseCanAddAProject,
   FINISH_MATE_SETUP_VERB,
   finishMateSetupScope,

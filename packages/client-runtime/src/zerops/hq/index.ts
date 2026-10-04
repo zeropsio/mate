@@ -64,6 +64,7 @@ export {
 } from "./update.ts";
 export {
   birthIntentOf,
+  heldOf,
   hqMateOffers,
   menuRowsFromHq,
   placeListing,

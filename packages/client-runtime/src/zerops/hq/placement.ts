@@ -104,6 +104,15 @@ export function placementsOf(
   });
 }
 
+/** What HQ holds a project as, from where it places it: `none` where it places it nowhere. */
+export function heldOf(project: {
+  readonly hq?: HqPlacement | undefined;
+}): RoleProjectKind | "none" {
+  const placed = project.hq;
+  if (placed === undefined) return "none";
+  return placed.appId === null ? "mate" : placed.kind;
+}
+
 /**
  * The project with where HQ places it now: a project it does not place carries no placement — one
  * it placed before and no longer does loses its. The same object where nothing changes.
