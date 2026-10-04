@@ -487,13 +487,36 @@ const withRenewal = (machine: GrantMachine, renewal: Renewal): GrantMachine => {
     : machine;
 };
 
+/**
+ * What a round reads: the demanded projects, and every project the held evidence still names —
+ * verified, unverified, or denied pending its confirming read. A project no lease demands at the
+ * instant a round starts is not one this account lost: only the platform's answer, or the
+ * organization's membership gone, takes it out of the evidence. A confirmed denial is final.
+ */
+const carriedProjects = (machine: GrantMachine): ReadonlyArray<ProjectRef> => {
+  const carried = new Map<ZeropsProjectId, ProjectRef>(
+    machine.demandedProjects.map((project) => [project.projectId, project]),
+  );
+  const held = heldEvidence(machine);
+  if (held === null) return [...carried.values()];
+  const keep = (project: ProjectRef) => {
+    if (!carried.has(project.projectId)) carried.set(project.projectId, project);
+  };
+  for (const { access } of held.projects.values()) keep(access.project);
+  for (const { project } of held.unverified.values()) keep(project);
+  for (const { project, confirmation } of held.closedProjects.values()) {
+    if (confirmation.status === "due") keep(project);
+  }
+  return [...carried.values()];
+};
+
 /** Starts a round now; the caller puts it in the phase's round slot. */
 const newRound = (
   machine: GrantMachine,
   ctx: GrantContext,
   out: Effects,
 ): { readonly machine: GrantMachine; readonly round: GrantRound } => {
-  const carried = machine.demandedProjects;
+  const carried = carriedProjects(machine);
   const round: GrantRound = {
     id: machine.nextAttempt,
     startedAt: ctx.now,

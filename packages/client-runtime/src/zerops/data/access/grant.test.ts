@@ -852,6 +852,23 @@ describe("access grant reducer", () => {
     expect(grantRoundInFlight(sim.state)?.startedAt).toEqual(sim.now);
   });
 
+  it("renews a held project no lease demands any more, never withholding it as denied", () => {
+    const sim = grantedSim();
+    // The page that leased A closed: only B is demanded when the renewal starts.
+    sim.send({ type: "PROJECTS_DEMANDED", projects: [B] });
+    sim.elapse(12 * MINUTE);
+    const before = sim.effects.length;
+    sim.send({ type: "TICK" });
+    const renewal = sim.lastRun("verify-round");
+    expect(renewal.op).toEqual({ kind: "verify-round", carried: [B, A] });
+    const round = sim.round();
+    sim.send({ type: "ROUND_ACCOUNT", round, organizations, projects: [B, A] });
+    sim.send({ type: "ROUND_PROJECT", round, project: B, outcome: verified(B) });
+    sim.send({ type: "ROUND_PROJECT", round, project: A, outcome: verified(A) });
+    expect(sim.write(A)).toEqual({ allowed: true });
+    expect(sim.effectsSince(before).filter((effect) => effect.kind === "withhold")).toEqual([]);
+  });
+
   it("applies a lowered role before the round that reported it completes", () => {
     const sim = grantedSim();
     sim.elapse(12 * MINUTE);
