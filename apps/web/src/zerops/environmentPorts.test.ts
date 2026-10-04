@@ -192,8 +192,7 @@ describe("repair is the exchange driver's", () => {
     const phase = linkPhaseOf(rejected(1));
     if (phase !== null) driver.link(ENVIRONMENT_ID, phase);
     await clock.advance(10 * 60_000);
-    driver.wake(true);
-    driver.online();
+
     await clock.advance(0);
     expect(exchanges).toHaveLength(1);
     expect(driver.machine(KEY)?.credential).toMatchObject({

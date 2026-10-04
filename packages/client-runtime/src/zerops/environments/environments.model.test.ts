@@ -91,10 +91,9 @@ const INPUTS: ReadonlyArray<EnvironmentEvent> = [
   },
   { type: "INSTALLED", environmentId: ENV_A },
   { type: "INSTALL_FAILED", environmentId: ENV_A },
-  { type: "ROLE_CHANGED" },
+
   { type: "TICK" },
-  { type: "WAKE", visible: true },
-  { type: "ONLINE" },
+
   { type: "USER_RETRY" },
   { type: "USER_REMOVE" },
 ];

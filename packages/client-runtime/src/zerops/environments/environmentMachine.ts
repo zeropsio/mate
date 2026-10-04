@@ -316,11 +316,7 @@ export type EnvironmentEvent =
   | { readonly type: "INSTALLED"; readonly environmentId: EnvironmentId }
   /** The held credential could not be installed: nothing was registered or rotated for it. */
   | { readonly type: "INSTALL_FAILED"; readonly environmentId: EnvironmentId }
-  | { readonly type: "ROLE_CHANGED" }
   | { readonly type: "TICK" }
-  /** Visibility wake; completed attempts stay completed. */
-  | { readonly type: "WAKE"; readonly visible: boolean }
-  | { readonly type: "ONLINE" }
   | { readonly type: "USER_RETRY" }
   | { readonly type: "USER_REMOVE" };
 
@@ -946,13 +942,7 @@ const apply = (
       }
       // A link already published means an earlier credential was installed: this was a reconnect.
       return failed(machine, { kind: "install" }, machine.link.phase !== "idle", "installation");
-    case "ROLE_CHANGED":
-      return machine;
     case "TICK":
-      return machine;
-    case "WAKE":
-      return machine;
-    case "ONLINE":
       return machine;
     case "USER_RETRY": {
       if (credential.kind === "held" && machine.link.phase !== "connected") {

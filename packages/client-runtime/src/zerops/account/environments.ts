@@ -1039,10 +1039,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
             containers.setVisible(!signal.hidden);
             return;
           case "network":
-            if (signal.online) driver.online();
             return;
           case "wake":
-            driver.wake(signal.visible);
             containers.wake(signal.visible);
             return;
           case "restored":

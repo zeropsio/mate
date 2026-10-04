@@ -177,9 +177,6 @@ export interface ExchangeDriver {
    */
   readonly holdBackground: (held: boolean) => void;
   readonly setVisible: (visible: boolean) => void;
-  /** Visibility wake; completed attempts stay completed. */
-  readonly wake: (visible: boolean) => void;
-  readonly online: () => void;
   /** What the supervisor of an environment publishes. */
   readonly link: (environmentId: EnvironmentId, phase: LinkPhase) => void;
   /** "Connect again". */
@@ -626,10 +623,6 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     });
   }
 
-  const everyTarget = (event: EnvironmentEvent) => () => {
-    for (const key of entries.keys()) step(key, event);
-  };
-
   return {
     setTargets: (targets) =>
       enqueue(() => {
@@ -701,8 +694,6 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       enqueue(() => {
         visible = next;
       }),
-    wake: (wakeVisible) => enqueue(everyTarget({ type: "WAKE", visible: wakeVisible })),
-    online: () => enqueue(everyTarget({ type: "ONLINE" })),
     link: (environmentId, phase) =>
       enqueue(() => {
         for (const [key, entry] of entries) {

@@ -264,8 +264,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
       reachability: { kind: "failed", stage: "exchange", last: { kind: "server", status: 500 } },
     });
     await clock.advance(10 * 60_000);
-    driver.wake(true);
-    driver.online();
+
     driver.setDemand("route", [keyOf(shop)]);
     driver.setAccount({ ...GRANTED, grantVerifiedAtMs: clock.now().wall });
     await flush();
@@ -317,8 +316,7 @@ describe("exchange driver (DESIGN §4.4)", () => {
 
       // Time, wakes and the network coming back change nothing a refusal waits on.
       await setup.clock.advance(10 * 60_000);
-      setup.driver.wake(true);
-      setup.driver.online();
+
       await flush();
       const before = setup.exchanges.length;
       expect(setup.driver.machine(keyOf(target))?.credential).toEqual(row.refused);
@@ -448,7 +446,6 @@ describe("exchange driver (DESIGN §4.4)", () => {
       on: "access",
     });
 
-    driver.wake(true);
     await flush();
     expect(exchanges).toHaveLength(0);
 

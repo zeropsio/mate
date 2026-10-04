@@ -109,11 +109,10 @@ describe("environment machine (DESIGN §4.4)", () => {
     expect(failed.machine.timer).toBeNull();
     const events: ReadonlyArray<EnvironmentEvent> = [
       { type: "TICK" },
-      { type: "WAKE", visible: true },
-      { type: "ONLINE" },
+
       { type: "GUARDS", guards: { ...GUARDS, want: false } },
       { type: "GUARDS", guards: GUARDS },
-      { type: "ROLE_CHANGED" },
+
       { type: "CONTAINER", container: { level: "booting", overdue: false } },
       { type: "CONTAINER", container: { level: "ready" } },
       { type: "PRESENCE", presence: { kind: "transitioning", status: "RESTARTING" } },
@@ -585,7 +584,7 @@ describe("a remembered target (A16)", () => {
     expect(read.effects.some((effect) => effect.kind === "run")).toBe(false);
     expect(read.machine.credential).toEqual({ kind: "waiting", on: "presence", reconnect: false });
     // Only the services read moves it: time and wakes do not.
-    const waited = drive(read.machine, [{ type: "TICK" }, { type: "WAKE", visible: true }]);
+    const waited = drive(read.machine, [{ type: "TICK" }]);
     expect(waited.machine.credential.kind).toBe("waiting");
     const listed = drive(waited.machine, [
       { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
