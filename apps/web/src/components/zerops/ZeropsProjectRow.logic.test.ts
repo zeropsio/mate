@@ -14,6 +14,7 @@ import {
   deriveZeropsRowPresentation,
   environmentSummaryLine,
   mateIsUp,
+  mateOutsideHq,
   mateRowCan,
   mateSetupOffered,
   releaseRowTone,
@@ -54,6 +55,28 @@ function input(
 ): ZeropsRowInput {
   return { candidate, health, can };
 }
+
+describe("a container outside this HQ", () => {
+  it.each([
+    [true, false, true],
+    [false, false, false],
+    [true, true, false],
+  ])("requires a current HQ and no local birth (%s, %s)", (known, birthing, outside) => {
+    expect(mateOutsideHq(READY.project, known, birthing)).toBe(outside);
+  });
+
+  it.each([undefined, "initializing", "ready"] as const)(
+    "has a settled state and no verb, whatever its probe says (%s)",
+    (health) => {
+      const row = { ...input(READY, health), outsideHq: true };
+      expect(deriveZeropsRowAction(row)).toEqual({ kind: "not-in-hq" });
+      expect(deriveZeropsRowPresentation(row)).toEqual({
+        status: { label: "Not in this HQ", tone: "off" },
+        detail: "Not in this HQ",
+      });
+    },
+  );
+});
 
 describe("a Mate the platform restarts", () => {
   const restarting = (status: string): ZeropsRowCandidate => ({

@@ -214,6 +214,7 @@ import {
   connectFailureLine,
   deriveZeropsRowAction,
   setUpMateVerb,
+  mateOutsideHq,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
   groupAddsOffered,
@@ -1032,6 +1033,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const waiting = candidate.group !== "connected" && waitedOn(candidate);
     const mateFlag = candidateMateFlags.get(candidate.key);
     return {
+      outsideHq:
+        candidate.service !== undefined &&
+        mateOutsideHq(
+          candidate.project,
+          hqKnown,
+          waiting || presses.some((press) => press.projectId === candidate.project.id),
+        ),
       candidate,
       health: candidateHealth.get(candidate.key),
       // A first build past its grace is still on its way, taking longer.
@@ -1340,6 +1348,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     live: ZeropsAgentActivity | undefined,
     busy: boolean,
   ): React.ReactNode => {
+    if (action.kind === "not-in-hq") return presentation.detail;
     if (candidate.group === "connected" || live !== undefined) {
       return live?.subject === undefined ? null : (
         <span className="min-w-0 truncate" data-zerops-surface="mate-subject">

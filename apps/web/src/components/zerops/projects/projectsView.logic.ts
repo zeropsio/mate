@@ -223,7 +223,7 @@ export function nextStepTone(kind: GroupNextStepKind): ServiceStatusToneId {
   return NEXT_STEP_TONE[kind];
 }
 
-type ContainerState = "ready" | "coming-up" | "not-answering" | "stopped" | "other";
+type ContainerState = "ready" | "coming-up" | "not-answering" | "stopped" | "not-in-hq" | "other";
 
 /** A container's state, from the one verb its row offers (`deriveZeropsRowAction`). */
 function containerStateOf(kind: ZeropsRowAction["kind"]): ContainerState {
@@ -232,6 +232,8 @@ function containerStateOf(kind: ZeropsRowAction["kind"]): ContainerState {
       return "ready";
     case "pending":
       return "coming-up";
+    case "not-in-hq":
+      return "not-in-hq";
     case "retry-probe":
       return "not-answering";
     case "start":
@@ -250,6 +252,7 @@ const CONTAINER_STATE_WORD: ReadonlyArray<readonly [ContainerState, string]> = [
   ["coming-up", "coming up"],
   ["not-answering", "not answering"],
   ["stopped", "stopped"],
+  ["not-in-hq", "not in this HQ"],
   ["other", "need a look"],
 ];
 

@@ -491,6 +491,12 @@ describe("the ungrouped containers' one line", () => {
       "Not in a project · 3 ready · 2 not answering · 3 stopped",
       2,
     ],
+    [
+      "containers of another system are outside this HQ, never coming up",
+      ["not-in-hq", "not-in-hq"],
+      "Not in a project · 2 not in this HQ",
+      0,
+    ],
     ["says nothing of a state no container is in", ["open"], "Not in a project · 1 ready", 0],
     [
       "a container on its way up is coming up",

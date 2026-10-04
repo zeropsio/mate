@@ -129,7 +129,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { useSentAsks } from "~/zerops/sentAsk";
-import { hqMatesAtom } from "~/state/zerops";
+import { hqMatesAtom, hqPlacementsAtom, hqStructureAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -2411,6 +2411,8 @@ function MateUnit({
   );
 }
 
+import { mateOutsideHq, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
+
 function MateRow<T extends RosterCandidate>({
   candidate,
   tint,
@@ -2473,6 +2475,13 @@ function MateRow<T extends RosterCandidate>({
   // *Finish setup* running on it, from whichever screen it was pressed (`finishSetupRowLine`):
   // its own view draws the steps only while its container is missing, so its row says so.
   const press = useMatePress(candidate.project.id);
+  const structure = useAtomValue(hqStructureAtom);
+  const placements = useAtomValue(hqPlacementsAtom);
+  const outsideHq = mateOutsideHq(
+    candidate.project,
+    placements !== null && structure?.current === true,
+    coming !== undefined || press !== undefined,
+  );
   const finishing = deleting || coming !== undefined ? undefined : finishSetupRowLine(press);
   // What the row says in its state (`mateRowView`, M7): the face, the right of
   // the name, what was asked and the third line — the face and the words from
@@ -2499,7 +2508,7 @@ function MateRow<T extends RosterCandidate>({
         : read;
   // Nothing on its menu is about a Mate still being made, or one going: it
   // offers none — until its setup stopped, when *Finish setup* is on it.
-  const actions = mateRowOffersMenu({ deleting, coming }) ? offered : undefined;
+  const actions = !outsideHq && mateRowOffersMenu({ deleting, coming }) ? offered : undefined;
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
   const records = mateOwnerRecords(candidate.project);
@@ -2519,13 +2528,13 @@ function MateRow<T extends RosterCandidate>({
   // The sign-in line stands where nothing else is said of a Mate that is up: to the person who
   // added it, that it waits on them — with the amber dot of what needs them.
   const signIn =
-    deleting || finishing !== undefined || view.coming !== undefined || containerless
+    outsideHq || deleting || finishing !== undefined || view.coming !== undefined || containerless
       ? undefined
       : seated.signInLine;
   const dot = view.dot ?? (signIn !== undefined && seated.waitsOnViewer ? "attention" : undefined);
   // What its face's corner wears (`ownerBadge`), and whether its face is paler: not the viewer's.
   const badge =
-    containerless && seated.seat.kind === "nobody"
+    outsideHq || (containerless && seated.seat.kind === "nobody")
       ? null
       : ownerBadge(seated.seat, owner?.isViewer === true);
   const notYours = mateNotYours({
@@ -2698,7 +2707,7 @@ function MateRow<T extends RosterCandidate>({
         // the menu's edge and every word at 56 (the list starts at 9). It
         // paints nothing of its own: its unit is lit, under the pointer or
         // by the list's one band, which slides to it (`SidebarSelectedBand`).
-        aria-disabled={deleting || undefined}
+        aria-disabled={deleting || outsideHq || undefined}
         className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
         data-zerops-surface="sidebar-mate"
         // Resting on it, focusing or touching it warms its conversation, so
@@ -2709,7 +2718,7 @@ function MateRow<T extends RosterCandidate>({
             longPress.current.fired = false;
             return;
           }
-          if (deleting) return;
+          if (deleting || outsideHq) return;
           onSelect(candidate);
         }}
         onKeyDown={(event) => {
@@ -2834,12 +2843,18 @@ function MateRow<T extends RosterCandidate>({
             </span>
           </span>
           {view.coming !== undefined ? <MateComingLine line={mateBornLine(view.coming)} /> : null}
-          {askLine === undefined ? null : askLine.kind === "sign-in" ? (
+          {outsideHq ? (
+            <span className="truncate text-line leading-4.5 text-muted-foreground">
+              {NOT_IN_HQ_LINE}
+            </span>
+          ) : askLine === undefined ? null : askLine.kind === "sign-in" ? (
             <MateSignInLine waitsOnViewer={askLine.waitsOnViewer} words={askLine.text} />
           ) : (
             <MateAskLine line={askLine} rises={askChanged} />
           )}
-          {view.reply === undefined ? null : <MateReply known={known} reply={view.reply} />}
+          {outsideHq || view.reply === undefined ? null : (
+            <MateReply known={known} reply={view.reply} />
+          )}
           {deleting ? <MateDeletingLine /> : null}
           {finishing === undefined ? null : <MateFinishingLine words={finishing} />}
         </span>

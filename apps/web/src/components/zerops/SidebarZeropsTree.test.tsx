@@ -107,7 +107,7 @@ import {
 } from "./projects/projectsView.logic";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
-import { hqMatesViewAtom, zeropsSessionAtom } from "~/state/zerops";
+import { hqMatesViewAtom, hqStructureAtom, zeropsSessionAtom } from "~/state/zerops";
 import { organization } from "~/zerops/__fixtures__/platformData";
 import type { SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
@@ -1173,6 +1173,39 @@ describe("a Mate's face follows its work in the menu", () => {
 
   // HQ holds a Mate's link open, so it is up, though this tab holds no socket to it and no chat of
   // its says anything yet (t12, 2026-10-03): its presence wakes its face, not a main chat.
+  it("says a foreign Mate is outside this HQ instead of inventing a sign-in state", () => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    registry.set(hqStructureAtom, {
+      organizationId: organization.organizationId,
+      structure: { apps: [], ungrouped: [] },
+      changes: null,
+      appReads: null,
+      readAt: Date.now(),
+      current: true,
+      unavailableSince: null,
+    });
+    const foreign = candidate("foreign", { tags: ["mate"] });
+    const html = renderToStaticMarkup(
+      <RegistryContext.Provider value={registry}>
+        <SidebarZeropsTree
+          candidates={[foreign]}
+          complete
+          onBrowseProjects={() => {}}
+          onSelect={() => {}}
+        />
+      </RegistryContext.Provider>,
+    );
+    expect(html).toContain("Not in this HQ");
+    expect(html).not.toContain("Nobody has signed in yet");
+    expect(html).not.toContain("Coming up");
+    registry.dispose();
+  });
+
   it("wears an awake face for a Mate HQ holds online, before any chat of its says anything", () => {
     const registry = AtomRegistry.make();
     registry.set(zeropsSessionAtom, {
