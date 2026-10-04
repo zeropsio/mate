@@ -10,7 +10,9 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
-const session = vi.hoisted(() => ({ status: "signed-out" as "signed-out" | "loading" }));
+const session = vi.hoisted(() => ({
+  status: "signed-out" as "signed-out" | "loading" | "unavailable",
+}));
 
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({
@@ -79,4 +81,16 @@ describe("ZeropsHostedLanding while the session is checked", () => {
       session.status = "signed-out";
     }
   });
+});
+
+it("offers Verify again beside a terminal verification failure", () => {
+  session.status = "unavailable";
+  try {
+    const markup = renderLanding();
+    expect(markup).toContain("Could not verify your account");
+    expect(markup).toContain("Verify again");
+    expect(markup).not.toContain("Checking your Zerops account");
+  } finally {
+    session.status = "signed-out";
+  }
 });

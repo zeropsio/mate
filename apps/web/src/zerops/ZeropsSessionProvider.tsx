@@ -90,6 +90,7 @@ export interface ZeropsSessionValue {
   readonly register: (input: ZeropsRegistrationInput) => Promise<ZeropsRegistrationResponse>;
   readonly verifyTotp: (code: string) => Promise<void>;
   readonly signOut: () => Promise<void>;
+  readonly verifyAgain?: () => void;
   /**
    * The response of the most recent in-app registration, until consumed. The
    * project picker reads it once, to enter the provisioning wait for the
@@ -109,6 +110,8 @@ function statusOf(state: ZeropsSessionState): ZeropsSessionStatus {
     case "booting":
     case "verifying":
       return "loading";
+    case "signed-in":
+      return state.token.status === "unavailable" ? "unavailable" : "signed-in";
     case "second-factor":
       return "totp-required";
     default:
@@ -192,12 +195,6 @@ function makeSession(storage: ZeropsStorageAdapter) {
     owner: ownerRecordIn(browser),
     withRefreshLock: (work) =>
       locks === undefined ? Promise.resolve().then(work) : locks.request(ZEROPS_REFRESH_LOCK, work),
-    nowMs: () => performance.now(),
-    setTimer: (delayMs, fire) => {
-      const timer = browser.setTimeout(fire, delayMs);
-      return () => browser.clearTimeout(timer);
-    },
-    random: Math.random,
     newGeneration: randomUUID,
   });
   return { client, driver };
@@ -233,7 +230,6 @@ export function ZeropsSessionProvider({
   // session another tab writes is verified before this tab holds it, and a
   // sign-in or sign-out there reaches this tab in any state, without a reload.
   useEffect(() => {
-    const document = window.document;
     const onStorage = (event: StorageEvent) => {
       if (event.key === ZEROPS_SESSION_OWNER_STORAGE_KEY) {
         driver.send({ type: "OWNER_CHANGED", owner: parseZeropsSessionOwner(event.newValue) });
@@ -247,17 +243,9 @@ export function ZeropsSessionProvider({
         held: next !== null && next.accessToken === client.session?.accessToken,
       });
     };
-    const onOnline = () => driver.send({ type: "WAKE", trigger: "online" });
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") driver.send({ type: "WAKE", trigger: "visible" });
-    };
     window.addEventListener("storage", onStorage);
-    window.addEventListener("online", onOnline);
-    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("storage", onStorage);
-      window.removeEventListener("online", onOnline);
-      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [client, driver]);
 
@@ -348,6 +336,7 @@ export function ZeropsSessionProvider({
       organizationStatus,
       selectOrganization,
       updateVerifiedMemberships,
+      verifyAgain: () => driver.send({ type: "VERIFY_AGAIN" }),
       adoptHandover: async ({ token, clientId, zcpClaimed }) => {
         preferredClientIdRef.current = clientId;
         try {
