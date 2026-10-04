@@ -43,6 +43,7 @@ import {
   type CreateReleaseRequest,
   type RollbackRequest,
 } from "@t3tools/shared/hqRelease";
+import type { HqOffers } from "@t3tools/shared/hqOffers";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
@@ -51,7 +52,7 @@ import * as Schema from "effect/Schema";
 import { type FetchImplementation } from "../api.ts";
 import type { HqEnvironment } from "./environments.ts";
 import { hqRefusalWords } from "./refusals.ts";
-import { structureEventOf, type HqStructureEvent } from "./stream.ts";
+import { hqStructureOf, structureEventOf, type HqStructureEvent } from "./stream.ts";
 
 /** An organization's HQ: its project, and the address its anchor names. */
 export interface HqEndpoint {
@@ -115,6 +116,13 @@ export interface HqAppContents {
 
 /** What `GET /api/structure` answers: the applications as the reader sees them in Zerops. */
 export interface HqStructure {
+  /** What the reader may do with the organization's applications; absent where HQ sent none. */
+  readonly can?: HqOffers;
+  /**
+   * When Zerops answered the org view HQ decides its offers over (ISO 8601): shown, never compared
+   * with now. None until HQ's stream names one.
+   */
+  readonly rolesAnsweredAt?: string | null;
   readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
   /** The Mates HQ holds in no application: their project's name in Zerops, and their record. */
   readonly ungrouped: ReadonlyArray<{
@@ -131,6 +139,8 @@ export interface HqStructure {
       readonly kind: string;
       readonly mate: HqMate | null;
     }>;
+    /** What the reader may do with it: its changes, its deploys, its release; absent where none. */
+    readonly can?: HqOffers;
     /** Absent from an older HQ: projected projects cannot establish emptiness. */
     readonly contents?: HqAppContents;
     /**
@@ -839,7 +849,14 @@ export function makeHqApi(input: {
   };
 
   const structureOf = async (signal?: AbortSignal) =>
-    json<HqStructure>(await authorized("/api/structure", signal === undefined ? {} : { signal }));
+    Option.getOrThrowWith(
+      Option.fromUndefinedOr(
+        hqStructureOf(
+          await bodyOf(await authorized("/api/structure", signal === undefined ? {} : { signal })),
+        ),
+      ),
+      unreadable,
+    );
   const appOf = async (appId: string) => (await structureOf()).apps.find((app) => app.id === appId);
   // Only a lost release/rollback write answer needs this direct confirmation, never a load.
   const releasesOf = async (appId: string) =>

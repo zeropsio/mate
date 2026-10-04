@@ -105,7 +105,7 @@ describe("makeHqApi — a connection that drops", () => {
     });
     await expect(api.structure()).rejects.toMatchObject({ kind: "unavailable", code: "network" });
     expect(hq.seen.filter((entry) => entry.path === "/api/structure")).toHaveLength(0);
-    await expect(api.structure()).resolves.toEqual({ apps: [] });
+    await expect(api.structure()).resolves.toEqual({ ungrouped: [], apps: [] });
     expect(hq.seen.filter((entry) => entry.path === "/api/structure")).toHaveLength(1);
   });
 
@@ -329,7 +329,7 @@ describe("makeHqApi", () => {
 
     await expect(api.structure()).rejects.toMatchObject({ code: "session_required" });
     expect(door.minted).toEqual(["door-1"]);
-    await expect(api.structure()).resolves.toEqual({ apps: [] });
+    await expect(api.structure()).resolves.toEqual({ ungrouped: [], apps: [] });
     expect(door.minted).toEqual(["door-1", "door-2"]);
 
     const stuck = makeHqApi({
@@ -378,7 +378,7 @@ describe("makeHqApi", () => {
       await vi.advanceTimersByTimeAsync(1);
       await expect(first).rejects.toMatchObject({ kind: "unavailable", code: "network" });
 
-      await expect(api.structure()).resolves.toEqual({ apps: [] });
+      await expect(api.structure()).resolves.toEqual({ ungrouped: [], apps: [] });
       expect(door.minted).toEqual(["door-1", "door-2"]);
     } finally {
       deadlines.mockRestore();
@@ -1727,7 +1727,7 @@ describe("makeHqApi — a write HQ may have made", () => {
     const hq = fakeHq((seen) => {
       if (seen.path === "/api/apps/app-1") return json(503, { code: "internal_error" });
       if (seen.path === "/api/structure")
-        return json(200, { apps: [{ id: "app-1", name: "Harbor" }] });
+        return json(200, { apps: [{ id: "app-1", name: "Harbor", projects: [] }] });
       return undefined;
     });
     const api = makeHqApi({

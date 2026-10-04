@@ -523,16 +523,7 @@ export {
   type GitOverviewChange,
   type GitOverviewRepository,
 } from "./gitOverview.ts";
-export {
-  changeOffers,
-  changeMergePermission,
-  heldOf,
-  mayOffer,
-  offerAsker,
-  releasePermission,
-  type OfferAsker,
-  type OfferViewer,
-} from "./offers.ts";
+export { heldOf, mayOffer, offerAsker, type OfferAsker, type OfferViewer } from "./offers.ts";
 export {
   grantListing,
   projectGrantsOf,

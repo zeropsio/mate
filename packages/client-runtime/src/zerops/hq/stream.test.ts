@@ -356,6 +356,47 @@ describe("applyStructureEvent", () => {
     expect(applyStructureEvent(structure, { kind: "people", people: {} })).toBe(structure);
   });
 
+  it("carries what the reader may do: the organization's, each application's and environment's", () => {
+    const refused = { allow: false, reason: "not_structure_writer" };
+    const snapshot = structureEventOf({
+      type: "snapshot",
+      can: { create_app: refused },
+      rolesAnsweredAt: "2026-10-04T10:00:00.000Z",
+      apps: [
+        { ...ACME, can: { release: { allow: true } }, environments: [{ ...STAGE, can: {} }] },
+        // A record this build cannot read is not known; the application beside it still is.
+        { ...BETA, can: "everything" },
+      ],
+    });
+    let structure = applyStructureEvent(null, snapshot!);
+    expect([
+      structure?.can,
+      structure?.rolesAnsweredAt,
+      structure?.apps.map((app) => app.can),
+      structure?.apps[0]?.environments?.[0]?.can,
+    ]).toEqual([
+      { create_app: refused },
+      "2026-10-04T10:00:00.000Z",
+      [{ release: { allow: true } }, undefined],
+      {},
+    ]);
+    // The organization's move with the view they are decided over, the applications as they were.
+    const org = structureEventOf({
+      type: "org",
+      can: { create_app: { allow: true } },
+      rolesAnsweredAt: "2026-10-04T10:00:30.000Z",
+    });
+    structure = applyStructureEvent(structure, org!);
+    expect([structure?.can, structure?.rolesAnsweredAt, structure?.apps.length]).toEqual([
+      { create_app: { allow: true } },
+      "2026-10-04T10:00:30.000Z",
+      2,
+    ]);
+    // A record this build cannot read leaves the organization's unknown.
+    structure = applyStructureEvent(structure, structureEventOf({ type: "org", can: 7 })!);
+    expect([structure?.can, structure?.rolesAnsweredAt]).toEqual([undefined, null]);
+  });
+
   it("knows nothing from a change before its snapshot", () => {
     expect(applyStructureEvent(null, { kind: "change", appId: "app-2", app: BETA })).toBeNull();
   });

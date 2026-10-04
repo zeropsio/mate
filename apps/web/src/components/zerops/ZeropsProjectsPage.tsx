@@ -174,7 +174,7 @@ import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
-import { useChangeOffers } from "~/zerops/useChangeOffers";
+import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useFinishGroupEnvironment } from "~/zerops/useFinishGroupEnvironment";
@@ -1901,6 +1901,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // Only an application whose environments HQ has said says what it holds: one still unsaid would
   // read as holding nothing, and every environment in it as half-made.
   const heldEnvironments = useAtomValue(hqEnvironmentsAtom);
+  const mayKeepKey = useKeepDeployKeyOffer();
   const halfMade = useMemo(
     () =>
       heldEnvironments === null
@@ -1909,10 +1910,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             projects: candidates.map((candidate) => candidate.project),
             registry: registryState.registry,
             environments: heldEnvironments,
-            // A key is minted only by somebody HQ's rule lets keep it (`keep_deploy_token`).
-            mayKey: (projectId) => mayOffer(asker, "keep_deploy_token", { projectId }),
+            // A key is minted only by somebody HQ offers keeping it (`keep_deploy_token`).
+            mayKey: (projectId) => mayKeepKey(projectId) === true,
           }),
-    [asker, candidates, heldEnvironments, registryState.registry],
+    [candidates, heldEnvironments, mayKeepKey, registryState.registry],
   );
   const finishing = useFinishGroupEnvironment({ client, clientId: activeOrganization?.id, hq });
 

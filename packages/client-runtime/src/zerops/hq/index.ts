@@ -90,7 +90,13 @@ export {
   type HqJob,
   type ServiceJobs,
 } from "./environments.ts";
-export { enrollmentRefusalWords, HQ_NOT_OPEN, hqRefusalWords, NO_HQ_WORDS } from "./refusals.ts";
+export {
+  enrollmentRefusalWords,
+  HQ_NOT_OPEN,
+  hqOfferWords,
+  hqRefusalWords,
+  NO_HQ_WORDS,
+} from "./refusals.ts";
 export {
   EMPTY_REGISTRY,
   registryFromHq,

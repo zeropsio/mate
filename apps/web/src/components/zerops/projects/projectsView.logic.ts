@@ -247,16 +247,16 @@ export function flowStepsAwaiting(input: {
 }
 
 /**
- * Why a project's changes are not known, where they are not: HQ's rule first — what this person
- * may not see is unseen however HQ answered — and nothing while its rule has not been asked.
+ * Why a project's changes are not known, where they are not: HQ's refusal first — what this person
+ * may not see is unseen however HQ answered — and nothing while HQ has not said.
  */
 export function changesUnknownOf(input: {
-  /** What `useChangeOffers` offers of the project's changes; `undefined` while not asked. */
-  readonly offers: { readonly read: boolean } | undefined;
+  /** What HQ offers of the project's changes (`useChangeOffers`); `undefined` while unsaid. */
+  readonly offers: { readonly read: boolean; readonly unavailable: boolean } | undefined;
   /** Why HQ never told its changes (`ZeropsProjectFlow.changesFailure`). */
   readonly changesFailure: string | undefined;
 }): ChangesUnknown | undefined {
-  if (input.offers?.read === false) return "unseen";
+  if (input.offers?.read === false && !input.offers.unavailable) return "unseen";
   return input.changesFailure === undefined ? undefined : "failed";
 }
 

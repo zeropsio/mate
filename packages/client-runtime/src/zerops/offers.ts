@@ -21,7 +21,6 @@ import {
   type FactsFor,
   type Held,
   type Principal,
-  type Reason,
   type Targets,
   type Verb,
 } from "@t3tools/shared/zeropsPermissions";
@@ -86,81 +85,6 @@ export function mayOffer<V extends Verb>(
   // The one place cached facts stand in for fresh ones: an offer, never a write.
   const facts = asker.facts as unknown as FactsFor<V>;
   return can(asker.principal, verb, target, facts).allow;
-}
-
-/**
- * What a person may do with an application's changes (SPEC §3.2a, §3.2b) — the application as the
- * projects HQ places in it. Read and comment by main's Gitea read rule: Read only on the
- * organization, or Basic user on one of those projects; a Read only grant alone sees the
- * application listed and not its changes. Merge by its write team: Basic user on one of them.
- * Close as merge does, or as the organization's owner or admin. Ask a deploy of its environments
- * again ("Run again", SPEC §3.2b) as merge does.
- */
-export function changeOffers(
-  asker: OfferAsker | null,
-  placements: ReadonlyMap<string, HqPlacement>,
-  appId: string,
-): {
-  readonly read: boolean;
-  readonly comment: boolean;
-  readonly merge: boolean;
-  readonly close: boolean;
-  readonly redeploy: boolean;
-} {
-  const projectIds = [...placements]
-    .filter(([, placed]) => placed.appId === appId)
-    .map(([projectId]) => projectId);
-  return {
-    read: mayOffer(asker, "read_change", { projectIds }),
-    comment: mayOffer(asker, "comment_change", { projectIds }),
-    merge: changeMergePermission(asker, placements, appId)?.allowed === true,
-    close: mayOffer(asker, "close_change", { projectIds }),
-    redeploy: mayOffer(asker, "redeploy", { projectIds }),
-  };
-}
-
-/** Code and recipe merges use the application's write rights (SPEC D23). */
-export function changeMergePermission(
-  asker: OfferAsker | null,
-  placements: ReadonlyMap<string, HqPlacement>,
-  appId: string,
-): { readonly allowed: true } | { readonly allowed: false; readonly reason: Reason } | undefined {
-  if (asker === null) return undefined;
-  const projectIds = [...placements]
-    .filter(([, placed]) => placed.appId === appId)
-    .map(([id]) => id);
-  const decision = can(
-    asker.principal,
-    "merge_change",
-    { projectIds },
-    asker.facts as unknown as FactsFor<"merge_change">,
-  );
-  return decision.allow ? { allowed: true } : { allowed: false, reason: decision.reason };
-}
-
-/**
- * Whether the person may release the application's production (SPEC §3.3a), and HQ's reason where
- * not: Basic user or above on it; before it exists, an org owner/admin may save a snapshot. `undefined` for a person the client does not know: nothing is decided for them.
- */
-export function releasePermission(
-  asker: OfferAsker | null,
-  placements: ReadonlyMap<string, HqPlacement>,
-  appId: string,
-): { readonly allowed: true } | { readonly allowed: false; readonly reason: Reason } | undefined {
-  if (asker === null) return undefined;
-  const placed = [...placements].filter(([, placement]) => placement.appId === appId);
-  const production = placed.find(([, placement]) => placement.kind === "production");
-  const decision = can(
-    asker.principal,
-    "release",
-    {
-      projectIds: placed.map(([projectId]) => projectId),
-      productionProjectId: production === undefined ? null : production[0],
-    },
-    // The one place cached facts stand in for fresh ones, as in `mayOffer`: an offer, never a write.
-    asker.facts as unknown as FactsFor<"release">,
-  );
-  return decision.allow ? { allowed: true } : { allowed: false, reason: decision.reason };
 }
 
 /** What HQ holds a project as, from where it places it: `none` where it places it nowhere. */

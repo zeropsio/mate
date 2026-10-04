@@ -9,6 +9,7 @@
  * @module hq/refusals
  */
 import type { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
+import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import type { ReleaseRefusal } from "@t3tools/shared/hqRelease";
 import type { Reason } from "@t3tools/shared/zeropsPermissions";
 
@@ -181,4 +182,28 @@ export function hqRefusalWords(refusal: {
     if (words !== undefined) return words;
   }
   return `HQ refused this (${reason ?? refusal.code}).`;
+}
+
+/**
+ * What a control says beside a verb HQ does not offer (`hqOffer`): HQ's refusal, as of when Zerops
+ * answered the roles it was decided over; that HQ has not said; since when HQ does not answer.
+ * Nothing for an offered one. `at` words a wall time; nothing here compares one with now.
+ */
+export function hqOfferWords(
+  state: HqOfferState,
+  input: { readonly at: (ms: number) => string; readonly rolesAnsweredAt: string | null },
+): string | undefined {
+  switch (state.kind) {
+    case "allowed":
+      return undefined;
+    case "refused": {
+      const words = hqRefusalWords({ code: "forbidden", reason: state.reason });
+      const answered = input.rolesAnsweredAt === null ? NaN : Date.parse(input.rolesAnsweredAt);
+      return Number.isNaN(answered) ? words : `${words} Zerops roles as of ${input.at(answered)}.`;
+    }
+    case "unknown":
+      return "HQ has not said yet.";
+    case "unavailable":
+      return `HQ unavailable since ${input.at(state.since)}.`;
+  }
 }

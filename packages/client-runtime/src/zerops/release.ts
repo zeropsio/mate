@@ -22,9 +22,9 @@
  * ## Who may
  *
  * HQ's rule (SPEC §3.3a): Basic user or above on production, or an organization owner/admin
- * saving a snapshot before production exists. The client asks it
- * over what it holds only to offer the button (`releasePermission`); HQ asks it again at the
- * press, and a refusal that arrives anyway is shown in HQ's words.
+ * saving a snapshot before production exists. HQ streams its decision beside the application
+ * (`can`'s `release`), and the button is offered by it; HQ asks it again at the press, and a
+ * refusal that arrives anyway is shown in HQ's words.
  *
  * ## Rollback
  *
@@ -176,7 +176,7 @@ export function releaseInFlightReason(tag: string): string {
 /**
  * Whether to offer *Release* at all.
  *
- * Who may is HQ's rule (`releasePermission`), in its words; HQ asks it again at the press. Then a
+ * Who may is HQ's offer (`can`'s `release`), in its words; HQ asks it again at the press. Then a
  * release in flight, nothing merged, and nothing that would move hold it, in that order; and last
  * what goes live while it is read, or could not be (main C05).
  */

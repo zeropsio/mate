@@ -13,7 +13,7 @@
  * Each group's flow is the same object until one of its own parts changes, so
  * one group answering never republishes another.
  *
- * A release is offered by HQ's rule (`useReleasePermission`) of each production
+ * A release is offered as HQ offers it (`useReleasePermission`) of each production
  * runtime at its repository's `main` as HQ lists it, and made — or rolled
  * back — in HQ, as the person. What each stop runs is the account's
  * deployment store's answer (`flow/deploymentStore.ts`). A change is merged

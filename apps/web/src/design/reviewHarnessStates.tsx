@@ -44,6 +44,7 @@ import type {
   ZeropsChangeComments,
   ZeropsChangeCommentsState,
 } from "~/zerops/useZeropsChangeComments";
+import type { ZeropsChangeOffers } from "~/zerops/useChangeOffers";
 import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 
 import { HARNESS_HQ, HARNESS_PICTURES, harnessDescription } from "./reviewHarnessPictures";
@@ -277,7 +278,15 @@ const IDLE: ReviewPress = { kind: "idle" };
 /** Nobody asked to close it. */
 const OPEN: ReviewClose = { kind: "idle" };
 /** All HQ's rule offers a developer of the application: comment, Merge, Close. */
-const DEVELOPS = { read: true, comment: true, merge: true, close: true, redeploy: true } as const;
+const DEVELOPS: ZeropsChangeOffers = {
+  read: true,
+  comment: true,
+  merge: true,
+  close: true,
+  redeploy: true,
+  why: {},
+  unavailable: false,
+};
 /** Merged a minute ago: the review says what happened, and offers the release's review. */
 const MERGED_NOW: Partial<FlowPullRequest> = {
   state: "closed",
@@ -873,9 +882,7 @@ export const REVIEW_STATES: ReadonlyArray<{
   {
     id: "not-offered",
     label: "Ready, to a person HQ's rule offers neither Merge nor Close",
-    node: (
-      <Change offers={{ read: true, comment: true, merge: false, close: false, redeploy: false }} />
-    ),
+    node: <Change offers={{ ...DEVELOPS, merge: false, close: false, redeploy: false }} />,
   },
   { id: "merging", label: "Merging", node: <Change press={{ kind: "running" }} /> },
   {
