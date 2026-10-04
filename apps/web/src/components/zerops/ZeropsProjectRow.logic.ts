@@ -17,6 +17,7 @@ import {
   formatMateFace,
   hasMate,
   isGenericPlatformError,
+  MATE_MARKER_TAG,
   mayOffer,
   newMateTint,
   type OfferAsker,
@@ -106,6 +107,12 @@ export interface ZeropsRowInput {
     readonly open: boolean;
     readonly enable: boolean;
     readonly setUpMate: boolean;
+    /**
+     * *Set up Mate* on an existing plain project (`plainZeropsProject`): HQ's structure is known and
+     * its rule lets the viewer write the new Mate's record (`create_mate_record`), which the press
+     * registers before its container.
+     */
+    readonly setUpPlainProject?: boolean;
     readonly start: boolean;
     readonly restart: boolean;
     /** Deleting a project the platform failed to create. */
@@ -118,12 +125,18 @@ export interface ZeropsRowInput {
  * (`observe_mate`) over what the client holds — none where it does not, nor where the client knows
  * nobody.
  */
-export function mateRowCan(asker: OfferAsker | null, projectId: string): ZeropsRowInput["can"] {
+export function mateRowCan(
+  asker: OfferAsker | null,
+  projectId: string,
+  hqKnown = false,
+): ZeropsRowInput["can"] {
   const opens = mayOffer(asker, "observe_mate", { projectId });
   return {
     open: opens,
     enable: opens,
     setUpMate: opens,
+    setUpPlainProject:
+      opens && hqKnown && mayOffer(asker, "create_mate_record", { projectId, held: "none" }),
     start: opens,
     restart: opens,
     remove: opens,
@@ -325,6 +338,20 @@ export function zeropsReasonSentence(reason: string): string {
  */
 export function mateSetupOffered(role: ZeropsEnvironmentRole | undefined): boolean {
   return role !== "stage" && role !== "prod";
+}
+
+/**
+ * An existing plain Zerops project: no Mate, no place in HQ, and none of the `mate:` tags an
+ * earlier group or the organization's HQ (`mate:hq`) carries — a project its person made for
+ * themselves, like "shop", which *Set up Mate* may bring a Mate into (the 09-05 offer).
+ */
+export function plainZeropsProject(project: ZeropsCandidate["project"]): boolean {
+  return (
+    project.hq === undefined &&
+    !(project.tagList ?? []).some(
+      (tag) => tag === MATE_MARKER_TAG || tag.startsWith(`${MATE_MARKER_TAG}:`),
+    )
+  );
 }
 
 /**
@@ -556,13 +583,17 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
       if (candidate.creationFailed !== undefined) {
         return can.remove ? { kind: "remove", label: "Remove" } : { kind: "none" };
       }
-      // Missing HQ membership cannot establish that an existing environment is a dev box.
-      // Only an explicit dev role or a declared Mate justifies setting up a container here.
+      // An explicit dev role, a declared Mate, or an existing plain project its viewer may bring
+      // a Mate into (`plainZeropsProject`); never an environment an earlier group tagged, whose
+      // role nothing here can read.
       if (
         candidate.missingContainer === true &&
         can.setUpMate &&
         mateSetupOffered(role) &&
-        (role === "dev" || role === "devstage" || hasMate(candidate))
+        (role === "dev" ||
+          role === "devstage" ||
+          hasMate(candidate) ||
+          (can.setUpPlainProject === true && plainZeropsProject(candidate.project)))
       ) {
         return { kind: "set-up-mate", label: "Set up Mate" };
       }

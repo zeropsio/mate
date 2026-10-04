@@ -117,7 +117,13 @@ import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useZeropsInventory, type InventoryServiceOutcome } from "~/zerops/inventoryContext";
-import { finishSetupView, forgetPress, pressFailure, useMatePress } from "~/zerops/matePress";
+import {
+  closeOffOpenOf,
+  finishSetupView,
+  forgetPress,
+  pressFailure,
+  useMatePress,
+} from "~/zerops/matePress";
 import { useReviveFailedMate } from "~/zerops/mateRestart";
 import { useMateSetup } from "~/zerops/useMateSetup";
 import { useMateActions } from "~/zerops/useMateActions";
@@ -129,7 +135,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ConversationStripView } from "../chat/ConversationStrip";
 import { MateDetailFailure } from "./MateDetailFailure";
-import { useMateDetailRead } from "~/zerops/accountEnvironments";
+import { useCloseOffHolds, useMateDetailRead } from "~/zerops/accountEnvironments";
 import { MateLinkLine, MateOpeningLine } from "./MateLinkLine";
 import { zeropsAccountDisplay } from "./landing/ZeropsAccountControl.logic";
 import { ZeropsProjectLink } from "../chat/ChatHeader";
@@ -241,7 +247,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Its first build's processes, read only while its container waits for that build.
   const firstBuilding = candidate?.service?.status === "READY_TO_DEPLOY";
   const { processes: firstBuildProcesses } = useProjectActivity(firstBuilding ? projectId : null);
+  // Held because its project is not closed off: its view says why, and offers Finish setup.
+  const closeOffHolds = useCloseOffHolds();
   const coming = mateComing({
+    closeOffOpen: closeOffOpenOf(closeOffHolds, projectId, press),
     press:
       press === undefined
         ? undefined

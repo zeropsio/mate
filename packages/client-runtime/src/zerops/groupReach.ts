@@ -157,6 +157,34 @@ export function findHeldMateKey(
   return newestFirst(keys.filter((key) => madeBefore(key, container)))[0];
 }
 
+/**
+ * The key of a Mate an earlier client widened (ADR 0003's fallout): named as the platform names a
+ * Mate's key, holding its own project at a Mate's role and `READ_ONLY` on other projects, nothing
+ * more — the newest made before its container. Only its Mate's *Finish setup* reads it, and its
+ * harden takes the extra grants off (`planMateKey`); no page's read does (2026-10-03).
+ */
+export function findWiderMateKey(
+  tokens: ReadonlyArray<ZeropsIntegrationToken>,
+  projectId: string,
+  containerCreated: string | undefined,
+): ZeropsIntegrationToken | undefined {
+  const container = containerCreated === undefined ? Number.NaN : Date.parse(containerCreated);
+  return newestFirst(
+    tokens.filter((token) => {
+      const grants = token.projects ?? [];
+      return (
+        MATE_KEY_NAME_PREFIXES.some((prefix) => token.name.startsWith(prefix)) &&
+        grants.length > 1 &&
+        grants.some(
+          (grant) => grant.projectId === projectId && MATE_SELF_GRANT_ROLES.has(grant.roleCode),
+        ) &&
+        grants.every((grant) => grant.projectId === projectId || grant.roleCode === "READ_ONLY") &&
+        madeBefore(token, container)
+      );
+    }),
+  )[0];
+}
+
 /** A key's role on its Mate's own project. */
 function selfRoleOf(token: ZeropsIntegrationToken, projectId: string): string | undefined {
   return (token.projects ?? []).find((grant) => grant.projectId === projectId)?.roleCode;
@@ -214,10 +242,11 @@ function sameGrants(
 
 /**
  * The write that lowers a Mate's key, or `undefined` when it holds what it
- * should: `MATE_SELF_PROJECT_ROLE` on its own project — added where it has no
- * grant there — and every other grant it holds exactly as it is. A key the
- * platform minted with `ADMIN` is lowered in place, its string unchanged; a key
- * already lowered is not written.
+ * should: `MATE_SELF_PROJECT_ROLE` on its own project, and nothing else — a
+ * Mate's key reaches only its own project (ADR 0003), so a grant an earlier
+ * client gave it on a sibling is taken off. A key the platform minted with
+ * `ADMIN` is lowered in place, its string unchanged; a key already holding
+ * just its own grant is not written.
  *
  * Comparison is order-insensitive: the platform returns grants in its own
  * order.
@@ -231,9 +260,7 @@ export function planMateKey(input: {
     projectId: input.selfProjectId,
     roleCode: MATE_SELF_PROJECT_ROLE,
   };
-  const wanted = current.some((grant) => grant.projectId === input.selfProjectId)
-    ? current.map((grant) => (grant.projectId === input.selfProjectId ? own : grant))
-    : [own, ...current];
+  const wanted = [own];
   if (sameGrants(current, wanted)) return undefined;
   return { tokenId: input.token.id, projects: wanted };
 }

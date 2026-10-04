@@ -153,7 +153,8 @@ the root `zerops.yml`), so an HQ is born with the Core of the client that bore i
   project, nothing more (`api.ts:1791`, ADR 0003); a sensitive variable of its `zcp` service. A key
   the platform minted `ADMIN` is lowered by its harden (`hardenMate`), when a person finishes setting
   the Mate up — never on a page's read (step A, A11); a `READ_ONLY` grant on a sibling that an
-  earlier client gave a key stays until it is taken off by hand
+  earlier client gave a key is said by HQ, which reads the key the Mate names (`keyWider`), and its
+  menu offers _Finish setup_, whose harden takes it off (`planMateKey`, `findWiderMateKey`)
   - _Reaches:_ its own project — the door's role reads, zcp's every platform call, the challenge it
     writes for HQ
 - **a Mate credential** — issued by HQ for a challenge whose nonce it finds in the Mate's own
@@ -484,8 +485,10 @@ still to come says so.
     `matePress.test.ts` ("writes no other Mate's key")
 - **0.4, 0.10** — A new Mate's key on `zcp` and its project closed off before anyone is admitted
   - _State:_ live — the press does it in the foreground before _Add_ returns, and records the
-    close-off in HQ (`matePress.ts`, `hqMateBirth.ts`)
-  - _Proven by:_ `matePress.test.ts`, `projectIsolation.test.ts`, `createEnvironment.test.ts`
+    close-off in HQ (`matePress.ts`, `hqMateBirth.ts`); a Mate whose press stopped before it holds
+    no lease's connection until HQ records it, and offers _Finish setup_ (`closeOff.ts`)
+  - _Proven by:_ `matePress.test.ts`, `projectIsolation.test.ts`, `createEnvironment.test.ts`,
+    `closeOff.test.ts`, `accountRuntime.test.ts` ("the close-off gate")
 - **0.6** — The _Update_ verb's scope
   - _State:_ live
   - _Built in:_ mate 0.11.0 `2ff377304`
@@ -1005,8 +1008,9 @@ still to come says so.
   - _Built in:_ mate 0.11.0 `b296a0139`
   - _Proven by:_ `hacks.md` H-26, H-27
 - **7** — _Set up Mate_
-  - _State:_ partial — still offered on a project with no container, to whoever may open its Mate
-    (`ZeropsProjectRow.logic.ts`); it registers the Mate in HQ
+  - _State:_ partial — offered on a dev environment or a declared Mate with no container, to
+    whoever may open its Mate, and on an existing plain project to whoever may write its Mate's
+    record at HQ (`ZeropsProjectRow.logic.ts`, `plainZeropsProject`); it registers the Mate in HQ
 - **7** — zcp's delegated launch and the GitHub `prodCd` track for group Mates
   - _State:_ **open** — `launch_delegation.go` and the build-integration track remain in zcp
 

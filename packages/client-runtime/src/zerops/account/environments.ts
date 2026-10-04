@@ -18,6 +18,9 @@
  *   remembered Mate with no lease is parked: its registration, kept session and cached data stay,
  *   its socket closes.
  * - A registration nothing remembers — and that no install is writing — is released.
+ * - Nobody is let into a Mate before its project is closed off (`closeOff.ts`): a Mate whose
+ *   container carries the press's marker, and whose project HQ does not say is closed off, holds
+ *   no lease's connection until it is; *Finish setup* closes it off.
  *
  * The stores are constructed by the account runtime alone (§7.2 rule 6); this module only wires
  * them. Plain callbacks and promises, like the stores: the one Effect it runs is the data
@@ -61,6 +64,13 @@ import {
   resolveEnvironment,
   type DescriptorIndex,
 } from "../environments/descriptorIndex.ts";
+import {
+  closedOffOf,
+  closeOffGate,
+  ZCP_YOUNG_MS,
+  zcpYoung,
+  type CloseOffWord,
+} from "../environments/closeOff.ts";
 import { candidateListingsAtom, type OrganizationListing } from "../environments/listings.ts";
 import { readServiceMateFlag } from "../environments/mateFlag.ts";
 import type {
@@ -208,7 +218,18 @@ export interface AccountEnvironmentPorts {
     readonly read: () => string | null;
     readonly subscribe: (listener: () => void) => () => void;
   };
+  /**
+   * HQ's word on which Mates' projects are closed off (`closeOff.ts`); null while none is known.
+   * The close-off gate reads it: absent, on a surface with no HQ's word, nothing is held.
+   */
+  readonly closeOff?: {
+    readonly read: () => CloseOffWord | null;
+    readonly subscribe: (listener: () => void) => () => void;
+  };
 }
+
+/** Why a Mate is held for its close-off: known not closed off, or not known yet (`closeOffGate`). */
+export type CloseOffHold = "open" | "unsure";
 
 // ── What surfaces read and ask ───────────────────────────────────────────────────────────────
 
@@ -255,6 +276,11 @@ export interface AccountEnvironments {
   readonly next: (origin: string) => Promise<ProbeReading>;
   /** Suppress all connection leases during project deletion; false restores them on failure. */
   readonly setDeleting: (projectId: string, deleting: boolean) => void;
+  /**
+   * The projects whose Mate is held for its close-off, and why: none of their leases connects it
+   * until HQ says its project is closed off. The same map until it changes.
+   */
+  readonly closeOffHolds: () => ReadonlyMap<string, CloseOffHold>;
   /** The route's environment, whose target is exchanged first (§4.4); null off a thread route. */
   readonly setRoute: (environmentId: EnvironmentId | null) => void;
   /** The organization the tab has open: a target nothing names has its inventory read (§6.2). */
@@ -397,6 +423,18 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const detailLeases = new Map<string, Fiber.Fiber<void>>();
   const detailFailures = new Map<string, LeaseAdmissionError>();
   let detailProjects: ReadonlySet<string> = new Set();
+  /**
+   * The press's marker on each listed Mate's container whose project HQ does not say is closed
+   * off, by service id, as the account's streamed variables say it: followed only while such a
+   * Mate is listed.
+   */
+  const markers = new Map<
+    string,
+    { marker: boolean | "unknown" | "unread"; readonly stop: () => void }
+  >();
+  let closeOffHolds: ReadonlyMap<string, CloseOffHold> = new Map();
+  /** Disarms the timer that reads the holds again once the youngest held container ages. */
+  let closeOffAging: (() => void) | null = null;
 
   const rowOf = (key: TargetKey) => rows.find((row) => row.key === key);
   /** The target's project as a listing names it, whether or not its services are read. */
@@ -818,6 +856,76 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
+  /**
+   * The close-off gate over every listed Mate (`closeOffGate`): the held ones take no lease's
+   * demand (`ExchangeDriver.setCloseOffHeld`). A young container held while nothing is known is
+   * read again once it ages past a press's hands.
+   */
+  const updateCloseOff = () => {
+    if (stores === null || closed || ports.closeOff === undefined) return;
+    const word = ports.closeOff.read();
+    const nowMs = ports.clock.now().wall;
+    const followed = new Set<string>();
+    const holds = new Map<string, CloseOffHold>();
+    let ages: number | null = null;
+    for (const row of rows) {
+      if (row.service === undefined) continue;
+      const project = projectRefOf(row.project.id);
+      if (project === undefined) continue;
+      const closedOff = closedOffOf(word, project.organization.organizationId, row.project.id);
+      if (closedOff === true) continue;
+      const serviceId = row.service.id;
+      followed.add(serviceId);
+      let entry = markers.get(serviceId);
+      if (entry === undefined) {
+        let ready = false;
+        const held: { marker: boolean | "unknown" | "unread"; stop: () => void } = {
+          marker: "unread",
+          stop: () => undefined,
+        };
+        held.stop = atomRegistry.subscribe(
+          data.reads.setupMarker({
+            kind: "service",
+            project,
+            serviceId: ZeropsServiceId.make(serviceId),
+          }),
+          (marker) => {
+            if (held.marker === marker) return;
+            held.marker = marker;
+            if (ready) updateCloseOff();
+          },
+          { immediate: true },
+        );
+        ready = true;
+        markers.set(serviceId, held);
+        entry = held;
+      }
+      const young = zcpYoung(row.service.created, nowMs);
+      const gate = closeOffGate({ marker: entry.marker, closedOff, young });
+      if (gate === "connect") continue;
+      if (holds.get(row.project.id) !== "open") holds.set(row.project.id, gate);
+      if (gate === "unsure" && young) {
+        const at = Date.parse(row.service.created ?? "") + ZCP_YOUNG_MS;
+        ages = ages === null ? at : Math.min(ages, at);
+      }
+    }
+    for (const [serviceId, entry] of markers) {
+      if (followed.has(serviceId)) continue;
+      entry.stop();
+      markers.delete(serviceId);
+    }
+    closeOffAging?.();
+    closeOffAging =
+      ages === null ? null : ports.clock.setTimer(Math.max(0, ages - nowMs), updateCloseOff);
+    const moved =
+      holds.size !== closeOffHolds.size ||
+      [...holds].some(([projectId, hold]) => closeOffHolds.get(projectId) !== hold);
+    if (!moved) return;
+    closeOffHolds = holds;
+    stores.driver.setCloseOffHeld(holds.keys());
+    notify();
+  };
+
   // ── The index ──────────────────────────────────────────────────────────────────────────────
 
   let indexed: {
@@ -934,6 +1042,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       }) ?? (() => undefined),
       ports.online?.subscribe(updateOnline) ?? (() => undefined),
       ports.hqOrganization?.subscribe(updateOnline) ?? (() => undefined),
+      ports.closeOff?.subscribe(updateCloseOff) ?? (() => undefined),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;
@@ -956,10 +1065,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           updateActions();
           if (moved || JSON.stringify(before.map(settling)) !== JSON.stringify(next.map(settling)))
             updateTargets();
+          if (moved) updateCloseOff();
         },
         { immediate: true },
       ),
     );
+    updateCloseOff();
     updateTargets();
     release();
     updateParking();
@@ -1013,6 +1124,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       initAt: (key) => (closed ? Promise.resolve(null) : containers.initAt(key)),
       next: containers.next,
       setDeleting: driver.setDeleting,
+      closeOffHolds: () => closeOffHolds,
       setRoute: (environmentId) => {
         route = environmentId;
         preferRoute();
@@ -1069,6 +1181,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         for (const stop of stops) stop();
         for (const followed of activity.values()) followed.stop();
         activity.clear();
+        for (const entry of markers.values()) entry.stop();
+        markers.clear();
+        closeOffAging?.();
+        closeOffAging = null;
         recent?.disarm();
         actions.clear();
         for (const release of checks.values()) release();

@@ -914,6 +914,34 @@ describe("structure", () => {
       ),
     );
 
+    // ADR 0003's fallout: a Mate whose key reads other projects says so with its record, so its
+    // menu offers Finish setup — and its readers are told when HQ's word on its key moves.
+    it.effect(
+      "says a Mate whose key reads other projects, and tells its readers as that moves",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            yield* structure.createMate("owner", { projectId: "P_MATE", face: "face-3" });
+            const keyWider = Effect.map(
+              structure.read("reader"),
+              (read) => read.ungrouped[0]?.mate.keyWider,
+            );
+            assert.isUndefined(yield* keyWider);
+
+            const told = yield* Stream.runHead(Stream.drop(structure.changes, 1)).pipe(
+              Effect.forkChild,
+            );
+            yield* Effect.yieldNow;
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`UPDATE hq_mate SET key_wider_token_id = 'tok-wide' WHERE project_id = 'P_MATE'`;
+            yield* structure.mateTouched("P_MATE");
+            assert.isTrue(Option.isSome(yield* Fiber.join(told)));
+            assert.isTrue(yield* keyWider);
+          }),
+        ),
+    );
+
     // D3: Zerops holds a Mate's name, HQ none — what a reader and the Mate itself are told is its
     // project's name as HQ's view of the org has it.
     it.effect("a Mate goes by its project's name in Zerops, renamed there as it is", () =>

@@ -11,7 +11,10 @@ import type {
   AtomCommandOptions,
   AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
+import type {
+  AccountEnvironments,
+  CloseOffHold,
+} from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { CapabilityRefusal, OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import type { IdentityExchangeReason } from "@t3tools/client-runtime/zerops/diagnostics";
@@ -154,6 +157,14 @@ export function useContainerMachines(): ReadonlyMap<TargetKey, ContainerMachine>
 /** The descriptor index over every present target (§4.8). */
 export function useDescriptorIndex(): DescriptorIndex {
   return useAccountEnvironmentsSnapshot(indexOf, NO_INDEX);
+}
+
+const NO_CLOSE_OFF_HOLDS: ReadonlyMap<string, CloseOffHold> = new Map();
+const closeOffHoldsOf = (environments: AccountEnvironments) => environments.closeOffHolds();
+
+/** The projects whose Mate the close-off gate holds, and why (`closeOffGate`). */
+export function useCloseOffHolds(): ReadonlyMap<string, CloseOffHold> {
+  return useAccountEnvironmentsSnapshot(closeOffHoldsOf, NO_CLOSE_OFF_HOLDS);
 }
 
 const NO_DETAIL_PROJECTS: ReadonlySet<string> = new Set();

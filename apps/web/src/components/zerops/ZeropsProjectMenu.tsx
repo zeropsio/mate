@@ -22,6 +22,8 @@ export interface ZeropsMenuAction {
   readonly disabled?: boolean;
   /** A verb that takes something away for good: drawn in red, last, a line apart. */
   readonly variant?: "destructive";
+  /** Why the verb is offered, where its label alone does not say: its tooltip. */
+  readonly why?: string;
 }
 
 /** A line between two groups of actions — the quick ones above, the quiet ones below. */
@@ -95,6 +97,7 @@ export function ZeropsProjectMenu({
               key={entry.id}
               disabled={entry.disabled === true}
               onClick={entry.onSelect}
+              title={entry.why}
               variant={entry.variant ?? "default"}
             >
               {entry.label}

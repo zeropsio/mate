@@ -30,6 +30,7 @@ import {
 } from "./projectCreation.ts";
 import {
   findHeldMateKey,
+  findWiderMateKey,
   makeTokenWriteLock,
   mateAdminKeys,
   MATE_SELF_PROJECT_ROLE,
@@ -2275,8 +2276,8 @@ export class ZeropsApiClient {
    * The birth's hardening (spec-mate §3 B-1/B-2/B-3), whole: the token half
    * and the isolation half, together, for one Mate's own project.
    *
-   * The token half lowers the Mate's own grant to `BASIC_USER` and leaves
-   * every other grant as it is (`planMateKey`); a key the press minted holds nothing else. Every delegation the token carries is then dropped: the one-time mint the platform grants at
+   * The token half leaves the Mate's key on its own project alone, at
+   * `BASIC_USER` (`planMateKey`): a sibling an earlier client gave it is taken off. Every delegation the token carries is then dropped: the one-time mint the platform grants at
    * creation, which nothing here needs (`groupReach.ts`, guide 0.4).
    *
    * Idempotent, and cheap to prove so: a token already at `BASIC_USER` with
@@ -2352,8 +2353,9 @@ export class ZeropsApiClient {
 
   /**
    * The keys of a Mate HQ knows no key id of, matched on the organization's token list: the one its
-   * container holds — where two are its, the newest made before the container — and every other
-   * still ADMIN on its project, a raced press's or an older platform key.
+   * container holds — where two are its, the newest made before the container — every other still
+   * ADMIN on its project, a raced press's or an older platform key, and one an earlier client
+   * widened with READ_ONLY on siblings (`findWiderMateKey`), which HQ never takes for its key.
    */
   async #mateKeys(
     clientId: string,
@@ -2363,10 +2365,12 @@ export class ZeropsApiClient {
     const container = (await this.listProjectServices(projectId, signal)).find(isZcpService);
     const tokens = await this.listIntegrationTokens(clientId, signal);
     const token = findHeldMateKey(tokens, projectId, container?.created);
+    const wider = findWiderMateKey(tokens, projectId, container?.created);
     return [
       ...new Set([
         ...(token === undefined ? [] : [token.id]),
         ...mateAdminKeys(tokens, projectId, container?.created).map((key) => key.id),
+        ...(wider === undefined ? [] : [wider.id]),
       ]),
     ];
   }
@@ -2384,20 +2388,16 @@ export class ZeropsApiClient {
     this.#assertGeneration(generation);
     // The write replaces the token's whole project list: it is planned from the token as read
     // by its id under its lock — one small answer, never the organization's whole list again.
-    // Only the Mate's own grant is lowered, every other kept as it is (`planMateKey`). A key
-    // already lowered is left alone.
+    // The key is left on its own project alone, at a Mate's role (`planMateKey`, ADR 0003): a
+    // sibling an earlier client gave it is taken off. A key already there is left alone.
     const lowered = await this.#holdToken(tokenId, async () => {
       const current = await this.readIntegrationToken(clientId, tokenId, signal);
       if (current === undefined) return false;
       this.#assertGeneration(generation);
-      const projects = (current.projects ?? []).map((grant): ZeropsProjectGrant =>
-        grant.projectId === projectId && grant.roleCode !== MATE_SELF_PROJECT_ROLE
-          ? { ...grant, roleCode: MATE_SELF_PROJECT_ROLE }
-          : grant,
-      );
-      if (!projects.some((grant, index) => grant !== current.projects?.[index])) return false;
+      const planned = planMateKey({ token: current, selfProjectId: projectId });
+      if (planned === undefined) return false;
       await this.setIntegrationTokenProjects(
-        { clientId, tokenId: current.id, name: current.name, projects },
+        { clientId, tokenId: current.id, name: current.name, projects: planned.projects },
         signal,
         beforeWrite,
       );

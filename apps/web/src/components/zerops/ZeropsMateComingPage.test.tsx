@@ -134,6 +134,8 @@ vi.mock("~/zerops/accountEnvironments", () => ({
   useMateDetailRead: () => ({ failure: null, again: () => undefined }),
   useConnectMate: () => app.connect,
   useAccountEnvironments: () => environments,
+  // No Mate here is held for its close-off.
+  useCloseOffHolds: () => new Map(),
 }));
 const environments = { setOnScreen: (projectId: string | null) => app.onScreen(projectId) };
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));

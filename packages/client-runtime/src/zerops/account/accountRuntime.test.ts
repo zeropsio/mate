@@ -36,6 +36,7 @@ import {
   type ZeropsDataAdapter,
 } from "../data/types.ts";
 import type { DescriptorFacts } from "../environments/environmentMachine.ts";
+import type { CloseOffWord } from "../environments/closeOff.ts";
 import { candidateListingsAtom } from "../environments/listings.ts";
 import { readServiceMateFlag } from "../environments/mateFlag.ts";
 import { rowTarget } from "../environments/mateLink.ts";
@@ -106,7 +107,10 @@ const MATE_ORIGIN = A_MATE.origin;
 const ENV_A = EnvironmentId.make("env-a");
 
 /** The datastream over a platform whose one organization holds these Mates' projects. */
-const platformAdapter = (mates: ReadonlyArray<Mate>): ZeropsDataAdapter => {
+const platformAdapter = (
+  mates: ReadonlyArray<Mate>,
+  variables: ReadonlyArray<unknown> = [],
+): ZeropsDataAdapter => {
   const rowsOf = (query: EntityQueryDescriptor): ReadonlyArray<unknown> => {
     switch (query.kind) {
       case "projects-of-organization":
@@ -129,6 +133,16 @@ const platformAdapter = (mates: ReadonlyArray<Mate>): ZeropsDataAdapter => {
       }),
     register: (_receiver, request) =>
       Effect.sync(() => {
+        if (request.descriptor.kind === "table-list") {
+          const listed =
+            request.descriptor.query.kind === "service-variables-of-services" ? variables : [];
+          return {
+            responseObservations: decodeRegistrationResponse(request, {
+              items: listed,
+              totalHits: listed.length,
+            }).observations,
+          };
+        }
         if (request.descriptor.kind !== "query-membership") return { responseObservations: [] };
         const items = rowsOf(request.descriptor.query);
         return {
@@ -1832,6 +1846,147 @@ describe("the post-grant stage's Mate environments", () => {
       }),
     ),
   );
+
+  // The close-off gate (restores 0.12.3's closeOffGate inside the lease model): a Mate whose
+  // container carries the press's marker is let in only once HQ says its project is closed off.
+  describe("the close-off gate", () => {
+    /** The press's marker on Mate A's container, as the account's streamed variables say it. */
+    const MARKER = [
+      {
+        id: "variable-marker",
+        serviceStackId: A_MATE.service.id,
+        projectId: A_MATE.projectId,
+        key: "MATE_SETUP_RUNTIMES",
+        content: "services: []",
+      },
+    ];
+    /** HQ's close-off word, as a test moves it. */
+    const hqWord = (initial: CloseOffWord | null) => {
+      let word = initial;
+      const heard = new Set<() => void>();
+      return {
+        port: {
+          read: () => word,
+          subscribe: (listener: () => void) => {
+            heard.add(listener);
+            return () => heard.delete(listener);
+          },
+        },
+        say: (next: CloseOffWord | null) => {
+          word = next;
+          for (const listener of heard) listener();
+        },
+      };
+    };
+    const said = (closed: ReadonlyArray<string>, current = true): CloseOffWord => ({
+      organizationId: organization.organizationId,
+      current,
+      closed: new Set(closed),
+      silent: new Set(),
+    });
+    const madeAt = (created: string) => ({
+      ...A_MATE,
+      service: { ...A_MATE.service, created },
+    });
+    const exchangesOf = (rig: {
+      readonly exchanges: ReadonlyArray<{ readonly input: { readonly key: string } }>;
+    }) => rig.exchanges.filter(({ input }) => input.key === MATE).length;
+
+    it.effect(
+      "holds a marked Mate HQ says is not closed off, on screen too, and lets it in once it is",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const word = hqWord(said([]));
+            const { rig, environments } = yield* granted(
+              [],
+              [A_MATE],
+              platformAdapter([A_MATE], MARKER),
+              [A_MATE],
+              { closeOff: word.port },
+            );
+            environments.setOnScreen(A_MATE.projectId);
+            yield* settle;
+            expect(environments.closeOffHolds().get(A_MATE.projectId)).toBe("open");
+            expect(environments.machines().get(MATE)?.guards.want).toBe(false);
+            expect(exchangesOf(rig)).toBe(0);
+
+            word.say(said([A_MATE.projectId]));
+            yield* settle;
+            expect(environments.closeOffHolds().size).toBe(0);
+            expect(environments.machines().get(MATE)?.guards.want).toBe(true);
+            expect(exchangesOf(rig)).toBe(1);
+          }),
+        ),
+    );
+
+    it.effect("lets in a Mate whose container carries no press marker", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const word = hqWord(said([]));
+          const { rig, environments } = yield* granted(
+            [],
+            [A_MATE],
+            platformAdapter([A_MATE]),
+            [A_MATE],
+            {
+              closeOff: word.port,
+            },
+          );
+          environments.setOnScreen(A_MATE.projectId);
+          yield* settle;
+          expect(environments.closeOffHolds().size).toBe(0);
+          expect(exchangesOf(rig)).toBe(1);
+        }),
+      ),
+    );
+
+    it.effect(
+      "holds a young marked Mate quietly while HQ's word is not current, an older one not",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const fresh = madeAt("2026-09-23T09:50:00.000Z");
+            const word = hqWord(null);
+            const { rig, environments } = yield* granted(
+              [],
+              [fresh],
+              platformAdapter([fresh], MARKER),
+              [fresh],
+              {
+                closeOff: word.port,
+              },
+            );
+            environments.setOnScreen(fresh.projectId);
+            yield* settle;
+            expect(environments.closeOffHolds().get(fresh.projectId)).toBe("unsure");
+            expect(exchangesOf(rig)).toBe(0);
+          }),
+        ),
+    );
+
+    it.effect("never holds an older marked Mate for an HQ word nobody can read", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const old = madeAt("2026-09-23T07:00:00.000Z");
+          const word = hqWord(null);
+          const { rig, environments } = yield* granted(
+            [],
+            [old],
+            platformAdapter([old], MARKER),
+            [old],
+            {
+              closeOff: word.port,
+            },
+          );
+          environments.setOnScreen(old.projectId);
+          yield* settle;
+          expect(environments.closeOffHolds().size).toBe(0);
+          expect(exchangesOf(rig)).toBe(1);
+        }),
+      ),
+    );
+  });
 
   it.effect(
     "deleting a Mate overrides every lease, parks its socket, and restores demand on failure",
