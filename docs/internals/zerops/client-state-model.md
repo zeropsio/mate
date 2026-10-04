@@ -244,8 +244,10 @@ dropped when superseded. HQ's structure stream reconnects by itself (`hqStructur
 to 30 s, and every 30 s at the cap with its failure shown; a going-away (1001) gets one immediate
 attempt, and a refusal waits for the manual action. Its last known data stands meanwhile. Inventory
 retries on its recovery backoff and access verification on its ladders while the tab is visible, at
-once on a visible wake or `online`, beside the manual action. Healthy demand can resume after a
-background pause. Other machines retain their own declared policies. Waiting for a capability happens before an attempt starts.
+once on a visible wake or `online`, beside the manual action; a malformed access answer waits for the
+manual action alone. Every ladder is named in `retryPolicy.ts`, and the rule they follow is the
+2026-10-05 row of `design-decisions.md` (automatic recovery bounded in rate, visible, ended only by a
+definitive refusal). Healthy demand can resume after a background pause. Other machines retain their own declared policies. Waiting for a capability happens before an attempt starts.
 
 ### Zerops account session
 
@@ -275,14 +277,14 @@ still missing, so two tabs holding a session stored before the record existed co
 
 ### Access grant
 
-| State                        | Meaning                                                        | Leaves on                                                                  |
-| ---------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `unverified`                 | No round yet; the product is not mounted                       | Start → `verifying`                                                        |
-| `verifying(round)`           | The first round                                                | Verified → `granted`; `user/info` failed → `unverified-failed`             |
-| `unverified-failed(retryAt)` | The account gate shows the cause and Retry                     | Retry time, visible wake, online or user retry → `verifying`               |
-| `granted(evidence, renewal)` | Renewal `idle(dueAt)`, `running(round)`, `failed` or `dormant` | Account evidence expired → `lapsed`; admitted round → `granted(evidence′)` |
-| `lapsed(last, renewal)`      | Platform cells withheld, platform writes closed, UI mounted    | Admitted round → `granted`                                                 |
-| `closed`                     | Epoch closed                                                   | —                                                                          |
+| State                        | Meaning                                                        | Leaves on                                                                                 |
+| ---------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `unverified`                 | No round yet; the product is not mounted                       | Start → `verifying`                                                                       |
+| `verifying(round)`           | The first round                                                | Verified → `granted`; `user/info` failed → `unverified-failed`                            |
+| `unverified-failed(retryAt)` | The account gate shows the cause and Retry                     | Retry time, visible wake, online or user retry → `verifying`; malformed: user retry alone |
+| `granted(evidence, renewal)` | Renewal `idle(dueAt)`, `running(round)`, `failed` or `dormant` | Account evidence expired → `lapsed`; admitted round → `granted(evidence′)`                |
+| `lapsed(last, renewal)`      | Platform cells withheld, platform writes closed, UI mounted    | Admitted round → `granted`                                                                |
+| `closed`                     | Epoch closed                                                   | —                                                                                         |
 
 The round, the evidence stamp, per-project evidence, renewal lead and retries are the
 [account contract](account-lifecycle.md#access-verification). In any phase: a project's 403 or 404

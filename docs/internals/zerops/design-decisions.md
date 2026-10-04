@@ -3886,10 +3886,14 @@ no-cache`.
   - A Mate's setup, and the day's re-read of a no-HQ verdict, wait for a shown tab.
   - _Why:_ the owner's rules: Zerops and HQ data through the store, never a fetch in a hook, no idle
     requests.
-- **2026-10-04** — **Transient failures recover by themselves again, beside Try again.**
+- **2026-10-04** — **Transient failures recover by themselves again, beside Try again** (the
+  2026-10-05 rule below: "Automatic recovery is wanted; a clock standing in for an answer is not").
   - Covered: session checks, data cells, access grants, hydration (Retry-After on a 429), per-interest
     recovery, and metadata back-offs.
-  - Retries are capped, back off, run only for what is held, and pause while the tab is hidden.
+  - Retries are bounded in rate, not in count: each climbs one of the ladders `retryPolicy.ts` names
+    and stays at its cap. They run only for what is held and pause while the tab is hidden.
+  - A definitive refusal ends them with its manual again: a cell's decode, an access check's
+    malformed answer, a 403/404.
   - **Supersedes:** "failed reads stay failed until the visible manual action"
     (`platform-data-architecture.md`).
   - _Why:_ a laptop waking before its Wi-Fi, or a 429, left pages failed until a click.
@@ -3926,3 +3930,21 @@ no-cache`.
     repaired at boot".
   - _Why:_ a Mate update mid-run paused every crew until someone pressed Continue; the recorded
     stages make the resume safe.
+- **2026-10-05** — **Automatic recovery is wanted; a clock standing in for an answer is not.**
+  - **Wanted:** recovery with a clear logic — renewing a session, reconnecting, re-subscribing,
+    re-reading, re-running an idempotent step after a transient failure (network, timeout, 5xx, the
+    network coming back, a tab waking). Bounded in rate, not in count: a backoff up to a cap, then
+    steady at the cap; visible ("reconnecting…" with "Try again now"); paused while nothing needs it.
+    Only a definitive refusal ends it, visibly, with a manual "again".
+  - **Not wanted:** a clock that stands in for the owner's answer ("30 minutes after a release, it has
+    ended"; "20 s with nothing running, the deploy failed"); side effects nobody asked for and nobody
+    sees (a timer that compares wanted with actual and quietly rewrites, deploys or deletes — what
+    the Gitea backbone did); retrying a definitive refusal (rights, validation); repeating a
+    non-idempotent side effect without first reading its own handle.
+  - **Supersedes** the reading of 2026-10-03 that every automatic retry is wrong; passages that say
+    "nothing retries" or "stays failed until the manual action" describe today's code, not the rule,
+    and change with the code that restores a recovery.
+  - _Why:_ the owner: "problém mám s automatickými opakováními jako třeba to, že se na FE nastavilo a
+    čekalo, že něco proběhne do 30 min, nebo že se nějak magicky dělo historicky něco v Gitee. Ne to,
+    že se něco automaticky opakuje a vyrovnává se stavem, který nějak vzniká, a je to jeho legitimní
+    řešení, jako třeba že se automaticky obnoví session."
