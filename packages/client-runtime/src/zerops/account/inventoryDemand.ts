@@ -5,6 +5,9 @@ import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
+import { isZcpService } from "../containerAddress.ts";
+import { serviceRecordToZeropsService } from "../data/dto.ts";
+
 import { grantRoundInFlight, type Evidence, type GrantMachine } from "../data/access/grant.ts";
 import {
   evidenceProjectRefs,
@@ -35,6 +38,8 @@ export interface InventoryDemandInput {
   readonly openedServices: ReadonlyArray<{
     readonly project: ProjectRef;
     readonly serviceIds: ReadonlyArray<string>;
+    readonly detail: boolean;
+    readonly mateServiceIds: ReadonlyArray<string>;
   }>;
 }
 export function inventoryDemand(
@@ -45,21 +50,38 @@ export function inventoryDemand(
     grantRoundInFlight(input.grant)?.organizations ??
     []
   ).filter(({ organization }) => organization.organizationId === input.activeOrganizationId);
+  const opened = new Map<string, InventoryDemandInput["openedServices"][number]>();
+  for (const entry of input.openedServices) {
+    const key = projectKeyOf(entry.project);
+    if (entry.detail || !opened.has(key)) opened.set(key, entry);
+  }
   return [
     ...organizations.map(({ organization }): RuntimeInterestDescriptor => ({
       kind: "organization-inventory",
       organization,
     })),
-    ...input.openedServices
+    ...[...opened.values()]
       .filter(
         ({ project, serviceIds }) =>
           project.organization.organizationId === input.activeOrganizationId &&
           serviceIds.length > 0,
       )
-      .flatMap(({ project, serviceIds }): ReadonlyArray<RuntimeInterestDescriptor> => [
-        { kind: "project-versions", project, serviceIds },
-        { kind: "project-variables", project, serviceIds },
-      ]),
+      .flatMap(
+        ({
+          project,
+          serviceIds,
+          detail,
+          mateServiceIds,
+        }): ReadonlyArray<RuntimeInterestDescriptor> =>
+          detail
+            ? [
+                { kind: "project-versions", project, serviceIds },
+                { kind: "project-variables", project, serviceIds },
+              ]
+            : mateServiceIds.length === 0
+              ? []
+              : [{ kind: "project-variables", project, serviceIds: mateServiceIds }],
+      ),
   ];
 }
 
@@ -92,6 +114,14 @@ export const holdInventoryDemand = (input: {
             return [
               {
                 project: descriptor.project,
+                detail: descriptor.kind === "project-topology",
+                mateServiceIds: services.value.flatMap((value) => {
+                  if (value.knowledge !== "observed") return [];
+                  const service = serviceRecordToZeropsService(value.record);
+                  return service !== null && isZcpService(service)
+                    ? [value.record.ref.serviceId]
+                    : [];
+                }),
                 serviceIds: services.value.flatMap((value) =>
                   value.knowledge === "observed" ? [value.record.ref.serviceId] : [],
                 ),

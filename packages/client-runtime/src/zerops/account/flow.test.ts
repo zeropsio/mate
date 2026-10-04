@@ -30,6 +30,7 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
       project("project-stage"),
       () => undefined,
       (reason) => refused.push(reason),
+      "summary",
     );
 
     expect(refused).toEqual(["account-capacity"]);
@@ -57,7 +58,7 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
     expect(asked).toEqual([target, target]);
   });
 
-  it("a visible stop owns its service and process demand, and hears its versions and variables", () => {
+  it("a visible stop owns only its service demand and hears detail facts when another surface reads them", () => {
     const listing = Atom.make(null);
     const state = Atom.make({ table: { rows: 1 } });
     const acquired: Array<string> = [];
@@ -77,10 +78,11 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
       project("project-stage"),
       () => (changes += 1),
       () => undefined,
+      "summary",
     );
 
     // The organization's versions and variables are the account's, streamed for its session.
-    expect(acquired).toEqual(["project-topology"]);
+    expect(acquired).toEqual(["project-inventory"]);
     registry.set(state, { table: { rows: 2 } });
     expect(changes).toBe(1);
     unfollow();

@@ -3,7 +3,7 @@ import { knownPresentation } from "@t3tools/client-runtime/zerops/knowledge";
 import * as Effect from "effect/Effect";
 import { useContext, useState } from "react";
 
-import { againStopDeployment } from "~/zerops/accountForge";
+import { againStopDeployment, useStopDeploymentDemand } from "~/zerops/accountForge";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
@@ -16,6 +16,9 @@ export function StopReadAgain({ projectId }: { readonly projectId: string }) {
   const data = useContext(ZeropsDataContext);
   const flow = useZeropsProjectFlowOptional();
   const [running, setRunning] = useState(false);
+  // The stop cell owns demand even before it has a failure or a menu. Other surfaces share it.
+  const project = inventory === null ? null : findInventoryProjectRef(inventory, projectId);
+  useStopDeploymentDemand(project);
   const deployment = flow?.deployments.get(projectId);
   if (deployment === undefined || inventory === null || data === null) return null;
   const presentation = knownPresentation(deployment, DEPLOYMENT_SURFACE, {
@@ -27,7 +30,6 @@ export function StopReadAgain({ projectId }: { readonly projectId: string }) {
     action === "renew-access" ||
     (deployment.state === "withheld" && deployment.reason === "access-denied");
   if (action !== "retry" && action !== "retry-now" && !renewAccess) return null;
-  const project = findInventoryProjectRef(inventory, projectId);
   if (project === null) return null;
   return (
     <Button
