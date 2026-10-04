@@ -131,6 +131,7 @@ function shellStage(): AccountEnvironments {
     },
     setActiveOrganization: () => undefined,
     setOnScreen: () => undefined,
+    setDrawn: () => undefined,
   };
 }
 

@@ -7,6 +7,7 @@ const testState = vi.hoisted(() => ({
   useUsage: vi.fn(),
   identities: new Map() as ReadonlyMap<EnvironmentId, UsageEnvironmentIdentity>,
   owners: "resolved" as "resolving" | "resolved" | "unavailable",
+  mates: [] as ReadonlyArray<UsageMate>,
   metric: "cost" as "cost" | "tokens" | "limits",
   breakdown: "time" as "auto" | "person" | "project" | "mate" | "model" | "time",
 }));
@@ -48,6 +49,7 @@ vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
     owners: testState.owners,
   }),
 }));
+vi.mock("../../zerops/useUsageMates", () => ({ useUsageMates: () => testState.mates }));
 vi.mock("../ui/button", () => ({ Button: "button" }));
 vi.mock("../ui/scroll-area", () => ({ ScrollArea: "div" }));
 vi.mock("../ui/select", () => ({
@@ -80,6 +82,7 @@ vi.mock("./usageProviders", async (importOriginal) => {
 });
 
 import type { UsageEnvironmentIdentity } from "../../zerops/usageEnvironmentIdentities";
+import type { UsageMate } from "../../zerops/useUsageMates";
 import { UsagePage } from "./UsagePage";
 import type { UsageScope } from "./usageDimensions";
 import { readUsagePagePreferences } from "./usagePagePreferences";
@@ -138,6 +141,7 @@ beforeEach(() => {
   testState.breakdown = "time";
   testState.identities = new Map();
   testState.owners = "resolved";
+  testState.mates = [];
   const merged = {
     ...mergeUsage([], USAGE_CONTRACT_VERSION),
     models: modelTotals,
@@ -298,8 +302,7 @@ describe("UsagePage dimensions", () => {
     const markup = renderPage();
 
     expect(breakdownOptions(markup)).toEqual(["Model", "Hour"]);
-    // The page's scope line names Mates on every page; no dimension does here.
-    expect(markup.replace("Only Mates the app is connected to.", "")).not.toContain("Mates");
+    expect(markup).not.toContain("Mates");
     expect(markup).not.toContain("people");
     expect(markup).toContain("expensive-model");
   });
@@ -491,8 +494,34 @@ describe("UsagePage dimensions", () => {
   });
 });
 
-describe("UsagePage scope", () => {
-  it("says it counts only the Mates the app is connected to", () => {
-    expect(renderPage()).toContain("Only Mates the app is connected to.");
+describe("UsagePage Mates", () => {
+  it("names every Mate of the organization it could not count", () => {
+    testState.mates = [
+      { projectId: "p-fern", name: "Fern", state: "missing" },
+      { projectId: "p-juno", name: "Juno", state: "counted" },
+      { projectId: "p-old", name: "Old", state: "missing" },
+    ];
+
+    const markup = renderPage();
+
+    expect(markup).toContain("Not connected, so not counted: Fern, Old.");
+    expect(markup).not.toContain("Juno");
+  });
+
+  it("says nothing of coverage once every Mate is counted", () => {
+    testState.mates = [{ projectId: "p-juno", name: "Juno", state: "counted" }];
+
+    expect(renderPage()).not.toContain("not counted");
+  });
+
+  it("holds the totals while a Mate is still connecting", () => {
+    testState.mates = [
+      { projectId: "p-juno", name: "Juno", state: "counted" },
+      { projectId: "p-lena", name: "Lena", state: "connecting" },
+    ];
+
+    expect(renderPage()).not.toContain("$13.00");
+    testState.mates = [{ projectId: "p-juno", name: "Juno", state: "counted" }];
+    expect(renderPage()).toContain("$13.00");
   });
 });

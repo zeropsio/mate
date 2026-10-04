@@ -95,7 +95,8 @@ session have no parallel fallback owner.
 
 Mate server connections have a separate lifetime from the platform receiver: each
 registered environment owns its authenticated socket and initial shell snapshot while a
-lease holds it — the route, the Mate on screen, the one left last, an action, a Connect —
+lease holds it — the route, the Mate on screen, the one left last, an action, a Connect, the
+Usage page while it stands —
 and is parked with none: its socket closed, its registration, kept session and cached data
 kept (step A, A9). What draws a Mate this tab has not opened reads HQ's overview of it.
 One [environment machine](client-state-model.md#mate-environment-one-per-target-key)
