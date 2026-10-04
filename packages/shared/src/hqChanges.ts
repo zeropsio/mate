@@ -160,6 +160,13 @@ export const RepoListEntry = Schema.Struct({
   name: RepoName,
   mainHead: Schema.NullOr(Sha),
   updatedAt: Instant,
+  /** An optional suggestion, read from bounded root metadata at this exact main head. */
+  releaseVersion: Schema.optionalKey(
+    Schema.Struct({
+      tag: Schema.String,
+      path: Schema.Literals(["VERSION", "package.json"]),
+    }),
+  ),
 });
 export type RepoListEntry = typeof RepoListEntry.Type;
 

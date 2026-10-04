@@ -25,6 +25,7 @@ import * as Scope from "effect/Scope";
 import * as HttpServer from "effect/unstable/http/HttpServer";
 
 import { Backup, directoryStore } from "../../src/backup.ts";
+import { Changes } from "../../src/changes.ts";
 import { coreApp } from "../../src/core.ts";
 import { GitHost } from "../../src/gitHost.ts";
 import { MateOverviews } from "../../src/mateOverviews.ts";
@@ -322,6 +323,7 @@ export const startCore = (
       stop,
       socket,
       gitHost: Context.get(context, GitHost),
+      changes: Context.get(context, Changes),
       overviews: Context.get(context, MateOverviews),
       backup: Context.get(context, Backup),
       storeDir,

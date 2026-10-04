@@ -13,6 +13,7 @@ import {
   nextPatch,
   parseReleaseMessage,
   releaseMessage,
+  releaseTagOfVersion,
 } from "./hqRelease.ts";
 
 const A = "a".repeat(40);
@@ -23,6 +24,15 @@ const read = (schema: Schema.Codec<unknown, unknown>, value: unknown) =>
   Schema.decodeUnknownExit(schema)(value)._tag;
 
 describe("hqRelease", () => {
+  it.each([
+    ["1.0.0", "v1.0.0"],
+    [" v2.0.0\n", "v2.0.0"],
+    ["01.0.0", undefined],
+    ["1.0", undefined],
+    ["1.0.0-beta", undefined],
+  ])("reads a declared or typed version %s", (version, tag) => {
+    expect(releaseTagOfVersion(version)).toBe(tag);
+  });
   it.each([
     ["one service", `api ${A}`, [{ service: "api", sha: A }]],
     [
