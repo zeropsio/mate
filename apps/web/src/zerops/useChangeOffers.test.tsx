@@ -207,20 +207,34 @@ describe("useChangeOffers", () => {
     },
   );
 
-  it("does not manufacture a project grant from an unverified metadata row", () => {
+  it("inherits the Owner org role on listed projects without per-project grants", () => {
     const offers = offersOf({
       roleCode: "OWNER",
       grants: [],
-      unverifiedProjects: ["p-stage"],
+      unverifiedProjects: ["p-mate", "p-stage", "p-prod"],
       placed: true,
     })("app-shop");
     expect(offers).toMatchObject({
       read: true,
       close: true,
-      merge: false,
-      reason: "Project access has not been verified.",
+      merge: true,
     });
   });
+  it.each([true, false])(
+    "D23 offers a project writer recipe and code merges with production %s",
+    (production) => {
+      const offers = offersOf({
+        roleCode: "NO_ACCESS",
+        grants: [{ projectId: "p-stage", roleCode: "BASIC_USER" }],
+        placed: true,
+        gitFixture: !production,
+      });
+      // The offer is application-wide for both repositories.
+      expect(offers("app-shop")).toMatchObject({ merge: true });
+      expect(offers("app-shop")?.reason).toBeUndefined();
+    },
+  );
+
   it("restores the owner's offers when a manual HQ read supplies the structure again", () => {
     const offers = answerOf(
       {
@@ -261,9 +275,9 @@ describe("useChangeOffers", () => {
     ).toBe(false);
   });
 
-  it("explains a missing project grant even after unrelated reads finish", () => {
+  it("gives HQ's refusal when no held facts authorize the application", () => {
     expect(offersOf({ roleCode: "NO_ACCESS", grants: [], placed: true })("app-shop")).toMatchObject(
-      { read: false, merge: false, reason: "Project access has not been verified." },
+      { read: false, merge: false, reason: "You have no access to that project." },
     );
   });
 
@@ -275,10 +289,10 @@ describe("useChangeOffers", () => {
 
   // An inventory still read lists no grant yet: a No access member's Basic user on the stage is
   // not known to be missing.
-  it("explains missing grants without depending on unrelated reads", () => {
+  it("gives the refusal independently of unrelated reads", () => {
     expect(
       offersOf({ roleCode: "NO_ACCESS", grants: [], placed: true, listed: false })("app-shop"),
-    ).toMatchObject({ read: false, reason: "Project access has not been verified." });
+    ).toMatchObject({ read: false, reason: "You have no access to that project." });
   });
 });
 

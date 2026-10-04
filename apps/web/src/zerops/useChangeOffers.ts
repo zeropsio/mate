@@ -7,6 +7,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   changeOffers,
+  changeMergePermission,
   mayOffer,
   offerAsker,
   releasePermission,
@@ -22,16 +23,25 @@ import { useZeropsSessionOptional } from "./sessionContext";
 
 export type ZeropsChangeOffers = ReturnType<typeof changeOffers> & {
   readonly reason?: string;
+  readonly again?: (() => void) | undefined;
 };
 
 /**
  * An application's offers by its id; `undefined` while HQ has not said where it places the
- * projects. Missing project grants refuse visibly; held facts authorize while services load.
+ * projects. Listed identities retain the organization role; held grants authorize while services load.
  */
 export type ZeropsChangeOffersOf = (appId: string) => ZeropsChangeOffers | undefined;
 
 /** Who asks, by the session's membership and the projects the inventory lists; `undefined` before. */
-function useOfferAsker() {
+type OfferProject = {
+  readonly id: string;
+  readonly userRoles?:
+    | ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>
+    | undefined;
+};
+const NO_PROJECTS: ReadonlyArray<OfferProject> = [];
+
+function useOfferAsker(verified: ReadonlyArray<OfferProject> = NO_PROJECTS) {
   const session = useZeropsSessionOptional();
   const inventory = useContext(InventoryContext);
   const user = session?.user;
@@ -42,35 +52,28 @@ function useOfferAsker() {
     () =>
       projects === undefined
         ? undefined
-        : offerAsker(
-            sessionOfferViewer(user, organization),
-            projects.filter((project) => project.userRoles !== undefined),
-          ),
-    [organization, projects, user],
+        : offerAsker(sessionOfferViewer(user, organization), [
+            ...new Map([...projects, ...verified].map((project) => [project.id, project])).values(),
+          ]),
+    [organization, projects, user, verified],
   );
 }
 
-export function useChangeOffers(): ZeropsChangeOffersOf {
+export function useChangeOffers(
+  verified: ReadonlyArray<OfferProject> = NO_PROJECTS,
+): ZeropsChangeOffersOf {
   const placements = useAtomValue(hqPlacementsAtom);
-  const asker = useOfferAsker();
-  const inventory = useContext(InventoryContext);
+  const asker = useOfferAsker(verified);
   return useCallback(
     (appId) => {
       if (asker === undefined || placements === null) return undefined;
       const offers = changeOffers(asker, placements, appId);
-      // Held facts authorize each verb independently; missing project grants explain refusals.
-      const projectFactsKnown = [...placements].every(
-        ([projectId, placed]) =>
-          placed.appId !== appId ||
-          inventory?.projects.some(
-            (project) => project.id === projectId && project.userRoles !== undefined,
-          ),
-      );
-      return !projectFactsKnown && Object.values(offers).some((offered) => !offered)
-        ? { ...offers, reason: "Project access has not been verified." }
+      const decision = changeMergePermission(asker, placements, appId);
+      return decision?.allowed === false
+        ? { ...offers, reason: hqRefusalWords({ code: "forbidden", reason: decision.reason }) }
         : offers;
     },
-    [asker, inventory?.projects, placements],
+    [asker, placements],
   );
 }
 

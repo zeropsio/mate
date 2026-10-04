@@ -113,10 +113,29 @@ export function changeOffers(
   return {
     read: mayOffer(asker, "read_change", { projectIds }),
     comment: mayOffer(asker, "comment_change", { projectIds }),
-    merge: mayOffer(asker, "merge_change", { projectIds }),
+    merge: changeMergePermission(asker, placements, appId)?.allowed === true,
     close: mayOffer(asker, "close_change", { projectIds }),
     redeploy: mayOffer(asker, "redeploy", { projectIds }),
   };
+}
+
+/** Code and recipe merges use the application's write rights (SPEC D23). */
+export function changeMergePermission(
+  asker: OfferAsker | null,
+  placements: ReadonlyMap<string, HqPlacement>,
+  appId: string,
+): { readonly allowed: true } | { readonly allowed: false; readonly reason: Reason } | undefined {
+  if (asker === null) return undefined;
+  const projectIds = [...placements]
+    .filter(([, placed]) => placed.appId === appId)
+    .map(([id]) => id);
+  const decision = can(
+    asker.principal,
+    "merge_change",
+    { projectIds },
+    asker.facts as unknown as FactsFor<"merge_change">,
+  );
+  return decision.allow ? { allowed: true } : { allowed: false, reason: decision.reason };
 }
 
 /**
