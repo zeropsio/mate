@@ -268,6 +268,20 @@ export function thoughtRunText(text: string): string {
 }
 
 /**
+ * A note as the card says it: one that ends on a colon announced what its
+ * next step shows — "Committing:", "Full error output:" — and said alone it
+ * points at nothing, so the colon goes once the note is whole (Bodhi). A
+ * colon inside, or closing a code block, stays.
+ */
+export function noteText(text: string, streaming: boolean): string {
+  if (streaming) return text;
+  const whole = text.trimEnd();
+  return whole.endsWith(":") && !whole.endsWith("::") && !/```[^`]*$/u.test(whole)
+    ? whole.slice(0, -1)
+    : text;
+}
+
+/**
  * The latest of a thought the Mate is thinking, for the now line's one muted
  * line: the last sentence of its last paragraph, however far it got.
  */

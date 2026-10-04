@@ -169,6 +169,7 @@ import {
   nowLineFace,
   nowLineOf,
   nowLineWords,
+  noteText,
   operationNowWords,
   reachesEarlier,
   runCardShows,
@@ -972,7 +973,7 @@ function NoteWords({ message }: { readonly message: ChatMessage }) {
         onOpenImage={ctx.onImageExpand}
         onRunShellCommand={ctx.onRunShellCommand}
         skills={ctx.skills}
-        text={message.text}
+        text={noteText(message.text, Boolean(message.streaming))}
         threadRef={ctx.threadRef ?? undefined}
       />
     </ChangeChipMomentContext>

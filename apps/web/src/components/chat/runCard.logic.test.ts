@@ -34,6 +34,7 @@ import {
   thoughtRunText,
   thoughtTicker,
   workedWords,
+  noteText,
 } from "./runCard.logic";
 import { stepOf } from "./workSteps.logic";
 
@@ -1076,5 +1077,20 @@ describe("runCardShows — where a run's work stands, and what its line offers",
     },
   ] as const)("$name", ({ settled, fold, work, toggle }) => {
     expect(runCardShows(settled, fold)).toEqual({ work, toggle });
+  });
+});
+
+// Bodhi: notes ended on "Committing:", "Full error output:", "Screenshot of
+// the tab:" with nothing after them — what they announced is the next step.
+describe("noteText", () => {
+  it.each([
+    ["Committing:", false, "Committing"],
+    ["Full error output:\n", false, "Full error output"],
+    ["Here is the plan:\n\n1. Build", false, "Here is the plan:\n\n1. Build"],
+    ["Ratio 3:2 holds.", false, "Ratio 3:2 holds."],
+    ["Committing:", true, "Committing:"],
+    ["```yaml\nkey:\n```", false, "```yaml\nkey:\n```"],
+  ])("%j (streaming %j) reads %j", (text, streaming, expected) => {
+    expect(noteText(text, streaming)).toBe(expected);
   });
 });
