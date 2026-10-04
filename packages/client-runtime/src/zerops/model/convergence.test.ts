@@ -51,11 +51,8 @@ function normalize(model: ZeropsThreadModel) {
   };
 }
 
-/** No stored thread holds a triggered build, so the clock never moves a card here. */
-const NOW_MS = Date.parse("2026-09-23T00:00:00.000Z");
-
 function derive(activities: ReadonlyArray<OrchestrationThreadActivity>) {
-  return normalize(deriveZeropsThreadModel({ activities, runningTurnId: null, nowMs: NOW_MS }));
+  return normalize(deriveZeropsThreadModel({ activities, runningTurnId: null }));
 }
 
 /**

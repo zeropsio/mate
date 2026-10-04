@@ -199,6 +199,10 @@
       "types": "./src/zerops/activity/buildLog.ts",
       "default": "./src/zerops/activity/buildLog.ts"
     },
+    "./zerops/activity/deployBuild": {
+      "types": "./src/zerops/activity/deployBuild.ts",
+      "default": "./src/zerops/activity/deployBuild.ts"
+    },
     "./zerops/activity/dto": {
       "types": "./src/zerops/activity/dto.ts",
       "default": "./src/zerops/activity/dto.ts"

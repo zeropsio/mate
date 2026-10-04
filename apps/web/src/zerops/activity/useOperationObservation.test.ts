@@ -232,6 +232,20 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
     ]);
   });
 
+  // A running one its result named — a build zcp stopped following — is read by that handle until
+  // it ends: its card's phase is the build's answer, never the ceiling's.
+  it("keeps reading a running one its result named past the ceiling", () => {
+    const result = deriveOperationObservation(
+      baseInput({
+        target: target({ running: true, exact: { appVersionId: "av-7" } }),
+        snapshot: snapshotOf([BUILDING], NOW + 1_000, true),
+      }),
+      PAST,
+    );
+    expect(result.state.kind).toBe("observing");
+    expect(result.wantsPoll).toBe(true);
+  });
+
   it("stops polling past the ceiling", () => {
     const result = deriveOperationObservation(
       baseInput(),

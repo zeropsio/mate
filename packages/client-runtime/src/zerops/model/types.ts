@@ -88,8 +88,8 @@ export type ZeropsOperationKind =
  * (the bug §2.6 fixes with one `phaseFor`). `interrupted` and `reset` never
  * come from `phaseFor` alone — `interrupted` mirrors an orphaned call's own
  * status, `reset` is a bootstrap session's own closure (§2.3 R7). `uncertain`
- * is a deploy whose triggered build reported nothing by its cap
- * (`builders/deploy.ts`): nothing in the thread will settle it any more.
+ * is a deploy whose triggered build cannot be read — its result named none, or
+ * the platform cannot be asked about it (`builders/deploy.ts`).
  */
 export type ZeropsOperationPhase =
   | "running"

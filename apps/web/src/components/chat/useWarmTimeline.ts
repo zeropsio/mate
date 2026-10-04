@@ -36,7 +36,7 @@ import {
   useZeropsConversationLandings,
 } from "../../zerops/useZeropsChangeLandedEvents";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
-import { useNowMs } from "../../zerops/useNowMs";
+import { useDeployBuilds, useRunningBuildDemand } from "../../zerops/activity/useDeployBuilds";
 import { deriveDock, foldBackgroundTasks, latestUsagePause } from "./conversationDock.logic";
 import { readTimelinePosition } from "./timelineScrollAnchoring";
 import { crewChatEntries } from "../zerops/crew/crewChatSeams";
@@ -100,11 +100,12 @@ export function useWarmTimeline(
     (session?.status === "running" ? session.activeTurnId : null) ??
     (latestTurn?.state === "running" ? latestTurn.turnId : null);
   const lifecycle = useZeropsLifecycle(environmentId, threadId);
-  const nowMs = useNowMs();
+  const { builds, projectId } = useDeployBuilds(lifecycle);
   const zerops = useMemo(
-    () => deriveZeropsThreadModel({ activities, lifecycle, runningTurnId, nowMs }),
-    [activities, lifecycle, runningTurnId, nowMs],
+    () => deriveZeropsThreadModel({ activities, lifecycle, runningTurnId, builds }),
+    [activities, lifecycle, runningTurnId, builds],
   );
+  useRunningBuildDemand(projectId, zerops.running);
   const zeropsActivityIds = zerops.zeropsActivityIds;
   const zeropsEntries = zerops.entries;
   const workLog = useMemo(
