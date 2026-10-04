@@ -1244,3 +1244,80 @@ it.live("a restart after a finished run carries a died turn on: a finished run h
       }),
   ]),
 );
+
+const landedCopy = (world: CrewWorld) =>
+  Effect.gen(function* () {
+    yield* readyTask(world);
+    const [task] = yield* (yield* CrewStore).assignments(CREW_ID);
+    yield* command({ _tag: "land", taskId: task!.assignment });
+    yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "landed");
+    // Your tree moves on past the landing.
+    write(world.root, "person.txt", "person\n");
+    git(world.root, ["add", "-A"]);
+    git(world.root, ["commit", "-q", "-m", "person"]);
+    return { head: git(world.root, ["rev-parse", "HEAD"]), task: task! };
+  });
+
+const interruptedDispatch = (
+  world: CrewWorld,
+  task: { readonly assignment: string; readonly attempt: number },
+  result: unknown,
+) =>
+  Effect.flatMap(CrewStore, (store) =>
+    store.putOperation({
+      id: "cut-prepare",
+      crew: CREW_ID,
+      handle: "backend",
+      taskId: task.assignment,
+      kind: "dispatch",
+      stage: "preparing-copy",
+      confirmedStage: "opening-conversation",
+      status: "running",
+      startedBy: "user-karel",
+      resumeState: "queued",
+      targets: {
+        host: "appdev",
+        path: NodePath.join(world.root, ".crew/backend"),
+        ref: "refs/heads/crew/backend",
+        threadId: null,
+        commandId: null,
+        attempt: task.attempt,
+      },
+      result,
+      detail: null,
+      startedAt: "2026-10-03T10:00:00.000Z",
+      updatedAt: "2026-10-03T10:00:00.000Z",
+    }),
+  );
+
+for (const [title, recorded, parked] of [
+  ["its own dispatch's reset, to the target it recorded, is adopted", true, false],
+  ["a reset to your tree no dispatch recorded is not the engine's: the copy parks", false, true],
+] as const) {
+  it.live(title, () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          const { head, task } = yield* landedCopy(world);
+          yield* interruptedDispatch(world, task, recorded ? { resetTo: head } : null);
+          git(NodePath.join(world.root, ".crew/backend"), ["reset", "-q", "--hard", head]);
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* (yield* ServerCommandReadiness).complete;
+          const head = git(world.root, ["rev-parse", "HEAD"]);
+          yield* eventually(
+            Effect.map((yield* CrewStore).getLane(CREW_ID, "backend"), (row) => {
+              const lane = Option.getOrThrow(row);
+              return lane.state === "parked" || lane.recordedTip === head;
+            }).pipe(Effect.orElseSucceed(() => false)),
+          );
+          const lane = Option.getOrThrow(yield* (yield* CrewStore).getLane(CREW_ID, "backend"));
+          assert.deepStrictEqual(
+            [lane.state === "parked", lane.recordedTip === git(world.root, ["rev-parse", "HEAD"])],
+            [parked, !parked],
+          );
+        }),
+    ]),
+  );
+}

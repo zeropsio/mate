@@ -529,7 +529,11 @@ export const startTask = (
         core,
         owned.id,
         "preparing-copy",
-        asRefusal(core.workspace.prepareDispatch(key)),
+        asRefusal(
+          core.workspace.prepareDispatch(key, (target) =>
+            updateOperation(core, owned.id, { result: { resetTo: target } }).pipe(Effect.orDie),
+          ),
+        ),
       );
       switch (prepared._tag) {
         case "dirty":

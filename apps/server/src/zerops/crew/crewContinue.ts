@@ -103,6 +103,10 @@ export const adoptOwnWrites = (
         core.workspace.adopt(key, {
           operation: operation.id,
           landed: operation.kind === "landing" ? landed : undefined,
+          resetTo:
+            operation.kind === "dispatch" && operation.stage === "preparing-copy"
+              ? Option.getOrUndefined(readResetTo(operation.result))?.resetTo
+              : undefined,
         }),
       );
       if (outcome._tag === "adopted") return;
@@ -110,6 +114,7 @@ export const adoptOwnWrites = (
   });
 
 const readPendingTurn = Schema.decodeUnknownOption(Schema.Struct({ turn: Schema.String }));
+const readResetTo = Schema.decodeUnknownOption(Schema.Struct({ resetTo: Schema.String }));
 
 /**
  * The words a resumed turn carries, by the stage its dispatch confirmed: a
