@@ -535,7 +535,9 @@ export function projectTopologySnapshotFromRead(
   historyByService: ReadonlyMap<string, HistoryReadView> = EMPTY_HISTORY_READS,
 ): ProjectTopologySnapshot {
   const required = topology.observation.required;
-  const failed = required.find((interest) => interest.status === "failed");
+  const failed = [...required, ...topology.observation.optional].find(
+    (interest) => interest.status === "failed",
+  );
   const liveness: ProjectTopologyLiveness =
     required.length > 0 && required.every((interest) => interest.status === "observing")
       ? "live"

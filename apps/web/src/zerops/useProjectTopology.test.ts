@@ -6,6 +6,7 @@ import {
   makeInitialZeropsDataState,
   processRecordToActivityProcess,
   projectKeyOf,
+  interestKeyOf,
   reduceZeropsDataState,
   type HistoryReadView,
   type ManagedZeropsDataRuntime,
@@ -26,6 +27,7 @@ import {
   zeropsInventoryAtom,
   type EnvironmentProjects,
   type ProjectTopologySnapshot,
+  PROJECT_HISTORY_WINDOW,
 } from "../state/zerops";
 import type { InventoryProjection } from "./inventoryContext";
 import {
@@ -121,7 +123,36 @@ function pushedRuntime(overrides: Partial<ZeropsDataReads> = {}) {
     release();
     registry.dispose();
   };
-  return { registry, pushProject, pushServices, snapshots, close };
+  const failMetrics = (kind: "project-current-metrics" | "project-metric-history") => {
+    const descriptor =
+      kind === "project-current-metrics"
+        ? { kind, project: owner }
+        : { kind, project: owner, window: PROJECT_HISTORY_WINDOW };
+    const id = { ...identity(), key: interestKeyOf(descriptor) };
+    registry.set(
+      stateAtom,
+      reduceZeropsDataState(
+        registry.get(stateAtom),
+        {
+          kind: "interest-upserted",
+          interest: {
+            ...desiredInterest(id, 0, false),
+            descriptor,
+            interest: {
+              status: "failed",
+              identity: id,
+              reason: "Metrics unavailable. Try again.",
+              attempts: 1,
+              retryable: true,
+              retryAtMs: null,
+            },
+          },
+        },
+        DEFAULT_ZEROPS_DATA_POLICY,
+      ).state,
+    );
+  };
+  return { registry, pushProject, pushServices, failMetrics, snapshots, close };
 }
 
 const APP = {
@@ -135,6 +166,19 @@ const APP = {
 };
 
 describe("the derived topology", () => {
+  it.each(["project-current-metrics", "project-metric-history"] as const)(
+    "shows %s failure while keeping the topology",
+    (kind) => {
+      const runtime = pushedRuntime();
+      runtime.pushProject();
+      runtime.pushServices([]);
+      runtime.failMetrics(kind);
+      expect(runtime.snapshots.at(-1)?.error).toBe("Metrics unavailable. Try again.");
+      expect(runtime.snapshots.at(-1)?.view?.project.name).toBe("acme-docs-dev");
+      runtime.close();
+    },
+  );
+
   it("the topology view updates from a pushed facet with no writer", () => {
     const runtime = pushedRuntime();
 

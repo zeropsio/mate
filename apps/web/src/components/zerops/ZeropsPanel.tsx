@@ -29,6 +29,7 @@ import { useState } from "react";
 
 import { cn } from "~/lib/utils";
 
+import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
 import { crewPortOwners } from "@t3tools/client-runtime/zerops/projections/crew";
@@ -55,12 +56,14 @@ import { MicroLabel } from "./primitives";
 
 export function ZeropsPanel({
   threadRef,
+  visible = true,
   agentAuthCard,
   agentAuthUnknown = null,
   agentAuthSnapshot,
   runningToolLabel,
 }: {
   readonly threadRef: ScopedThreadRef | null;
+  readonly visible?: boolean;
   readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
   /** While the agent-auth feed has no snapshot: that it is checking, or why the read failed. */
   readonly agentAuthUnknown?: KnownMessage | null;
@@ -68,7 +71,7 @@ export function ZeropsPanel({
   /** The caller's own reading of `ZeropsThreadModel.running` (`ChatView`) — the map never derives this itself. */
   readonly runningToolLabel?: string | undefined;
 }) {
-  const topology = useProjectTopology(threadRef?.environmentId ?? null);
+  const topology = useProjectTopology(threadRef?.environmentId ?? null, { metrics: visible });
   const lifecycle = useZeropsLifecycle(
     threadRef?.environmentId ?? null,
     threadRef?.threadId ?? null,
@@ -247,6 +250,13 @@ export function ZeropsPanel({
       <ScrollArea className="h-full">
         <div className="mx-auto w-full max-w-3xl space-y-5 p-4" data-zerops-project-panel>
           {body}
+          {topology.error === undefined ? null : (
+            <div>
+              <Button variant="outline" size="sm" onClick={topology.again}>
+                Try again
+              </Button>
+            </div>
+          )}
           {agents === null || hasCurrentControlPlane ? null : (
             <section className="space-y-2" data-zerops-agent-auth-tray>
               <MicroLabel>Coding agents</MicroLabel>
