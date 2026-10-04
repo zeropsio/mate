@@ -1,16 +1,18 @@
 /**
  * The organization's HQ at the projects page's end (SPEC §3.1, §4): its state and what it holds,
- * for everybody; for an owner or an admin, what is wrong with it, its update, and — opened — the
- * Core it runs, its last backup and its services in Zerops (`ZeropsHqCard.logic.ts`).
+ * for everybody; for an owner or an admin, the day of the Core it runs, its last backup, what is
+ * wrong with it, its update, and — opened — that Core whole and its services in Zerops
+ * (`ZeropsHqCard.logic.ts`).
  *
- * Everything it shows comes from reads already made — HQ's health every 30 s, the inventory's
- * services, HQ's structure stream — but one: an admin opening it reads HQ's builds from Zerops
- * once, so an update another started, or one that failed, is told. Nothing is read again while it
+ * Everything it shows comes from reads already made — HQ's health every 30 s, HQ's structure
+ * stream — but one: an admin opening it reads HQ's project from Zerops once, its services and its
+ * builds, as HQ's update does. The projects page holds no read of HQ's project — it draws none of
+ * its stops — so its inventory has none of HQ's services. Nothing is read again while the card
  * stays open, and a read that failed says so.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
-import { canWriteRegistry } from "@t3tools/client-runtime/zerops";
+import { canWriteRegistry, type ZeropsService } from "@t3tools/client-runtime/zerops";
 import { HQ_SERVICE, hqUpdateState } from "@t3tools/client-runtime/zerops/hq";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { Atom } from "effect/unstable/reactivity";
@@ -22,7 +24,6 @@ import { cn } from "~/lib/utils";
 import { hqMatesViewAtom, hqStructureAtom } from "~/state/zerops";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { useAccountHq, useCarriedCoreBuild, useHqStanding } from "~/zerops/accountHq";
-import { useZeropsInventory } from "~/zerops/inventoryContext";
 import { sessionOfferViewer } from "~/zerops/offerViewer";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -48,10 +49,14 @@ const hqOnlineMatesAtom = Atom.family((organizationId: string) =>
   }).pipe(Atom.withLabel(`zerops:hq-online-mates:${organizationId}`)),
 );
 
-/** HQ's builds as the opened card read them, before they are weighed against its services. */
-type BuildsRead =
+/** HQ's project as the opened card read it from Zerops: its services and its builds. */
+type HqRead =
   | { readonly kind: "reading" }
-  | { readonly kind: "read"; readonly processes: ReadonlyArray<ActivityProcess> }
+  | {
+      readonly kind: "read";
+      readonly services: ReadonlyArray<ZeropsService>;
+      readonly processes: ReadonlyArray<ActivityProcess>;
+    }
   | { readonly kind: "failed"; readonly reason: string };
 
 export function ZeropsHqCard() {
@@ -62,9 +67,6 @@ export function ZeropsHqCard() {
   const standing = useHqStanding(hq?.address);
   const carried = useCarriedCoreBuild();
   const admin = canWriteRegistry(sessionOfferViewer(user, activeOrganization ?? null));
-  const outcome = useZeropsInventory().services.get(hq?.projectId ?? "");
-  const services = outcome?.status === "resolved" ? outcome.services : undefined;
-  const service = services?.find((entry) => entry.name === HQ_SERVICE);
   const structureView = useAtomValue(hqStructureAtom);
   const structure =
     structureView !== null && structureView.organizationId === organizationId
@@ -74,26 +76,28 @@ export function ZeropsHqCard() {
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
-  const [builds, setBuilds] = useState<BuildsRead | undefined>(undefined);
-  /** The newest read of HQ's builds: an older one's answer lands nowhere. */
+  const [project, setProject] = useState<HqRead | undefined>(undefined);
+  /** The newest read of HQ's project: an older one's answer lands nowhere. */
   const reading = useRef<object | null>(null);
 
-  // HQ's builds say something only beside its `hq` service and the Core this app carries.
-  const projectId = service === undefined || carried === undefined ? undefined : hq?.projectId;
+  const projectId = hq?.projectId;
   const openCard = useCallback(
     (next: boolean) => {
       setOpen(next);
       if (!next || projectId === undefined) return;
       const read = {};
       reading.current = read;
-      setBuilds({ kind: "reading" });
-      void client.listProjectProcesses(projectId).then(
-        (processes) => {
-          if (reading.current === read) setBuilds({ kind: "read", processes });
+      setProject({ kind: "reading" });
+      void Promise.all([
+        client.listProjectServices(projectId),
+        client.listProjectProcesses(projectId),
+      ]).then(
+        ([services, processes]) => {
+          if (reading.current === read) setProject({ kind: "read", services, processes });
         },
         (cause: unknown) => {
           if (reading.current !== read) return;
-          setBuilds({
+          setProject({
             kind: "failed",
             reason:
               cause instanceof Error && cause.message.length > 0
@@ -105,20 +109,23 @@ export function ZeropsHqCard() {
     },
     [client, projectId],
   );
-  // An update pressed here that ended leaves the builds read before it behind: they say nothing
+  // An update pressed here that ended leaves the project read before it behind: it says nothing
   // more until the card is opened again.
   const onBusy = useCallback((busy: boolean) => {
     setUpdating(busy);
     if (!busy) {
       reading.current = null;
-      setBuilds(undefined);
+      setProject(undefined);
     }
   }, []);
 
   if (hq === undefined) return null;
+  const services = project?.kind === "read" ? project.services : undefined;
+  // HQ's builds say something only beside its `hq` service and the Core this app carries.
+  const service = services?.find((entry) => entry.name === HQ_SERVICE);
   const update: HqCardUpdateRead | undefined =
-    builds === undefined || builds.kind !== "read"
-      ? builds
+    project === undefined || project.kind !== "read"
+      ? project
       : service === undefined || carried === undefined
         ? undefined
         : {
@@ -126,7 +133,7 @@ export function ZeropsHqCard() {
             // Weighed against the Core HQ answers with now: a new answer needs no new read.
             state: hqUpdateState({
               service,
-              processes: builds.processes,
+              processes: project.processes,
               carried,
               answering:
                 standing.kind === "healthy" || standing.kind === "unchecked"
@@ -224,7 +231,13 @@ export function ZeropsHqCardView({
         {view.state === null ? null : (
           <StatusDot label={view.state.word} sentence tone={view.state.tone} />
         )}
-        {view.counts === null ? null : <span className="text-muted-foreground">{view.counts}</span>}
+        {[view.coreDay, view.backup, view.counts].map((fact) =>
+          fact === null ? null : (
+            <span className="text-muted-foreground" key={fact}>
+              {fact}
+            </span>
+          ),
+        )}
         {update}
       </div>
       {view.troubles.length === 0 ? null : (
@@ -244,11 +257,6 @@ export function ZeropsHqCardView({
               {view.coreNote === null ? null : (
                 <span className="text-muted-foreground">{view.coreNote}</span>
               )}
-            </DetailRow>
-          )}
-          {view.backup === null ? null : (
-            <DetailRow label="Backup">
-              <span>{view.backup}</span>
             </DetailRow>
           )}
           {view.services.length === 0 ? null : (

@@ -253,7 +253,7 @@ describe("hqCardView — what HQ holds", () => {
   });
 });
 
-describe("hqCardView — the Core HQ runs and its backup, opened", () => {
+describe("hqCardView — the Core HQ runs and its last backup", () => {
   it.each<[string, Partial<HqCardInput>, Pick<ReturnType<typeof hqCardView>, "core" | "backup">]>([
     [
       "an admin's, the newest backup kept",
@@ -324,7 +324,7 @@ describe("hqCardView — HQ's builds, as the opened card read them", () => {
       "a read that failed",
       { update: { kind: "failed", reason: "Zerops could not be reached." } },
       {
-        coreNote: "Couldn't read HQ's builds from Zerops: Zerops could not be reached.",
+        coreNote: "Couldn't read HQ from Zerops: Zerops could not be reached.",
         troubles: [],
       },
     ],
@@ -362,5 +362,23 @@ describe("hqCardView — whether the card opens", () => {
     ["a developer's: the line and what HQ holds", { admin: false }, false],
   ])("%s", (_name, overrides, opens) => {
     expect(hqCardView(input(overrides)).opens).toBe(opens);
+  });
+});
+
+describe("hqCardView — the Core on the header line, the day it was committed", () => {
+  const runs = (build: string) =>
+    ({ standing: { kind: "healthy", build, parts: { quarantined: [] } } }) as Partial<HqCardInput>;
+  it.each<[string, Partial<HqCardInput>, string | null]>([
+    ["an admin's", {}, "Core 2026-10-03"],
+    [
+      "an admin's, a legacy stamp",
+      runs("b6e65699e0.20261003T120000"),
+      "Core b6e65699e0.20261003T120000",
+    ],
+    ["an admin's, a Core HQ names no build of", runs(""), null],
+    ["an admin's, HQ not answering", { standing: { kind: "unavailable", since: 7 } }, null],
+    ["a developer's", { admin: false }, null],
+  ])("%s", (_name, overrides, coreDay) => {
+    expect(hqCardView(input(overrides)).coreDay).toBe(coreDay);
   });
 });

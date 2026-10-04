@@ -51,11 +51,21 @@ describe("ZeropsHqCardView — its state", () => {
     expect(html).not.toContain('data-zerops-primitive="status-dot"');
   });
 
-  it("is healthy, with what HQ holds and its update on the line", () => {
-    const html = card({ structure: LINKS, online: 1 });
+  it("is healthy, with its Core's day, its last backup, what HQ holds and its update on the line", () => {
+    const html = card({
+      standing: {
+        kind: "healthy",
+        build: RUNS,
+        parts: { quarantined: [], backup: { state: "ok", takenAt: 42 } },
+      },
+      structure: LINKS,
+      online: 1,
+    });
     expect(html).toContain('data-hq-state="healthy"');
     expect(html).toContain('data-zerops-status-tone="ok"');
     expect(html).toContain("Healthy");
+    expect(html).toContain(">Core 2026-10-03<");
+    expect(html).toContain(">Last backup t42<");
     expect(html).toContain("1 project · 1 Mate · 1 online");
     expect(html).toContain('data-test-update="true"');
     expect(html).not.toContain("data-hq-trouble");
@@ -164,7 +174,7 @@ describe("ZeropsHqCardView — who reads what", () => {
 });
 
 describe("ZeropsHqCardView — opened", () => {
-  it("holds the Core HQ runs, its last backup, its services and the way to it in Zerops", () => {
+  it("holds the Core HQ runs, its services and the way to it in Zerops; its backup stays on the line", () => {
     const html = card(
       {
         standing: {
@@ -181,7 +191,7 @@ describe("ZeropsHqCardView — opened", () => {
     );
     expect(html).toContain('aria-expanded="true"');
     expect(html).toContain("Core 2026-10-03 08:05 UTC · ba9876543210");
-    expect(html).toContain("Last backup t42");
+    expect(html.split("Last backup t42")).toHaveLength(2);
     expect(html).toContain("hq · Active");
     expect(html).toContain("db · Active");
     expect(html).toContain(
