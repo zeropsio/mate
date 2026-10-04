@@ -2640,7 +2640,126 @@ describe("ClaudeAdapterLive", () => {
           assert.ok(events.indexOf(close) > turnEndAt);
         },
       },
+      {
+        name: "a helper's call before its helper is known is still a helper's, never the Mate's",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-early", name: "Bash", input: { command: "npm test" } },
+          ]),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          returned(null, "toolu_agent_a", "Async agent launched successfully."),
+          turnEnd,
+          returned("toolu_agent_a", "tool-early", "4 passing"),
+        ],
+        check: (events) => {
+          // Tagged with its launch until the helper is known by its task.
+          assert.deepStrictEqual(
+            callsOf(events, "item.started").find((call) => call.id === "tool-early"),
+            { id: "tool-early", agentId: "toolu_agent_a", parent: "toolu_agent_a" },
+          );
+          assert.deepStrictEqual(
+            callsOf(events, "item.updated").filter((call) => call.id === "tool-early"),
+            [],
+          );
+          // Its result completes it, after the Mate's turn ended: never closed as unreturned.
+          const closes = events.flatMap((event) =>
+            event.type === "item.completed" && String(event.itemId) === "tool-early" ? [event] : [],
+          );
+          assert.equal(closes.length, 1);
+          assert.equal(closes[0]?.payload.unreturned, undefined);
+        },
+      },
+      {
+        name: "a helper's helper launched before its parent is known names the parent's task",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          helperCalls("toolu_agent_a", [
+            { id: "toolu_agent_b", name: "Agent", input: { description: "Read the logs" } },
+          ]),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          started("task-b", "toolu_agent_b", "local_agent"),
+          turnEnd,
+        ],
+        check: (events) => {
+          assert.equal(tasksOf(events).find((task) => task.taskId === "task-b")?.agentId, "task-a");
+        },
+      },
+      {
+        name: "a helper's end by a status patch closes its calls",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h4", name: "Bash", input: { command: "sleep 600" } },
+          ]),
+          {
+            type: "system",
+            subtype: "task_updated",
+            task_id: "task-a",
+            patch: { status: "killed", end_time: 1_791_098_296_585 },
+            uuid: "patched-task-a",
+            session_id: SESSION,
+          } as unknown as SDKMessage,
+        ],
+        check: (events) => {
+          const close = events.find(
+            (event) => event.type === "item.completed" && String(event.itemId) === "tool-h4",
+          );
+          assert.equal(close?.type === "item.completed" ? close.payload.agentId : null, "task-a");
+        },
+      },
     ];
+
+    it.effect("a stop while a helper works closes the calls it left open", () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const beforeFiber = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil(
+            (event) => event.type === "task.completed" && event.payload.taskId === "task-sync",
+          ),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        const session = yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        });
+        yield* adapter.sendTurn({ threadId: session.threadId, input: "delegate", attachments: [] });
+        for (const message of [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          returned(null, "toolu_agent_a", "Async agent launched successfully."),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h5", name: "Bash", input: { command: "sleep 600" } },
+          ]),
+          turnEnd,
+          notified("task-sync", "toolu_sync", "sync"),
+        ]) {
+          harness.query.emit(message);
+        }
+        const before = Array.from(yield* Fiber.join(beforeFiber));
+        // The Mate idle, its helper at work: then the session stops.
+        const afterFiber = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil((event) => event.type === "task.completed"),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
+        yield* adapter.stopSession(session.threadId);
+        const events = [...before, ...Array.from(yield* Fiber.join(afterFiber))];
+        const closes = events.filter(
+          (event) => event.type === "item.completed" && String(event.itemId) === "tool-h5",
+        );
+        assert.equal(closes.length, 1);
+        const close = closes[0]!;
+        assert.equal(close.type === "item.completed" ? close.payload.agentId : null, "task-a");
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    });
 
     for (const { name, messages, check } of cases) {
       it.effect(name, () => {
