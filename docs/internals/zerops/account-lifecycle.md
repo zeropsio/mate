@@ -24,6 +24,17 @@ branches, including duplicated tabs; a reload resumes the tab's preceding branch
 start from the account's latest saved draft without overwriting the original. These preferences are
 local to the browser, not synchronized between devices.
 
+Project activity for deployment projections shares the account environment's active detail demand
+(route, screen, or explicit action). A cached sidebar row does not hold a project receiver. This
+keeps navigation from exhausting the data runtime's receiver budget before a cold Mate opens.
+A refused inventory acquisition is retained as a visible failure until manual **Again**, or until
+that project's demand ends. It is not retried by a timer.
+
+The hosted web and desktop wrapper use this presentation. Mobile has no global project-flow
+provider and therefore no corresponding background receiver sweep; its retained source uses the
+same shared acquisition state. Native presentation of that refusal is deferred while mobile is
+unreleased by this fork.
+
 ## Restoration and convergence
 
 Only stable project/service targets remembered by the same account can reconnect automatically.

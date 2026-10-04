@@ -11,6 +11,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
+import * as Scope from "effect/Scope";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { EnvironmentId } from "@t3tools/contracts";
 
@@ -1421,6 +1422,55 @@ describe("the post-grant stage's Mate environments", () => {
     yield* settle;
     return { ...opened, environments: stage.environments };
   });
+
+  it.effect("a refused cold route read ends visibly and waits for manual Again", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const opened = yield* openAccount([], [A_MATE], undefined, undefined, {
+          hqIndex: {
+            projectOf: (id) => (id === ENV_A ? A_MATE.projectId : null),
+            subscribe: () => () => undefined,
+          },
+        });
+        const background = yield* Scope.make();
+        yield* opened.built.data.acquire({ kind: "organization-inventory", organization });
+        for (let i = 0; i < 15; i++) {
+          yield* opened.built.data
+            .acquire({ kind: "project-activity", project: project(`background-${i}`) })
+            .pipe(Effect.provideService(Scope.Scope, background));
+        }
+        yield* opened.grant.answer();
+        yield* settle;
+        const { environments } = yield* opened.built.postGrant;
+        environments.setActiveOrganization(organization.organizationId);
+        environments.setRoute(ENV_A);
+        yield* settle;
+        const failure = environments.detailFailure(A_MATE.projectId);
+        expect(failure).toMatchObject({ reason: "account-capacity" });
+        expect(opened.rig.exchanges).toEqual([]);
+        yield* opened.clock.advance(10 * SECOND);
+        yield* settle;
+        expect(environments.detailFailure(A_MATE.projectId)).toBe(failure);
+        yield* Scope.close(background, Exit.void);
+        yield* settle;
+        expect(environments.detailFailure(A_MATE.projectId)).toBe(failure);
+        environments.retryDetail(A_MATE.projectId);
+        yield* settle;
+        expect(environments.detailFailure(A_MATE.projectId)).toBeNull();
+        expect(
+          [...(yield* opened.built.data.state).interests.values()].some(
+            ({ descriptor }) =>
+              descriptor.kind === "project-inventory" &&
+              descriptor.project.projectId === A_MATE.projectId,
+          ),
+        ).toBe(true);
+        environments.setRoute(null);
+        yield* settle;
+        expect([...environments.detailProjects()]).toEqual([]);
+        expect(environments.detailFailure(A_MATE.projectId)).toBeNull();
+      }),
+    ),
+  );
 
   it.effect.each(["org-other", null])(
     "releases opened detail when active organization becomes %s",

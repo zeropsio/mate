@@ -9,6 +9,9 @@
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 
+import { useMateDetailRead } from "~/zerops/accountEnvironments";
+import { MateDetailFailure } from "./MateDetailFailure";
+
 import { environmentCatalog } from "~/connection/catalog";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
@@ -42,6 +45,8 @@ export function MateLinkStage({
   /** The composer standing where its conversation's will (`ComposerStandIn`). */
   readonly composer?: ReactNode;
 }) {
+  const { failure, again } = useMateDetailRead(projectId, environmentId);
+  if (failure !== null) return <MateDetailFailure message={failure.message} again={again} />;
   return environmentId === null ? (
     <MateLinkWords voice={voice} />
   ) : (

@@ -4,6 +4,10 @@ import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+const detail = vi.hoisted(() => ({ failure: null as null | { message: string } }));
+vi.mock("~/zerops/accountEnvironments", () => ({
+  useMateDetailRead: () => ({ failure: detail.failure, again: () => undefined }),
+}));
 vi.mock("~/connection/catalog", () => ({ environmentCatalog: { retryNow: {} } }));
 vi.mock("~/state/use-atom-command", () => ({ useAtomCommand: () => () => undefined }));
 vi.mock("~/zerops/useZeropsMates", () => ({ useZeropsMate: () => ({ kind: "unknown" }) }));
@@ -35,7 +39,7 @@ vi.mock("./ZeropsMateComingPage", () => ({
 vi.mock("./MateLinkLine", () => ({ MateLinkLine: () => null, MateLinkProcesses: () => null }));
 vi.mock("./ZeropsMateEmptyState", () => ({ MateEmptyStateView: () => null }));
 
-import { HomeOpeningView, MateOpeningView } from "./MateLinkStage";
+import { HomeOpeningView, MateOpeningView, MateLinkStage } from "./MateLinkStage";
 
 const ref = scopeThreadRef(EnvironmentId.make("env-quill"), ThreadId.make("thread-ivy"));
 
@@ -50,4 +54,23 @@ describe("HomeOpeningView: the home's guess at its landing takes no input", () =
   it("where a conversation's own route opens, its composer stands in", () => {
     expect(renderToStaticMarkup(<MateOpeningView threadRef={ref} />)).toContain("data-stand-in");
   });
+});
+
+it("an unknown Mate's refused inventory read names the failure and offers Again", () => {
+  detail.failure = { message: "The account receiver budget is full." };
+  try {
+    const markup = renderToStaticMarkup(
+      <MateLinkStage
+        environmentId={ref.environmentId}
+        projectId={null}
+        voice={{ surface: "stage", text: null, actions: [], processes: false }}
+      />,
+    );
+    expect(markup).toContain("Could not read this Mate");
+    expect(markup).toContain("The account receiver budget is full.");
+    expect(markup).toContain("Again</button>");
+    expect(markup).not.toContain("Opening");
+  } finally {
+    detail.failure = null;
+  }
 });

@@ -97,6 +97,9 @@ function shellStage(): AccountEnvironments {
     readonly index: DescriptorIndex;
   } | null = null;
   return {
+    detailProjects: () => new Set(),
+    detailFailure: () => null,
+    retryDetail: () => undefined,
     machines: () => driver().machines(),
     containers: () => containers().machines(),
     records: () => shell.records as unknown as ReadonlyArray<RegistrationRecord>,

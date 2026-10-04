@@ -5,7 +5,7 @@
  *
  * Closing the account lifetime unbinds it at once: a reader after sign-out sees no environments.
  */
-import { RegistryContext } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type {
   AtomCommand,
   AtomCommandOptions,
@@ -28,10 +28,11 @@ import {
 } from "@t3tools/client-runtime/zerops/environments";
 import type { ZeropsIdentityExchangeResult } from "@t3tools/client-runtime/zerops/identityExchange";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { Atom } from "effect/unstable/reactivity";
 import { useCallback, useContext, useEffect, useSyncExternalStore } from "react";
 
 import { useAtomCommand } from "../state/use-atom-command";
-import { hqMatesAtom, hqProjectOf } from "../state/zerops";
+import { hqMatesAtom, hqProjectOf, hqProjectAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { inventoryCandidates } from "./inventoryContext";
@@ -154,6 +155,50 @@ export function useContainerMachines(): ReadonlyMap<TargetKey, ContainerMachine>
 export function useDescriptorIndex(): DescriptorIndex {
   return useAccountEnvironmentsSnapshot(indexOf, NO_INDEX);
 }
+
+const NO_DETAIL_PROJECTS: ReadonlySet<string> = new Set();
+const detailProjectsOf = (environments: AccountEnvironments) => environments.detailProjects();
+
+/** Deployment reads share the active detail scopes, rather than following cached sidebar rows. */
+export function useDetailProjects(): ReadonlySet<string> {
+  return useAccountEnvironmentsSnapshot(detailProjectsOf, NO_DETAIL_PROJECTS);
+}
+
+/** The screen or route's refused inventory read, and one manual new attempt. */
+export function useMateDetailRead(
+  projectId: string | null,
+  environmentId: EnvironmentId | null = null,
+) {
+  const account = useAccountEnvironments();
+  const hqProject = useAtomValue(
+    environmentId === null ? NO_DETAIL_PROJECT : hqProjectAtom(environmentId),
+  );
+  const projectOf = useCallback(
+    (environments: AccountEnvironments) =>
+      projectId ??
+      hqProject ??
+      environments.records().find((record) => record.environmentId === environmentId)?.projectRef
+        ?.projectId ??
+      null,
+    [environmentId, hqProject, projectId],
+  );
+  const read = useCallback(
+    (environments: AccountEnvironments) => {
+      const project = projectOf(environments);
+      return project === null ? null : environments.detailFailure(project);
+    },
+    [projectOf],
+  );
+  const failure = useAccountEnvironmentsSnapshot(read, null);
+  const again = useCallback(() => {
+    if (account === null) return;
+    const project = projectOf(account);
+    if (project !== null) account.retryDetail(project);
+  }, [account, projectOf]);
+  return { failure, again };
+}
+
+const NO_DETAIL_PROJECT = Atom.make<string | null>(null);
 
 // ── An action's lease ────────────────────────────────────────────────────────────────────────
 

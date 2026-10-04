@@ -75,6 +75,7 @@ import {
 } from "react";
 
 import { hqChangesAtom, hqEnvironmentsAtom, hqStructureAtom } from "../state/zerops";
+import { useDetailProjects } from "./accountEnvironments";
 import { useStopDeployments } from "./accountForge";
 import { accountHqApi, useAccountHq } from "./accountHq";
 import {
@@ -606,13 +607,8 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     return built;
   }, [groupProjects, heldEnvironments, recipes, stated]);
 
-  /**
-   * What each project the account holds runs, from the account's deployment store
-   * (`flow/deploymentStore.ts`): the platform's own service listing and the builds running in the
-   * project. Every project is a stop wherever it is drawn — in a group HQ places it in, or in none
-   * — and none of this waits on HQ. As with the inventory's own demand, a project
-   * refused to the account (G6) or not ACTIVE holds nothing open.
-   */
+  const detailProjects = useDetailProjects();
+  /** Deployment facts follow active detail scopes; cached sidebar rows hold no receivers. */
   const stops = useMemo(() => {
     const inactive = new Set(
       inventory.projects.filter(({ status }) => status !== "ACTIVE").map(({ id }) => id),
@@ -620,9 +616,11 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     return [...inventory.projectRefs.values()].flatMap((ref) => {
       const authority = inventory.authority.get(inventoryProjectRefKey(ref));
       const refused = authority?.kind === "withheld" && authority.reason === "access-denied";
-      return refused || inactive.has(ref.projectId) ? [] : [ref];
+      return refused || inactive.has(ref.projectId) || !detailProjects.has(ref.projectId)
+        ? []
+        : [ref];
     });
-  }, [inventory.authority, inventory.projectRefs, inventory.projects]);
+  }, [detailProjects, inventory.authority, inventory.projectRefs, inventory.projects]);
   const stopDeployments = useStopDeployments(stops);
   // A project the grant withholds shows its stop withheld, at this read (DESIGN §4.2 G12), demanded
   // or not.
