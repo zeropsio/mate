@@ -40,6 +40,7 @@ import { migrate } from "./migrations.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
 import { Releases, releasesLayer } from "./releases.ts";
 import { Roles } from "./roles.ts";
+import { environmentBirths } from "./births.ts";
 import { type RolloutCause, Rollouts, addRollout, rolloutsLayer } from "./rollouts.ts";
 import { ZeropsApi, ZeropsDeploy, type ZeropsMember } from "./zerops/api.ts";
 
@@ -635,6 +636,71 @@ describe("deploys", () => {
         ),
     );
 
+    // Review #1: the client attaches an environment first and keeps its deploy token after, so the
+    // birth's first job is refused for want of a key. The birth follows it to the deploy the kept
+    // key asks for, and ends only once that one ran; a Run again after is no birth's.
+    it.effect(
+      "an environment's birth runs from its attach to the first deploy the kept key makes",
+      () =>
+        withDeploys(({ appId, tiers, commit, until, ask }) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`DELETE FROM hq_deploy_token`;
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("refused"));
+            yield* sql`DELETE FROM hq_deploy_job`;
+            yield* sql`DELETE FROM hq_rollout`;
+            const birth = Effect.map(environmentBirths(sql), (births) => births.get("P_STAGE"));
+            // Attached: its rollout refused for want of a key — still coming up, awaiting one.
+            yield* ask({ cause: "env_added", projectId: "P_STAGE", by: "owner" });
+            yield* until(settled("refused"));
+            assert.deepStrictEqual(yield* birth, { ended: false });
+            // The key kept: its rollout deploys, and the birth runs until that deploy is live.
+            yield* keepToken("P_STAGE", "key-stage");
+            yield* ask({ cause: "key_kept", projectId: "P_STAGE", by: "owner" });
+            yield* until((rows) => rows.at(-1)?.state === "live");
+            assert.deepStrictEqual(yield* birth, { ended: true });
+            // A Run again after its first deploy is no birth's.
+            yield* sql`
+            INSERT INTO hq_rollout (app_id, cause, project_id, by)
+            VALUES (${appId}::uuid, 'run_again', 'P_STAGE', 'dev')`;
+            assert.deepStrictEqual(yield* birth, { ended: true });
+          }),
+        ),
+    );
+
+    it.effect.each<[string, (sql: SqlClient.SqlClient) => Effect.Effect<void>]>([
+      ["a key held, its first job refused: ended", () => Effect.void],
+      [
+        "no key held, its first job refused: awaiting one",
+        (sql) => sql`DELETE FROM hq_deploy_token`.pipe(Effect.asVoid, Effect.orDie),
+      ],
+      [
+        "a key that no longer works: awaiting a new one",
+        (sql) =>
+          sql`UPDATE hq_deploy_token SET invalid_since = now()`.pipe(Effect.asVoid, Effect.orDie),
+      ],
+    ])("an environment's birth whose first job HQ refused, %s", ([name, keyed]) =>
+      withDeploys(({ appId }) =>
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* keyed(sql);
+          const [rollout] = yield* sql<{ readonly id: string }>`
+            INSERT INTO hq_rollout (app_id, cause, project_id, planned_at)
+            VALUES (${appId}::uuid, 'env_added', 'P_STAGE', now())
+            RETURNING id::text AS id`;
+          yield* sql`
+            INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+              reason, ended_at)
+            VALUES (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'web', 'web', ${"6".repeat(40)},
+              'refused', 'Zerops did not answer', now())`;
+          const births = yield* environmentBirths(sql);
+          assert.deepStrictEqual(births.get("P_STAGE"), { ended: name.endsWith("ended") });
+        }),
+      ),
+    );
+
     // Without HQ's key no deploy token opens (`deployKeys.ts`): every deploy is refused, saying so,
     // and no key is marked — an admin minting a new one would not help.
     it.effect.each<[string, string | undefined]>([
@@ -949,6 +1015,38 @@ describe("deploys", () => {
             );
           }),
         ),
+    );
+
+    // Review #5: the subdomain is followed on its own clock, from its own start — never on what
+    // was left of the build's, read before it was followed (a takeover's).
+    it.effect("follows a subdomain on its own bound, never on what the build's left", () =>
+      withDeploys(
+        ({ appId, world, tiers, commit, deploys, until, takeover }) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* createdForHq("P_STAGE");
+            world.outcome = () => "BUILDING";
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("building"));
+            yield* takeover(
+              Effect.gen(function* () {
+                // Submitted all but a moment of its bound ago: the build lands at once, and its
+                // subdomain comes on three reads later.
+                yield* sql`
+                  UPDATE hq_deploy_job SET submitted_at = now() - interval '950 milliseconds'`;
+                world.outcome = () => "ACTIVE";
+                world.subdomainRunningReads = 3;
+              }).pipe(Effect.orDie),
+            );
+            yield* until(settled("live"));
+            assert.deepStrictEqual(
+              (yield* deploys).map(({ reason }) => reason),
+              [null],
+            );
+          }),
+        { ...FAST, followFor: Duration.seconds(1) },
+      ),
     );
 
     it.effect("opens no subdomain on the first deploy of a service not created for HQ", () =>

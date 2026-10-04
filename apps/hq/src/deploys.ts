@@ -947,8 +947,8 @@ export const deploysLayer = (
 
       /**
        * After HQ's own verified deploy: an HTTP service's subdomain, its process followed to its
-       * end on the job's cadence — none where it came on or was on already, else why it did not, in
-       * HQ's words. It never fails the deploy (B17); the live job says it.
+       * end on its own cadence, from its start — none where it came on or was on already, else why
+       * it did not, in HQ's words. It never fails the deploy (B17); the live job says it.
        */
       const openSubdomain = (job: Job, service: ZeropsService, token: Redacted.Redacted) =>
         !service.http || service.subdomainAccess
@@ -957,8 +957,9 @@ export const deploysLayer = (
               .enableSubdomainAccess(service.id)(token)
               .pipe(
                 Effect.flatMap(({ processId }) =>
+                  // Its own clock, from its start: never what is left of the build's.
                   onCadence(
-                    job,
+                    0,
                     () =>
                       deploy
                         .process(processId)(token)
@@ -984,7 +985,7 @@ export const deploysLayer = (
                             ),
                           ),
                         ),
-                    "HQ stopped following it",
+                    `HQ stopped following it ${Math.round(followFor / 60_000)} min after it was asked`,
                   ),
                 ),
                 Effect.map((ended) => (ended.state === "on" ? undefined : ended.reason)),
@@ -1029,17 +1030,18 @@ export const deploysLayer = (
 
       /**
        * A handle HQ made, read on its cadence until `read` says how it ended: every `pollEvery`
-       * while it is younger than `slowAfter`, then every `slowPollEvery`, counted from the job's
-       * submission, so a takeover resumes the same clock — and past `followFor`, refused as
+       * while it is younger than `slowAfter`, then every `slowPollEvery`, counted from when it was
+       * asked for — `ageMs` old as the follow starts: a build's from its submission, so a takeover
+       * resumes the same clock, a subdomain's from its own start — and past `followFor`, refused as
        * `stopped` says. A read again on this cadence is following, never a retry.
        */
       const onCadence = <A>(
-        job: Job,
+        ageMs: number,
         read: (ageMs: number) => Effect.Effect<A | undefined>,
         stopped: string,
       ): Effect.Effect<A | { readonly state: "refused"; readonly reason: string }> =>
         Effect.gen(function* () {
-          const started = (yield* Clock.currentTimeMillis) - (job.submitted_ms ?? 0);
+          const started = (yield* Clock.currentTimeMillis) - ageMs;
           for (;;) {
             const answer = yield* read((yield* Clock.currentTimeMillis) - started);
             if (answer !== undefined) return answer;
@@ -1163,7 +1165,7 @@ export const deploysLayer = (
               ),
             );
           return yield* onCadence(
-            job,
+            job.submitted_ms ?? 0,
             once,
             `HQ stopped following the build ${Math.round(followFor / 60_000)} min after it was submitted; Zerops still reports it running`,
           );
@@ -1440,7 +1442,7 @@ export const deploysLayer = (
               ),
             );
           const ended = yield* onCadence(
-            job,
+            job.submitted_ms ?? 0,
             (age) =>
               ((job.processes ?? []).length === 0 ? byListing(age) : byProcesses(age)).pipe(
                 // What cannot be read now says nothing of the import: it is read again.

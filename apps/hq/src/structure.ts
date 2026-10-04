@@ -48,6 +48,7 @@ import {
 import { DeployKeys } from "./deployKeys.ts";
 import { reachesOnly } from "./deployTokens.ts";
 import { heldOf, lockProject } from "./held.ts";
+import { environmentBirths } from "./births.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { MateOverviews } from "./mateOverviews.ts";
 import {
@@ -1417,30 +1418,9 @@ export const structureLayer = (options: {
                     leftOut: row.left_out,
                   };
             };
-            // Each environment's birth: the newest rollout its attach asked for, ended once its jobs
-            // there ended, and every job of a commit it left out as under way there.
-            const born = yield* sql<{ readonly project_id: string; readonly ended: boolean }>`
-              WITH born AS (
-                SELECT DISTINCT ON (r.project_id) r.id, r.project_id, r.planned_at, r.left_out
-                FROM hq_rollout r WHERE r.cause = 'env_added' AND r.project_id IS NOT NULL
-                ORDER BY r.project_id, r.id DESC
-              )
-              SELECT b.project_id,
-                     b.planned_at IS NOT NULL
-                     AND NOT EXISTS (
-                       SELECT 1 FROM hq_deploy_job j
-                       WHERE j.rollout_id = b.id AND j.project_id = b.project_id
-                         AND j.ended_at IS NULL)
-                     AND NOT EXISTS (
-                       SELECT 1
-                       FROM jsonb_to_recordset(b.left_out) AS l(project_id text, job text)
-                       JOIN hq_deploy_job j ON j.id = l.job::bigint
-                       WHERE l.project_id = b.project_id AND j.ended_at IS NULL) AS ended
-              FROM born b`;
-            const birthOf = (projectId: string): EnvironmentBirth | null => {
-              const row = born.find((birth) => birth.project_id === projectId);
-              return row === undefined ? null : { ended: row.ended };
-            };
+            const born = yield* environmentBirths(sql);
+            const birthOf = (projectId: string): EnvironmentBirth | null =>
+              born.get(projectId) ?? null;
             const environmentView = (row: (typeof environments)[number]): EnvironmentView => ({
               projectId: row.project_id,
               tier: row.tier,
