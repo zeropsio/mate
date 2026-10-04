@@ -20,6 +20,7 @@ import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 
 import {
   type ZeropsApi,
+  type ZeropsObservation,
   type ZeropsDeploy,
   type ZeropsError,
   type ZeropsMember,
@@ -456,5 +457,22 @@ export const makeZeropsDeployHttp = (
             })),
           })),
         ),
+    };
+  });
+
+export const makeZeropsObservationHttp = (
+  baseUrl: string,
+): Effect.Effect<ZeropsObservation["Service"], never, HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient;
+    return {
+      activeVersion: (id) => (credential) =>
+        ask(
+          client,
+          "activeVersion",
+          credential,
+          HttpClientRequest.get(`${baseUrl}/app-version/${encodeURIComponent(id)}`),
+          Schema.Struct({ id: Schema.String, name: Schema.String }),
+        ).pipe(Effect.map(({ value }) => value)),
     };
   });

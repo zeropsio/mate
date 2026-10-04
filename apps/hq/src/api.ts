@@ -1,3 +1,4 @@
+import { Observation } from "./observation.ts";
 /**
  * HQ's API: JSON over HTTP, for the client origins only (CORS, `HQ_CLIENT_ORIGINS`).
  *
@@ -319,6 +320,15 @@ export const failure = (error: {
     return Effect.as(
       Effect.logInfo("mate refused", error),
       json({ code: error.code }, MATE_STATUS[error.code]),
+    );
+  }
+  if (error._tag === "ObservationRefused" && "reason" in error) {
+    const reason = String(error.reason);
+    return Effect.succeed(
+      json(
+        { code: "observation_refused", reason },
+        reason === "deploy_key_unavailable" ? 409 : 403,
+      ),
     );
   }
   switch (error._tag) {
@@ -842,6 +852,27 @@ const routes = (
             `mate link of ${projectId} closed by ${ended.by} (${String(ended.code)})`,
           );
           return HttpServerResponse.empty();
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/mate/environments",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          return json(yield* (yield* Observation).environments(projectId), 200);
+        }),
+      ),
+    ),
+    HttpRouter.add(
+      "GET",
+      "/api/mate/environments/:projectId",
+      handle(
+        Effect.gen(function* () {
+          const { projectId } = yield* mate;
+          const target = (yield* HttpRouter.params)["projectId"] ?? "";
+          return json(yield* (yield* Observation).status(projectId, target), 200);
         }),
       ),
     ),

@@ -32,6 +32,7 @@ import { MateOverviews } from "../../src/mateOverviews.ts";
 import { treeMigrations } from "../../src/migrationFiles.ts";
 import {
   ZeropsApi,
+  ZeropsObservation,
   ZeropsDeploy,
   type ZeropsMember,
   type ZeropsOwnToken,
@@ -39,7 +40,13 @@ import {
 import { TEST_KEY_SECRET } from "./deployKeys.ts";
 import { tempDir } from "./tempDir.ts";
 import { TempPostgres } from "./tempPostgres.ts";
-import { type FakeWorld, emptyWorld, fakeZeropsApi, fakeZeropsDeploy } from "./zeropsFake.ts";
+import {
+  type FakeWorld,
+  emptyWorld,
+  fakeZeropsApi,
+  fakeZeropsDeploy,
+  fakeZeropsObservation,
+} from "./zeropsFake.ts";
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -212,6 +219,7 @@ export const startCore = (
       coreApp(options).pipe(
         Layer.provide(Layer.succeed(ZeropsApi, fakeZeropsApi(fake))),
         Layer.provide(Layer.succeed(ZeropsDeploy, fakeZeropsDeploy(fake))),
+        Layer.provide(Layer.succeed(ZeropsObservation, fakeZeropsObservation(fake))),
         Layer.provideMerge(NodeHttpServer.layer(() => NodeHttp.createServer(), { port: 0 })),
       ),
       scope,

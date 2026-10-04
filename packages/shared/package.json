@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./hqObservation": {
+      "types": "./src/hqObservation.ts",
+      "import": "./src/hqObservation.ts"
+    },
     "./brand": {
       "types": "./src/brand.ts",
       "import": "./src/brand.ts"

@@ -181,3 +181,11 @@ export class ZeropsDeploy extends Context.Service<
     }>;
   }
 >()("@t3tools/hq/zerops/api/ZeropsDeploy") {}
+
+/** Narrow observation reads: no platform environment or credential leaves HQ. */
+export class ZeropsObservation extends Context.Service<
+  ZeropsObservation,
+  {
+    readonly activeVersion: (id: string) => Read<{ readonly id: string; readonly name: string }>;
+  }
+>()("@t3tools/hq/zerops/api/ZeropsObservation") {}
