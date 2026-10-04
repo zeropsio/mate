@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   classifyTimelineScroll,
+  jumpedAway,
   nextPersonScrollSession,
   nextTimelineFollow,
   nextTimelineReading,
@@ -130,6 +131,28 @@ describe("nextTimelineFollow", () => {
       event: { type: "opened", atEnd: false },
       expected: false,
     },
+    // The review, 2026-10-04: something far up took the list there with no
+    // input of the person's — find in page, a fragment link, focus moving to
+    // an earlier control, middle-click autoscroll — and the growth after
+    // pulled them back to the end.
+    {
+      name: "a jump far up that nobody's scroll made, while following",
+      following: true,
+      event: { type: "position", atEnd: false, byPerson: false, direction: "away", jumped: true },
+      expected: false,
+    },
+    {
+      name: "a jump that lands within the end band keeps following",
+      following: true,
+      event: { type: "position", atEnd: true, byPerson: false, direction: "away", jumped: true },
+      expected: true,
+    },
+    {
+      name: "the list re-anchoring a few pixels up keeps following",
+      following: true,
+      event: { type: "position", atEnd: false, byPerson: false, direction: "away", jumped: false },
+      expected: true,
+    },
   ];
 
   it.each(cases)("$name", ({ following, event, expected }) => {
@@ -220,6 +243,37 @@ describe("classifyTimelineScroll", () => {
 
   it.each(cases)("$name", ({ previous, current, personScrolling, expected }) => {
     expect(classifyTimelineScroll({ previous, current, personScrolling })).toEqual(expected);
+  });
+});
+
+describe("jumpedAway", () => {
+  it.each([
+    {
+      name: "find in page jumps to a match far above",
+      previous: { scrollTop: 4_500, contentHeight: 6_000 },
+      current: { scrollTop: 1_000, contentHeight: 6_000 },
+      jumped: true,
+    },
+    {
+      name: "the list re-anchors 28 px up as the view shrinks",
+      previous: { scrollTop: 7_288, contentHeight: 8_080 },
+      current: { scrollTop: 7_260, contentHeight: 8_200 },
+      jumped: false,
+    },
+    {
+      name: "the browser clamps 300 px up as content below shrinks",
+      previous: { scrollTop: 1_000, contentHeight: 2_000 },
+      current: { scrollTop: 700, contentHeight: 1_700 },
+      jumped: false,
+    },
+    {
+      name: "a move down",
+      previous: { scrollTop: 1_000, contentHeight: 2_000 },
+      current: { scrollTop: 1_500, contentHeight: 2_000 },
+      jumped: false,
+    },
+  ])("$name: $jumped", ({ previous, current, jumped }) => {
+    expect(jumpedAway({ previous, current })).toBe(jumped);
   });
 });
 
