@@ -1159,7 +1159,7 @@ describe("structure", () => {
     // B5: a Mate's press in one browser, read in another — held while its press renews it, taken
     // over once it ran out, and following the container import it asked for.
     it.effect("holds a Mate's press for the browser running it, and lets it go at its end", () =>
-      withStructure(() =>
+      withStructure((_view, _down, _zerops, asked) =>
         Effect.gen(function* () {
           const structure = yield* Structure;
           const sql = yield* SqlClient.SqlClient;
@@ -1179,11 +1179,14 @@ describe("structure", () => {
           });
           yield* structure.holdPress("maker", "P_OWN", { owner: "press-a" });
           assert.strictEqual((yield* pressOf("owner"))?.importProcessId, "imp-1");
-          // Nobody who does not read the project holds it, or reads it.
+          // Nobody who does not read the project holds it, or reads it — a refusal confirmed over
+          // a fresh read, as a project Zerops made seconds ago may be missing from the recent one.
+          yield* Ref.set(asked, []);
           assert.strictEqual(
             yield* reasonOf(structure.holdPress("nobody", "P_OWN", { owner: "press-c" })),
             "not_project_reader",
           );
+          assert.deepStrictEqual(yield* Ref.get(asked), ["write recent", "write fresh"]);
           assert.isUndefined(yield* pressOf("nobody"));
           // A hold that ran out — its tab closed — reads none left, and another press takes it over.
           yield* sql`UPDATE hq_mate_press SET until = now() - interval '1 second'`;

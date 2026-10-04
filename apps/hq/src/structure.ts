@@ -877,7 +877,9 @@ export const structureLayer = (options: {
             yield* changed;
             yield* PubSub.publish(mateChanged, projectId);
           }),
-        holdPress: (userId, projectId, press) =>
+        // A project Zerops made seconds ago may not be in the recent view yet: a refusal of its
+        // facts is confirmed over a fresh read, as every write's is (F22).
+        holdPress: confirmed((userId, projectId, press) =>
           Effect.gen(function* () {
             if (press.owner.length < 1 || press.owner.length > 100)
               return yield* refuse("invalid", "press_owner_length");
@@ -902,14 +904,16 @@ export const structureLayer = (options: {
             yield* changed;
             return pressView(held);
           }),
-        releasePress: (userId, projectId, owner) =>
+        ),
+        releasePress: confirmed((userId, projectId, owner) =>
           Effect.gen(function* () {
             yield* allowed(userId, "hold_press", { projectId }, yield* roles.forWrite);
-            const let_go = yield* leader.write(sql`
+            const letGo = yield* leader.write(sql`
               DELETE FROM hq_mate_press WHERE project_id = ${projectId} AND owner = ${owner}
               RETURNING 1`);
-            if (let_go.length > 0) yield* changed;
+            if (letGo.length > 0) yield* changed;
           }),
+        ),
         markClosedOff: confirmed((userId, projectId) =>
           Effect.gen(function* () {
             const view = yield* roles.forWrite;
