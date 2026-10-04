@@ -21,6 +21,9 @@ export const FOLLOW_TAU_MS = 45;
  */
 export const MAX_SPEED_PX_PER_MS = 1.6;
 
+/** The longest frame a move's speed counts: a frame and a fifth at 60 Hz. */
+const ON_TIME_FRAME_MS = 20;
+
 /** Closer than this to its target, a move stands at it. */
 export const SETTLED_PX = 0.5;
 
@@ -31,7 +34,9 @@ export const SETTLED_PX = 0.5;
 export function approach(current: number, target: number, dtMs: number, tauMs: number): number {
   if (dtMs <= 0) return current;
   const share = (target - current) * (1 - Math.exp(-dtMs / tauMs));
-  const most = MAX_SPEED_PX_PER_MS * dtMs;
+  // A late frame moves no further than a frame on time would: the move
+  // takes longer, and nothing jumps.
+  const most = MAX_SPEED_PX_PER_MS * Math.min(dtMs, ON_TIME_FRAME_MS);
   const next = current + Math.max(-most, Math.min(most, share));
   return Math.abs(target - next) < SETTLED_PX ? target : next;
 }

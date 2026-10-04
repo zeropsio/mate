@@ -51,13 +51,6 @@ describe("approach", () => {
     { what: "standing at its target", current: 120, target: 120, dt: FRAME_MS, expected: 120 },
     { what: "within half a pixel", current: 119.6, target: 120, dt: FRAME_MS, expected: 120 },
     { what: "no time passed", current: 100, target: 200, dt: 0, expected: 100 },
-    {
-      what: "a frame long gone (a hidden tab)",
-      current: 100,
-      target: 200,
-      dt: 2000,
-      expected: 200,
-    },
   ])("$what", ({ current, target, dt, expected }) => {
     expect(approach(current, target, dt, ROOM_TAU_MS)).toBe(expected);
   });
@@ -75,6 +68,11 @@ describe("approach", () => {
     expect(MAX_SPEED_PX_PER_MS * FRAME_MS).toBeLessThan(40);
     // A longer way takes longer, never so long it trails what comes next.
     expect(path.length * FRAME_MS).toBeLessThanOrEqual(600);
+  });
+
+  it("moves no further in a late frame than in one on time", () => {
+    expect(approach(0, 500, 50, ROOM_TAU_MS)).toBe(approach(0, 500, 20, ROOM_TAU_MS));
+    expect(approach(0, 500, 50, ROOM_TAU_MS)).toBeLessThan(40);
   });
 
   it("is retargeted from where it stands: a second arrival mid-way never jumps", () => {
