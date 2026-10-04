@@ -117,13 +117,13 @@ import { useCalmLine } from "./useCalmLine";
 import {
   SLOT_MAX_ROWS,
   slotClock,
-  slotHolds,
   slotHoldsIn,
   slotRunningPast,
   type LiveSlot as LiveSlotState,
 } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
 import { usePace } from "./usePace";
+import { slotMoves } from "./slotMoves.logic";
 import { stripShowsFiles } from "./runResult.logic";
 import {
   backgroundItemWord,
@@ -3561,14 +3561,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     syncing: ctx.syncing,
     quietFrom,
     onChange: (from, to, redrawn) => {
-      const after = slotHolds(to);
-      const before = slotHolds(from);
-      const leaving = [...before].filter((key) => !after.has(key));
       // What enters makes its room too: the history glides as the slot grows.
-      // Entering is against what the slot drew, not what it held: an item
-      // held behind "Thinking" (`pending`) enters on a settle all the same.
-      const drawn = new Set(from.entries.map((entry) => entry.key));
-      const entering = to.entries.some((entry) => !drawn.has(entry.key));
+      const { leaving, entering } = slotMoves(from, to);
       if (leaving.length === 0 && !entering) return;
       // Where things stood as last painted: a change heard right after a draw
       // that already moved them (a check that ended as it was due, drawn as
