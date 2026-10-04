@@ -202,6 +202,37 @@ describe("HQ's standing, from its stream", () => {
     }
   });
 
+  // An HQ serving through its grace while Zerops does not answer its check is no outage, and
+  // says so while its stream serves (e840eb444), with no read of its own.
+  it("says while its stream serves whether HQ could check Zerops, as the stream tells it", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    const api = streamingApi([
+      {
+        events: [
+          { ...snapshot, official: "unknown" },
+          { kind: "official", official: "ok" },
+          { kind: "official", official: "unknown" },
+        ],
+        end: "hang",
+      },
+    ]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        h.views.flatMap((view) => (view.standing === undefined ? [] : [view.standing.kind])),
+      ).toEqual(["unchecked", "healthy", "unchecked"]);
+      expect(h.views.at(-1)).toMatchObject({ current: true, structure: ACME });
+      expect(h.healthReads).toEqual([]);
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
   it("reads HQ's health once per failed attempt, never while the tab is hidden", async () => {
     vi.useFakeTimers();
     const h = harness();

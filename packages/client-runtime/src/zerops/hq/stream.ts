@@ -9,6 +9,10 @@
  * `release-revision` message supplies one moved application's fresh load data. A reconnect starts
  * with a fresh snapshot, so nothing held from before it is needed to read it right.
  *
+ * The snapshot says, as `official`, whether HQ could check Zerops that it is the official HQ
+ * (`unknown` while Zerops does not answer, which HQ serves through), and an `official` message says
+ * it again each time it changes.
+ *
  * The same socket carries the Mates the reader may observe (`@t3tools/shared/hqMates`): the
  * snapshot holds each of them whole, with the people the view names; a `mate` message, what
  * changed of one Mate, or `null` once the reader may no longer observe it; a `people` message, the
@@ -63,7 +67,13 @@ export type HqStructureEvent =
       /** `null` where HQ sent none — an HQ from before the Mates' overviews — or none readable. */
       readonly mates: HqMates | null;
       readonly people: HqPeople | null;
+      /**
+       * Whether HQ is the official one as its last check of Zerops said
+       * (`@t3tools/shared/hqStream` `HqOfficialVerdict`); absent from an HQ that sends none.
+       */
+      readonly official?: string;
     }
+  | { readonly kind: "official"; readonly official: string }
   | { readonly kind: "change"; readonly appId: string; readonly app: HqApp | null }
   | { readonly kind: "ungrouped"; readonly mates: HqUngrouped }
   | {
@@ -179,6 +189,7 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       appReads,
       mates,
       people,
+      official,
     } = message as {
       readonly apps?: unknown;
       readonly ungrouped?: unknown;
@@ -186,6 +197,7 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       readonly appReads?: unknown;
       readonly mates?: unknown;
       readonly people?: unknown;
+      readonly official?: unknown;
     };
     // An HQ from before the Mates in no application names none of them.
     if (!(Array.isArray(apps) && apps.every(isApp) && isUngrouped(ungrouped))) return undefined;
@@ -202,7 +214,12 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       }),
       mates: matesOf(mates),
       people: Option.getOrNull(readPeople(people)),
+      ...(typeof official === "string" ? { official } : {}),
     };
+  }
+  if (type === "official") {
+    const { official } = message as { readonly official?: unknown };
+    return typeof official === "string" ? { kind: "official", official } : undefined;
   }
   if (type === "mate" || type === "people") {
     return Option.match(readMatesMessage(message), {

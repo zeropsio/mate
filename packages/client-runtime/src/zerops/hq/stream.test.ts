@@ -257,6 +257,19 @@ describe("structureEventOf", () => {
     expect(structureEventOf(message)).toEqual(expected);
   });
 
+  // Whether HQ could check Zerops: `unknown` is an HQ that serves through its grace (e840eb444).
+  it("reads whether HQ could check Zerops, in its snapshot and each time it changes", () => {
+    expect(structureEventOf({ type: "snapshot", apps: [ACME], official: "unknown" })).toMatchObject(
+      { kind: "snapshot", official: "unknown" },
+    );
+    expect(structureEventOf({ type: "snapshot", apps: [ACME] })).not.toHaveProperty("official");
+    expect(structureEventOf({ type: "official", official: "ok" })).toEqual({
+      kind: "official",
+      official: "ok",
+    });
+    expect(structureEventOf({ type: "official", official: 7 })).toBeUndefined();
+  });
+
   it("parses a Mate's sections and the people map and passes by what it does not know", () => {
     const people = { "u-ada": { name: "Ada Lovelace" } };
     expect(
