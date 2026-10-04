@@ -326,6 +326,8 @@ function platformClient(state: {
   readonly tokens?: ReadonlyArray<Record<string, unknown>>;
   readonly processes?: ReadonlyArray<Record<string, unknown>>;
   readonly holdToken?: TokenWriteHold;
+  /** What the container import answers; nothing by default. */
+  readonly importAnswer?: Record<string, unknown>;
 }) {
   const requests: Array<Recorded> = [];
   const client = new ZeropsApiClient({
@@ -338,7 +340,7 @@ function platformClient(state: {
         body: typeof init?.body === "string" ? init.body : null,
       });
       const payload = input.includes("/first-class-recipe/")
-        ? {}
+        ? (state.importAnswer ?? {})
         : input.endsWith("/process/search")
           ? { items: state.processes ?? [] }
           : input.includes("/service-stack")
@@ -405,6 +407,24 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     expect(body.createIntegrationToken).toBe(false);
     expect(body.serviceImportYaml).toContain(`ZCP_API_KEY: "${MINTED_KEY}"`);
     expect(body.serviceImportYaml).toContain("MATE_SETUP_RUNTIMES: ");
+  });
+
+  // B5: the import's own process is the press's handle another browser follows.
+  it("names the container's creation process Zerops answered the import with", async () => {
+    const { client } = platformClient({
+      importAnswer: {
+        projectId: "project-9",
+        processes: [
+          { id: "proc-deploy", actionName: "stack.deploy" },
+          { id: "proc-create", actionName: "stack.create" },
+        ],
+      },
+    });
+    expect(await client.importDevelopmentContainer(INPUT)).toEqual({
+      serviceName: "zcp",
+      imported: true,
+      processId: "proc-create",
+    });
   });
 
   it("hands the key to nobody but the container", async () => {

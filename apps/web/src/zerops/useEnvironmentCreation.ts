@@ -32,7 +32,7 @@ import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvir
 import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
-import { beginPress, pressPlatform, pressRegistration, runPress } from "./matePress";
+import { beginPress, pressHold, pressPlatform, pressRegistration, runPress } from "./matePress";
 import { readZeropsCellOnce } from "./readZeropsCell";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -209,6 +209,9 @@ export function useEnvironmentCreation(): (
         data: { runtime, organizationRef, projectRef },
         organizationId: organization.id,
       };
+      // A Mate's press is held at HQ while it runs, so another browser never takes it for one
+      // that stopped (B5).
+      const hold = withAgent ? pressHold(accountHqApi(client, organization.id, hq)) : undefined;
       const platform = pressPlatform(inputs, {
         register: pressRegistration(
           inputs,
@@ -227,6 +230,7 @@ export function useEnvironmentCreation(): (
             : { hq, groupId: group.groupId, kind: tier },
         ),
         hq,
+        hold,
         // Reads the latest shared-model projection; no platform request.
         readObservedServices: async (projectId) => {
           const services = inventoryRef.current.services.get(projectId);
@@ -268,6 +272,7 @@ export function useEnvironmentCreation(): (
         onProgress: (progress) => {
           if (isCurrent()) request.onProgress?.(progress);
         },
+        hold,
       });
       return { kind: "ran", outcome, withAgent };
     },

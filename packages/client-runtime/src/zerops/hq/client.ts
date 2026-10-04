@@ -295,6 +295,18 @@ export interface HqApi {
    * the attach that closes it records the caller as its stand-up's asker where `standUp` says so.
    */
   readonly recordBirth: (birth: { readonly appId: string } & HqNewMate) => Promise<HqBirth>;
+  /**
+   * Holds, or renews, a Mate's press for this browser's press `owner` (`PUT
+   * /api/presses/{projectId}`), with its container import's Zerops process once Zerops answered
+   * it: another browser takes it for a press still running. Another press's hold refuses it
+   * (`press_held`).
+   */
+  readonly holdPress: (
+    projectId: string,
+    press: { readonly owner: string; readonly importProcessId?: string },
+  ) => Promise<void>;
+  /** Lets this browser's press's hold go at its end (`DELETE /api/presses/{projectId}/{owner}`). */
+  readonly releasePress: (projectId: string, owner: string) => Promise<void>;
   readonly bindBirth: (birthId: string, projectId: string) => Promise<void>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
   /**
@@ -995,6 +1007,20 @@ export function makeHqApi(input: {
       json<HqBirth>(
         await authorized("/api/births", { method: "POST", body: JSON.stringify(birth) }, true),
       ),
+    holdPress: async (projectId, press) => {
+      await authorized(
+        `/api/presses/${encodeURIComponent(projectId)}`,
+        { method: "PUT", body: JSON.stringify(press) },
+        true,
+      );
+    },
+    releasePress: async (projectId, owner) => {
+      await authorized(
+        `/api/presses/${encodeURIComponent(projectId)}/${encodeURIComponent(owner)}`,
+        { method: "DELETE" },
+        true,
+      );
+    },
     bindBirth: async (birthId, projectId) => {
       await authorized(
         `/api/births/${encodeURIComponent(birthId)}/project`,

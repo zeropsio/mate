@@ -54,6 +54,8 @@ const OWNER_OFFERS: HqMateOfferStates = {
 };
 
 const mock = vi.hoisted(() => ({
+  /** Whether each Mate's press in another browser is at it, as HQ holds it; none by default. */
+  pressElsewhere: (_projectId: string): "pressing" | "stopped" | "unknown" => "stopped",
   /** What HQ offers of each project (`useMateOffers`); an owner's by default. */
   mateOffers: (_projectId: string): unknown => undefined,
   /** HQ's `PATCH /api/mates/{projectId}`, a write here being the promise the test answers. */
@@ -229,6 +231,9 @@ vi.mock("./useOpenMate", () => ({ useOpenMate: () => () => {} }));
 vi.mock("../routes/-environmentTargets", () => ({
   useEnvironmentLinks: () => ({ linkTarget: () => undefined }),
 }));
+vi.mock("./usePressesElsewhere", () => ({
+  usePressesElsewhere: () => (projectId: string) => mock.pressElsewhere(projectId),
+}));
 vi.mock("./inventoryContext", async () => {
   const { useState } = await import("react");
   return { useProjectDialog: () => useState(null) };
@@ -348,6 +353,7 @@ beforeEach(() => {
   mock.mateOffers = () => OWNER_OFFERS;
   mock.user = { id: "user-ada" };
   mock.markers.clear();
+  mock.pressElsewhere = () => "stopped";
   mock.dialog.current = null;
   mock.assignDialog.current = null;
   mock.setProjectMemberRole.mockReset();
@@ -675,7 +681,7 @@ describe("useMateActions — Hand this Mate over", () => {
   });
 });
 
-// A Mate its press left open — marker present, not closed off, past the grace — is finished by
+// A Mate its press left open — marker present, not closed off, no press holding it — is finished by
 // whoever may: an owner or an admin, or, for its close-off, the member who added it. Read off the
 // store's markers, so a reload keeps it (pass 28 review).
 describe("useMateActions — Finish setup on a Mate its press left open", () => {
@@ -1026,6 +1032,30 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
       // A Mate HQ holds is not adopted: its key is not touched.
       harden: false,
     });
+  });
+});
+
+// B5: two browsers. A slow press the other one still holds at HQ is no half-made Mate, however
+// old its project; the moment its hold runs out — its tab closed — it is, for Finish setup.
+describe("useMateActions — Finish setup on a Mate another browser still presses", () => {
+  const SLOW = (() => {
+    const { service: _none, ...base } = mate("Una", "coral:gem");
+    return {
+      ...base,
+      group: "unavailable",
+      missingContainer: true,
+      project: { ...base.project, created: "2026-09-01T10:00:00Z" },
+    } as ZeropsCandidatePresentation;
+  })();
+
+  it.each([
+    { held: "pressing", offered: false },
+    { held: "unknown", offered: false },
+    { held: "stopped", offered: true },
+  ] as const)("its press elsewhere $held: Finish setup offered $offered", ({ held, offered }) => {
+    mock.pressElsewhere = (projectId) => (projectId === SLOW.project.id ? held : "stopped");
+    mount();
+    expect(verbs(SLOW).some((verb) => verb.id === "finish-setup")).toBe(offered);
   });
 });
 

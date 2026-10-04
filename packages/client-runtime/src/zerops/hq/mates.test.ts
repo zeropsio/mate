@@ -89,6 +89,7 @@ describe("applyMatesEvent", () => {
       changes: null,
       mates,
       people: null,
+      presses: null,
     });
     const sent = new Map([["p3", { ...ADA, presence: { ...ADA.presence, since: LATER } }]]);
 
@@ -124,6 +125,7 @@ describe("applyPeopleEvent", () => {
       changes: null,
       mates: null,
       people,
+      presses: null,
     };
 
     expect(applyPeopleEvent(null, snapshot)).toBe(people);

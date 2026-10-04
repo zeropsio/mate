@@ -36,6 +36,7 @@ import {
   type HqMates,
   type HqPlacement,
   type HqAppReads,
+  type HqPresses,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -124,6 +125,12 @@ export interface HqStructureView {
    * Null until the stream's first snapshot; never remembered across loads.
    */
   readonly appReads: HqAppReads | null;
+  /**
+   * Each Mate's press a browser holds at HQ, by project, its hold measured on this browser's clock
+   * from when HQ said it (`applyPressesEvent`); none — unknown — until this stream's snapshot said
+   * them. Never remembered across loads: a press is live or it is nothing.
+   */
+  readonly presses?: HqPresses | null;
   /** When `structure` was HQ's answer, wall ms. */
   readonly readAt: number | null;
   /** `structure` is HQ's answer now. */

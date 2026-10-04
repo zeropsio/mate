@@ -850,6 +850,19 @@ export function publicHttpRoutingsOf(
   });
 }
 
+/**
+ * The container's creation process out of the processes a container import answered with: its
+ * `stack.create`, else the first it named; none where it named none.
+ */
+function importProcessOf(processes: ReadonlyArray<unknown> | undefined): string | undefined {
+  const named = (processes ?? []).flatMap((process) => {
+    if (typeof process !== "object" || process === null) return [];
+    const { id, actionName } = process as { readonly id?: unknown; readonly actionName?: unknown };
+    return typeof id === "string" && id.length > 0 ? [{ id, actionName }] : [];
+  });
+  return (named.find((process) => process.actionName === "stack.create") ?? named[0])?.id;
+}
+
 export class ZeropsApiClient {
   /** Asked before every project write; none admits every write. */
   #writeAdmission: WriteAdmission | null = null;
@@ -1808,7 +1821,12 @@ export class ZeropsApiClient {
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly serviceName: string; readonly imported: boolean }> {
+  ): Promise<{
+    readonly serviceName: string;
+    readonly imported: boolean;
+    /** The container's creation process Zerops answered the import with, where it named one. */
+    readonly processId?: string;
+  }> {
     const services = await this.listProjectServices(input.projectId, signal);
     const container = mateContainerOf(services);
     if (container.kind === "several") throw new Error(severalMatesLine(container.names));
@@ -1895,7 +1913,7 @@ export class ZeropsApiClient {
 
     const serviceName = nextZcpServiceName(services.map((service) => service.name));
     this.#assertGeneration(generation);
-    await this.#request(
+    const answered = await this.#request<{ readonly processes?: ReadonlyArray<unknown> }>(
       `/project/${input.projectId}/first-class-recipe/development-container`,
       {
         method: "PUT",
@@ -1918,7 +1936,8 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
-    return { serviceName, imported: true };
+    const processId = importProcessOf(answered.processes);
+    return { serviceName, imported: true, ...(processId === undefined ? {} : { processId }) };
   }
 
   /**

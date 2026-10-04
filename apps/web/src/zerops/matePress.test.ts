@@ -30,6 +30,9 @@ import {
   settlePress,
   mateFinishRegistration,
   PRESS_MAY_HAVE_LANDED,
+  PRESS_RENEW_MS,
+  PRESSED_IN_ANOTHER_BROWSER,
+  pressHold,
   pressPlatform,
   whilePressing,
   type MatePress,
@@ -343,6 +346,127 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
 // F6b (e2e, 2026-10-03): Dan's press stood "pressing" for two hours, his workspace's clock running
 // on. The account's command layer bounds every command by its own deadline, and one past it may
 // have landed: it says so (`uncertain`), and no clock of the press calls it stopped first.
+// B5: two browsers, one Mate. Its press holds it at HQ while it runs — however slow — and lets it
+// go at its end; a second press of it, in another browser, is refused before it writes anything.
+describe("a press's hold at HQ", () => {
+  const api = () => {
+    const calls: Array<string> = [];
+    let heldBy: string | null = null;
+    return {
+      calls,
+      api: {
+        holdPress: async (
+          projectId: string,
+          press: { readonly owner: string; readonly importProcessId?: string },
+        ) => {
+          if (heldBy !== null && heldBy !== press.owner) {
+            throw new HqError({
+              kind: "refused",
+              code: "conflict",
+              reason: "press_held",
+              status: 409,
+              message: "held",
+            });
+          }
+          heldBy = press.owner;
+          calls.push(
+            `hold ${projectId} ${press.owner}${press.importProcessId ? ` ${press.importProcessId}` : ""}`,
+          );
+        },
+        releasePress: async (projectId: string, owner: string) => {
+          if (heldBy === owner) heldBy = null;
+          calls.push(`release ${projectId} ${owner}`);
+        },
+      },
+    };
+  };
+
+  it("is taken, renewed while its press runs, given its import, and let go at its end", async () => {
+    vi.useFakeTimers();
+    try {
+      const hq = api();
+      const hold = pressHold(hq.api, "press-a");
+      expect(await hold.take("p-1")).toBe("held");
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS);
+      await hold.imported("imp-1");
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS);
+      await hold.release();
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
+      expect(hq.calls).toEqual([
+        "hold p-1 press-a",
+        "hold p-1 press-a",
+        "hold p-1 press-a imp-1",
+        "hold p-1 press-a imp-1",
+        "release p-1 press-a",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops a press of a Mate another browser's press holds, before it writes anything", async () => {
+    const hq = api();
+    await pressHold(hq.api, "press-a").take("p-1");
+    const written: Array<string> = [];
+    const platform = {
+      importDevelopmentContainer: async () => {
+        written.push("import");
+        return { serviceName: "zcp", imported: true };
+      },
+    } as unknown as EnvironmentCreationPlatform;
+    try {
+      const outcome = await runPress({
+        organizationId: "org-acme",
+        steps: [{ kind: "import-container", agents: [] }],
+        platform,
+        isCurrent: () => true,
+        resume: { from: 0, projectId: "p-1", projectName: "Acme - Una" },
+        locks: undefined,
+        hold: pressHold(hq.api, "press-b"),
+      });
+      expect(outcome).toMatchObject({ ok: false, error: PRESSED_IN_ANOTHER_BROWSER });
+      expect(written).toEqual([]);
+    } finally {
+      forgetPress("p-1");
+    }
+  });
+
+  it("names the container import's process to its hold once Zerops answered it", async () => {
+    const hq = api();
+    const hold = pressHold(hq.api, "press-a");
+    await hold.take("p-1");
+    const platform = pressPlatform(
+      {
+        client: {} as never,
+        organizationId: "org-acme",
+        data: {
+          organizationRef: (organizationId: string) => ({ organizationId }),
+          projectRef: (organizationId: string, projectId: string) => ({
+            organizationId,
+            projectId,
+          }),
+          runtime: {
+            commands: {
+              importDevelopmentContainer: () =>
+                Effect.succeed({
+                  value: { serviceName: "zcp", imported: true, processId: "imp-9" },
+                }),
+            },
+          },
+        } as never,
+      },
+      { register: null, hq: null, readObservedServices: async () => [], hold },
+    );
+    await platform.importDevelopmentContainer({
+      projectId: "p-1",
+      projectName: "Acme - Una",
+      agents: [],
+    });
+    expect(hq.calls.at(-1)).toBe("hold p-1 press-a imp-9");
+    await hold.release();
+  });
+});
+
 describe("a press whose platform does not answer in time", () => {
   /** The account's command layer, whose container import reaches its deadline after `ms`. */
   const lateImport = (ms: number) => ({
@@ -820,8 +944,8 @@ describe("finishMateSetup — the harden path", () => {
     expect(calls).toEqual(["attach failed"]);
     forgetPress("gus-project");
 
-    // Another browser, with no press of its own, once the grace a running press has is past: HQ
-    // holds no record of Gus, and still holds the birth intent no attach closed.
+    // Another browser, with no press of its own, where no press holds Gus at HQ any more: HQ holds
+    // no record of Gus, and still holds the birth intent no attach closed.
     hq.attachFailure = null;
     calls.length = 0;
     expect(
@@ -830,7 +954,7 @@ describe("finishMateSetup — the harden path", () => {
         containerMissing: false,
         closedOffMissing: false,
         pressStopped: false,
-        pastGrace: true,
+        pressedElsewhere: false,
         viewerIsAdder: false,
         hasContainer: true,
         writer: false,

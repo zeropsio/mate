@@ -7,18 +7,10 @@
  * verdict is the process's, never a clock's.
  */
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { ProjectActivityRead, ProjectRef } from "@t3tools/client-runtime/zerops/data";
-import * as Effect from "effect/Effect";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
-import { projectActivitySnapshotFromRead } from "./activity/useProjectActivity";
-import { findInventoryProjectRef, projectAuthority, useZeropsInventory } from "./inventoryContext";
+import { useProjectsProcesses } from "./activity/useProjectsProcesses";
 import { firstBuildState, type FirstBuildState } from "./mateComing";
-import {
-  useZeropsAtomSelections,
-  useZeropsData,
-  type ZeropsAtomSelection,
-} from "./zeropsDataContext";
 
 /** A candidate whose container waits for its first build, and where its build's process is read. */
 export interface FirstBuildTarget {
@@ -54,52 +46,11 @@ export function firstBuildsOf(
 export function useZeropsFirstBuilds(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): ReadonlyMap<string, FirstBuildState> {
-  const { runtime } = useZeropsData();
-  const inventory = useZeropsInventory();
   const targets = useMemo(() => firstBuildTargets(candidates), [candidates]);
-  // Read only where the grant admits the project (DESIGN §4.2 G12).
-  const projects = useMemo(() => {
-    const refs = new Map<string, ProjectRef>();
-    for (const { projectId } of targets) {
-      if (projectAuthority(inventory, projectId).kind === "withheld") continue;
-      const ref = findInventoryProjectRef(inventory, projectId);
-      if (ref !== null) refs.set(projectId, ref);
-    }
-    return refs;
-  }, [inventory, targets]);
-  // The projects' ids say what is demanded: a new map of the same ones demands nothing new.
-  const identity = [...projects.keys()].sort().join(",");
-  useEffect(() => {
-    if (projects.size === 0) return;
-    const controller = new AbortController();
-    for (const project of projects.values()) {
-      for (const descriptor of [
-        { kind: "project-activity", project } as const,
-        { kind: "project-process-history", project, before: null, limit: 100 } as const,
-      ]) {
-        void Effect.runPromise(
-          Effect.scoped(runtime.acquire(descriptor).pipe(Effect.andThen(Effect.never))),
-          { signal: controller.signal },
-        ).catch(() => undefined);
-      }
-    }
-    return () => {
-      controller.abort();
-    };
-  }, [runtime, identity]);
-
-  const entries = useMemo(
-    (): ReadonlyArray<ZeropsAtomSelection<ProjectActivityRead>> =>
-      [...projects].map(([projectId, project]) => [projectId, runtime.reads.activity(project)]),
-    [projects, runtime],
-  );
-  const reads = useZeropsAtomSelections(entries);
+  const projectIds = useMemo(() => targets.map((target) => target.projectId), [targets]);
+  const processes = useProjectsProcesses(projectIds);
   return useMemo(
-    () =>
-      firstBuildsOf(targets, (projectId) => {
-        const read = reads.get(projectId);
-        return read === undefined ? undefined : projectActivitySnapshotFromRead(read).processes;
-      }),
-    [reads, targets],
+    () => firstBuildsOf(targets, (projectId) => processes.get(projectId)),
+    [processes, targets],
   );
 }

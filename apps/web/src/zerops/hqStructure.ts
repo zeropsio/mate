@@ -23,11 +23,13 @@ import {
   applyMatesEvent,
   applyPeopleEvent,
   applyAppReadsEvent,
+  applyPressesEvent,
   applyStructureEvent,
   type HqApi,
   type HqChanges,
   type HqMates,
   type HqAppReads,
+  type HqPresses,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -149,6 +151,8 @@ export async function driveHqStructure(input: {
       let streamed: HqStructure | null = null;
       let changes: HqChanges | null = null;
       let appReads: HqAppReads | null = view.appReads;
+      // The presses as the last stream left them, until this one's snapshot says them again.
+      let presses: HqPresses | null = view.presses ?? null;
       let mates: HqMates | null = null;
       let people: HqPeople | null = null;
       let rememberedAt: number | null = null;
@@ -198,6 +202,7 @@ export async function driveHqStructure(input: {
               if (event.kind === "mate" || event.kind === "people") return;
               streamed = applyStructureEvent(streamed, event);
               changes = applyChangesEvent(changes, event);
+              presses = applyPressesEvent(presses, event, input.now());
               appReads = applyAppReadsEvent(
                 event.kind === "snapshot" ? view.appReads : appReads,
                 event,
@@ -212,6 +217,7 @@ export async function driveHqStructure(input: {
                 structure: streamed,
                 changes,
                 appReads,
+                presses,
                 readAt,
                 current: true,
                 unavailableSince: null,
