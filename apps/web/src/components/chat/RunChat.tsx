@@ -123,6 +123,7 @@ import {
   type LiveSlot as LiveSlotState,
 } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
+import { stripShowsFiles } from "./runResult.logic";
 import {
   backgroundItemWord,
   reportsInline,
@@ -1252,7 +1253,8 @@ function PhraseWords({ phrase }: { readonly phrase: StepPhrase }) {
  * that looked at one names it on its line and leaves the picture to the
  * strip, so an opened card never shows it twice (Bodhi, run 9).
  */
-const ResultPicturesContext = createContext<ReadonlySet<string>>(new Set());
+const NO_PATHS: ReadonlySet<string> = new Set();
+const ResultPicturesContext = createContext<ReadonlySet<string>>(NO_PATHS);
 
 /** The pictures a step looked at, as themselves: small, each one opening the picture viewer. */
 function StepPictures({ paths }: { readonly paths: ReadonlyArray<string> }) {
@@ -3618,15 +3620,10 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         {...(above ? { readingRef } : {})}
       />
     );
-  const outcomePictures = settled ? row.outcome?.pictures : undefined;
+  const settledOutcome = settled ? row.outcome : null;
   const resultPictures = useMemo(
-    () =>
-      new Set(
-        (outcomePictures ?? []).flatMap((picture) =>
-          picture.kind === "file" ? [picture.path] : [],
-        ),
-      ),
-    [outcomePictures],
+    () => (settledOutcome === null ? NO_PATHS : stripShowsFiles(settledOutcome)),
+    [settledOutcome],
   );
   return (
     // One container for the chat and its now line: the Mate's column keeps
