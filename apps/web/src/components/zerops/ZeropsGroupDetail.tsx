@@ -15,6 +15,8 @@
  * Structural only — what a row says is `projectFlow.ts`'s and
  * `groupHistory.ts`'s (rule R5).
  */
+import { useAtomValue } from "@effect/atom-react";
+import { hqEnvironmentsAtom } from "~/state/zerops";
 import { StopReadAgain } from "./StopReadAgain";
 import {
   cannotTellWhatRuns,
@@ -52,6 +54,7 @@ import {
   type GroupRowTone,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
+  type ZeropsProject,
   type ZeropsRouteOffer,
   sameCommit,
   firstDeployLine,
@@ -580,9 +583,97 @@ function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDepl
   };
 }
 
+type RuntimeStopIdentity = {
+  readonly projectId: string;
+  readonly name: string;
+  readonly tier: "production" | "stage";
+};
+export function runtimeStopsOf(
+  groupId: string,
+  projects: ReadonlyArray<ZeropsProject>,
+  declared: ReadonlyArray<RuntimeStopIdentity> | undefined,
+): ReadonlyArray<RuntimeStopIdentity> {
+  const stops = new Map<string, RuntimeStopIdentity>();
+  for (const project of projects) {
+    const membership = readZeropsMembership(project);
+    if (membership.groupId !== groupId) continue;
+    if (membership.role !== "prod" && membership.role !== "stage" && membership.role !== "devstage")
+      continue;
+    stops.set(project.id, {
+      projectId: project.id,
+      name: project.name,
+      tier: membership.role === "prod" ? "production" : "stage",
+    });
+  }
+  if (declared !== undefined) for (const stop of declared) stops.set(stop.projectId, stop);
+  return [...stops.values()];
+}
+
+function useRuntimeStops(groupId: string): ReadonlyArray<RuntimeStopIdentity> {
+  const inventory = useZeropsInventory();
+  const held = useContext(HeldInventoryContext);
+  const declared = useAtomValue(hqEnvironmentsAtom)?.get(groupId);
+  return runtimeStopsOf(groupId, held?.projects ?? inventory.projects, declared);
+}
+
+/** Runtime remains readable when HQ's changes/release detail has not answered. */
+export function ZeropsRuntimeStops({
+  stops,
+  deployments,
+  onOpen,
+}: {
+  readonly stops: ReadonlyArray<{
+    readonly projectId: string;
+    readonly name: string;
+    readonly tier: "production" | "stage";
+  }>;
+  readonly deployments: ReadonlyMap<string, Shown<Deployment>> | undefined;
+  readonly onOpen?: (projectId: string) => void;
+}) {
+  if (stops.length === 0) return null;
+  return (
+    <Section title="Environments">
+      <ul className="flex flex-col gap-3">
+        {stops.map((stop) => {
+          const view = stopView({
+            deployment: deployments?.get(stop.projectId) ?? UNREAD_DEPLOYMENT,
+            row: undefined,
+            nowMs: 0,
+          });
+          const words = (
+            <>
+              <span className="text-sm font-medium">{stop.name}</span>
+              <ZeropsRoleTag role={stop.tier === "production" ? "prod" : "stage"} />
+              <StatusDot label={view.line} sentence tone={STOP_DOT_TONE[view.tone]} />
+            </>
+          );
+          return (
+            <li className="flex min-w-0 items-center gap-3" key={stop.projectId}>
+              {onOpen === undefined ? (
+                <span className="flex min-w-0 items-center gap-3">{words}</span>
+              ) : (
+                <button
+                  className="flex min-w-0 items-center gap-3 text-left"
+                  type="button"
+                  onClick={() => onOpen(stop.projectId)}
+                >
+                  {words}
+                </button>
+              )}
+              <StopReadAgain projectId={stop.projectId} />
+            </li>
+          );
+        })}
+      </ul>
+    </Section>
+  );
+}
+
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
+  const runtimeStops = useRuntimeStops(groupId);
+  const navigate = useNavigate();
   const environments = flow?.environments ?? [];
   const repo = groupRepository(environments);
   const history = useZeropsHistory({ appId: groupId, repo, repos: flow?.repos });
@@ -613,6 +704,13 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   if (flow === undefined) {
     return (
       <DetailShell crumbs={crumbs} title={groupName}>
+        <ZeropsRuntimeStops
+          stops={runtimeStops}
+          deployments={flowValue?.deployments}
+          onOpen={(projectId) => {
+            void navigate({ to: "/group/$groupId/$projectId", params: { groupId, projectId } });
+          }}
+        />
         <UnreadDetail groupId={groupId} />
       </DetailShell>
     );
@@ -888,6 +986,7 @@ export function ZeropsStopDetailPage({
 }) {
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
+  const runtimeStops = useRuntimeStops(groupId).filter((entry) => entry.projectId === projectId);
   const stop = flow?.environments.find((entry) => entry.projectId === projectId);
   const declared = flow?.environmentInputs.find((entry) => entry.projectId === projectId);
   // A stop whose project the grant withholds draws nothing of it (DESIGN §3.4),
@@ -973,7 +1072,8 @@ export function ZeropsStopDetailPage({
 
   if (flowValue === null || flow === undefined || stop === undefined) {
     return (
-      <DetailShell crumbs={crumbs} title={undefined}>
+      <DetailShell crumbs={crumbs} title={runtimeStops?.[0]?.name}>
+        <ZeropsRuntimeStops stops={runtimeStops} deployments={flowValue?.deployments} />
         <UnreadDetail groupId={groupId} />
       </DetailShell>
     );

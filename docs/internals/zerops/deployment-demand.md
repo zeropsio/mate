@@ -9,7 +9,10 @@ service-stack read, the service membership and updates, and running-process memb
 It cannot depend on navigation holding a separate service lease. The account's access demand admits
 the project; its opened-service demand follows active versions and variables for those service ids.
 Only the sidebar's production/stage stops and mounted detail surfaces demand runtime; unrelated
-navigation projects consume no detail receiver. HQ flow reads cannot hide a stop's runtime answer.
+navigation projects consume no detail receiver. Each mounted sidebar chip also holds its named ids,
+including a remembered project the listing omits; account access publishes its ref before metadata
+arrives. A confirmed gone project leaves the inventory. HQ flow reads cannot hide a stop's runtime answer. App and stop detail pages show runtime from known
+stop identities even while HQ changes and release detail is unavailable.
 Undemanded refs do not hold Refresh in a loading state. The last view releasing a stop ends its demand. There is no polling or automatic capacity retry.
 
 Overview, Projects, the app flow, production/stage detail and the sidebar read the same
