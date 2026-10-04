@@ -146,3 +146,11 @@ describe("deployAnswerSaid — what an event's answer says of its deploys", () =
     });
   });
 });
+
+it("retains the deploy answer's job and process for inspection", () => {
+  const said = deployAnswerSaid({ jobs: [outcome({ job: "7", processId: "p7" })], note: null });
+  expect(said.environments[0]?.jobs[0]).toMatchObject({
+    jobId: "7",
+    deployLog: { jobId: "7", processId: "p7", appVersionId: null },
+  });
+});

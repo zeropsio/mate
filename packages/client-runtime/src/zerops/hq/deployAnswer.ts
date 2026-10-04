@@ -9,9 +9,12 @@
 import type { HqDeployAnswer, HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 
 import { shortCommit } from "../release.ts";
+import { deployLogTarget, type DeployLogTarget } from "./deployLog.ts";
 
 /** One job of the answer, said. */
 export interface DeployAnswerJob {
+  readonly jobId: string | null;
+  readonly deployLog: DeployLogTarget | undefined;
   readonly state: HqDeployOutcome["state"];
   readonly service: string | null;
   /** The commit and outcome, for a row that already names the service. */
@@ -77,6 +80,16 @@ export function deployAnswerSaid(answer: HqDeployAnswer): DeployAnswerSaid {
   for (const outcome of answer.jobs) {
     const jobs = environments.get(outcome.environment) ?? [];
     jobs.push({
+      jobId: outcome.job,
+      deployLog:
+        outcome.job === null
+          ? undefined
+          : deployLogTarget({
+              id: outcome.job,
+              kind: outcome.kind,
+              processId: outcome.processId,
+              appVersionId: null,
+            }),
       state: outcome.state,
       service: outcome.service,
       line:

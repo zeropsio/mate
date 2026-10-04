@@ -10,3 +10,9 @@ from the next change's commit list.
 
 An existing empty change says “Nothing to merge” in its review and offers only **Close without
 merging**, where your access permits it. It offers no Merge action.
+
+After a merge or release, **View deploy** on a job opens its build and deploy pipeline. The same
+control is available beside a service on its stage or production page, including failed and
+completed deploys. **Build log** under the build step opens the log in a dialog. **Hide deploy**
+closes the inspection and stops its read. Inspection uses the job's recorded process or version;
+if Zerops no longer includes it in the project's recent process history, the inspection says so.

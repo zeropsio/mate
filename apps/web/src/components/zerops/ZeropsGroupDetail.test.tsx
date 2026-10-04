@@ -623,6 +623,36 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
     for (const text of contains) expect(markup).toContain(text);
   });
 
+  it.each(["building", "failed", "live"] as const)("offers inspection of a %s deploy", (state) => {
+    const latest = deployRecord(fullSha("b2"), state, {
+      id: "7",
+      processId: "p7",
+      appVersionId: "v7",
+    });
+    const markup = renderStop({
+      tier: "stage",
+      services: [
+        {
+          hostname: "api",
+          repository: "apidev",
+          deploy: { latest, live: state === "live" ? latest : null },
+        },
+      ],
+    });
+    expect(markup).toContain("View deploy");
+    expect(markup).toContain('data-zerops-deploy-job="7"');
+  });
+
+  it("offers no inspection when HQ recorded no platform handle", () => {
+    const latest = deployRecord(fullSha("b2"), "refused", { processId: null, appVersionId: null });
+    expect(
+      renderStop({
+        tier: "stage",
+        services: [{ hostname: "api", repository: "apidev", deploy: { latest, live: null } }],
+      }),
+    ).not.toContain("View deploy");
+  });
+
   it("says HQ's words for a failure once, in the verdict that names it", () => {
     const reason = "No zerops.yaml at the commit.";
     const markup = renderStop({

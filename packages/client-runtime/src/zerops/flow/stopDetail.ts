@@ -24,6 +24,7 @@ import {
   type GroupRowTone,
 } from "../groupRows.ts";
 import { type HqJob, jobFailed, jobInFlight } from "../hq/environments.ts";
+import { deployLogTarget, type DeployLogTarget } from "../hq/deployLog.ts";
 import type { Shown } from "../knowledge/known.ts";
 import { cannotTellWhatRuns, changesNotLive } from "../projectAttention.ts";
 import { serviceDashboardUrl } from "../serviceMap.ts";
@@ -340,6 +341,8 @@ export interface StopServiceRow {
     | undefined;
   /** Its newest job, while it says what its row does not (`jobOf`). */
   readonly job: StopServiceJob | undefined;
+  /** Its newest deploy's durable platform handles, including once it went live. */
+  readonly deployLog?: DeployLogTarget | undefined;
   /** What it runs, where that is not what HQ last made it run (`driftOf`). */
   readonly drift: StopServiceDrift | undefined;
 }
@@ -596,6 +599,7 @@ export function serviceRows(input: {
       offers: input.offers.filter((offer) => offer.service === hostname),
       failed: failedOf(state.deploy?.latest),
       job: jobOf(state.deploy?.latest, input.age),
+      ...(state.deploy === undefined ? {} : { deployLog: deployLogTarget(state.deploy.latest) }),
       drift: driftOf(state),
     };
   });

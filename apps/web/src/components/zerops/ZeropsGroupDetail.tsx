@@ -142,6 +142,7 @@ import { MateUpdateStatusText } from "./MateUpdateLine";
 import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
 import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
+import { ZeropsDeployLog } from "./ZeropsDeployLog";
 import { deployAnswerSaid, type DeployAnswerJob } from "@t3tools/client-runtime/zerops/hq";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
@@ -1447,6 +1448,7 @@ export function ZeropsStopPane({
             <ul className="flex flex-col">
               {services.map((row) => (
                 <StopServiceLine
+                  projectId={stop.projectId}
                   deployAgain={deployAgain}
                   answer={answered.get(row.hostname)}
                   enablingServiceId={enablingServiceId ?? null}
@@ -1611,6 +1613,7 @@ function CardGroup({
  * where it answers.
  */
 function StopServiceLine({
+  projectId,
   row,
   onEnableRoute,
   enablingServiceId,
@@ -1618,6 +1621,7 @@ function StopServiceLine({
   answer,
   said,
 }: {
+  readonly projectId: string;
   readonly row: StopServiceRow;
   readonly answer: DeployAnswerJob | undefined;
   readonly onEnableRoute: ((serviceId: string) => void) | undefined;
@@ -1632,6 +1636,12 @@ function StopServiceLine({
   // Nothing to offer where the caller cannot act on it — a row with a button
   // that does nothing is worse than no row.
   const offers = onEnableRoute === undefined ? [] : row.offers;
+  const deployLog =
+    answer === undefined
+      ? row.deployLog
+      : answer.jobId === row.deployLog?.jobId
+        ? row.deployLog
+        : answer.deployLog;
   return (
     <li className="flex flex-col">
       <div className={SERVICE_ROW_CLASS}>
@@ -1727,6 +1737,14 @@ function StopServiceLine({
             <span>{row.job.reason}</span>
           )}
         </span>
+      )}
+      {deployLog === undefined ? null : (
+        <ZeropsDeployLog
+          key={deployLog.jobId}
+          projectId={projectId}
+          service={row.hostname}
+          target={deployLog}
+        />
       )}
       {/* What it runs, where HQ did not make it run that: never overwritten, said here. */}
       {row.drift === undefined ? null : (
