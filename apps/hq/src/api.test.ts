@@ -912,12 +912,20 @@ describe("HQ API", () => {
           yield* call("PATCH", "/api/mates/P_MATE", { session, body: { face: "rose:seal" } });
           assert.deepStrictEqual(yield* owner.next("change"), shopWith("rose:seal"));
 
-          // Deleted in Zerops: the reconcile drops it, and the socket says so.
+          // Deleted in Zerops: while HQ still holds its rows the app says the deletion is under
+          // way, then the reconcile drops it, and the socket says so.
           fake.projects.splice(
             fake.projects.findIndex((project) => project.id === "P_MATE"),
             1,
           );
-          assert.deepStrictEqual(yield* owner.next("change"), {
+          let dropped: unknown = yield* owner.next("change");
+          const deleting = (dropped as { readonly value: { readonly contents: object } }).value
+            .contents;
+          if (!("empty" in deleting) || deleting.empty === false) {
+            assert.deepStrictEqual(deleting, { empty: false, deletingProjectIds: ["P_MATE"] });
+            dropped = yield* owner.next("change");
+          }
+          assert.deepStrictEqual(dropped, {
             key: appId,
             value: {
               id: appId,
