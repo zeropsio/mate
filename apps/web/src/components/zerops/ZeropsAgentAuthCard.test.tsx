@@ -907,3 +907,37 @@ describe("logins", () => {
     expect(card({ logins: [] })).toBe(before);
   });
 });
+
+describe("ended auth outcomes", () => {
+  it("shows the reason and manual actions in the existing login rows", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        onSignIn={noop}
+        onCancel={noop}
+        onRecheck={noop}
+        viewerSubject="operator"
+        snapshot={snapshot([
+          agent({
+            agentId: "codex",
+            state: "local-only",
+            credPresent: true,
+            verification: { status: "unknown", reason: "The login check timed out.", checkedAt: 1 },
+          }),
+          agent({
+            agentId: "claude-code",
+            state: "local-only",
+            credPresent: true,
+            providerAuth: "authenticated",
+            registration: { status: "failed", reason: "Could not write the flag." },
+          }),
+        ])}
+      />,
+    );
+    expect(html).toContain("Couldn&#x27;t verify");
+    expect(html).toContain("Check again");
+    expect(html).toContain("Register again");
+    expect(html).toContain("Last checked");
+    expect(html).toContain("The login check timed out.");
+    expect(html).toContain("Could not write the flag.");
+  });
+});

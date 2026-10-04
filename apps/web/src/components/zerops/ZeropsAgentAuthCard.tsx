@@ -39,6 +39,7 @@ import { crewLoginRunsWord } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateLoginSignerLine, type MateLoginRow } from "@t3tools/client-runtime/zerops/logins";
 import { Fragment, useId, useState } from "react";
 
+import { formatTimestamp } from "~/timestampFormat";
 import { ClaudeAI, OpenAI } from "~/components/Icons";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -69,6 +70,7 @@ export function ZeropsAgentAuthCard({
   viewerSubject,
   onSignIn,
   onCancel,
+  onRecheck,
   signOutSupported,
   onSignOut,
   signOutPending,
@@ -101,6 +103,7 @@ export function ZeropsAgentAuthCard({
       </header>
       <ZeropsAgentAuthRows
         onCancel={onCancel}
+        onRecheck={onRecheck}
         onSignIn={onSignIn}
         onSignOut={onSignOut}
         signOutError={signOutError}
@@ -129,6 +132,7 @@ export interface ZeropsLoginActionStatus {
  * `capabilities.mateLogins` — hides *Add another login*.
  */
 interface ZeropsLoginsProps {
+  readonly onRecheck?: ((agentId: ZeropsAgentId, loginId?: string) => void) | undefined;
   /** Every login, as `mateLoginRows` lists them; the defaults lend their crewmates to the agent rows. */
   readonly logins?: ReadonlyArray<MateLoginRow> | undefined;
   /** A signer's name, where the client knows it. */
@@ -153,6 +157,7 @@ export function ZeropsAgentAuthRows({
   viewerSubject,
   onSignIn,
   onCancel,
+  onRecheck,
   signOutSupported,
   onSignOut,
   signOutPending,
@@ -191,6 +196,7 @@ export function ZeropsAgentAuthRows({
             agent={agent}
             runsOn={logins.find((login) => login.default && login.agent === agent.agentId)}
             onCancel={onCancel}
+            onRecheck={onRecheck}
             onSignIn={onSignIn}
             onSignOut={onSignOut}
             quiet={anotherAuthorized(agent)}
@@ -206,6 +212,7 @@ export function ZeropsAgentAuthRows({
                 key={login.id}
                 login={login}
                 nameOf={nameOf}
+                onRecheck={onRecheck}
                 onCancel={onCancelLogin}
                 onRemove={onRemoveLogin}
                 onSignIn={onSignInLogin}
@@ -230,6 +237,7 @@ function ZeropsAgentAuthRow({
   quiet,
   onSignIn,
   onCancel,
+  onRecheck,
   signOutSupported,
   onSignOut,
   signOutPending,
@@ -240,6 +248,7 @@ function ZeropsAgentAuthRow({
   readonly runsOn?: Pick<MateLoginRow, "crewmates" | "lead"> | undefined;
   readonly viewerSubject?: string | undefined;
   /** Another agent is signed in, so this one's sign-in is an offer. */
+  readonly onRecheck?: ((agentId: ZeropsAgentId, loginId?: string) => void) | undefined;
   readonly quiet: boolean;
   readonly onSignIn: (agentId: ZeropsAgentId) => void;
   readonly onCancel: (agentId: ZeropsAgentId) => void;
@@ -280,6 +289,7 @@ function ZeropsAgentAuthRow({
               <span className="min-w-0 text-xs leading-4 text-muted-foreground">{label}</span>
             )}
           </div>
+          <AuthCheckedAt at={agent.verification?.checkedAt} />
           <RunsOnLine runsOn={runsOn} />
         </div>
       </div>
@@ -296,19 +306,51 @@ function ZeropsAgentAuthRow({
             {ownershipNotice}
           </p>
         )}
-        <ZeropsAgentAuthActionSlot
-          agent={agent}
-          login={login}
-          onCancel={onCancel}
-          onSignIn={onSignIn}
-          onSignOut={onSignOut}
-          ownership={ownership}
-          signOutError={signOutError}
-          signOutPending={signOutPending}
-          signOutSupported={signOutSupported}
-        />
+        {agent.verification?.reason === undefined &&
+        agent.registration?.reason === undefined ? null : (
+          <p className="text-xs leading-4 text-destructive">
+            {agent.verification?.reason ?? agent.registration?.reason}
+          </p>
+        )}
+        {agent.registration?.process === undefined ? null : (
+          <p className="text-xs leading-4 text-muted-foreground">
+            Registration process {agent.registration.process.id}
+            {agent.registration.process.status ? ` · ${agent.registration.process.status}` : ""}
+          </p>
+        )}
+        {(agentAuthAction(agent) === "check-again" ||
+          agentAuthAction(agent) === "register-again") &&
+        onRecheck !== undefined &&
+        ownership !== "someone-else" ? (
+          <Button size="compact" variant="pill" onClick={() => onRecheck(agent.agentId)}>
+            {agentAuthAction(agent) === "check-again" ? "Check again" : "Register again"}
+          </Button>
+        ) : (
+          <ZeropsAgentAuthActionSlot
+            agent={agent}
+            login={login}
+            onCancel={onCancel}
+            onSignIn={onSignIn}
+            onSignOut={onSignOut}
+            ownership={ownership}
+            signOutError={signOutError}
+            signOutPending={signOutPending}
+            signOutSupported={signOutSupported}
+          />
+        )}
       </div>
     </div>
+  );
+}
+
+/** The receipt's source time, without a clock or a background recheck. */
+function AuthCheckedAt({ at }: { readonly at: number | undefined }) {
+  if (at === undefined) return null;
+  const iso = new Date(at).toISOString();
+  return (
+    <p className="text-xs leading-4 text-muted-foreground">
+      Last checked <time dateTime={iso}>{formatTimestamp(iso, "locale")}</time>
+    </p>
   );
 }
 
@@ -353,6 +395,9 @@ function loginStatusPresentation(login: MateLoginRow): {
     default:
       break;
   }
+  if (login.verification?.status === "checking") return { label: "Checking", tone: "busy" };
+  if (login.verification?.status === "unknown" && login.verification.checkedAt !== undefined)
+    return { label: "Couldn't verify", tone: "failed" };
   switch (login.state) {
     case "authorized":
       return { label: login.kind === "apiKey" ? "Added" : "Authorized", tone: "ok" };
@@ -378,12 +423,14 @@ function ZeropsLoginRow({
   status,
   onSignIn,
   onCancel,
+  onRecheck,
   onSignOut,
   onRemove,
 }: {
   readonly login: MateLoginRow;
   readonly viewerSubject?: string | undefined;
   readonly nameOf?: ((userId: string) => string | undefined) | undefined;
+  readonly onRecheck?: ((agentId: ZeropsAgentId, loginId?: string) => void) | undefined;
   readonly status?: ZeropsLoginActionStatus | undefined;
   readonly onSignIn?: ((login: MateLoginRow) => void) | undefined;
   readonly onCancel?: ((login: MateLoginRow) => void) | undefined;
@@ -415,6 +462,7 @@ function ZeropsLoginRow({
               <span className="min-w-0 text-xs leading-4 text-muted-foreground">{signer}</span>
             )}
           </div>
+          <AuthCheckedAt at={login.verification?.checkedAt} />
           <RunsOnLine runsOn={login} />
         </div>
       </div>
@@ -450,7 +498,26 @@ function ZeropsLoginRow({
               Cancel
             </Button>
           ) : null}
-          {!walking && !signedIn && login.kind === "subscription" && onSignIn !== undefined ? (
+          {!walking &&
+          login.verification?.status === "unknown" &&
+          login.verification.checkedAt !== undefined &&
+          !someoneElses &&
+          onRecheck !== undefined ? (
+            <Button
+              disabled={pending}
+              size="compact"
+              variant="pill"
+              onClick={() => onRecheck(login.agent, login.id)}
+            >
+              Check again
+            </Button>
+          ) : null}
+          {!walking &&
+          login.verification?.status !== "unknown" &&
+          login.verification?.status !== "checking" &&
+          !signedIn &&
+          login.kind === "subscription" &&
+          onSignIn !== undefined ? (
             <Button
               data-zerops-login-sign-in
               disabled={pending}
@@ -494,6 +561,9 @@ function ZeropsLoginRow({
             </Button>
           )}
         </div>
+        {login.verification?.reason === undefined ? null : (
+          <p className="text-xs leading-4 text-destructive">{login.verification.reason}</p>
+        )}
         {status?.error === undefined ? null : (
           <p
             className="w-full text-right text-xs leading-4 text-destructive"
@@ -681,6 +751,12 @@ function agentStatusPresentation(
           ? { label: agentAuthLabel(agent), tone: "off" }
           : { label: "Action required", tone: "attention" };
       }
+      if (action === "check-again" || action === "register-again")
+        return { label: agentAuthLabel(agent), tone: "failed" };
+      if (action === "registering" && agent.verification?.status === "checking")
+        return { label: "Checking", tone: "busy" };
+      if (action === "registering" && agent.registration?.status === "accepted")
+        return { label: "Registration accepted", tone: "off" };
       if (action === "registering") {
         return { label: "Registering", tone: "busy" };
       }
@@ -822,12 +898,13 @@ function ZeropsAgentAuthActionButton({
       </Button>
     );
   }
+  if (action === "registering" && agent.registration?.status === "accepted") return null;
   if (action === "registering") {
     // The watcher marks this within seconds of the credential artifact
     // appearing — there is nothing for the user to click while it does.
     return (
       <Button disabled size="compact" variant="outline">
-        Registering…
+        {agent.verification?.status === "checking" ? "Checking…" : "Registering…"}
       </Button>
     );
   }
