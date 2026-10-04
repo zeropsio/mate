@@ -3123,8 +3123,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               (yield* Ref.get(closed)) ||
               (yield* Ref.get(currentVisibility)) === "hidden" ||
               receivers.get(key) !== receiver ||
-              receiver.failed ||
-              receiver.openFailure !== null
+              // The top's own test: a login that failed or was abandoned is not one. The retry
+              // meets it on establishing and fails the socket, whose recovery then owns it.
+              receiver.failed
             )
               return [];
             const now = yield* Clock.currentTimeMillis;
