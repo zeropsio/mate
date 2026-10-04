@@ -335,7 +335,8 @@ An exchange runs when the key is wanted — while a lease holds it (step A, A9):
 it; it is the Mate on screen, its own view or its birth; it was left last, for 5 minutes or until
 another is left; an action from outside its view holds it until the action answers
 (`AccountEnvironments.hold`); the Usage page, which draws every Mate HQ names, stands
-(`AccountEnvironments.setDrawn`, no project detail); or a Connect runs — and all of these hold: the post-grant stage runs,
+(`AccountEnvironments.setDrawn`; each project holds the project inventory a route's holds, which
+admits it and lists its Mate on a cold load); or a Connect runs — and all of these hold: the post-grant stage runs,
 the session is signed in, P is `present`, C is `ready` or `unknown`, no exchange is in flight for
 the origin, the tab is visible or this is the route's target, the tab's exchange budget has a
 token, and `identityMint` is allowed. One driver per store serves them: a target the person asked

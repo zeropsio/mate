@@ -2357,38 +2357,75 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
-  // Usage draws every Mate of the organization: while it stands, each is wanted in the background,
-  // with no project detail held, and let go when it closes.
-  it.effect("a page that draws every Mate wants each in the background until it lets go", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { rig, environments } = yield* granted([], [A_MATE, B_MATE], undefined, undefined, {
-          hqIndex: {
-            projectOf: (environmentId) =>
-              environmentId === ENV_A
-                ? A_MATE.projectId
-                : environmentId === ENV_B
-                  ? B_MATE.projectId
-                  : null,
-            subscribe: () => () => undefined,
-          },
-        });
+  // Usage draws every Mate of the organization (E2E 0.13.3: a cold /usage load connected none):
+  // on a cold load no project is opened, no environment was ever connected and nothing is kept, so
+  // each Mate HQ names is found as the route's is, through its project, and wanted in the
+  // background — at most three exchanges at once — until the page lets go.
+  it.effect(
+    "a cold page that draws every Mate exchanges each in the background, three at once",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const drawn = ["1", "2", "3", "4"].map((id) => ({
+            mate: mate(id),
+            environmentId: EnvironmentId.make(`env-${id}`),
+          }));
+          const opened = yield* openAccount(
+            [],
+            drawn.map(({ mate }) => mate),
+            undefined,
+            undefined,
+            {
+              hqIndex: {
+                projectOf: (environmentId) =>
+                  drawn.find((entry) => entry.environmentId === environmentId)?.mate.projectId ??
+                  null,
+                subscribe: () => () => undefined,
+              },
+            },
+          );
+          yield* opened.grant.answer();
+          yield* settle;
+          const { environments } = yield* opened.built.postGrant;
+          environments.setActiveOrganization(organization.organizationId);
+          yield* settle;
+          expect(opened.rig.exchanges).toEqual([]);
 
-        environments.setDrawn([ENV_A, ENV_B]);
-        yield* settle;
-        expect(rig.exchanges.map(({ input: { key, asked } }) => ({ key, asked }))).toEqual([
-          { key: MATE, asked: false },
-          { key: B_MATE.key, asked: false },
-        ]);
-        expect(environments.machines().get(B_MATE.key)?.guards.want).toBe(true);
-        expect(environments.detailProjects().size).toBe(0);
+          environments.setDrawn(drawn.map(({ environmentId }) => environmentId));
+          yield* opened.clock.advance(SECOND);
+          yield* settle;
+          expect(opened.rig.exchanges.map(({ input: { key, asked } }) => ({ key, asked }))).toEqual(
+            drawn.slice(0, 3).map(({ mate }) => ({ key: mate.key, asked: false })),
+          );
 
-        environments.setDrawn([]);
-        yield* settle;
-        expect(environments.machines().get(MATE)?.guards.want).toBe(false);
-        expect(environments.machines().get(B_MATE.key)?.guards.want).toBe(false);
-      }),
-    ),
+          opened.rig.exchanges[0]!.answer(
+            admitted(drawn[0]!.environmentId, async () => ({ ok: true })),
+          );
+          yield* opened.clock.advance(SECOND);
+          yield* settle;
+          expect(opened.rig.exchanges.map(({ input: { key } }) => key)).toEqual(
+            drawn.map(({ mate }) => mate.key),
+          );
+
+          const leased = () =>
+            [...opened.registry.get(opened.built.data.stateAtom).interests.values()]
+              .filter(
+                ({ descriptor, leases }) => leases > 0 && descriptor.kind === "project-inventory",
+              )
+              .map(({ descriptor }) =>
+                "project" in descriptor ? descriptor.project.projectId : "",
+              )
+              .toSorted();
+          expect(leased()).toEqual(drawn.map(({ mate }) => mate.projectId));
+
+          environments.setDrawn([]);
+          yield* settle;
+          for (const { mate } of drawn) {
+            expect(environments.machines().get(mate.key)?.guards.want).toBe(false);
+          }
+          expect(leased()).toEqual([]);
+        }),
+      ),
   );
 
   it.effect("an unknown route does not sweep other projects for descriptors", () =>

@@ -266,7 +266,7 @@ export interface AccountEnvironments {
   readonly setOnScreen: (projectId: string | null) => void;
   /**
    * The environments of every Mate a page draws — Usage — or none: each is wanted in the background
-   * while named, with no project detail; replaced whole.
+   * while named, its project holding the project inventory a route's holds; replaced whole.
    */
   readonly setDrawn: (environmentIds: ReadonlyArray<EnvironmentId>) => void;
 }
@@ -404,6 +404,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   >();
   const listeners = new Set<() => void>();
   const detailLeases = new Map<string, Fiber.Fiber<void>>();
+  /** The project lease each drawn Mate's project holds, so its Mate is listed (`updateDrawn`). */
+  const drawnLeases = new Map<string, Fiber.Fiber<void>>();
   const detailFailures = new Map<string, LeaseAdmissionError>();
   let detailProjects: ReadonlySet<string> = new Set();
 
@@ -558,11 +560,43 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   };
 
   /**
-   * A page that draws every Mate wants the targets its environments name now, in the background:
-   * no project detail, and none of them becomes the Mate left last. One nothing names yet waits.
+   * A page that draws every Mate wants the targets its environments name now, in the background,
+   * and none of them becomes the Mate left last. On a cold load no project is opened, so — as the
+   * route's is — each environment's project is found through its record or HQ, and holds a
+   * project lease that admits it and lists its Mate. One nothing names yet waits.
    */
   const updateDrawn = () => {
     if (stores === null || closed) return;
+    const projects = new Set(
+      drawn.flatMap((environmentId) => {
+        const projectId =
+          stores!.records.list().find((record) => record.environmentId === environmentId)
+            ?.projectRef?.projectId ??
+          ports.hqIndex?.projectOf(environmentId) ??
+          null;
+        return projectId !== null &&
+          projectRefOf(projectId)?.organization.organizationId === activeOrganization
+          ? [projectId]
+          : [];
+      }),
+    );
+    for (const [id, fiber] of drawnLeases) {
+      if (projects.has(id)) continue;
+      drawnLeases.delete(id);
+      run(Fiber.interrupt(fiber));
+    }
+    for (const id of projects) {
+      const project = projectRefOf(id);
+      if (drawnLeases.has(id) || project === undefined) continue;
+      drawnLeases.set(
+        id,
+        run(
+          Effect.scoped(
+            data.acquire({ kind: "project-inventory", project }).pipe(Effect.andThen(Effect.never)),
+          ).pipe(Effect.ignore),
+        ),
+      );
+    }
     const keys = drawn.flatMap((environmentId) => targetOf(environmentId) ?? []);
     if (keys.length === drawnKeys.length && keys.every((key, at) => key === drawnKeys[at])) return;
     drawnKeys = keys;
@@ -1048,6 +1082,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       setActiveOrganization: (organizationId) => {
         activeOrganization = organizationId;
         updateRoute();
+        updateDrawn();
       },
       setOnScreen: (projectId) => {
         if (onScreen === projectId) return;
@@ -1106,6 +1141,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         checks.clear();
         for (const fiber of detailLeases.values()) run(Fiber.interrupt(fiber));
         detailLeases.clear();
+        for (const fiber of drawnLeases.values()) run(Fiber.interrupt(fiber));
+        drawnLeases.clear();
         detailFailures.clear();
         detailProjects = new Set();
         driver.dispose();
