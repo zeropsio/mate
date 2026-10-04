@@ -33,7 +33,6 @@ const FRESH = isoAt(API_NOW_MS - 10_000);
 const environment = resolveZeropsEnvironment({
   projectId: PROJECT_ID,
   apiHost: undefined,
-  allowedOrigins: [],
   apiToken: MATE_KEY,
 })!;
 
@@ -455,7 +454,6 @@ describe("verifyThrowawayCaller", () => {
     const keyless = resolveZeropsEnvironment({
       projectId: PROJECT_ID,
       apiHost: undefined,
-      allowedOrigins: [],
     })!;
     return Effect.flip(verifyThrowawayCaller({ environment: keyless, token: PRESENTED })).pipe(
       Effect.tap((error) =>

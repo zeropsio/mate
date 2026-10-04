@@ -1,7 +1,9 @@
 import { Observation } from "./observation.ts";
+import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
 import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttachments";
 /**
- * HQ's API: JSON over HTTP, for the client origins only (CORS, `HQ_CLIENT_ORIGINS`).
+ * HQ's API: JSON over HTTP, answered to any origin without credentials (CORS): every call carries
+ * a bearer or a one-use ticket, never a cookie, so a foreign page holds nothing a browser attaches.
  *
  * - `POST /api/door` `{ token }`: a throwaway through the door (`door.ts`) → `{ session, expiresAt }`.
  * - `DELETE /api/session`: revokes the presented session.
@@ -62,7 +64,7 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  *   change, merged or closed. A tier of the application's recipe (`@t3tools/shared/hqRecipe`):
  *   `GET /api/apps/:appId/recipe/:tier`, and a Mate's own, `GET /api/mate/recipe/:tier`. And `GET
  *   /changes/:appId/:repo/:n`, a change's address at HQ,
- *   redirects to the change in the first client origin.
+ *   redirects to the change in the hosted client.
  * - An application's releases to production (`releases.ts`, the wire in
  *   `@t3tools/shared/hqRelease`): `GET /api/apps/:appId/releases` → `{ releases }`; `POST
  *   /api/apps/:appId/releases` `{ tag, groupHead, entries }` and `POST
@@ -600,9 +602,9 @@ const serveGit = Effect.gen(function* () {
 });
 
 const routes = (
-  options: { readonly clientOrigins: ReadonlyArray<string> } & StreamOptions & {
-      readonly link?: LinkOptions;
-    },
+  options: StreamOptions & {
+    readonly link?: LinkOptions;
+  },
 ) =>
   Layer.mergeAll(
     // No state is read, so any Core answers it, standby or not.
@@ -612,7 +614,7 @@ const routes = (
       Effect.flatMap(HttpRouter.params, decodeChangeAddress).pipe(
         Effect.map(({ appId, repo, n }) =>
           HttpServerResponse.redirect(
-            `${options.clientOrigins[0] ?? ""}${changeRoutePath(appId, repo, n)}`,
+            `${DEFAULT_HOSTED_APP_URL}${changeRoutePath(appId, repo, n)}`,
             { status: 302 },
           ),
         ),
@@ -1564,16 +1566,17 @@ const routes = (
   );
 
 export const apiRoutes = (
-  options: { readonly clientOrigins: ReadonlyArray<string> } & StreamOptions & {
-      readonly link?: LinkOptions;
-    },
-) => Layer.mergeAll(routes(options), corsRoutes(options.clientOrigins));
+  options: StreamOptions & {
+    readonly link?: LinkOptions;
+  },
+) => Layer.mergeAll(routes(options), corsRoutes);
 
-/** The same CORS door on every route, including preflights that need no session. */
-export const corsRoutes = (clientOrigins: ReadonlyArray<string>) =>
-  HttpRouter.cors({
-    allowedOrigins: clientOrigins,
-    allowedMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allowedHeaders: ["authorization", "content-type"],
-    maxAge: 7200,
-  });
+/**
+ * The same CORS door on every route, including preflights that need no session: any origin, never
+ * credentials.
+ */
+export const corsRoutes = HttpRouter.cors({
+  allowedMethods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  allowedHeaders: ["authorization", "content-type"],
+  maxAge: 7200,
+});

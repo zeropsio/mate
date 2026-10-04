@@ -199,7 +199,6 @@ export const startCore = (
         given.keySecret === null
           ? Option.none()
           : Option.some(Redacted.make(given.keySecret ?? TEST_KEY_SECRET)),
-      clientOrigins: [CLIENT, "http://localhost:4380"],
       build: "test",
       drainFor: Duration.millis(300),
       heartbeat: Duration.millis(100),

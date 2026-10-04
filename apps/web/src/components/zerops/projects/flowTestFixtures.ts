@@ -309,7 +309,7 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
       "data-test-pull": value.number,
       "data-test-with-merge": String(options.withMerge),
     }),
-  hqTool: h("span", { "data-test-hq-tool": "true" }),
+  hqCard: h("div", { "data-test-hq-card": "true" }),
   ungrouped: [],
 };
 

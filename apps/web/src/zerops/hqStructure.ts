@@ -30,6 +30,7 @@ import {
   type HqMates,
   type HqAppReads,
   type HqHealth,
+  type HqParts,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -222,20 +223,26 @@ export async function driveHqStructure(input: {
       let official: string | null | undefined;
       /** The Core HQ runs, as this stream names it; none from a Core whose stream does not. */
       let build: string | undefined;
+      /** How HQ's parts stand, as this stream says them; none from a Core whose stream does not. */
+      let parts: HqParts | undefined;
       const servingStanding = (): HqStanding => {
         const health: HqHealth =
           official === undefined
             ? told?.kind === "unchecked"
               ? told
-              : { kind: "healthy", build: told?.kind === "healthy" ? told.build : "" }
+              : { kind: "healthy", build: "", parts: NO_PARTS }
             : healthOfOfficial(official);
         const next = nextHqStanding(view.standing ?? { kind: "unknown" }, health, input.now());
         if (next.kind !== "healthy" && next.kind !== "unchecked") return next;
-        // The Core it runs: as the stream names it, else as a health read did, else not yet.
-        const named =
-          build ??
-          (told?.kind === "healthy" || told?.kind === "unchecked" ? told.build : undefined);
-        return named === undefined ? { kind: next.kind } : { kind: next.kind, build: named };
+        // The Core it runs and its parts: as the stream says them, else as a health read did.
+        const read = told?.kind === "healthy" || told?.kind === "unchecked" ? told : undefined;
+        const named = build ?? read?.build;
+        const standing = parts ?? read?.parts;
+        return {
+          kind: next.kind,
+          ...(named === undefined ? {} : { build: named }),
+          ...(standing === undefined ? {} : { parts: standing }),
+        };
       };
       let rememberedAt: number | null = null;
       let dirty = false;
@@ -281,6 +288,11 @@ export async function driveHqStructure(input: {
                 dirty = true;
                 rememberMates(event.kind === "snapshot");
               }
+              if (event.kind === "parts") {
+                parts = event.parts;
+                if (streamed !== null) publish({ ...view, standing: servingStanding() });
+                return;
+              }
               if (event.kind === "official") {
                 official = event.official;
                 if (streamed !== null) publish({ ...view, standing: servingStanding() });
@@ -289,6 +301,7 @@ export async function driveHqStructure(input: {
               if (event.kind === "snapshot") {
                 official = event.official;
                 build = event.build;
+                parts = event.parts;
                 // Serving again: a health read still waiting on a failure is none of its business.
                 unwaitHealth();
                 if (official === undefined && !toldAsked) {
@@ -389,11 +402,15 @@ export async function driveHqStructure(input: {
  * serves while it cannot check Zerops right now, or one that is not the official HQ. A Core yet to
  * finish its first check (`null`) serves, and is taken as the official one.
  */
-/** The Core's build is named apart (`servingStanding`): `""` here names none. */
+/** Named apart (`servingStanding`): nothing of HQ's parts said here. */
+const NO_PARTS: HqParts = { quarantined: [] };
+
+/** The Core's build and its parts are named apart (`servingStanding`): `""` here names none. */
 function healthOfOfficial(official: string | null): HqHealth {
-  if (official === null || official === "ok") return { kind: "healthy", build: "" };
+  if (official === null || official === "ok")
+    return { kind: "healthy", build: "", parts: NO_PARTS };
   return official === "unknown"
-    ? { kind: "unchecked", build: "" }
+    ? { kind: "unchecked", build: "", parts: NO_PARTS }
     : { kind: "not-ready", state: "active", official };
 }
 

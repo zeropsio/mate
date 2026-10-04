@@ -24,7 +24,6 @@ const EVA = "eva-user-id";
 const environment = resolveZeropsEnvironment({
   projectId: PROJECT_ID,
   apiHost: undefined,
-  allowedOrigins: [],
   apiToken: MATE_KEY,
 })!;
 

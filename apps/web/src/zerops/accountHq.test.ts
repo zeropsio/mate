@@ -35,15 +35,16 @@ import { ZeropsSessionContext } from "./sessionContext";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
 describe("nextHqStanding", () => {
-  const healthy = { kind: "healthy", build: "b1" } as const;
+  const parts = { quarantined: [] };
+  const healthy = { kind: "healthy", build: "b1", parts } as const;
   const down = { kind: "unreachable" } as const;
-  const unchecked = { kind: "unchecked", build: "b1" } as const;
+  const unchecked = { kind: "unchecked", build: "b1", parts } as const;
   it.each<[string, HqStanding, Parameters<typeof nextHqStanding>[1], HqStanding]>([
     [
       "a first answer as the official HQ",
       { kind: "unknown" },
       healthy,
-      { kind: "healthy", build: "b1" },
+      { kind: "healthy", build: "b1", parts },
     ],
     [
       "a first read that fails: unavailable from now",
@@ -57,32 +58,56 @@ describe("nextHqStanding", () => {
       { kind: "not-ready", state: "standby", official: "unknown" },
       { kind: "unavailable", since: 1_000 },
     ],
-    ["HQ back", { kind: "unavailable", since: 1_000 }, healthy, { kind: "healthy", build: "b1" }],
+    [
+      "HQ back",
+      { kind: "unavailable", since: 1_000 },
+      healthy,
+      { kind: "healthy", build: "b1", parts },
+    ],
     // An HQ that serves but cannot check Zerops right now is no outage: everything keeps using it.
     [
       "an HQ that cannot check Zerops",
-      { kind: "healthy", build: "b1" },
+      { kind: "healthy", build: "b1", parts },
       unchecked,
-      { kind: "unchecked", build: "b1" },
+      { kind: "unchecked", build: "b1", parts },
     ],
     [
       "an HQ answering again, Zerops still unchecked",
       { kind: "unavailable", since: 1_000 },
       unchecked,
-      { kind: "unchecked", build: "b1" },
+      { kind: "unchecked", build: "b1", parts },
     ],
     [
       "an unchecked HQ that stops answering: unavailable from now",
-      { kind: "unchecked", build: "b1" },
+      { kind: "unchecked", build: "b1", parts },
       down,
       { kind: "unavailable", since: 5_000 },
     ],
     // The build it runs, as its health says it, so an offered update costs no read of its own.
     [
       "a new build answering",
-      { kind: "healthy", build: "b1" },
-      { kind: "healthy", build: "b2" },
-      { kind: "healthy", build: "b2" },
+      { kind: "healthy", build: "b1", parts },
+      { kind: "healthy", build: "b2", parts },
+      { kind: "healthy", build: "b2", parts },
+    ],
+    // How its parts stand, as its newest answer reports them: no read of their own.
+    [
+      "a backup that failed since the last answer",
+      {
+        kind: "healthy",
+        build: "b1",
+        parts: { quarantined: [], backup: { state: "ok", takenAt: 1 } },
+      },
+      {
+        kind: "healthy",
+        build: "b1",
+        parts: { quarantined: [], backup: { state: "failed", reason: "store" } },
+      },
+      {
+        kind: "healthy",
+        build: "b1",
+        parts: { quarantined: [], backup: { state: "failed", reason: "store" } },
+      },
     ],
   ])("%s", (_name, previous, health, expected) => {
     expect(nextHqStanding(previous, health, 5_000)).toEqual(expected);

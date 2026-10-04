@@ -18,12 +18,25 @@ export function coreLabel(build: string): string {
   return `Core ${year}-${month}-${day} ${hour}:${minute} UTC · ${digest}`;
 }
 
+/** A Core in a few words, for a line with others: its commit's day, or the name Zerops gives it. */
+export function coreDayLabel(build: string): string | null {
+  if (build === "") return null;
+  const match = IDENTITY.exec(build);
+  if (match === null) return `Core ${build}`;
+  const [, year, month, day] = match;
+  return `Core ${year}-${month}-${day}`;
+}
+
 export interface HqUpdateWords {
   readonly line: string;
   readonly action: "Update HQ" | "Update again" | null;
 }
 
-export function hqUpdateWords(state: HqUpdateState): HqUpdateWords {
+/**
+ * `answering` is the Core HQ's health names, `undefined` while unread: a deploy that finished in
+ * Zerops runs beside the old Core until the new one answers (rolling deploy).
+ */
+export function hqUpdateWords(state: HqUpdateState, answering: string | undefined): HqUpdateWords {
   switch (state.kind) {
     case "available":
       return {
@@ -44,24 +57,31 @@ export function hqUpdateWords(state: HqUpdateState): HqUpdateWords {
         action: "Update again",
       };
     case "current":
-      return { line: "HQ is up to date.", action: null };
+      return {
+        line:
+          answering === undefined || !hqUpdateOffered(answering, state.running)
+            ? `HQ runs ${coreLabel(state.running)}. It is up to date.`
+            : `HQ's update to ${coreLabel(state.running)} finished. Waiting for HQ to answer with it.`,
+        action: null,
+      };
   }
 }
 
 /**
- * Whether the Tools row offers HQ's update: to an owner or an admin, while HQ's stream or health
- * names the Core it runs and that Core is older than the one this app carries — data already read.
+ * What HQ's card offers an owner or an admin beside HQ's health: its update while HQ's stream or
+ * health names an older Core than this app carries, else the way to see that it is up to date —
+ * both from data already read. `null` for anybody else, and while either Core is unread.
  */
-export function offersHqUpdate(input: {
+export function hqUpdateTrigger(input: {
   readonly admin: boolean;
   readonly standing: HqStanding;
   /** The Core this app carries; `undefined` until read. */
   readonly carried: string | undefined;
-}): boolean {
+}): "Update available" | "Up to date" | null {
   const { standing, carried } = input;
-  if (!input.admin || carried === undefined) return false;
-  if (standing.kind !== "healthy" && standing.kind !== "unchecked") return false;
-  // The Core it runs not named yet: no offer on a guess.
-  if (standing.build === undefined) return false;
-  return hqUpdateOffered(standing.build, carried);
+  if (!input.admin || carried === undefined) return null;
+  if (standing.kind !== "healthy" && standing.kind !== "unchecked") return null;
+  // The Core it runs not named yet: nothing offered on a guess.
+  if (standing.build === undefined) return null;
+  return hqUpdateOffered(standing.build, carried) ? "Update available" : "Up to date";
 }

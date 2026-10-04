@@ -357,7 +357,6 @@ it.effect("admits turns through the live gate, over a scene where nobody recorde
         resolveZeropsEnvironment({
           projectId: "fixture-project",
           apiHost: undefined,
-          allowedOrigins: [],
         }),
       ),
     ),

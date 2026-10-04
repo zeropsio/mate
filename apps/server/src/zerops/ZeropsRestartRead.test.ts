@@ -13,7 +13,6 @@ import { make, containerStartedAt } from "./ZeropsRestartRead.ts";
 const environment = resolveZeropsEnvironment({
   projectId: "own-project",
   apiHost: undefined,
-  allowedOrigins: [],
 })!;
 const process = { serviceStackId: "own-zcp", actionName: "stack.restart", status: "FINISHED" };
 

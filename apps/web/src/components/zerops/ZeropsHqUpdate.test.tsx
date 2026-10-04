@@ -51,7 +51,7 @@ const action = (tree: ReactTestRenderer) =>
 describe("ZeropsHqUpdatePanel", () => {
   it("reads Zerops once shown and offers the update it read", async () => {
     const read = vi.fn(async () => AVAILABLE);
-    const tree = await mount(<ZeropsHqUpdatePanel read={read} run={vi.fn()} />);
+    const tree = await mount(<ZeropsHqUpdatePanel answering={OLDER} read={read} run={vi.fn()} />);
     expect(read).toHaveBeenCalledTimes(1);
     expect(text(tree)).toContain(
       "HQ runs Core 2026-10-03 08:05 UTC · ba9876543210. This app carries Core 2026-10-04 10:00 UTC · 0123456789ab.",
@@ -76,7 +76,7 @@ describe("ZeropsHqUpdatePanel", () => {
         carried: CARRIED,
         reason: "readiness check failed",
       });
-    const tree = await mount(<ZeropsHqUpdatePanel read={read} run={run} />);
+    const tree = await mount(<ZeropsHqUpdatePanel answering={OLDER} read={read} run={run} />);
     await act(async () => {
       action(tree)!.props.onClick();
     });
@@ -95,6 +95,7 @@ describe("ZeropsHqUpdatePanel", () => {
   it("offers nothing while Zerops shows an update under way", async () => {
     const tree = await mount(
       <ZeropsHqUpdatePanel
+        answering={OLDER}
         read={async () => ({ kind: "updating", target: CARRIED })}
         run={vi.fn()}
       />,
@@ -108,6 +109,7 @@ describe("ZeropsHqUpdatePanel", () => {
   it("says why Zerops could not be read, and offers nothing", async () => {
     const tree = await mount(
       <ZeropsHqUpdatePanel
+        answering={OLDER}
         read={async () => {
           throw new Error("Zerops could not be reached.");
         }}
@@ -115,6 +117,36 @@ describe("ZeropsHqUpdatePanel", () => {
       />,
     );
     expect(text(tree)).toContain("Couldn't read HQ from Zerops: Zerops could not be reached.");
+    expect(action(tree)).toBeUndefined();
+  });
+
+  it("shows the Core HQ runs once it is up to date, and offers nothing", async () => {
+    const tree = await mount(
+      <ZeropsHqUpdatePanel
+        answering={CARRIED}
+        read={async () => ({ kind: "current", running: CARRIED })}
+        run={vi.fn()}
+      />,
+    );
+    expect(text(tree)).toContain(
+      "HQ runs Core 2026-10-04 10:00 UTC · 0123456789ab. It is up to date.",
+    );
+    expect(action(tree)).toBeUndefined();
+  });
+
+  it("never offers again the update it just ran, while Zerops and HQ catch up", async () => {
+    // Measured on KRLS, 2026-10-04: for 9 s after the build finished, the panel offered it again.
+    const read = vi.fn(async (): Promise<HqUpdateState> => AVAILABLE);
+    const tree = await mount(
+      <ZeropsHqUpdatePanel answering={OLDER} read={read} run={async () => ({ ok: true })} />,
+    );
+    await act(async () => {
+      action(tree)!.props.onClick();
+    });
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(text(tree)).toContain(
+      "HQ's update to Core 2026-10-04 10:00 UTC · 0123456789ab finished. Waiting for HQ to answer with it.",
+    );
     expect(action(tree)).toBeUndefined();
   });
 });
