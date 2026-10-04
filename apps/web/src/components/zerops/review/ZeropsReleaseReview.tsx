@@ -40,7 +40,6 @@ import {
   stageRead,
   stageStandings,
   type CompareRead,
-  type MovedCommits,
   type ProductionRun,
   type ReleaseEntry,
   type ReleaseFacts,
@@ -61,7 +60,8 @@ import { useZeropsProjectFlowOptional, type ZeropsProjectFlow } from "~/zerops/p
 import type { ReviewTarget } from "~/zerops/review";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
-import { useZeropsCompares } from "~/zerops/useZeropsCompares";
+import { ZeropsReadFailure } from "../ZeropsReadFailure";
+import { useZeropsCompares, type ComparedCommits } from "~/zerops/useZeropsCompares";
 import { useZeropsReviewMates, type ZeropsReviewMate } from "~/zerops/useZeropsReviewMates";
 
 import { ZeropsChangeReview } from "./ZeropsChangeReview";
@@ -357,6 +357,7 @@ function ReleaseData({
 
   return (
     <ReleaseReviewView
+      comparisonFailure={flow.release.comparisonFailure}
       fixer={fixer?.name}
       gate={flow.release.gate}
       permission={flow.release.permission}
@@ -399,6 +400,9 @@ function ReleaseData({
 }
 
 export interface ReleaseReviewViewProps {
+  readonly comparisonFailure?:
+    | { readonly reason: string; readonly again?: (() => void) | undefined }
+    | undefined;
   readonly snapshot?: boolean | undefined;
   /** The project's name: the title is it and the version. */
   readonly name: string | undefined;
@@ -553,6 +557,9 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           </div>
         </ReviewSection>
       )}
+      {props.comparisonFailure === undefined ? null : (
+        <ZeropsReadFailure action="Compare again" {...props.comparisonFailure} />
+      )}
       {rows.length === 0 && untold.length === 0 && untoldDeploying.length === 0 ? null : (
         <ReviewSection
           aside={`${String(rows.length)} ${rows.length === 1 ? "change" : "changes"}`}
@@ -590,19 +597,23 @@ export type RollbackList =
       readonly atLeast: boolean;
     }
   | { readonly state: "reading" }
-  | { readonly state: "failed"; readonly reason: string };
+  | {
+      readonly state: "failed";
+      readonly reason: string;
+      readonly again?: (() => void) | undefined;
+    };
 
 /** What a roll back takes off production and brings back, and the services nothing is told of. */
 interface RollbackLists {
-  readonly leaving: MovedCommits;
-  readonly comingBack: MovedCommits;
+  readonly leaving: ComparedCommits;
+  readonly comingBack: ComparedCommits;
   readonly untold: ReadonlyArray<string>;
 }
 
 const NO_ASKS: ReadonlyMap<string, ReadonlyArray<CompareRead>> = new Map();
 /** What a roll back to a release not listed goes back to: nothing. */
 const NO_ENTRIES: ReadonlyArray<ReleaseEntry> = [];
-const COMPARING: MovedCommits = { state: "reading" };
+const COMPARING: ComparedCommits = { state: "reading" };
 const LISTS_UNREAD: RollbackLists = { leaving: COMPARING, comingBack: COMPARING, untold: [] };
 /** A roll back's rows are never marked by the stage: nothing it brings back is new to `main`. */
 const NO_MARKS: ReadonlyMap<string, ReleaseStageMark> = new Map();
@@ -634,8 +645,13 @@ function useRollbackLists(
   return useMemo(() => {
     if (reads === undefined) return LISTS_UNREAD;
     const answered = compares.get(groupId);
-    const listOf = (listReads: ReadonlyArray<CompareRead>): MovedCommits =>
-      answered === undefined ? COMPARING : movedCommits({ reads: listReads, ...answered });
+    const listOf = (listReads: ReadonlyArray<CompareRead>): ComparedCommits =>
+      answered === undefined
+        ? COMPARING
+        : {
+            ...movedCommits({ reads: listReads, ...answered }),
+            again: () => answered.again(listReads),
+          };
     return {
       leaving: listOf(reads.leaving),
       comingBack: listOf(reads.comingBack),
@@ -698,7 +714,7 @@ function RollbackData({
   const earlier = flow.releases.find((entry) => entry.tag === tag);
   const { runs, repositories } = flow.release;
   const lists = useRollbackLists(flow.groupId, earlier?.entries, runs, repositories);
-  const listOf = (moved: MovedCommits): RollbackList =>
+  const listOf = (moved: ComparedCommits): RollbackList =>
     moved.state !== "known"
       ? moved
       : {
@@ -819,6 +835,12 @@ function RollbackListSection({
     >
       {listed ? (
         <ReviewReleaseRows onOpen={onOpen} rows={list.rows} />
+      ) : list.state === "failed" && list.again !== undefined ? (
+        <ZeropsReadFailure
+          action="Compare again"
+          reason={rollbackListNote(side, list)}
+          again={list.again}
+        />
       ) : (
         <p className="text-sm text-muted-foreground">{rollbackListNote(side, list)}</p>
       )}

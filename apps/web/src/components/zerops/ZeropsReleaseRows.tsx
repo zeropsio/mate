@@ -7,11 +7,12 @@ import {
   rolledBackTo,
   type FlowReleaseRow,
   type Moved,
-  type MovedCommits,
 } from "@t3tools/client-runtime/zerops";
 import { ChevronRightIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import type { ComparedCommits } from "~/zerops/useZeropsCompares";
+import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { cn } from "~/lib/utils";
 import { useNowMs } from "~/zerops/useNowMs";
 
@@ -24,7 +25,7 @@ import { releaseRowTone } from "./ZeropsProjectRow.logic";
 /** What the rows need to say what each release carried — HQ's comparisons, folded. */
 export interface ZeropsReleasesCarried {
   /** `tag → what it carried`, as HQ compared it (`movedCommits` over `carriedReads`). */
-  readonly carried: ReadonlyMap<string, MovedCommits>;
+  readonly carried: ReadonlyMap<string, ComparedCommits>;
   readonly names: HistoryNames;
   /** Opens the review of the change that landed a carried commit, in its repository. */
   readonly onOpenChange?:
@@ -163,7 +164,7 @@ function CarriedReleaseRow({
   const expansion = open ? (
     <div className="flex flex-col gap-1 pl-7.5" data-zerops-surface="release-carried">
       {what?.state === "failed" ? (
-        <p className="text-xs text-muted-foreground">{what.reason}</p>
+        <ZeropsReadFailure action="Compare again" reason={what.reason} again={what.again} />
       ) : (
         moved.map((read) => (
           <ReleaseService

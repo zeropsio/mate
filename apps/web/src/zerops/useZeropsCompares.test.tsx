@@ -1,7 +1,6 @@
 /**
  * The comparisons a release asks HQ for: each asked once and held for as long as HQ is the same —
- * two commits compare the same for ever — and one HQ did not answer said why and asked again a
- * minute later.
+ * two commits compare the same for ever — and a failed read ends until Compare again.
  */
 import type { CompareRead } from "@t3tools/client-runtime/zerops";
 import type { CompareQuery, CompareResponse } from "@t3tools/shared/hqChanges";
@@ -9,7 +8,7 @@ import { act, type ReactElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { COMPARES_RETRY_MS, useZeropsCompares, type ZeropsCompares } from "./useZeropsCompares";
+import { useZeropsCompares, type ZeropsCompares } from "./useZeropsCompares";
 
 const OLD = "1".repeat(40);
 const HEAD = "2".repeat(40);
@@ -115,20 +114,57 @@ describe("useZeropsCompares", () => {
     expect(hq.state.asked).toEqual(["a-todo appdev"]);
   });
 
-  it("says why HQ did not answer a comparison, and asks it again a minute later", async () => {
+  it("ends a failed comparison until a reader asks once again", async () => {
     vi.useFakeTimers();
     hq.state.failing = true;
-    await mount(<Probe asks={new Map([["a-todo", [READ]]])} />);
+    const tree = await mount(<Probe asks={new Map([["a-todo", [READ]]])} />);
     expect(seen()?.get("a-todo")?.failures).toEqual(
       new Map([[KEY, "HQ is not answering right now."]]),
     );
+    await act(async () => {
+      vi.advanceTimersByTime(180_000);
+    });
+    await act(async () => {
+      tree.update(<Probe asks={new Map([["a-todo", [{ ...READ }]]])} />);
+    });
+    expect(hq.state.asked).toEqual(["a-todo appdev"]);
     hq.state.failing = false;
     await act(async () => {
-      vi.advanceTimersByTime(COMPARES_RETRY_MS);
+      seen()?.get("a-todo")?.again([READ]);
     });
     expect(hq.state.asked).toEqual(["a-todo appdev", "a-todo appdev"]);
     expect(seen()?.get("a-todo")?.answers.has(KEY)).toBe(true);
     expect(seen()?.get("a-todo")?.failures).toEqual(new Map());
+  });
+
+  it("a failed manual attempt ends again, and simultaneous presses share one attempt", async () => {
+    vi.useFakeTimers();
+    hq.state.failing = true;
+    await mount(<Probe asks={new Map([["a-todo", [READ]]])} />);
+    const again = seen()!.get("a-todo")!.again;
+    await act(async () => {
+      again([READ]);
+      again([READ]);
+    });
+    expect(hq.state.asked).toHaveLength(2);
+    expect(seen()?.get("a-todo")?.failures.get(KEY)).toBe("HQ is not answering right now.");
+    await act(async () => {
+      vi.advanceTimersByTime(180_000);
+    });
+    expect(hq.state.asked).toHaveLength(2);
+  });
+
+  it("new revisions originate one new read without retrying the failed revision", async () => {
+    hq.state.failing = true;
+    const tree = await mount(<Probe asks={new Map([["a-todo", [READ]]])} />);
+    hq.state.failing = false;
+    const next = { ...READ, query: { base: OLD, head: "3".repeat(40) } };
+    await act(async () => {
+      tree.update(<Probe asks={new Map([["a-todo", [next]]])} />);
+    });
+    expect(hq.state.asked).toHaveLength(2);
+    expect(seen()?.get("a-todo")?.failures.size).toBe(0);
+    expect(seen()?.get("a-todo")?.answers.size).toBe(1);
   });
 
   it("asks nothing while the organization's HQ is not open here", async () => {

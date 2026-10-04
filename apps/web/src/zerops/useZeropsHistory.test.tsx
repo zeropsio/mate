@@ -127,6 +127,7 @@ describe("useZeropsHistory", () => {
     expect(historyOf({ appId: "a-todo", repo: "appdev", repos: REPOS })).toEqual({
       kind: "failed",
       reason: "HQ is not answering right now.",
+      again: expect.any(Function),
     });
   });
 });

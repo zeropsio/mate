@@ -88,7 +88,7 @@ import { useNowMs } from "./useNowMs";
 import { useZeropsAtomSelections, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsAppRecipes } from "./useZeropsAppRecipes";
 import { useZeropsAppReleases } from "./useZeropsAppReleases";
-import { useZeropsCompares } from "./useZeropsCompares";
+import { useZeropsCompares, type ComparedCommits } from "./useZeropsCompares";
 import { useReleasePermission } from "./useChangeOffers";
 import { useZeropsRegistry } from "./useZeropsRegistry";
 import {
@@ -229,7 +229,7 @@ const NOTHING_TO_LIST: ReadonlyMap<string, string> = new Map();
  * each production service runs (`productionRuns`) — what a roll back compares from.
  */
 interface ReleaseLive {
-  readonly moved: MovedCommits;
+  readonly moved: ComparedCommits;
   readonly untold: ReadonlyArray<string>;
   readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
 }
@@ -478,6 +478,7 @@ function projectFlow(
       productionWithheld === undefined
         ? {
             ...offer,
+            comparisonFailure: live.moved.state === "failed" ? live.moved : undefined,
             permission,
             groupHead: read?.groupHead,
             inFlight,
@@ -773,7 +774,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
               moved:
                 answered === undefined
                   ? NOT_COMPARED
-                  : movedCommits({ reads: plan.reads, ...answered }),
+                  : {
+                      ...movedCommits({ reads: plan.reads, ...answered }),
+                      again: () => answered.again(plan.reads),
+                    },
               untold: plan.untold,
               runs: plan.running,
             },

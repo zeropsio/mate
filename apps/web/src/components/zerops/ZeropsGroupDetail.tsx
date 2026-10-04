@@ -116,10 +116,16 @@ import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
-import { type FlowVerbOutcome, useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
+import {
+  type FlowVerbOutcome,
+  type ZeropsProjectFlow,
+  useZeropsProjectFlowOptional,
+} from "~/zerops/projectFlowContext";
 import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
-import { useZeropsCompares } from "~/zerops/useZeropsCompares";
+import { useZeropsCompares, type ComparedCommits } from "~/zerops/useZeropsCompares";
+import { useZeropsRecipeFailure } from "~/zerops/useZeropsAppRecipes";
+import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { useZeropsHistory, type ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
@@ -670,6 +676,7 @@ export function ZeropsRuntimeStops({
 }
 
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
+  const recipeFailure = useZeropsRecipeFailure(groupId);
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
   const runtimeStops = useRuntimeStops(groupId);
@@ -718,6 +725,9 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 
   return (
     <ZeropsGroupPane
+      readFailures={
+        <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
+      }
       environments={environments}
       history={history}
       groupId={groupId}
@@ -766,6 +776,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
  * changes waiting, without an account behind it.
  */
 export function ZeropsGroupPane({
+  readFailures,
   environments,
   history,
   attention,
@@ -792,6 +803,7 @@ export function ZeropsGroupPane({
   withheldNotice,
   firstDeployOf,
 }: {
+  readonly readFailures?: React.ReactNode;
   /** What has landed on the repository, as HQ compares it. */
   readonly history: ZeropsHistoryState;
   /** `full sha → the release that shipped it`. */
@@ -870,6 +882,7 @@ export function ZeropsGroupPane({
       {trouble === null || trouble === undefined ? null : (
         <p className="text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
       )}
+      {readFailures}
       <AttentionPanel items={attention} onAct={onAct} release={release} />
 
       <Section title="Who is on it">
@@ -984,6 +997,7 @@ export function ZeropsStopDetailPage({
   readonly groupId: string;
   readonly projectId: string;
 }) {
+  const recipeFailure = useZeropsRecipeFailure(groupId);
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
   const runtimeStops = useRuntimeStops(groupId).filter((entry) => entry.projectId === projectId);
@@ -1116,6 +1130,9 @@ export function ZeropsStopDetailPage({
     <>
       <StopReadAgain projectId={projectId} />
       <ZeropsStopPane
+        readFailures={
+          <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
+        }
         carried={carried}
         crumbs={crumbs}
         deployed={deployed}
@@ -1299,7 +1316,7 @@ function useStopCarried(
   groupId: string,
   releases: ReadonlyArray<FlowReleaseRow> | undefined,
   services: GroupEnvironmentRowInput["services"] | undefined,
-): ReadonlyMap<string, MovedCommits> | undefined {
+): ReadonlyMap<string, ComparedCommits> | undefined {
   const reads = useMemo(() => {
     if (services === undefined || releases === undefined) return undefined;
     const repositoryOf = new Map(
@@ -1320,7 +1337,12 @@ function useStopCarried(
     return new Map(
       [...reads].map(([tag, tagReads]) => [
         tag,
-        answered === undefined ? CARRIED_READING : movedCommits({ reads: tagReads, ...answered }),
+        answered === undefined
+          ? CARRIED_READING
+          : {
+              ...movedCommits({ reads: tagReads, ...answered }),
+              again: () => answered.again(tagReads),
+            },
       ]),
     );
   }, [compares, groupId, reads]);
@@ -1342,6 +1364,7 @@ const RELEASES_SHOWN = 5;
  * and how the stop got here (a production's releases, a stage's deploys).
  */
 export function ZeropsStopPane({
+  readFailures,
   carried,
   crumbs,
   deployed,
@@ -1373,6 +1396,7 @@ export function ZeropsStopPane({
   view,
   waiting,
 }: {
+  readonly readFailures?: React.ReactNode;
   readonly crumbs: ReadonlyArray<Crumb>;
   readonly groupId: string;
   readonly stop: EnvironmentRow;
@@ -1404,7 +1428,7 @@ export function ZeropsStopPane({
    * What each of a production's releases carried, by its tag, as HQ compares it; `undefined` on a
    * stage, where the rows are their shas.
    */
-  readonly carried?: ReadonlyMap<string, MovedCommits> | undefined;
+  readonly carried?: ReadonlyMap<string, ComparedCommits> | undefined;
   /** Opens the review of the change that landed a commit a release carried. */
   readonly onOpenCarriedChange?:
     | ((repository: string, change: HistoryChange, from: HTMLElement) => void)
@@ -1473,6 +1497,7 @@ export function ZeropsStopPane({
       title={title}
       titleTag={<ZeropsRoleTag label={ROLE_TAG[stop.tier]} />}
     >
+      {readFailures}
       <div>
         <VerdictPanel detail={verdict.detail} text={verdict.text} tone={verdict.tone}>
           {verb?.kind === "release" ? (
@@ -2574,4 +2599,21 @@ function ListingNotice({
 
 function Note({ children }: { readonly children: React.ReactNode }) {
   return <p className="text-sm text-muted-foreground">{children}</p>;
+}
+
+function ProjectReadFailures({
+  recipe,
+  comparison,
+}: {
+  readonly recipe: ReturnType<typeof useZeropsRecipeFailure>;
+  readonly comparison: ZeropsProjectFlow["release"]["comparisonFailure"];
+}) {
+  return (
+    <>
+      {recipe === undefined ? null : <ZeropsReadFailure action="Read recipe again" {...recipe} />}
+      {comparison === undefined ? null : (
+        <ZeropsReadFailure action="Compare again" {...comparison} />
+      )}
+    </>
+  );
 }

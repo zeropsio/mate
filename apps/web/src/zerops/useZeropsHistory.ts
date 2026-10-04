@@ -12,7 +12,7 @@ import { useZeropsCompares } from "./useZeropsCompares";
 
 export type ZeropsHistoryState =
   | { readonly kind: "reading" }
-  | { readonly kind: "failed"; readonly reason: string }
+  | { readonly kind: "failed"; readonly reason: string; readonly again?: (() => void) | undefined }
   | {
       readonly kind: "read";
       /** Newest first, at most `COMPARE_COMMITS_MAX`. */
@@ -54,5 +54,7 @@ export function useZeropsHistory(input: {
   const answer = answered?.answers.get(compareReadKey(read));
   if (answer !== undefined) return { kind: "read", commits: answer.commits, total: answer.total };
   const failure = answered?.failures.get(compareReadKey(read));
-  return failure === undefined ? READING : { kind: "failed", reason: failure };
+  return failure === undefined
+    ? READING
+    : { kind: "failed", reason: failure, again: () => answered?.again([read]) };
 }

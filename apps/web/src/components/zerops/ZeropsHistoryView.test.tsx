@@ -87,3 +87,9 @@ describe("ZeropsHistoryView's rows", () => {
     expect(render(undefined, { ...LANDED, total: 347 })).toContain("345 earlier commits");
   });
 });
+
+it("a failed history offers Compare again beside its reason", () => {
+  expect(
+    render(undefined, { kind: "failed", reason: "HQ did not answer.", again: () => {} }),
+  ).toContain("Compare again");
+});
