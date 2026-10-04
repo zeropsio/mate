@@ -301,7 +301,8 @@ export const resumeAfterRestart = (core: CrewCore, handle: string) =>
     const rows = (yield* asRefusal(core.store.operations(CREW_ID))).filter(
       (row) => row.handle === handle && pending.has(row.id),
     );
-    const held = applied.run !== undefined && applied.run.state !== "running";
+    // The person's Pause or Stop holds; a finished run, or none, holds nothing.
+    const held = applied.run?.state === "paused" || applied.run?.state === "stopped";
     // The newest first: Continue settles a task's older rows with it.
     for (const row of rows.toReversed()) {
       pending.delete(row.id);

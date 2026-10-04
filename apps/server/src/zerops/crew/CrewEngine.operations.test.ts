@@ -1215,3 +1215,32 @@ it.live("a fix hand-off a restart cut off before its card is sent with its card"
       }),
   ]),
 );
+
+it.live("a restart after a finished run carries a died turn on: a finished run holds nothing", () =>
+  withCrewEngines([
+    (world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* command({
+          _tag: "start",
+          budgetUsd: "unlimited",
+          timeLimitHours: "unlimited",
+          stopAtUsagePercent: null,
+          landing: "person",
+          devGrant: false,
+          leadMayStart: false,
+        });
+        const runId = (yield* snapshotWhere((frame) => frame.run?.state === "running")).run!.id;
+        yield* command({ _tag: "finish", runId });
+        yield* snapshotWhere((frame) => frame.run?.state === "finished");
+        yield* firstTurn(world, () => undefined);
+      }),
+    (world) =>
+      Effect.gen(function* () {
+        yield* (yield* ServerCommandReadiness).complete;
+        yield* eventually(
+          Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) => turns.length === 2),
+        );
+      }),
+  ]),
+);
