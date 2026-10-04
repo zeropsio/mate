@@ -92,7 +92,7 @@ import {
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal } from "../knowledge/signals.ts";
-import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
+import { finishedEnableAt, heldCandidates, type CandidateRow } from "../projections/candidates.ts";
 
 // ── Ports ────────────────────────────────────────────────────────────────────────────────────
 
@@ -399,6 +399,13 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   >();
   const listeners = new Set<() => void>();
   const detailLeases = new Map<string, Fiber.Fiber<void>>();
+  /**
+   * The processes each project of the active organization is read for while a container of it is
+   * ACTIVE without its address — the listing reads from them whether the platform is turning its
+   * address on (`subdomainEnableIn`) — and, once its enable finished, a direct read of its services
+   * after that, which says whether the record caught up: what lets each go.
+   */
+  const addressWatch = new Map<string, () => void>();
   /** The project lease each drawn Mate's project holds, so its Mate is listed (`updateDrawn`). */
   const drawnLeases = new Map<string, Fiber.Fiber<void>>();
   const detailFailures = new Map<string, LeaseAdmissionError>();
@@ -869,6 +876,71 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
+  /**
+   * Reads the processes — running, and the newest history — of every listed project of the active
+   * organization with a container ACTIVE without its address, for as long as it lacks one: its
+   * address landing, the project leaving the listing or the organization leaving view lets the
+   * read go. Each time an enable of such a container is read as finished, its project's services
+   * are read again, directly, after it.
+   */
+  const updateAddressWatch = () => {
+    if (closed) return;
+    const lacking = new Map<string, ProjectRef>();
+    for (const row of rows) {
+      if (row.presence !== "known" || row.service?.status !== "ACTIVE") continue;
+      if (row.containerOrigin !== undefined || lacking.has(row.project.id)) continue;
+      const ref = projectRefOf(row.project.id);
+      if (ref !== undefined && ref.organization.organizationId === activeOrganization)
+        lacking.set(row.project.id, ref);
+    }
+    for (const [projectId, stop] of addressWatch) {
+      if (lacking.has(projectId)) continue;
+      addressWatch.delete(projectId);
+      stop();
+    }
+    for (const [projectId, project] of lacking) {
+      if (addressWatch.has(projectId)) continue;
+      const lease = run(
+        Effect.scoped(
+          Effect.all([
+            data.acquire({ kind: "project-activity", project }),
+            data.acquire({ kind: "project-process-history", project, before: null, limit: 100 }),
+          ]).pipe(Effect.andThen(Effect.never)),
+        ).pipe(Effect.ignore),
+      );
+      let checkedAfter: number | null = null;
+      let check: Fiber.Fiber<void> | null = null;
+      const recheck = (read: ProjectActivityRead) => {
+        if (closed) return;
+        let ended: number | null = null;
+        for (const row of rows) {
+          if (row.project.id !== projectId || row.service === undefined) continue;
+          if (row.containerOrigin !== undefined) continue;
+          const at = finishedEnableAt(read, row.service.id);
+          if (at !== null && (ended === null || at > ended)) ended = at;
+        }
+        if (ended === null || (checkedAfter !== null && checkedAfter >= ended)) return;
+        checkedAfter = ended;
+        if (check !== null) run(Fiber.interrupt(check));
+        check = run(
+          Effect.scoped(
+            data
+              .acquire({ kind: "project-services-check", project })
+              .pipe(Effect.andThen(Effect.never)),
+          ).pipe(Effect.ignore),
+        );
+      };
+      const unsubscribe = atomRegistry.subscribe(data.reads.activity(project), recheck, {
+        immediate: true,
+      });
+      addressWatch.set(projectId, () => {
+        unsubscribe();
+        run(Fiber.interrupt(lease));
+        if (check !== null) run(Fiber.interrupt(check));
+      });
+    }
+  };
+
   // ── The index ──────────────────────────────────────────────────────────────────────────────
 
   let indexed: {
@@ -1005,6 +1077,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           const listedRows = next.flatMap(({ listing }) => heldCandidates(listing).rows);
           const moved = !sameItems(rows, listedRows);
           if (moved) rows = listedRows;
+          updateAddressWatch();
           // The route's target first, so its container is read before any other's.
           updateRoute();
           updateActions();
@@ -1078,6 +1151,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         activeOrganization = organizationId;
         updateRoute();
         updateDrawn();
+        updateAddressWatch();
       },
       setOnScreen: (projectId) => {
         if (onScreen === projectId) return;
@@ -1136,6 +1210,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         checks.clear();
         for (const fiber of detailLeases.values()) run(Fiber.interrupt(fiber));
         detailLeases.clear();
+        for (const stop of addressWatch.values()) stop();
+        addressWatch.clear();
         for (const fiber of drawnLeases.values()) run(Fiber.interrupt(fiber));
         drawnLeases.clear();
         detailFailures.clear();

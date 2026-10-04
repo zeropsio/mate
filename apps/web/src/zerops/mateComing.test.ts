@@ -1,9 +1,6 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
-import {
-  ADDRESS_GRACE_MS,
-  deriveZeropsCandidates,
-} from "@t3tools/client-runtime/zerops/candidates";
+import { ARRIVAL_MS, deriveZeropsCandidates } from "@t3tools/client-runtime/zerops/candidates";
 import {
   IDLE_GUARDS,
   candidatePresence,
@@ -37,7 +34,7 @@ import {
 import type { MateLink, Reachability } from "@t3tools/client-runtime/zerops/environments";
 import {
   NO_ADDRESS_MEMORY,
-  addressClockOf,
+  addressFactsOf,
   rememberAddresses,
   type AddressMemory,
 } from "@t3tools/client-runtime/zerops/projections";
@@ -1002,11 +999,15 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
   });
   const ORIGIN = "https://zcp-9f1c-8080.prg1.zerops.app";
 
-  /** How each tab reads it at `atMs` since its creation, first seen without its address at `seenMs`. */
+  /**
+   * How each tab reads it at `atMs` since its creation, where the platform says `enable` of turning
+   * its address on, and watched it come up where `watched`.
+   */
   const reading = (input: {
     readonly atMs: number;
     readonly service: ZeropsService;
-    readonly seenMs?: number;
+    readonly enable?: "on" | "off";
+    readonly watched?: boolean;
     readonly connected?: boolean;
     readonly created: boolean;
   }) => {
@@ -1019,9 +1020,8 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
       {
         nowMs,
         addressSeen: () =>
-          input.seenMs === undefined
-            ? undefined
-            : { addressed: false, since: CREATED + input.seenMs },
+          input.watched === true ? { addressed: false, building: true } : undefined,
+        subdomainEnable: () => input.enable,
       },
     )[0]!;
     const presence = candidatePresence({ ...candidate, presence: "known" });
@@ -1055,17 +1055,23 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
     readonly step: string;
     readonly atMs: number;
     readonly service: ZeropsService;
-    readonly seenMs?: number;
+    readonly enable?: "on" | "off";
+    readonly watched?: boolean;
   }> = [
     { step: "its first build", atMs: 60_000, service: zcp("READY_TO_DEPLOY", false) },
-    { step: "ACTIVE, its address not enabled yet", atMs: 109_700, service: zcp("ACTIVE", false) },
     {
-      step: "ACTIVE, its address still on its way",
+      step: "ACTIVE, its processes not read yet",
+      atMs: 109_700,
+      service: zcp("ACTIVE", false),
+      watched: true,
+    },
+    {
+      step: "ACTIVE, its address being turned on",
       atMs: 113_000,
       service: zcp("ACTIVE", false),
-      seenMs: 109_700,
+      enable: "on",
     },
-    { step: "its address landed", atMs: 115_300, service: zcp("ACTIVE", true) },
+    { step: "its address landed", atMs: 115_300, service: zcp("ACTIVE", true), watched: true },
   ];
 
   describe.each([
@@ -1094,7 +1100,12 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
   });
 
   it("an old Mate whose access is off says it has no public address, with Open in Zerops", () => {
-    const read = reading({ atMs: 3 * 60 * 60_000, service: zcp("ACTIVE", false), created: false });
+    const read = reading({
+      atMs: 3 * 60 * 60_000,
+      service: zcp("ACTIVE", false),
+      enable: "off",
+      created: false,
+    });
     expect(read.coming).toBeUndefined();
     expect(read.reachability).toEqual({ kind: "no-address", reason: "no-subdomain" });
     expect(reachabilityPhrase(read.reachability, { nowMs: 0, mateName: "Quinn" })).toEqual({
@@ -1103,11 +1114,12 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
     });
   });
 
-  it("a young Mate whose address never came says so once its wait ends", () => {
+  it("a Mate whose address the platform did not turn on says so, watched or not", () => {
     const read = reading({
-      atMs: 109_700 + ADDRESS_GRACE_MS,
+      atMs: 113_000,
       service: zcp("ACTIVE", false),
-      seenMs: 109_700,
+      enable: "off",
+      watched: true,
       created: false,
     });
     expect(read.coming).toBeUndefined();
@@ -1251,7 +1263,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
         [step.service],
         new Map(step.connected === true ? [[ORIGIN, ENV]] : []),
         undefined,
-        addressClockOf(memory, nowMs),
+        addressFactsOf(memory, nowMs),
       )[0]!;
       memory = rememberAddresses(memory, [candidate]);
       return mateComing({
@@ -1275,7 +1287,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
   });
 
   it("past its two minutes, a Mate that never answered reads as any other", () => {
-    const late = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, atMs: 152_000 + ADDRESS_GRACE_MS }]);
+    const late = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, atMs: 157_600 + ARRIVAL_MS }]);
     expect(late[3]).toBeUndefined();
   });
 

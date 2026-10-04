@@ -1,8 +1,14 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import type { Known, Shown } from "../knowledge/known.ts";
-import type { FacetAdmission, ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
-import { project, service, stamp } from "../data/__fixtures__/index.ts";
+import type {
+  FacetAdmission,
+  ProjectActivityRead,
+  ProjectRecord,
+  ProjectRef,
+  ServiceRecord,
+} from "../data/types.ts";
+import { process, project, service, stamp } from "../data/__fixtures__/index.ts";
 import type { ZeropsCandidate } from "../candidates.ts";
 import {
   admittedOnly,
@@ -17,6 +23,7 @@ import {
   takenBotNames,
   type CandidateRow,
   listingSettled,
+  subdomainEnableIn,
 } from "./candidates.ts";
 
 const admission: FacetAdmission = {
@@ -639,34 +646,32 @@ describe("a withheld listing", () => {
 
 // Review, pass 32: mobile read a listing's value to remember addresses, which web and mobile never
 // do (rule 5) — the runtime reads the known listings for them.
-describe("learnAddresses — what the listings teach the address memory, and the soonest wait's end", () => {
-  const CREATED = "2026-10-02T12:00:00.000Z";
-  const row = (serviceId: string, seen: { until: number } | { origin: string }) =>
+describe("learnAddresses — what the listings teach the address memory, and the soonest pose's end", () => {
+  const row = (serviceId: string, seen: "awaited" | { origin: string }) =>
     ({
       key: `p-${serviceId}:${serviceId}`,
       project: { id: `p-${serviceId}` },
-      group: "until" in seen ? "provisioning" : "ready",
-      service: { id: serviceId, name: "zcp", status: "ACTIVE", created: CREATED },
-      ...("until" in seen
-        ? { addressAwaited: { since: seen.until - 120_000, until: seen.until } }
-        : { containerOrigin: seen.origin }),
+      group: seen === "awaited" ? "provisioning" : "ready",
+      service: { id: serviceId, name: "zcp", status: "ACTIVE" },
+      ...(seen === "awaited" ? { addressAwaited: true } : { containerOrigin: seen.origin }),
     }) as unknown as ZeropsCandidate;
   const unread: Known<ReadonlyArray<ZeropsCandidate>> = { state: "unread", waitingFor: null };
+  const WATCHED = { addressed: false, building: true } as const;
 
   it("reads nothing off a listing not known yet", () => {
-    expect(learnAddresses(new Map(), [unread])).toEqual({ memory: new Map(), waitEnd: null });
+    expect(learnAddresses(new Map(), [unread])).toEqual({ memory: new Map(), arrivalEnd: null });
   });
 
-  it("remembers every known listing's containers, and says when the soonest wait ends", () => {
+  it("remembers every known listing's containers; an address wait has no end of its own", () => {
     const learned = learnAddresses(new Map(), [
-      known([row("s-wait", { until: 300_000 }), row("s-up", { origin: "https://up.example" })]),
+      known([row("s-wait", "awaited"), row("s-up", { origin: "https://up.example" })]),
       unread,
-      known([row("s-later", { until: 500_000 })]),
+      known([row("s-later", "awaited")]),
     ]);
-    expect(learned.waitEnd).toBe(300_000);
+    expect(learned.arrivalEnd).toBeNull();
     expect(learned.memory.get("s-up")).toEqual({ addressed: true });
-    expect(learned.memory.get("s-wait")).toEqual({ addressed: false, since: 180_000 });
-    expect(learned.memory.get("s-later")).toEqual({ addressed: false, since: 380_000 });
+    expect(learned.memory.get("s-wait")).toEqual(WATCHED);
+    expect(learned.memory.get("s-later")).toEqual(WATCHED);
   });
 
   it("derives the listing again when a container on its way to answering stops being so", () => {
@@ -674,10 +679,70 @@ describe("learnAddresses — what the listings teach the address memory, and the
       ...row("s-landed", { origin: "https://landed.example" }),
       arriving: { since: 100_000, until: 220_000 },
     } as ZeropsCandidate;
-    const waited = new Map([["s-landed", { addressed: false, since: 100_000 } as const]]);
-    const learned = learnAddresses(waited, [known([row("s-later", { until: 500_000 }), arriving])]);
-    expect(learned.waitEnd).toBe(220_000);
+    const watched = new Map([["s-landed", WATCHED]]);
+    const learned = learnAddresses(watched, [known([row("s-later", "awaited"), arriving])]);
+    expect(learned.arrivalEnd).toBe(220_000);
     expect(learned.memory.get("s-landed")).toEqual({ addressed: true, since: 100_000 });
+  });
+});
+
+// Whether a container's address is being turned on is its project's processes' word: known once
+// both its running processes and its newest history are read; a live enable says so before that.
+describe("subdomainEnableIn", () => {
+  const observedFacet = (fields: unknown) => ({ knowledge: "observed", fields, stamp: stamp(1) });
+  const enable = (status: string) => ({
+    knowledge: "observed",
+    record: {
+      ref: process("enable-1", project()),
+      identity: observedFacet({
+        actionName: "stack.enableSubdomainAccess",
+        serviceIds: ["service-1"],
+        createdAt: "2026-10-02T12:01:40.000Z",
+      }),
+      lifecycle: observedFacet({ status, startedAt: null, finishedAt: null }),
+      pipeline: { knowledge: "unresolved" },
+    },
+  });
+  const activity = (input: {
+    readonly running: ReadonlyArray<string>;
+    readonly history: ReadonlyArray<string>;
+    readonly runningRead: boolean;
+    readonly historyRead: boolean;
+  }) =>
+    ({
+      running: {
+        value: input.running.map(enable),
+        query: { status: input.runningRead ? "observed" : "pending" },
+      },
+      retainedHistory: input.history.map(enable),
+      processHistory: input.historyRead ? "read" : "reading",
+      observation: { required: [], optional: [] },
+    }) as unknown as ProjectActivityRead;
+
+  it.each([
+    { case: "nothing asked", read: null, said: undefined },
+    {
+      case: "a live enable, the history still read: on",
+      read: activity({ running: ["RUNNING"], history: [], runningRead: true, historyRead: false }),
+      said: "on",
+    },
+    {
+      case: "no live enable, the history still read: not known",
+      read: activity({ running: [], history: [], runningRead: true, historyRead: false }),
+      said: undefined,
+    },
+    {
+      case: "both read, none held: off",
+      read: activity({ running: [], history: [], runningRead: true, historyRead: true }),
+      said: "off",
+    },
+    {
+      case: "both read, a failed enable in the history: off",
+      read: activity({ running: [], history: ["FAILED"], runningRead: true, historyRead: true }),
+      said: "off",
+    },
+  ] as const)("$case", ({ read, said }) => {
+    expect(subdomainEnableIn(read, "service-1")).toBe(said);
   });
 });
 

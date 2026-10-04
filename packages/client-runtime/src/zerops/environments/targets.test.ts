@@ -27,13 +27,13 @@ const mateRow = (status: string, origin: string | null = ORIGIN): CandidateRow =
   presence: "known",
 });
 
-/** The project's Mate ACTIVE without its address: young and on its way to it, or past its wait. */
+/** The project's Mate ACTIVE without its address: its address being turned on, or off. */
 const addressRow = (group: "provisioning" | "unavailable"): CandidateRow => ({
   key: KEY,
   project,
   group,
   service: { id: "service-1", name: "zcp", status: "ACTIVE" },
-  ...(group === "provisioning" ? { addressAwaited: { since: 1_000, until: 121_000 } } : {}),
+  ...(group === "provisioning" ? { addressAwaited: true as const } : {}),
   presence: "known",
 });
 
