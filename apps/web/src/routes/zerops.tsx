@@ -7,9 +7,7 @@ import {
 } from "../components/zerops/projects/projectsView.logic";
 
 export const Route = createFileRoute("/zerops")({
-  // `?view=projects&group=<groupId>` opens the Projects view at that group's
-  // card — the way a Mate's conversation points at its project. No view is
-  // the Overview.
+  // `?group=<groupId>` opens that project's row and scrolls it into view.
   validateSearch: (raw: Record<string, unknown>): ProjectsSearch => parseProjectsSearch(raw),
   component: ZeropsRoute,
 });
