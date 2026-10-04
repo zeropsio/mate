@@ -7,8 +7,9 @@ describe("@t3tools/client-runtime/zerops/knowledge", () => {
     expect(Object.keys(knowledge).filter((name) => /cell|advance|^read$/i.test(name))).toEqual([]);
   });
 
-  it("exports the presentation and the retry policy", () => {
+  it("exports the presentation without an automatic retry policy", () => {
     expect(typeof knowledge.knownPresentation).toBe("function");
-    expect(typeof knowledge.scheduleRetry).toBe("function");
+    expect(Object.keys(knowledge)).not.toContain("scheduleRetry");
+    expect(Object.keys(knowledge)).not.toContain("RETRY_RUNGS_MS");
   });
 });
