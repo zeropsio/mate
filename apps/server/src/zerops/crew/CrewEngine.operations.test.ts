@@ -12,6 +12,7 @@ import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { CrewStore } from "./CrewStore.ts";
 import { CrewEngine } from "./CrewEngine.ts";
 import { CREW_ID } from "./CrewHome.ts";
+import { sweptSeamWords } from "./crewCards.ts";
 import { EDITED_AFTER_CHECK, MOVED_AFTER_CHECK } from "./crewMachines.ts";
 import {
   applied,
@@ -21,6 +22,7 @@ import {
   firstTurn,
   latest,
   reportDone,
+  seamsOf,
   snapshotWhere,
 } from "./testing/crewEngineSteps.ts";
 import {
@@ -262,8 +264,17 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
             );
           }
           if (kind === "dispatch") {
-            // The boot sweep saved the dirty work as a commit on the copy's tip.
+            // The boot sweep saved the dirty work as a commit on the copy's tip, and said so in
+            // the crewmate's chat: what it saved, and where.
             assert.strictEqual(git(copy, ["rev-parse", "HEAD~1"]), head);
+            const saved = git(copy, ["rev-parse", "HEAD"]);
+            assert.deepInclude(
+              (yield* seamsOf(world)).map(([, words, seam]) => [words, seam]),
+              [
+                sweptSeamWords("crew/backend", saved, ["ok.txt"]),
+                { seam: "swept", branch: "crew/backend", commit: saved, paths: ["ok.txt"] },
+              ],
+            );
             yield* eventually(
               Effect.map(
                 Ref.get(world.dispatched),

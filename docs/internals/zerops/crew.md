@@ -456,8 +456,9 @@ handle under the crewmate's lock, rejects a changed attempt or newer handle, and
 operation for its side effects. An already landed receipt only records the task's outcome.
 Drop it ends the task's records while leaving its dirty files and HEAD in place. Before any of
 that, the boot sweeps each writer's service from git (`CrewWorkspace.sweep`): a lane gitdir made
-relative, a dirty lane's work saved as a WIP commit, an unreadable ref or a tip the engine did not
-write parked. A copy whose task passed its check (`ready`, `review`, `landing`, `waiting-on-you`)
+relative, a dirty lane's work saved as a WIP commit and said in its crewmate's chat — a `swept`
+seam line naming its files, its branch and the commit — an unreadable ref or a tip the engine did
+not write parked. A copy whose task passed its check (`ready`, `review`, `landing`, `waiting-on-you`)
 is never committed, at boot or at a turn's end: a tracked edit on it stops the task, "its copy has
 edits made after its check", and stays where it is; untracked files are neither edits nor landed. A
 landing that went through is landed, whatever its copy holds. A check judges the committed tree:

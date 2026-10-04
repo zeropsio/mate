@@ -463,6 +463,8 @@ export type CrewSummary = typeof CrewSummary.Type;
  * reaches this conversation later, by `apply`. `stint`: a conversation opened
  * between turns (*Start fresh*, a save applied at once) opens with its
  * reason; one opened for a turn carries the reason in that turn's card.
+ * `swept`: work a restart left uncommitted in the crewmate's copy, saved by
+ * the boot sweep as a WIP commit on its branch — the files and the commit.
  */
 export const CREW_SEAM_ACTIVITY_KIND = "crew.seam";
 
@@ -476,6 +478,12 @@ export const CrewSeam = Schema.Union([
   Schema.Struct({ seam: Schema.Literal("closed"), taskId: CrewTaskId, number: PositiveInt }),
   Schema.Struct({ seam: Schema.Literal("saved"), apply: CrewApplyChoice }),
   Schema.Struct({ seam: Schema.Literal("stint"), previousThreadId: Schema.NullOr(ThreadId) }),
+  Schema.Struct({
+    seam: Schema.Literal("swept"),
+    branch: TrimmedNonEmptyString,
+    commit: TrimmedNonEmptyString,
+    paths: Schema.Array(Schema.String),
+  }),
 ]);
 export type CrewSeam = typeof CrewSeam.Type;
 

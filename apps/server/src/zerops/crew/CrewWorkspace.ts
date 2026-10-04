@@ -159,7 +159,8 @@ export type AdoptOutcome =
 export type LaneParkReason = "dependencies" | "secrets" | "size" | "unknown-tip";
 
 export type LaneCommit =
-  | { readonly _tag: "committed"; readonly tip: string }
+  /** `saved`: the files the commit changed against its first parent, deletions included. */
+  | { readonly _tag: "committed"; readonly tip: string; readonly saved: ReadonlyArray<string> }
   | { readonly _tag: "unchanged"; readonly tip: string }
   /** An open merge whose conflicted files still carry markers; nothing was committed. */
   | {
@@ -226,7 +227,8 @@ export type RecoverOutcome =
 /** One lane's state as the boot sweep read it from git. */
 export type SweepLane = { readonly handle: string } & (
   | { readonly _tag: "clean"; readonly tip: string }
-  | { readonly _tag: "committed"; readonly tip: string }
+  /** Its uncommitted work saved as a WIP commit: `saved`, the files it took; none if unchanged. */
+  | { readonly _tag: "committed"; readonly tip: string; readonly saved: ReadonlyArray<string> }
   /** An open merge; its conflicted files go back as rework. */
   | { readonly _tag: "merging"; readonly paths: ReadonlyArray<string> }
   | {
@@ -430,6 +432,7 @@ export const make = Effect.gen(function* () {
           `if [ "$merging" = 1 ] || ! ${lg(["diff", "--cached", "--quiet"])}; then\n` +
           `  ${lg(["commit", "-q", "--no-verify", "-m", message])} || exit 1\n` +
           `  printf 'status\\tcommitted\\n'\n` +
+          `  ${lg(["diff", "--name-only", "HEAD~1", "HEAD"])} | sed 's/^/saved\t/' || exit 1\n` +
           `else\n` +
           `  printf 'status\\tunchanged\\n'\n` +
           `fi\n` +
@@ -460,10 +463,11 @@ export const make = Effect.gen(function* () {
         }
         default: {
           yield* store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, recordedTip: tip }));
-          return laneCommit({
-            _tag: status === "committed" ? "committed" : "unchanged",
-            tip,
-          });
+          return laneCommit(
+            status === "committed"
+              ? { _tag: "committed", tip, saved: fieldsOf(out, "saved") }
+              : { _tag: "unchanged", tip },
+          );
         }
       }
     });
@@ -821,8 +825,19 @@ export const make = Effect.gen(function* () {
           );
           switch (committed._tag) {
             case "committed":
+              return {
+                handle,
+                _tag: "committed",
+                tip: committed.tip,
+                saved: committed.saved,
+              } satisfies SweepLane;
             case "unchanged":
-              return { handle, _tag: "committed", tip: committed.tip } satisfies SweepLane;
+              return {
+                handle,
+                _tag: "committed",
+                tip: committed.tip,
+                saved: [],
+              } satisfies SweepLane;
             case "rework":
               return { handle, _tag: "merging", paths: committed.paths } satisfies SweepLane;
             case "parked":

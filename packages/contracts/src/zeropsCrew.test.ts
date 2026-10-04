@@ -507,6 +507,12 @@ describe("CrewSeam", () => {
     { seam: "saved", apply: "nextTurn" },
     { seam: "stint", previousThreadId: "thread-1" },
     { seam: "stint", previousThreadId: null },
+    {
+      seam: "swept",
+      branch: "crew/backend",
+      commit: "0a84078f2fd5652d10c3c820786c944d057386e3",
+      paths: ["src/api.ts"],
+    },
   ])("decodes a $seam seam", (seam) => {
     expect(decodeSeam(seam)).toEqual(seam);
   });

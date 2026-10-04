@@ -3922,8 +3922,9 @@ no-cache`.
       pressed Land.
   - A waiting Allow goes out again at boot. A refused task starts again once a sign-in changes. In a
     run, a failed check goes back to its crewmate.
-  - The boot sweeps the crew copies: a dirty copy is saved as a WIP commit, and a missing one comes
-    back only when its branch, landings and tip prove nothing is lost.
+  - The boot sweeps the crew copies: a dirty copy is saved as a WIP commit, said in its crewmate's
+    chat with its files, branch and commit (no side effect nobody sees, 2026-10-05), and a missing
+    one comes back only when its branch, landings and tip prove nothing is lost.
   - Only an ambiguous resume waits for a person, with its reason: a rebuild a person chose, a task
     changed since, a resume admission refuses.
   - **Supersedes:** "crew work interrupted by a restart is shown and continued by a person, never

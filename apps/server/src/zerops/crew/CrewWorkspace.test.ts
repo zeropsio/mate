@@ -158,7 +158,7 @@ describe("CrewWorkspace", () => {
               recorded: Option.getOrUndefined(yield* store.getLane("game", "backend"))?.recordedTip,
             },
             {
-              first: { _tag: "committed", tip },
+              first: { _tag: "committed", tip, saved: ["src/api.ts"] },
               second: { _tag: "unchanged", tip },
               subject: "wip(a-1): turn 1 by Zerops Mate Crew",
               recorded: tip,
@@ -555,9 +555,13 @@ describe("CrewWorkspace", () => {
         gitExit(`${root}/.crew/frontend`, ["merge", "-q", "main"]);
         NodeFS.writeFileSync(`${root}/.git/refs/heads/crew/map`, "");
         const swept = yield* workspace.sweep(TEST_HOST);
+        const backend = swept.lanes.find((lane) => lane.handle === "backend");
         assert.deepStrictEqual(
           {
             lanes: swept.lanes.map((lane) => [lane.handle, lane._tag]),
+            // What the WIP commit saved, and where: the person is told (`crewBoot`).
+            saved: backend?._tag === "committed" ? backend.saved : undefined,
+            savedTip: backend?._tag === "committed" ? backend.tip : undefined,
             merging: swept.lanes.find((lane) => lane.handle === "frontend"),
             broken: swept.brokenRefs,
             mapState: Option.getOrUndefined(yield* store.getLane("game", "map"))?.state,
@@ -570,12 +574,32 @@ describe("CrewWorkspace", () => {
               ["map", "parked"],
               ["quiet", "clean"],
             ],
+            saved: ["src/api.ts"],
+            savedTip: git(`${root}/.crew/backend`, ["rev-parse", "HEAD"]),
             merging: { handle: "frontend", _tag: "merging", paths: ["README.md"] },
             broken: ["refs/heads/crew/map"],
             mapState: "parked",
             backendClean: "",
           },
         );
+      }),
+    ),
+  );
+
+  // A save that only deletes is a save too: the person is told what it took.
+  it.effect("names a file the boot sweep's commit deleted", () =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        yield* workspace.create(BACKEND);
+        write(root, ".crew/backend/src/api.ts", "export {};\n");
+        yield* workspace.commitTurn(BACKEND, { assignment: "a-1", turn: 1 });
+        NodeFS.rmSync(`${root}/.crew/backend/src/api.ts`);
+        const swept = yield* workspace.sweep(TEST_HOST);
+        const backend = swept.lanes.find((lane) => lane.handle === "backend");
+        assert.deepStrictEqual(backend?._tag === "committed" ? backend.saved : backend, [
+          "src/api.ts",
+        ]);
       }),
     ),
   );

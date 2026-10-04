@@ -37,6 +37,7 @@ import {
   type AppliedCrew,
   type CrewCore,
 } from "./crewCore.ts";
+import { sweptSeamWords } from "./crewCards.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { refreshLaneStats } from "./crewLanding.ts";
 import { CHECKED_STATES, EDITED_AFTER_CHECK, NO_REPORT } from "./crewMachines.ts";
@@ -48,6 +49,8 @@ import { repairUnsetCopies } from "./CrewStints.ts";
 import { adoptOwnWrites, readLandedEvidence } from "./crewContinue.ts";
 import type { DeployState } from "./crewDeployState.ts";
 import { recoverLanes } from "./crewTurns.ts";
+import { appendSeam } from "./crewSeamLines.ts";
+import { laneBranch } from "./CrewShell.ts";
 
 /** A task whose turn was running when the server stopped: its session died with it. */
 const turnDied = (core: CrewCore, threadId: string | null) =>
@@ -193,7 +196,8 @@ export const inspectBoot = (core: CrewCore) =>
 /**
  * Each writer's service read from git, not the tables: a lane gitdir made
  * relative, a dirty lane's work saved as a WIP commit (nothing is lost by a
- * commit), an unreadable ref or a tip the engine did not write parked, and
+ * commit) and said in its crewmate's chat — the files, the branch and the
+ * commit — an unreadable ref or a tip the engine did not write parked, and
  * a missing copy brought back only where its branch, landings and saved
  * tip all remain; otherwise the loss is named and the copy stays missing.
  */
@@ -208,6 +212,19 @@ const sweepHost = (core: CrewCore, applied: AppliedCrew, host: string) =>
       }),
     );
     const swept = yield* asRefusal(core.workspace.sweep(host, checked));
+    // Work the restart left uncommitted, saved: said where the person reads the crewmate.
+    for (const lane of swept.lanes) {
+      if (lane._tag !== "committed" || lane.saved.length === 0) continue;
+      const stint = currentStint(applied, lane.handle);
+      if (stint === undefined) continue;
+      const branch = laneBranch(lane.handle);
+      yield* appendSeam(core, stint.threadId, sweptSeamWords(branch, lane.tip, lane.saved), {
+        seam: "swept",
+        branch,
+        commit: lane.tip,
+        paths: lane.saved,
+      });
+    }
     // Edits on a copy its check passed: never committed, never landed, and its landing stops.
     for (const lane of swept.lanes) {
       const task = lane._tag === "held" ? open(lane.handle) : undefined;
