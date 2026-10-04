@@ -48,14 +48,13 @@ const MATE_KEY_NAME_PREFIXES: ReadonlyArray<string> = ["zcp-", "zerops-zcp-"];
  *
  * The platform mints the container's token with `ADMIN` (measured
  * 2026-09-15), which is also a shell in that container and the agent running
- * in it: `ADMIN` rewrites the project's own tags, so a Mate could tag itself
- * into another group, rename its project, and hand itself the group's reach
- * this module is trying to control. `BASIC_USER` keeps the whole bootstrap —
- * service import with `override`, plain and sensitive service env, restart,
+ * in it: `ADMIN` rewrites the project's own tags and renames the project — the
+ * name every surface calls the Mate by. `BASIC_USER` keeps the whole bootstrap
+ * — service import with `override`, plain and sensitive service env, restart,
  * delete, `zcli push` — and answers `403` to the tag and rename writes
- * (measured 2026-09-15, ledger *Zerops auth surface*). So the difference this
- * lowering makes is exactly the difference between a Mate that can work and a
- * Mate that can promote itself.
+ * (measured 2026-09-15, ledger *Zerops auth surface*). Where a Mate belongs is
+ * HQ's record, which no key of a Mate writes; the lowering keeps the agent to
+ * the work in its own project.
  */
 export const MATE_SELF_PROJECT_ROLE = "BASIC_USER" satisfies ZeropsProjectRole;
 

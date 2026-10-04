@@ -1,10 +1,10 @@
 /**
- * The commit an app version's name spells, the one reading of it (the broker's
- * `docs/group-repo.md`, "What is deployed, and how the broker names it").
+ * The commit an app version's name spells, the one reading of it (HQ's
+ * `versionNames.ts` names them now, as the old broker did before it).
  *
  * The name is the platform's evidence of what a service runs, and a service
- * keeps whatever name it was deployed under, so every name the broker has ever
- * written is read:
+ * keeps whatever name it was deployed under, so every name HQ or the broker
+ * before it has ever written is read:
  *
  * - **now** — exactly two tokens, a label and the commit's short sha, exactly
  *   seven hex: a stage's `main 7e2d4c1`, production's `v0.1.0 7e2d4c1`.

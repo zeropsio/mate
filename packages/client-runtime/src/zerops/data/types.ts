@@ -2172,9 +2172,10 @@ export interface ZeropsDataCommands {
     project: ProjectRef,
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
   /**
-   * Writes a project's tags (DESIGN §2.B B2): the patch is applied to a fresh read, serialized per
-   * project across this browser's tabs, and verified by reading back. A patch the list refuses is
-   * an answer, not a failure: nothing was written and `refused` says why.
+   * Writes a project's Mate marker, its one tag (`tagPatch.ts`): applied to a fresh read, serialized
+   * per project across this browser's tabs, and verified by reading back. A project that holds it
+   * already is `unchanged`, nothing written; a write that fails is the adapter's failure, for a
+   * manual Again.
    */
   readonly updateProjectTags: (
     project: ProjectRef,

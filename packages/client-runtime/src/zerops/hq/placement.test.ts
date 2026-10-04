@@ -17,7 +17,7 @@ interface Listed {
 }
 
 const STRUCTURE = {
-  ungrouped: [{ projectId: "p-ada", name: "scratch", mate: { name: "Ada", face: "sky:flower" } }],
+  ungrouped: [{ projectId: "p-ada", name: "Ada", mate: { face: "sky:flower" } }],
   apps: [
     {
       id: "app-1",
@@ -27,14 +27,14 @@ const STRUCTURE = {
           projectId: "p-vera",
           name: "Acme CRM - Vera",
           kind: "mate",
-          mate: { name: "Vera", face: "rose:seal" },
+          mate: { face: "rose:seal" },
         },
         { projectId: "p-stage", name: "acme-stage", kind: "stage", mate: null },
         {
           projectId: "p-ivo",
           name: "Acme CRM - Ivo",
           kind: "devstage",
-          mate: { name: "Ivo", face: "sky:gem" },
+          mate: { face: "sky:gem" },
         },
         { projectId: "p-prod", name: "acme", kind: "production", mate: null },
         { projectId: "p-later", name: "later", kind: "preview", mate: null },
@@ -47,9 +47,9 @@ describe("placementsOf", () => {
   it("joins each Mate's logins, as HQ's overview of it says them, onto its record", () => {
     const logins = { "claude-code": { signedInBy: "u-jan", present: true, token: false } };
     const placed = placementsOf(STRUCTURE, new Map([["p-vera", logins]]));
-    expect(placed.get("p-vera")?.mate).toEqual({ name: "Vera", face: "rose:seal", logins });
-    // HQ holds no overview of Ada: her record alone.
-    expect(placed.get("p-ada")?.mate).toEqual({ name: "Ada", face: "sky:flower" });
+    expect(placed.get("p-vera")?.mate).toEqual({ face: "rose:seal", logins });
+    // HQ holds no overview of Ada: its record alone.
+    expect(placed.get("p-ada")?.mate).toEqual({ face: "sky:flower" });
   });
 
   it("is where HQ places each project: its application, its kind, its Mate", () => {
@@ -60,7 +60,7 @@ describe("placementsOf", () => {
           appId: "app-1",
           appName: "Acme CRM",
           kind: "mate",
-          mate: { name: "Vera", face: "rose:seal" },
+          mate: { face: "rose:seal" },
         },
       ],
       ["p-stage", { appId: "app-1", appName: "Acme CRM", kind: "stage", mate: null }],
@@ -70,14 +70,11 @@ describe("placementsOf", () => {
           appId: "app-1",
           appName: "Acme CRM",
           kind: "devstage",
-          mate: { name: "Ivo", face: "sky:gem" },
+          mate: { face: "sky:gem" },
         },
       ],
       ["p-prod", { appId: "app-1", appName: "Acme CRM", kind: "production", mate: null }],
-      [
-        "p-ada",
-        { appId: null, appName: null, kind: "mate", mate: { name: "Ada", face: "sky:flower" } },
-      ],
+      ["p-ada", { appId: null, appName: null, kind: "mate", mate: { face: "sky:flower" } }],
     ]);
   });
 });

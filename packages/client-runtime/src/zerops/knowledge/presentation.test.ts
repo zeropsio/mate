@@ -20,12 +20,12 @@ import {
 
 const NOW = 100_000;
 const CONTEXT: PresentationContext = { nowMs: NOW, updateOffered: false };
-const NEGATIVE = "No open pull requests";
+const NEGATIVE = "No services";
 const VALUE = "platform-value-7f3a";
 
-const PULL_REQUESTS: KnownSurface<ReadonlyArray<string>> = {
-  subject: "pull requests",
-  entity: "repository",
+const SERVICES: KnownSurface<ReadonlyArray<string>> = {
+  subject: "services",
+  entity: "project",
   source: "zerops",
   checking: null,
   negative: (value) => (value.length === 0 ? NEGATIVE : null),
@@ -77,7 +77,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
   {
     name: "reading: the region's own checking phrase",
     shown: { state: "reading", sinceMs: 1_000, attempt: 1 },
-    surface: { ...PULL_REQUESTS, checking: "Checking what runs here…" },
+    surface: { ...SERVICES, checking: "Checking what runs here…" },
     expected: {
       region: "placeholder",
       message: { text: "Checking what runs here…", afterMs: 400, tone: "quiet" },
@@ -119,7 +119,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
     expected: {
       region: "message",
       message: {
-        text: "Couldn't read pull requests. Zerops didn't answer.",
+        text: "Couldn't read services. Zerops didn't answer.",
         afterMs: 0,
         tone: "alert",
       },
@@ -142,7 +142,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
     },
     expected: {
       message: {
-        text: "Couldn't read pull requests. Zerops returned an incomplete project inventory.",
+        text: "Couldn't read services. Zerops returned an incomplete project inventory.",
         afterMs: 0,
         tone: "alert",
       },
@@ -159,7 +159,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
       retryAtMs: 104_000,
     },
     expected: {
-      message: { text: "Couldn't read pull requests. Zerops said no.", afterMs: 0, tone: "alert" },
+      message: { text: "Couldn't read services. Zerops said no.", afterMs: 0, tone: "alert" },
       affordance: { kind: "retry", label: "Try again" },
     },
   },
@@ -172,7 +172,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
       attempt: 1,
       retryAtMs: null,
     },
-    surface: { ...PULL_REQUESTS, source: "mate" },
+    surface: { ...SERVICES, source: "mate" },
     context: { nowMs: NOW, updateOffered: true },
     expected: {
       region: "message",
@@ -193,7 +193,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
       attempt: 1,
       retryAtMs: null,
     },
-    surface: { ...PULL_REQUESTS, source: "mate" },
+    surface: { ...SERVICES, source: "mate" },
     expected: {
       region: "message",
       message: {
@@ -326,7 +326,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
   {
     name: "gone: the authoritative negative in the AL-09 wording, and Go to projects",
     shown: { state: "gone", evidence: "direct-not-found", asOf: { ordinal: 2, atMs: 2_000 } },
-    surface: { ...PULL_REQUESTS, entity: "project", source: "zerops" },
+    surface: { ...SERVICES, entity: "project", source: "zerops" },
     expected: {
       region: "message",
       message: {
@@ -398,7 +398,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
 
 describe("knownPresentation (DESIGN §3.4)", () => {
   it.each(RENDERING)("$name", ({ shown, surface, context, expected }) => {
-    expect(knownPresentation(shown, surface ?? PULL_REQUESTS, context ?? CONTEXT)).toMatchObject(
+    expect(knownPresentation(shown, surface ?? SERVICES, context ?? CONTEXT)).toMatchObject(
       expected,
     );
   });
@@ -506,9 +506,9 @@ const everyShown: ReadonlyArray<Shown<ReadonlyArray<string>>> = [
 const SOURCES: ReadonlyArray<KnowledgeSource> = ["zerops", "mate"];
 const everySurface: ReadonlyArray<KnownSurface<ReadonlyArray<string>>> = SOURCES.flatMap(
   (source) => [
-    { ...PULL_REQUESTS, source },
-    { ...PULL_REQUESTS, source, checking: "Checking what runs here…" },
-    { ...PULL_REQUESTS, source, negative: null },
+    { ...SERVICES, source },
+    { ...SERVICES, source, checking: "Checking what runs here…" },
+    { ...SERVICES, source, negative: null },
   ],
 );
 const everyContext: ReadonlyArray<PresentationContext> = [
@@ -610,7 +610,7 @@ describe("knownPresentation over every Shown state (the vector)", () => {
         reason: { kind: "revalidation-failed", failure: TIMEOUT, attempt: 1, retryAtMs: null },
         sinceMs: NOW,
       }),
-      PULL_REQUESTS,
+      SERVICES,
       CONTEXT,
     );
     expect(noRetry.message?.text).toBe("Not up to date. Zerops didn't answer.");
