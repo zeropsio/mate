@@ -1,8 +1,8 @@
 /**
  * The words of HQ's card on the projects page (`ZeropsHqCard.tsx`), from reads already made: HQ's
- * health and how its parts stand (`useHqStanding`, every 30 s), HQ's services as the inventory
- * holds them, the structure and the Mates' presence its stream keeps, and — once an admin opens the
- * card — HQ's builds, read from Zerops once.
+ * health and how its parts stand (`useHqStanding`, every 30 s), the structure and the Mates'
+ * presence its stream keeps, and — once an admin opens the card — HQ's services and builds, read
+ * from Zerops once.
  */
 import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import type {
@@ -18,9 +18,9 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { HqStanding } from "~/zerops/accountHq";
 
-import { coreLabel, hqUpdateWords } from "./ZeropsHqUpdate.logic";
+import { coreDayLabel, coreLabel, hqUpdateWords } from "./ZeropsHqUpdate.logic";
 
-/** HQ's builds as the opened card read them from Zerops. */
+/** HQ's builds as the opened card read them from Zerops, weighed against its `hq` service. */
 export type HqCardUpdateRead =
   | { readonly kind: "reading" }
   | { readonly kind: "read"; readonly state: HqUpdateState }
@@ -30,7 +30,7 @@ export interface HqCardInput {
   /** An owner or an admin of the organization: who keeps HQ running. */
   readonly admin: boolean;
   readonly standing: HqStanding;
-  /** HQ's services as the inventory holds them; `undefined` where it holds none. */
+  /** HQ's services as the opened card read them from Zerops; `undefined` while unread. */
   readonly services: ReadonlyArray<ZeropsService> | undefined;
   /** The structure HQ's stream last told; `null` while nothing is known. */
   readonly structure: HqStructure | null;
@@ -51,15 +51,20 @@ export interface HqCardView {
     readonly tone: ServiceStatusToneId;
     readonly word: string;
   } | null;
-  /** Whether the card opens to HQ's Core, backup and services: an admin's, once HQ was read. */
+  /** Whether the card opens to HQ's Core and services: an admin's, once HQ was read. */
   readonly opens: boolean;
   /** "2 projects · 3 Mates · 2 online"; `null` while nothing is known of HQ's structure. */
   readonly counts: string | null;
+  /** The Core HQ runs by its day, for the header line: an admin's, while HQ serves. */
+  readonly coreDay: string | null;
   /** The Core HQ runs, to an admin while HQ serves. */
   readonly core: string | null;
   /** Where an update of that Core stands, while one is under way or its read failed. */
   readonly coreNote: string | null;
-  /** When HQ last took a whole backup, to an admin while HQ serves and has one, or has none yet. */
+  /**
+   * When HQ last took a whole backup, for the header line: an admin's while HQ serves and has one,
+   * or has none yet.
+   */
   readonly backup: string | null;
   /** What is wrong, a line each: an admin's to act on, so nobody else's to read. */
   readonly troubles: ReadonlyArray<string>;
@@ -238,7 +243,7 @@ function updateNote(input: HqCardInput): string | null {
   if (state?.kind === "updating") return hqUpdateWords(state, undefined).line;
   if (input.updating) return hqUpdateWords({ kind: "updating", target: undefined }, undefined).line;
   if (input.update?.kind === "failed") {
-    return `Couldn't read HQ's builds from Zerops: ${input.update.reason}`;
+    return `Couldn't read HQ from Zerops: ${input.update.reason}`;
   }
   return null;
 }
@@ -294,6 +299,7 @@ export function hqCardView(input: HqCardInput): HqCardView {
     state: headline(input, troubles),
     opens: admin && standing.kind !== "unknown",
     counts: holdings(input.structure, input.online),
+    coreDay: serving ? coreDayLabel(standing.build) : null,
     core: serving ? coreLabel(standing.build) : null,
     coreNote: serving ? updateNote(input) : null,
     backup: serving ? lastBackup(standing.parts.backup, input.time) : null,

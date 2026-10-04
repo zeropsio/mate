@@ -18,6 +18,15 @@ export function coreLabel(build: string): string {
   return `Core ${year}-${month}-${day} ${hour}:${minute} UTC · ${digest}`;
 }
 
+/** A Core in a few words, for a line with others: its commit's day, or the name Zerops gives it. */
+export function coreDayLabel(build: string): string | null {
+  if (build === "") return null;
+  const match = IDENTITY.exec(build);
+  if (match === null) return `Core ${build}`;
+  const [, year, month, day] = match;
+  return `Core ${year}-${month}-${day}`;
+}
+
 export interface HqUpdateWords {
   readonly line: string;
   readonly action: "Update HQ" | "Update again" | null;
