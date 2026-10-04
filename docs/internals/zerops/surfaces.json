@@ -849,6 +849,7 @@
         "apps/web/src/components/zerops/ZeropsProjectMenu.tsx",
         "apps/web/src/components/zerops/ZeropsProjectRow.logic.ts",
         "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+        "apps/web/src/components/zerops/ZeropsThrowawayCleanup.tsx",
         "apps/web/src/zerops/useMateActions.tsx",
         "apps/web/src/zerops/RestartMateConfirmation.tsx",
         "apps/web/src/components/zerops/ZeropsRestartMateDialog.tsx",
@@ -992,6 +993,10 @@
         {
           "action": "Change face",
           "reverse": "Change face"
+        },
+        {
+          "action": "Clean up sign-in tokens",
+          "reverse": "none: Deleted throwaway tokens cannot be restored. A failure stays visible with Try again."
         }
       ],
       "docs": {
@@ -999,6 +1004,7 @@
       },
       "tests": [
         "apps/web/src/components/zerops/ZeropsEnvironmentRow.test.tsx",
+        "apps/web/src/components/zerops/ZeropsThrowawayCleanup.test.tsx",
         "apps/web/src/components/zerops/ZeropsMateCard.test.tsx",
         "apps/web/src/components/zerops/ZeropsNextStepBanner.test.tsx",
         "apps/web/src/components/zerops/ZeropsNewMateForm.test.tsx",
