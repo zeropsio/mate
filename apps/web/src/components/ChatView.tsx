@@ -8896,6 +8896,7 @@ export default function ChatView(props: ChatViewProps) {
             activeSurfaceId={activeRightPanelSurface?.id ?? null}
             services={zeropsTopology?.services}
             addresses={mateAddresses.addresses}
+            addressesKnown={mateAddresses.known}
           />
         </RightPanelTabs>
       ) : null}
@@ -8930,6 +8931,7 @@ export default function ChatView(props: ChatViewProps) {
               activeSurfaceId={activeRightPanelSurface?.id ?? null}
               services={zeropsTopology?.services}
               addresses={mateAddresses.addresses}
+              addressesKnown={mateAddresses.known}
             />
           </RightPanelTabs>
         </RightPanelSheet>

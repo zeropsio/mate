@@ -28,6 +28,7 @@ function render(
   url: string,
   topology: typeof services | undefined,
   addresses: ReadonlyArray<{ readonly url: string }> = [],
+  addressesKnown = true,
 ) {
   return renderToStaticMarkup(
     <ServiceBrowserPanels
@@ -35,6 +36,7 @@ function render(
       activeSurfaceId="service:web"
       services={topology}
       addresses={addresses}
+      addressesKnown={addressesKnown}
     />,
   );
 }
@@ -53,6 +55,16 @@ describe("restored service previews", () => {
     const production = "https://app-3c4d-80.prg1.zerops.app";
     expect(render(production, services)).not.toContain("<iframe");
     expect(render(production, services, [{ url: production }])).toContain("<iframe");
+  });
+  /** A stage or production tab restored before the account read its project waits; it does not refuse. */
+  it.each([
+    { name: "the topology", topology: undefined, known: true },
+    { name: "the group's projects", topology: services, known: false },
+  ])("says nothing of a restored address while $name is unread", ({ topology, known }) => {
+    const production = "https://app-3c4d-80.prg1.zerops.app";
+    const html = render(production, topology, [], known);
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toContain("only for known service domains");
   });
   it("waits for known topology before loading a restored page", () => {
     expect(render(origin, undefined)).not.toContain("<iframe");
