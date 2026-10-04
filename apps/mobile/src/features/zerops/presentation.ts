@@ -93,14 +93,14 @@ function mateState(candidate: MobileCandidate, nowMs: number): ZeropsCandidatePr
         { label: "Connecting", tone: "attention", pulsing: true, action: null, section: "waiting" },
         notice,
       );
-    case "failed":
+    case "retrying":
       return withNotice(
         {
-          label: "Unavailable",
-          tone: "off",
+          label: "Connecting",
+          tone: "attention",
           pulsing: false,
-          action: "Connect again",
-          section: "unavailable",
+          action: "Try now",
+          section: "waiting",
         },
         notice,
       );
@@ -110,7 +110,7 @@ function mateState(candidate: MobileCandidate, nowMs: number): ZeropsCandidatePr
           label: "Unavailable",
           tone: "off",
           pulsing: false,
-          action: "Connect again",
+          action: "Try now",
           section: "unavailable",
         },
         notice,

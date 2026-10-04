@@ -166,12 +166,7 @@ const ROWS: ReadonlyArray<{
     row: 3,
     name: "the Mate at this origin belongs to another project: presence is re-read",
     machine: machine({ credential: { kind: "refused", reason: { kind: "project-mismatch" } } }),
-    verdict: {
-      kind: "failed",
-      stage: "descriptor",
-      last: { kind: "project-mismatch" },
-      restart: false,
-    },
+    verdict: { kind: "connecting", waitingOn: "presence" },
   },
   {
     row: 4,
@@ -258,15 +253,15 @@ const ROWS: ReadonlyArray<{
     name: "an exchange failed and waits for its retry",
     machine: machine({
       credential: {
-        kind: "failed",
-        stage: "exchange",
+        kind: "backoff",
+        retryAt: at(NOW + 4_000),
         last: { kind: "server", status: 500 },
         reconnect: false,
       },
     }),
     verdict: {
-      kind: "failed",
-      stage: "exchange",
+      kind: "retrying",
+      retryAtMs: NOW + 4_000,
       last: { kind: "server", status: 500 },
       restart: false,
     },
@@ -282,15 +277,15 @@ const ROWS: ReadonlyArray<{
         sinceMs: NOW - 30_000,
       },
       credential: {
-        kind: "failed",
-        stage: "exchange",
+        kind: "backoff",
+        retryAt: at(NOW + 60_000),
         last: { kind: "network" },
         reconnect: false,
       },
     }),
     verdict: {
-      kind: "failed",
-      stage: "exchange",
+      kind: "retrying",
+      retryAtMs: NOW + 60_000,
       last: { kind: "network" },
       restart: false,
     },
@@ -306,15 +301,15 @@ const ROWS: ReadonlyArray<{
         sinceMs: NOW - 30_000,
       },
       credential: {
-        kind: "failed",
-        stage: "exchange",
+        kind: "backoff",
+        retryAt: at(NOW + 60_000),
         last: { kind: "identity-failed" },
         reconnect: false,
       },
     }),
     verdict: {
-      kind: "failed",
-      stage: "exchange",
+      kind: "retrying",
+      retryAtMs: NOW + 60_000,
       last: { kind: "identity-failed" },
       restart: true,
     },
@@ -444,7 +439,7 @@ const drive = (
   let current = start;
   for (const event of events) {
     nowMs = event.type === "TICK" && current.timer !== null ? current.timer.wall : nowMs + 1_000;
-    current = transitionEnvironment(current, event, { now: at(nowMs) }).state;
+    current = transitionEnvironment(current, event, { now: at(nowMs), random: () => 0.5 }).state;
   }
   return { machine: current, nowMs };
 };
@@ -496,15 +491,15 @@ describe("reachability over the machine's own transitions", () => {
       reason: "permission",
       from: "held, never connected",
       connected: false,
-      verdict: "refused-role",
+      verdict: "connecting",
     },
     {
       reason: "authentication",
       from: "held, never connected",
       connected: false,
-      verdict: "failed",
+      verdict: "connecting",
     },
-    { reason: "permission", from: "a live link", connected: true, verdict: "refused-role" },
+    { reason: "permission", from: "a live link", connected: true, verdict: "reconnecting" },
   ] as const)("blocked($reason) on $from → $verdict", ({ reason, connected, verdict }) => {
     const opened = drive(initialEnvironment({ record: ENV_A }), OPENING).machine;
     const held = drive(opened, [
@@ -618,16 +613,26 @@ describe("reachability over the machine's own transitions", () => {
       },
     ]).machine;
     expect(selectReachability(refused, ENV_A)).toMatchObject({
-      kind: "failed",
+      kind: "retrying",
       last: { kind: "descriptor-unreachable" },
     });
   });
 
-  it("blocked(permission) refuses the role on the first answer", () => {
+  it("blocked(permission) twice → refused(role) (T-L22)", () => {
     const once = drive(connectedMachine(), [
       { type: "LINK", link: { phase: "blocked", reason: "permission" } },
     ]).machine;
-    expect(selectReachability(once, ENV_A)).toEqual({ kind: "refused-role" });
+    expect(selectReachability(once, ENV_A)).toEqual({ kind: "reconnecting" });
+    const again = drive(once, [
+      {
+        type: "EXCHANGE_SUCCEEDED",
+        attempt: attemptOf(once),
+        environmentId: ENV_A,
+        descriptor: null,
+      },
+      { type: "LINK", link: { phase: "blocked", reason: "permission" } },
+    ]).machine;
+    expect(selectReachability(again, ENV_A)).toEqual({ kind: "refused-role" });
   });
 
   it("identity failed during a Zerops outage → retrying, no Restart (T-L21)", () => {
@@ -640,18 +645,20 @@ describe("reachability over the machine's own transitions", () => {
     });
     const first = drive(opened, [
       failedAt(attemptOf(opened), "2026-09-23T10:00:00.000Z"),
-      { type: "USER_RETRY" },
+      { type: "TICK" },
     ]).machine;
     // The grant's last round predates the failures: Zerops has not answered us since.
     const second = drive(first, [failedAt(attemptOf(first), "2026-09-23T10:00:30.000Z")]);
     const verdict = selectReachability(second.machine, ENV_A);
     expect(verdict).toMatchObject({
-      kind: "failed",
+      kind: "retrying",
       last: { kind: "identity-failed" },
       restart: false,
     });
     const phrase = reachabilityPhrase(verdict, { nowMs: second.nowMs, mateName: "shop" });
-    expect(phrase.text).toMatch(/^This Mate can't reach Zerops to check who you are\.$/u);
+    expect(phrase.text).toMatch(
+      /^This Mate can't reach Zerops to check who you are\. Trying again in \d+ s\.$/u,
+    );
     expect(phrase.actions).toEqual(["try-now"]);
 
     // Then the grant's rounds fail too: the Mate waits for Zerops instead of retrying.
@@ -659,7 +666,7 @@ describe("reachability over the machine's own transitions", () => {
       { type: "GUARDS", guards: { ...GUARDS, zeropsFailing: true } },
       { type: "TICK" },
     ]).machine;
-    expect(selectReachability(outage, ENV_A)).toMatchObject({ kind: "failed" });
+    expect(selectReachability(outage, ENV_A)).toEqual({ kind: "waiting-for-zerops" });
   });
 
   it("a hanging exchange reads as retrying, never as gone, while presence is unknown (T-L5)", () => {
@@ -668,32 +675,12 @@ describe("reachability over the machine's own transitions", () => {
       { type: "TICK" },
     ]).machine;
     const timedOut = selectReachability(hung, ENV_A);
-    expect(timedOut).toMatchObject({ kind: "failed", last: { kind: "timeout" } });
+    expect(timedOut).toMatchObject({ kind: "retrying", last: { kind: "timeout" } });
     expect(isTerminalReachability(timedOut)).toBe(false);
     // The inventory goes stale: a presence change releases the backoff, and the wait is on presence.
     const unknown = drive(hung, [{ type: "PRESENCE", presence: { kind: "unknown" } }]).machine;
-    expect(selectReachability(unknown, ENV_A)).toMatchObject({ kind: "failed" });
+    expect(selectReachability(unknown, ENV_A)).toEqual({ kind: "resolving" });
   });
-});
-
-describe("completed Connect refusals", () => {
-  it.each(["role-denies", "project-closed", "epoch-closed"] as const)(
-    "shows admission refusal %s without a checking spinner",
-    (reason) => {
-      const verdict = selectReachability(
-        machine({ credential: { kind: "refused", reason: { kind: "access", reason } } }),
-        null,
-      );
-      expect(verdict).toMatchObject({
-        kind: "failed",
-        stage: "admission",
-        last: { kind: "access", reason },
-      });
-      expect(reachabilityPhrase(verdict, { nowMs: NOW, mateName: "shop" }).actions).toEqual([
-        "try-now",
-      ]);
-    },
-  );
 });
 
 describe("reachabilityPhrase", () => {
@@ -706,7 +693,7 @@ describe("reachabilityPhrase", () => {
       actions: [],
     });
     expect(phrase({ kind: "refused-configuration" })).toEqual({
-      text: "This Mate refused its connection settings.",
+      text: "This Mate keeps refusing its connection settings.",
       actions: ["try-now"],
     });
     expect(phrase({ kind: "update-unavailable" })).toEqual({
@@ -730,24 +717,24 @@ describe("reachabilityPhrase", () => {
     });
     expect(
       phrase({
-        kind: "failed",
-        stage: "exchange",
+        kind: "retrying",
+        retryAtMs: NOW + 15_000,
         last: { kind: "identity-failed" },
         restart: true,
       }),
     ).toEqual({
-      text: "This Mate can't reach Zerops to check who you are.",
+      text: "This Mate can't reach Zerops to check who you are. Trying again in 15 s.",
       actions: ["try-now", "restart"],
     });
     expect(
       phrase({
-        kind: "failed",
-        stage: "exchange",
+        kind: "retrying",
+        retryAtMs: NOW + 2_000,
         last: { kind: "install" },
         restart: false,
       }),
     ).toEqual({
-      text: "This tab couldn't set up the connection to this Mate.",
+      text: "This tab couldn't set up the connection to this Mate. Trying again in 2 s.",
       actions: ["try-now"],
     });
     expect(phrase({ kind: "reconnecting" }).text).toBe("Reconnecting…");

@@ -158,14 +158,14 @@ describe("mateVoice — the one voice of a Mate's link", () => {
     {
       state: "retrying: its cause and Try now",
       reachability: {
-        kind: "failed",
-        stage: "exchange",
+        kind: "retrying",
+        retryAtMs: NOW + 5_000,
         last: { kind: "network" },
         restart: false,
       },
       shown: true,
       held: LONG,
-      voice: banner("This Mate isn't answering.", ["try-now"]),
+      voice: banner("This Mate isn't answering. Trying again in 5 s.", ["try-now"]),
     },
     {
       state: "nothing names the target yet, nothing shown, a blip",

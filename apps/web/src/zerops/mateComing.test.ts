@@ -407,8 +407,8 @@ describe("mateComingPage — what a Mate's own view shows", () => {
     container: { level: "inactive", status: "STOPPED" },
   } as const;
   const RETRYING = {
-    kind: "failed",
-    stage: "exchange",
+    kind: "retrying",
+    retryAtMs: 5_000,
     last: { kind: "network" },
     restart: false,
   } as const;
@@ -524,13 +524,13 @@ describe("mateOpeningPhrase — what a Mate's own view says under its name", () 
       page: {
         kind: "reaching",
         reachability: {
-          kind: "failed",
-          stage: "exchange",
+          kind: "retrying",
+          retryAtMs: 6_000,
           last: { kind: "network" },
           restart: false,
         },
       },
-      phrase: { text: "This Mate isn't answering.", actions: ["try-now"] },
+      phrase: { text: "This Mate isn't answering. Trying again in 5 s.", actions: ["try-now"] },
     },
     {
       case: "stopped: its Start",
@@ -714,20 +714,20 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
     {
       case: "reaching, retrying on its own",
       page: reaching({
-        kind: "failed",
-        stage: "exchange",
+        kind: "retrying",
+        retryAtMs: NOW,
         last: { kind: "network" },
         restart: false,
       } as Reachability),
       cameUp: true,
-      expected: undefined,
+      expected: OPENING,
     },
     // Failing since it last connected: past its first three failures (the ladder's 2, 4 and 8 s),
     // no wait of its link holds the board — its retries and the attempts between them alike, so
     // the two never take turns.
     ...(
       [
-        { kind: "failed", stage: "exchange", last: { kind: "network" }, restart: false },
+        { kind: "retrying", retryAtMs: NOW, last: { kind: "network" }, restart: false },
         { kind: "connecting", waitingOn: "exchange" },
         { kind: "reconnecting" },
       ] as ReadonlyArray<Reachability>
@@ -763,8 +763,8 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
     {
       case: "reaching, retrying with a restart to offer",
       page: reaching({
-        kind: "failed",
-        stage: "exchange",
+        kind: "retrying",
+        retryAtMs: NOW,
         last: { kind: "identity-failed" },
         restart: true,
       } as Reachability),
@@ -1081,8 +1081,8 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
     container: { level: "booting", overdue: false },
   };
   const NOT_ANSWERING: Reachability = {
-    kind: "failed",
-    stage: "exchange",
+    kind: "retrying",
+    retryAtMs: CREATED + 160_000,
     last: { kind: "descriptor-unreachable" },
     restart: false,
   };
@@ -1107,6 +1107,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
       const at = CREATED + 160_000 + index * 1_000;
       machine = transitionEnvironment(machine, event, {
         now: { wall: at, mono: at },
+        random: () => 0.5,
       }).state;
     }
     return mateLink({
@@ -1155,7 +1156,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
       atMs: 166_800,
       service: zcp("ACTIVE", true),
       link: link(NOT_ANSWERING, false, 5),
-      coming: false,
+      coming: true,
     },
     {
       step: "its probe found it ready, its lease making its link",
@@ -1204,7 +1205,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
   });
 
   it("says it in the words a Mate coming up says everywhere", () => {
-    expect(replay(STEPS)[0]).toEqual({ kind: "coming", line: "Coming up. A few minutes." });
+    expect(replay(STEPS)[3]).toEqual({ kind: "coming", line: "Coming up. A few minutes." });
   });
 
   it("past its two minutes, a Mate that never answered reads as any other", () => {
@@ -1239,7 +1240,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
     expect(read.map((coming) => coming?.kind ?? "up")).toEqual([
       "coming",
       "coming",
-      "up",
+      "coming",
       "coming",
       "up",
     ]);
@@ -1253,7 +1254,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
       reachability: { ...NOT_ANSWERING, last: { kind: "server", status: 502 } },
       failures: 1,
       errors: 1,
-      coming: false,
+      coming: true,
     },
     {
       case: "a 5xx past an arrival's held failures",
@@ -1281,7 +1282,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
       reachability: { ...NOT_ANSWERING, last: { kind: "timeout" } },
       failures: 5,
       errors: 0,
-      coming: false,
+      coming: true,
     },
   ] as const)("inside its two minutes, $case: coming up $coming", (row) => {
     const { reachability, failures, errors, coming } = row;

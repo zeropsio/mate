@@ -27,6 +27,7 @@ function manualClock(): ExchangeClock & { readonly advance: (ms: number) => Prom
   const timers = new Map<number, { readonly at: number; readonly fire: () => void }>();
   return {
     now: () => ({ wall: mono + wallOffset, mono }),
+    random: () => 0.5,
     setTimer: (delayMs, fire) => {
       const id = nextId;
       nextId += 1;

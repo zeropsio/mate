@@ -168,19 +168,19 @@ const ROWS: ReadonlyArray<{
     row: "RG8",
     name: "no content and retrying offers Try now",
     target: resolved(
-      { kind: "failed", stage: "exchange", last: { kind: "network" }, restart: false },
+      { kind: "retrying", retryAtMs: 4_000, last: { kind: "network" }, restart: false },
       "empty",
     ),
     gate: {
       kind: "wait",
       reachability: {
-        kind: "failed",
-        stage: "exchange",
+        kind: "retrying",
+        retryAtMs: 4_000,
         last: { kind: "network" },
         restart: false,
       },
     },
-    text: "This Mate isn't answering.",
+    text: "This Mate isn't answering. Trying again in 4 s.",
     actions: ["try-now"],
   },
   {
@@ -246,7 +246,7 @@ const CREDENTIALS: ReadonlyArray<Credential> = [
   { kind: "waiting", on: "container", reconnect: false },
   { kind: "waiting", on: "zerops", reconnect: false },
   { kind: "exchanging", attempt: 1, deadline: at(20_000), reconnect: false },
-  { kind: "failed", stage: "exchange", last: { kind: "network" }, reconnect: false },
+  { kind: "backoff", retryAt: at(4_000), last: { kind: "network" }, reconnect: false },
   { kind: "refused", reason: { kind: "role" } },
   { kind: "refused", reason: { kind: "version" } },
   { kind: "refused", reason: { kind: "access", reason: "epoch-closed" } },

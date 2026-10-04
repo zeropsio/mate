@@ -158,7 +158,7 @@ export function MateOpeningLine({
         <div className="flex flex-wrap items-center justify-center gap-2">
           {tryNow ? (
             <Button onClick={onTryNow} size="compact" variant="pill">
-              Connect again
+              Try now
             </Button>
           ) : null}
           {openInZerops ? (

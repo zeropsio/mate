@@ -4,8 +4,8 @@
  * banner. A pure projection over the environment machine's four regions; the first matching row
  * of the table wins.
  *
- * `gone`, `replaced`, `refused-role` and `update-unavailable` withhold the target. A failed
- * Connect keeps its result and offers a manual action without unmounting content.
+ * Terminal verdicts are `gone`, `replaced`, `refused-role` and `update-unavailable`; everything
+ * else is on its way somewhere and never unmounts content.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -17,7 +17,6 @@ import {
   type DescriptorFacts,
   type EnvironmentMachine,
   type ExchangeCause,
-  type Credential,
   type NoOriginReason,
   type WaitingOn,
 } from "./environmentMachine.ts";
@@ -51,8 +50,8 @@ export type Reachability =
   | { readonly kind: "container"; readonly container: ContainerReachability }
   | { readonly kind: "waiting-for-zerops" }
   | {
-      readonly kind: "failed";
-      readonly stage: Extract<Credential, { kind: "failed" }>["stage"];
+      readonly kind: "retrying";
+      readonly retryAtMs: number;
       readonly last: ExchangeCause;
       /** Restart is offered only for identity `failed`, under its rule (`identityRestartOffered`). */
       readonly restart: boolean;
@@ -132,31 +131,12 @@ export function selectReachability(
           ? { kind: "connecting", waitingOn: "descriptor" }
           : floorVerdict(machine.descriptor);
       case "project-mismatch":
-        return {
-          kind: "failed",
-          stage: "descriptor",
-          last: { kind: "project-mismatch" },
-          restart: false,
-        };
+        return { kind: "connecting", waitingOn: "presence" };
       case "access":
-        return {
-          kind: "failed",
-          stage: "admission",
-          last: { kind: "access", reason: credential.reason.reason },
-          restart: false,
-        };
+        return { kind: "connecting", waitingOn: "access" };
       case "configuration":
         return { kind: "refused-configuration" };
     }
-  }
-  // 9
-  if (credential.kind === "failed") {
-    return {
-      kind: "failed",
-      stage: credential.stage,
-      last: credential.last,
-      restart: credential.last.kind === "identity-failed" && identityRestartOffered(machine),
-    };
   }
   const held = credential.kind === "held";
   // 4
@@ -174,6 +154,15 @@ export function selectReachability(
   // 8
   if (credential.kind === "waiting" && credential.on === "zerops") {
     return { kind: "waiting-for-zerops" };
+  }
+  // 9
+  if (credential.kind === "backoff") {
+    return {
+      kind: "retrying",
+      retryAtMs: credential.retryAt.wall,
+      last: credential.last,
+      restart: credential.last.kind === "identity-failed" && identityRestartOffered(machine),
+    };
   }
   // 10 — a reconnect only once something was lost: a held credential whose link never
   // connected is still a first connect (row 12).
@@ -229,18 +218,6 @@ const CAUSE: Record<ExchangeCause["kind"], string> = {
   "identity-failed": "This Mate can't reach Zerops to check who you are.",
   rejected: "This Mate didn't accept the sign-in.",
   install: "This tab couldn't set up the connection to this Mate.",
-  "project-mismatch": "This address belongs to another Zerops project.",
-  access: "Your Zerops access does not allow this connection.",
-};
-
-const ACCESS_CAUSE: Record<Extract<ExchangeCause, { kind: "access" }>["reason"], string> = {
-  "access-unverified": "Your Zerops access could not be checked.",
-  "access-lapsed": "Your Zerops access needs to be checked again.",
-  "project-unverified": "Your access to this project could not be checked.",
-  "role-denies": "You can see this project in Zerops but can't operate its Mate.",
-  "project-closed":
-    "This project is no longer available. It was deleted, or you no longer have access.",
-  "epoch-closed": "Sign in with Zerops to connect to this Mate.",
 };
 
 const CONNECTING: Record<ConnectingOn, string> = {
@@ -298,6 +275,9 @@ const containerPhrase = (
   }
 };
 
+const secondsUntil = (atMs: number, nowMs: number): number =>
+  Math.max(1, Math.ceil((atMs - nowMs) / 1_000));
+
 /** The verdict's words and verbs: the cause only, each verb once (§4.4's table, §3.4 R-K3). */
 export function reachabilityPhrase(
   verdict: Reachability,
@@ -316,7 +296,7 @@ export function reachabilityPhrase(
     case "refused-role":
       return phrase("You can see this project in Zerops but can't operate its Mate.");
     case "refused-configuration":
-      return phrase("This Mate refused its connection settings.", ["try-now"]);
+      return phrase("This Mate keeps refusing its connection settings.", ["try-now"]);
     case "update-required":
       return phrase(
         `This Mate runs ${verdict.actual}; this app needs ${verdict.minimum} or newer. Restarting it installs a newer one.`,
@@ -334,11 +314,9 @@ export function reachabilityPhrase(
       return containerPhrase(verdict.container, context.mateName);
     case "waiting-for-zerops":
       return phrase("Zerops isn't answering. This Mate reconnects when it's back.");
-    case "failed":
+    case "retrying":
       return phrase(
-        verdict.last.kind === "access"
-          ? ACCESS_CAUSE[verdict.last.reason]
-          : CAUSE[verdict.last.kind],
+        `${CAUSE[verdict.last.kind]} Trying again in ${secondsUntil(verdict.retryAtMs, context.nowMs)} s.`,
         verdict.restart ? ["try-now", "restart"] : ["try-now"],
       );
     case "reconnecting":

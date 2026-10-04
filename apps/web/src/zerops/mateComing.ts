@@ -452,8 +452,8 @@ export function arrivalHoldsThrough(
       );
     case "reconnecting":
       return !failing;
-    case "failed":
-      return false;
+    case "retrying":
+      return !reachability.restart && !failing;
     case "container":
       return (
         ON_ITS_WAY_LEVELS.has(reachability.container.level) &&

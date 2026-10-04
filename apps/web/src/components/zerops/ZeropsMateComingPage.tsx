@@ -109,7 +109,7 @@ import {
 } from "~/zerops/newProjectBirth";
 import { useHeldPast } from "~/zerops/useHeldPast";
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
-import { useNowMs } from "~/zerops/useNowMs";
+import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useToldActivity } from "~/zerops/useMenuMateReadings";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
@@ -609,7 +609,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const named = mate;
   // The minute clock its pose reads (`mateArriving`).
   const clockMs = useNowMs();
-  const nowMs = clockMs;
+  const nowMs = useSecondsNowMs(
+    page?.kind === "reaching" && page.reachability?.kind === "retrying",
+  );
   // What its link says under its name (`mateVoice`): nothing for a blip, "Opening Wren…" and the
   // platform's processes for a first connect that is slow, a restart in its name.
   const linkReachability =

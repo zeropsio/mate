@@ -19,7 +19,7 @@ export function registrationOnItsWay(
       return true;
     case "held":
       return !machine.credential.installed;
-    case "failed":
+    case "backoff":
     case "refused":
     case "retired":
       return false;

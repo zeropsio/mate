@@ -332,25 +332,25 @@ describe("a Mate's own view while its link is made", () => {
     expect(app.navigate).not.toHaveBeenCalled();
   });
 
-  it("offers Connect again after failure and starts one Connect", () => {
+  it("offers Try now where its machine backs off, which retries its link", () => {
     app.link = {
       key: KEY,
       environmentId: undefined,
       reachability: {
-        kind: "failed",
-        stage: "exchange",
+        kind: "retrying",
+        retryAtMs: 5_000,
         last: { kind: "network" },
         restart: false,
       },
     } satisfies MateLink;
     openView();
-    expect(said()).toContain("This Mate isn't answering.");
-    expect(buttons()).toEqual(["Connect again"]);
+    expect(said()).toContain("This Mate isn't answering. Trying again in 5 s.");
+    expect(buttons()).toEqual(["Try now"]);
     app.connect.mockClear();
     act(() =>
       tree?.root
         .findAllByType("button")
-        .find((node) => node.children.join("") === "Connect again")
+        .find((node) => node.children.join("") === "Try now")
         ?.props.onClick(),
     );
     expect(app.connect).toHaveBeenCalledExactlyOnceWith({ key: KEY });
@@ -752,7 +752,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(buttons()).toEqual(["Remove"]);
   });
 
-  it("shows each failed attempt immediately and shows progress during an explicit new attempt", () => {
+  it("holds the board through its link's first three failures only, never taking turns with its words", () => {
     app.listing = listingOf([coming]);
     openView();
     app.listing = listingOf([QUINN]);
@@ -762,8 +762,8 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
       return kind();
     };
     const retrying = {
-      kind: "failed",
-      stage: "exchange",
+      kind: "retrying",
+      retryAtMs: 5_000,
       last: { kind: "network" },
       restart: false,
     } as const;
@@ -782,11 +782,11 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
       rung(retrying, 5),
     ]).toEqual([
       "coming",
-      "reaching",
       "coming",
-      "reaching",
       "coming",
-      "reaching",
+      "coming",
+      "coming",
+      "coming",
       "coming",
       "reaching",
       "reaching",
@@ -794,7 +794,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     ]);
     act(() => vi.advanceTimersByTime(MATE_VOICE_QUIET_MS * 3));
     rung(retrying, 6);
-    expect(buttons()).toEqual(["Connect again"]);
+    expect(buttons()).toEqual(["Try now"]);
   });
 
   it("a Mate this tab made that a whole listing, read well after, lacks is not coming up", () => {

@@ -91,9 +91,10 @@ const INPUTS: ReadonlyArray<EnvironmentEvent> = [
   },
   { type: "INSTALLED", environmentId: ENV_A },
   { type: "INSTALL_FAILED", environmentId: ENV_A },
-
+  { type: "ROLE_CHANGED" },
   { type: "TICK" },
-
+  { type: "WAKE", visible: true },
+  { type: "ONLINE" },
   { type: "USER_RETRY" },
   { type: "USER_REMOVE" },
 ];
@@ -159,6 +160,7 @@ const step = (
     event.type === "TICK" && timer !== null ? Math.max(state.nowMs, timer.wall) : state.nowMs;
   const next = transitionEnvironment(state.machine, event, {
     now: { wall: nowMs, mono: nowMs },
+    random: () => 0.5,
   });
   return {
     state:
@@ -245,9 +247,11 @@ const violations = (
   const due =
     credential.kind === "exchanging"
       ? credential.deadline
-      : credential.kind === "held"
-        ? (credential.rereading?.deadline ?? null)
-        : null;
+      : credential.kind === "backoff"
+        ? credential.retryAt
+        : credential.kind === "held"
+          ? (credential.rereading?.deadline ?? null)
+          : null;
   if (JSON.stringify(due) !== JSON.stringify(machine.timer)) {
     found.push(
       `I7: ${credential.kind} due ${JSON.stringify(due)}, timer ${JSON.stringify(machine.timer)}`,
@@ -262,7 +266,7 @@ const violations = (
     const again = transitionEnvironment(
       machine,
       { type: "GUARDS", guards: machine.guards },
-      { now: { wall: after.nowMs, mono: after.nowMs } },
+      { now: { wall: after.nowMs, mono: after.nowMs }, random: () => 0.5 },
     );
     if (JSON.stringify(again.state.credential) !== JSON.stringify(credential)) {
       found.push(`I7: waiting(${credential.on}) was stranded; its inputs already allow more`);

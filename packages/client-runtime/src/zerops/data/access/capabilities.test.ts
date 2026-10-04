@@ -516,6 +516,7 @@ describe("capabilities over the access grant", () => {
           ] satisfies ReadonlyArray<EnvironmentEvent>) {
             machine = transitionEnvironment(machine, event, {
               now: { wall: opened.clock.wallMs(), mono: opened.clock.monoMs() },
+              random: () => 0.5,
             }).state;
           }
           expect(machine.credential).toEqual({
