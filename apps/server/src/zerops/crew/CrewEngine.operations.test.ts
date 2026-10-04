@@ -651,6 +651,12 @@ it.live("a graceful shutdown during a check leaves it for the next boot to carry
             .length,
           1,
         );
+        const [task] = yield* (yield* CrewStore).assignments(CREW_ID);
+        const [attempt] = yield* (yield* CrewStore).attemptsOf(task!.assignment);
+        assert.strictEqual(
+          attempt!.endingDetail,
+          "Its turn had ended; the Mate restarted during its check.",
+        );
       }),
   ]);
 });
@@ -1040,4 +1046,27 @@ it.live("Land refuses a copy that moved after its check and lands nothing", () =
       );
     }),
   ),
+);
+
+it.live("the boot sweep holds each crewmate's copy: a press during it waits its turn", () =>
+  withCrewEngines([
+    (world) => applied(world),
+    (world) =>
+      Effect.gen(function* () {
+        const hold = yield* world.holdSsh((script) => script.includes("ignoring broken ref"));
+        yield* (yield* ServerCommandReadiness).complete;
+        yield* hold.reached;
+        const pressed = yield* command({
+          _tag: "message",
+          handle: "backend",
+          text: "Work",
+          attachments: [],
+        }).pipe(
+          Effect.as("ran"),
+          Effect.catchTag("CrewCommandError", (error) => Effect.succeed(error.detail ?? "")),
+        );
+        yield* hold.release;
+        assert.include(pressed, "is busy");
+      }),
+  ]),
 );

@@ -60,6 +60,6 @@ export const readTaskCheck = read(Schema.decodeUnknownOption(CrewCheck));
 
 /** The copy's tip a passed check ran on, which a landing must find unchanged; the wire never carries it. */
 const CheckedTip = Schema.Struct({ state: Schema.Literal("passed"), tip: Schema.String });
-export const readCheckedTip = (value: unknown): string | undefined =>
-  read(Schema.decodeUnknownOption(CheckedTip))(value)?.tip;
+const readCheckedRun = read(Schema.decodeUnknownOption(CheckedTip));
+export const readCheckedTip = (value: unknown): string | undefined => readCheckedRun(value)?.tip;
 export const readTaskReview = read(Schema.decodeUnknownOption(CrewReview));

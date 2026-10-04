@@ -20,7 +20,7 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
-import { ThreadId } from "@t3tools/contracts";
+import { ThreadId, type CrewOperation } from "@t3tools/contracts";
 
 import { crewLane } from "./CrewDefinition.ts";
 import { grantAfterTurn, refreshClaims } from "./crewClaims.ts";
@@ -59,6 +59,22 @@ const turnDied = (core: CrewCore, threadId: string | null) =>
         Effect.orElseSucceed(() => false),
       );
 
+/** What the restart stopped, by the operation it found running: a turn, or what came after it. */
+const restartWords = (kind: CrewOperation["kind"]): string => {
+  switch (kind) {
+    case "dispatch":
+      return "The Mate restarted during its turn.";
+    case "checkpoint":
+      return "Its turn had ended; the Mate restarted while saving its work.";
+    case "check":
+      return "Its turn had ended; the Mate restarted during its check.";
+    case "landing":
+      return "Its turn had ended; the Mate restarted during its landing.";
+    case "rebuild":
+      return "The Mate restarted while rebuilding its copy.";
+  }
+};
+
 export const boot = (core: CrewCore) =>
   Effect.gen(function* () {
     const applied = yield* core.applied;
@@ -93,9 +109,10 @@ export const boot = (core: CrewCore) =>
         );
       }
       if (attempt === undefined || attempt.endedAt !== null) continue;
-      const interrupted = operations.some(
+      const running = operations.filter(
         (operation) => operation.taskId === task.assignment && operation.status === "running",
       );
+      const interrupted = running.length > 0;
       // A turn that ended unseen ends its attempt when the task last moved.
       yield* asRefusal(
         core.store.putAttempt(
@@ -103,7 +120,7 @@ export const boot = (core: CrewCore) =>
             ? {
                 ...attempt,
                 ending: "interrupted",
-                endingDetail: "The Mate restarted during its turn.",
+                endingDetail: restartWords(running.at(-1)!.kind),
                 endedAt: yield* core.now,
               }
             : {
@@ -228,16 +245,26 @@ export const carryOnAtBoot = (core: CrewCore) =>
       const landed = own
         .map((row) => readLandedEvidence(row.result))
         .find((evidence) => evidence !== undefined)?.commit;
-      yield* adoptOwnWrites(core, member, own, landed).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            core.memory.lastError = failureWords(error);
-          }),
-        ),
-      );
+      yield* core
+        .crewmate(handle)(adoptOwnWrites(core, member, own, landed))
+        .pipe(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              core.memory.lastError = failureWords(error);
+            }),
+          ),
+        );
     }
     for (const host of applied.repositories.keys()) {
-      yield* sweepHost(core, applied, host).pipe(
+      // Every copy on the host is held while it is swept: a person's press waits its turn.
+      const writers = [...applied.members.values()]
+        .filter((row) => row.kind === "writer" && row.host === host)
+        .map((row) => row.handle);
+      const held = writers.reduce(
+        (effect, handle) => core.crewmate(handle)(effect),
+        sweepHost(core, applied, host),
+      );
+      yield* held.pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
             core.memory.lastError = failureWords(error);
