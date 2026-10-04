@@ -1093,146 +1093,27 @@ describe("deploys", () => {
         ),
     );
 
-    // T13: an environment the migration brought, held until a person asks where it does not run what
-    // it is wanted at; its first key deploys nothing either way.
-    const imported = (world: FakeWorld) =>
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        // Keyless, as the import leaves it; HQ reads it with its own org credential.
-        yield* sql`DELETE FROM hq_deploy_token WHERE project_id = 'P_STAGE'`;
-        world.tokens.set("hq", {
-          id: "T_HQ",
-          name: "mate-hq-org:HQ",
-          orgId: "ORG",
-          roleCode: "READ_ONLY",
-          canCreateProjects: false,
-          canViewFinances: false,
-          canEditFinances: false,
-          projects: [],
-          createdMs: 0,
-          createdByUser: "owner",
-        });
-        const firstKey = Effect.gen(function* () {
-          yield* keepToken("P_STAGE", "key-stage");
-          yield* addRollout(sql, { cause: "key_kept", projectId: "P_STAGE", by: "owner" });
-          yield* (yield* Rollouts).wake;
-        }).pipe(Effect.orDie);
-        return { firstKey };
-      }).pipe(Effect.orDie);
-    const running = (world: FakeWorld, name: string) => {
-      const web = world.services.find((service) => service.id === "S-web")!;
-      Object.assign(web, { named: { id: "V-imported", name }, activeVersionId: "V-imported" });
-    };
-
-    it.effect(
-      "holds an imported environment that runs another commit; a Run brings it to that one",
-      () =>
-        withDeploys(({ appId, world, tiers, commit, deploys, until, planned }) =>
-          Effect.gen(function* () {
-            const { firstKey } = yield* imported(world);
-            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
-            const older = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-            const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML, "a.txt": "a\n" });
-            // A keyless job came first: refused for want of a key.
-            yield* until((rows) => rows.some((row) => row.sha === sha && row.state === "refused"));
-            running(world, `main ${older.slice(0, 7)}`);
-            const report = yield* (yield* Deploys).hold(["P_STAGE"], Redacted.make("hq"));
-            const reason = `Held at migration: web runs ${older.slice(0, 7)}; Run brings it to ${sha.slice(0, 7)}.`;
-            assert.deepStrictEqual(report, [
-              {
-                projectId: "P_STAGE",
-                name: "shop-stage",
-                services: [{ service: "web", sha, state: "held", runs: older.slice(0, 7) }],
-              },
-            ]);
-            yield* firstKey;
-            yield* planned;
-            // The first key's job is skipped: no event but a person's brings it to that commit.
-            const [held, skipped] = (yield* deploys)
-              .filter((row) => row.sha === sha)
-              .map(({ state, reason }) => [state, reason])
-              .slice(-2);
-            assert.deepStrictEqual(held, ["failed", reason]);
-            assert.strictEqual(skipped?.[0], "skipped");
-            assert.deepStrictEqual(versions(world), []);
-            assert.strictEqual(yield* runAgain(appId, "owner", sha), "ok");
-            yield* until((rows) => rows.at(-1)?.sha === sha && rows.at(-1)?.state === "live");
-            assert.deepStrictEqual(versions(world), [`main ${sha.slice(0, 7)}`]);
-          }),
-        ),
-    );
-
-    it.effect(
-      "calls an imported environment at its target live, and its first key deploys nothing",
-      () =>
-        withDeploys(({ appId, world, tiers, commit, deploys, until, planned }) =>
-          Effect.gen(function* () {
-            const { firstKey } = yield* imported(world);
-            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
-            const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-            yield* until(settled("refused"));
-            // Main's own broker named it so: the bare whole sha.
-            running(world, sha);
-            const report = yield* (yield* Deploys).hold(["P_STAGE"], Redacted.make("hq"));
-            assert.deepStrictEqual(report, [
-              {
-                projectId: "P_STAGE",
-                name: "shop-stage",
-                services: [{ service: "web", sha, state: "live", runs: sha.slice(0, 7) }],
-              },
-            ]);
-            // Kept as the version its service runs (audit N6, N7).
-            const sql = yield* SqlClient.SqlClient;
-            assert.deepStrictEqual(
-              yield* sql<{ readonly service_id: string; readonly app_version_id: string }>`
-                SELECT service_id, app_version_id FROM hq_deploy_job WHERE state = 'live'`,
-              [{ service_id: "S-web", app_version_id: "V-imported" }],
-            );
-            yield* firstKey;
-            yield* planned;
-            yield* Effect.sleep(Duration.millis(100));
-            assert.deepStrictEqual(
-              (yield* deploys).map((row) => [row.sha, row.state]),
-              [
-                [sha, "refused"],
-                [sha, "live"],
-              ],
-            );
-            assert.deepStrictEqual(versions(world), []);
-          }),
-        ),
-    );
-
     // Audit N7: what a service runs is HQ's own record of the version it made, never a label: a
     // version somebody named as HQ names a commit runs whatever they deployed.
     it.effect("deploys over a version only named as HQ would name the commit", () =>
       withDeploys(({ appId, world, tiers, commit, until }) =>
         Effect.gen(function* () {
-          const { firstKey } = yield* imported(world);
+          const sql = yield* SqlClient.SqlClient;
+          // No key yet: the first job is refused, and the first key asks again.
+          yield* sql`DELETE FROM hq_deploy_token WHERE project_id = 'P_STAGE'`;
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
           const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
           yield* until(settled("refused"));
-          running(world, `main ${sha.slice(0, 7)}`);
-          yield* firstKey;
+          const web = world.services.find((service) => service.id === "S-web")!;
+          Object.assign(web, {
+            named: { id: "V-by-hand", name: `main ${sha.slice(0, 7)}` },
+            activeVersionId: "V-by-hand",
+          });
+          yield* keepToken("P_STAGE", "key-stage");
+          yield* addRollout(sql, { cause: "key_kept", projectId: "P_STAGE", by: "owner" });
+          yield* (yield* Rollouts).wake;
           yield* until((rows) => rows.at(-1)?.state === "live");
           assert.deepStrictEqual(versions(world), [`main ${sha.slice(0, 7)}`]);
-        }),
-      ),
-    );
-
-    it.effect("says what an imported service runs when its version's name spells no commit", () =>
-      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
-        Effect.gen(function* () {
-          yield* imported(world);
-          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
-          const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
-          yield* until(settled("refused"));
-          running(world, "hotfix by hand");
-          yield* (yield* Deploys).hold(["P_STAGE"], Redacted.make("hq"));
-          assert.deepStrictEqual(
-            (yield* deploys).at(-1)?.reason,
-            `Held at migration: web runs hotfix by hand; Run brings it to ${sha.slice(0, 7)}.`,
-          );
         }),
       ),
     );

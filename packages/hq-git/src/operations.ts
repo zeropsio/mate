@@ -519,57 +519,6 @@ export const makeOperations = (
         emit({ kind: "main_moved", repo, old, new: sha, by: "commit" });
       return { sha };
     });
-  const mergeIntoChange: HqGit["mergeIntoChange"] = (repo, mateId, number, opts) =>
-    inRepo("mergeIntoChange", repo, async (dir, signal) => {
-      if (!validSha(opts.expectedHead) || !validSha(opts.expectedMain))
-        throw error("Invalid expected head or main");
-      const ref = changeRef(mateId, number);
-      const head = await refHead(dir, ref, signal);
-      if (!head) return { kind: "no_change" } as const;
-      if (head !== opts.expectedHead) return { kind: "head_moved" } as const;
-      if ((await refHead(dir, "refs/heads/main", signal)) !== opts.expectedMain)
-        return { kind: "main_moved" } as const;
-      if (!validSha(opts.from)) throw error("Invalid tree");
-      const from = await text(
-        dir,
-        ["rev-parse", "--verify", "--end-of-options", `${opts.from}^{tree}`],
-        signal,
-      );
-      const env = identity(opts.author);
-      const tree = await treeWith(dir, from, opts.files, env, signal);
-      const sha = (
-        await run(
-          dir,
-          ["commit-tree", tree, "-p", head, "-p", opts.expectedMain],
-          signal,
-          opts.message,
-          env,
-        )
-      )
-        .toString()
-        .trim();
-      // On a change's branch the trailer would mark the change merged the moment it reached main.
-      if (await changeTrailer(dir, sha, signal))
-        throw error("Core commits cannot carry a Mate-Change trailer");
-      if (!(await cas(dir, ref, sha, head, signal))) return { kind: "head_moved" } as const;
-      return { sha };
-    });
-  const mergeTree: HqGit["mergeTree"] = (repo, ours, theirs) =>
-    inRepo("mergeTree", repo, async (dir, signal) => {
-      if (!validSha(ours) || !validSha(theirs)) throw error("Invalid commit");
-      const merged = await git.exec(
-        ["-C", dir, "merge-tree", "--write-tree", "--name-only", "-z", ours, theirs],
-        { signal, acceptExitCodes: [1] },
-      );
-      const fields = merged.stdout.toString().split("\0");
-      const tree = fields.shift()!;
-      const conflicts: string[] = [];
-      for (const field of fields) {
-        if (!field) break;
-        conflicts.push(field);
-      }
-      return merged.code === 1 ? { conflicts } : { tree };
-    });
   const createTag: HqGit["createTag"] = (repo, name, sha, message) =>
     inRepo("createTag", repo, async (dir, signal) => {
       if (!validSha(sha) || /[\0\r\n]/.test(name)) throw error("Invalid tag");
@@ -1122,8 +1071,6 @@ export const makeOperations = (
     mergeability,
     squashMerge,
     commitFiles,
-    mergeIntoChange,
-    mergeTree,
     createTag,
     branches,
     tree,

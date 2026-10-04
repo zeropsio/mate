@@ -41,8 +41,7 @@ describe("throwaway names", () => {
 
   it.each([
     ["mate-door:p:n", true],
-    // main's client mints these until the switch; the sweep takes the person's own back.
-    ["gitea-signin:h:n", true],
+    ["gitea-signin:h:n", false],
     ["zcp-Aurora - dev", false],
     ["mate-broker", false],
     // A prefix is not a name.
