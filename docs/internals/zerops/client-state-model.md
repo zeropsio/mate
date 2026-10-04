@@ -257,7 +257,8 @@ background pause. Other machines retain their own declared policies. Waiting for
 - **`unavailable(retryAt)`** — Zerops did not answer; a 429's Retry-After is the floor of `retryAt`
   - _Leaves on:_ Tick, online, visible, user retry, a stored session from another tab → `verifying`.
     A tick, online or visible retry is a background one: the failure stays shown, saying it tries
-    again; only the person's Verify again shows a fresh check. A hidden tab sends nothing on
+    again; only the person's Verify again shows a fresh check, at once even while a background
+    one is still out (the first answer decides). A hidden tab sends nothing on
     `online`: its visible wake checks.
 - **`signed-out`** — Landing
   - _Leaves on:_ Sign-in, 2FA or hand-over here, or a session stored by another tab → `verifying`

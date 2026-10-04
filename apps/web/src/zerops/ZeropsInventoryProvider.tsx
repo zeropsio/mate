@@ -453,6 +453,15 @@ export function ZeropsInventoryProvider({
   const prevServiceOutcomesRef = useRef<ReadonlyMap<string, InventoryServiceOutcome>>(new Map());
   /** Each organization whose data failed and has not observed since (`troubleLatch`). */
   const troubleRef = useRef<ReadonlyMap<string, TroubleEntry>>(new Map());
+  // The latch holds still while the tab is hidden; a tab shown again reads its demand afresh.
+  const [documentHidden, setDocumentHidden] = useState(
+    () => typeof document !== "undefined" && document.visibilityState === "hidden",
+  );
+  useEffect(() => {
+    const onVisibility = () => setDocumentHidden(document.visibilityState === "hidden");
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
 
   const projected = useMemo(() => {
     const projects: ZeropsProject[] = [];
@@ -562,7 +571,6 @@ export function ZeropsInventoryProvider({
         ),
       })),
     ];
-    const documentHidden = typeof document !== "undefined" && document.visibilityState === "hidden";
     const read = demandedReads(demanded, troubleRef.current, Date.now(), documentHidden);
     troubleRef.current = read.latch;
     return {
@@ -577,6 +585,7 @@ export function ZeropsInventoryProvider({
     };
   }, [
     denied,
+    documentHidden,
     organizationDescriptors,
     organizationReads,
     projectDescriptors,

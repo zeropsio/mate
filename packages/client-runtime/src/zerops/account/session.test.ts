@@ -154,6 +154,20 @@ describe("transitionZeropsSession", () => {
       [{ kind: "cancel-schedule" }, { kind: "verify", session: stored }],
     ],
     [
+      "checks at once on Verify again during a background retry, as the person's own check",
+      { status: "verifying", session: stored, backoff: { rung: 1 }, retry: true },
+      { type: "VERIFY_AGAIN" },
+      verifying(),
+      [{ kind: "cancel-schedule" }, { kind: "verify", session: stored }],
+    ],
+    [
+      "ignores Verify again while the person's own check is in flight",
+      verifying(),
+      { type: "VERIFY_AGAIN" },
+      verifying(),
+      [],
+    ],
+    [
       "keeps its retry when the same failed stored session is written again",
       unavailableAt(60_000),
       { type: "STORAGE_CHANGED", next: stored, held: false },

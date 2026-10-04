@@ -4690,6 +4690,13 @@ describe("incomplete data says so, with its retry", () => {
         yield* TestClock.adjust("1 millis");
         yield* settle;
         expect(processReads).toBe(observed + 2);
+        // Spent, it stays at the cap: no fast rung follows.
+        yield* TestClock.adjust("999 millis");
+        yield* settle;
+        expect(processReads).toBe(observed + 2);
+        yield* TestClock.adjust("1 millis");
+        yield* settle;
+        expect(processReads).toBe(observed + 3);
 
         unsubscribe();
         yield* runtime.shutdown("application-close");
@@ -4715,9 +4722,10 @@ describe("incomplete data says so, with its retry", () => {
       reads: { atFirst: 1, afterAMinute: 1, afterGrant: 2 },
     },
     {
-      name: "a 5xx backs off and is read again, as before",
+      // 1 s, 2 s, then the 10 s cap for good: a spent budget never falls back to fast rungs.
+      name: "a 5xx backs off and is read again, staying at the cap",
       error: { kind: "server", status: 503 },
-      reads: { atFirst: 1, afterAMinute: 12, afterGrant: 12 },
+      reads: { atFirst: 1, afterAMinute: 8, afterGrant: 8 },
     },
   ] as const)("a failed entity read: $name", ({ error, reads }) =>
     Effect.gen(function* () {
@@ -5253,6 +5261,76 @@ describe("incomplete data says so, with its retry", () => {
         registry.dispose();
       }),
     ),
+  );
+
+  it.effect(
+    "each grant round asks a refusal once more, the same role and an organization's included",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registry = AtomRegistry.make();
+          const harness = makeAdapterHarness();
+          let attempts = 0;
+          const runtime = yield* makeZeropsDataRuntime({
+            scope: runtimeScope,
+            adapter: {
+              ...harness.adapter,
+              register: (receiver, request, context) => {
+                if (
+                  request.descriptor.kind !== "query-membership" ||
+                  request.descriptor.query.kind !== "projects-of-organization"
+                )
+                  return harness.adapter.register(receiver, request, context);
+                attempts += 1;
+                return Effect.fail({
+                  _tag: "ZeropsDataAdapterError",
+                  kind: "forbidden",
+                  message: "list refused",
+                  status: 403,
+                  retryable: false,
+                  accountRevocationEvidence: false,
+                } satisfies AdapterError);
+              },
+            },
+            atomRegistry: registry,
+            makeOpaqueId: makeIdFactory(),
+          });
+          const states = yield* Queue.unbounded<ZeropsDataState>();
+          const stop = registry.subscribe(runtime.stateAtom, (state) =>
+            Queue.offerUnsafe(states, state),
+          );
+          const organization = topologyDescriptor.project.organization;
+          const lease = yield* runtime.acquire({ kind: "organization-inventory", organization });
+          yield* waitForState(
+            states,
+            (state) => state.interests.get(lease.interest)?.interest.status === "failed",
+          );
+          const round = (verifiedAtMs: number) =>
+            runtime.observeAccess({
+              kind: "access-verified",
+              grant: {
+                account: runtimeScope.account,
+                accountEpoch: runtimeScope.epoch,
+                verifiedAtMs,
+                deadlineMs: verifiedAtMs + 15 * 60_000,
+                mutationsAllowed: true,
+                organizations: [{ organization, mutationsAllowed: true }],
+                projects: [],
+              },
+            });
+          expect(attempts).toBe(1);
+          yield* round(0);
+          yield* waitForState(states, () => attempts === 2);
+          yield* TestClock.adjust("12 minutes");
+          expect(attempts).toBe(2);
+          // The next round, with the same role, asks once more.
+          yield* round(12 * 60_000);
+          yield* waitForState(states, () => attempts === 3);
+          yield* runtime.shutdown("application-close");
+          stop();
+          registry.dispose();
+        }),
+      ),
   );
 
   it.effect("a receiver stream that ends without a close frame ends visibly", () =>
@@ -6117,6 +6195,41 @@ describe("an interest that fails alone recovers alone", () => {
       ),
   );
 
+  it.effect("a retry waiting when its socket is replaced comes due on the new one", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const rig = yield* refusing(1, { policy: { releasedRegistrationsPerReceiver: 1 } });
+        const lease = yield* rig.runtime.acquire({
+          kind: "project-activity",
+          project: topologyDescriptor.project,
+        });
+        yield* waitForState(rig.states, (state) => {
+          const interest = state.interests.get(lease.interest)?.interest;
+          return interest?.status === "failed" && interest.retryAtMs !== null;
+        });
+        // Another project's demand comes and goes: its released subscriptions replace the socket.
+        const passing = yield* Scope.make();
+        yield* rig.runtime
+          .acquire({ kind: "project-inventory", project: project("project-b") })
+          .pipe(Scope.provide(passing));
+        yield* settle;
+        yield* Scope.close(passing, Exit.void);
+        yield* settle;
+        expect(rig.harness.counts().closes).toBe(1);
+        yield* TestClock.adjust("100 millis");
+        yield* waitForState(
+          rig.states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+        );
+        expect(rig.attemptsAt).toEqual([0, 100]);
+        expect(rig.harness.counts().opens).toBe(2);
+        yield* rig.runtime.shutdown("application-close");
+        rig.stop();
+        rig.registry.dispose();
+      }),
+    ),
+  );
+
   it.effect("retries that churn past the released-subscription bound replace the socket", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -6411,6 +6524,133 @@ describe("a 429 is answered with patience, never more requests", () => {
         registry.dispose();
       }),
     ),
+  );
+
+  it.effect(
+    "a read a Retry-After holds is said until it passes, and runs on the visible wake when the hold ends hidden",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registry = AtomRegistry.make();
+          const harness = makeAdapterHarness();
+          const events = yield* Queue.unbounded<ReceiverEvent>();
+          const visibilityState = yield* Ref.make<"visible" | "hidden">("visible");
+          const visibilityChanges = yield* Queue.unbounded<"visible" | "hidden">();
+          const registrations = new Map<string, RegistrationRequest>();
+          const reads: string[] = [];
+          const runtime = yield* makeZeropsDataRuntime({
+            scope: runtimeScope,
+            adapter: {
+              ...harness.adapter,
+              openReceiver: (_scope, organization, identity) =>
+                Effect.succeed({
+                  identity,
+                  organization,
+                  delivery: "hot-single-consumer-buffered-before-open-resolves" as const,
+                  events: Stream.fromQueue(events),
+                }),
+              register: (_receiver, request) => {
+                const baseline = unresolvedProcessBaseline(request);
+                if (
+                  baseline === null ||
+                  request.descriptor.kind !== "query-membership" ||
+                  request.descriptor.query.kind !== "running-processes-of-project"
+                )
+                  return Effect.succeed({ responseObservations: [] });
+                const projectId = request.descriptor.query.project.projectId;
+                registrations.set(projectId, request);
+                // Only project a runs something; the others' first processes arrive while its read
+                // is held.
+                return Effect.succeed({
+                  responseObservations: [
+                    projectId === "project-a"
+                      ? baseline
+                      : ({
+                          ...baseline,
+                          members: [],
+                          unresolvedMembers: [],
+                          observedTotal: 0,
+                        } as PlatformObservation),
+                  ],
+                });
+              },
+              read: (ticket) => {
+                if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
+                const id = ticket.target.ref.processId;
+                reads.push(id);
+                return id === "process-a" && reads.length === 1
+                  ? Effect.fail(slowDown(5_000))
+                  : Effect.succeed({ observations: [] });
+              },
+            },
+            atomRegistry: registry,
+            makeOpaqueId: makeIdFactory(),
+            random: () => 0,
+            visibility: {
+              current: Ref.get(visibilityState),
+              changes: Stream.fromQueue(visibilityChanges),
+            },
+          });
+          const membership = (operation: "add" | "remove", projectId: string, processId: string) =>
+            Queue.offer(events, {
+              kind: "observation",
+              input: {
+                kind: "query-membership-observed",
+                operation,
+                member: {
+                  kind: "process",
+                  project: project(projectId),
+                  processId: ZeropsProcessId.make(processId),
+                },
+                registration: registrations.get(projectId) as never,
+              },
+              bytes: 1,
+            });
+          yield* runtime.acquire({ kind: "project-activity", project: project("project-a") });
+          const leaseB = yield* runtime.acquire({
+            kind: "project-activity",
+            project: project("project-b"),
+          });
+          const leaseC = yield* runtime.acquire({
+            kind: "project-activity",
+            project: project("project-c"),
+          });
+          const interestOf = (lease: typeof leaseB) =>
+            registry.get(runtime.stateAtom).interests.get(lease.interest)?.interest;
+          yield* settle;
+          expect(reads).toEqual(["process-a"]);
+          yield* TestClock.adjust("1 second");
+          yield* membership("add", "project-b", "process-b");
+          yield* membership("add", "project-c", "process-c");
+          yield* settle;
+          // Their data is missing until the hold passes: each interest says so, with when it reads.
+          for (const lease of [leaseB, leaseC])
+            expect(interestOf(lease)).toMatchObject({
+              status: "failed",
+              retryable: true,
+              retryAtMs: 5_000,
+            });
+          // Project a's refused process and project c's held one end: nothing of theirs is left to
+          // read.
+          yield* membership("remove", "project-a", "process-a");
+          yield* membership("remove", "project-c", "process-c");
+          yield* settle;
+          yield* Ref.set(visibilityState, "hidden");
+          yield* Queue.offer(visibilityChanges, "hidden");
+          yield* settle;
+          // The hold ends while nobody looks: nothing is read, and nothing is forgotten either.
+          yield* TestClock.adjust("10 seconds");
+          yield* settle;
+          expect(reads).toEqual(["process-a"]);
+          expect(interestOf(leaseC)?.status).toBe("observing");
+          yield* Ref.set(visibilityState, "visible");
+          yield* Queue.offer(visibilityChanges, "visible");
+          yield* settle;
+          expect(reads.slice(1)).toEqual(["process-b"]);
+          yield* runtime.shutdown("application-close");
+          registry.dispose();
+        }),
+      ),
   );
 
   it.effect("an interest's retry waits out its refusal's Retry-After", () =>

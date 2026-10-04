@@ -238,6 +238,7 @@ const tab = Effect.fnUntraced(function* (
     clock,
     runtime,
     platform,
+    network,
     statuses,
     view,
     pass,
@@ -289,6 +290,22 @@ const everyMinute = Effect.fnUntraced(function* (
 });
 
 describe("the access grant inside the data runtime", () => {
+  it.effect("a shutdown while a round's answer reports its grant completes (N1)", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const opened = yield* tab(healthy());
+        // The account part answers; the projects' answers come due a second later.
+        yield* opened.pass(SECOND);
+        yield* opened.clock.advance(SECOND);
+        yield* opened.network.deliver;
+        // The answers report the grant while the account is signed out under them.
+        const closing = yield* Effect.forkChild(opened.runtime.shutdown("application-close"));
+        yield* settle;
+        expect(closing.pollUnsafe()).not.toBeUndefined();
+      }),
+    ),
+  );
+
   it.effect("admits the first round and hands the runtime a grant of each verified project", () =>
     Effect.scoped(
       Effect.gen(function* () {
