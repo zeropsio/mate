@@ -12,6 +12,7 @@
  *   already, and moves; what follows it waits its gap.
  * - Everything enters at once when the run is over or the thread catches up
  *   (`flush`): nothing is held back once the run is idle.
+ * - What arrives before a line that stands is history drawn in: there at once.
  * - What leaves before it entered is forgotten.
  *
  * Pure: the caller offers the keys present at a time and draws what
@@ -76,6 +77,13 @@ export function paceOffer(
   let shown = pace.shown;
   let lastAt = pace.lastAt;
   let gap = pace.gap;
+  // What comes before the last line that stands is history drawn in (earlier
+  // turns loading): there at once, never paced in above the reader.
+  const lastShown = offer.keys.findLastIndex((key) => shown.has(key));
+  const earlier = offer.keys
+    .slice(0, Math.max(0, lastShown))
+    .filter((key) => !shown.has(key) && !pace.waiting.includes(key));
+  if (earlier.length > 0) shown = new Set([...shown, ...earlier]);
   const landed = offer.keys.filter((key) => offer.landing.has(key) && !shown.has(key));
   if (landed.length > 0) {
     shown = new Set([...shown, ...landed]);
