@@ -1030,10 +1030,7 @@ describe("structure", () => {
               appId: team.id,
               face: "rose:seal",
             });
-            // Unnamed, as a client from before D3 reads it: its project is not yet, nor its name.
-            assert.deepStrictEqual(yield* birthsOf, [
-              { id: intent.id, name: "", face: "rose:seal" },
-            ]);
+            assert.deepStrictEqual(yield* birthsOf, [{ id: intent.id, face: "rose:seal" }]);
             // Nobody who does not see the application records one in it.
             assert.strictEqual(
               yield* reasonOf(structure.recordBirth("nobody", { appId: team.id, face: "" })),
@@ -1051,36 +1048,15 @@ describe("structure", () => {
         ),
     );
 
-    it.effect("ports missing Mate facts into HQ once, preserving facts HQ already holds", () =>
+    it.effect("reads the tool projects HQ holds", () =>
       withStructure(() =>
         Effect.gen(function* () {
           const structure = yield* Structure;
           const sql = yield* SqlClient.SqlClient;
-          yield* structure.createMate("owner", { projectId: "P_OWN", face: "rose:seal" });
-          yield* structure.portProjectMetadata("owner", {
-            projectId: "P_OWN",
-            face: "sky:flower",
-            signers: { codex: "owner" },
-          });
-          yield* structure.portProjectMetadata("owner", {
-            projectId: "P_OWN",
-            signers: { codex: "maker" },
-          });
-          const rows = yield* sql<{
-            readonly face: string;
-            readonly signers: Record<string, string>;
-          }>`SELECT face, signers FROM hq_mate WHERE project_id = 'P_OWN'`;
-          assert.deepStrictEqual(rows[0], { face: "rose:seal", signers: { codex: "owner" } });
-          yield* structure.portProjectMetadata("owner", { projectId: "P_TEAM", tool: "gitea" });
+          yield* sql`INSERT INTO hq_tool (project_id, kind) VALUES ('P_TEAM', 'gitea')`;
           assert.deepStrictEqual((yield* structure.read("owner")).tools, [
             { projectId: "P_TEAM", kind: "gitea" },
           ]);
-          assert.strictEqual(
-            yield* reasonOf(
-              structure.portProjectMetadata("maker", { projectId: "P_TEAM", tool: "gitea" }),
-            ),
-            "not_structure_writer",
-          );
         }),
       ),
     );
@@ -1095,7 +1071,7 @@ describe("structure", () => {
           yield* structure.bindBirth("owner", birth.id, "P_OWN");
           const read = yield* structure.read("owner");
           assert.deepStrictEqual(read.apps.find((a) => a.id === app.id)?.births, [
-            { id: birth.id, name: "", face: "rose:seal", projectId: "P_OWN" },
+            { id: birth.id, face: "rose:seal", projectId: "P_OWN" },
           ]);
           assert.strictEqual(
             yield* reasonOf(structure.bindBirth("nobody", birth.id, "P_TEAM")),

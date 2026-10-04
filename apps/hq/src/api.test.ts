@@ -1088,7 +1088,7 @@ describe("HQ API", () => {
         });
         const { id } = recorded.body as { readonly id: string };
         assert.deepStrictEqual([recorded.status, recorded.body], [201, { id, face: "rose:seal" }]);
-        assert.deepStrictEqual(yield* birthsOf, [{ id, name: "", face: "rose:seal" }]);
+        assert.deepStrictEqual(yield* birthsOf, [{ id, face: "rose:seal" }]);
 
         const attached = yield* call("POST", `/api/apps/${appId}/projects`, {
           session,

@@ -1429,36 +1429,6 @@ const routes = (
       ),
     ),
     HttpRouter.add(
-      "POST",
-      "/api/project-metadata/port",
-      handle(
-        Effect.gen(function* () {
-          const facts = yield* jsonBody(
-            Schema.Struct({
-              projectId: Schema.String,
-              mate: Schema.optionalKey(Schema.Boolean),
-              face: Schema.optionalKey(Schema.String),
-              madeBy: Schema.optionalKey(Schema.String),
-              birthId: Schema.optionalKey(Schema.String),
-              nameSource: Schema.optionalKey(Schema.Literals(["picked", "project"])),
-              standupRequestedBy: Schema.optionalKey(Schema.String),
-              closedOff: Schema.optionalKey(Schema.Boolean),
-              signers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-              tool: Schema.optionalKey(Schema.Literal("gitea")),
-            }),
-            BODY_LIMIT,
-          );
-          return yield* outliving(
-            Effect.gen(function* () {
-              const { userId } = yield* principal;
-              yield* (yield* Structure).portProjectMetadata(userId, facts);
-              return json({ projectId: facts.projectId }, 200);
-            }),
-          );
-        }),
-      ),
-    ),
-    HttpRouter.add(
       "PUT",
       "/api/births/:birthId/project",
       handle(

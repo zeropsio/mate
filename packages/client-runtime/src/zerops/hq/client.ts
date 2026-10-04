@@ -89,7 +89,6 @@ export interface HqMateSetUp extends HqNewMate {
  */
 export interface HqMate extends HqMateRecord {
   readonly birthId?: string | null;
-  readonly nameSource?: string;
   readonly signers?: Readonly<Record<string, string>>;
   /**
    * Who made it — whoever set its record up: a Mate recorded before HQ kept it is null; an older

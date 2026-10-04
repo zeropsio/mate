@@ -4,17 +4,10 @@ import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
 import * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
-import {
-  GitError,
-  type HqGit,
-  type HqGitOptions,
-  type ImportCredentials,
-  type Repo,
-} from "./api.ts";
+import { GitError, type HqGit, type HqGitOptions, type Repo } from "./api.ts";
 import { GitRunner, converge, scratch, sweep } from "./git.ts";
 import { makeHandler } from "./http.ts";
 import { eventPort, makeOperations } from "./operations.ts";
-import { defaultImportHost, resolveSource } from "./source.ts";
 
 const validId = (id: string) => /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(id);
 const isGitError = Schema.is(GitError);
@@ -50,11 +43,7 @@ const recover = async (root: string) => {
 export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError, Scope.Scope> =>
   Effect.gen(function* () {
     const root = NodePath.resolve(options.rootDir);
-    for (const ms of [
-      options.importTimeoutMs,
-      options.requestTimeoutMs,
-      options.refLockTimeoutMs,
-    ]) {
+    for (const ms of [options.requestTimeoutMs, options.refLockTimeoutMs]) {
       if (ms !== undefined && !(Number.isSafeInteger(ms) && ms > 0))
         return yield* new GitError({
           operation: "open",
@@ -90,29 +79,9 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
       const head = await NodeFSP.stat(NodePath.join(dir, "HEAD")).catch(() => null);
       return head?.isFile() ? dir : null;
     };
-    const build = async (
-      repo: Repo,
-      signal: AbortSignal,
-      source?: string,
-      credentials?: ImportCredentials,
-      bundle?: string,
-    ) => {
+    const build = async (repo: Repo, signal: AbortSignal, bundle?: string) => {
       const dest = directory(repo);
-      const from =
-        source === undefined
-          ? undefined
-          : await resolveSource(source, {
-              root,
-              importRoots: options.importRoots ?? [],
-              allowHost: options.allowImportHost ?? defaultImportHost,
-            });
-      if (credentials && from?.protocol !== "https")
-        throw new GitError({
-          operation: "import",
-          reason: "source_refused",
-          message: "Credentials require an https source",
-        });
-      // Reservation prevents competing creators, without exposing a partially imported repository.
+      // Reservation prevents competing creators, without exposing a partially built repository.
       await NodeFSP.mkdir(NodePath.join(root, repo.appId), { recursive: true });
       await NodeFSP.mkdir(dest).catch((error: NodeJS.ErrnoException) => {
         throw error.code === "EEXIST"
@@ -144,65 +113,6 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
           );
           await converge(runner, repoPath, signal);
         }
-        if (from) {
-          // Environment config avoids both credential URLs and askpass prompt argv.
-          const env: Record<string, string> = credentials
-            ? {
-                GIT_CONFIG_COUNT: "1",
-                GIT_CONFIG_KEY_0: "http.extraHeader",
-                GIT_CONFIG_VALUE_0: `Authorization: Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString("base64")}`,
-              }
-            : {};
-          const deadline = AbortSignal.timeout(options.importTimeoutMs ?? 10 * 60 * 1000);
-          // Fetch instead of clone: source config, hooks, alternates, and remotes are never copied.
-          const fetch = (refspecs: ReadonlyArray<string>) =>
-            runner
-              .run(
-                [
-                  "-c",
-                  `protocol.${from.protocol}.allow=always`,
-                  "-c",
-                  "credential.helper=",
-                  "-c",
-                  "http.followRedirects=false",
-                  "-C",
-                  repoPath,
-                  "fetch",
-                  "--no-write-fetch-head",
-                  "--no-recurse-submodules",
-                  "--",
-                  from.source,
-                  ...refspecs,
-                ],
-                { env, signal: AbortSignal.any([signal, deadline]) },
-              )
-              .catch((error: unknown) => {
-                throw deadline.aborted
-                  ? new GitError({
-                      operation: "import",
-                      reason: "timeout",
-                      message: "Import timed out",
-                    })
-                  : error;
-              });
-          // Change branches are born here, so an imported mate/* could impersonate one.
-          await fetch([
-            "+refs/heads/*:refs/heads/*",
-            "+refs/tags/*:refs/tags/*",
-            "^refs/heads/mate/*",
-          ]);
-          const main = await runner.run(
-            ["-C", repoPath, "for-each-ref", "--format=%(objectname)", "refs/heads/main"],
-            { signal },
-          );
-          if (main.length === 0)
-            throw new GitError({
-              operation: "import",
-              reason: "no_main",
-              message: "Import source has no main branch",
-            });
-          await converge(runner, repoPath, signal);
-        }
         await NodeFSP.rename(repoPath, dest);
         return { appId: repo.appId, id: repo.id };
       } catch (error) {
@@ -214,11 +124,7 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
     };
     const create: HqGit["create"] = (repo) => attempt("create", (signal) => build(repo, signal));
     const restore: HqGit["restore"] = (repo, bundle) =>
-      attempt("restore", (signal) =>
-        build(repo, signal, undefined, undefined, bundle === null ? undefined : bundle),
-      );
-    const importRepo: HqGit["import"] = (repo, source, credentials) =>
-      attempt("import", (signal) => build(repo, signal, source, credentials));
+      attempt("restore", (signal) => build(repo, signal, bundle === null ? undefined : bundle));
     const list: HqGit["list"] = (appId) =>
       attempt("list", async () => {
         if (appId !== undefined && !validId(appId))
@@ -284,7 +190,6 @@ export const makeHqGit = (options: HqGitOptions): Effect.Effect<HqGit, GitError,
     return {
       create,
       restore,
-      import: importRepo,
       list,
       remove,
       convergeRepo,
