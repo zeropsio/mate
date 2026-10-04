@@ -591,11 +591,14 @@ describe("the turn gate", () => {
       readonly home: string;
       readonly tags: ReadonlyArray<string>;
       readonly saved?: Readonly<Record<string, string>>;
+      /** HQ fails: enrolled, and every read of it answers 500. */
+      readonly hqDown?: boolean;
     }) =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const enrollment = `${input.home}/.zcp/hq/enrollment.json`;
-        if (input.saved !== undefined) {
+        const enrolled = input.saved !== undefined || input.hqDown === true;
+        if (enrolled) {
           yield* fs.makeDirectory(`${input.home}/.zcp/hq`, { recursive: true });
           yield* fs.writeFileString(
             enrollment,
@@ -605,7 +608,7 @@ describe("the turn gate", () => {
         const routes = (url: string) =>
           url.endsWith(`/project/${PROJECT_ID}`)
             ? json({ id: PROJECT_ID, clientId: CLIENT_ID, tagList: input.tags })
-            : url === "https://hq.example.test/api/mate/self"
+            : url === "https://hq.example.test/api/mate/self" && input.hqDown !== true
               ? json({ projectId: PROJECT_ID, signers: input.saved ?? {} })
               : json({ message: "down" }, 500);
         return yield* makeCarriedSignIns(input.home).pipe(
@@ -613,10 +616,7 @@ describe("the turn gate", () => {
             Layer.mergeAll(
               httpLayer(routes).layer,
               ServerConfig.layer({
-                zerops:
-                  input.saved === undefined
-                    ? environment
-                    : { ...environment, hqEnrollmentPath: enrollment },
+                zerops: enrolled ? { ...environment, hqEnrollmentPath: enrollment } : environment,
               } as ServerConfig.ServerConfig["Service"]),
             ),
           ),
@@ -696,9 +696,11 @@ describe("the turn gate", () => {
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     );
 
-    // The update's start found no credential; a terminal login put one there afterwards. The old
-    // tag is still on the project, but the credential is not the one it was written for.
-    it.effect("a terminal login after the record began stays nobody's", () =>
+    // Covers only a credential made after the carry-over closed. One already here at the update,
+    // made on 0.12.3 after its tag's signer signed out, is carried as theirs: 0.12.3's own trust
+    // (`zeropsSignerCarryOver`).
+    // The update's start found no credential and closed; a terminal login put one there afterwards.
+    it.effect("a login whose credential turns up after the carry-over closed stays nobody's", () =>
       Effect.gen(function* () {
         const home = yield* tempHome;
         const tags = ["mate", signerTag("claude-code", JAN)];
@@ -706,6 +708,24 @@ describe("the turn gate", () => {
         yield* holdsCredential(home);
 
         const { signers } = yield* gateOver(yield* updated({ home, tags }));
+
+        assert.deepStrictEqual(
+          yield* signers.turnRefusal({ agentId: "claude-code", agent: signedIn, subject: JAN }),
+          { kind: "unrecorded" },
+        );
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    );
+
+    // HQ fails at the update's start, so the carry-over stays open; a terminal login turns up
+    // before the next start, and the tag still names Jan.
+    it.effect("a login whose credential turns up while HQ fails is never carried", () =>
+      Effect.gen(function* () {
+        const home = yield* tempHome;
+        const tags = ["mate", signerTag("claude-code", JAN)];
+        yield* updated({ home, tags, hqDown: true });
+        yield* holdsCredential(home);
+
+        const { signers } = yield* gateOver(yield* updated({ home, tags, hqDown: true }));
 
         assert.deepStrictEqual(
           yield* signers.turnRefusal({ agentId: "claude-code", agent: signedIn, subject: JAN }),
