@@ -3844,11 +3844,9 @@ no-cache`.
     close-off gate, so an unisolated project could be used.
 - **2026-10-04** — **Set up Mate is offered on an existing plain project, and a Mate's project keeps
   its owner's own tags.**
-  - A project is plain only on evidence:
-    - HQ's structure is read and holds no record of it of any kind, and no HQ anchor names it;
-    - it carries no `mate` or `mate:*` tag;
-    - it was made before the organization's HQ project. 0.13 makes stages and productions untagged,
-      after HQ.
+  - A project is plain on HQ's word alone (ADR 0002): HQ's structure is read and holds no record of
+    it of any kind, and the official HQ's anchor does not name it. Its tags and its age decide
+    nothing; a stage or production whose registration never reached HQ reads as plain.
   - Set up Mate asks first, in the app's own dialog: what it adds, and that the project's services
     restart once while it is closed off.
   - Declaring a Mate adds `mate` beside the project's tags and drops only old `mate:*` ones; a rename

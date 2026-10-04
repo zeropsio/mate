@@ -17,7 +17,6 @@ import {
   formatMateFace,
   hasMate,
   isGenericPlatformError,
-  MATE_MARKER_TAG,
   mayOffer,
   newMateTint,
   type OfferAsker,
@@ -349,85 +348,52 @@ export function mateSetupOffered(role: ZeropsEnvironmentRole | undefined): boole
 
 /**
  * What says a project is its person's own — evidence the caller gathers once for the page: HQ's
- * records, its anchors, its age and this tab's own presses (`plainZeropsProject`).
+ * records, its anchor and this tab's own presses (`plainZeropsProject`).
  */
 export interface PlainProjectEvidence {
   /** Every project HQ's structure holds any record of (`hqRecordedProjects`). */
   readonly hqRecords: ReadonlySet<string>;
-  /** The projects the organization's HQ anchors name, official or not: the HQ carries no tag. */
+  /** The project the organization's official HQ anchor names: the HQ carries no record of itself. */
   readonly hqAnchors: ReadonlySet<string>;
-  /**
-   * When the organization's HQ project was made; undefined where it is not known. A project made
-   * since may be a stage or a production 0.13 made — they carry no tag, and attach to HQ only in
-   * a later step that may not have landed, or been undone.
-   */
-  readonly hqBornAt: string | undefined;
   /** The projects this tab is making or finishing. */
   readonly local: ReadonlySet<string>;
 }
 
 /**
- * An existing plain Zerops project, on positive evidence only (security review 1, 11): no Mate, no
- * place in HQ and no record of it there at all, none of the `mate:` tags an earlier group carries,
- * not the organization's HQ by its anchors or its name, not one this tab is making, and made
- * before the organization's HQ — so no flow of 0.13's can have made it a stage or a production.
- * Anything nothing can tell apart is not plain.
+ * An existing plain Zerops project, on HQ's word (security review 1, 11; ADR 0002, HQ holds the
+ * structure): no Mate, no place in HQ and no record of it there at all, not the organization's HQ
+ * by its anchor or its name, and not one this tab is making. A project's tags and its age decide
+ * nothing. Anything nothing can tell apart — HQ's structure not known — is not plain.
  */
 export function plainZeropsProject(
   project: ZeropsCandidate["project"],
   evidence: PlainProjectEvidence | undefined,
 ): boolean {
-  if (evidence === undefined || evidence.hqBornAt === undefined) return false;
-  const created = Date.parse(project.created ?? "");
-  const hqBorn = Date.parse(evidence.hqBornAt);
+  if (evidence === undefined) return false;
   return (
     project.hq === undefined &&
-    !(project.tagList ?? []).some(
-      (tag) => tag === MATE_MARKER_TAG || tag.startsWith(`${MATE_MARKER_TAG}:`),
-    ) &&
     project.name !== HQ_PROJECT_NAME &&
     !evidence.hqRecords.has(project.id) &&
     !evidence.hqAnchors.has(project.id) &&
-    !evidence.local.has(project.id) &&
-    !Number.isNaN(created) &&
-    !Number.isNaN(hqBorn) &&
-    created < hqBorn
+    !evidence.local.has(project.id)
   );
 }
 
 /**
- * The page's evidence for `plainZeropsProject`, none while HQ's structure is not known. HQ's age
- * comes from the organization's whole project listing — the store's, which holds the HQ's own
- * project — never from the page's candidate rows, which never do (live, 2026-10-04). Only an
- * official HQ dates anything: with none, or an unclear one, nothing is plain.
+ * The page's evidence for `plainZeropsProject`: none while HQ's structure is not known, or the
+ * organization has no official HQ — with none, or an unclear one, nothing is plain.
  */
 export function plainEvidenceOf(input: {
   readonly hqKnown: boolean;
   readonly structure: HqStructure | null;
   readonly hq: OfficialHq;
-  /** The organization's projects as its listing in the store holds them, the HQ's own among them. */
-  readonly organizationProjects: ReadonlyArray<{
-    readonly id: string;
-    readonly created?: string | undefined;
-  }>;
   /** The projects this tab is making or finishing. */
   readonly local: Iterable<string>;
 }): PlainProjectEvidence | undefined {
-  if (!input.hqKnown || input.structure === null) return undefined;
-  const official = input.hq.kind === "official" ? input.hq.projectId : undefined;
+  if (!input.hqKnown || input.structure === null || input.hq.kind !== "official") return undefined;
   return {
     hqRecords: hqRecordedProjects(input.structure),
-    hqAnchors: new Set(
-      input.hq.kind === "official"
-        ? [input.hq.projectId]
-        : input.hq.kind === "unclear"
-          ? input.hq.projectIds
-          : [],
-    ),
-    hqBornAt:
-      official === undefined
-        ? undefined
-        : input.organizationProjects.find((project) => project.id === official)?.created,
+    hqAnchors: new Set([input.hq.projectId]),
     local: new Set(input.local),
   };
 }

@@ -282,11 +282,10 @@ describe("deriveZeropsRowAction", () => {
       project: { ...bare.project, name, tagList: [...tagList], created: "2026-01-10T10:00:00Z" },
     });
     const PLAIN = { ...ALL, setUpPlainProject: true };
-    /** Nothing at HQ of it, and made before the organization's HQ was. */
+    /** Nothing at HQ of it. */
     const EVIDENCE: PlainProjectEvidence = {
       hqRecords: new Set(),
       hqAnchors: new Set(["hq-1"]),
-      hqBornAt: "2026-09-01T10:00:00Z",
       local: new Set(),
     };
     const offered = (
@@ -299,9 +298,12 @@ describe("deriveZeropsRowAction", () => {
         ...(plainEvidence === "none" ? {} : { plainEvidence }),
       }).kind;
 
+    // HQ holds the structure (ADR 0002): a project it holds nowhere is plain, whatever its tags say
+    // and whenever it was made.
     it.each([
       ["shop", []],
       ["central-prometheus", ["billing:team-a"]],
+      ["old-group-dev", ["mate", "mate:standup:u-ada"]],
     ])("is offered on an existing plain project (%s)", (name, tagList) => {
       expect(offered(plain(name, tagList))).toBe("set-up-mate");
     });
@@ -310,10 +312,9 @@ describe("deriveZeropsRowAction", () => {
       expect(offered(plain("shop", []), ALL)).toBe("none");
     });
 
-    // Security review 1 and 11: plain needs positive evidence. A stage or production 0.13 made
-    // carries no tag and attaches to HQ only later, so a project HQ holds any record of, one made
-    // since the organization's HQ, one this tab is making, the HQ itself — or one nothing can tell
-    // apart, its HQ not known — is never offered it.
+    // Security review 1 and 11: plain needs positive evidence. A project HQ holds any record of, one
+    // this tab is making, the HQ itself — or one nothing can tell apart, HQ's structure not known —
+    // is never offered it.
     const shop = plain("shop", []);
     it.each([
       { case: "HQ holds a record of it", evidence: { ...EVIDENCE, hqRecords: new Set(["bare"]) } },
@@ -321,11 +322,6 @@ describe("deriveZeropsRowAction", () => {
         case: "an HQ anchor names it, official or not",
         evidence: { ...EVIDENCE, hqAnchors: new Set(["bare"]) },
       },
-      {
-        case: "made since the organization's HQ",
-        evidence: { ...EVIDENCE, hqBornAt: "2026-01-01T00:00:00Z" },
-      },
-      { case: "the organization's HQ not known", evidence: { ...EVIDENCE, hqBornAt: undefined } },
       { case: "this tab is making it", evidence: { ...EVIDENCE, local: new Set(["bare"]) } },
       { case: "no evidence read at all", evidence: "none" as const },
     ])("is not offered where $case", ({ evidence }) => {
@@ -336,9 +332,10 @@ describe("deriveZeropsRowAction", () => {
       expect(offered(plain("Headquarters", []))).toBe("none");
     });
 
-    it("is not offered on a project of no known age", () => {
+    it("is offered on a project made after the organization's HQ, or of no known age", () => {
+      const late = { ...shop, project: { ...shop.project, created: "2026-10-04T10:00:00Z" } };
       const ageless = { ...shop, project: { ...shop.project, created: undefined } } as never;
-      expect(offered(ageless)).toBe("none");
+      expect([offered(late), offered(ageless)]).toEqual(["set-up-mate", "set-up-mate"]);
     });
 
     // Live, 2026-10-04: a plain project ("central-prometheus") was not listed at all. 0.13 reads a
@@ -368,64 +365,20 @@ describe("deriveZeropsRowAction", () => {
       ).toEqual({ label: "Not available", tone: "off" });
     });
 
-    it("is not offered on a project whose services nothing has read, where it is a declared Mate's", () => {
-      const unread = {
-        key: "bare",
-        group: "unavailable",
-        presence: "unknown",
-        project: { ...shop.project, tagList: ["mate"] },
-      } as ZeropsRowCandidate;
-      expect(offered(unread)).toBe("none");
-    });
-
-    // Live, 2026-10-04: the page took HQ's age from its candidate rows, which never hold the HQ's
-    // own project, so no project could ever be plain. Its age comes from the organization's whole
-    // project listing.
     describe("plainEvidenceOf — the page's evidence", () => {
-      const ORG_PROJECTS = [
-        { id: "hq-1", created: "2026-10-02T21:19:21Z" },
-        { id: "old-hq", created: "2026-09-22T10:00:00Z" },
-        { id: "bare", created: "2026-09-29T10:25:57Z" },
-      ];
       const STRUCTURE = { ungrouped: [], apps: [] } as never;
       const evidence = (
-        projects: ReadonlyArray<{ readonly id: string; readonly created?: string }>,
         hq: OfficialHq = { kind: "official", projectId: "hq-1", address: "https://hq.test" },
-      ) =>
-        plainEvidenceOf({
-          hqKnown: true,
-          structure: STRUCTURE,
-          hq,
-          organizationProjects: projects,
-          local: [],
-        });
+        hqKnown = true,
+      ) => plainEvidenceOf({ hqKnown, structure: STRUCTURE, hq, local: [] });
 
-      it("takes HQ's age from the organization's projects, where the candidates hold no HQ", () => {
-        expect(evidence(ORG_PROJECTS)?.hqBornAt).toBe("2026-10-02T21:19:21Z");
-        const live = {
-          ...shop,
-          project: { ...shop.project, name: "central-prometheus", created: "2026-09-29T10:25:57Z" },
-        } as ZeropsRowCandidate;
-        expect(offered(live, PLAIN, evidence(ORG_PROJECTS)!)).toBe("set-up-mate");
+      it("names the official HQ's own project as its anchor", () => {
+        expect(evidence()?.hqAnchors).toEqual(new Set(["hq-1"]));
       });
 
-      it("is never plain where HQ's own project is not listed, nor without an official HQ", () => {
-        expect(evidence(ORG_PROJECTS.filter(({ id }) => id !== "hq-1"))?.hqBornAt).toBeUndefined();
-        expect(
-          evidence(ORG_PROJECTS, { kind: "unclear", projectIds: ["hq-1", "old-hq"] }),
-        ).toMatchObject({ hqBornAt: undefined, hqAnchors: new Set(["hq-1", "old-hq"]) });
-      });
-
-      it("is none while HQ's structure is not known", () => {
-        expect(
-          plainEvidenceOf({
-            hqKnown: false,
-            structure: STRUCTURE,
-            hq: { kind: "none" },
-            organizationProjects: ORG_PROJECTS,
-            local: [],
-          }),
-        ).toBeUndefined();
+      it("is none while HQ's structure is not known, or with no official HQ", () => {
+        expect(evidence({ kind: "none" }, false)).toBeUndefined();
+        expect(evidence({ kind: "unclear", projectIds: ["hq-1", "old-hq"] })).toBeUndefined();
       });
     });
 
@@ -448,15 +401,6 @@ describe("deriveZeropsRowAction", () => {
           } as never),
         ].sort(),
       ).toEqual(["p-born", "p-env", "p-going", "p-lone", "p-placed", "p-tool"]);
-    });
-
-    it.each([
-      ["Beviro - production", ["mate:g:foreign", "mate:role:prod"]],
-      ["ZIT - stage", ["mate:g:foreign", "mate:role:stage"]],
-      ["Imperial Titan - production", ["mate:g:foreign", "mate:role:prod"]],
-      ["Headquarters", ["mate:hq"]],
-    ])("does not offer to convert an environment an earlier group tagged (%s)", (name, tagList) => {
-      expect(offered(plain(name, tagList))).toBe("none");
     });
 
     it("does not offer it on a project HQ places as another application's environment", () => {
