@@ -114,6 +114,11 @@ export interface MatePress {
    */
   readonly keyNotLowered?: string;
   readonly state: MatePressState;
+  /**
+   * A stopped Finish setup on a Mate with its container has said so (`STOPPED_SHOWN_MS`): its row is
+   * the Mate's again, the press kept for its plan (`resumeSetup`).
+   */
+  readonly stopSaid?: true;
   /** This account lifetime's stopped plan, shared by Try again and Finish setup. */
   readonly resumeSetup?: (
     heldLock: boolean,
@@ -182,28 +187,45 @@ function stopStands(press: MatePress): boolean {
 const stoppedWithContainer = (press: MatePress): boolean =>
   press.finishing === true && press.state.kind === "failed" && !stopStands(press);
 
-/** Keep a stopped press's reason and receipts until its creator explicitly continues it. */
+/** How long a Mate's row says its Finish setup stopped before the row is the Mate's again. */
+export const STOPPED_SHOWN_MS = 10_000;
+
+/**
+ * Keep a stopped press's reason and receipts until its creator explicitly continues it — nothing
+ * tries it again on its own (76a0c48f8). A Finish setup that stopped on a Mate with its container
+ * — one it had, or one it brought before a later step stopped — is said, then its row is the
+ * Mate's again (restores 6027014ee, 3d194e2e7): nothing of that Mate waits on the press, and its
+ * menu offers Finish setup again. One that stopped bringing its container stands, for its own
+ * view's *Try again*.
+ */
 export function settlePress(
   projectId: string,
   state: MatePressState,
   resumeSetup?: MatePress["resumeSetup"],
 ): void {
+  let stopped: MatePress | undefined;
   usePressStore.setState((store) => {
     const press = store.presses[projectId];
     if (press === undefined) return store;
-    const { resumeSetup: previousResume, ...held } = press;
+    const { resumeSetup: previousResume, stopSaid: _said, ...held } = press;
     const continuation = resumeSetup ?? (state.kind === "pressed" ? undefined : previousResume);
-    return {
-      presses: {
-        ...store.presses,
-        [projectId]: {
-          ...held,
-          state,
-          ...(continuation === undefined ? {} : { resumeSetup: continuation }),
-        },
-      },
+    const settled: MatePress = {
+      ...held,
+      state,
+      ...(continuation === undefined ? {} : { resumeSetup: continuation }),
     };
+    if (stoppedWithContainer(settled)) stopped = settled;
+    return { presses: { ...store.presses, [projectId]: settled } };
   });
+  if (stopped === undefined) return;
+  const said = stopped;
+  setTimeout(() => {
+    usePressStore.setState((store) =>
+      store.presses[projectId] === said
+        ? { presses: { ...store.presses, [projectId]: { ...said, stopSaid: true } } }
+        : store,
+    );
+  }, STOPPED_SHOWN_MS);
 }
 
 /** A press moved on: each step's state, kept on a press this tab holds. */
@@ -541,10 +563,16 @@ export function finishSetupRunning(press: MatePress | undefined): boolean {
 /**
  * *Finish setup* as its Mate's row says it, on every screen — its own view draws the steps only
  * while its container is missing: running, through for the moment its record stays
- * (`FINISHED_SHOWN_MS`), or stopped, when its menu offers it again. Undefined for any other press.
+ * (`FINISHED_SHOWN_MS`), or stopped, when its menu offers it again. Undefined for any other press,
+ * and for a stop already said (`STOPPED_SHOWN_MS`) or on a Mate that is `up`: its sign-in line,
+ * its dot and its last message are its own.
  */
-export function finishSetupRowLine(press: MatePress | undefined): string | undefined {
+export function finishSetupRowLine(
+  press: MatePress | undefined,
+  mate: { readonly up: boolean } = { up: false },
+): string | undefined {
   if (press?.finishing !== true) return undefined;
+  if (press.state.kind === "failed" && (press.stopSaid === true || mate.up)) return undefined;
   switch (press.state.kind) {
     case "pressing":
       return "Finishing setup…";

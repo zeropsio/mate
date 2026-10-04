@@ -28,6 +28,7 @@ import {
   readMatePress,
   runPress,
   settlePress,
+  STOPPED_SHOWN_MS,
   mateFinishRegistration,
   PRESS_CALL_CAP_MS,
   PRESS_CALL_SILENT,
@@ -521,7 +522,9 @@ describe("a press's end", () => {
 });
 
 // A stopped Finish setup keeps its reason and manual continuation, including after bringing
-// its container. Its coming-up projection still distinguishes what it brought.
+// its container (76a0c48f8): nothing tries it again on its own. On a Mate with its container its
+// row says it stopped, then is the Mate's again (restores 6027014ee and 3d194e2e7); one bringing
+// its container stands, for its own view's Try again.
 describe("a Finish setup that stopped", () => {
   const STOPPED: MatePressState = {
     kind: "failed",
@@ -557,14 +560,14 @@ describe("a Finish setup that stopped", () => {
   // its harden and the lock of another tab stop it before any step, naming its close-off.
   it.each([
     {
-      case: "on a Mate with its container: the stop stays",
+      case: "on a Mate with its container: said, then gone, its plan kept",
       container: false,
       progress: undefined,
       stopped: STOPPED,
       stands: false,
     },
     {
-      case: "after bringing its container: the stop stays without saying it is coming",
+      case: "after bringing its container: said, then gone, and no longer coming",
       container: true,
       progress: BROUGHT,
       stopped: STOPPED,
@@ -589,15 +592,40 @@ describe("a Finish setup that stopped", () => {
     try {
       begin(container);
       if (progress !== undefined) progressPress("p-stop", progress);
-      settlePress("p-stop", stopped);
+      const resume: MatePress["resumeSetup"] = async () => ({ ok: true }) as never;
+      settlePress("p-stop", stopped, resume);
       const press = readMatePress("p-stop");
       expect(finishSetupRowLine(press)).toBe("Setup stopped");
       expect(pressComingInput([press!], "p-stop")).toEqual({
         press: { startedAt: 0, container: stands, retryable: false },
         setUpFailed: stands ? "Zerops refused the change" : undefined,
       });
-      vi.advanceTimersByTime(60_000);
-      expect(readMatePress("p-stop")?.state).toEqual(stopped);
+      vi.advanceTimersByTime(STOPPED_SHOWN_MS);
+      const later = readMatePress("p-stop");
+      expect(later?.state).toEqual(stopped);
+      expect(later?.resumeSetup).toBe(resume);
+      expect(finishSetupRowLine(later)).toBe(stands ? "Setup stopped" : undefined);
+      expect(pressComingInput([later!], "p-stop").setUpFailed).toBe(
+        stands ? "Zerops refused the change" : undefined,
+      );
+    } finally {
+      forgetPress("p-stop");
+      vi.useRealTimers();
+    }
+  });
+
+  it("a Finish setup pressed again within its words is said anew, never cut short", () => {
+    vi.useFakeTimers();
+    try {
+      begin(false);
+      settlePress("p-stop", STOPPED);
+      vi.advanceTimersByTime(STOPPED_SHOWN_MS - 1_000);
+      begin(false);
+      settlePress("p-stop", STOPPED);
+      vi.advanceTimersByTime(1_000);
+      expect(finishSetupRowLine(readMatePress("p-stop"))).toBe("Setup stopped");
+      vi.advanceTimersByTime(STOPPED_SHOWN_MS);
+      expect(finishSetupRowLine(readMatePress("p-stop"))).toBeUndefined();
     } finally {
       forgetPress("p-stop");
       vi.useRealTimers();
@@ -652,8 +680,20 @@ describe("finishSetupRowLine — Finish setup as its Mate's row says it, from an
       press: press(failed, true),
       line: "Setup stopped",
     },
-  ])("$case", ({ press, line }) => {
-    expect(finishSetupRowLine(press)).toBe(line);
+    {
+      case: "stopped on a Mate that is up: its sign-in line, dot and last message are its own",
+      press: press(failed, true),
+      up: true,
+      line: undefined,
+    },
+    {
+      case: "finishing on a Mate that is up: still said",
+      press: press({ kind: "pressing" }, true),
+      up: true,
+      line: "Finishing setup…",
+    },
+  ])("$case", ({ press, up, line }) => {
+    expect(finishSetupRowLine(press, { up: up === true })).toBe(line);
   });
 });
 
