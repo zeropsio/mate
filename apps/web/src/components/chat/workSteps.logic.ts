@@ -298,7 +298,6 @@ export function backgroundJobOf(
   const { task } = track;
   const ended = task.sourceActivityKind === "task.completed";
   if (ended && endOf(task) - endOf(command) <= TRACK_TOLERANCE_MS) return null;
-  if (!ended && task.toolLifecycleStatus !== "inProgress") return null;
   const title = (
     track.description ??
     command.callInput?.description ??

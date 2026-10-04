@@ -443,10 +443,11 @@ describe("backgroundJobOf", () => {
     startedAt: "2026-09-27T08:00:00.000Z",
     updatedAt: "2026-09-27T08:00:01.000Z",
   });
+  // As the server sends it: a task's start carries no lifecycle of a call.
   const started = task("t1", "Run the soak test", {
     taskToolUseId: "toolu_1",
     sourceActivityKind: "task.started",
-    toolLifecycleStatus: "inProgress",
+    toolLifecycleStatus: undefined as never,
     createdAt: "2026-09-27T08:00:01.000Z",
   });
   const finished = (extra: Partial<WorkLogEntry>) =>
