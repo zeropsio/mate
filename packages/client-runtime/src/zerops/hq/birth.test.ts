@@ -282,7 +282,7 @@ function fakeZerops(
 
 function deps(
   zerops: ReturnType<typeof fakeZerops>,
-  health: () => HqHealth = () => ({ kind: "healthy", build: "b1" }),
+  health: () => HqHealth = () => ({ kind: "healthy", build: "b1", parts: { quarantined: [] } }),
 ): HqBirthDeps {
   let now = 0;
   return {

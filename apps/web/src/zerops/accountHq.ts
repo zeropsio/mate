@@ -255,18 +255,18 @@ export function useOfficialHq(): { readonly address: string; readonly api: HqApi
 /** Where an HQ stands, as this tab last read it. */
 export type HqStanding =
   | { readonly kind: "unknown" }
-  /** `build` the Core it runs, as its health says it (`hq/update.ts`). */
-  | { readonly kind: "healthy"; readonly build: string }
-  /** Serving, while it cannot check Zerops right now: no outage, everything keeps using it. */
-  | { readonly kind: "unchecked"; readonly build: string }
+  /**
+   * Its newest answer as the official HQ: `build` the Core it runs (`hq/update.ts`), `parts` how
+   * they stand. `unchecked` serves while it cannot check Zerops right now: no outage, everything
+   * keeps using it.
+   */
+  | Extract<HqHealth, { readonly kind: "healthy" | "unchecked" }>
   /** Not answering as the official HQ since `since` (wall ms): the last known state stays shown. */
   | { readonly kind: "unavailable"; readonly since: number };
 
 /** The standing a health read leaves: an outage keeps the time it began. */
 export function nextHqStanding(previous: HqStanding, health: HqHealth, nowMs: number): HqStanding {
-  if (health.kind === "healthy" || health.kind === "unchecked") {
-    return { kind: health.kind, build: health.build };
-  }
+  if (health.kind === "healthy" || health.kind === "unchecked") return health;
   return previous.kind === "unavailable" ? previous : { kind: "unavailable", since: nowMs };
 }
 
