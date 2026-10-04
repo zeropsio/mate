@@ -36,6 +36,7 @@ import {
 } from "./testing/crewEngineFixture.ts";
 import {
   AS_CREW,
+  commandWhenFree,
   KAREL,
   applied,
   command,
@@ -1151,7 +1152,12 @@ describe("CrewEngine", () => {
         Effect.gen(function* () {
           yield* (yield* ServerCommandReadiness).complete;
           yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "ready");
-          yield* command({ _tag: "message", handle: "backend", text: "Work", attachments: [] });
+          yield* commandWhenFree({
+            _tag: "message",
+            handle: "backend",
+            text: "Work",
+            attachments: [],
+          });
           yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
           assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, 1);
         }),
@@ -1237,21 +1243,12 @@ describe("CrewEngine", () => {
               source: "crew-stint",
             });
             // The restart's turn carries on first; the press waits for its copy to be free.
-            yield* eventually(
-              command({
-                _tag: "useCrewCopy",
-                handle: "backend",
-                threadId: created!.threadId,
-                expectedPath: path,
-              }).pipe(
-                Effect.as(true),
-                Effect.catchTag("CrewCommandError", (error) =>
-                  error.detail?.includes("is busy") === true
-                    ? Effect.succeed(false)
-                    : Effect.fail(error),
-                ),
-              ),
-            );
+            yield* commandWhenFree({
+              _tag: "useCrewCopy",
+              handle: "backend",
+              threadId: created!.threadId,
+              expectedPath: path,
+            });
             const [update] = yield* dispatchedOf(world, "thread.meta.update");
             assert.deepStrictEqual(
               [update?.worktreePath, update?.expectedWorktreePath],

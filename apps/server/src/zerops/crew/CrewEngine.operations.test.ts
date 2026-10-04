@@ -15,6 +15,7 @@ import { EDITED_AFTER_CHECK, MOVED_AFTER_CHECK } from "./crewMachines.ts";
 import {
   applied,
   command,
+  commandWhenFree,
   firstTurn,
   latest,
   reportDone,
@@ -912,16 +913,12 @@ it.live("a copy save outside any task carries on at boot and holds nothing", () 
         const operation = yield* (yield* CrewStore).getOperation("crashed-idle-save");
         assert.strictEqual(operation._tag === "Some" ? operation.value.status : null, "continued");
         // Once the boot's own work lets go of the copy, a new message starts its task.
-        yield* eventually(
-          command({ _tag: "message", handle: "backend", text: "Work", attachments: [] }).pipe(
-            Effect.as(true),
-            Effect.catchTag("CrewCommandError", (error) =>
-              error.detail?.includes("is busy") === true
-                ? Effect.succeed(false)
-                : Effect.fail(error),
-            ),
-          ),
-        );
+        yield* commandWhenFree({
+          _tag: "message",
+          handle: "backend",
+          text: "Work",
+          attachments: [],
+        });
         yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "working");
       }),
   ]),
