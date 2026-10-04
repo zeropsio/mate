@@ -15,9 +15,9 @@
  * people map whole. Their fold is `mates.ts`.
  *
  * The organization, each application and each environment carry what the reader may do with it
- * (`can`, `@t3tools/shared/hqOffers`): an `org` message moves the organization's, with when Zerops
- * answered the view its offers are decided over (`rolesAnsweredAt`); an application's and its
- * environments' move with it.
+ * (`can`, `@t3tools/shared/hqOffers`): an `org` message moves the organization's; an application's
+ * and its environments' move with it. When Zerops answered the view they are decided over
+ * (`rolesAnsweredAt`) comes with the snapshot, and a `roles` message moves it with every view.
  *
  * Changes and Mates are read through the contract's own schemas: what this build cannot read is
  * none, and never takes the structure beside it down; a field it does not know is passed by.
@@ -76,8 +76,8 @@ export type HqStructureEvent =
       readonly kind: "org";
       readonly can: HqOffers | undefined;
       readonly unheld: Readonly<Record<string, HqOffers>> | undefined;
-      readonly rolesAnsweredAt: string | null;
     }
+  | { readonly kind: "roles"; readonly rolesAnsweredAt: string | null }
   | {
       readonly kind: "changes";
       readonly appId: string;
@@ -306,17 +306,12 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
     });
   }
   if (type === "org") {
-    const { can, unheld, rolesAnsweredAt } = message as {
-      readonly can?: unknown;
-      readonly unheld?: unknown;
-      readonly rolesAnsweredAt?: unknown;
-    };
-    return {
-      kind: "org",
-      can: offersOf(can),
-      unheld: unheldOf(unheld),
-      rolesAnsweredAt: answeredOf(rolesAnsweredAt),
-    };
+    const { can, unheld } = message as { readonly can?: unknown; readonly unheld?: unknown };
+    return { kind: "org", can: offersOf(can), unheld: unheldOf(unheld) };
+  }
+  if (type === "roles") {
+    const { rolesAnsweredAt } = message as { readonly rolesAnsweredAt?: unknown };
+    return { kind: "roles", rolesAnsweredAt: answeredOf(rolesAnsweredAt) };
   }
   if (type === "change") {
     const { key, value } = message as { readonly key?: unknown; readonly value?: unknown };
@@ -333,7 +328,7 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
 /**
  * The structure an event leaves: a snapshot replaces it; a change replaces its application in
  * place, adds it at the end, or takes it out, and the Mates in no application all at once; the
- * organization's offers replace its own. A change
+ * organization's offers replace its own, and a view's time its own. A change
  * before any snapshot leaves nothing known; changes and the Mates' messages leave it as it is.
  */
 export function applyStructureEvent(
@@ -349,9 +344,9 @@ export function applyStructureEvent(
       ...rest,
       ...(event.can === undefined ? {} : { can: event.can }),
       ...(event.unheld === undefined ? {} : { unheld: event.unheld }),
-      rolesAnsweredAt: event.rolesAnsweredAt,
     };
   }
+  if (event.kind === "roles") return { ...structure, rolesAnsweredAt: event.rolesAnsweredAt };
   if (event.kind !== "change") return structure;
   const { appId, app } = event;
   const others = structure.apps.filter((entry) => entry.id !== appId);

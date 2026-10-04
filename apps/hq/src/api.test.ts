@@ -125,6 +125,9 @@ const OWNER_EMPTY_APP = {
   merge_change: refusedFor("not_app_developer"),
   redeploy: refusedFor("not_app_developer"),
 };
+/** What a socket sent but when Zerops answered each view, which moves with every view HQ reads. */
+const besidesRoles = (messages: ReadonlyArray<{ readonly type: string }>) =>
+  messages.filter((message) => message.type !== "roles");
 /**
  * A snapshot without when Zerops answered the view its offers are decided over: a time, or none
  * before HQ's first view lands (its `org` message follows).
@@ -1050,7 +1053,9 @@ describe("HQ API", () => {
           assert.isAtLeast(owner.pings.seen, 3);
           // Beyond the organization's offers, which moved as P_MATE went from held nowhere to Shop.
           assert.deepStrictEqual(
-            (yield* owner.quiet("1 millis")).filter((message) => message.type !== "org"),
+            besidesRoles(yield* owner.quiet("1 millis")).filter(
+              (message) => message.type !== "org",
+            ),
             [],
           );
           yield* owner.close;
@@ -1372,7 +1377,7 @@ describe("HQ API", () => {
           session: owner,
           body: { projectId: "P_MATE", kind: "stage" },
         });
-        assert.deepStrictEqual(yield* devSocket.quiet("700 millis"), []);
+        assert.deepStrictEqual(besidesRoles(yield* devSocket.quiet("700 millis")), []);
 
         // Zerops grants dev the project: the open socket shows the application within its recheck.
         const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;

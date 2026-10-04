@@ -19,9 +19,10 @@
  * - `{ type: "change", key, value }` — one application by id as the caller now sees it (`value:
  *   null` once it is gone from their view), or, under the key `ungrouped`, the whole list of the
  *   Mates in no application;
- * - `{ type: "org", can, rolesAnsweredAt, unheld }` — what the caller may do with the
- *   organization and with each project they read that HQ holds nowhere, whenever either moves,
- *   with when Zerops answered the view it was decided over;
+ * - `{ type: "org", can, unheld }` — what the caller may do with the organization and with each
+ *   project they read that HQ holds nowhere, whenever either moves;
+ * - `{ type: "roles", rolesAnsweredAt }` — when Zerops answered the org view the caller's offers
+ *   are decided over, with every view it answers (the snapshot carries it from the start);
  * - `{ type: "mate", projectId, value }` — what changed of one Mate the caller observes: its
  *   presence, or any section of its overview, each whole; `value: null` once they no longer may;
  * - `{ type: "people", people }` — the people the view names, whenever they differ: its Mates'
@@ -105,9 +106,9 @@ export type StructureMessage =
   | {
       readonly type: "org";
       readonly can: StructureRead["can"];
-      readonly rolesAnsweredAt: string | null;
       readonly unheld: StructureRead["unheld"];
     }
+  | { readonly type: "roles"; readonly rolesAnsweredAt: string | null }
   | HqMatesMessage;
 
 /** The key of the Mates in no application; an application's key is its id, never this. */
@@ -191,11 +192,10 @@ const ownersIn = (view: StructureRead, facts: OrgView): ReadonlyArray<string> =>
 
 /** What a caller was last sent. */
 interface Sent {
-  /**
-   * What they may do with the organization and its projects held nowhere, encoded: when Zerops
-   * answered the view rides with it, never moving it alone.
-   */
+  /** What they may do with the organization and its projects held nowhere, encoded. */
   readonly org: string;
+  /** When Zerops answered the view their offers are decided over (ISO 8601); none yet. */
+  readonly rolesAnsweredAt: string | null;
   readonly structure: ReadonlyMap<string, string>;
   readonly changes: ReadonlyMap<string, string>;
   /** Each readable application's release revision, encoded. */
@@ -234,8 +234,6 @@ export const structureMessages = <R>(
       const overviews = yield* MateOverviews;
       const roles = yield* Roles;
       const one = yield* Semaphore.make(1);
-      /** When Zerops answered the last view HQ read of the org, as `roles.views` said it. */
-      const answered = yield* Ref.make<number | null>(null);
       const sent = yield* Ref.make<Sent | undefined>(undefined);
       /** The keys whose value differs between what was sent and what is now. */
       const differing = (before: ReadonlyMap<string, string>, now: ReadonlyMap<string, string>) =>
@@ -293,9 +291,10 @@ export const structureMessages = <R>(
         if (ends !== undefined) return [{ type: "end" as const, ending: ends }];
         yield* (yield* Recomputes).count;
         const view = yield* structure.read(userId);
-        const answeredAt = yield* Ref.get(answered);
+        // After the read: the view its offers were decided over, or one Zerops answered since.
+        const answeredAt = yield* roles.answeredAt;
         const rolesAnsweredAt =
-          answeredAt === null ? null : DateTime.formatIso(DateTime.makeUnsafe(answeredAt));
+          answeredAt === undefined ? null : DateTime.formatIso(DateTime.makeUnsafe(answeredAt));
         const readable = yield* changes.readable(userId);
         const moved = yield* changes.releaseRevisions;
         const before = yield* Ref.get(sent);
@@ -361,6 +360,7 @@ export const structureMessages = <R>(
         const people = peopleOf(namedBy(named, mates), facts.members);
         const now: Sent = {
           org: toJson({ can: view.can, unheld: view.unheld }),
+          rolesAnsweredAt,
           structure: new Map([
             [UNGROUPED, toJson(view.ungrouped)],
             ...view.apps.map((app): [string, string] => [app.id, toJson(app)]),
@@ -420,7 +420,10 @@ export const structureMessages = <R>(
           })),
           ...(now.org === before.org
             ? []
-            : [{ type: "org" as const, can: view.can, rolesAnsweredAt, unheld: view.unheld }]),
+            : [{ type: "org" as const, can: view.can, unheld: view.unheld }]),
+          ...(now.rolesAnsweredAt === before.rolesAnsweredAt
+            ? []
+            : [{ type: "roles" as const, rolesAnsweredAt }]),
           ...[...new Set([...before.mates.keys(), ...mates.keys()])].flatMap((projectId) => {
             const message = mateMessage(
               projectId,
@@ -472,8 +475,8 @@ export const structureMessages = <R>(
           Stream.merge(structure.changes, Stream.merge(changes.changes, releases.changes)),
           Stream.merge(
             Stream.merge(deploys.changes, Stream.tick(recheck)),
-            // A view Zerops answered moves the offers at once, not on the next recheck.
-            roles.views.pipe(Stream.tap((seen) => Ref.set(answered, seen.answered))),
+            // A view Zerops answered moves the offers, and its time, at once, not on the recheck.
+            roles.views,
           ),
         ).pipe(Stream.mapEffect(() => one.withPermits(1)(structureTick))),
         overviews.changes.pipe(

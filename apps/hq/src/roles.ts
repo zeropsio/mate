@@ -95,6 +95,11 @@ export class Roles extends Context.Service<
      */
     readonly exists: (projectId: string) => Effect.Effect<boolean, ZeropsError>;
     /**
+     * When Zerops answered the last good view (wall ms), the one `view` serves or will: none before
+     * Zerops ever answered. What a reader is told their offers are decided over (`stream.ts`).
+     */
+    readonly answeredAt: Effect.Effect<number | undefined>;
+    /**
      * Every view Zerops answers, as it lands, starting with the last good one: what HQ relays to
      * its Mates (`mateAccess.ts`). It reads nothing itself — the views are those its readers and
      * the official check (every minute) ask for.
@@ -371,6 +376,7 @@ export const rolesLayer = (options: {
         Stream.filter((seen) => seen !== undefined),
         Stream.map((seen): OrgSeen => ({ view: seen.view, answered: seen.answered })),
       );
-      return Roles.of({ view, forWrite, recent, exists, views });
+      const answeredAt = Effect.map(SubscriptionRef.get(cached), (good) => good?.answered);
+      return Roles.of({ view, forWrite, recent, exists, answeredAt, views });
     }),
   );
