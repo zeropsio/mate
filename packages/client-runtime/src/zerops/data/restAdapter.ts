@@ -1726,7 +1726,5 @@ export function makeZeropsCellReads(client: ZeropsApiClient): ZeropsCellAdapter 
       cellRead(() =>
         client.listOrganizationMembers(input.organization.organizationId, context.abortSignal),
       ),
-    readServiceVariableNames: (input, context) =>
-      cellRead(() => client.listServiceVariableNames(input.service.serviceId, context.abortSignal)),
   };
 }

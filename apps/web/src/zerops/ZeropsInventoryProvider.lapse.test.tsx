@@ -85,7 +85,6 @@ function locationsSource() {
     readServiceMateFlag: unavailable,
     readOrganizationIntegrationTokenGrants: unavailable,
     readOrganizationMembers: unavailable,
-    readServiceVariableNames: unavailable,
   };
   return { adapter, reads: () => reads };
 }

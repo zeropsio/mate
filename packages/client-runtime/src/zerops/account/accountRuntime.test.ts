@@ -966,7 +966,6 @@ describe("the account runtime", () => {
                   readServiceAuthorizedAgents: () => Effect.succeed([]),
                   readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
                   readOrganizationMembers: () => Effect.succeed([]),
-                  readServiceVariableNames: () => Effect.succeed([]),
                   readServiceMateFlag: () =>
                     Effect.sync(() => {
                       ownReads += 1;

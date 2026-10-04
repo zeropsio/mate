@@ -788,7 +788,6 @@ const unavailableCellAdapter: ZeropsCellAdapter = {
   readServiceMateFlag: unavailableResource,
   readOrganizationIntegrationTokenGrants: unavailableResource,
   readOrganizationMembers: unavailableResource,
-  readServiceVariableNames: unavailableResource,
 };
 
 const unavailableLogTransport: BuildLogTransport = {

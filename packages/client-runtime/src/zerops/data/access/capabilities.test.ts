@@ -67,7 +67,6 @@ const cellAdapter: ZeropsCellAdapter = {
   readServiceMateFlag: () => Effect.succeed({ enabled: "unknown" }),
   readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
   readOrganizationMembers: () => Effect.succeed([]),
-  readServiceVariableNames: () => Effect.succeed([]),
 };
 
 /** What the platform answers the grant's reads, changeable between steps. */

@@ -1691,7 +1691,6 @@ describe("makeZeropsDataRuntime", () => {
             readServiceMateFlag: () => unused,
             readOrganizationIntegrationTokenGrants: () => unused,
             readOrganizationMembers: () => unused,
-            readServiceVariableNames: () => unused,
           },
         },
         atomRegistry: registry,
@@ -2058,7 +2057,6 @@ describe("makeZeropsDataRuntime", () => {
             readOrganizationIntegrationTokenGrants: () =>
               Effect.sync(() => void (reads += 1)).pipe(Effect.as([])),
             readOrganizationMembers: () => unused,
-            readServiceVariableNames: () => unused,
           },
         },
         atomRegistry: registry,
@@ -5365,7 +5363,6 @@ it.effect("publishing a subdomain refreshes the drawn stop's public access once"
           readServiceMateFlag: () => Effect.never,
           readOrganizationIntegrationTokenGrants: () => Effect.never,
           readOrganizationMembers: () => Effect.never,
-          readServiceVariableNames: () => Effect.never,
         },
       },
     });

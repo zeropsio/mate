@@ -40,7 +40,6 @@ export function makeMemberCells(input: {
         readServiceAuthorizedAgents: () => unused,
         readServiceMateFlag: () => unused,
         readOrganizationIntegrationTokenGrants: () => unused,
-        readServiceVariableNames: () => unused,
       },
     }),
   );

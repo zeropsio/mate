@@ -104,7 +104,6 @@ const unusedAdapter = (overrides: Partial<ZeropsCellAdapter> = {}): ZeropsCellAd
   readProjectPublicAccess: () => Effect.never,
   readOrganizationLocations: () => Effect.succeed([]),
   readOrganizationMembers: () => Effect.succeed([]),
-  readServiceVariableNames: () => Effect.succeed([]),
   readServiceAuthorizedAgents: () => Effect.succeed([]),
   readServiceMateFlag: () => Effect.succeed({ enabled: "unknown" }),
   readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
