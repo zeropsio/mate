@@ -701,6 +701,7 @@ interface RuntimeRegistration {
   readonly outcome: Deferred.Deferred<PhysicalRegistrationOutcome>;
   readonly dependents: Map<InterestKey, InterestIdentity>;
   status: "registering" | "registered" | "failed";
+  streamFailure: AdapterError | null;
 }
 
 interface RuntimeReceiver {
@@ -903,7 +904,7 @@ function failureKind(error: AdapterError): ReadFailureKind {
 
 /**
  * A registration the platform refused with an HTTP error status never took effect: the receiver
- * holds no subscription for it, so its interests may register again on that receiver. One that got
+ * holds no subscription for it. Its failure stays scoped until manual refresh. One that got
  * no answer, or an answer that could not be read, may have left a subscription nobody owns.
  */
 const registrationRefused = (error: AdapterError): boolean => error.status !== undefined;
@@ -1012,8 +1013,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const leases = new Map<string, RuntimeInterest>();
   const receivers = new Map<string, RuntimeReceiver>();
   const hydrations = new Map<string, RuntimeHydration>();
-  /** A failed entity stays failed until the person explicitly refreshes its organization. */
-  const hydrationFailures = new Map<string, { readonly target: EntityRef }>();
+  // One attempt per listed entity, released by relevant native evidence or manual refresh.
+  const hydrationAttempts = new Map<string, { readonly target: EntityRef }>();
   let receiptOrdinal = 0;
   let readStartOrdinal = 0;
   let dispatchOrdinal = 0;
@@ -1201,8 +1202,21 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           );
           if (stamped === null) return [];
           const reduction = reduceZeropsDataState(current, stamped, policy);
-          if (reduction.state !== current)
+          if (reduction.state !== current) {
+            if (input.kind === "observation" && stamped.kind === "observation") {
+              const observation = stamped.observation.input;
+              if (observation.kind === "query-membership-observed") {
+                hydrationAttempts.delete(entityKeyOf(observation.member));
+              } else if (
+                "ref" in observation &&
+                "observation" in observation &&
+                observation.observation.source === "native-push"
+              ) {
+                hydrationAttempts.delete(entityKeyOf(observation.ref));
+              }
+            }
             yield* publish(reduction.state, input.kind === "observation" ? "ingress-batch" : "now");
+          }
           return reduction.followUps;
         }),
       );
@@ -1665,7 +1679,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               interest.leases.size > 0 &&
               interest.descriptor.kind === streamKind &&
               organizationKeyOf(interest.descriptor.project.organization) === organizationKey &&
-              state.interests.get(interest.key)?.interest.status !== "failed",
+              receivers.get(receiverKeyOf(interest.descriptor))?.openFailure === null,
           );
           const dependents = new Map(eligible.map((interest) => [interest.key, interest.identity]));
           if (dependents.size === 0) return;
@@ -1704,13 +1718,31 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             ownership: { owner, target: ticket.target, dependents, status: "active" },
           });
           const admitted = yield* admitRead(ticket);
-          const succeeded = admitted ? (yield* runReadOutcome(ticket, null)).succeeded : false;
+          const outcome = admitted
+            ? yield* runReadOutcome(ticket, null)
+            : { succeeded: false, error: readCapacityError() };
+          const succeeded = outcome.succeeded;
           if (admitted) yield* awaitIngress;
           yield* applyControl({ kind: "shared-read-released", requestId: ticket.requestId });
-          if (!succeeded) {
+          const remaining = (yield* Ref.get(model)).table.wanted;
+          const missing = ids.filter((id) => remaining.has(`${followUp.entity}:${id}`));
+          if (!succeeded || missing.length > 0) {
             yield* failInterests(
               dependents.values(),
-              "Could not read service metadata. Try again.",
+              `Service metadata unavailable for ${(succeeded ? missing : ids).join(", ")}. ${outcome.error?.message ?? "The platform did not return these records."} Read again.`,
+              false,
+            );
+          }
+          if (!admitted) {
+            yield* Effect.forEach(
+              eligible,
+              (interest) => {
+                const receiver = receivers.get(receiverKeyOf(interest.descriptor));
+                return receiver === undefined
+                  ? Effect.void
+                  : failReceiver(receiver, "The account read queue is full.");
+              },
+              { discard: true },
             );
             return;
           }
@@ -1748,8 +1780,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           }
           continue;
         }
-        const failed = hydrationFailures.get(key);
-        if (hydrations.size >= policy.activeSharedReadsPerAccount || failed !== undefined) continue;
+        const attempted = hydrationAttempts.get(key);
+        if (hydrations.size >= policy.activeSharedReadsPerAccount || attempted !== undefined)
+          continue;
         const owner = {
           kind: "shared" as const,
           account: options.scope,
@@ -1797,22 +1830,37 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           );
           continue;
         }
+        hydrationAttempts.set(key, { target });
         const work = hydrationSemaphore.withPermit(runReadOutcome(ticket, null)).pipe(
-          Effect.flatMap(({ succeeded }) =>
+          Effect.flatMap(({ succeeded, error }) =>
             awaitIngress.pipe(
-              Effect.andThen(
-                Effect.sync(() => {
-                  if (succeeded) hydrationFailures.delete(key);
-                  else hydrationFailures.set(key, { target });
-                }),
-              ),
               Effect.andThen(
                 applyControl({ kind: "shared-read-released", requestId: ticket.requestId }),
               ),
               Effect.andThen(
-                succeeded
-                  ? Effect.void
-                  : failInterests(dependents.values(), "Could not read project detail. Try again."),
+                Effect.gen(function* () {
+                  const current = yield* Ref.get(model);
+                  const incomplete = [
+                    ...current.inventory.queries.values(),
+                    ...current.activity.queries.values(),
+                  ].some((query) =>
+                    unresolvedRefs(current, query.key).some((ref) => entityKeyOf(ref) === key),
+                  );
+                  if (!incomplete) hydrationAttempts.delete(key);
+                  if (incomplete) {
+                    const id =
+                      target.kind === "project"
+                        ? target.projectId
+                        : target.kind === "service"
+                          ? target.serviceId
+                          : target.processId;
+                    yield* failInterests(
+                      hydration.ownership.dependents.values(),
+                      `${target.kind} ${id} unavailable. ${error?.message ?? "The platform did not return complete detail."} Read again.`,
+                      false,
+                    );
+                  }
+                }),
               ),
               Effect.as(succeeded),
             ),
@@ -1823,7 +1871,16 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             }),
           ),
         );
-        const fiber = yield* work.pipe(Effect.asVoid, forkOwned);
+        const fiber = yield* work.pipe(
+          Effect.andThen(
+            Effect.suspend(() =>
+              hydrationAttempts.has(key) ? Effect.void : scheduleHydration(query),
+            ),
+          ),
+          Effect.asVoid,
+          forkOwned,
+        );
+
         hydration.fiber = fiber;
       }
     });
@@ -1842,6 +1899,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       if (hydration.fiber !== null) yield* Fiber.interrupt(hydration.fiber);
       yield* applyControl({ kind: "shared-read-released", requestId: hydration.requestId });
       hydrations.delete(key);
+      hydrationAttempts.delete(key);
     });
 
   const consumeReceiver = (receiver: RuntimeReceiver): Effect.Effect<void> => {
@@ -1875,7 +1933,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           : failSubscription(receiver, registration);
       }
       return failReceiver(receiver, event.reason);
-    }).pipe(Effect.catch((error) => failReceiver(receiver, error.message)));
+    }).pipe(
+      Effect.andThen(failReceiver(receiver, "The data stream ended.")),
+      Effect.catch((error) => failReceiver(receiver, error.message)),
+    );
   };
 
   const ensureReceiver = (receiver: RuntimeReceiver): Effect.Effect<ReceiverHandle, AdapterError> =>
@@ -1933,7 +1994,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       Effect.gen(function* () {
         const key = registrationKeyOf(planned.descriptor);
         const existing = receiver.registrations.get(key);
-        if (existing !== undefined && existing.status !== "failed") {
+        if (existing !== undefined) {
           existing.dependents.set(identity.key, identity);
           if (existing.status === "registering" && existing.ticket?.owner.kind === "shared") {
             yield* applyControl({
@@ -1996,6 +2057,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           outcome: yield* Deferred.make<PhysicalRegistrationOutcome>(),
           dependents: new Map([[identity.key, identity]]),
           status: "registering",
+          streamFailure: null,
         };
         receiver.registrationAttempts += 1;
         receiver.registrations.set(key, registration);
@@ -2143,10 +2205,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         if (created) {
           // Interruption between `registrations.set` (in acquireRegistration) and the
           // `Deferred.succeed` below — a timeoutOrElse racing the network round trip —
-          // must not strand the entry in `status: "registering"` forever: anyone sharing
-          // this registration key would then block until their own establishment
-          // deadline, only to force a spurious extra failed attempt once that stale
-          // timeout finally fires. Delete the entry and fail the deferred.
+          // must not strand the entry in `status: "registering"`. Retain the abandoned
+          // physical attempt and fail its deferred so later dependents see the same outcome.
           yield* Effect.gen(function* () {
             // A bounded number of registrations are in flight across the account, the
             // organization inventory's admitted first. The deadline starts once it is sent.
@@ -2162,7 +2222,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               : { kind: "succeeded", receipt: result.success };
             if (outcome.kind === "failed") {
               registration.status = "failed";
-              receiver.registrations.delete(registration.key);
               receiver.registrationOwners.delete(registration.request.subscriptionName);
             } else {
               yield* enqueueRegistrationObservations(
@@ -2195,9 +2254,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           }).pipe(
             Effect.onInterrupt(() =>
               Effect.sync(() => {
-                if (receiver.registrations.get(registration.key) === registration) {
-                  receiver.registrations.delete(registration.key);
-                }
+                registration.status = "failed";
                 if (
                   receiver.registrationOwners.get(registration.request.subscriptionName) ===
                   registration
@@ -2217,7 +2274,10 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             ),
           );
         }
-        const outcome = yield* Deferred.await(registration.outcome);
+        const outcome: PhysicalRegistrationOutcome =
+          registration.streamFailure === null
+            ? yield* Deferred.await(registration.outcome)
+            : { kind: "failed", error: registration.streamFailure };
         if (runtimeInterest.identity !== identity || runtimeInterest.leases.size === 0)
           return establishmentDone;
         if (outcome.kind === "failed") {
@@ -2240,23 +2300,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             },
             interest: identity,
           });
-          if (!runtimeInterest.required) {
+          if (registration.streamFailure !== null) {
             yield* failInterest(identity, outcome.error.message);
             return interestFailed;
           }
-          // A refusal left nothing registered: this interest registers again, alone, on the
-          // receiver its siblings keep observing on. Without an answer the receiver may hold a
-          // subscription nobody owns, whose frames would name no registration: it is replaced.
-          // A shared registration whose sender gave up on it (its own deadline) says nothing
-          // against an open socket: this interest retries alone too, and sends it afresh.
-          if (
-            outcome.error === REGISTRATION_ABANDONED &&
-            receiver.handle !== null &&
-            identity.receiver.receiverId === receiver.identity.receiverId
-          ) {
-            yield* failInterest(identity, outcome.error.message);
-            return interestFailed;
-          }
+          // A refusal or abandoned send stays attached to this physical attempt.
+          // An uncertain answer closes the known receiver once; refresh owns the next attempt.
           if (registrationRefused(outcome.error)) {
             yield* failInterest(identity, outcome.error.message);
             return interestFailed;
@@ -2325,14 +2374,17 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const failInterests = (
     identities: Iterable<InterestIdentity>,
     message: string,
+    abortReads = true,
   ): Effect.Effect<void> =>
     Effect.gen(function* () {
       for (const identity of identities) {
         const interest = interests.get(identity.key);
         if (interest?.identity !== identity || interest.leases.size === 0) continue;
-        interest.readController.abort();
+        if (abortReads) interest.readController.abort();
         const desired = (yield* Ref.get(model)).interests.get(identity.key);
         if (desired === undefined) continue;
+        if (!abortReads && receivers.get(receiverKeyOf(interest.descriptor))?.openFailure !== null)
+          continue;
         yield* applyControl({
           kind: "interest-upserted",
           interest: {
@@ -2359,7 +2411,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               (interest) => interest.identity.receiver.receiverId === receiver.identity.receiverId,
             )
             .map((interest) => interest.identity),
-          message,
+          `${message} Reconnect to read a fresh baseline; updates while disconnected may be missing.`,
         );
         receiver.openFailure ??= {
           _tag: "ZeropsDataAdapterError",
@@ -2378,11 +2430,15 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       Effect.gen(function* () {
         if (receivers.get(receiver.key) !== receiver) return;
         receiver.registrationOwners.delete(registration.request.subscriptionName);
-        receiver.registrations.delete(registration.key);
-        yield* failInterests(
-          registration.dependents.values(),
-          "Malformed subscription frame. Try again.",
-        );
+        registration.status = "failed";
+        registration.streamFailure = {
+          _tag: "ZeropsDataAdapterError",
+          kind: "malformed",
+          message: "Malformed subscription frame. Try again.",
+          retryable: true,
+          accountRevocationEvidence: false,
+        };
+        yield* failInterests(registration.dependents.values(), registration.streamFailure.message);
       }),
     );
   failInterest = (identity, message) =>
@@ -2575,11 +2631,20 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         if (inactiveQueryKeys.length > 0) {
           yield* applyControl({ kind: "inactive-queries-released", queryKeys: inactiveQueryKeys });
         }
+        const retained = yield* Ref.get(model);
+        const unresolved = new Set<string>(
+          [...retained.inventory.queries.values(), ...retained.activity.queries.values()].flatMap(
+            (query) => unresolvedRefs(retained, query.key).map(entityKeyOf),
+          ),
+        );
+        for (const key of hydrationAttempts.keys()) {
+          if (!unresolved.has(key) && !hydrations.has(key)) hydrationAttempts.delete(key);
+        }
         const hasOtherInterest = [...interests.values()].some(
           (interest) =>
             interest.leases.size > 0 && receiverKeyOf(interest.descriptor) === organizationKey,
         );
-        if (inactiveQueryKeys.length > 0 || !hasOtherInterest) {
+        if (!hasOtherInterest || (inactiveQueryKeys.length > 0 && receiver?.openFailure === null)) {
           receivers.delete(organizationKey);
           if (receiver?.handle !== null && receiver?.handle !== undefined) {
             yield* options.adapter.closeReceiver(receiver.handle);
@@ -2691,15 +2756,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
 
         // The stale receiver's registrations went with it: an in-flight
         // hydration is cancelled so scheduleHydration starts it fresh once the
-        // interests are re-established, and the organization's failure budget
-        // starts over with them.
+        // interests are re-established. Manual refresh releases terminal coverage too.
         yield* Effect.forEach(
           [...hydrations.entries()].filter(([, hydration]) => matchesEntity(hydration.target)),
           ([key, hydration]) => cancelHydration(key, hydration),
           { discard: true },
         );
-        for (const [entityKey, record] of hydrationFailures) {
-          if (matchesEntity(record.target)) hydrationFailures.delete(entityKey);
+        for (const [entityKey, record] of hydrationAttempts) {
+          if (matchesEntity(record.target)) hydrationAttempts.delete(entityKey);
         }
         yield* Effect.forEach(
           held,
@@ -3499,7 +3563,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         leases.clear();
         receivers.clear();
         hydrations.clear();
-        hydrationFailures.clear();
+        hydrationAttempts.clear();
       }),
     );
 

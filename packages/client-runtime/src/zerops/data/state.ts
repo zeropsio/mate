@@ -21,6 +21,7 @@ import {
 } from "./inventory.ts";
 import {
   activeVersionOf,
+  finishTableRowRead,
   makeInitialEntityTableState,
   reduceTableObservation,
   releaseTableLists,
@@ -68,7 +69,7 @@ import type {
   ZeropsCommandAttemptId,
   ZeropsRequestId,
 } from "./types.ts";
-import { organizationKeyOf, projectKeyOf, queryKeyOf } from "./types.ts";
+import { entityKeyOf, organizationKeyOf, projectKeyOf, queryKeyOf } from "./types.ts";
 
 interface ReadAccumulator {
   readonly applied: ReadonlyArray<ReadContribution>;
@@ -523,10 +524,38 @@ function completeRead(
     suppressed: [],
     unresolvedRequiredFields: [],
   };
+  const target = ticket.target;
+  let table = state.table;
+  let incomplete = false;
+  if (
+    target.kind === "query" &&
+    (target.descriptor.kind === "active-versions-of-services" ||
+      target.descriptor.kind === "service-variables-of-services") &&
+    target.descriptor.ids !== undefined
+  ) {
+    const entity =
+      target.descriptor.kind === "active-versions-of-services" ? "app-version" : "user-data";
+    table = finishTableRowRead(
+      state.table,
+      entity,
+      target.descriptor.organization,
+      target.descriptor.ids,
+      ticket.receiptOrdinalAtStart,
+    );
+    incomplete = target.descriptor.ids.some((id) => {
+      const owed = table.wanted.get(`${entity}:${id}`);
+      return owed !== undefined && owed.since <= ticket.receiptOrdinalAtStart;
+    });
+  } else if (ticket.kind === "hydration" && target.kind !== "query") {
+    const key = entityKeyOf(target.ref);
+    incomplete = [...state.inventory.queries.values(), ...state.activity.queries.values()].some(
+      (query) => query.unresolvedMemberKeys.some((memberKey) => memberKey === key),
+    );
+  }
   const reads = new Map(state.reads);
   reads.set(
     ticket.requestId,
-    input.completion.kind === "read-succeeded"
+    input.completion.kind === "read-succeeded" && !incomplete
       ? {
           status: "succeeded",
           ticket,
@@ -539,7 +568,8 @@ function completeRead(
           status: "failed",
           ticket,
           completedAtReceiptOrdinal: input.stamp.receiptOrdinal,
-          failure: input.completion.failure,
+          failure:
+            input.completion.kind === "read-failed" ? input.completion.failure : "incomplete",
         },
   );
   let readAccumulators = state.readAccumulators;
@@ -548,7 +578,7 @@ function completeRead(
     retained.delete(ticket.requestId);
     readAccumulators = retained;
   }
-  let next: ZeropsDataState = { ...state, reads, readAccumulators };
+  let next: ZeropsDataState = { ...state, table, reads, readAccumulators };
   if (ticket.owner.kind === "interest") {
     next = advanceInterest(
       next,

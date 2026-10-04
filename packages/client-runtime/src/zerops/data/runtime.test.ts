@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import type { Done } from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -373,6 +374,7 @@ function makeAdapterHarness(options: { readonly failCurrentMetrics?: boolean } =
           _tag: "ZeropsDataAdapterError",
           kind: "registration",
           message: "metrics unavailable",
+          status: 403,
           retryable: true,
           accountRevocationEvidence: false,
         } satisfies AdapterError);
@@ -1403,6 +1405,7 @@ describe("makeZeropsDataRuntime", () => {
                   _tag: "ZeropsDataAdapterError",
                   kind: "registration",
                   message: "history unavailable",
+                  status: 403,
                   retryable: true,
                   accountRevocationEvidence: false,
                 } satisfies AdapterError);
@@ -3993,122 +3996,6 @@ describe("opening a Mate on a loaded organization", () => {
 });
 
 describe("the entity table's reads by id", () => {
-  it.effect("reads a new id at once while another waits out its back-off", () =>
-    Effect.gen(function* () {
-      const registry = AtomRegistry.make();
-      const events = yield* Queue.unbounded<ReceiverEvent>();
-      const { decodeRegistrationResponse } = yield* Effect.promise(
-        () => import("./platformProtocol.ts"),
-      );
-      const { decodeTableSearch } = yield* Effect.promise(() => import("./tableProtocol.ts"));
-      let list: RegistrationRequest | undefined;
-      const reads: Array<ReadonlyArray<string>> = [];
-      const readAt: number[] = [];
-      const adapter: ZeropsDataAdapter = {
-        openReceiver: (_scope, organization, identity) =>
-          Effect.succeed({
-            identity,
-            organization,
-            delivery: "hot-single-consumer-buffered-before-open-resolves",
-            events: Stream.fromQueue(events),
-          }),
-        register: (_receiver, request) => {
-          if (request.descriptor.kind === "table-list") list = request;
-          return Effect.succeed({
-            responseObservations:
-              request.descriptor.kind === "table-list"
-                ? decodeRegistrationResponse(request, { items: [], totalHits: 0 }).observations
-                : [],
-          });
-        },
-        read: (ticket) => {
-          const ids =
-            (ticket.target as { readonly descriptor: { readonly ids?: string[] } }).descriptor
-              .ids ?? [];
-          reads.push(ids);
-          // The platform never lists u-9.
-          const found = ids.filter((id) => id !== "u-9");
-          return Effect.map(
-            Clock.currentTimeMillis,
-            (now) => (
-              readAt.push(now),
-              {
-                observations: decodeTableSearch(ticket, {
-                  items: found.map((id) => ({
-                    id,
-                    serviceStackId: `service-of-${id}`,
-                    key: "ZCP_MATE_ENABLED",
-                    content: "1",
-                  })),
-                  totalHits: found.length,
-                }).observations,
-              }
-            ),
-          );
-        },
-        execute: () => Effect.succeed({ processRefs: [], observations: [] }),
-        closeReceiver: () => Effect.void,
-      };
-      const runtime = yield* makeZeropsDataRuntime({
-        scope: runtimeScope,
-        adapter,
-        atomRegistry: registry,
-        makeOpaqueId: makeIdFactory(),
-      });
-      const states = yield* Queue.unbounded<ZeropsDataState>();
-      const unsubscribe = registry.subscribe(runtime.stateAtom, (state) => {
-        Queue.offerUnsafe(states, state);
-      });
-      const leaseScope = yield* Scope.make();
-      const lease = yield* runtime
-        .acquire({
-          kind: "project-variables",
-          project: project("project-a"),
-          serviceIds: ["service-a"],
-        })
-        .pipe(Scope.provide(leaseScope));
-      yield* waitForState(
-        states,
-        (state) => state.interests.get(lease.interest)?.interest.status === "observing",
-      );
-      const add = (id: string) =>
-        Queue.offer(events, {
-          kind: "observation",
-          input: {
-            kind: "table-membership-observed",
-            operation: "add",
-            id,
-            registration: list as never,
-          },
-          bytes: 1,
-        });
-      const settleFibers = Effect.forEach(Array.from({ length: 20 }), () => Effect.yieldNow, {
-        discard: true,
-      });
-      yield* add("u-9");
-      yield* settleFibers;
-      // Read at the grace, then past the index's lag: absent, it now waits out its back-off.
-      for (let second = 0; second < 12; second += 1) {
-        yield* TestClock.adjust("1 second");
-        yield* settleFibers;
-      }
-      expect(reads).toEqual([["u-9"]]);
-
-      yield* add("u-2");
-      yield* settleFibers;
-      yield* TestClock.adjust("1 second");
-      yield* waitForState(states, (state) => state.table.rows["user-data"].get("u-2")?.row != null);
-      expect({ reads, readAt }).toEqual({
-        reads: [["u-9"], ["u-2"]],
-        readAt: [0, 12_000],
-      });
-
-      yield* runtime.shutdown("application-close");
-      yield* Scope.close(leaseScope, Exit.void);
-      unsubscribe();
-      registry.dispose();
-    }),
-  );
   it.effect("reads the rows its list's frames named without one, batched once after a grace", () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
@@ -4490,4 +4377,497 @@ it.effect.each(["forbidden", "not-found"] as const)(
         registry.dispose();
       }),
     ),
+);
+
+describe("one owned attempt for incomplete data", () => {
+  for (const fails of [false, true]) {
+    it.effect(`ends ${fails ? "failed" : "incomplete"} hydration visibly until Read again`, () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registry = AtomRegistry.make();
+          const harness = makeAdapterHarness();
+          let reads = 0;
+          let events = yield* Queue.unbounded<ReceiverEvent>();
+          let membership: RegistrationRequest | undefined;
+          const runtime = yield* makeZeropsDataRuntime({
+            scope: runtimeScope,
+            adapter: {
+              ...harness.adapter,
+              openReceiver: (_scope, organization, identity) =>
+                Effect.gen(function* () {
+                  events = yield* Queue.unbounded<ReceiverEvent>();
+                  return {
+                    identity,
+                    organization,
+                    delivery: "hot-single-consumer-buffered-before-open-resolves" as const,
+                    events: Stream.fromQueue(events),
+                  };
+                }),
+              register: (_receiver, request) => {
+                const baseline = unresolvedProcessBaseline(request);
+                if (baseline !== null) membership = request;
+                return Effect.succeed({
+                  responseObservations: baseline === null ? [] : [baseline],
+                });
+              },
+              read: (ticket) => {
+                if (ticket.target.kind !== "process") return Effect.succeed({ observations: [] });
+                reads += 1;
+                return fails
+                  ? Effect.fail({
+                      _tag: "ZeropsDataAdapterError",
+                      kind: "network",
+                      message: "detail offline",
+                      retryable: true,
+                      accountRevocationEvidence: false,
+                    } satisfies AdapterError)
+                  : Effect.succeed({ observations: [] });
+              },
+            },
+            atomRegistry: registry,
+            makeOpaqueId: makeIdFactory(),
+          });
+          const states = yield* Queue.unbounded<ZeropsDataState>();
+          const stop = registry.subscribe(runtime.stateAtom, (state) =>
+            Queue.offerUnsafe(states, state),
+          );
+          const lease = yield* runtime.acquire({
+            kind: "project-activity",
+            project: topologyDescriptor.project,
+          });
+          const state = yield* waitForState(
+            states,
+            (next) => next.interests.get(lease.interest)?.interest.status === "failed",
+          );
+          expect(state.interests.get(lease.interest)?.interest).toMatchObject({
+            status: "failed",
+            reason: expect.stringContaining("process-a"),
+            retryAtMs: null,
+          });
+          expect(state.interests.get(lease.interest)?.interest).toMatchObject({
+            reason: expect.stringContaining("Read again"),
+          });
+          expect(reads).toBe(1);
+          expect(
+            [...state.reads.values()].find((read) => read.ticket.target.kind === "process"),
+          ).toMatchObject({ status: "failed", failure: fails ? "network" : "incomplete" });
+          yield* TestClock.adjust("1 minute");
+          const extra = yield* runtime.acquire(topologyDescriptor);
+          yield* waitForState(
+            states,
+            (next) => next.interests.get(extra.interest)?.interest.status === "observing",
+          );
+          expect(reads).toBe(1);
+          yield* runtime.refresh(topologyDescriptor.project);
+          yield* waitForState(
+            states,
+            (next) =>
+              reads === 2 && next.interests.get(lease.interest)?.interest.status === "failed",
+          );
+          expect(reads).toBe(2);
+          yield* Queue.offer(events, {
+            kind: "observation",
+            input: {
+              kind: "query-membership-observed",
+              operation: "add",
+              member: {
+                kind: "process",
+                project: topologyDescriptor.project,
+                processId: ZeropsProcessId.make("process-a"),
+              },
+              registration: membership as never,
+            },
+            bytes: 1,
+          });
+          yield* waitForState(
+            states,
+            (next) =>
+              [...next.reads.values()].filter(
+                (read) => read.ticket.target.kind === "process" && read.status !== "pending",
+              ).length === 3,
+          );
+          expect(reads).toBe(3);
+          yield* runtime.shutdown("application-close");
+          stop();
+          registry.dispose();
+        }),
+      ),
+    );
+  }
+
+  it.effect("retains a refused shared registration until Reconnect", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const harness = makeAdapterHarness();
+        let attempts = 0;
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: {
+            ...harness.adapter,
+            register: (receiver, request, context) => {
+              if (
+                request.descriptor.kind !== "query-membership" ||
+                request.descriptor.query.kind !== "running-processes-of-project"
+              )
+                return harness.adapter.register(receiver, request, context);
+              attempts += 1;
+              return Effect.fail({
+                _tag: "ZeropsDataAdapterError",
+                kind: "registration",
+                message: "subscription refused",
+                status: 403,
+                retryable: true,
+                accountRevocationEvidence: false,
+              } satisfies AdapterError);
+            },
+          },
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+        });
+        const states = yield* Queue.unbounded<ZeropsDataState>();
+        const stop = registry.subscribe(runtime.stateAtom, (state) =>
+          Queue.offerUnsafe(states, state),
+        );
+        const first = yield* runtime.acquire({
+          kind: "project-activity",
+          project: topologyDescriptor.project,
+        });
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(first.interest)?.interest.status === "failed",
+        );
+        const second = yield* runtime.acquire(topologyDescriptor);
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(second.interest)?.interest.status === "failed",
+        );
+        expect(attempts).toBe(1);
+        yield* runtime.refresh(topologyDescriptor.project);
+        yield* waitForState(
+          states,
+          (state) =>
+            attempts === 2 && state.interests.get(second.interest)?.interest.status === "failed",
+        );
+        expect(attempts).toBe(2);
+        yield* runtime.shutdown("application-close");
+        stop();
+        registry.dispose();
+      }),
+    ),
+  );
+
+  it.effect("a receiver stream that ends without a close frame ends visibly", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const harness = makeAdapterHarness();
+        const events = yield* Queue.unbounded<ReceiverEvent, Done>();
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: {
+            ...harness.adapter,
+            openReceiver: (_scope, organization, identity) =>
+              Effect.succeed({
+                identity,
+                organization,
+                delivery: "hot-single-consumer-buffered-before-open-resolves",
+                events: Stream.fromQueue(events),
+              }),
+          },
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+        });
+        const states = yield* Queue.unbounded<ZeropsDataState>();
+        const stop = registry.subscribe(runtime.stateAtom, (state) =>
+          Queue.offerUnsafe(states, state),
+        );
+        const lease = yield* runtime.acquire(topologyDescriptor);
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+        );
+        yield* Queue.end(events);
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "failed",
+        );
+        expect((yield* runtime.state).interests.get(lease.interest)?.interest).toMatchObject({
+          status: "failed",
+          reason: expect.stringContaining("Reconnect"),
+        });
+        expect(harness.counts().closes).toBe(1);
+        yield* runtime.shutdown("application-close");
+        stop();
+        registry.dispose();
+      }),
+    ),
+  );
+});
+
+describe("owed table coverage", () => {
+  for (const fails of [false, true]) {
+    it.effect(`ends a ${fails ? "failed" : "missing"} row read once with Read again`, () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const registry = AtomRegistry.make();
+          let events = yield* Queue.unbounded<ReceiverEvent>();
+          const { decodeRegistrationResponse } = yield* Effect.promise(
+            () => import("./platformProtocol.ts"),
+          );
+          const { decodeTableSearch } = yield* Effect.promise(() => import("./tableProtocol.ts"));
+          const harness = makeAdapterHarness();
+          let list: RegistrationRequest | undefined;
+          const reads: ReadonlyArray<string>[] = [];
+          const runtime = yield* makeZeropsDataRuntime({
+            scope: runtimeScope,
+            adapter: {
+              ...harness.adapter,
+              openReceiver: (_scope, organization, identity) =>
+                Effect.gen(function* () {
+                  events = yield* Queue.unbounded<ReceiverEvent>();
+                  return {
+                    identity,
+                    organization,
+                    delivery: "hot-single-consumer-buffered-before-open-resolves" as const,
+                    events: Stream.fromQueue(events),
+                  };
+                }),
+              register: (_receiver, request) => {
+                if (request.descriptor.kind === "table-list") list = request;
+                return Effect.succeed({
+                  responseObservations:
+                    request.descriptor.kind === "table-list"
+                      ? decodeRegistrationResponse(request, { items: [], totalHits: 0 })
+                          .observations
+                      : [],
+                });
+              },
+              read: (ticket) => {
+                if (ticket.target.kind !== "query" || !("ids" in ticket.target.descriptor))
+                  return Effect.succeed({ observations: [] });
+                reads.push(ticket.target.descriptor.ids ?? []);
+                return fails
+                  ? Effect.fail({
+                      _tag: "ZeropsDataAdapterError",
+                      kind: "network",
+                      message: "metadata offline",
+                      retryable: true,
+                      accountRevocationEvidence: false,
+                    } satisfies AdapterError)
+                  : Effect.succeed({
+                      observations: decodeTableSearch(ticket, { items: [], totalHits: 0 })
+                        .observations,
+                    });
+              },
+            },
+            atomRegistry: registry,
+            makeOpaqueId: makeIdFactory(),
+          });
+          const states = yield* Queue.unbounded<ZeropsDataState>();
+          const stop = registry.subscribe(runtime.stateAtom, (state) =>
+            Queue.offerUnsafe(states, state),
+          );
+          const lease = yield* runtime.acquire({
+            kind: "project-variables",
+            project: topologyDescriptor.project,
+            serviceIds: ["service-a"],
+          });
+          yield* waitForState(
+            states,
+            (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+          );
+          const add = (id: string) =>
+            Queue.offer(events, {
+              kind: "observation",
+              input: {
+                kind: "table-membership-observed",
+                operation: "add",
+                id,
+                registration: list as never,
+              },
+              bytes: 1,
+            });
+          yield* add("missing-a");
+          yield* waitForState(
+            states,
+            (state) =>
+              reads.length === 1 &&
+              [...state.reads.values()].some(
+                (read) =>
+                  read.ticket.target.kind === "query" &&
+                  "ids" in read.ticket.target.descriptor &&
+                  read.status !== "pending",
+              ),
+          );
+          yield* waitForState(
+            states,
+            (state) => state.interests.get(lease.interest)?.interest.status === "failed",
+          );
+          expect((yield* runtime.state).interests.get(lease.interest)?.interest).toMatchObject({
+            status: "failed",
+            reason: expect.stringContaining("missing-a"),
+            retryAtMs: null,
+          });
+          yield* TestClock.adjust("1 minute");
+          expect(reads).toEqual([["missing-a"]]);
+          yield* runtime.refresh(topologyDescriptor.project);
+          yield* waitForState(
+            states,
+            (state) =>
+              reads.length === 2 &&
+              state.interests.get(lease.interest)?.interest.status === "failed",
+          );
+          expect(reads).toEqual([["missing-a"], ["missing-a"]]);
+          yield* add("missing-b");
+          yield* waitForState(
+            states,
+            (state) =>
+              reads.length === 3 &&
+              state.interests.get(lease.interest)?.interest.status === "failed",
+          );
+          expect(reads[2]).toEqual(["missing-b"]);
+          yield* runtime.shutdown("application-close");
+          stop();
+          registry.dispose();
+        }),
+      ),
+    );
+  }
+});
+
+it.effect("an uncertain optional registration closes its known receiver once until Reconnect", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const harness = makeAdapterHarness();
+      const sent = yield* Deferred.make<void>();
+      let attempts = 0;
+      let refusesToAnswer = true;
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter: {
+          ...harness.adapter,
+          register: (receiver, request, context) => {
+            if (request.descriptor.kind !== "current-metrics")
+              return harness.adapter.register(receiver, request, context);
+            attempts += 1;
+            return refusesToAnswer
+              ? Deferred.succeed(sent, undefined).pipe(
+                  Effect.andThen(
+                    Effect.fail({
+                      _tag: "ZeropsDataAdapterError",
+                      kind: "timeout",
+                      message: "Registration answer timed out.",
+                      retryable: true,
+                      accountRevocationEvidence: false,
+                    } satisfies AdapterError),
+                  ),
+                )
+              : Effect.succeed({ responseObservations: [] });
+          },
+        },
+        policy: makeZeropsDataPolicy({ registrationDeadlineMs: 10 }),
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+      });
+      const states = yield* Queue.unbounded<ZeropsDataState>();
+      const stop = registry.subscribe(runtime.stateAtom, (state) =>
+        Queue.offerUnsafe(states, state),
+      );
+      const lease = yield* runtime.acquire({
+        kind: "project-current-metrics",
+        project: topologyDescriptor.project,
+      });
+      yield* Deferred.await(sent);
+      yield* TestClock.adjust("10 millis");
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(lease.interest)?.interest.status === "failed",
+      );
+      expect(harness.counts().closes).toBe(1);
+      yield* TestClock.adjust("1 minute");
+      expect(attempts).toBe(1);
+      expect(harness.counts().opens).toBe(1);
+      refusesToAnswer = false;
+      yield* runtime.refresh(topologyDescriptor.project);
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+      );
+      expect(attempts).toBe(2);
+      expect(harness.counts().closes).toBe(1);
+      yield* runtime.shutdown("application-close");
+      stop();
+      registry.dispose();
+    }),
+  ),
+);
+
+it.effect("retains a malformed registration failure for later dependents", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const harness = makeAdapterHarness();
+      const events = yield* Queue.unbounded<ReceiverEvent>();
+      let request: RegistrationRequest | undefined;
+      let attempts = 0;
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter: {
+          ...harness.adapter,
+          openReceiver: (_scope, organization, identity) =>
+            Effect.succeed({
+              identity,
+              organization,
+              delivery: "hot-single-consumer-buffered-before-open-resolves",
+              events: Stream.fromQueue(events),
+            }),
+          register: (receiver, planned, context) => {
+            if (
+              planned.descriptor.kind === "query-membership" &&
+              planned.descriptor.query.kind === "running-processes-of-project"
+            ) {
+              request = planned;
+              attempts += 1;
+            }
+            return harness.adapter.register(receiver, planned, context);
+          },
+        },
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+      });
+      const states = yield* Queue.unbounded<ZeropsDataState>();
+      const stop = registry.subscribe(runtime.stateAtom, (state) =>
+        Queue.offerUnsafe(states, state),
+      );
+      const first = yield* runtime.acquire({
+        kind: "project-activity",
+        project: topologyDescriptor.project,
+      });
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(first.interest)?.interest.status === "observing",
+      );
+      yield* Queue.offer(events, {
+        kind: "malformed",
+        subscriptionName: request!.subscriptionName,
+      });
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(first.interest)?.interest.status === "failed",
+      );
+      const second = yield* runtime.acquire(topologyDescriptor);
+      const settled = yield* waitForState(states, (state) =>
+        ["failed", "observing"].includes(
+          state.interests.get(second.interest)?.interest.status ?? "",
+        ),
+      );
+      expect(settled.interests.get(second.interest)?.interest.status).toBe("failed");
+      expect(attempts).toBe(1);
+      yield* runtime.shutdown("application-close");
+      stop();
+      registry.dispose();
+    }),
+  ),
 );

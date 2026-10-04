@@ -13,6 +13,7 @@ import {
   TOMBSTONE_MS,
   serviceVariablesDescriptor,
   tableRowsWanted,
+  finishTableRowRead,
   wantTableRows,
   type EntityTableState,
 } from "./entityTable.ts";
@@ -598,4 +599,22 @@ it.each(["s-1", "s-2"])("manual metadata again retries only absent rows for %s",
   const retried = retryAbsentTableRows(failed, organization, [serviceId], 40);
   expect(tableRowsWanted(retried).flatMap((batch) => batch.ids)).toEqual(["missing"]);
   expect(askedAbsent(retried, "app-version", "other-missing")).toEqual({ retryAtMs: null });
+});
+
+it("ends owed IDs unavailable after one read without consuming newer evidence", () => {
+  let state = wantTableRows(
+    makeInitialEntityTableState(),
+    "app-version",
+    organization,
+    ["old"],
+    1,
+    0,
+    ["s-1"],
+  );
+  state = wantTableRows(state, "app-version", organization, ["new"], 3, 0, ["s-1"]);
+  state = finishTableRowRead(state, "app-version", organization, ["old", "new"], 2);
+  expect(tableRowsWanted(state).flatMap((batch) => batch.ids)).toEqual(["new"]);
+  expect(askedAbsent(state, "app-version", "old")).toEqual({ retryAtMs: null });
+  const again = retryAbsentTableRows(state, organization, ["s-1"], 10);
+  expect(tableRowsWanted(again).flatMap((batch) => batch.ids)).toEqual(["old", "new"]);
 });
