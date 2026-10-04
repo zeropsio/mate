@@ -3811,8 +3811,9 @@ no-cache`.
 - **2026-10-05** — **Automatic recovery is wanted; a clock standing in for an answer is not.**
   - **Wanted:** recovery with a clear logic — renewing a session, reconnecting, re-subscribing,
     re-reading, re-running an idempotent step after a transient failure (network, timeout, 5xx, the
-    network coming back, a tab waking). Bounded (backoff and a cap), visible ("reconnecting…"), and
-    ending in a visible failure with a manual "again" once the bound is spent.
+    network coming back, a tab waking). Bounded in rate, not in count: a backoff up to a cap, then
+    steady at the cap; visible ("reconnecting…" with "Try again now"); paused while nothing needs it.
+    Only a definitive refusal ends it, visibly, with a manual "again".
   - **Not wanted:** a clock that stands in for the owner's answer ("30 minutes after a release, it has
     ended"; "20 s with nothing running, the deploy failed"); side effects nobody asked for and nobody
     sees (a timer that compares wanted with actual and quietly rewrites, deploys or deletes — what
