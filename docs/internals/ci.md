@@ -13,7 +13,9 @@ and pushes to `main`:
   verifies the preload bundle exists and uses only imports that Electron's sandbox can load. The
   verifier parses imports, then executes the trusted artifact with controlled bridge stubs to
   confirm that its required APIs are callable.
-- **Test**: `vp run test` across the workspace.
+- **Test**: `vp run test` across the workspace except `t3` and `@t3tools/web`, which run on runners
+  of their own: **Test Server 1–3** shards `apps/server` (its files run one at a time) and **Test
+  Web 1–2** shards `apps/web`, which alone used to set the length of every run.
 - **Mobile Native Static Analysis**: `vp run lint:mobile` on macOS, wrapping
   `scripts/mobile-native-static-check.ts`. A cheap Linux **Mobile Native Changes** job gates it:
   the macOS runner only boots when the diff touches `apps/mobile` Swift/Kotlin sources, the

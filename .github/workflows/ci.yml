@@ -170,16 +170,16 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # Everything except `t3` (apps/server). `--parallel` drops the package
-  # dependency ordering that `vp run` applies by default: these `test` tasks
-  # declare no `dependsOn` and resolve workspace deps from source, so ordering
-  # only bought us idle runners between dependency layers. The concurrency
-  # limit stays at the default 4 so peak load per runner is unchanged.
+  # Everything except `t3` (apps/server) and `@t3tools/web`, which have runners
+  # of their own. `--parallel` drops the package dependency ordering that
+  # `vp run` applies by default: these `test` tasks declare no `dependsOn` and
+  # resolve workspace deps from source, so ordering only bought us idle runners
+  # between dependency layers. The concurrency limit stays at the default 4 so
+  # peak load per runner is unchanged.
   test:
     name: Test
     runs-on: ubuntu-latest
-    # The client packages' suites run ~8.5 min on a hosted runner after setup.
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -200,7 +200,36 @@ jobs:
         run: vp run --filter @t3tools/desktop ensure:electron
 
       - name: Test
-        run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/monorepo' test
+        run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/monorepo' test
+
+  # apps/web alone ran ~8.5 min inside Test and set the length of every CI run.
+  # Its 669 files run in parallel workers, so two runners halve it.
+  test_web:
+    name: Test Web ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Test
+        run: vp run --filter @t3tools/web test --shard ${{ matrix.shard }}/${{ strategy.job-total }}
 
   # apps/server sets `fileParallelism: false`, so its 239 files run strictly
   # one at a time. Sharding spreads them over separate runners instead of
