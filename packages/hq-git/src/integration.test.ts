@@ -253,6 +253,23 @@ describe("repositories and real smart HTTP", () => {
     ),
   );
 
+  it.live("restores nothing from an unreadable bundle and leaves the place free", () =>
+    fixture(
+      Effect.gen(function* () {
+        const bundle = NodePath.join(dir, "bad.bundle");
+        yield* Effect.promise(() => NodeFSP.writeFile(bundle, "not a bundle"));
+        const error = yield* Effect.flip(git.restore({ appId: "app", id: "repo" }, bundle));
+        expect(error).toMatchObject({ _tag: "GitError", reason: "git_failed" });
+        expect(error.message).not.toContain(dir);
+        expect(yield* git.list()).toEqual([]);
+        expect(
+          yield* Effect.promise(() => NodeFSP.readdir(NodePath.join(dir, "repos", "app"))),
+        ).toEqual([]);
+        yield* git.create({ appId: "app", id: "repo" });
+      }),
+    ),
+  );
+
   // An application HQ deleted takes its repositories with it: what `list` no longer names is
   // neither reconciled nor bundled again.
   it.live("removes a repository, and its application's directory with its last one", () =>
