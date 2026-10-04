@@ -935,7 +935,22 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
     }),
   );
 
-  it.live("a stand-up ends short when an owner of its end answers: its process, its own turn", () =>
+  const awaitingStages = (startedAt: string) => ({
+    state: "running",
+    phase: "stage",
+    startedAt,
+    process: { pid: 4242, start: "98765" },
+    services: [
+      { hostname: "appdev", step: "verify", state: "done" },
+      { hostname: "appstage", step: "build", state: "pending" },
+    ],
+  });
+  const standUpStep = (setup: ZeropsSetup["Service"]) =>
+    Effect.map(setup.document, (document) =>
+      document.steps.find((candidate) => candidate.id === "standup"),
+    );
+
+  it.live("a stand-up ends short when an owner of its end answers: its process, its turn", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
       yield* Ref.set(world.signers, SIGNED);
@@ -943,43 +958,86 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
       yield* withServer(world, database, (setup) =>
         Effect.gen(function* () {
           const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-          yield* turnRow(database, standUp!.threadId, standUp!.message.messageId, "running");
-          const step = Effect.map(setup.document, (document) =>
-            document.steps.find((candidate) => candidate.id === "standup"),
-          );
-          const awaitingStages = {
-            state: "running",
-            phase: "stage",
-            process: { pid: 4242, start: "98765" },
-            services: [
-              { hostname: "appdev", step: "verify", state: "done" },
-              { hostname: "appstage", step: "build", state: "pending" },
-            ],
-          };
-          yield* Ref.set(world.statusFile, { version: 1, standup: awaitingStages });
+          const { threadId } = standUp!;
+          const messageId = standUp!.message.messageId;
+          yield* turnRow(database, threadId, messageId, "running");
+          yield* setup.noteStandUpCall({
+            threadId,
+            turnId: `turn-${messageId}`,
+            startedAt: "2026-10-01T10:00:09.000Z",
+          });
+          yield* Ref.set(world.statusFile, {
+            version: 1,
+            standup: awaitingStages("2026-10-01T10:00:10Z"),
+          });
           assert.strictEqual(
-            (yield* step)?.state,
+            (yield* standUpStep(setup))?.state,
             "running",
-            "its own turn runs: the call is to come",
+            "its turn runs: the call is to come",
           );
           yield* Ref.set(world.goneProcesses, [4242]);
-          assert.deepStrictEqual(yield* step, {
+          assert.deepStrictEqual(yield* standUpStep(setup), {
             id: "standup",
             state: "failed",
             at: "",
             reason: "process_gone",
           });
           yield* Ref.set(world.goneProcesses, []);
-          yield* turnRow(database, standUp!.threadId, standUp!.message.messageId, "completed");
-          assert.deepStrictEqual(yield* step, {
+          yield* turnRow(database, threadId, messageId, "completed");
+          assert.deepStrictEqual(yield* standUpStep(setup), {
             id: "standup",
             state: "failed",
             at: "",
             reason: "stage_not_built",
           });
+          // A re-run in a later turn, waiting for its own stage call: its turn, not the first's.
+          yield* turnRow(database, threadId, "a-later-message", "running");
+          yield* setup.noteStandUpCall({
+            threadId,
+            turnId: "turn-a-later-message",
+            startedAt: "2026-10-01T11:00:00.000Z",
+          });
+          yield* Ref.set(world.statusFile, {
+            version: 1,
+            standup: awaitingStages("2026-10-01T11:00:01Z"),
+          });
+          assert.strictEqual((yield* standUpStep(setup))?.state, "running");
         }),
       );
     }),
+  );
+
+  it.live(
+    "a stand-up nothing recorded ends short when its own turn ends without the stage call",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.hq, NOBODY_ASKED);
+        const database = freshDatabase();
+        yield* withServer(world, database, (setup) =>
+          Effect.gen(function* () {
+            yield* ticks;
+            yield* turnRow(database, "thread-main", "a-person-s-message", "running");
+            yield* setup.noteStandUpCall({
+              threadId: "thread-main",
+              turnId: "turn-a-person-s-message",
+              startedAt: "2026-10-01T10:00:09.000Z",
+            });
+            yield* Ref.set(world.statusFile, {
+              version: 1,
+              standup: awaitingStages("2026-10-01T10:00:10Z"),
+            });
+            assert.strictEqual((yield* standUpStep(setup))?.state, "running");
+            yield* turnRow(database, "thread-main", "a-person-s-message", "completed");
+            assert.deepStrictEqual(yield* standUpStep(setup), {
+              id: "standup",
+              state: "failed",
+              at: "",
+              reason: "stage_not_built",
+            });
+          }),
+        );
+      }),
   );
 
   const afterDev = {

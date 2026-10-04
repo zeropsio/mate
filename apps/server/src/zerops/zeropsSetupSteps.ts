@@ -218,6 +218,36 @@ export const runningStandUpProcess = (status: ZcpStatus | undefined): ZcpProcess
   status?.standup?.state === "running" ? status.standup.process : undefined;
 
 /**
+ * A section zcp started this long before or after a call is still that call's: the call's time is
+ * the agent's, the section's zcp's, and the two clocks and the call's way to zcp differ.
+ */
+export const SECTION_SKEW_MS = 5_000;
+
+/** A `zerops_standup` call an agent of this server made: where, in which turn, when it started. */
+export interface StandUpCall {
+  readonly threadId: string;
+  readonly turnId: string | undefined;
+  readonly startedAt: string;
+}
+
+/**
+ * The call whose turn zcp's stand-up section waits on: one of `calls` (in the order they started)
+ * started it — within {@link SECTION_SKEW_MS} of its `startedAt` — and the latest call since goes
+ * on with it (the stage call of a section a first call left waiting). `undefined` where no call
+ * the server saw started it: an agent outside the server ran it, or none of it is known.
+ */
+export const sectionCall = (
+  status: ZcpStatus | undefined,
+  calls: ReadonlyArray<StandUpCall>,
+): StandUpCall | undefined => {
+  const started = Date.parse(status?.standup?.startedAt ?? "");
+  if (!Number.isFinite(started)) return undefined;
+  const since = calls.filter((call) => Date.parse(call.startedAt) >= started - SECTION_SKEW_MS);
+  const wroteIt = since.some((call) => Date.parse(call.startedAt) <= started + SECTION_SKEW_MS);
+  return wroteIt ? since.at(-1) : undefined;
+};
+
+/**
  * A process's start time from its `/proc/<pid>/stat` line, as zcp reads it: field 22, counted
  * after the last `)` — the command before it may hold spaces and parentheses. `undefined` for a
  * line that does not read.
@@ -326,6 +356,12 @@ export interface SetupFacts {
   readonly standUpTurn: "running" | "done" | "failed" | undefined;
   /** The process zcp names as running its stand-up is provably gone ({@link runningStandUpProcess}). */
   readonly standUpProcessGone: boolean;
+  /**
+   * The turn of the call zcp's section waits on ({@link sectionCall}) — the recorded stand-up's,
+   * a re-run's, or one nothing recorded: whether it runs, or how it ended; `undefined` where no
+   * call of the server's started the section, or its turn is not found.
+   */
+  readonly sectionTurn: "running" | "done" | "failed" | undefined;
 }
 
 const RUNTIMES_STEP: Readonly<Record<RuntimesState, string>> = {
@@ -363,7 +399,7 @@ interface ZcpStandUp {
  *
  * zcp's `running` is not its word once the owners of its end have answered: its MCP process is
  * provably gone, or — waiting in the `stage` phase for the call that builds the stages, no half
- * running — the stand-up's own turn is over, which zcp cannot see.
+ * running — the turn of the call it waits on is over ({@link sectionCall}), which zcp cannot see.
  */
 const zcpStandUpState = (facts: SetupFacts): ZcpStandUp | undefined => {
   const standup = facts.status?.standup;
@@ -371,18 +407,16 @@ const zcpStandUpState = (facts: SetupFacts): ZcpStandUp | undefined => {
   if (state !== "running" && state !== "done" && state !== "failed") return undefined;
   if (state === "running" && facts.standUpProcessGone)
     return { state: "failed", short: "process_gone" };
-  const ownTurnRan = facts.record?.ran === true;
   const awaitsStageCall =
     standup!.phase === "stage" && !standup!.services.some((service) => service.state === "running");
   if (
     state === "running" &&
     awaitsStageCall &&
-    ownTurnRan &&
-    (facts.standUpTurn === "done" || facts.standUpTurn === "failed")
+    (facts.sectionTurn === "done" || facts.sectionTurn === "failed")
   )
     return { state: "failed", short: "stage_not_built" };
   const halvesLeft = standup!.services.some((service) => service.state === "pending");
-  const ownTurnRuns = ownTurnRan && facts.standUpTurn === "running";
+  const ownTurnRuns = facts.record?.ran === true && facts.standUpTurn === "running";
   return { state: state === "done" && halvesLeft && ownTurnRuns ? "running" : state };
 };
 

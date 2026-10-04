@@ -4,6 +4,7 @@ import {
   STAND_UP_MESSAGE,
   parseZcpStatus,
   procStartTime,
+  sectionCall,
   setupDocument,
   standUpCommandIds,
   standUpDecision,
@@ -35,6 +36,7 @@ const facts = (overrides: Partial<SetupFacts> = {}): SetupFacts => ({
   record: undefined,
   standUpTurn: undefined,
   standUpProcessGone: false,
+  sectionTurn: undefined,
   ...overrides,
 });
 
@@ -118,6 +120,39 @@ describe("parseZcpStatus", () => {
         expected,
       ));
   }
+});
+
+describe("sectionCall", () => {
+  const SECTION = "2026-10-01T10:00:10Z";
+  const sectionOf = (startedAt: string) =>
+    parseZcpStatus(status({ standup: { state: "running", phase: "stage", startedAt } }));
+  const call = (turnId: string, startedAt: string) => ({
+    threadId: "thread-main",
+    turnId,
+    startedAt,
+  });
+  const cases: ReadonlyArray<[string, ReadonlyArray<ReturnType<typeof call>>, string | undefined]> =
+    [
+      ["the call that wrote it", [call("turn-1", "2026-10-01T10:00:09.500Z")], "turn-1"],
+      [
+        "a later call goes on with it: the carry's",
+        [call("turn-1", "2026-10-01T10:00:09.500Z"), call("turn-2", "2026-10-01T10:30:00.000Z")],
+        "turn-2",
+      ],
+      [
+        "an earlier stand-up's call is not its",
+        [call("turn-0", "2026-10-01T09:00:00.000Z"), call("turn-1", "2026-10-01T10:00:09.500Z")],
+        "turn-1",
+      ],
+      ["no call of the server's wrote it", [call("turn-0", "2026-10-01T09:00:00.000Z")], undefined],
+      ["no calls at all", [], undefined],
+    ];
+  for (const [name, calls, turnId] of cases) {
+    it(`finds the call whose turn the section waits on — ${name}`, () =>
+      assert.strictEqual(sectionCall(sectionOf(SECTION), calls)?.turnId, turnId));
+  }
+  it("is none without a section", () =>
+    assert.isUndefined(sectionCall(undefined, [call("turn-1", SECTION)])));
 });
 
 describe("procStartTime", () => {
@@ -422,10 +457,11 @@ describe("setupDocument", () => {
       "done",
     ],
     [
-      "its own turn ended without the stage call: the stages were not built",
+      "its turn ended without the stage call: the stages were not built",
       {
         record: { startedAt: NOW, ran: true },
         standUpTurn: "done",
+        sectionTurn: "done",
         status: parseZcpStatus(
           status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
         ),
@@ -433,10 +469,11 @@ describe("setupDocument", () => {
       "failed",
     ],
     [
-      "its own turn failed before the stage call: the stages were not built",
+      "its turn failed before the stage call: the stages were not built",
       {
         record: { startedAt: NOW, ran: true },
         standUpTurn: "failed",
+        sectionTurn: "failed",
         status: parseZcpStatus(
           status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
         ),
@@ -444,10 +481,11 @@ describe("setupDocument", () => {
       "failed",
     ],
     [
-      "its own turn over, a later call building the stages",
+      "its turn over, a later call building the stages",
       {
         record: { startedAt: NOW, ran: true },
         standUpTurn: "done",
+        sectionTurn: "done",
         status: parseZcpStatus(
           status({ standup: { state: "running", phase: "stage", services: halvesStaging } }),
         ),
@@ -455,16 +493,50 @@ describe("setupDocument", () => {
       "running",
     ],
     [
-      "its own turn over, zcp in the development phase: zcp's word",
+      "its turn over, zcp in the development phase: zcp's word",
       {
         record: { startedAt: NOW, ran: true },
         standUpTurn: "done",
+        sectionTurn: "done",
         status: parseZcpStatus(status({ standup: { state: "running", services: halvesStaging } })),
       },
       "running",
     ],
     [
-      "nothing recorded, zcp waiting for its stage call: no turn to read, running",
+      "a re-run in a later turn waits for its stage call: the recorded turn's end is not its",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "done",
+        sectionTurn: "running",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "running",
+    ],
+    [
+      "nothing recorded, its turn ended without the stage call: the stages were not built",
+      {
+        sectionTurn: "done",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "failed",
+    ],
+    [
+      "settled as never due, zcp's own run's turn ended without the stage call",
+      {
+        record: { startedAt: NOW, ran: false },
+        sectionTurn: "done",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "failed",
+    ],
+    [
+      "nothing recorded, no call of the section seen (an agent outside the server): running",
       {
         status: parseZcpStatus(
           status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
@@ -574,10 +646,11 @@ describe("setupDocument", () => {
       { id: "standup", state: "failed", at: "", reason: "process_gone" },
     ],
     [
-      "its own turn over without the stage call",
+      "its turn over without the stage call",
       {
         record: { startedAt: NOW, ran: true },
         standUpTurn: "done",
+        sectionTurn: "done",
         status: parseZcpStatus(
           status({
             standup: {

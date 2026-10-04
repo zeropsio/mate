@@ -110,6 +110,7 @@ describe("ZeropsStandUpRelay", () => {
             Layer.mock(ZeropsSetup)({
               status: Ref.get(status),
               standUpGone: () => Effect.succeed(false),
+              noteStandUpCall: () => Effect.void,
             }),
             Layer.mock(OrchestrationEngineService)({
               dispatch: (command) =>
@@ -190,6 +191,7 @@ describe("ZeropsStandUpRelay: a call first seen running", () => {
             Layer.mock(ZeropsSetup)({
               status: Ref.get(status),
               standUpGone: () => Effect.succeed(false),
+              noteStandUpCall: () => Effect.void,
             }),
             Layer.mock(OrchestrationEngineService)({
               dispatch: (command) =>
@@ -235,8 +237,9 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
       const events = yield* Queue.unbounded<SpiEvent>();
       const status = yield* Ref.make<ZcpStatus | undefined>(section());
       const gone = yield* Ref.make(false);
+      const noted = yield* Ref.make<ReadonlyArray<unknown>>([]);
       const appended = yield* Ref.make(0);
-      const layer = deadLayer(events, status, gone, appended);
+      const layer = deadLayer(events, status, gone, noted, appended);
       yield* Effect.gen(function* () {
         yield* Queue.offer(events, standUpEvent("item.started", CALL_AT));
         yield* Effect.sleep(Duration.millis(200));
@@ -264,8 +267,9 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
         section({ startedAt: "2026-10-01T09:40:00Z" }),
       );
       const gone = yield* Ref.make(true);
+      const noted = yield* Ref.make<ReadonlyArray<unknown>>([]);
       const appended = yield* Ref.make(0);
-      const layer = deadLayer(events, status, gone, appended, "2026-10-01T09:40:00Z");
+      const layer = deadLayer(events, status, gone, noted, appended, "2026-10-01T09:40:00Z");
       yield* Effect.gen(function* () {
         yield* Queue.offer(events, standUpEvent("item.started", CALL_AT));
         yield* Effect.sleep(Duration.millis(200));
@@ -273,6 +277,9 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
         yield* Ref.set(status, section());
         yield* Effect.sleep(Duration.millis(2_500));
         assert.strictEqual(yield* Ref.get(appended), 1, "the retry's own section reaches its card");
+        assert.deepStrictEqual(yield* Ref.get(noted), [
+          { threadId: "thread-main", turnId: "turn-1", startedAt: CALL_AT },
+        ]);
       }).pipe(Effect.provide(layer), Effect.scoped);
     }),
   );
@@ -283,6 +290,7 @@ const deadLayer = (
   events: Queue.Queue<SpiEvent>,
   status: Ref.Ref<ZcpStatus | undefined>,
   gone: Ref.Ref<boolean>,
+  noted: Ref.Ref<ReadonlyArray<unknown>>,
   appended: Ref.Ref<number>,
   deadAt = DEAD_AT,
 ) =>
@@ -298,6 +306,7 @@ const deadLayer = (
           status: Ref.get(status),
           standUpGone: (read) =>
             Effect.map(Ref.get(gone), (dead) => dead && read?.standup?.startedAt === deadAt),
+          noteStandUpCall: (call) => Ref.update(noted, (all) => [...all, call]),
         }),
         Layer.mock(OrchestrationEngineService)({
           dispatch: () =>
@@ -326,6 +335,7 @@ describe("ZeropsStandUpRelay: only the newest call of a live thread", () => {
           Layer.mock(ZeropsSetup)({
             status: Ref.get(status),
             standUpGone: () => Effect.succeed(false),
+            noteStandUpCall: () => Effect.void,
           }),
           Layer.mock(OrchestrationEngineService)({
             dispatch: (command) =>
