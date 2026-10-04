@@ -974,6 +974,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     adapter: options.adapter.cells ?? unavailableCellAdapter,
     access: () => Ref.getUnsafe(model).access,
     maxEntries: policy.activeSharedReadsPerAccount,
+    // A failed cell's retry waits while the tab is hidden; the visible wake below reads it.
+    visible: () => Ref.getUnsafe(currentVisibility) === "visible",
   });
   // Every write to an organization's tokens, wherever the app made it, makes its list read again.
   const stopTokenWrites =
@@ -2652,6 +2654,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       yield* Ref.set(currentVisibility, next);
       if (next === "visible") {
         yield* resumeFromBackground;
+        yield* cells.wake;
         return;
       }
       yield* Effect.sleep(Duration.millis(policy.hiddenReceiverPauseAfterMs));

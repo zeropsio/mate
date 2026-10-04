@@ -210,7 +210,7 @@ describe("makeZeropsCells", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect("a failed lease stays failed until one manual Read again", () =>
+  it.effect("a failed lease carries retryAt and retries", () =>
     Effect.gen(function* () {
       const scope = accountScope();
       const outcomes: Array<"fail" | "answer"> = ["fail", "fail", "answer"];
@@ -218,6 +218,8 @@ describe("makeZeropsCells", () => {
       const broker = yield* makeZeropsCells({
         scope,
         access: () => verifiedAccess(scope),
+        // No jitter: every retry lands on its rung.
+        random: () => 0.5,
         adapter: unusedAdapter({
           readOrganizationLocations: () =>
             Effect.suspend(() => {
@@ -234,23 +236,18 @@ describe("makeZeropsCells", () => {
       expect(yield* lease.awaitSettled).toMatchObject({
         state: "failed",
         attempt: 1,
-        retryAtMs: null,
+        retryAtMs: 2_000,
       });
       yield* TestClock.adjust("2 seconds");
       yield* Effect.yieldNow;
-      expect(reads).toBe(1);
-      expect(yield* lease.retry).toBe(true);
-      yield* lease.awaitSettled;
+      expect(reads).toBe(2);
       expect(yield* lease.snapshot).toMatchObject({
         state: "failed",
         attempt: 2,
-        retryAtMs: null,
+        retryAtMs: 6_000,
       });
       yield* TestClock.adjust("4 seconds");
       yield* Effect.yieldNow;
-      expect(reads).toBe(2);
-      expect(yield* lease.retry).toBe(true);
-      yield* lease.awaitSettled;
       expect(yield* lease.snapshot).toMatchObject({ state: "known", value: [PRAGUE] });
 
       // An answered read has nothing left to retry.
@@ -263,10 +260,86 @@ describe("makeZeropsCells", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  it.effect("a manual Read again reads at once, and its failure starts the ladder over", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      let reads = 0;
+      const broker = yield* makeZeropsCells({
+        scope,
+        access: () => verifiedAccess(scope),
+        random: () => 0.5,
+        adapter: unusedAdapter({
+          readOrganizationLocations: () =>
+            Effect.suspend(() => {
+              reads += 1;
+              return Effect.fail(transportFailure());
+            }),
+        }),
+      });
+      const leaseScope = yield* Scope.make();
+      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      yield* lease.awaitSettled;
+      yield* TestClock.adjust("2 seconds");
+      yield* Effect.yieldNow;
+      expect(yield* lease.snapshot).toMatchObject({ attempt: 2, retryAtMs: 6_000 });
+
+      expect(yield* lease.retry).toBe(true);
+      yield* lease.awaitSettled;
+      expect(reads).toBe(3);
+      // The press read at 2 s: its failure waits the first rung, not the third.
+      expect(yield* lease.snapshot).toMatchObject({ state: "failed", retryAtMs: 4_000 });
+      yield* TestClock.adjust("2 seconds");
+      yield* Effect.yieldNow;
+      expect(reads).toBe(4);
+      yield* Scope.close(leaseScope, Exit.void);
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a retry that comes due while the tab is hidden waits for it to show", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      let visible = true;
+      let reads = 0;
+      const broker = yield* makeZeropsCells({
+        scope,
+        access: () => verifiedAccess(scope),
+        random: () => 0.5,
+        visible: () => visible,
+        adapter: unusedAdapter({
+          readOrganizationLocations: () =>
+            Effect.suspend(() => {
+              reads += 1;
+              return reads === 1 ? Effect.fail(transportFailure()) : Effect.succeed([PRAGUE]);
+            }),
+        }),
+      });
+      const leaseScope = yield* Scope.make();
+      const lease = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(leaseScope));
+      yield* lease.awaitSettled;
+      visible = false;
+      yield* TestClock.adjust("1 minute");
+      yield* Effect.yieldNow;
+      expect(reads).toBe(1);
+
+      visible = true;
+      yield* broker.wake;
+      yield* Effect.yieldNow;
+      expect(reads).toBe(2);
+      expect(yield* lease.snapshot).toMatchObject({ state: "known", value: [PRAGUE] });
+      // A wake with nothing due reads nothing.
+      yield* broker.wake;
+      yield* Effect.yieldNow;
+      expect(reads).toBe(2);
+      yield* Scope.close(leaseScope, Exit.void);
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   // The token and member lists are each one heavy answer the platform may sit on: a read with no
   // deadline held its cell reading for as long as the platform did, with nothing retried.
   it.effect.each([["tokens", tokenGrantsRequest] as const, ["members", membersRequest] as const])(
-    "a %s read the platform sits on fails at 30 s and stays failed until Read again",
+    "a %s read the platform sits on fails at 30 s, aborted, and climbs the retry ladder",
     ([kind, request]) =>
       Effect.gen(function* () {
         const scope = accountScope();
@@ -279,6 +352,7 @@ describe("makeZeropsCells", () => {
         const broker = yield* makeZeropsCells({
           scope,
           access: () => verifiedAccess(scope),
+          random: () => 0.5,
           adapter: unusedAdapter(
             kind === "tokens"
               ? { readOrganizationIntegrationTokenGrants: never }
@@ -296,13 +370,10 @@ describe("makeZeropsCells", () => {
           state: "failed",
           failure: { kind: "transport" },
           attempt: 1,
-          retryAtMs: null,
+          retryAtMs: 32_000,
         });
         expect(signals[0]?.aborted).toBe(true);
         yield* TestClock.adjust("2 seconds");
-        yield* Effect.yieldNow;
-        expect(signals).toHaveLength(1);
-        expect(yield* lease.retry).toBe(true);
         yield* Effect.yieldNow;
         expect(signals).toHaveLength(2);
         yield* Scope.close(leaseScope, Exit.void);
@@ -1071,7 +1142,7 @@ describe("makeZeropsCells", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect("queued demand expires visibly and Read again makes one new admission attempt", () =>
+  it.effect("queued demand expires visibly, and still reads once capacity frees", () =>
     Effect.gen(function* () {
       const scope = accountScope();
       let reads = 0;
@@ -1093,18 +1164,46 @@ describe("makeZeropsCells", () => {
       const queued = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(display));
       expect(yield* queued.snapshot).toEqual({ state: "unread", waitingFor: "data-slot" });
       yield* TestClock.adjust("30 seconds");
-      const failure = yield* queued.awaitSettled;
-      expect(failure).toMatchObject({
+      expect(yield* queued.awaitSettled).toMatchObject({
         state: "failed",
         failure: { kind: "refused", code: "data-slot-deadline" },
-        retryAtMs: null,
       });
+      expect(reads).toBe(0);
       yield* Scope.close(holderScope, Exit.void);
       yield* Effect.yieldNow;
-      expect(yield* queued.snapshot).toEqual(failure);
-      expect(reads).toBe(0);
+      expect(yield* queued.awaitSettled).toMatchObject({ state: "known", value: [PRAGUE] });
+      expect(reads).toBe(1);
+      yield* Scope.close(display, Exit.void);
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("an expired queued demand's Read again makes one new admission attempt", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      let reads = 0;
+      const broker = yield* makeZeropsCells({
+        scope,
+        access: () => verifiedAccess(scope),
+        maxEntries: 1,
+        adapter: unusedAdapter({
+          readOrganizationLocations: () =>
+            Effect.sync(() => {
+              reads++;
+              return [PRAGUE];
+            }),
+        }),
+      });
+      const holderScope = yield* Scope.make();
+      yield* broker.acquire(authorizedAgentsRequest(scope)).pipe(Scope.provide(holderScope));
+      const display = yield* Scope.make();
+      const queued = yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(display));
+      yield* TestClock.adjust("30 seconds");
+      yield* queued.awaitSettled;
       expect(yield* queued.retry).toBe(true);
       expect(yield* queued.retry).toBe(false);
+      expect(yield* queued.snapshot).toEqual({ state: "unread", waitingFor: "data-slot" });
+      yield* Scope.close(holderScope, Exit.void);
       expect(yield* queued.awaitSettled).toMatchObject({ state: "known", value: [PRAGUE] });
       expect(reads).toBe(1);
       yield* Scope.close(display, Exit.void);
@@ -1148,7 +1247,7 @@ describe("makeZeropsCells", () => {
   );
 
   it.effect(
-    "failed revalidation keeps its value and access reconciliation does not read again",
+    "failed revalidation keeps its value, retries at its time, and access reconciliation reads nothing sooner",
     () =>
       Effect.gen(function* () {
         const scope = accountScope();
@@ -1156,6 +1255,7 @@ describe("makeZeropsCells", () => {
         const broker = yield* makeZeropsCells({
           scope,
           access: () => verifiedAccess(scope),
+          random: () => 0.5,
           adapter: unusedAdapter({
             readOrganizationMembers: () =>
               Effect.suspend(() =>
@@ -1173,22 +1273,26 @@ describe("makeZeropsCells", () => {
         expect(failed).toMatchObject({
           state: "known",
           value: [{ id: "member-1" }],
-          freshness: { kind: "stale", reason: { kind: "revalidation-failed", retryAtMs: null } },
+          freshness: { kind: "stale", reason: { kind: "revalidation-failed", retryAtMs: 2_000 } },
         });
         yield* broker.reconcileAccess;
-        yield* TestClock.adjust("1 minute");
+        yield* TestClock.adjust("1999 millis");
         yield* broker.reconcileAccess;
         expect(reads).toBe(2);
         expect(yield* lease.snapshot).toEqual(failed);
+        yield* TestClock.adjust("1 millis");
+        yield* Effect.yieldNow;
+        expect(reads).toBe(3);
+        yield* lease.awaitSettled;
         yield* broker.readAgain(membersRequest(scope));
         yield* lease.awaitSettled;
-        expect(reads).toBe(3);
+        expect(reads).toBe(4);
         yield* Scope.close(display, Exit.void);
         yield* broker.shutdown;
       }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect("a full-queue atom stays refused after capacity release until Read again", () =>
+  it.effect("a resource refused for capacity reads again once capacity frees", () =>
     Effect.gen(function* () {
       const scope = accountScope();
       let reads = 0;
@@ -1197,6 +1301,7 @@ describe("makeZeropsCells", () => {
         access: () => verifiedAccess(scope),
         maxEntries: 1,
         maxQueuedEntries: 1,
+        random: () => 0.5,
         adapter: unusedAdapter({
           readOrganizationMembers: () =>
             Effect.sync(() => {
@@ -1212,21 +1317,54 @@ describe("makeZeropsCells", () => {
       const registry = AtomRegistry.make();
       const atom = broker.known(membersRequest(scope));
       const unmount = registry.mount(atom);
-      const failure = registry.get(atom);
-      expect(failure).toMatchObject({
+      expect(registry.get(atom)).toMatchObject({
         state: "failed",
         failure: { code: "data-slot-queue-full" },
-        retryAtMs: null,
+        attempt: 1,
+        retryAtMs: 2_000,
       });
+      yield* TestClock.adjust("2 seconds");
+      yield* Effect.yieldNow;
+      expect(registry.get(atom)).toMatchObject({ attempt: 2, retryAtMs: 6_000 });
+
       yield* Scope.close(queuedScope, Exit.void);
       yield* Scope.close(holderScope, Exit.void);
-      yield* Effect.yieldNow;
-      expect(registry.get(atom)).toEqual(failure);
-      expect(reads).toBe(0);
-      expect(yield* broker.readAgain(membersRequest(scope))).toBe(true);
+      yield* TestClock.adjust("4 seconds");
       yield* Effect.yieldNow;
       expect(registry.get(atom)).toMatchObject({ state: "known", value: [{ id: "member-1" }] });
       expect(reads).toBe(1);
+      unmount();
+      registry.dispose();
+      yield* broker.shutdown;
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a full-queue atom's Read again asks at once, before its retry time", () =>
+    Effect.gen(function* () {
+      const scope = accountScope();
+      const broker = yield* makeZeropsCells({
+        scope,
+        access: () => verifiedAccess(scope),
+        maxEntries: 1,
+        maxQueuedEntries: 1,
+        random: () => 0.5,
+        adapter: unusedAdapter({
+          readOrganizationMembers: () => Effect.succeed([{ id: "member-1" }]),
+        }),
+      });
+      const holderScope = yield* Scope.make();
+      yield* broker.acquire(authorizedAgentsRequest(scope)).pipe(Scope.provide(holderScope));
+      const queuedScope = yield* Scope.make();
+      yield* broker.acquire(locationsRequest(scope)).pipe(Scope.provide(queuedScope));
+      const registry = AtomRegistry.make();
+      const atom = broker.known(membersRequest(scope));
+      const unmount = registry.mount(atom);
+      expect(registry.get(atom)).toMatchObject({ failure: { code: "data-slot-queue-full" } });
+      yield* Scope.close(queuedScope, Exit.void);
+      yield* Scope.close(holderScope, Exit.void);
+      expect(yield* broker.readAgain(membersRequest(scope))).toBe(true);
+      yield* Effect.yieldNow;
+      expect(registry.get(atom)).toMatchObject({ state: "known", value: [{ id: "member-1" }] });
       unmount();
       registry.dispose();
       yield* broker.shutdown;
@@ -1594,13 +1732,14 @@ describe("the cells' one-shot reads", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect("a new one-shot demand reads once after five manual failed reads", () =>
+  it.effect("a one-shot reader of a cell failed five times reads it at once", () =>
     Effect.gen(function* () {
       const scope = accountScope();
       let reads = 0;
       const cells = yield* makeZeropsCells({
         scope,
         access: () => verifiedAccess(scope),
+        random: () => 0.5,
         adapter: unusedAdapter({
           readServiceAuthorizedAgents: () =>
             Effect.suspend(() => {
@@ -1610,17 +1749,20 @@ describe("the cells' one-shot reads", () => {
         }),
       });
       const request = authorizedAgentsRequest(scope);
-      // A surface holds the agents while the person asks to read again.
+      // A surface holds the agents while their reads fail and the retries widen.
       const display = yield* Scope.make();
       const held = yield* cells.acquire(request).pipe(Scope.provide(display));
       yield* held.awaitSettled;
       for (let attempt = 1; attempt < 5; attempt++) {
-        expect(yield* held.retry).toBe(true);
-        yield* held.awaitSettled;
+        const shown = yield* held.snapshot;
+        const retryAtMs = shown.state === "failed" ? (shown.retryAtMs ?? 0) : 0;
+        yield* TestClock.setTime(retryAtMs);
+        yield* Effect.yieldNow;
       }
+      expect(reads).toBe(5);
       expect(yield* held.snapshot).toMatchObject({ state: "failed" });
 
-      // A person creates an environment: that new demand gets one read.
+      // A person creates an environment: its read of the agents is not held for the retry.
       const reader = yield* Effect.forkChild(oneShot(cells, request));
       yield* Effect.yieldNow;
       expect(reads).toBe(6);
@@ -1630,13 +1772,14 @@ describe("the cells' one-shot reads", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
-  it.effect("a surface joining a failed cell keeps the failure until Read again", () =>
+  it.effect("a surface that starts watching a failed cell waits for its scheduled retry", () =>
     Effect.gen(function* () {
       const scope = accountScope();
       let reads = 0;
       const cells = yield* makeZeropsCells({
         scope,
         access: () => verifiedAccess(scope),
+        random: () => 0.5,
         adapter: unusedAdapter({
           readOrganizationMembers: () =>
             Effect.suspend(() => {
@@ -1656,6 +1799,9 @@ describe("the cells' one-shot reads", () => {
       const unmount = registry.mount(cells.known(request));
       yield* Effect.yieldNow;
       expect(reads).toBe(1);
+      yield* TestClock.adjust("2 seconds");
+      yield* Effect.yieldNow;
+      expect(reads).toBe(2);
       unmount();
       registry.dispose();
       yield* Scope.close(display, Exit.void);
