@@ -42,7 +42,11 @@ const APPS = gitOverview({
 
 const render = (state: GitPageState, onOpenChange?: () => void) =>
   renderToStaticMarkup(
-    <ZeropsGitOverview state={state} {...(onOpenChange === undefined ? {} : { onOpenChange })} />,
+    <ZeropsGitOverview
+      onAgain={() => {}}
+      state={state}
+      {...(onOpenChange === undefined ? {} : { onOpenChange })}
+    />,
   );
 
 describe("ZeropsGitOverview", () => {
@@ -87,20 +91,35 @@ describe("ZeropsGitOverview", () => {
     );
   });
 
-  it("says nothing while the first read is on its way", () => {
-    expect(render({ kind: "unread", failure: null })).toBe("");
+  it("does not claim an empty repository listing while another read is pending", () => {
+    const html = render({ kind: "read", apps: [], failure: null, reading: true });
+    expect(html).toContain("Reading repositories and changes…");
+    expect(html).not.toContain("No repository yet");
+  });
+  it("does not call unread changes an empty change list", () => {
+    const html = render({ kind: "read", apps: APPS, failure: null, unreadChanges: ["a-todo"] });
+    expect(html).toContain("Changes not read yet.");
+    expect(html).not.toContain("No open change");
+  });
+
+  it("names the first read while it is on its way", () => {
+    expect(render({ kind: "unread", failure: null })).toContain(
+      "Reading repositories and changes…",
+    );
   });
 
   it("names why the first read did not answer instead of an empty page", () => {
     const html = render({ kind: "unread", failure: "HQ is not answering right now." });
     expect(html).toContain('data-zerops-surface="git-read-trouble"');
     expect(html).toContain("HQ is not answering right now.");
+    expect(html).toContain(">Again</button>");
     expect(html).not.toContain("No repository yet");
   });
 
   it("names why the last read did not answer beside what was read", () => {
     const html = render({ kind: "read", apps: APPS, failure: "HQ is not answering right now." });
     expect(html).toContain("HQ is not answering right now.");
+    expect(html).toContain(">Again</button>");
     expect(html).toContain('data-zerops-git-repository="appdev"');
   });
 });

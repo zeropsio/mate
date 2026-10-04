@@ -20,11 +20,13 @@ import { InventoryContext } from "./inventoryContext";
 import { sessionOfferViewer } from "./offerViewer";
 import { useZeropsSessionOptional } from "./sessionContext";
 
-export type ZeropsChangeOffers = ReturnType<typeof changeOffers>;
+export type ZeropsChangeOffers = ReturnType<typeof changeOffers> & {
+  readonly reason?: string;
+};
 
 /**
  * An application's offers by its id; `undefined` while HQ has not said where it places the
- * projects, or the projects are not listed yet — a rule over facts not held yet would only guess.
+ * projects. Missing project grants refuse visibly; held facts authorize while services load.
  */
 export type ZeropsChangeOffersOf = (appId: string) => ZeropsChangeOffers | undefined;
 
@@ -34,12 +36,16 @@ function useOfferAsker() {
   const inventory = useContext(InventoryContext);
   const user = session?.user;
   const organization = session?.activeOrganization ?? null;
-  const projects = inventory === null || inventory.isLoading ? undefined : inventory.projects;
+  const projects =
+    inventory === null || inventory.account?.kind === "withheld" ? undefined : inventory.projects;
   return useMemo(
     () =>
       projects === undefined
         ? undefined
-        : offerAsker(sessionOfferViewer(user, organization), projects),
+        : offerAsker(
+            sessionOfferViewer(user, organization),
+            projects.filter((project) => project.userRoles !== undefined),
+          ),
     [organization, projects, user],
   );
 }
@@ -47,12 +53,24 @@ function useOfferAsker() {
 export function useChangeOffers(): ZeropsChangeOffersOf {
   const placements = useAtomValue(hqPlacementsAtom);
   const asker = useOfferAsker();
+  const inventory = useContext(InventoryContext);
   return useCallback(
-    (appId) =>
-      asker === undefined || placements === null
-        ? undefined
-        : changeOffers(asker, placements, appId),
-    [asker, placements],
+    (appId) => {
+      if (asker === undefined || placements === null) return undefined;
+      const offers = changeOffers(asker, placements, appId);
+      // Held facts authorize each verb independently; missing project grants explain refusals.
+      const projectFactsKnown = [...placements].every(
+        ([projectId, placed]) =>
+          placed.appId !== appId ||
+          inventory?.projects.some(
+            (project) => project.id === projectId && project.userRoles !== undefined,
+          ),
+      );
+      return !projectFactsKnown && Object.values(offers).some((offered) => !offered)
+        ? { ...offers, reason: "Project access has not been verified." }
+        : offers;
+    },
+    [asker, inventory?.projects, placements],
   );
 }
 
@@ -77,16 +95,27 @@ export function useKeepDeployKeyOffer(): (projectId: string) => boolean | undefi
 export function useReleasePermission(): (appId: string) => ReleaseGate | undefined {
   const placements = useAtomValue(hqPlacementsAtom);
   const asker = useOfferAsker();
+  const inventory = useContext(InventoryContext);
   return useCallback(
     (appId) => {
       if (placements === null) return undefined;
       const decision = releasePermission(asker ?? null, placements, appId);
       if (decision === undefined || decision.allowed) return decision;
+      const production = [...placements].find(
+        ([, placement]) => placement.appId === appId && placement.kind === "production",
+      );
+      if (
+        production !== undefined &&
+        !inventory?.projects.some(
+          (project) => project.id === production[0] && project.userRoles !== undefined,
+        )
+      )
+        return { allowed: false, reason: "Production project access has not been verified." };
       return {
         allowed: false,
         reason: hqRefusalWords({ code: "forbidden", reason: decision.reason }),
       };
     },
-    [asker, placements],
+    [asker, inventory?.projects, placements],
   );
 }

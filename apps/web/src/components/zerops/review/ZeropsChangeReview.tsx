@@ -538,7 +538,11 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   return (
     <ZeropsReviewSurface
       back={props.back}
-      consequence={model.consequence}
+      consequence={
+        props.offers?.merge === false && props.offers.reason !== undefined
+          ? props.offers.reason
+          : model.consequence
+      }
       dismiss={over && !fromRelease ? "Close" : undefined}
       frame={props.frame}
       fix={

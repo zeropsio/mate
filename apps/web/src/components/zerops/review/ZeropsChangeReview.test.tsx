@@ -284,6 +284,20 @@ describe("ChangeReviewView: a change after its merge", () => {
 const footOf = (html: string) => html.slice(html.indexOf('<footer class="rv-foot">'));
 
 describe("ChangeReviewView: an open change", () => {
+  it("explains missing project access instead of silently removing its actions", () => {
+    const html = render(merged({ merged: false, state: "open" }), [changed("README.md")], {
+      offers: {
+        read: false,
+        comment: false,
+        merge: false,
+        close: false,
+        redeploy: false,
+        reason: "Project access has not been verified.",
+      },
+    });
+    expect(textOf(html)).toContain("Project access has not been verified.");
+  });
+
   const open = merged({ state: "open", merged: false, mergedAt: undefined });
   const files = [changed("src/mail.ts")];
 

@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { RepositorySource } from "@t3tools/shared/hqGit";
-import { ZeropsRepositorySource } from "./ZeropsRepositoryBrowser";
+import { ZeropsRepositorySource, ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
 
 const common = {
   revision: "a".repeat(40),
@@ -46,4 +46,25 @@ describe("repository source view", () => {
   it("names an earned empty tree", () => {
     expect(render({ ...common, kind: "tree", entries: [] })).toContain("No files here");
   });
+});
+
+vi.mock("~/zerops/useRepositorySource", () => ({
+  useRepositorySource: () => ({
+    source: { state: "unread", words: "Waiting for HQ…", alert: false, busy: false },
+    again: () => undefined,
+  }),
+}));
+it("names unverified repository access without offering an inert Read again", () => {
+  const html = renderToStaticMarkup(
+    <ZeropsRepositoryBrowser
+      appId="app"
+      repo="appdev"
+      allowed={undefined}
+      query={{ path: "", kind: "tree" }}
+      onNavigate={() => {}}
+      onBack={() => {}}
+    />,
+  );
+  expect(html).toContain("Your access to this repository has not been verified.");
+  expect(html).not.toContain("Read again");
 });
