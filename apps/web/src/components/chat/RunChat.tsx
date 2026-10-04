@@ -117,12 +117,13 @@ import { useCalmLine } from "./useCalmLine";
 import {
   SLOT_MAX_ROWS,
   slotClock,
-  slotHolds,
   slotHoldsIn,
   slotRunningPast,
   type LiveSlot as LiveSlotState,
 } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
+import { usePace } from "./usePace";
+import { slotMoves } from "./slotMoves.logic";
 import { stripShowsFiles } from "./runResult.logic";
 import {
   backgroundItemWord,
@@ -130,7 +131,9 @@ import {
   type BackgroundLineModel,
 } from "./backgroundLine.logic";
 import { useRunEffortWords } from "./runResultFacts";
-import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
+import { foldWork } from "./foldWork";
+import { FOLLOW_TAU_MS, ROOM_TAU_MS, approach } from "./runMotion.logic";
+import { easeRooms, noteScrollTop, type Rooms } from "./runRoom";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
@@ -3020,6 +3023,9 @@ export function RunLine({ status }: { readonly status: RunStatus }) {
   return <NowLine answering={false} now={null} outcome={null} status={status} />;
 }
 
+/** The boxes in a run's chat whose height eases as what they hold grows (`easeRooms`). */
+const EASED_BOXES = "[data-chat-bubble],[data-chat-calls]";
+
 const NO_KEYS: ReadonlyArray<string> = [];
 const NO_HOLDS: ReadonlySet<string> = new Set();
 
@@ -3027,6 +3033,8 @@ const NO_HOLDS: ReadonlySet<string> = new Set();
 interface Landing {
   /** Each line leaving the slot by its key, by where its row stood (NaN: it rode along unseen). */
   readonly from: ReadonlyMap<string, number>;
+  /** The lines leaving that stood in the slot: they join the history at once (`usePace`). */
+  readonly hosts: ReadonlySet<string>;
   /** Where the slot stood: what lands above it moves it, and it glides there. */
   readonly slot: number | null;
   /** How tall the card's row stood: a list that follows its end moves it a frame late. */
@@ -3038,6 +3046,8 @@ interface Landing {
    * stays keeps its place in the slot as a row above it leaves.
    */
   readonly staying: ReadonlyMap<string, number>;
+  /** How tall each leaving line's bubble stood in the slot: it grows from there in the history. */
+  readonly bubbles: ReadonlyMap<string, number>;
 }
 
 /** Where each of the chat's lines under `root` stands on screen, by its key. */
@@ -3061,6 +3071,19 @@ function rowTops(root: HTMLElement | null, from: number): ReadonlyMap<string, nu
     tops.set(row.dataset.runKey!, row.getBoundingClientRect().top - from);
   }
   return tops;
+}
+
+/** How tall the first bubble of each row under `root` stands, by the row's key. */
+function bubbleHeights(root: HTMLElement | null): ReadonlyMap<string, number> {
+  const heights = new Map<string, number>();
+  if (typeof root?.querySelectorAll !== "function") return heights;
+  for (const row of root.querySelectorAll<HTMLElement>("[data-chat-row][data-run-key]")) {
+    const bubble = row.matches("[data-chat-bubble]")
+      ? row
+      : row.querySelector<HTMLElement>("[data-chat-bubble]");
+    if (bubble !== null) heights.set(row.dataset.runKey!, bubble.getBoundingClientRect().height);
+  }
+  return heights;
 }
 
 /** The row drawn for the chat's line `key` under `root`, if one is. */
@@ -3310,6 +3333,31 @@ function LiveSlot({
     placeSlot(listRef.current);
     // Read when what it shows changed, never on every draw.
   }, [slot, live, items, said, lines.length]);
+  // Its room eases as rows come and go (`easeRooms`), uncovering a row that
+  // joins at its foot; nothing eases on a resync.
+  const syncingRef = useRef(ctx.syncing);
+  const slotRoomsRef = useRef<Rooms | null>(null);
+  useLayoutEffect(() => {
+    syncingRef.current = ctx.syncing;
+  }, [ctx.syncing]);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const slotBox = list?.parentElement;
+    if (list === null || slotBox === null || slotBox === undefined) return;
+    const rooms = easeRooms({
+      root: slotBox,
+      selector: EASED_BOXES,
+      eases: () => shownRef.current && !syncingRef.current,
+      rootClips: true,
+    });
+    slotRoomsRef.current = rooms;
+    return () => {
+      rooms.stop();
+      slotRoomsRef.current = null;
+    };
+  }, []);
+  // Every commit, before the list's row measures it in its own.
+  useLayoutEffect(() => slotRoomsRef.current?.flush());
   // A row opened or shut in place, or the page resized: the room it takes
   // changes with no change of what it shows.
   useEffect(() => {
@@ -3419,6 +3467,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const readingRef = useRef(false);
   // How the history's scroll keeps to its foot, for a line landing in it.
   const keepScrollRef = useRef<(() => void) | null>(null);
+  // How its boxes ease (`easeRooms`), for a line landing in it.
+  const historyRoomsRef = useRef<Rooms | null>(null);
   const { fold, foldNow, settling } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
@@ -3427,6 +3477,33 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     rootRef,
     aboveRef,
   });
+  // The card's own height eases (`easeRooms`) as its parts come and go — the
+  // history's scroll arriving with its first line, the slot giving way to the
+  // line, the live height let go — for a run watched live here; what changes
+  // inside the history and the slot is theirs to ease.
+  const watchedRef = useRef(false);
+  const cardEasesRef = useRef(false);
+  useLayoutEffect(() => {
+    if (row.live && !ctx.syncing) watchedRef.current = true;
+    cardEasesRef.current = watchedRef.current && !ctx.syncing;
+  });
+  const cardRoomsRef = useRef<Rooms | null>(null);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (root === null) return;
+    const rooms = easeRooms({
+      root,
+      selector: ":not(*)",
+      eases: () => cardEasesRef.current,
+      rootClips: true,
+      attributes: ["data-run-live"],
+    });
+    cardRoomsRef.current = rooms;
+    return () => {
+      rooms.stop();
+      cardRoomsRef.current = null;
+    };
+  }, []);
   // A run the person comes back to (D3), or one that just settled: its
   // worked line alone — the summary — and "Show work" opens the whole run
   // under it (K12).
@@ -3464,6 +3541,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     [row.items],
   );
   const slotRef = useRef<HTMLDivElement>(null);
+  // What goes live enters the slot one after another (`usePace`).
+  const liveKeys = useMemo(() => model.live.map((item) => item.key), [model.live]);
+  const liveHeld = usePace({ keys: liveKeys, flush: !slotted || ctx.syncing });
   // When the quiet began, from the data: the record's newest line, else the
   // run's start — a reload or a catch-up never restarts "Thinking".
   const quietFrom = useMemo(() => {
@@ -3475,20 +3555,14 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // before they move: the plop starts there, and the history glides from there.
   const [landing, setLanding] = useState<Landing | null>(null);
   const slot = useLiveSlot({
-    live: slotted ? model.live.map((item) => item.key) : NO_KEYS,
+    live: slotted ? liveKeys.filter((key) => !liveHeld.has(key)) : NO_KEYS,
     record: recordKeys,
     final: !slotted,
     syncing: ctx.syncing,
     quietFrom,
     onChange: (from, to, redrawn) => {
-      const after = slotHolds(to);
-      const before = slotHolds(from);
-      const leaving = [...before].filter((key) => !after.has(key));
       // What enters makes its room too: the history glides as the slot grows.
-      // Entering is against what the slot drew, not what it held: an item
-      // held behind "Thinking" (`pending`) enters on a settle all the same.
-      const drawn = new Set(from.entries.map((entry) => entry.key));
-      const entering = to.entries.some((entry) => !drawn.has(entry.key));
+      const { leaving, entering } = slotMoves(from, to);
       if (leaving.length === 0 && !entering) return;
       // Where things stood as last painted: a change heard right after a draw
       // that already moved them (a check that ended as it was due, drawn as
@@ -3501,12 +3575,16 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         const top = painted.slotRows.get(key);
         stood.set(key, top === undefined || !slotted ? Number.NaN : top + (painted.slot ?? 0));
       }
+      // What stood in the slot itself, not what rode along with it unseen.
+      const stoodInSlot = new Set(from.entries.map((entry) => entry.key));
       setLanding({
         from: stood,
+        hosts: new Set(leaving.filter((key) => stoodInSlot.has(key))),
         rows: slotted ? painted.rows : new Map(),
         slot: slotted ? painted.slot : null,
         card: painted.card,
         staying: slotted ? painted.slotRows : new Map(),
+        bubbles: slotted ? painted.slotBubbles : new Map(),
       });
     },
   });
@@ -3517,6 +3595,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       rows: lineTops(aboveRef.current),
       slot: slotTop,
       slotRows: rowTops(slotRef.current, slotTop ?? 0),
+      slotBubbles: bubbleHeights(slotRef.current),
       card: boxOf(cardRowOf(rootRef.current))?.height ?? null,
     };
   };
@@ -3556,6 +3635,15 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       const card = line.closest<HTMLElement>("[data-chat-calls]");
       const alone = card !== null && card.childElementCount === 1;
       plop(alone ? (card.closest<HTMLElement>("[data-chat-row]") ?? line) : line, from);
+      // Its bubble grows from the height it showed in the slot (a thought
+      // the slot showed four lines of, the history in full).
+      const stoodHeight = landing.bubbles.get(key);
+      const bubble = line.matches("[data-chat-bubble]")
+        ? line
+        : line.querySelector<HTMLElement>("[data-chat-bubble]");
+      if (stoodHeight !== undefined && bubble !== null) {
+        historyRoomsRef.current?.easeFrom(bubble, stoodHeight);
+      }
     }
     const element = slotRef.current;
     if (landing.slot === null || landing.card === null || element === null) return;
@@ -3584,6 +3672,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   useLayoutEffect(() => {
     paintedRef.current = slotted ? paintedNow() : null;
   });
+  // Every commit, before the list's row measures the card in its own.
+  useLayoutEffect(() => cardRoomsRef.current?.flush());
   const holds = slotted ? slotHoldsIn(slot, recordKeys) : NO_HOLDS;
   // A folded line whose call the slot still holds stands unfolded, that call
   // left out: it folds in once the call lands.
@@ -3607,7 +3697,17 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     if (from === null || feed === null) return;
     easeFeedHeight(feed, from);
   });
-  const lines = above || !folded ? chatLines(history, undone) : [];
+  // What joins the history enters one after another (`usePace`): a line
+  // landing from the slot at once, what rode along with it after.
+  const historyKeys = useMemo(() => history.map((item) => item.key), [history]);
+  const historyHeld = usePace({
+    keys: historyKeys,
+    landing: landing?.hosts ?? NO_HOLDS,
+    flush: !slotted || ctx.syncing,
+  });
+  const entered =
+    historyHeld.size === 0 ? history : history.filter((item) => !historyHeld.has(item.key));
+  const lines = above || !folded ? chatLines(entered, undone) : [];
   // The scroll mounts with its first line, so its box is there from its
   // first frame for what keeps it at its foot.
   const scroll =
@@ -3617,6 +3717,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         landing={landing?.from ?? null}
         lines={lines}
         keepRef={keepScrollRef}
+        roomsRef={historyRoomsRef}
+        eases={slotted && !ctx.syncing}
+        opensAtStart={!above}
         {...(above ? { readingRef } : {})}
       />
     );
@@ -3851,25 +3954,10 @@ function easeFeedHeight(feed: HTMLElement, from: number): void {
 }
 
 /**
- * How a settled run's work folds into its line: a whole scroll's height that
- * nobody asked to move, so longer than a toggle's and on the drawer's gentler
- * start — the strong ease-out threw a fifth of it in the first frame.
- */
-const SETTLE_FOLD_MS = 360;
-
-/**
- * Folds the work over a run's line shut: from its height, less `shift` — how
- * much higher the line stands without its hairline and room, which the fold
- * starts by keeping — to nothing, its newest lines the last to go, fading as
- * it closes; `done` once it is shut.
- *
- * In a conversation that follows its end, the line keeps its place. The list
- * moves its rows a frame after a row changes height, so the line rode up by
- * each frame's step and back down by the last one's (±45 px on a real run,
- * 2026-09-29). Each step is taken once the list has moved the rows for the
- * last one, and the card's row is carried as far as this step takes, for the
- * frame until the list moves it; whatever else moves the list — the answer
- * arriving as the run settles — is the list's to do.
+ * Folds the work over a run's line shut (`foldWork`): from its height, less
+ * `shift` — how much higher the line stands without its hairline and room,
+ * which the fold starts by keeping — to nothing, fading as it closes; `done`
+ * once it is shut.
  */
 function foldAway(above: HTMLElement, shift: number, done: () => void): () => void {
   const from = above.getBoundingClientRect().height + shift;
@@ -3877,33 +3965,7 @@ function foldAway(above: HTMLElement, shift: number, done: () => void): () => vo
     done();
     return () => undefined;
   }
-  const row = rowFollowingTheEnd(above);
-  return stepHeight({
-    element: above,
-    from,
-    to: 0,
-    duration: SETTLE_FOLD_MS,
-    ease: drawerEase,
-    // The settle's own rows (the answer done, the result) land in the list
-    // first: it lays those out at once, and would this fold's first steps too.
-    wait: row === null ? 0 : LIST_LAYS_OUT_FRAMES,
-    carried: row === null ? null : [{ row, direction: 1 }],
-    each: (shut) => {
-      above.style.opacity = String(Math.max(0, 1 - shut / 0.6));
-    },
-    done,
-  });
-}
-
-/**
- * The card row a fold takes from, in a conversation that follows its end
- * (`data-timeline-follows-end`); else null. Read from the timeline, not the
- * scroll: the answer arriving as the run settles puts the scroll off its end
- * until the list catches up.
- */
-function rowFollowingTheEnd(above: HTMLElement): HTMLElement | null {
-  const row = above.closest<HTMLElement>("[data-card-slice]");
-  return row?.closest("[data-timeline-follows-end]") ? row : null;
+  return foldWork({ above, from, done });
 }
 
 /** "Show work" on a folded run's line, "Hide work" once it is open: its chevron turns over. */
@@ -3915,6 +3977,9 @@ function WorkToggle({ open, onToggle }: { readonly open: boolean; readonly onTog
     </button>
   );
 }
+
+/** How long after the person's input a move of the run's scroll is still theirs. */
+const PERSON_INPUT_MS = 500;
 
 /** How long a scroll stands still before its move counts as ended, where the browser never says so. */
 const SCROLL_QUIET_MS = 150;
@@ -3936,6 +4001,9 @@ function RunScroll({
   readingRef,
   keepRef,
   landing = null,
+  eases = false,
+  opensAtStart = false,
+  roomsRef,
 }: {
   readonly label: string;
   readonly lines: ReadonlyArray<ChatLine>;
@@ -3945,6 +4013,16 @@ function RunScroll({
   readonly keepRef?: { current: (() => void) | null };
   /** The lines landing from the live slot this draw: they plop into place, never rise in. */
   readonly landing?: ReadonlyMap<string, number> | null;
+  /** Whether its room eases as lines join it, and it glides to its foot: a live run, watched. */
+  readonly eases?: boolean;
+  /**
+   * Whether it opens at its first line: a settled run's work opened by "Show
+   * work" reads from the start; a live one, or one watched to its end, opens
+   * at its foot.
+   */
+  readonly opensAtStart?: boolean;
+  /** Given how its boxes ease, for a line landing in it. */
+  readonly roomsRef?: { current: Rooms | null };
 }) {
   // Drawn once: from here on, what arrives arrives while the person watches.
   const shownRef = useRef(false);
@@ -3953,16 +4031,50 @@ function RunScroll({
   }, []);
   // Where the chat starts: its newest lines when it opens. What arrives after
   // only ever joins at the end, so the window grows and never slides.
-  const [from, setFrom] = useState(() => chatOpensAt(lines.length));
+  const [from, setFrom] = useState(() => (opensAtStart ? 0 : chatOpensAt(lines.length)));
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
+  const easesRef = useRef(eases);
+  useLayoutEffect(() => {
+    easesRef.current = eases;
+  }, [eases]);
+  // Its room easing to its lines (`easeRooms`): made before what keeps it at
+  // its foot, so that hears each change with the room already holding the
+  // height it showed.
+  const roomRef = useRef<Rooms | null>(null);
+  // When the person last gave it an input: what tells their move from its own motion's.
+  const personAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const heardPerson = () => {
+    personAtRef.current = performance.now();
+  };
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (element === null) return;
+    // It, its lines — so lines leaving or shrinking at its foot let it settle
+    // there gradually, never clamp it down at once — and each bubble and card
+    // of calls in it, as what they hold changes.
+    const rooms = easeRooms({
+      root: element,
+      selector: `[data-run-scroll] > ol, ${EASED_BOXES}`,
+      eases: () => easesRef.current && shownRef.current,
+    });
+    roomRef.current = rooms;
+    if (roomsRef !== undefined) roomsRef.current = rooms;
+    return () => {
+      rooms.stop();
+      roomRef.current = null;
+      if (roomsRef !== undefined) roomsRef.current = null;
+    };
+  }, [roomsRef]);
+  // Every commit, before the list's row measures it in its own.
+  useLayoutEffect(() => roomRef.current?.flush());
   // It follows its foot until the person moves it up or opens something in
   // it, and again once they move it down onto its foot or close what they
   // opened; where its top last stood tells their move from the page's. It
   // opens at its foot.
   const followRef = useRef<RunScrollFollow>({
-    follows: true,
-    stood: Number.POSITIVE_INFINITY,
+    follows: !opensAtStart,
+    stood: opensAtStart ? 0 : Number.POSITIVE_INFINITY,
     opened: NOTHING_OPENED,
     resumes: false,
     reach: null,
@@ -3976,27 +4088,110 @@ function RunScroll({
       scrollRef.current?.toggleAttribute("data-follows", follows);
       if (event.kind !== "set" && readingRef !== undefined) readingRef.current = !follows;
     };
+    /** Whether a box holding it eases this moment (`easeRooms`): its height is that ease's. */
+    const heldAbove = () =>
+      typeof scrollRef.current?.parentElement?.closest === "function" &&
+      scrollRef.current.parentElement.closest("[data-room-easing]") !== null;
     /** The page puts its top at `top`, and remembers where the browser took it. */
     const putAt = (element: HTMLElement, top: number) => {
       element.scrollTop = top;
+      noteScrollTop(element);
       heard({ kind: "set", top: element.scrollTop });
     };
     /**
+     * Where its foot will stand once its room has eased: a room still growing
+     * uncovers what joined, and the scroll stays.
+     */
+    const footOf = (position: RunScrollPosition) =>
+      Math.max(0, footTop(position) - Math.max(0, roomRef.current?.pending() ?? 0));
+    // The glide to the foot, while one runs: where it stands (the browser
+    // rounds what it is given), and the frame it waits for.
+    const gliding = { frame: 0, at: 0, last: 0 };
+    /**
+     * Glides it to its foot on the room's curve, retargeted each frame as the
+     * foot moves on; a move of the person's up stops it (`followAfter`).
+     */
+    const glide = () => {
+      const element = scrollRef.current;
+      if (element === null || gliding.frame !== 0) return;
+      // Drawn outside a page (a test's renderer), it stands there at once.
+      if (typeof requestAnimationFrame !== "function") {
+        putAt(element, footOf(positionOf(element)));
+        return;
+      }
+      gliding.at = element.scrollTop;
+      gliding.last = 0;
+      const tick = (now: number) => {
+        gliding.frame = 0;
+        const element = scrollRef.current;
+        if (element === null || !followRef.current.follows) return;
+        // Moved since by something else: it glides on from there.
+        if (Math.abs(element.scrollTop - gliding.at) > 2) gliding.at = element.scrollTop;
+        const target = footOf(positionOf(element));
+        gliding.at = approach(
+          gliding.at,
+          target,
+          gliding.last === 0 ? 1000 / 60 : now - gliding.last,
+          FOLLOW_TAU_MS,
+        );
+        gliding.last = now;
+        putAt(element, gliding.at);
+        markEdges(element);
+        if (gliding.at !== target) gliding.frame = requestAnimationFrame(tick);
+      };
+      gliding.frame = requestAnimationFrame(tick);
+    };
+    /**
+     * Where it stands, read: while its room eases or it glides, a move with
+     * no input of the person's is that motion's — the browser clamping it as
+     * its box grows — and never their move up.
+     */
+    const read = (position: RunScrollPosition) => {
+      const moving = gliding.frame !== 0 || (roomRef.current?.easing() ?? false) || heldAbove();
+      if (moving && performance.now() - personAtRef.current > PERSON_INPUT_MS) {
+        heard({ kind: "set", top: position.scrollTop });
+      } else {
+        heard({ kind: "scrolled", position });
+      }
+      if (scrollRef.current !== null) noteScrollTop(scrollRef.current);
+    };
+    // How tall its lines stood at the last keep: lines joining glide it on,
+    // its own box changing keeps its foot where it is.
+    const laid: { height: number | null; again: number } = { height: null, again: 0 };
+    /**
      * Read where it stands — a move up not heard yet (a scroll event comes a
-     * frame late) is the person's — and, while it follows, put it at its foot.
+     * frame late) is the person's — and, while it follows, keep it at its
+     * foot: gliding there as lines join it, at once as its box changes.
      */
     const keep = () => {
       const element = scrollRef.current;
       if (element === null) return;
       const position = positionOf(element);
-      heard({ kind: "scrolled", position });
-      if (followRef.current.follows) putAt(element, footTop(position));
+      read(position);
+      const grew = laid.height !== null && position.scrollHeight > laid.height + 0.5;
+      laid.height = position.scrollHeight;
+      // The card around it easing taller gives it the room it needs: it
+      // stays, and keeps to its foot again once that ease is over.
+      if (followRef.current.follows && heldAbove()) {
+        if (laid.again === 0) {
+          laid.again = requestAnimationFrame(() => {
+            laid.again = 0;
+            keep();
+          });
+        }
+      } else if (followRef.current.follows) {
+        const foot = footOf(position);
+        if (grew && foot > element.scrollTop + 0.5 && easesRef.current) glide();
+        else if (gliding.frame === 0) putAt(element, foot);
+      }
       markEdges(element);
     };
     return {
       heard,
+      read,
       putAt,
       keep,
+      glide,
       hold: (key: string, opens: boolean) => {
         const element = scrollRef.current;
         // A move of theirs not heard yet is theirs, before the press counts.
@@ -4032,11 +4227,12 @@ function RunScroll({
     keepFromFootRef.current = position.scrollHeight - position.scrollTop;
     setFrom(earlierShown(from).next);
   };
-  // It opens at its foot, before the first paint.
+  // It opens at its foot — or its start — before the first paint.
+  const opensAtStartRef = useRef(opensAtStart);
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (element === null) return;
-    follow.putAt(element, footTop(positionOf(element)));
+    follow.putAt(element, opensAtStartRef.current ? 0 : footTop(positionOf(element)));
     markEdges(element);
   }, [follow]);
   // Earlier lines drawn above the ones in view keep those where they stood;
@@ -4096,18 +4292,22 @@ function RunScroll({
           onScroll={(event) => {
             const position = positionOf(event.currentTarget);
             const followed = followRef.current.follows;
-            follow.heard({ kind: "scrolled", position });
+            follow.read(position);
             const element = scrollRef.current;
             if (element !== null) {
-              // Brought back to the foot it set out for, it catches up to
+              // Brought back to the foot it set out for, it glides on to
               // where the foot moved on since.
-              if (!followed && followRef.current.follows) follow.putAt(element, footTop(position));
+              if (!followed && followRef.current.follows) follow.glide();
               markEdges(element);
             }
             drawEarlier(position);
             endsOnQuiet();
           }}
           onScrollEnd={() => follow.heard({ kind: "ended" })}
+          onKeyDown={heardPerson}
+          onPointerDown={heardPerson}
+          onTouchMove={heardPerson}
+          onWheel={heardPerson}
           role="region"
           tabIndex={0}
         >
@@ -4257,23 +4457,8 @@ const PLOP_MS = 340;
 const PLOP_SETTLE_PX = 1.5;
 /** The settle starts this far into the plop, and swings once past the place and back. */
 const PLOP_SETTLE_FROM = 0.42;
-/** How many frames the plop is drawn in: WAAPI eases linearly between them. */
-const PLOP_FRAMES = 24;
-
-/** The strong ease-out, `cubic-bezier(0.23, 1, 0.32, 1)`, at progress `t`. */
-function strongEaseOut(t: number): number {
-  const [x1, y1, x2, y2] = [0.23, 1, 0.32, 1];
-  const at = (a: number, b: number, u: number) =>
-    3 * a * u * (1 - u) * (1 - u) + 3 * b * u * u * (1 - u) + u * u * u;
-  let low = 0;
-  let high = 1;
-  for (let step = 0; step < 24; step += 1) {
-    const middle = (low + high) / 2;
-    if (at(x1, x2, middle) < t) low = middle;
-    else high = middle;
-  }
-  return at(y1, y2, (low + high) / 2);
-}
+/** The plop is drawn a frame at a time: WAAPI goes linearly between them. */
+const PLOP_FRAME_MS = 1000 / 60;
 
 /**
  * A row that left the live slot lands where the history drew it: it starts
@@ -4299,17 +4484,27 @@ function plop(row: HTMLElement, from: number) {
   }
   // Past its place on the side it travels towards, and back.
   const past = travel > 0 ? -PLOP_SETTLE_PX : PLOP_SETTLE_PX;
-  const frames = Array.from({ length: PLOP_FRAMES + 1 }, (_, frame) => {
-    const progress = frame / PLOP_FRAMES;
+  // Its way, a frame at a time, on the card's own curve (`approach`): a long
+  // travel goes at the card's top speed, never a 40 px frame.
+  const way = [travel];
+  while (way.at(-1) !== 0 && way.length < 120) {
+    way.push(approach(way.at(-1)!, 0, PLOP_FRAME_MS, ROOM_TAU_MS));
+  }
+  const steps = Math.max(1, way.length - 1);
+  const frames = way.map((at, frame) => {
+    const progress = frame / steps;
     const settle =
       progress > PLOP_SETTLE_FROM
         ? Math.sin((Math.PI * (progress - PLOP_SETTLE_FROM)) / (1 - PLOP_SETTLE_FROM))
         : 0;
-    return { translate: `0 ${travel * (1 - strongEaseOut(progress)) + past * settle}px` };
+    return { translate: `0 ${at + past * settle}px` };
   });
   // In effect from this frame: a new animation waits a frame for its start
   // time, and the row would stand a frame at its place before travelling.
-  row.animate(frames, { duration: PLOP_MS, easing: "linear" }).currentTime = 0;
+  row.animate(frames, {
+    duration: Math.max(PLOP_MS, steps * PLOP_FRAME_MS),
+    easing: "linear",
+  }).currentTime = 0;
   const fade = mark?.animate([{ opacity: 0 }, { opacity: 1 }], {
     duration: 240,
     delay: 60,

@@ -1617,6 +1617,17 @@ describe("RunChat, as the person uses it", () => {
       expect(button(renderer, "Show work").props["aria-expanded"]).toBe(false);
     });
 
+    // Bodhi's audit, 2026-10-04: a settled card opened at its end.
+    it("opens a long run's work at its first line with Show work", () => {
+      const steps = Array.from({ length: 60 }, (_, index) =>
+        step(command(`long${index}`, `echo line-${index}-done`)),
+      );
+      const renderer = mount(settledRun({ items: steps }));
+      act(() => button(renderer, "Show work").props.onClick());
+      expect(text(renderer)).toContain("echo line-0-done");
+      expect(text(renderer)).toContain("echo line-59-done");
+    });
+
     // Bodhi: an opened card drew each picture in the step that looked at it
     // and again in the result's strip right under it.
     it.each([

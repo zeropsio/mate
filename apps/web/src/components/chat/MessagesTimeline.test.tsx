@@ -35,16 +35,6 @@ vi.mock("@legendapp/list/react", async () => {
     };
     contentInsetEndAdjustment?: number;
     className?: string;
-    maintainScrollAtEnd?:
-      | boolean
-      | {
-          animated?: boolean;
-          on?: {
-            dataChange?: boolean;
-            itemLayout?: boolean;
-            layout?: boolean;
-          };
-        };
     maintainVisibleContentPosition?:
       | boolean
       | {
@@ -66,27 +56,6 @@ vi.mock("@legendapp/list/react", async () => {
         data-anchor-on-ready={Boolean(props.anchoredEndSpace?.onReady)}
         data-content-inset-end={props.contentInsetEndAdjustment}
         data-class-name={props.className}
-        data-maintain-scroll-at-end={props.maintainScrollAtEnd ? "enabled" : undefined}
-        data-maintain-scroll-at-end-animated={
-          typeof props.maintainScrollAtEnd === "object"
-            ? props.maintainScrollAtEnd.animated
-            : undefined
-        }
-        data-maintain-scroll-at-end-data-change={
-          typeof props.maintainScrollAtEnd === "object"
-            ? props.maintainScrollAtEnd.on?.dataChange
-            : undefined
-        }
-        data-maintain-scroll-at-end-item-layout={
-          typeof props.maintainScrollAtEnd === "object"
-            ? props.maintainScrollAtEnd.on?.itemLayout
-            : undefined
-        }
-        data-maintain-scroll-at-end-layout={
-          typeof props.maintainScrollAtEnd === "object"
-            ? props.maintainScrollAtEnd.on?.layout
-            : undefined
-        }
         data-maintain-visible-content-position={
           typeof props.maintainVisibleContentPosition === "object"
             ? "object"
@@ -507,7 +476,7 @@ describe("MessagesTimeline", () => {
     expect(markup).not.toContain("data-anchor-max-size=");
     expect(markup).toContain('data-content-inset-end="144"');
     expect(markup).toContain("[overflow-anchor:none]");
-    expect(markup).not.toContain('data-maintain-scroll-at-end="enabled"');
+    expect(markup).not.toContain('data-timeline-follows-end=""');
     expect(markup).toContain('data-maintain-visible-content-position="object"');
     expect(markup).toContain('data-maintain-visible-content-position-data="true"');
     expect(markup).toContain('data-maintain-visible-content-position-size="true"');
@@ -539,7 +508,7 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).not.toContain("data-anchor-index=");
-    expect(markup).toContain('data-maintain-scroll-at-end="enabled"');
+    expect(markup).toContain('data-timeline-follows-end=""');
     expect(onAnchorReady).not.toHaveBeenCalled();
   });
 
@@ -583,7 +552,7 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain('data-anchor-index="1"');
-    expect(markup).not.toContain('data-maintain-scroll-at-end="enabled"');
+    expect(markup).not.toContain('data-timeline-follows-end=""');
   });
 
   it("hands end-following back to the list once the send anchor is released", () => {
@@ -599,7 +568,7 @@ describe("MessagesTimeline", () => {
     const timelineEntries = [firstEntry, secondEntry];
 
     // While the send anchor holds the end space open, ChatView owns streaming
-    // scrolls and LegendList must not re-pin behind it.
+    // scrolls and the timeline must not re-pin behind it.
     expect(
       renderToStaticMarkup(
         <MessagesTimeline
@@ -608,7 +577,7 @@ describe("MessagesTimeline", () => {
           timelineEntries={timelineEntries}
         />,
       ),
-    ).not.toContain('data-maintain-scroll-at-end="enabled"');
+    ).not.toContain('data-timeline-follows-end=""');
 
     // Dropping the anchor is what actually gives end-following back, so
     // returning to the live edge has to release it — re-enabling live follow
@@ -621,7 +590,7 @@ describe("MessagesTimeline", () => {
           timelineEntries={timelineEntries}
         />,
       ),
-    ).toContain('data-maintain-scroll-at-end="enabled"');
+    ).toContain('data-timeline-follows-end=""');
 
     // Reading history still wins over both.
     expect(
@@ -633,7 +602,7 @@ describe("MessagesTimeline", () => {
           timelineEntries={timelineEntries}
         />,
       ),
-    ).not.toContain('data-maintain-scroll-at-end="enabled"');
+    ).not.toContain('data-timeline-follows-end=""');
   });
 
   it("follows a row easing taller on the next frame, and only while following", async () => {
@@ -815,11 +784,7 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain("Show full message");
-    expect(markup).toContain('data-maintain-scroll-at-end="enabled"');
-    expect(markup).toContain('data-maintain-scroll-at-end-animated="false"');
-    expect(markup).toContain('data-maintain-scroll-at-end-data-change="true"');
-    expect(markup).toContain('data-maintain-scroll-at-end-item-layout="true"');
-    expect(markup).toContain('data-maintain-scroll-at-end-layout="true"');
+    expect(markup).toContain('data-timeline-follows-end=""');
     expect(markup).toContain('data-user-message-collapsed="true"');
     expect(markup).toContain('data-user-message-fade="true"');
     expect(markup).toContain('data-user-message-footer="true"');

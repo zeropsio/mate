@@ -44,6 +44,10 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { createEndFollow, type EndFollow } from "./timelineEndFollow";
+import { revealBy } from "./timelineReveal.logic";
+import { usePace } from "./usePace";
+import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { FileDiff } from "@pierre/diffs/react";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
@@ -252,15 +256,9 @@ function TimelineLoadEarlierHeader({
   );
 }
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
+/** How long after a person's click what they opened is brought into view, while it eases open. */
+const REVEAL_FOR_MS = 700;
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
-const TIMELINE_MAINTAIN_SCROLL_AT_END = {
-  animated: false,
-  on: {
-    dataChange: true,
-    itemLayout: true,
-    layout: true,
-  },
-} as const;
 /**
  * How far from the end growth at the end is still followed, in viewports.
  * Following is ours to switch off — every gesture that moves the viewport
@@ -269,6 +267,11 @@ const TIMELINE_MAINTAIN_SCROLL_AT_END = {
  * pixels in a few frames, and LegendList's own tenth of a viewport lost it.
  */
 const TIMELINE_FOLLOW_THRESHOLD = 1;
+/** The rows a settle brings that enter one after another: the Mate's words and its background work. */
+function pacedRow(row: MessagesTimelineRow): boolean {
+  if (row.kind === "message") return row.message.role === "assistant";
+  return row.kind === "after-work" || row.kind === "background";
+}
 /** An input a person gave the list, before it moved it. */
 export type TimelinePersonInput =
   | { readonly kind: "wheel" | "key"; readonly direction: "up" | "down" }
@@ -433,6 +436,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const restoringReadingPosition = !positionRestored;
   const [minimapStripMap] = useState(() => new Map<string, HTMLSpanElement>());
   const endRepinFrameRef = useRef<number | null>(null);
+
   const previousContentInsetEndAdjustmentRef = useRef(contentInsetEndAdjustment);
 
   useLayoutEffect(() => {
@@ -562,7 +566,26 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       provider,
     ],
   );
-  const rows = useStableRows(rawRows);
+  const stableRows = useStableRows(rawRows);
+  // What a settle brings at once — the answer, the background card, a
+  // background line — enters one after another (`usePace`); a card's own
+  // slices and the person's words enter as they come.
+  const pacedRowIds = useMemo(
+    () => stableRows.flatMap((row) => (pacedRow(row) ? [row.id] : [])),
+    [stableRows],
+  );
+  // Out of sight (a kept list), nobody watches: they are simply there.
+  const rowsHeld = usePace({
+    keys: pacedRowIds,
+    flush: syncing || restoringReadingPosition || !(kept?.shown ?? true),
+  });
+  const rowsHeldKey = [...rowsHeld].join("\n");
+  // Read by what they are: the list's data changes only when they do.
+  const rows = useMemo(() => {
+    if (rowsHeldKey === "") return stableRows;
+    const held = new Set(rowsHeldKey.split("\n"));
+    return stableRows.filter((row) => !held.has(row.id));
+  }, [stableRows, rowsHeldKey]);
   // A crewmate's conversation (`CrewTimelineContext`, given for a crew thread
   // only) is empty while it holds nothing but seams.
   const crew = use(CrewTimelineContext);
@@ -691,6 +714,39 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   useLayoutEffect(() => {
     followingEndRef.current = followingEnd;
   }, [followingEnd]);
+  // What keeps the list at its end while it follows (`createEndFollow`): at
+  // once for growth that comes a few pixels a frame, by a glide for a step.
+  // The list's own keeping is off: it jumps.
+  const endFollowRef = useRef<EndFollow | null>(null);
+  useEffect(() => {
+    const endFollow = createEndFollow({
+      viewport: () => listRef.current?.getScrollableNode() ?? null,
+      // Within a viewport of its end, as the list reads it: a place put back
+      // further up is the reader's, however follow stands.
+      follows: () =>
+        followingEndRef.current &&
+        listRef.current?.getState?.().isWithinMaintainScrollAtEndThreshold !== false,
+    });
+    endFollowRef.current = endFollow;
+    return () => {
+      endFollow.stop();
+      endFollowRef.current = null;
+    };
+  }, [listRef]);
+  const followEnd = useCallback(() => endFollowRef.current?.follow(), []);
+  // Rows arriving, and the viewport resizing, move the end too.
+  useLayoutEffect(() => {
+    if (!followingEnd || !listPlaced || rows.length === 0) return;
+    const frame = requestAnimationFrame(followEnd);
+    return () => cancelAnimationFrame(frame);
+  }, [followEnd, followingEnd, listPlaced, rows]);
+  useEffect(() => {
+    const viewport = timelineViewportElement;
+    if (viewport === null || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(followEnd);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [followEnd, timelineViewportElement]);
   // LegendList re-pins the end itself only for a measurement that moved a row
   // by more than 5 px, so a row easing taller is followed here too — on the
   // next frame, as LegendList does: the scroll range takes the growth once the
@@ -699,7 +755,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     ({ previous, size }: { readonly previous: number; readonly size: number }) => {
       const list = listRef.current;
       if (
-        endRepinFrameRef.current !== null ||
         list === null ||
         !shouldRepinTimelineEndAfterRowResize({
           followingEnd: followingEndRef.current,
@@ -710,15 +765,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       ) {
         return;
       }
+      // In the frame the row grew, once the list has drawn its new size (its
+      // render runs in a microtask queued before this one), so nothing under
+      // the reader moves for a frame; and again on the next frame, for a
+      // render the list put off.
+      queueMicrotask(followEnd);
+      if (endRepinFrameRef.current !== null) return;
       endRepinFrameRef.current = requestAnimationFrame(() => {
         endRepinFrameRef.current = null;
-        const viewport = listRef.current?.getScrollableNode();
-        // A gesture since the growth handed the viewport to the person.
-        if (!followingEndRef.current || !viewport) return;
-        viewport.scrollTop = viewport.scrollHeight - viewport.clientHeight;
+        followEnd();
       });
     },
-    [listRef],
+    [followEnd, listRef],
   );
 
   // Where the person is, kept as they move, by row: the row at the reading
@@ -873,6 +931,83 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       view.removeEventListener("pointercancel", onPointerUp);
     };
   }, [listRef, notePersonSession, timelineViewportElement]);
+
+  // What a person opens comes into view (`revealBy`): for a moment after
+  // their click, while it eases open, the list glides by as much as shows
+  // its foot over the composer, never its opener off the top; a scroll of
+  // theirs ends it.
+  const insetEndRef = useRef(contentInsetEndAdjustment);
+  useLayoutEffect(() => {
+    insetEndRef.current = contentInsetEndAdjustment;
+  }, [contentInsetEndAdjustment]);
+  useEffect(() => {
+    const wrapper = timelineViewportElement;
+    if (!wrapper || typeof requestAnimationFrame !== "function") return;
+    let frame = 0;
+    let until = 0;
+    let last = 0;
+    let opener: HTMLElement | null = null;
+    const stop = () => {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      opener = null;
+    };
+    const regionOf = (button: HTMLElement): HTMLElement | null => {
+      const id = button.getAttribute("aria-controls");
+      const controlled = id === null ? null : button.ownerDocument.getElementById(id);
+      return (
+        controlled ??
+        button.closest<HTMLElement>("[data-chat-row],[data-background-line],[data-timeline-row-id]")
+      );
+    };
+    const step = (now: number) => {
+      frame = 0;
+      const viewport = listRef.current?.getScrollableNode();
+      if (opener === null || !viewport || !opener.isConnected || now > until) {
+        stop();
+        return;
+      }
+      frame = requestAnimationFrame(step);
+      if (opener.getAttribute("aria-expanded") !== "true") return;
+      const region = regionOf(opener);
+      if (region === null) return;
+      const box = viewport.getBoundingClientRect();
+      // Inside a run's own scroll, what shows of it ends at that scroll's foot.
+      const inner = region.closest<HTMLElement>("[data-run-scroll]");
+      const bottom = Math.min(
+        region.getBoundingClientRect().bottom,
+        inner?.getBoundingClientRect().bottom ?? Number.POSITIVE_INFINITY,
+      );
+      const by = revealBy({
+        openerTop: opener.getBoundingClientRect().top,
+        regionBottom: bottom,
+        view: { top: box.top, bottom: box.bottom - insetEndRef.current },
+      });
+      const dt = last === 0 ? 1000 / 60 : now - last;
+      last = now;
+      if (by > 0.5) viewport.scrollTop += approach(0, by, dt, FOLLOW_TAU_MS);
+    };
+    const onClick = (event: globalThis.MouseEvent) => {
+      const button =
+        event.target instanceof Element
+          ? event.target.closest<HTMLElement>("[aria-expanded]")
+          : null;
+      if (button === null || button.getAttribute("aria-expanded") === "true") return;
+      opener = button;
+      until = performance.now() + REVEAL_FOR_MS;
+      last = 0;
+      if (frame === 0) frame = requestAnimationFrame(step);
+    };
+    wrapper.addEventListener("click", onClick, { capture: true });
+    wrapper.addEventListener("wheel", stop, { passive: true });
+    wrapper.addEventListener("touchmove", stop, { passive: true });
+    return () => {
+      stop();
+      wrapper.removeEventListener("click", onClick, { capture: true });
+      wrapper.removeEventListener("wheel", stop);
+      wrapper.removeEventListener("touchmove", stop);
+    };
+  }, [listRef, timelineViewportElement]);
 
   // Where the list stood at the last read: what tells which way it moved since.
   const lastReadingRef = useRef<TimelineScrollReading | null>(null);
@@ -1338,6 +1473,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             // Whether the list follows its end: a run's fold then keeps its
             // line in place while the list catches up (`foldAway`).
             data-timeline-follows-end={followingEnd ? "" : undefined}
+            // Rows waiting their turn to enter (`usePace`): a run's fold waits for them.
+            data-timeline-arriving={rowsHeldKey === "" ? undefined : ""}
             data-timeline-placing={listPlaced ? undefined : ""}
             // Handed over from its Mate's own view, the rows take the place of
             // its Mate at work as they stand, with no fade.
@@ -1358,7 +1495,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               // Off, no band: an end scroll LegendList queued before the person
               // left is dropped once their scroll lands.
               maintainScrollAtEndThreshold={followingEnd ? TIMELINE_FOLLOW_THRESHOLD : 0}
-              maintainScrollAtEnd={followingEnd ? TIMELINE_MAINTAIN_SCROLL_AT_END : false}
+              // The end is kept here (`createEndFollow`), never by the list: its keeping jumps.
+              maintainScrollAtEnd={false}
               onItemSizeChanged={onItemSizeChanged}
               maintainVisibleContentPosition={
                 restoringReadingPosition ? false : MAINTAIN_VISIBLE_CONTENT_POSITION
