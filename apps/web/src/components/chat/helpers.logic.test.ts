@@ -87,9 +87,15 @@ describe("helperStepActivities", () => {
   }> = [
     { name: "its own calls", rows: [call("tool.started", "c1", 1, mine)], ids: ["c1"] },
     {
-      name: "a call under its launch before its id is known",
-      rows: [call("tool.started", "c1", 1, { parentToolUseId: "toolu-a" })],
+      name: "a call tagged with its launch before its helper is known by its task",
+      rows: [call("tool.started", "c1", 1, { agentId: "toolu-a", parentToolUseId: "toolu-a" })],
       ids: ["c1"],
+    },
+    {
+      // An untagged row is drawn as the Mate's: never drawn twice.
+      name: "never an untagged call, even under its launch",
+      rows: [call("tool.started", "c1", 1, { parentToolUseId: "toolu-a" })],
+      ids: [],
     },
     {
       name: "never another helper's or the Mate's",
@@ -235,12 +241,28 @@ describe("helperMap", () => {
     ]);
   });
 
-  it("cuts a loop where it closes", () => {
+  it("cuts a loop where it closes, every helper in it still shown", () => {
     const rows = helperMap([
       helper({ id: "x", spawnedBy: "y" }),
       helper({ id: "y", spawnedBy: "x" }),
+      helper({ id: "z", spawnedBy: "y" }),
     ]);
-    expect(rows.length).toBeLessThanOrEqual(2);
+    expect(rows.map((row) => [row.helper.id, row.depth])).toEqual([
+      ["x", 0],
+      ["y", 1],
+      ["z", 2],
+    ]);
+  });
+
+  it("finds a parent named by its launch, before the server knew its task", () => {
+    const rows = helperMap([
+      helper({ id: "a", toolUseId: "toolu-a" }),
+      helper({ id: "a1", toolUseId: "toolu-a1", spawnedBy: "toolu-a" }),
+    ]);
+    expect(rows.map((row) => [row.helper.id, row.depth])).toEqual([
+      ["a", 0],
+      ["a1", 1],
+    ]);
   });
 });
 

@@ -979,12 +979,13 @@ describe("a helper's own work", () => {
       expect: ([agent]) => expect(agent?.liveCall).toBeNull(),
     },
     {
-      name: "a call under its launch, before its helper is known by id, is still its own",
+      name: "a call tagged with its launch, before its helper is known by its task, is its own",
       rows: () => [
         started("task-1"),
         activity("tool.started", {
           itemType: "command_execution",
           toolCallId: "call-1",
+          agentId: "toolu-task-1",
           parentToolUseId: "toolu-task-1",
         }),
       ],

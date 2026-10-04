@@ -669,10 +669,11 @@ export function foldSubagentActivities(
       case "tool.started":
       case "tool.updated":
       case "tool.completed": {
-        // A helper's own call (`agentId`, or under its launch while its id is
-        // not known yet): the open one is what it is doing now.
+        // A helper's own call, tagged with its task — or its launch, while the
+        // server did not know its task yet: the open one is what it does now.
+        const tag = asString(payload.agentId);
         const ownerId =
-          asString(payload.agentId) ?? helperOfLaunch(agents, asString(payload.parentToolUseId));
+          tag === undefined ? undefined : agents.has(tag) ? tag : helperOfLaunch(agents, tag);
         const agent = ownerId === undefined ? undefined : agents.get(ownerId);
         const toolCallId = asString(payload.toolCallId);
         if (!agent || !toolCallId) break;
