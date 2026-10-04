@@ -38,7 +38,7 @@ import {
   productionMark,
   projectRowLine,
   risenFirst,
-  rowRises,
+  rowRise,
   TOOL_LABEL,
   type ProjectRowLine,
 } from "./projectsView.logic";
@@ -157,6 +157,13 @@ function RowLine({ line }: { readonly line: ProjectRowLine }) {
             <span className="shrink-0 text-xs text-muted-foreground/80">{line.detail}</span>
           )}
           <Age at={line.at} />
+        </span>
+      );
+    case "unread":
+      return (
+        <span className={shell} data-zerops-row-line={line.kind}>
+          <HungDot tone="off" />
+          <span className="min-w-0 text-muted-foreground">{line.text}</span>
         </span>
       );
     case "first-task":
@@ -332,13 +339,9 @@ export function ProjectList<T>({
       lastMerged: entry.lastMerged,
       activities: entry.activities,
       settled: !entry.awaiting && !entry.changesAwaiting,
+      changesFailed: entry.changesFailed,
     });
-    return {
-      entry,
-      line,
-      rises: rowRises(line, lastRowRisen(entry.group.groupId)),
-      known: line.kind !== "pending",
-    };
+    return { entry, line, ...rowRise(line, lastRowRisen(entry.group.groupId), entry.matesKnown) };
   });
   useRememberRisenRows(
     rows.map((row) => ({ groupId: row.entry.group.groupId, rises: row.rises, known: row.known })),

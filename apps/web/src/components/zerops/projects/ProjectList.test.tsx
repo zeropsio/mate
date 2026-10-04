@@ -138,6 +138,14 @@ describe("a project's row", () => {
     expect(row).toContain('data-test-verb="fix-mate"');
   });
 
+  it("says plainly that Gitea did not answer, offering nothing", () => {
+    const failed = { ...MERGING, changesFailed: true };
+    const row = section(render({ groups: [failed] }), 'data-zerops-group="aaa"');
+    expect(row).toContain("Gitea didn’t answer");
+    expect(row).not.toContain("waits for your merge");
+    expect(row).not.toContain("data-test-verb=");
+  });
+
   it("says what a working Mate is on", () => {
     const working = {
       ...quiet("ddd"),

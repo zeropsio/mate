@@ -162,6 +162,8 @@ function entryOf(
       ...over,
     }),
     activities: [],
+    matesKnown: true,
+    changesFailed: false,
     awaiting: !read,
     changesAwaiting: !read,
     mates: new Map(mates.map((mate) => [mate.project.id, mate])),

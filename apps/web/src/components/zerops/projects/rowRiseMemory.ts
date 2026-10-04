@@ -1,6 +1,6 @@
 /**
  * Which project rows were last drawn risen — needing the person, at the list's top — so a row
- * whose reads are out on a reload stays where it was drawn (`rowRises`) instead of rising a few
+ * whose reads are out on a reload stays where it was drawn (`rowRise`) instead of rising a few
  * seconds later. Kept per account in this browser, and forgotten when the account closes.
  */
 import { useEffect } from "react";
