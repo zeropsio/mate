@@ -61,7 +61,7 @@ function ZeropsHandoverCallback() {
   const started = useRef(false);
 
   useEffect(() => {
-    // Strict mode mounts twice; a personal token must still only be adopted
+    // Strict mode mounts twice; a handed-over token must still only be adopted
     // once during this callback.
     if (started.current) return;
     started.current = true;

@@ -75,12 +75,12 @@ export interface ZeropsSessionValue {
   readonly selectOrganization: (membershipId: string) => Promise<void>;
   readonly signIn: (email: string, password: string) => Promise<void>;
   /**
-   * Adopts a revocable personal token handed back by `app.zerops.io` after the
-   * user signed in there. It is proven before persistence, so an invalid token
+   * Adopts the bearer the sign-in hand-over delivered after the user signed in
+   * on the Zerops app. It is proven before persistence, so an invalid token
    * cannot leave this client looking signed in.
    */
   readonly adoptHandover: (input: {
-    /** A personal access token minted for this client by app.zerops.io. */
+    /** The session access token (or, TRANSITION, personal token) handed over. */
     readonly token: string;
     /** True when the account just claimed a pool project, so the picker is skipped. */
     readonly zcpClaimed: boolean;
@@ -336,7 +336,7 @@ export function ZeropsSessionProvider({
       updateVerifiedMemberships,
       verifyAgain: () => driver.send({ type: "VERIFY_AGAIN" }),
       adoptHandover: async ({ token, zcpClaimed }) => {
-        const session = await client.adoptPersonalToken(token);
+        const session = await client.adoptSession({ accessToken: token });
         const adopted = await client.fetchUser();
         driver.signedIn(adopted);
         if (zcpClaimed) {
