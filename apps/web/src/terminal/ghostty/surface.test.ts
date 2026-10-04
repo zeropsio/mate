@@ -29,6 +29,7 @@ import {
   terminalWheelArrowData,
   terminalWheelDeltaRows,
   GhosttyTerminalSurface,
+  TERMINAL_CONTENT_PADDING,
   type GhosttyTerminalSurfaceOptions,
 } from "./surface";
 
@@ -167,11 +168,12 @@ describe("GhosttyTerminalSurface visibility", () => {
       resize() {
         for (const callback of resizeCallbacks) callback();
       },
-      pointer(type: string, clientX: number, buttons: number, shiftKey = false, button = 0) {
+      /** `gridX` is measured from the grid's left edge, inside the content padding. */
+      pointer(type: string, gridX: number, buttons: number, shiftKey = false, button = 0) {
         canvas.dispatchEvent(
           Object.assign(new Event(type, { cancelable: true }), {
-            clientX,
-            clientY: 5,
+            clientX: TERMINAL_CONTENT_PADDING + gridX,
+            clientY: TERMINAL_CONTENT_PADDING + 1,
             pointerId: 1,
             button,
             buttons,
@@ -243,7 +245,10 @@ describe("GhosttyTerminalSurface visibility", () => {
     expect(harness.snapshot).toHaveBeenCalledTimes(1);
     expect(harness.renderedSnapshot).toMatchObject({ cursorX: 10, cursorY: 0 });
     expect(harness.renderedSnapshot.rowData[0]?.text).toContain("hidden");
-    expect(harness.paint.mock.calls).toContainEqual(["fillRect", [84, 4, 8, 16]]);
+    expect(harness.paint.mock.calls).toContainEqual([
+      "fillRect",
+      [TERMINAL_CONTENT_PADDING + 80, TERMINAL_CONTENT_PADDING, 8, 16],
+    ]);
     expect(harness.frames.size).toBe(0);
   });
 
@@ -252,9 +257,9 @@ describe("GhosttyTerminalSurface visibility", () => {
     const surface = await harness.create();
     surface.write("hello world");
     harness.flushFrame();
-    harness.pointer("pointerdown", 5, 1);
-    harness.pointer("pointermove", 37, 1);
-    harness.pointer("pointerup", 37, 0);
+    harness.pointer("pointerdown", 1, 1);
+    harness.pointer("pointermove", 33, 1);
+    harness.pointer("pointerup", 33, 0);
     harness.flushFrame();
     expect(surface.getSelection()).toBe("hello");
     const position = surface.getSelectionPosition();
@@ -287,13 +292,13 @@ describe("GhosttyTerminalSurface visibility", () => {
     const surface = await harness.create();
     surface.write("hello world");
     harness.flushFrame();
-    harness.pointer("pointerdown", 5, 1);
-    harness.pointer("pointermove", 37, 1);
-    harness.pointer("pointerup", 37, 0);
+    harness.pointer("pointerdown", 1, 1);
+    harness.pointer("pointermove", 33, 1);
+    harness.pointer("pointerup", 33, 0);
     expect(surface.getSelection()).toBe("hello");
 
     harness.onData.mockClear();
-    harness.pointer("pointerdown", 5, 4, false, 1);
+    harness.pointer("pointerdown", 1, 4, false, 1);
     await vi.waitFor(() => expect(harness.onData).toHaveBeenCalled());
     expect(harness.onData.mock.calls.at(-1)?.[0]).toBe("hello");
     expect(surface.getSelection()).toBe("hello");
@@ -301,7 +306,7 @@ describe("GhosttyTerminalSurface visibility", () => {
     // Without a selection there is no primary buffer to paste; the clipboard
     // holds what the user copied and must not be substituted.
     surface.clearSelection();
-    harness.pointer("pointerdown", 5, 4, false, 1);
+    harness.pointer("pointerdown", 1, 4, false, 1);
     expect(readText).not.toHaveBeenCalled();
   });
 
@@ -312,9 +317,9 @@ describe("GhosttyTerminalSurface visibility", () => {
     surface.write("https://example.com");
     harness.flushFrame();
 
-    harness.pointer("pointerdown", 5, 1);
-    harness.pointer("pointermove", 37, 1);
-    harness.pointer("pointerup", 37, 0);
+    harness.pointer("pointerdown", 1, 1);
+    harness.pointer("pointermove", 33, 1);
+    harness.pointer("pointerup", 33, 0);
 
     expect(onLinkActivate).not.toHaveBeenCalled();
     expect(surface.getSelection()).toBe("https");
@@ -327,9 +332,9 @@ describe("GhosttyTerminalSurface visibility", () => {
     surface.write("https://example.com");
     harness.flushFrame();
 
-    harness.pointer("pointerdown", 5, 1);
-    harness.pointer("pointermove", 6, 1);
-    harness.pointer("pointerup", 6, 0);
+    harness.pointer("pointerdown", 1, 1);
+    harness.pointer("pointermove", 2, 1);
+    harness.pointer("pointerup", 2, 0);
 
     expect(onLinkActivate).toHaveBeenCalledOnce();
   });
@@ -341,15 +346,15 @@ describe("GhosttyTerminalSurface visibility", () => {
     surface.write("https://example.com tail");
     harness.flushFrame();
 
-    harness.pointer("pointerdown", 5, 1);
-    harness.pointer("pointerup", 5, 0);
-    harness.pointer("pointerdown", 5, 1);
-    harness.pointer("pointerup", 5, 0);
+    harness.pointer("pointerdown", 1, 1);
+    harness.pointer("pointerup", 1, 0);
+    harness.pointer("pointerdown", 1, 1);
+    harness.pointer("pointerup", 1, 0);
     expect(onLinkActivate).toHaveBeenCalledOnce();
     expect(surface.getSelection()).not.toBe("");
 
-    harness.pointer("pointerdown", 5, 1);
-    harness.pointer("pointerup", 5, 0);
+    harness.pointer("pointerdown", 1, 1);
+    harness.pointer("pointerup", 1, 0);
     expect(onLinkActivate).toHaveBeenCalledOnce();
     expect(surface.getSelection()).toBe("https://example.com tail");
   });
@@ -361,9 +366,9 @@ describe("GhosttyTerminalSurface visibility", () => {
     surface.write("https://example.com");
     harness.flushFrame();
 
-    harness.pointer("pointerdown", 5, 1, true);
-    harness.pointer("pointermove", 37, 1, true);
-    harness.pointer("pointerup", 37, 0, true);
+    harness.pointer("pointerdown", 1, 1, true);
+    harness.pointer("pointermove", 33, 1, true);
+    harness.pointer("pointerup", 33, 0, true);
     expect(onLinkActivate).not.toHaveBeenCalled();
     expect(surface.getSelection()).toBe("https");
   });
@@ -375,10 +380,10 @@ describe("GhosttyTerminalSurface visibility", () => {
     surface.write("https://first.example");
     harness.flushFrame();
 
-    harness.pointer("pointerdown", 5, 1);
+    harness.pointer("pointerdown", 1, 1);
     surface.write("\x1b[2J\x1b[Hhttps://second.example");
     harness.flushFrame();
-    harness.pointer("pointerup", 5, 0);
+    harness.pointer("pointerup", 1, 0);
 
     expect(onLinkActivate).not.toHaveBeenCalled();
   });
