@@ -867,12 +867,47 @@ describe("HQ birth shared progress", () => {
     expect(zerops.calls.filter((call) => call === "import")).toHaveLength(1);
   });
 
-  it("a variables-sync refusal ends visibly, without automatically sending another build", async () => {
-    const zerops = fakeZerops({ variablesSyncing: 1 });
-    const result = await birth(HQ_BIRTH_START, zerops);
-    expect(result.outcome).toMatchObject({ ok: false, step: "deploy" });
-    expect(zerops.calls.filter((call) => call.startsWith("deploy "))).toHaveLength(1);
-  });
+  it.each([
+    {
+      step: "credential",
+      options: { importVariablesSyncing: 2 },
+      call: "secret svc-hq HQ_ORG_TOKEN",
+    },
+    { step: "deploy", options: { variablesSyncing: 2 }, call: "deploy av-1 hq" },
+  ])(
+    "a $step sync refusal stops and each manual Again sends one attempt",
+    async ({ step, options, call }) => {
+      const zerops = fakeZerops(options);
+      const stopped = {
+        ok: false,
+        step,
+        reason: "Variables still syncing. Press Again to continue HQ's setup.",
+        uncertain: false,
+      };
+      const first = await birth(HQ_BIRTH_START, zerops);
+      expect(first.outcome).toEqual(stopped);
+      expect(first.record.stopped).toEqual({ step, reason: stopped.reason, uncertain: false });
+      expect(zerops.calls.filter((entry) => entry === call)).toHaveLength(1);
+      if (step === "deploy") {
+        expect(first.record).toMatchObject({ appVersionId: "av-1", archiveUploaded: true });
+      }
+
+      // A new browser reads the same stopped outcome and sends no side effect.
+      const reopened = await birth(HQ_BIRTH_START, zerops);
+      expect(reopened.outcome).toEqual(stopped);
+      expect(zerops.calls.filter((entry) => entry === call)).toHaveLength(1);
+
+      const second = await birth(reopened.record, zerops, deps(zerops), true);
+      expect(second.outcome).toEqual(stopped);
+      expect(zerops.calls.filter((entry) => entry === call)).toHaveLength(2);
+      const finished = await birth(second.record, zerops, deps(zerops), true);
+      expect(finished.outcome.ok).toBe(true);
+      expect(zerops.calls.filter((entry) => entry === call)).toHaveLength(3);
+      expect(zerops.calls.filter((entry) => entry.startsWith("app-version "))).toHaveLength(1);
+      expect(zerops.calls.filter((entry) => entry.startsWith("upload "))).toHaveLength(1);
+      expect(finished.record.appVersionId).toBe("av-1");
+    },
+  );
 
   it("a new browser reads a recorded refusal instead of automatically trying the failed step", async () => {
     const zerops = underway();

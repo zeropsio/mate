@@ -677,13 +677,16 @@ export async function runHqBirth(input: {
       cause instanceof Error && cause.message.length > 0
         ? cause.message
         : "Zerops could not be reached.";
-    const reason = /credit/iu.test(
-      `${cause instanceof ZeropsApiError ? (cause.code ?? "") : ""} ${words}`,
-    )
-      ? `${words}. Ask an organization owner to add credit in Zerops, then press Again.`
-      : cause instanceof ZeropsApiError && cause.kind === "forbidden"
-        ? `${words}. Ask an organization owner to restore your access in Zerops, then press Again.`
-        : words;
+    // Service-secret writes return no sync handle. A definite sync refusal ends this attempt;
+    // the journal keeps the uploaded version and only the gate's Again continues setup.
+    const reason =
+      cause instanceof ZeropsApiError && cause.code === "userDataSyncRunning"
+        ? "Variables still syncing. Press Again to continue HQ's setup."
+        : /credit/iu.test(`${cause instanceof ZeropsApiError ? (cause.code ?? "") : ""} ${words}`)
+          ? `${words}. Ask an organization owner to add credit in Zerops, then press Again.`
+          : cause instanceof ZeropsApiError && cause.kind === "forbidden"
+            ? `${words}. Ask an organization owner to restore your access in Zerops, then press Again.`
+            : words;
     const uncertain =
       cause instanceof ImportUnanswered ||
       cause instanceof HqBirthUncertain ||
