@@ -1,18 +1,21 @@
-import type { ZeropsBrowserStateEvent } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
+import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
-import * as PubSub from "effect/PubSub";
-import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
-import { make, type BrowserSocket, type ConnectSocket } from "./ZeropsBrowserStream.ts";
+import {
+  isConnectionStable,
+  make,
+  type BrowserSocket,
+  type ConnectSocket,
+} from "./ZeropsBrowserStream.ts";
 
 const decodeJsonString = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 const encodeJsonUnknown = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -51,239 +54,13 @@ const fakeConnect = (sockets: Array<FakeBrowserSocket>): ConnectSocket => {
 };
 
 describe("ZeropsBrowserStream", () => {
-  it.effect("an absent endpoint is read once while subscribed", () =>
-    Effect.gen(function* () {
-      let reads = 0;
-      const service = yield* make({
-        readStreamPort: Effect.sync(() => {
-          reads += 1;
-          return undefined;
-        }),
-        connect: fakeConnect([]),
-      });
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const stream = yield* service.subscribe;
-          yield* Stream.take(stream, 2).pipe(Stream.runCollect);
-          yield* TestClock.adjust(Duration.seconds(30));
-          expect(reads).toBe(1);
-        }),
-      );
-    }),
-  );
-
-  it.effect("failed opening keeps its reason until Reconnect makes one new attempt", () =>
-    Effect.gen(function* () {
-      const sockets: Array<FakeBrowserSocket> = [];
-      const service = yield* make({
-        readStreamPort: Effect.succeed(44831),
-        connect: () => {
-          const socket = makeFakeSocket();
-          sockets.push(socket);
-          queueMicrotask(() => socket.onerror?.(new Error("daemon refused opening")));
-          return socket;
-        },
-      });
-      expect(Effect.isEffect(service.reconnect)).toBe(true);
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const stream = yield* service.subscribe;
-          const pull = yield* Stream.toPull(stream);
-          let failed: ZeropsBrowserStateEvent | undefined;
-          while (failed === undefined)
-            for (const e of yield* pull)
-              if (e.type === "state" && e.status === "failed") failed = e;
-          expect(failed).toMatchObject({ status: "failed", reason: "daemon refused opening" });
-          yield* Effect.scoped(
-            Effect.gen(function* () {
-              const late = yield* service.subscribe;
-              expect((yield* late.pipe(Stream.take(1), Stream.runCollect))[0]).toEqual(failed);
-            }),
-          );
-          expect(sockets[0]?.closed).toBe(true);
-          yield* TestClock.adjust(Duration.seconds(30));
-          expect(sockets).toHaveLength(1);
-          yield* service.reconnect;
-          let failures = 0;
-          while (failures < 1) {
-            for (const e of yield* pull)
-              if (e.type === "state" && e.status === "failed") failures++;
-          }
-          expect(sockets).toHaveLength(2);
-        }),
-      );
-    }),
-  );
-
-  it.effect("endpoint publication replaces the stream once and removal releases it", () =>
-    Effect.gen(function* () {
-      const publications = yield* PubSub.unbounded<number | undefined>();
-      const sockets: Array<FakeBrowserSocket> = [];
-      const service = yield* make({
-        readStreamPort: Effect.succeed(undefined),
-        endpointPublications: Stream.unwrap(
-          Effect.map(PubSub.subscribe(publications), (sub) =>
-            Stream.concat(Stream.succeed(undefined), Stream.fromSubscription(sub)),
-          ),
-        ),
-        connect: fakeConnect(sockets),
-      });
-      expect(Effect.isEffect(service.reconnect)).toBe(true);
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const stream = yield* service.subscribe;
-          const pull = yield* Stream.toPull(stream);
-          // The second no-browser snapshot confirms the publication observer is subscribed.
-          yield* pull;
-          yield* pull;
-          yield* PubSub.publish(publications, 44831);
-          let live = false;
-          while (!live)
-            for (const e of yield* pull) if (e.type === "state" && e.status === "live") live = true;
-          yield* PubSub.publish(publications, 44832);
-          live = false;
-          while (!live)
-            for (const e of yield* pull) if (e.type === "state" && e.status === "live") live = true;
-          expect(sockets).toHaveLength(2);
-          expect(sockets[0]?.closed).toBe(true);
-          yield* PubSub.publish(publications, undefined);
-          let absent = false;
-          while (!absent)
-            for (const e of yield* pull)
-              if (e.type === "state" && e.status === "no-browser") absent = true;
-          expect(sockets[1]?.closed).toBe(true);
-        }),
-      );
-    }),
-  );
-
-  it.effect("a throwing socket constructor reports failure once", () =>
-    Effect.gen(function* () {
-      let attempts = 0;
-      const service = yield* make({
-        readStreamPort: Effect.succeed(44831),
-        connect: () => {
-          attempts++;
-          throw new Error("invalid daemon endpoint");
-        },
-      });
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const stream = yield* service.subscribe;
-          const events = yield* stream.pipe(
-            Stream.takeUntil((e) => e.type === "state" && e.status === "failed"),
-            Stream.runCollect,
-          );
-          expect(events.at(-1)).toMatchObject({
-            status: "failed",
-            reason: "invalid daemon endpoint",
-          });
-          yield* TestClock.adjust(Duration.seconds(30));
-          expect(attempts).toBe(1);
-        }),
-      );
-    }),
-  );
-
-  it.effect("last subscriber releases a socket that has not opened", () =>
-    Effect.gen(function* () {
-      const sockets: Array<FakeBrowserSocket> = [];
-      const created = yield* Queue.unbounded<FakeBrowserSocket>();
-      const service = yield* make({
-        readStreamPort: Effect.succeed(44831),
-        connect: () => {
-          const socket = makeFakeSocket();
-          sockets.push(socket);
-          Queue.offerUnsafe(created, socket);
-          return socket;
-        },
-      });
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const stream = yield* service.subscribe;
-          yield* stream.pipe(
-            Stream.takeUntil((e) => e.type === "state" && e.status === "connecting"),
-            Stream.runCollect,
-          );
-          // Reconnect waits for the interrupted opening to release its socket.
-          yield* service.reconnect;
-        }),
-      );
-      expect(sockets).toHaveLength(1);
-      expect(sockets.every((socket) => socket.closed)).toBe(true);
-      yield* service.reconnect;
-      expect(sockets.every((socket) => socket.closed)).toBe(true);
-    }),
-  );
-
-  it.effect("a closed live socket reports its reason without reopening", () =>
-    Effect.gen(function* () {
-      const sockets: Array<FakeBrowserSocket> = [];
-      const service = yield* make({
-        readStreamPort: Effect.succeed(44831),
-        connect: fakeConnect(sockets),
-      });
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const stream = yield* service.subscribe;
-          const pull = yield* Stream.toPull(stream);
-          let live = false;
-          while (!live)
-            for (const e of yield* pull) if (e.type === "state" && e.status === "live") live = true;
-          sockets[0]!.onclose?.({ code: 1001, reason: "daemon restarting" });
-          let closed;
-          while (closed === undefined)
-            for (const e of yield* pull)
-              if (e.type === "state" && e.status === "closed") closed = e;
-          expect(closed).toMatchObject({ status: "closed", reason: "daemon restarting" });
-          yield* TestClock.adjust(Duration.seconds(30));
-          expect(sockets).toHaveLength(1);
-        }),
-      );
-    }),
-  );
-
-  it.effect("Reconnect reopens endpoint observation after a visible watcher failure", () =>
-    Effect.gen(function* () {
-      let observations = 0;
-      const sockets: Array<FakeBrowserSocket> = [];
-      const service = yield* make({
-        readStreamPort: Effect.succeed(44831),
-        endpointPublications: Stream.suspend(() => {
-          observations++;
-          return observations === 1 ? Stream.fail("endpoint watch lost") : Stream.succeed(44831);
-        }),
-        connect: fakeConnect(sockets),
-      });
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const stream = yield* service.subscribe;
-          const pull = yield* Stream.toPull(stream);
-          let failed = false;
-          while (!failed)
-            for (const e of yield* pull)
-              if (e.type === "state" && e.status === "failed") {
-                expect(e.reason).toBe("endpoint watch lost");
-                failed = true;
-              }
-          expect(sockets).toHaveLength(0);
-          yield* service.reconnect;
-          let live = false;
-          while (!live)
-            for (const e of yield* pull) if (e.type === "state" && e.status === "live") live = true;
-          expect(observations).toBe(2);
-          expect(sockets).toHaveLength(1);
-        }),
-      );
-    }),
-  );
-
   it.effect("connects on first subscriber and disconnects on last", () =>
     Effect.gen(function* () {
       const sockets: Array<FakeBrowserSocket> = [];
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         connect: fakeConnect(sockets),
+        reconnectDelaysMs: [0],
       });
 
       yield* Effect.scoped(
@@ -310,6 +87,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         connect: fakeConnect(sockets),
+        reconnectDelaysMs: [0],
       });
 
       yield* Effect.scoped(
@@ -337,11 +115,37 @@ describe("ZeropsBrowserStream", () => {
     }),
   );
 
+  it.effect("reports no-browser when the port refuses and retries while subscribed", () =>
+    Effect.gen(function* () {
+      let reads = 0;
+      const service = yield* make({
+        readStreamPort: Effect.sync(() => {
+          reads += 1;
+          return undefined;
+        }),
+        connect: fakeConnect([]),
+        reconnectDelaysMs: [0],
+      });
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const stream = yield* service.subscribe;
+          const events = yield* Stream.take(stream, 3).pipe(Stream.runCollect);
+          const statuses = events.map((event) => (event.type === "state" ? event.status : "frame"));
+          expect(statuses).toEqual(["no-browser", "no-browser", "no-browser"]);
+        }),
+      );
+
+      expect(reads).toBeGreaterThan(1);
+    }),
+  );
+
   it.effect("sendInput is a silent no-op when nothing is connected", () =>
     Effect.gen(function* () {
       const service = yield* make({
         readStreamPort: Effect.succeed(undefined),
         connect: fakeConnect([]),
+        reconnectDelaysMs: [0],
       });
       yield* service.sendInput({ kind: "mouse", eventType: "mousePressed", x: 1, y: 2 });
     }),
@@ -353,6 +157,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         connect: fakeConnect(sockets),
+        reconnectDelaysMs: [0],
       });
 
       yield* Effect.scoped(
@@ -393,6 +198,7 @@ describe("ZeropsBrowserStream", () => {
         const service = yield* make({
           readStreamPort: Effect.succeed(44831),
           connect: fakeConnect(sockets),
+          reconnectDelaysMs: [0],
         });
 
         yield* Effect.scoped(
@@ -438,6 +244,7 @@ describe("ZeropsBrowserStream", () => {
         const service = yield* make({
           readStreamPort: Effect.succeed(44831),
           connect: fakeConnect(sockets),
+          reconnectDelaysMs: [0],
         });
 
         yield* Effect.scoped(
@@ -481,6 +288,7 @@ describe("ZeropsBrowserStream", () => {
         const service = yield* make({
           readStreamPort: Effect.succeed(44831),
           connect: fakeConnect(sockets),
+          reconnectDelaysMs: [0],
         });
 
         yield* Effect.scoped(
@@ -523,6 +331,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         connect: fakeConnect(sockets),
+        reconnectDelaysMs: [0],
       });
 
       yield* Effect.scoped(
@@ -580,6 +389,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         connect: fakeConnect(sockets),
+        reconnectDelaysMs: [0],
       });
 
       yield* Effect.scoped(
@@ -638,6 +448,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         connect,
+        reconnectDelaysMs: [0],
       });
 
       yield* Effect.scoped(
@@ -695,6 +506,7 @@ describe("ZeropsBrowserStream", () => {
         const service = yield* make({
           readStreamPort: Effect.succeed(44831),
           connect: fakeConnect(sockets),
+          reconnectDelaysMs: [0],
         });
 
         yield* Effect.scoped(
@@ -761,12 +573,129 @@ describe("ZeropsBrowserStream", () => {
       }),
   );
 
+  describe("isConnectionStable", () => {
+    it("a connection open for less than the threshold never counts as recovered", () => {
+      expect(isConnectionStable(0, 5000)).toBe(false);
+      expect(isConnectionStable(4999, 5000)).toBe(false);
+    });
+
+    it("a connection open for the threshold or more counts as recovered", () => {
+      expect(isConnectionStable(5000, 5000)).toBe(true);
+      expect(isConnectionStable(10_000, 5000)).toBe(true);
+    });
+  });
+
+  it.effect(
+    "does not reset backoff for a connection that closes before the stability threshold",
+    () =>
+      Effect.gen(function* () {
+        let connectCount = 0;
+        const connect: ConnectSocket = () => {
+          connectCount += 1;
+          const socket = makeFakeSocket();
+          queueMicrotask(() => {
+            socket.onopen?.();
+            queueMicrotask(() => socket.onclose?.());
+          });
+          return socket;
+        };
+        const service = yield* make({
+          readStreamPort: Effect.succeed(44831),
+          connect,
+          reconnectDelaysMs: [1000],
+          connectionStableThresholdMs: 5000,
+        });
+
+        // Lets queued microtasks (the fake socket's open-then-close) and the
+        // connection loop's own fiber steps settle, without depending on
+        // consuming the subscription's own Stream (whose delivery timing to
+        // THIS test fiber is a separate concern from the loop's own
+        // progress — the loop runs regardless of whether anyone reads from
+        // the unbounded PubSub it publishes to).
+        const settle = Effect.gen(function* () {
+          for (let i = 0; i < 10; i++) {
+            yield* Effect.yieldNow;
+          }
+        });
+
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            // Only the subscription's side effect (forking the connection
+            // loop) matters here — the returned Stream itself is unused.
+            const stream = yield* service.subscribe;
+            void stream;
+
+            yield* settle;
+            expect(connectCount).toBe(1);
+
+            // The loop is now asleep waiting out the 1000ms backoff before
+            // its next attempt. Advancing by less than that must not
+            // produce a new connect — proving backoff was never reset to
+            // zero by the short-lived connection.
+            yield* TestClock.adjust(Duration.millis(500));
+            yield* settle;
+            expect(connectCount).toBe(1);
+
+            // Advancing past the full delay releases the next attempt.
+            yield* TestClock.adjust(Duration.millis(600));
+            yield* settle;
+            expect(connectCount).toBe(2);
+          }),
+        );
+      }),
+  );
+
+  it.effect("resets backoff once a connection stays open past the stability threshold", () =>
+    Effect.gen(function* () {
+      const sockets: Array<FakeBrowserSocket> = [];
+      const service = yield* make({
+        readStreamPort: Effect.succeed(44831),
+        connect: fakeConnect(sockets),
+        reconnectDelaysMs: [1000],
+        connectionStableThresholdMs: 5000,
+      });
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const stream = yield* service.subscribe;
+          const pull = yield* Stream.toPull(stream);
+          let live = false;
+          while (!live) {
+            const chunk = yield* pull;
+            for (const event of chunk) {
+              if (event.type === "state" && event.status === "live") live = true;
+            }
+          }
+          const openedAt = yield* Clock.currentTimeMillis;
+
+          // Stays open past the threshold, then drops.
+          yield* TestClock.adjust(Duration.millis(5001));
+          sockets[0]!.onclose?.();
+
+          // No 1000ms backoff wait this time — the very next thing
+          // published is a fresh "connecting", available without any
+          // further clock advance.
+          let connecting = false;
+          while (!connecting) {
+            const chunk = yield* pull;
+            for (const event of chunk) {
+              if (event.type === "state" && event.status === "connecting") connecting = true;
+            }
+          }
+          const reconnectedAt = yield* Clock.currentTimeMillis;
+          expect(reconnectedAt - openedAt).toBe(5001);
+        }),
+      );
+    }),
+  );
+
   it.effect("a late subscriber gets the current frame right after the current state", () =>
     Effect.gen(function* () {
       const sockets: Array<FakeBrowserSocket> = [];
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         connect: fakeConnect(sockets),
+        reconnectDelaysMs: [0],
       });
 
       yield* Effect.scoped(
@@ -812,6 +741,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         connect: fakeConnect(sockets),
+        reconnectDelaysMs: [0],
       });
 
       const ackSeqsOf = (socket: FakeBrowserSocket) =>
@@ -851,11 +781,6 @@ describe("ZeropsBrowserStream", () => {
           // The daemon restarts: the connection drops and a fresh one comes
           // up, its own seq counting starting over from a LOW number.
           sockets[0]!.onclose?.();
-          let closed = false;
-          while (!closed)
-            for (const e of yield* pull)
-              if (e.type === "state" && e.status === "closed") closed = true;
-          yield* service.reconnect;
           let reconnectedLive = false;
           while (!reconnectedLive) {
             const chunk = yield* pull;
@@ -889,6 +814,7 @@ describe("ZeropsBrowserStream", () => {
         const service = yield* make({
           readStreamPort: Effect.succeed(44831),
           connect: fakeConnect(sockets),
+          reconnectDelaysMs: [0],
         });
 
         yield* Effect.scoped(
@@ -933,6 +859,7 @@ describe("ZeropsBrowserStream", () => {
         const service = yield* make({
           readStreamPort: Effect.succeed(44831),
           connect: fakeConnect(sockets),
+          reconnectDelaysMs: [0],
         });
 
         const scopeA = yield* Scope.make();
@@ -944,7 +871,7 @@ describe("ZeropsBrowserStream", () => {
 
         // Force the exact race the fix closes: A's unsubscribe finalizer and
         // B's fresh subscribe run concurrently, so without the shared mutex
-        // the finalizer's "remaining === 0 → interrupt the observer" could
+        // the finalizer's "remaining === 0 → fork a new loop's fiber" could
         // read B's just-forked fiber instead of A's own.
         const scopeB = yield* Scope.make();
         const closeAFiber = yield* Effect.forkChild(Scope.close(scopeA, Exit.succeed(undefined)));

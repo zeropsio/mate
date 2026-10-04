@@ -347,7 +347,6 @@ export const WS_METHODS = {
   zeropsLoginAdd: "zerops.login.add",
   zeropsLoginRemove: "zerops.login.remove",
   zeropsBrowserInput: "zerops.browser.input",
-  zeropsBrowserReconnect: "zerops.browser.reconnect",
   zeropsMateUpdate: "zerops.mate.update",
   zeropsMateCheckUpdate: "zerops.mate.checkUpdate",
   zeropsDataConsoleCall: "zerops.dataConsole.call",
@@ -1087,12 +1086,6 @@ const WsSubscribeZeropsBrowserStreamRpc = Rpc.make(WS_METHODS.subscribeZeropsBro
   stream: true,
 });
 
-/** One explicit new opening of the daemon stream for its current viewers. */
-const WsZeropsBrowserReconnectRpc = Rpc.make(WS_METHODS.zeropsBrowserReconnect, {
-  payload: Schema.Struct({}),
-  error: EnvironmentAuthorizationError,
-});
-
 /** One input event (click, move, key) forwarded to whatever page the daemon currently has open. */
 const WsZeropsBrowserInputRpc = Rpc.make(WS_METHODS.zeropsBrowserInput, {
   payload: ZeropsBrowserInput,
@@ -1295,7 +1288,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsZeropsLoginRemoveRpc,
   WsSubscribeZeropsBrowserStreamRpc,
   WsZeropsBrowserInputRpc,
-  WsZeropsBrowserReconnectRpc,
   WsZeropsMateUpdateRpc,
   WsZeropsMateCheckUpdateRpc,
   WsZeropsDataConsoleCallRpc,

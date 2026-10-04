@@ -56,10 +56,6 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
   // (e.g. a take-over restored from a prior session) is never mistaken for
   // a FRESH false→true transition and does not spuriously reset takeOver.
   const previousAgentDrivingRef = useRef<boolean | undefined>(undefined);
-  const reconnectCommand = useAtomCommand(
-    zeropsCommands.browserReconnect,
-    "zerops browser reconnect",
-  );
   const sendInputCommand = useAtomCommand(zeropsCommands.browserInput, "zerops browser input");
 
   const driving = resolveBrowserDrivingState({
@@ -210,19 +206,6 @@ export function ZeropsBrowserPanel({ threadRef, initialTakeOver }: ZeropsBrowser
         <p className="text-muted-foreground text-xs" data-zerops-browser-unavailable>
           Live browser view isn't available on this server yet.
         </p>
-      ) : read.status === "failed" || read.status === "closed" ? (
-        <div className="space-y-2">
-          <p className="text-muted-foreground text-xs">{read.reason ?? "Browser stream ended."}</p>
-          <button
-            className="text-xs text-muted-foreground underline decoration-dotted underline-offset-2"
-            onClick={() => {
-              void reconnectCommand({ environmentId, input: {} });
-            }}
-            type="button"
-          >
-            Reconnect
-          </button>
-        </div>
       ) : read.status === "no-browser" ? (
         <p className="text-muted-foreground text-xs">The agent hasn't opened a browser yet.</p>
       ) : frame === undefined ? (

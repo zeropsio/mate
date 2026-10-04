@@ -4,7 +4,6 @@ import * as Schema from "effect/Schema";
 
 import {
   agentIdForDriverKind,
-  ZeropsBrowserStateEvent,
   ZEROPS_AGENT_LOGIN_COMMANDS,
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
@@ -23,7 +22,6 @@ import {
   ZeropsLoginRemoveInput,
 } from "./zerops.ts";
 
-const decodeBrowserStateEvent = Schema.decodeUnknownSync(ZeropsBrowserStateEvent);
 const decodeLoginError = Schema.decodeUnknownSync(ZeropsAgentLoginError);
 const decodeAgentId = Schema.decodeUnknownSync(ZeropsAgentId);
 const decodeAgentAuthState = Schema.decodeUnknownSync(ZeropsAgentAuthState);
@@ -466,11 +464,4 @@ it("decodes a signer persistence failure from adding a login", () => {
     detail: "Sign-in could not be recorded.",
   });
   expect(decoded.reason).toBe("signer-write-failed");
-});
-
-describe("browser stream ending", () => {
-  it.each(["failed", "closed"])("decodes %s with its reason", (status) => {
-    const event = { type: "state", status, reason: "daemon refused opening" };
-    expect(decodeBrowserStateEvent(event)).toEqual(event);
-  });
 });

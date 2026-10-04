@@ -1221,7 +1221,6 @@ const buildAppUnderTest = (options?: {
             Layer.mock(ZeropsBrowserStreamModule.ZeropsBrowserStream)({
               subscribe: Effect.succeed(Stream.make({ type: "state", status: "no-browser" })),
               sendInput: () => Effect.void,
-              reconnect: Effect.void,
               ...options?.layers?.zeropsBrowserStream,
             }),
             // A test machine has no `zcp` binary — mocked so the suite never
@@ -6147,44 +6146,27 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
   );
 
-  it.effect("zerops.browser.reconnect forwards one explicit request over RPC", () =>
-    Effect.gen(function* () {
-      let attempts = 0;
-      yield* buildAppUnderTest({
-        layers: {
-          zeropsBrowserStream: {
-            reconnect: Effect.sync(() => {
-              attempts++;
-            }),
-          },
-        },
-      });
-      const wsUrl = yield* getWsServerUrl("/ws");
-      assert.equal(attempts, 0);
-      yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) => client[WS_METHODS.zeropsBrowserReconnect]({})),
-      );
-      assert.equal(attempts, 1);
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-  );
-
   it.effect("subscribeZeropsBrowserStream applies flow control (Ack after every Chunk)", () =>
     Effect.gen(function* () {
-      // Three lifecycle snapshots require multiple Ack-flow-controlled chunks,
-      // independent of socket retry behavior.
+      // A real (non-mocked) service instance publishing "no-browser" forever
+      // (`readStreamPort` never resolves, `reconnectDelaysMs: [0]`) so a
+      // real acking `RpcClient` pulling MORE THAN ONE Chunk is proof the
+      // per-request Ack loop the effect-rpc protocol requires (spec-mate.md
+      // §5.5) actually runs over the real websocket, not just proof the
+      // handler exists — a client that never acked would receive exactly
+      // one Chunk and stall.
       const browserStream = yield* ZeropsBrowserStreamModule.make({
         readStreamPort: Effect.succeed(undefined),
         connect: () => {
           throw new Error("unreachable: readStreamPort never resolves a port");
         },
-        endpointPublications: Stream.make(undefined, undefined),
+        reconnectDelaysMs: [0],
       });
       yield* buildAppUnderTest({
         layers: {
           zeropsBrowserStream: {
             subscribe: browserStream.subscribe,
             sendInput: browserStream.sendInput,
-            reconnect: browserStream.reconnect,
           },
         },
       });

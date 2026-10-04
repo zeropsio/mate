@@ -15,7 +15,6 @@
  *   account signed in afterwards through `agentLoginStart` with its id, or a
  *   Claude API key, which crosses the wire only here — or signs one out and
  *   forgets it.
- * - `browserReconnect` — server scope: `AuthOrchestrationReadScope`; one explicit opening.
  * - `browserInput` — server scope: `AuthOrchestrationOperateScope` (S8b).
  * - `mateUpdate` — server scope `exec:operate`; offered only where the
  *   descriptor's `capabilities.mateUpdate` is true (spec-mate.md §2.9, MU-2).
@@ -77,11 +76,6 @@ export function createZeropsCommandAtoms<R, E>(
     tag: WS_METHODS.zeropsLoginRemove,
   });
 
-  const browserReconnect = createEnvironmentRpcCommand(runtime, {
-    label: "environment-data:zerops:browserReconnect",
-    tag: WS_METHODS.zeropsBrowserReconnect,
-  });
-
   const browserInput = createEnvironmentRpcCommand(runtime, {
     label: "environment-data:zerops:browserInput",
     tag: WS_METHODS.zeropsBrowserInput,
@@ -114,7 +108,6 @@ export function createZeropsCommandAtoms<R, E>(
     loginAdd,
     loginRemove,
     browserInput,
-    browserReconnect,
     mateUpdate,
     mateCheckUpdate,
     dataConsoleCall,
