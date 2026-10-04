@@ -497,7 +497,6 @@ export function ZeropsInventoryProvider({
       blockedOrganizations: [...blocked.values()],
       blockedReads,
       pendingOrganizations: pending,
-      reading: demanded.some(({ interest }) => interest?.status === "establishing"),
     };
   }, [
     denied,
@@ -550,9 +549,7 @@ export function ZeropsInventoryProvider({
   // chosen yet. It never covers or freezes the product; it speaks only once it has lasted
   // (`inventoryTroubleVoice`).
   const known = organizationKnowledge({
-    grantFailed:
-      phase.phase === "unverified-failed" ||
-      (phase.phase === "granted" && phase.renewal.status === "failed"),
+    grantFailed: phase.phase === "unverified-failed",
     blocked: projected.blockedOrganizations.map(({ organizationId }) => organizationId),
     // No evidence yet reads nothing at all.
     unread: evidence === null ? organizations.map(({ id }) => id) : projected.unreadOrganizations,
@@ -586,6 +583,13 @@ export function ZeropsInventoryProvider({
   // The account speaks from one place, the menu's foot: its lapse, which withholds every region
   // meanwhile, or its inventory's lasting trouble — never over the product. This publishes the
   // facts and the actions; the line (`useAccountVoice`) owns what Try now says while it runs.
+  // Answered is the grant held and every read of the organization in view observing again.
+  const unanswered =
+    lapse !== null ||
+    voice !== null ||
+    [...projected.pendingOrganizations].some(
+      (organizationId) => activeOrganization === null || organizationId === activeOrganization.id,
+    );
   // What isn't answering, named under the line's sentence (`troubleSubject`).
   const inView = activeOrganization ?? null;
   const subject =
@@ -619,16 +623,12 @@ export function ZeropsInventoryProvider({
     (): AccountTrouble => ({
       lapse: lapseSentence === null ? null : { sentence: lapseSentence, retry: lapseRetry },
       trouble: voice,
-      running:
-        (phase.phase !== "lapsed" && projected.reading) ||
-        phase.phase === "verifying" ||
-        ((phase.phase === "granted" || phase.phase === "lapsed") &&
-          phase.renewal.status === "running"),
+      unanswered,
       subject,
       retry: retryNow,
       signOut: signOutNow,
     }),
-    [lapseRetry, lapseSentence, retryNow, signOutNow, subject, voice, projected.reading, phase],
+    [lapseRetry, lapseSentence, retryNow, signOutNow, subject, unanswered, voice],
   );
 
   // Each project where the organization's HQ places it (ADR 0002), as last known, with its own

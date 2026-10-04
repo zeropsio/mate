@@ -376,8 +376,9 @@ Active-organization navigation never creates detail leases for all listed projec
 process searches belong to an opened project or explicit action. Each demanded scope pairs
 subscription baselines with a direct anchor. Removing its surface releases demand. The access
 verifier shares an opened project's direct read and never uses navigation enumeration to renew
-access. Failed HQ streams, grant rounds, registrations, hydration and metadata reads stay failed
-until the visible manual action; no timer repairs them.
+access. A failed grant round or project check retries on the grant's ladders while the tab is
+visible (`account-lifecycle.md`). Failed HQ streams, registrations, hydration and metadata reads stay
+failed until the visible manual action; no timer repairs them.
 
 Local account/transport/interest generations fence obsolete work. Revocation stops
 affected content and commands immediately; a sleeping tab cannot extend access

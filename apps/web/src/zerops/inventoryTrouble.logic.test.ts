@@ -108,7 +108,7 @@ describe("what the account says at the menu's foot", () => {
       said: { sentence: "Zerops isn't answering.", actions: ["try-now"] },
     },
   ])("$name", ({ lapse, trouble, said }) => {
-    expect(accountFootLine({ lapse, trouble, running: false })).toEqual(said);
+    expect(accountFootLine({ lapse, trouble, attempt: "idle" })).toEqual(said);
   });
 });
 
@@ -162,12 +162,17 @@ describe("Try now, and what the line names", () => {
   }>([
     {
       name: "pressed: the button says it is trying, and takes no second press",
-      input: { lapse: null, trouble: SAYS, running: true },
+      input: { lapse: null, trouble: SAYS, attempt: "trying" },
       said: { sentence: "Zerops isn't answering.", actions: ["trying"] },
     },
     {
+      name: "the trouble outlived the try: the line says so, and offers it again",
+      input: { lapse: null, trouble: SAYS, attempt: "still" },
+      said: { sentence: "Still not answering. Trying again…", actions: ["try-now"] },
+    },
+    {
       name: "a lapse being tried: trying, and the way out stays",
-      input: { lapse, trouble: null, running: true },
+      input: { lapse, trouble: null, attempt: "trying" },
       said: { sentence: "Zerops isn't answering.", actions: ["trying", "sign-out"] },
     },
   ])("$name", ({ input, said }) => {

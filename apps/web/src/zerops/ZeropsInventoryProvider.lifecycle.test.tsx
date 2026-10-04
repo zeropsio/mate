@@ -40,6 +40,7 @@ import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./in
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
 import { hqStructureAtom } from "../state/zerops";
 import { AccountVoiceLine } from "../components/zerops/AccountVoiceLine";
+import { TRY_NOW_SETTLE_MS } from "./inventoryTrouble.logic";
 
 const encodeWireFrame = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
@@ -949,10 +950,9 @@ it.live(
         expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
         // Never a silent no-op: it says it is trying, and once that has run with the stall still
         // on, the line says so and offers it again.
-        expect(harness.inventory()?.isLoading).toBe(true);
-        yield* harness.advance(60_000);
-        expect(harness.container.textContent).toContain("Zerops isn't answering.");
-        expect(buttonsLabelled(harness.container as never, "Try now")).toHaveLength(1);
+        expect(harness.container.textContent).toContain("Trying…");
+        yield* harness.advance(TRY_NOW_SETTLE_MS);
+        expect(harness.container.textContent).toContain("Still not answering.");
         expect(harness.container.textContent).toContain("Try now");
       }),
     ),

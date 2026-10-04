@@ -205,9 +205,7 @@ describe("ZeropsInventoryProvider lapse", () => {
     expect(tab.text()).toContain("locations: withheld");
 
     renewals();
-    const [again] = buttonsLabelled(tab.container(), "Try now");
-    await tab.run(() => press(again!));
-    await pass(INVALIDATION_COALESCE_MS);
+    await pass(2 * MINUTE_MS);
 
     expect(mounts()).toBe(1);
     expect(source.reads()).toBe(2);

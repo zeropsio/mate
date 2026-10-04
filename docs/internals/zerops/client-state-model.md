@@ -240,9 +240,10 @@ Each machine is `transition(state, event, ctx) → {state, effects}` with
 `ctx = {now: {wall, mono}, policy}`. Effects are `run`, `schedule`, `cancel`, `invalidate`,
 `observe` and `log`. Timers are hints: guards are re-checked against both clocks when an event is
 delivered, and wake events reach every machine. Every result carries its `(epoch, attemptId)` and is
-dropped when superseded. Inventory, HQ structure and access verification make one attempt and
-show failure with a manual action. They have no retry ladder; ticks and online/visible signals
-cannot clear failure. Healthy demand can resume after a background pause. Other machines retain
+dropped when superseded. Inventory and HQ structure make one attempt and show failure with a
+manual action. Access verification retries on its ladders while the tab is visible, at once on a
+visible wake or `online`, beside the manual action. Healthy demand can resume after a background
+pause. Other machines retain
 their own declared policies. Waiting for a capability happens before an attempt starts.
 
 ### Zerops account session
@@ -269,20 +270,20 @@ still missing, so two tabs holding a session stored before the record existed co
 
 ### Access grant
 
-| State                             | Meaning                                                        | Leaves on                                                                  |
-| --------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `unverified`                      | No round yet; the product is not mounted                       | Start → `verifying`                                                        |
-| `verifying(round)`                | The first round                                                | Verified → `granted`; `user/info` failed → `unverified-failed`             |
-| `unverified-failed(retryAt=null)` | The account gate shows the cause and Retry                     | User retry → `verifying`                                                   |
-| `granted(evidence, renewal)`      | Renewal `idle(dueAt)`, `running(round)`, `failed` or `dormant` | Account evidence expired → `lapsed`; admitted round → `granted(evidence′)` |
-| `lapsed(last, renewal)`           | Platform cells withheld, platform writes closed, UI mounted    | Admitted round → `granted`                                                 |
-| `closed`                          | Epoch closed                                                   | —                                                                          |
+| State                        | Meaning                                                        | Leaves on                                                                  |
+| ---------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `unverified`                 | No round yet; the product is not mounted                       | Start → `verifying`                                                        |
+| `verifying(round)`           | The first round                                                | Verified → `granted`; `user/info` failed → `unverified-failed`             |
+| `unverified-failed(retryAt)` | The account gate shows the cause and Retry                     | Retry time, visible wake, online or user retry → `verifying`               |
+| `granted(evidence, renewal)` | Renewal `idle(dueAt)`, `running(round)`, `failed` or `dormant` | Account evidence expired → `lapsed`; admitted round → `granted(evidence′)` |
+| `lapsed(last, renewal)`      | Platform cells withheld, platform writes closed, UI mounted    | Admitted round → `granted`                                                 |
+| `closed`                     | Epoch closed                                                   | —                                                                          |
 
 The round, the evidence stamp, per-project evidence, renewal lead and retries are the
 [account contract](account-lifecycle.md#access-verification). In any phase: a project's 403 or 404
 puts it in the closed set (writes closed at once, content withheld until a confirming read); a
 project's 5xx or timeout keeps its older evidence and puts it in the unverified set with its own
-manual action; a lowered role in an admitted round applies at once. On `granted`, authority is restored to
+retry on the project rungs; a lowered role in an admitted round applies at once. On `granted`, authority is restored to
 account cells and to each project with fresh evidence; unverified projects get
 `withheld(access-unverified)`, closed ones `withheld(access-denied)`. On `lapsed`, every platform
 cell gets `withheld(access-lapsed)` and the broker erases its values but keeps demand.
@@ -581,7 +582,7 @@ read when its detail opens. An explicit recipe retry asks the stream owner for a
 
 | Fact                                              | Backstop                                                                                       | Runs only while                     |
 | ------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------- |
-| Access grant                                      | Healthy renewal before its deadline; manual again after failure                                | Epoch open, hidden under 60 minutes |
+| Access grant                                      | Healthy renewal before its deadline; a failed check on its ladder                              | Epoch open, hidden under 60 minutes |
 | Inventory, activity                               | None: resnapshot on reconnect, foreground and explicit refresh                                 | —                                   |
 | Tags                                              | Re-read after our own writes and on a cross-tab invalidation                                   | —                                   |
 | An application's releases and repositories        | None: values in HQ's snapshot and release-revision messages (`useZeropsAppReleases`)           | An official HQ is known             |
