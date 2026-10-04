@@ -12,7 +12,9 @@ import type { EnvironmentThreadPageState } from "./threadState.ts";
  * history while it was away — or when the snapshot holds the whole thread.
  *
  * "Older" is older than the page's oldest message: a page holds whole turns,
- * each from its ask on, so a row before that belongs to a turn below it.
+ * each from its ask on, so a row before that belongs to a turn below it. The
+ * held turns are kept only when they connect to the page (the client holds
+ * the page's oldest message) and none of them was still running.
  */
 export function mergeFirstPageSnapshot(input: {
   readonly held: OrchestrationThread | null;
@@ -35,18 +37,30 @@ export function mergeFirstPageSnapshot(input: {
   const standing = new Set(fresh.checkpoints.map((entry) => entry.turnId));
   if (held.checkpoints.some((entry) => !standing.has(entry.turnId))) return replace;
 
-  const boundary = fresh.messages.reduce<string | null>(
-    (oldest, entry) => (oldest === null || entry.createdAt < oldest ? entry.createdAt : oldest),
+  // The page's oldest message opens its oldest turn: everything the client
+  // holds below it connects to the page only if the client holds that
+  // message too. Otherwise turns ran in between that neither has.
+  const oldest = fresh.messages.reduce<(typeof fresh.messages)[number] | null>(
+    (found, entry) => (found === null || entry.createdAt < found.createdAt ? entry : found),
     null,
   );
-  if (boundary === null) return replace;
+  if (oldest === null || !held.messages.some((entry) => entry.id === oldest.id)) return replace;
+  const boundary = oldest.createdAt;
+  // The page's own turns: its messages' and the rows from its oldest turn
+  // on. A row it pins from further back (a helper's start, an open
+  // question) names a turn below the page, which stays the client's.
   const pageTurns = new Set<string>(
-    [...fresh.messages, ...fresh.activities].flatMap((entry) =>
-      entry.turnId === null ? [] : [entry.turnId],
+    [...fresh.messages, ...fresh.activities.filter((entry) => entry.createdAt >= boundary)].flatMap(
+      (entry) => (entry.turnId === null ? [] : [entry.turnId]),
     ),
   );
   const isOlder = (entry: { readonly createdAt: string; readonly turnId: string | null }) =>
     entry.createdAt < boundary && (entry.turnId === null || !pageTurns.has(entry.turnId));
+  // A turn the client last saw running must come from the page, settled;
+  // one below it would stay running with nothing left to finish it.
+  const heldRunningTurn = held.latestTurn?.state === "running" ? held.latestTurn.turnId : null;
+  if (heldRunningTurn !== null && !pageTurns.has(heldRunningTurn)) return replace;
+  if (held.messages.some((entry) => entry.streaming && isOlder(entry))) return replace;
 
   const freshMessageIds = new Set(fresh.messages.map((entry) => entry.id));
   const olderMessages = held.messages.filter(

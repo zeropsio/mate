@@ -1631,15 +1631,16 @@ scoped_activities AS MATERIALIZED (
       pageActivityIdsSql(
         threadId,
         [
-          sql`COALESCE(sequence, -1) >= COALESCE(
+          // By time: a row's sequence is often unset.
+          sql`created_at >= COALESCE(
           (
-            SELECT sequence
+            SELECT created_at
             FROM projection_thread_activities
             WHERE thread_id = ${threadId}
-            ORDER BY sequence DESC, created_at DESC, activity_id DESC
+            ORDER BY created_at DESC
             LIMIT 1 OFFSET ${THREAD_DETAIL_UNPAGED_SCAN_LIMIT - 1}
           ),
-          -1
+          ''
         )`,
         ],
         THREAD_DETAIL_ACTIVITY_LIMIT,
