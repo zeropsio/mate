@@ -201,7 +201,8 @@ describe("the signer", () => {
         agentFlag: {
           markSignedIn: () => Effect.fail(new ZeropsAgentFlagError({ reason: "not used" })),
         },
-        refreshProviderAuth: () => Effect.succeed("unauthenticated" as const),
+        refreshProviderAuth: () =>
+          Effect.succeed({ status: "unauthenticated" as const, checkedAt: 0 }),
         homeDir,
         envStorePath: path.join(homeDir, "zembed-env.json"),
         readSigners: Ref.get(signers),
@@ -216,6 +217,67 @@ describe("the signer", () => {
       );
       return { feed, subscription, signers };
     });
+
+  itEffect.layer(NodeServices.layer)("ended attempts stay ended", (it) => {
+    for (const status of ["unknown", "authenticated"] as const) {
+      it.effect(`${status}: a day passing makes no attempt; the operator makes one`, () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem;
+            const path = yield* Path.Path;
+            const homeDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-auth-once-" });
+            yield* fs.makeDirectory(path.join(homeDir, ".codex"));
+            yield* fs.writeFileString(path.join(homeDir, ".codex", "auth.json"), "{}");
+            const probes = yield* Ref.make(0);
+            const writes = yield* Ref.make(0);
+            const feed = yield* make({
+              homeDir,
+              envStorePath: path.join(homeDir, "env.json"),
+              isZeropsEnvironment: true,
+              watch: noWatch,
+              refreshProviderAuth: () =>
+                Ref.update(probes, (n) => n + 1).pipe(
+                  Effect.as({
+                    status,
+                    checkedAt: 1,
+                    ...(status === "unknown" ? { reason: "Couldn't verify" } : {}),
+                  }),
+                ),
+              agentFlag: {
+                markSignedIn: () =>
+                  Ref.update(writes, (n) => n + 1).pipe(
+                    Effect.andThen(
+                      Effect.fail(new ZeropsAgentFlagError({ reason: "Unavailable" })),
+                    ),
+                  ),
+              },
+            });
+            const subscription = yield* feed.subscribe;
+            yield* TestClock.adjust("2 seconds");
+            yield* changeWhere(
+              subscription,
+              (snapshot) => agentState(snapshot, "codex")?.verification?.status === status,
+            );
+            assert.equal(yield* Ref.get(probes), 1);
+            assert.equal(yield* Ref.get(writes), status === "authenticated" ? 1 : 0);
+            yield* TestClock.adjust("1 day");
+            assert.equal(yield* Ref.get(probes), 1);
+            assert.equal(yield* Ref.get(writes), status === "authenticated" ? 1 : 0);
+            yield* feed.recheckNow("codex");
+            yield* TestClock.adjust("2 seconds");
+            yield* changeWhere(
+              subscription,
+              (snapshot) =>
+                agentState(snapshot, "codex")?.verification?.generation === 2 &&
+                agentState(snapshot, "codex")?.verification?.status === status,
+            );
+            assert.equal(yield* Ref.get(probes), 2);
+            assert.equal(yield* Ref.get(writes), status === "authenticated" ? 2 : 0);
+          }),
+        ),
+      );
+    }
+  });
 
   itEffect.layer(NodeServices.layer)("ZeropsAgentAuth signer", (it) => {
     it.effect("is published with the re-check that follows a sign-in made here", () =>
@@ -292,7 +354,10 @@ describe("a turn's authentication failure", () => {
                 }),
             },
             refreshProviderAuth: () =>
-              Ref.update(probes, (n) => n + 1).pipe(Effect.andThen(Ref.get(answer))),
+              Ref.update(probes, (n) => n + 1).pipe(
+                Effect.andThen(Ref.get(answer)),
+                Effect.map((status) => ({ status, checkedAt: 0 })),
+              ),
             homeDir,
             envStorePath,
             isZeropsEnvironment: true,

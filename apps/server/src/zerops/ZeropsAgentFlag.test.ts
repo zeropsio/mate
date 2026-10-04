@@ -212,6 +212,7 @@ const httpLayer = (route: (request: SeenRequest) => Response) => {
 describe("markSignedIn", () => {
   it.effect("creates the row when it is absent", () => {
     const { layer, seen } = httpLayer((request) => {
+      if (request.url.includes("/process/")) return json({ status: "FINISHED" });
       if (request.method === "GET") return json({ items: [] });
       return json({ id: "process-1" });
     });
@@ -221,11 +222,12 @@ describe("markSignedIn", () => {
           assert.deepStrictEqual(result, {
             key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
             changed: true,
+            process: { id: "process-1", status: "FINISHED" },
             migrated: false,
           });
           assert.deepStrictEqual(
             seen.map((entry) => entry.method),
-            ["GET", "POST"],
+            ["GET", "POST", "GET"],
           );
           assert.deepStrictEqual(seen[1]?.body, {
             key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
@@ -238,6 +240,44 @@ describe("markSignedIn", () => {
       Effect.provide(layer),
     );
   });
+
+  it.effect("refuses HTTP success without an accepted process handle", () => {
+    const { layer, seen } = httpLayer((request) =>
+      request.method === "GET" ? json({ items: [] }) : json({}),
+    );
+    return Effect.flip(markSignedIn({ environment, serviceId: SERVICE_ID, agentId: "codex" })).pipe(
+      Effect.tap((error) =>
+        Effect.sync(() => {
+          assert.strictEqual(error.reason, "Zerops did not return a registration process.");
+          assert.strictEqual(seen.filter((request) => request.method === "POST").length, 1);
+        }),
+      ),
+      Effect.provide(layer),
+    );
+  });
+
+  it.effect(
+    "follows the accepted handle and exposes a failed process without another write",
+    () => {
+      const { layer, seen } = httpLayer((request) => {
+        if (request.url.includes("/process/")) return json({ id: "process-1", status: "FAILED" });
+        if (request.method === "GET") return json({ items: [] });
+        return json({ id: "process-1", status: "RUNNING" });
+      });
+      return Effect.flip(
+        markSignedIn({ environment, serviceId: SERVICE_ID, agentId: "codex" }),
+      ).pipe(
+        Effect.tap((error) =>
+          Effect.sync(() => {
+            assert.strictEqual(error.reason, "Zerops registration failed.");
+            assert.deepStrictEqual(error.process, { id: "process-1", status: "FAILED" });
+            assert.strictEqual(seen.filter((request) => request.method === "POST").length, 1);
+          }),
+        ),
+        Effect.provide(layer),
+      );
+    },
+  );
 
   it.effect('does nothing when the row already reads non-sensitive "true"', () => {
     const { layer, seen } = httpLayer(() =>
@@ -265,6 +305,7 @@ describe("markSignedIn", () => {
 
   it.effect("deletes then recreates a SENSITIVE row", () => {
     const { layer, seen } = httpLayer((request) => {
+      if (request.url.includes("/process/")) return json({ status: "FINISHED" });
       if (request.method === "GET") {
         return json({
           items: [
@@ -280,11 +321,12 @@ describe("markSignedIn", () => {
           assert.deepStrictEqual(result, {
             key: "ZCP_AGENT_OAUTH_CLAUDE_CODE",
             changed: true,
+            process: { id: "process-1", status: "FINISHED" },
             migrated: true,
           });
           assert.deepStrictEqual(
             seen.map((entry) => entry.method),
-            ["GET", "DELETE", "POST"],
+            ["GET", "DELETE", "POST", "GET"],
           );
           assert.strictEqual(seen[1]?.url.endsWith("/user-data/row-1"), true);
         }),
@@ -334,6 +376,7 @@ describe("clearSignedIn", () => {
 
   it.effect("deletes the oauth row and an oauth-typed auth-type row together", () => {
     const { layer, seen } = httpLayer((request) => {
+      if (request.url.includes("/process/")) return json({ status: "FINISHED" });
       if (request.method === "GET") {
         return json({
           items: [
@@ -361,6 +404,7 @@ describe("clearSignedIn", () => {
 
   it.effect("leaves a token-typed auth-type row alone", () => {
     const { layer, seen } = httpLayer((request) => {
+      if (request.url.includes("/process/")) return json({ status: "FINISHED" });
       if (request.method === "GET") {
         return json({
           items: [

@@ -340,6 +340,7 @@ export const WS_METHODS = {
   zeropsLifecycleGet: "zerops.lifecycle.get",
   zeropsStandUpRetry: "zerops.standUp.retry",
   zeropsAgentLoginStart: "zerops.agentLogin.start",
+  zeropsAgentAuthCheck: "zerops.agentAuth.check",
   zeropsAgentLoginCancel: "zerops.agentLogin.cancel",
   zeropsAgentLoginSubmitCode: "zerops.agentLogin.submitCode",
   zeropsAgentLoginSignOut: "zerops.agentLogin.signOut",
@@ -1022,6 +1023,12 @@ const WsZeropsAgentLoginStartRpc = Rpc.make(WS_METHODS.zeropsAgentLoginStart, {
   error: Schema.Union([TerminalError, ZeropsAgentLoginError, EnvironmentAuthorizationError]),
 });
 
+/** One operator-requested verification and, if needed, platform registration. */
+const WsZeropsAgentAuthCheckRpc = Rpc.make(WS_METHODS.zeropsAgentAuthCheck, {
+  payload: ZeropsAgentLoginCancelInput,
+  error: Schema.Union([ZeropsAgentLoginError, EnvironmentAuthorizationError]),
+});
+
 /** Cancels `agentId`'s active login session, if any: sends Ctrl-C and closes its terminal. */
 const WsZeropsAgentLoginCancelRpc = Rpc.make(WS_METHODS.zeropsAgentLoginCancel, {
   payload: ZeropsAgentLoginCancelInput,
@@ -1273,6 +1280,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeZeropsLifecycleRpc,
   WsSubscribeZeropsAgentAuthRpc,
   WsZeropsAgentLoginStartRpc,
+  WsZeropsAgentAuthCheckRpc,
   WsZeropsAgentLoginCancelRpc,
   WsZeropsAgentLoginSubmitCodeRpc,
   WsZeropsAgentLoginSignOutRpc,

@@ -102,6 +102,7 @@ export const RPC_REQUIRED_SCOPES = {
   // A login session runs a real command in a real terminal on the user's
   // behalf — the same authority as `terminal.write`/`terminal.open`, not a
   // read.
+  [WS_METHODS.zeropsAgentAuthCheck]: AuthTerminalOperateScope,
   [WS_METHODS.zeropsAgentLoginStart]: AuthTerminalOperateScope,
   [WS_METHODS.zeropsAgentLoginCancel]: AuthTerminalOperateScope,
   [WS_METHODS.zeropsAgentLoginSubmitCode]: AuthTerminalOperateScope,

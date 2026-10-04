@@ -53,6 +53,8 @@ import * as NodeOS from "node:os";
 
 import type {
   ServerProviderAuthStatus,
+  ZeropsAuthVerification,
+  ZeropsAuthRegistration,
   ZeropsAgentAuth as ZeropsAgentAuthContract,
   ZeropsAgentAuthSnapshot,
   ZeropsAgentAuthState,
@@ -68,7 +70,6 @@ import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
-import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
@@ -81,7 +82,7 @@ import { ProviderInstances } from "../spi/providerInstances.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
-import { ZeropsAgentFlag, type ZeropsAgentFlagError } from "./ZeropsAgentFlag.ts";
+import { ZeropsAgentFlag } from "./ZeropsAgentFlag.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import { turnAuthFailureAgent } from "./zeropsTurnAuthFailure.ts";
@@ -89,6 +90,7 @@ import {
   spawnAgentAuthProbe,
   verifyAgentAuth,
   type AgentAuthProbeSpawn,
+  type AgentAuthVerification,
 } from "./ZeropsAgentAuthVerify.ts";
 
 /** The two agents this feed reports on (docs/spec-welcome-mode.md §3: only agents with a verified probe). */
@@ -152,6 +154,8 @@ export const buildSnapshot = (
   credPresence: Readonly<Record<ZeropsAgentId, boolean>>,
   providerAuth: Readonly<Record<ZeropsAgentId, ServerProviderAuthStatus>>,
   authorizers: Readonly<Partial<Record<ZeropsAgentId, ZeropsAgentAuthorizer>>> = {},
+  verification: Readonly<Partial<Record<ZeropsAgentId, ZeropsAuthVerification>>> = {},
+  registration: Readonly<Partial<Record<ZeropsAgentId, ZeropsAuthRegistration>>> = {},
 ): ZeropsAgentAuthSnapshot => {
   const agents = KNOWN_AGENT_IDS.map((agentId) => {
     const suffix = AGENT_OAUTH_SUFFIX[agentId];
@@ -165,6 +169,8 @@ export const buildSnapshot = (
       flagOAuth,
       flagToken,
       providerAuth: providerAuth[agentId],
+      ...(verification[agentId] === undefined ? {} : { verification: verification[agentId] }),
+      ...(registration[agentId] === undefined ? {} : { registration: registration[agentId] }),
       state: computeAgentAuthState({ flagOAuth, flagToken, credPresent }),
       // Provenance only travels with a credential that exists: a stale record
       // for a credential that has since been removed would name an owner for
@@ -213,35 +219,6 @@ const STATE_PUSH_DEBOUNCE_MS = 400;
  */
 const PROVIDER_CHECK_DEBOUNCE_MS = 1000;
 
-/** `ZeropsCliFailed` gets up to 3 attempts total (the initial try plus 2 retries) with a short exponential backoff; `ZeropsCliNotFound` is never retried. */
-const MARK_OAUTH_RETRY_SCHEDULE = Schedule.exponential(Duration.millis(50));
-const MARK_OAUTH_RETRY_ATTEMPTS = 2;
-
-/**
- * How long to wait before retrying a `markSignedIn` write that exhausted
- * {@link MARK_OAUTH_RETRY_SCHEDULE} (~150 ms total). Without this, an
- * API/key blip that outlasts the fast retries leaves a signed-in agent with
- * no platform flag until its credential file changes again — nothing else
- * re-triggers a check, and the model picker is flag-gated. Minutes-scale on
- * purpose: bounded, not a tight retry loop.
- */
-export const MARK_SIGNED_IN_FAILURE_RECHECK_INTERVAL = Duration.minutes(2);
-
-/**
- * How often an agent whose credential is present but whose last check could
- * not answer (`unknown`: the CLI timed out, was missing, printed something
- * unrecognized) is checked again. Without it nothing re-asks until the next
- * credential event, and the card sits at "Checking…" with nothing to click.
- */
-export const UNKNOWN_AUTH_RECHECK_INTERVAL = Duration.seconds(15);
-
-/**
- * How many intervals each further consecutive `unknown` waits before the next
- * re-check — 15 s, 1 min, then every 5 min: a CLI that keeps not answering
- * (missing, changed its output) is not spawned every 15 s forever.
- */
-const UNKNOWN_AUTH_RECHECK_BACKOFF: ReadonlyArray<number> = [1, 4, 20];
-
 export class ZeropsAgentAuth extends Context.Service<
   ZeropsAgentAuth,
   {
@@ -287,7 +264,7 @@ export interface ZeropsAgentAuthOptions {
    * Coalescing a burst of credential events into one call here is `make`'s
    * own job (see `PROVIDER_CHECK_DEBOUNCE_MS`), not this function's.
    */
-  readonly refreshProviderAuth: (agentId: ZeropsAgentId) => Effect.Effect<ServerProviderAuthStatus>;
+  readonly refreshProviderAuth: (agentId: ZeropsAgentId) => Effect.Effect<AgentAuthVerification>;
   /**
    * Told every time an agent's verified status changes, so the model picker's
    * provider snapshot can catch up (`ProviderInstances.reconcileAgentAuth` at
@@ -315,10 +292,6 @@ export interface ZeropsAgentAuthOptions {
    * a turn's failure is not heard here.
    */
   readonly turnAuthFailures?: Stream.Stream<ZeropsAgentId>;
-  /** Defaults to {@link UNKNOWN_AUTH_RECHECK_INTERVAL}; shortened by tests. */
-  readonly unknownAuthRecheckInterval?: Duration.Duration;
-  /** Defaults to {@link MARK_SIGNED_IN_FAILURE_RECHECK_INTERVAL}; shortened by tests. */
-  readonly markSignedInFailureRecheckInterval?: Duration.Duration;
   readonly isZeropsEnvironment: boolean;
   /**
    * Watches `target`, tolerating it not existing yet (falls back to
@@ -335,7 +308,7 @@ interface FeedState {
   readonly credPresence: Readonly<Record<ZeropsAgentId, boolean>>;
   /** The provider's own auth probe result, per agent. `"unknown"` until the first targeted check runs. */
   readonly providerAuth: Readonly<Record<ZeropsAgentId, ServerProviderAuthStatus>>;
-  /** Set once the flag write (`ZeropsAgentFlag.markSignedIn`) actually SUCCEEDED for an agent, so a later re-check of an already-authenticated agent does not write it again. Never set on failure — a genuine failure is eligible to retry on the next coalesced check. */
+  /** Set once the flag write (`ZeropsAgentFlag.markSignedIn`) actually SUCCEEDED for an agent, so a later re-check of an already-authenticated agent does not write it again. Failure ends visibly; another credential revision or operator request may write once. */
   readonly markedOAuth: Readonly<Record<ZeropsAgentId, boolean>>;
   /**
    * Whether the NEXT coalesced provider check for this agent was requested
@@ -346,16 +319,9 @@ interface FeedState {
    * that answers.
    */
   readonly pendingCredentialCheck: Readonly<Record<ZeropsAgentId, boolean>>;
-  /**
-   * The agent's last check answered `unknown` and nothing has asked again
-   * since — what the re-check loop looks for (UNKNOWN_AUTH_RECHECK_INTERVAL).
-   * A check still pending is not inconclusive: re-asking it would only keep
-   * resetting its own debounce.
-   */
-  readonly inconclusive: Readonly<Record<ZeropsAgentId, boolean>>;
-  /** Consecutive `unknown` answers, and the re-check intervals still to wait — see UNKNOWN_AUTH_RECHECK_BACKOFF. */
-  readonly unknownStreak: Readonly<Record<ZeropsAgentId, number>>;
-  readonly recheckCountdown: Readonly<Record<ZeropsAgentId, number>>;
+  readonly verification: Readonly<Partial<Record<ZeropsAgentId, ZeropsAuthVerification>>>;
+  readonly registration: Readonly<Partial<Record<ZeropsAgentId, ZeropsAuthRegistration>>>;
+  readonly generation: Readonly<Record<ZeropsAgentId, number>>;
   /** Bumped by `invalidatePendingMark` (sign-out); a `checkProviderAuth` in flight when this changes must not mark the flag it captured — see that method's own doc comment. */
   readonly signOutEpoch: Readonly<Record<ZeropsAgentId, number>>;
   readonly env: ZembedEnv | undefined;
@@ -405,6 +371,14 @@ const agentAuthEqual = (
   a.flagToken === b.flagToken &&
   a.providerAuth === b.providerAuth &&
   a.state === b.state &&
+  a.verification?.status === b.verification?.status &&
+  a.verification?.reason === b.verification?.reason &&
+  a.verification?.checkedAt === b.verification?.checkedAt &&
+  a.verification?.generation === b.verification?.generation &&
+  a.registration?.status === b.registration?.status &&
+  a.registration?.reason === b.registration?.reason &&
+  a.registration?.process?.id === b.registration?.process?.id &&
+  a.registration?.process?.status === b.registration?.process?.status &&
   a.authorizedBy?.subject === b.authorizedBy?.subject;
 
 /** Field-by-field equality — avoids a JSON round-trip for what is only ever an internal dedup check. */
@@ -425,8 +399,6 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       readSigners,
       turnAuthFailures,
       watch,
-      unknownAuthRecheckInterval = UNKNOWN_AUTH_RECHECK_INTERVAL,
-      markSignedInFailureRecheckInterval = MARK_SIGNED_IN_FAILURE_RECHECK_INTERVAL,
       isZeropsEnvironment: enabled,
     } = options;
     const changes = yield* PubSub.sliding<ZeropsAgentAuthSnapshot>(4);
@@ -456,9 +428,9 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       providerAuth: { "claude-code": "unknown", codex: "unknown" },
       markedOAuth: { "claude-code": false, codex: false },
       pendingCredentialCheck: { "claude-code": false, codex: false },
-      inconclusive: { "claude-code": false, codex: false },
-      unknownStreak: { "claude-code": 0, codex: 0 },
-      recheckCountdown: { "claude-code": 0, codex: 0 },
+      verification: {},
+      registration: {},
+      generation: { "claude-code": 0, codex: 0 },
       signOutEpoch: { "claude-code": 0, codex: 0 },
       env: undefined,
       lastPublished: undefined,
@@ -484,6 +456,8 @@ export const make = (options: ZeropsAgentAuthOptions) =>
         current.credPresence,
         current.providerAuth,
         authorizers,
+        current.verification,
+        current.registration,
       );
       if (current.lastPublished !== undefined && snapshotsEqual(snapshot, current.lastPublished)) {
         return;
@@ -492,59 +466,53 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       yield* PubSub.publish(changes, snapshot);
     }).pipe(publishMutex.withPermits(1));
 
-    /**
-     * Writes the platform flag once (`ZeropsAgentFlag.markSignedIn` — a
-     * direct Zerops API upsert with the Mate's own key). Every
-     * {@link ZeropsAgentFlagError} — network, a bad status, this
-     * container's own service id being unavailable — gets
-     * {@link MARK_OAUTH_RETRY_SCHEDULE}; there is no permanent-off latch
-     * here (unlike the old `zcp` spawn, an HTTP failure is always worth
-     * retrying on the next coalesced check). Only ever called from
-     * {@link checkProviderAuth} once a targeted refresh has confirmed the
-     * provider itself is authenticated — never from credential presence
-     * alone.
-     */
-    const markOAuthOnce = (agentId: ZeropsAgentId) =>
+    /** One platform write per credential revision or explicit operator request. */
+    const markOAuthOnce = (agentId: ZeropsAgentId, generation: number, epoch: number) =>
       Effect.gen(function* () {
-        const outcome = yield* Effect.result(
-          agentFlag.markSignedIn(agentId).pipe(
-            Effect.retry({
-              schedule: MARK_OAUTH_RETRY_SCHEDULE,
-              times: MARK_OAUTH_RETRY_ATTEMPTS,
-              while: (error: ZeropsAgentFlagError) => error._tag === "ZeropsAgentFlagError",
-            }),
-          ),
-        );
-        if (outcome._tag === "Failure") {
-          yield* Effect.logWarning("zerops agent auth: mark-signed-in failed", {
-            agentId,
-            error: outcome.failure,
-          });
-          // The credential event this check consumed is still unanswered —
-          // the agent is still signed in and still needs its flag, so a
-          // genuine failure (unlike an inconclusive probe) must not go
-          // silent until the credential file changes again. Re-queue a
-          // check after a bounded, minutes-scale backoff, restoring
-          // eligibility to mark when it runs.
-          yield* requestProviderCheck(agentId, { fromCredential: true }).pipe(
-            Effect.delay(markSignedInFailureRecheckInterval),
-            Effect.forkScoped,
-          );
-          return;
-        }
         yield* Ref.update(state, (current) => ({
           ...current,
-          markedOAuth: { ...current.markedOAuth, [agentId]: true },
+          registration: { ...current.registration, [agentId]: { status: "pending" } },
         }));
-        // S7 follow-up F5: the success path previously logged nothing —
-        // `changed`/`migrated` are the two facts worth a record, never a
-        // credential value.
-        yield* Effect.logInfo("zerops agent auth: mark-signed-in written", {
-          agentId,
-          key: outcome.success.key,
-          changed: outcome.success.changed,
-          migrated: outcome.success.migrated,
-        });
+        const outcome = yield* Effect.result(
+          agentFlag.markSignedIn(agentId, (process) =>
+            Ref.update(state, (current) =>
+              current.generation[agentId] !== generation || current.signOutEpoch[agentId] !== epoch
+                ? current
+                : {
+                    ...current,
+                    registration: {
+                      ...current.registration,
+                      [agentId]: { status: "accepted", process },
+                    },
+                  },
+            ).pipe(Effect.andThen(publish)),
+          ),
+        );
+        const current = yield* Ref.get(state);
+        if (current.generation[agentId] !== generation || current.signOutEpoch[agentId] !== epoch)
+          return;
+        yield* Ref.update(state, (latest) => ({
+          ...latest,
+          markedOAuth: { ...latest.markedOAuth, [agentId]: outcome._tag === "Success" },
+          registration: {
+            ...latest.registration,
+            [agentId]:
+              outcome._tag === "Failure"
+                ? {
+                    status: "failed",
+                    reason: outcome.failure.reason,
+                    ...(outcome.failure.process === undefined
+                      ? {}
+                      : { process: outcome.failure.process }),
+                  }
+                : {
+                    status: outcome.success.process === undefined ? "registered" : "accepted",
+                    ...(outcome.success.process === undefined
+                      ? {}
+                      : { process: outcome.success.process }),
+                  },
+          },
+        }));
       });
 
     /**
@@ -555,8 +523,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
      * credential file is not proof of a working login, and the env-store
      * path keeps `providerAuth` current without ever writing the flag
      * itself. `markedOAuth` keeps a re-check of an already-marked agent from
-     * writing it again; a genuine failure never sets it, so the next
-     * coalesced check retries.
+     * writing it again. A failed write ends with a receipt.
      */
     const checkProviderAuth = (agentId: ZeropsAgentId) =>
       Effect.gen(function* () {
@@ -566,9 +533,12 @@ export const make = (options: ZeropsAgentAuthOptions) =>
         // does, this check's own "authenticated" answer is stale — the
         // agent it was verifying may already be signed out — so it must
         // never re-mark a flag sign-out is (or already has) cleared.
-        const epochAtStart = (yield* Ref.get(state)).signOutEpoch[agentId];
+        const atStart = yield* Ref.get(state);
+        const epochAtStart = atStart.signOutEpoch[agentId];
+        const generation = atStart.generation[agentId];
         const startedAt = yield* Clock.currentTimeMillis;
-        const status = yield* refreshProviderAuth(agentId);
+        const verification = yield* refreshProviderAuth(agentId);
+        const status = verification.status;
         // S7 follow-up F5: this feed's own verification previously logged
         // nothing at all — every check now leaves one record of what it
         // found, never a credential value.
@@ -578,37 +548,25 @@ export const make = (options: ZeropsAgentAuthOptions) =>
           elapsedMs: (yield* Clock.currentTimeMillis) - startedAt,
         });
         const before = yield* Ref.get(state);
+        if (
+          before.generation[agentId] !== generation ||
+          before.signOutEpoch[agentId] !== epochAtStart
+        )
+          return;
         const allowMarkOAuth = before.pendingCredentialCheck[agentId];
         const alreadyMarked = before.markedOAuth[agentId];
         const signedOutDuringProbe = before.signOutEpoch[agentId] !== epochAtStart;
         yield* Ref.update(state, (current) => ({
           ...current,
           providerAuth: { ...current.providerAuth, [agentId]: status },
-          // An inconclusive answer does not spend the credential event: the
-          // re-check that answers for it must still be allowed to mark.
-          pendingCredentialCheck:
-            status === "unknown"
-              ? current.pendingCredentialCheck
-              : { ...current.pendingCredentialCheck, [agentId]: false },
-          inconclusive: { ...current.inconclusive, [agentId]: status === "unknown" },
-          ...(status === "unknown"
+          pendingCredentialCheck: { ...current.pendingCredentialCheck, [agentId]: false },
+          verification: { ...current.verification, [agentId]: { ...verification, generation } },
+          ...(status === "unauthenticated"
             ? {
-                unknownStreak: {
-                  ...current.unknownStreak,
-                  [agentId]: current.unknownStreak[agentId] + 1,
-                },
-                recheckCountdown: {
-                  ...current.recheckCountdown,
-                  [agentId]:
-                    UNKNOWN_AUTH_RECHECK_BACKOFF[
-                      Math.min(
-                        current.unknownStreak[agentId],
-                        UNKNOWN_AUTH_RECHECK_BACKOFF.length - 1,
-                      )
-                    ] ?? 1,
-                },
+                registration: { ...current.registration, [agentId]: undefined },
+                markedOAuth: { ...current.markedOAuth, [agentId]: false },
               }
-            : { unknownStreak: { ...current.unknownStreak, [agentId]: 0 } }),
+            : {}),
         }));
         if (status === "authenticated" && allowMarkOAuth && !alreadyMarked) {
           if (signedOutDuringProbe) {
@@ -617,7 +575,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
               { agentId },
             );
           } else {
-            yield* markOAuthOnce(agentId);
+            yield* markOAuthOnce(agentId, generation, epochAtStart);
           }
         }
         yield* publish;
@@ -632,9 +590,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
     // credential events debounces into ONE targeted provider check, and
     // sequential Stream consumption makes that check single-flight — no
     // separate semaphore needed. A queue+debounce+forkScoped pipeline is
-    // used here (rather than a bare Effect.retry/Effect.sleep loop) because
-    // it is the one pattern in this file already proven not to trip this
-    // Effect build's scheduler bug (see the header comment / commit history).
+    // keeps each explicit request single-flight.
     const providerCheckQueues = new Map<ZeropsAgentId, Queue.Queue<void>>();
     for (const agentId of KNOWN_AGENT_IDS) {
       const queue = yield* Queue.unbounded<void>();
@@ -661,6 +617,11 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       options: { readonly fromCredential: boolean },
     ) =>
       Effect.gen(function* () {
+        yield* Ref.update(state, (current) => ({
+          ...current,
+          generation: { ...current.generation, [agentId]: current.generation[agentId] + 1 },
+          verification: { ...current.verification, [agentId]: { status: "checking" } },
+        }));
         if (options.fromCredential) {
           yield* Ref.update(state, (current) => ({
             ...current,
@@ -706,6 +667,15 @@ export const make = (options: ZeropsAgentAuthOptions) =>
         const tokenKey = `ZCP_AGENT_TOKEN_${suffix}`;
         const wasOAuth = before?.[oauthKey] === "true";
         const isOAuth = after?.[oauthKey] === "true";
+        if (isOAuth) {
+          yield* Ref.update(state, (current) => ({
+            ...current,
+            registration: {
+              ...current.registration,
+              [agentId]: { ...current.registration[agentId], status: "registered" },
+            },
+          }));
+        }
         const oauthAppeared = !wasOAuth && isOAuth;
         const tokenAppeared = !before?.[tokenKey] && !!after?.[tokenKey];
         if (oauthAppeared || tokenAppeared) {
@@ -790,31 +760,6 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       );
     }
 
-    // A credential whose check could not answer is asked again, until it
-    // does — see UNKNOWN_AUTH_RECHECK_INTERVAL.
-    yield* Effect.gen(function* () {
-      const current = yield* Ref.get(state);
-      for (const agentId of KNOWN_AGENT_IDS) {
-        if (!current.credPresence[agentId] || !current.inconclusive[agentId]) continue;
-        const countdown = current.recheckCountdown[agentId] - 1;
-        yield* Ref.update(state, (latest) => ({
-          ...latest,
-          recheckCountdown: { ...latest.recheckCountdown, [agentId]: countdown },
-          inconclusive: { ...latest.inconclusive, [agentId]: countdown > 0 },
-        }));
-        if (countdown <= 0) {
-          yield* requestProviderCheck(agentId, { fromCredential: false });
-        }
-      }
-    }).pipe(
-      Effect.delay(unknownAuthRecheckInterval),
-      Effect.forever,
-      Effect.catchCause((cause) =>
-        Effect.logWarning("zerops agent auth: unknown-auth recheck stopped", { cause }),
-      ),
-      Effect.forkScoped,
-    );
-
     // What was last published, signers included: a subscriber arriving now
     // (a reload) and every recombine `registerZeropsRpc` does on a change
     // start from the same snapshot the change stream carries. `make` has
@@ -823,7 +768,14 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       Effect.map(
         (current) =>
           current.lastPublished ??
-          buildSnapshot(current.env, current.credPresence, current.providerAuth),
+          buildSnapshot(
+            current.env,
+            current.credPresence,
+            current.providerAuth,
+            {},
+            current.verification,
+            current.registration,
+          ),
       ),
     );
 
@@ -841,14 +793,16 @@ export const make = (options: ZeropsAgentAuthOptions) =>
           ...current,
           providerAuth: { ...current.providerAuth, [agentId]: "unknown" },
         })).pipe(
-          Effect.andThen(publish),
           Effect.andThen(requestProviderCheck(agentId, { fromCredential: true })),
+          Effect.andThen(publish),
         ),
       invalidatePendingMark: (agentId) =>
         Ref.update(state, (current) => ({
           ...current,
           signOutEpoch: { ...current.signOutEpoch, [agentId]: current.signOutEpoch[agentId] + 1 },
           markedOAuth: { ...current.markedOAuth, [agentId]: false },
+          registration: { ...current.registration, [agentId]: undefined },
+          verification: { ...current.verification, [agentId]: undefined },
         })),
     } satisfies ZeropsAgentAuth["Service"];
   });
@@ -863,7 +817,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
  */
 export const layerVerifyAgentAuth =
   (spawn: AgentAuthProbeSpawn) =>
-  (agentId: ZeropsAgentId): Effect.Effect<ServerProviderAuthStatus> =>
+  (agentId: ZeropsAgentId): Effect.Effect<AgentAuthVerification> =>
     verifyAgentAuth(agentId, spawn);
 
 export const layer = Layer.effect(
