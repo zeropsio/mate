@@ -35,7 +35,8 @@ import {
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { refreshLaneStats } from "./crewLanding.ts";
-import { NO_REPORT } from "./crewMachines.ts";
+import { CHECKED_STATES, EDITED_AFTER_CHECK, NO_REPORT } from "./crewMachines.ts";
+import { openTaskOf, parkTask } from "./crewTasks.ts";
 import { beginOperation, updateOperation } from "./crewOperations.ts";
 import { advanceAll, takeUpWaiting } from "./crewRunFlow.ts";
 import { runOnAfterRestart } from "./crewRuns.ts";
@@ -176,7 +177,26 @@ export const inspectBoot = (core: CrewCore) =>
  */
 const sweepHost = (core: CrewCore, applied: AppliedCrew, host: string) =>
   Effect.gen(function* () {
-    const swept = yield* asRefusal(core.workspace.sweep(host));
+    const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
+    const open = (handle: string) => openTaskOf(tasks, handle);
+    const checked = new Set(
+      [...applied.members.keys()].filter((handle) => {
+        const task = open(handle);
+        return task !== undefined && CHECKED_STATES.has(task.state);
+      }),
+    );
+    const swept = yield* asRefusal(core.workspace.sweep(host, checked));
+    // Edits on a copy its check passed: never committed, never landed, and its landing stops.
+    for (const lane of swept.lanes) {
+      const task = lane._tag === "held" ? open(lane.handle) : undefined;
+      if (task === undefined) continue;
+      for (const row of yield* asRefusal(core.store.operations(CREW_ID))) {
+        if (row.taskId !== task.assignment || row.status !== "interrupted") continue;
+        core.memory.resumeAtBoot.delete(row.id);
+        yield* updateOperation(core, row.id, { status: "continued" });
+      }
+      yield* parkTask(core, task, EDITED_AFTER_CHECK);
+    }
     const missing = swept.lanes
       .filter((lane) => lane._tag === "missing")
       .map((lane) => lane.handle);

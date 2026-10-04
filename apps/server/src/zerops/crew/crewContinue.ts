@@ -18,6 +18,7 @@ import {
   type CrewMember,
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
+import { CHECKED_STATES } from "./crewMachines.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
 import { operationStep, sentBySession, updateOperation, withOperation } from "./crewOperations.ts";
 import { integrate, land, refreshLaneStats } from "./crewLanding.ts";
@@ -109,9 +110,6 @@ export const adoptOwnWrites = (
 
 /** Who presses Continue: a person, or the engine itself after a restart (`resumeAfterRestart`). */
 export type ContinuedBy = "person" | "engine";
-
-/** A task the check passed: its copy is the tree that lands, never committed again. */
-const CHECKED: ReadonlySet<string> = new Set(["ready", "review", "landing", "waiting-on-you"]);
 
 /**
  * The selected work continues from its recorded stage, by the task's state —
@@ -206,7 +204,7 @@ export const continueOperation = (
         : task;
     const tasks = () => asRefusal(core.store.assignments(CREW_ID));
     const save = (state: CrewAssignmentRow) =>
-      member.row.kind === "writer" && !CHECKED.has(state.state)
+      member.row.kind === "writer" && !CHECKED_STATES.has(state.state)
         ? Effect.flatMap(tasks(), (all) => commitAndPolice(core, member, state, all))
         : Effect.void;
     switch (resuming.state) {

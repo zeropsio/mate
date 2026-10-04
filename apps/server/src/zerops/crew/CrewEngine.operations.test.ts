@@ -11,6 +11,7 @@ import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { CrewStore } from "./CrewStore.ts";
 import { CrewEngine } from "./CrewEngine.ts";
 import { CREW_ID } from "./CrewHome.ts";
+import { EDITED_AFTER_CHECK, MOVED_AFTER_CHECK } from "./crewMachines.ts";
 import {
   applied,
   command,
@@ -25,6 +26,7 @@ import {
   withCrewEngine,
   withCrewEngines,
   writeCrewHome,
+  type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
 import { write, git } from "./testing/crewGitFixture.ts";
 
@@ -185,7 +187,7 @@ describe("owned crew operations", () => {
 });
 
 for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
-  it.live(`restart carries ${kind} on from its confirmed stage, its dirty work saved`, () => {
+  it.live(`restart carries ${kind} on from its confirmed stage, its dirty work kept`, () => {
     let head = "";
     return withCrewEngines([
       (world) =>
@@ -227,7 +229,7 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
               !frame.operations?.some((row) => row.id === `crashed-${kind}`) &&
               (kind === "dispatch" || kind === "checkpoint"
                 ? frame.board.tasks[0]?.attempts === 1 && frame.board.tasks[0]?.state === "working"
-                : frame.board.tasks[0]?.state === (kind === "check" ? "ready" : "landed")),
+                : frame.board.tasks[0]?.state === (kind === "check" ? "ready" : "parked")),
           );
           const operation = yield* (yield* CrewStore).getOperation(`crashed-${kind}`);
           assert.strictEqual(
@@ -237,12 +239,16 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
           assert.isFalse(settled.attention.some((need) => need.kind === "interrupted"));
           const copy = NodePath.join(world.root, ".crew/backend");
           assert.strictEqual(
-            NodeFS.readFileSync(
-              NodePath.join(kind === "landing" ? world.root : copy, "ok.txt"),
-              "utf8",
-            ),
+            NodeFS.readFileSync(NodePath.join(copy, "ok.txt"), "utf8"),
             "dirty work\n",
           );
+          if (kind === "landing") {
+            // Edits on a copy whose task stands landing were never checked: kept, never landed.
+            assert.deepStrictEqual(
+              [settled.board.tasks[0]!.reason, git(copy, ["rev-parse", "HEAD"])],
+              [EDITED_AFTER_CHECK, head],
+            );
+          }
           if (kind === "checkpoint") {
             // Its turn had ended: the save is redone, and no turn goes out outside a run.
             assert.strictEqual(git(copy, ["rev-parse", "HEAD~1"]), head);
@@ -952,6 +958,86 @@ it.live("Drop it settles a stopped copy save outside any task, and its queue mov
       assert.strictEqual(operation._tag === "Some" ? operation.value.status : null, "discarded");
       yield* command({ _tag: "message", handle: "backend", text: "Work", attachments: [] });
       yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "working");
+    }),
+  ),
+);
+
+const readyTask = (world: CrewWorld) =>
+  Effect.gen(function* () {
+    yield* applied(world);
+    const thread = yield* firstTurn(world, () =>
+      write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "ok\n"),
+    );
+    yield* reportDone(thread);
+    yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+    yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "ready");
+    return thread;
+  });
+
+it.live("a restart never commits edits on a checked copy: its task stops, the edits kept", () => {
+  let tip = "";
+  return withCrewEngines([
+    (world) =>
+      Effect.gen(function* () {
+        yield* readyTask(world);
+        const copy = NodePath.join(world.root, ".crew/backend");
+        tip = git(copy, ["rev-parse", "HEAD"]);
+        write(copy, "after-check.txt", "unchecked\n");
+      }),
+    (world) =>
+      Effect.gen(function* () {
+        yield* (yield* ServerCommandReadiness).complete;
+        const stopped = yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "parked");
+        const copy = NodePath.join(world.root, ".crew/backend");
+        assert.deepStrictEqual(
+          [stopped.board.tasks[0]!.reason, git(copy, ["rev-parse", "HEAD"])],
+          [EDITED_AFTER_CHECK, tip],
+        );
+        assert.include(git(copy, ["status", "--porcelain"]), "after-check.txt");
+      }),
+  ]);
+});
+
+it.live("a turn's end never commits edits on a checked copy: its task stops", () =>
+  withCrewEngine((world) =>
+    Effect.gen(function* () {
+      const thread = yield* readyTask(world);
+      const copy = NodePath.join(world.root, ".crew/backend");
+      const tip = git(copy, ["rev-parse", "HEAD"]);
+      yield* world.publish(spiEvent("turn.started", thread, {}));
+      write(copy, "after-check.txt", "unchecked\n");
+      yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+      const stopped = yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "parked");
+      assert.deepStrictEqual(
+        [stopped.board.tasks[0]!.reason, git(copy, ["rev-parse", "HEAD"])],
+        [EDITED_AFTER_CHECK, tip],
+      );
+    }),
+  ),
+);
+
+it.live("Land refuses a copy that moved after its check and lands nothing", () =>
+  withCrewEngine((world) =>
+    Effect.gen(function* () {
+      yield* readyTask(world);
+      const copy = NodePath.join(world.root, ".crew/backend");
+      const head = git(world.root, ["rev-parse", "HEAD"]);
+      // A commit the check never saw, recorded as the copy's tip.
+      write(copy, "after-check.txt", "unchecked\n");
+      git(copy, ["add", "-A"]);
+      git(copy, ["commit", "-q", "-m", "after the check"]);
+      const moved = git(copy, ["rev-parse", "HEAD"]);
+      yield* (yield* CrewStore).updateLane(CREW_ID, "backend", (lane) => ({
+        ...lane,
+        recordedTip: moved,
+      }));
+      const [task] = yield* (yield* CrewStore).assignments(CREW_ID);
+      yield* command({ _tag: "land", taskId: task!.assignment });
+      const stopped = yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "parked");
+      assert.deepStrictEqual(
+        [stopped.board.tasks[0]!.reason, git(world.root, ["rev-parse", "HEAD"])],
+        [MOVED_AFTER_CHECK, head],
+      );
     }),
   ),
 );

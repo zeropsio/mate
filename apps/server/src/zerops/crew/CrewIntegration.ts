@@ -114,6 +114,8 @@ export interface LandInput extends LaneKey {
   readonly assignment: string;
   /** The task's title; its first line is the landing's subject. */
   readonly title: string;
+  /** The copy's tip its check passed on: any other tip is refused `unchecked`. */
+  readonly checkedTip?: string | undefined;
 }
 
 export type LandOutcome =
@@ -123,6 +125,8 @@ export type LandOutcome =
   | { readonly _tag: "nothing" }
   | { readonly _tag: "head-moved"; readonly head: string }
   | { readonly _tag: "refused"; readonly refusal: LandingRefusal }
+  /** The copy is not the tree its check passed on. */
+  | { readonly _tag: "unchecked"; readonly tip: string }
   | LaneNotReady;
 
 export interface RefChange {
@@ -275,6 +279,9 @@ export const make = Effect.gen(function* () {
           `landed=$(${findLanding(input.assignment).trimEnd()})\n` +
           `[ -z "$landed" ] || { printf '%s\\n' "$landed"; exit 0; }\n` +
           laneReady(row) +
+          (input.checkedTip === undefined
+            ? ""
+            : `[ "$tip" = ${shellQuote(input.checkedTip)} ] || { printf 'status\\tunchecked\\ntip\\t%s\\n' "$tip"; exit 0; }\n`) +
           `ahead=$(${git("integration", ["rev-list", "--count", `HEAD..${branch}`])}) || exit 1\n` +
           `[ "$ahead" != 0 ] && [ "$(${git("integration", ["rev-parse", `${branch}^{tree}`])})" != "$(${git("integration", ["rev-parse", "HEAD^{tree}"])})" ] || { printf 'status\\tnothing\\n'; exit 0; }\n` +
           `${git("integration", ["merge-base", "--is-ancestor", H, branch])} || { printf 'status\\thead-moved\\nhead\\t%s\\n' "$H"; exit 0; }\n` +
@@ -309,6 +316,8 @@ export const make = Effect.gen(function* () {
           return { _tag: "nothing" } satisfies LandOutcome;
         case "head-moved":
           return { _tag: "head-moved", head: field(out, "head") ?? "" } satisfies LandOutcome;
+        case "unchecked":
+          return { _tag: "unchecked", tip: field(out, "tip") ?? "" } satisfies LandOutcome;
         case "refused":
           return {
             _tag: "refused",

@@ -27,6 +27,7 @@ import {
  */
 import { CommandId, ThreadId, type CrewRunReason, type SpiEvent } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 import {
   asRefusal,
@@ -56,7 +57,12 @@ import {
 import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
 import { continueAfterSave, openTaskOf, parkTask, requeueTask, stepTask } from "./crewTasks.ts";
-import { attemptEndingOf, turnEndingOf } from "./crewMachines.ts";
+import {
+  attemptEndingOf,
+  CHECKED_STATES,
+  EDITED_AFTER_CHECK,
+  turnEndingOf,
+} from "./crewMachines.ts";
 import { settleLeadWake } from "./crewLead.ts";
 import { flushState } from "./crewState.ts";
 import { CREW_ROTATE_AFTER_DEFAULT } from "./rotationDecision.ts";
@@ -135,6 +141,16 @@ export const commitAndPolice = (
   withOperation(core, { kind: "checkpoint", handle: member.row.handle, task }, (operation) =>
     Effect.gen(function* () {
       const key = { crew: CREW_ID, handle: member.row.handle };
+      // A checked task's copy is the tree that lands: an edit on it is never committed.
+      if (task !== undefined && CHECKED_STATES.has(task.state) && member.row.host !== null) {
+        const stats = yield* core.reads
+          .laneStats(member.row.host, member.row.handle)
+          .pipe(Effect.option);
+        if (Option.isSome(stats) && stats.value.dirty) {
+          yield* parkTask(core, task, EDITED_AFTER_CHECK);
+          return;
+        }
+      }
       const turnKey = task === undefined ? "" : `${task.assignment}:${task.attempt}`;
       const committed = yield* operationStep(
         core,

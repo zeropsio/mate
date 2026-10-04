@@ -453,7 +453,10 @@ operation for its side effects. An already landed receipt only records the task'
 Drop it ends the task's records while leaving its dirty files and HEAD in place. Before any of
 that, the boot sweeps each writer's service from git (`CrewWorkspace.sweep`): a lane gitdir made
 relative, a dirty lane's work saved as a WIP commit, an unreadable ref or a tip the engine did not
-write parked. A copy missing at boot or after a self-deploy comes back from its branch
+write parked. A copy whose task passed its check (`ready`, `review`, `landing`, `waiting-on-you`)
+is never committed, at boot or at a turn's end: edits on it stop the task, "its copy has edits made
+after its check", and stay where they are. A passed check records the tip it ran on, and Land
+refuses any other tip ("its copy moved after its check"), so nothing unchecked lands. A copy missing at boot or after a self-deploy comes back from its branch
 (`CrewWorkspace.recover`) only where its branch, every recorded landing's trailer and its saved
 tip remain, so no work is lost; otherwise the loss is named, the host stays frozen, and the copy
 offers Rebuild crew copy, a selected rebuild that refuses a missing or changed saved branch and

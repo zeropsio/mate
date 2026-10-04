@@ -512,6 +512,26 @@ describe("CrewWorkspace", () => {
     ),
   );
 
+  it.effect("the boot sweep never commits a checked lane's edits", () =>
+    withLanes((root) =>
+      Effect.gen(function* () {
+        const workspace = yield* CrewWorkspace.CrewWorkspace;
+        yield* workspace.create(BACKEND);
+        const tip = git(root, ["rev-parse", "crew/backend"]);
+        write(root, ".crew/backend/after-check.txt", "unchecked\n");
+        const swept = yield* workspace.sweep(TEST_HOST, new Set(["backend"]));
+        assert.deepStrictEqual(
+          [
+            swept.lanes.map((lane) => [lane.handle, lane._tag]),
+            git(root, ["rev-parse", "crew/backend"]),
+            git(`${root}/.crew/backend`, ["status", "--porcelain"]),
+          ],
+          [[["backend", "held"]], tip, "?? after-check.txt"],
+        );
+      }),
+    ),
+  );
+
   it.effect("sweeps at boot: WIP for a dirty lane, rework left open, a 0-byte ref parks", () =>
     withLanes((root) =>
       Effect.gen(function* () {

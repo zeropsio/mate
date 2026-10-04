@@ -54,7 +54,8 @@ import { readDeclaredPorts } from "./crewPorts.ts";
 import { leadReviews } from "./crewRuns.ts";
 import { appendSeam } from "./crewSeamLines.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
-import { readTaskCheck, readTaskReview, readTaskWait } from "./crewTaskData.ts";
+import { EDITED_AFTER_CHECK, MOVED_AFTER_CHECK } from "./crewMachines.ts";
+import { readCheckedTip, readTaskCheck, readTaskReview, readTaskWait } from "./crewTaskData.ts";
 import {
   continueTask,
   parkTask,
@@ -128,6 +129,10 @@ const runCheck = (
   Effect.gen(function* () {
     const command = member.spec.check;
     {
+      // The tree the check runs on: the one tip a landing of this task may take.
+      const checkedTip = Option.getOrUndefined(
+        yield* asRefusal(core.store.getLane(CREW_ID, member.row.handle)),
+      )?.recordedTip;
       const outcome = yield* operationStep(
         core,
         operationId,
@@ -165,7 +170,7 @@ const runCheck = (
                   { type: "check-passed", reviewed },
                   (next) => ({
                     ...next,
-                    check: { state: "passed", output: outcome.tail },
+                    check: { state: "passed", output: outcome.tail, tip: checkedTip ?? null },
                   }),
                 ),
               } as const;
@@ -577,6 +582,7 @@ const landReady = (
                 handle: member.row.handle,
                 assignment: landing.assignment,
                 title: landing.title,
+                checkedTip: readCheckedTip(task.check),
               }),
             ),
           );
@@ -719,9 +725,14 @@ const landReady = (
               }
               return;
             }
+            case "uncommitted":
+              yield* parkTask(core, landing, EDITED_AFTER_CHECK);
+              return;
+            case "unchecked":
+              yield* parkTask(core, landing, MOVED_AFTER_CHECK);
+              return;
             case "frozen":
             case "lane-missing":
-            case "uncommitted":
             case "unknown-tip":
               yield* parkTask(core, landing, `its copy could not land (${outcome._tag})`);
               return;

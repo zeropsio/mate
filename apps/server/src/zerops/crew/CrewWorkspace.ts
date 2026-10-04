@@ -237,6 +237,8 @@ export type SweepLane = { readonly handle: string } & (
   | { readonly _tag: "frozen" }
   /** The directory is gone: `recover` brings it back. */
   | { readonly _tag: "missing" }
+  /** Edits on a copy whose task the check passed: never committed, never landed. */
+  | { readonly _tag: "held" }
 );
 
 export interface SweepOutcome {
@@ -289,9 +291,13 @@ export interface CrewWorkspaceService {
   /**
    * Boot: lane state from git, not from the tables - a WIP commit for a dirty
    * lane that is not merging, a park for an unreadable ref or a tip the engine
-   * did not write.
+   * did not write. A `checked` lane's edits (its task passed its check) are
+   * never committed: they come back `held`.
    */
-  readonly sweep: (host: string) => Effect.Effect<SweepOutcome, CrewWorkspaceError>;
+  readonly sweep: (
+    host: string,
+    checked?: ReadonlySet<string>,
+  ) => Effect.Effect<SweepOutcome, CrewWorkspaceError>;
   /**
    * Finish or *Remove from crew*: a clean lane goes (`worktree remove --force`,
    * `branch -D`); one with unlanded work stays unless `discard` is set.
@@ -695,7 +701,7 @@ export const make = Effect.gen(function* () {
       return { _tag: "recovered", readded, setups } satisfies RecoverOutcome;
     });
 
-  const sweep: CrewWorkspaceService["sweep"] = (host) =>
+  const sweep: CrewWorkspaceService["sweep"] = (host, checked = new Set()) =>
     Effect.gen(function* () {
       const lanes = yield* store.lanesOnHost(host);
       const out = yield* runLane(
@@ -765,6 +771,7 @@ export const make = Effect.gen(function* () {
             return { handle, _tag: "merging", paths } satisfies SweepLane;
           }
           if (!state.dirty) return { handle, _tag: "clean", tip: state.tip } satisfies SweepLane;
+          if (checked.has(handle)) return { handle, _tag: "held" } satisfies SweepLane;
           const committed = yield* commitLane(
             row,
             "wip(sweep): lane work left uncommitted at boot",

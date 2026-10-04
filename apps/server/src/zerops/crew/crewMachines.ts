@@ -393,6 +393,23 @@ export const initialTaskState = (input: {
 }): CrewTaskState => (input.source === "lead" && !input.leadMayStart ? "proposed" : "queued");
 
 const TERMINAL: ReadonlySet<CrewTaskState> = new Set(["landed", "discarded"]);
+
+/**
+ * A task whose check passed: its copy's tip is the tree that lands, so no
+ * edit is ever committed onto it (a boot sweep, a turn's end) and none lands.
+ */
+export const CHECKED_STATES: ReadonlySet<CrewTaskState> = new Set([
+  "ready",
+  "review",
+  "landing",
+  "waiting-on-you",
+]);
+
+/** Why a checked task stopped: its copy changed after the check. */
+export const EDITED_AFTER_CHECK =
+  "its copy has edits made after its check; they stay in its copy and do not land";
+export const MOVED_AFTER_CHECK =
+  "its copy moved after its check; the change stays in its copy and does not land";
 const RETURNS_TO_WORK_ON_MESSAGE: ReadonlySet<CrewTaskState> = new Set([
   "working",
   "blocked",
