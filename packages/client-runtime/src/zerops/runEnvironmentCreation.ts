@@ -148,6 +148,8 @@ export type EnvironmentCreationOutcome =
       readonly ok: false;
       /** Set once the project exists — the half that was built. */
       readonly projectId: string | undefined;
+      /** The container accepted before a later step stopped. */
+      readonly serviceName?: string;
       readonly failedStep: EnvironmentCreationStep;
       readonly error: string;
       /** The platform may have done the step anyway (`isUncertainZeropsFailure`): never ask it again. */
@@ -185,23 +187,11 @@ export interface RunEnvironmentCreationInput {
     readonly from: number;
     readonly projectId: string;
     readonly projectName: string;
+    readonly serviceName?: string;
   };
   /** The platform took the project: everything after this step acts on it. */
   readonly onProjectAccepted?: (projectId: string) => void;
 }
-
-/** Between reads of a project's `envIsolation` while it has not caught up. */
-export const ISOLATION_READ_MS = 1_000;
-/** How many reads a close-off makes before it writes, or gives up: about ten seconds. */
-export const ISOLATION_READS = 10;
-
-/** A close-off's reads that must say closed before the mark, and the time between them. */
-export const ISOLATION_CONFIRM_READS = 2;
-export const ISOLATION_CONFIRM_MS = 2_000;
-
-/** The idempotent steps' tries: the platform's index catching up is the usual "not yet". */
-export const PRESS_STEP_ATTEMPTS = 4;
-export const PRESS_STEP_RETRY_MS = 2_000;
 
 /**
  * The steps a press tried again may resume at: each is safe to ask again. An import of services
@@ -256,70 +246,22 @@ export async function runEnvironmentCreation(
 
   let projectId: string | undefined = input.resume?.projectId;
   let projectName: string | undefined = input.resume?.projectName;
-  let serviceName: string | undefined;
+  let serviceName: string | undefined = input.resume?.serviceName;
   let deployments: ReadonlyArray<ServiceDeployment> = [];
   /** This press imported a container: a harden before it is no longer the last word. */
   let containerImported = false;
-  /**
-   * `envIsolation` as soon as it reads at all, a second apart for about ten seconds; undefined
-   * while it never did. A read that answers is the answer, open or closed.
-   */
-  const readIsolation = async (target: string): Promise<string | undefined> => {
-    for (let read = 1; ; read += 1) {
-      // A read that failed is asked again like one not caught up, and said once none is left.
-      const answer = await input.platform.readIsolation(target).then(
-        (isolation) => ({ isolation }),
-        (cause: unknown) => ({ cause }),
-      );
-      assertCurrent();
-      if ("isolation" in answer && answer.isolation !== undefined) return answer.isolation;
-      if (read >= ISOLATION_READS) {
-        if ("cause" in answer) throw answer.cause;
-        return undefined;
-      }
-      await sleep(ISOLATION_READ_MS);
-      assertCurrent();
-    }
-  };
-
-  /**
-   * Two reads two seconds apart that say closed, writing isolation wherever one says anything
-   * else — once, and the two reads asked again after it.
-   */
+  /** One isolation check, one write if needed, and one read-back before the HQ mark. */
   const confirmClosed = async (target: string): Promise<void> => {
-    let written = false;
-    for (let closedReads = 0; closedReads < ISOLATION_CONFIRM_READS;) {
-      if (closedReads > 0) {
-        await sleep(ISOLATION_CONFIRM_MS);
-        assertCurrent();
-      }
-      const isolation = await readIsolation(target);
-      if (isolation === undefined) throw new Error("The project's isolation could not be read.");
-      if (readsClosed(isolation)) {
-        closedReads += 1;
-        continue;
-      }
-      if (written) throw new Error("The project does not read as closed off yet.");
-      await input.platform.closeOff(target);
-      assertCurrent();
-      written = true;
-      closedReads = 0;
-    }
-  };
-
-  /** An idempotent step, tried again while it answers "not yet". */
-  const withTries = async (attempt: () => Promise<void>): Promise<void> => {
-    for (let tried = 1; ; tried += 1) {
-      try {
-        await attempt();
-        return;
-      } catch (cause) {
-        if (tried >= PRESS_STEP_ATTEMPTS) throw cause;
-      }
-      assertCurrent();
-      await sleep(PRESS_STEP_RETRY_MS);
-      assertCurrent();
-    }
+    const isolation = await input.platform.readIsolation(target);
+    assertCurrent();
+    if (isolation === undefined) throw new Error("The project's isolation could not be read.");
+    if (readsClosed(isolation)) return;
+    await input.platform.closeOff(target);
+    assertCurrent();
+    const confirmed = await input.platform.readIsolation(target);
+    assertCurrent();
+    if (confirmed === undefined) throw new Error("The project's isolation could not be read.");
+    if (!readsClosed(confirmed)) throw new Error("The project does not read as closed off yet.");
   };
   const accept = (id: string) => {
     projectId = id;
@@ -376,48 +318,29 @@ export async function runEnvironmentCreation(
           break;
         }
         case "import-container": {
-          // Safe to ask again (`importDevelopmentContainer`): a try that stopped is tried again.
-          await withTries(async () => {
-            const imported = await input.platform.importDevelopmentContainer({
-              projectId: requireProject(projectId),
-              projectName: projectName ?? "",
-              agents: step.agents,
-              ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
-            });
-            serviceName = imported.serviceName;
-            if (imported.imported) containerImported = true;
+          const imported = await input.platform.importDevelopmentContainer({
+            projectId: requireProject(projectId),
+            projectName: projectName ?? "",
+            agents: step.agents,
+            ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
           });
+          serviceName = imported.serviceName;
+          if (imported.imported) containerImported = true;
           break;
         }
         case "close-off": {
           const target = requireProject(projectId);
-          // The read trails the platform, and zcp imports the runtimes on the mark alone:
-          // isolation is written wherever a read says anything but closed, and the mark goes only
-          // on two reads, two seconds apart, whose first word is `service`. Nothing waits on a
-          // process: a platform that stalls one would stall every press (a live press,
-          // 2026-10-01). A harden's isolation is trusted only where no container came after it.
+          // A container imported after hardening may have changed isolation. A trailing or
+          // failed read stops here; the creator's next action owns another check.
           if (step.isolated !== true || containerImported) await confirmClosed(target);
-          await withTries(() => input.platform.markClosedOff(target));
+          await input.platform.markClosedOff(target);
           break;
         }
         case "register": {
           const target = requireProject(projectId);
-          // A Mate's press goes on past a registration that failed — refused, or failing after its
-          // tries — its container imported, its project closed off, and leaves the Mate in no
-          // application. The one it was meant for is not lost (audit B2): HQ holds it in the birth
-          // intent the project was created under (F6c, `mate:birth:<id>`), and *Finish setup* —
-          // offered past the press's grace, in any browser, to whoever HQ's rule lets create the
-          // Mate's record — attaches it there, closing the intent. HQ does not adopt it on its
-          // own. A stage or a production has nothing else that makes it whole, and stops here.
-          const stopsHere = !input.steps.some((planned) => planned.kind === "close-off");
-          try {
-            await withTries(() => input.platform.register(target));
-          } catch (cause) {
-            if (stopsHere) throw cause;
-            assertCurrent();
-            mark(index, { state: "failed", error: describeError(cause), finishedAtMs: now() });
-            continue;
-          }
+          // A stopped registration keeps the birth intent and the accepted project. Finish
+          // setup can attach it to the intended application before continuing the other steps.
+          await input.platform.register(target);
           break;
         }
         case "import-recipe":
@@ -455,6 +378,7 @@ export async function runEnvironmentCreation(
       return {
         ok: false,
         projectId,
+        ...(serviceName === undefined ? {} : { serviceName }),
         failedStep: step,
         error,
         ...(isUncertainZeropsFailure(cause) ? { uncertain: true as const } : {}),
