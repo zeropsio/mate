@@ -3,7 +3,9 @@
 // Mate opens, the registration records, the account's candidate listings and the targets they and
 // the records name (DESIGN §4.4, §4.8, §2.B B4, §2.C C1); the container machine, its store, the
 // probe store that feed region C and the rows' words for them (§4.5), and the Mate flag read the
-// container store and the birth worker share.
+// container store and the birth worker share; the close-off gate that holds a Mate whose project is
+// not closed off.
+export * from "./closeOff.ts";
 export * from "./containerMachine.ts";
 export * from "./containerRows.ts";
 export * from "./containerStore.ts";

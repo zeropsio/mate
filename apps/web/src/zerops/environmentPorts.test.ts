@@ -5,6 +5,7 @@ import {
   type SupervisorConnectionState,
 } from "@t3tools/client-runtime/connection";
 import {
+  closedOffOf,
   makeExchangeDriver,
   makeRegistrationRecords,
   type ExchangeClock,
@@ -28,11 +29,13 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   hqMatesViewAtom,
   hqOfficialAtom,
+  hqStructureAtom,
   zeropsSessionAtom,
   type HqMatesView,
 } from "../state/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
+  closeOffPort,
   hqIndexPort,
   hqOrganizationPort,
   keptSessionUnanswered,
@@ -260,6 +263,42 @@ const registryWith = (view: HqMatesView | null, official: boolean | null = true)
   registry.set(hqOfficialAtom, official);
   return registry;
 };
+
+// The close-off gate reads HQ's word through this port: a closed-off project stays so on a stale
+// word, and an open one is known only from HQ's answer now.
+describe("closeOffPort: HQ's word on which Mates' projects are closed off", () => {
+  const structure = {
+    ungrouped: [
+      { projectId: "p-closed", name: "Ada", mate: { closedOff: true } },
+      { projectId: "p-open", name: "Bo", mate: { closedOff: false } },
+    ],
+    apps: [],
+  } as never;
+  const word = (current: boolean | null) => {
+    const registry = AtomRegistry.make();
+    if (current !== null) {
+      registry.set(hqStructureAtom, {
+        organizationId: "org-1",
+        structure,
+        changes: null,
+        appReads: null,
+        readAt: 0,
+        current,
+        unavailableSince: null,
+      });
+    }
+    return closeOffPort(registry).read();
+  };
+  it.each([
+    { case: "HQ's answer now, closed off", current: true, projectId: "p-closed", want: true },
+    { case: "HQ's answer now, not closed off", current: true, projectId: "p-open", want: false },
+    { case: "a stale word, closed off", current: false, projectId: "p-closed", want: true },
+    { case: "a stale word, not closed off", current: false, projectId: "p-open", want: "unknown" },
+    { case: "no word", current: null, projectId: "p-closed", want: "unknown" },
+  ] as const)("$case: $want", ({ current, projectId, want }) => {
+    expect(closedOffOf(word(current), "org-1", projectId)).toBe(want);
+  });
+});
 
 describe("onlinePort: the projects whose Mate HQ holds online", () => {
   it.each([

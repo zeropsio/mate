@@ -181,6 +181,12 @@ export interface ExchangeDriver {
   readonly setTargets: (targets: ReadonlyArray<ExchangeTarget>) => void;
   /** A project being deleted takes no demand, while its leases remain available on failure. */
   readonly setDeleting: (projectId: string, deleting: boolean) => void;
+  /**
+   * The projects whose Mate is held for its close-off (`closeOff.ts`): like a project being
+   * deleted, each takes no demand and no Connect, its leases standing for when it is let go.
+   * Replaces the whole set.
+   */
+  readonly setCloseOffHeld: (projectIds: Iterable<string>) => void;
   /** Replaces the whole set of targets one emitter wants. */
   readonly setDemand: (reason: DemandReason, keys: Iterable<TargetKey>) => void;
   /** The target is wanted until the answer is called; calling it again does nothing. */
@@ -267,6 +273,10 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
   const entries = new Map<TargetKey, Entry>();
   const demands = new Map<DemandReason, ReadonlySet<TargetKey>>();
   const deleting = new Set<string>();
+  let closeOffHeld: ReadonlySet<string> = new Set();
+  /** A project being deleted, or held for its close-off: nothing connects its Mate. */
+  const suppressed = (projectId: string): boolean =>
+    deleting.has(projectId) || closeOffHeld.has(projectId);
   /** How many holders each lease kind has on each target (`hold`). */
   const holds = new Map<LeaseKind, Map<TargetKey, number>>([
     ["action", new Map()],
@@ -319,7 +329,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
   };
 
   const wantedBy = (key: TargetKey): ReadonlyArray<DemandReason | LeaseKind> =>
-    deleting.has(targetProject(key))
+    suppressed(targetProject(key))
       ? []
       : PRIORITY.filter((reason) =>
           isLease(reason)
@@ -736,6 +746,20 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
             step(key, { type: "GUARDS", guards: guardsFor(key, entry.machine.guards.budget) });
         }
       }),
+    setCloseOffHeld: (projectIds) => {
+      const next = new Set(projectIds);
+      enqueue(() => {
+        const moved = new Set(
+          [...next, ...closeOffHeld].filter((id) => next.has(id) !== closeOffHeld.has(id)),
+        );
+        closeOffHeld = next;
+        if (moved.size === 0) return;
+        for (const [key, entry] of entries) {
+          if (moved.has(targetProject(key)))
+            step(key, { type: "GUARDS", guards: guardsFor(key, entry.machine.guards.budget) });
+        }
+      });
+    },
     setDemand: (reason, keys) =>
       enqueue(() => {
         // A key no target names yet is wanted once the inventory or a record names it.
@@ -767,7 +791,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
           const entry = entryFor(key, null);
           entry.userReason = reason;
           connects.set(key, [...(connects.get(key) ?? []), resolve]);
-          if (!deleting.has(targetProject(key))) step(key, { type: "USER_RETRY" });
+          if (!suppressed(targetProject(key))) step(key, { type: "USER_RETRY" });
         });
       }),
     setAccount: (guards) =>
