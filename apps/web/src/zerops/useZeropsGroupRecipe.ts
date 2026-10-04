@@ -7,19 +7,23 @@
  * developer of the application where it edits one. HQ reads every tier off that `main` as the
  * person, for whoever may read the application's changes, and carries them on its stream beside
  * the application's releases; a recipe landing moves the application's revision, and its fresh
- * tiers come down the same stream. Nothing here reads HQ on its own (owner, 2026-10-01: no fetch
- * in a hook).
+ * tiers come down the same stream. No fetch in a hook (owner, 2026-10-01).
+ *
+ * The Mate tier alone is read on its own, through its store (`mateRecipeReads.ts`), where the
+ * stream cannot be acted on for it: a Core from before its stream carried the tier, or one that
+ * could not read it, and any Core while its stream is down — 0.13.2's rule, a remembered answer
+ * is said, not acted on. While that read is on its way, what was said last is said and no tier
+ * is handed over, so Add waits for it.
  *
  * What comes back is the tier as `main` holds it, and the names of its services: the creation's
  * plan converts it for the platform (`createEnvironment.ts`, `recipeTier.ts`), since which service
  * goes in when depends on whether the new environment has a Mate.
  *
  * Four honest answers, and the New Mate dialog says a different thing for each (`newMateDoor`):
- * `loading` while HQ's stream has not said the application's tiers yet, `present`, `absent` where
- * HQ says `main` has no such tier (no file, or one declaring no service), and `unreadable` where
- * HQ's read failed, HQ holds a tier this build finds no service in, or an HQ from before the Mate
- * tier was carried says nothing of it: that is not "no recipe", and a Mate is never made empty for
- * it.
+ * `loading` while nothing is said of the tier yet, `present`, `absent` where HQ says `main` has
+ * no such tier (no file, or one declaring no service), and `unreadable` where HQ's read failed or
+ * HQ holds a tier this build finds no service in: that is not "no recipe", and a Mate is never
+ * made empty for it.
  */
 
 import { useAtomValue } from "@effect/atom-react";
@@ -33,7 +37,9 @@ import {
 import { useCallback, useState } from "react";
 
 import { hqStructureAtom } from "../state/zerops";
+import { useOfficialHq } from "./accountHq";
 import { requestHqSnapshot } from "./hqStructure";
+import { rereadMateRecipe, useMateRecipeRead, type ReadMateRecipe } from "./mateRecipeReads";
 
 export type GroupRecipeTier = Extract<EnvironmentRecipeChoice, { kind: "tier" }>;
 
@@ -58,7 +64,8 @@ const UNREADABLE: Answer = { state: "unreadable", tier: undefined, services: [] 
 
 /** A streamed declaration and its services, without keeping a second copy of HQ's fact. */
 const answerOf = (read: RecipeTierResponse | undefined, tier: RecipeTier): Answer => {
-  if (read === undefined) return UNREADABLE;
+  // Not carried, and not read on its own here: not known yet.
+  if (read === undefined) return LOADING;
   if (read.state === "absent") return ABSENT;
   const services = recipeTierServices(read.importYaml);
   return services === undefined
@@ -80,12 +87,61 @@ export function useZeropsGroupRecipe(input: {
   const streamed = useAtomValue(hqStructureAtom);
   const appRead = appId === undefined ? undefined : streamed?.appReads?.get(appId);
   const [retrying, setRetrying] = useState<AppRead | undefined>(undefined);
+  const hq = useOfficialHq();
+  const streamDown =
+    streamed !== null && streamed !== undefined && streamed.unavailableSince !== null;
+  const streamedMate =
+    appRead !== undefined && appRead.failure === null ? appRead.value?.recipes.mate : undefined;
+  // The Mate tier is read on its own where the stream carries none, or is down.
+  const readsOwn =
+    tier === "mate" &&
+    enabled &&
+    hq !== null &&
+    appId !== undefined &&
+    (streamDown ||
+      (appRead !== undefined &&
+        appRead.value !== null &&
+        appRead.failure === null &&
+        streamedMate === undefined));
+  const ownKey = readsOwn ? `${hq.address}|${appId}` : undefined;
+  const reader = useCallback<ReadMateRecipe>(
+    (signal) =>
+      hq === null || appId === undefined
+        ? Promise.reject(new Error("HQ is not open here."))
+        : hq.api.mateRecipe(appId, signal),
+    [appId, hq],
+  );
+  const own = useMateRecipeRead(ownKey, readsOwn ? reader : undefined);
 
-  const reread = useCallback(() => {
+  const reread = () => {
+    if (ownKey !== undefined) {
+      rereadMateRecipe(ownKey);
+      return;
+    }
     if (streamed === null || streamed === undefined) return;
     setRetrying(appRead);
     requestHqSnapshot(streamed.organizationId);
-  }, [appRead, streamed]);
+  };
+
+  if (ownKey !== undefined) {
+    // Said: what was read last, else what the stream last said; acted on only once read afresh.
+    const said: Answer =
+      own.last === undefined
+        ? streamedMate === undefined
+          ? LOADING
+          : answerOf(streamedMate, tier)
+        : own.last.kind === "failed"
+          ? UNREADABLE
+          : answerOf(own.last.tier, tier);
+    const acted = own.fresh;
+    return {
+      ...said,
+      tier: acted ? said.tier : undefined,
+      loading: !acted,
+      rereading: own.reading && own.last !== undefined,
+      reread,
+    };
+  }
 
   const answer =
     !enabled || appRead === undefined
