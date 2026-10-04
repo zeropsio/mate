@@ -20,7 +20,6 @@ import {
   makeThrowawayDebt,
   makeThrowawayMintBudgets,
   planThrowawaySweep,
-  THROWAWAY_DELETE_RETRIES_MS,
   THROWAWAY_REUSE_MS,
   THROWAWAY_SWEEP_AGE_MS,
   zeropsThrowawayPlatform,
@@ -272,6 +271,73 @@ describe("zeropsThrowawayPlatform's diagnostics", () => {
 describe("zeropsThrowawayPlatform's debt", () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("restores only this account's persisted organization debt after a reload", () => {
+    const entries = new Map<string, string>();
+    const storage = (account: string) => ({
+      getItem: (key: string) => entries.get(`${account}:${key}`) ?? null,
+      setItem: (key: string, value: string) => {
+        entries.set(`${account}:${key}`, value);
+      },
+      removeItem: (key: string) => {
+        entries.delete(`${account}:${key}`);
+      },
+    });
+    const debt = makeThrowawayDebt(storage("ada"));
+    debt.owe("org-1", NOW);
+    expect(makeThrowawayDebt(storage("ada")).failedAt("org-1")).toBe(NOW);
+    expect(makeThrowawayDebt(storage("bea")).failedAt("org-1")).toBeNull();
+    expect(makeThrowawayDebt(storage("ada")).failedAt("org-2")).toBeNull();
+    debt.settle("org-1", NOW);
+    expect(makeThrowawayDebt(storage("ada")).failedAt("org-1")).toBeNull();
+  });
+
+  it("keeps cleanup owed in memory if storage reads work but writes are blocked", () => {
+    const debt = makeThrowawayDebt({
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("blocked");
+      },
+      removeItem: () => {},
+    });
+    debt.owe("org-1", NOW);
+    expect(debt.failedAt("org-1")).toBe(NOW);
+  });
+
+  it("records debt before mint so a crash during mint or door exchange can be swept", async () => {
+    vi.useFakeTimers({ now: NOW });
+    const debt = makeThrowawayDebt();
+    const client = {
+      mintThrowaway: async () => {
+        expect(debt.failedAt("org-1")).toBe(NOW);
+        return { id: "crash-token", token: "throwaway", mintingToken: "minting" };
+      },
+    } as unknown as ZeropsApiClient;
+    await zeropsThrowawayPlatform(client, { debt }).mint({
+      clientId: "org-1",
+      name: "mate-door:crash:n1",
+    });
+    expect(debt.failedAt("org-1")).toBe(NOW);
+  });
+
+  it("successful cleanup never settles another door's outstanding token", async () => {
+    vi.useFakeTimers({ now: NOW });
+    const debt = makeThrowawayDebt();
+    let next = 0;
+    const client = {
+      mintThrowaway: async () => ({
+        id: `concurrent-${++next}`,
+        token: "throwaway",
+        mintingToken: "minting",
+      }),
+      deleteThrowaway: async () => {},
+    } as unknown as ZeropsApiClient;
+    const platform = zeropsThrowawayPlatform(client, { debt });
+    const first = await platform.mint({ clientId: "org-1", name: "mate-door:concurrent:n1" });
+    await platform.mint({ clientId: "org-1", name: "mate-door:concurrent:n2" });
+    await platform.remove({ clientId: "org-1", tokenId: first.id });
+    expect(debt.failedAt("org-1")).toBe(NOW);
   });
 
   it("owes the organization a sweep where a delete failed, and nothing where it went through", async () => {
@@ -775,58 +841,24 @@ describe("throwaway hygiene", () => {
     expect(debt.failedAt("org-1")).toBe(Date.now());
   });
 
-  it("a delete Zerops could not answer is tried again, 5 s later", async () => {
-    vi.useFakeTimers();
-    const tab = signedInTab();
-    const orphaned: Array<unknown> = [];
-    const firstDelete = tab.rest.hold("DELETE /client/org-1/integration-token/integration-1");
-
-    const connecting = connectThroughThrowaway({
-      platform: tab.throwaways(),
-      clientId: "org-1",
-      projectId: "p1",
-      nonce: "n1",
-      onOrphaned: (cause) => orphaned.push(cause),
-      connect: async () => "connected",
-    });
-    await settle();
-    firstDelete.fail(503);
-    await vi.advanceTimersByTimeAsync(THROWAWAY_DELETE_RETRIES_MS[0]! - 1);
-    expect(tab.rest.orphanTokens()).toHaveLength(1);
-    await vi.advanceTimersByTimeAsync(1);
-
-    await expect(connecting).resolves.toBe("connected");
-    expect(orphaned).toEqual([]);
-    expect(tab.rest.orphanTokens()).toEqual([]);
-  });
-
-  // A stall of the organization's reads outlasts one retry: the delete is tried on, waiting longer
-  // each time, until Zerops answers — and only a delete that never answers is owed to the sweep.
-  it("a delete is tried on, waiting longer each time, until Zerops answers", async () => {
+  it("ends a failed delete after one attempt and leaves visible debt for the sweep", async () => {
     vi.useFakeTimers();
     const tab = signedInTab();
     const debt = makeThrowawayDebt();
     const platform = zeropsThrowawayPlatform(tab.client, {
-      budgets: makeThrowawayMintBudgets(() => Date.now()),
       debt,
+      budgets: makeThrowawayMintBudgets(() => Date.now()),
     });
-    const minted = await platform.mint({ clientId: "org-1", name: "mate-door:p1:n1" });
-    const route = `DELETE /client/org-1/integration-token/${minted.id}`;
-    let stalled = tab.rest.hold(route);
+    const minted = await platform.mint({ clientId: "org-1", name: "mate-door:delete:n1" });
+    const held = tab.rest.hold(`DELETE /client/org-1/integration-token/${minted.id}`);
     const deleting = platform.remove({ clientId: "org-1", tokenId: minted.id });
-    // Each try the stall leaves unanswered, and the next one only once its wait is over.
-    for (const [index, wait] of THROWAWAY_DELETE_RETRIES_MS.entries()) {
-      await settle();
-      expect(stalled.waiting()).toBe(1);
-      stalled.fail(503);
-      await vi.advanceTimersByTimeAsync(wait - 1);
-      expect(tab.rest.orphanTokens()).toHaveLength(1);
-      if (index < THROWAWAY_DELETE_RETRIES_MS.length - 1) stalled = tab.rest.hold(route);
-      await vi.advanceTimersByTimeAsync(1);
-    }
-    await expect(deleting).resolves.toBeUndefined();
-
-    expect(tab.rest.orphanTokens()).toEqual([]);
-    expect(debt.failedAt("org-1")).toBeNull();
+    const outcome = expect(deleting).rejects.toMatchObject({ kind: "server" });
+    await settle();
+    held.fail(503);
+    await settle();
+    expect(debt.failedAt("org-1")).toBe(Date.now());
+    await outcome;
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(tab.rest.orphanTokens()).toHaveLength(1);
   });
 });

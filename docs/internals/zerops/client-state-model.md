@@ -451,6 +451,13 @@ The review's header and footer read the same `changeReview` verdict: an `empty` 
 only Close where permitted, with no merge consequence or Merge action. HQ's detail excludes the
 Mate's preceding landed head from the change's commit list, so squash-landed work is not counted
 again. Desktop uses this web review; mobile has no HQ change-review surface.
+Door cleanup debt is recorded before the possible mint and settled per attempt only after a
+refusal or a confirmed delete. Web and desktop keep it in account-scoped storage by organization,
+without token values; an old account's delete writes to that captured account even after sign-out.
+A reload restores the debt for the projects screen's existing sweep. Deletes run once and leave
+debt on failure. Mobile shares that accounting and single delete attempt in memory; it has no
+projects-screen sweep today, so its host does not supply durable debt storage yet.
+
 HQ calls are single attempts, including reads, 503 answers with `Retry-After`, and refused
 sessions. A refused session is forgotten for the next explicit call. A lost write answer still
 gets one confirmation read, never a repeated write. The web/desktop structure owner retains

@@ -15,6 +15,7 @@
  * - **Its birth's ports:** Core comes from this very build, same-origin under `hq-core/`
  *   (`apps/hq/scripts/pack-core.ts`).
  */
+import { accountThrowawayDebt } from "./throwawayDebt";
 import {
   findOfficialHq,
   HqError,
@@ -207,7 +208,10 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
   const key = `${client.accountEpoch}:${clientId}:${hq.projectId}:${hq.address}`;
   const held = apis.get(key);
   if (held !== undefined) return held;
-  const platform = zeropsThrowawayPlatform(client, { asked: true });
+  const platform = zeropsThrowawayPlatform(client, {
+    asked: true,
+    debt: accountThrowawayDebt(client),
+  });
   const keptKey = `${clientId}:${hq.projectId}:${hq.address}`;
   const api = makeHqApi({
     address: hq.address,
