@@ -138,11 +138,13 @@ import {
   useInterruptedPresses,
   useMatePresses,
 } from "./matePress";
+import { checkMateKey, mateKeyCheckOffered, mateKeyCheckWords } from "./mateKeyCheck";
 import { mateRestartPorts, restartMateContainer } from "./mateRestart";
 import { sessionOfferViewer } from "./offerViewer";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+import { toastManager } from "~/components/ui/toast";
 
 /** Which Mate a dialog is about, and which dialog it is. */
 type MateDialog =
@@ -180,6 +182,12 @@ const UNPRESSED: DialogPress = { pending: false, error: null };
 /** HQ says this Mate's key reads other projects too (`keyWider`, ADR 0003's fallout). */
 const keyWiderOf = (candidate: ZeropsCandidatePresentation): boolean =>
   candidate.project.hq?.mate?.keyWider === true;
+
+/** The check of a Mate's key, where its HQ keeps no word on it (`mateKeyCheckOffered`). */
+export const CHECK_KEY_VERB = "Check what its key can read";
+
+export const CHECK_KEY_WHY =
+  "Its HQ can't say whether its key still reads other projects. This reads the organization's keys once and, where its key reads more than its own project, leaves it on its own project.";
 
 /** Why *Finish setup* is on a Mate whose key reads other projects: what it takes off. */
 export const KEY_WIDER_WHY =
@@ -717,6 +725,35 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     ],
   );
 
+  /**
+   * *Check what its key can read*: the organization's token list read now, as the person asked —
+   * never on a load — and a key that reads other projects hardened, by its id (`checkMateKey`).
+   * What it did is said once it is done.
+   */
+  const checkKey = useCallback(
+    (candidate: ZeropsCandidatePresentation) => {
+      if (activeOrganization === null) return;
+      const organizationId = activeOrganization.id;
+      const projectId = candidate.project.id;
+      void write(candidate.key, async () => {
+        const outcome = await checkMateKey({
+          projectId,
+          containerCreated: async () => candidate.service?.created,
+          listTokens: () => client.listIntegrationTokens(organizationId),
+          harden: (keyTokenId) =>
+            runZeropsCommand(
+              runtime.commands.isolateProjectEnv(projectRef(organizationId, projectId), keyTokenId),
+            ),
+        });
+        toastManager.add({
+          type: outcome.kind === "not-lowered" ? "warning" : "success",
+          title: mateKeyCheckWords(candidate.project.name, outcome),
+        });
+      });
+    },
+    [activeOrganization, client, projectRef, runtime, write],
+  );
+
   /** Whose Mate it is, where that is a colleague: "Ada's Mate", as its row says it. */
   const colleagueOf = useCallback(
     (candidate: ZeropsCandidatePresentation): string | undefined => {
@@ -982,6 +1019,20 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                 onSelect: () => finishSetup(candidate),
               },
             ]),
+        ...(mateKeyCheckOffered({
+          mate: candidate.project.hq?.mate,
+          writer: canWriteRegistry(sessionOfferViewer(user, activeOrganization)),
+        })
+          ? [
+              {
+                id: "check-key",
+                label: CHECK_KEY_VERB,
+                why: CHECK_KEY_WHY,
+                disabled: busy,
+                onSelect: () => checkKey(candidate),
+              },
+            ]
+          : []),
         ...(platformVerbs.assign
           ? [
               {
