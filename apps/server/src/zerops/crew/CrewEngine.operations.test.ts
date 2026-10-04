@@ -85,7 +85,7 @@ describe("owned crew operations", () => {
   );
 
   it.live(
-    "a person's fix acknowledges a confirmed failed check while its final read is pending",
+    "a failed check's verdict holds nothing: a fix during its final read goes out at once",
     () =>
       withCrewEngine((world) =>
         Effect.gen(function* () {
@@ -104,13 +104,9 @@ describe("owned crew operations", () => {
           const operation = (yield* store.operations(CREW_ID)).find((row) => row.kind === "check")!;
           assert.strictEqual(operation.status, "running");
           assert.strictEqual(operation.confirmedStage, "checking");
-          assert.isNotNull(operation.detail);
+          assert.isNull(operation.detail);
           yield* command({ _tag: "askFix", taskId: operation.taskId! });
-          const acknowledged = yield* store.getOperation(operation.id);
-          assert.strictEqual(
-            acknowledged._tag === "Some" ? acknowledged.value.status : null,
-            "continued",
-          );
+          assert.strictEqual((yield* store.assignments(CREW_ID))[0]!.attempt, 2);
           yield* hold.release;
           yield* snapshotWhere(
             (frame) => !frame.operations?.some((row) => row.id === operation.id),

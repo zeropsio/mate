@@ -149,7 +149,9 @@ const runCheck = (
           // check's verdict is on a tree that will not land.
           const checking = yield* requireTask(core, taskId);
           if (checking.state !== "checking") return { done: checking } as const;
-          if (outcome._tag !== "passed")
+          // A failed verdict is the check's outcome, sent back to its crewmate; only a check
+          // that could not give one stops the operation.
+          if (outcome._tag !== "passed" && outcome._tag !== "failed")
             yield* updateOperation(core, operationId, {
               detail: `The check stopped: ${outcome._tag}`,
             });

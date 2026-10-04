@@ -448,5 +448,6 @@ Drop it ends the task's records while leaving its dirty files and HEAD in place.
 offer Rebuild crew copy; that selected rebuild refuses a missing or changed saved branch and never
 resets an existing directory. Infrastructure and context failures likewise wait for Continue.
 Checks run once; a killed or timed-out command is a visible ending. A failed operation holds the
-crewmate's queue until a person acts. Desktop uses these same web controls; mobile currently has
+crewmate's queue until a person acts; a check that ran and failed is not one — its verdict sends
+the task back as rework, which a running run hands to its crewmate at once. Desktop uses these same web controls; mobile currently has
 no crew controls and accepts the optional operation and assignment detail fields in the contract.
