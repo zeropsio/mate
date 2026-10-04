@@ -2288,7 +2288,8 @@ describe("ZeropsApiClient.writeProject — the TagWriter's one PUT", () => {
     expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
       name: "Nova",
       description: "A Mate",
-      tagList: ["mate"],
+      // The project's own tags go back with the marker: they are its person's.
+      tagList: ["billing:team-a", "mate"],
       publicIpV4Shared: true,
       maxCreditLimit: 40,
     });

@@ -1,4 +1,7 @@
-/** The only project tag this product declares is `mate`; all metadata is held by HQ. */
+/**
+ * The only project tag this product declares is `mate`; all metadata is held by HQ. A project's
+ * own tags are its person's, and stay.
+ */
 import { withZeropsMateTag } from "../groups.ts";
 
 /** Declares the Mate: the `mate` marker, for the Zerops GUI and this client alike. */

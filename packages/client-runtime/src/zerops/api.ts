@@ -214,7 +214,8 @@ function projectWriteBody(input: {
   return {
     name: input.name,
     description: input.description ?? "",
-    tagList: input.tagList.includes("mate") ? ["mate"] : [],
+    // The list the writer planned (`withZeropsMateTag`): the project's own tags with the marker.
+    tagList: input.tagList,
     publicIpV4Shared: input.publicIpV4Shared ?? false,
     maxCreditLimit: input.maxCreditLimit ?? null,
   };

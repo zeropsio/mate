@@ -1,6 +1,7 @@
 # Project metadata
 
-A Zerops project carries only the exact `mate` marker when it has a Mate. Project names, services
+A Zerops project that has a Mate carries the exact `mate` marker beside its person's own tags, and
+no other `mate:` tag. Project names, services
 and access roles come from Zerops. Application membership and kind, faces, makers, birth intents,
 name sources and preserved signer identities are HQ records joined by project id. Desktop uses
 the web client; mobile shares the client runtime and reads the same HQ placement.
