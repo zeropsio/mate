@@ -9,7 +9,8 @@
  * the engine seeing it ends as no report, when the task last moved. A
  * running run stays running. `inspectBoot` reads landing evidence, claims,
  * missing copies and lane figures; it never writes git. Once the server
- * accepts commands, `carryOnAtBoot` resumes the named operations from their
+ * accepts commands, `carryOnAtBoot` sweeps each writer's service (copies
+ * come back where no work is lost), resumes the named operations from their
  * stage as each crewmate is free (`resumeAfterRestart`), a conversation that
  * records no copy gets its crew copy, an Allow that waited on a turn the
  * restart ended goes out, and the run takes up what waits on it. Only work whose resume is ambiguous stays for a person.
@@ -26,8 +27,10 @@ import { grantAfterTurn, refreshClaims } from "./crewClaims.ts";
 import {
   asRefusal,
   currentStint,
+  failureWords,
   feedWhenUnattended,
   memberOf,
+  type AppliedCrew,
   type CrewCore,
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
@@ -37,6 +40,7 @@ import { beginOperation, updateOperation } from "./crewOperations.ts";
 import { advanceAll, takeUpWaiting } from "./crewRunFlow.ts";
 import { runOnAfterRestart } from "./crewRuns.ts";
 import { repairUnsetCopies } from "./CrewStints.ts";
+import { recoverLanes } from "./crewTurns.ts";
 
 /** A task whose turn was running when the server stopped: its session died with it. */
 const turnDied = (core: CrewCore, threadId: string | null) =>
@@ -163,6 +167,23 @@ export const inspectBoot = (core: CrewCore) =>
   });
 
 /**
+ * Each writer's service read from git, not the tables: a lane gitdir made
+ * relative, a dirty lane's work saved as a WIP commit (nothing is lost by a
+ * commit), an unreadable ref or a tip the engine did not write parked, and
+ * a missing copy brought back only where its branch, landings and saved
+ * tip all remain; otherwise the loss is named and the copy stays missing.
+ */
+const sweepHost = (core: CrewCore, applied: AppliedCrew, host: string) =>
+  Effect.gen(function* () {
+    const swept = yield* asRefusal(core.workspace.sweep(host));
+    const missing = swept.lanes
+      .filter((lane) => lane._tag === "missing")
+      .map((lane) => lane.handle);
+    for (const handle of missing) core.memory.missingLanes.add(handle);
+    if (missing.length > 0) yield* recoverLanes(core, applied, host, "came back from a restart");
+  });
+
+/**
  * Once the server accepts commands: the run's clock counts again, every free
  * crewmate carries its interrupted work on, and a running run takes up what
  * waits on it.
@@ -172,6 +193,20 @@ export const carryOnAtBoot = (core: CrewCore) =>
     const applied = yield* core.applied;
     if (applied === undefined) return;
     yield* runOnAfterRestart(core);
+    for (const host of applied.repositories.keys()) {
+      yield* sweepHost(core, applied, host).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            core.memory.lastError = failureWords(error);
+          }),
+        ),
+      );
+    }
+    for (const handle of applied.members.keys()) {
+      const member = memberOf(applied, handle);
+      if (member !== undefined && member.row.kind === "writer")
+        yield* refreshLaneStats(core, member);
+    }
     yield* repairUnsetCopies(core, applied);
     // An Allow that waited on a turn the restart ended goes out first; its work carries on after.
     for (const handle of applied.members.keys()) yield* grantAfterTurn(core, handle);

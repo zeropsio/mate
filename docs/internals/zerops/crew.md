@@ -444,9 +444,14 @@ gets its crew copy back.
 Rows still interrupted offer Continue and, before landing, Drop it. Continue operates on the selected
 handle under the crewmate's lock, rejects a changed attempt or newer handle, and records a new
 operation for its side effects. An already landed receipt only records the task's outcome.
-Drop it ends the task's records while leaving its dirty files and HEAD in place. Missing copies
-offer Rebuild crew copy; that selected rebuild refuses a missing or changed saved branch and never
-resets an existing directory. Infrastructure and context failures likewise wait for Continue.
+Drop it ends the task's records while leaving its dirty files and HEAD in place. Before any of
+that, the boot sweeps each writer's service from git (`CrewWorkspace.sweep`): a lane gitdir made
+relative, a dirty lane's work saved as a WIP commit, an unreadable ref or a tip the engine did not
+write parked. A copy missing at boot or after a self-deploy comes back from its branch
+(`CrewWorkspace.recover`) only where its branch, every recorded landing's trailer and its saved
+tip remain, so no work is lost; otherwise the loss is named, the host stays frozen, and the copy
+offers Rebuild crew copy, a selected rebuild that refuses a missing or changed saved branch and
+never resets an existing directory. Infrastructure and context failures likewise wait for Continue.
 Checks run once; a killed or timed-out command is a visible ending. A failed operation holds the
 crewmate's queue until a person acts; a check that ran and failed is not one — its verdict sends
 the task back as rework, which a running run hands to its crewmate at once. Desktop uses these same web controls; mobile currently has

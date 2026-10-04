@@ -20,8 +20,8 @@ import {
  * - token usage and compaction are recorded for the section's context meter;
  *   a turn's cost and the logins' usage windows move a run's meters.
  * - `zerops_deploy` onto a service with lanes (any thread) freezes the
- *   service's lanes and interrupts their turns; when the deploy ends, exact reads
- *   name missing copies for a selected rebuild.
+ *   service's lanes and interrupts their turns; when the deploy ends and the
+ *   mount answers, `recover` brings the lanes back or names what was lost.
  *
  * @module crewTurns
  */
@@ -40,12 +40,11 @@ import {
   type CrewCore,
   type CrewMember,
 } from "./crewCore.ts";
-import { crewLane } from "./CrewDefinition.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import { grantAfterTurn, moveClaim, releaseAfterTurn, settleClaim } from "./crewClaims.ts";
 import { integrate, refreshLaneStats } from "./crewLanding.ts";
 import { crewStateRef } from "./CrewStateRef.ts";
-import { attemptRef } from "./CrewWorkspace.ts";
+import { attemptRef, type LaneSpec } from "./CrewWorkspace.ts";
 import {
   followCrewWork,
   RUN_PAUSED,
@@ -68,6 +67,49 @@ const GUARD_WORDS = {
   secrets: "a secret file",
   size: "a file over the size cap",
 } as const;
+
+/** The lane specs of a host's writers, for a recovery that sets lanes up again. */
+export const laneSpecsOn = (applied: AppliedCrew, host: string): ReadonlyArray<LaneSpec> =>
+  applied.definition.members.flatMap((spec) => {
+    const row = applied.members.get(spec.handle);
+    if (spec.kind !== "writer" || spec.host !== host || row === undefined) return [];
+    return [
+      {
+        crew: CREW_ID,
+        handle: spec.handle,
+        host,
+        setup: spec.setup,
+        crewPort: row.crewPort ?? undefined,
+        env: spec.env,
+      },
+    ];
+  });
+
+/**
+ * A host whose copies went missing (a self-deploy, a container replacement,
+ * a restart): `recover` re-adds them only when every branch, recorded
+ * landing and saved tip is still there, so no work is lost; otherwise it
+ * names what was lost, keeps the host frozen, and the copies stay missing
+ * for a person's Rebuild crew copy.
+ */
+export const recoverLanes = (core: CrewCore, applied: AppliedCrew, host: string, when: string) =>
+  Effect.gen(function* () {
+    yield* core.repositories.refresh;
+    const outcome = yield* asRefusal(core.workspace.recover(host, laneSpecsOn(applied, host)));
+    if (outcome._tag === "lost") {
+      core.memory.lastError =
+        `${host} ${when} without crew work: ` +
+        [
+          ...outcome.landings.map((landing) => `landing of ${landing.title}`),
+          ...outcome.branches.map((handle) => `crew/${handle}`),
+          ...outcome.wip.map((lane) => `crew/${lane.handle} work since ${lane.since}`),
+        ].join(", ");
+      yield* core.changed;
+      return;
+    }
+    for (const handle of outcome.readded) core.memory.missingLanes.delete(handle);
+    yield* core.changed;
+  });
 
 /**
  * Every ref the engine itself writes on a service, which ref policing must not
@@ -466,16 +508,11 @@ export const makeTurnHandler = (core: CrewCore) => {
           deploys.set(event.itemId, target);
           yield* freeze(applied, target);
         } else if (event.type === "item.completed" && deploys.delete(event.itemId)) {
-          yield* asRefusal(core.workspace.unfreeze(target));
-          const repository = applied.repositories.get(target);
-          for (const member of applied.members.values()) {
-            if (member.kind !== "writer" || member.host !== target || repository === undefined)
-              continue;
-            if (!(yield* core.fileExists(crewLane(repository, member.handle).mountDir)))
-              core.memory.missingLanes.add(member.handle);
-            else core.memory.missingLanes.delete(member.handle);
-          }
-          yield* core.changed;
+          yield* core.background(
+            recoverLanes(core, applied, target, "came back from its deploy").pipe(
+              Effect.andThen(advanceAll(core)),
+            ),
+          );
         }
       }
       const stint = applied.stints.find((row) => row.threadId === event.threadId);

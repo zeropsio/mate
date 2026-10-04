@@ -183,7 +183,7 @@ describe("owned crew operations", () => {
 });
 
 for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
-  it.live(`restart carries ${kind} on from its confirmed stage, its dirty work kept`, () => {
+  it.live(`restart carries ${kind} on from its confirmed stage, its dirty work saved`, () => {
     let head = "";
     return withCrewEngines([
       (world) =>
@@ -242,7 +242,8 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
             "dirty work\n",
           );
           if (kind === "dispatch") {
-            assert.strictEqual(git(copy, ["rev-parse", "HEAD"]), head);
+            // The boot sweep saved the dirty work as a commit on the copy's tip.
+            assert.strictEqual(git(copy, ["rev-parse", "HEAD~1"]), head);
             yield* eventually(
               Effect.map(
                 Ref.get(world.dispatched),
@@ -392,7 +393,7 @@ for (const taskState of ["landing", "landed"] as const) {
 }
 
 it.live(
-  "Drop it cancels a task its restart could not carry on, keeping its dirty files and HEAD",
+  "Drop it cancels a task its restart could not carry on, its saved work left in its copy",
   () => {
     let head = "";
     return withCrewEngines([
@@ -428,12 +429,9 @@ it.live(
             handle: "backend",
             operationId: operation.id,
           });
-          const discarded = yield* snapshotWhere(
-            (frame) => frame.board.tasks[0]?.state === "discarded",
-          );
-          assert.strictEqual(discarded.crewmates[0]!.lane?.dirty, true);
+          yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "discarded");
           assert.strictEqual(
-            git(NodePath.join(world.root, ".crew/backend"), ["rev-parse", "HEAD"]),
+            git(NodePath.join(world.root, ".crew/backend"), ["rev-parse", "HEAD~1"]),
             head,
           );
           assert.strictEqual(
@@ -445,7 +443,7 @@ it.live(
   },
 );
 
-it.live("a missing copy stays missing at boot and is rebuilt only by its selected press", () => {
+it.live("a missing copy comes back at boot from its recorded branch, its work kept", () => {
   let tip = "";
   return withCrewEngines([
     (world) =>
@@ -461,17 +459,15 @@ it.live("a missing copy stays missing at boot and is rebuilt only by its selecte
     (world) =>
       Effect.gen(function* () {
         yield* (yield* ServerCommandReadiness).complete;
-        const missing = yield* snapshotWhere(
-          (frame) => frame.crewmates[0]?.lane?.state === "missing",
+        yield* eventually(
+          Effect.sync(() => NodeFS.existsSync(NodePath.join(world.root, ".crew/backend/ok.txt"))),
         );
-        assert.isFalse(NodeFS.existsSync(NodePath.join(world.root, ".crew/backend")));
-        assert.strictEqual(
-          (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
-            .length,
-          1,
+        const back = yield* snapshotWhere(
+          (frame) =>
+            frame.crewmates[0]?.lane?.state === "ready" &&
+            !frame.attention.some((need) => need.kind === "copy-missing"),
         );
-        yield* command({ _tag: "rebuildCopy", handle: missing.crewmates[0]!.handle });
-        yield* snapshotWhere((frame) => frame.crewmates[0]?.lane?.state === "ready");
+        assert.isNull(back.lastError);
         assert.strictEqual(
           git(NodePath.join(world.root, ".crew/backend"), ["rev-parse", "HEAD"]),
           tip,
@@ -480,9 +476,39 @@ it.live("a missing copy stays missing at boot and is rebuilt only by its selecte
           NodeFS.readFileSync(NodePath.join(world.root, ".crew/backend/ok.txt"), "utf8"),
           "kept\n",
         );
+        assert.strictEqual(
+          (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
+            .length,
+          1,
+        );
       }),
   ]);
 });
+
+it.live("a missing copy whose branch is gone stays missing at boot and names the loss", () =>
+  withCrewEngines([
+    (world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () =>
+          write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "kept\n"),
+        );
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        NodeFS.rmSync(NodePath.join(world.root, ".crew/backend"), { recursive: true });
+        git(world.root, ["worktree", "prune"]);
+        git(world.root, ["branch", "-D", "-q", "crew/backend"]);
+      }),
+    (world) =>
+      Effect.gen(function* () {
+        yield* (yield* ServerCommandReadiness).complete;
+        const lost = yield* snapshotWhere(
+          (frame) => frame.lastError?.includes("crew/backend") === true,
+        );
+        assert.notStrictEqual(lost.crewmates[0]?.lane?.state, "ready");
+        assert.isFalse(NodeFS.existsSync(NodePath.join(world.root, ".crew/backend")));
+      }),
+  ]),
+);
 
 it.live("Continue after a rebuild interrupted during setup leaves its existing copy in place", () =>
   withCrewEngines([
