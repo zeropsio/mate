@@ -434,7 +434,10 @@ export function OtherContainers<T>({
           ) : null}
         </div>
         {open ? (
-          <div className="flex flex-col gap-2 px-3 pb-3" data-zerops-surface="other-container-rows">
+          <div
+            className="flex flex-col gap-2 px-3 pb-3 ps-8"
+            data-zerops-surface="other-container-rows"
+          >
             {mates.length > 0 ? (
               <div className="grid gap-2 @2xl/flow:grid-cols-2">
                 {mates.map(({ item }) => (
