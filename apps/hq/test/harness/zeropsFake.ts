@@ -58,6 +58,8 @@ interface FakeJob {
   readonly appVersionId: string | undefined;
   /** The services an import's process brings up; none for any other. */
   readonly imports?: ReadonlyArray<string>;
+  /** A subdomain's: how many more reads it answers RUNNING before it is FINISHED. */
+  runningReads?: number;
 }
 
 export interface FakeWorld {
@@ -85,6 +87,8 @@ export interface FakeWorld {
   outcome: (version: FakeAppVersion) => FakeOutcome;
   /** How an import's process ends at its next read: its services up, failed, or still running. */
   importOutcome: () => "FINISHED" | "FAILED" | "RUNNING";
+  /** How many reads a subdomain's process answers RUNNING before it is FINISHED; none by default. */
+  subdomainRunningReads: number;
   /** Every services import, as asked. */
   imports: Array<{ readonly projectId: string; readonly yaml: string }>;
   /**
@@ -114,6 +118,7 @@ export const emptyWorld = (): FakeWorld => ({
   jobs: new Map(),
   outcome: () => "ACTIVE",
   importOutcome: () => "FINISHED",
+  subdomainRunningReads: 0,
   imports: [],
   lost: new Set(),
   unanswered: new Set(),
@@ -319,6 +324,11 @@ export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
     );
   /** A running job, read: it ends as `outcome` says — an import's as `importOutcome` — or runs on. */
   const advance = (job: FakeJob) => {
+    if (job.runningReads !== undefined) {
+      if (job.runningReads === 0) job.status = "FINISHED";
+      else job.runningReads -= 1;
+      return;
+    }
     if (job.status === "RUNNING" && job.imports !== undefined) {
       const ended = world.importOutcome();
       if (ended === "RUNNING") return;
@@ -485,7 +495,12 @@ export const fakeZeropsDeploy = (world: FakeWorld): ZeropsDeploy["Service"] => {
       Effect.map(deployedBy(world, "enableSubdomainAccess", credential, serviceId), (service) => {
         service.subdomainAccess = true;
         const processId = id("process");
-        world.jobs.set(processId, { status: "FINISHED", failure: null, appVersionId: undefined });
+        world.jobs.set(processId, {
+          status: world.subdomainRunningReads === 0 ? "FINISHED" : "RUNNING",
+          failure: null,
+          appVersionId: undefined,
+          runningReads: world.subdomainRunningReads,
+        });
         return { processId };
       }),
   };

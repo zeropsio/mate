@@ -1017,6 +1017,38 @@ describe("deploys", () => {
         ),
     );
 
+    // Review #5: the subdomain is followed on its own clock, from its own start — never on what
+    // was left of the build's, read before it was followed (a takeover's).
+    it.effect("follows a subdomain on its own bound, never on what the build's left", () =>
+      withDeploys(
+        ({ appId, world, tiers, commit, deploys, until, takeover }) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* createdForHq("P_STAGE");
+            world.outcome = () => "BUILDING";
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("building"));
+            yield* takeover(
+              Effect.gen(function* () {
+                // Submitted all but a moment of its bound ago: the build lands at once, and its
+                // subdomain comes on three reads later.
+                yield* sql`
+                  UPDATE hq_deploy_job SET submitted_at = now() - interval '950 milliseconds'`;
+                world.outcome = () => "ACTIVE";
+                world.subdomainRunningReads = 3;
+              }).pipe(Effect.orDie),
+            );
+            yield* until(settled("live"));
+            assert.deepStrictEqual(
+              (yield* deploys).map(({ reason }) => reason),
+              [null],
+            );
+          }),
+        { ...FAST, followFor: Duration.seconds(1) },
+      ),
+    );
+
     it.effect("opens no subdomain on the first deploy of a service not created for HQ", () =>
       withDeploys(({ appId, world, tiers, commit, until }) =>
         Effect.gen(function* () {
