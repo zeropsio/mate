@@ -30,7 +30,7 @@ const linkedMate = (overviews: MateOverviews["Service"]) =>
 import type { AppReadValue } from "@t3tools/shared/hqAppReads";
 import type { RecipeTier } from "@t3tools/shared/hqRecipe";
 
-import { Changes } from "./changes.ts";
+import { ChangeRefused, Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
 import { Official, type OfficialStatus } from "./official.ts";
@@ -134,6 +134,8 @@ const streamFor = (
       ),
     );
     const appReadCalls: string[] = [];
+    /** The applications whose Mate tier HQ cannot read: too large for its bound. */
+    const mateUnreadable = new Set<string>();
     /** Whether this Core is the official HQ, as its last check of Zerops said. */
     const official = yield* Ref.make<OfficialStatus>({ official: start.official, allowed: true });
     /** Whether this Core's first check of Zerops has finished. */
@@ -166,6 +168,9 @@ const streamFor = (
           readRecipe: (_userId: string, appId: string, tier: RecipeTier) =>
             Effect.gen(function* () {
               appReadCalls.push(`${appId}:${tier}`);
+              if (tier === "mate" && mateUnreadable.has(appId)) {
+                return yield* new ChangeRefused({ code: "too_large", reason: "recipe_too_large" });
+              }
               return (yield* Ref.get(appReads)).get(appId)!.recipes[tier]!;
             }),
           changes: Stream.never,
@@ -217,6 +222,7 @@ const streamFor = (
       appReadCalls,
       official,
       checked,
+      mateUnreadable,
     };
   });
 
@@ -336,6 +342,28 @@ describe("the structure stream", () => {
         yield* SubscriptionRef.update(h.version, (n) => n + 1);
         yield* Effect.repeat(Effect.yieldNow, { times: 50 });
         assert.deepStrictEqual(h.sent.slice(1), [{ type: "official", official: "ok" }]);
+      }),
+    ),
+  );
+
+  // The releases, repositories, stage and production do not stand on a file they do not use.
+  it.effect("a Mate tier it cannot read is left out, and fails nothing beside it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner", undefined, { "app-shop": [] });
+        h.mateUnreadable.add("app-shop");
+        yield* Ref.set(h.revisions, new Map([["app-shop", "3"]]));
+        yield* SubscriptionRef.update(h.released, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        const { mate: _mate, ...recipes } = (yield* Ref.get(h.appReads)).get("app-shop")!.recipes;
+        const value = (yield* Ref.get(h.appReads)).get("app-shop")!;
+        assert.deepStrictEqual(h.sent.slice(1), [
+          {
+            type: "release-revision",
+            appId: "app-shop",
+            read: { revision: "3", value: { ...value, recipes }, failure: null },
+          },
+        ]);
       }),
     ),
   );

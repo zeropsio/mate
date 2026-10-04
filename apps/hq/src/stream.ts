@@ -292,12 +292,20 @@ export const structureMessages = <R>(
           appReads[appId] = yield* Effect.gen(function* () {
             const records = yield* releases.list(userId, appId);
             const repos = yield* changes.listRepos(userId, appId);
-            const mate = yield* changes.readRecipe(userId, appId, "mate");
+            // The Mate's tier stands alone: one HQ cannot read — past the read's bound, say — is
+            // left out, and its reader reads it on its own; the rest never fails for it.
+            const mate = yield* changes.readRecipe(userId, appId, "mate").pipe(
+              Effect.map((read) => ({ mate: read })),
+              Effect.catchTags({
+                ChangeRefused: () => Effect.succeed({}),
+                GitError: () => Effect.succeed({}),
+              }),
+            );
             const stage = yield* changes.readRecipe(userId, appId, "stage");
             const production = yield* changes.readRecipe(userId, appId, "production");
             return {
               revision,
-              value: { releases: records, repos, recipes: { mate, stage, production } },
+              value: { releases: records, repos, recipes: { ...mate, stage, production } },
               failure: null,
             };
           }).pipe(
