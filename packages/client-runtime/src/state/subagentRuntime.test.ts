@@ -891,3 +891,128 @@ describe("nested agents vs subagent shells", () => {
     expect(agents.map((agent) => agent.id)).toEqual(["nested-1"]);
   });
 });
+
+describe("a helper's own work", () => {
+  const report = Array.from({ length: 12 }, (_, line) => `Line ${line} of the report.`).join("\n");
+  const prompt = "Read the schema and list every table without a primary key.";
+  const started = (taskId: string, extra: Record<string, unknown> = {}) =>
+    activity("task.started", {
+      taskId,
+      taskType: "local_agent",
+      title: `Helper ${taskId}`,
+      toolUseId: `toolu-${taskId}`,
+      ...extra,
+    });
+  const call = (kind: string, agentId: string, toolCallId: string, extra = {}) =>
+    activity(kind, {
+      itemType: "command_execution",
+      toolCallId,
+      agentId,
+      parentToolUseId: `toolu-${agentId}`,
+      data: { toolName: "Bash", input: { command: "npm test" } },
+      ...extra,
+    });
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly rows: () => ReadonlyArray<OrchestrationThreadActivity>;
+    readonly expect: (agents: ReturnType<typeof fold>) => void;
+  }> = [
+    {
+      name: "keeps the prompt it was given and the call that started it",
+      rows: () => [started("task-1", { prompt })],
+      expect: ([agent]) => {
+        expect(agent?.prompt).toBe(prompt);
+        expect(agent?.toolUseId).toBe("toolu-task-1");
+      },
+    },
+    {
+      name: "keeps its report whole",
+      rows: () => [
+        started("task-1"),
+        activity("task.completed", {
+          taskId: "task-1",
+          status: "completed",
+          summary: `${report.slice(0, 177)}...`,
+          result: report,
+        }),
+      ],
+      expect: ([agent]) => expect(agent?.result).toBe(report),
+    },
+    {
+      name: "names the helper that started it",
+      rows: () => [started("task-1"), started("task-2", { agentId: "task-1" })],
+      expect: (agents) => {
+        expect(agents.find((agent) => agent.id === "task-1")?.spawnedBy).toBeNull();
+        expect(agents.find((agent) => agent.id === "task-2")?.spawnedBy).toBe("task-1");
+      },
+    },
+    {
+      name: "a Codex child names its parent child",
+      rows: () => [
+        activity("task.started", { taskId: "child-1", timelineBypass: true }),
+        activity("task.started", {
+          taskId: "child-2",
+          parentAgentId: "child-1",
+          timelineBypass: true,
+        }),
+      ],
+      expect: (agents) =>
+        expect(agents.find((agent) => agent.id === "child-2")?.spawnedBy).toBe("child-1"),
+    },
+    {
+      name: "what it is doing now is its open call, until the call returns",
+      rows: () => [
+        started("task-1"),
+        call("tool.started", "task-1", "call-1"),
+        call("tool.completed", "task-1", "call-1", { status: "completed" }),
+        call("tool.started", "task-1", "call-2"),
+      ],
+      expect: ([agent]) => expect(agent?.liveCall?.payload).toMatchObject({ toolCallId: "call-2" }),
+    },
+    {
+      name: "a returned call leaves nothing open",
+      rows: () => [
+        started("task-1"),
+        call("tool.started", "task-1", "call-1"),
+        call("tool.completed", "task-1", "call-1", { status: "completed" }),
+      ],
+      expect: ([agent]) => expect(agent?.liveCall).toBeNull(),
+    },
+    {
+      name: "a call under its launch, before its helper is known by id, is still its own",
+      rows: () => [
+        started("task-1"),
+        activity("tool.started", {
+          itemType: "command_execution",
+          toolCallId: "call-1",
+          parentToolUseId: "toolu-task-1",
+        }),
+      ],
+      expect: ([agent]) => expect(agent?.liveCall?.payload).toMatchObject({ toolCallId: "call-1" }),
+    },
+    {
+      name: "a settled helper has nothing open",
+      rows: () => [
+        started("task-1"),
+        call("tool.started", "task-1", "call-1"),
+        activity("task.completed", { taskId: "task-1", status: "completed", summary: "Done." }),
+      ],
+      expect: ([agent]) => expect(agent?.liveCall).toBeNull(),
+    },
+    {
+      name: "its progress without a summary is the driver's description of it",
+      rows: () => [
+        started("task-1"),
+        activity("task.progress", {
+          taskId: "task-1",
+          detail: "Running List the open ports",
+          lastToolName: "Bash",
+        }),
+      ],
+      expect: ([agent]) => expect(agent?.progress).toBe("Running List the open ports"),
+    },
+  ];
+  for (const { name, rows, expect: check } of cases) {
+    it(name, () => check(fold(rows())));
+  }
+});
