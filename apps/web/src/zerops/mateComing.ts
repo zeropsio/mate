@@ -128,11 +128,12 @@ export interface MateComingInput {
   /** Its link still waits for its first answer (`arrivalAwaitsAnswer`). */
   readonly answerAwaited?: boolean | undefined;
   /**
-   * The close-off gate holds it (`closeOffGate`'s `open`): its container carries the press's marker
-   * and HQ says its project is not closed off, so nobody is let in. Left out while a Finish setup
-   * runs on it in this tab.
+   * Why the close-off gate holds it (`closeOffGate`), never silent: `open`, its container carries
+   * the press's marker and HQ says its project is not closed off, so nobody is let in; `checking`,
+   * its marker is being read; `awaiting-hq`, HQ says nothing and this browser knows its close-off
+   * has not happened. Left out while a Finish setup runs on it in this tab.
    */
-  readonly closeOffOpen?: boolean | undefined;
+  readonly closeOffHold?: "open" | "checking" | "awaiting-hq" | undefined;
 }
 
 /** Whether `at` is within `graceMs` of now; an unknown time or now counts as young. */
@@ -154,6 +155,12 @@ export const HALF_MADE_OWNER_LINE =
 /** A Mate held because its project is not closed off (`closeOffOpen`): *Finish setup* closes it. */
 export const NOT_CLOSED_OFF_LINE =
   "Its setup stopped before its project was closed off, so nobody is let in. Finish setup closes it off.";
+
+/** A Mate held while its container's marker is read (`closeOffHold` `checking`). */
+export const CHECKING_SETUP_LINE = "Checking that its setup finished…";
+
+/** A Mate held until HQ confirms its close-off (`closeOffHold` `awaiting-hq`). */
+export const AWAITING_HQ_LINE = "Waiting for HQ to confirm its setup finished.";
 
 /** The same Mate, for a viewer who may not finish it: who can. */
 export const NOT_CLOSED_OFF_OWNER_LINE =
@@ -220,7 +227,11 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
   // Held because its project is not closed off: said, with Finish setup — while its container is
   // a moment old a press elsewhere may still be closing it off, and it is coming. A press of this
   // tab's bringing its container says that instead.
-  if (input.closeOffOpen === true && press?.container !== true) {
+  if (input.closeOffHold === "checking") return { kind: "coming", line: CHECKING_SETUP_LINE };
+  if (input.closeOffHold === "awaiting-hq" && press?.container !== true) {
+    return { kind: "coming", line: AWAITING_HQ_LINE };
+  }
+  if (input.closeOffHold === "open" && press?.container !== true) {
     return youngAt(
       candidate?.service?.created ?? candidate?.project?.created,
       input.nowMs,

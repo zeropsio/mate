@@ -46,7 +46,7 @@ import { newMateView, useNewMate } from "./newMate";
 import { useHqMainChats } from "./useMenuMateReadings";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useCloseOffHolds } from "./accountEnvironments";
-import { closeOffOpenOf, pressComingInput, useMatePresses } from "./matePress";
+import { closeOffHoldOf, pressComingInput, useMatePresses } from "./matePress";
 
 /** Opens a Mate — its row, or its project where the caller holds no row — as every door does. */
 export type OpenMate = (
@@ -101,8 +101,8 @@ export function useOpenMate(): OpenMate {
       const pressed = pressComingInput(presses, projectId);
       const coming = mateComing({
         press: pressed.press,
-        // Held for its close-off, it opens on its own view, which says why.
-        closeOffOpen: closeOffOpenOf(
+        // Held by the close-off gate, it opens on its own view, which says why.
+        closeOffHold: closeOffHoldOf(
           closeOffHolds,
           projectId,
           presses.find((press) => press.projectId === projectId),

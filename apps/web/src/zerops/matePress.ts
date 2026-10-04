@@ -560,17 +560,58 @@ export function finishSetupRunning(press: MatePress | undefined): boolean {
   return press?.finishing === true && press.state.kind === "pressing";
 }
 
+type CloseOffHold = "open" | "checking" | "awaiting-hq";
+
 /**
- * Whether a Mate says the close-off gate holds it (`mateComing`'s `closeOffOpen`): its project is
- * known not closed off, and no Finish setup runs on it in this tab — whose own words say that.
+ * Whether a Mate's row says the close-off gate holds it: its project is known not closed off, and
+ * no Finish setup runs on it in this tab — whose own words say that. Its other holds are said
+ * where it is opened (`closeOffHoldOf`): a row it is not opened from waits on nothing.
  */
 export function closeOffOpenOf(
-  holds: ReadonlyMap<string, "open" | "unsure">,
+  holds: ReadonlyMap<string, CloseOffHold>,
   projectId: string,
   press: MatePress | undefined,
 ): boolean {
   return holds.get(projectId) === "open" && !finishSetupRunning(press);
 }
+
+/**
+ * Why the close-off gate holds a Mate, as its own view says it (`mateComing`'s `closeOffHold`) —
+ * never silent; none while a Finish setup runs on it in this tab, whose own words say that.
+ */
+export function closeOffHoldOf(
+  holds: ReadonlyMap<string, CloseOffHold>,
+  projectId: string,
+  press: MatePress | undefined,
+): CloseOffHold | undefined {
+  return finishSetupRunning(press) ? undefined : holds.get(projectId);
+}
+
+/**
+ * The projects this browser knows are not closed off yet (`closeOffPending`): a press here that
+ * brings a Mate and runs, or stopped, with its close-off not done. Where HQ says nothing, only
+ * these are held (`closeOffGate`).
+ */
+export function closeOffPendingOf(presses: ReadonlyArray<MatePress>): ReadonlySet<string> {
+  return new Set(
+    presses.flatMap((press) => {
+      if (press.state.kind === "pressed") return [];
+      const closeOff = press.progress?.find((entry) => entry.step.kind === "close-off");
+      const pending =
+        closeOff === undefined
+          ? (press.progress ?? []).length === 0 && press.container
+          : closeOff.state !== "done";
+      return pending ? [press.projectId] : [];
+    }),
+  );
+}
+
+/** `closeOffPendingOf` over this tab's presses, as the account's environments port reads it. */
+export const closeOffPendingProjects = {
+  read: (): ReadonlySet<string> =>
+    closeOffPendingOf(Object.values(usePressStore.getState().presses)),
+  subscribe: (listener: () => void): (() => void) => usePressStore.subscribe(listener),
+};
 
 /**
  * *Finish setup* as its Mate's row says it, on every screen — its own view draws the steps only

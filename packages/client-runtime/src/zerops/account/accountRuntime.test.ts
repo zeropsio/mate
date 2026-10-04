@@ -109,7 +109,8 @@ const ENV_A = EnvironmentId.make("env-a");
 /** The datastream over a platform whose one organization holds these Mates' projects. */
 const platformAdapter = (
   mates: ReadonlyArray<Mate>,
-  variables: ReadonlyArray<unknown> = [],
+  /** The services' variables as the stream answers them; `never`: it never answers. */
+  variables: ReadonlyArray<unknown> | "never" = [],
 ): ZeropsDataAdapter => {
   const rowsOf = (query: EntityQueryDescriptor): ReadonlyArray<unknown> => {
     switch (query.kind) {
@@ -132,26 +133,31 @@ const platformAdapter = (
         events: Stream.never,
       }),
     register: (_receiver, request) =>
-      Effect.sync(() => {
-        if (request.descriptor.kind === "table-list") {
-          const listed =
-            request.descriptor.query.kind === "service-variables-of-services" ? variables : [];
-          return {
-            responseObservations: decodeRegistrationResponse(request, {
-              items: listed,
-              totalHits: listed.length,
-            }).observations,
-          };
-        }
-        if (request.descriptor.kind !== "query-membership") return { responseObservations: [] };
-        const items = rowsOf(request.descriptor.query);
-        return {
-          responseObservations: decodeRegistrationResponse(request, {
-            items,
-            totalHits: items.length,
-          }).observations,
-        };
-      }),
+      request.descriptor.kind === "table-list" && variables === "never"
+        ? Effect.never
+        : Effect.sync(() => {
+            if (request.descriptor.kind === "table-list") {
+              const listed =
+                request.descriptor.query.kind === "service-variables-of-services" &&
+                variables !== "never"
+                  ? variables
+                  : [];
+              return {
+                responseObservations: decodeRegistrationResponse(request, {
+                  items: listed,
+                  totalHits: listed.length,
+                }).observations,
+              };
+            }
+            if (request.descriptor.kind !== "query-membership") return { responseObservations: [] };
+            const items = rowsOf(request.descriptor.query);
+            return {
+              responseObservations: decodeRegistrationResponse(request, {
+                items,
+                totalHits: items.length,
+              }).observations,
+            };
+          }),
     read: (ticket) =>
       Effect.sync(() => {
         if (ticket.target.kind === "query") {
@@ -1888,11 +1894,17 @@ describe("the post-grant stage's Mate environments", () => {
         },
       };
     };
+    /** HQ's record of Mate A: closed off, or not. */
     const said = (closed: ReadonlyArray<string>, current = true): CloseOffWord => ({
       organizationId: organization.organizationId,
       current,
       closed: new Set(closed),
-      silent: new Set(),
+      open: new Set(closed.includes(A_MATE.projectId) ? [] : [A_MATE.projectId]),
+    });
+    /** This browser's own knowledge of projects whose close-off has not happened. */
+    const pendingHere = (projectIds: ReadonlyArray<string>) => ({
+      read: () => new Set(projectIds),
+      subscribe: () => () => undefined,
     });
     const madeAt = (created: string) => ({
       ...A_MATE,
@@ -1951,45 +1963,82 @@ describe("the post-grant stage's Mate environments", () => {
       ),
     );
 
+    // Security review 4: HQ saying nothing is no reason to hold — only this browser's own
+    // knowledge that its close-off has not happened is, and then it says why.
     it.effect(
-      "holds a young marked Mate quietly while HQ's word is not current, an older one not",
+      "where HQ says nothing, holds a marked Mate only on this browser's own evidence",
       () =>
         Effect.scoped(
           Effect.gen(function* () {
             const fresh = madeAt("2026-09-23T09:50:00.000Z");
-            const word = hqWord(null);
+            const unheld = yield* granted([], [fresh], platformAdapter([fresh], MARKER), [fresh], {
+              closeOff: hqWord(null).port,
+            });
+            unheld.environments.setOnScreen(fresh.projectId);
+            yield* settle;
+            expect(unheld.environments.closeOffHolds().size).toBe(0);
+            expect(exchangesOf(unheld.rig)).toBe(1);
+          }),
+        ),
+    );
+
+    it.effect(
+      "holds a Mate whose press here stopped before its close-off, saying it waits on HQ",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
             const { rig, environments } = yield* granted(
               [],
-              [fresh],
-              platformAdapter([fresh], MARKER),
-              [fresh],
-              {
-                closeOff: word.port,
-              },
+              [A_MATE],
+              platformAdapter([A_MATE], MARKER),
+              [A_MATE],
+              { closeOff: hqWord(null).port, closeOffPending: pendingHere([A_MATE.projectId]) },
             );
-            environments.setOnScreen(fresh.projectId);
+            environments.setOnScreen(A_MATE.projectId);
             yield* settle;
-            expect(environments.closeOffHolds().get(fresh.projectId)).toBe("unsure");
+            expect(environments.closeOffHolds().get(A_MATE.projectId)).toBe("awaiting-hq");
             expect(exchangesOf(rig)).toBe(0);
           }),
         ),
     );
 
-    it.effect("never holds an older marked Mate for an HQ word nobody can read", () =>
+    // Security review 10: HQ's record saying it is not closed off holds the Mate while its marker
+    // is read, before it could connect for a moment.
+    it.effect("holds a Mate HQ says is not closed off while its marker is read", () =>
       Effect.scoped(
         Effect.gen(function* () {
           const old = madeAt("2026-09-23T07:00:00.000Z");
-          const word = hqWord(null);
           const { rig, environments } = yield* granted(
             [],
             [old],
-            platformAdapter([old], MARKER),
+            platformAdapter([old], "never"),
             [old],
-            {
-              closeOff: word.port,
-            },
+            { closeOff: hqWord(said([])).port },
           );
           environments.setOnScreen(old.projectId);
+          yield* settle;
+          expect(environments.closeOffHolds().get(old.projectId)).toBe("checking");
+          expect(exchangesOf(rig)).toBe(0);
+        }),
+      ),
+    );
+
+    // Security review 6: 0.12.3's close-off tag on the project is its close-off.
+    it.effect("lets in a Mate whose project carries 0.12's close-off tag", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const tagged = {
+            ...A_MATE,
+            project: { ...A_MATE.project, tagList: ["mate", "mate:closed-off"] },
+          };
+          const { rig, environments } = yield* granted(
+            [],
+            [tagged],
+            platformAdapter([tagged], MARKER),
+            [tagged],
+            { closeOff: hqWord(said([])).port },
+          );
+          environments.setOnScreen(tagged.projectId);
           yield* settle;
           expect(environments.closeOffHolds().size).toBe(0);
           expect(exchangesOf(rig)).toBe(1);

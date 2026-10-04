@@ -486,7 +486,9 @@ still to come says so.
 - **0.4, 0.10** — A new Mate's key on `zcp` and its project closed off before anyone is admitted
   - _State:_ live — the press does it in the foreground before _Add_ returns, and records the
     close-off in HQ (`matePress.ts`, `hqMateBirth.ts`); a Mate whose press stopped before it holds
-    no lease's connection until HQ records it, and offers _Finish setup_ (`closeOff.ts`)
+    no lease's connection until HQ records it, and offers _Finish setup_ (`closeOff.ts`). Only a
+    fact holds one — HQ's record, or where HQ says nothing this browser's own stopped press — and
+    every hold says why on the Mate's own view
   - _Proven by:_ `matePress.test.ts`, `projectIsolation.test.ts`, `createEnvironment.test.ts`,
     `closeOff.test.ts`, `accountRuntime.test.ts` ("the close-off gate")
 - **0.6** — The _Update_ verb's scope

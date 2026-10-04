@@ -139,11 +139,14 @@ export function useMateComingOf(
       const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
       return mateComing({
         press,
-        closeOffOpen: closeOffOpenOf(
+        // A row says only the hold it offers Finish setup for; the others, its own view.
+        closeOffHold: closeOffOpenOf(
           closeOffHolds,
           candidate.project.id,
           presses.find((entry) => entry.projectId === candidate.project.id),
-        ),
+        )
+          ? "open"
+          : undefined,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
         setUpFailed: setUpFailed ?? creations[candidate.project.id]?.failed,
         nowMs: Date.now(),

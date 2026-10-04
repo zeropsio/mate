@@ -118,7 +118,7 @@ import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useZeropsInventory, type InventoryServiceOutcome } from "~/zerops/inventoryContext";
 import {
-  closeOffOpenOf,
+  closeOffHoldOf,
   finishSetupView,
   forgetPress,
   pressFailure,
@@ -247,10 +247,11 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Its first build's processes, read only while its container waits for that build.
   const firstBuilding = candidate?.service?.status === "READY_TO_DEPLOY";
   const { processes: firstBuildProcesses } = useProjectActivity(firstBuilding ? projectId : null);
-  // Held because its project is not closed off: its view says why, and offers Finish setup.
+  // Held by the close-off gate: its view says why — and, where its project is known not closed
+  // off, offers Finish setup.
   const closeOffHolds = useCloseOffHolds();
   const coming = mateComing({
-    closeOffOpen: closeOffOpenOf(closeOffHolds, projectId, press),
+    closeOffHold: closeOffHoldOf(closeOffHolds, projectId, press),
     press:
       press === undefined
         ? undefined
