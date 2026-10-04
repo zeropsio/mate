@@ -44,7 +44,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { createEndFollow, type EndFollow } from "./timelineEndFollow";
+import { createEndFollow, isOwnScroll, type EndFollow } from "./timelineEndFollow";
 import { revealBy } from "./timelineReveal.logic";
 import { usePace } from "./usePace";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
@@ -115,7 +115,6 @@ import {
   rememberTimelinePosition,
   resolveTimelineRestoreTarget,
   resolveTimelineScrollAnchor,
-  shouldRepinTimelineEndAfterRowResize,
 } from "./timelineScrollAnchoring";
 import {
   isTimelineScrollTarget,
@@ -256,6 +255,11 @@ function TimelineLoadEarlierHeader({
   );
 }
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
+/** The keys that scroll a list: pressed, a reveal in flight gives way. */
+const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+function reducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 /** How long after a person's click what they opened is brought into view, while it eases open. */
 const REVEAL_FOR_MS = 700;
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
@@ -721,13 +725,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   useEffect(() => {
     const endFollow = createEndFollow({
       viewport: () => listRef.current?.getScrollableNode() ?? null,
-      // Within a viewport of its end, as the list reads it: a place put back
-      // further up is the reader's, however follow stands.
-      follows: () =>
-        followingEndRef.current &&
-        listRef.current?.getState?.().isWithinMaintainScrollAtEndThreshold !== false,
+      // Whether it stands at its end is the follower's own judgement, from
+      // the scrolls it hears: the list's own reading goes stale mid-glide.
+      follows: () => followingEndRef.current,
     });
     endFollowRef.current = endFollow;
+    // Where the list stands as it is drawn is the first thing heard.
+    endFollow.heard(false);
     return () => {
       endFollow.stop();
       endFollowRef.current = null;
@@ -753,18 +757,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // list has re-rendered its new size.
   const onItemSizeChanged = useCallback(
     ({ previous, size }: { readonly previous: number; readonly size: number }) => {
-      const list = listRef.current;
-      if (
-        list === null ||
-        !shouldRepinTimelineEndAfterRowResize({
-          followingEnd: followingEndRef.current,
-          withinFollowThreshold: list.getState().isWithinMaintainScrollAtEndThreshold,
-          previousSize: previous,
-          size,
-        })
-      ) {
-        return;
-      }
+      if (!followingEndRef.current || size <= previous) return;
       // In the frame the row grew, once the list has drawn its new size (its
       // render runs in a microtask queued before this one), so nothing under
       // the reader moves for a frame; and again on the next frame, for a
@@ -776,7 +769,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         followEnd();
       });
     },
-    [followEnd, listRef],
+    [followEnd],
   );
 
   // Where the person is, kept as they move, by row: the row at the reading
@@ -985,7 +978,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       });
       const dt = last === 0 ? 1000 / 60 : now - last;
       last = now;
-      if (by > 0.5) viewport.scrollTop += approach(0, by, dt, FOLLOW_TAU_MS);
+      if (by <= 0.5) return;
+      // Under reduced motion it stands there at once.
+      if (reducedMotion()) {
+        viewport.scrollTop += by;
+        stop();
+        return;
+      }
+      viewport.scrollTop += approach(0, by, dt, FOLLOW_TAU_MS);
     };
     const onClick = (event: globalThis.MouseEvent) => {
       const button =
@@ -998,15 +998,42 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       last = 0;
       if (frame === 0) frame = requestAnimationFrame(step);
     };
+    // Any scroll of the person's ends it: a wheel, a touch, the keys, the scrollbar.
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (SCROLL_KEYS.has(event.key)) stop();
+    };
+    const onPointerDown = (event: globalThis.PointerEvent) => {
+      if (event.target === listRef.current?.getScrollableNode()) stop();
+    };
     wrapper.addEventListener("click", onClick, { capture: true });
     wrapper.addEventListener("wheel", stop, { passive: true });
     wrapper.addEventListener("touchmove", stop, { passive: true });
+    wrapper.addEventListener("pointerdown", onPointerDown, { passive: true });
+    wrapper.ownerDocument.addEventListener("keydown", onKey);
     return () => {
       stop();
       wrapper.removeEventListener("click", onClick, { capture: true });
       wrapper.removeEventListener("wheel", stop);
       wrapper.removeEventListener("touchmove", stop);
+      wrapper.removeEventListener("pointerdown", onPointerDown);
+      wrapper.ownerDocument.removeEventListener("keydown", onKey);
     };
+  }, [listRef, timelineViewportElement]);
+
+  // Every scroll of the list, whoever made it, tells the follower where it
+  // stands, and whether it was a person's.
+  useEffect(() => {
+    const wrapper = timelineViewportElement;
+    if (!wrapper) return;
+    const onScroll = (event: Event) => {
+      const node = listRef.current?.getScrollableNode();
+      if (!node || event.target !== node) return;
+      const byPerson =
+        !isOwnScroll(node) && personIsScrolling(personSessionRef.current, performance.now());
+      endFollowRef.current?.heard(byPerson);
+    };
+    wrapper.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => wrapper.removeEventListener("scroll", onScroll, { capture: true });
   }, [listRef, timelineViewportElement]);
 
   // Where the list stood at the last read: what tells which way it moved since.
@@ -1077,10 +1104,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       rows,
     ],
   );
-  const handleScroll = useCallback(
-    () => readList(personIsScrolling(personSessionRef.current, performance.now())),
-    [readList],
-  );
+  // A move the page made itself (`scrollOwn`: a glide, a fold) is never the
+  // person's, however recently they touched the list.
+  const handleScroll = useCallback(() => {
+    const node = listRef.current?.getScrollableNode();
+    const own = node !== null && node !== undefined && isOwnScroll(node);
+    readList(!own && personIsScrolling(personSessionRef.current, performance.now()));
+  }, [listRef, readList]);
 
   // Rows changed under the list: where it stands now is none of the person's doing.
   useEffect(() => {

@@ -17,3 +17,18 @@ export function slotMoves(
   const drawn = new Set(from.entries.map((entry) => entry.key));
   return { leaving, entering: to.entries.some((entry) => !drawn.has(entry.key)) };
 }
+
+/**
+ * The lines leaving the slot that land at once, by their plop: what stood in
+ * the slot, and what was drawn there with it — a question's answer under it,
+ * the pair landing as one. What rode along unseen enters after, in its turn.
+ */
+export function landingHosts(
+  from: LiveSlot,
+  leaving: ReadonlyArray<string>,
+  /** The keys the slot drew a row for. */
+  drawn: ReadonlySet<string>,
+): ReadonlySet<string> {
+  const stood = new Set(from.entries.map((entry) => entry.key));
+  return new Set(leaving.filter((key) => stood.has(key) || drawn.has(key)));
+}

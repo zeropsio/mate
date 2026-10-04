@@ -24,6 +24,9 @@ export const MAX_SPEED_PX_PER_MS = 1.6;
 /** The longest frame a move's speed counts: a frame and a fifth at 60 Hz. */
 const ON_TIME_FRAME_MS = 20;
 
+/** A frame this late means nobody watched: the move stands at its target. */
+export const LONG_GONE_MS = 250;
+
 /** Closer than this to its target, a move stands at it. */
 export const SETTLED_PX = 0.5;
 
@@ -33,10 +36,37 @@ export const SETTLED_PX = 0.5;
  */
 export function approach(current: number, target: number, dtMs: number, tauMs: number): number {
   if (dtMs <= 0) return current;
+  // A frame long gone — a tab out of sight coming back — finds it there.
+  if (dtMs >= LONG_GONE_MS) return target;
   const share = (target - current) * (1 - Math.exp(-dtMs / tauMs));
   // A late frame moves no further than a frame on time would: the move
   // takes longer, and nothing jumps.
   const most = MAX_SPEED_PX_PER_MS * Math.min(dtMs, ON_TIME_FRAME_MS);
   const next = current + Math.max(-most, Math.min(most, share));
   return Math.abs(target - next) < SETTLED_PX ? target : next;
+}
+
+/** How long after the person's input a move of a run's scroll is still theirs. */
+export const PERSON_INPUT_MS = 500;
+
+/**
+ * Whether a move of a run's scroll is the person's: always, unless its own
+ * motion runs (its room easing, its glide) with no input of theirs near — then
+ * it is that motion's, the browser clamping it — but for a move onto the foot
+ * they had left: a phone's flick coasting there sends no touch, and it is
+ * their way back.
+ */
+export function movesAsPerson({
+  moving,
+  msSinceInput,
+  atFoot,
+  follows,
+}: {
+  readonly moving: boolean;
+  readonly msSinceInput: number;
+  readonly atFoot: boolean;
+  readonly follows: boolean;
+}): boolean {
+  if (!moving || msSinceInput <= PERSON_INPUT_MS) return true;
+  return atFoot && !follows;
 }

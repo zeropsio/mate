@@ -123,7 +123,8 @@ import {
 } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
 import { usePace } from "./usePace";
-import { slotMoves } from "./slotMoves.logic";
+import { KeptTimelineContext } from "./keptTimelineContext";
+import { landingHosts, slotMoves } from "./slotMoves.logic";
 import { stripShowsFiles } from "./runResult.logic";
 import {
   backgroundItemWord,
@@ -132,7 +133,7 @@ import {
 } from "./backgroundLine.logic";
 import { useRunEffortWords } from "./runResultFacts";
 import { foldWork } from "./foldWork";
-import { FOLLOW_TAU_MS, ROOM_TAU_MS, approach } from "./runMotion.logic";
+import { FOLLOW_TAU_MS, ROOM_TAU_MS, approach, movesAsPerson } from "./runMotion.logic";
 import { easeRooms, noteScrollTop, type Rooms } from "./runRoom";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
@@ -195,6 +196,7 @@ import {
   type NowLine as NowLineModel,
   type RunFold,
   type RunScrollPosition,
+  standsAtFoot,
 } from "./runCard.logic";
 import { keepInPlace, scrollerOf } from "./keepInPlace";
 import {
@@ -3543,7 +3545,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const slotRef = useRef<HTMLDivElement>(null);
   // What goes live enters the slot one after another (`usePace`).
   const liveKeys = useMemo(() => model.live.map((item) => item.key), [model.live]);
-  const liveHeld = usePace({ keys: liveKeys, flush: !slotted || ctx.syncing });
+  // Out of sight (a kept list), nobody watches: what arrives is simply there.
+  const outOfSight = !(use(KeptTimelineContext)?.shown ?? true);
+  const liveHeld = usePace({ keys: liveKeys, flush: !slotted || ctx.syncing || outOfSight });
   // When the quiet began, from the data: the record's newest line, else the
   // run's start — a reload or a catch-up never restarts "Thinking".
   const quietFrom = useMemo(() => {
@@ -3556,7 +3560,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const [landing, setLanding] = useState<Landing | null>(null);
   const slot = useLiveSlot({
     live: slotted ? liveKeys.filter((key) => !liveHeld.has(key)) : NO_KEYS,
-    record: recordKeys,
+    // What waits its turn to go live is not the record's yet either: a
+    // question waiting never rides into the history as ended.
+    record: liveHeld.size === 0 ? recordKeys : recordKeys.filter((key) => !liveHeld.has(key)),
     final: !slotted,
     syncing: ctx.syncing,
     quietFrom,
@@ -3575,11 +3581,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         const top = painted.slotRows.get(key);
         stood.set(key, top === undefined || !slotted ? Number.NaN : top + (painted.slot ?? 0));
       }
-      // What stood in the slot itself, not what rode along with it unseen.
-      const stoodInSlot = new Set(from.entries.map((entry) => entry.key));
       setLanding({
         from: stood,
-        hosts: new Set(leaving.filter((key) => stoodInSlot.has(key))),
+        hosts: landingHosts(from, leaving, new Set(painted.slotRows.keys())),
         rows: slotted ? painted.rows : new Map(),
         slot: slotted ? painted.slot : null,
         card: painted.card,
@@ -3703,7 +3707,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const historyHeld = usePace({
     keys: historyKeys,
     landing: landing?.hosts ?? NO_HOLDS,
-    flush: !slotted || ctx.syncing,
+    flush: !slotted || ctx.syncing || outOfSight,
   });
   const entered =
     historyHeld.size === 0 ? history : history.filter((item) => !historyHeld.has(item.key));
@@ -3978,9 +3982,6 @@ function WorkToggle({ open, onToggle }: { readonly open: boolean; readonly onTog
   );
 }
 
-/** How long after the person's input a move of the run's scroll is still theirs. */
-const PERSON_INPUT_MS = 500;
-
 /** How long a scroll stands still before its move counts as ended, where the browser never says so. */
 const SCROLL_QUIET_MS = 150;
 
@@ -4042,6 +4043,8 @@ function RunScroll({
   // its foot, so that hears each change with the room already holding the
   // height it showed.
   const roomRef = useRef<Rooms | null>(null);
+  // Earlier lines are being drawn above the ones in view, this commit.
+  const drawingEarlierRef = useRef(false);
   // When the person last gave it an input: what tells their move from its own motion's.
   const personAtRef = useRef(Number.NEGATIVE_INFINITY);
   const heardPerson = () => {
@@ -4056,7 +4059,9 @@ function RunScroll({
     const rooms = easeRooms({
       root: element,
       selector: `[data-run-scroll] > ol, ${EASED_BOXES}`,
-      eases: () => easesRef.current && shownRef.current,
+      // Earlier lines drawn over the ones in view take their room at once:
+      // where the person reads is kept by the scroll (`keepFromFootRef`).
+      eases: () => easesRef.current && shownRef.current && !drawingEarlierRef.current,
     });
     roomRef.current = rooms;
     if (roomsRef !== undefined) roomsRef.current = rooms;
@@ -4114,8 +4119,9 @@ function RunScroll({
     const glide = () => {
       const element = scrollRef.current;
       if (element === null || gliding.frame !== 0) return;
-      // Drawn outside a page (a test's renderer), it stands there at once.
-      if (typeof requestAnimationFrame !== "function") {
+      // Drawn outside a page (a test's renderer), or under reduced motion, it
+      // stands there at once.
+      if (typeof requestAnimationFrame !== "function" || prefersReducedMotion()) {
         putAt(element, footOf(positionOf(element)));
         return;
       }
@@ -4147,12 +4153,14 @@ function RunScroll({
      * its box grows — and never their move up.
      */
     const read = (position: RunScrollPosition) => {
-      const moving = gliding.frame !== 0 || (roomRef.current?.easing() ?? false) || heldAbove();
-      if (moving && performance.now() - personAtRef.current > PERSON_INPUT_MS) {
-        heard({ kind: "set", top: position.scrollTop });
-      } else {
-        heard({ kind: "scrolled", position });
-      }
+      const person = movesAsPerson({
+        moving: gliding.frame !== 0 || (roomRef.current?.easing() ?? false) || heldAbove(),
+        msSinceInput: performance.now() - personAtRef.current,
+        atFoot: standsAtFoot(position),
+        follows: followRef.current.follows,
+      });
+      if (person) heard({ kind: "scrolled", position });
+      else heard({ kind: "set", top: position.scrollTop });
       if (scrollRef.current !== null) noteScrollTop(scrollRef.current);
     };
     // How tall its lines stood at the last keep: lines joining glide it on,
@@ -4224,6 +4232,7 @@ function RunScroll({
   const keepFromFootRef = useRef<number | null>(null);
   const drawEarlier = (position: RunScrollPosition) => {
     if (!reachesEarlier(position, from)) return;
+    drawingEarlierRef.current = true;
     keepFromFootRef.current = position.scrollHeight - position.scrollTop;
     setFrom(earlierShown(from).next);
   };
@@ -4243,7 +4252,11 @@ function RunScroll({
     keepFromFootRef.current = null;
     if (element === null) return;
     if (keep !== null) follow.putAt(element, positionOf(element).scrollHeight - keep);
-    if (from > 0 && element.scrollHeight <= element.clientHeight) setFrom(earlierShown(from).next);
+    drawingEarlierRef.current = false;
+    if (from > 0 && element.scrollHeight <= element.clientHeight) {
+      drawingEarlierRef.current = true;
+      setFrom(earlierShown(from).next);
+    }
     markEdges(element);
   }, [from, follow]);
   // A line arriving, a bubble growing as its words stream, a call opening,

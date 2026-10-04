@@ -122,6 +122,23 @@ describe("the pace of a run's arrivals", () => {
     expect(shown.get("n4")).toBe(1010);
   });
 
+  // The review, 2026-10-04: "Load earlier" paced the older rows in above the
+  // reader, one by one. What comes before what stands is history.
+  it("shows at once what arrives before what already stands", () => {
+    const shown = play(
+      ["a", "b"],
+      [
+        { at: 1000, keys: ["o1", "o2", "o3", "o4", "a", "b"] },
+        { at: 1001, keys: ["o1", "o2", "o3", "o4", "a", "b", "n1", "n2"] },
+      ],
+      5000,
+    );
+    for (const key of ["o1", "o2", "o3", "o4"]) expect(shown.get(key)).toBe(1000);
+    // What arrives at the end still enters one after another.
+    expect(shown.get("n1")).toBe(1001);
+    expect(shown.get("n2")).toBe(1001 + PACE_GAP_MS);
+  });
+
   it("forgets what left before it showed", () => {
     let pace = paceStart(["a"]);
     pace = paceOffer(pace, { keys: ["a", "n1", "n2"], at: 1000, landing: new Set(), flush: false });
