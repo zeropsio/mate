@@ -733,6 +733,44 @@ describe("access grant reducer", () => {
     expect(sim.write(listed[1]!)).toEqual({ allowed: true });
   });
 
+  it.each([
+    [
+      "a first round",
+      () => {
+        const sim = new GrantSim();
+        sim.send({ type: "START" });
+        return sim;
+      },
+    ],
+    [
+      "a lapsed tab's round",
+      () => {
+        const sim = grantedSim();
+        sim.elapse(30 * MINUTE);
+        sim.send({ type: "USER_RETRY" });
+        return sim;
+      },
+    ],
+  ])(
+    "a person's again that joined %s which then runs out asks once more at once (G7)",
+    (_name, start) => {
+      const sim = start();
+      const round = grantRoundInFlight(sim.state)!;
+      const joined = round.id;
+      // Pressed in the joined round's last moment: its deadline, not the person, ends it.
+      sim.elapse(round.deadline.mono - sim.now.mono - 300);
+      sim.send({ type: "USER_RETRY" });
+      expect(grantRoundInFlight(sim.state)!.id).toBe(joined);
+      sim.elapse(300);
+      sim.send({ type: "TICK" });
+      sim.send({ type: "TICK" });
+      const next = grantRoundInFlight(sim.state);
+      expect(next).not.toBeNull();
+      expect(next!.id).not.toBe(joined);
+      expect(next!.startedAt).toEqual(sim.now);
+    },
+  );
+
   it("fails a round whose account part misses the deadline and retries by the session backoff", () => {
     const sim = new GrantSim();
     sim.send({ type: "START" });

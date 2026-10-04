@@ -121,6 +121,8 @@ export interface GrantRound {
     ZeropsProjectId,
     { readonly outcome: ProjectOutcome; readonly at: Instant }
   >;
+  /** A person's again joined it: if it runs out unanswered, the next round starts at once. */
+  readonly askedAgain?: true;
 }
 
 export type Renewal =
@@ -594,13 +596,16 @@ const failRound = (
 ): GrantMachine => {
   const attempt = round.failures + 1;
   const phase = machine.phase;
+  /** When the next round goes out after `ms`: at once when a person asked during this one. */
+  const retryAfter = (ms: number): Instant =>
+    round.askedAgain === true ? ctx.now : after(ctx.now, ms);
   if (phase.phase === "verifying") {
     return {
       ...machine,
       phase: {
         phase: "unverified-failed",
         failure,
-        retryAt: after(ctx.now, waitOf(ctx, ctx.policy.initialRetryMs, attempt)),
+        retryAt: retryAfter(waitOf(ctx, ctx.policy.initialRetryMs, attempt)),
         attempt,
       },
     };
@@ -608,7 +613,7 @@ const failRound = (
   if (phase.phase === "granted") {
     // Bounded by the held deadline, where the lapse starts its own round (§4.2 timers).
     const retryAt = sooner(
-      after(ctx.now, waitOf(ctx, ctx.policy.renewalRetryMs, attempt)),
+      retryAfter(waitOf(ctx, ctx.policy.renewalRetryMs, attempt)),
       after(phase.evidence.account.startedAt, ctx.policy.windowMs),
     );
     return {
@@ -617,7 +622,7 @@ const failRound = (
     };
   }
   if (phase.phase !== "lapsed") return machine;
-  const retryAt = after(ctx.now, waitOf(ctx, ctx.policy.lapsedRetryMs, attempt));
+  const retryAt = retryAfter(waitOf(ctx, ctx.policy.lapsedRetryMs, attempt));
   return {
     ...machine,
     phase: { ...phase, renewal: { status: "failed", failure, retryAt, attempt }, failure },
@@ -987,9 +992,15 @@ const apply = (
     }
     case "OFFLINE":
       return { ...machine, signals: { ...machine.signals, online: false } };
-    case "USER_RETRY":
-      // A retry during a round joins it (G7).
-      return grantRoundInFlight(machine) === null ? wake(machine, ctx, out) : machine;
+    case "USER_RETRY": {
+      // A retry during a round joins it (G7); should that round fail, the person's ask is not
+      // spent on it: the next round goes out at once instead of on the ladder.
+      const round = grantRoundInFlight(machine);
+      if (round === null) return wake(machine, ctx, out);
+      return round.askedAgain === true
+        ? machine
+        : withRound(machine, { ...round, askedAgain: true });
+    }
     case "GRANTS_WRITTEN":
       return grantsWritten(machine, ctx);
     case "ROUND_ACCOUNT": {
