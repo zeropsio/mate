@@ -220,14 +220,23 @@ export async function driveHqStructure(input: {
        * nothing from a Core whose stream does not say it.
        */
       let official: string | null | undefined;
-      const servingStanding = (): HqStanding =>
-        official === undefined
-          ? { kind: told?.kind === "unchecked" ? "unchecked" : "healthy" }
-          : nextHqStanding(
-              view.standing ?? { kind: "unknown" },
-              healthOfOfficial(official),
-              input.now(),
-            );
+      /** The Core HQ runs, as this stream names it; none from a Core whose stream does not. */
+      let build: string | undefined;
+      const servingStanding = (): HqStanding => {
+        const health: HqHealth =
+          official === undefined
+            ? told?.kind === "unchecked"
+              ? told
+              : { kind: "healthy", build: told?.kind === "healthy" ? told.build : "" }
+            : healthOfOfficial(official);
+        const next = nextHqStanding(view.standing ?? { kind: "unknown" }, health, input.now());
+        if (next.kind !== "healthy" && next.kind !== "unchecked") return next;
+        // The Core it runs: as the stream names it, else as a health read did, else not yet.
+        const named =
+          build ??
+          (told?.kind === "healthy" || told?.kind === "unchecked" ? told.build : undefined);
+        return named === undefined ? { kind: next.kind } : { kind: next.kind, build: named };
+      };
       let rememberedAt: number | null = null;
       let dirty = false;
       const rememberMates = (force: boolean) => {
@@ -279,6 +288,7 @@ export async function driveHqStructure(input: {
               }
               if (event.kind === "snapshot") {
                 official = event.official;
+                build = event.build;
                 // Serving again: a health read still waiting on a failure is none of its business.
                 unwaitHealth();
                 if (official === undefined && !toldAsked) {
@@ -379,6 +389,7 @@ export async function driveHqStructure(input: {
  * serves while it cannot check Zerops right now, or one that is not the official HQ. A Core yet to
  * finish its first check (`null`) serves, and is taken as the official one.
  */
+/** The Core's build is named apart (`servingStanding`): `""` here names none. */
 function healthOfOfficial(official: string | null): HqHealth {
   if (official === null || official === "ok") return { kind: "healthy", build: "" };
   return official === "unknown"

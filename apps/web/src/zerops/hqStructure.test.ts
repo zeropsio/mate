@@ -164,7 +164,11 @@ describe("HQ's standing, from its stream", () => {
       { kind: "unavailable", since: 10_000 },
     ],
     // HQ serves, but its door cannot check Zerops right now: no outage (e840eb444).
-    ["HQ unable to check Zerops", { kind: "unchecked", build: "b1" }, { kind: "unchecked" }],
+    [
+      "HQ unable to check Zerops",
+      { kind: "unchecked", build: "b1" },
+      { kind: "unchecked", build: "b1" },
+    ],
   ])("after its stream breaks, says %s as HQ's health does", async (_case, health, standing) => {
     vi.useFakeTimers();
     const h = harness(undefined, health);
@@ -295,7 +299,7 @@ describe("HQ's standing, from its stream", () => {
       h.show();
       await vi.advanceTimersByTimeAsync(0);
       expect(h.healthReads).toHaveLength(1);
-      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked" });
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked", build: "b1" });
     } finally {
       stop.abort();
       await driving;
@@ -322,10 +326,46 @@ describe("HQ's standing, from its stream", () => {
       await vi.advanceTimersByTimeAsync(0);
       answers[0]!({ kind: "unreachable" });
       await vi.advanceTimersByTimeAsync(0);
-      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked" });
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked", build: "b1" });
     } finally {
       stop.abort();
       await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  // What an owner's update offer weighs (`ZeropsHqUpdate.logic.ts`): the Core HQ runs, named by
+  // its stream — or, from a Core whose stream does not name it, by the health read made for it.
+  it("names the Core HQ runs from its stream, or else from its health", async () => {
+    vi.useFakeTimers();
+    const BUILD = "20261004T100000Z.0123456789ab";
+    const named = harness();
+    const stop = new AbortController();
+    const driving = driveHqStructure({
+      ...named.deps,
+      api: streamingApi([{ events: [{ ...snapshot, build: BUILD }], end: "hang" }]),
+      signal: stop.signal,
+    });
+    const older = harness(undefined, { kind: "healthy", build: "20261001T090000Z.aaaaaaaaaaaa" });
+    const halt = new AbortController();
+    const going = driveHqStructure({
+      ...older.deps,
+      api: streamingApi([{ events: [legacy], end: "hang" }]),
+      signal: halt.signal,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(named.views.at(-1)?.standing).toEqual({ kind: "healthy", build: BUILD });
+      expect(named.healthReads).toEqual([]);
+      expect(older.views.at(-1)?.standing).toEqual({
+        kind: "healthy",
+        build: "20261001T090000Z.aaaaaaaaaaaa",
+      });
+    } finally {
+      stop.abort();
+      halt.abort();
+      await driving;
+      await going;
       vi.useRealTimers();
     }
   });
@@ -364,7 +404,7 @@ describe("HQ's standing, from its stream", () => {
       h.show();
       await vi.advanceTimersByTimeAsync(0);
       expect(h.healthReads).toHaveLength(1);
-      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked" });
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked", build: "b1" });
     } finally {
       stop.abort();
       await driving;

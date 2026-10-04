@@ -31,8 +31,7 @@
  * is attempted once; a failed delete keeps its exact target and failed/unknown reason
  * until the person asks to delete again. A crash stays owed, and only then does the app
  * list the organization's tokens and delete the person's own `mate-door:*`
- * tokens older than five minutes, and the `gitea-signin:*` ones main's client
- * leaves. {@link planThrowawaySweep}
+ * tokens older than five minutes. {@link planThrowawaySweep}
  * decides which; five minutes is the same window the door itself allows, so a
  * throwaway another tab is mid-flight with is never swept out from under it.
  *

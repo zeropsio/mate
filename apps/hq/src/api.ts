@@ -129,6 +129,7 @@ import type { RolloutCause } from "./rollouts.ts";
 import { PersonGitCredentials, type GitHolder } from "./personGitCredentials.ts";
 import { Sessions } from "./sessions.ts";
 import {
+  MATES_BATCH,
   MateLinkTickets,
   type StreamOptions,
   StreamTickets,
@@ -1155,7 +1156,13 @@ const routes = (
           const socket = yield* request.upgrade;
           const ended = yield* serveStructureSocket(
             socket,
-            structureMessages(userId, ending, options.recheck ?? Duration.seconds(30)),
+            structureMessages(
+              userId,
+              ending,
+              options.recheck ?? Duration.seconds(30),
+              MATES_BATCH,
+              options.build,
+            ),
             options.pingEvery ?? Duration.seconds(20),
           );
           // Which side ended it says whether a cut was HQ's or the way's (F26).

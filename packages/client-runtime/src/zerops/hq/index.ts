@@ -49,6 +49,14 @@ export {
 export { deployLogTarget, inspectDeployLog, type DeployLogTarget } from "./deployLog.ts";
 export { applyMatesEvent, applyPeopleEvent } from "./mates.ts";
 export {
+  hqUpdateOffered,
+  readHqUpdate,
+  runHqUpdate,
+  type HqUpdateOutcome,
+  type HqUpdatePlatform,
+  type HqUpdateState,
+} from "./update.ts";
+export {
   birthIntentOf,
   menuRowsFromHq,
   placeListing,

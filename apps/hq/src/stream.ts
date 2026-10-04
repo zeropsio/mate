@@ -3,7 +3,7 @@
  * A caller's structure over a WebSocket (KONCEPT §3 rule 4: the whole state, then changes by key;
  * after a break, the whole state again). JSON messages:
  *
- * - `{ type: "snapshot", ungrouped, apps, changes, appReads, mates, people, official }` — what
+ * - `{ type: "snapshot", ungrouped, apps, changes, appReads, mates, people, official, build }` — what
  *   `GET /api/structure` answers; beside it the changes of every application the caller may read
  *   them of, by application id (`@t3tools/shared/hqChanges` `ChangesSnapshot`), and where each of
  *   those applications' releases, repository heads and Mate/stage/production recipes (`hqAppReads`); and
@@ -83,6 +83,8 @@ import type { ZeropsError, ZeropsMember } from "./zerops/api.ts";
 export interface StreamOptions {
   readonly recheck?: Duration.Duration;
   readonly pingEvery?: Duration.Duration;
+  /** The Core this one is, as its bundle stamps it: what the snapshot names it by. */
+  readonly build?: string;
 }
 
 /** Why an open view ends: the caller's session, or this Core's lead. */
@@ -96,6 +98,7 @@ export type StructureMessage =
       readonly changes: ChangesSnapshot;
       readonly appReads: AppReads;
       readonly official: HqOfficialVerdict | null;
+      readonly build?: string;
     } & StructureRead &
       HqMatesSnapshot)
   | { readonly type: "official"; readonly official: HqOfficialVerdict | null }
@@ -205,6 +208,8 @@ export const structureMessages = <R>(
   ending: Effect.Effect<Ending | undefined, never, R>,
   recheck: Duration.Duration,
   batch: Duration.Duration = MATES_BATCH,
+  /** The Core this one is (`StreamOptions.build`), named in the snapshot. */
+  build?: string,
 ): Stream.Stream<
   Outgoing,
   SqlError | ZeropsError,
@@ -389,6 +394,7 @@ export const structureMessages = <R>(
               ) as HqMatesSnapshot["mates"],
               people,
               official: now.official,
+              ...(build === undefined ? {} : { build }),
             },
           ];
         }

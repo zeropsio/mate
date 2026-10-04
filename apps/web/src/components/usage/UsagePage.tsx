@@ -20,6 +20,7 @@ import type {
   UsageEnvironmentOwner,
 } from "../../zerops/usageEnvironmentIdentities";
 import { useUsageEnvironmentIdentities } from "../../zerops/useUsageEnvironmentIdentities";
+import { useUsageMates } from "../../zerops/useUsageMates";
 import {
   enumerateDays,
   enumerateHourStarts,
@@ -155,6 +156,12 @@ export function UsagePage({
     window,
     include,
   );
+  const connected = useMemo(
+    () => new Set(environments.map((environment) => environment.environmentId)),
+    [environments],
+  );
+  const mates = useUsageMates(connected, listed);
+  const missingMates = mates.filter((mate) => mate.state === "missing");
   const dimensionMetric = metric === "tokens" ? "tokens" : "cost";
   const labels = useMemo(
     () =>
@@ -214,7 +221,12 @@ export function UsagePage({
   // jump as each one lands.
   // A person scope matches nobody until the owners are known; rendering it
   // earlier shows $0 and then jumps.
-  const settling = isPending || isPartial || (scopePerson !== undefined && owners === "resolving");
+  // A Mate still connecting has not answered yet either.
+  const settling =
+    isPending ||
+    isPartial ||
+    mates.some((mate) => mate.state === "connecting") ||
+    (scopePerson !== undefined && owners === "resolving");
   const ownersUnknown = scopePerson !== undefined && owners === "unavailable";
 
   const days = useMemo(
@@ -430,7 +442,11 @@ export function UsagePage({
 
         <ScrollArea className="min-h-0 flex-1">
           <WorkspacePageContainer width="wide">
-            <p className="text-xs text-muted-foreground">Only Mates the app is connected to.</p>
+            {missingMates.length > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Not connected, so not counted: {missingMates.map((mate) => mate.name).join(", ")}.
+              </p>
+            ) : null}
             {!showingLimits ? (
               <div className="flex justify-end">
                 <UsagePriceOverrides usage={environments} />

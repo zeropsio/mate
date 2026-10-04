@@ -134,8 +134,8 @@ The client reaches a Mate only through the throwaway door
 mints a rights-less integration token as the person, presents it once, and deletes it whether the
 door admitted or refused. HQ's door takes the same throwaway, named for HQ's project
 (`apps/hq/src/door.ts`). The client makes no Gitea sign-in and mints no throwaway for a broker; its
-start-up sweep still takes back the person's own `gitea-signin:` throwaways that main's client
-leaves (`zeropsThrowaway.ts:71`). The client checks no organization or project role for the mint;
+start-up sweep takes back only its own `mate-door:` throwaways (`zeropsThrowaway.ts`). The client
+checks no organization or project role for the mint;
 the door it is presented to decides roles. From 2.4 a mint of `NO_ACCESS` with no projects and no
 flags is an account write: it runs only after the sign-in's first access grant, and a verification
 window that has closed since does not hold it up. Any mint that grants a project stays a project

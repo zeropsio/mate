@@ -40,9 +40,9 @@ describe("planThrowawaySweep", () => {
       true,
     ],
     [
-      "a Gitea sign-in throwaway main's client left, older than five minutes",
+      "a token named like main's Gitea sign-in, whatever its age",
       { id: "b", name: "gitea-signin:git.example.com:n", created: at(600_000) },
-      true,
+      false,
     ],
     [
       "a throwaway another tab may still be mid-flight with",
@@ -80,7 +80,7 @@ describe("planThrowawaySweep", () => {
       tokens: [
         { id: "a", name: "mate-door:p1:n", created: at(600_000) },
         { id: "b", name: "zcp-acme", created: at(600_000) },
-        { id: "c", name: "gitea-signin:git.example.com:n", created: at(600_000) },
+        { id: "c", name: "mate-door:p2:n", created: at(600_000) },
       ],
       nowEpochMs: NOW,
     });

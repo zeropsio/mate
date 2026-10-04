@@ -37,7 +37,15 @@ import { Official, type OfficialStatus } from "./official.ts";
 import { Releases } from "./releases.ts";
 import { type OrgView, Roles } from "./roles.ts";
 import { Structure, type StructureRead } from "./structure.ts";
-import { liveSocketsLayer, serveStructureSocket, structureMessages } from "./stream.ts";
+import {
+  MATES_BATCH,
+  liveSocketsLayer,
+  serveStructureSocket,
+  structureMessages,
+} from "./stream.ts";
+
+/** The Core this one is, as its bundle stamps it (`vite.config.ts`). */
+const BUILD = "20261004T100000Z.0123456789ab";
 import type { ZeropsMember } from "./zerops/api.ts";
 
 const member = (userId: string, roleCode: string): ZeropsMember => ({
@@ -205,7 +213,7 @@ const streamFor = (
     const sent: Array<{ readonly type: string } & Record<string, unknown>> = [];
     yield* Effect.forkScoped(
       Stream.runForEach(
-        structureMessages(userId, Effect.succeed(undefined), Duration.hours(1)),
+        structureMessages(userId, Effect.succeed(undefined), Duration.hours(1), MATES_BATCH, BUILD),
         (message) => Effect.sync(() => sent.push(message as (typeof sent)[number])),
       ).pipe(Effect.provide(services), Effect.tapCause(Effect.logError)),
     );
@@ -328,6 +336,16 @@ describe("the structure stream", () => {
           { type: "official", official: "unknown" },
           { type: "official", official: "ok" },
         ]);
+      }),
+    ),
+  );
+
+  // What an owner's update offer weighs against the Core this app carries (`hq/update.ts`).
+  it.effect("names the Core it is in its snapshot", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner");
+        assert.strictEqual(h.sent[0]?.["build"], BUILD);
       }),
     ),
   );

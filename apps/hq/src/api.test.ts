@@ -850,6 +850,7 @@ describe("HQ API", () => {
             mates: {},
             people: {},
             official: "ok",
+            build: "test",
           });
           const appId = (
             (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
@@ -1112,6 +1113,7 @@ describe("HQ API", () => {
             mates: {},
             people: {},
             official: "ok",
+            build: "test",
           });
           const ada = { face: "sky:flower" };
           // Who made it is the session that set it up, never a field the client sends.
@@ -1230,6 +1232,7 @@ describe("HQ API", () => {
           mates: {},
           people: {},
           official: "ok",
+          build: "test",
         });
         const appId = (
           (yield* call("POST", "/api/apps", { session: owner, body: { name: "Shop" } })).body as {
@@ -1336,6 +1339,7 @@ describe("HQ API", () => {
           mates: {},
           people: {},
           official: "ok",
+          build: "test",
         });
 
         // Zerops lowers the reader to no access: the open socket drops the application.
@@ -1393,6 +1397,7 @@ describe("HQ API", () => {
             mates: {},
             people: {},
             official: "ok",
+            build: "test",
           });
           assert.deepStrictEqual(
             [
