@@ -7,8 +7,9 @@
  * row they came from.
  */
 
+import { mayCreateProjects } from "@t3tools/shared/zeropsRoles";
+
 import type { ZeropsOrganization } from "./api.ts";
-import { canCreateMates } from "./mateAccess.ts";
 
 export interface ZeropsOrganizationSelectionInput {
   /** The client selected by `/authorize-app`; it wins over stale local state. */
@@ -50,11 +51,11 @@ export function resolveActiveZeropsOrganization(
  * It used to be written twice — once here and once as a bare
  * `canCreateProjects === true` where the data runtime decided whether an
  * organization takes writes — so an org admin without the flag was offered the
- * verb on one screen and refused it on the next. Both now call the shared role
- * function, which is also what the Mate's door and HQ run.
+ * verb on one screen and refused it on the next. Both now read Zerops' own flag
+ * the one way (`mayCreateProjects`), as the Mate's door does.
  */
 export function canCreateProjectsInOrganization(organization: ZeropsOrganization): boolean {
-  return canCreateMates(organization);
+  return mayCreateProjects(organization);
 }
 
 export function zeropsOrganizationRoleLabel(organization: ZeropsOrganization): string {
