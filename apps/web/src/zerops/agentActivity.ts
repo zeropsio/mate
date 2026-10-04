@@ -31,6 +31,10 @@ import {
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
+  candidateContainerRuns,
+  type ZeropsCandidate,
+} from "@t3tools/client-runtime/zerops/candidates";
+import {
   mateNextStep,
   matePose,
   resolvePrimaryConversation,
@@ -249,6 +253,22 @@ export function mateReviewWaits(
     mateNextStep({ pullRequests: flow.pullRequests, mateProjectId, mateName: undefined }).kind ===
     "review"
   );
+}
+
+/**
+ * Whether a Mate's face is awake before any word of what it does: its container runs
+ * (`candidateContainerRuns` — this tab's socket to it, or ready while that socket is not open yet),
+ * or HQ holds one of its links open. The one rule of the menu's rows and headings and the project
+ * page's Mates, so a reload or an HQ outage never draws a running Mate asleep on one and awake on
+ * the other.
+ */
+export function mateAwake(
+  item: Pick<ZeropsCandidate, "group"> & {
+    readonly project: Pick<ZeropsCandidate["project"], "id">;
+  },
+  mates: ReadonlyMap<string, Pick<MateLiveView, "presence">> | null | undefined,
+): boolean {
+  return candidateContainerRuns(item) || mates?.get(item.project.id)?.presence.online === true;
 }
 
 /**

@@ -349,6 +349,19 @@ function mateOwnerSigner(project: Pick<MateAccessProject, "hq">): {
   return { signedIn: activeSigner !== undefined, signer };
 }
 
+/**
+ * Whether anybody has ever signed one of a Mate's logins in, any agent's: a current signer, the
+ * last one a sign-out keeps, or the signer HQ saved before its live logins arrive. A Mate signed
+ * in once has arrived for good (`mateArrivingUntil`); it never says the login is signed in now.
+ */
+export function mateSignedInOnce(project: Pick<MateAccessProject, "hq">): boolean {
+  return Object.values(project.hq?.mate?.logins ?? {}).some((login) =>
+    [login?.signedInBy, login?.lastSignedInBy].some(
+      (userId) => typeof userId === "string" && userId.length > 0,
+    ),
+  );
+}
+
 /** The current or last signer, else a ready agent's maker, as HQ names them. */
 function matePerson(project: Pick<MateAccessProject, "hq">) {
   const { signedIn, signer } = mateOwnerSigner(project);

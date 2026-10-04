@@ -26,6 +26,11 @@ const runtime = vi.hoisted(() => ({
 }));
 const session = vi.hoisted(() => ({ status: "signed-in", activeId: "org-a" as string | null }));
 const reads = vi.hoisted(() => ({ services: null as unknown, project: null as unknown }));
+/** The app's state on the device (`AppState`), and who listens to it. */
+const device = vi.hoisted(() => ({
+  appState: "active" as string,
+  appStateListeners: [] as Array<(next: string) => void>,
+}));
 /** The account runtime's Mate environments, as the provider binds them after the first grant. */
 const stage = vi.hoisted(() => ({
   machines: new Map() as ReadonlyMap<string, unknown>,
@@ -86,6 +91,22 @@ vi.mock("react", async (importOriginal) => {
     useSyncExternalStore: reactHookHarness.useSyncExternalStore,
   };
 });
+
+vi.mock("react-native", () => ({
+  AppState: {
+    get currentState() {
+      return device.appState;
+    },
+    addEventListener: (_event: string, listener: (next: string) => void) => {
+      device.appStateListeners.push(listener);
+      return {
+        remove: () => {
+          device.appStateListeners.splice(device.appStateListeners.indexOf(listener), 1);
+        },
+      };
+    },
+  },
+}));
 
 vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({
@@ -176,6 +197,8 @@ describe("candidate inventory demand", () => {
     session.status = "signed-in";
     session.activeId = "org-a";
     stage.machines = new Map();
+    device.appState = "active";
+    device.appStateListeners.length = 0;
 
     const account = {
       apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
@@ -483,10 +506,11 @@ describe("candidate inventory demand", () => {
     }>([
       { case: "first seen: on its way", afterMs: 0, group: "provisioning" },
       { case: "a moment on: still on its way", afterMs: 5_000, group: "provisioning" },
+      // Restores 2fc8bf228's timer: the rows are derived again when the wait ends, as the web's.
       {
-        case: "elapsed time supplies no new platform fact",
+        case: "its wait over: as the platform leaves it",
         afterMs: ADDRESS_GRACE_MS,
-        group: "provisioning",
+        group: "unavailable",
       },
     ])("$case", async ({ afterMs, group }) => {
       render();
@@ -501,6 +525,35 @@ describe("candidate inventory demand", () => {
       if (group === "provisioning") {
         expect(row?.reason ?? "").not.toMatch(/public access/i);
       }
+    });
+
+    it("derives nothing while the app is in the background, and its rows on its return", async () => {
+      render();
+      await settle();
+      listenerOf(runtime.binding?.projectAtom)?.();
+      await settle();
+      expect(rowOf(render().listing)?.group).toBe("provisioning");
+      const reads = runtime.registry.get.mock.calls.length;
+
+      device.appState = "background";
+      vi.advanceTimersByTime(ADDRESS_GRACE_MS);
+      expect(runtime.registry.get.mock.calls.length).toBe(reads);
+      expect(rowOf(render().listing)?.group).toBe("provisioning");
+
+      device.appState = "active";
+      for (const listener of device.appStateListeners.slice()) listener("active");
+      expect(rowOf(render().listing)?.group).toBe("unavailable");
+    });
+
+    it("ends its wait with the view: no timer outlives it", async () => {
+      render();
+      await settle();
+      listenerOf(runtime.binding?.projectAtom)?.();
+      await settle();
+      expect(vi.getTimerCount()).toBe(1);
+      session.status = "signed-out";
+      render();
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 });

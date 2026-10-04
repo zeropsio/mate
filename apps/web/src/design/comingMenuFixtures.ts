@@ -77,6 +77,8 @@ function mate(
       id,
       name: bot,
       status,
+      // Made minutes ago: an unsigned one is still arriving (`mateArrivingUntil`).
+      created: minutesAgo(3),
       tagList: ["mate"],
       hq: acme(face, record),
     },
