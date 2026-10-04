@@ -377,41 +377,36 @@ describe("CrewEngine tasks stopped mid-way", () => {
       ),
   );
 
-  it.live("a landing that finds your tree moved ends and waits for Continue", () =>
-    withCrewEngine((world) =>
-      Effect.gen(function* () {
-        yield* applied(world);
-        const thread = yield* firstTurn(world, () =>
-          write(world.root, ".crew/backend/ok.txt", "ok\n"),
-        );
-        yield* reportDone(thread);
-        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        const ready = yield* snapshotWhere((current) => current.board.tasks[0]?.state === "ready");
-        write(world.root, "docs/person.md", "person\n");
-        git(world.root, ["add", "-A"]);
-        git(world.root, ["commit", "-q", "-m", "person edits"]);
-        yield* command({ _tag: "land", taskId: ready.board.tasks[0]!.id });
-        const stopped = yield* snapshotWhere((frame) =>
-          frame.attention.some((need) => need.kind === "interrupted"),
-        );
-        const operation = stopped.attention.find((need) => need.kind === "interrupted")!.operation!;
-        yield* command({
-          _tag: "operationContinue",
-          handle: operation.handle,
-          operationId: operation.id,
-        });
-        yield* snapshotWhere((current) => current.board.tasks[0]?.state === "landed");
-        const log = yield* (yield* CrewStore).logOf(CREW_ID, ["landing-held"]);
-        assert.deepStrictEqual(
-          log.map((entry) => entry.payload),
-          [
-            {
-              task: ready.board.tasks[0]!.id,
-              detail: "your tree moved since its check; continue when ready",
-            },
-          ],
-        );
-      }),
-    ),
+  it.live(
+    "a landing that finds your tree moved says so in the crew log, merges again and lands",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          const thread = yield* firstTurn(world, () =>
+            write(world.root, ".crew/backend/ok.txt", "ok\n"),
+          );
+          yield* reportDone(thread);
+          yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+          const ready = yield* snapshotWhere(
+            (current) => current.board.tasks[0]?.state === "ready",
+          );
+          write(world.root, "docs/person.md", "person\n");
+          git(world.root, ["add", "-A"]);
+          git(world.root, ["commit", "-q", "-m", "person edits"]);
+          yield* command({ _tag: "land", taskId: ready.board.tasks[0]!.id });
+          yield* snapshotWhere((current) => current.board.tasks[0]?.state === "landed");
+          const log = yield* (yield* CrewStore).logOf(CREW_ID, ["landing-held"]);
+          assert.deepStrictEqual(
+            log.map((entry) => entry.payload),
+            [
+              {
+                task: ready.board.tasks[0]!.id,
+                detail: "your tree moved since its check; it merges again",
+              },
+            ],
+          );
+        }),
+      ),
   );
 });

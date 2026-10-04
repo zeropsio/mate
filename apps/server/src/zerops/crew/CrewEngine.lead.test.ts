@@ -538,7 +538,7 @@ describe("CrewEngine lead", () => {
   );
 
   it.live(
-    "an accepted task whose landing finds your tree moved waits for Continue, without a second review",
+    "an accepted task whose landing finds your tree moved merges again and lands, without a second review",
     () =>
       withCrewEngine((world) =>
         Effect.gen(function* () {
@@ -561,17 +561,6 @@ describe("CrewEngine lead", () => {
             note: "Looks right.",
           });
           yield* world.publish(spiEvent("turn.completed", lead, { state: "completed" }));
-          const stopped = yield* snapshotWhere((current) =>
-            current.attention.some((need) => need.operation?.kind === "landing"),
-          );
-          const operation = stopped.attention.find(
-            (need) => need.operation?.kind === "landing",
-          )!.operation!;
-          yield* command({
-            _tag: "operationContinue",
-            handle: "backend",
-            operationId: operation.id,
-          });
           yield* snapshotWhere((current) => current.board.tasks[0]?.state === "landed");
           yield* Effect.sleep("300 millis");
           assert.deepStrictEqual(
