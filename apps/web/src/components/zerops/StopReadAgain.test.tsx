@@ -7,33 +7,41 @@ import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import { StopReadAgain } from "./StopReadAgain";
 const calls = vi.hoisted(() => [] as string[]);
-vi.mock("~/zerops/accountForge", () => ({ againStopDeployment: () => calls.push("demand") }));
+const drawn = vi.hoisted(() => [] as string[]);
+vi.mock("~/zerops/accountForge", () => ({
+  againStopDeployment: () => calls.push("demand"),
+  useStopDeploymentDemand: (ref: ProjectRef | null) => {
+    if (ref !== null) drawn.push(ref.projectId);
+  },
+}));
 const read = vi.hoisted(() => ({ failure: "transport" }));
 vi.mock("~/zerops/projectFlowContext", () => ({
   useZeropsProjectFlowOptional: () => ({
     deployments: new Map([
       [
         "prod",
-        read.failure !== "transport"
-          ? {
-              state: "withheld",
-              reason: read.failure,
-              cause:
-                read.failure === "access-lapsed"
-                  ? {
-                      failure: { kind: "transport", detail: "closed" },
-                      attempt: 1,
-                      retryAtMs: null,
-                    }
-                  : null,
-            }
-          : {
-              state: "failed",
-              failure: { kind: "transport", detail: "closed" },
-              atMs: 0,
-              attempt: 1,
-              retryAtMs: null,
-            },
+        read.failure === "unread"
+          ? { state: "unread", waitingFor: null }
+          : read.failure !== "transport"
+            ? {
+                state: "withheld",
+                reason: read.failure,
+                cause:
+                  read.failure === "access-lapsed"
+                    ? {
+                        failure: { kind: "transport", detail: "closed" },
+                        attempt: 1,
+                        retryAtMs: null,
+                      }
+                    : null,
+              }
+            : {
+                state: "failed",
+                failure: { kind: "transport", detail: "closed" },
+                atMs: 0,
+                attempt: 1,
+                retryAtMs: null,
+              },
       ],
     ]),
   }),
@@ -51,9 +59,10 @@ vi.mock("../ui/button", () => ({
 }));
 afterEach(() => {
   calls.length = 0;
+  drawn.length = 0;
   vi.unstubAllGlobals();
 });
-it.each(["transport", "access-denied", "access-lapsed"])(
+it.each(["transport", "access-denied", "access-lapsed", "unread"])(
   "a failed/refused runtime read offers one manual Again: %s",
   async (failure) => {
     read.failure = failure;
@@ -87,10 +96,13 @@ it.each(["transport", "access-denied", "access-lapsed"])(
         ),
       ),
     );
-    expect(buttonsLabelled(container, "Again")).toHaveLength(1);
+    expect(drawn).toEqual(["prod"]);
+    expect(buttonsLabelled(container, "Again")).toHaveLength(failure === "unread" ? 0 : 1);
     expect(calls).toEqual([]);
-    await act(async () => press(buttonsLabelled(container, "Again")[0]!));
-    expect(calls).toEqual(["demand", "prod"]);
+    if (failure !== "unread") {
+      await act(async () => press(buttonsLabelled(container, "Again")[0]!));
+      expect(calls).toEqual(["demand", "prod"]);
+    }
     await act(async () => root.unmount());
   },
 );

@@ -30,6 +30,7 @@ vi.mock("~/zerops/accountForge", () => ({
     return new Map();
   },
   againStopDeployment: () => {},
+  useStopDeploymentDemand: () => {},
 }));
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import { ZeropsSessionContext } from "~/zerops/sessionContext";

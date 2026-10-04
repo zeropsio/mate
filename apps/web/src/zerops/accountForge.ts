@@ -219,12 +219,26 @@ export function useStopServices(project: ProjectRef | null): Shown<ReadonlyArray
   const snapshot = useMemo(() => stopServicesSnapshot(flow, projectKey), [flow, projectKey]);
   const services = useSyncExternalStore(subscribe, snapshot, snapshot);
 
-  useEffect(() => {
-    if (flow === null || projectKey === null) return;
-    return flow.deployments.demand(JSON.parse(projectKey) as ProjectRef);
-  }, [flow, projectKey]);
+  useStopDemand(flow, projectKey, "detail");
 
   return services;
+}
+
+/** A drawn cell holds summary demand without adding another subscription to all stops. */
+export function useStopDeploymentDemand(project: ProjectRef | null): void {
+  const flow = useAccountFlow();
+  useStopDemand(flow, project === null ? null : JSON.stringify(project), "summary");
+}
+
+function useStopDemand(
+  flow: AccountFlow | null,
+  projectKey: string | null,
+  scope: "summary" | "detail",
+): void {
+  useEffect(() => {
+    if (flow === null || projectKey === null) return;
+    return flow.deployments.demand(JSON.parse(projectKey) as ProjectRef, scope);
+  }, [flow, projectKey, scope]);
 }
 
 /** One stop's services as of the stores' counter: one answer per counter value. */

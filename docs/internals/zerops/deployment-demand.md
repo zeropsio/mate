@@ -4,15 +4,21 @@ HQ relates each production and stage to a Zerops project by id. The account inve
 those refs even before the organization's search lists the projects. A ref is an identity, not a
 service read or evidence that anything runs.
 
-The shared deployment store's visible-stop demand holds `project-topology`: one initial
-service-stack read, the service membership and updates, and running-process membership and updates.
-It cannot depend on navigation holding a separate service lease. The account's access demand admits
-the project; its opened-service demand follows active versions and variables for those service ids.
-Visible production/stage chips and active detail scopes demand runtime; unrelated
-navigation projects consume no detail receiver. Each mounted sidebar chip also holds its named ids,
-including a remembered project the listing omits; account access publishes its ref before metadata
-arrives. A confirmed gone project leaves the inventory. HQ flow reads cannot hide a stop's runtime answer. App and stop detail pages show runtime from known
-stop identities even while HQ changes and release detail is unavailable.
+The shared deployment store's visible-stop summary demand holds `project-inventory`: one initial
+service list, service membership and updates, and the embedded active deployment. Drawn overview
+cells, Projects card cells, sidebar chips and their public-address surfaces share one entry per
+stop. A cell holds demand before an answer or a failure exists; observing inventory refs alone
+never demands every stop. A summary can settle both a running version and nothing deployed without
+reading processes.
+
+Opening stop detail upgrades the shared entry to `project-topology`, adding running-process
+membership and updates. Its opened services demand active app versions and runtime variables.
+Closing the last detail releases those facts while any summary keeps its service demand. Navigation
+needs only the enabled/setup flags of zcp containers, so its variable demand names only their service
+ids and reads no app-version list. The account's access demand admits each demanded project. A
+confirmed gone project leaves the inventory. HQ flow reads cannot hide a stop's runtime answer.
+App and stop detail pages show runtime from known stop identities even while HQ changes and release
+detail is unavailable.
 Undemanded refs do not hold Refresh in a loading state. The last view releasing a stop ends its demand. There is no polling or automatic capacity retry.
 
 Overview, Projects, the app flow, production/stage detail and the sidebar read the same

@@ -1149,3 +1149,94 @@ it("a failed recheck reports the failure beside Again rather than presenting its
   );
   expect(stopTone(deployment, ROWS[2]!.row)).toBe("neutral");
 });
+
+it.each([
+  null,
+  {
+    id: "active",
+    status: "ACTIVE",
+    source: "GIT",
+    name: "v1.0.0",
+    activatedAt: null,
+    branch: null,
+    commit: null,
+    tag: null,
+    repository: null,
+  },
+])("a summary settles from services without demanding processes (%j)", (deploy) => {
+  const answer = stopServices(
+    {
+      services: servicesRead([record("app", "app", deployed(deploy))]),
+      processes: null,
+      names: new Map(),
+      refused: null,
+      stated: new Map(),
+    },
+    NOW,
+  );
+  expect(answer).toMatchObject({
+    state: "known",
+    value: [
+      {
+        deployment: {
+          state: "known",
+          value:
+            deploy === null ? { kind: "none" } : { kind: "running", version: { label: "v1.0.0" } },
+        },
+      },
+    ],
+  });
+});
+
+it("a completed summary missing the active version ends visibly instead of checking forever", () => {
+  const answer = stopServices(
+    {
+      services: servicesRead([record("app", "app", deployed(UNSTATED))]),
+      processes: null,
+      names: new Map(),
+      refused: null,
+      stated: new Map(),
+    },
+    NOW,
+  );
+  expect(answer).toMatchObject({
+    state: "known",
+    value: [{ deployment: { state: "failed", retryAtMs: null } }],
+  });
+});
+
+it("the embedded name of the active version settles a summary even when source is omitted", () => {
+  const answer = stopServices(
+    {
+      services: servicesRead([record("app", "app", deployed({ ...UNSTATED, name: "v1.0.0" }))]),
+      processes: null,
+      names: new Map(),
+      refused: null,
+      stated: new Map(),
+    },
+    NOW,
+  );
+  expect(answer).toMatchObject({
+    state: "known",
+    value: [
+      { deployment: { state: "known", value: { kind: "running", version: { label: "v1.0.0" } } } },
+    ],
+  });
+});
+
+it("a completed summary with an omitted deployment facet ends visibly", () => {
+  const answer = stopServices(
+    {
+      services: servicesRead([record("app", "app", UNRESOLVED_DEPLOYMENT)]),
+      processes: null,
+      names: new Map(),
+      refused: null,
+      stated: new Map(),
+    },
+    NOW,
+  );
+  expect(answer).toMatchObject({
+    state: "known",
+    value: [{ deployment: { state: "failed", retryAtMs: null } }],
+  });
+});

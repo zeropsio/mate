@@ -283,7 +283,7 @@ export interface StopService {
 export interface StopReads {
   readonly services: CollectionRead<ServiceRecord>;
   /** The project's running processes. */
-  readonly processes: CollectionRead<ProcessRecord>;
+  readonly processes: CollectionRead<ProcessRecord> | null;
   /** Every app version a build named, by id: a name outlives its build (A11). */
   readonly names: ReadonlyMap<string, string>;
   /** Why the platform took no demand for the running processes; they are never read then. */
@@ -317,7 +317,8 @@ interface StopBuilds {
   readonly complete: boolean;
 }
 
-function runningBuilds(read: CollectionRead<ProcessRecord>): StopBuilds {
+function runningBuilds(read: CollectionRead<ProcessRecord> | null): StopBuilds {
+  if (read === null) return { builds: [], complete: true };
   let complete =
     read.query.status === "observed" && read.query.coverage.kind === "exhausted-traversal";
   const builds: Array<RunningBuild> = [];
@@ -348,8 +349,8 @@ function runningBuilds(read: CollectionRead<ProcessRecord>): StopBuilds {
 }
 
 /** Whether the processes listing is complete enough to prove that no build runs. */
-export function buildsListed(processes: CollectionRead<ProcessRecord>): boolean {
-  return runningBuilds(processes).complete;
+export function buildsListed(processes: CollectionRead<ProcessRecord> | null): boolean {
+  return processes !== null && runningBuilds(processes).complete;
 }
 
 /**
@@ -358,7 +359,7 @@ export function buildsListed(processes: CollectionRead<ProcessRecord>): boolean 
  */
 export function buildNames(
   held: ReadonlyMap<string, string>,
-  processes: CollectionRead<ProcessRecord>,
+  processes: CollectionRead<ProcessRecord> | null,
 ): ReadonlyMap<string, string> {
   return namedBy(held, runningBuilds(processes).builds);
 }
@@ -407,6 +408,7 @@ function activeVersionId(answer: ServiceAnswer): string | null {
 
 /** What a stop's services are measured against: its builds, every name one gave, what was read. */
 interface StopContext extends StopBuilds {
+  readonly summary: boolean;
   readonly names: ReadonlyMap<string, string>;
   readonly stated: StopReads["stated"];
   readonly source: SourceState;
@@ -442,7 +444,9 @@ function activeDeployment(
       const named = id === null ? undefined : names.get(id);
       if (named !== undefined)
         return { kind: "running", activatedAt, version: deployedVersion(named) };
-      if (answer.kind === "running")
+      // The embedded name is admitted only when appVersionId matches the active id (A14).
+      // It proves a deployed build just as a process's remembered name does.
+      if (answer.kind === "running" || answer.deploy.name !== null)
         return { kind: "running", activatedAt, version: pushedVersion(answer.deploy) };
       const read = directReadOf(answer, stated);
       // An answer for another version says nothing of this one.
@@ -454,6 +458,19 @@ function activeDeployment(
     default:
       return null;
   }
+}
+
+/** A completed summary must end with an answer or a manual failure, never an idle placeholder. */
+function pendingDeployment(context: StopContext): Known<Deployment> {
+  if (context.summary && context.source.kind === "observing")
+    return {
+      state: "failed",
+      failure: { kind: "malformed", detail: "Zerops did not state the active version." },
+      atMs: context.nowMs,
+      attempt: 1,
+      retryAtMs: null,
+    };
+  return notYetKnown(context.source, context.nowMs);
 }
 
 function serviceDeployment(
@@ -488,7 +505,8 @@ function serviceDeployment(
       if (settled === null) {
         // A direct read that failed says why nothing states the version, and when it is tried again.
         const read = directReadOf(answer, stated);
-        return read?.state === "failed" ? read : notYetKnown(source, nowMs);
+        if (read?.state === "failed") return read;
+        return pendingDeployment(context);
       }
       // Nothing active is no proof while a build for it may be running unseen.
       if (settled.kind === "none" && !complete) return notYetKnown(source, nowMs);
@@ -503,7 +521,7 @@ function serviceDeployment(
         retryAtMs: null,
       };
     case "pending":
-      return notYetKnown(source, nowMs);
+      return pendingDeployment(context);
   }
 }
 
@@ -538,12 +556,16 @@ export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArr
   const stopBuilds = runningBuilds(reads.processes);
   const context: StopContext = {
     ...stopBuilds,
+    summary: reads.processes === null,
     names: namedBy(reads.names, stopBuilds.builds),
     stated: reads.stated,
     // A service's deployment stands on both listings: its builds are the processes'.
     source:
       reads.refused === null
-        ? worstSource([...read.observation.required, ...reads.processes.observation.required])
+        ? worstSource([
+            ...read.observation.required,
+            ...(reads.processes?.observation.required ?? []),
+          ])
         : {
             kind: "failed",
             failure: { kind: "refused", code: reads.refused.reason, words: "" },

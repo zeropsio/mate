@@ -3,10 +3,9 @@
  * feeds the deployment store it built, and what it hands surfaces.
  *
  * - The deployment store answers `deployment` invalidations (§6.2).
- * - The deployment store follows the data runtime's service listings and, holding the project's
- *   activity demand while a stop is shown, its running processes; it reads a service directly
- *   through the account's cells when a push leaves its active version unstated (A14). A
- *   Mate's envelope names a service by hostname, which the account's inventory resolves.
+ * - Summary surfaces follow service listings and their embedded active deployments. Detail adds
+ *   running processes and follows the account's version/variable table. A Mate's envelope names
+ *   a service by hostname, which the account's inventory resolves.
  *
  * The stores are constructed by the account runtime alone (§7.2 rule 6); this module only wires
  * them.
@@ -34,17 +33,24 @@ export function deploymentStorePorts(
   const table = Atom.make((get) => get(data.stateAtom).table);
   return {
     services: (project: ProjectRef) => atomRegistry.get(data.reads.servicesOf(project)),
-    processes: (project: ProjectRef) => atomRegistry.get(data.reads.runningProcessesOf(project)),
-    follow: (project, changed, refused) => {
-      // A visible stop owns both listings. Navigation holds no project service demand (R7),
-      // and an HQ-linked stop may not have appeared in the organization's search yet.
+    processes: (project: ProjectRef) => {
+      const read = atomRegistry.get(data.reads.runningProcessesOf(project));
+      return read.observation.required.length === 0 ? null : read;
+    },
+    follow: (project, changed, refused, scope) => {
+      // The drawn stop owns service demand; only opened detail adds process demand (R7).
+      // An HQ-linked stop may not have appeared in the organization's search yet.
       const lease = run(
         Effect.scoped(
-          data.acquire({ kind: "project-topology", project }).pipe(Effect.andThen(Effect.never)),
+          data
+            .acquire({
+              kind: scope === "detail" ? "project-topology" : "project-inventory",
+              project,
+            })
+            .pipe(Effect.andThen(Effect.never)),
         ).pipe(Effect.catch((error) => Effect.sync(() => refused(error.reason)))),
       );
-      // What a pushed version runs comes from the organization's active versions and variables,
-      // which the account streams for its session: a stop reads nothing of its own for it (A14).
+      // Facts another surface reads enrich this same entry, without summary acquiring them.
       // Read once, so the table's next change is one its subscription hears.
       atomRegistry.get(table);
       const unsubscribes = [

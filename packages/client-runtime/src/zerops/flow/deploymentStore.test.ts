@@ -647,3 +647,28 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     expect(platform.watching()).toBe(0);
   });
 });
+
+it("shares a stop across summary and detail, releasing detail work when its last detail closes", () => {
+  const rig = listings();
+  const scopes: string[] = [];
+  const store = makeDeploymentStore({
+    ...rig.ports,
+    follow: (ref, changed, refused, scope) => {
+      scopes.push(scope);
+      return rig.ports.follow(ref, changed, refused);
+    },
+  });
+  const row = store.demand(STAGE);
+  const chip = store.demand(STAGE);
+  expect(scopes).toEqual(["summary"]);
+  const detail = store.demand(STAGE, "detail");
+  const otherDetail = store.demand(STAGE, "detail");
+  expect(scopes).toEqual(["summary", "detail"]);
+  detail();
+  expect(scopes).toEqual(["summary", "detail"]);
+  otherDetail();
+  expect(scopes).toEqual(["summary", "detail", "summary"]);
+  row();
+  chip();
+  expect(rig.watching()).toBe(0);
+});
