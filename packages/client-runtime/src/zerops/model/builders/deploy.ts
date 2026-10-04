@@ -3,6 +3,7 @@ import {
   failedPipelineSlots,
   queuedPipelineSlots,
 } from "../../activity/observedSteps.ts";
+import type { DeployBuildRead } from "../../activity/deployBuild.ts";
 import type { PipelineState } from "../../activity/pipelineState.ts";
 import {
   readNumber,
@@ -34,7 +35,6 @@ import type {
 } from "../types.ts";
 import {
   type BuiltCardFields,
-  DEPLOY_BUILD_CAP_MS,
   type DecodedEntry,
   type ErrorInfo,
   KIND_LABEL,
@@ -54,23 +54,37 @@ import {
   urlHost,
 } from "./shared.ts";
 
+/** A triggered build's phase, from where the platform says it stands. */
+const BUILD_PHASE: Readonly<Record<DeployBuildRead, ZeropsOperationPhase>> = {
+  unread: "running",
+  running: "running",
+  finished: "done",
+  failed: "failed",
+  unobservable: "uncertain",
+};
+
 /**
  * The deploy tool call itself may complete while the build it triggered is
- * still running — the phase then stays running regardless of the call's own
- * terminal status, until the cap past the call's return makes it uncertain.
+ * still running (zcp stopped following it): the phase is then the build's own,
+ * read by the appVersion the result named — never a clock. A result that
+ * named none leaves no handle to read it by: uncertain.
  */
 function deployPhase(
   call: ZeropsCall,
-  resultStatus: string | undefined,
-  nowMs: number,
+  triggered: ReadonlyArray<string | undefined> | undefined,
+  builds: OperationBuildContext["builds"],
 ): ZeropsOperationPhase {
   const basePhase = phaseFor(call.status);
-  if (basePhase !== "done" || resultStatus !== "BUILD_TRIGGERED") {
+  if (basePhase !== "done" || triggered === undefined) {
     return basePhase;
   }
-  const pastCap =
-    call.settledAt !== undefined && nowMs - Date.parse(call.settledAt) >= DEPLOY_BUILD_CAP_MS;
-  return pastCap ? "uncertain" : "running";
+  const phases = triggered.map((appVersionId) =>
+    appVersionId === undefined ? "uncertain" : BUILD_PHASE[builds(appVersionId)],
+  );
+  for (const phase of ["failed", "running", "uncertain"] as const) {
+    if (phases.includes(phase)) return phase;
+  }
+  return "done";
 }
 
 function deployLinks(
@@ -133,7 +147,12 @@ export function buildDeployFields(
   // A result that reports its own failure is a failed deploy however cleanly
   // the call returned — the batch reads its entries the same way.
   const failedByResult = card !== undefined && reportsFailure(card);
-  const phase = failedByResult ? "failed" : deployPhase(call, resultStatus, context.nowMs);
+  // A build zcp stopped following: its phase is the build's own, and zcp's words from before it
+  // ended say nothing of how it ended.
+  const triggered = !failedByResult && resultStatus === "BUILD_TRIGGERED";
+  const phase = failedByResult
+    ? "failed"
+    : deployPhase(call, triggered ? [card?.appVersionId] : undefined, context.builds);
   const subject =
     pickFirst(readInputString(call.input, "targetService"), card?.target) ?? "the service";
   const { voice, voiceSource } = mateVoiceFor("deploy", subject);
@@ -155,7 +174,7 @@ export function buildDeployFields(
             errorFirstLine:
               errorInfo !== undefined
                 ? firstLine(errorInfo.message)
-                : card?.message !== undefined
+                : card?.message !== undefined && !triggered
                   ? firstLine(card.message)
                   : undefined,
           })
@@ -186,7 +205,9 @@ export function buildDeployFields(
     ...(resultStatus !== undefined ? { resultStatus } : {}),
     hasResult: decoded.document !== undefined,
     ...versionField(result),
-    ...deployExplanation(decoded, result, errorInfo),
+    ...(triggered && phase !== "running" && phase !== "uncertain"
+      ? {}
+      : deployExplanation(decoded, result, errorInfo)),
     phaseOverride: phase,
   };
 }
@@ -542,13 +563,15 @@ function buildDeployBatchFields(call: ZeropsCall, context: OperationBuildContext
     (entry) =>
       entry.error !== undefined || entry.result === undefined || reportsFailure(entry.result),
   );
-  const stillBuilding = entries.some((entry) => entry.result?.status === "BUILD_TRIGGERED");
+  const stillBuilding = entries.flatMap((entry) =>
+    entry.result?.status === "BUILD_TRIGGERED" ? [entry.result.appVersionId] : [],
+  );
   const phase =
     batch === undefined
       ? phaseFor(call.status)
       : failedEntry !== undefined
         ? "failed"
-        : deployPhase(call, stillBuilding ? "BUILD_TRIGGERED" : undefined, context.nowMs);
+        : deployPhase(call, stillBuilding.length > 0 ? stillBuilding : undefined, context.builds);
   const subject = hostnames.length > 0 ? hostnames.join(", ") : "the services";
   const { voice, voiceSource } = mateVoiceFor("deploy", subject);
   const steps = hostnames.map((hostname) =>

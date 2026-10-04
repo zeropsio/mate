@@ -210,7 +210,7 @@ import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveComposerPlaceholders } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
-import { useNowMs } from "../zerops/useNowMs";
+import { useDeployBuilds, useRunningBuildDemand } from "../zerops/activity/useDeployBuilds";
 import {
   useZeropsChangeLandedEvents,
   useZeropsConversationLandings,
@@ -2485,17 +2485,18 @@ export default function ChatView(props: ChatViewProps) {
     [threadActivities],
   );
   const activeZeropsLifecycle = useZeropsLifecycle(activeThreadEnvironmentId, activeThreadId);
-  const nowMs = useNowMs();
+  const zeropsBuilds = useDeployBuilds(activeZeropsLifecycle);
   const zeropsThreadModel = useMemo(
     () =>
       deriveZeropsThreadModel({
         activities: threadActivities,
         lifecycle: activeZeropsLifecycle,
         runningTurnId: activeRunningTurnId,
-        nowMs,
+        builds: zeropsBuilds.builds,
       }),
-    [threadActivities, activeZeropsLifecycle, activeRunningTurnId, nowMs],
+    [threadActivities, activeZeropsLifecycle, activeRunningTurnId, zeropsBuilds.builds],
   );
+  useRunningBuildDemand(zeropsBuilds.projectId, zeropsThreadModel.running);
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(threadActivities, { exclude: zeropsThreadModel.zeropsActivityIds }),
     [threadActivities, zeropsThreadModel.zeropsActivityIds],

@@ -224,7 +224,6 @@ describe("collectZeropsCalls — the lattice properties", () => {
       activities: rows(),
       lifecycle: undefined,
       runningTurnId: "t1",
-      nowMs: Date.parse("2026-09-01T00:00:03.000Z"),
     });
     expect(model.entries).toEqual([]);
     expect(model.running).toBeUndefined();
@@ -338,7 +337,6 @@ describe("collectZeropsCalls — the lattice properties", () => {
 
     const model = deriveZeropsThreadModel({
       activities,
-      nowMs: Date.parse("2026-09-23T00:00:00.000Z"),
     });
     const browserEntry = model.entries.find(
       (e): e is Extract<(typeof model.entries)[number], { kind: "operation" }> =>

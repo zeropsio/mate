@@ -36,9 +36,6 @@ const liveLifecycle = (value: ZeropsLifecycle): Known<ZeropsLifecycle> => ({
   freshness: { kind: "live" },
 });
 
-/** No scene holds a triggered build, so the clock never moves a card. */
-const SCENE_NOW_MS = Date.parse("2026-09-23T00:00:00.000Z");
-
 it.each(listShowcaseScenes())("$id renders through the web presentation components", (scene) => {
   const markup: Array<string> = [];
   const topologyView = projectTopology(
@@ -66,7 +63,6 @@ it.each(listShowcaseScenes())("$id renders through the web presentation componen
     activities: scene.threadActivities[scene.lifecycle.threadId] ?? [],
     lifecycle: liveLifecycle(scene.lifecycle),
     runningTurnId: null,
-    nowMs: SCENE_NOW_MS,
   });
   const authMarkup = renderToStaticMarkup(
     <ZeropsAgentAuthCard onCancel={() => {}} onSignIn={() => {}} snapshot={scene.agentAuth} />,
@@ -78,7 +74,7 @@ it.each(listShowcaseScenes())("$id renders through the web presentation componen
     const model =
       threadId === scene.lifecycle.threadId
         ? lifecycleThreadModel
-        : deriveZeropsThreadModel({ activities, runningTurnId: null, nowMs: SCENE_NOW_MS });
+        : deriveZeropsThreadModel({ activities, runningTurnId: null });
     for (const entry of model.entries) {
       if (entry.kind !== "operation") continue;
       const cardMarkup = renderToStaticMarkup(<ZeropsOperationCard operation={entry.operation} />);

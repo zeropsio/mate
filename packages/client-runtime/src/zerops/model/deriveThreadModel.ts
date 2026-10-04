@@ -1,12 +1,13 @@
 /**
  * `deriveZeropsThreadModel` — the one function. Pure, memoisable on
- * `(activities, lifecycle, runningTurnId, nowMs)`; the clock is an input. Web and
- * mobile both call this instead of hand-rolling their own activity → card
- * derivation. See
+ * `(activities, lifecycle, runningTurnId, builds)`; what the platform says of a
+ * build a deploy named is an input, never a clock. Web and mobile both call
+ * this instead of hand-rolling their own activity → card derivation. See
  * `mate-session-model-2026-09-05-designs/C-client-domain.md` §1.2.
  */
 import type { OrchestrationThreadActivity, ZeropsLifecycle } from "@t3tools/contracts";
 
+import type { DeployBuildRead } from "../activity/deployBuild.ts";
 import type { Known } from "../knowledge/index.ts";
 
 import { collectZeropsCalls } from "./calls.ts";
@@ -30,9 +31,15 @@ export interface ZeropsThreadModelInput {
   readonly lifecycle?: Known<ZeropsLifecycle> | undefined;
   /** The thread's running turn, or null when idle. */
   readonly runningTurnId?: string | null | undefined;
-  /** The caller's clock — a triggered build turns uncertain past its cap against it. */
-  readonly nowMs: number;
+  /**
+   * Where the build a deploy result named by its appVersion stands on the platform — a
+   * BUILD_TRIGGERED deploy's phase is its answer. Absent, no build can be read: such a deploy is
+   * uncertain.
+   */
+  readonly builds?: ((appVersionId: string) => DeployBuildRead) | undefined;
 }
+
+const UNOBSERVABLE = (): DeployBuildRead => "unobservable";
 
 export interface ZeropsThreadModel {
   /** One per call, in `(startedAt, id)` order — the ledger. */
@@ -53,8 +60,8 @@ export function deriveZeropsThreadModel(input: ZeropsThreadModelInput): ZeropsTh
   const lifecycle = input.lifecycle;
   const envelope = lifecycle?.state === "known" ? lifecycle.value.envelope : undefined;
   const { operations, genericCalls } = reduceZeropsOperations(calls, {
-    nowMs: input.nowMs,
     projectId: envelope?.project.id,
+    builds: input.builds ?? UNOBSERVABLE,
   });
 
   const entries: ZeropsTimelineEntry[] = [

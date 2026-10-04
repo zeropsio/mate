@@ -4,6 +4,7 @@
  * a call's status to an operation's phase (declined/stopped are their own
  * outcome, never folded into "done" — the bug §2.6 fixes).
  */
+import type { DeployBuildRead } from "../../activity/deployBuild.ts";
 import {
   readRecord,
   readString,
@@ -34,21 +35,12 @@ import type {
   ZeropsReadResult,
 } from "../types.ts";
 
-/**
- * How long after a deploy call returned BUILD_TRIGGERED its card stays running.
- * The call returns it when zcp did not see the build end: its own build poll
- * gives up after 15 minutes (`internal/ops/progress.go` `defaultBuildPollConfig`,
- * `internal/tools/deploy_poll.go`) and then says so (`timedOut`), naming the
- * build it followed (`appVersionId`) where it saw one; nothing in the thread
- * settles the card after that.
- */
-export const DEPLOY_BUILD_CAP_MS = 10 * 60 * 1000;
-
-/** What a builder reads besides its call: the derivation's clock and the thread's project. */
+/** What a builder reads besides its call: the thread's project, and the builds deploys named. */
 export interface OperationBuildContext {
-  readonly nowMs: number;
   /** The thread's Zerops project, from the known lifecycle envelope; undefined while none is known. */
   readonly projectId: string | undefined;
+  /** Where the build a deploy result named by its appVersion stands on the platform. */
+  readonly builds: (appVersionId: string) => DeployBuildRead;
 }
 
 /**
@@ -91,9 +83,9 @@ export interface BuiltCardFields {
   readonly readResult?: ZeropsReadResult;
   /**
    * Overrides `phaseFor(call.status)`, where the call's own status is not what
-   * happened: `deploy`'s BUILD_TRIGGERED is still running (uncertain past its
-   * cap), and a `verify` whose checks failed is failed however cleanly the
-   * tool returned.
+   * happened: `deploy`'s BUILD_TRIGGERED reads as the build it named stands
+   * (uncertain where that cannot be read), and a `verify` whose checks failed
+   * is failed however cleanly the tool returned.
    */
   readonly phaseOverride?: ZeropsOperationPhase;
 }

@@ -118,7 +118,9 @@ export function buildLogFor(stepSource: ActivityProcess | undefined): BuildLogQu
  * own terminal status instead, or it never settles and ages into
  * `stale-timeout`.
  */
-function outcomeFor(process: ActivityProcess): "finished" | "failed" | "cancelled" | undefined {
+export function outcomeFor(
+  process: ActivityProcess,
+): "finished" | "failed" | "cancelled" | undefined {
   if (process.status === "CANCELED") {
     return "cancelled";
   }
