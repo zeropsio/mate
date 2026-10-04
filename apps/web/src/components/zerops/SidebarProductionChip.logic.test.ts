@@ -923,7 +923,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     });
   });
 
-  it("names a release HQ refused, with its reason", () => {
+  it("names a release the old broker refused, from its kept record, with its reason", () => {
     expect(
       releaseFailureOf({
         releases: [
@@ -1074,7 +1074,7 @@ describe("productionMenu — what production's menu says, per state", () => {
     );
   });
 
-  it("says a refused release was refused, and why", () => {
+  it("says a release the old broker refused was refused, and why", () => {
     expect(
       menu({
         chip: { label: "prod", state: "failed", version: "v0.1.56" },

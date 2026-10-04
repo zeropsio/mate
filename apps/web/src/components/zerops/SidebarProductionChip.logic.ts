@@ -102,11 +102,14 @@ export function stopServing(input: {
 /** A release that did not go through, newer than what production serves. */
 export interface ReleaseFailure {
   readonly tag: string;
-  /** Its production deploy failed, or HQ refused the release. */
+  /**
+   * Its production deploy failed, or it is a release the old broker refused after its tag — a
+   * record kept from before HQ, which refuses a release before any tag or record.
+   */
   readonly kind: "deploy-failed" | "refused";
   /** When: the failed deploy's, as HQ records it, or the refused tag's; `undefined` where unread. */
   readonly at: string | undefined;
-  /** The words for it: the failed deploy's message, as HQ records it, or the refusal's reason. */
+  /** The words for it: the failed deploy's message, as HQ records it, or the broker's recorded refusal reason. */
   readonly error: string | undefined;
   /** The service whose deploy failed. */
   readonly service: string | undefined;
