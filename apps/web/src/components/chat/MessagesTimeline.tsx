@@ -21,6 +21,7 @@ const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import {
   classifyTimelineScroll,
+  jumpedAway,
   nextTimelineReading,
   nextPersonScrollSession,
   PERSON_SCROLL_IDLE,
@@ -44,7 +45,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { createEndFollow, isOwnScroll, type EndFollow } from "./timelineEndFollow";
+import { createEndFollow, takeOwnScroll, type EndFollow } from "./timelineEndFollow";
 import { revealBy } from "./timelineReveal.logic";
 import { usePace } from "./usePace";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
@@ -339,6 +340,8 @@ interface MessagesTimelineProps {
     scroll: {
       readonly byPerson: boolean;
       readonly direction: TimelineScrollDirection | null;
+      /** It jumped far up by no change of its content (`jumpedAway`). */
+      readonly jumped?: boolean;
     },
   ) => void;
   /** A person's input on the list, as it comes: whether it leaves the end is the caller's to tell. */
@@ -730,8 +733,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       follows: () => followingEndRef.current,
     });
     endFollowRef.current = endFollow;
-    // Where the list stands as it is drawn is the first thing heard.
-    endFollow.heard(false);
     return () => {
       endFollow.stop();
       endFollowRef.current = null;
@@ -1020,35 +1021,25 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [listRef, timelineViewportElement]);
 
-  // Every scroll of the list, whoever made it, tells the follower where it
-  // stands, and whether it was a person's.
-  useEffect(() => {
-    const wrapper = timelineViewportElement;
-    if (!wrapper) return;
-    const onScroll = (event: Event) => {
-      const node = listRef.current?.getScrollableNode();
-      if (!node || event.target !== node) return;
-      const byPerson =
-        !isOwnScroll(node) && personIsScrolling(personSessionRef.current, performance.now());
-      endFollowRef.current?.heard(byPerson);
-    };
-    wrapper.addEventListener("scroll", onScroll, { capture: true, passive: true });
-    return () => wrapper.removeEventListener("scroll", onScroll, { capture: true });
-  }, [listRef, timelineViewportElement]);
-
   // Where the list stood at the last read: what tells which way it moved since.
   const lastReadingRef = useRef<TimelineScrollReading | null>(null);
 
   const readList = useCallback(
-    (personScrolling: boolean) => {
+    (personScrolling: boolean, own = false) => {
       const node = listRef.current?.getScrollableNode();
       const reading = node ? { scrollTop: node.scrollTop, contentHeight: node.scrollHeight } : null;
       const scroll = reading
-        ? classifyTimelineScroll({
-            previous: lastReadingRef.current,
-            current: reading,
-            personScrolling,
-          })
+        ? {
+            ...classifyTimelineScroll({
+              previous: lastReadingRef.current,
+              current: reading,
+              personScrolling,
+            }),
+            // A jump far up that no change of the content explains — find in
+            // page, a fragment link, focus moving — leaves the end, whoever
+            // made it; the page's own moves never do.
+            jumped: !own && jumpedAway({ previous: lastReadingRef.current, current: reading }),
+          }
         : { byPerson: false, direction: null };
       lastReadingRef.current = reading && nextTimelineReading(lastReadingRef.current, reading);
       notePersonSession({ type: "scrolled", at: performance.now(), byPerson: scroll.byPerson });
@@ -1108,8 +1099,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // person's, however recently they touched the list.
   const handleScroll = useCallback(() => {
     const node = listRef.current?.getScrollableNode();
-    const own = node !== null && node !== undefined && isOwnScroll(node);
-    readList(!own && personIsScrolling(personSessionRef.current, performance.now()));
+    const own = node !== null && node !== undefined && takeOwnScroll(node);
+    readList(!own && personIsScrolling(personSessionRef.current, performance.now()), own);
   }, [listRef, readList]);
 
   // Rows changed under the list: where it stands now is none of the person's doing.
@@ -1565,7 +1556,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 notePersonSession({ type: "input", at: performance.now() });
                 void listRef.current?.scrollToIndex({
                   index: item.rowIndex,
-                  animated: true,
+                  animated: !reducedMotion(),
                   viewOffset: 24,
                 });
               }}

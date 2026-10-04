@@ -1,18 +1,16 @@
 /**
  * The conversation following its end (pass 39, run 9: a settled turn's answer
- * moved the page 992 px in one frame, a card's growth 155). While it follows
- * and stands at its end, growth that comes a few pixels a frame — a card
- * easing taller — is followed in the frame it comes, and a longer step — a
- * row arriving whole, an answer landing — glides there on the run card's
- * curve, retargeted each frame as the end moves on, however far the end runs
- * ahead of the view.
+ * moved the page 992 px in one frame, a card's growth 155). While it follows,
+ * growth that comes a few pixels a frame — a card easing taller — is followed
+ * in the frame it comes, and a longer step — a row arriving whole, an answer
+ * landing — glides there on the run card's curve, retargeted each frame as
+ * the end moves on, however far the end runs ahead of the view.
  *
- * Whether the list stands at its end is judged here, from where it really
- * stands as each scroll is heard (`heard`), never from the list's own reading
- * of it, which goes stale mid-glide: it stands at its end once a scroll puts it
- * there — its own, the way back to the end, the person's — and leaves it only
- * on a move up of the person's. A person's move away
- * (`follows()` false) stops it where it stands.
+ * Whether it follows is one judgement, ChatView's (`nextTimelineFollow`, read
+ * through `follows()`): the follower keeps none of its own, so follow coming
+ * back on — the person's return to the end band, the way back to the end, a
+ * send — always finds it armed, and follow turning off — the person leaving,
+ * a jump far up — always stops it where it stands.
  */
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
 
@@ -21,9 +19,6 @@ export const GLIDING_ATTRIBUTE = "data-timeline-gliding";
 
 /** A step of the end this long or longer glides; a shorter one is already a glide's step. */
 export const GLIDE_FROM_PX = 40;
-
-/** This close to its end, the list stands at it. */
-const AT_END_PX = 2;
 
 /** Where the page itself last put each scroll: a scroll heard there is the page's. */
 const ownTops = new WeakMap<object, number>();
@@ -34,22 +29,19 @@ export function scrollOwn(element: HTMLElement, top: number): void {
   ownTops.set(element, element.scrollTop);
 }
 
-/** Whether `element` stands where the page itself last put it (`scrollOwn`). */
-export function isOwnScroll(element: HTMLElement): boolean {
+/**
+ * Whether `element`'s scroll, heard now, is the page's own move (`scrollOwn`):
+ * once only — a later scroll to the same top is someone else's.
+ */
+export function takeOwnScroll(element: HTMLElement): boolean {
   const own = ownTops.get(element);
+  ownTops.delete(element);
   return own !== undefined && Math.abs(element.scrollTop - own) <= 1;
 }
 
 export interface EndFollow {
   /** Something may have moved the end: the list stands at it, or glides there. */
   readonly follow: () => void;
-  /**
-   * The list scrolled — `byPerson`: a person's scroll — and where it stands
-   * now says whether it stands at its end: it reaches its end by any move,
-   * and leaves it only by a person's move up. The list re-anchoring its rows,
-   * the view shrinking under a taller composer, a fold: none of them leave it.
-   */
-  readonly heard: (byPerson: boolean) => void;
   readonly stop: () => void;
 }
 
@@ -58,28 +50,28 @@ export function createEndFollow({
   follows,
 }: {
   readonly viewport: () => HTMLElement | null;
+  /** Whether the conversation follows its end: ChatView's one judgement of it. */
   readonly follows: () => boolean;
 }): EndFollow {
   let frame = 0;
   let last = 0;
   // Where the glide stands: the browser rounds what it is given.
   let at = 0;
-  // Whether the list stands at its end, as last heard; null before anything was.
-  let atEnd: boolean | null = null;
-  // Where its top stood when last heard: a move up from there leaves the end.
-  let lastTop: number | null = null;
+  // The list it glides, and said so on: a kept list swapped in since is not it.
+  let gliding: HTMLElement | null = null;
   const endOf = (element: HTMLElement) => Math.max(0, element.scrollHeight - element.clientHeight);
-  const stopGlide = (element: HTMLElement | null) => {
+  const stopGlide = () => {
     cancelAnimationFrame(frame);
     frame = 0;
     last = 0;
-    if (element !== null) said(element, false);
+    if (gliding !== null) said(gliding, false);
+    gliding = null;
   };
   const step = (now: number) => {
     frame = 0;
     const element = viewport();
-    if (element === null || !follows() || atEnd === false) {
-      stopGlide(element);
+    if (element === null || element !== gliding || !follows()) {
+      stopGlide();
       return;
     }
     // Moved since by something else: it glides on from there.
@@ -88,9 +80,8 @@ export function createEndFollow({
     at = approach(at, end, last === 0 ? 1000 / 60 : now - last, FOLLOW_TAU_MS);
     last = now;
     scrollOwn(element, at);
-    lastTop = element.scrollTop;
     if (at !== end) frame = requestAnimationFrame(step);
-    else stopGlide(element);
+    else stopGlide();
   };
   return {
     follow: () => {
@@ -98,35 +89,19 @@ export function createEndFollow({
       if (element === null || !follows() || frame !== 0) return;
       const end = endOf(element);
       const gap = end - element.scrollTop;
-      // Never heard yet: a list a glide's step from its end stands at it.
-      atEnd ??= gap < GLIDE_FROM_PX;
-      if (!atEnd || Math.abs(gap) < 0.5) return;
+      if (Math.abs(gap) < 0.5) return;
       // Out of sight, nobody watches it glide: it stands there at once.
       if (gap < GLIDE_FROM_PX || reducedMotion() || outOfSight()) {
         scrollOwn(element, end);
-        lastTop = element.scrollTop;
         return;
       }
       at = element.scrollTop;
+      gliding = element;
       // Said on it while it glides: a run's fold waits for it (`foldWork`).
       said(element, true);
       frame = requestAnimationFrame(step);
     },
-    heard: (byPerson) => {
-      const element = viewport();
-      if (element === null) return;
-      const top = element.scrollTop;
-      const movedUp = lastTop !== null && top < lastTop - 1;
-      lastTop = top;
-      if (isOwnScroll(element)) return;
-      if (endOf(element) - top <= AT_END_PX) {
-        atEnd = true;
-      } else if (movedUp && byPerson) {
-        atEnd = false;
-        stopGlide(element);
-      }
-    },
-    stop: () => stopGlide(viewport()),
+    stop: stopGlide,
   };
 }
 

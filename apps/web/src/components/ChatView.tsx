@@ -4422,7 +4422,8 @@ export default function ChatView(props: ChatViewProps) {
     setShowScrollToBottom(false);
     setTimelineAnchor(releaseChatTimelineAnchor);
     requestAnimationFrame(() => {
-      void legendListRef.current?.scrollToEnd?.({ animated });
+      // Under reduced motion the way there is a cut.
+      void legendListRef.current?.scrollToEnd?.({ animated: animated && !prefersReducedMotion() });
     });
   }, []);
   useLayoutEffect(() => {
@@ -4567,7 +4568,7 @@ export default function ChatView(props: ChatViewProps) {
         void list
           .scrollToIndex({
             index: anchorIndex,
-            animated: true,
+            animated: !prefersReducedMotion(),
             viewPosition: 0,
             viewOffset: CHAT_LIST_ANCHOR_OFFSET,
           })
@@ -4585,7 +4586,11 @@ export default function ChatView(props: ChatViewProps) {
   const onIsAtEndChange = useCallback(
     (
       isAtEnd: boolean,
-      scroll: { readonly byPerson: boolean; readonly direction: TimelineScrollDirection | null },
+      scroll: {
+        readonly byPerson: boolean;
+        readonly direction: TimelineScrollDirection | null;
+        readonly jumped?: boolean;
+      },
     ) => {
       const following =
         liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current;
@@ -9001,5 +9006,14 @@ export default function ChatView(props: ChatViewProps) {
         />
       )}
     </ServiceBrowserScope>
+  );
+}
+
+/** Whether the person asked for less motion: a scroll's way then is a cut. */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
 }

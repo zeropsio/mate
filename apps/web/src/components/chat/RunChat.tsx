@@ -3885,8 +3885,10 @@ function useRunFold({
   // into the line — at once under reduced motion.
   const foldNow = () => {
     const words = nowWordsOf(rootRef.current);
+    // Under reduced motion, or settled in a tab out of sight, it is folded at once.
+    const unseen = typeof document !== "undefined" && document.visibilityState === "hidden";
     settledAtRef.current =
-      words === null || prefersReducedMotion() ? null : words.getBoundingClientRect().top;
+      words === null || prefersReducedMotion() || unseen ? null : words.getBoundingClientRect().top;
     setRunFold(conversation, run, settledAtRef.current === null ? "folded" : "folding");
   };
   const foldOnSettle = useEffectEvent(foldNow);

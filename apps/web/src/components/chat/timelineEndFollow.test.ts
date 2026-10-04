@@ -1,53 +1,51 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { createEndFollow, GLIDE_FROM_PX, scrollOwn } from "./timelineEndFollow";
+import {
+  createEndFollow,
+  GLIDE_FROM_PX,
+  GLIDING_ATTRIBUTE,
+  scrollOwn,
+  takeOwnScroll,
+} from "./timelineEndFollow";
 
 const FRAME_MS = 1000 / 60;
 
 /**
- * A list's scroll as the browser keeps it: its top clamped to its range, and
- * a scroll event after every move, heard by the follower as the list's own
- * `scroll` listener hears it. `withinThreshold` is the list's own reading of
- * its end, recomputed only on a scroll as LegendList does — stale between —
- * which nothing here may depend on.
+ * A list's scroll as the browser keeps it — its top clamped to its range, one
+ * scroll event after the moves of a frame — and whether the conversation
+ * follows its end, as ChatView decides it (`nextTimelineFollow`): a person's
+ * move up away from the end turns it off, a person's move back onto the end
+ * band turns it on again. The follower reads only that.
  */
 function list({ top, height, client }: { top: number; height: number; client: number }) {
   let scrollTop = top;
-  let heard: ((byPerson: boolean) => void) | null = null;
-  // Whether the moves now being made are a person's.
-  let person = false;
+  const attributes = new Set<string>();
   const element = {
     scrollHeight: height,
     clientHeight: client,
-    withinThreshold: true,
     get scrollTop() {
       return scrollTop;
     },
     set scrollTop(next: number) {
-      const clamped = Math.max(0, Math.min(next, element.scrollHeight - element.clientHeight));
-      if (clamped === scrollTop) return;
-      scrollTop = clamped;
-      element.withinThreshold =
-        element.scrollHeight - element.clientHeight - scrollTop <= element.clientHeight;
-      const byPerson = person;
-      queue.push(() => heard?.(byPerson));
+      scrollTop = Math.max(0, Math.min(next, element.scrollHeight - element.clientHeight));
     },
+    toggleAttribute: (name: string, on: boolean) => {
+      if (on) attributes.add(name);
+      else attributes.delete(name);
+    },
+    hasAttribute: (name: string) => attributes.has(name),
   };
-  const queue: Array<() => void> = [];
+  const state = { follows: true };
   return {
     element,
-    listen: (callback: (byPerson: boolean) => void) => {
-      heard = callback;
-    },
-    /** The moves made in `act` are a person's. */
-    byPerson: (act: () => void) => {
-      person = true;
-      act();
-      person = false;
-    },
-    /** The scroll events since, delivered. */
-    events: () => {
-      for (const event of queue.splice(0)) event();
+    state,
+    /** A person scrolls to `to`; ChatView judges follow from where it lands (its 40 px band). */
+    person: (to: number) => {
+      const from = scrollTop;
+      element.scrollTop = to;
+      const fromEnd = element.scrollHeight - element.clientHeight - scrollTop;
+      if (scrollTop < from && fromEnd > 0) state.follows = false;
+      if (scrollTop > from && fromEnd <= 40) state.follows = true;
     },
   };
 }
@@ -67,32 +65,34 @@ describe("createEndFollow", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  /** Runs the frames due, `gap` ms apart, scroll events between, and says where it stood after each. */
+  /** Runs the frames due, `gap` ms apart, and says where it stood after each. */
   const play = (scroll: ReturnType<typeof list>, gap = FRAME_MS) => {
     const tops: number[] = [];
     for (let guard = 0; frames.length > 0 && guard < 200; guard += 1) {
       now += gap;
       for (const frame of frames.splice(0)) frame(now);
-      scroll.events();
       tops.push(scroll.element.scrollTop);
     }
     return tops;
   };
 
-  /** A list standing at its end, 1000 tall in a 400 viewport, followed while `follows`. */
-  const atItsEnd = (follows: () => boolean = () => true, client = 400) => {
+  /** A list standing at its end, 1000 tall in a 400 viewport, followed as ChatView says. */
+  const atItsEnd = (client = 400) => {
     const scroll = list({ top: 1000 - client, height: 1000, client });
     const follow = createEndFollow({
       viewport: () => scroll.element as unknown as HTMLElement,
-      follows,
+      follows: () => scroll.state.follows,
     });
-    scroll.listen(follow.heard);
     follow.follow();
     return { scroll, follow };
   };
 
-  const grow = (scroll: ReturnType<typeof list>, by: number) => {
+  const endOf = (scroll: ReturnType<typeof list>) =>
+    scroll.element.scrollHeight - scroll.element.clientHeight;
+
+  const grow = (scroll: ReturnType<typeof list>, follow: { follow: () => void }, by: number) => {
     scroll.element.scrollHeight += by;
+    follow.follow();
   };
 
   it.each([
@@ -103,17 +103,15 @@ describe("createEndFollow", () => {
   ])("follows $what: glides $glides", ({ grew, glides }) => {
     const { scroll, follow } = atItsEnd();
     const from = scroll.element.scrollTop;
-    grow(scroll, grew);
-    follow.follow();
-    const end = scroll.element.scrollHeight - scroll.element.clientHeight;
+    grow(scroll, follow, grew);
     if (!glides) {
-      expect(scroll.element.scrollTop).toBe(end);
+      expect(scroll.element.scrollTop).toBe(endOf(scroll));
       return;
     }
     // Nothing moves in the frame it grew; then it glides, no frame 40 px.
     expect(scroll.element.scrollTop).toBe(from);
     const tops = play(scroll);
-    expect(tops.at(-1)).toBe(end);
+    expect(tops.at(-1)).toBe(endOf(scroll));
     let last = from;
     for (const top of tops) {
       expect(top - last).toBeLessThan(40);
@@ -129,147 +127,131 @@ describe("createEndFollow", () => {
     { what: "a phone", client: 700, step: 1000 },
     { what: "a desktop", client: 935, step: 2300 },
   ])("glides all the way through a step taller than the list on $what", ({ client, step }) => {
-    const { scroll, follow } = atItsEnd(() => true, client);
-    grow(scroll, step);
-    follow.follow();
+    const { scroll, follow } = atItsEnd(client);
+    grow(scroll, follow, step);
     play(scroll);
-    // The list's own reading went stale on the way; the end was reached all the same.
-    expect(scroll.element.scrollTop).toBe(
-      scroll.element.scrollHeight - scroll.element.clientHeight,
-    );
-    // And it is followed on from there.
-    grow(scroll, 300);
-    follow.follow();
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
+    grow(scroll, follow, 300);
     play(scroll);
-    expect(scroll.element.scrollTop).toBe(
-      scroll.element.scrollHeight - scroll.element.clientHeight,
-    );
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
   });
 
-  it("leaves a list that was not at its end where it stands", () => {
-    const scroll = list({ top: 930, height: 4000, client: 800 });
+  // Re-review F1: the person came back to the very top the glide had left the
+  // list at; the page's record of that top made their return the page's, and
+  // the next growth left them 300 px short with follow on.
+  it("follows on after the person scrolls up and back to the top the glide left", () => {
+    const { scroll, follow } = atItsEnd();
+    grow(scroll, follow, 400);
+    play(scroll);
+    const stood = scroll.element.scrollTop;
+    scroll.person(stood - 300);
+    expect(scroll.state.follows).toBe(false);
+    scroll.person(stood);
+    expect(scroll.state.follows).toBe(true);
+    grow(scroll, follow, 300);
+    play(scroll);
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
+  });
+
+  // Re-review F2: follow came back on inside ChatView's end band, short of
+  // the hard bottom; the follower's own, stricter reading never re-armed.
+  it("follows on once follow resumes inside the end band, short of the bottom", () => {
+    const scroll = list({ top: 1480, height: 1900, client: 400 });
+    scroll.state.follows = false;
     const follow = createEndFollow({
       viewport: () => scroll.element as unknown as HTMLElement,
-      follows: () => true,
+      follows: () => scroll.state.follows,
     });
-    scroll.listen(follow.heard);
     follow.follow();
-    grow(scroll, 200);
-    follow.follow();
+    scroll.person(1480 - 200);
+    scroll.person(1480);
+    expect(scroll.state.follows).toBe(true);
+    grow(scroll, follow, 300);
     play(scroll);
-    expect(scroll.element.scrollTop).toBe(930);
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
   });
 
   it("stops where the person scrolled up mid-glide, and stays", () => {
     const { scroll, follow } = atItsEnd();
-    grow(scroll, 600);
-    follow.follow();
+    grow(scroll, follow, 600);
     now += FRAME_MS;
     for (const frame of frames.splice(0)) frame(now);
-    scroll.events();
-    // The person's wheel, up.
-    scroll.byPerson(() => {
-      scroll.element.scrollTop -= 120;
-    });
-    scroll.events();
+    scroll.person(scroll.element.scrollTop - 120);
     const stood = scroll.element.scrollTop;
     play(scroll);
     expect(scroll.element.scrollTop).toBe(stood);
-    grow(scroll, 100);
-    follow.follow();
+    grow(scroll, follow, 100);
     play(scroll);
     expect(scroll.element.scrollTop).toBe(stood);
-  });
-
-  it.each([
-    { what: "the way back to the end", move: "pill" },
-    { what: "the person scrolling down onto it", move: "person" },
-  ])("glides the next long step after $what put it at its end", ({ move }) => {
-    const scroll = list({ top: 100, height: 3000, client: 600 });
-    const follow = createEndFollow({
-      viewport: () => scroll.element as unknown as HTMLElement,
-      follows: () => true,
-    });
-    scroll.listen(follow.heard);
-    follow.follow();
-    // Up there, it was left alone; now something else brings it to its end.
-    if (move === "pill") {
-      scroll.element.scrollTop = 2400;
-    } else {
-      scroll.byPerson(() => {
-        for (let top = 300; top <= 2500; top += 200) scroll.element.scrollTop = Math.min(top, 2400);
-      });
-    }
-    scroll.events();
-    grow(scroll, 300);
-    follow.follow();
-    expect(scroll.element.scrollTop).toBe(2400);
-    const tops = play(scroll);
-    expect(tops.at(-1)).toBe(2700);
-    expect(tops[0]! - 2400).toBeLessThan(40);
-  });
-
-  it("stays at its end through a fold that scrolls it up as it takes room the list gives back late", () => {
-    const { scroll, follow } = atItsEnd();
-    // The fold takes 50 px and scrolls up by it; the list's height comes a frame later.
-    scrollOwn(scroll.element as unknown as HTMLElement, scroll.element.scrollTop - 50);
-    scroll.events();
-    scroll.element.scrollHeight -= 50;
-    scroll.events();
-    grow(scroll, 300);
-    follow.follow();
-    play(scroll);
-    expect(scroll.element.scrollTop).toBe(
-      scroll.element.scrollHeight - scroll.element.clientHeight,
-    );
   });
 
   // Rosa on a phone, 2026-10-04: the composer grew under a pause notice, the
   // view shrank and the list moved up 28 px as it re-anchored — nobody's
   // move — and the end was left 230 px under the composer.
-  it("stays at its end through a move up nobody made, and follows on", () => {
+  it("follows on through a move up nobody made", () => {
     const { scroll, follow } = atItsEnd();
     scroll.element.clientHeight -= 82;
     scroll.element.scrollHeight += 120;
     scroll.element.scrollTop -= 28;
-    scroll.events();
     follow.follow();
     play(scroll);
-    expect(scroll.element.scrollTop).toBe(
-      scroll.element.scrollHeight - scroll.element.clientHeight,
-    );
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
   });
 
   it("stands at the end at once when its next frame comes long after, as on a tab coming back", () => {
     const { scroll, follow } = atItsEnd();
-    grow(scroll, 900);
-    follow.follow();
+    grow(scroll, follow, 900);
     now += FRAME_MS;
     for (const frame of frames.splice(0)) frame(now);
     now += 2000;
     for (const frame of frames.splice(0)) frame(now);
     expect(frames).toHaveLength(0);
-    expect(scroll.element.scrollTop).toBe(
-      scroll.element.scrollHeight - scroll.element.clientHeight,
-    );
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
   });
 
   it("stands at the end at once while the tab is out of sight", () => {
     vi.stubGlobal("document", { visibilityState: "hidden" });
     const { scroll, follow } = atItsEnd();
-    grow(scroll, 900);
-    follow.follow();
+    grow(scroll, follow, 900);
     expect(frames).toHaveLength(0);
-    expect(scroll.element.scrollTop).toBe(
-      scroll.element.scrollHeight - scroll.element.clientHeight,
-    );
+    expect(scroll.element.scrollTop).toBe(endOf(scroll));
   });
 
   it("never moves a list that does not follow", () => {
-    const { scroll, follow } = atItsEnd(() => false);
-    grow(scroll, 200);
-    follow.follow();
+    const { scroll, follow } = atItsEnd();
+    scroll.state.follows = false;
+    grow(scroll, follow, 200);
     play(scroll);
     expect(scroll.element.scrollTop).toBe(600);
+  });
+
+  // Re-review F5: a kept list shown or hidden swaps the list the follower
+  // reads; stopping, the old follower must clear what it said on its own list.
+  it("clears its gliding mark on the list it glided, though another list took its place", () => {
+    const first = list({ top: 600, height: 1000, client: 400 });
+    const second = list({ top: 0, height: 500, client: 400 });
+    let current = first;
+    const follow = createEndFollow({
+      viewport: () => current.element as unknown as HTMLElement,
+      follows: () => true,
+    });
+    first.element.scrollHeight += 500;
+    follow.follow();
+    expect(first.element.hasAttribute(GLIDING_ATTRIBUTE)).toBe(true);
+    current = second;
+    follow.stop();
+    expect(first.element.hasAttribute(GLIDING_ATTRIBUTE)).toBe(false);
+  });
+});
+
+// Re-review F1: the page's own top, once heard, is no longer the page's.
+describe("takeOwnScroll", () => {
+  it("names the page's move once, and a later scroll to the same top the person's", () => {
+    const element = { scrollTop: 0, scrollHeight: 2000, clientHeight: 400 };
+    scrollOwn(element as unknown as HTMLElement, 900);
+    expect(takeOwnScroll(element as unknown as HTMLElement)).toBe(true);
+    element.scrollTop = 600;
+    element.scrollTop = 900;
+    expect(takeOwnScroll(element as unknown as HTMLElement)).toBe(false);
   });
 });
