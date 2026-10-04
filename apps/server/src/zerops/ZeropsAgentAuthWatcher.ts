@@ -1,31 +1,16 @@
 // @effect-diagnostics nodeBuiltinImport:off
-// @effect-diagnostics globalTimers:off
+// @effect-diagnostics globalDate:off
 /**
- * `watchWithFallback` — plain Node `fs.watch`, not Effect's wrapped version.
+ * Plain Node fs.watch avoids the Effect watcher teardown defect. Handles are
+ * synchronously disposable, so the Effect consumers only need a finalizer.
  *
- * Interrupting an Effect-wrapped `fs.watch` stream (`FileSystem.watch` +
- * `Effect.forkScoped`) via scope closure is unreliable on this Effect build
- * (live-verified: a scope close after such a fork throws deep inside the
- * scheduler, `self.addObserver is not a function`, whether or not any event
- * ever fired). So the raw OS watch lives here, as a small synchronous,
- * dispose()-able collaborator {@link ZeropsAgentAuth} injects rather than
- * calls itself — `ZeropsAgentAuth.make` stays Effect-native and testable
- * without touching a real file watcher at all; this module is wired in only
- * at `ZeropsAgentAuth.layer`.
- *
- * Mirrors `vscode-bootstrap-welcome.js`'s `watchWithFallback`
- * (docs/spec-welcome-mode.md §3): watches a DIR (or file) that may not exist
- * yet by falling back to its nearest existing ancestor until the target
- * appears, then swaps to watching it directly. `onChange` may fire more than
- * once per real change (a single write can emit more than one fs event, and
- * the fallback->target swap itself fires once) — debouncing is the caller's
- * job, not this module's.
- *
- * Every handle runs exactly one target-fingerprint poll from construction
- * until `dispose()`. `fs.watch` is the low-latency path; the 1-second poll is
- * the permanent delivery net for silently dropped watcher events as well as
- * missing targets and watcher recovery. There is no separate polling lifetime
- * for fallback or recovery states.
+ * Watch a directory directly, a file through its parent (atomic replacements
+ * keep working), or the nearest available ancestor until the target appears.
+ * Filesystem events may advance that watch once to a newly available path.
+ * Failures end degraded; only Watch again can allocate another watch. Check
+ * now emits one observation without restarting a failed watch. No timers or
+ * fingerprint polling compensate for lost OS events: lastObservedAt states
+ * when the target was actually observed, never a promise of freshness.
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
@@ -35,25 +20,33 @@ export interface WatcherHandle {
   readonly dispose: () => void;
 }
 
+export interface CredentialWatchState {
+  readonly status: "watching" | "degraded" | "disposed";
+  readonly path?: string | undefined;
+  readonly reason?: string | undefined;
+  /** Time of the last successful target observation, including absence. */
+  readonly lastObservedAt?: number | undefined;
+}
+
+export interface CredentialWatcherHandle extends WatcherHandle {
+  readonly getState: () => CredentialWatchState;
+  /** One new watch attempt and, if successful, one credential notification. */
+  readonly watchAgain: () => void;
+  /** One target observation and credential notification; does not rearm. */
+  readonly checkNow: () => void;
+}
+
 export type WatchFactory = (
   path: string,
   listener: NodeFS.WatchListener<string>,
 ) => NodeFS.FSWatcher;
 
 export interface WatchWithFallbackOptions {
-  /** Injectable only where a caller needs to exercise watch-allocation failure. */
   readonly watch?: WatchFactory;
-  /** Receives every watcher failure before recovery continues. */
+  /** Receives a terminal failure with its manual recovery actions. */
   readonly logWarning?: (message: string, cause: unknown) => void;
-}
-
-const FINGERPRINT_POLL_INTERVAL_MS = 1000;
-const ERROR_REARM_DELAYS_MS = [50, 100, 200, 400, 800, 1600] as const;
-
-interface TargetSnapshot {
-  readonly exists: boolean;
-  readonly isDirectory: boolean;
-  readonly key: string;
+  /** Initial state and every subsequent observation or watch outcome. */
+  readonly onStateChange?: (state: CredentialWatchState) => void;
 }
 
 const isMissingPathError = (cause: unknown): boolean =>
@@ -62,21 +55,13 @@ const isMissingPathError = (cause: unknown): boolean =>
   "code" in cause &&
   (cause.code === "ENOENT" || cause.code === "ENOTDIR");
 
-const statKey = (stat: NodeFS.Stats): string =>
-  [stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeMs, stat.ctimeMs].join(":");
-
-/**
- * `generation` guards the fallback->target swap the same way welcome.js's
- * does: fs.watch callbacks are delivered asynchronously and can queue up, so
- * a stale fallback event already in flight when an earlier swap happened
- * must not re-fire it.
- */
+/** Stale callbacks from a retired watch cannot advance or restart its owner. */
 export const watchWithFallback = (
   target: string,
   fallbackDir: string,
   onChange: () => void,
   options: WatchWithFallbackOptions = {},
-): WatcherHandle => {
+): CredentialWatcherHandle => {
   const watch = options.watch ?? ((path, listener) => NodeFS.watch(path, listener));
   const logWarning =
     options.logWarning ??
@@ -84,268 +69,147 @@ export const watchWithFallback = (
       process.stderr.write(`${message}: ${String(cause)}\n`);
     });
   let watcher: NodeFS.FSWatcher | undefined;
-  let watcherPath: string | undefined;
-  let pollTimer: ReturnType<typeof setInterval> | undefined;
-  let rearmTimer: ReturnType<typeof setTimeout> | undefined;
-  let errorRearmAttempts = 0;
   let generation = 0;
-  let disposed = false;
+  let targetExists = false;
+  let state: CredentialWatchState = { status: "watching" };
 
-  const readTargetSnapshot = (): TargetSnapshot => {
-    try {
-      const targetStat = NodeFS.statSync(target);
-      if (!targetStat.isDirectory()) {
-        return { exists: true, isDirectory: false, key: `file:${statKey(targetStat)}` };
-      }
-
-      let entries: ReadonlyArray<string>;
-      try {
-        entries = NodeFS.readdirSync(target).sort();
-      } catch (cause) {
-        if (!isMissingPathError(cause)) {
-          logWarning(
-            `zerops agent auth watcher: could not inspect directory target "${target}"; polling will keep trying`,
-            cause,
-          );
-        }
-        return {
-          exists: !isMissingPathError(cause),
-          isDirectory: true,
-          key: `directory:${statKey(targetStat)}:unreadable`,
-        };
-      }
-
-      const children = entries.map((entry) => {
-        const child = NodePath.join(target, entry);
-        try {
-          return `${entry}:${statKey(NodeFS.statSync(child))}`;
-        } catch (cause) {
-          if (!isMissingPathError(cause)) {
-            logWarning(
-              `zerops agent auth watcher: could not inspect child "${child}"; polling will keep trying`,
-              cause,
-            );
-          }
-          return `${entry}:unavailable`;
-        }
-      });
-      return {
-        exists: true,
-        isDirectory: true,
-        key: `directory:${statKey(targetStat)}:${children.join("|")}`,
-      };
-    } catch (cause) {
-      if (!isMissingPathError(cause)) {
-        logWarning(
-          `zerops agent auth watcher: could not inspect target "${target}"; polling will keep trying`,
-          cause,
-        );
-        return { exists: false, isDirectory: false, key: "unavailable" };
-      }
-      return { exists: false, isDirectory: false, key: "missing" };
-    }
-  };
-
-  let observedSnapshot = readTargetSnapshot();
-
-  const stopPolling = () => {
-    if (pollTimer !== undefined) {
-      clearInterval(pollTimer);
-      pollTimer = undefined;
-    }
-  };
-
-  const cancelRearm = () => {
-    if (rearmTimer !== undefined) {
-      clearTimeout(rearmTimer);
-      rearmTimer = undefined;
-    }
+  const publish = (next: CredentialWatchState) => {
+    state = next;
+    options.onStateChange?.(state);
   };
 
   const closeCurrent = () => {
+    generation += 1;
     const current = watcher;
-    const currentPath = watcherPath;
     watcher = undefined;
-    watcherPath = undefined;
-    if (current === undefined) {
-      return;
-    }
     try {
-      current.close();
+      current?.close();
     } catch (cause) {
       logWarning(
-        `zerops agent auth watcher: could not close filesystem watch for "${currentPath ?? target}"; stale callbacks will be ignored`,
+        `zerops agent auth watcher: could not close filesystem watch for "${state.path ?? target}"; stale callbacks will be ignored`,
         cause,
       );
     }
   };
 
-  const noteWatcherEvent = () => {
-    observedSnapshot = readTargetSnapshot();
-    errorRearmAttempts = 0;
-    cancelRearm();
-    onChange();
-  };
-
-  const startPolling = () => {
-    if (disposed || pollTimer !== undefined) {
-      return;
-    }
-    pollTimer = setInterval(() => {
-      if (disposed) {
-        return;
-      }
-      const nextSnapshot = readTargetSnapshot();
-      if (nextSnapshot.key === observedSnapshot.key) {
-        return;
-      }
-      observedSnapshot = nextSnapshot;
-      errorRearmAttempts = 0;
-      cancelRearm();
-      generation += 1;
-      closeCurrent();
-      attachBestAvailable(true);
-      onChange();
-    }, FINGERPRINT_POLL_INTERVAL_MS);
-  };
-
-  const scheduleRearmAfterError = (failedPath: string, cause: unknown) => {
-    if (errorRearmAttempts >= ERROR_REARM_DELAYS_MS.length) {
-      logWarning(
-        `zerops agent auth watcher: filesystem watch for "${failedPath}" stopped after ${ERROR_REARM_DELAYS_MS.length} re-arm attempts; permanent fingerprint polling remains active for "${target}"`,
-        cause,
-      );
-      return;
-    }
-    const delayMs = ERROR_REARM_DELAYS_MS[errorRearmAttempts]!;
-    errorRearmAttempts += 1;
+  const fail = (cause: unknown, path = state.path ?? target) => {
+    closeCurrent();
+    publish({
+      ...state,
+      status: "degraded",
+      path,
+      reason: cause instanceof Error ? cause.message : String(cause),
+    });
     logWarning(
-      `zerops agent auth watcher: filesystem watch for "${failedPath}" stopped; re-arm ${errorRearmAttempts}/${ERROR_REARM_DELAYS_MS.length} in ${delayMs}ms while permanent fingerprint polling remains active for "${target}"`,
+      `zerops agent auth watcher: observation stopped for "${target}"; Watch again to restart watching or Check now for one credential observation`,
       cause,
     );
-    cancelRearm();
-    rearmTimer = setTimeout(() => {
-      rearmTimer = undefined;
-      if (disposed) {
-        return;
-      }
-      generation += 1;
-      closeCurrent();
-      attachBestAvailable(true);
-    }, delayMs);
   };
 
-  const installWatcher = (
-    path: string,
-    myGeneration: number,
-    listener: NodeFS.WatchListener<string>,
-  ): boolean => {
+  const readTarget = () => {
+    let stat: NodeFS.Stats | undefined;
+    try {
+      stat = NodeFS.statSync(target);
+    } catch (cause) {
+      if (!isMissingPathError(cause)) throw cause;
+    }
+    targetExists = stat !== undefined;
+    state = { ...state, lastObservedAt: Date.now() };
+    return stat;
+  };
+
+  const availablePath = (stat: NodeFS.Stats | undefined): string => {
+    if (stat?.isDirectory()) return target;
+    let ancestor = NodePath.dirname(target);
+    while (true) {
+      try {
+        if (NodeFS.statSync(ancestor).isDirectory()) return ancestor;
+      } catch (cause) {
+        if (!isMissingPathError(cause)) throw cause;
+      }
+      const parent = NodePath.dirname(ancestor);
+      if (ancestor === fallbackDir || parent === ancestor) {
+        throw new Error(`watch directory is unavailable: ${ancestor}`);
+      }
+      ancestor = parent;
+    }
+  };
+
+  const attach = (path: string) => {
+    const myGeneration = ++generation;
     let nextWatcher: NodeFS.FSWatcher | undefined;
     try {
-      nextWatcher = watch(path, listener);
-      nextWatcher.on("error", (cause) => {
-        if (disposed || myGeneration !== generation) {
+      const relativeTarget = NodePath.relative(path, target).split(NodePath.sep)[0];
+      nextWatcher = watch(path, (_event, filename) => {
+        if (state.status !== "watching" || myGeneration !== generation) return;
+        if (path !== target && filename !== null && filename !== relativeTarget) return;
+        const previouslyExisted = targetExists;
+        try {
+          const nextPath = availablePath(readTarget());
+          if (nextPath !== path) {
+            closeCurrent();
+            attach(nextPath);
+          } else {
+            publish({ ...state });
+          }
+        } catch (cause) {
+          fail(cause);
           return;
         }
-        generation += 1;
-        closeCurrent();
-        scheduleRearmAfterError(path, cause);
+        // Creating an intermediate ancestor advances the watch, but is not
+        // itself a credential change. Removal and replacement are changes.
+        if (previouslyExisted || targetExists) onChange();
       });
       watcher = nextWatcher;
-      watcherPath = path;
-      return true;
+      nextWatcher.on("error", (cause) => {
+        if (state.status === "disposed" || myGeneration !== generation) return;
+        fail(cause, path);
+      });
+      nextWatcher.on("close", () => {
+        if (state.status === "disposed" || myGeneration !== generation) return;
+        fail(new Error("filesystem watch closed unexpectedly"), path);
+      });
+      publish({ ...state, status: "watching", path, reason: undefined });
     } catch (cause) {
-      if (nextWatcher !== undefined) {
-        try {
-          nextWatcher.close();
-        } catch (closeCause) {
-          logWarning(
-            `zerops agent auth watcher: could not close the failed filesystem watch for "${path}"`,
-            closeCause,
-          );
-        }
-      }
-      logWarning(
-        `zerops agent auth watcher: could not arm filesystem watch for "${path}"; permanent fingerprint polling remains active for "${target}"`,
-        cause,
-      );
-      return false;
+      // A partially installed handle is retired by the same failure path.
+      watcher = nextWatcher;
+      fail(cause, path);
     }
   };
 
-  const attachFallback = (recovering: boolean): boolean => {
-    const myGeneration = ++generation;
-    const armed = installWatcher(fallbackDir, myGeneration, () => {
-      if (disposed || myGeneration !== generation) {
-        return;
-      }
-      const nextSnapshot = readTargetSnapshot();
-      if (!nextSnapshot.exists) {
-        return;
-      }
-      observedSnapshot = nextSnapshot;
-      errorRearmAttempts = 0;
-      cancelRearm();
-      generation += 1;
-      closeCurrent();
-      attachTarget(false, nextSnapshot.isDirectory);
-      onChange();
-    });
-    if (armed) {
-      if (!recovering) {
-        errorRearmAttempts = 0;
-      }
+  const start = () => {
+    try {
+      attach(availablePath(readTarget()));
+    } catch (cause) {
+      fail(cause);
     }
-    return armed;
   };
 
-  const attachTarget = (recovering: boolean, isDirectory: boolean): boolean => {
-    const myGeneration = ++generation;
-    // A directory target is watched directly (reliable everywhere, and the
-    // only way to see a file appear inside it). A FILE target is watched via
-    // its parent directory, filtered to its own name: watching a lone file
-    // directly is a documented Node caveat.
-    const armed = isDirectory
-      ? installWatcher(target, myGeneration, () => {
-          if (disposed || myGeneration !== generation) {
-            return;
-          }
-          noteWatcherEvent();
-        })
-      : installWatcher(NodePath.dirname(target), myGeneration, (_event, filename) => {
-          if (disposed || myGeneration !== generation) {
-            return;
-          }
-          if (filename === null || filename === NodePath.basename(target)) {
-            noteWatcherEvent();
-          }
-        });
-    if (armed && !recovering) {
-      errorRearmAttempts = 0;
-    }
-    return armed;
-  };
-
-  function attachBestAvailable(recovering: boolean): boolean {
-    const currentSnapshot = readTargetSnapshot();
-    if (!recovering) {
-      observedSnapshot = currentSnapshot;
-    }
-    return currentSnapshot.exists
-      ? attachTarget(recovering, currentSnapshot.isDirectory)
-      : attachFallback(recovering);
-  }
-
-  attachBestAvailable(false);
-  startPolling();
+  start();
 
   return {
-    dispose: () => {
-      disposed = true;
-      generation += 1;
-      cancelRearm();
-      stopPolling();
+    getState: () => state,
+    watchAgain: () => {
+      if (state.status === "disposed") return;
       closeCurrent();
+      start();
+      if (state.status === "watching") onChange();
+    },
+    checkNow: () => {
+      if (state.status === "disposed") return;
+      try {
+        readTarget();
+      } catch (cause) {
+        fail(cause);
+        return;
+      }
+      publish({ ...state });
+      onChange();
+    },
+    dispose: () => {
+      if (state.status === "disposed") return;
+      closeCurrent();
+      publish({ ...state, status: "disposed" });
     },
   };
 };
