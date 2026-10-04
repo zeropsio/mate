@@ -28,6 +28,9 @@ import { createContext, useContext } from "react";
 
 /** What *Release* offers on a project, when it is offered at all. */
 export interface ZeropsReleaseOffer {
+  readonly comparisonFailure?:
+    | { readonly reason: string; readonly again?: (() => void) | undefined }
+    | undefined;
   readonly gate: ReleaseGate;
   /**
    * HQ's rule for this person (`releasePermission`), its refusal in words; `undefined` while it

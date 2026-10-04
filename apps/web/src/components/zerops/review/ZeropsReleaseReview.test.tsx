@@ -277,3 +277,14 @@ describe("a roll back that hasn't landed", () => {
     expect(stalled(undefined)).not.toContain("Ask ");
   });
 });
+
+it("a failed release comparison offers Compare again", () => {
+  expect(
+    render({ comparisonFailure: { reason: "HQ did not answer.", again: () => {} } }),
+  ).toContain("Compare again");
+});
+it("a failed rollback comparison offers Compare again", () => {
+  expect(
+    renderRollback({ leaving: { state: "failed", reason: "HQ did not answer.", again: () => {} } }),
+  ).toContain("Compare again");
+});

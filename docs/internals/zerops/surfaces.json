@@ -890,7 +890,8 @@
         "packages/client-runtime/src/zerops/tools.ts",
         "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
         "packages/client-runtime/src/zerops/projectFlow.ts",
-        "apps/web/src/zerops/useZeropsMenu.tsx"
+        "apps/web/src/zerops/useZeropsMenu.tsx",
+        "apps/web/src/components/zerops/ZeropsReadFailure.tsx"
       ],
       "entryPoints": [
         {
@@ -1072,7 +1073,8 @@
         "packages/client-runtime/src/zerops/hq/menuRows.test.ts",
         "apps/web/src/zerops/useAccountVoice.test.ts",
         "apps/web/src/zerops/useProjectTopology.demand.test.ts",
-        "packages/client-runtime/src/zerops/data/demandScope.test.ts"
+        "packages/client-runtime/src/zerops/data/demandScope.test.ts",
+        "apps/web/src/components/zerops/ZeropsReadFailure.test.tsx"
       ],
       "captures": []
     },

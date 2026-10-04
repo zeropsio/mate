@@ -26,6 +26,7 @@ import { ChevronRightIcon } from "lucide-react";
 import type { ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 import { useNowMs } from "~/zerops/useNowMs";
 
+import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { StatusDot } from "./primitives";
 import { RAIL_BLANK, RAIL_LINE } from "./rail";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
@@ -70,7 +71,9 @@ export function ZeropsHistoryView({
   // move on as the minute turns, not only when something else re-renders them.
   const now = useNowMs();
   if (history.kind === "failed") {
-    return <HistoryNote>{history.reason}</HistoryNote>;
+    return (
+      <ZeropsReadFailure action="Compare again" reason={history.reason} again={history.again} />
+    );
   }
   if (history.kind === "reading") {
     return <HistoryNote>{historyNote("reading")}</HistoryNote>;

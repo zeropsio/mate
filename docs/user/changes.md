@@ -41,3 +41,8 @@ HQ deploys production from approved releases. The agent's handoff has not checke
 production is set up or ready for a release; read those facts in Mate.
 
 Change descriptions can include private PNG, JPEG, GIF, WebP and AVIF pictures, up to 20 MiB each. Pictures require the same access as the change.
+
+A comparison that fails keeps its reason beside the release contents or repository history.
+**Compare again** makes one new attempt for those revisions. A failed recipe read retains known
+tiers and offers **Read recipe again** on the project page. These failures do not retry on a timer;
+a new source revision can supply a new answer.
