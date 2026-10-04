@@ -80,6 +80,7 @@ const mock = vi.hoisted(() => ({
   deleteTokenFailure: false,
   mateKeyFailure: false,
   deleteProject: vi.fn(),
+  setDeleting: vi.fn(),
   prepareProjectDeletion: vi.fn(),
   completeProjectDeletion: vi.fn(),
   keyReads: 0,
@@ -129,6 +130,10 @@ vi.mock("../components/zerops/ZeropsRestartMateDialog", () => ({
     mock.restartDialog.current = props;
     return null;
   },
+}));
+
+vi.mock("./accountEnvironments", () => ({
+  currentAccountEnvironments: () => ({ setDeleting: mock.setDeleting }),
 }));
 
 vi.mock("./accountInvalidations", () => ({
@@ -333,6 +338,7 @@ beforeEach(() => {
   mock.prepareProjectDeletion.mockReset().mockResolvedValue("completion-fen");
   mock.completeProjectDeletion.mockReset().mockResolvedValue(undefined);
   mock.deleteProject.mockReset().mockResolvedValue({ value: undefined });
+  mock.setDeleting.mockReset();
   mock.membersEnabled = [];
   mock.membersStatus = "ready";
   mock.reread.mockReset();
@@ -1324,6 +1330,43 @@ describe("useMateActions — deletion failures finish visibly", () => {
         .onSelect();
     });
   };
+
+  it("removes connection demand before the delete runs and keeps it off through cleanup", async () => {
+    let finish!: () => void;
+    mock.deleteProject.mockImplementation(() => {
+      expect(mock.setDeleting).toHaveBeenCalledExactlyOnceWith(FEN.project.id, true);
+      return new Promise<{ value: undefined }>((resolve) => {
+        finish = () => resolve({ value: undefined });
+      });
+    });
+    mock.completeProjectDeletion.mockRejectedValueOnce(new Error("HQ deletion refused"));
+    openDelete();
+    await confirm();
+    expect(mock.setDeleting).toHaveBeenCalledExactlyOnceWith(FEN.project.id, true);
+    await act(async () => finish());
+    expect(mock.deleteDialog.current?.error).toContain("HQ deletion refused");
+    expect(mock.setDeleting.mock.calls).toEqual([[FEN.project.id, true]]);
+    await confirm();
+    expect(mock.deleteProject).toHaveBeenCalledTimes(1);
+    expect(mock.setDeleting.mock.calls).toEqual([[FEN.project.id, true]]);
+  });
+
+  it("restores connection demand after a refused delete, before a manual new attempt", async () => {
+    mock.deleteProject.mockRejectedValueOnce(new Error("Delete refused"));
+    openDelete();
+    await confirm();
+    expect(mock.deleteDialog.current?.error).toContain("Delete refused");
+    expect(mock.setDeleting.mock.calls).toEqual([
+      [FEN.project.id, true],
+      [FEN.project.id, false],
+    ]);
+    await confirm();
+    expect(mock.setDeleting.mock.calls).toEqual([
+      [FEN.project.id, true],
+      [FEN.project.id, false],
+      [FEN.project.id, true],
+    ]);
+  });
 
   it("tells HQ once after the delete process finishes, keeping completion failure visible for Again", async () => {
     let finish!: () => void;

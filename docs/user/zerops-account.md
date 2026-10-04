@@ -84,6 +84,10 @@ Deleting a Mate also retires the Zerops key its container used. If HQ cannot ide
 the dialog shows the failure before deleting the project. If key retirement fails after the project
 is deleted, the dialog says the Mate was deleted and keeps **Try again** for retiring that key only.
 
+When you confirm deletion, this tab stops connecting to that Mate before sending the delete.
+If the Zerops delete fails, its connection is restored. A later HQ or key-cleanup failure keeps
+the connection stopped while you finish that step.
+
 Deleting a Mate follows its Zerops deletion process, then asks HQ to release its records.
 If HQ refuses or cannot answer, the dialog shows why and keeps **Try again** to finish that step.
 It does not delete the Mate again. Its project shows **Deletion is still in progress.** until HQ
