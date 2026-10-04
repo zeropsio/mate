@@ -2,7 +2,13 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { homeGuess, homeView, readHomeLanding, writeHomeLanding } from "./homeLanding.logic";
+import {
+  homeDoor,
+  homeGuess,
+  homeView,
+  readHomeLanding,
+  writeHomeLanding,
+} from "./homeLanding.logic";
 
 const ref = scopeThreadRef(EnvironmentId.make("env-quill"), ThreadId.make("thread-ivy"));
 
@@ -145,5 +151,34 @@ describe("homeGuess: the Mate the home will land on, as remembered", () => {
     ["nothing remembered at all", { mates: {}, rows: {}, lastOpen: null }, null],
   ] as const)("%s", (_case, input, guess) => {
     expect(homeGuess(input)).toEqual(guess);
+  });
+});
+
+describe("homeDoor: the home paints the projects page only when it stays there", () => {
+  it.each([
+    [
+      "Mates registered, still reading: the landing",
+      { noEnvironments: false, matesSettled: false },
+      "landing",
+    ],
+    [
+      "Mates registered, read whole: the landing",
+      { noEnvironments: false, matesSettled: true },
+      "landing",
+    ],
+    // A cold load counts no environment until the account's Mates register: the projects page
+    // painted then is taken back a second later, when the landing moves to a Mate.
+    [
+      "no Mate registered yet, still reading: the landing waits",
+      { noEnvironments: true, matesSettled: false },
+      "landing",
+    ],
+    [
+      "no Mate to land on, read whole: the projects",
+      { noEnvironments: true, matesSettled: true },
+      "projects",
+    ],
+  ] as const)("%s", (_name, input, expected) => {
+    expect(homeDoor(input)).toBe(expected);
   });
 });

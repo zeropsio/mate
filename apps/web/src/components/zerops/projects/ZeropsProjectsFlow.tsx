@@ -1,23 +1,15 @@
 /**
- * The projects page, laid out around the one flow a project's code travels:
- * Mates (with their preview) → pull requests → `main` → production, a group
- * stage as an optional side branch of `main`, drawn only where one exists
- * (the owner, 2026-09-23 — "extremely important findings the whole UI should
- * be built around").
+ * The projects page, one dense list: a row per project, at most two lines — its name, its Mates by
+ * face and full name and production's version where production runs one; then the one thing that
+ * needs the person as a full sentence, its single verb at the row's end, else the latest
+ * meaningful fact (`projectRowLine`). Rows that need the person rise first, the person's own
+ * order kept within (`risenFirst`). A row opens into the project's detail: its Mates' last words,
+ * its pull requests, its environments and its releases. The containers no project holds are one
+ * folded group at the end.
  *
- * Two views over the same `groupFlow`s:
- *
- * - **Overview** — a "Next steps" strip across the groups, then one row per
- *   group with work on it, the steps as columns and the verb in the cell it
- *   belongs to; a row opens to the Mates' last words and what a release would
- *   carry. A group with only a Mate nobody has spoken to is a tile; the
- *   containers no project holds are one line with their states.
- * - **Projects** — every group as a card, its four steps side by side.
- *
- * Structural only, like the tree it replaced: every card, row, verb and menu
- * is an injected slot the page fills (R5), and what each step says is
- * `groupFlow`'s and `projectsView.logic`'s. An account with no project yet
- * gets the invitation instead of the shape.
+ * Structural only: every card, row, verb and menu is an injected slot the page fills (R5), and
+ * what a row says is `groupFlow`'s and `projectsView.logic`'s. An account with no project yet
+ * gets the invitation instead of the list.
  */
 
 import type {
@@ -27,30 +19,19 @@ import type {
   ZeropsGroup,
   ZeropsToolKind,
 } from "@t3tools/client-runtime/zerops";
-import { useEffect, useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { MateFace, Pill } from "../primitives";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
-import { NextStepsStrip, OnlyAMate, OtherContainers, Overview, QuietEnd } from "./OverviewView";
-import { useRememberGroupPlacements } from "./groupPlacementMemory";
-import {
-  foldGroups,
-  foldUngrouped,
-  nextStepsPending,
-  type GroupPlacement,
-} from "./projectsView.logic";
-import { ProjectCard } from "./ProjectsView";
+import { OtherContainers, ProjectList, QuietEnd } from "./ProjectList";
+import { type RowMateActivity } from "./projectsView.logic";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
 export interface ProjectsFlowGroup<T> {
   readonly group: ZeropsGroup;
   readonly flow: GroupFlow;
-  /** Its project flow was read. Unread is not empty. */
-  readonly read: boolean;
-  /** Every Mate's talk is known (`talkSettled`). */
-  readonly talkSettled: boolean;
-  /** Where it was last drawn (`groupPlacementMemory.ts`); `undefined` if never. */
-  readonly placed: GroupPlacement | undefined;
+  /** Its Mates' activity, as the row's line reads it (`projectRowLine`). */
+  readonly activities: ReadonlyArray<RowMateActivity>;
   /**
    * Unread, and its read is out: the steps it would fill hold a skeleton
    * rather than an empty word. False for a group nobody will read (no Gitea
@@ -62,8 +43,6 @@ export interface ProjectsFlowGroup<T> {
    * `main` hold a skeleton, whatever its deploys already say.
    */
   readonly changesAwaiting: boolean;
-  /** Its changes' read failed and nothing is held: their steps say so (`CHANGES_UNREAD_LINE`). */
-  readonly changesFailed?: boolean;
   /** The Mates' environments by project id, in the tree's order (`matesOf` pairs them). */
   readonly mates: ReadonlyMap<string, T>;
   /** Its stages and its production, by project id. */
@@ -83,11 +62,7 @@ export interface ProjectsFlowGroup<T> {
   readonly placeholder: boolean;
 }
 
-/** Where a next step's verb is drawn: in its row's cell, or on the "Next steps" strip. */
-export type NextStepPlacement = "cell" | "strip";
-
 export interface ZeropsProjectsFlowProps<T> {
-  readonly view: "overview" | "projects";
   /** In the page's order. */
   readonly groups: ReadonlyArray<ProjectsFlowGroup<T>>;
   /** The projects no group holds, with the one verb each row offers. */
@@ -103,18 +78,16 @@ export interface ZeropsProjectsFlowProps<T> {
     item: T,
     options: { readonly layout: "card" | "row"; readonly preview: string | undefined },
   ) => ReactNode;
-  /** A Mate's face: `sm` beside its name in a row, `md` on a tile. */
+  /** A Mate's face, beside its name in a row. */
   readonly renderMateFace: (item: T, size: "sm" | "md") => ReactNode;
   /**
-   * How a Mate opens into its conversation, wherever the flow names it — a
-   * row's Mates, a tile; `undefined` where it cannot open yet (coming up,
-   * busy), and the name is then still.
+   * How a Mate opens into its conversation, wherever the list names it;
+   * `undefined` where it cannot open yet (coming up, busy), and the name is
+   * then still.
    */
   readonly openMate: (item: T) => (() => void) | undefined;
   /** An environment's row — a `ZeropsEnvironmentRow`. */
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
-  /** A stage's or the production's own menu — its public access. */
-  readonly renderStopMenu: (item: T) => ReactNode;
   /**
    * A pull request's `<li>`. `withMerge` is false where the step's own verb
    * already merges it; `compact` stacks it for a step's narrow column.
@@ -124,36 +97,29 @@ export interface ZeropsProjectsFlowProps<T> {
     pull: FlowPullRequest,
     options: { readonly withMerge: boolean; readonly compact: boolean },
   ) => ReactNode;
+  /** The verb of a group's next step (`flow.nextStep`), at its row's end; nothing for `none`. */
+  readonly renderNextStep: (entry: ProjectsFlowGroup<T>) => ReactNode;
   /**
-   * The verb of a group's next step (`flow.nextStep`); nothing for `none`.
-   * `placement` is where it stands: its cell, beside the fact it acts on, or
-   * the "Next steps" strip, which has no cell to state a version beside it.
-   */
-  readonly renderNextStep: (entry: ProjectsFlowGroup<T>, placement: NextStepPlacement) => ReactNode;
-  /**
-   * *Release*, drawn in the production cell whenever one is offered — even
-   * where the ranked next step is something else, such as the production's
-   * own failed deploy (D28): the release that might clear it stays visible
-   * rather than only the build. Absent where the next step already is the
-   * release, so the cell never shows the same verb twice.
+   * *Release*, in an opened row whenever one is offered — even where the
+   * ranked next step is something else, such as the production's own failed
+   * deploy (D28): the release that might clear it stays in reach rather than
+   * only the build. Absent where the next step already is the release, so the
+   * row never shows the same verb twice.
    */
   readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** The group's releases, the release gate's reason and its recipe changes, as `<li>`s; `null` for none. */
   readonly renderGroupRows: (group: ZeropsGroup) => ReactNode;
-  readonly renderGroupMenu: (group: ZeropsGroup) => ReactNode;
+  /** The row's ··· menu: the project's quiet verbs, and its Mates' previews (`flow.mates`). */
+  readonly renderGroupMenu: (entry: ProjectsFlowGroup<T>) => ReactNode;
   readonly renderTool: (item: T, kind: ZeropsToolKind) => ReactNode;
   /** Re-probes the containers not answering. */
   readonly onRetryContainers: (items: ReadonlyArray<T>) => void;
-  /** Absent hides every add verb. */
-  readonly onCreateEnvironment?: (groupId: string, role: ZeropsEnvironmentRole) => void;
-  /** Whether a group is ready for more — its first Mate is up. Absent offers always. */
-  readonly addsOffered?: (group: ZeropsGroup) => boolean;
   /** A creation runs: every add verb is disabled, never hidden. */
   readonly creating?: boolean;
   readonly onCreateTool?: () => void;
   /** Starts the account's first project; absent leaves an empty account empty. */
   readonly onCreateProject?: (() => void) | undefined;
-  /** The group whose card the Projects view scrolls to. */
+  /** The group whose row opens and scrolls into view (`?group=`). */
   readonly focusGroup?: string | undefined;
 }
 
@@ -188,56 +154,25 @@ function FirstRun({
 }
 
 export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
-  const { view, groups, ungrouped, creating = false, onCreateProject, focusGroup } = props;
-  const folded = foldGroups(groups);
-  useRememberGroupPlacements(groups);
-  const loose = foldUngrouped(ungrouped);
+  const { groups, ungrouped, creating = false, onCreateProject, focusGroup } = props;
   // A tool is not a project, so an account holding nothing but Gitea has
   // still not started.
   const started = groups.length > 0 || ungrouped.length > 0;
   const firstRun = onCreateProject !== undefined && !started;
 
-  // `?group=` scrolls its card into view once, when the card is first there.
-  const scrolledTo = useRef<string | undefined>(undefined);
-  const cardShown =
-    view === "projects" && groups.some((entry) => entry.group.groupId === focusGroup);
-  useEffect(() => {
-    if (!cardShown || focusGroup === undefined || scrolledTo.current === focusGroup) return;
-    scrolledTo.current = focusGroup;
-    document.getElementById(`project-${focusGroup}`)?.scrollIntoView({ block: "start" });
-  }, [cardShown, focusGroup]);
-
   return (
     <div
-      aria-label="Projects and their flow"
-      // The flow sizes itself to its own width, not the window's: the left
+      aria-label="Projects"
+      // The list sizes itself to its own width, not the window's: the left
       // menu takes a share of the window the page never gets.
       className="@container/flow flex flex-col gap-4"
       data-zerops-surface="projects-flow"
-      data-zerops-view={view}
       role="region"
     >
       {firstRun ? <FirstRun creating={creating} onCreateProject={onCreateProject} /> : null}
-      {view === "overview" ? (
-        <>
-          <NextStepsStrip
-            entries={folded.nextSteps}
-            pending={nextStepsPending(groups)}
-            renderNextStep={props.renderNextStep}
-          />
-          <Overview active={folded.active} props={props} />
-          <OnlyAMate entries={folded.early} props={props} />
-        </>
-      ) : (
-        <>
-          {folded.active.map((entry) => (
-            <ProjectCard entry={entry} key={entry.group.groupId} props={props} />
-          ))}
-          <OnlyAMate entries={folded.early} props={props} />
-        </>
-      )}
-      <OtherContainers props={props} rows={loose.containers} />
-      {started ? <QuietEnd props={props} withoutMate={loose.withoutMate} /> : null}
+      <ProjectList focusGroup={focusGroup} groups={groups} props={props} />
+      <OtherContainers props={props} rows={ungrouped} />
+      {started ? <QuietEnd props={props} /> : null}
     </div>
   );
 }

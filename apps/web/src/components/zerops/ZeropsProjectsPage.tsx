@@ -145,7 +145,6 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsGroupTags,
-  type ZeropsProjectOrder,
   type ZeropsToolKind,
   firstDeployLine,
   type FirstDeploy,
@@ -180,7 +179,7 @@ import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { readZeropsCellOnce } from "~/zerops/useZeropsDeployedVersion";
-import { deployRowTone, TAKING_LONGER_LINE } from "./ZeropsProjectRow.logic";
+import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsReleaseVerb } from "./ZeropsGroupDetail";
 import { ZeropsPullRequestRow } from "./ZeropsPullRequestRow";
@@ -190,11 +189,7 @@ import {
   environmentRoleTag,
   groupNameIsPlaceholder,
 } from "./ZeropsGroupTree.logic";
-import {
-  ZeropsProjectsFlow,
-  type NextStepPlacement,
-  type ProjectsFlowGroup,
-} from "./projects/ZeropsProjectsFlow";
+import { ZeropsProjectsFlow, type ProjectsFlowGroup } from "./projects/ZeropsProjectsFlow";
 import {
   flowStepsAwaiting,
   groupFlowInputOf,
@@ -202,11 +197,9 @@ import {
   lastMergedCode,
   parseProjectsSearch,
   productionAddable,
-  talkSettled,
   TOOL_LABEL,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
-import { lastGroupPlacement } from "./projects/groupPlacementMemory";
 import {
   type ZeropsRowAction,
   type ZeropsRowInput,
@@ -517,8 +510,7 @@ function SignedOutNotice({ message }: { readonly message: string }) {
 }
 
 /**
- * The page's title row: the title, the two views of one flow beside it, the
- * sort and the reload as a glyph. No creating action here — the left menu's
+ * The page's title row: the title, then the sort and the reload as a glyph. No creating action here — the left menu's
  * "New project" is the entry, and a filled pill beside the title was the
  * loudest thing on a page whose loud thing should be the Mate. No sentence
  * under the title either: the projects below say what the page is.
@@ -563,61 +555,19 @@ function ZeropsProjectOrderControl() {
   );
 }
 
-type ProjectsView = "overview" | "projects";
-
-const PROJECTS_VIEWS: ReadonlyArray<{ readonly value: ProjectsView; readonly label: string }> = [
-  { value: "overview", label: "Overview" },
-  { value: "projects", label: "Projects" },
-];
-
-/** The two views of the same flow: the Overview across projects, and every project as a card. */
-function ZeropsProjectsViewSwitch({
-  view,
-  onView,
-}: {
-  readonly view: ProjectsView;
-  readonly onView: (view: ProjectsView) => void;
-}) {
-  return (
-    <nav aria-label="View" className="flex rounded-lg bg-muted p-0.5">
-      {PROJECTS_VIEWS.map((option) => (
-        <button
-          aria-current={option.value === view ? "page" : undefined}
-          className={cn(
-            "rounded-md px-3 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground",
-            option.value === view && "bg-card font-medium text-foreground shadow-xs",
-          )}
-          key={option.value}
-          onClick={() => onView(option.value)}
-          type="button"
-        >
-          {option.label}
-        </button>
-      ))}
-    </nav>
-  );
-}
-
 export function ZeropsProjectsHeader({
   onRefresh,
   refreshing = false,
-  view = "overview",
-  onView,
 }: {
   readonly onRefresh?: (() => void) | undefined;
   readonly refreshing?: boolean;
-  readonly view?: ProjectsView;
-  readonly onView?: ((view: ProjectsView) => void) | undefined;
 }) {
   return (
     <div
       className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3"
       data-zerops-project-scope="true"
     >
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h1 className="text-xl font-medium text-foreground">Projects</h1>
-        {onView === undefined ? null : <ZeropsProjectsViewSwitch onView={onView} view={view} />}
-      </div>
+      <h1 className="text-xl font-medium text-foreground">Projects</h1>
       <div className="flex items-center gap-2">
         <ZeropsProjectOrderControl />
         {onRefresh === undefined ? null : (
@@ -2490,52 +2440,66 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    * whether this person may create one at all — rather than only on a signal
    * that is silent for most groups.
    */
-  const renderGroupMenu = (group: ZeropsGroup) => (
-    <ZeropsProjectMenu
-      actions={[
-        {
-          id: "rename-group",
-          label: groupNameIsPlaceholder(group) ? "Name this project" : "Rename project",
-          onSelect: () => {
-            setRowDialog({ kind: "rename-group", group });
+  const renderGroupMenu = ({ group, flow }: ProjectsFlowGroup<ZeropsCandidatePresentation>) => {
+    // Each Mate's preview, where its pair has one: a link out, so the menu's, not the row's.
+    const previews = flow.mates.flatMap((mate) =>
+      mate.preview === undefined ? [] : [{ name: mate.name, url: mate.preview }],
+    );
+    return (
+      <ZeropsProjectMenu
+        actions={[
+          ...previews.map((preview) => ({
+            id: `preview:${preview.name}`,
+            label: previews.length === 1 ? "Open preview" : `Open ${preview.name}’s preview`,
+            onSelect: () => {
+              window.open(preview.url, "_blank", "noopener,noreferrer");
+            },
+          })),
+          ...(previews.length === 0 ? [] : [{ id: "previews-end", separator: true as const }]),
+          {
+            id: "rename-group",
+            label: groupNameIsPlaceholder(group) ? "Name this project" : "Rename project",
+            onSelect: () => {
+              setRowDialog({ kind: "rename-group", group });
+            },
           },
-        },
-        ...(addsOfferedFor(group)
-          ? [
-              {
-                id: "add-mate",
-                label: "Add Mate",
-                disabled: creationRunning,
-                onSelect: () => {
-                  requestEnvironment(group.groupId, "dev");
+          ...(addsOfferedFor(group)
+            ? [
+                {
+                  id: "add-mate",
+                  label: "Add Mate",
+                  disabled: creationRunning,
+                  onSelect: () => {
+                    requestEnvironment(group.groupId, "dev");
+                  },
                 },
-              },
-              {
-                id: "add-stage",
-                label: "Add stage — optional",
-                disabled: creationRunning,
-                onSelect: () => {
-                  requestEnvironment(group.groupId, "stage");
+                {
+                  id: "add-stage",
+                  label: "Add stage — optional",
+                  disabled: creationRunning,
+                  onSelect: () => {
+                    requestEnvironment(group.groupId, "stage");
+                  },
                 },
-              },
-            ]
-          : []),
-        ...(mayCreate && creatableRoles(group).includes("prod")
-          ? [
-              {
-                id: "add-production",
-                label: "Add production",
-                disabled: creationRunning,
-                onSelect: () => {
-                  requestEnvironment(group.groupId, "prod");
+              ]
+            : []),
+          ...(mayCreate && creatableRoles(group).includes("prod")
+            ? [
+                {
+                  id: "add-production",
+                  label: "Add production",
+                  disabled: creationRunning,
+                  onSelect: () => {
+                    requestEnvironment(group.groupId, "prod");
+                  },
                 },
-              },
-            ]
-          : []),
-      ]}
-      label={`More for ${group.name}`}
-    />
-  );
+              ]
+            : []),
+        ]}
+        label={`More for ${group.name}`}
+      />
+    );
+  };
 
   /**
    * The rows of a project that are not one of its four steps: why *Release*
@@ -2580,7 +2544,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    */
   const renderNextStep = (
     entry: ProjectsFlowGroup<ZeropsCandidatePresentation>,
-    placement: NextStepPlacement,
   ): React.ReactNode => {
     const { group, flow } = entry;
     const step = flow.nextStep;
@@ -2713,12 +2676,22 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             nowMs,
           }),
         ),
-        read: reads !== undefined,
-        talkSettled: talkSettled(members),
-        placed: lastGroupPlacement(group.groupId),
+        activities: environments.flatMap(({ item }, index) => {
+          const name = members[index]?.mate?.name;
+          const mateActivity =
+            item.environmentId === undefined ? undefined : activity.get(item.environmentId);
+          if (name === undefined || mateActivity === undefined) return [];
+          return [
+            {
+              name,
+              working: mateActivity.kind === "working",
+              subject: mateActivity.subject,
+              at: mateActivity.at,
+            },
+          ];
+        }),
         awaiting: awaiting.steps,
         changesAwaiting: awaiting.changes,
-        changesFailed: reads?.changesFailure !== undefined,
         mates: new Map(
           environments
             .filter(({ item }) => hasMate(item))
@@ -2813,15 +2786,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         </p>
       ))}
       <ZeropsProjectsFlow
-        // A group is offered more once its first Mate is up — connected, or
-        // its container answering ready — and not a minute before.
-        addsOffered={addsOfferedFor}
         creating={creationRunning}
         focusGroup={search.group}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
         groups={flowGroups}
         isMate={hasMate}
-        onCreateEnvironment={requestEnvironment}
         onCreateProject={
           hasNoZeropsProject({ listing, creationPending: activeBirths }) ? askNewProject : undefined
         }
@@ -2863,13 +2832,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           if (candidate === undefined) return null;
           return <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} />;
         }}
-        renderStopMenu={(candidate: ZeropsCandidatePresentation) =>
-          renderEnvironmentMenu(candidate, readZeropsGroupTags(candidate.project.tagList), false)
-        }
         renderTool={renderTool}
         tools={groupTree.tools}
         ungrouped={ungroupedRows}
-        view={search.view ?? "overview"}
       />
       {mateActions.dialogs}
       {rowDialog?.kind === "rename-group" ? (
@@ -2959,10 +2924,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 export function ZeropsProjectsPage() {
   const { activeOrganization, organizations, organizationStatus, selectOrganization, status } =
     useZeropsSession();
-  const navigate = useNavigate();
   // The same page is the signed-in door at `/`, so the search is read loosely
-  // and through the route's own parser: anything but `/zerops?view=projects`
-  // is the Overview.
+  // and through the route's own parser.
   const search = parseProjectsSearch(useSearch({ strict: false }));
   const { listing, isLoading, refresh } = useZeropsCandidates();
   const scoped =
@@ -2998,17 +2961,7 @@ export function ZeropsProjectsPage() {
       }
     >
       {scoped && !firstRun ? (
-        <ZeropsProjectsHeader
-          onRefresh={refresh}
-          onView={(view) => {
-            void navigate({
-              to: "/zerops",
-              search: view === "projects" ? { view: "projects" } : {},
-            });
-          }}
-          refreshing={isLoading}
-          view={search.view ?? "overview"}
-        />
+        <ZeropsProjectsHeader onRefresh={refresh} refreshing={isLoading} />
       ) : null}
       <ZeropsProjectsContent search={search} />
     </ZeropsHostedFrame>
