@@ -264,6 +264,13 @@ describe("the structure stream", () => {
             unheld: {},
           },
         ]);
+        // A later view that decides the same says nothing: its time rides with the next move.
+        yield* SubscriptionRef.set(h.seen, {
+          view: yield* Ref.get(h.view),
+          answered: Date.parse("2026-10-04T10:00:30.000Z"),
+        });
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        assert.strictEqual(h.sent.length, 2);
       }),
     ),
   );

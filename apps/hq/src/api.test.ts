@@ -134,9 +134,6 @@ const timeless = (snapshot: unknown) => {
   assert.isTrue(rolesAnsweredAt === null || typeof rolesAnsweredAt === "string");
   return rest;
 };
-/** What a socket sent but the organization's offers, which move with every view HQ reads. */
-const besidesOrg = (messages: ReadonlyArray<{ readonly type: string }>) =>
-  messages.filter((message) => message.type !== "org");
 
 describe("HQ API", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -1007,7 +1004,11 @@ describe("HQ API", () => {
           // Three pings answered: still open.
           yield* Effect.sleep(Duration.millis(1100));
           assert.isAtLeast(owner.pings.seen, 3);
-          assert.deepStrictEqual(besidesOrg(yield* owner.quiet("1 millis")), []);
+          // Beyond the organization's offers, which moved as P_MATE went from held nowhere to Shop.
+          assert.deepStrictEqual(
+            (yield* owner.quiet("1 millis")).filter((message) => message.type !== "org"),
+            [],
+          );
           yield* owner.close;
         }),
     );
@@ -1327,7 +1328,7 @@ describe("HQ API", () => {
           session: owner,
           body: { projectId: "P_MATE", kind: "stage" },
         });
-        assert.deepStrictEqual(besidesOrg(yield* devSocket.quiet("700 millis")), []);
+        assert.deepStrictEqual(yield* devSocket.quiet("700 millis"), []);
 
         // Zerops grants dev the project: the open socket shows the application within its recheck.
         const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;

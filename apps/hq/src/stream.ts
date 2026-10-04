@@ -20,8 +20,8 @@
  *   null` once it is gone from their view), or, under the key `ungrouped`, the whole list of the
  *   Mates in no application;
  * - `{ type: "org", can, rolesAnsweredAt, unheld }` — what the caller may do with the
- *   organization and with each project they read that HQ holds nowhere, and when Zerops answered
- *   the view its offers are decided over, whenever any of it moves;
+ *   organization and with each project they read that HQ holds nowhere, whenever either moves,
+ *   with when Zerops answered the view it was decided over;
  * - `{ type: "mate", projectId, value }` — what changed of one Mate the caller observes: its
  *   presence, or any section of its overview, each whole; `value: null` once they no longer may;
  * - `{ type: "people", people }` — the people the view names, whenever they differ: its Mates'
@@ -191,7 +191,10 @@ const ownersIn = (view: StructureRead, facts: OrgView): ReadonlyArray<string> =>
 
 /** What a caller was last sent. */
 interface Sent {
-  /** What they may do with the organization, and when Zerops answered its view, encoded. */
+  /**
+   * What they may do with the organization and its projects held nowhere, encoded: when Zerops
+   * answered the view rides with it, never moving it alone.
+   */
   readonly org: string;
   readonly structure: ReadonlyMap<string, string>;
   readonly changes: ReadonlyMap<string, string>;
@@ -357,7 +360,7 @@ export const structureMessages = <R>(
         ]);
         const people = peopleOf(namedBy(named, mates), facts.members);
         const now: Sent = {
-          org: toJson({ can: view.can, rolesAnsweredAt, unheld: view.unheld }),
+          org: toJson({ can: view.can, unheld: view.unheld }),
           structure: new Map([
             [UNGROUPED, toJson(view.ungrouped)],
             ...view.apps.map((app): [string, string] => [app.id, toJson(app)]),
