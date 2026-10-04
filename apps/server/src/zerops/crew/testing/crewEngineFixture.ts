@@ -29,6 +29,7 @@ import {
   type OrchestrationThreadShell,
   type SpiEvent,
   type ZeropsAgentAuthSnapshot,
+  type ZeropsLogin,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -124,8 +125,10 @@ export interface CrewWorld {
    * `reached` once the engine is waiting on it, `release` lets it run.
    */
   readonly holdSsh: (matches: (script: string) => boolean) => Effect.Effect<SshHold>;
-  /** A login's sign-in or signer changed: the agent-auth and logins feeds move. */
+  /** A login's sign-in or signer changed: the logins feed moves, on the default Claude login. */
   readonly signedIn: Effect.Effect<void>;
+  /** A sign-in changes on login `id`. */
+  readonly signedInAs: (id: string) => Effect.Effect<void>;
 }
 
 export interface SshHold {
@@ -245,9 +248,9 @@ const repositoryLayers = (root: string) =>
   );
 
 const fakes = (
-  world: Omit<CrewWorld, "publish" | "holdSsh" | "signedIn">,
+  world: Omit<CrewWorld, "publish" | "holdSsh" | "signedIn" | "signedInAs">,
   events: Queue.Queue<Published>,
-  signIns: PubSub.PubSub<void>,
+  signIns: PubSub.PubSub<string>,
 ) =>
   Layer.mergeAll(
     repositoryLayers(world.root),
@@ -310,7 +313,13 @@ const fakes = (
     }),
     Layer.mock(ZeropsLogins)({
       resolve: (id) => Effect.map(Ref.get(world.logins), (logins) => logins.get(id)),
-      changes: Stream.fromPubSub(signIns).pipe(Stream.map(() => [])),
+      // Each sign-in names its login, signed in afresh (a new signer each time).
+      changes: Stream.fromPubSub(signIns).pipe(
+        Stream.zipWithIndex,
+        Stream.map(([id, index]) => [
+          { id, state: "authorized", signedInBy: `user-${index}` } as unknown as ZeropsLogin,
+        ]),
+      ),
     }),
     Layer.mock(ZeropsAgentAuth)({
       changes: Stream.fromPubSub(signIns).pipe(
@@ -428,7 +437,7 @@ export const withCrewEngines = <E>(
       NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-mate-")),
     );
     const events = yield* Queue.unbounded<Published>();
-    const signIns = yield* PubSub.unbounded<void>();
+    const signIns = yield* PubSub.unbounded<string>();
     const holds = yield* Ref.make<ReadonlyArray<PendingHold>>([]);
     const world: CrewWorld = {
       root,
@@ -471,7 +480,8 @@ export const withCrewEngines = <E>(
             release: Deferred.succeed(hold.release, undefined).pipe(Effect.asVoid),
           };
         }),
-      signedIn: PubSub.publish(signIns, undefined).pipe(Effect.asVoid),
+      signedIn: PubSub.publish(signIns, "claudeAgent").pipe(Effect.asVoid),
+      signedInAs: (id) => PubSub.publish(signIns, id).pipe(Effect.asVoid),
     };
     const installer = (options.installer ?? countingInstaller)(world.installs);
     const engine = () =>

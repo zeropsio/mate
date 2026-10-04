@@ -56,8 +56,8 @@ or with the switch off, it builds the inert engine (the feed says `off` once, ev
 Otherwise the live engine runs, and with no crew applied it opens no ssh session and installs
 nothing into the thread policy registries, so every thread's adapter options stay byte-identical.
 An applied crew, at boot or by Apply, installs the crew's thread policies and a watch on sign-ins
-for the engine's life: a queued task admission refused starts again once a login's sign-in or a
-signer changes, and one refused again keeps its _Can't start_ row with the new words.
+for the engine's life: a queued task admission refused starts again once its crewmate's login's
+sign-in or signer changes (another login's change leaves it waiting), and one refused again keeps its _Can't start_ row with the new words.
 
 ## 3. Where the code lives
 

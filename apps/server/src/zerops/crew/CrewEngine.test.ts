@@ -687,6 +687,31 @@ describe("CrewEngine", () => {
     ),
   );
 
+  it.live("a refused queued task waits through another login's sign-in", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* Ref.set(world.refusal, "not the login's signer");
+        yield* command({
+          _tag: "taskCreate",
+          owner: "backend",
+          title: "Refused",
+          brief: "Try it.",
+          doneWhen: "",
+          dependsOn: [],
+        });
+        yield* snapshotWhere((current) => current.attention.length === 1);
+        const tries = (yield* Ref.get(world.admitted)).length;
+        yield* world.signedInAs("codex");
+        yield* Effect.sleep("300 millis");
+        assert.deepStrictEqual(
+          [(yield* Ref.get(world.admitted)).length, (yield* latest).board.tasks[0]!.state],
+          [tries, "queued"],
+        );
+      }),
+    ),
+  );
+
   it.live("a refused queued task starts again once a login's sign-in changes", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
