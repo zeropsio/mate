@@ -21,6 +21,14 @@ and reconnects when the server is ready. The restart installs the release select
 install an unreleased development build. If the version is still incompatible, Mate explains that
 and offers a connection check instead of automatically restarting again.
 
+**Restart** in a Mate's menu asks for confirmation. When Mate knows of running chats, the
+confirmation names them and says restarting interrupts their turns. You can still restart.
+After boot, an interrupted chat names the completed Zerops restart, stop or deploy and who asked
+for it when that information is available. A container replacement is identified when its start
+time proves it happened during the turn; otherwise the chat gives Mate's restart time. Send a
+message to continue. Mate keeps the coding agent's saved conversation cursor, but recovery depends
+on that agent's saved session still being available.
+
 Signing out locks every Mate tab sharing this browser login. It does not sign out other devices or
 stop work already running in a project. Signing out of the Zerops website is separate from revoking
 Mate's access; you can revoke Mate's token in Zerops account settings.

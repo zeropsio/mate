@@ -1,3 +1,4 @@
+import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZeropsUpgradeRestart";
 /**
@@ -1261,7 +1262,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           case "confirm":
             return (
               <>
-                {quiet("Restarting interrupts work running in it.")}
+                <span className="min-w-0 truncate" data-zerops-surface="mate-subject">
+                  <RestartMateWarning
+                    name={candidate.project.name}
+                    projectId={candidate.project.id}
+                    environmentId={candidate.environmentId}
+                  />
+                </span>
                 <ZeropsMateVerb disabled={busy} label="Restart" onClick={upgradeRecovery.confirm} />
                 <ZeropsMateVerb label="Cancel" onClick={upgradeRecovery.cancel} />
               </>

@@ -64,6 +64,7 @@ import { isMateKind } from "@t3tools/shared/zeropsRoles";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { RestartMateConfirmation } from "./RestartMateConfirmation";
 import { useComposerDraftStore } from "../composerDraftStore";
 import {
   deriveZeropsRestartAction,
@@ -144,6 +145,7 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** Which Mate a dialog is about, and which dialog it is. */
 type MateDialog =
+  | { readonly kind: "restart"; readonly candidate: ZeropsCandidatePresentation }
   | { readonly kind: "rename"; readonly candidate: ZeropsCandidatePresentation }
   | {
       readonly kind: "face";
@@ -412,23 +414,34 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         project,
         serviceId: ZeropsServiceId.make(serviceId),
       };
+      setPress({ pending: true, error: null });
+      const isCurrent = captureAccountLifetime();
       // A container that failed is stopped and started: the platform refuses to restart it.
       void write(
         candidate.key,
         // The container's initAt is read before the verb: the restart is over once it moves.
         () =>
-          readContainerInitAt(candidate.key).then((initAt) =>
-            restartMateContainer(
-              candidate.service?.status,
-              mateRestartPorts({ client, runtime, service }),
-            ).then(() => {
-              intendContainer(candidate.key, { kind: "restart", initAt });
+          readContainerInitAt(candidate.key)
+            .then((initAt) =>
+              restartMateContainer(
+                candidate.service?.status,
+                mateRestartPorts({ client, runtime, service }),
+              ).then(() => {
+                if (isCurrent()) {
+                  intendContainer(candidate.key, { kind: "restart", initAt });
+                  setDialog(null);
+                  setPress(UNPRESSED);
+                }
+              }),
+            )
+            .catch((cause: unknown) => {
+              if (isCurrent()) setPress({ pending: false, error: zeropsErrorMessage(cause) });
+              throw cause;
             }),
-          ),
         refresh,
       );
     },
-    [activeOrganization, client, projectRef, refresh, runtime, write],
+    [activeOrganization, client, projectRef, refresh, runtime, setDialog, write],
   );
 
   /** HQ's API, where a Mate's face and its application live (ADR 0002). */
@@ -883,7 +896,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           id: "restart",
           label: restartAction.label,
           disabled: busy,
-          onSelect: () => restart(candidate),
+          onSelect: () => {
+            setPress(UNPRESSED);
+            setDialog({ kind: "restart", candidate });
+          },
         });
       }
       quick.push(...extraQuick);
@@ -986,7 +1002,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       finishSetup,
       finishSetupVerbFor,
       presses,
-      restart,
       rowInputFor,
       serverVersions,
       setDialog,
@@ -1014,6 +1029,19 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const close = useCallback(() => setDialog(null), [setDialog]);
   const dialogs = (
     <>
+      {dialog?.kind === "restart" ? (
+        <RestartMateConfirmation
+          projectId={dialog.candidate.project.id}
+          name={dialog.candidate.project.name}
+          environmentId={dialog.candidate.environmentId ?? linkTarget(dialog.candidate)}
+          pending={press.pending}
+          error={press.error}
+          onCancel={close}
+          onConfirm={() => {
+            restart(dialog.candidate);
+          }}
+        />
+      ) : null}
       {dialog?.kind === "rename" ? (
         <ZeropsRenameDialog
           initialValue={dialog.candidate.project.name}

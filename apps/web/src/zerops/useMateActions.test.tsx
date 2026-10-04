@@ -7,15 +7,16 @@
  */
 import { RegistryContext } from "@effect/atom-react";
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsMenuAction } from "../components/zerops/ZeropsProjectMenu";
-import { hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
+import { hqMatesViewAtom, hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
@@ -44,6 +45,20 @@ interface FaceDialogProps {
 const mock = vi.hoisted(() => ({
   /** HQ's `PATCH /api/mates/{projectId}`, a write here being the promise the test answers. */
   updateMate: vi.fn(),
+  restartContainer: vi.fn(),
+  threads: [] as Array<{
+    environmentId: string;
+    title: string;
+    session: { status: string; activeTurnId: string | null } | null;
+    latestTurn: { state: string } | null;
+  }>,
+  restartDialog: {
+    current: null as {
+      readonly body: string;
+      readonly onConfirm: () => void;
+      readonly onCancel: () => void;
+    } | null,
+  },
   /** The platform's rename of a project, through the account's commands. */
   renameProject: vi.fn(),
   /** *Finish setup*'s steps, as the hook hands them over. */
@@ -84,6 +99,23 @@ const mock = vi.hoisted(() => ({
         readonly apps: ReadonlyArray<{ readonly id: string; readonly name: string }>;
       };
     } | null,
+  },
+}));
+
+vi.mock("../state/entities", () => ({ useThreadShells: () => mock.threads }));
+vi.mock("./mateRestart", async (original) => ({
+  ...(await original<typeof import("./mateRestart")>()),
+  restartMateContainer: mock.restartContainer,
+  mateRestartPorts: () => ({}),
+}));
+vi.mock("./zeropsContainers", () => ({
+  readContainerInitAt: async () => null,
+  intendContainer: () => {},
+}));
+vi.mock("../components/zerops/ZeropsRestartMateDialog", () => ({
+  ZeropsRestartMateDialog: (props: NonNullable<typeof mock.restartDialog.current>) => {
+    mock.restartDialog.current = props;
+    return null;
   },
 }));
 
@@ -259,6 +291,10 @@ function Probe() {
 const mounted: ReactTestRenderer[] = [];
 beforeEach(() => {
   openAccountLifetime("user-ada");
+  mock.restartContainer.mockReset();
+  mock.restartContainer.mockResolvedValue(undefined);
+  mock.threads = [];
+  mock.restartDialog.current = null;
   mock.roleCode = "OWNER";
   mock.user = { id: "user-ada" };
   mock.markers.clear();
@@ -1124,4 +1160,124 @@ describe("useMateActions — Delete Mate takes its key with it", () => {
     });
     expect(mock.deletedTokens).toEqual(retired);
   });
+});
+
+describe("useMateActions — Restart", () => {
+  it.each([
+    {
+      label: "another chat on this Mate",
+      titles: ["Fix the build"],
+      expected: "Fen is working on Fix the build; restarting interrupts that turn.",
+    },
+    {
+      label: "several running chats",
+      titles: ["Fix the build", "Ship the app"],
+      expected:
+        "Fen is working on Fix the build and Ship the app; restarting interrupts those turns.",
+    },
+    { label: "idle Mate", titles: [], expected: "Restart Fen?" },
+  ])("confirms before restarting: $label", async ({ titles, expected }) => {
+    mock.threads = [
+      ...titles.map((title) => ({
+        environmentId: FEN.environmentId!,
+        title,
+        session: { status: "running", activeTurnId: "turn" },
+        latestTurn: { state: "running" },
+      })),
+      {
+        environmentId: QUINN.environmentId!,
+        title: "Other Mate's work",
+        session: { status: "running", activeTurnId: "turn" },
+        latestTurn: { state: "running" },
+      },
+      {
+        environmentId: FEN.environmentId!,
+        title: "Finished chat",
+        session: { status: "ready", activeTurnId: null },
+        latestTurn: { state: "completed" },
+      },
+    ];
+    mount();
+    act(() => {
+      verbs(FEN)
+        .find((verb) => verb.id === "restart")!
+        .onSelect();
+    });
+    expect(mock.restartContainer).not.toHaveBeenCalled();
+    expect(mock.restartDialog.current?.body).toBe(expected);
+    await act(async () => {
+      mock.restartDialog.current!.onConfirm();
+    });
+    expect(mock.restartContainer).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets the person cancel without restarting", () => {
+    mount();
+    act(() => {
+      verbs(FEN)
+        .find((verb) => verb.id === "restart")!
+        .onSelect();
+    });
+    expect(mock.restartDialog.current).not.toBeNull();
+    act(() => {
+      mock.restartDialog.current!.onCancel();
+    });
+    expect(mock.restartContainer).not.toHaveBeenCalled();
+  });
+});
+
+it("uses only live HQ readings for an unopened Mate's confirmation", () => {
+  for (const { current, online, expected } of [
+    {
+      label: "live",
+      current: true,
+      online: true,
+      expected: "Fen is working on Fix the build; restarting interrupts that turn.",
+    },
+    { label: "stale", current: false, online: true, expected: "Restart Fen?" },
+    { label: "offline", current: true, online: false, expected: "Restart Fen?" },
+  ]) {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: { organizationId: "org-acme" },
+    } as never);
+    registry.set(hqMatesViewAtom, {
+      organizationId: "org-acme",
+      current,
+      mates: new Map([
+        [
+          FEN.project.id,
+          {
+            presence: {
+              online,
+              since: "2026-10-03T22:00:00Z",
+              overview: online ? "live" : "stored",
+            },
+            threads: {
+              omitted: 0,
+              list: [
+                {
+                  id: ThreadId.make("thread-running"),
+                  title: "Fix the build",
+                  kind: "working",
+                  turnId: TurnId.make("turn"),
+                  turnState: "running",
+                  completedAt: null,
+                },
+              ],
+            },
+          } satisfies MateLiveView,
+        ],
+      ]),
+    });
+    mount(registry);
+    act(() => {
+      verbs(FEN)
+        .find((verb) => verb.id === "restart")!
+        .onSelect();
+    });
+    expect(mock.restartDialog.current?.body).toBe(expected);
+  }
 });
