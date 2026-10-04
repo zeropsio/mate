@@ -47,8 +47,18 @@ describe("backgroundLineOf", () => {
       opens: [],
     },
     {
-      name: "one failed: it opens onto how, never its title again",
+      name: "one failed, saying how in a few words: on the line, nothing to open",
       items: [item("Run the failing job", "failed", "Exit code 3")],
+      words: "Run the failing job failed",
+      where: "in the background · Exit code 3",
+      failed: true,
+      opens: [],
+    },
+    {
+      name: "one failed with a long report: it opens onto it, never its title again",
+      items: [
+        item("Run the failing job", "failed", "Error: listen EADDRINUSE\n  at Server.listen"),
+      ],
       words: "Run the failing job failed",
       where: "in the background",
       failed: true,

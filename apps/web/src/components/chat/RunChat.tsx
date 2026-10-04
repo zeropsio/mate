@@ -123,7 +123,11 @@ import {
   type LiveSlot as LiveSlotState,
 } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
-import { backgroundItemWord, type BackgroundLineModel } from "./backgroundLine.logic";
+import {
+  backgroundItemWord,
+  reportsInline,
+  type BackgroundLineModel,
+} from "./backgroundLine.logic";
 import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
 import { StatusBar } from "./StatusBar";
@@ -4342,7 +4346,8 @@ export function BackgroundLine({ line }: { readonly line: BackgroundLineModel })
       <span
         className={cn(
           "min-w-0 truncate",
-          failed ? "text-status-failed-text" : "text-foreground/85",
+          // Several: the dot says one failed, the words say which in their own.
+          failed && lone ? "text-status-failed-text" : "text-foreground/85",
         )}
       >
         {words}
@@ -4394,10 +4399,16 @@ export function BackgroundLine({ line }: { readonly line: BackgroundLineModel })
                     }
                   >
                     {` · ${backgroundItemWord(item)}`}
+                    {/* A one-line report reads on the row: "· failed · Exit code 3". */}
+                    {item.report !== null && !lone && reportsInline(item.report)
+                      ? ` · ${item.report}`
+                      : null}
                   </span>
                 </span>
               )}
-              {item.report === null ? null : <OutputBlock mono={item.mono} text={item.report} />}
+              {item.report === null || (!lone && reportsInline(item.report)) ? null : (
+                <OutputBlock mono={item.mono} text={item.report} />
+              )}
             </li>
           ))}
         </ul>

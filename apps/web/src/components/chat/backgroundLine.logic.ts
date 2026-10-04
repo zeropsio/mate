@@ -41,6 +41,11 @@ const STATE_WORD: Record<BackgroundState, string> = {
   failed: "failed",
 };
 
+/** A report short enough to read on its row — "Exit code 3" — rather than in a block under it. */
+export function reportsInline(report: string): boolean {
+  return !report.includes("\n") && report.length <= 60;
+}
+
 /** The word an item wears in the opened list. */
 export function backgroundItemWord(item: BackgroundItem): string {
   return STATE_WORD[item.state];
@@ -65,12 +70,15 @@ export function backgroundLineOf(
   const where = helpers ? "helper" : "in the background";
   const [only] = items;
   if (items.length === 1 && only !== undefined) {
+    // A short report reads on the line itself: nothing left to open.
+    const inline = only.report !== null && reportsInline(only.report);
+    const at = only.state === "running" ? `running ${where}` : where;
     return {
       words: only.state === "running" ? only.title : `${only.title} ${STATE_WORD[only.state]}`,
-      where: only.state === "running" ? `running ${where}` : where,
+      where: inline ? `${at} · ${only.report}` : at,
       failed: only.state === "failed",
       single: true,
-      items: only.report === null ? [] : [only],
+      items: only.report === null || inline ? [] : [only],
     };
   }
   const noun = helpers ? "helpers" : "background tasks";
