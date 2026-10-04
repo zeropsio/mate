@@ -4067,7 +4067,7 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
           status: null,
           face: "working",
           subject: "Add a /status page",
-          at: "2026-09-27T10:00:00.000Z",
+          at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
           snippet: "The page reads the build number.",
           unread: false,
           pausedUntil: undefined,
