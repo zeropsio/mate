@@ -691,3 +691,19 @@ describe("ZeropsSessionProvider when the platform refuses the handed-over token"
     expect(handovers(tab)).toEqual([]);
   });
 });
+
+describe("ZeropsSessionProvider in a dev build", () => {
+  it("signs in with a session an agent hands to window.__mateDev, refresh token and all", async () => {
+    const harness = harnessWith();
+    const tab = await mountTab(harness, harness.browser.openTab());
+    const login = harness.rest.issueSession("user-2");
+    await tab.run(() => window.__mateDev!.adoptSession(login));
+
+    expect(tab.session().status).toBe("signed-in");
+    expect(tab.accountId()).toBe("user-2");
+    expect(JSON.parse(storedSession(harness)!)).toEqual({
+      accessToken: login.accessToken,
+      refreshToken: login.refreshToken,
+    });
+  });
+});

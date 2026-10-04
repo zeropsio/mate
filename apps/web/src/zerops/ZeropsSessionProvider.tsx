@@ -53,6 +53,7 @@ import {
 
 import { randomUUID } from "../lib/utils";
 import { browserZeropsReauth } from "./reauth";
+import { installDevHooks } from "./devHooks";
 import { browserZeropsStorage } from "./storage";
 import { tokenWrites } from "./tokenWriteLock";
 
@@ -229,6 +230,14 @@ export function ZeropsSessionProvider({
   const user = machine.status === "signed-in" ? machine.user : null;
 
   useEffect(() => driver.start(), [driver]);
+  useEffect(
+    () =>
+      installDevHooks(async (session) => {
+        await client.adoptSession(session);
+        driver.signedIn(await client.fetchUser());
+      }),
+    [client, driver],
+  );
   // The next load's first frame (`bootFrame.ts`): the app's once the session is signed in, the
   // sign-in's once it is signed out. Written as the state changes, ahead of any reload it causes.
   useEffect(() => {
