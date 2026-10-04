@@ -334,6 +334,17 @@ function onWakeEvent(
   trigger: ZeropsSessionWake | "verify-again",
   ctx: ZeropsSessionContext,
 ): ZeropsSessionTransition {
+  // A background retry still in flight is no reason to wait: the person's check starts now, and
+  // whichever answers first decides.
+  if (state.status === "verifying" && state.retry === true && trigger === "verify-again")
+    return {
+      state: {
+        status: "verifying",
+        session: state.session,
+        backoff: backoffOn(state.backoff, RETRY_TRIGGER[trigger]),
+      },
+      effects: [{ kind: "cancel-schedule" }, { kind: "verify", session: state.session }],
+    };
   if (state.status === "unavailable") {
     if (onWake(state.retryAt, trigger, ctx) === "later")
       return { state, effects: [{ kind: "schedule", at: state.retryAt }] };
