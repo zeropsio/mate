@@ -137,7 +137,8 @@ async function load(count: number, details = false) {
         tree.unmount();
       });
       stop.abort();
-      await driving;
+      // An aborted stream ends with the abort's reason, as a fetch does.
+      await expect(driving).rejects.toMatchObject({ name: "AbortError" });
       registry.dispose();
     },
   };
