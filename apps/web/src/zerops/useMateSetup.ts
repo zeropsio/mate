@@ -2,8 +2,8 @@
  * A Mate's setup, read off its own `/mate/setup.json` (`mateSetup.ts`) while its view shows it
  * coming up: the same answer in any browser, and whether a browser watches or not. Read every few
  * seconds while there is something left to happen, and no more once its Git access, its runtimes
- * and its stand-up have settled. Nothing is read while the tab is hidden: a read that falls due
- * then waits for its return (527bbf7f7's rule).
+ * and its stand-up have settled. Nothing is read while the tab is hidden, the first read either: a
+ * read that falls due then waits for the tab's return (527bbf7f7's rule).
  *
  * `undefined` while nothing readable came back — not asked yet, on its way up, or an older Mate
  * whose server has no such route: the caller then reads the container's health, as it always
@@ -130,7 +130,7 @@ export function useMateSetup(origin: string | undefined): MateSetup | undefined 
       if (origin === undefined) return () => undefined;
       const held = observation(origin);
       held.listeners.add(listener);
-      if (held.listeners.size === 1) void ask(held);
+      if (held.listeners.size === 1) whenShownAsk(held);
       return () => {
         held.listeners.delete(listener);
         if (held.listeners.size === 0) stop(held);

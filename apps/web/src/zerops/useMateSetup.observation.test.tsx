@@ -54,6 +54,32 @@ describe("a setup still on its way", () => {
     };
   }
 
+  it("opened in a hidden tab, is read only once the tab is shown", async () => {
+    const tab = stubDocument();
+    tab.show("hidden");
+    try {
+      openAccountLifetime("setup-viewer");
+      source.read.mockResolvedValue({
+        kind: "setup",
+        setup: { at: "now", git: "done", runtimes: "none", standup: "done" },
+      });
+      function View() {
+        useMateSetup("https://mate.test");
+        return null;
+      }
+      await act(async () => {
+        trees.push(create(createElement(View)));
+      });
+      expect(source.read).not.toHaveBeenCalled();
+      await act(async () => {
+        tab.show("visible");
+      });
+      expect(source.read).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("is read every few seconds while shown, never while the tab is hidden, once on its return", async () => {
     vi.useFakeTimers();
     const tab = stubDocument();
