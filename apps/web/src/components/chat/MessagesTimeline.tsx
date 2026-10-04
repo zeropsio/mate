@@ -45,6 +45,8 @@ import {
   type ReactNode,
 } from "react";
 import { createEndFollow, type EndFollow } from "./timelineEndFollow";
+import { revealBy } from "./timelineReveal.logic";
+import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { FileDiff } from "@pierre/diffs/react";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
@@ -278,6 +280,8 @@ function TimelineLoadEarlierHeader({
   );
 }
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
+/** How long after a person's click what they opened is brought into view, while it eases open. */
+const REVEAL_FOR_MS = 700;
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
 /**
  * How far from the end growth at the end is still followed, in viewports.
@@ -926,6 +930,83 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       view.removeEventListener("pointercancel", onPointerUp);
     };
   }, [listRef, notePersonSession, timelineViewportElement]);
+
+  // What a person opens comes into view (`revealBy`): for a moment after
+  // their click, while it eases open, the list glides by as much as shows
+  // its foot over the composer, never its opener off the top; a scroll of
+  // theirs ends it.
+  const insetEndRef = useRef(contentInsetEndAdjustment);
+  useLayoutEffect(() => {
+    insetEndRef.current = contentInsetEndAdjustment;
+  }, [contentInsetEndAdjustment]);
+  useEffect(() => {
+    const wrapper = timelineViewportElement;
+    if (!wrapper || typeof requestAnimationFrame !== "function") return;
+    let frame = 0;
+    let until = 0;
+    let last = 0;
+    let opener: HTMLElement | null = null;
+    const stop = () => {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      opener = null;
+    };
+    const regionOf = (button: HTMLElement): HTMLElement | null => {
+      const id = button.getAttribute("aria-controls");
+      const controlled = id === null ? null : button.ownerDocument.getElementById(id);
+      return (
+        controlled ??
+        button.closest<HTMLElement>("[data-chat-row],[data-background-line],[data-timeline-row-id]")
+      );
+    };
+    const step = (now: number) => {
+      frame = 0;
+      const viewport = listRef.current?.getScrollableNode();
+      if (opener === null || !viewport || !opener.isConnected || now > until) {
+        stop();
+        return;
+      }
+      frame = requestAnimationFrame(step);
+      if (opener.getAttribute("aria-expanded") !== "true") return;
+      const region = regionOf(opener);
+      if (region === null) return;
+      const box = viewport.getBoundingClientRect();
+      // Inside a run's own scroll, what shows of it ends at that scroll's foot.
+      const inner = region.closest<HTMLElement>("[data-run-scroll]");
+      const bottom = Math.min(
+        region.getBoundingClientRect().bottom,
+        inner?.getBoundingClientRect().bottom ?? Number.POSITIVE_INFINITY,
+      );
+      const by = revealBy({
+        openerTop: opener.getBoundingClientRect().top,
+        regionBottom: bottom,
+        view: { top: box.top, bottom: box.bottom - insetEndRef.current },
+      });
+      const dt = last === 0 ? 1000 / 60 : now - last;
+      last = now;
+      if (by > 0.5) viewport.scrollTop += approach(0, by, dt, FOLLOW_TAU_MS);
+    };
+    const onClick = (event: globalThis.MouseEvent) => {
+      const button =
+        event.target instanceof Element
+          ? event.target.closest<HTMLElement>("[aria-expanded]")
+          : null;
+      if (button === null || button.getAttribute("aria-expanded") === "true") return;
+      opener = button;
+      until = performance.now() + REVEAL_FOR_MS;
+      last = 0;
+      if (frame === 0) frame = requestAnimationFrame(step);
+    };
+    wrapper.addEventListener("click", onClick, { capture: true });
+    wrapper.addEventListener("wheel", stop, { passive: true });
+    wrapper.addEventListener("touchmove", stop, { passive: true });
+    return () => {
+      stop();
+      wrapper.removeEventListener("click", onClick, { capture: true });
+      wrapper.removeEventListener("wheel", stop);
+      wrapper.removeEventListener("touchmove", stop);
+    };
+  }, [listRef, timelineViewportElement]);
 
   // Where the list stood at the last read: what tells which way it moved since.
   const lastReadingRef = useRef<TimelineScrollReading | null>(null);
