@@ -253,6 +253,7 @@ describe("what a release compares, from HQ's records", () => {
               planned: true,
               ended: true,
               endedAt: "2026-10-02T10:04:00.000Z",
+              landed: false,
               leftOut:
                 owned === "left out"
                   ? [
@@ -282,6 +283,7 @@ describe("what a release compares, from HQ's records", () => {
       planned: true,
       ended: false,
       endedAt: null,
+      landed: false,
       leftOut: [],
     };
     const { rollouts } = releaseDeploys(

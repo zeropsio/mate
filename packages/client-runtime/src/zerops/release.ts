@@ -270,27 +270,31 @@ export interface ReleaseAttempt {
 }
 
 /**
- * Where HQ's deploy of the newest release to production stands, by its rollout in each production
- * environment (`HqEnvironment.release`, one per production): on its way until every production's
- * rollout of it ended — and before HQ streams one, for HQ tagged it and deploys it — ended once
- * every one did. Nothing for a release HQ refused or a snapshot, which deploy nothing, for a
- * project with no production environment to deploy it to, and where HQ tells no release's end.
- * HQ follows each build to its end, so nothing here waits on a clock.
+ * Where HQ's deploy of the newest release to production stands, by what HQ streams of it in each
+ * production environment (`HqEnvironment.release`, one per production): on its way until every
+ * production's word on it says it ended; ended then — landed where every one says all of it went
+ * live. A release HQ ended with no rollout of its own (made before rollouts were, or recorded from
+ * git) is ended. Nothing where HQ says nothing of this release — a production naming another, or
+ * none, an HQ that tells no release's end, no production at all — and nothing for a release HQ
+ * refused or a snapshot, which deploy nothing: what HQ has not said is never on its way. HQ follows
+ * each build to its end, so nothing here waits on a clock.
  */
 function releaseDeploy(input: {
   readonly newest: ReleaseAttempt | undefined;
-  /** Each production environment's newest release rollout; `undefined` where HQ tells none. */
+  /** Each production environment's newest release; `undefined` where HQ tells none. */
   readonly rollouts: ReadonlyArray<ReleaseRollout | null | undefined>;
-}): { readonly tag: string; readonly ended: boolean } | undefined {
+}): { readonly tag: string; readonly ended: boolean; readonly landed: boolean } | undefined {
   const { newest } = input;
   if (newest === undefined || newest.verdict === "refused" || newest.snapshot === true)
     return undefined;
-  if (input.rollouts.length === 0 || input.rollouts.every((rollout) => rollout === undefined))
-    return undefined;
-  const its = input.rollouts.filter((rollout) => rollout?.tag === newest.tag);
+  const its = input.rollouts.filter(
+    (rollout): rollout is ReleaseRollout => rollout != null && rollout.tag === newest.tag,
+  );
+  if (its.length === 0) return undefined;
   return {
     tag: newest.tag,
-    ended: its.length > 0 && its.every((rollout) => rollout?.ended === true),
+    ended: its.every((rollout) => rollout.ended),
+    landed: its.every((rollout) => rollout.landed),
   };
 }
 
@@ -300,10 +304,14 @@ export function releaseInFlight(input: Parameters<typeof releaseDeploy>[0]): str
   return deploy === undefined || deploy.ended ? undefined : deploy.tag;
 }
 
-/** The newest release, once HQ ended its deploy to production (`releaseDeploy`), or `undefined`. */
-export function releaseEnded(input: Parameters<typeof releaseDeploy>[0]): string | undefined {
+/**
+ * The newest release, once HQ ended its deploy to production with some of it not live
+ * (`releaseDeploy`), or `undefined`: one that landed waits for production's own word that it runs
+ * it, never reads as stalled before.
+ */
+export function releaseStalled(input: Parameters<typeof releaseDeploy>[0]): string | undefined {
   const deploy = releaseDeploy(input);
-  return deploy?.ended === true ? deploy.tag : undefined;
+  return deploy?.ended === true && !deploy.landed ? deploy.tag : undefined;
 }
 
 /** The one word beside a release's dot (R5). */

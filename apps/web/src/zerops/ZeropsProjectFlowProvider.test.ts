@@ -434,16 +434,17 @@ describe("joinProjectFlows", () => {
     planned: true,
     ended,
     endedAt: ended ? "2026-09-24T11:20:00Z" : null,
+    landed: false,
     leftOut: [],
   });
   it.each([
     {
-      name: "a release HQ has not streamed the rollout of is on its way",
+      name: "a release HQ names nothing of is never on its way",
       latest: undefined,
       runs: RUNNING,
       release: null,
-      inFlight: "v0.1.1",
-      ended: undefined,
+      inFlight: undefined,
+      stalled: undefined,
     },
     {
       name: "a rollout HQ still follows holds it, whatever production runs",
@@ -451,7 +452,7 @@ describe("joinProjectFlows", () => {
       runs: MERGED,
       release: rollout("v0.1.1", false),
       inFlight: "v0.1.1",
-      ended: undefined,
+      stalled: undefined,
     },
     {
       name: "a job failed and the rollout runs on: still on its way",
@@ -459,27 +460,27 @@ describe("joinProjectFlows", () => {
       runs: RUNNING,
       release: rollout("v0.1.1", false),
       inFlight: "v0.1.1",
-      ended: undefined,
+      stalled: undefined,
     },
     {
-      name: "HQ ended its rollout: no longer on its way",
+      name: "HQ ended its rollout with some of it not live: stalled",
       latest: record(MERGED, "refused", "2026-09-24T10:01:00Z"),
       runs: RUNNING,
       release: rollout("v0.1.1", true),
       inFlight: undefined,
-      ended: "v0.1.1",
+      stalled: "v0.1.1",
     },
     {
-      name: "an older release's ended rollout is no end of the newest",
+      name: "an older release's rollout says nothing of the newest",
       latest: undefined,
       runs: RUNNING,
       release: rollout("v0.1.0", true),
-      inFlight: "v0.1.1",
-      ended: undefined,
+      inFlight: undefined,
+      stalled: undefined,
     },
-  ])("$name", ({ latest, runs, release, inFlight, ended }) => {
+  ])("$name", ({ latest, runs, release, inFlight, stalled }) => {
     const flow = flowWithProductionDeploy(latest, runs, release);
-    expect([flow?.release.inFlight, flow?.release.ended]).toEqual([inFlight, ended]);
+    expect([flow?.release.inFlight, flow?.release.stalled]).toEqual([inFlight, stalled]);
   });
 });
 

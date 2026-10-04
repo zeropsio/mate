@@ -216,7 +216,8 @@ export interface EnvironmentView {
   readonly jobs: ReadonlyArray<JobView>;
   /**
    * A production's: where its application's newest release stands there, from that release's
-   * rollout and its jobs whatever {@link JOBS_SHOWN} lists; none before a release, and for a stage.
+   * rollout and its jobs whatever {@link JOBS_SHOWN} lists — ended where it has none of its own;
+   * none before a release, and for a stage.
    */
   readonly release: ReleaseRollout | null;
   /** Whether the rollout its attach asked for has ended; none where HQ did not bring it up. */
@@ -1355,48 +1356,70 @@ export const structureLayer = (options: {
               ORDER BY j.project_id, j.id DESC`;
             // Each production's newest release, as its rollout stands there: ended once every job
             // it asked for there ended, and every job of a commit it left out as under way there.
+            // Each production's newest release by version, as its rollout stands there: ended once
+            // every job it asked for there ended, and every job of a commit it left out as under way
+            // there; landed where each of those went live and its plan said nothing it could not do.
+            // A release with no rollout of its own — made before rollouts were, recorded from git,
+            // or a snapshot — deploys nothing more: ended as it was made.
             const rollouts = yield* sql<{
               readonly project_id: string;
-              readonly id: string;
+              readonly id: string | null;
               readonly tag: string;
               readonly planned: boolean;
               readonly ended: boolean;
               readonly ended_at: string | null;
+              readonly landed: boolean;
               readonly left_out: ReleaseRollout["leftOut"];
             }>`
               WITH newest AS (
-                SELECT DISTINCT ON (r.app_id) r.id, r.app_id, r.tag, r.planned_at, r.left_out
-                FROM hq_rollout r WHERE r.cause = 'release'
+                SELECT DISTINCT ON (h.app_id) h.app_id, h.tag, h.released_at
+                FROM hq_release h WHERE h.state = 'approved'
+                ORDER BY h.app_id, string_to_array(substr(h.tag, 2), '.')::int[] DESC
+              ),
+              rollout AS (
+                SELECT DISTINCT ON (r.app_id) r.app_id, r.id, r.planned_at, r.note, r.left_out
+                FROM newest n JOIN hq_rollout r
+                  ON r.app_id = n.app_id AND r.cause = 'release' AND r.tag = n.tag
                 ORDER BY r.app_id, r.id DESC
               ),
               left_out AS (
-                SELECT n.id AS rollout_id, l.project_id, l.service, l.sha, l.job, l.reason
-                FROM newest n,
-                     jsonb_to_recordset(n.left_out)
+                SELECT r.id AS rollout_id, l.project_id, l.service, l.sha, l.job, l.reason
+                FROM rollout r,
+                     jsonb_to_recordset(r.left_out)
                        AS l(project_id text, service text, sha text, job text, reason text)
               ),
               ends AS (
-                SELECT j.rollout_id, j.project_id, j.ended_at
-                FROM hq_deploy_job j JOIN newest n ON n.id = j.rollout_id
+                SELECT j.rollout_id, j.project_id, j.state, j.ended_at
+                FROM hq_deploy_job j JOIN rollout r ON r.id = j.rollout_id
                 UNION ALL
-                SELECT l.rollout_id, l.project_id, j.ended_at
+                SELECT l.rollout_id, l.project_id, j.state, j.ended_at
                 FROM left_out l JOIN hq_deploy_job j ON j.id = l.job::bigint
               ),
               standing AS (
-                SELECT e.project_id, n.id, n.tag, n.planned_at,
-                       n.planned_at IS NOT NULL AND NOT EXISTS (
+                SELECT e.project_id, n.tag, n.released_at, r.id, r.planned_at, r.note,
+                       r.id IS NULL OR (r.planned_at IS NOT NULL AND NOT EXISTS (
                          SELECT 1 FROM ends x
-                         WHERE x.rollout_id = n.id AND x.project_id = e.project_id
-                           AND x.ended_at IS NULL) AS ended,
+                         WHERE x.rollout_id = r.id AND x.project_id = e.project_id
+                           AND x.ended_at IS NULL)) AS ended,
+                       r.id IS NOT NULL AND r.planned_at IS NOT NULL AND r.note IS NULL
+                         AND NOT EXISTS (
+                           SELECT 1 FROM ends x
+                           WHERE x.rollout_id = r.id AND x.project_id = e.project_id
+                             AND x.state <> 'live') AS landed,
                        (SELECT max(x.ended_at) FROM ends x
-                        WHERE x.rollout_id = n.id AND x.project_id = e.project_id) AS last_ended
-                FROM hq_environment e JOIN newest n ON n.app_id = e.app_id
+                        WHERE x.rollout_id = r.id AND x.project_id = e.project_id) AS last_ended
+                FROM hq_environment e
+                JOIN newest n ON n.app_id = e.app_id
+                LEFT JOIN rollout r ON r.app_id = n.app_id
                 WHERE e.tier = 'production'
               )
-              SELECT s.project_id, s.id::text AS id, s.tag, s.planned_at IS NOT NULL AS planned,
-                     s.ended,
+              SELECT s.project_id, s.id::text AS id, s.tag,
+                     s.id IS NULL OR s.planned_at IS NOT NULL AS planned,
+                     s.ended, s.landed,
                      CASE WHEN s.ended
-                       THEN ${sql.literal(iso("GREATEST(s.planned_at, s.last_ended)"))} END
+                       THEN ${sql.literal(
+                         iso("COALESCE(GREATEST(s.planned_at, s.last_ended), s.released_at)"),
+                       )} END
                        AS ended_at,
                      COALESCE((
                        SELECT jsonb_agg(jsonb_build_object('service', l.service, 'sha', l.sha,
@@ -1415,6 +1438,7 @@ export const structureLayer = (options: {
                     planned: row.planned,
                     ended: row.ended,
                     endedAt: row.ended_at,
+                    landed: row.landed,
                     leftOut: row.left_out,
                   };
             };

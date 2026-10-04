@@ -90,10 +90,16 @@ export const HqEnvironment = Schema.Struct({
   keyInvalid: Schema.Boolean,
   /** Its newest jobs, newest first, and each service's newest live one where it is older. */
   jobs: Schema.Array(HqJob),
-  /** A production's: where its application's newest release stands there; none before one, and for a stage. */
-  release: Schema.NullOr(ReleaseRollout),
-  /** Whether the rollout its attach asked for has ended; none where HQ did not bring it up. */
-  birth: Schema.NullOr(EnvironmentBirth),
+  /**
+   * A production's: where its application's newest release stands there; none before one, and for
+   * a stage. Absent from a Core older than this client: not known, never on its way.
+   */
+  release: Schema.optionalKey(Schema.NullOr(ReleaseRollout)),
+  /**
+   * Whether HQ is still bringing it up; none where HQ did not. Absent from a Core older than this
+   * client: not known, never coming up.
+   */
+  birth: Schema.optionalKey(Schema.NullOr(EnvironmentBirth)),
   /** What the reader may do with it (`@t3tools/shared/hqOffers`); absent where HQ sent none. */
   can: Schema.optional(HqOffers),
 });

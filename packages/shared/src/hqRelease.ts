@@ -75,18 +75,23 @@ export const ReleaseListResponse = Schema.Struct({ releases: Schema.Array(Releas
 export type ReleaseListResponse = typeof ReleaseListResponse.Type;
 
 /**
- * Where HQ's deploy of an application's newest release stands in one production environment, as
- * its structure streams it beside the environment: derived from the release's rollout and its jobs
- * there, never stored. Planned once a leading Core asked for its jobs; ended once every job it
- * asked for there ended, and every job of a commit it found already under way there — what it left
- * out, followed to that job — ended too. A snapshot release deploys nothing and has no rollout.
+ * Where HQ's deploy of an application's newest release — by version, approved — stands in one
+ * production environment, as its structure streams it beside the environment: derived from the
+ * release's rollout and its jobs there, never stored. Planned once a leading Core asked for its
+ * jobs; ended once every job it asked for there ended, and every job of a commit it found already
+ * under way there — what it left out, followed to that job — ended too; landed where each of those
+ * went live and its plan left nothing undone. A release with no rollout of its own — made before
+ * rollouts were, recorded from git, or a snapshot — deploys nothing more: ended as it was made, and
+ * never landed by HQ's word.
  */
 export const ReleaseRollout = Schema.Struct({
-  id: Schema.String,
+  /** Its rollout; none where the release has none of its own. */
+  id: Schema.NullOr(Schema.String),
   /** The release it deploys. */
   tag: Schema.String,
   planned: Schema.Boolean,
   ended: Schema.Boolean,
+  landed: Schema.Boolean,
   /** When its last job there ended, or when it was planned where it asked for none; ISO 8601. */
   endedAt: Schema.NullOr(Schema.String),
   /** Each service it asked nothing for there, and why: the job of the commit under way, if any. */

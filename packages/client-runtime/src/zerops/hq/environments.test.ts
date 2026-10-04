@@ -116,10 +116,19 @@ describe("environmentsOf", () => {
         planned: true,
         ended: false,
         endedAt: null,
+        landed: false,
         leftOut: [{ service: "api", sha: A, job: "5", reason: "a job of aaaaaaa is under way" }],
       },
     };
     expect(environmentsOf([production])).toEqual([production]);
+  });
+
+  // Review (client #4): a Core older than this client tells neither where a release stands nor
+  // whether it is bringing an environment up. Its environments are still read — what it does not
+  // say is not known, never on its way and never coming up.
+  it("reads an environment from a Core that tells no release and no birth", () => {
+    const { release: _release, birth: _birth, ...older } = STAGE;
+    expect(environmentsOf([older])).toEqual([older]);
   });
 
   // HQ and the client ship together: a set in the shape before jobs is one this build cannot read.

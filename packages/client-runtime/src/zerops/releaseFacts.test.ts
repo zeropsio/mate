@@ -73,8 +73,8 @@ interface Step {
   readonly inFlight: string | undefined;
   readonly suggestion: string;
   readonly releases: ReadonlyArray<FlowReleaseRow>;
-  /** The release HQ ended its deploy of (`releaseEnded`). */
-  readonly ended?: string;
+  /** The release HQ ended its deploy of with some of it not live (`releaseStalled`). */
+  readonly stalled?: string;
   /** The minute clock the review's words are read by; `NOW` unless the step is later. */
   readonly nowMs?: number;
 }
@@ -108,7 +108,7 @@ function walk(steps: ReadonlyArray<Step>) {
       held,
       press: step.press,
       inFlight: step.inFlight,
-      ended: step.ended,
+      stalled: step.stalled,
       suggestion: step.suggestion,
       releases: step.releases,
     });
@@ -328,7 +328,7 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
     nowMs: NOW + minutes * 60_000,
     // HQ's rollout of it says whether it is on its way (`releaseInFlight`, `releaseEnded`).
     inFlight: ended ? undefined : "v0.1.1",
-    ...(ended ? { ended: "v0.1.1" } : {}),
+    ...(ended ? { stalled: "v0.1.1" } : {}),
     moment: tagged.standing === "live" ? after : before,
     releases: [tagged, row("v0.1.0", tagged.standing === "live" ? undefined : "live")],
   });
@@ -444,7 +444,7 @@ describe("a followed release ends when a newer one sits above it", () => {
     const steps = walk([
       tagging,
       onItsWay,
-      { ...onItsWay, nowMs: NOW + 31 * 60_000, inFlight: undefined, ended: "v0.1.1" },
+      { ...onItsWay, nowMs: NOW + 31 * 60_000, inFlight: undefined, stalled: "v0.1.1" },
       above(33, row("v0.1.2", undefined), [v011, row("v0.1.0", "live")], "v0.1.0"),
       above(40, row("v0.1.2", "live"), [v011, row("v0.1.0", undefined)], "v0.1.2"),
       above(120, row("v0.1.2", "live"), [v011, row("v0.1.0", undefined)], "v0.1.2"),
@@ -667,7 +667,7 @@ it("ends a saved snapshot without waiting for production or starting a clock", (
     held: undefined,
     press: { kind: "done" },
     inFlight: undefined,
-    ended: undefined,
+    stalled: undefined,
     suggestion: "v0.1.1",
     releases: [tagged],
   });

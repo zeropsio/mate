@@ -31,8 +31,8 @@ import {
   nameStopByRelease,
   readZeropsMembership,
   releaseDeploys,
-  releaseEnded,
   releaseInFlight,
+  releaseStalled,
   releaseCandidate,
   releaseOffer,
   releaseReads,
@@ -346,7 +346,7 @@ export function joinProjectFlows(input: {
     const newest = records?.[0] === undefined ? undefined : flowReleaseOf(records[0]);
     const deploy = {
       inFlight: releaseInFlight({ newest, rollouts }),
-      ended: releaseEnded({ newest, rollouts }),
+      stalled: releaseStalled({ newest, rollouts }),
     };
     const repos = input.repos.get(group.groupId);
     const recipe = input.recipes.get(group.groupId);
@@ -355,7 +355,7 @@ export function joinProjectFlows(input: {
     const key = JSON.stringify([
       group.groupId,
       deploy.inFlight ?? null,
-      deploy.ended ?? null,
+      deploy.stalled ?? null,
       changes === undefined ? (input.changesFailure ?? null) : null,
       [...withheld],
       repos ?? null,
@@ -416,8 +416,8 @@ function projectFlow(
     readonly permission: ReleaseGate | undefined;
     readonly live: ReleaseLive;
   },
-  /** The newest release on its way to production, or ended there (`releaseInFlight`, `releaseEnded`). */
-  deploy: { readonly inFlight: string | undefined; readonly ended: string | undefined },
+  /** The newest release on its way to production, or stalled there (`releaseInFlight`, `releaseStalled`). */
+  deploy: { readonly inFlight: string | undefined; readonly stalled: string | undefined },
   /** Why the grant withholds each of the group's projects it withholds alone. */
   withheld: ReadonlyMap<string, string>,
 ): ZeropsProjectFlow {
