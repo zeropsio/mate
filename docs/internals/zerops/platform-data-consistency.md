@@ -178,7 +178,8 @@ fallback for registration churn. Never recycle another account's receiver.
 A shared physical observation is admitted once, using a still-current dependent selected when
 ingestion runs. A failed interest retains no automatic retry budget or intermediate recovering state.
 A late successful completion cannot move a failed or paused interest back to observing; a failed
-hydration or metadata read that answers on its retry lifts only the failure it caused.
+hydration or metadata read that answers on its retry lifts only the failure it caused, as does a
+read a 429 held when it answers, or when the hold ends with its entity no longer wanted.
 
 Registration requests share one account-wide concurrency bound. The organization
 inventory's own registrations, its project feed and project list, are admitted
