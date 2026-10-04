@@ -348,8 +348,10 @@ origin, 20 s per attempt. A Mate no lease holds is **parked**: the registry clos
 stops its renewal, and keeps its registration, kept session and cached data; unparked, it connects
 on the session it kept, through no door. A route or an action no record or descriptor names finds
 its Mate through HQ's index (`hqIndex`, environment → project) with no descriptor sweep. A command
-on a parked Mate is sent once its Mate connects, or after 30 s regardless (`whileMateHeld`). After five consecutive automatic failures a target retries every 5 minutes
-until a user retry or an input change. Mint budgets are per tab: a burst of 10 door mints refilled
+on a parked Mate is sent once its Mate connects, or after 30 s regardless (`whileMateHeld`). A transient failure is retried on the ladder (2, 4, 8, 15, 30, 60 s,
+jittered; a visible wake or the network back retries at once); after five consecutive automatic
+failures a target nobody looks at retries every 5 minutes, the route's stays on the ladder — until
+a user retry or an input change, in this load only. A definitive refusal is never retried. Mint budgets are per tab: a burst of 10 door mints refilled
 at 30 a minute, and the mint for a Mate the person asked for never waits (`doorThrowaway.ts`). A
 refusal (door role refusal, a server below the floor, a project mismatch) waits for an input change;
 descriptor `zerops.identity = failed` is retryable, not a refusal. Credential rotation writes

@@ -805,6 +805,72 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
   ])("$case", ({ page, cameUp, failuresSinceConnect = 0, expected }) => {
     expect(mateArrivalShown({ page, cameUp, failuresSinceConnect })).toEqual(expected);
   });
+
+  // The lead, 2026-10-05: a new Mate whose container is ready and whose exchanges keep failing is
+  // healed on its own, and says so with Try now once its held failures are spent — in the window
+  // that made it too, never "Almost there." for good.
+  it("a new Mate whose container is ready and whose exchanges keep failing says so, with Try now", () => {
+    const KEY = "project-wren:zcp";
+    const GO = {
+      ...IDLE_GUARDS,
+      want: true,
+      routeTarget: true,
+      visible: true,
+      postGrant: true,
+      identityMint: { allowed: true },
+      budget: true,
+    } as const;
+    let nowMs = 1_000;
+    const step = (machine: EnvironmentMachine, event: EnvironmentEvent): EnvironmentMachine => {
+      nowMs = event.type === "TICK" && machine.timer !== null ? machine.timer.wall : nowMs + 1_000;
+      return transitionEnvironment(machine, event, {
+        now: { wall: nowMs, mono: nowMs },
+        random: () => 0.5,
+      }).state;
+    };
+    let machine: EnvironmentMachine = initialEnvironment({ record: null });
+    for (const event of [
+      { type: "GUARDS", guards: GO },
+      { type: "CONTAINER", container: { level: "ready" } },
+      { type: "PRESENCE", presence: { kind: "present", origin: "https://zcp-wren.example.test" } },
+    ] satisfies ReadonlyArray<EnvironmentEvent>) {
+      machine = step(machine, event);
+    }
+    const linkOf = (current: EnvironmentMachine) =>
+      mateLink({
+        key: KEY,
+        projectId: "project-wren",
+        machines: new Map([[KEY, current]]),
+        index: { serving: new Map(), reported: new Map() },
+        records: [],
+        registered: new Set(),
+      });
+    const holds: Array<boolean> = [];
+    for (let failure = 1; failure <= 6; failure += 1) {
+      if (machine.credential.kind !== "exchanging") throw new Error("no exchange");
+      machine = step(machine, {
+        type: "EXCHANGE_FAILED",
+        attempt: machine.credential.attempt,
+        failure: { class: "retryable", cause: { kind: "network" } },
+        descriptor: null,
+      });
+      holds.push(arrivalLinkHolds(linkOf(machine)));
+      // Still retried on its own: the next try is on the ladder.
+      expect(machine.credential.kind).toBe("backoff");
+      if (failure < 6) machine = step(machine, { type: "TICK" });
+    }
+    // The board through its first three failures, then its words: never "Almost there." for good.
+    expect(holds).toEqual([true, true, true, false, false, false]);
+
+    const link = linkOf(machine);
+    const page = { kind: "reaching", reachability: link.reachability } as const;
+    expect(
+      mateArrivalShown({ page, cameUp: true, failuresSinceConnect: link.failuresSinceConnect }),
+    ).toBeUndefined();
+    const phrase = mateOpeningPhrase(page, { nowMs, mateName: "Wren" });
+    expect(phrase.text).toMatch(/^This Mate isn't answering\. Trying again in \d+ s\.$/u);
+    expect(phrase.actions).toEqual(["try-now"]);
+  });
 });
 
 // A first build that failed leaves the Mate's service READY_TO_DEPLOY for good (the ledger,
