@@ -116,6 +116,7 @@ import { calmClockMs } from "./nowLineCalm.logic";
 import { useCalmLine } from "./useCalmLine";
 import {
   SLOT_MAX_ROWS,
+  slotClock,
   slotHolds,
   slotHoldsIn,
   slotRunningPast,
@@ -3250,6 +3251,22 @@ function LiveSlot({
     .map((line, index, all) =>
       line.theirs === true && all[index - 1]?.asks === true ? { ...line, pairs: true } : line,
     );
+  // The clock counts what the first line shows, never the run beside a step
+  // (`slotClock`); a wait on the person stands it still.
+  const firstDrawn = lines.length === 0 ? undefined : drawn[0];
+  const clock = slotClock(
+    slot,
+    firstDrawn === undefined ? null : { key: firstDrawn.entry.key, at: firstDrawn.item.at },
+  );
+  const ticker: RunStatus | null =
+    clock === null
+      ? null
+      : {
+          ...status,
+          startedAt: clock.from,
+          waitedMs: 0,
+          waitingSince: clock.stopped ?? status.waitingSince,
+        };
   // Which card each call stands in, kept from draw to draw (`slotEntries`).
   const [cards, setCards] = useState<ReadonlyMap<string, string>>(NO_CARDS);
   const slotted = slotEntries(lines, cards);
@@ -3339,7 +3356,7 @@ function LiveSlot({
         </SlotStandsOpenContext>
       </InSlotContext>
       <span className="run-slot-clock">
-        <RunTicker status={status} />
+        {ticker === null ? null : <RunTicker status={ticker} />}
       </span>
       {/* What a screen reader hears: what the Mate is on, as it changes. */}
       <span className="sr-only" role="status">

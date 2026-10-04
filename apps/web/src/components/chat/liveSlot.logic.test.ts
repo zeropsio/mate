@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   SLOT_HOLD_MS,
   SLOT_MIN_SHOW_MS,
+  slotClock,
   slotDue,
   slotHolds,
   slotHoldsIn,
@@ -310,5 +311,52 @@ describe("the live slot's schedule", () => {
     moments.push({ at: 2000, live: ["build"], record: [...done] });
     const played = play(moments, 4000);
     expect(played.shown.build! - 2000).toBeLessThanOrEqual(SLOT_MIN_SHOW_MS);
+  });
+});
+
+// Bodhi: "Screenshot the Atlas with the new dock · 1:57" settled as 1m 11s —
+// the clock beside a step was the run's. It counts what the slot's first
+// line shows, so the row lands with its own time in the same column.
+describe("slotClock", () => {
+  const slot = (entries: LiveSlot["entries"], quietSince: number | null = null): LiveSlot => ({
+    entries,
+    live: [],
+    seen: new Set(),
+    quietSince,
+  });
+  it.each<{
+    readonly name: string;
+    readonly slot: LiveSlot;
+    readonly first: { readonly key: string; readonly at: string } | null;
+    readonly clock: { readonly from: string; readonly stopped: string | null } | null;
+  }>([
+    {
+      name: "a step running: since it started",
+      slot: slot([{ key: "s1", shownAt: 1000, endedAt: null, riders: [] }]),
+      first: { key: "s1", at: "2026-10-04T10:00:00.000Z" },
+      clock: { from: "2026-10-04T10:00:00.000Z", stopped: null },
+    },
+    {
+      name: "a step that ended, holding its place: stopped where it ended",
+      slot: slot([
+        { key: "s1", shownAt: 1000, endedAt: Date.parse("2026-10-04T10:01:11.000Z"), riders: [] },
+      ]),
+      first: { key: "s1", at: "2026-10-04T10:00:00.000Z" },
+      clock: { from: "2026-10-04T10:00:00.000Z", stopped: "2026-10-04T10:01:11.000Z" },
+    },
+    {
+      name: "a note first seen whole: no time of its own",
+      slot: slot([{ key: "n1", shownAt: 5000, endedAt: 5000, riders: [] }]),
+      first: { key: "n1", at: "2026-10-04T10:00:00.000Z" },
+      clock: null,
+    },
+    {
+      name: "Thinking: since the quiet began",
+      slot: slot([], Date.parse("2026-10-04T10:02:00.000Z")),
+      first: null,
+      clock: { from: "2026-10-04T10:02:00.000Z", stopped: null },
+    },
+  ])("$name", ({ slot: given, first, clock }) => {
+    expect(slotClock(given, first)).toEqual(clock);
   });
 });

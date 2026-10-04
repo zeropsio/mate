@@ -292,3 +292,26 @@ export function slotHoldsIn(slot: LiveSlot, record: ReadonlyArray<string>): Read
   for (const key of record) if (!slot.seen.has(key)) holds.add(key);
   return holds;
 }
+
+/**
+ * What the slot's clock counts: what its first line shows — a call since it
+ * started, stopped where it ended while it holds its place, "Thinking" since
+ * the quiet began — so a row lands with its own time in the clock's column
+ * (Bodhi: a step beside "1:57", the run's clock, settled as 1m 11s). A thing
+ * first seen whole has no time of its own: null.
+ */
+export function slotClock(
+  slot: LiveSlot,
+  first: { readonly key: string; readonly at: string } | null,
+): { readonly from: string; readonly stopped: string | null } | null {
+  if (first === null) {
+    return slot.quietSince === null
+      ? null
+      : { from: new Date(slot.quietSince).toISOString(), stopped: null };
+  }
+  const entry = slot.entries.find((candidate) => candidate.key === first.key);
+  if (entry === undefined) return null;
+  if (entry.endedAt === null) return { from: first.at, stopped: null };
+  if (entry.endedAt <= entry.shownAt) return null;
+  return { from: first.at, stopped: new Date(entry.endedAt).toISOString() };
+}
