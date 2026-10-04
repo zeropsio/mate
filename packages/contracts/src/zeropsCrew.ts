@@ -375,7 +375,7 @@ export const CrewRun = Schema.Struct({
 });
 export type CrewRun = typeof CrewRun.Type;
 
-/** One owned attempt. A restart ends running attempts; only a person's press continues them. */
+/** One owned attempt. A restart ends running attempts and the engine carries each on from its recorded stage; a person continues only an ambiguous one. */
 export const CrewOperation = Schema.Struct({
   id: Schema.String,
   crew: Schema.String,
