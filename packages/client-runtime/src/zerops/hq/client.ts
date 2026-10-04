@@ -1,3 +1,4 @@
+import { HQ_STREAM_SEGMENT_CLOSE } from "@t3tools/shared/hqStream";
 import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
 /**
  * HQ's API as the client calls it (`apps/hq/src/api.ts`), through HQ's door.
@@ -203,7 +204,9 @@ export interface HqApi {
    * its view names (`mates.ts`), over a socket opened with a ticket for the session: every event
    * to `onEvent`, every message — events and pings alike — to `onAlive`. Ends when HQ hands the
    * reader to another Core, or ends the session (the next call enters the door again); fails when
-   * the socket breaks; runs until `signal` aborts.
+   * the socket breaks; runs until `signal` aborts. Only the planned segment close (4410) opens a
+   * fresh ticket and socket within this call, preserving its live view. A failed successor ends
+   * the call with a failure; there is no automatic retry.
    */
   readonly streamStructure: (
     handlers: {
@@ -339,7 +342,7 @@ export type OpenHqSocket = (
 
 /** How HQ closes a structure socket (`apps/hq/src/stream.ts`). */
 const SOCKET_CLOSE = {
-  /** Another Core leads now, or this one is stopping: read again at once. */
+  /** Another Core leads now, or this one is stopping: end this call. */
   goingAway: 1001,
   /** The session ended: enter the door again. */
   sessionEnded: 4401,
@@ -749,52 +752,65 @@ export function makeHqApi(input: {
   return {
     structure: structureOf,
     streamStructure: async (handlers, signal) => {
-      const { ticket } = await json<{ readonly ticket: string }>(
-        await authorized("/api/stream-ticket", { method: "POST", signal }),
-      );
-      /** The session the ticket was minted for. */
-      const held = session;
-      const token = held === null ? null : await held;
-      const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}`;
-      await new Promise<void>((resolve, reject) => {
-        const socket = input.openSocket(url, {
-          message: (data) => {
-            handlers.onAlive();
-            let message: unknown;
-            try {
-              message = JSON.parse(data);
-            } catch {
-              return;
-            }
-            if ((message as { readonly type?: unknown } | null)?.type === "ping") {
-              socket.send(PONG);
-              return;
-            }
-            const event = structureEventOf(message);
-            if (event !== undefined) handlers.onEvent(event);
-          },
-          close: (code) => {
-            signal.removeEventListener("abort", stop);
-            if (code === SOCKET_CLOSE.sessionEnded) {
-              // The next call enters the door again, the next socket with it.
-              if (token !== null) drop(held, token);
-              resolve();
-            } else if (code === SOCKET_CLOSE.goingAway) {
-              resolve();
-            } else {
-              reject(
-                new HqError({
-                  kind: "unavailable",
-                  code: `socket_${code}`,
-                  message: "HQ's stream broke.",
-                }),
-              );
-            }
-          },
+      while (!signal.aborted) {
+        const { ticket } = await json<{ readonly ticket: string }>(
+          await authorized("/api/stream-ticket", { method: "POST", signal }),
+        );
+        /** The session the ticket was minted for. */
+        const held = session;
+        const token = held === null ? null : await held;
+        if (signal.aborted) return;
+        const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}`;
+        const continueSegment = await new Promise<boolean>((resolve, reject) => {
+          const socket = input.openSocket(url, {
+            message: (data) => {
+              let message: unknown;
+              try {
+                message = JSON.parse(data);
+              } catch {
+                handlers.onAlive();
+                return;
+              }
+              if ((message as { readonly type?: unknown } | null)?.type === "ping") {
+                socket.send(PONG);
+                handlers.onAlive();
+                return;
+              }
+              handlers.onAlive();
+              const event = structureEventOf(message);
+              if (event !== undefined) handlers.onEvent(event);
+            },
+            close: (code) => {
+              signal.removeEventListener("abort", stop);
+              if (signal.aborted) {
+                reject(signal.reason);
+              } else if (code === HQ_STREAM_SEGMENT_CLOSE.code) {
+                resolve(true);
+              } else if (code === SOCKET_CLOSE.sessionEnded) {
+                // The next call enters the door again, the next socket with it.
+                if (token !== null) drop(held, token);
+                resolve(false);
+              } else if (code === SOCKET_CLOSE.goingAway) {
+                resolve(false);
+              } else {
+                reject(
+                  new HqError({
+                    kind: "unavailable",
+                    code: `socket_${code}`,
+                    message: "HQ's stream broke.",
+                  }),
+                );
+              }
+            },
+          });
+          const stop = () => {
+            socket.close();
+            reject(signal.reason);
+          };
+          signal.addEventListener("abort", stop, { once: true });
         });
-        const stop = () => socket.close();
-        signal.addEventListener("abort", stop, { once: true });
-      });
+        if (!continueSegment) return;
+      }
     },
     // An application has no name of HQ's to ask for before it is made: the one by this name is
     // taken for it.

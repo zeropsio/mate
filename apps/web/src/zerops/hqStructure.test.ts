@@ -5,6 +5,7 @@ import {
   type HqMates,
   type HqStructure,
   type HqStructureEvent,
+  type OpenHqSocket,
 } from "@t3tools/client-runtime/zerops/hq";
 import type { AppRead } from "@t3tools/shared/hqAppReads";
 import type { HqChange } from "@t3tools/shared/hqChanges";
@@ -114,6 +115,85 @@ function harness(remembered?: { readonly structure: HqStructure; readonly readAt
     },
   };
 }
+
+describe("planned HQ segments", () => {
+  it.each([1000, 1001, 1006, 1011, 4401, 4408])(
+    "keeps structure and Mates live through rotation, then surfaces close %i for manual again",
+    async (code) => {
+      const h = harness();
+      const stop = new AbortController();
+      type Handlers = Parameters<OpenHqSocket>[1];
+      const sockets: Array<Handlers> = [];
+      let openedNext: (on: Handlers) => void = () => undefined;
+      const next = new Promise<Handlers>((resolve) => {
+        openedNext = resolve;
+      });
+      let failed: () => void = () => undefined;
+      const unavailable = new Promise<void>((resolve) => {
+        failed = resolve;
+      });
+      let tickets = 0;
+      const api = makeHqApi({
+        address: "https://hq.example",
+        fetch: async (url) =>
+          new URL(String(url)).pathname === "/api/door"
+            ? Response.json({ session: "session-1", expiresAt: "", userId: "u1" })
+            : Response.json({ ticket: `t-${++tickets}` }),
+        throughDoor: async (use) => use("throwaway"),
+        openSocket: (_url, on) => {
+          sockets.push(on);
+          if (sockets.length === 1)
+            queueMicrotask(() => {
+              on.message(
+                JSON.stringify({ type: "snapshot", ...ACME, mates: { vera: VERA }, people: {} }),
+              );
+              on.close(4410);
+            });
+          else openedNext(on);
+          return { send: () => undefined, close: () => queueMicrotask(() => on.close(1005)) };
+        },
+      });
+      const done = driveHqStructure({
+        ...h.deps,
+        api,
+        signal: stop.signal,
+        publish: (view) => {
+          h.deps.publish(view);
+          if (view.unavailableSince !== null) failed();
+        },
+      });
+      try {
+        const on = await Promise.race([next, unavailable.then(() => undefined)]);
+        expect(on).toBeDefined();
+        expect(h.views.slice(1).every((view) => view.current && view.failure === null)).toBe(true);
+        expect(h.views.at(-1)?.structure).toEqual(ACME);
+        expect(h.mates.at(-1)).toMatchObject({ current: true, mates: new Map([["vera", VERA]]) });
+        expect(hqOutageLine(h.views.at(-1)!, "locale", 10000)).toBeNull();
+        // A failed next handshake (1006) brings no snapshot; its last live data still stands.
+        if (code !== 1006) {
+          on!.message(
+            JSON.stringify({
+              type: "snapshot",
+              ungrouped: [],
+              apps: [BETA],
+              mates: {},
+              people: {},
+            }),
+          );
+          expect(h.views.at(-1)?.structure?.apps).toEqual([BETA]);
+        }
+        on!.close(code);
+        await unavailable;
+        expect(h.views.at(-1)).toMatchObject({ current: false, unavailableSince: 10000 });
+        expect(h.mates.at(-1)?.current).toBe(false);
+        expect(sockets).toHaveLength(2);
+      } finally {
+        stop.abort();
+        await done;
+      }
+    },
+  );
+});
 
 describe("HQ menu currency", () => {
   it("marks a restored structure as last known while updating", () => {

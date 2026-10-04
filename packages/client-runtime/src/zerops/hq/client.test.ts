@@ -610,10 +610,81 @@ describe("makeHqApi — the structure socket", () => {
     ]);
   });
 
+  it("continues a planned segment with a fresh ticket and the same session", async () => {
+    const hq = ticketing();
+    const door = doors();
+    const sockets = fakeSockets();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: door.throughDoor,
+      openSocket: sockets.openSocket,
+    });
+    const stream = streaming(api);
+    (await sockets.next()).on.close(4410);
+    const next = await Promise.race([
+      sockets.next(),
+      stream.done.then(() => {
+        throw new Error("stream ended");
+      }),
+    ]);
+    expect(next.url).toContain("ticket=t-2");
+    expect(door.minted).toEqual(["door-1"]);
+    next.on.close(1006);
+    await expect(stream.done).rejects.toMatchObject({ kind: "unavailable", code: "socket_1006" });
+    expect(hq.seen.filter((call) => call.path === "/api/stream-ticket")).toHaveLength(2);
+  });
+
+  it("surfaces a failed next-segment ticket once", async () => {
+    let tickets = 0;
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/stream-ticket"
+        ? ++tickets === 1
+          ? json(200, { ticket: "t-1" })
+          : json(503, { code: "not_active" })
+        : undefined,
+    );
+    const sockets = fakeSockets();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: sockets.openSocket,
+    });
+    const stream = streaming(api);
+    (await sockets.next()).on.close(4410);
+    await expect(stream.done).rejects.toMatchObject({ kind: "unavailable", code: "not_active" });
+    expect(tickets).toBe(2);
+  });
+
+  it("sends the pong before the liveness callback can block or fail", async () => {
+    const sockets = fakeSockets();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: ticketing().fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: sockets.openSocket,
+    });
+    let checkPong = () => undefined;
+    const done = api.streamStructure(
+      { onEvent: () => undefined, onAlive: () => checkPong() },
+      new AbortController().signal,
+    );
+    const socket = await sockets.next();
+    checkPong = () => {
+      expect(socket.sent).toEqual([JSON.stringify({ type: "pong" })]);
+    };
+    socket.on.message(JSON.stringify({ type: "ping" }));
+    socket.on.close(1001);
+    await done;
+  });
+
   it.each<[string, number, "resolves" | "rejects"]>([
     ["ends when another Core leads now, to be read again at once", 1001, "resolves"],
     ["breaks when HQ could not read the view", 1011, "rejects"],
     ["breaks when the connection dropped", 1006, "rejects"],
+    ["breaks when HQ heard no pong", 4408, "rejects"],
+    ["breaks on an ordinary clean close", 1000, "rejects"],
   ])("%s (%i)", async (_name, code, ends) => {
     const sockets = fakeSockets();
     const api = makeHqApi({

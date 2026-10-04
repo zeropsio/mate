@@ -30,8 +30,9 @@
  * 60 s (SPEC §4). A Mate's overview moving reads no structure: its Mates are sent from what HQ
  * holds (`mateOverviews.ts`), to the callers whose last view lets them observe it, at most once per
  * `MATES_BATCH`. The socket closes
- * with `4401` when the caller's session ends (sign in again), `1001` when this Core stops leading
- * or shuts down (reconnect: another Core leads), `1011` when the view cannot be read (reconnect).
+ * with `4410` ("segment over") at 100 s: the client opens the next segment at once, keeping its
+ * live view until that segment's snapshot. It closes with `4401` when the caller's session ends
+ * (sign in again), `1001` when this Core stops leading or shuts down, `1011` when the view cannot be read. These endings require a manual again.
  *
  * A browser cannot set headers on a WebSocket: it opens one with a ticket minted for its session
  * (`POST /api/stream-ticket`): one use, 60 s, held in this Core's memory.
@@ -40,6 +41,7 @@
  */
 import * as NodeCrypto from "node:crypto";
 
+import { HQ_STREAM_SEGMENT_CLOSE } from "@t3tools/shared/hqStream";
 import type { ChangesMessage, ChangesSnapshot } from "@t3tools/shared/hqChanges";
 import type { AppRead, AppReads, ReleaseRevisionMessage } from "@t3tools/shared/hqAppReads";
 import type {
@@ -99,6 +101,13 @@ const UNGROUPED = "ungrouped";
 
 /** How long a caller's Mates' moves are gathered before they go out together. */
 export const MATES_BATCH = Duration.millis(500);
+
+/**
+ * Zerops cuts a WebSocket through a project's shared IPv4 120 s after open, busy or not
+ * (`docs/internals/zerops/verified.md`, "A WebSocket through a project's shared IPv4 is cut
+ * 120 s after it opens"). End each segment cleanly before that cut.
+ */
+export const STRUCTURE_SEGMENT_LIFETIME = Duration.seconds(100);
 
 const CLOSE = {
   session: [4401, "session ended"],
@@ -530,7 +539,11 @@ export const serveStructureSocket = <R>(
       const deliver = Stream.runForEach(messages, (message) =>
         message.type === "end" ? close(CLOSE[message.ending]) : writer.write(toJson(message)),
       ).pipe(Effect.catch(() => close(CLOSE.unreadable)));
-      yield* Effect.raceAll([listen, ping, deliver]);
+      const segment = Effect.andThen(
+        Effect.sleep(STRUCTURE_SEGMENT_LIFETIME),
+        ends.close(HQ_STREAM_SEGMENT_CLOSE.code, HQ_STREAM_SEGMENT_CLOSE.reason),
+      );
+      yield* Effect.raceAll([listen, ping, deliver, segment]);
       return yield* ends.ending;
     }),
   );

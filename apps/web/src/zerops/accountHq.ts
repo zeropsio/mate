@@ -174,7 +174,11 @@ export function officialHq(accountHq: Pick<AccountHq, "hq">): HqEndpoint {
   return accountHq.hq;
 }
 
-/** HQ's structure socket, as this browser opens it. */
+/**
+ * HQ's structure socket, as this browser opens it. Messages reach the shared client directly;
+ * its pong is sent before liveness callbacks, with no timer or React scheduling in between.
+ * The dedicated planned-close code is passed through so the client can open the next segment.
+ */
 const openBrowserSocket: OpenHqSocket = (url, on) => {
   const socket = new WebSocket(url);
   socket.addEventListener("message", (event) => {
