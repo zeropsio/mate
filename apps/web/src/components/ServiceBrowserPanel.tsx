@@ -177,12 +177,15 @@ export function ServiceBrowserPanels({
   activeSurfaceId,
   services,
   addresses = NO_ADDRESSES,
+  addressesKnown = true,
 }: {
   surfaces: RightPanelSurface[];
   activeSurfaceId: string | null;
   services: readonly ZeropsTopologyService[] | undefined;
   /** The Mate's addresses outside its own project — its group's stage and production. */
   addresses?: ReadonlyArray<{ readonly url: string }>;
+  /** Whether the account has read every project those addresses come from. */
+  addressesKnown?: boolean;
 }) {
   return surfaces.map((surface) => {
     if (surface.kind !== "browser" || !("url" in surface)) return null;
@@ -191,12 +194,14 @@ export function ServiceBrowserPanels({
     const known =
       owner !== null ||
       (host !== null && addresses.some((address) => hostnameOf(address.url) === host));
+    // A restored tab waits for what decides it rather than refusing and then loading.
+    const deciding = !known && (services === undefined || !addressesKnown);
     return (
       <div
         key={`${surface.id}:${surface.url}`}
         className={surface.id === activeSurfaceId ? "h-full min-h-0" : "hidden"}
       >
-        {known ? (
+        {deciding ? null : known ? (
           <ServiceBrowserPanel
             service={surface.service}
             url={surface.url}

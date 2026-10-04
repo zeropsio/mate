@@ -21,7 +21,9 @@ export function openMateAddress(
 ): void {
   if (event?.target instanceof Element && event.target.closest("[data-mate-address-external]"))
     return;
-  if (mateAddressOpenTarget(event) === "new-tab") {
+  const target = mateAddressOpenTarget(event);
+  if (target === "none") return;
+  if (target === "new-tab") {
     window.open(address.url, "_blank", "noopener,noreferrer");
     return;
   }

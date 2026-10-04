@@ -36,3 +36,23 @@ export function resolveDiffSelection(input: {
     ? { kind: "no-turns" }
     : { kind: "turn", turnId: input.latestTurnId, filePath: null, revealRequestId: 0 };
 }
+
+/**
+ * What the scope button names, and which of its menu's items is marked: the
+ * selection the body shows. Before the first turn of a workspace that shows
+ * only turns, that is the latest turn, which is not there yet.
+ */
+export function diffScope(input: {
+  readonly shown: ReturnType<typeof resolveDiffSelection>;
+  readonly latestTurnId: TurnId | undefined;
+}): "unstaged" | "branch" | "latest" | "turn" {
+  switch (input.shown.kind) {
+    case "unstaged":
+    case "branch":
+      return input.shown.kind;
+    case "no-turns":
+      return "latest";
+    case "turn":
+      return input.shown.turnId === input.latestTurnId ? "latest" : "turn";
+  }
+}
