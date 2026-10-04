@@ -15,6 +15,7 @@ import {
   ProviderDriverKind,
   type ProviderEvent,
   ProviderInstanceId,
+  ProviderItemId,
   type ProviderRuntimeEvent,
   type ProviderRequestKind,
   type ThreadTokenUsageSnapshot,
@@ -555,6 +556,38 @@ function mapItemLifecycle(
 }
 
 /**
+ * A child's call as a step of its own: mapped as the parent's calls are,
+ * tagged with the child (`agentId`) so clients draw it in the child's card,
+ * never the parent's.
+ */
+function childStep(
+  event: ProviderEvent,
+  canonicalThreadId: ThreadId,
+  payload: Record<string, unknown>,
+  taskId: RuntimeTaskId,
+): ProviderRuntimeEvent | undefined {
+  const lifecycle = payload.lifecycle;
+  if (lifecycle !== "started" && lifecycle !== "completed") return undefined;
+  const item =
+    typeof payload.item === "object" && payload.item !== null
+      ? (payload.item as Record<string, unknown>)
+      : undefined;
+  if (typeof item?.id !== "string" || item.id.length === 0) return undefined;
+  const step = mapItemLifecycle(
+    {
+      ...event,
+      method: lifecycle === "started" ? "item/started" : "item/completed",
+      itemId: ProviderItemId.make(item.id),
+      payload: payload.notification,
+    },
+    canonicalThreadId,
+    lifecycle === "started" ? "item.started" : "item.completed",
+  );
+  if (!step || (step.type !== "item.started" && step.type !== "item.completed")) return undefined;
+  return { ...step, payload: { ...step.payload, agentId: taskId } };
+}
+
+/**
  * Maps the session runtime's synthetic `collabAgent/*` events (native
  * multi-agent v2 child-thread signals) into the shared task.* lifecycle.
  * Agent identity = child thread id; nickname is the display title, role is
@@ -792,6 +825,7 @@ function mapCollabAgentEvent(
         (typeof item?.query === "string" ? item.query : undefined);
       const canonical = toCanonicalItemType(itemTypeRaw);
       const summary = looseSummary ?? canonical.replaceAll("_", " ");
+      const step = childStep(event, canonicalThreadId, payload, taskId);
       return [
         {
           ...base,
@@ -803,6 +837,7 @@ function mapCollabAgentEvent(
             summary,
           },
         },
+        ...(step ? [step] : []),
       ];
     }
     case "collabAgent/closed":

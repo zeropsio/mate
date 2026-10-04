@@ -766,6 +766,58 @@ lifecycleLayer("CodexAdapterLive lifecycle", (it) => {
     }),
   );
 
+  it.effect("forwards a child's calls as its own steps, tagged with the child", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startLifecycleRuntime();
+      const eventsFiber = yield* Stream.runCollect(Stream.take(adapter.streamEvents, 4)).pipe(
+        Effect.forkChild,
+      );
+      const item = {
+        type: "commandExecution",
+        id: "child-call-1",
+        command: "npm test",
+        commandActions: [],
+        cwd: "/srv/app",
+        status: "inProgress",
+      } as const;
+      const cases = [
+        ["started", { startedAtMs: 1_778_000_000_000, item }],
+        [
+          "completed",
+          { completedAtMs: 1_778_000_001_000, item: { ...item, exitCode: 0, status: "completed" } },
+        ],
+      ] as const;
+      for (const [lifecycle, notification] of cases) {
+        yield* runtime.emit({
+          id: asEventId(`evt-child-call-${lifecycle}`),
+          kind: "notification",
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          method: "collabAgent/item",
+          threadId: asThreadId("thread-1"),
+          turnId: asTurnId("turn-1"),
+          payload: {
+            agentThreadId: "child-steps",
+            agentPath: "/root/tests",
+            item: notification.item,
+            lifecycle,
+            notification: { threadId: "child-steps", turnId: "child-turn", ...notification },
+          },
+        });
+      }
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const steps = events.flatMap((event) =>
+        event.type === "item.started" || event.type === "item.completed"
+          ? [[event.type, String(event.itemId), event.payload.agentId, event.payload.status]]
+          : [],
+      );
+      NodeAssert.deepStrictEqual(steps, [
+        ["item.started", "child-call-1", "child-steps", "inProgress"],
+        ["item.completed", "child-call-1", "child-steps", "completed"],
+      ]);
+    }),
+  );
+
   it.effect("does not reactivate an idle child after a parent interaction", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startLifecycleRuntime();
