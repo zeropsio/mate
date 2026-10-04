@@ -3,6 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   STAND_UP_MESSAGE,
   parseZcpStatus,
+  procStartTime,
   setupDocument,
   standUpCommandIds,
   standUpDecision,
@@ -33,6 +34,7 @@ const facts = (overrides: Partial<SetupFacts> = {}): SetupFacts => ({
   signinAt: undefined,
   record: undefined,
   standUpTurn: undefined,
+  standUpProcessGone: false,
   ...overrides,
 });
 
@@ -101,6 +103,36 @@ describe("parseZcpStatus", () => {
       { hostname: "api", step: "deploy", state: "running", processId: "p-1", at: NOW, error: "" },
     ]);
   });
+
+  const processes: ReadonlyArray<[string, unknown, { pid: number; start: string } | undefined]> = [
+    ["its PID and start time", { pid: 4242, start: "98765" }, { pid: 4242, start: "98765" }],
+    ["a PID whose start zcp could not read", { pid: 4242, start: "" }, { pid: 4242, start: "" }],
+    ["none: a zcp that names no process", undefined, undefined],
+    ["a PID that is no process", { pid: 0, start: "1" }, undefined],
+    ["a PID that is not a number", { pid: "4242", start: "1" }, undefined],
+  ];
+  for (const [name, process, expected] of processes) {
+    it(`keeps the stand-up's process — ${name}`, () =>
+      assert.deepStrictEqual(
+        parseZcpStatus(status({ standup: { state: "running", process } }))?.standup?.process,
+        expected,
+      ));
+  }
+});
+
+describe("procStartTime", () => {
+  const stat = (comm: string, start: string) =>
+    `4242 (${comm}) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 2 0 0 20 0 9 0 ${start} 1000 50 18446744073709551615`;
+  const reads: ReadonlyArray<[string, string, string | undefined]> = [
+    ["a plain command", stat("zcp", "98765"), "98765"],
+    ["a command with spaces and a parenthesis", stat("zcp (mcp) x", "123"), "123"],
+    ["a line cut short", "4242 (zcp) S 1 2", undefined],
+    ["no command", "", undefined],
+  ];
+  for (const [name, line, expected] of reads) {
+    it(`reads /proc's start time — ${name}`, () =>
+      assert.strictEqual(procStartTime(line), expected));
+  }
 });
 
 describe("standUpSigners", () => {
@@ -362,24 +394,32 @@ describe("setupDocument", () => {
       "failed",
     ],
     [
-      "started, zcp says running but stopped refreshing its file: its MCP server died",
+      "started, zcp running, its file not written for an hour: a quiet build still runs",
       {
         record: { startedAt: NOW, ran: true },
         status: parseZcpStatus(
-          status({ updatedAt: "2026-10-01T11:57:59Z", standup: { state: "running" } }),
+          status({ updatedAt: "2026-10-01T11:00:00Z", standup: { state: "running" } }),
         ),
+      },
+      "running",
+    ],
+    [
+      "started, zcp running, its MCP process gone",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpProcessGone: true,
+        status: parseZcpStatus(status({ standup: { state: "running" } })),
       },
       "failed",
     ],
     [
-      "started, zcp running and refreshed two minutes ago: still running",
+      "zcp says it ended: its word, whatever became of its process",
       {
         record: { startedAt: NOW, ran: true },
-        status: parseZcpStatus(
-          status({ updatedAt: "2026-10-01T11:58:00Z", standup: { state: "running" } }),
-        ),
+        standUpProcessGone: true,
+        status: parseZcpStatus(status({ standup: { state: "done", services: halvesStood } })),
       },
-      "running",
+      "done",
     ],
     [
       "HQ's birth names nobody who asked, its project closed off: no stand-up to run",
@@ -466,6 +506,26 @@ describe("setupDocument", () => {
   for (const [name, overrides, state] of standups) {
     it(`standup: ${name}`, () =>
       assert.strictEqual(stepOf(setupDocument(facts(overrides)), "standup")?.state, state));
+  }
+
+  // A stand-up that ended short says why: the client words it.
+  const endings: ReadonlyArray<[string, Partial<SetupFacts>, SetupStep]> = [
+    [
+      "its MCP process gone",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "running",
+        standUpProcessGone: true,
+        status: parseZcpStatus(
+          status({ standup: { state: "running", startedAt: "2026-10-01T11:58:00Z" } }),
+        ),
+      },
+      { id: "standup", state: "failed", at: "", reason: "process_gone" },
+    ],
+  ];
+  for (const [name, overrides, step] of endings) {
+    it(`a stand-up that ended short says why — ${name}`, () =>
+      assert.deepStrictEqual(stepOf(setupDocument(facts(overrides)), "standup"), step));
   }
 
   // A stand-up nothing started waits, and says why where the server knows: the client words it.

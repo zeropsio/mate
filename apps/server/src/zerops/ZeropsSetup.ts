@@ -71,6 +71,8 @@ import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.t
 import {
   STAND_UP_MESSAGE,
   parseZcpStatus,
+  procStartTime,
+  runningStandUpProcess,
   setupDocument,
   standUpCommandIds,
   standUpDecision,
@@ -78,6 +80,7 @@ import {
   type GitAccess,
   type SetupDocument,
   type StandUpWait,
+  type ZcpProcess,
   type ZcpStatus,
 } from "./zeropsSetupSteps.ts";
 
@@ -103,6 +106,8 @@ export class ZeropsSetupReads extends Context.Service<
     readonly serviceVariables: Effect.Effect<ReadonlyArray<string> | undefined>;
     /** zcp's status file, parsed as JSON; `undefined` when absent or unreadable. */
     readonly statusFile: Effect.Effect<unknown>;
+    /** Whether a process is provably gone: its PID absent, or reused under another start time. */
+    readonly processGone: (process: ZcpProcess) => Effect.Effect<boolean>;
     /**
      * The provider instances as the model picker sees them: Claude Code and Codex by the
      * agent-auth feed (`overlayZeropsAgentAuth`), every other driver by its own probe.
@@ -118,6 +123,8 @@ export class ZeropsSetup extends Context.Service<
     readonly document: Effect.Effect<SetupDocument>;
     /** zcp's status file, as this build reads it. */
     readonly status: Effect.Effect<ZcpStatus | undefined>;
+    /** Whether the stand-up the file says runs lost its zcp MCP process, provably. */
+    readonly standUpGone: (status: ZcpStatus | undefined) => Effect.Effect<boolean>;
     /** Receipt: the initial wait ended as sent, failed, skipped or not asked. */
     readonly awaitStandUp: Effect.Effect<void>;
     /** One manual attempt, only for the recorded asker after a failed send. */
@@ -314,6 +321,11 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
 
     const status = Effect.map(reads.statusFile, parseZcpStatus);
 
+    const standUpGone = (read: ZcpStatus | undefined) => {
+      const process = runningStandUpProcess(read);
+      return process === undefined ? Effect.succeed(false) : reads.processGone(process);
+    };
+
     /**
      * The recorded stand-up's own turn — the one its ask started, found by its message (its ids
      * are the command's) — never the thread's latest, which a later message would make another's.
@@ -370,11 +382,12 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       // The sign-in is known from a stand-up that ran, from HQ's word, or once seen: a step once
       // done stays done.
       const signinKnown = ran || marked || signedInAt !== undefined;
+      const zcpStatus = yield* status;
       return setupDocument({
         now: yield* nowIso,
         startedAt,
         git,
-        status: yield* status,
+        status: zcpStatus,
         requestedBy,
         standUpWait: hq === undefined ? undefined : standUpWaitOf(hq),
         signinAt: yield* latch(signinAt, signedIn),
@@ -391,6 +404,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         // a Mate with no stand-up to run.
         nobodyAsked: hq?.kind === "linked" && hq.mate.standupRequestedBy === null,
         standUpTurn: ran ? yield* turnOf(record) : undefined,
+        standUpProcessGone: yield* standUpGone(zcpStatus),
         unknown: [
           ...(signinKnown ? [] : (["signin"] as const)),
           ...(marked || record !== undefined ? [] : (["standup"] as const)),
@@ -627,7 +641,13 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         )
         .pipe(Effect.catch(() => Effect.succeed(false)));
 
-    return ZeropsSetup.of({ document, status, retry, awaitStandUp: Deferred.await(settled) });
+    return ZeropsSetup.of({
+      document,
+      status,
+      standUpGone,
+      retry,
+      awaitStandUp: Deferred.await(settled),
+    });
   });
 
 /**
@@ -677,11 +697,34 @@ const readFileJson = (fs: FileSystem.FileSystem, path: string) =>
   );
 
 /**
+ * Whether a process zcp named is provably gone, as zcp's own liveness reads it (the work
+ * sessions' `isProcessAlive`): its PID is no process, or a process whose start time is not the
+ * one zcp wrote. A PID that answers but whose start time does not read — no `/proc`, as off
+ * Linux, or zcp wrote none — is alive: never a death over an unreadable clock.
+ */
+export const zcpProcessGone = (fs: FileSystem.FileSystem, zcp: ZcpProcess) =>
+  Effect.gen(function* () {
+    // Signal 0 only asks: no such process is ESRCH; a process of another user answers EPERM.
+    const absent = yield* Effect.try({
+      try: () => process.kill(zcp.pid, 0),
+      catch: (error) => (error as NodeJS.ErrnoException).code,
+    }).pipe(Effect.match({ onSuccess: () => false, onFailure: (code) => code === "ESRCH" }));
+    if (absent) return true;
+    if (zcp.start === "") return false;
+    const start = yield* fs.readFileString(`/proc/${zcp.pid}/stat`).pipe(
+      Effect.map(procStartTime),
+      Effect.orElseSucceed(() => undefined),
+    );
+    return start !== undefined && start !== zcp.start;
+  });
+
+/**
  * The live reads: who asked for the stand-up, from the link to HQ; who signed
  * each login in, as this server saw it; the zcp service's variables from the
  * platform's live env store (`/etc/zerops-zembed/env.json`, rewritten seconds
  * after a change, no restart) and this process's own environment; zcp's
- * status file from where `ZCP_STATUS_FILE` names it.
+ * status file from where `ZCP_STATUS_FILE` names it, and whether a process it
+ * names is gone.
  */
 export const liveReadsLayer = Layer.effect(
   ZeropsSetupReads,
@@ -702,6 +745,7 @@ export const liveReadsLayer = Layer.effect(
         statusFilePath === undefined || statusFilePath.length === 0
           ? Effect.succeed(undefined)
           : readFileJson(fs, statusFilePath),
+      processGone: (zcp) => zcpProcessGone(fs, zcp),
       providers: Effect.zipWith(instances.providers, agentAuth.latest, overlayZeropsAgentAuth),
     });
   }),
