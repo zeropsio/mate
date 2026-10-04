@@ -55,8 +55,9 @@ export interface HqGitOptions {
   /** One instance per root: opening sweeps reservations and staging left by a crashed instance. */
   readonly rootDir: string;
   /**
-   * Best effort, ordered delivery after the ref write. No write waits for it, so a handler may call
-   * back into the layer. Failure is logged and never rolls back git; there is no durable queue or
+   * Ordered delivery after the ref write. Local writes enqueue without waiting, so a handler may
+   * call back into the layer. Smart HTTP acknowledges a push only after delivery completes; a
+   * failed delivery fails the request. Failure is logged and never rolls back git; there is no
    * retry: Core reconciles from refs and owns the durable log.
    */
   readonly onEvent?: (event: GitEvent) => Awaitable<void>;

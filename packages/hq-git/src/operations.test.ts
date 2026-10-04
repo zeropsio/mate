@@ -1284,38 +1284,73 @@ describe("reads, tags, archive and ports", () => {
   });
 });
 
+const exchange = async (git: HqGit, commands: Buffer) => {
+  const request = new NodeHttp.IncomingMessage(new NodeNet.Socket());
+  request.complete = true;
+  request.method = "POST";
+  request.url = "/git/app/repo.git/git-receive-pack";
+  request.headers = { "content-type": "application/x-git-receive-pack-request" };
+  const response = new NodeHttp.ServerResponse(request);
+  const chunks: Buffer[] = [];
+  const sink = new NodeNet.Socket();
+  vi.spyOn(sink, "write").mockImplementation((chunk, encoding, callback) => {
+    chunks.push(Buffer.from(chunk));
+    const done = typeof encoding === "function" ? encoding : callback;
+    done?.();
+    return true;
+  });
+  response.assignSocket(sink);
+  const finished = new Promise<void>((resolve, reject) => {
+    response.once("finish", resolve);
+    response.once("close", resolve);
+    response.once("error", reject);
+  });
+  request.push(commands);
+  request.push(null);
+  git.handler(request, response);
+  await finished;
+  response.detachSocket(sink);
+  sink.destroy();
+  request.destroy();
+  return Buffer.concat(chunks).toString();
+};
+
 describe("receive-pack events without a listener", () => {
+  it.live.each([false, true])(
+    "acknowledges a push only after its change is recorded (record fails: %s)",
+    (fails) => {
+      let recorded = false;
+      return fixture(
+        async (git) => {
+          const head = await write(git, { file: "content" }, null);
+          const header = Buffer.from("5041434b0000000200000000", "hex");
+          const commands = Buffer.concat([
+            pkt(`${"0".repeat(40)} ${head} refs/heads/mate/alice/1\0report-status side-band-64k\n`),
+            Buffer.from("0000"),
+            header,
+            NodeCrypto.createHash("sha1").update(header).digest(),
+          ]);
+          const response = await exchange(git, commands);
+          expect(recorded).toBe(true);
+          expect(response.includes("ok refs/heads/mate/alice/1")).toBe(!fails);
+        },
+        {
+          authenticate: () => ({ kind: "core" }),
+          onEvent: async (event) => {
+            if (event.kind !== "pushed") return;
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            recorded = true;
+            if (fails) throw new Error("record unavailable");
+          },
+        },
+      );
+    },
+  );
+
   it.live("reports applied refs, Core's main and tag pushes, in order with later operations", () =>
     fixture(
       async (git, dir, events) => {
         const head = await write(git, { file: "content" }, null);
-        const exchange = async (commands: Buffer) => {
-          const request = new NodeHttp.IncomingMessage(new NodeNet.Socket());
-          request.complete = true;
-          request.method = "POST";
-          request.url = "/git/app/repo.git/git-receive-pack";
-          request.headers = { "content-type": "application/x-git-receive-pack-request" };
-          const response = new NodeHttp.ServerResponse(request);
-          const chunks: Buffer[] = [];
-          const sink = new NodeNet.Socket();
-          vi.spyOn(sink, "write").mockImplementation((chunk) => {
-            chunks.push(Buffer.from(chunk));
-            return true;
-          });
-          response.assignSocket(sink);
-          const finished = new Promise<void>((resolve, reject) => {
-            response.once("finish", resolve);
-            response.once("error", reject);
-          });
-          request.push(commands);
-          request.push(null);
-          git.handler(request, response);
-          await finished;
-          response.detachSocket(sink);
-          sink.destroy();
-          request.destroy();
-          return Buffer.concat(chunks).toString();
-        };
         const packHeader = Buffer.from("5041434b0000000200000000", "hex");
         const pack = Buffer.concat([
           packHeader,
@@ -1330,7 +1365,7 @@ describe("receive-pack events without a listener", () => {
             Buffer.from("0000"),
             pack,
           ]);
-        expect(await exchange(command([zero, head, "refs/heads/mate/alice/1"]))).toContain(
+        expect(await exchange(git, command([zero, head, "refs/heads/mate/alice/1"]))).toContain(
           "ok refs/heads/mate/alice/1",
         );
         await vi.waitFor(() =>
@@ -1341,7 +1376,7 @@ describe("receive-pack events without a listener", () => {
           }),
         );
         expect(
-          await exchange(command([zero, "f".repeat(40), "refs/heads/mate/alice/2"])),
+          await exchange(git, command([zero, "f".repeat(40), "refs/heads/mate/alice/2"])),
         ).toContain("ng ");
         expect(events.map((e) => e.kind)).toEqual(["main_moved", "pushed"]);
         const next = await native(dir, ["commit-tree", `${head}^{tree}`, "-p", head, "-m", "next"]);
@@ -1351,7 +1386,10 @@ describe("receive-pack events without a listener", () => {
           `object ${head}\ntype commit\ntag v2\ntagger a <a@x> 0 +0000\n\nPushed\n`,
         );
         expect(
-          await exchange(command([head, next, "refs/heads/main"], [zero, tag, "refs/tags/v2"])),
+          await exchange(
+            git,
+            command([head, next, "refs/heads/main"], [zero, tag, "refs/tags/v2"]),
+          ),
         ).toContain("ok refs/tags/v2");
         await value(git.createTag(repo, "v1", head, "Release"));
         await vi.waitFor(() =>

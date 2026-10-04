@@ -40,7 +40,7 @@ export const makeHandler = (
   options: HqGitOptions,
   git: GitRunner,
   locate: (repo: Repo) => Promise<string | null>,
-  emit: (event: GitEvent) => void,
+  emit: (event: GitEvent) => Promise<void>,
 ): NodeHttp.RequestListener => {
   const prefix = options.pathPrefix ?? "/git";
   if (!/^\/(?:[A-Za-z0-9_-]+\/?)*$/.test(prefix) || prefix.endsWith("/")) {
@@ -171,12 +171,19 @@ export const makeHandler = (
       ).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== "EPIPE" && error.code !== "ERR_STREAM_PREMATURE_CLOSE") throw error;
       });
-      // receive-pack keeps writing even to a departed client, so it never dies of a closed pipe.
+      // A link may be published as soon as the caller sees success. Keep the bounded report
+      // until Core has recorded the applied refs, so a readable head always precedes that link.
+      const pushReport: Buffer[] = [];
+      let reportBytes = 0;
       const output = push
         ? (async () => {
             for await (const chunk of process.child.stdout) {
-              report?.feed(Buffer.from(chunk as Uint8Array));
-              if (!res.destroyed) res.write(chunk);
+              const bytes = Buffer.from(chunk as Uint8Array);
+              report?.feed(bytes);
+              reportBytes += bytes.length;
+              if (reportBytes > 8 * 1024 * 1024)
+                throw new HttpError(500, "Git report exceeds limit");
+              pushReport.push(bytes);
             }
           })()
         : NodeStreamPromises.pipeline(process.child.stdout, res, { end: false });
@@ -204,11 +211,11 @@ export const makeHandler = (
                 applied.push(update);
             }
           }
-          if (applied.length) emit({ kind: "pushed", repo, updates: applied });
+          if (applied.length) await emit({ kind: "pushed", repo, updates: applied });
           // Only Core may push main or tags; its pushes report like the layer's own writes.
           for (const { ref, oldSha, newSha } of applied) {
             if (ref === "refs/heads/main")
-              emit({
+              await emit({
                 kind: "main_moved",
                 repo,
                 old: /^0+$/.test(oldSha) ? null : oldSha,
@@ -222,11 +229,16 @@ export const makeHandler = (
                   (peeled) => peeled.toString().trim(),
                   () => newSha,
                 );
-              emit({ kind: "tagged", repo, name: ref.slice("refs/tags/".length), sha: target });
+              await emit({
+                kind: "tagged",
+                repo,
+                name: ref.slice("refs/tags/".length),
+                sha: target,
+              });
             }
           }
         } else await process.done;
-        res.end();
+        res.end(push ? Buffer.concat(pushReport) : undefined);
       } finally {
         terminate(process.child);
         await process.done.catch(() => {});

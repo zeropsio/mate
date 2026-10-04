@@ -92,21 +92,22 @@ const stats = (bytes: Buffer): FileStat[] =>
     });
 
 /**
- * Serialize delivery, swallow port failures, and never include caller data in failure logs.
- * Writers only enqueue: a handler that calls back into the layer must not wait on itself.
+ * Ordered event receipts. Local writers enqueue without waiting, so a handler may call back
+ * into the layer. Smart HTTP waits for its receipt before acknowledging a successful push.
+ * Failed receipts reject their caller, are logged without caller data, and leave later events free.
  */
 export const eventPort = (options: HqGitOptions) => {
   let tail = Promise.resolve();
-  return (event: GitEvent): void => {
-    tail = tail.then(async () => {
-      try {
-        await options.onEvent?.(event);
-      } catch {
-        await Effect.runPromise(
-          Effect.logWarning("hq-git event delivery failed; Core must reconcile from refs"),
-        );
-      }
+  return (event: GitEvent): Promise<void> => {
+    const delivered = tail.then(async () => {
+      await options.onEvent?.(event);
     });
+    tail = delivered.catch(() =>
+      Effect.runPromise(
+        Effect.logWarning("hq-git event delivery failed; Core must reconcile from refs"),
+      ),
+    );
+    return delivered;
   };
 };
 
