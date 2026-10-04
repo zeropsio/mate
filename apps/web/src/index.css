@@ -4443,8 +4443,15 @@ code {
   );
   font-style: normal;
   color: var(--color-muted-foreground);
+  /* At rest the clamp's ellipsis says there is more; the words show under
+     the pointer or the focus only (Bodhi: "Show full thought" 13 times in
+     one card). */
+  opacity: 0;
+  transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-[data-chat-disclose]:hover > .run-thought-more {
+[data-chat-disclose]:hover > .run-thought-more,
+[data-chat-disclose]:focus-visible > .run-thought-more {
+  opacity: 1;
   color: var(--color-foreground);
 }
 
