@@ -1,6 +1,4 @@
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
-import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
-import type { ZeropsLifecycle } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { type DeployBuildsInput, deployBuildLookup } from "./useDeployBuilds";
@@ -21,22 +19,9 @@ const READ: ProjectActivitySnapshot = {
   live: true,
   processHistory: "read",
 };
-const lifecycle = (projectId: string | undefined): Known<ZeropsLifecycle> => ({
-  state: "known",
-  value: {
-    threadId: "thread-1",
-    recentTools: [],
-    ...(projectId === undefined
-      ? {}
-      : { envelope: { phase: "develop-active", project: { id: projectId, name: "p" } } }),
-  } as unknown as ZeropsLifecycle,
-  asOf: { ordinal: 1, atMs: 0 },
-  coverage: "complete",
-  freshness: { kind: "live" },
-});
 const input = (overrides: Partial<DeployBuildsInput>): DeployBuildsInput => ({
   signedIn: true,
-  lifecycle: lifecycle("proj-1"),
+  thread: { projectId: "proj-1" },
   project: "readable",
   snapshot: READ,
   ...overrides,
@@ -57,16 +42,15 @@ describe("deployBuildLookup — what the thread's project says of a build a depl
     },
     { name: "not signed in", input: input({ signedIn: false }), expected: "unobservable" },
     {
-      name: "the thread's lifecycle still read",
-      input: input({ lifecycle: { state: "reading", sinceMs: 0, attempt: 1 } }),
+      name: "the thread's project still read",
+      input: input({ thread: "reading" }),
       expected: "unread",
     },
     {
-      name: "a thread whose lifecycle names no project",
-      input: input({ lifecycle: lifecycle(undefined) }),
+      name: "a thread with no project",
+      input: input({ thread: "none" }),
       expected: "unobservable",
     },
-    { name: "no lifecycle feed", input: input({ lifecycle: undefined }), expected: "unobservable" },
     {
       name: "a project not readable here",
       input: input({ project: "unreadable" }),

@@ -6,7 +6,9 @@
  */
 import {
   type DeployBuildRead,
+  type ThreadProject,
   readDeployBuild,
+  threadProjectOf,
 } from "@t3tools/client-runtime/zerops/activity/deployBuild";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsLifecycle } from "@t3tools/contracts";
@@ -23,8 +25,8 @@ import {
 
 export interface DeployBuildsInput {
   readonly signedIn: boolean;
-  /** The thread's lifecycle: its envelope names the project the thread works in. */
-  readonly lifecycle: Known<ZeropsLifecycle> | undefined;
+  /** The project the thread works in (threadProjectOf). */
+  readonly thread: ThreadProject;
   /** The project as the inventory holds it: still loading, readable here, or not. */
   readonly project: "loading" | "readable" | "unreadable";
   readonly snapshot: ProjectActivitySnapshot;
@@ -33,28 +35,11 @@ export interface DeployBuildsInput {
 const UNREAD = (): DeployBuildRead => "unread";
 const UNOBSERVABLE = (): DeployBuildRead => "unobservable";
 
-/** The thread's project, while its lifecycle is still read, or none it can be read by. */
-export function threadProjectOf(
-  lifecycle: Known<ZeropsLifecycle> | undefined,
-): { readonly projectId: string } | "reading" | "none" {
-  switch (lifecycle?.state) {
-    case "unread":
-    case "reading":
-      return "reading";
-    case "known": {
-      const projectId = lifecycle.value.envelope?.project.id;
-      return projectId === undefined ? "none" : { projectId };
-    }
-    default:
-      return "none";
-  }
-}
-
 /** Pure: the lookup a derivation reads a deploy's build by. */
 export function deployBuildLookup(
   input: DeployBuildsInput,
 ): (appVersionId: string) => DeployBuildRead {
-  const thread = threadProjectOf(input.lifecycle);
+  const { thread } = input;
   if (
     !input.signedIn ||
     thread === "none" ||
@@ -78,7 +63,7 @@ export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): 
 } {
   const session = useZeropsSessionOptional();
   const inventory = useZeropsInventory();
-  const thread = threadProjectOf(lifecycle);
+  const thread = useMemo(() => threadProjectOf(lifecycle), [lifecycle]);
   const projectId = typeof thread === "string" ? null : thread.projectId;
   const snapshot = useProjectActivityRead(projectId);
   const signedIn = session !== null && session.status === "signed-in";
@@ -93,8 +78,8 @@ export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): 
           ? "loading"
           : "unreadable";
   const builds = useMemo(
-    () => deployBuildLookup({ signedIn, lifecycle, project, snapshot }),
-    [signedIn, lifecycle, project, snapshot],
+    () => deployBuildLookup({ signedIn, thread, project, snapshot }),
+    [signedIn, thread, project, snapshot],
   );
   return { builds, projectId };
 }
