@@ -176,6 +176,7 @@ export interface ZeropsProject {
    * or places no such project.
    */
   readonly hq?: HqPlacement;
+  readonly hqTool?: "gitea";
   /** Round-tripped by every project write, which must not blank it. */
   readonly description?: string;
   /**
@@ -212,7 +213,7 @@ function projectWriteBody(input: {
   return {
     name: input.name,
     description: input.description ?? "",
-    tagList: input.tagList,
+    tagList: input.tagList.includes("mate") ? ["mate"] : [],
     publicIpV4Shared: input.publicIpV4Shared ?? false,
     maxCreditLimit: input.maxCreditLimit ?? null,
   };
@@ -1693,7 +1694,7 @@ export class ZeropsApiClient {
           buildCreateProjectBody({
             clientId: input.clientId,
             name: input.name,
-            tagList: input.tagList,
+            tagList: input.tagList.includes("mate") ? ["mate"] : [],
             ...(input.location ? { location: input.location } : {}),
           }),
         ),
@@ -1910,9 +1911,9 @@ export class ZeropsApiClient {
    * then import-services: the platform's own preprocessor runs over the
    * document, so a recipe's `<@generateRandomString(<32>)>` arrives as a real
    * secret rather than the literal directive (measured 2026-09-06 — a probe
-   * import came back with `APP_KEY` set to 32 generated characters). It also
-   * honours the project block's `tags:`, so the group's membership is written
-   * at birth rather than in a second call that could fail on its own.
+   * import came back with `APP_KEY` set to 32 generated characters). Project
+   * tags contain only the Mate marker; HQ binds the accepted project id to
+   * its birth intent and owns its membership.
    *
    * `recipeProjectImportYaml` composes the document.
    */

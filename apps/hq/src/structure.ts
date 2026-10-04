@@ -94,6 +94,8 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "deploy_token_scope",
     "no_key_secret",
     "birth_with_kind",
+    "birth_not_found",
+    "birth_project_taken",
   ]),
 }) {}
 
@@ -121,11 +123,26 @@ export interface AttachInput {
   readonly created?: boolean;
 }
 
+/** Facts carried by the one-off project-tag port; project names and roles remain Zerops's. */
+export interface ProjectMetadataPort {
+  readonly projectId: string;
+  readonly mate?: boolean;
+  readonly face?: string;
+  readonly madeBy?: string;
+  readonly birthId?: string;
+  readonly nameSource?: "picked" | "project";
+  readonly standupRequestedBy?: string;
+  readonly closedOff?: boolean;
+  readonly signers?: Readonly<Record<string, string>>;
+  readonly tool?: "gitea";
+}
+
 /**
  * A Mate's birth intent, recorded before its Zerops project exists: where it goes and with which
  * face. Its project is created tagged with its id, so whoever finishes the Mate attaches it so.
  */
 export interface BirthIntent {
+  readonly projectId?: string;
   readonly id: string;
   /** Its face as its attach records it: empty where it wears its name's tint. */
   readonly face: string;
@@ -223,6 +240,9 @@ export interface NewMateRecord extends MateRecord {
  * whoever may observe it (`stream.ts`, `mateOverviews.ts`).
  */
 export interface MateView {
+  readonly birthId?: string;
+  readonly signers?: Readonly<Record<string, string>>;
+  readonly nameSource?: string;
   /**
    * Its project's name in Zerops as HQ's view of the org has it, never HQ's own (D3): what a client
    * from before D3 reads a Mate's name from.
@@ -241,6 +261,7 @@ export interface MateView {
 }
 
 export interface StructureRead {
+  readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
   /** The Mates in no application: their project's name in Zerops and their record. */
   readonly ungrouped: ReadonlyArray<{
     readonly projectId: string;
@@ -330,6 +351,15 @@ export class Structure extends Context.Service<
       birth: { readonly appId: string; readonly face: string; readonly standUp?: boolean },
     ) => Effect.Effect<BirthIntent, WriteError>;
     /** Sets a Mate up: its record, in no application until it is moved into one, and its ask. */
+    readonly portProjectMetadata: (
+      userId: string,
+      facts: ProjectMetadataPort,
+    ) => Effect.Effect<void, WriteError>;
+    readonly bindBirth: (
+      userId: string,
+      birthId: string,
+      projectId: string,
+    ) => Effect.Effect<void, WriteError>;
     readonly createMate: (
       userId: string,
       mate: NewMateRecord,
@@ -402,6 +432,9 @@ const tierOf = (kind: string): EnvironmentTier | undefined =>
   kind === "stage" || kind === "production" ? kind : undefined;
 
 /** An environment's sources as the JSON its insert spreads into a text array. */
+const encodeSigners = Schema.encodeSync(
+  Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)),
+);
 const encodeSources = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
 
 /** An environment's row, as a takeover keeps it (main D13). */
@@ -490,8 +523,9 @@ export const structureLayer = (options: {
             readonly face: string;
             readonly standup_requested_by: string | null;
             readonly closed_off: boolean;
+            readonly signers: Readonly<Record<string, string>>;
           }>`
-            SELECT face, standup_requested_by, closed_off_at IS NOT NULL AS closed_off
+            SELECT face, standup_requested_by, closed_off_at IS NOT NULL AS closed_off, signers
             FROM hq_mate WHERE project_id = ${projectId}`,
           Effect.orElseSucceed(
             Effect.map(
@@ -507,6 +541,7 @@ export const structureLayer = (options: {
               face: row.face,
               standupRequestedBy: row.standup_requested_by,
               closedOff: row.closed_off,
+              ...(Object.keys(row.signers).length === 0 ? {} : { signers: row.signers }),
             })),
         );
 
@@ -929,7 +964,7 @@ export const structureLayer = (options: {
                   // write (B3). One with no intent carries its own ask.
                   if (input.mate !== undefined) {
                     yield* sql`
-                      INSERT INTO hq_mate (project_id, face, made_by, standup_requested_by, service_id)
+                      INSERT INTO hq_mate (project_id, face, made_by, standup_requested_by, service_id, birth_id)
                       SELECT ${input.projectId}, ${input.mate.face},
                         COALESCE(intent.made_by, ${userId}),
                         CASE
@@ -937,7 +972,7 @@ export const structureLayer = (options: {
                             CASE WHEN intent.standup THEN intent.made_by END
                           WHEN ${input.mate.standUp === true} THEN ${userId}
                         END,
-                        ${input.mate.serviceId ?? null}
+                        ${input.mate.serviceId ?? null}, intent.id
                       FROM (SELECT 1) AS one
                       LEFT JOIN hq_birth_intent AS intent
                         ON intent.id::text = ${input.birth ?? null} AND intent.app_id::text = ${appId}
@@ -1080,7 +1115,7 @@ export const structureLayer = (options: {
                 // Theirs a week old never got its attach: it goes with this one's write.
                 yield* sql`
                   DELETE FROM hq_birth_intent
-                  WHERE made_by = ${userId} AND created_at < now() - interval '7 days'`;
+                  WHERE made_by = ${userId} AND project_id IS NULL AND created_at < now() - interval '7 days'`;
                 return yield* sql<{ readonly id: string }>`
                   INSERT INTO hq_birth_intent (app_id, face, made_by, standup)
                   VALUES (${birth.appId}::uuid, ${birth.face}, ${userId},
@@ -1090,6 +1125,76 @@ export const structureLayer = (options: {
             );
             yield* changed;
             return { id: rows[0]!.id, face: birth.face };
+          }),
+        ),
+
+        portProjectMetadata: confirmed((userId, facts) =>
+          Effect.gen(function* () {
+            if (facts.face !== undefined && !fitsFace(facts.face))
+              return yield* refuse("invalid", "face_length");
+            const view = yield* roles.forWrite;
+            yield* allowed(userId, "create_app", null, view);
+            if (!view.projects.some((project) => project.id === facts.projectId))
+              return yield* refuse("project_not_found", "project_gone");
+            yield* leader.write(
+              Effect.gen(function* () {
+                if (facts.tool !== undefined)
+                  yield* sql`
+                INSERT INTO hq_tool (project_id, kind) VALUES (${facts.projectId}, ${facts.tool}) ON CONFLICT DO NOTHING`;
+                if (facts.mate === true)
+                  yield* sql`
+                INSERT INTO hq_mate (project_id, face, made_by, standup_requested_by, closed_off_at)
+                VALUES (${facts.projectId}, ${facts.face ?? ""}, ${facts.madeBy ?? null}, ${facts.standupRequestedBy ?? null},
+                  CASE WHEN ${facts.closedOff === true} THEN now() END) ON CONFLICT DO NOTHING`;
+                yield* sql`
+                UPDATE hq_mate SET
+                  face = CASE WHEN face = '' THEN COALESCE(${facts.face ?? null}, face) ELSE face END,
+                  made_by = COALESCE(made_by, ${facts.madeBy ?? null}),
+                  standup_requested_by = COALESCE(standup_requested_by, ${facts.standupRequestedBy ?? null}),
+                  birth_id = COALESCE(birth_id, ${facts.birthId ?? null}::uuid),
+                  name_source = COALESCE(name_source, ${facts.nameSource ?? null}),
+                  signers = ${encodeSigners(facts.signers ?? {})}::jsonb || signers
+                WHERE project_id = ${facts.projectId}`;
+              }),
+            );
+            yield* changed;
+            yield* PubSub.publish(mateChanged, facts.projectId);
+          }),
+        ),
+
+        bindBirth: confirmed((userId, birthId, projectId) =>
+          Effect.gen(function* () {
+            const view = yield* roles.forWrite;
+            yield* leader.write(
+              Effect.gen(function* () {
+                const births = yield* sql<{
+                  readonly app_id: string;
+                  readonly project_id: string | null;
+                }>`
+                SELECT app_id::text AS app_id, project_id FROM hq_birth_intent
+                WHERE id::text = ${birthId} AND (made_by = ${userId} OR project_id = ${projectId}) FOR UPDATE`;
+                const birth = births[0];
+                if (birth === undefined) return yield* refuse("invalid", "birth_not_found");
+                if (birth.project_id !== null && birth.project_id !== projectId)
+                  return yield* refuse("conflict", "birth_project_taken");
+                const projects = yield* sql<{ readonly project_id: string }>`
+                SELECT project_id FROM hq_app_project WHERE app_id::text = ${birth.app_id}`;
+                yield* allowed(
+                  userId,
+                  "attach",
+                  {
+                    projectId,
+                    held: yield* heldOf(sql, projectId),
+                    to: "mate",
+                    appProjectIds: projects.map((row) => row.project_id),
+                    slotTaken: false,
+                  },
+                  view,
+                );
+                yield* sql`UPDATE hq_birth_intent SET project_id = ${projectId} WHERE id::text = ${birthId}`;
+              }),
+            );
+            yield* changed;
           }),
         ),
 
@@ -1158,7 +1263,7 @@ export const structureLayer = (options: {
             }>`
               SELECT a.id::text AS id, a.name, NOT (${appHeld}) AS empty FROM hq_app a ORDER BY a.seq`;
             const births = yield* sql<BirthIntent & { readonly app_id: string }>`
-              SELECT id::text AS id, app_id::text AS app_id, face
+              SELECT id::text AS id, app_id::text AS app_id, face, project_id AS "projectId"
               FROM hq_birth_intent ORDER BY seq`;
             const rows = yield* sql<{
               readonly project_id: string;
@@ -1167,23 +1272,25 @@ export const structureLayer = (options: {
               readonly mate: Omit<MateView, "name"> | null;
             }>`
               SELECT p.project_id, p.app_id::text AS app_id, p.kind,
-                     CASE WHEN m.project_id IS NULL THEN NULL ELSE json_build_object(
+                     CASE WHEN m.project_id IS NULL THEN NULL ELSE jsonb_build_object(
                        'face', m.face, 'madeBy', m.made_by,
                        'standupRequestedBy', m.standup_requested_by,
-                       'closedOff', m.closed_off_at IS NOT NULL) END AS mate
+                       'closedOff', m.closed_off_at IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END || CASE WHEN m.name_source IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('nameSource', m.name_source) END END AS mate
               FROM hq_app_project p LEFT JOIN hq_mate m USING (project_id)
               ORDER BY p.seq`;
             const alone = yield* sql<{
               readonly project_id: string;
               readonly mate: Omit<MateView, "name">;
             }>`
-              SELECT m.project_id, json_build_object(
+              SELECT m.project_id, jsonb_build_object(
                        'face', m.face, 'madeBy', m.made_by,
                        'standupRequestedBy', m.standup_requested_by,
-                       'closedOff', m.closed_off_at IS NOT NULL) AS mate
+                       'closedOff', m.closed_off_at IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END || CASE WHEN m.name_source IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('nameSource', m.name_source) END AS mate
               FROM hq_mate m
               WHERE NOT EXISTS (SELECT 1 FROM hq_app_project p WHERE p.project_id = m.project_id)
               ORDER BY m.seq`;
+            const tools = yield* sql<{ readonly projectId: string; readonly kind: "gitea" }>`
+              SELECT project_id AS "projectId", kind FROM hq_tool ORDER BY project_id`;
             const environments = yield* sql<{
               readonly project_id: string;
               readonly app_id: string;
@@ -1277,6 +1384,9 @@ export const structureLayer = (options: {
               can(person, "read_project", { projectId }, view).allow;
             const visible = rows.filter((row) => reads(row.project_id));
             return {
+              ...(tools.length === 0
+                ? {}
+                : { tools: tools.filter((tool) => reads(tool.projectId)) }),
               ungrouped: alone
                 .filter((row) => reads(row.project_id))
                 .map((row) => ({
@@ -1322,7 +1432,12 @@ export const structureLayer = (options: {
                     : [],
                   births: births
                     .filter((row) => row.app_id === app.id)
-                    .map(({ id, face }) => ({ id, name: "" as const, face })),
+                    .map(({ id, face, projectId }) => ({
+                      id,
+                      name: "" as const,
+                      face,
+                      ...(projectId == null ? {} : { projectId }),
+                    })),
                 }))
                 .filter(
                   (app) =>

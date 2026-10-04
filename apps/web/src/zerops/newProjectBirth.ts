@@ -22,7 +22,6 @@
  */
 import {
   formatMateFace,
-  readZeropsMembership,
   recipeTierServices,
   splitRecipeTier,
   ZeropsApiError,
@@ -138,7 +137,7 @@ export type NewProjectPatch = Partial<
 export interface NewProjectCreation {
   readonly name: string;
   readonly location?: string;
-  /** The birth intent HQ holds of its Mate: the project is tagged with it (`mateBirthTag`). */
+  /** The birth intent HQ holds of its Mate. */
   readonly birth?: string;
 }
 
@@ -559,10 +558,7 @@ export function progressNewProjectBirth(
   progress: ReadonlyArray<EnvironmentCreationStepProgress>,
 ): void {
   const creation = progress.find((entry) => entry.step.kind === "create-project");
-  const intent =
-    creation?.step.kind === "create-project"
-      ? readZeropsMembership({ tagList: creation.step.tagList }).birth
-      : undefined;
+  const intent = creation?.step.kind === "create-project" ? creation.step.birth : undefined;
   patchBirth(birthId, { progress, ...(intent === undefined ? {} : { intent }) });
 }
 

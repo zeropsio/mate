@@ -11,23 +11,23 @@ describe("applyProjectTagPatch", () => {
     readonly removes: ReadonlyArray<string>;
   }>([
     {
-      name: "a Mate declared carries the marker, and every tag it had",
+      name: "a Mate declared carries the marker, and no metadata tags",
       tags: ["person:own"],
       patch: { kind: "mate" },
       adds: ["mate"],
-      removes: [],
+      removes: ["person:own"],
     },
     {
       name: "a Mate declared again is left as it is",
       tags: ["mate", "person:own"],
       patch: { kind: "mate" },
       adds: ["mate"],
-      removes: [],
+      removes: ["person:own"],
     },
   ])("$name, and changes nothing applied again", ({ tags, patch, adds, removes }) => {
     const once = applyProjectTagPatch(tags, patch);
 
-    expect(once).toEqual(expect.arrayContaining([...adds, "person:own"]));
+    expect(once).toEqual(expect.arrayContaining([...adds]));
     for (const tag of removes) expect(once).not.toContain(tag);
     expect(sameProjectTags(applyProjectTagPatch(once, patch), once)).toBe(true);
   });

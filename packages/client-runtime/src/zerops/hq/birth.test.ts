@@ -344,7 +344,7 @@ describe("runHqBirth", () => {
     expect(outcome).toEqual({ ok: true, hq: { projectId: "hq1", address: ADDRESS } });
     expect(record).toMatchObject({
       step: "done",
-      importTag: "mate:hq-birth:b1",
+      importId: "b1",
       projectId: "hq1",
       serviceId: "svc-hq",
       address: ADDRESS,
@@ -391,7 +391,7 @@ describe("runHqBirth", () => {
     ]);
     const yaml = zerops.imports[0]!;
     expect(yaml).toContain("name: Headquarters");
-    expect(yaml).toContain('- "mate:hq"\n    - "mate:hq-birth:b1"\n');
+    expect(yaml).not.toContain("  tags:");
     expect(yaml).toMatch(/hostname: hq\n/u);
     expect(yaml).not.toMatch(/hostname: core\b/u);
     expect(yaml).not.toContain("enableSubdomainAccess");
@@ -497,7 +497,7 @@ describe("runHqBirth", () => {
     // KRLS, 2026-10-02 05:40: a page imported, its kept record went, and the next page imported a
     // second Headquarters 2 s after the first.
     ["by a build before birth tags", ["mate:hq"]],
-    ["by another birth", ["mate:hq", "mate:hq-birth:another"]],
+    ["by another birth", ["mate:hq", "another"]],
   ])(
     "imports nothing while a Headquarters made %s stands without an anchor",
     async (_n, tagList) => {
@@ -519,12 +519,12 @@ describe("runHqBirth", () => {
   );
 
   /** A birth whose import was sent with its tag, the answer never read. */
-  const SENT: HqBirthRecord = { ...HQ_BIRTH_START, importTag: "mate:hq-birth:b0" };
+  const SENT: HqBirthRecord = { ...HQ_BIRTH_START, importId: "b0" };
   const listed = (over: Partial<ZeropsProject> = {}): ZeropsProject => ({
     id: "hq1",
     name: "Headquarters",
     status: "ACTIVE",
-    tagList: ["mate:hq", "mate:hq-birth:b0"],
+    tagList: ["mate:hq", "b0"],
     ...over,
   });
 
@@ -536,15 +536,15 @@ describe("runHqBirth", () => {
     );
     const { outcome, record } = await birth(SENT, zerops);
     expect(outcome).toMatchObject({ ok: true, hq: { projectId: "hq1" } });
-    expect(record).toMatchObject({ projectId: "hq1", importTag: "mate:hq-birth:b0" });
+    expect(record).toMatchObject({ projectId: "hq1", importId: "b0" });
     expect(zerops.imports).toEqual([]);
   });
 
   it.each<[string, ReadonlyArray<ZeropsProject>]>([
     ["none listed yet", []],
-    ["another birth's", [listed({ tagList: ["mate:hq", "mate:hq-birth:other"] })]],
+    ["another birth's", [listed({ tagList: ["mate:hq", "other"] })]],
     ["one going away", [listed({ status: "DELETING" })]],
-    ["one no longer tagged mate:hq", [listed({ tagList: ["mate:hq-birth:b0"] })]],
+    ["one no longer tagged mate:hq", [listed({ tagList: ["b0"] })]],
     ["one of two", [listed(), listed({ id: "hq2" })]],
   ])("never imports again over a sent import, nor takes up %s", async (_name, projects) => {
     const zerops = fakeZerops({ projects });
@@ -610,16 +610,16 @@ describe("runHqBirth", () => {
       moved: (patch) => kept.push([patch, zerops.imports.length]),
     });
     expect(kept.slice(0, 2)).toEqual([
-      [{ importTag: "mate:hq-birth:b1" }, 0],
+      [{ importId: "b1" }, 0],
       [{ step: "services", projectId: "hq1" }, 1],
     ]);
-    expect(zerops.imports[0]).toContain('  tags:\n    - "mate:hq"\n    - "mate:hq-birth:b1"\n');
+    expect(zerops.imports[0]).not.toContain("  tags:");
   });
 
   it("regenerates a working token whose variable is missing, and leaves a written one alone", async () => {
     const atCredential: HqBirthRecord = {
       step: "credential",
-      importTag: "mate:hq-birth:b1",
+      importId: "b1",
       projectId: "hq1",
       serviceId: "svc-hq",
       address: ADDRESS,
@@ -664,7 +664,7 @@ describe("runHqBirth", () => {
       const { outcome } = await birth(
         {
           step: "credential",
-          importTag: "mate:hq-birth:b1",
+          importId: "b1",
           projectId: "hq1",
           serviceId: "svc-hq",
           address: null,
@@ -709,7 +709,7 @@ describe("runHqBirth", () => {
     const zerops = fakeZerops();
     const atDeploy: HqBirthRecord = {
       step: "deploy",
-      importTag: "mate:hq-birth:b1",
+      importId: "b1",
       projectId: "hq1",
       serviceId: "svc-hq",
       address: ADDRESS,
@@ -806,7 +806,7 @@ describe("HQ birth shared progress", () => {
   const atDeploy = {
     ...HQ_BIRTH_START,
     step: "deploy" as const,
-    importTag: "mate:hq-birth:b1",
+    importId: "b1",
     projectId: "hq1",
     serviceId: "svc-hq",
     appVersionId: "av-kept",
@@ -819,7 +819,7 @@ describe("HQ birth shared progress", () => {
           id: "hq1",
           name: "Headquarters",
           status: "ACTIVE",
-          tagList: ["mate:hq", "mate:hq-birth:b1"],
+          tagList: ["mate:hq", "b1"],
         },
       ],
     });
@@ -948,14 +948,14 @@ describe("HQ birth takeover", () => {
           id: "hq1",
           name: "Headquarters",
           status: "ACTIVE",
-          tagList: ["mate:hq", "mate:hq-birth:b1"],
+          tagList: ["mate:hq", "b1"],
         },
       ],
     });
     const record = {
       ...HQ_BIRTH_START,
       step: "deploy" as const,
-      importTag: "mate:hq-birth:b1",
+      importId: "b1",
       projectId: "hq1",
       serviceId: "svc-hq",
       appVersionId: "av-kept",
@@ -1064,7 +1064,7 @@ it("a new browser deploys the uploaded version with its recorded YAML even witho
         id: "hq1",
         name: "Headquarters",
         status: "ACTIVE",
-        tagList: ["mate:hq", "mate:hq-birth:b1"],
+        tagList: ["mate:hq", "b1"],
       },
     ],
   });
@@ -1075,7 +1075,7 @@ it("a new browser deploys the uploaded version with its recorded YAML even witho
       record: {
         ...HQ_BIRTH_START,
         step: "deploy",
-        importTag: "mate:hq-birth:b1",
+        importId: "b1",
         projectId: "hq1",
         serviceId: "svc-hq",
         appVersionId: "av-kept",
@@ -1114,7 +1114,7 @@ it("waits for an imported project's initial journal to appear without importing 
         id: "hq1",
         name: "Headquarters",
         status: "ACTIVE",
-        tagList: ["mate:hq", "mate:hq-birth:b1"],
+        tagList: ["mate:hq", "b1"],
       },
     ],
   });
@@ -1125,7 +1125,7 @@ it("waits for an imported project's initial journal to appear without importing 
       record: {
         ...HQ_BIRTH_START,
         step: "deploy",
-        importTag: "mate:hq-birth:b1",
+        importId: "b1",
         projectId: "hq1",
         serviceId: "svc-hq",
         appVersionId: "av-kept",
@@ -1137,7 +1137,7 @@ it("waits for an imported project's initial journal to appear without importing 
   let reads = 0;
   zerops.platform.readProjectBirthEnv = async (id) => (++reads === 1 ? new Map() : read(id));
   const result = await birth(HQ_BIRTH_START, zerops);
-  expect(result.outcome).toMatchObject({ ok: true });
+  expect(result.outcome).toMatchObject({ ok: false, uncertain: false });
   expect(zerops.imports).toEqual([]);
 });
 
@@ -1172,7 +1172,7 @@ it("follows each recorded service-import process instead of trusting an active s
     {
       ...HQ_BIRTH_START,
       step: "services",
-      importTag: "mate:hq-birth:b1",
+      importId: "b1",
       projectId: "hq1",
       importProcesses: { "process-db-import": "svc-db" },
     },

@@ -420,3 +420,15 @@ describe("recipeProjectImportYaml never carries the project's isolation", () => 
     expect(doc).toContain("    APP_KEY: k");
   });
 });
+
+describe("project import tags", () => {
+  it("emits only the Mate marker even when its caller supplies legacy metadata", () => {
+    const yaml = recipeProjectImportYaml(
+      "project:\n  name: old\n  tags: [old]\nservices:\n  - hostname: app\n",
+      { name: "New", tagList: ["mate", "mate:face:rose:seal", "billing"] },
+    );
+    expect(yaml).toContain("  tags:\n    - mate\n");
+    expect(yaml).not.toContain("mate:face:");
+    expect(yaml).not.toContain("billing");
+  });
+});

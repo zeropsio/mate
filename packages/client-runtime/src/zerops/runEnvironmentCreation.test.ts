@@ -748,7 +748,9 @@ describe("runEnvironmentCreation — a press tried again", () => {
       clientId: "client-1",
       steps: plan("dev"),
       platform,
-      onProjectAccepted: (projectId) => accepted.push(projectId),
+      onProjectAccepted: (projectId) => {
+        accepted.push(projectId);
+      },
       sleep: async () => undefined,
     });
     expect(accepted).toEqual(["proj-1"]);
@@ -762,4 +764,25 @@ describe("runEnvironmentCreation — a press tried again", () => {
     expect(registered).toBeGreaterThan(-1);
     expect(registered).toBeLessThan(firstWait);
   });
+});
+
+it("waits for HQ to bind the accepted project and retains its handle when binding fails", async () => {
+  const { platform, calls } = fakePlatform();
+  const binding = Promise.reject(new Error("HQ bind failed"));
+  // Attach a handler before the runner receives it, so RED observes the missing await explicitly.
+  void binding.catch(() => undefined);
+  const outcome = await runEnvironmentCreation({
+    clientId: "client-1",
+    steps: plan("dev"),
+    platform,
+    sleep: async () => undefined,
+    onProjectAccepted: () => binding,
+  });
+  expect(outcome).toMatchObject({
+    ok: false,
+    projectId: "proj-1",
+    failedStep: { kind: "create-project" },
+    error: "HQ bind failed",
+  });
+  expect(calls).toHaveLength(1);
 });

@@ -70,6 +70,8 @@ export const MateState = Schema.Struct({
   standupRequestedBy: Schema.NullOr(Schema.String),
   /** Whether the Mate's project is closed off: its runtimes may be imported. */
   closedOff: Schema.Boolean,
+  /** Signers preserved at HQ by the one-off metadata port, keyed by login id. */
+  signers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   ...MateChanges.fields,
 });
 export type MateState = typeof MateState.Type;

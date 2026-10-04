@@ -496,8 +496,7 @@ export function recipeServicesYaml(yaml: string): string {
  *
  * The project's `name` and `tagList` are the caller's, not the recipe's: the
  * recipe names a project after itself, and mate names it after the group and
- * tags it with the group's membership, which is what makes it findable at all
- * (`groups.ts`). Both are rewritten in place here, line by line, for the same
+ * writes only the `mate` marker. HQ records its membership. Both are rewritten in place here, line by line, for the same
  * reason `recipeServicesYaml` is line-based — a recipe's comments are written
  * for whoever reads it next, and a YAML round-trip drops them.
  */
@@ -512,7 +511,9 @@ export function recipeProjectImportYaml(
   // indentations in one block, which is no YAML at all (Dara's stage tier,
   // 2026-09-17: the platform refused the import).
   const indent = block === null ? "  " : blockIndent(lines, block);
-  const tagLines = (project.tagList ?? []).map((tag) => `${indent}  - ${tag}`);
+  const tagLines = (project.tagList?.includes("mate") ? ["mate"] : []).map(
+    (tag) => `${indent}  - ${tag}`,
+  );
   const header = [
     "project:",
     `${indent}name: ${project.name}`,

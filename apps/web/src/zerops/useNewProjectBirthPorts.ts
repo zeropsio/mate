@@ -1,5 +1,5 @@
 /** Rebuilds callable ports from the current account for a person's explicit retry. */
-import { mateBirthTag, withZeropsMateTag } from "@t3tools/client-runtime/zerops";
+import { withZeropsMateTag } from "@t3tools/client-runtime/zerops";
 import { accountHqApi } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
@@ -31,13 +31,13 @@ export function useNewProjectBirthPorts(): (ask: NewProjectAsk) => NewProjectPor
       // The project alone, born a Mate under its birth intent (its marker on before anything
       // else): its press attaches it to its application, then imports its container (F6b). In
       // flight as a press: the background mints no throwaway while it reads the token list.
-      createProject: ({ name: projectName, location, birth }) =>
+      createProject: ({ name: projectName, location }) =>
         whilePressing(() =>
           runZeropsCommand(
             runtime.commands.createProject({
               organization,
               name: projectName,
-              tagList: withZeropsMateTag(birth === undefined ? [] : [mateBirthTag(birth)]),
+              tagList: withZeropsMateTag([]),
               ...(location === undefined ? {} : { location }),
             }),
           ),

@@ -383,7 +383,7 @@ export function hasNoZeropsProject(input: {
   // A tool is not a project: the tree lists it apart (`partitionZeropsToolProjects`).
   return listsNoProject(
     input.listing,
-    (candidate) => readZeropsToolKind(candidate.project.tagList) === undefined,
+    (candidate) => readZeropsToolKind(candidate.project) === undefined,
   );
 }
 

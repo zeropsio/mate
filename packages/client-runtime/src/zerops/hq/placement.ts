@@ -30,6 +30,11 @@ export type HqPlacement =
   /** A Mate HQ holds in no application (`HqStructure.ungrouped`). */
   | { readonly appId: null; readonly appName: null; readonly kind: "mate"; readonly mate: HqMate };
 
+/** HQ facts joined by project id: placement and account tool classification. */
+export type HqPlacements = ReadonlyMap<string, HqPlacement> & {
+  readonly tools?: ReadonlyMap<string, "gitea">;
+};
+
 /** Every kind this build reads: a kind HQ adds later places nothing here until it does. */
 const PROJECT_KINDS: Readonly<Record<RoleProjectKind, true>> = {
   mate: true,
@@ -51,9 +56,18 @@ export function placementsOf(
   structure: HqStructure,
   logins: ReadonlyMap<string, OverviewLogins> = new Map(),
   readyAgents: ReadonlyMap<string, boolean> = new Map(),
-): ReadonlyMap<string, HqPlacement> {
+): HqPlacements {
   const withLogins = (projectId: string, mate: HqMate): HqMate => {
-    const told = logins.get(projectId);
+    const told =
+      logins.get(projectId) ??
+      (mate.signers === undefined
+        ? undefined
+        : Object.fromEntries(
+            Object.entries(mate.signers).map(([key, by]) => [
+              key,
+              { signedInBy: null, lastSignedInBy: by, present: false, token: false },
+            ]),
+          ));
     const ready = readyAgents.get(projectId);
     return told === undefined && ready === undefined
       ? mate
@@ -84,30 +98,33 @@ export function placementsOf(
       mate: withLogins(projectId, mate),
     });
   }
-  return placements;
+  return Object.assign(placements, {
+    tools: new Map((structure.tools ?? []).map((tool) => [tool.projectId, tool.kind] as const)),
+  });
 }
 
 /**
  * The project with where HQ places it now: a project it does not place carries no placement — one
  * it placed before and no longer does loses its. The same object where nothing changes.
  */
-export function placeProject<P extends { readonly id: string; readonly hq?: HqPlacement }>(
-  project: P,
-  placements: ReadonlyMap<string, HqPlacement>,
-): P {
+export function placeProject<
+  P extends { readonly id: string; readonly hq?: HqPlacement; readonly hqTool?: "gitea" },
+>(project: P, placements: HqPlacements): P {
   const placement = placements.get(project.id);
-  if (placement !== undefined)
-    return project.hq === placement ? project : { ...project, hq: placement };
-  if (project.hq === undefined) return project;
-  const { hq: _dropped, ...rest } = project;
-  return rest as P;
+  const tool = placements.tools?.get(project.id);
+  if (project.hq === placement && project.hqTool === tool) return project;
+  const { hq: _placement, hqTool: _tool, ...rest } = project;
+  return {
+    ...rest,
+    ...(placement === undefined ? {} : { hq: placement }),
+    ...(tool === undefined ? {} : { hqTool: tool }),
+  } as P;
 }
 
 /** The projects, each with where HQ places it now (`placeProject`). */
-export function placeProjects<P extends { readonly id: string; readonly hq?: HqPlacement }>(
-  projects: ReadonlyArray<P>,
-  placements: ReadonlyMap<string, HqPlacement>,
-): ReadonlyArray<P> {
+export function placeProjects<
+  P extends { readonly id: string; readonly hq?: HqPlacement; readonly hqTool?: "gitea" },
+>(projects: ReadonlyArray<P>, placements: HqPlacements): ReadonlyArray<P> {
   return projects.map((project) => placeProject(project, placements));
 }
 
@@ -116,11 +133,10 @@ export function placeProjects<P extends { readonly id: string; readonly hq?: HqP
  * where it holds no rows, and the same row where its project's place did not change.
  */
 export function placeListing<
-  R extends { readonly project: { readonly id: string; readonly hq?: HqPlacement } },
->(
-  listing: Known<ReadonlyArray<R>>,
-  placements: ReadonlyMap<string, HqPlacement>,
-): Known<ReadonlyArray<R>> {
+  R extends {
+    readonly project: { readonly id: string; readonly hq?: HqPlacement; readonly hqTool?: "gitea" };
+  },
+>(listing: Known<ReadonlyArray<R>>, placements: HqPlacements): Known<ReadonlyArray<R>> {
   if (listing.state !== "known") return listing;
   return {
     ...listing,

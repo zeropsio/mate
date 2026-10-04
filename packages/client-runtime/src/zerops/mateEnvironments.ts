@@ -53,7 +53,7 @@ export function hasMateContainer(candidate: ZeropsCandidate): boolean {
  * coding agent in the account's git host.
  */
 function isTool(candidate: ZeropsCandidate): boolean {
-  return readZeropsToolKind(candidate.project.tagList) !== undefined;
+  return readZeropsToolKind(candidate.project) !== undefined;
 }
 
 /** A Mate lives here — see the module doc for the rule. */

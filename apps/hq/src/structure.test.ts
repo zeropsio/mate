@@ -1051,6 +1051,70 @@ describe("structure", () => {
         ),
     );
 
+    it.effect("ports missing Mate facts into HQ once, preserving facts HQ already holds", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          yield* structure.createMate("owner", { projectId: "P_OWN", face: "rose:seal" });
+          yield* structure.portProjectMetadata("owner", {
+            projectId: "P_OWN",
+            face: "sky:flower",
+            signers: { codex: "owner" },
+          });
+          yield* structure.portProjectMetadata("owner", {
+            projectId: "P_OWN",
+            signers: { codex: "maker" },
+          });
+          const rows = yield* sql<{
+            readonly face: string;
+            readonly signers: Record<string, string>;
+          }>`SELECT face, signers FROM hq_mate WHERE project_id = 'P_OWN'`;
+          assert.deepStrictEqual(rows[0], { face: "rose:seal", signers: { codex: "owner" } });
+          yield* structure.portProjectMetadata("owner", { projectId: "P_TEAM", tool: "gitea" });
+          assert.deepStrictEqual((yield* structure.read("owner")).tools, [
+            { projectId: "P_TEAM", kind: "gitea" },
+          ]);
+          assert.strictEqual(
+            yield* reasonOf(
+              structure.portProjectMetadata("maker", { projectId: "P_TEAM", tool: "gitea" }),
+            ),
+            "not_structure_writer",
+          );
+        }),
+      ),
+    );
+
+    it.effect("binds a birth to its project by id in HQ, without project tags", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const app = yield* structure.createApp("owner", "App");
+          const birth = yield* structure.recordBirth("owner", { appId: app.id, face: "rose:seal" });
+          yield* structure.bindBirth("owner", birth.id, "P_OWN");
+          yield* structure.bindBirth("owner", birth.id, "P_OWN");
+          const read = yield* structure.read("owner");
+          assert.deepStrictEqual(read.apps.find((a) => a.id === app.id)?.births, [
+            { id: birth.id, name: "", face: "rose:seal", projectId: "P_OWN" },
+          ]);
+          assert.strictEqual(
+            yield* reasonOf(structure.bindBirth("nobody", birth.id, "P_TEAM")),
+            "birth_not_found",
+          );
+          yield* structure.attachProject("owner", app.id, {
+            projectId: "P_OWN",
+            kind: "mate",
+            mate: { face: "rose:seal" },
+            birth: birth.id,
+          });
+          assert.strictEqual(
+            (yield* structure.read("owner")).apps[0]?.projects[0]?.mate?.birthId,
+            birth.id,
+          );
+        }),
+      ),
+    );
+
     it.effect("a Mate attached under its birth intent was made by whoever started its birth", () =>
       withStructure(() =>
         Effect.gen(function* () {

@@ -135,7 +135,7 @@ describe("selectMateEnvironments", () => {
 });
 
 function tool(id: string): ZeropsCandidate {
-  return { key: `${id}:tool`, project: project(id, ["mate:tool:gitea"]), group: "ready" };
+  return { key: `${id}:tool`, project: { ...project(id), hqTool: "gitea" }, group: "ready" };
 }
 
 describe("mateEnvironmentsEmptyReason", () => {

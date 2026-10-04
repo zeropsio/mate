@@ -28,7 +28,7 @@
  */
 
 import type { ZeropsAgentType } from "./newProject.ts";
-import { mateBirthTag, withZeropsMateTag, type ZeropsEnvironmentRole } from "./groups.ts";
+import { withZeropsMateTag, type ZeropsEnvironmentRole } from "./groups.ts";
 import {
   deployTargetTier,
   hasProjectBlock,
@@ -36,7 +36,6 @@ import {
   recipeServicesYaml,
   recipeTierZcpServices,
   splitRecipeTier,
-  type RecipeRuntime,
   type RecipeRuntimes,
   type RecipeTier,
 } from "./recipeTier.ts";
@@ -97,7 +96,7 @@ export interface EnvironmentCreationInput {
   readonly register?: boolean;
   /**
    * The birth intent HQ holds of the Mate (`recordBirth`), recorded before its project: the
-   * project is created tagged with its id (`mateBirthTag`).
+   * project handle is bound to it at HQ before its attach.
    */
   readonly birth?: string;
 }
@@ -108,6 +107,7 @@ export type EnvironmentCreationStep =
       readonly kind: "create-project";
       readonly name: string;
       readonly tagList: ReadonlyArray<string>;
+      readonly birth?: string;
       readonly location: string | undefined;
     }
   /**
@@ -181,6 +181,7 @@ export type EnvironmentCreationStep =
       readonly kind: "import-project";
       readonly name: string;
       readonly tagList: ReadonlyArray<string>;
+      readonly birth?: string;
       readonly yaml: string;
     }
   /** Poll until the services are up. Measured at ~2 minutes for a two-service recipe. */
@@ -245,7 +246,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
 
   // Membership first, then the name: naming is not a membership write, and
   // routing it through one clears the group (`groups.ts`).
-  const tagList = taggedAtBirth(withAgent, input.birth);
+  const tagList = withAgent ? withZeropsMateTag([]) : [];
 
   // A recipe that describes a whole project creates one in a single call. Not
   // taken when the caller placed the environment in a region: the project
@@ -260,10 +261,19 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
           kind: "import-project",
           name,
           tagList,
+          ...(input.birth === undefined ? {} : { birth: input.birth }),
           yaml: recipeProjectImportYaml(tier.withProject, { name, tagList }),
         },
       ]
-    : [{ kind: "create-project", name, tagList, location: input.location }];
+    : [
+        {
+          kind: "create-project",
+          name,
+          tagList,
+          location: input.location,
+          ...(input.birth === undefined ? {} : { birth: input.birth }),
+        },
+      ];
   // Into a project that exists: the platform refuses a project block there,
   // and an import that names no service at all.
   if (tier !== null && !wholeProject && tier.firstImportHasServices) {
@@ -348,15 +358,4 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
     case "await-ready":
       return step.withAgent ? "Waiting for the agent" : "Waiting for the services";
   }
-}
-
-/**
- * The tags a new environment is created with: when it gets an agent, the `mate` marker, and the
- * birth intent HQ holds of it (`mateBirthTag`). They are written here, at birth, rather than after
- * the container import, so a creation that fails between the two still leaves a project that says
- * what it was meant to be, and — through its intent, by id — where and as whom. Its application,
- * kind, name, face and birth are HQ's, written by the press's registration.
- */
-function taggedAtBirth(withAgent: boolean, birth: string | undefined): ReadonlyArray<string> {
-  return withAgent ? withZeropsMateTag(birth === undefined ? [] : [mateBirthTag(birth)]) : [];
 }

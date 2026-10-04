@@ -112,9 +112,9 @@ function inAcme(kind: HqPlacement["kind"]): HqPlacement {
 function candidate(
   tagList: ReadonlyArray<string>,
   hq: HqPlacement | undefined,
-  over: Partial<ZeropsCandidate> & { readonly status?: string } = {},
+  over: Partial<ZeropsCandidate> & { readonly status?: string; readonly tool?: "gitea" } = {},
 ): ZeropsCandidate {
-  const { status = "ACTIVE", ...rest } = over;
+  const { status = "ACTIVE", tool, ...rest } = over;
   return {
     key: "acme-docs-quinn:zcp",
     group: "ready",
@@ -123,6 +123,7 @@ function candidate(
       name: "Acme Docs - Quinn",
       status,
       tagList,
+      ...(tool === undefined ? {} : { hqTool: tool }),
       ...(hq === undefined ? {} : { hq }),
     },
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },
@@ -161,7 +162,7 @@ describe("deleteMateOffered — where a Mate's menu offers Delete", () => {
     },
     {
       case: "the account's Gitea project",
-      item: candidate(["mate:tool:gitea"], undefined),
+      item: candidate([], undefined, { tool: "gitea" }),
       may: true,
       offered: false,
     },

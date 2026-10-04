@@ -11,7 +11,6 @@ export {
   HQ_BIRTH_STEPS,
   HQ_BIRTH_WAITS,
   HQ_PROJECT_NAME,
-  HQ_PROJECT_TAG,
   hqImportYaml,
   runHqBirth,
   type HqBirthDeps,

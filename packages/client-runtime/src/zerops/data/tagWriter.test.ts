@@ -46,39 +46,20 @@ function platform(
 }
 
 describe("updateProjectTags' writer", () => {
-  it.each([
-    {
-      when: "it wrote after the list our caller last saw",
-      between: { beforeRead: (tags: ReadonlyArray<string>) => [...tags, "theirs"] },
-      requests: ["GET", "PUT", "GET"],
-    },
-    {
-      when: "its whole list replaced ours after our write",
-      between: { afterWrite: (tags: ReadonlyArray<string>) => [...tags, "theirs"] },
-      requests: ["GET", "PUT", "GET", "PUT", "GET"],
-    },
-  ])("a concurrent writer's change survives our patch when $when", async (row) => {
-    const rest = platform(["mate:tool:gitea"], row.between);
-    const writer = makeProjectTagWriter({ source: rest.source });
-
-    const written = await writer.write("p1", { kind: "mate" });
-
-    expect(written.kind).toBe("written");
-    expect(rest.tags()).toEqual(expect.arrayContaining(["mate:tool:gitea", "theirs", "mate"]));
-    expect(rest.log).toEqual(row.requests);
-  });
-
-  it("a Mate declared puts back every tag the platform holds, and only adds its marker", async () => {
-    const held = ["mate:tool:gitea", "person:own"];
-    const rest = platform(held, {
-      beforeRead: (tags: ReadonlyArray<string>) => [...tags, "theirs"],
+  it("writes only the Mate marker from a fresh project read", async () => {
+    const rest = platform(["mate:face:rose:seal", "person:own"], {
+      beforeRead: (tags) => [...tags, "theirs"],
     });
     const writer = makeProjectTagWriter({ source: rest.source });
+    expect((await writer.write("p1", { kind: "mate" })).kind).toBe("written");
+    expect(rest.tags()).toEqual(["mate"]);
+    expect(rest.log).toEqual(["GET", "PUT", "GET"]);
+  });
 
-    const written = await writer.write("p1", { kind: "mate" });
-
-    expect(written.kind).toBe("written");
-    expect([...rest.tags()].sort()).toEqual([...held, "theirs", "mate"].sort());
+  it("a concurrent replacement fails visibly after one write", async () => {
+    const rest = platform([], { afterWrite: () => ["theirs"] });
+    const writer = makeProjectTagWriter({ source: rest.source });
+    await expect(writer.write("p1", { kind: "mate" })).rejects.toMatchObject({ kind: "rejected" });
     expect(rest.log).toEqual(["GET", "PUT", "GET"]);
   });
 
@@ -106,7 +87,7 @@ describe("updateProjectTags' writer", () => {
       kind: "rejected",
       retryable: true,
     });
-    expect(rest.log).toEqual(["GET", "GET", "GET", "GET"]);
+    expect(rest.log).toEqual(["GET", "GET"]);
   });
 
   it("one page serializes its own writes to a project with no locks at all", async () => {
@@ -155,7 +136,7 @@ describe("updateProjectTags' writer", () => {
     ]);
 
     expect([declared.kind, again.kind]).toEqual(["written", "unchanged"]);
-    expect(rest.project("p1")?.tagList).toEqual(["person:own", "mate"]);
+    expect(rest.project("p1")?.tagList).toEqual(["mate"]);
     // One tab's read, write and read-back, then the other's read: never interleaved.
     expect(rest.requests().map(({ route, tab }) => `${tab} ${route}`)).toEqual([
       `${first.id} GET /project/p1`,
@@ -177,7 +158,7 @@ describe("a project renamed by the project's one writer", () => {
     const renamed = await writer.rename("p1", "Nova");
 
     expect(renamed).toMatchObject({ kind: "written", project: { name: "Nova" } });
-    expect([rest.name(), rest.tags()]).toEqual(["Nova", ["mate", "person:own", "theirs"]]);
+    expect([rest.name(), rest.tags()]).toEqual(["Nova", ["mate"]]);
     expect(rest.log).toEqual(["GET", "PUT", "GET"]);
   });
 
@@ -202,8 +183,7 @@ describe("a project renamed by the project's one writer", () => {
     const rest = platform(["mate"], { afterWrite: (tags: ReadonlyArray<string>) => tags });
     const writer = makeProjectTagWriter({ source: rest.source });
 
-    expect((await writer.rename("p1", "Nova")).kind).toBe("written");
-    expect(rest.name()).toBe("Nova");
-    expect(rest.log).toEqual(["GET", "PUT", "GET", "PUT", "GET"]);
+    await expect(writer.rename("p1", "Nova")).rejects.toMatchObject({ kind: "rejected" });
+    expect(rest.log).toEqual(["GET", "PUT", "GET"]);
   });
 });

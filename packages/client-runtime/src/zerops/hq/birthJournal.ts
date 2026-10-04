@@ -33,7 +33,7 @@ const Record = Schema.Struct({
     "ready",
     "done",
   ]),
-  importTag: Schema.NullOr(Schema.String),
+  importId: Schema.NullOr(Schema.String),
   projectId: Schema.NullOr(Schema.String),
   serviceId: Schema.NullOr(Schema.String),
   address: Schema.NullOr(Schema.String),
