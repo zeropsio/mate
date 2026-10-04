@@ -3862,8 +3862,8 @@ no-cache`.
   - HQ records a key wider than its project at enrollment and on its credential (`keyWider`, HQ
     migration 0037). The Mate then offers Finish setup, whose harden leaves the key on its own
     project.
-  - Where the Mate's HQ is a Core older than that, owners and admins get "Check what its key can
-    read" in the Mate's menu. Pressing it reads the token list once and runs the same harden.
+  - The client keeps no path for a Core older than that: the fleet's Cores are updated first, as
+    an admin updates any Core from HQ's card (`ZeropsHqUpdate`).
   - `planMateKey` writes a Mate's key as exactly its own project at `BASIC_USER`. A Mate's key is one
     with a single `ADMIN` or `BASIC_USER` grant on its own project and nothing above `READ_ONLY`
     elsewhere (`mateKeyReach`, shared by HQ and the client). Any other `zcp-*` key is left alone and

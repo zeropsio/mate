@@ -230,7 +230,6 @@ export {
 } from "./projectIsolation.ts";
 export {
   findHeldMateKey,
-  findWiderMateKey,
   mateAdminKeys,
   newestMateKey,
   MATE_SELF_PROJECT_ROLE,

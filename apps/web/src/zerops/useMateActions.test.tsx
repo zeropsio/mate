@@ -18,13 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import type { ZeropsMenuAction } from "../components/zerops/ZeropsProjectMenu";
 import { hqMatesViewAtom, hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import {
-  CHECK_KEY_WHY,
-  KEY_WIDER_WHY,
-  mateAddedBy,
-  useMateActions,
-  type MateActions,
-} from "./useMateActions";
+import { KEY_WIDER_WHY, mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 
 interface AssignDialogProps {
@@ -785,48 +779,6 @@ describe("useMateActions — Finish setup on a Mate whose key reads other projec
       harden: true,
       keyWider: true,
     });
-  });
-});
-
-// Security review 2: an HQ older than this pass keeps no word on a Mate's key. Its menu offers an
-// owner or an admin the check, saying why; a load reads no token list.
-describe("useMateActions — Check what its key can read, on an older HQ", () => {
-  const older = (keyWord: boolean | undefined) => {
-    const base = mate("Ivo");
-    return {
-      ...base,
-      project: {
-        ...base.project,
-        hq: {
-          ...base.project.hq!,
-          mate: { face: "", ...(keyWord === undefined ? {} : { keyWider: keyWord }) },
-        },
-      },
-    } as ZeropsCandidatePresentation;
-  };
-  const listing = (candidate: ZeropsCandidatePresentation) => {
-    mock.listing.current = {
-      state: "known",
-      value: [candidate],
-      asOf: { ordinal: 1, atMs: 1_000 },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    };
-  };
-
-  it.each([
-    { who: "an owner, an older HQ", role: "OWNER", word: undefined, want: CHECK_KEY_WHY },
-    { who: "a member, an older HQ", role: "BASIC_USER", word: undefined, want: undefined },
-    { who: "an owner, an HQ that keeps the word", role: "OWNER", word: false, want: undefined },
-  ])("$who: offered $want", ({ role, word, want }) => {
-    mock.roleCode = role;
-    const candidate = older(word);
-    listing(candidate);
-    mount();
-    expect(
-      verbs(candidate).find((verb): verb is ZeropsMenuAction => verb.id === "check-key")?.why,
-    ).toBe(want);
-    expect(mock.asked.includes("tokens")).toBe(false);
   });
 });
 
