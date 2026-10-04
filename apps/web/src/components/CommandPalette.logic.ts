@@ -622,13 +622,34 @@ export function getCommandPaletteInputPlaceholder(mode: CommandPaletteMode): str
   }
 }
 
+export interface CommandPaletteListsRead {
+  readonly organizationId: string | null;
+  readonly read: boolean;
+}
+
+/** A negative answer is earned once per organization, and survives its reconnects. */
+export function paletteListsRead(
+  previous: CommandPaletteListsRead | null,
+  input: {
+    readonly organizationId: string | null;
+    readonly bootstrapped: boolean;
+    readonly hqMatesRead: boolean;
+  },
+): CommandPaletteListsRead {
+  const read =
+    (previous?.organizationId === input.organizationId && previous.read) ||
+    (input.bootstrapped && input.hqMatesRead);
+  if (previous?.organizationId === input.organizationId && previous.read === read) return previous;
+  return { organizationId: input.organizationId, read };
+}
+
 /**
  * What the palette says when nothing matches: its actions are its own and known at once, but
  * "no matching projects or threads" is an answer — nothing is said while they are not read.
  */
 export function paletteNoMatchMessage(input: {
   readonly isActionsOnly: boolean;
-  /** Every environment's threads and projects are read. */
+  /** Socket shells and the active organization's HQ list have settled. */
   readonly listsRead: boolean;
 }): string {
   if (input.isActionsOnly) return "No matching actions.";

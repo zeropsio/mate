@@ -17,6 +17,7 @@ import {
   reduceCommandPaletteUiState,
   type CommandPaletteGroup,
   paletteNoMatchMessage,
+  paletteListsRead,
 } from "./CommandPalette.logic";
 
 describe("browseInputEndPaddingClass", () => {
@@ -755,5 +756,35 @@ describe('paletteNoMatchMessage: no "no matching" before the lists are read', ()
     ["actions only, read", { isActionsOnly: true, listsRead: true }, "No matching actions."],
   ] as const)("%s", (_case, input, message) => {
     expect(paletteNoMatchMessage(input)).toBe(message);
+  });
+});
+
+describe("palette list settlement includes HQ and stays with its organization", () => {
+  const input = { organizationId: "org-a", bootstrapped: true, hqMatesRead: false } as const;
+  it("an empty socket catalog cannot earn no matches while HQ is unread", () => {
+    const state = paletteListsRead(null, input);
+    expect(state.read).toBe(false);
+    expect(paletteNoMatchMessage({ isActionsOnly: false, listsRead: state.read })).toBe("");
+  });
+  it("HQ answering cannot settle unread socket shells", () => {
+    expect(paletteListsRead(null, { ...input, bootstrapped: false, hqMatesRead: true }).read).toBe(
+      false,
+    );
+  });
+  it("earns no matches once both sources settle and keeps it through reconnect", () => {
+    const state = paletteListsRead(null, { ...input, hqMatesRead: true });
+    expect(state.read).toBe(true);
+    expect(paletteNoMatchMessage({ isActionsOnly: false, listsRead: state.read })).toBe(
+      "No matching commands, projects, or threads.",
+    );
+    expect(paletteListsRead(state, { ...input, bootstrapped: false })).toBe(state);
+  });
+  it("an organization change waits for that organization's HQ", () => {
+    const state = paletteListsRead(null, { ...input, hqMatesRead: true });
+    const next = paletteListsRead(state, { ...input, organizationId: "org-b" });
+    expect(next).toEqual({ organizationId: "org-b", read: false });
+    expect(
+      paletteListsRead(next, { ...input, organizationId: "org-b", hqMatesRead: true }).read,
+    ).toBe(true);
   });
 });

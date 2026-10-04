@@ -137,6 +137,7 @@ import {
   reduceCommandPaletteUiState,
   type SearchOverlayMode,
   paletteNoMatchMessage,
+  paletteListsRead,
 } from "./CommandPalette.logic";
 import { orderItemsByPreferredIds, sortLogicalProjectsForSidebar } from "./Sidebar.logic";
 import { resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
@@ -160,6 +161,7 @@ import {
 import { SidebarJumpBox } from "./zerops/SidebarJumpBox";
 import { useSidebarJump } from "../zerops/sidebarJump";
 import { askNewProject } from "../zerops/newProjectAsk";
+import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { useHqGate } from "../zerops/hqGate";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import { candidateListingAtom } from "../zerops/useZeropsCandidates";
@@ -729,10 +731,14 @@ function OpenCommandPaletteDialog(props: {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threadShells = useThreadShells();
-  // Read once is read: a reconnect's retry keeps the lists it had, so the sentence never toggles.
+  // Unopened Mates' chats come from HQ, independently of this tab's socket shells.
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
-  const [listsRead, setListsRead] = useState(bootstrapped);
-  if (bootstrapped && !listsRead) setListsRead(true);
+  const { organizationId, settled: hqMatesRead } = useHqMatesRead();
+  const readInput = { organizationId, bootstrapped, hqMatesRead };
+  const [listReadState, setListReadState] = useState(() => paletteListsRead(null, readInput));
+  const nextListReadState = paletteListsRead(listReadState, readInput);
+  if (nextListReadState !== listReadState) setListReadState(nextListReadState);
+  const listsRead = nextListReadState.read;
   // Every thread link the palette offers — a thread row, a project's latest
   // thread — opens only into an environment the route gate would open, and
   // never into a crewmate's thread, which is the crew's to open.
