@@ -22,7 +22,9 @@ describe("homeView: the home never stands blank while it waits", () => {
     remembered: null,
     projectsRead: false,
     hqMatesRead: true,
+    organizationId: "org-moss",
   } as const;
+  const projects = { kind: "projects", organizationId: "org-moss" } as const;
   it.each([
     ["landing unknown, nothing remembered: the wait line", {}, { kind: "wait" }],
     [
@@ -48,10 +50,17 @@ describe("homeView: the home never stands blank while it waits", () => {
       { landing: "none", remembered: ref },
       { kind: "opening", ref },
     ],
+    // An empty organization lands on the projects page, where New project works: upstream's
+    // "Add project" hero opened a folder picker with no environment in it.
     [
-      "no landing, the projects read whole: the hero",
+      "no landing, the projects read whole: the projects page",
       { landing: "none", projectsRead: true, remembered: ref },
-      { kind: "hero" },
+      projects,
+    ],
+    [
+      "a connect's environment holds no project: the projects page",
+      { landing: "none", projectsRead: true, targeted: true, hqMatesRead: false },
+      projects,
     ],
     [
       "platform and catalog settled, HQ unread: keep waiting",

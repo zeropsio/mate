@@ -3,7 +3,8 @@
  * the most recently active Mate once the Mates' connections have said so, seconds on a cold load —
  * and meanwhile it shows what it waits for, never a blank page. Where this browser remembers the
  * Mate it will land on (`homeGuess`), it guesses by it: that Mate's face, name and opening line,
- * with nothing that takes input; else the boot's one wait line. "No projects" is an answer: only once the read is whole. Pure.
+ * with nothing that takes input; else the boot's one wait line. Nowhere to land is an answer only
+ * once the read is whole, and it is the projects page, where New project works. Pure.
  */
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
@@ -13,7 +14,8 @@ import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@t3tools/contract
 export type HomeView =
   | { readonly kind: "opening"; readonly ref: ScopedThreadRef }
   | { readonly kind: "wait" }
-  | { readonly kind: "hero" }
+  /** The account's projects page: its organization, or none chosen. */
+  | { readonly kind: "projects"; readonly organizationId: string | null }
   | { readonly kind: "start-failed" };
 
 export function homeView(input: {
@@ -29,10 +31,12 @@ export function homeView(input: {
   readonly projectsRead: boolean;
   /** HQ has answered for this organization, or its absence/failure is known. */
   readonly hqMatesRead: boolean;
+  /** The organization in view; null while none is chosen. */
+  readonly organizationId: string | null;
 }): HomeView {
   if (input.startFailed) return { kind: "start-failed" };
   if (input.landing === "none" && input.projectsRead && (input.targeted || input.hqMatesRead)) {
-    return { kind: "hero" };
+    return { kind: "projects", organizationId: input.organizationId };
   }
   if (input.remembered !== null && !input.targeted) {
     return { kind: "opening", ref: input.remembered };

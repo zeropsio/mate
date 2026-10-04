@@ -4,10 +4,9 @@ import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
-import { PlusIcon, RotateCcwIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RotateCcwIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { openCommandPalette } from "../commandPaletteBus";
 import { HomeOpeningView } from "../components/zerops/MateLinkStage";
 import { PageWaitLine } from "../components/zerops/WaitLine";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
@@ -83,7 +82,7 @@ type IndexLanding =
 /**
  * Landing on the index route drops straight into the conversation or a draft
  * for the right project, so the first screen is a prompt instead of a dead
- * end. Falls back to an add-project hero when no project exists yet.
+ * end. With nowhere to land it is the projects page, where New project works.
  */
 function IndexDraftLanding() {
   const projects = useProjects();
@@ -231,6 +230,7 @@ function IndexDraftLanding() {
     targeted: targetEnvironmentId !== null,
     remembered,
     hqMatesRead,
+    organizationId: activeOrganization?.id ?? null,
     // A negative answer needs both the platform/registration read and HQ's unopened Mates.
     projectsRead: matesSettled,
   });
@@ -246,8 +246,8 @@ function IndexDraftLanding() {
           }}
         />
       );
-    case "hero":
-      return <NoProjectsHero />;
+    case "projects":
+      return <ZeropsHostedLanding />;
     // While it works out where to land, and on its way there: its guess, never blank — nothing
     // in it takes input, so a wrong guess gives way, without motion, losing nothing typed.
     case "opening":
@@ -278,35 +278,6 @@ function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {
           </div>
         </EmptyHeader>
       </Empty>
-    </SidebarInset>
-  );
-}
-
-function NoProjectsHero() {
-  const openAddProject = useCallback(() => openCommandPalette({ open: "add-project" }), []);
-
-  return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
-        <Empty className="flex-1">
-          <div className="w-full max-w-lg px-8 py-12">
-            <EmptyHeader className="max-w-none">
-              <EmptyTitle className="text-foreground text-2xl sm:text-3xl">
-                What should we work on?
-              </EmptyTitle>
-              <EmptyDescription className="mt-2 text-muted-foreground/78">
-                Add a project to start your first thread.
-              </EmptyDescription>
-              <div className="mt-6 flex justify-center">
-                <Button size="sm" onClick={openAddProject}>
-                  <PlusIcon className="size-4" />
-                  Add project
-                </Button>
-              </div>
-            </EmptyHeader>
-          </div>
-        </Empty>
-      </div>
     </SidebarInset>
   );
 }
