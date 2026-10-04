@@ -642,7 +642,11 @@ describe("groupFlow", () => {
       expected:
         deployment.state === "unread"
           ? { kind: "live", line: "v0.1.0", stop: { state: "deployed" } }
-          : { kind: "checking", line, stop: { state: "checking", version: undefined } },
+          : {
+              kind: "checking",
+              line,
+              stop: { state: "checking", version: undefined, readFailed: true },
+            },
     })),
     {
       case: "checking: the platform has not answered and the row names nothing",

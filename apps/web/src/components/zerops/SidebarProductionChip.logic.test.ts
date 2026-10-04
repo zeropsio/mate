@@ -1532,3 +1532,20 @@ it.each<ProductionChip>([
   expect(drawnChip(view, remembered)).toEqual(remembered);
   expect(rememberedChipAfter(view)).toBeUndefined();
 });
+
+it("shows a failed runtime attempt even while serving metadata is unread", () => {
+  const readLine = "Couldn't read what runs here. Zerops didn't answer.";
+  const failed = stop({ state: "checking", version: undefined, readLine, readFailed: true });
+  const serving = { kind: "unknown" } as const;
+  const production = productionChip(
+    input({ production: { kind: "checking", stop: failed, line: readLine }, serving }),
+  );
+  expect(production).toEqual({
+    kind: "chip",
+    chip: { label: "prod", state: "unverified", readLine },
+  });
+  expect(stageStopChip({ stop: failed, serving, releases: { kind: "absent" } })).toEqual({
+    kind: "chip",
+    chip: { label: "stage", state: "unverified", readLine },
+  });
+});

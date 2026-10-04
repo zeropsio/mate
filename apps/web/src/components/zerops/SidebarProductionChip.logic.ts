@@ -308,7 +308,11 @@ export function productionChip(input: {
       waitingAtLeast,
     });
   }
-  if (serving.kind === "unknown") return UNKNOWN;
+  if (
+    serving.kind === "unknown" &&
+    !(production.kind === "checking" && production.stop.readFailed === true)
+  )
+    return UNKNOWN;
   if (production.kind === "checking")
     return chipOf("prod", "unverified", { readLine: production.line });
   if (input.releases.kind === "waiting") {
@@ -380,7 +384,7 @@ export function stageStopChip(input: {
   const version = stageVersion(stop);
   if (serving.kind === "down") return chipOf("stage", "down", { version });
   if (serving.kind === "stopped") return chipOf("stage", "stopped", { version });
-  if (serving.kind === "unknown") return UNKNOWN;
+  if (serving.kind === "unknown" && stop.readFailed !== true) return UNKNOWN;
   if (stop.state === "checking")
     return chipOf("stage", "unverified", { readLine: stop.readLine ?? "Checking what runs here…" });
   if (input.releases.kind === "waiting") {

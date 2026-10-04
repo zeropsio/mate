@@ -200,8 +200,10 @@ export interface GroupFlowStop {
   /** What feeds it — `main` for a stage, `release` for a production; `undefined` undeclared. */
   readonly source: string | undefined;
   readonly route: string | undefined;
-  /** The shared runtime answer while unread or failed; no HQ history can replace it. */
+  /** The runtime answer while the flow names nothing, or while its read failed. */
   readonly readLine?: string;
+  /** A runtime attempt ended without an answer, even if serving metadata is still unread. */
+  readonly readFailed?: true;
   /**
    * A stage that runs nothing: its first deploy on its way, or failed (`stageFirstDeploy`).
    * `undefined` while HQ has none under way.
@@ -345,6 +347,7 @@ function stopOf(input: GroupFlowStopInput): GroupFlowStop {
     ...base,
     state: "checking",
     version: undefined,
+    ...(deploymentReadFailed(deployment) ? { readFailed: true as const } : {}),
     readLine: stopView({
       deployment: deployment ?? { state: "unread", waitingFor: null },
       row,
