@@ -67,6 +67,24 @@ import {
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 
 describe("the Overview", () => {
+  it.each(["last Mate", "one of two Mates"])(
+    "keeps unfinished deletion visible after deleting the %s",
+    (which) => {
+      const html = render({
+        groups: [
+          {
+            ...FRESH,
+            flow: { ...FRESH.flow, mates: which === "last Mate" ? [] : FRESH.flow.mates },
+            mates: which === "last Mate" ? new Map() : FRESH.mates,
+            contents: { empty: false, deletingProjectIds: ["zed"] },
+          },
+        ],
+      });
+      expect(html).toContain("Deletion is still in progress.");
+      expect(html).not.toContain("No Mate yet");
+    },
+  );
+
   it("shows the recipe conflict named by Next steps in the changes cell and count", () => {
     const recipe = pull({
       repository: "group",

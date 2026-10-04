@@ -1744,8 +1744,8 @@ export class ZeropsApiClient {
     projectId: string,
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
+  ): Promise<{ readonly processId: string }> {
+    const response = await this.#request<{ readonly id?: unknown }>(
       `/project/${projectId}`,
       { method: "DELETE", signal: signal ?? null },
       {
@@ -1753,6 +1753,12 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
+    if (typeof response.id !== "string" || response.id.length === 0)
+      throw new ZeropsApiError(
+        "Zerops accepted the deletion but did not return its process, so it cannot be followed.",
+        "uncertain",
+      );
+    return { processId: response.id };
   }
 
   /**

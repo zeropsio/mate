@@ -680,7 +680,7 @@ describe("groupMetaLine", () => {
     ["2 open changes", flowOf({ mates: [], pullRequests: [pull(), pull({ number: 2 })] })],
     ["No Mate yet", flowOf({ mates: [] })],
   ] as const)("reads %s", (line, flow) => {
-    expect(groupMetaLine(flow)).toBe(line);
+    expect(groupMetaLine(flow, { empty: true, deletingProjectIds: [] })).toBe(line);
   });
 });
 

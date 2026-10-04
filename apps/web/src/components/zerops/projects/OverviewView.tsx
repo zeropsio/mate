@@ -15,6 +15,7 @@ import { ChevronRightIcon } from "lucide-react";
 import { Fragment, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
+import { emptyMateLine } from "./emptyApps.logic";
 import { Button } from "../../ui/button";
 import { Skeleton } from "../../ui/skeleton";
 import { FlatCard, MicroLabel, StatusDot } from "../primitives";
@@ -229,7 +230,7 @@ function MatesCell<T>({
     >
       <span className="flex min-w-0 flex-1 flex-col gap-0.5" data-zerops-cell-lines="true">
         {mates.length === 0 ? (
-          <EmptyStep>No Mate yet</EmptyStep>
+          <EmptyStep>{emptyMateLine(entry.contents)}</EmptyStep>
         ) : (
           <span className="flex min-w-0 items-center gap-2">
             {named.map((chip) =>
@@ -327,7 +328,7 @@ function OverviewRow<T>({
             <GroupName className="text-sm" entry={entry} />
             {/* With the Mates moved under the name, they are its line 2. */}
             <span className="truncate text-xs text-muted-foreground @2xl/flow:hidden @5xl/flow:block">
-              {entry.line ?? groupMetaLine(flow)}
+              {entry.line ?? groupMetaLine(flow, entry.contents)}
             </span>
           </span>
         </button>

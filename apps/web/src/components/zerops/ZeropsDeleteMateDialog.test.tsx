@@ -196,3 +196,12 @@ it("a deleted Mate offers manual key retirement without asking to delete it agai
   enter(tree);
   expect(onConfirm).toHaveBeenCalledTimes(1);
 });
+
+it("explains an unfinished HQ completion beside its refusal and Again", () => {
+  const html = renderToStaticMarkup(
+    form({ cleanup: true, error: "HQ refused: project still exists" }),
+  );
+  expect(html).toContain("HQ records");
+  expect(html).toContain("HQ refused: project still exists");
+  expect(html).toContain("Try again");
+});

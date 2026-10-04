@@ -3,7 +3,7 @@
  * it, open with HQ's refusal for another look.
  */
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
-import { HqError } from "@t3tools/client-runtime/zerops/hq";
+import { HqError, type HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -57,17 +57,46 @@ function mount() {
   mock.remove = remove;
   const onClose = vi.fn();
   act(() => {
-    mounted.push(create(<ZeropsDeleteProjectDialog group={GROUP} onClose={onClose} />));
+    mounted.push(
+      create(
+        <ZeropsDeleteProjectDialog
+          group={GROUP}
+          onClose={onClose}
+          contents={{ empty: true, deletingProjectIds: [] }}
+        />,
+      ),
+    );
   });
   return {
     remove,
     onClose,
+    updateContents: (contents: HqAppContents | undefined) =>
+      act(() => {
+        mounted
+          .at(-1)!
+          .update(
+            <ZeropsDeleteProjectDialog group={GROUP} onClose={onClose} contents={contents} />,
+          );
+      }),
     take: () => settle.take(),
     refuse: (cause: unknown) => settle.refuse(cause),
   };
 }
 
 describe("ZeropsDeleteProjectDialog", () => {
+  it.each([
+    undefined,
+    { empty: false, deletingProjectIds: [] },
+    { empty: false, deletingProjectIds: ["zed"] },
+  ])("stops confirmation when HQ's contents change while open: %j", (contents) => {
+    const press = mount();
+    press.updateContents(contents);
+    expect(mock.form?.contents).toEqual(contents);
+    act(() => mock.form!.onConfirm());
+    expect(press.remove).not.toHaveBeenCalled();
+    expect(press.onClose).not.toHaveBeenCalled();
+  });
+
   it("asks about the project by its name", () => {
     mount();
     expect(mock.form).toMatchObject({ name: "mate-rig-e2e-a", pending: false, error: null });

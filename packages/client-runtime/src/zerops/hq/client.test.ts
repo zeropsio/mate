@@ -1679,3 +1679,35 @@ describe("makeHqApi — a write HQ may have made", () => {
     });
   });
 });
+
+describe("makeHqApi — explicit deletion completion", () => {
+  it("passes the scoped handle once and shows HQ refusal for a manual Again", async () => {
+    let refuse = true;
+    const hq = fakeHq((seen) =>
+      seen.path.endsWith("/deletion")
+        ? json(200, { completion: "scoped-handle" })
+        : seen.path.endsWith("/deleted")
+          ? refuse
+            ? json(409, { code: "conflict", reason: "project_still_exists" })
+            : json(200, { projectId: "P_MATE" })
+          : undefined,
+    );
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      throughDoor: doors().throughDoor,
+      openSocket: NO_SOCKET,
+    });
+    const completion = await api.prepareProjectDeletion("P_MATE");
+    await expect(api.completeProjectDeletion("P_MATE", completion)).rejects.toMatchObject({
+      reason: "project_still_exists",
+    });
+    expect(hq.seen.filter((seen) => seen.path.endsWith("/deleted"))).toEqual([
+      expect.objectContaining({ method: "POST", body: { completion: "scoped-handle" } }),
+    ]);
+    refuse = false;
+    await api.completeProjectDeletion("P_MATE", completion);
+    expect(hq.seen.filter((seen) => seen.path.endsWith("/deletion"))).toHaveLength(1);
+    expect(hq.seen.filter((seen) => seen.path.endsWith("/deleted"))).toHaveLength(2);
+  });
+});

@@ -37,6 +37,7 @@ export {
   type HqHealth,
   type HqSocket,
   type HqStructure,
+  type HqAppContents,
   type OpenHqSocket,
 } from "./client.ts";
 export {

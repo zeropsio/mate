@@ -1693,6 +1693,117 @@ describe("makeZeropsDataRuntime", () => {
         projects: [],
       },
     });
+  it.effect.each(["FINISHED", "FAILED", "CANCELED"] as const)(
+    "deletion follows its process to %s on the existing stream, without another write",
+    (status) =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const events = yield* Queue.unbounded<ReceiverEvent>();
+        const registered = yield* Deferred.make<RegistrationRequest>();
+        const accepted = yield* Deferred.make<void>();
+        let writes = 0;
+        const ref = {
+          kind: "process" as const,
+          project: topologyDescriptor.project,
+          processId: ZeropsProcessId.make("delete-process"),
+        };
+        const adapter: ZeropsDataAdapter = {
+          ...makeAdapterHarness().adapter,
+          openReceiver: (_scope, organization, identity) =>
+            Effect.succeed({
+              identity,
+              organization,
+              delivery: "hot-single-consumer-buffered-before-open-resolves",
+              events: Stream.fromQueue(events),
+            }),
+          register: (_receiver, request) =>
+            Effect.gen(function* () {
+              if (
+                request.descriptor.kind === "entity-updates" &&
+                request.descriptor.entity === "process"
+              )
+                yield* Deferred.succeed(registered, request);
+              return { responseObservations: [] };
+            }),
+          execute: (_command) =>
+            Effect.gen(function* () {
+              writes++;
+              yield* Deferred.succeed(accepted, undefined);
+              return {
+                processRefs: [ref],
+                observations: [],
+                result: { kind: "delete-project" as const, value: undefined },
+              };
+            }),
+        };
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter,
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+          initialAccess: {
+            status: "verified",
+            account: runtimeScope.account,
+            accountEpoch: runtimeScope.epoch,
+            verifiedAtMs: 0,
+            deadlineMs: 10_000,
+            mutationsAllowed: true,
+            organizations: [{ organization: ref.project.organization, mutationsAllowed: true }],
+            projects: [{ project: ref.project, role: "ADMIN", mutationsAllowed: true }],
+          },
+        });
+        const deletion = yield* runtime.commands
+          .deleteProject({
+            organization: ref.project.organization,
+            projectId: ref.project.projectId,
+          })
+          .pipe(Effect.result, Effect.forkChild);
+        yield* Deferred.await(accepted);
+        // A command completion receipt proves the request was accepted; that is not process completion.
+        yield* Stream.runHead(
+          AtomRegistry.toStream(registry, runtime.stateAtom).pipe(
+            Stream.filter((state) =>
+              [...state.commands.values()].some((attempt) => attempt.status === "accepted"),
+            ),
+          ),
+        );
+        expect(
+          [...(yield* runtime.state).interests.values()].some(
+            (interest) => interest.descriptor.kind === "project-activity",
+          ),
+        ).toBe(true);
+        expect(deletion.pollUnsafe()).toBeUndefined();
+        const registration = yield* Deferred.await(registered);
+        yield* Queue.offer(events, {
+          kind: "observation",
+          bytes: 1,
+          input: {
+            kind: "process-lifecycle-observed",
+            ref,
+            observation: {
+              source: "native-push",
+              registration: registration as Extract<
+                RegistrationRequest,
+                {
+                  readonly descriptor: {
+                    readonly kind: "entity-updates";
+                    readonly entity: "process";
+                  };
+                }
+              >,
+              fields: { status },
+              metadata: {},
+            },
+          },
+        });
+        const result = yield* Fiber.join(deletion);
+        expect(result._tag).toBe(status === "FINISHED" ? "Success" : "Failure");
+        expect(writes).toBe(1);
+        yield* runtime.shutdown("application-close");
+        registry.dispose();
+      }),
+  );
+
   const tokenWrite = {
     organization: topologyDescriptor.project.organization,
     tokenId: "token-a",

@@ -207,7 +207,12 @@ import {
   shownUngrouped,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
-import { deleteOffered, emptyApplications, groupIsEmpty } from "./projects/emptyApps.logic";
+import {
+  applicationContents,
+  deleteOffered,
+  emptyApplications,
+  groupIsEmpty,
+} from "./projects/emptyApps.logic";
 import { lastGroupPlacement } from "./projects/groupPlacementMemory";
 import {
   type ZeropsRowAction,
@@ -2354,7 +2359,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             },
           })),
         // A project with nothing in it goes, at whoever writes the structure's word.
-        ...(deleteOffered(group, mayOffer(asker, "delete_app", null))
+        ...(deleteOffered(
+          group,
+          mayOffer(asker, "delete_app", null),
+          applicationContents(hqStructure, activeOrganization?.id, group.groupId),
+        )
           ? [
               {
                 id: "delete-group",
@@ -2523,6 +2532,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       const placeholder = groupNameIsPlaceholder(group);
       return {
         group,
+        contents: applicationContents(hqStructure, activeOrganization?.id, group.groupId),
         flow: groupFlow(
           groupFlowInputOf({
             groupId: group.groupId,
@@ -2698,6 +2708,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       {rowDialog?.kind === "delete-group" ? (
         <ZeropsDeleteProjectDialog
           group={rowDialog.group}
+          contents={applicationContents(
+            hqStructure,
+            activeOrganization?.id,
+            rowDialog.group.groupId,
+          )}
           key={`delete-group:${rowDialog.group.groupId}`}
           onClose={() => {
             setRowDialog(null);

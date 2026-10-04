@@ -23,6 +23,7 @@ import {
 } from "./flowSteps";
 import { groupMetaLine, nextStepTone, pullRequestsLine, type FlowCell } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
+import { emptyMateLine } from "./emptyApps.logic";
 
 /**
  * The four steps. Wide: one row of labels over one row of equal cells, arrows
@@ -166,7 +167,9 @@ export function ProjectCard<T>({
           <GroupName className="block text-base" entry={entry} />
         </h2>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {[groupMetaLine(flow), entry.line].filter((part) => part !== undefined).join(" · ")}
+          {[groupMetaLine(flow, entry.contents), entry.line]
+            .filter((part) => part !== undefined)
+            .join(" · ")}
         </span>
         {/* The step, named; its verb is in the step it acts on, once. */}
         {flow.nextStep.kind === "none" || flow.nextStep.kind === "first-task" ? null : (
@@ -209,7 +212,7 @@ export function ProjectCard<T>({
                 </Fragment>
               ),
             )}
-            {mates.length === 0 ? <EmptyStep>No Mate yet</EmptyStep> : null}
+            {mates.length === 0 ? <EmptyStep>{emptyMateLine(entry.contents)}</EmptyStep> : null}
           </OwnCell>
         </Step>
         <Arrow placement="@5xl/flow:col-start-2" />

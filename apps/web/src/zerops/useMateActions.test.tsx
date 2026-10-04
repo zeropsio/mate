@@ -80,6 +80,8 @@ const mock = vi.hoisted(() => ({
   deleteTokenFailure: false,
   mateKeyFailure: false,
   deleteProject: vi.fn(),
+  prepareProjectDeletion: vi.fn(),
+  completeProjectDeletion: vi.fn(),
   keyReads: 0,
   /** The id of the key a Mate named to HQ; none where it named none. */
   mateKey: null as string | null,
@@ -222,6 +224,8 @@ vi.mock("./accountHq", async (original) => ({
   }),
   accountHqApi: () => ({
     updateMate: mock.updateMate,
+    prepareProjectDeletion: mock.prepareProjectDeletion,
+    completeProjectDeletion: mock.completeProjectDeletion,
     mateKey: async () => {
       mock.keyReads++;
       if (mock.mateKeyFailure) throw new Error("HQ is unavailable");
@@ -326,6 +330,8 @@ beforeEach(() => {
   mock.deleteTokenFailure = false;
   mock.mateKeyFailure = false;
   mock.keyReads = 0;
+  mock.prepareProjectDeletion.mockReset().mockResolvedValue("completion-fen");
+  mock.completeProjectDeletion.mockReset().mockResolvedValue(undefined);
   mock.deleteProject.mockReset().mockResolvedValue({ value: undefined });
   mock.membersEnabled = [];
   mock.membersStatus = "ready";
@@ -1318,6 +1324,33 @@ describe("useMateActions — deletion failures finish visibly", () => {
         .onSelect();
     });
   };
+
+  it("tells HQ once after the delete process finishes, keeping completion failure visible for Again", async () => {
+    let finish!: () => void;
+    mock.deleteProject.mockReturnValue(
+      new Promise<{ value: undefined }>((resolve) => {
+        finish = () => resolve({ value: undefined });
+      }),
+    );
+    openDelete();
+    await confirm();
+    expect(mock.prepareProjectDeletion).toHaveBeenCalledWith(FEN.project.id);
+    expect(mock.completeProjectDeletion).not.toHaveBeenCalled();
+    mock.completeProjectDeletion.mockRejectedValueOnce(new Error("HQ deletion refused"));
+    await act(async () => {
+      finish();
+    });
+    expect(mock.completeProjectDeletion).toHaveBeenCalledExactlyOnceWith(
+      FEN.project.id,
+      "completion-fen",
+    );
+    expect(mock.deleteDialog.current?.error).toContain("HQ deletion refused");
+    expect(mock.deleteDialog.current?.cleanup).toBe(true);
+    await confirm();
+    expect(mock.deleteProject).toHaveBeenCalledTimes(1);
+    expect(mock.completeProjectDeletion).toHaveBeenCalledTimes(2);
+    await expect(mock.completeProjectDeletion.mock.results[1]!.value).resolves.toBeUndefined();
+  });
 
   it("a failed key lookup refuses deletion and can be tried manually", async () => {
     mock.mateKeyFailure = true;

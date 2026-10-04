@@ -32,7 +32,7 @@ import {
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { HqBirth, HqStructure } from "./client.ts";
+import type { HqAppContents, HqBirth, HqStructure } from "./client.ts";
 import { environmentsOf } from "./environments.ts";
 
 type HqApp = HqStructure["apps"][number];
@@ -118,6 +118,20 @@ const isBirth = (value: unknown): value is HqBirth =>
   typeof (value as { readonly id?: unknown }).id === "string" &&
   typeof (value as { readonly face?: unknown }).face === "string";
 
+const isContents = (value: unknown): value is HqAppContents => {
+  if (typeof value !== "object" || value === null) return false;
+  const { empty, deletingProjectIds } = value as {
+    readonly empty?: unknown;
+    readonly deletingProjectIds?: unknown;
+  };
+  return (
+    typeof empty === "boolean" &&
+    Array.isArray(deletingProjectIds) &&
+    deletingProjectIds.every((id: unknown) => typeof id === "string") &&
+    (!empty || deletingProjectIds.length === 0)
+  );
+};
+
 /**
  * An application as HQ sent it, its environments read through their shape or not known, and each
  * of its birth intents read through its own.
@@ -126,16 +140,19 @@ function appOf(value: HqApp): HqApp {
   const {
     environments: sent,
     births: told,
+    contents: held,
     ...app
   } = value as HqApp & {
     readonly environments?: unknown;
     readonly births?: unknown;
+    readonly contents?: unknown;
   };
   const environments = sent === undefined ? undefined : environmentsOf(sent);
   return {
     ...app,
     ...(environments === undefined ? {} : { environments }),
     ...(Array.isArray(told) ? { births: told.filter(isBirth) } : {}),
+    ...(isContents(held) ? { contents: held } : {}),
   };
 }
 

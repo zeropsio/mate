@@ -72,6 +72,20 @@ Until 0.6, an incomplete access check conservatively disables mutations and offe
 per-project admission below replaces it. Stale content is hidden after the verification window; an
 initial failure never unlocks cached product content.
 
+HQ's structure carries each application's `contents`: `empty` uses the same held-record predicate
+as app deletion; `deletingProjectIds` names held projects deleting or absent in HQ's Zerops view.
+Removing a project from the visible inventory does not establish app emptiness. The product deletion follows Zerops's process stream, then calls HQ's `POST
+/api/projects/:projectId/deleted` once. HQ checks that id (`goneOf`), refuses it if it still exists,
+and releases its rows and overview in the request, publishing the structure change. Before the
+Zerops delete, `POST /api/projects/:projectId/deletion` authorizes the project's admin by the
+existing `edit_mate_record` rule and returns an opaque completion handle. HQ seals it with its
+existing key, bound to the user, project and deletion purpose; completion still requires active
+org membership. It carries no copied platform roles and remains verifiable after the project and
+its roles disappear. A failure stays in the dialog with a manual Again, which repeats only the
+unfinished completion or key retirement. The periodic reconcile remains for external deletions. Clients use
+only a current stream answer for Delete, and keep unfinished deletion visible until that answer
+changes. These fields add no stored copy of Zerops topology and no client timer.
+
 Platform writes are not automatically replayed after network loss. An ambiguous response is shown
 as uncertain, with instructions to inspect the current project/services. The new-project wizard
 cannot immediately create a second project from that uncertain attempt. Once project creation
