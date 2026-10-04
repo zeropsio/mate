@@ -3804,3 +3804,91 @@ no-cache`.
     non-animated height expansions, the sometimes weirdly acting scroll processes". Run 9 measured
     231 one-frame height changes and 83 unprovoked jumps; the desktop harness now shows 0 and 0–1.
     At 390 px a card still bounces when a tall step arrives (its 60svh cap), the first follow-up.
+- **2026-10-04** — **0.13's rebuild keeps what 0.12.3 shipped (pass 40).** An audit checked 694 commits
+  from 0.11.80 to 0.12.3 against 0.13.0, the release that replaced the Gitea backbone with HQ.
+  - 534 kept every line. Of the other 160, most were kept or rebuilt on HQ; the Gitea plumbing went
+    with Gitea.
+  - Merge resolutions dropped two behaviours, and the rebuild reversed several on purpose. This pass
+    restores both kinds on HQ, below.
+  - Where 0.13 carries out an owner decision (D6, ADR 0003), the decision stands and only its fallout
+    is fixed.
+  - _Why:_ the owner: "we should fix everything, we have the knowhow of what we worked on".
+- **2026-10-04** — **A Mate signed in once has arrived for good; one whose agent needs no sign-in has
+  arrived once it is up** (`mateArrivingUntil`, `mateSignedInOnce`).
+  - A sign-out, or HQ's saved signers before the live ones arrive, no longer brings back the waking
+    face.
+  - **Supersedes:** the current-signer-only arrival from the 0.12.2 port.
+  - _Why:_ the waking face means "waiting on a first sign-in", and nothing else.
+- **2026-10-04** — **A Mate's face follows one rule in the menu and on its project page**
+  (`mateAwake`). It is awake when its container runs, its socket is up, or HQ has it online.
+  - _Why:_ the port kept the rule in the menu only, so a running Mate looked asleep on its page
+    whenever HQ's word wasn't live.
+- **2026-10-04** — **`/` decides before it paints and lands nowhere dead** (`homeTarget`, `homeView`).
+  - An empty organization, no chosen organization, and a failed catalog with no Mate named all land
+    on the projects page, which offers the way on.
+  - Only the organization in view lands. A cached registration whose socket is down never claims the
+    landing.
+  - A projects page once shown stays until the person acts.
+  - **Supersedes:** upstream's "What should we work on?" hero as the empty-org home (deleted).
+  - _Why:_ the hero's Add project led nowhere in Mate, and with no organization chosen `/` waited
+    forever.
+- **2026-10-04** — **A stopped Finish setup is said, then gone; nobody is let into a Mate before its
+  project is closed off.**
+  - On a Mate with its container, "Setup stopped" stands for 10 s. It never hides a connected Mate's
+    sign-in line, amber dot or last message, and is still never retried on its own.
+  - A Mate whose project HQ says is not closed off takes no lease and no Connect, even on screen. Past
+    a 2-minute grace it says why and offers Finish setup. A young container (under 2 h) waits quietly
+    while HQ's word is unknown.
+  - _Why:_ the stop hid a working Mate's state until reload, and leases had dropped 0.12.3's
+    close-off gate, so an unisolated project could be used.
+- **2026-10-04** — **Set up Mate is offered on an existing plain project, and a Mate's project keeps
+  its owner's own tags.**
+  - A plain project is one with no Mate, no place in HQ, and no `mate` or `mate:*` tag. That rules
+    out HQ's own project.
+  - Declaring a Mate adds `mate` beside the project's tags and drops only old `mate:*` ones; a rename
+    puts every tag back.
+  - **Supersedes:** "limit Mate setup to declared development environments", and "a project carries
+    only the mate tag" (`project-metadata.md`).
+  - _Why:_ an owner could no longer bring Mate into an existing project, and declaring or renaming a
+    Mate wiped the project's own tags.
+- **2026-10-04** — **Finish setup takes an old Mate key's sibling grants off; HQ says which keys still
+  reach further.**
+  - HQ records a key wider than its project at enrollment and on its credential (`keyWider`, HQ
+    migration 0037). The Mate then offers Finish setup, whose harden leaves the key on its own
+    project.
+  - No load reads a token list.
+  - **Supersedes in part:** the 2026-10-02 row's "taken off by hand", and the 2026-10-03 row's "a
+    Mate HQ holds is never hardened", for widened keys only.
+  - _Why:_ ADR 0003 (the owner). A `READ_ONLY` grant an earlier client left on production reads its
+    secrets for anyone with the Mate's terminal.
+- **2026-10-04** — **HQ's data reaches the client through its stream, and nothing is read while the
+  tab is hidden.**
+  - HQ's standing comes from the stream; its 30 s `/health` poll is gone. The stream also carries the
+    recipe's Mate tier and HQ's own verdict on whether it could check Zerops.
+  - A Core older than this answers through one `/health` read per stream start and one Mate-tier read
+    per Add a Mate. A Core is deployed once at an HQ's birth and never updated.
+  - While the stream is down, Add a Mate reads its tier afresh and never imports a remembered one.
+  - A Mate's setup, and the day's re-read of a no-HQ verdict, wait for a shown tab.
+  - _Why:_ the owner's rules: Zerops and HQ data through the store, never a fetch in a hook, no idle
+    requests.
+- **2026-10-04** — **Transient failures recover by themselves again, beside Try again.**
+  - Covered: session checks, data cells, access grants, hydration (Retry-After on a 429), per-interest
+    recovery, and metadata back-offs.
+  - Retries are capped, back off, run only for what is held, and pause while the tab is hidden.
+  - **Supersedes:** "failed reads stay failed until the visible manual action"
+    (`platform-data-architecture.md`).
+  - _Why:_ a laptop waking before its Wi-Fi, or a 429, left pages failed until a click.
+- **2026-10-04** — **An old Mate's signer is carried into its sign-in record once** (D6 unchanged).
+  - At the first start of this build, a login held then, and never named in `~/.mate/signed-in.json`,
+    is recorded for the one person its `mate:signer:` tag or HQ's saved signer names.
+  - It closes once both sources answer, and at the latest on the third start. A credential that
+    appears later is never carried.
+  - A credential already present at the update is taken to be the one its tag was written for: 0.12.3
+    trusted the tag the same way.
+  - _Why:_ 0.13 dropped the tag fallback, so a login made before the record began (v0.11.79) was
+    refused for everyone, its signer too.
+- **2026-10-04** — **A change's conversation holds its comments' room while it reads them** (HQ counts a
+  change's comments). **A release HQ accepted but never lists ends its wait 30 min from the press,**
+  and **a stage HQ holds for a deploy key says that, never "coming up"**.
+  - _Why:_ layout shift; a review stuck on "redeploys" forever; and "coming up" for a stage nothing
+    will bring up.
