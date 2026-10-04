@@ -27,6 +27,7 @@ import type {
   ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
 import { useEffect, useRef, type ReactNode } from "react";
+import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 
 import { MateFace, Pill } from "../primitives";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
@@ -45,6 +46,7 @@ import { ProjectCard } from "./ProjectsView";
 export interface ProjectsFlowGroup<T> {
   readonly group: ZeropsGroup;
   readonly flow: GroupFlow;
+  readonly contents?: HqAppContents | undefined;
   /** Its project flow was read. Unread is not empty. */
   readonly read: boolean;
   /** Every Mate's talk is known (`talkSettled`). */

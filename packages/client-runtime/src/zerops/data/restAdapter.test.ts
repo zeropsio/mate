@@ -1043,6 +1043,13 @@ describe("ZeropsDataAdapter receiver", () => {
         init: { method: "DELETE" },
       });
       expect(result.result).toEqual({ kind: "delete-project", value: undefined });
+      expect(result.processRefs).toEqual([
+        {
+          kind: "process",
+          project: { kind: "project", organization, projectId: "project" },
+          processId: "delete-process-id",
+        },
+      ]);
     }),
   );
 

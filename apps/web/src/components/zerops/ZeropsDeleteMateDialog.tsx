@@ -64,7 +64,7 @@ export function ZeropsDeleteMateForm({
         <DialogDescription>
           <span className="block text-pretty">
             {cleanup
-              ? "Its Zerops access key could not be retired. Try again to finish removing its access."
+              ? "Its deletion could not finish. Try again to finish removing its HQ records and access."
               : words.body}
           </span>
         </DialogDescription>
@@ -108,7 +108,7 @@ export function ZeropsDeleteMateForm({
               {cleanup ? "Try again" : words.submit}
             </span>
             <span className={cn("col-start-1 row-start-1", !pending && "invisible")}>
-              {cleanup ? "Retiring access…" : words.pending}
+              {cleanup ? "Finishing deletion…" : words.pending}
             </span>
           </span>
         </Button>

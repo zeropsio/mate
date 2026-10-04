@@ -5,6 +5,8 @@
  * a line that is always there.
  */
 import { cn } from "~/lib/utils";
+import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
+import { emptyMateLine } from "./projects/emptyApps.logic";
 import { Button } from "../ui/button";
 import {
   DialogDescription,
@@ -17,6 +19,7 @@ import {
 export function ZeropsDeleteProjectForm({
   name,
   pending,
+  contents,
   error,
   onCancel,
   onConfirm,
@@ -25,6 +28,7 @@ export function ZeropsDeleteProjectForm({
   readonly name: string;
   /** HQ is answering the press. */
   readonly pending: boolean;
+  readonly contents: HqAppContents | undefined;
   /** HQ's reason for refusing the last press; `null` where it did not. */
   readonly error: string | null;
   readonly onCancel: () => void;
@@ -36,13 +40,17 @@ export function ZeropsDeleteProjectForm({
       data-zerops-surface="delete-project-form"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!pending) onConfirm();
+        if (!pending && contents?.empty === true) onConfirm();
       }}
     >
       <DialogHeader>
         <DialogTitle>{`Delete ${name}?`}</DialogTitle>
         <DialogDescription>
-          It holds no Mate and no change. Its name becomes free for another project.
+          {contents?.empty === true
+            ? error === null
+              ? "It holds no Mate and no change. Its name becomes free for another project."
+              : "The deletion was not confirmed. Review the result below before trying again."
+            : emptyMateLine(contents)}
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
@@ -57,7 +65,7 @@ export function ZeropsDeleteProjectForm({
         <Button
           aria-busy={pending || undefined}
           data-zerops-surface="delete-project-confirm"
-          disabled={pending}
+          disabled={pending || contents?.empty !== true}
           type="submit"
           variant="destructive"
         >

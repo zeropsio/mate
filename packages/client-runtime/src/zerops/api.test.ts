@@ -2428,7 +2428,7 @@ describe("ZeropsApiClient.deleteProject", () => {
       client.deleteProject("proj-1", undefined, async () => {
         checks.push("before-write");
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ processId: "proc-delete" });
     expect(checks).toEqual(["before-write"]);
     expect(stub.requests).toEqual([
       {
@@ -2438,6 +2438,14 @@ describe("ZeropsApiClient.deleteProject", () => {
         body: null,
       },
     ]);
+  });
+
+  it("fails visibly if Zerops accepts deletion without a process handle", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, {}));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+    await expect(client.deleteProject("proj-1")).rejects.toThrow("did not return its process");
+    expect(stub.requests).toHaveLength(1);
   });
 
   it("surfaces the platform's refusal", async () => {

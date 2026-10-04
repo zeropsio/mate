@@ -158,7 +158,11 @@ type MateDialog =
   | {
       readonly kind: "delete";
       readonly candidate: ZeropsCandidatePresentation;
-      readonly cleanup?: { readonly keyTokenId: string };
+      readonly cleanup?: {
+        readonly keyTokenId: string | null;
+        readonly completion: string;
+        readonly hqDone: boolean;
+      };
     };
 
 /**
@@ -772,9 +776,18 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
    * the platform answers: a refusal is said there, and nothing else changes. Once it accepts, the
    * row says *Deleting…* until the listing lets it go, the listing is read again, and nothing this
    * browser remembers of the Mate — its row, its crew, a birth — is left for a reload to paint.
+   * After the process finishes, HQ verifies the project is gone and releases its held records.
+   * A failed completion stays here for Again; the platform delete is never repeated by that step.
    */
   const deleteMate = useCallback(
-    (candidate: ZeropsCandidatePresentation, cleanup?: { readonly keyTokenId: string }) => {
+    (
+      candidate: ZeropsCandidatePresentation,
+      cleanup?: {
+        readonly keyTokenId: string | null;
+        readonly completion: string;
+        readonly hqDone: boolean;
+      },
+    ) => {
       if (activeOrganization === null) return;
       const isCurrent = captureAccountLifetime();
       const clientId = activeOrganization.id;
@@ -782,7 +795,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const projectId = candidate.project.id;
       setPress({ pending: true, error: null });
       void (async () => {
-        const keyTokenId = cleanup?.keyTokenId ?? (await mateKeyOf(projectId));
+        const keyTokenId = cleanup === undefined ? await mateKeyOf(projectId) : cleanup.keyTokenId;
+        const completion = cleanup?.completion ?? (await hqApi().prepareProjectDeletion(projectId));
         if (cleanup === undefined) {
           await runZeropsCommand(runtime.commands.deleteProject({ organization, projectId }));
           if (!isCurrent()) return;
@@ -790,9 +804,20 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           rememberMenu((memory) => withoutMate(memory, projectId));
           forgetPress(projectId);
           invalidateZerops({ topic: "inventory", organization });
-          // Keep the id after the project disappears: another press finishes only this step.
-          if (keyTokenId !== null)
-            setDialog({ kind: "delete", candidate, cleanup: { keyTokenId } });
+          setDialog({
+            kind: "delete",
+            candidate,
+            cleanup: { keyTokenId, completion, hqDone: false },
+          });
+        }
+        if (!cleanup?.hqDone) {
+          await hqApi().completeProjectDeletion(projectId, completion);
+          if (!isCurrent()) return;
+          setDialog({
+            kind: "delete",
+            candidate,
+            cleanup: { keyTokenId, completion, hqDone: true },
+          });
         }
         if (keyTokenId !== null) {
           await client.deleteIntegrationToken({ clientId, tokenId: keyTokenId });
@@ -815,6 +840,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       client,
       leaveDeleted,
       mateKeyOf,
+      hqApi,
       organizationRef,
       runtime.commands,
       setDialog,

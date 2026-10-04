@@ -21,6 +21,7 @@ function form(props: Partial<FormProps> = {}): ReactElement {
         onCancel={() => {}}
         onConfirm={() => {}}
         pending={false}
+        contents={{ empty: true, deletingProjectIds: [] }}
         {...props}
       />
     </Dialog>
@@ -34,6 +35,16 @@ const buttons = (html: string) =>
   }));
 
 describe("ZeropsDeleteProjectForm", () => {
+  it.each([
+    ["unknown", undefined],
+    ["held", { empty: false, deletingProjectIds: [] }],
+    ["deleting", { empty: false, deletingProjectIds: ["zed"] }],
+  ] as const)("does not claim emptiness or submit while HQ says %s", (_state, contents) => {
+    const html = renderToStaticMarkup(form({ contents }));
+    expect(html).not.toContain("It holds no Mate and no change.");
+    expect(buttons(html).find((b) => b.text.includes("Delete"))?.disabled).toBe(true);
+  });
+
   it("asks once, saying what goes and what stays", () => {
     const html = renderToStaticMarkup(form());
     expect(html).toContain("Delete mate-rig-e2e-a?");
@@ -56,5 +67,6 @@ describe("ZeropsDeleteProjectForm", () => {
   it("says HQ's refusal under the question", () => {
     const html = renderToStaticMarkup(form({ error: "This project is no longer empty." }));
     expect(html).toMatch(/role="alert"[^>]*>This project is no longer empty\.</u);
+    expect(html).not.toContain("It holds no Mate and no change.");
   });
 });

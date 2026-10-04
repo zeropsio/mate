@@ -103,6 +103,14 @@ export interface HqMate extends HqMateRecord {
   readonly runsWithoutSignIn?: boolean;
 }
 
+/** HQ's held records, including projects whose removal has not finished at HQ. */
+export interface HqAppContents {
+  /** The same project, change, release and code repository records that guard Delete. */
+  readonly empty: boolean;
+  /** By id: still held at HQ, deleting or absent in HQ's Zerops view. */
+  readonly deletingProjectIds: ReadonlyArray<string>;
+}
+
 /** What `GET /api/structure` answers: the applications as the reader sees them in Zerops. */
 export interface HqStructure {
   /** The Mates HQ holds in no application: their project's name in Zerops, and their record. */
@@ -120,6 +128,8 @@ export interface HqStructure {
       readonly kind: string;
       readonly mate: HqMate | null;
     }>;
+    /** Absent from an older HQ: projected projects cannot establish emptiness. */
+    readonly contents?: HqAppContents;
     /**
      * Its stage and production with their deploys (`hq/environments.ts`), to whoever reads its
      * changes — none to one who only sees it; absent where HQ sent none this build can read.
@@ -219,6 +229,10 @@ export interface HqApi {
    * The id of the key a Mate's container holds, as the Mate named it to HQ (`GET
    * /api/mates/{projectId}/key`); none where it named none. Told to the project's admin alone.
    */
+  /** Authorizes completion before Zerops removes the project's roles. */
+  readonly prepareProjectDeletion: (projectId: string) => Promise<string>;
+  /** One attempt to verify absence and release HQ's held rows; refusal is visible to the caller. */
+  readonly completeProjectDeletion: (projectId: string, completion: string) => Promise<void>;
   readonly mateKey: (projectId: string, signal?: AbortSignal) => Promise<string | null>;
   /** A Mate's face, as HQ records it (`PATCH /api/mates/{projectId}`). */
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
@@ -873,6 +887,24 @@ export function makeHqApi(input: {
           ),
         )
       ).deploys,
+    prepareProjectDeletion: async (projectId) =>
+      (
+        await json<{ readonly completion: string }>(
+          await authorized(`/api/projects/${encodeURIComponent(projectId)}/deletion`, {
+            method: "POST",
+          }),
+        )
+      ).completion,
+    completeProjectDeletion: async (projectId, completion) => {
+      await authorized(
+        `/api/projects/${encodeURIComponent(projectId)}/deleted`,
+        {
+          method: "POST",
+          body: JSON.stringify({ completion }),
+        },
+        "idempotent",
+      );
+    },
     mateKey: async (projectId, signal) =>
       (
         await json<{ readonly keyTokenId: string | null }>(

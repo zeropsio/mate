@@ -300,6 +300,27 @@ describe("structureEventOf", () => {
 });
 
 describe("applyStructureEvent", () => {
+  it("carries HQ's unfinished deletion through snapshot and app change", () => {
+    const deleting = { ...BETA, contents: { empty: false, deletingProjectIds: ["zed"] } };
+    const event = structureEventOf({ type: "snapshot", ungrouped: [], apps: [deleting] });
+    expect(event?.kind).toBe("snapshot");
+    const first = applyStructureEvent(null, event!);
+    expect(first?.apps[0]?.contents).toEqual(deleting.contents);
+    const empty = { ...BETA, contents: { empty: true, deletingProjectIds: [] } };
+    const done = structureEventOf({ type: "change", key: BETA.id, value: empty });
+    expect(applyStructureEvent(first, done!)?.apps[0]?.contents).toEqual(empty.contents);
+  });
+
+  it.each([
+    null,
+    { empty: "true", deletingProjectIds: [] },
+    { empty: true, deletingProjectIds: ["zed"] },
+    { empty: false, deletingProjectIds: [7] },
+  ])("treats unreadable HQ contents as unknown: %j", (contents) => {
+    const event = structureEventOf({ type: "change", key: BETA.id, value: { ...BETA, contents } });
+    expect(event?.kind === "change" ? event.app?.contents : null).toBeUndefined();
+  });
+
   it("replaces on a snapshot, upserts and removes on a change, in place", () => {
     const renamed = { ...ACME, name: "Acme CRM" };
     let structure = applyStructureEvent(null, {

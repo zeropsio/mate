@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off -- opaque deletion handles use the existing HQ key and byte encoding.
 /**
  * The structure of applications (ADR 0002): applications, the Zerops projects each holds with
  * their kind (`mate`, `devstage`, `stage`, `production`), the Mate record of a Mate's project, and
@@ -14,6 +15,8 @@
  *
  * @module structure
  */
+import * as NodeBuffer from "node:buffer";
+
 import {
   type FactsFor,
   type Reason,
@@ -32,7 +35,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
-import type * as Redacted from "effect/Redacted";
+import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -76,6 +79,7 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "app_name_taken",
     "app_not_found",
     "app_not_empty",
+    "project_still_exists",
     "mate_not_found",
     "placed_or_production_taken",
     "production_taken",
@@ -246,6 +250,12 @@ export interface StructureRead {
   readonly apps: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
+    /** HQ's own held records, before the visible projects are filtered against Zerops. */
+    readonly contents: {
+      readonly empty: boolean;
+      /** Projects still held here, deleting or absent in HQ's Zerops view. */
+      readonly deletingProjectIds: ReadonlyArray<string>;
+    };
     readonly projects: ReadonlyArray<{
       readonly projectId: string;
       readonly name: string;
@@ -363,6 +373,17 @@ export class Structure extends Context.Service<
      * while Zerops cannot say.
      */
     readonly reconcile: Effect.Effect<number, NotLeader | SqlError | ZeropsError>;
+    /** A scoped completion handle, authorized while Zerops still holds the project's roles. */
+    readonly prepareProjectDeletion: (
+      userId: string,
+      projectId: string,
+    ) => Effect.Effect<string, WriteError>;
+    /** Verifies this one id is gone, then drops its records and publishes the structure. */
+    readonly completeProjectDeletion: (
+      userId: string,
+      projectId: string,
+      completion: string,
+    ) => Effect.Effect<void, WriteError>;
     /** Ticks after every change of the structure, starting with the current tick. */
     readonly changes: Stream.Stream<number>;
   }
@@ -448,6 +469,12 @@ export const structureLayer = (options: {
       const keys = yield* DeployKeys;
       const rollouts = yield* Rollouts;
       const sql = yield* SqlClient.SqlClient;
+      /** Shared by the streamed answer and Delete's guard; `a` is the application's row. */
+      const appHeld = sql`
+        EXISTS (SELECT 1 FROM hq_app_project WHERE app_id = a.id)
+        OR EXISTS (SELECT 1 FROM hq_change WHERE app_id = a.id)
+        OR EXISTS (SELECT 1 FROM hq_release WHERE app_id = a.id)
+        OR EXISTS (SELECT 1 FROM hq_repo WHERE app_id = a.id AND name <> ${RECIPE_REPO})`;
       const version = yield* SubscriptionRef.make(0);
       const changed = SubscriptionRef.update(version, (tick) => tick + 1);
       /** After a write that added an environment or kept its key: its deploys are asked for. */
@@ -608,6 +635,51 @@ export const structureLayer = (options: {
 
       return Structure.of({
         reconcile,
+        prepareProjectDeletion: confirmed((userId, projectId) =>
+          Effect.gen(function* () {
+            const view = yield* roles.forWrite;
+            yield* allowed(
+              userId,
+              "edit_mate_record",
+              { projectId, held: yield* heldOf(sql, projectId) },
+              view,
+            );
+            if (projectId === options.hqProjectId) return yield* refuse("invalid", "hq_project");
+            // The handle grants only removal after Zerops confirms absence; no platform roles are copied.
+            const sealed = keys.seal(`project-deletion:${projectId}`, Redacted.make(userId));
+            if (sealed === undefined) return yield* refuse("invalid", "no_key_secret");
+            return `${sealed.keyId}.${NodeBuffer.Buffer.from(sealed.sealed).toString("base64url")}`;
+          }),
+        ),
+        completeProjectDeletion: (userId, projectId, completion) =>
+          Effect.gen(function* () {
+            const view = yield* roles.forWrite;
+            if (
+              !view.members.some((member) => member.userId === userId && member.status === "ACTIVE")
+            )
+              return yield* refuse("forbidden", "not_active_member");
+            const [keyId, bytes, extra] = completion.split(".");
+            const authorized =
+              keyId !== undefined && bytes !== undefined && extra === undefined
+                ? keys.open(`project-deletion:${projectId}`, {
+                    keyId,
+                    sealed: NodeBuffer.Buffer.from(bytes, "base64url"),
+                  })
+                : undefined;
+            if (authorized === undefined || Redacted.value(authorized) !== userId)
+              return yield* refuse("forbidden", "not_project_admin");
+            if (projectId === options.hqProjectId) return yield* refuse("invalid", "hq_project");
+            const gone = yield* goneOf([projectId]);
+            if (gone.length === 0) return yield* refuse("conflict", "project_still_exists");
+            yield* leader.write(
+              Effect.gen(function* () {
+                yield* lockProject(sql, projectId);
+                yield* dropRows(gone);
+              }),
+            );
+            yield* overviews.forget(gone);
+            yield* changed;
+          }),
         changes: SubscriptionRef.changes(version),
         mateChanges: Stream.fromPubSub(mateChanged),
         mateState: stateOf,
@@ -741,12 +813,7 @@ export const structureLayer = (options: {
                 const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId} FOR UPDATE`;
                 if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
                 const held = yield* sql<{ readonly held: boolean }>`
-                  SELECT EXISTS (SELECT 1 FROM hq_app_project WHERE app_id::text = ${appId})
-                      OR EXISTS (SELECT 1 FROM hq_change WHERE app_id::text = ${appId})
-                      OR EXISTS (SELECT 1 FROM hq_release WHERE app_id::text = ${appId})
-                      OR EXISTS (SELECT 1 FROM hq_repo
-                                 WHERE app_id::text = ${appId} AND name <> ${RECIPE_REPO})
-                    AS held`;
+                  SELECT ${appHeld} AS held FROM hq_app a WHERE a.id::text = ${appId}`;
                 if (held[0]?.held !== false) return yield* refuse("conflict", "app_not_empty");
                 yield* sql`DELETE FROM hq_recipe_seen WHERE app_id::text = ${appId}`;
                 yield* sql`DELETE FROM hq_git_event WHERE app_id::text = ${appId}`;
@@ -1084,8 +1151,12 @@ export const structureLayer = (options: {
         read: (userId) =>
           Effect.gen(function* () {
             const view = yield* roles.view;
-            const apps = yield* sql<{ readonly id: string; readonly name: string }>`
-              SELECT id::text AS id, name FROM hq_app ORDER BY seq`;
+            const apps = yield* sql<{
+              readonly id: string;
+              readonly name: string;
+              readonly empty: boolean;
+            }>`
+              SELECT a.id::text AS id, a.name, NOT (${appHeld}) AS empty FROM hq_app a ORDER BY a.seq`;
             const births = yield* sql<BirthIntent & { readonly app_id: string }>`
               SELECT id::text AS id, app_id::text AS app_id, face
               FROM hq_birth_intent ORDER BY seq`;
@@ -1196,6 +1267,7 @@ export const structureLayer = (options: {
                 })),
             });
             const names = new Map(view.projects.map((project) => [project.id, project.name]));
+            const projects = new Map(view.projects.map((project) => [project.id, project]));
             const named = (projectId: string, mate: Omit<MateView, "name">): MateView => ({
               name: names.get(projectId) ?? "",
               ...mate,
@@ -1216,6 +1288,18 @@ export const structureLayer = (options: {
                 .map((app) => ({
                   id: app.id,
                   name: app.name,
+                  contents: {
+                    empty: app.empty,
+                    deletingProjectIds: rows
+                      .filter(
+                        (row) =>
+                          row.app_id === app.id &&
+                          (projects.get(row.project_id) === undefined ||
+                            projects.get(row.project_id)?.status === "DELETING" ||
+                            projects.get(row.project_id)?.status === "DELETED"),
+                      )
+                      .map((row) => row.project_id),
+                  },
                   projects: visible
                     .filter((row) => row.app_id === app.id)
                     .map((row) => ({

@@ -55,6 +55,8 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
+import { emptyMateLine } from "./emptyApps.logic";
 import { activityOfNow, mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { creatableRoles } from "../ZeropsGroupTree.logic";
 import { COMING_UP_LINE, NOT_SET_UP_LINE, type ZeropsRowAction } from "../ZeropsProjectRow.logic";
@@ -117,6 +119,7 @@ export type GroupPlacement = "row" | "tile";
  */
 export interface FoldedGroupInput {
   readonly flow: GroupFlow;
+  readonly contents?: HqAppContents | undefined;
   /** Its flow answered. Unread is not empty: a group is folded only on an answer. */
   readonly read: boolean;
   /** Every Mate's talk is known (`GroupMemberFacts.mate.talked`), so a first task is one. */
@@ -147,6 +150,8 @@ export function talkSettled(members: ReadonlyArray<GroupMemberFacts>): boolean {
  * drawn, and a group never drawn is a row.
  */
 export function groupPlacement(entry: FoldedGroupInput): GroupPlacement {
+  if (entry.flow.mates.length === 0 || (entry.contents?.deletingProjectIds.length ?? 0) > 0)
+    return "row";
   if (!entry.read || !entry.talkSettled) return entry.placed ?? "row";
   const { flow } = entry;
   const onlyAMate =
@@ -464,14 +469,15 @@ export function comingMateLine(coming: GroupFlowComing): string {
 }
 
 /** What a group is, in one muted line under its name. */
-export function groupMetaLine(flow: GroupFlow): string {
+export function groupMetaLine(flow: GroupFlow, contents?: HqAppContents): string {
   const mates = flow.mates.length;
   const open = flow.pullRequests.length;
   const parts = [
     ...(mates === 0 ? [] : [mates === 1 ? "1 Mate" : `${String(mates)} Mates`]),
     ...(open === 0 ? [] : [open === 1 ? "1 open change" : `${String(open)} open changes`]),
+    ...(contents?.deletingProjectIds.length ? [emptyMateLine(contents)] : []),
   ];
-  return parts.length === 0 ? "No Mate yet" : parts.join(" · ");
+  return parts.length === 0 ? emptyMateLine(contents) : parts.join(" · ");
 }
 
 const STOP_TONE: Record<GroupFlowStopState, ServiceStatusToneId> = {

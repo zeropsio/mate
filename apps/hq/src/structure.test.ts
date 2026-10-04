@@ -633,6 +633,7 @@ describe("structure", () => {
                   environmentRow("P_STAGE", "stage", "name-of-p-stage", 2),
                 ],
                 births: [],
+                contents: { empty: false, deletingProjectIds: [] },
               },
               {
                 id: team.id,
@@ -648,6 +649,7 @@ describe("structure", () => {
                 ],
                 environments: [environmentRow("P_TEAM", "stage", "name-of-p-team", 1)],
                 births: [],
+                contents: { empty: false, deletingProjectIds: [] },
               },
             ]);
           }),
@@ -1750,6 +1752,113 @@ describe("structure", () => {
       ),
     );
 
+    it.effect(
+      "finishes a deleted project explicitly, releasing rows and changing the structure",
+      () =>
+        withStructure((view) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const app = yield* structure.createApp("owner", "Explicit deletion");
+            yield* structure.attachProject("owner", app.id, {
+              projectId: "P_OWNED",
+              kind: "mate",
+              mate: { face: "" },
+            });
+            const completion = yield* structure.prepareProjectDeletion("maker", "P_OWNED");
+            const before = yield* Stream.runHead(structure.changes);
+            assert.strictEqual(
+              yield* reasonOf(structure.completeProjectDeletion("maker", "P_OWNED", completion)),
+              "project_still_exists",
+            );
+            yield* Ref.update(view, (current) => ({
+              ...current,
+              projects: current.projects.filter((p) => p.id !== "P_OWNED"),
+            }));
+            assert.strictEqual(
+              yield* reasonOf(structure.completeProjectDeletion("nobody", "P_OWNED", completion)),
+              "not_project_admin",
+            );
+            assert.strictEqual(
+              yield* reasonOf(structure.completeProjectDeletion("maker", "P_MATE", completion)),
+              "not_project_admin",
+            );
+            yield* structure.completeProjectDeletion("maker", "P_OWNED", completion);
+            assert.deepStrictEqual(
+              yield* sql`SELECT 1 FROM hq_mate WHERE project_id = 'P_OWNED'`,
+              [],
+            );
+            assert.deepStrictEqual(
+              yield* sql`SELECT 1 FROM hq_app_project WHERE project_id = 'P_OWNED'`,
+              [],
+            );
+            assert.deepStrictEqual((yield* structure.read("owner")).apps[0]?.contents, {
+              empty: true,
+              deletingProjectIds: [],
+            });
+            assert.notStrictEqual(
+              Option.getOrUndefined(yield* Stream.runHead(structure.changes)),
+              Option.getOrUndefined(before),
+            );
+            // A lost HTTP answer is safe to finish again by hand.
+            yield* structure.completeProjectDeletion("maker", "P_OWNED", completion);
+          }),
+        ),
+    );
+
+    it.effect("refuses deletion authorization to a project reader", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          assert.strictEqual(
+            yield* reasonOf(structure.prepareProjectDeletion("reader", "P_MATE")),
+            "not_project_admin",
+          );
+        }),
+      ),
+    );
+
+    it.effect("reports unfinished deletion until HQ releases the deleted Mate's rows", () =>
+      withStructure((view) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const app = yield* structure.createApp("owner", "Zed's app");
+          const contents = Effect.map(structure.read("owner"), (read) => read.apps[0]?.contents);
+          assert.deepStrictEqual(yield* contents, { empty: true, deletingProjectIds: [] });
+          yield* structure.attachProject("owner", app.id, {
+            projectId: "P_MATE",
+            kind: "mate",
+            mate: { face: "face-1" },
+          });
+          yield* Ref.update(view, (current) => ({
+            ...current,
+            projects: current.projects.map((p) =>
+              p.id === "P_MATE" ? { ...p, status: "DELETING" } : p,
+            ),
+          }));
+          assert.deepStrictEqual(yield* contents, { empty: false, deletingProjectIds: ["P_MATE"] });
+          yield* Ref.update(view, (current) => ({
+            ...current,
+            projects: current.projects.filter((p) => p.id !== "P_MATE"),
+          }));
+          assert.deepStrictEqual((yield* structure.read("owner")).apps[0]?.projects, []);
+          assert.deepStrictEqual(yield* contents, { empty: false, deletingProjectIds: ["P_MATE"] });
+          assert.strictEqual(
+            (yield* sql`SELECT 1 FROM hq_mate WHERE project_id = 'P_MATE'`).length,
+            1,
+          );
+          assert.strictEqual(
+            yield* reasonOf(structure.deleteApp("owner", app.id)),
+            "app_not_empty",
+          );
+          assert.strictEqual(yield* structure.reconcile, 1);
+          assert.deepStrictEqual(yield* contents, { empty: true, deletingProjectIds: [] });
+          assert.strictEqual(yield* reasonOf(structure.deleteApp("owner", app.id)), "ok");
+        }),
+      ),
+    );
+
     // E2E 2026-10-03 (F5): a New project that stopped before its Mate left an application with its
     // recipe repository and nothing else, for good. Whoever writes the structure deletes it; its
     // name is free again.
@@ -1799,6 +1908,11 @@ describe("structure", () => {
               Effect.gen(function* () {
                 const app = yield* structure.createApp("owner", name);
                 yield* fill(app.id);
+                const read = yield* structure.read("owner");
+                assert.deepStrictEqual(read.apps.find((held) => held.id === app.id)?.contents, {
+                  empty: false,
+                  deletingProjectIds: [],
+                });
                 return yield* reasonOf(structure.deleteApp("owner", app.id));
               });
             const repo = (appId: string, name: string) =>

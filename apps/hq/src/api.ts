@@ -1353,6 +1353,42 @@ const routes = (
       ),
     ),
     HttpRouter.add(
+      "POST",
+      "/api/projects/:projectId/deletion",
+      handle(
+        outliving(
+          Effect.gen(function* () {
+            const { userId } = yield* principal;
+            const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
+            return json(
+              { completion: yield* (yield* Structure).prepareProjectDeletion(userId, projectId) },
+              200,
+            );
+          }),
+        ),
+      ),
+    ),
+    HttpRouter.add(
+      "POST",
+      "/api/projects/:projectId/deleted",
+      handle(
+        Effect.gen(function* () {
+          const { completion } = yield* jsonBody(
+            Schema.Struct({ completion: Schema.String }),
+            BODY_LIMIT,
+          );
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
+              yield* (yield* Structure).completeProjectDeletion(userId, projectId, completion);
+              return json({ projectId }, 200);
+            }),
+          );
+        }),
+      ),
+    ),
+    HttpRouter.add(
       "PUT",
       "/api/projects/:projectId/app",
       handle(

@@ -106,6 +106,47 @@ describe("HQ's failures", () => {
 
 describe("HQ API", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect("explicit deletion completion checks one project and publishes empty contents", () =>
+      Effect.gen(function* () {
+        const { call, fake } = yield* startCore(true, { reconcileEvery: Duration.hours(1) });
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const dev = yield* sessionFor(call, "door-dev");
+        const app = yield* call("POST", "/api/apps", {
+          session: owner,
+          body: { name: "Deletion" },
+        });
+        const appId = (app.body as { readonly id: string }).id;
+        yield* call("POST", `/api/apps/${appId}/projects`, {
+          session: owner,
+          body: { projectId: "P_MATE", kind: "mate", mate: { face: "" } },
+        });
+        const prepared = yield* call("POST", "/api/projects/P_MATE/deletion", { session: owner });
+        assert.strictEqual(prepared.status, 200);
+        const completion = (prepared.body as { readonly completion: string }).completion;
+        const finish = (session: string) =>
+          call("POST", "/api/projects/P_MATE/deleted", { session, body: { completion } });
+        assert.deepStrictEqual((yield* finish(owner)).body, {
+          code: "conflict",
+          reason: "project_still_exists",
+        });
+        assert.strictEqual((yield* finish(dev)).status, 403);
+        fake.projects.splice(
+          fake.projects.findIndex((p) => p.id === "P_MATE"),
+          1,
+        );
+        assert.strictEqual((yield* finish(owner)).status, 200);
+        const read = (yield* call("GET", "/api/structure", { session: owner })).body as {
+          readonly apps: ReadonlyArray<{ readonly contents: { readonly empty: boolean } }>;
+        };
+        assert.strictEqual(read.apps[0]?.contents.empty, true);
+        assert.strictEqual(
+          (yield* call("DELETE", `/api/apps/${appId}`, { session: owner })).status,
+          204,
+        );
+      }),
+    );
+
     it.effect(
       "an owner comes through the door, creates an application, attaches a Mate and reads it",
       () =>
@@ -127,6 +168,7 @@ describe("HQ API", () => {
               {
                 id: appId,
                 name: "Shop",
+                contents: { empty: false, deletingProjectIds: [] },
                 projects: [
                   {
                     projectId: "P_MATE",
@@ -814,7 +856,14 @@ describe("HQ API", () => {
           ).id;
           assert.deepStrictEqual(yield* owner.next("change"), {
             key: appId,
-            value: { id: appId, name: "Shop", projects: [], environments: [], births: [] },
+            value: {
+              id: appId,
+              name: "Shop",
+              contents: { empty: true, deletingProjectIds: [] },
+              projects: [],
+              environments: [],
+              births: [],
+            },
           });
           // Audit R4: its recipe repository's `main` was made with it, and where its repositories
           // last moved goes out on its own — null first where the view was read before the move.
@@ -835,6 +884,7 @@ describe("HQ API", () => {
             value: {
               id: appId,
               name: "Shop",
+              contents: { empty: false, deletingProjectIds: [] },
               projects: [
                 {
                   projectId: "P_MATE",
@@ -869,7 +919,14 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual(yield* owner.next("change"), {
             key: appId,
-            value: { id: appId, name: "Shop", projects: [], environments: [], births: [] },
+            value: {
+              id: appId,
+              name: "Shop",
+              contents: { empty: true, deletingProjectIds: [] },
+              projects: [],
+              environments: [],
+              births: [],
+            },
           });
           // Nothing names its maker any more.
           assert.deepStrictEqual(yield* owner.next("people"), { people: {} });
@@ -1081,7 +1138,14 @@ describe("HQ API", () => {
           );
           assert.deepStrictEqual(yield* owner.next("change"), {
             key: appId,
-            value: { id: appId, name: "Store", projects: [], environments: [], births: [] },
+            value: {
+              id: appId,
+              name: "Store",
+              contents: { empty: true, deletingProjectIds: [] },
+              projects: [],
+              environments: [],
+              births: [],
+            },
           });
 
           const moved = yield* call("PUT", "/api/projects/P_MATE/app", {
@@ -1101,6 +1165,7 @@ describe("HQ API", () => {
                 value: {
                   id: appId,
                   name: "Store",
+                  contents: { empty: false, deletingProjectIds: [] },
                   projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "mate", mate: adaView }],
                   environments: [],
                   births: [],
@@ -1122,7 +1187,14 @@ describe("HQ API", () => {
               { key: "ungrouped", value: lone },
               {
                 key: appId,
-                value: { id: appId, name: "Store", projects: [], environments: [], births: [] },
+                value: {
+                  id: appId,
+                  name: "Store",
+                  contents: { empty: true, deletingProjectIds: [] },
+                  projects: [],
+                  environments: [],
+                  births: [],
+                },
               },
             ],
           );
@@ -1166,6 +1238,7 @@ describe("HQ API", () => {
           value: {
             id: appId,
             name: "Shop",
+            contents: { empty: false, deletingProjectIds: [] },
             projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "stage", mate: null }],
             environments: [
               {
@@ -1233,7 +1306,16 @@ describe("HQ API", () => {
         });
         assert.deepStrictEqual(snapshot, {
           ungrouped: [],
-          apps: [{ id: appId, name: "Shop", projects: [], environments: [], births: [] }],
+          apps: [
+            {
+              id: appId,
+              name: "Shop",
+              contents: { empty: true, deletingProjectIds: [] },
+              projects: [],
+              environments: [],
+              births: [],
+            },
+          ],
           changes: { [appId]: [] },
           appReads: { [appId]: shopRead },
           mates: {},

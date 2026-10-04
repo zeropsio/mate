@@ -5,6 +5,7 @@
  */
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
+import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import { useState } from "react";
 
 import { useDeleteGroup } from "../../zerops/useDeleteGroup";
@@ -13,9 +14,11 @@ import { ZeropsDeleteProjectForm } from "./ZeropsDeleteProjectForm";
 
 export function ZeropsDeleteProjectDialog({
   group,
+  contents,
   onClose,
 }: {
   readonly group: ZeropsGroup;
+  readonly contents: HqAppContents | undefined;
   readonly onClose: () => void;
 }) {
   const remove = useDeleteGroup();
@@ -33,9 +36,11 @@ export function ZeropsDeleteProjectDialog({
       <DialogPopup className="max-w-md">
         <ZeropsDeleteProjectForm
           error={error}
+          contents={contents}
           name={group.name}
           onCancel={onClose}
           onConfirm={() => {
+            if (pending || contents?.empty !== true) return;
             setPending(true);
             setError(null);
             remove(group).then(onClose, (cause: unknown) => {

@@ -3,7 +3,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { HqStructureView } from "~/state/zerops";
 
-import { deleteOffered, emptyApplications, groupIsEmpty } from "./emptyApps.logic";
+import {
+  applicationContents,
+  deleteOffered,
+  emptyApplications,
+  emptyMateLine,
+  groupIsEmpty,
+} from "./emptyApps.logic";
 
 const view = (organizationId: string): HqStructureView => ({
   organizationId,
@@ -112,6 +118,55 @@ describe("Delete, on a project's menu", () => {
     { name: "holding a Mate: not", group: group(1, 0), mayDelete: true, offered: false },
     { name: "a Mate coming: not", group: group(0, 1), mayDelete: true, offered: false },
   ])("$name", ({ group: given, mayDelete, offered }) => {
-    expect(deleteOffered(given, mayDelete)).toBe(offered);
+    expect(deleteOffered(given, mayDelete, { empty: true, deletingProjectIds: [] })).toBe(offered);
+  });
+});
+
+describe("HQ's word on an application's contents", () => {
+  it("keeps the application's row when HQ still projects the deleting Mate but the client no longer lists it", () => {
+    const given = view("org-a");
+    const structure = {
+      ungrouped: [],
+      apps: [
+        {
+          id: "app-zed",
+          name: "Zed's app",
+          projects: [{ projectId: "zed", name: "Zed", kind: "mate", mate: null }],
+          contents: { empty: false, deletingProjectIds: ["zed"] },
+        },
+      ],
+    };
+    const tree = buildZeropsGroupTree([], {
+      order: "name",
+      apps: emptyApplications({ ...given, structure }, "org-a"),
+    });
+    expect(tree.groups.map(({ group }) => group.groupId)).toEqual(["app-zed"]);
+  });
+
+  it.each([
+    ["unknown", undefined, "Checking what HQ holds…"],
+    ["held", { empty: false, deletingProjectIds: [] }, "HQ still holds this project's records."],
+    ["deleting", { empty: false, deletingProjectIds: ["zed"] }, "Deletion is still in progress."],
+    ["empty", { empty: true, deletingProjectIds: [] }, "No Mate yet"],
+  ] as const)("requires HQ's empty answer before offering Delete: %s", (_state, contents, line) => {
+    expect(deleteOffered({ environments: [], pending: [] }, true, contents)).toBe(
+      contents?.empty === true,
+    );
+    expect(emptyMateLine(contents)).toBe(line);
+  });
+
+  it("uses only the current structure for this organization and application id", () => {
+    const contents = { empty: true, deletingProjectIds: [] };
+    const given = {
+      ...view("org-a"),
+      structure: { ungrouped: [], apps: [{ id: "app-e2e", name: "Zed", projects: [], contents }] },
+    };
+    expect(applicationContents(given, "org-a", "app-e2e")).toEqual(contents);
+    expect(applicationContents(given, "org-b", "app-e2e")).toBeUndefined();
+    expect(applicationContents(given, "org-a", "other-id")).toBeUndefined();
+    expect(applicationContents({ ...given, current: false }, "org-a", "app-e2e")).toBeUndefined();
+    expect(
+      applicationContents({ ...given, unavailableSince: 1 }, "org-a", "app-e2e"),
+    ).toBeUndefined();
   });
 });

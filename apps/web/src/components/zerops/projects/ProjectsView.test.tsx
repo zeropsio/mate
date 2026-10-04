@@ -61,6 +61,18 @@ function step(html: string, name: string): string {
 }
 
 describe("the Projects card", () => {
+  it("shows HQ's unfinished Mate deletion in the header and empty Mates cell", () => {
+    const html = card({
+      ...MERGING,
+      flow: { ...MERGING.flow, mates: [] },
+      mates: new Map(),
+      contents: { empty: false, deletingProjectIds: ["zed"] },
+    });
+    expect(between(html, "<header", "</header>")).toContain("Deletion is still in progress.");
+    expect(step(html, "mates")).toContain("Deletion is still in progress.");
+    expect(html).not.toContain("No Mate yet");
+  });
+
   it("names the next step in its header, without the verb", () => {
     const header = between(card(MERGING), "<header", "</header>");
     expect(header).toContain(">Change #1 waits for your merge<");

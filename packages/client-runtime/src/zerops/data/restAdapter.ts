@@ -39,7 +39,12 @@ import type {
   ZeropsDataAdapter,
   ZeropsWireSubscriptionName,
 } from "./types.ts";
-import { ZeropsProcessId, tableEntityOf, type TableQueryDescriptor } from "./types.ts";
+import {
+  ZeropsProcessId,
+  ZeropsProjectId,
+  tableEntityOf,
+  type TableQueryDescriptor,
+} from "./types.ts";
 import { decodeTableSearch } from "./tableProtocol.ts";
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
 import type { ZeropsIntegrationToken } from "../groupReach.ts";
@@ -1427,10 +1432,20 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
         return executeApi(context, (signal) =>
           options.client.deleteProject(command.projectId, signal, context.beforeProjectWrite),
         ).pipe(
-          Effect.map((value): PlatformCommandReceipt => ({
-            processRefs: [],
+          Effect.map(({ processId }): PlatformCommandReceipt => ({
+            processRefs: [
+              {
+                kind: "process",
+                project: {
+                  kind: "project",
+                  organization: command.organization,
+                  projectId: ZeropsProjectId.make(command.projectId),
+                },
+                processId: ZeropsProcessId.make(processId),
+              },
+            ],
             observations: [],
-            result: { kind: command.kind, value },
+            result: { kind: command.kind, value: undefined },
           })),
           Effect.mapError(uncertainCommandError),
         );
