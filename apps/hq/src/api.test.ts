@@ -1305,6 +1305,7 @@ describe("HQ API", () => {
             }
           ).repos,
           recipes: {
+            mate: (yield* call("GET", `/api/apps/${appId}/recipe/mate`, { session: reader })).body,
             stage: (yield* call("GET", `/api/apps/${appId}/recipe/stage`, { session: reader }))
               .body,
             production: (yield* call("GET", `/api/apps/${appId}/recipe/production`, {
