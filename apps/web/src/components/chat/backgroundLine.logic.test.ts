@@ -92,6 +92,22 @@ describe("backgroundLineOf", () => {
       failed: true,
       opens: ["Fails", "Soak"],
     },
+    {
+      name: "one whose session is gone",
+      items: [item("Run the soak test", "lost")],
+      words: "Run the soak test didn't report back",
+      where: "in the background",
+      failed: false,
+      opens: [],
+    },
+    {
+      name: "several, one never reporting",
+      items: [item("Soak", "lost"), item("Outdated", "done")],
+      words: "2 background tasks: 1 finished, 1 didn't report back",
+      where: null,
+      failed: false,
+      opens: ["Soak", "Outdated"],
+    },
   ])("$name", ({ items, words, where, failed, opens }) => {
     const line = backgroundLineOf(items, false);
     expect(line).toMatchObject({ words, where, failed });

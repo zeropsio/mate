@@ -11,7 +11,8 @@ import { workEntryDisplayIndicatesToolFailure, type WorkLogEntry } from "../../s
 import { normalizeCompactToolLabel } from "./MessagesTimeline.logic";
 import { taskReportWords, type BackgroundJob } from "./workSteps.logic";
 
-export type BackgroundState = "running" | "done" | "failed";
+/** "lost": its session is gone and it never reported. */
+export type BackgroundState = "running" | "done" | "failed" | "lost";
 
 /** One task, as the opened line lists it. */
 export interface BackgroundItem {
@@ -39,6 +40,7 @@ const STATE_WORD: Record<BackgroundState, string> = {
   running: "running",
   done: "finished",
   failed: "failed",
+  lost: "didn't report back",
 };
 
 /** A report short enough to read on its row — "Exit code 3" — rather than in a block under it. */
@@ -66,7 +68,8 @@ export function backgroundLineOf(
 ): BackgroundLineModel {
   const failed = items.filter((item) => item.state === "failed").length;
   const running = items.filter((item) => item.state === "running").length;
-  const done = items.length - failed - running;
+  const lost = items.filter((item) => item.state === "lost").length;
+  const done = items.length - failed - running - lost;
   const where = helpers ? "helper" : "in the background";
   const [only] = items;
   if (items.length === 1 && only !== undefined) {
@@ -84,8 +87,9 @@ export function backgroundLineOf(
   const noun = helpers ? "helpers" : "background tasks";
   const counts = [
     running > 0 ? `${running} running` : null,
-    done > 0 && (running > 0 || failed > 0) ? `${done} finished` : null,
+    done > 0 && (running > 0 || failed > 0 || lost > 0) ? `${done} finished` : null,
     failed > 0 ? `${failed} failed` : null,
+    lost > 0 ? `${lost} didn't report back` : null,
   ].filter((part): part is string => part !== null);
   return {
     words:

@@ -45,6 +45,8 @@ type Scene = {
   alongside?: boolean;
   /** The thread's provider driver; Codex unless given, whose batches go by timing. */
   provider?: string | null;
+  /** Nothing lives in the background any more: its session is gone. */
+  backgroundGone?: boolean;
 };
 
 /** A day, in the fixtures' minutes. */
@@ -71,6 +73,7 @@ function framed(scene: Scene): MessagesTimelineRow[] {
     ...(scene.helperFinishes === undefined ? {} : { helperFinishes: scene.helperFinishes }),
     ...(scene.alongside === undefined ? {} : { alongside: scene.alongside }),
     provider: scene.provider === undefined ? "codex" : scene.provider,
+    ...(scene.backgroundGone === undefined ? {} : { backgroundGone: scene.backgroundGone }),
   });
 }
 
@@ -1563,6 +1566,20 @@ describe("deriveMessagesTimelineRows", () => {
         ? (line.jobs ?? []).map((job) => [job.title, job.state, job.report])
         : null;
     };
+
+    // Its session gone — idle, and the server says nothing lives in the
+    // background — a job that never reported says so, once.
+    it.each([
+      { name: "the server says something still runs", gone: false, state: "running" },
+      { name: "nothing lives in the background any more", gone: true, state: "lost" },
+    ])("a job that never reported back: $name", ({ gone, state }) => {
+      const list = rows({ entries: turnOne, settled: "t1", backgroundGone: gone });
+      const line = list.find((row) => row.id === "jobs:msg:m0");
+      expect(line?.kind === "background" ? line.jobs?.map((job) => job.state) : null).toEqual([
+        state,
+        state,
+      ]);
+    });
 
     it.each([
       {

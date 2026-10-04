@@ -1821,6 +1821,12 @@ export function deriveMessagesTimelineRows(input: {
   newSince?: string | null;
   /** The server's word on work that outlived the turn, while it runs on. */
   afterTurnWork?: "working" | "monitoring" | null;
+  /**
+   * Nothing lives in the background any more — the thread is idle and the
+   * server holds no live background work (its session is gone): a job that
+   * never reported never will.
+   */
+  backgroundGone?: boolean;
   /** The clock a running turn's last words wait against (`LAST_WORDS_GRACE_MS`). */
   nowMs?: number;
   /** When each helper finished, as the helpers panel knows it (`helperFinishesOf`). */
@@ -1845,11 +1851,14 @@ export function deriveMessagesTimelineRows(input: {
   });
   const turnByKey = new Map(structure.turns.map((turn) => [turn.key, turn]));
   // Which tasks are the commands they track: a command's words, and no row of their own.
-  const tracked = trackCommands(
-    entries.flatMap((entry) =>
-      entry.kind === "work" || entry.kind === "generic-call" ? [entry.entry] : [],
+  const tracked = {
+    ...trackCommands(
+      entries.flatMap((entry) =>
+        entry.kind === "work" || entry.kind === "generic-call" ? [entry.entry] : [],
+      ),
     ),
-  );
+    backgroundGone: input.backgroundGone === true,
+  };
 
   const diffByTurnId = new Map<TurnId, TurnDiffSummary>();
   const diffByAssistantMessageId = new Map<MessageId, TurnDiffSummary>();

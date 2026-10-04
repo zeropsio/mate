@@ -78,7 +78,8 @@ export interface BackgroundJob {
   readonly key: string;
   /** What it was asked to do: the task's words, else the command's own. */
   readonly title: string;
-  readonly state: "running" | "done" | "failed";
+  /** "lost": its session is gone and it never reported — it never will. */
+  readonly state: "running" | "done" | "failed" | "lost";
   readonly startedAt: string;
   /** When its task ended; null while it runs. */
   readonly endedAt: string | null;
@@ -102,6 +103,12 @@ export interface TrackedCommands {
   readonly trackers: ReadonlySet<string>;
   /** Each background task's words, by its id: a read of its output names it. */
   readonly jobTitles: ReadonlyMap<string, string>;
+  /**
+   * Nothing lives in the background any more — the session that ran the
+   * jobs is gone (a restart, the session ended): one that never reported
+   * never will.
+   */
+  readonly backgroundGone?: boolean;
 }
 
 export const NO_TRACKED_COMMANDS: TrackedCommands = {
@@ -320,6 +327,8 @@ function jobOutputPhrase(
 export function backgroundJobOf(
   command: WorkLogEntry,
   tracked: TrackedCommands,
+  /** Its turn still runs: its jobs are live whatever the server has said yet. */
+  live = false,
 ): BackgroundJob | null {
   // Its call's own output says it went to the background (Claude Code's
   // notice), the task that tracks it reaching the log only once it ends.
@@ -350,7 +359,14 @@ export function backgroundJobOf(
   return {
     key: command.id,
     title,
-    state: task === undefined || !ended ? "running" : failed ? "failed" : "done",
+    state:
+      task === undefined || !ended
+        ? tracked.backgroundGone === true && !live
+          ? "lost"
+          : "running"
+        : failed
+          ? "failed"
+          : "done",
     startedAt: command.startedAt ?? command.createdAt,
     endedAt: task !== undefined && ended ? new Date(endOf(task)).toISOString() : null,
     report: task !== undefined && ended ? taskReportWords(task.detail, title) : null,
@@ -660,7 +676,7 @@ export function stepOf(
 ): WorkStep {
   const kind = stepKind(entry);
   const track = tracked.byCommand.get(entry.id);
-  const job = kind === "command" ? backgroundJobOf(entry, tracked) : null;
+  const job = kind === "command" ? backgroundJobOf(entry, tracked, live) : null;
   const taskRuns = track !== undefined && live && track.task.toolLifecycleStatus === "inProgress";
   const state = job?.state === "failed" ? "failed" : taskRuns ? "running" : stepState(entry, live);
   const running = state === "running";
