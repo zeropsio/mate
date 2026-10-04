@@ -8,8 +8,8 @@
  * on their behalf — a queued task starting when its crewmate frees up, the
  * continue turn after *Save and apply now* — runs as `{kind: "crew",
  * startedBy}`, the person whose press or message made it. Admission then
- * re-checks that they still signed in the crewmate's login and are still an
- * active member.
+ * re-checks that they still signed in the crewmate's login and that this
+ * project still opens for them, as a session of theirs would be kept by (X3).
  *
  * A crew turn names its crewmate's login in its model selection, so admission
  * judges the login the turn will spend, whatever thread it lands in. Crew

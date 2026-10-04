@@ -2,29 +2,28 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   canWriteRegistry,
-  mateAwaitingRegistryLine,
   onlyTheseCanAddAProject,
-  planGroupMembership,
-  planGroupRegistration,
   resolveAddProjectVerb,
-  resolveGroupGitea,
   finishMateSetupScope,
   finishMateSetupVerb,
   resolveMateRegistration,
   type MateRegistration,
 } from "./groupCreation.ts";
-import { parseZeropsRegistry } from "./groupRegistry.ts";
-import type { MateAccessViewer } from "./mateAccess.ts";
+import type { ZeropsRegistry } from "./hq/registry.ts";
+import type { OfferViewer } from "./offers.ts";
 
-const EMPTY = parseZeropsRegistry(["mate:tool:gitea"]);
-const ACME = parseZeropsRegistry([
-  "mate:tool:gitea",
-  "mate:gn:g-acme:acme",
-  "mate:gm:g-acme:p-fen:mate",
-]);
+const ACME: ZeropsRegistry = {
+  groups: [
+    {
+      groupId: "g-acme",
+      name: "Acme",
+      projects: [{ projectId: "p-fen", kind: "mate" }],
+    },
+  ],
+};
 
-function viewer(roleCode: string, extra: Partial<MateAccessViewer> = {}): MateAccessViewer {
-  return { id: "org-1", membershipId: "cu-1", roleCode, ...extra };
+function viewer(roleCode: string | undefined, extra: Partial<OfferViewer> = {}): OfferViewer {
+  return { userId: "u-1", clientUserId: "cu-1", roleCode, canCreateProjects: false, ...extra };
 }
 
 describe("who may add a project", () => {
@@ -35,7 +34,12 @@ describe("who may add a project", () => {
     { role: "READ_ONLY", expected: false },
     { role: "NO_ACCESS", expected: false },
   ])("$role writes the registry: $expected", ({ role, expected }) => {
-    expect(canWriteRegistry({ roleCode: role })).toBe(expected);
+    expect(canWriteRegistry(viewer(role))).toBe(expected);
+  });
+
+  it("is nobody the session does not name: unknown is no", () => {
+    expect(canWriteRegistry(undefined)).toBe(false);
+    expect(resolveAddProjectVerb({ viewer: undefined })).toMatchObject({ offered: false });
   });
 
   it("does not offer it to a member who can create projects — the registry is not theirs", () => {
@@ -48,7 +52,7 @@ describe("who may add a project", () => {
     expect(verb).toEqual({ offered: false, reason: "Only Jan Novák adds a project." });
   });
 
-  it("offers it to an owner, Gitea or no Gitea — the first project stands it up", () => {
+  it("offers it to an owner", () => {
     expect(resolveAddProjectVerb({ viewer: viewer("OWNER") })).toEqual({ offered: true });
   });
 
@@ -80,172 +84,6 @@ describe("who may add a project", () => {
   });
 });
 
-describe("planGroupRegistration", () => {
-  it("writes the group's name tag and keeps every other tag", () => {
-    const result = planGroupRegistration({ name: "Acme", groupId: "g-1", registry: EMPTY });
-    expect(result).toEqual({
-      ok: true,
-      plan: { groupId: "g-1", slug: "acme", tagList: ["mate:gn:g-1:acme", "mate:tool:gitea"] },
-    });
-  });
-
-  it("keeps the groups that are already there, and their memberships", () => {
-    const result = planGroupRegistration({ name: "Beta", groupId: "g-2", registry: ACME });
-    expect(result.ok && result.plan.tagList).toEqual([
-      "mate:gm:g-acme:p-fen:mate",
-      "mate:gn:g-2:beta",
-      "mate:gn:g-acme:acme",
-      "mate:tool:gitea",
-    ]);
-  });
-
-  it.each([
-    { name: "Acme", expected: "acme-2" },
-    { name: "acme!", expected: "acme-2" },
-    { name: "Ácme", expected: "acme-2" },
-  ])("numbers $name past the slug acme already taken", ({ name, expected }) => {
-    const result = planGroupRegistration({ name, groupId: "g-2", registry: ACME });
-    expect(result.ok && result.plan.slug).toBe(expected);
-  });
-
-  it.each([
-    { name: "  ", groupId: "g-2", registry: EMPTY, reason: "A project needs a name." },
-    { name: "Acme", groupId: "g-acme", registry: ACME, reason: "That project already exists." },
-  ])("refuses $reason", ({ name, groupId, registry, reason }) => {
-    expect(planGroupRegistration({ name, groupId, registry })).toEqual({ ok: false, reason });
-  });
-});
-
-describe("planGroupMembership", () => {
-  it("adds a Mate to the group", () => {
-    const result = planGroupMembership({
-      registry: ACME,
-      groupId: "g-acme",
-      projectId: "p-nova",
-      kind: "mate",
-    });
-    expect(result.ok && result.tagList).toContain("mate:gm:g-acme:p-nova:mate");
-    expect(result.ok && result.tagList).toContain("mate:gm:g-acme:p-fen:mate");
-  });
-
-  it("is a no-op for a project already in the group as that kind", () => {
-    const result = planGroupMembership({
-      registry: ACME,
-      groupId: "g-acme",
-      projectId: "p-fen",
-      kind: "mate",
-    });
-    expect(result).toEqual({
-      ok: true,
-      tagList: ["mate:gm:g-acme:p-fen:mate", "mate:gn:g-acme:acme", "mate:tool:gitea"],
-    });
-  });
-
-  it.each([
-    {
-      name: "a group that is not registered",
-      registry: ACME,
-      groupId: "g-nope",
-      projectId: "p-1",
-      kind: "mate" as const,
-      reason: "That project is not in the registry.",
-    },
-    {
-      name: "changing what an environment already is",
-      registry: ACME,
-      groupId: "g-acme",
-      projectId: "p-fen",
-      kind: "stage" as const,
-      reason: "That environment is already the group's mate.",
-    },
-    {
-      name: "a second production, naming the one that holds it",
-      registry: parseZeropsRegistry(["mate:gn:g-acme:acme", "mate:gm:g-acme:p-prod:production"]),
-      groupId: "g-acme",
-      projectId: "p-prod2",
-      kind: "production" as const,
-      reason: "This project already has a production.",
-      production: "p-prod",
-    },
-    {
-      name: "a second production beside one the platform did not say is deleted",
-      registry: parseZeropsRegistry(["mate:gn:g-acme:acme", "mate:gm:g-acme:p-prod:production"]),
-      groupId: "g-acme",
-      projectId: "p-prod2",
-      kind: "production" as const,
-      gone: ["p-elsewhere"],
-      reason: "This project already has a production.",
-      production: "p-prod",
-    },
-  ])("refuses $name", ({ registry, groupId, projectId, kind, gone, reason, production }) => {
-    expect(planGroupMembership({ registry, groupId, projectId, kind, gone })).toEqual({
-      ok: false,
-      reason,
-      production,
-    });
-  });
-
-  // Beviro's production, deleted in the Zerops GUI, kept its entry, and every production added
-  // after it was refused (2026-09-24).
-  it.each([
-    {
-      name: "replaces a production whose project the platform says is deleted",
-      tags: [
-        "mate:gn:g-acme:acme",
-        "mate:gm:g-acme:p-fen:mate",
-        "mate:gm:g-acme:p-prod:production",
-      ],
-    },
-    {
-      name: "is a no-op once the replacement is written",
-      tags: [
-        "mate:gn:g-acme:acme",
-        "mate:gm:g-acme:p-fen:mate",
-        "mate:gm:g-acme:p-prod2:production",
-      ],
-    },
-  ])("$name", ({ tags }) => {
-    const result = planGroupMembership({
-      registry: parseZeropsRegistry(tags),
-      groupId: "g-acme",
-      projectId: "p-prod2",
-      kind: "production",
-      gone: ["p-prod"],
-    });
-    expect(result.ok && result.tagList.filter((tag) => tag.startsWith("mate:gm:g-acme:"))).toEqual([
-      "mate:gm:g-acme:p-fen:mate",
-      "mate:gm:g-acme:p-prod2:production",
-    ]);
-  });
-
-  it("allows a second stage", () => {
-    const one = planGroupMembership({
-      registry: ACME,
-      groupId: "g-acme",
-      projectId: "p-stage",
-      kind: "stage",
-    });
-    expect(one.ok).toBe(true);
-    const two = planGroupMembership({
-      registry: parseZeropsRegistry(one.ok ? one.tagList : []),
-      groupId: "g-acme",
-      projectId: "p-stage-x",
-      kind: "stage",
-    });
-    expect(two.ok && two.tagList).toContain("mate:gm:g-acme:p-stage-x:stage");
-  });
-});
-
-describe("resolveGroupGitea", () => {
-  it.each([
-    { organizationExists: true, expected: "ready" },
-    { organizationExists: false, expected: "being-set-up" },
-    { organizationExists: undefined, expected: "unknown" },
-  ])("reads $organizationExists as $expected", ({ organizationExists, expected }) => {
-    expect(resolveGroupGitea({ organizationExists })).toBe(expected);
-  });
-});
-
 describe("resolveMateRegistration", () => {
   it("is registered once the registry names the project", () => {
     expect(resolveMateRegistration({ registry: ACME, projectId: "p-fen" })).toBe("registered");
@@ -253,27 +91,6 @@ describe("resolveMateRegistration", () => {
 
   it("waits for an owner for a Mate a member created", () => {
     expect(resolveMateRegistration({ registry: ACME, projectId: "p-new" })).toBe("awaiting-owner");
-  });
-
-  it.each([
-    {
-      admins: [],
-      expected:
-        "Waiting for an owner or admin to add it to the project — until then it cannot push.",
-    },
-    {
-      admins: [{ id: "a", user: { fullName: "Jan" } }],
-      expected: "Waiting for Jan to add it to the project — until then it cannot push.",
-    },
-    {
-      admins: [
-        { id: "a", user: { fullName: "Jan" } },
-        { id: "b", user: { fullName: "Eva" } },
-      ],
-      expected: "Waiting for Jan or Eva to add it to the project — until then it cannot push.",
-    },
-  ])("says $expected", ({ admins, expected }) => {
-    expect(mateAwaitingRegistryLine(admins)).toBe(expected);
   });
 });
 
@@ -283,10 +100,11 @@ describe("finishMateSetupVerb", () => {
     containerMissing: false,
     pressStopped: false,
     closedOffMissing: false,
-    needsHarden: false,
     pastGrace: true,
     viewerIsAdder: false,
     hasContainer: true,
+    recordMissing: false,
+    mayCreateRecord: false,
   };
   it.each([
     {
@@ -339,20 +157,6 @@ describe("finishMateSetupVerb", () => {
       viewerRole: "OWNER",
       expected: "Finish setup",
     },
-    // Read off the platform's token list, in any browser, after a reload too.
-    {
-      name: "an owner, on a Mate whose key is still ADMIN — a pool claim whose harden never ran",
-      input: { ...HALF_MADE, needsHarden: true },
-      viewerRole: "OWNER",
-      expected: "Finish setup",
-    },
-    // `needsHarden` is the viewer's to fix — an org owner or the key's creator (`mateHardenableBy`).
-    {
-      name: "the member who created its key, on a Mate whose key is still ADMIN",
-      input: { ...HALF_MADE, needsHarden: true, viewerIsAdder: true },
-      viewerRole: "BASIC_USER",
-      expected: "Finish setup",
-    },
     // Closing off is all the adder may do, and a Mate with no container has nothing to close off:
     // never reported finished (pass 28 review).
     {
@@ -387,7 +191,7 @@ describe("finishMateSetupVerb", () => {
       expected: undefined,
     },
     {
-      name: "a BASIC_USER, who still cannot write the Gitea project's tags",
+      name: "a BASIC_USER, who may not finish it",
       input: { ...HALF_MADE, containerMissing: true },
       viewerRole: "BASIC_USER",
       expected: undefined,
@@ -398,6 +202,34 @@ describe("finishMateSetupVerb", () => {
       viewerRole: "OWNER",
       expected: undefined,
     },
+    // A Mate HQ holds no record of — its record's write failed mid-way, or it sits in no
+    // application with none — is finished by whoever HQ's rule lets create its record.
+    {
+      name: "whoever may create its record, on a Mate HQ holds no record of",
+      input: { ...HALF_MADE, recordMissing: true, mayCreateRecord: true },
+      viewerRole: "BASIC_USER",
+      expected: "Finish setup",
+    },
+    // E2E 2026-10-03 (F6): a press that stopped before its container left a `mate` project in no
+    // application, with no container and no record — finished into its container's import.
+    {
+      name: "an owner, on a Mate in no application whose press stopped before its container",
+      input: { ...HALF_MADE, hasContainer: false, recordMissing: true, mayCreateRecord: true },
+      viewerRole: "OWNER",
+      expected: "Finish setup",
+    },
+    {
+      name: "nobody else, on a Mate HQ holds no record of",
+      input: { ...HALF_MADE, recordMissing: true },
+      viewerRole: "OWNER",
+      expected: undefined,
+    },
+    {
+      name: "nobody, on a Mate made a moment ago whose record is not written yet",
+      input: { ...HALF_MADE, recordMissing: true, mayCreateRecord: true, pastGrace: false },
+      viewerRole: "OWNER",
+      expected: undefined,
+    },
     {
       name: "somebody whose role has not been read yet",
       input: { ...HALF_MADE, registration: "awaiting-owner" },
@@ -405,9 +237,9 @@ describe("finishMateSetupVerb", () => {
       expected: undefined,
     },
   ] as const)("offers nothing but the right verb to $name", ({ input, viewerRole, expected }) => {
-    expect(
-      finishMateSetupVerb({ ...input, ...(viewerRole === undefined ? {} : { viewerRole }) }),
-    ).toBe(expected);
+    expect(finishMateSetupVerb({ ...input, writer: canWriteRegistry(viewer(viewerRole)) })).toBe(
+      expected,
+    );
   });
 });
 
@@ -418,6 +250,6 @@ describe("finishMateSetupScope", () => {
     { role: "BASIC_USER", want: "close-off" },
     { role: undefined, want: "close-off" },
   ])("$role: $want", ({ role, want }) => {
-    expect(finishMateSetupScope(role)).toBe(want);
+    expect(finishMateSetupScope(canWriteRegistry(viewer(role)))).toBe(want);
   });
 });

@@ -1,170 +1,109 @@
-/**
- * crewBoot — an applied crew after a Mate server restart (ARCHITECTURE §5
- * *Mate server restart recovery*), run once the server accepts commands.
- *
- * Lane truth is git, so each writer's service is swept first: a dirty lane
- * that is not merging gets its WIP commit, an unreadable ref or a tip the
- * engine did not write parks, a missing directory is recovered (or its loss
- * named). A landing killed mid-way resolves from its anchor: it landed, or it
- * merges again. A task stuck in `merging`, `checking` or `landing` goes back
- * through integration. A task whose turn was running when the server died is
- * re-queued once (an infrastructure ending), and starts again as the person
- * who created it; one whose turn ended unrecorded ends its attempt when the
- * task last moved, and carries on in a running run. Then the figures the
- * snapshot shows are read again and every free crewmate's queue moves.
- *
- * @module crewBoot
- */
+import { crewLane } from "./CrewDefinition.ts";
+import { refreshClaims } from "./crewClaims.ts";
+/** A restart ends recorded work. It never commits, reconstructs a copy, or advances a queue. */
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-
-import { ThreadId } from "@t3tools/contracts";
-
-import { grantAfterTurn, settleAllClaims } from "./crewClaims.ts";
-import {
-  asRefusal,
-  currentStint,
-  failureWords,
-  feedWhenUnattended,
-  isWorking,
-  memberOf,
-  type CrewCore,
-} from "./crewCore.ts";
+import { asRefusal, type CrewCore } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
-import { integrate, refreshLaneStats } from "./crewLanding.ts";
-import { laneSpecsOn } from "./crewTurns.ts";
-import { NO_REPORT } from "./crewMachines.ts";
-import { advanceAll, takeUpWaiting } from "./crewRunFlow.ts";
-import { repairWorktrees } from "./CrewStints.ts";
-import { requeueTask, saveTask, stepTask } from "./crewTasks.ts";
-
-const sweepHost = (core: CrewCore, host: string) =>
-  Effect.gen(function* () {
-    const applied = yield* core.applied;
-    if (applied === undefined) return;
-    const swept = yield* asRefusal(core.workspace.sweep(host));
-    const missing = swept.lanes
-      .filter((lane) => lane._tag === "missing")
-      .map((lane) => lane.handle);
-    for (const handle of missing) core.memory.missingLanes.add(handle);
-    if (missing.length > 0) {
-      const recovered = yield* asRefusal(core.workspace.recover(host, laneSpecsOn(applied, host)));
-      if (recovered._tag === "recovered") {
-        for (const handle of recovered.readded) core.memory.missingLanes.delete(handle);
-      } else {
-        core.memory.lastError = `${host} lost crew work while the Mate was down: ${[
-          ...recovered.landings.map((landing) => landing.title),
-          ...recovered.branches.map((handle) => `crew/${handle}`),
-        ].join(", ")}`;
-      }
-    }
-    const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
-    for (const anchor of yield* asRefusal(core.integration.inFlight(host))) {
-      const task = tasks.find((row) => row.assignment === anchor.assignment);
-      if (task?.state !== "landing") continue;
-      if (anchor._tag === "landed") {
-        yield* stepTask(core, task, { type: "trailer-found" }, (next) => ({
-          ...next,
-          landedCommit: anchor.commit,
-        }));
-      } else {
-        yield* stepTask(core, task, { type: "not-fast-forward" });
-      }
-    }
-  });
-
-/** A task whose turn was running when the server stopped: its session died with it. */
-const turnDied = (core: CrewCore, threadId: string | null) =>
-  threadId === null
-    ? Effect.succeed(false)
-    : core.projection.getThreadShellById(ThreadId.make(threadId)).pipe(
-        Effect.map((shell) =>
-          Option.match(shell, {
-            onNone: () => false,
-            onSome: (thread) =>
-              thread.session?.status === "running" || thread.latestTurn?.state === "running",
-          }),
-        ),
-        Effect.orElseSucceed(() => false),
-      );
+import { beginOperation, updateOperation } from "./crewOperations.ts";
+import { refreshLaneStats } from "./crewLanding.ts";
+import { memberOf } from "./crewCore.ts";
 
 export const boot = (core: CrewCore) =>
   Effect.gen(function* () {
     const applied = yield* core.applied;
     if (applied === undefined) return;
-    for (const host of applied.repositories.keys()) {
-      yield* sweepHost(core, host).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            core.memory.lastError = failureWords(error);
-          }),
-        ),
-      );
-    }
+    const operations = [...(yield* asRefusal(core.store.operations(CREW_ID)))];
     for (const task of yield* asRefusal(core.store.assignments(CREW_ID))) {
-      switch (task.state) {
-        case "landing":
-          yield* saveTask(core, { ...task, state: "merging" });
-          yield* core.background(
-            integrate(core, task.assignment, core.crewmate(task.member)).pipe(Effect.asVoid),
-          );
-          break;
-        case "merging":
-          yield* core.background(
-            integrate(core, task.assignment, core.crewmate(task.member)).pipe(Effect.asVoid),
-          );
-          break;
-        case "checking":
-          yield* saveTask(core, { ...task, state: "merging" });
-          yield* core.background(
-            integrate(core, task.assignment, core.crewmate(task.member)).pipe(Effect.asVoid),
-          );
-          break;
-        case "working": {
-          const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
-          const attempt = attempts.find((row) => row.attempt === task.attempt);
-          const thread = currentStint(applied, task.member)?.threadId ?? attempt?.threadId ?? null;
-          if (yield* turnDied(core, thread)) {
-            yield* requeueTask(core, task, "the Mate server restarted during its turn");
-          } else if (
-            attempt !== undefined &&
-            attempt.endedAt === null &&
-            !isWorking(core, applied, task.member)
-          ) {
-            // Its turn ended unrecorded: the attempt ends when the task last moved.
-            yield* asRefusal(
-              core.store.putAttempt({
-                ...attempt,
-                ending: NO_REPORT.ending,
-                endingDetail: NO_REPORT.detail,
-                endedAt: task.updatedAt,
-              }),
-            );
-            yield* feedWhenUnattended(core);
-          }
-          break;
-        }
-        default:
-          break;
+      if (!["working", "merging", "checking", "landing"].includes(task.state)) continue;
+      const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
+      const attempt = attempts.find((row) => row.attempt === task.attempt);
+      // Older builds kept only the task stage. An ended turn already has its receipt.
+      if (
+        !operations.some((operation) => operation.taskId === task.assignment) &&
+        !(task.state === "working" && attempt?.endedAt !== null && attempt?.endedAt !== undefined)
+      ) {
+        const legacy = yield* beginOperation(core, {
+          kind:
+            task.state === "landing" ? "landing" : task.state === "working" ? "dispatch" : "check",
+          handle: task.member,
+          task,
+        });
+        operations.push(
+          yield* updateOperation(core, legacy.id, {
+            stage: task.state,
+            confirmedStage: "legacy-state-recorded",
+            detail: "The previous server did not record this outcome.",
+          }),
+        );
+      }
+      if (attempt !== undefined && attempt.endedAt === null)
+        yield* asRefusal(
+          core.store.putAttempt({
+            ...attempt,
+            ending: "interrupted",
+            endingDetail: "The Mate restarted before its outcome was recorded.",
+            endedAt: yield* core.now,
+          }),
+        );
+    }
+    for (const operation of operations) {
+      if (operation.status !== "running") continue;
+      yield* updateOperation(core, operation.id, {
+        status: "interrupted",
+        detail: operation.detail ?? "The Mate restarted before its outcome was recorded.",
+      });
+    }
+    if (applied.run?.state === "running") {
+      yield* asRefusal(
+        core.store.putRun({
+          ...applied.run,
+          state: "paused",
+          reason: "person",
+          reasonDetail: "The Mate restarted. Continue the work you choose.",
+        }),
+      );
+      yield* asRefusal(core.reload);
+    }
+    yield* core.changed;
+  });
+
+/** Exact reads report preserved copies and landing evidence; they never advance work. */
+export const inspectBoot = (core: CrewCore) =>
+  Effect.gen(function* () {
+    const applied = yield* core.applied;
+    if (applied === undefined) return;
+    for (const operation of yield* asRefusal(core.store.operations(CREW_ID))) {
+      if (
+        operation.status === "interrupted" &&
+        operation.kind === "landing" &&
+        operation.taskId !== null &&
+        operation.targets.host !== null
+      ) {
+        const commit = yield* core.integration
+          .landingEvidence(operation.targets.host, operation.taskId)
+          .pipe(Effect.orElseSucceed(() => null));
+        if (commit !== null)
+          yield* updateOperation(core, operation.id, {
+            result: { _tag: "already-landed", commit },
+            detail: "Already in the code. Continue to record the outcome.",
+          });
       }
     }
-    for (const [handle, row] of applied.members) {
+    yield* refreshClaims(core);
+    // Read the preserved edits for the row; these reads never write git or start work.
+    for (const handle of applied.members.keys()) {
       const member = memberOf(applied, handle);
-      if (member === undefined || row.kind !== "writer" || row.host === null) continue;
-      yield* refreshLaneStats(core, member);
-      if (row.runCommand !== null) {
-        const status = yield* core.app
-          .status({ host: row.host, handle })
-          .pipe(Effect.orElseSucceed(() => ({ state: "stopped" }) as const));
-        if (status.state === "lane-missing") core.memory.missingLanes.add(handle);
-        else core.memory.apps.set(handle, status.state);
+      if (member !== undefined) {
+        const repository =
+          member.row.host === null ? undefined : applied.repositories.get(member.row.host);
+        if (
+          member.row.kind === "writer" &&
+          repository !== undefined &&
+          !(yield* core.fileExists(crewLane(repository, handle).mountDir))
+        )
+          core.memory.missingLanes.add(handle);
+        yield* refreshLaneStats(core, member);
       }
     }
-    yield* settleAllClaims(core);
-    // An Allow that waited on a turn the restart ended goes out now.
-    for (const handle of applied.members.keys()) yield* grantAfterTurn(core, handle);
-    yield* repairWorktrees(core, (yield* core.applied) ?? applied);
-    yield* takeUpWaiting(core);
-    yield* advanceAll(core);
     yield* core.changed;
   });

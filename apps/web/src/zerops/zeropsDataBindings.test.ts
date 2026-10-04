@@ -49,41 +49,28 @@ describe("central Zerops data bindings", () => {
     const files = [
       "../components/zerops/ZeropsNewProjectHost.tsx",
       "../components/zerops/ZeropsProjectsPage.tsx",
-      "./useZeropsGroupReach.ts",
       "./matePress.ts",
       "./useZeropsUpgradeRestart.ts",
     ];
     const legacyMethods = [
       "restartService",
-      "writeProjectTags",
+      "writeProject",
       "importDevelopmentContainer",
       "enableZeropsMate",
       "enableSubdomainAccess",
       "createProject",
-      "createProjectWithZeropsMate",
       "importProject",
       "importServicesIntoProject",
-      "createToolProject",
       "setIntegrationTokenProjects",
       "deleteProject",
     ];
 
-    // The press's sibling reach writes a key through the API itself: it needs each key's creator
-    // and org role, which the command's grant metadata does not carry, read live right before
-    // each write (pass 28) — the one exception, until the store's token cells carry them.
-    const direct: Readonly<Record<string, ReadonlyArray<string>>> = {
-      "./matePress.ts": ["setIntegrationTokenProjects"],
-    };
     for (const file of files) {
       const contents = source(file);
       for (const method of legacyMethods) {
-        if (direct[file]?.includes(method) === true) continue;
         expect(contents).not.toContain(`client.${method}(`);
       }
     }
-    expect(source("./matePress.ts").split("client.setIntegrationTokenProjects(").length - 1).toBe(
-      1,
-    );
   });
 
   it("binds per-project views to projection families instead of the account root atom", () => {
@@ -132,8 +119,8 @@ describe("central Zerops data bindings", () => {
       schemaVersion: 1 as const,
     };
     const serviceQueryDescriptor = {
-      kind: "services-of-organization" as const,
-      organization: project.organization,
+      kind: "services-of-project" as const,
+      project: project,
       schemaVersion: 1 as const,
     };
     const initial = makeInitialZeropsDataState({ account, epoch: AccountEpoch.make(1) });

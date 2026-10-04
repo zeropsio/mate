@@ -338,7 +338,9 @@ export const WS_METHODS = {
 
   // Zerops feeds
   zeropsLifecycleGet: "zerops.lifecycle.get",
+  zeropsStandUpRetry: "zerops.standUp.retry",
   zeropsAgentLoginStart: "zerops.agentLogin.start",
+  zeropsAgentAuthCheck: "zerops.agentAuth.check",
   zeropsAgentLoginCancel: "zerops.agentLogin.cancel",
   zeropsAgentLoginSubmitCode: "zerops.agentLogin.submitCode",
   zeropsAgentLoginSignOut: "zerops.agentLogin.signOut",
@@ -982,6 +984,13 @@ const WsSubscribeResourceTelemetryRpc = Rpc.make(WS_METHODS.subscribeResourceTel
   stream: true,
 });
 
+/** One explicit retry of a failed stand-up send, authorized as the authenticated asker. */
+const WsZeropsStandUpRetryRpc = Rpc.make(WS_METHODS.zeropsStandUpRetry, {
+  payload: Schema.Struct({}),
+  success: Schema.Boolean,
+  error: EnvironmentAuthorizationError,
+});
+
 const WsZeropsLifecycleGetRpc = Rpc.make(WS_METHODS.zeropsLifecycleGet, {
   payload: ZeropsLifecycleGetInput,
   success: ZeropsLifecycle,
@@ -1012,6 +1021,12 @@ const WsZeropsAgentLoginStartRpc = Rpc.make(WS_METHODS.zeropsAgentLoginStart, {
   payload: ZeropsAgentLoginStartInput,
   success: ZeropsAgentLoginStartResult,
   error: Schema.Union([TerminalError, ZeropsAgentLoginError, EnvironmentAuthorizationError]),
+});
+
+/** One operator-requested verification and, if needed, platform registration. */
+const WsZeropsAgentAuthCheckRpc = Rpc.make(WS_METHODS.zeropsAgentAuthCheck, {
+  payload: ZeropsAgentLoginCancelInput,
+  error: Schema.Union([ZeropsAgentLoginError, EnvironmentAuthorizationError]),
 });
 
 /** Cancels `agentId`'s active login session, if any: sends Ctrl-C and closes its terminal. */
@@ -1261,9 +1276,11 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeBackgroundPolicyRpc,
   WsSubscribeResourceTelemetryRpc,
   WsZeropsLifecycleGetRpc,
+  WsZeropsStandUpRetryRpc,
   WsSubscribeZeropsLifecycleRpc,
   WsSubscribeZeropsAgentAuthRpc,
   WsZeropsAgentLoginStartRpc,
+  WsZeropsAgentAuthCheckRpc,
   WsZeropsAgentLoginCancelRpc,
   WsZeropsAgentLoginSubmitCodeRpc,
   WsZeropsAgentLoginSignOutRpc,

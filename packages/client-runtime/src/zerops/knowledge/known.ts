@@ -18,10 +18,10 @@ export interface Stamp {
 export type Prerequisite =
   | "zerops-session"
   | "access-grant"
-  | "gitea-session"
   | "mate-session"
   | "presence"
   | "visible"
+  | "data-slot"
   | "online";
 
 export type FailureReason =
@@ -39,7 +39,11 @@ export type FailureReason =
   | { readonly kind: "unsupported"; readonly capability: string };
 
 export type StaleReason =
-  | { readonly kind: "source-recovering"; readonly retryAtMs: number | null }
+  | {
+      readonly kind: "source-recovering";
+      readonly retryAtMs: number | null;
+      readonly coverageGap?: boolean;
+    }
   | {
       readonly kind: "revalidation-failed";
       readonly failure: FailureReason;
@@ -124,7 +128,7 @@ export interface Cell<T> {
   /**
    * A read is owed: the value was invalidated during a read (M3), or no source stated its
    * coverage. Only a value admitted with stated coverage, newer than every admitted
-   * invalidation, settles it; a failed read leaves it owed under the retry schedule.
+   * invalidation, settles it; a failed read leaves it owed until Read again or a new input.
    */
   readonly dirty: boolean;
 }

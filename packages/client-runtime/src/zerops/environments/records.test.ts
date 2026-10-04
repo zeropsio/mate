@@ -96,6 +96,19 @@ describe("registration records (DESIGN §2.C C1)", () => {
     expect(writes).toEqual([REGISTRATION_RECORDS_KEY]);
   });
 
+  it("forgets a target's record, and writes nothing for a target it holds none of", () => {
+    const { storage, writes } = fakeStorage(remembered());
+    const records = makeRegistrationRecords(storage);
+
+    expect(records.forget("project-a:service-a")).toBe(true);
+    expect(records.forget("project-a:service-a")).toBe(false);
+
+    expect(makeRegistrationRecords(storage).list()).toEqual([
+      expect.objectContaining({ targetKey: "project-b:service-b", environmentId: ENV_B }),
+    ]);
+    expect(writes).toEqual([REGISTRATION_RECORDS_KEY]);
+  });
+
   it("what an exchange could not learn keeps what its target's record knew", () => {
     const { storage } = fakeStorage(remembered());
     const records = makeRegistrationRecords(storage);

@@ -9,8 +9,8 @@
  * sticks. A name that will not do is said beside the button once it is pressed; while the
  * account's Mates' names are still being read, the button waits and says so.
  *
- * It ends, as New Mate does, with what happens next (`newProjectNext`): Git hosting where the
- * account has none, then the project and its Mate, then the person signs it in and tells it what
+ * It ends, as New Mate does, with what happens next (`newProjectNext`): HQ where the
+ * organization has none, then the project and its Mate, then the person signs it in and tells it what
  * to build. Create hands over at once; the person lands on the first Mate's own view.
  */
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
@@ -58,8 +58,8 @@ export interface ZeropsNewProjectFormProps {
   readonly locations: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   readonly locationId: string | null;
   readonly onLocation: (id: string) => void;
-  /** The locations are still being read: the button waits, with a spinner. */
-  readonly locationLoading: boolean;
+  /** The locations, or whether the organization has its HQ, are still being read: the button waits, with a spinner. */
+  readonly loading: boolean;
   /** Why the locations could not be read; `null` when they were. */
   readonly locationError: string | null;
   /** The first Mate's name proposed, free on the account (`generateBotName`). */
@@ -70,10 +70,6 @@ export interface ZeropsNewProjectFormProps {
   readonly takenBotNames: TakenBotNames;
   /** The tint the account gives a new Mate of this name (`newMateTint`). */
   readonly defaultTintFor: (name: string) => MateTintId;
-  /** The account's organization, which Git hosting would be for. */
-  readonly organizationName: string | undefined;
-  /** The account has no Git hosting yet: this project brings it along. */
-  readonly withGitHosting: boolean;
   /** Create was pressed: its first Mate's view is on its way, and a second press makes nothing. */
   readonly creating: boolean;
   /** Why nothing can be created here, in the form's place; Close is all there is. */
@@ -90,14 +86,12 @@ export function ZeropsNewProjectForm({
   locations,
   locationId,
   onLocation,
-  locationLoading,
+  loading,
   locationError,
   defaultBotName,
   proposeAnotherName,
   takenBotNames: taken,
   defaultTintFor,
-  organizationName,
-  withGitHosting,
   creating,
   closed,
   onCancel,
@@ -215,8 +209,6 @@ export function ZeropsNewProjectForm({
                   next: newProjectNext({
                     projectName: name,
                     botName,
-                    organizationName,
-                    withGitHosting,
                   }),
                   shown: true,
                 },
@@ -268,19 +260,19 @@ export function ZeropsNewProjectForm({
               Cancel
             </Button>
             <Button
-              aria-busy={creating || locationLoading || undefined}
+              aria-busy={creating || loading || undefined}
               data-zerops-new-project="create"
               disabled={
                 creating ||
                 name.trim().length === 0 ||
-                locationLoading ||
+                loading ||
                 locationError !== null ||
                 (locations.length > 0 && !locationId) ||
                 submit.kind === "wait"
               }
               type="submit"
             >
-              {creating || locationLoading ? <Spinner size="md" /> : null}
+              {creating || loading ? <Spinner size="md" /> : null}
               {newProjectButton({ projectName: name, botName })}
             </Button>
           </>

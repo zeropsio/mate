@@ -33,7 +33,8 @@ import {
   type KnownSurface,
 } from "./knowledge/index.ts";
 
-type AgentAuthFields = ZeropsAgentAuthFields;
+type AgentAuthFields = ZeropsAgentAuthFields &
+  Pick<ZeropsAgentAuth, "verification" | "registration">;
 
 /**
  * The card's labels and actions are two views onto the one classification
@@ -45,6 +46,12 @@ type AgentAuthFields = ZeropsAgentAuthFields;
 const classifyAgentAuth = classifyZeropsAgentAuth;
 
 export function agentAuthLabel(agent: AgentAuthFields): string {
+  if (agent.verification?.status === "checking") return "Checking…";
+  if (agent.verification?.status === "unknown" && agent.verification.checkedAt !== undefined)
+    return "Couldn't verify";
+  if (agent.registration?.status === "failed") return "Signed in — registration failed";
+  if (agent.registration?.status === "accepted" && agent.state === "local-only")
+    return "Registration accepted";
   const presentation = classifyAgentAuth(agent);
   switch (presentation.kind) {
     case "not-authorized":
@@ -61,9 +68,18 @@ export function agentAuthLabel(agent: AgentAuthFields): string {
 }
 
 /** What the row's action slot should render: an enabled sign-in button, a disabled placeholder, or nothing. */
-export type ZeropsAgentAuthAction = "sign-in" | "registering" | "none";
+export type ZeropsAgentAuthAction =
+  | "sign-in"
+  | "registering"
+  | "check-again"
+  | "register-again"
+  | "none";
 
 export function agentAuthAction(agent: AgentAuthFields): ZeropsAgentAuthAction {
+  if (agent.verification?.status === "checking") return "registering";
+  if (agent.verification?.status === "unknown" && agent.verification.checkedAt !== undefined)
+    return "check-again";
+  if (agent.registration?.status === "failed") return "register-again";
   const presentation = classifyAgentAuth(agent);
   switch (presentation.kind) {
     case "not-authorized":
@@ -143,6 +159,11 @@ export function classifyAgentRowLogin(
   agent: AgentAuthFields & Pick<ZeropsAgentAuth, "login">,
 ): ZeropsAgentLoginPresentation {
   const login = classifyAgentLogin(agent.login);
+  if (
+    (login.kind === "succeeded" || login.kind === "failed") &&
+    (agentAuthAction(agent) === "check-again" || agentAuthAction(agent) === "register-again")
+  )
+    return { kind: "none" };
   if (login.kind === "succeeded") {
     return classifyAgentAuth(agent).kind !== "authorized" && agent.providerAuth === "unknown"
       ? { kind: "confirming" }
@@ -210,9 +231,7 @@ export function zeropsAgentAuthNeedsAttention(snapshot: ZeropsAgentAuthSnapshot)
   return (
     snapshot.available &&
     snapshot.agents.some(
-      (agent) =>
-        classifyAgentAuth(agent).kind !== "authorized" ||
-        classifyAgentRowLogin(agent).kind !== "none",
+      (agent) => agentAuthAction(agent) !== "none" || classifyAgentRowLogin(agent).kind !== "none",
     )
   );
 }
@@ -270,8 +289,8 @@ const loginInFlight = (phase: ZeropsAgentLoginPhase | undefined): boolean =>
 /** The agent-auth feed as its surfaces read it (DESIGN §2.C C13, §3.4). */
 export interface ZeropsAgentAuthView {
   /**
-   * The snapshot once known, kept while stale: what the card lists and what a sign-in, the
-   * dialog and the signer record act on. `null` until then.
+   * The snapshot once known, kept while stale: what the card lists and what a sign-in and the
+   * dialog act on. `null` until then.
    */
   readonly snapshot: ZeropsAgentAuthSnapshot | null;
   /**

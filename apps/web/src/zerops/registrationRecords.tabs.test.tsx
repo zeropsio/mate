@@ -3,7 +3,9 @@ import { makeAccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import { EnvironmentId } from "@t3tools/contracts";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { mountTab, settle, unmountTabs } from "./__fixtures__/harnessTabs";
+import { mountTab, preloadTabs, settle, unmountTabs } from "./__fixtures__/harnessTabs";
+
+preloadTabs();
 
 const person: ZeropsUser = {
   id: "user-1",

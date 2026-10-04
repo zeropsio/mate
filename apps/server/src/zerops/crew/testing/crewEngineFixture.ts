@@ -60,7 +60,9 @@ import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmissi
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { CrewEngine } from "../CrewEngine.ts";
 import { crewServicesLayer, makeCrewEngine, type CrewPolicyInstaller } from "../crewLayer.ts";
+import { DevServerPidFile } from "../CrewRuntime.ts";
 import { CrewThreadDirectory, CrewToolHost } from "../crewSeams.ts";
+import { CrewShell } from "../CrewShell.ts";
 import { CrewStore } from "../CrewStore.ts";
 import {
   makeServiceRepository,
@@ -82,6 +84,12 @@ export const ZEROPS = resolveZeropsEnvironment({
 export interface CrewWorld {
   readonly root: string;
   readonly workspace: string;
+  /**
+   * zcp's dev-server pidfile as this world's engine reads it: the world's own, so no other run on
+   * the machine writes it under the engine.
+   */
+  readonly devServerPidFile: string;
+  readonly beforeDispatch: Ref.Ref<Effect.Effect<void>>;
   readonly dispatched: Ref.Ref<ReadonlyArray<OrchestrationCommand>>;
   readonly admitted: Ref.Ref<
     ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
@@ -97,7 +105,7 @@ export interface CrewWorld {
   >;
   /** Logins the person may not run, with the words admission refuses them in. */
   readonly notTheirs: Ref.Ref<ReadonlyMap<string, string>>;
-  /** Threads the projection reports, for the landing gate and the boot sweep. */
+  /** Threads the projection reports, for the landing gate and restart inspection. */
   readonly threads: Ref.Ref<ReadonlyArray<OrchestrationThreadShell>>;
   readonly installs: Ref.Ref<number>;
   /** ssh sessions the crew opened. */
@@ -245,7 +253,13 @@ const fakes = (
     repositoryLayers(world.root),
     Layer.mock(OrchestrationEngineService)({
       dispatch: (command) =>
-        Ref.update(world.dispatched, (all) => [...all, command]).pipe(Effect.as({ sequence: 1 })),
+        (command.type === "thread.turn.start"
+          ? Ref.get(world.beforeDispatch).pipe(Effect.flatten)
+          : Effect.void
+        ).pipe(
+          Effect.andThen(Ref.update(world.dispatched, (all) => [...all, command])),
+          Effect.as({ sequence: 1 }),
+        ),
     }),
     Layer.mock(ProjectionSnapshotQuery)({
       getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.some(project)),
@@ -382,6 +396,7 @@ export type CrewEngineServices =
   | CrewToolHost
   | ServerCommandReadiness
   | CrewStore
+  | CrewShell
   | ThreadToolPolicyRegistry;
 
 /**
@@ -406,6 +421,8 @@ export const withCrewEngines = <E>(
     const world: CrewWorld = {
       root,
       workspace,
+      devServerPidFile: NodePath.join(workspace, "zcp-dev-server.log.pid"),
+      beforeDispatch: yield* Ref.make<Effect.Effect<void>>(Effect.void),
       dispatched: yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]),
       admitted: yield* Ref.make<
         ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
@@ -452,6 +469,7 @@ export const withCrewEngines = <E>(
           Layer.mergeAll(
             fakes(world, events, signIns),
             countingSsh(world.sshCalls, holds),
+            Layer.succeed(DevServerPidFile, world.devServerPidFile),
             ServerConfig.layer({
               cwd: workspace,
               attachmentsDir: NodePath.join(workspace, "attachments"),
@@ -477,6 +495,14 @@ export const withCrewEngines = <E>(
       ),
     );
   });
+
+/**
+ * The budget of a test that drives a live crew engine: the server suite's own (`testTimeout` in
+ * `apps/server/vite.config.ts`). A run from the repository root holds every test to the root's
+ * 60 s, with files in parallel, and an engine's work — copies, commits, a merge, a check, each a
+ * git or shell process — takes longer on a loaded machine without anything going wrong.
+ */
+export const CREW_ENGINE_TEST_TIMEOUT = 120_000;
 
 /** One engine: see {@link withCrewEngines}. */
 export const withCrewEngine = <E>(

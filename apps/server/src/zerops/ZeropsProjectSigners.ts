@@ -1,8 +1,7 @@
 /**
- * ZeropsProjectSigners — who signed each agent in, recorded where this
- * container cannot rewrite it.
+ * ZeropsProjectSigners — whose login a turn would spend, and the gate that asks.
  *
- * ## Why a project tag
+ * ## Whose a login is
  *
  * An agent CLI's credential is a *personal* one: under the vendors' consumer
  * terms a subscription login is yours to use on your own machines and nobody
@@ -10,32 +9,25 @@
  * Mate reaches the same agent — so the product has to know whose identity a
  * turn is about to spend, and refuse the ones that are not theirs (D6).
  *
- * The record used to be a file in this container, which the Mate, its agent
- * and anything the agent runs could all rewrite. So it moved onto the Mate's
- * **project**, as a tag `mate:signer:{agent}:{userId}`, written by the app
- * **as the person** at the moment their sign-in succeeds. A Mate's own key is
- * `BASIC_USER` on its project and cannot write tags (measured 2026-09-16), so
- * neither it nor its agent can forge the record. This server only ever reads
- * it, with its own key.
+ * The record is what this server saw: the person whose door session started
+ * the sign-in that succeeded here (`ZeropsAgentLogin`), kept across restarts
+ * beside the logins' homes (`zeropsSignIns`). Nobody writes it from outside —
+ * not a project member by API, not the app. Forging it needs access to this
+ * container, and that access already holds the login's credential.
  *
  * Said out loud, because it matters: this is a guardrail, not a lock. Everyone
  * who can open a Mate can also write in it and open a terminal as the agent's
- * user, so any of them could copy the credential file, and the Mate's owner can
- * rewrite the tag besides. What D6 buys is that an org owner or admin does not
- * run a colleague's agent by habit or by accident, and that there is a record
- * of who signed it in. It does not claim to stop theft.
+ * user, so any of them could copy the credential file. What D6 buys is that an
+ * org owner or admin does not run a colleague's agent by habit or by accident,
+ * and that there is a record of who signed it in. It does not claim to stop
+ * theft.
  *
- * ## The leave check
+ * ## Who may still use it
  *
- * A signer who is no longer an `ACTIVE` member of the org is not going to come
- * back for their credential, and leaving it here means the next person to open
- * this Mate spends a subscription belonging to someone who has left. So on the
- * same timer the server reads the member list with its own key and, when a
- * recorded signer is gone, **removes that agent's credential artifact**.
- *
- * A member list that cannot be read signs nobody out. Absence of evidence is
- * not evidence of a leaver, and the read is the one thing standing between a
- * platform blip and a room full of deleted logins.
+ * `hasProjectAccess` is the one answer to whether a person may use this Mate
+ * at all — the one that keeps their session open — for a turn no session of
+ * theirs stands behind (X3), and for offboarding, which signs every login of a
+ * person it says no for out (`ZeropsOffboarding`, X4).
  *
  * @module ZeropsProjectSigners
  */
@@ -48,67 +40,36 @@ import type {
 } from "@t3tools/contracts";
 import {
   classifyZeropsAgentAuth,
-  knownSigner,
-  latestSucceededSignIn,
-  readSignerTags,
-  type SignerRecord,
   type ZeropsAgentAuthFields,
   type ZeropsAgentAuthKind,
 } from "@t3tools/shared/zeropsAgentAuth";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
-import * as Schedule from "effect/Schedule";
-import * as Semaphore from "effect/Semaphore";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as NodeOS from "node:os";
 
 import * as ServerConfig from "../config.ts";
-import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
-import { requestWithMateKey } from "./ZeropsMateKey.ts";
-import { readJson, zeropsGet } from "./zeropsApiRead.ts";
-import { readMemberEntries, readOrgMembers } from "./ZeropsThrowawayIdentity.ts";
-import { readProjectRoles } from "./ZeropsMembershipWatch.ts";
-import { isLoginSignerKey } from "./zeropsLoginIds.ts";
-
-/** D6's record, on the Mate's own project: `mate:signer:{agent}:{userId}`. */
-export const MATE_SIGNER_TAG_PREFIX = "mate:signer";
-
-/** The agents this build knows how to record a signer for. */
-const KNOWN_AGENT_IDS: ReadonlyArray<ZeropsAgentId> = ["claude-code", "codex"];
-
-/** Where each agent CLI keeps the credential a sign-out removes. */
-export const AGENT_CREDENTIAL_SEGMENTS: Readonly<Record<ZeropsAgentId, ReadonlyArray<string>>> = {
-  "claude-code": [".claude", ".credentials.json"],
-  codex: [".codex", "auth.json"],
-};
+import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
+import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
 
 /**
- * Signer key → the Zerops user id of whoever signed that login in. The keys
- * are the agent ids for the two default logins and the login's own id for
- * every other one (`zeropsLoginIds.ts`).
+ * How long the last answer to "may this person use this Mate" holds while reads fail (D7): a
+ * person whose access went keeps running turns no longer than this, as HQ's own view (X7).
  */
-export type ProjectSigners = Readonly<Partial<Record<string, SignerRecord>>>;
-
-export function signerTag(key: string, userId: string): string {
-  return `${MATE_SIGNER_TAG_PREFIX}:${key}:${userId}`;
-}
+export const ACCESS_HOLDS = Duration.minutes(5);
 
 /**
- * Reads the signer tags off a project's tag list (`readSignerTags`, the one derivation the
- * client's owner reads too): one per agent's default login, and one per other login under that
- * login's own id. A re-sign-in writes its tag over every other (`withMateSignerTag`).
+ * Signer key → the Zerops user id of whoever this server saw sign that login
+ * in. The keys are the agent ids for the two default logins and the login's
+ * own id for every other one (`zeropsLoginIds.ts`).
  */
-export function parseSignerTags(tagList: ReadonlyArray<string> | undefined): ProjectSigners {
-  return readSignerTags(tagList, isLoginSignerKey);
-}
+export type ProjectSigners = Readonly<Record<string, string>>;
+
+/** The signers out of the sign-ins this server kept. */
+const signersOf = (records: SignInRecords): ProjectSigners =>
+  Object.fromEntries(Object.entries(records).map(([key, record]) => [key, record.by]));
 
 /** Why a turn may not start on an agent, or `undefined` when it may. */
 export type TurnRefusal =
@@ -120,9 +81,7 @@ export type TurnRefusal =
   /** Signed in, but no signer was recorded for it. */
   | { readonly kind: "unrecorded" }
   /** Signed in by somebody other than this session's person. */
-  | { readonly kind: "someone-else" }
-  /** The project records the sign-in for two or more people: nobody's until signed in again. */
-  | { readonly kind: "unsettled" };
+  | { readonly kind: "someone-else" };
 
 /**
  * Whether this session may start a turn on this agent.
@@ -141,7 +100,7 @@ export type TurnRefusal =
  */
 export function turnRefusal(input: {
   readonly agent: ZeropsAgentAuthFields & Pick<ZeropsAgentAuth, "flagToken">;
-  readonly signer: SignerRecord | undefined;
+  readonly signer: string | undefined;
   readonly subject: string | undefined;
 }): TurnRefusal | undefined {
   return loginTurnRefusal({
@@ -160,42 +119,15 @@ export function turnRefusal(input: {
 export function loginTurnRefusal(input: {
   readonly state: ZeropsLoginState;
   readonly token: boolean;
-  readonly signer: SignerRecord | undefined;
+  readonly signer: string | undefined;
   readonly subject: string | undefined;
 }): TurnRefusal | undefined {
   if (input.state !== "authorized" && input.state !== "registering") {
     return { kind: "not-signed-in", auth: input.state };
   }
   if (input.token) return undefined;
-  const signer = input.signer;
-  // Whose credential it is is not known: a stale signer must never run turns on another's, so
-  // nobody does until somebody signs it in again, which writes the one record.
-  if (typeof signer === "object") return { kind: "unsettled" };
-  if (signer === undefined || signer.length === 0) return { kind: "unrecorded" };
-  return input.subject === signer ? undefined : { kind: "someone-else" };
-}
-
-/**
- * Which agents to sign out: those whose recorded signer the org no longer
- * knows as an `ACTIVE` member.
- *
- * `activeMemberIds` of `undefined` means the member list could not be read,
- * and then nothing is signed out — absence of evidence is not evidence of a
- * leaver.
- */
-export function planAgentSignOut(input: {
-  readonly signers: ProjectSigners;
-  readonly activeMemberIds: ReadonlySet<string> | undefined;
-}): ReadonlyArray<ZeropsAgentId> {
-  const activeMemberIds = input.activeMemberIds;
-  if (activeMemberIds === undefined) return [];
-  return KNOWN_AGENT_IDS.filter((agentId) => {
-    const record = input.signers[agentId];
-    // A record that names two people, one of whom has left: the credential may be theirs.
-    if (typeof record === "object") return record.among.some((user) => !activeMemberIds.has(user));
-    const signer = knownSigner(record);
-    return signer !== undefined && !activeMemberIds.has(signer);
-  });
+  if (input.signer === undefined || input.signer.length === 0) return { kind: "unrecorded" };
+  return input.subject === input.signer ? undefined : { kind: "someone-else" };
 }
 
 /**
@@ -225,82 +157,24 @@ export function isTurnStartingCommand(
 }
 
 /**
- * How long a read stays good for the dispatch gate — of the project's tags,
- * and of the org's member list.
+ * How long a turn waits on a code being checked whose outcome decides it: a success makes the
+ * login its person's, a failure leaves it the signer's before. The CLI writes the credential
+ * before the walker sees the success, so a turn admitted meanwhile could run on the new person's
+ * credential — or refuse that very person a second before their sign-in lands (live runs,
+ * 2026-09-30 and 2026-10-01).
  */
-export const SIGNERS_CACHE_TTL = Duration.seconds(30);
-
-/**
- * How long a turn waits for the record of a sign-in its own person has just finished, or is
- * finishing. The app writes the record as the person the moment it sees the login succeed — the
- * same moment a new Mate's first turn (its stand-up) leaves — and the tag lands a few seconds on,
- * behind whatever else the app writes to the project then: a turn refused ahead of it was the
- * person's own, refused for a record already on its way (live runs, 2026-09-30 and 2026-10-01).
- */
-export const SIGNER_RECORD_WAIT = Duration.seconds(30);
-const SIGNER_RECORD_POLL = Duration.seconds(1);
-
-/**
- * How often, and for how long, a feed reads the tags afresh ({@link ZeropsProjectSigners}'
- * `fresh`) after a sign-in this server walked, until the record names the person who signed in.
- * The app writes it a second or two after it sees the success, and retries a failed write for
- * ~20 s; meanwhile the cached read names the record from before — no record, or the earlier
- * signer — and with that one recorded nothing else would ever republish.
- */
-export const SIGNER_RECORD_FRESH_POLL = Duration.seconds(2);
-export const SIGNER_RECORD_FRESH_AWAIT = Duration.seconds(60);
-/**
- * How fresh a read the tags' fresh readers share: every turn waiting on a record, and the feeds'
- * own re-reads, take one read a second between them.
- */
-const FRESH_READ_SHARED_FOR = Duration.seconds(1);
-/** How long a fresh read waits after the platform refused one, doubling to the last. */
-const FRESH_READ_BACKOFF: ReadonlyArray<Duration.Duration> = [
-  Duration.seconds(2),
-  Duration.seconds(4),
-  Duration.seconds(8),
-];
-
-/** A login started longer ago than this has had its record written, or never will. */
-const RECORD_ON_ITS_WAY_WITHIN = Duration.minutes(30);
-
-/**
- * Who has just signed this agent in, by the login this server walked: its latest attempt that
- * succeeded — an attempt started, cancelled or failed after it changes nothing — not long ago,
- * naming who started it. Their app writes their record once it sees the success, so until it
- * lands the credential is theirs, whatever the record from before says.
- */
-export function recentSignInBy(
-  login:
-    | Pick<ZeropsAgentLoginState, "phase" | "startedAt" | "startedBy" | "lastSucceeded">
-    | undefined,
-  nowMs: number,
-): string | undefined {
-  const success = latestSucceededSignIn(login);
-  const by = success?.startedBy;
-  if (success === undefined || by === undefined || by.length === 0) return undefined;
-  const age = nowMs - DateTime.toEpochMillis(success.startedAt);
-  return age < Duration.toMillis(RECORD_ON_ITS_WAY_WITHIN) ? by : undefined;
-}
+export const SIGN_IN_CHECK_WAIT = Duration.seconds(30);
+const SIGN_IN_CHECK_POLL = Duration.seconds(1);
 
 export class ZeropsProjectSigners extends Context.Service<
   ZeropsProjectSigners,
   {
-    /** Who signed each agent in, from a read no older than {@link SIGNERS_CACHE_TTL}. */
+    /** Who this server saw sign each login in (`zeropsSignIns`). */
     readonly signers: Effect.Effect<ProjectSigners>;
     /**
-     * Who signed each agent in, read now and cached — a failed read answers what was last known.
-     * For a record known to be on its way: a sign-in this server has just walked.
-     */
-    readonly fresh: Effect.Effect<ProjectSigners>;
-    /**
-     * {@link turnRefusal} for this session on `agentId`. A refusal that rests
-     * on the signer record and came from the cache — or from what was last
-     * known after a failed read — reads the tags once more and answers from
-     * that read: a sign-in written inside the cache's lifetime is not refused
-     * on the record from before it. A login this very person has just
-     * finished waits up to {@link SIGNER_RECORD_WAIT} for its record, and
-     * the signer before it runs nothing on the credential meanwhile.
+     * {@link turnRefusal} for this session on `agentId`, against who this server saw sign it in.
+     * While a code is being checked on it whose outcome decides this turn, the turn waits up to
+     * {@link SIGN_IN_CHECK_WAIT} for the check to settle, then goes by the sign-in it left.
      */
     readonly turnRefusal: (input: {
       readonly agentId: ZeropsAgentId;
@@ -311,10 +185,7 @@ export class ZeropsProjectSigners extends Context.Service<
       /** That login as it stands now, read again while the turn waits on it. */
       readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
-    /**
-     * {@link loginTurnRefusal} for this session on the login whose signer tag
-     * is `key` — the same cache and the same one re-read as `turnRefusal`.
-     */
+    /** {@link loginTurnRefusal} for this session on the login keyed `key`, as `turnRefusal`. */
     readonly loginRefusal: (input: {
       readonly key: string;
       readonly state: ZeropsLoginState;
@@ -326,270 +197,66 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
-     * Whether the org lists `userId` as an `ACTIVE` member, from a read no
-     * older than {@link SIGNERS_CACHE_TTL}; `undefined` when the member list
-     * cannot be read and nothing was known before. A read that fails answers
-     * from the last list read, as the signers do.
+     * Whether this project opens for `userId` — the door's own rule, over the project's roles and
+     * the org's member list, the answer that keeps a session open (`ZeropsMembershipWatch`) — as
+     * `ZeropsProjectAccess` answers it: HQ's relay while it holds, else this Mate's own read. What
+     * admits a turn no session stands behind: the crew's, the stand-up's (X3). While nothing
+     * answers, the last answer holds {@link ACCESS_HOLDS} from when Zerops answered it; past that,
+     * or with none, `undefined`.
      */
-    readonly isActiveMember: (userId: string) => Effect.Effect<boolean | undefined>;
-    /** Runs one leave check now and answers how many agents it signed out. */
-    readonly checkLeaversNow: Effect.Effect<number>;
+    readonly hasProjectAccess: (userId: string) => Effect.Effect<boolean | undefined>;
   }
 >()("t3/zerops/ZeropsProjectSigners") {}
-
-/**
- * The project's tags, as the Mate. `undefined` for every failure alike: the
- * gate treats "cannot read" as "no record", which refuses rather than admits.
- */
-export const readProjectTagList = Effect.fn("ZeropsProjectSigners.readTags")(function* (input: {
-  readonly environment: ZeropsEnvironment;
-}) {
-  const { apiBaseUrl, projectId } = input.environment;
-  const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
-  const { response } = yield* requestWithMateKey(mateKey, (token) =>
-    zeropsGet({ url: `${apiBaseUrl}/project/${encodeURIComponent(projectId)}`, token }),
-  ).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () =>
-      Effect.succeed({ token: undefined, response: undefined }),
-    ),
-  );
-  if (response === undefined || response.status !== 200) return undefined;
-  const body = yield* readJson(response).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
-  );
-  if (readProjectRoles(body) === null) return undefined;
-  const tagList = (body as { readonly tagList?: unknown }).tagList;
-  return Array.isArray(tagList)
-    ? tagList.filter((tag): tag is string => typeof tag === "string")
-    : [];
-});
-
-/** The signers off the project's tags, as the Mate; `undefined` when they cannot be read. */
-export const readProjectSigners = Effect.fn("ZeropsProjectSigners.read")(function* (input: {
-  readonly environment: ZeropsEnvironment;
-}) {
-  const tagList = yield* readProjectTagList(input);
-  return tagList === undefined ? undefined : parseSignerTags(tagList);
-});
-
-/**
- * Whether `body` claims the member list it carried is the whole thing.
- *
- * No paging field on `GET /client/{id}/user/list` has ever been measured
- * (`docs/internals/zerops/verified.md` — 21 members read back in one
- * unpaged `clientUserList`, no `nextCursor`, no `totalCount` seen on this
- * endpoint specifically). So a `totalCount` this build has never observed is
- * read defensively rather than ignored: present and it must match the row
- * count read, or the list is partial; absent, the whole array is the whole
- * list, matching every read measured so far.
- */
-export function isMemberListComplete(body: unknown, entriesLength: number): boolean {
-  if (typeof body !== "object" || body === null) return true;
-  const totalCount = (body as Record<string, unknown>)["totalCount"];
-  if (typeof totalCount !== "number" || !Number.isFinite(totalCount)) return true;
-  return entriesLength >= totalCount;
-}
-
-/**
- * Every `ACTIVE` member of the org, or `undefined` when the list is
- * unreadable OR partial (S6) — a page that is not the whole list must not
- * sign someone out for merely being off it.
- */
-export const readActiveMemberIds = Effect.fn("ZeropsProjectSigners.readMembers")(function* (input: {
-  readonly environment: ZeropsEnvironment;
-}) {
-  const { apiBaseUrl, projectId } = input.environment;
-  const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
-  const { response: projectResponse } = yield* requestWithMateKey(mateKey, (token) =>
-    zeropsGet({ url: `${apiBaseUrl}/project/${encodeURIComponent(projectId)}`, token }),
-  ).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () =>
-      Effect.succeed({ token: undefined, response: undefined }),
-    ),
-  );
-  if (projectResponse === undefined || projectResponse.status !== 200) return undefined;
-  const project = readProjectRoles(
-    yield* readJson(projectResponse).pipe(
-      Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
-    ),
-  );
-  if (project === null) return undefined;
-
-  const { response: memberResponse } = yield* requestWithMateKey(mateKey, (token) =>
-    zeropsGet({
-      url: `${apiBaseUrl}/client/${encodeURIComponent(project.clientId)}/user/list`,
-      token,
-    }),
-  ).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () =>
-      Effect.succeed({ token: undefined, response: undefined }),
-    ),
-  );
-  if (memberResponse === undefined || memberResponse.status !== 200) return undefined;
-  const memberBody = yield* readJson(memberResponse).pipe(
-    Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
-  );
-  const entries = readMemberEntries(memberBody);
-  // An empty list is an outage dressed as an answer, and acting on it would
-  // delete every login in the container.
-  if (entries === null || entries.length === 0) return undefined;
-  // A partial page changes nothing (S6): a signer merely off this page is
-  // not a signer the org lost.
-  if (!isMemberListComplete(memberBody, entries.length)) return undefined;
-  return new Set(
-    readOrgMembers(entries)
-      .filter((member) => member.status === "ACTIVE")
-      .map((member) => member.userId),
-  );
-});
 
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const environment = config.zerops;
-  const httpClient = yield* HttpClient.HttpClient;
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const homeDir = NodeOS.homedir();
-  /** `seq` orders reads by when they set out: a read that came back late is older than `seq`. */
-  const cache = yield* Ref.make<{
-    readonly at: number;
-    readonly seq: number;
-    readonly value: ProjectSigners;
-  } | null>(null);
-  const readSeq = yield* Ref.make(0);
-  // One fresh read at a time, shared for a second; after a refused one, none until the backoff.
-  const freshLock = yield* Semaphore.make(1);
-  const freshBackoff = yield* Ref.make<{ readonly until: number; readonly failures: number }>({
-    until: 0,
-    failures: 0,
-  });
-  const members = yield* Ref.make<{
-    readonly at: number;
-    readonly value: ReadonlySet<string>;
-  } | null>(null);
-  // The process-wide reader, shared with the door and the watch — provided
-  // by the layer this service's own layer composes above
+  const signIns = yield* ZeropsSignIns;
+  // Who the project lets in, one answer for the door, the watch and this —
+  // provided by the layer this service's own layer composes above
   // (`zeropsFeedsLayer.ts`).
-  const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
+  const projectAccess = yield* ZeropsProjectAccess;
+  /** Whom this project opened for at the last answer, and when Zerops answered it. */
+  const lastAccess = yield* Ref.make<
+    { readonly opensFor: ReadonlySet<string>; readonly atMs: number } | undefined
+  >(undefined);
 
-  const withHttp = <A>(
-    effect: Effect.Effect<A, never, HttpClient.HttpClient | ZeropsMateKeyModule.ZeropsMateKey>,
-  ) =>
-    effect.pipe(
-      Effect.provideService(HttpClient.HttpClient, httpClient),
-      Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
-    );
-
-  /**
-   * The tags read now, cached on success. A read that failed keeps whatever
-   * was last known rather than inventing an empty record: forgetting a signer
-   * would lock the person who signed in out of their own agent.
-   */
-  const readThrough = (environment: ZeropsEnvironment) =>
-    Effect.gen(function* () {
-      const now = yield* Clock.currentTimeMillis;
-      const seq = yield* Ref.updateAndGet(readSeq, (n) => n + 1);
-      const read = yield* withHttp(readProjectSigners({ environment }));
-      if (read === undefined) {
-        return { value: (yield* Ref.get(cache))?.value ?? {}, fresh: false };
-      }
-      // A read that set out before the one the cache holds saw an older project: a record that
-      // landed in between stays, and the late read answers with it.
-      return yield* Ref.modify(cache, (held) =>
-        held !== null && held.seq > seq
-          ? [{ value: held.value, fresh: true }, held]
-          : [
-              { value: read, fresh: true },
-              { at: now, seq, value: read },
-            ],
-      );
-    });
-
-  /**
-   * The tags as fresh as the platform lets them be read, for a record known to be on its way:
-   * one read at a time for every caller, a read made within the last second shared, and after a
-   * read that failed (a 429) the last known until the backoff is over.
-   */
-  const freshRead = (environment: ZeropsEnvironment) =>
-    Effect.gen(function* () {
-      const now = yield* Clock.currentTimeMillis;
-      const held = yield* Ref.get(cache);
-      if (held !== null && now - held.at < Duration.toMillis(FRESH_READ_SHARED_FOR)) {
-        return held.value;
-      }
-      const backoff = yield* Ref.get(freshBackoff);
-      if (now < backoff.until) return held?.value ?? {};
-      const read = yield* readThrough(environment);
-      if (read.fresh) {
-        yield* Ref.set(freshBackoff, { until: 0, failures: 0 });
-      } else {
-        const wait =
-          FRESH_READ_BACKOFF[Math.min(backoff.failures, FRESH_READ_BACKOFF.length - 1)] ??
-          FRESH_READ_SHARED_FOR;
-        yield* Ref.set(freshBackoff, {
-          until: (yield* Clock.currentTimeMillis) + Duration.toMillis(wait),
-          failures: backoff.failures + 1,
-        });
-      }
-      return read.value;
-    }).pipe(freshLock.withPermits(1));
-
-  /** The signers, and whether they come from a read made for this call. */
-  const cachedOrRead = (environment: ZeropsEnvironment) =>
-    Effect.gen(function* () {
-      const now = yield* Clock.currentTimeMillis;
-      const held = yield* Ref.get(cache);
-      if (held !== null && now - held.at < Duration.toMillis(SIGNERS_CACHE_TTL)) {
-        return { value: held.value, fresh: false };
-      }
-      return yield* readThrough(environment);
-    });
-
-  /** The org's active members read now, cached on success. */
-  const readMembersThrough = (environment: ZeropsEnvironment) =>
-    Effect.gen(function* () {
-      const now = yield* Clock.currentTimeMillis;
-      const read = yield* withHttp(readActiveMemberIds({ environment }));
-      if (read !== undefined) yield* Ref.set(members, { at: now, value: read });
-      return read;
-    });
-
-  const isActiveMember: ZeropsProjectSigners["Service"]["isActiveMember"] = (userId) =>
+  const hasProjectAccess: ZeropsProjectSigners["Service"]["hasProjectAccess"] = (userId) =>
     environment === undefined
       ? Effect.succeed(undefined)
       : Effect.gen(function* () {
+          const read = yield* projectAccess.read;
           const now = yield* Clock.currentTimeMillis;
-          const held = yield* Ref.get(members);
-          if (held !== null && now - held.at < Duration.toMillis(SIGNERS_CACHE_TTL)) {
-            return held.value.has(userId);
+          if (read.ok) {
+            const opensFor = new Set(
+              read.members
+                .filter((member) => member.visibility === "open")
+                .map((member) => member.userId),
+            );
+            yield* Ref.set(lastAccess, { opensFor, atMs: read.readAtMs });
+            return opensFor.has(userId);
           }
-          const read = yield* readMembersThrough(environment);
-          return (read ?? held?.value)?.has(userId);
+          const last = yield* Ref.get(lastAccess);
+          return last !== undefined && now - last.atMs <= Duration.toMillis(ACCESS_HOLDS)
+            ? last.opensFor.has(userId)
+            : undefined;
         });
 
-  const signers: ZeropsProjectSigners["Service"]["signers"] =
-    environment === undefined
-      ? Effect.succeed({})
-      : cachedOrRead(environment).pipe(Effect.map((read) => read.value));
+  const signers: ZeropsProjectSigners["Service"]["signers"] = signIns.load.pipe(
+    Effect.map(signersOf),
+  );
 
   /**
-   * `base` against the signer of `key`, with the sign-in this server walks for that login.
-   *
-   * - From the cache; a refusal on a cached read is read once more before it stands.
-   * - Whoever signed in last holds the credential, however long ago: a record naming anybody
-   *   else runs nothing.
-   * - While a code is being checked, the credential may already be its person's: every other
-   *   person's turn waits for that sign-in to settle, then goes by it.
-   * - The person whose code is being checked, or whose sign-in has just succeeded here, waits for
-   *   their record on its way, read afresh about a second at a time ({@link freshRead}).
-   *
-   * Both waits last up to {@link SIGNER_RECORD_WAIT}, and end once the sign-in is settled: one
-   * that failed or was cancelled waits for nothing more. A login at its menu, its page or its
-   * code prompt has written nothing, and holds no turn.
+   * `base` against the signer of `key`, with the sign-in this server walks for that login. A
+   * code being checked decides the turn when its person's success would change the answer — it
+   * is this person's own sign-in over somebody else's, or somebody else's over this person's:
+   * the turn waits for the check to settle, re-reading the login and the signer about a second
+   * at a time, up to {@link SIGN_IN_CHECK_WAIT}. A check still deciding then refuses. A login at
+   * its menu, its page or its code prompt has written nothing, and holds no turn.
    */
   const gateSignedIn = (
     key: string,
-    base: (signer: SignerRecord | undefined) => TurnRefusal | undefined,
+    base: (signer: string | undefined) => TurnRefusal | undefined,
     input: {
       readonly token: boolean;
       readonly subject: string | undefined;
@@ -598,54 +265,26 @@ export const make = Effect.gen(function* () {
     },
   ) =>
     Effect.gen(function* () {
-      const { token, subject } = input;
-      const person = subject !== undefined && subject.length > 0 ? subject : undefined;
-      const judge = (login: ZeropsAgentLoginState | undefined, nowMs: number) => {
-        const heldBy = latestSucceededSignIn(login)?.startedBy;
-        const checking = login?.phase === "verifying-code" ? login.startedBy : undefined;
-        const justSignedIn =
-          login?.phase === "succeeded" ? recentSignInBy(login, nowMs) : undefined;
-        // Somebody else's code is being checked: their credential may already be the one here.
-        const holds = !token && checking !== undefined && checking !== person;
-        return {
-          decide: (signer: SignerRecord | undefined): TurnRefusal | undefined => {
-            const refusal = base(signer);
-            if (refusal?.kind === "not-signed-in") return refusal;
-            if (holds) return { kind: "someone-else" };
-            if (refusal !== undefined || token || heldBy === undefined || heldBy.length === 0) {
-              return refusal;
-            }
-            return heldBy === subject ? undefined : { kind: "someone-else" };
-          },
-          holds,
-          // This person's sign-in, being checked or just succeeded: their record is on its way.
-          onItsWay:
-            !token && person !== undefined && (checking === person || justSignedIn === person),
-        };
-      };
-      let now = judge(input.login, yield* Clock.currentTimeMillis);
-      if (environment === undefined) return now.decide(undefined);
-      const held = yield* cachedOrRead(environment);
-      let refusal = now.decide(held.value[key]);
-      if (refusal === undefined || refusal.kind === "not-signed-in") return refusal;
-      if (!held.fresh && !now.holds) refusal = now.decide((yield* freshRead(environment))[key]);
-      const deadline = (yield* Clock.currentTimeMillis) + Duration.toMillis(SIGNER_RECORD_WAIT);
-      while (
-        refusal !== undefined &&
-        refusal.kind !== "not-signed-in" &&
-        (now.onItsWay || now.holds) &&
-        (yield* Clock.currentTimeMillis) < deadline
-      ) {
-        yield* Effect.sleep(SIGNER_RECORD_POLL);
-        const login = input.currentLogin === undefined ? input.login : yield* input.currentLogin;
-        now = judge(login, yield* Clock.currentTimeMillis);
-        // Only the person whose record is on its way reads past the cache.
-        const signers = now.onItsWay
-          ? yield* freshRead(environment)
-          : (yield* cachedOrRead(environment)).value;
-        refusal = now.decide(signers[key]);
+      const person =
+        input.subject !== undefined && input.subject.length > 0 ? input.subject : undefined;
+      const decides = (login: ZeropsAgentLoginState | undefined, signer: string | undefined) =>
+        !input.token &&
+        person !== undefined &&
+        login?.phase === "verifying-code" &&
+        (login.startedBy === person) !== (signer === person);
+      let login = input.login;
+      let signer = (yield* signers)[key];
+      const refusal = base(signer);
+      if (refusal?.kind === "not-signed-in" || !decides(login, signer)) return refusal;
+      const deadline = (yield* Clock.currentTimeMillis) + Duration.toMillis(SIGN_IN_CHECK_WAIT);
+      while (decides(login, signer) && (yield* Clock.currentTimeMillis) < deadline) {
+        yield* Effect.sleep(SIGN_IN_CHECK_POLL);
+        login = input.currentLogin === undefined ? input.login : yield* input.currentLogin;
+        signer = (yield* signers)[key];
       }
-      return refusal;
+      return decides(login, signer)
+        ? (base(signer) ?? { kind: "someone-else" as const })
+        : base(signer);
     });
 
   const gateTurn: ZeropsProjectSigners["Service"]["turnRefusal"] = ({
@@ -677,46 +316,11 @@ export const make = Effect.gen(function* () {
       currentLogin,
     });
 
-  const checkLeaversNow: ZeropsProjectSigners["Service"]["checkLeaversNow"] =
-    environment === undefined
-      ? Effect.succeed(0)
-      : Effect.gen(function* () {
-          const current = (yield* readThrough(environment)).value;
-          if (Object.keys(current).length === 0) return 0;
-          const activeMemberIds = yield* readMembersThrough(environment);
-          const departed = planAgentSignOut({ signers: current, activeMemberIds });
-          for (const agentId of departed) {
-            yield* fs
-              .remove(path.join(homeDir, ...AGENT_CREDENTIAL_SEGMENTS[agentId]), { force: true })
-              .pipe(
-                Effect.tapError((cause) =>
-                  Effect.logWarning("Could not sign a departed member's agent out.", {
-                    agentId,
-                    cause,
-                  }),
-                ),
-                Effect.orElseSucceed(() => undefined),
-              );
-          }
-          return departed.length;
-        }).pipe(Effect.catchCause(() => Effect.succeed(0)));
-
-  if (environment !== undefined) {
-    yield* Effect.forkScoped(
-      checkLeaversNow.pipe(Effect.repeat(Schedule.spaced(environment.roleRecheckInterval))),
-    );
-  }
-
-  const fresh: ZeropsProjectSigners["Service"]["fresh"] =
-    environment === undefined ? Effect.succeed({}) : freshRead(environment);
-
   return ZeropsProjectSigners.of({
     signers,
-    fresh,
     turnRefusal: gateTurn,
     loginRefusal: gateLogin,
-    isActiveMember,
-    checkLeaversNow,
+    hasProjectAccess,
   });
 });
 

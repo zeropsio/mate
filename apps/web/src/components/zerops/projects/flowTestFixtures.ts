@@ -12,6 +12,7 @@ import {
   type ZeropsGroup,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { act, createElement as h, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -28,8 +29,21 @@ export interface Item {
   readonly mate?: boolean;
 }
 
-export function item(name: string, tagList: ReadonlyArray<string>, mate = true): Item {
-  return { project: { id: name, name, status: "ACTIVE", tagList }, mate };
+/** Where HQ places a project: in application `appId`, named `appName`, as `kind`. */
+export function placed(
+  appId: string,
+  appName: string,
+  kind: HqPlacement["kind"] = "mate",
+): HqPlacement {
+  return { appId, appName, kind, mate: null };
+}
+
+/** A project as the listing holds it, where HQ places it, if anywhere. */
+export function item(name: string, hq?: HqPlacement, mate = true): Item {
+  return {
+    project: { id: name, name, status: "ACTIVE", tagList: [], ...(hq === undefined ? {} : { hq }) },
+    mate,
+  };
 }
 
 export function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
@@ -39,11 +53,9 @@ export function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     title: "Greet with a fuller line",
     kind: "code",
     mateProjectId: "wren-dev",
-    author: "mate-wren-dev",
     url: undefined,
-    checks: "none",
-    checkWord: undefined,
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: "abc",
@@ -59,18 +71,10 @@ function groupOf(items: ReadonlyArray<Item>): ZeropsGroup {
   return group!.group;
 }
 
-export const WREN = item("wren-dev", ["mate:g:aaa", "mate:role:dev", "mate:name:sm-fixture"]);
-export const STAGE = item(
-  "fixture-stage",
-  ["mate:g:aaa", "mate:role:stage", "mate:name:sm-fixture"],
-  false,
-);
-export const PROD = item(
-  "fixture-prod",
-  ["mate:g:aaa", "mate:role:prod", "mate:name:sm-fixture"],
-  false,
-);
-export const UMA = item("uma-dev", ["mate:g:bbb", "mate:role:dev", "mate:name:hokuspokus"]);
+export const WREN = item("wren-dev", placed("aaa", "sm-fixture"));
+export const STAGE = item("fixture-stage", placed("aaa", "sm-fixture", "stage"), false);
+export const PROD = item("fixture-prod", placed("aaa", "sm-fixture", "production"), false);
+export const UMA = item("uma-dev", placed("bbb", "hokuspokus"));
 
 export const PRODUCTION_STOP = {
   projectId: "fixture-prod",
@@ -154,6 +158,8 @@ function entryOf(
         gate: { allowed: false, reason: "Nothing is merged to release." },
         suggestion: "v0.1.0",
         waiting: 0,
+        waitingAtLeast: false,
+        untold: [],
       },
       mainHasCode: undefined,
       mainHead: undefined,
@@ -163,7 +169,6 @@ function entryOf(
     }),
     activities: [],
     matesKnown: true,
-    changesFailed: false,
     awaiting: !read,
     changesAwaiting: !read,
     mates: new Map(mates.map((mate) => [mate.project.id, mate])),
@@ -193,7 +198,13 @@ export const MERGING = entry([WREN, STAGE], { pullRequests: [pull()], stops: [ST
 export const RELEASING = entry([WREN, PROD], {
   merged: [pull({ number: 4, merged: true })],
   stops: [PRODUCTION_STOP],
-  release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
+  release: {
+    gate: { allowed: true },
+    suggestion: "v0.1.0",
+    waiting: 1,
+    waitingAtLeast: false,
+    untold: [],
+  },
 });
 export const FRESH = entry([UMA]);
 
@@ -210,12 +221,29 @@ export function brokenProduction() {
           name: "production",
           tier: "production",
           sources: "release",
-          environment: "production",
           services: [
             {
               hostname: "app",
               appVersionName: FAILED_PROD_SHA,
-              statuses: [{ context: "mate/deploy/production/app", state: "failure" }],
+              deploy: {
+                latest: {
+                  id: "job-failed-prod",
+                  kind: "deploy",
+                  service: "app",
+                  sha: FAILED_PROD_SHA,
+                  state: "failed",
+                  cause: "release",
+                  ref: null,
+                  reason: null,
+                  appVersionId: null,
+                  processId: null,
+                  requestedBy: null,
+                  at: "2026-09-29T10:41:00Z",
+                  endedAt: "2026-09-29T10:41:00Z",
+                  supersededBy: null,
+                },
+                live: null,
+              },
             },
           ],
         }),
@@ -238,7 +266,13 @@ export function brokenProduction() {
         },
       },
     ],
-    release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
+    release: {
+      gate: { allowed: true },
+      suggestion: "v0.1.0",
+      waiting: 1,
+      waitingAtLeast: false,
+      untold: [],
+    },
   });
 }
 
@@ -275,8 +309,7 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
       "data-test-pull": value.number,
       "data-test-with-merge": String(options.withMerge),
     }),
-  renderTool: (value) => h("span", { "data-test-tool": value.project.id }),
-  tools: [],
+  hqTool: h("span", { "data-test-hq-tool": "true" }),
   ungrouped: [],
 };
 

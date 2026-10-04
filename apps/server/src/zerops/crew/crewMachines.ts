@@ -24,7 +24,7 @@ import type {
   ProviderRuntimeTurnStatus,
 } from "@t3tools/contracts";
 
-import { CREW_ROTATIONS_PER_ATTEMPT, type RotationReason } from "./rotationDecision.ts";
+import { type RotationReason } from "./rotationDecision.ts";
 
 export type Illegal<S> = {
   readonly kind: "illegal";
@@ -176,18 +176,16 @@ export const stintTransition = (from: CrewStintState | "none", event: StintEvent
 
 /* ------------------------------------------------------------------- task */
 
-/** Reworks per task (a conflict counts), landing re-merges, crash re-queues. */
+/** Reworks per task (a conflict counts), and selected landing re-merges. */
 export const CREW_REWORKS_MAX = 2;
 export const CREW_REMERGES_MAX = 3;
-export const CREW_REQUEUES_MAX = 1;
 
 export interface TaskCounters {
-  /** The attempt in progress; a rework or a re-queue starts the next one. */
+  /** The attempt in progress; an explicit rework starts the next one. */
   readonly attempt: number;
   readonly reworks: number;
   /** Re-merges of the current landing because H moved. */
   readonly remerges: number;
-  readonly requeues: number;
   /** Rotation endings in the current attempt. */
   readonly rotations: number;
 }
@@ -196,7 +194,6 @@ export const TASK_START: TaskCounters = {
   attempt: 1,
   reworks: 0,
   remerges: 0,
-  requeues: 0,
   rotations: 0,
 };
 
@@ -229,14 +226,11 @@ export type TaskEvent =
   | { readonly type: "report-blocked" }
   | { readonly type: "report-done" }
   | { readonly type: "land-now" }
-  | { readonly type: "infrastructure-ending" }
-  | { readonly type: "rotation-ending" }
   | { readonly type: "merge-clean" }
   | { readonly type: "merge-conflict" }
   | { readonly type: "merge-empty-base" }
   | { readonly type: "check-passed"; readonly reviewed: boolean }
   | { readonly type: "check-failed" }
-  | { readonly type: "check-killed" }
   | { readonly type: "review-accepted" }
   | { readonly type: "review-rejected" }
   | { readonly type: "land"; readonly facts: LandFacts }
@@ -474,21 +468,6 @@ export const taskTransition = (task: CrewTask, event: TaskEvent): TaskStep => {
       return from === "working" ? to("merging") : illegal;
     case "land-now":
       return from === "working" || from === "rework" ? to("merging") : illegal;
-    case "infrastructure-ending":
-      if (from !== "working") return illegal;
-      return counters.requeues >= CREW_REQUEUES_MAX
-        ? park("infrastructure")
-        : to("queued", {
-            ...counters,
-            attempt: counters.attempt + 1,
-            requeues: counters.requeues + 1,
-            rotations: 0,
-          });
-    case "rotation-ending":
-      if (from !== "working") return illegal;
-      return counters.rotations >= CREW_ROTATIONS_PER_ATTEMPT
-        ? park("rotations")
-        : to("working", { ...counters, rotations: counters.rotations + 1 });
     case "merge-clean":
       return from === "merging" ? to("checking") : illegal;
     case "merge-conflict":
@@ -499,8 +478,6 @@ export const taskTransition = (task: CrewTask, event: TaskEvent): TaskStep => {
       return from === "checking" ? to(event.reviewed ? "review" : "ready") : illegal;
     case "check-failed":
       return from === "checking" ? rework() : illegal;
-    case "check-killed":
-      return from === "checking" ? to("checking") : illegal;
     case "review-accepted":
       return from === "review" ? to("ready") : illegal;
     case "review-rejected":

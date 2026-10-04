@@ -10,7 +10,7 @@
  * None of them needs that page. They need the active organization, the
  * runtime's commands, the account's registry and the org's member list — all
  * context, all reachable from any surface. So they live here, once, in the
- * same shape as `useRenameGroup` and `useEnableRoute`: the writes, the busy
+ * same shape as `useEnableRoute`: the writes, the busy
  * key, the trouble, the menu entries, and the dialogs the caller mounts.
  *
  * What is deliberately **not** here: *Open*, *Set up a Mate*, *Enable* and
@@ -26,46 +26,50 @@
  * listing lets it go (`deletingMates.ts`), and a viewer who was in its
  * conversation is taken to the next Mate of its project, or to the projects.
  *
- * *Change face…* writes the Mate's face onto its project (`mate:face:`), where
- * every surface reads it, through the one tag writer: offered where *Rename
- * Mate* is, its dialog open until the platform answers, a refusal said there.
+ * *Rename Mate* renames the Mate's project in Zerops, whose name is the Mate's (D3), by the
+ * account's one writer of a project's record, where the platform takes it from this person.
+ * *Change face…* writes the Mate's face to HQ, where every surface reads it from, where HQ's rule
+ * lets them: its dialog open until HQ answers, a refusal said there.
  */
+import { useAtomValue } from "@effect/atom-react";
 import {
   assignCandidateMateTints,
-  botDisplayName,
   buildZeropsGroupTree,
-  generateZeropsGroupId,
+  changedMateFace,
   hasMate,
+  kindOfRole,
   rankZeropsCandidateForListing,
-  readZeropsGroupTags,
+  readZeropsMembership,
+  heldOf,
+  mayOffer,
+  offerAsker,
+  canWriteRegistry,
   finishMateSetupScope,
   finishMateSetupVerb,
-  mateHardenableBy,
-  mateNeedsHarden,
   resolveMateRegistration,
-  type ZeropsGroupTags,
+  type ZeropsMembership,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
-import {
-  selectTokenGrants,
-  ZeropsServiceId,
-  type TokensCellRequest,
-} from "@t3tools/client-runtime/zerops/data";
+import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   mateIsViewers,
-  resolveMateOwner,
+  resolveMateOwnerPerson,
   resolveMateVerbs,
   resolveMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
+import { isMateKind } from "@t3tools/shared/zeropsRoles";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { RestartMateConfirmation } from "./RestartMateConfirmation";
 import { useComposerDraftStore } from "../composerDraftStore";
 import {
   deriveZeropsRestartAction,
   deriveZeropsRowAction,
+  mateRowCan,
   type ZeropsRowInput,
 } from "../components/zerops/ZeropsProjectRow.logic";
 import type { ZeropsMenuEntry } from "../components/zerops/ZeropsProjectMenu";
@@ -79,16 +83,24 @@ import {
 import { ZeropsDeleteMateDialog } from "../components/zerops/ZeropsDeleteMateDialog";
 import {
   deleteMateOffered,
+  deleteMateServiceCount,
   deleteMateVerb,
   deleteMateWords,
   landingAfterDelete,
 } from "../components/zerops/ZeropsDeleteMateDialog.logic";
 import { ZeropsMoveToGroupDialog } from "../components/zerops/ZeropsMoveToGroupDialog";
+import { emptyApplications } from "../components/zerops/projects/emptyApps.logic";
 import { ZeropsRenameDialog } from "../components/zerops/ZeropsRenameDialog";
 import { validateBotName } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
-import type { MoveMembership } from "../components/zerops/ZeropsMoveToGroupDialog.logic";
+import {
+  moveChoices,
+  movesAnywhere,
+  type MoveMembership,
+} from "../components/zerops/ZeropsMoveToGroupDialog.logic";
+import { currentAccountEnvironments } from "./accountEnvironments";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "../threadRoutes";
+import { hqPeopleAtom, hqPlacementsAtom, hqStructureAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
   deletingMates,
@@ -97,7 +109,7 @@ import {
   settleDeletingMates,
   useDeletingMates,
 } from "./deletingMates";
-import { useAccountGitea } from "./giteaProject";
+import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import { useProjectDialog } from "./inventoryContext";
 import { captureAccountLifetime } from "./accountLifetime";
 import { rememberMenu, withoutMate } from "./menuMemory";
@@ -108,7 +120,7 @@ import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
-import { useZeropsOrganizationMembers, zeropsMateOwner } from "./useZeropsMateOwners";
+import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { finishSetupContainer, mateProjectPastGrace } from "./finishSetup.logic";
 import {
   refinishNewProjectBirth,
@@ -120,19 +132,21 @@ import {
   finishSetupRunning,
   finishMateSetup,
   forgetPress,
-  pressViewer,
+  matePressPlacement,
+  mateFinishRegistration,
   readMatePress,
   useInterruptedPresses,
   useMatePresses,
 } from "./matePress";
 import { mateRestartPorts, restartMateContainer } from "./mateRestart";
+import { sessionOfferViewer } from "./offerViewer";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
-import { runZeropsCommand, useKnown, useZeropsData } from "./zeropsDataContext";
-import { integrationTokensFromGrantMetadata } from "./useZeropsGroupReach";
+import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** Which Mate a dialog is about, and which dialog it is. */
 type MateDialog =
+  | { readonly kind: "restart"; readonly candidate: ZeropsCandidatePresentation }
   | { readonly kind: "rename"; readonly candidate: ZeropsCandidatePresentation }
   | {
       readonly kind: "face";
@@ -142,11 +156,19 @@ type MateDialog =
     }
   | { readonly kind: "assign"; readonly candidate: ZeropsCandidatePresentation }
   | { readonly kind: "move"; readonly candidate: ZeropsCandidatePresentation }
-  | { readonly kind: "delete"; readonly candidate: ZeropsCandidatePresentation };
+  | {
+      readonly kind: "delete";
+      readonly candidate: ZeropsCandidatePresentation;
+      readonly cleanup?: {
+        readonly keyTokenId: string | null;
+        readonly completion: string;
+        readonly hqDone: boolean;
+      };
+    };
 
 /**
- * Where a dialog's press stands — Delete's, or Change face's: the platform answering it, or why
- * it refused. One dialog is open at a time, and opening one starts it unpressed.
+ * Where a dialog's press stands — Delete's, Change face's or Hand over's: the platform answering
+ * it, or why it refused. One dialog is open at a time, and opening one starts it unpressed.
  */
 interface DialogPress {
   readonly pending: boolean;
@@ -154,14 +176,6 @@ interface DialogPress {
 }
 
 const UNPRESSED: DialogPress = { pending: false, error: null };
-
-/** The Mate's name, as its row says it. */
-function mateName(candidate: ZeropsCandidatePresentation): string {
-  return botDisplayName({
-    bot: readZeropsGroupTags(candidate.project.tagList).bot,
-    projectName: candidate.project.name,
-  });
-}
 
 export interface MateActions {
   /**
@@ -171,7 +185,7 @@ export interface MateActions {
    */
   readonly actionsFor: (
     candidate: ZeropsCandidatePresentation,
-    tags: ZeropsGroupTags,
+    tags: ZeropsMembership,
     /** Entries the surface adds to the quick group — the update control's. */
     extraQuick?: ReadonlyArray<ZeropsMenuEntry>,
   ) => ReadonlyArray<ZeropsMenuEntry>;
@@ -219,28 +233,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const { listing, refresh } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
-  // The organization's token list, as the platform holds it: a Mate whose keys are all still
-  // ADMIN on its own project needs its harden (`mateNeedsHarden`), which an org owner or the
-  // keys' creator may run (`mateHardenableBy`).
-  const tokensRequest = useMemo<TokensCellRequest | null>(
-    () =>
-      activeOrganization === null
-        ? null
-        : {
-            kind: "tokens",
-            account: runtime.scope,
-            organization: organizationRef(activeOrganization.id),
-          },
-    [activeOrganization, organizationRef, runtime.scope],
-  );
-  const tokenGrants = selectTokenGrants(
-    useKnown(tokensRequest === null ? null : runtime.cells.known(tokensRequest)),
-  );
-  const grantList = tokenGrants.status === "known" ? tokenGrants.grants : null;
-  const listedTokens = useMemo(
-    () => (grantList === null ? [] : integrationTokensFromGrantMetadata(grantList)),
-    [grantList],
-  );
   const router = useRouter();
   const openMate = useOpenMate();
   const { linkTarget } = useEnvironmentLinks();
@@ -261,20 +253,28 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // their own list, not a fixed order of their own.
   const projectOrder = useProjectOrderOptions();
 
-  const giteaProjectId = useAccountGitea(activeOrganization?.id)?.projectId;
+  const accountHq = useAccountHq(activeOrganization?.id);
+  // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
+  const hqPlacements = useAtomValue(hqPlacementsAtom);
+  const hqStructure = useAtomValue(hqStructureAtom);
+  const people = useAtomValue(hqPeopleAtom);
+  const hqKnown = hqPlacements !== null && hqStructure?.current === true;
   const presses = useMatePresses();
   // What this tab made: a registration it saw refused is finished at once (`registrationUnfinished`).
   const births = useNewProjectBirths((state) => state.births);
   // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
   // at no cost of their own, for anyone who could finish it — its own adder too.
   const interrupted = useInterruptedPresses(candidates, { runtime, projectRef });
+  // An application HQ holds with no project is one too: a Mate may be moved into it, as the
+  // projects page draws it (F29: a birth cut before its Mate was attached leaves its one empty).
   const groupTree = useMemo(
     () =>
       buildZeropsGroupTree(candidates, {
         rank: rankZeropsCandidateForListing,
         ...projectOrder,
+        apps: emptyApplications(hqStructure, activeOrganization?.id),
       }),
-    [candidates, projectOrder],
+    [activeOrganization?.id, candidates, hqStructure, projectOrder],
   );
   const taken = useTakenBotNames();
   // Every Mate's tint as every surface draws it: the face a Change face dialog opens on.
@@ -291,19 +291,61 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           },
     [activeOrganization],
   );
-  // The member list is read only where somebody could be handed a Mate, and
-  // where a Mate about to be deleted may be a colleague's, to say whose.
-  const anyAssignable = useMemo(
+  /**
+   * Whom HQ's rule (`mayOffer`) is asked about: the person the session names, with their membership
+   * and every project listed as the facts the client holds. Nobody where the session names nobody,
+   * and nothing is then offered.
+   */
+  const asker = useMemo(
     () =>
-      viewer !== null &&
-      candidates.some(
-        (candidate) => resolveMateVerbs({ project: candidate.project, viewer }).assign,
+      offerAsker(
+        sessionOfferViewer(user, activeOrganization),
+        candidates.map((candidate) => candidate.project),
       ),
-    [candidates, viewer],
+    [activeOrganization, candidates, user],
   );
-  const members = useZeropsOrganizationMembers({
+  /**
+   * Where a Mate may be moved, by HQ's rule: each application as the projects listed in it — HQ's
+   * own list of an application decides no differently over these facts, which hold no project the
+   * listing does not — a new one, or none.
+   */
+  const moveChoicesFor = useCallback(
+    (candidate: ZeropsCandidatePresentation) =>
+      moveChoices({
+        asker,
+        projectId: candidate.project.id,
+        held: heldOf(candidate.project),
+        apps: groupTree.groups.map(({ group, environments }) => ({
+          id: group.groupId,
+          name: group.name,
+          projectIds: environments.map(({ item }) => item.project.id),
+        })),
+      }),
+    [asker, groupTree.groups],
+  );
+  /**
+   * HQ's verbs on a Mate, as HQ's rule offers them: its record, and its place among projects. None
+   * on a Mate HQ holds no record of — *Finish setup* is its verb.
+   */
+  const hqVerbsOf = useCallback(
+    (candidate: ZeropsCandidatePresentation) => {
+      const projectId = candidate.project.id;
+      const held = heldOf(candidate.project);
+      if (!isMateKind(held)) return { edit: false, move: false, leave: false };
+      return {
+        edit: mayOffer(asker, "edit_mate_record", { projectId, held }),
+        // Where to, and as what, is the dialog's to choose among what HQ's rule lets them.
+        move: movesAnywhere(moveChoicesFor(candidate)),
+        leave: mayOffer(asker, "detach", { projectId, held }),
+      };
+    },
+    [asker, moveChoicesFor],
+  );
+  // The member list is read only once a hand-over's picker opens: a load reads none, and a Mate
+  // about to be deleted says whose it is from HQ's people.
+  const { members, status: membersStatus } = useZeropsOrganizationMembersRead({
     clientId: activeOrganization?.id,
-    enabled: anyAssignable || dialog?.kind === "delete",
+    enabled: dialog?.kind === "assign",
   });
 
   /** One write, with its busy key and its refusal, wherever it came from. */
@@ -334,23 +376,15 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     (candidate: ZeropsCandidatePresentation): ZeropsRowInput => {
       const visibility =
         viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
-      const openable = visibility !== "listed";
       return {
         candidate,
         health: undefined,
         waiting: false,
-        can: {
-          open: openable,
-          enable: openable,
-          setUpMate: openable,
-          start: openable,
-          restart: openable,
-          remove: openable,
-        },
+        can: mateRowCan(asker, candidate.project.id),
         ...(visibility === undefined ? {} : { visibility }),
       };
     },
-    [viewer],
+    [asker, viewer],
   );
 
   const start = useCallback(
@@ -389,99 +423,155 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         project,
         serviceId: ZeropsServiceId.make(serviceId),
       };
+      setPress({ pending: true, error: null });
+      const isCurrent = captureAccountLifetime();
       // A container that failed is stopped and started: the platform refuses to restart it.
       void write(
         candidate.key,
         // The container's initAt is read before the verb: the restart is over once it moves.
         () =>
-          readContainerInitAt(candidate.key).then((initAt) =>
-            restartMateContainer(
-              candidate.service?.status,
-              mateRestartPorts({ client, runtime, service }),
-            ).then(() => {
-              intendContainer(candidate.key, { kind: "restart", initAt });
+          readContainerInitAt(candidate.key)
+            .then((initAt) =>
+              restartMateContainer(
+                candidate.service?.status,
+                mateRestartPorts({ client, runtime, service }),
+              ).then(() => {
+                if (isCurrent()) {
+                  intendContainer(candidate.key, { kind: "restart", initAt });
+                  setDialog(null);
+                  setPress(UNPRESSED);
+                }
+              }),
+            )
+            .catch((cause: unknown) => {
+              if (isCurrent()) setPress({ pending: false, error: zeropsErrorMessage(cause) });
+              throw cause;
             }),
-          ),
         refresh,
       );
     },
-    [activeOrganization, client, projectRef, refresh, runtime, write],
+    [activeOrganization, client, projectRef, refresh, runtime, setDialog, write],
   );
 
+  /** HQ's API, where a Mate's face and its application live (ADR 0002). */
+  const hqApi = useCallback(() => {
+    if (activeOrganization === null) throw new Error("No organization is open.");
+    return accountHqApi(client, activeOrganization.id, officialHq(accountHq));
+  }, [accountHq, activeOrganization, client]);
+
+  /** Renames the Mate's project in Zerops: its name is the Mate's (D3). */
   const rename = useCallback(
     (candidate: ZeropsCandidatePresentation, name: string) => {
       if (activeOrganization === null) return;
-      void write(candidate.key, () =>
-        runZeropsCommand(
-          runtime.commands.updateProjectTags(
-            projectRef(activeOrganization.id, candidate.project.id),
-            { kind: "agent-name", name },
-          ),
-        ),
+      const project = projectRef(activeOrganization.id, candidate.project.id);
+      void write(
+        candidate.key,
+        () => runZeropsCommand(runtime.commands.renameProject(project, name)),
+        refresh,
       );
     },
-    [activeOrganization, projectRef, runtime.commands, write],
+    [activeOrganization, projectRef, refresh, runtime.commands, write],
+  );
+
+  /** The platform's verbs on a Mate, by the role function it enforces: none for nobody. */
+  const platformVerbsOf = useCallback(
+    (candidate: ZeropsCandidatePresentation) =>
+      viewer === null || user === null
+        ? { delete: false, rename: false, assign: false }
+        : resolveMateVerbs({ project: candidate.project, viewer }),
+    [user, viewer],
   );
 
   /**
-   * Hands a Mate over (guide 0.8, D11): a per-project role override to OWNER
-   * for the person picked. The one write in the app that carries `userRoles`.
+   * Hands a Mate over (guide 0.8, D11): a transfer — a Mate has one OWNER (F23, 2026-10-03). The
+   * person picked gets a per-project override to OWNER on their own role list
+   * (`ZeropsApiClient.setProjectMemberRole`); then whoever else the project names OWNER, as the
+   * platform answers that write, has the project taken off theirs. The key's grant, not an OWNER,
+   * stays. The dialog stays open until the platform answers: a refusal of the first write is said
+   * there and nothing changes; one of the second says the hand over is not complete — the person
+   * picked has it, the previous owner still does too. Once anything was written, the access grant
+   * reads every project's grants again at once (`grants-written`), so the person who handed the
+   * Mate over sees what the platform holds now (F11).
    */
   const assign = useCallback(
     (candidate: ZeropsCandidatePresentation, clientUserId: string) => {
       if (activeOrganization === null) return;
-      void write(candidate.key, () =>
-        runZeropsCommand(
-          runtime.commands.setProjectMemberRole(
-            projectRef(activeOrganization.id, candidate.project.id),
-            { clientUserId, roleCode: "OWNER" },
-          ),
-        ),
+      const isCurrent = captureAccountLifetime();
+      const project = projectRef(activeOrganization.id, candidate.project.id);
+      const writeRole = (input: {
+        readonly clientUserId: string;
+        readonly roleCode: "OWNER" | null;
+      }) => runZeropsCommand(runtime.commands.setProjectMemberRole(project, input));
+      const refused = (error: string) => {
+        if (isCurrent()) setPress({ pending: false, error });
+      };
+      setPress({ pending: true, error: null });
+      writeRole({ clientUserId, roleCode: "OWNER" }).then(
+        async (handed) => {
+          const previous = (handed?.userRoles ?? []).filter(
+            (entry) => entry.roleCode === "OWNER" && entry.clientUserId !== clientUserId,
+          );
+          try {
+            for (const owner of previous) {
+              await writeRole({ clientUserId: owner.clientUserId, roleCode: null });
+            }
+          } catch (cause) {
+            if (isCurrent()) invalidateZerops({ topic: "access", change: "grants-written" });
+            refused(
+              `It was handed over, but its previous owner still owns it too: ${zeropsErrorMessage(cause)}`,
+            );
+            return;
+          }
+          if (!isCurrent()) return;
+          invalidateZerops({ topic: "access", change: "grants-written" });
+          setDialog(null);
+        },
+        (cause: unknown) => {
+          refused(zeropsErrorMessage(cause));
+        },
       );
     },
-    [activeOrganization, projectRef, runtime.commands, write],
+    [activeOrganization, projectRef, runtime.commands, setDialog],
   );
 
+  /** Into another application as what the person picked, a new one made first, or out of all. */
   const move = useCallback(
     (candidate: ZeropsCandidatePresentation, membership: MoveMembership) => {
-      if (activeOrganization === null) return;
-      const project = projectRef(activeOrganization.id, candidate.project.id);
-      void write(candidate.key, () => {
+      void write(candidate.key, async () => {
+        const api = hqApi();
         if (membership.kind === "none") {
-          return runZeropsCommand(
-            runtime.commands.updateProjectTags(project, { kind: "group-membership", next: {} }),
-          );
+          return api.moveProject(candidate.project.id, { appId: null, kind: "mate" });
         }
-        // Joining an existing group carries its name along, so the mirror on
-        // this member agrees with the others'.
-        const known = groupTree.groups.find(
-          (entry) => entry.group.groupId === membership.groupId,
-        )?.group;
-        const label = membership.label ?? known?.name;
-        return runZeropsCommand(
-          runtime.commands.updateProjectTags(project, {
-            kind: "group-membership",
-            next: {
-              groupId: membership.groupId,
-              role: membership.role,
-              ...(label !== undefined && known?.nameSource !== "id" ? { label } : {}),
-              ...(membership.label !== undefined ? { label: membership.label } : {}),
-            },
-          }),
-        );
+        const appId =
+          membership.kind === "new" ? (await api.createApp(membership.name)).id : membership.appId;
+        return api.moveProject(candidate.project.id, {
+          appId,
+          kind: kindOfRole(membership.role),
+        });
       });
     },
-    [activeOrganization, groupTree.groups, projectRef, runtime.commands, write],
+    [hqApi, write],
   );
 
   /**
    * *Finish setup* — the press's own steps on a half-made Mate (`finishMateSetupVerb`): what a
    * colleague's Mate waits on, what a press a closed tab cut short left, a container that never
-   * came. Every step is safe to ask again; for a Mate made before the press, its close-off also
-   * lowers a key still at `ADMIN` (`hardenMate`).
+   * came. Every step is safe to ask again; for a Mate it adopts, which HQ holds no record of, its
+   * close-off also lowers a key still at `ADMIN` (`hardenMate`).
    */
+  /** HQ holds no record of this Mate, as its structure says once it is known. */
+  const recordMissing = useCallback(
+    (candidate: ZeropsCandidatePresentation) => hqKnown && heldOf(candidate.project) === "none",
+    [hqKnown],
+  );
+  /** Whether HQ's rule lets the viewer write the record of a Mate it holds none of. */
+  const mayCreateRecord = useCallback(
+    (candidate: ZeropsCandidatePresentation) =>
+      mayOffer(asker, "create_mate_record", { projectId: candidate.project.id, held: "none" }),
+    [asker],
+  );
   const finishSetupVerbFor = useCallback(
-    (candidate: ZeropsCandidatePresentation, tags: ZeropsGroupTags): string | undefined => {
+    (candidate: ZeropsCandidatePresentation, tags: ZeropsMembership): string | undefined => {
       const press = presses.find((entry) => entry.projectId === candidate.project.id);
       // A Mate claimed from the pool is in no group: no registration of its, no container to make.
       const grouped = tags.groupId !== undefined;
@@ -502,49 +592,60 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         // elsewhere is still at it, so no grace.
         pressStopped:
           press?.state.kind === "failed" || registrationUnfinished(births, candidate.project.id),
-        needsHarden: mateHardenableBy(listedTokens, candidate.project.id, {
-          userId: user?.id,
-          roleCode: activeOrganization?.roleCode,
-        }),
         pastGrace: mateProjectPastGrace(candidate.project, Date.now()),
-        viewerIsAdder: mateAddedBy(candidate.project.tagList, user?.id),
+        viewerIsAdder: mateAddedBy(candidate.project, user?.id),
         hasContainer: candidate.service !== undefined,
-        viewerRole: activeOrganization?.roleCode,
+        writer: canWriteRegistry(sessionOfferViewer(user, activeOrganization)),
+        recordMissing: recordMissing(candidate),
+        mayCreateRecord: mayCreateRecord(candidate),
       });
     },
     [
-      activeOrganization?.roleCode,
+      activeOrganization,
       births,
       groupTree.groups,
       interrupted,
-      listedTokens,
+      mayCreateRecord,
       presses,
+      recordMissing,
       registry.registry,
-      user?.id,
+      user,
     ],
   );
 
   const finishSetup = useCallback(
-    (candidate: ZeropsCandidatePresentation, tags: ZeropsGroupTags) => {
+    (candidate: ZeropsCandidatePresentation) => {
       if (activeOrganization === null) return;
-      const groupId = tags.groupId;
       const organizationId = activeOrganization.id;
       const projectId = candidate.project.id;
-      const group =
-        groupId === undefined
-          ? undefined
-          : groupTree.groups.find((entry) => entry.group.groupId === groupId);
-      const pressStopped = readMatePress(projectId)?.state.kind === "failed";
-      // An owner or an admin finishes all of it; the Mate's own adder, its close-off. The harden
-      // runs where it may: never on keys this viewer may not write.
-      const whole = finishMateSetupScope(activeOrganization.roleCode) === "whole";
-      const hardenable = mateHardenableBy(listedTokens, projectId, {
-        userId: user?.id,
-        roleCode: activeOrganization.roleCode,
+      const press = readMatePress(projectId);
+      const pressStopped = press?.state.kind === "failed";
+      // An owner or an admin finishes all of it; the Mate's own adder, its close-off.
+      const whole =
+        finishMateSetupScope(canWriteRegistry(sessionOfferViewer(user, activeOrganization))) ===
+        "whole";
+      // A Mate HQ holds no record of is adopted, and only then is its key lowered from ADMIN — by
+      // the harden itself, which reads its key as it runs; never from a token list read on a load
+      // (step A, A11).
+      const adopting = recordMissing(candidate) && mayCreateRecord(candidate);
+      // What it registers, by the rule Set up Mate registers by: in the application HQ or the
+      // press this tab holds places it in, under that face; a new Mate in no application
+      // only where neither does — the stand-up asked by whoever finishes a Mate its press made.
+      const registration = mateFinishRegistration({
+        hq: officialHq(accountHq),
+        hqKnown,
+        structure: hqStructure?.structure ?? null,
+        project: candidate.project,
+        press,
+        writer: whole,
+        mayCreateRecord: mayCreateRecord(candidate),
+        standUp: candidate.service !== undefined && interrupted.has(candidate.service.id),
+        candidates,
       });
-      const harden = hardenable || (whole && !mateNeedsHarden(listedTokens, projectId));
       // A close-off alone has nothing to finish on a Mate with no container.
-      if (!whole && !hardenable && candidate.service === undefined) return;
+      if (!whole && !adopting && registration === null && candidate.service === undefined) {
+        return;
+      }
       // A container only where its project has none and no press elsewhere may still be importing
       // one (`finishSetupContainer`).
       const container = whole
@@ -560,7 +661,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         projectId,
         organizationId,
         startedAt: Date.now(),
-        placement: null,
+        // Still placed by the press it was made by, so a Finish setup asked again finishes it there.
+        placement: matePressPlacement(press) ?? null,
         container: container !== null,
         finishing: true,
       });
@@ -572,23 +674,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             projectId,
             projectName: candidate.project.name,
             container,
-            groupProjectIds: (group?.environments ?? []).flatMap(({ item }) =>
-              item.project.id === projectId ? [] : [item.project.id],
-            ),
-            viewer: pressViewer(user, activeOrganization),
-            // A Mate made before the press: its key lowered from ADMIN.
-            harden,
-            // A Mate in no group — claimed from the pool — is hardened and closed off, no more.
-            registration:
-              !whole || giteaProjectId === undefined || groupId === undefined
-                ? null
-                : {
-                    giteaProjectId,
-                    giteaOrigin: null,
-                    groupId,
-                    kind: "mate",
-                    displayName: candidate.project.name,
-                  },
+            harden: adopting,
+            registration,
+            hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
             isCurrent: captureAccountLifetime(),
             // A Mate this tab made: its registration's own step follows this one.
             onProgress: (progress) => refinishNewProjectBirth(projectId, progress),
@@ -599,13 +687,17 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       );
     },
     [
+      accountHq,
       activeOrganization,
+      candidates,
       client,
-      giteaProjectId,
-      groupTree.groups,
-      listedTokens,
+      hqKnown,
+      hqStructure?.structure,
+      interrupted,
+      mayCreateRecord,
       organizationRef,
       projectRef,
+      recordMissing,
       refresh,
       runtime,
       user,
@@ -616,13 +708,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /** Whose Mate it is, where that is a colleague: "Ada's Mate", as its row says it. */
   const colleagueOf = useCallback(
     (candidate: ZeropsCandidatePresentation): string | undefined => {
-      const owner = zeropsMateOwner(
-        resolveMateOwner({ project: candidate.project, members }),
-        user?.id,
-      );
-      return owner === undefined || owner.isViewer ? undefined : owner.name;
+      const owner = resolveMateOwnerPerson({ project: candidate.project, people });
+      return owner === undefined || owner.userId === user?.id ? undefined : owner.name;
     },
-    [members, user?.id],
+    [people, user?.id],
   );
 
   /**
@@ -642,7 +731,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             ? useComposerDraftStore.getState().getDraftSession(route.draftId)?.environmentId
             : undefined;
       const environmentId = deleted.environmentId ?? linkTarget(deleted);
-      const { groupId } = readZeropsGroupTags(deleted.project.tagList);
+      const { groupId } = readZeropsMembership(deleted.project);
       const siblings = (
         groupTree.groups.find((entry) => entry.group.groupId === groupId)?.environments ?? []
       )
@@ -673,26 +762,79 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
 
   /**
-   * Deletes the Mate's project. The dialog stays open until the platform
-   * answers: a refusal is said there, and nothing else changes. Once it
-   * accepts, the row says *Deleting…* until the listing lets it go, the
-   * listing is read again, and nothing this browser remembers of the Mate —
-   * its row, its crew, a birth — is left for a reload to paint.
+   * The id of the key a Mate's container holds, as the Mate named it to HQ; none where it named
+   * none, or HQ does not say.
+   */
+  const mateKeyOf = useCallback(
+    (projectId: string): Promise<string | null> => hqApi().mateKey(projectId),
+    [hqApi],
+  );
+
+  /**
+   * Deletes the Mate's project, and its key with it — by the id the Mate named to HQ, read before
+   * its project goes; none is matched by name (audit K3: a deleted Mate's key was left on the
+   * account, and a member holding tokens cannot be taken off the org). Connection demand ends
+   * before the delete is sent, while the command follows its process; a refusal restores it.
+   * The dialog stays open until the platform answers: a refusal is said there. Once it accepts, the
+   * row says *Deleting…* until the listing lets it go, the listing is read again, and nothing this
+   * browser remembers of the Mate — its row, its crew, a birth — is left for a reload to paint.
+   * After the process finishes, HQ verifies the project is gone and releases its held records.
+   * A failed completion stays here for Again; the platform delete is never repeated by that step.
    */
   const deleteMate = useCallback(
-    (candidate: ZeropsCandidatePresentation) => {
+    (
+      candidate: ZeropsCandidatePresentation,
+      cleanup?: {
+        readonly keyTokenId: string | null;
+        readonly completion: string;
+        readonly hqDone: boolean;
+      },
+    ) => {
       if (activeOrganization === null) return;
       const isCurrent = captureAccountLifetime();
-      const organization = organizationRef(activeOrganization.id);
+      const clientId = activeOrganization.id;
+      const organization = organizationRef(clientId);
       const projectId = candidate.project.id;
       setPress({ pending: true, error: null });
-      runZeropsCommand(runtime.commands.deleteProject({ organization, projectId })).then(
-        () => {
+      void (async () => {
+        const keyTokenId = cleanup === undefined ? await mateKeyOf(projectId) : cleanup.keyTokenId;
+        const completion = cleanup?.completion ?? (await hqApi().prepareProjectDeletion(projectId));
+        if (cleanup === undefined) {
+          if (!isCurrent()) return;
+          const environments = currentAccountEnvironments();
+          environments?.setDeleting(projectId, true);
+          try {
+            await runZeropsCommand(runtime.commands.deleteProject({ organization, projectId }));
+          } catch (cause) {
+            environments?.setDeleting(projectId, false);
+            throw cause;
+          }
           if (!isCurrent()) return;
           markMateDeleting(projectId);
           rememberMenu((memory) => withoutMate(memory, projectId));
           forgetPress(projectId);
           invalidateZerops({ topic: "inventory", organization });
+          setDialog({
+            kind: "delete",
+            candidate,
+            cleanup: { keyTokenId, completion, hqDone: false },
+          });
+        }
+        if (!cleanup?.hqDone) {
+          await hqApi().completeProjectDeletion(projectId, completion);
+          if (!isCurrent()) return;
+          setDialog({
+            kind: "delete",
+            candidate,
+            cleanup: { keyTokenId, completion, hqDone: true },
+          });
+        }
+        if (keyTokenId !== null) {
+          await client.deleteIntegrationToken({ clientId, tokenId: keyTokenId });
+        }
+      })().then(
+        () => {
+          if (!isCurrent()) return;
           setPress(UNPRESSED);
           setDialog(null);
           leaveDeleted(candidate);
@@ -703,65 +845,71 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         },
       );
     },
-    [activeOrganization, leaveDeleted, organizationRef, runtime.commands, setDialog],
+    [
+      activeOrganization,
+      client,
+      leaveDeleted,
+      mateKeyOf,
+      hqApi,
+      organizationRef,
+      runtime.commands,
+      setDialog,
+    ],
   );
 
   /**
-   * Writes the Mate's face: a patch the tag writer applies to the project's tags as the platform
-   * holds them, every other tag kept, and reads back — the read every surface redraws from. The
-   * dialog stays open until the platform answers: a refusal is said there, and nothing changes.
+   * Writes the Mate's face to HQ, which every surface redraws from once its stream says so. The
+   * dialog stays open until HQ answers: a refusal is said there, and nothing changes.
    */
   const saveFace = useCallback(
     (candidate: ZeropsCandidatePresentation, face: ZeropsMateFace) => {
-      if (activeOrganization === null) return;
       const isCurrent = captureAccountLifetime();
       setPress({ pending: true, error: null });
-      runZeropsCommand(
-        runtime.commands.updateProjectTags(
-          projectRef(activeOrganization.id, candidate.project.id),
-          { kind: "mate-face", face },
-        ),
-      ).then(
-        () => {
-          if (!isCurrent()) return;
-          // Still saying Saving… as it fades: the face it saved shows through it.
-          setDialog({ kind: "face", candidate, closing: true });
-        },
-        (cause: unknown) => {
-          if (!isCurrent()) return;
-          setPress({ pending: false, error: zeropsErrorMessage(cause) });
-        },
-      );
+      Promise.resolve()
+        .then(() =>
+          hqApi().updateMate(candidate.project.id, {
+            face: changedMateFace(readZeropsMembership(candidate.project).face, face),
+          }),
+        )
+        .then(
+          () => {
+            if (!isCurrent()) return;
+            // Still saying Saving… as it fades: the face it saved shows through it.
+            setDialog({ kind: "face", candidate, closing: true });
+          },
+          (cause: unknown) => {
+            if (!isCurrent()) return;
+            setPress({ pending: false, error: zeropsErrorMessage(cause) });
+          },
+        );
     },
-    [activeOrganization, projectRef, runtime.commands, setDialog],
+    [hqApi, setDialog],
   );
 
   const changeFace = useCallback(
     (candidate: ZeropsCandidatePresentation): (() => void) | undefined => {
-      const mayRename =
-        viewer === null ? true : resolveMateVerbs({ project: candidate.project, viewer }).rename;
-      if (!changeFaceOffered({ candidate, mayRename })) return undefined;
+      if (!changeFaceOffered({ candidate, mayEdit: hqVerbsOf(candidate).edit })) return undefined;
       return () => {
         setPress(UNPRESSED);
         setDialog({ kind: "face", candidate });
       };
     },
-    [setDialog, viewer],
+    [hqVerbsOf, setDialog],
   );
 
   const actionsFor = useCallback(
     (
       candidate: ZeropsCandidatePresentation,
-      tags: ZeropsGroupTags,
+      tags: ZeropsMembership,
       extraQuick: ReadonlyArray<ZeropsMenuEntry> = [],
     ): ReadonlyArray<ZeropsMenuEntry> => {
-      const verbs =
-        viewer === null
-          ? { open: true, rename: true, tag: true, move: true, delete: false, assign: false }
-          : resolveMateVerbs({ project: candidate.project, viewer });
+      // The platform's own verbs — delete, rename, hand over — by the role function the platform
+      // enforces; HQ's by HQ's rule. Either way, a person the session does not name is offered none.
+      const platformVerbs = platformVerbsOf(candidate);
+      const hqVerbs = hqVerbsOf(candidate);
       const deletable = deleteMateOffered({
         candidate,
-        mayDelete: verbs.delete,
+        mayDelete: platformVerbs.delete,
         deleting: mateDeleting(candidate.project, deleting),
       });
       const openFace = changeFace(candidate);
@@ -785,14 +933,17 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           id: "restart",
           label: restartAction.label,
           disabled: busy,
-          onSelect: () => restart(candidate),
+          onSelect: () => {
+            setPress(UNPRESSED);
+            setDialog({ kind: "restart", candidate });
+          },
         });
       }
       quick.push(...extraQuick);
       return [
         ...quick,
         ...(quick.length > 0 ? [{ id: "quick", separator: true } as const] : []),
-        ...(verbs.rename
+        ...(platformVerbs.rename
           ? [
               {
                 id: "rename-agent",
@@ -815,19 +966,22 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                   finishSetupRunning(
                     presses.find((press) => press.projectId === candidate.project.id),
                   ),
-                onSelect: () => finishSetup(candidate, tags),
+                onSelect: () => finishSetup(candidate),
               },
             ]),
-        ...(verbs.assign
+        ...(platformVerbs.assign
           ? [
               {
                 id: "assign",
                 label: "Hand this Mate over",
-                onSelect: () => setDialog({ kind: "assign", candidate }),
+                onSelect: () => {
+                  setPress(UNPRESSED);
+                  setDialog({ kind: "assign", candidate });
+                },
               },
             ]
           : []),
-        ...(verbs.move
+        ...(hqVerbs.move
           ? [
               {
                 id: "move",
@@ -836,7 +990,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               },
             ]
           : []),
-        ...(verbs.move && tags.groupId !== undefined
+        ...(hqVerbs.leave && tags.groupId !== undefined
           ? [
               {
                 id: "leave",
@@ -852,7 +1006,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               { id: "delete-apart", separator: true } as const,
               {
                 id: "delete",
-                label: deleteMateVerb(mateName(candidate)),
+                label: deleteMateVerb(candidate.project.name),
                 variant: "destructive" as const,
                 disabled: busy,
                 onSelect: () => {
@@ -884,43 +1038,50 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       move,
       finishSetup,
       finishSetupVerbFor,
-      restart,
+      presses,
       rowInputFor,
       serverVersions,
       setDialog,
       start,
-      viewer,
+      hqVerbsOf,
+      platformVerbsOf,
     ],
   );
 
   const renameInPlace = useCallback(
     (candidate: ZeropsCandidatePresentation): MateRenameInPlace | undefined => {
-      const allowed =
-        viewer === null ? true : resolveMateVerbs({ project: candidate.project, viewer }).rename;
-      if (!allowed) return undefined;
-      const current = readZeropsGroupTags(candidate.project.tagList).bot;
+      if (!platformVerbsOf(candidate).rename) return undefined;
+      const current = candidate.project.name;
       return {
-        initialValue: current ?? "",
-        validate: (value) =>
-          validateBotName(value, taken, current === undefined ? {} : { current }),
+        initialValue: current,
+        validate: (value) => validateBotName(value, taken, { current }),
         commit: (value) => {
           rename(candidate, value.replace(/\s+/g, " ").trim());
         },
       };
     },
-    [rename, taken, viewer],
+    [platformVerbsOf, rename, taken],
   );
 
-  const mintGroupId = useCallback(
-    () => generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
-    [],
-  );
   const close = useCallback(() => setDialog(null), [setDialog]);
   const dialogs = (
     <>
+      {dialog?.kind === "restart" ? (
+        <RestartMateConfirmation
+          projectId={dialog.candidate.project.id}
+          name={dialog.candidate.project.name}
+          environmentId={dialog.candidate.environmentId ?? linkTarget(dialog.candidate)}
+          pending={press.pending}
+          error={press.error}
+          onCancel={close}
+          onConfirm={() => {
+            restart(dialog.candidate);
+          }}
+        />
+      ) : null}
       {dialog?.kind === "rename" ? (
         <ZeropsRenameDialog
-          initialValue={readZeropsGroupTags(dialog.candidate.project.tagList).bot ?? ""}
+          initialValue={dialog.candidate.project.name}
           key={`rename-agent:${dialog.candidate.key}`}
           label="Mate's name"
           onCancel={close}
@@ -934,11 +1095,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           }}
           open
           submitLabel="Rename"
-          title={`Rename the Mate in ${dialog.candidate.project.name}`}
-          validate={(value) => {
-            const current = readZeropsGroupTags(dialog.candidate.project.tagList).bot;
-            return validateBotName(value, taken, current === undefined ? {} : { current });
-          }}
+          title={`Rename ${dialog.candidate.project.name}`}
+          validate={(value) =>
+            validateBotName(value, taken, { current: dialog.candidate.project.name })
+          }
         />
       ) : null}
       {dialog?.kind === "face" ? (
@@ -951,7 +1111,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               dialog.candidate.project,
           )}
           key={`face:${dialog.candidate.key}`}
-          name={mateName(dialog.candidate)}
+          name={dialog.candidate.project.name}
           onCancel={() => {
             setDialog({ ...dialog, closing: true });
           }}
@@ -970,31 +1130,36 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       ) : null}
       {dialog?.kind === "assign" ? (
         <ZeropsAssignMateDialog
-          currentOwnerId={
-            dialog.candidate.project.userRoles?.find((entry) => entry.roleCode === "OWNER")
-              ?.clientUserId
-          }
+          error={press.error}
           key={`assign:${dialog.candidate.key}`}
           members={members}
+          readingOrganization={
+            membersStatus === "loading" && members.length === 0
+              ? activeOrganization?.name
+              : undefined
+          }
+          readFailed={
+            membersStatus === "failed" && members.length === 0 && activeOrganization !== null
+              ? { organization: activeOrganization.name, onReadAgain: accountHq.reread }
+              : undefined
+          }
           onCancel={close}
           onOpenChange={(open) => {
             if (!open) close();
           }}
           onSubmit={(clientUserId) => {
-            const { candidate } = dialog;
-            close();
-            assign(candidate, clientUserId);
+            assign(dialog.candidate, clientUserId);
           }}
+          pending={press.pending}
           projectName={dialog.candidate.project.name}
         />
       ) : null}
       {dialog?.kind === "move" ? (
         <ZeropsMoveToGroupDialog
-          currentGroupId={readZeropsGroupTags(dialog.candidate.project.tagList).groupId}
-          currentRole={readZeropsGroupTags(dialog.candidate.project.tagList).role}
-          groups={groupTree.groups.map(({ group }) => ({ id: group.groupId, name: group.name }))}
+          currentGroupId={readZeropsMembership(dialog.candidate.project).groupId}
+          currentRole={readZeropsMembership(dialog.candidate.project).role}
+          choices={moveChoicesFor(dialog.candidate)}
           key={`move:${dialog.candidate.key}`}
-          mintGroupId={mintGroupId}
           onCancel={close}
           onOpenChange={(open) => {
             if (!open) close();
@@ -1005,17 +1170,18 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             move(candidate, membership);
           }}
           open
-          projectName={dialog.candidate.project.name}
+          name={dialog.candidate.project.name}
         />
       ) : null}
       {dialog?.kind === "delete" ? (
         <ZeropsDeleteMateDialog
           error={press.error}
+          cleanup={dialog.cleanup !== undefined}
           key={`delete:${dialog.candidate.key}`}
-          name={mateName(dialog.candidate)}
+          name={dialog.candidate.project.name}
           onCancel={close}
           onConfirm={() => {
-            deleteMate(dialog.candidate);
+            deleteMate(dialog.candidate, dialog.cleanup);
           }}
           onOpenChange={(open) => {
             if (!open) close();
@@ -1023,9 +1189,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           open
           pending={press.pending}
           words={deleteMateWords({
-            name: mateName(dialog.candidate),
+            name: dialog.candidate.project.name,
             environment: dialog.candidate.project.name,
-            services: dialog.candidate.services?.hostnames.length,
+            services: deleteMateServiceCount(dialog.candidate),
             owner: colleagueOf(dialog.candidate),
           })}
         />
@@ -1051,18 +1217,18 @@ export function mateContainerMissing(
 }
 
 /**
- * Whether the viewer added this Mate: its birth names them (`mate:by:`, New project or Add a Mate),
- * its stand-up was asked for by them, or its seat is theirs.
+ * Whether the viewer added this Mate: HQ's record names them as its maker (New project or Add a
+ * Mate), its stand-up was asked for by them, or its seat is theirs — as HQ's record of it says.
  */
 export function mateAddedBy(
-  tagList: ReadonlyArray<string> | undefined,
+  project: { readonly hq?: HqPlacement | undefined },
   viewer: string | undefined,
 ): boolean {
   if (viewer === undefined || viewer.length === 0) return false;
-  const tags = readZeropsGroupTags(tagList);
+  const membership = readZeropsMembership(project);
   return (
-    tags.madeBy === viewer ||
-    tags.standUp?.by === viewer ||
-    mateIsViewers({ tagList: tagList ?? [] }, viewer)
+    membership.madeBy === viewer ||
+    membership.standUp?.by === viewer ||
+    mateIsViewers(project, viewer)
   );
 }

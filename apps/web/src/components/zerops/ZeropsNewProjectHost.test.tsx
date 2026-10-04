@@ -56,9 +56,13 @@ vi.mock("~/zerops/useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({ listing: { state: "unread", waitingFor: null } }),
   useTakenBotNames: () => ({ names: [], complete: true }),
 }));
-vi.mock("~/zerops/giteaProject", () => ({
-  useAccountGitea: () => ({ projectId: "gitea-1" }),
-  useAccountHoldsGitea: () => true,
+vi.mock("~/zerops/accountHq", () => ({
+  useAccountHq: () => ({
+    admins: [],
+    hq: { kind: "official", projectId: "hq", address: "https://hq.example" },
+  }),
+  officialHq: (account: { hq: unknown }) => account.hq,
+  accountHqApi: () => ({ createApp: app.pending, recordBirth: app.pending }),
 }));
 vi.mock("./ZeropsNewProjectForm", () => ({
   ZeropsNewProjectDialog: (props: { readonly onCreate: (choice: NewProjectChoice) => void }) => {
@@ -108,7 +112,7 @@ describe("New project's Create", () => {
     expect(births[0]).toMatchObject({ name: "Acme CRM", botName: "Vera", failed: null });
     expect(app.navigate).toHaveBeenCalledWith({
       to: "/mate/new/$birthId",
-      params: { birthId: births[0]?.id },
+      params: { birthId: births[0]?.birthId },
     });
   });
 });

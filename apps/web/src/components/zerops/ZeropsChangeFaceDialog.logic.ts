@@ -2,9 +2,8 @@
  * Changing a Mate's face, in words and rules: what its dialog says, which Mates a menu offers it
  * on, and the face a Mate wears now.
  *
- * A Mate's face is a tag on its project (`mate:face:`), so everybody who sees the Mate sees the
- * face its person picks, and changing it is a write of that project's tags: offered where Rename
- * is, and nowhere else.
+ * A Mate's face is HQ's record of it (ADR 0002), so everybody who sees the Mate sees the face its
+ * person picks, and changing it is one write to HQ: offered where Rename is, and nowhere else.
  */
 import { hasMate, mateShapeOf, type ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -34,16 +33,15 @@ export function changeFaceWords(name: string): ChangeFaceWords {
 }
 
 /**
- * Whether a Mate's menus offer *Change face…*: on a Mate, where this viewer may rename it — the
- * same write of the project's own tags (`resolveMateVerbs`), so a face the platform would refuse
- * is never offered.
+ * Whether a Mate's menus offer *Change face…*: on a Mate, where HQ's rule lets this viewer edit its
+ * record (`edit_mate_record`), so a face HQ would refuse is never offered.
  */
 export function changeFaceOffered(input: {
   readonly candidate: ZeropsCandidate;
-  /** `resolveMateVerbs(...).rename`, or the menus' own fallback where no viewer is read. */
-  readonly mayRename: boolean;
+  /** Whether HQ's rule offers the viewer the Mate's record (`mayOffer`); never for an unknown one. */
+  readonly mayEdit: boolean;
 }): boolean {
-  return input.mayRename && hasMate(input.candidate);
+  return input.mayEdit && hasMate(input.candidate);
 }
 
 /**
@@ -52,10 +50,10 @@ export function changeFaceOffered(input: {
  */
 export function mateFaceOf(
   tints: ReadonlyMap<string, MateTintId>,
-  project: Pick<ZeropsCandidate["project"], "id" | "tagList">,
+  project: Pick<ZeropsCandidate["project"], "id" | "tagList" | "hq">,
 ): ZeropsMateFace {
   const tint = tints.get(project.id) ?? "slate";
-  return { tint, shape: mateShapeOf(project.tagList, tint) };
+  return { tint, shape: mateShapeOf(project, tint) };
 }
 
 export function sameFace(a: ZeropsMateFace, b: ZeropsMateFace): boolean {

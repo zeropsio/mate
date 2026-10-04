@@ -25,6 +25,9 @@ import {
   CREW_CHECKING_ITS_WORK,
   CREW_COPY_READYING,
   CREW_ROW_VERBS,
+  crewCopyAssignmentDetail,
+  crewOperationDetail,
+  crewPendingOperationWord,
   crewAskLeadToReviewMessage,
   crewAskToCommitWord,
   crewAskedLeadWord,
@@ -131,6 +134,7 @@ export interface CrewRowNeed {
   /** Its row in the snapshot's list: stable while it stands. */
   readonly id: string;
   readonly line: CrewRowLine;
+  readonly detail?: string;
   readonly actions: ReadonlyArray<CrewRowAction>;
 }
 
@@ -206,6 +210,49 @@ export function crewNeedActions(
   const review = (id: string, verb: "review" | "reviewWhatItHas" | "reviewItYourself") =>
     ({ kind: "review", ...labelled(verb, mateName), taskId: id }) as const;
   switch (row.kind) {
+    case "copy-missing":
+      return handle === null
+        ? []
+        : [
+            {
+              kind: "command",
+              ...labelled("rebuildCopy", mateName),
+              command: { _tag: "rebuildCopy", handle },
+            },
+          ];
+    case "interrupted": {
+      if (handle === null || row.operation === undefined) return [];
+      const continuation: CrewRowAction = {
+        kind: "command",
+        ...labelled("carryOn", mateName),
+        command: { _tag: "operationContinue", handle, operationId: row.operation.id },
+      };
+      return row.operation.kind === "landing" || row.operation.taskId === null
+        ? [continuation]
+        : [
+            continuation,
+            {
+              kind: "command",
+              ...labelled("dropIt", mateName),
+              command: { _tag: "operationDiscard", handle, operationId: row.operation.id },
+            },
+          ];
+    }
+    case "conversation-copy":
+      return handle === null || row.copyAssignment === undefined
+        ? []
+        : [
+            {
+              kind: "command",
+              ...labelled("useCrewCopy", mateName),
+              command: {
+                _tag: "useCrewCopy",
+                handle,
+                threadId: row.copyAssignment.threadId,
+                expectedPath: row.copyAssignment.currentPath,
+              },
+            },
+          ];
     case "question":
       return handle === null
         ? []
@@ -515,6 +562,14 @@ export function crewRowModel(input: {
   const needs: ReadonlyArray<CrewRowNeed> = asked.map((entry) => ({
     id: entry.id,
     line: needLine(entry, snapshot, onTask?.id ?? null, mateName),
+    ...(entry.copyAssignment === undefined
+      ? {}
+      : {
+          detail: crewCopyAssignmentDetail(entry.copyAssignment),
+        }),
+    ...(entry.operation === undefined
+      ? {}
+      : { detail: crewOperationDetail(entry.operation.confirmedStage) }),
     actions: crewNeedActions(entry, snapshot, mateName),
   }));
 
@@ -525,6 +580,13 @@ export function crewRowModel(input: {
   const standsAt = open === null || needsOnOpen ? null : standing(open, view, mateName);
   const broken = mate.lane === null ? null : crewBrokenCopyWord(mate.lane, mateName);
   const readying = mate.lane?.state === "creating" || mate.lane?.state === "setting-up";
+  const pending = snapshot.operations?.findLast(
+    (operation) =>
+      operation.handle === mate.handle &&
+      operation.status === "running" &&
+      operation.stage !== "dispatched",
+  );
+  const pendingWords = pending === undefined ? null : crewPendingOperationWord(pending, mateName);
   const line3: CrewRowLine | null =
     broken !== null
       ? { text: broken, tone: "failed" }
@@ -534,9 +596,11 @@ export function crewRowModel(input: {
           ? thread.liveStep === null
             ? null
             : { text: thread.liveStep.words, tone: "muted", code: thread.liveStep.code }
-          : standsAt === null
-            ? null
-            : { text: standsAt, tone: "muted" };
+          : pendingWords !== null
+            ? { text: pendingWords, tone: "muted" }
+            : standsAt === null
+              ? null
+              : { text: standsAt, tone: "muted" };
 
   // What it does next: its queue, less what a need already names.
   const named = new Set(asked.flatMap((entry) => (entry.taskId === null ? [] : [entry.taskId])));
@@ -554,15 +618,16 @@ export function crewRowModel(input: {
   // The face: at work while it works; asking while it needs you — happy while all it has is
   // finished work to review; waking while its copy is made (`matePose`); else its thread's own.
   const finished = asked.length > 0 && asked.every((entry) => entry.kind === "ready-to-land");
-  const pose: MateMarkState = thread.working
-    ? "working"
-    : plan || asked.length > 0
-      ? finished && !plan
-        ? "done"
-        : "needs"
-      : matePose(thread.face === "sleep" ? "idle" : thread.face, {
-          life: readying ? "coming" : "up",
-        });
+  const pose: MateMarkState =
+    thread.working || pending !== undefined
+      ? "working"
+      : plan || asked.length > 0
+        ? finished && !plan
+          ? "done"
+          : "needs"
+        : matePose(thread.face === "sleep" ? "idle" : thread.face, {
+            life: readying ? "coming" : "up",
+          });
 
   return {
     handle: mate.handle,
@@ -573,11 +638,13 @@ export function crewRowModel(input: {
     pose,
     needsYou: plan || asked.length > 0,
     slot:
-      thread.at === null
-        ? { kind: "none" }
-        : thread.working
-          ? { kind: "clock", since: thread.at }
-          : { kind: "age", at: thread.at },
+      pending !== undefined && !thread.working
+        ? { kind: "clock", since: pending.startedAt }
+        : thread.at === null
+          ? { kind: "none" }
+          : thread.working
+            ? { kind: "clock", since: thread.at }
+            : { kind: "age", at: thread.at },
     line2,
     line3,
     needs,

@@ -8,8 +8,8 @@
  * — the em dash is part of the name — each with an `import.yaml` describing a
  * whole environment: a dev/stage pair per codebase for the Mate tier, the same
  * without the container for Stage, and the HA shape for production. A Mate
- * proposes and updates them by pull request; a person with production rights
- * merges (D13).
+ * proposes and updates them by a change in HQ: Core lands one that only adds a
+ * tier, and a person merges one that edits a tier.
  *
  * ## What each service of a tier is
  *
@@ -26,11 +26,11 @@
  * - **dev** — every other runtime: a pair's dev half, the Mate's clone target.
  *
  * The platform **cannot clone a private repository**, and it refuses
- * `zeropsSetup` without `buildFromGit`, so a runtime built from the group's own
- * Gitea is imported without its build; its code arrives afterwards from the
- * party that can push it — a Mate's zcp, or the broker's deploy key for a group
- * environment. zcp reads which repository a runtime comes from off the tier
- * itself; nothing here carries that along.
+ * `zeropsSetup` without `buildFromGit`, so a runtime built from the
+ * application's own repositories in HQ is imported without its build; its code
+ * arrives afterwards from the party that can deploy it — a Mate's zcp, or HQ's
+ * Core with the environment's deploy key. zcp reads which repository a runtime
+ * comes from off the tier itself; nothing here carries that along.
  *
  * ## A Mate's tier comes in two imports ({@link splitRecipeTier})
  *
@@ -52,31 +52,22 @@
  *
  * An environment with no container has no Mate and nothing to close off, so its
  * tier goes in as one import, as it always has: every runtime starts empty for
- * the broker to deploy onto, and a utility is built.
+ * HQ's Core to deploy onto, and a utility is built.
  *
  * ## Line-based, like everything else that touches these documents
  *
  * The tiers are written for people to read and carry comments that explain the
- * shape; a YAML round trip through a serializer drops every one of them. The
- * same reasoning as `giteaRecipe.ts`, and each service's own indentation — a
- * person's two spaces or zcp's four — is the one worked against.
+ * shape; a YAML round trip through a serializer drops every one of them, and
+ * each service's own indentation — a person's two spaces or zcp's four — is the
+ * one worked against.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
  * @module recipeTier
  */
 
-/** The tier directories, spelled as the group repo spells them. */
-export const RECIPE_TIER_PATHS = {
-  mate: "0 — AI Agent/import.yaml",
-  stage: "3 — Stage/import.yaml",
-  production: "4 — Small Production/import.yaml",
-} as const;
-
-export type RecipeTier = keyof typeof RECIPE_TIER_PATHS;
-
-/** The environments document, beside the tiers (guide 5.1). */
-export const ENVIRONMENTS_DOCUMENT_PATH = "environments.yaml";
+/** The tier directories, spelled as an application's recipe repository spells them in HQ. */
+export { RECIPE_TIER_PATHS, type RecipeTier } from "@t3tools/shared/hqRecipe";
 
 /** A runtime of a tier: a pair's dev half, its stage half, or a public-build utility. */
 export type RecipeRuntimeRole = "dev" | "stage" | "utility";
@@ -350,6 +341,18 @@ export function recipeTierServices(yaml: string): ReadonlyArray<RecipeTierServic
 }
 
 /**
+ * The hostnames of the tier's zcp services, by their own `type`: a Mate's tier declares none, its
+ * press bringing the one container a project holds (audit D2).
+ */
+export function recipeTierZcpServices(yaml: string): ReadonlyArray<string> {
+  return (parseTier(yaml)?.items ?? []).flatMap((item) =>
+    item.hostname !== undefined && ownScalar(item, "type")?.startsWith("zcp@") === true
+      ? [item.hostname]
+      : [],
+  );
+}
+
+/**
  * A Mate's tier as its two imports: the managed part, which goes in with the
  * project, and the runtimes, which go in once the project is closed off
  * (the module's header). `undefined` when the tier declares no services — a
@@ -384,7 +387,7 @@ export function splitRecipeTier(yaml: string): RecipeTierSplit | undefined {
 
 /**
  * A stage's or a production's tier, whole and ready for its one import: every
- * runtime built from the group's own repositories starts empty for the broker
+ * runtime built from the group's own repositories starts empty for HQ's Core
  * to deploy onto, a utility keeps its build, a managed service is carried
  * through byte for byte. `undefined` when the tier declares no services.
  */
@@ -493,8 +496,7 @@ export function recipeServicesYaml(yaml: string): string {
  *
  * The project's `name` and `tagList` are the caller's, not the recipe's: the
  * recipe names a project after itself, and mate names it after the group and
- * tags it with the group's membership, which is what makes it findable at all
- * (`groups.ts`). Both are rewritten in place here, line by line, for the same
+ * writes only the `mate` marker. HQ records its membership. Both are rewritten in place here, line by line, for the same
  * reason `recipeServicesYaml` is line-based — a recipe's comments are written
  * for whoever reads it next, and a YAML round-trip drops them.
  */
@@ -509,7 +511,9 @@ export function recipeProjectImportYaml(
   // indentations in one block, which is no YAML at all (Dara's stage tier,
   // 2026-09-17: the platform refused the import).
   const indent = block === null ? "  " : blockIndent(lines, block);
-  const tagLines = (project.tagList ?? []).map((tag) => `${indent}  - ${tag}`);
+  const tagLines = (project.tagList?.includes("mate") ? ["mate"] : []).map(
+    (tag) => `${indent}  - ${tag}`,
+  );
   const header = [
     "project:",
     `${indent}name: ${project.name}`,

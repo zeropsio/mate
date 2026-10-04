@@ -16,8 +16,8 @@
  *
  * Until its person picks, the face follows the name as it is typed or rolled: the tint the account
  * would give that name (`newMateTint`, which never takes a tint another Mate wears) and that
- * tint's shape. A pick sticks. The face is written onto the project at birth (`mate:face:`), so
- * the Mate wears it everywhere from its first moment.
+ * tint's shape. A pick sticks. The face is HQ's record from the Mate's birth (its registration),
+ * so the Mate wears it everywhere from its first moment.
  */
 import type { EnvironmentRecipeChoice, ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
@@ -50,10 +50,9 @@ import { MateNameInput } from "./MateNameInput";
 import { WhatHappensNext } from "./WhatHappensNext";
 import { newMateNext } from "./whatHappensNext.logic";
 
-/** What the form hands over: the environment's name, its agent's, the recipe and the face. */
+/** What the form hands over: the Mate's name — its project's too (D3) — the recipe and the face. */
 export interface NewMateChoice {
   readonly name: string;
-  readonly botName: string;
   readonly recipe: EnvironmentRecipeChoice;
   readonly face: ZeropsMateFace;
 }
@@ -64,8 +63,6 @@ export interface ZeropsNewMateFormProps {
   readonly defaultBotName: string;
   /** Another name free on the account, never the one given: the die at the name's end. */
   readonly proposeAnotherName?: ((current: string) => string) | undefined;
-  /** What the project calls a Mate of this name: `Acme Docs - Quinn`, numbered when taken. */
-  readonly proposeName: (botName: string) => string;
   /** The account's Mates' names, and whether the listing read them all (`takenBotNames`). */
   readonly takenBotNames: TakenBotNames;
   /** The tier read from the group repo's `main`, when one is merged. */
@@ -92,7 +89,6 @@ export function ZeropsNewMateForm({
   groupName,
   defaultBotName,
   proposeAnotherName,
-  proposeName,
   takenBotNames,
   tier,
   tierLoading,
@@ -156,7 +152,7 @@ export function ZeropsNewMateForm({
     if (named.length > 0) setHeldName(named);
   };
   const create = (choice: EnvironmentRecipeChoice) => {
-    onCreate({ name: proposeName(bot), botName: bot, recipe: choice, face });
+    onCreate({ name: bot, recipe: choice, face });
   };
   const press = () => {
     if (closed !== undefined) return;

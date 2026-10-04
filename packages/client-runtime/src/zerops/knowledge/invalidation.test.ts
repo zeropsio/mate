@@ -38,11 +38,9 @@ const tags = (projectId: string): Invalidation => ({
   topic: "project",
   project: project(projectId),
 });
-const repo = (name: string): Invalidation => ({
-  topic: "forge-repo",
-  origin: "https://git.example.test",
-  owner: "team",
-  repo: name,
+const container = (projectId: string): Invalidation => ({
+  topic: "container",
+  target: `${projectId}:zcp`,
 });
 
 /**
@@ -84,7 +82,7 @@ const openBus = (options: Partial<Pick<InvalidationBusOptions, "shown">> = {}) =
   });
 
 describe("the invalidation union (DESIGN §6.2)", () => {
-  it("is closed over the ten topics of §6.2", () => {
+  it("is closed over the six topics of §6.2", () => {
     // A topic missing here, or one more than the union has, fails the typecheck.
     const topics: Record<Invalidation["topic"], true> = {
       access: true,
@@ -93,14 +91,10 @@ describe("the invalidation union (DESIGN §6.2)", () => {
       environment: true,
       container: true,
       deployment: true,
-      "gitea-session": true,
-      "forge-org": true,
-      "forge-repo": true,
-      "forge-pr": true,
     };
     // @ts-expect-error — not a topic the bus carries
     const unknown: Invalidation["topic"] = "thread";
-    expect(Object.keys(topics)).toHaveLength(10);
+    expect(Object.keys(topics)).toHaveLength(6);
     expect(Object.keys(topics)).not.toContain(unknown);
   });
 });
@@ -132,14 +126,14 @@ describe("the invalidation bus (DESIGN §6.2)", () => {
   it.effect("collects a hidden tab's invalidations and flushes them visible-first on wake", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const shown = repo("shown");
+        const shown = container("shown");
         const { bus, drain, signal } = yield* openBus({
           shown: (invalidation) => JSON.stringify(invalidation) === JSON.stringify(shown),
         });
         yield* signal({ type: "hidden" });
         yield* TestClock.adjust(60_000);
         yield* bus.invalidate(tags("a"));
-        yield* bus.invalidate(repo("unshown"));
+        yield* bus.invalidate(container("unshown"));
         yield* bus.invalidate(shown);
         yield* TestClock.adjust(10 * 60_000);
         yield* bus.invalidate(tags("a"));
@@ -149,7 +143,7 @@ describe("the invalidation bus (DESIGN §6.2)", () => {
         yield* signal({ type: "visible" });
         expect(yield* drain).toEqual([]);
         yield* signal({ type: "visible-wake" });
-        expect(yield* drain).toEqual([shown, tags("a"), repo("unshown")]);
+        expect(yield* drain).toEqual([shown, tags("a"), container("unshown")]);
       }),
     ),
   );

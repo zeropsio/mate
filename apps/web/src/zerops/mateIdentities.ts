@@ -5,7 +5,7 @@
  * runs in.
  *
  * Read off the candidate list — the one source for names, tags and faces
- * (`hasMate`, `botDisplayName`, `assignCandidateMateTints`, `mateShapeOf`) — by the derived
+ * (`hasMate`, its project's name, `assignCandidateMateTints`, `mateShapeOf`) — by the derived
  * `zeropsMatesAtom` (`useZeropsMates.ts`), so the chat header, an empty
  * conversation and a draft's headline never load anything themselves and can
  * never disagree with the left menu about who a Mate is.
@@ -17,13 +17,11 @@
  */
 import {
   assignCandidateMateTints,
-  botDisplayName,
   hasMate,
-  isZeropsMateRunsWithoutSignIn,
   mateArriving,
   mateArrivingUntil,
   mateShapeOf,
-  readZeropsGroupTags,
+  readZeropsMembership,
   type MatePoseFacts,
 } from "@t3tools/client-runtime/zerops";
 import {
@@ -45,9 +43,9 @@ export interface ZeropsMateIdentity {
   readonly projectId?: string | undefined;
   readonly name: string;
   readonly tint: MateTintId;
-  /** The shape its person picked (`mate:face:`), else its tint's own — `mateShapeOf`. */
+  /** The shape its person picked (HQ's record), else its tint's own — `mateShapeOf`. */
   readonly shape: MateShapeId;
-  /** The project the Mate belongs to, as its label tag reads; absent for one in no project. */
+  /** The project the Mate belongs to, as HQ names it; absent for one in no project. */
   readonly project: string | undefined;
   /** The Mate's project on the Zerops dashboard: where a conversation's "Open in Zerops" goes. */
   readonly projectUrl: string;
@@ -58,22 +56,18 @@ export interface ZeropsMateIdentity {
    * it is awake.
    */
   readonly connected: boolean;
-  /**
-   * Whether the account's listing has its container running (socket up or not); absent where
-   * the listing never said. What its face wears while its conversation opens
-   * (`mateOpeningAwake`).
-   */
+  /** Whether the listing has its container running, independently of this tab's socket. */
   readonly running?: boolean | undefined;
   /**
-   * Who asked for the project's development to be stood up (`mate:standup:`), while the ask
-   * waits for their first sign-in: their empty conversation says so and sends it (`mateStandUp.ts`).
+   * Who asked for the project's development to be stood up (HQ's `standupRequestedBy`), while the
+   * ask waits for their first sign-in: their empty conversation says so (`mateStandUp.ts`).
    */
   readonly standUp?: { readonly by: string } | undefined;
-  /** Who made it (`mate:by:`): whose sign-in it waits for while nobody has signed it in. */
+  /** Who made it (HQ's `madeBy`): whose sign-in it waits for while nobody has signed it in. */
   readonly madeBy?: string | undefined;
   /** Until when it is arriving (`mateArrivingUntil`); absent once it has arrived, or not known. */
   readonly arrivingUntil?: number | undefined;
-  /** Its project says it runs on an agent Mate signs nobody in to (`mate:runs:`). */
+  /** Its overview says it runs on an agent Mate signs nobody in to (HQ's overview). */
   readonly runsWithoutSignIn?: boolean | undefined;
 }
 
@@ -110,15 +104,15 @@ export function zeropsMateIdentityOf(
   candidate: ZeropsCandidate,
   tints: ReadonlyMap<string, MateTintId>,
 ): ZeropsMateIdentity {
-  const tags = readZeropsGroupTags(candidate.project.tagList);
+  const tags = readZeropsMembership(candidate.project);
   const tint = tints.get(candidate.project.id) ?? "slate";
   const arrivingUntil = mateArrivingUntil(candidate);
   return {
     serviceId: candidate.service?.id,
     projectId: candidate.project.id,
-    name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
+    name: candidate.project.name,
     tint,
-    shape: mateShapeOf(candidate.project.tagList, tint),
+    shape: mateShapeOf(candidate.project, tint),
     project: tags.label,
     projectUrl: zeropsProjectUrl(candidate.project.id),
     connected: candidate.group === "connected",
@@ -126,9 +120,7 @@ export function zeropsMateIdentityOf(
     ...(tags.standUp === undefined ? {} : { standUp: tags.standUp }),
     ...(tags.madeBy === undefined ? {} : { madeBy: tags.madeBy }),
     ...(arrivingUntil === undefined ? {} : { arrivingUntil }),
-    ...(isZeropsMateRunsWithoutSignIn(candidate.project.tagList)
-      ? { runsWithoutSignIn: true }
-      : {}),
+    ...(candidate.project.hq?.mate?.runsWithoutSignIn === true ? { runsWithoutSignIn: true } : {}),
   };
 }
 

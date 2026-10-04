@@ -12,7 +12,6 @@ export * from "./platformProtocol.ts";
 export * from "./platformSocket.ts";
 export * from "./policy.ts";
 export * from "./projection.ts";
-export * from "./registry.ts";
 export * from "./cellSelectors.ts";
 export * from "./cells.ts";
 export * from "./restAdapter.ts";

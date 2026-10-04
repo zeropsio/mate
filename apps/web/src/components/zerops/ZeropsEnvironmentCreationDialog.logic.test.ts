@@ -1,14 +1,19 @@
-import type {
-  EnvironmentCreationStep,
-  EnvironmentCreationStepProgress,
-  FlowPullRequest,
-  ZeropsGroupPendingMember,
+import {
+  flowChanges,
+  type EnvironmentCreationStep,
+  type EnvironmentCreationStepProgress,
+  type FlowPullRequest,
+  type ZeropsGroupPendingMember,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import type { HqChange } from "@t3tools/shared/hqChanges";
+import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  creationRecipe,
   faceName,
   hasCreationErrors,
   landedRecipeProposal,
@@ -30,10 +35,6 @@ import {
   pressThrough,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 
-/** The account's Mates' names, read in full. */
-const FEN_TAKEN = { names: ["Fen"], complete: true };
-const NONE_TAKEN = { names: [], complete: true };
-
 /** A tier as the group repo's `main` hands it over, already import-ready. */
 const TIER = {
   kind: "tier" as const,
@@ -47,6 +48,7 @@ describe("recipeOptions", () => {
       roleLabel: "stage",
       tier: TIER,
       services: ["app", "db"],
+      recipe: "present",
     });
     expect(options.map((option) => option.id)).toEqual(["tier", "none"]);
     expect(options[0]?.label).toBe("The project's stage recipe");
@@ -59,20 +61,49 @@ describe("recipeOptions", () => {
    * demo where a stage came up `READY_TO_DEPLOY` and nothing said so.
    */
   it("says the services arrive without code", () => {
-    const options = recipeOptions({ roleLabel: "stage", tier: TIER, services: ["app", "db"] });
+    const options = recipeOptions({
+      roleLabel: "stage",
+      tier: TIER,
+      services: ["app", "db"],
+      recipe: "present",
+    });
     expect(options[0]?.detail).toBe("app, db · imported without code; the first deploy fills them");
   });
 
   it("explains a project with no recipe rather than showing a lone option", () => {
-    const options = recipeOptions({ roleLabel: "Mate", tier: undefined, services: [] });
+    const options = recipeOptions({
+      roleLabel: "Mate",
+      tier: undefined,
+      services: [],
+      recipe: "absent",
+    });
     expect(options.map((option) => option.id)).toEqual(["none"]);
     expect(options[0]?.detail).toBe(
       "This project has no recipe on main yet. The agent sets the application up.",
     );
   });
 
+  // F9 (e2e, 2026-10-03): a recipe not read yet read as a missing one for a minute.
+  it.each(["reading", "unreadable"] as const)(
+    "never says there is no recipe while it is %s",
+    (recipe) => {
+      const options = recipeOptions({
+        roleLabel: "production",
+        tier: undefined,
+        services: [],
+        recipe,
+      });
+      expect(options[0]?.detail).toBe("The agent sets the application up.");
+    },
+  );
+
   it("still names the recipe when the tier declares no services", () => {
-    const options = recipeOptions({ roleLabel: "Mate", tier: TIER, services: [] });
+    const options = recipeOptions({
+      roleLabel: "Mate",
+      tier: TIER,
+      services: [],
+      recipe: "present",
+    });
     expect(options[0]?.detail).toBe("From the project's repository, on main.");
   });
 });
@@ -132,72 +163,34 @@ describe("validateCreationForm", () => {
     roleLabel: "stage",
     tier: TIER,
     services: ["app"],
+    recipe: "present",
   });
-  const valid = {
-    name: "Acme Docs - stage",
-    withAgent: true,
-    botName: "Otto",
-    recipeId: "tier",
-  };
+  const valid = { name: "Acme Docs - stage", withAgent: true, recipeId: "tier" };
 
   it("accepts a complete form", () => {
-    expect(
-      hasCreationErrors(validateCreationForm(valid, { takenBotNames: FEN_TAKEN, options })),
-    ).toBe(false);
-  });
-
-  it("wants a name for the environment", () => {
-    expect(
-      validateCreationForm({ ...valid, name: " " }, { takenBotNames: NONE_TAKEN, options }).name,
-    ).toBe("Give the environment a name.");
-  });
-
-  it("wants a name for the agent, short and unused", () => {
-    expect(
-      validateCreationForm({ ...valid, botName: "" }, { takenBotNames: NONE_TAKEN, options })
-        .botName,
-    ).toBe("Give the agent a name.");
-    expect(
-      validateCreationForm(
-        { ...valid, botName: "x".repeat(25) },
-        { takenBotNames: NONE_TAKEN, options },
-      ).botName,
-    ).toContain("24");
-    expect(
-      validateCreationForm({ ...valid, botName: "fen" }, { takenBotNames: FEN_TAKEN, options })
-        .botName,
-    ).toContain("already");
-  });
-
-  it("waits for the rest of the listing before a name it has not read passes as free", () => {
-    expect(
-      validateCreationForm(valid, {
-        takenBotNames: { names: ["Fen"], complete: false },
-        options,
-      }).botName,
-    ).toBe("Checking which names are taken…");
-  });
-
-  it("does not care about the agent's name when there is no agent", () => {
-    const errors = validateCreationForm(
-      { ...valid, withAgent: false, botName: "" },
-      { takenBotNames: NONE_TAKEN, options },
+    expect(hasCreationErrors(validateCreationForm(valid, { options, recipe: "present" }))).toBe(
+      false,
     );
-    expect(errors.botName).toBeUndefined();
+  });
+
+  // D3: one name, the project's, whether an agent runs in it or not.
+  it.each([true, false])("wants a name for the environment, the agent %s", (withAgent) => {
+    expect(
+      validateCreationForm({ ...valid, withAgent, name: " " }, { options, recipe: "present" }).name,
+    ).toBe("Give the environment a name.");
   });
 
   it("refuses nothing yet without an agent, and names a way out", () => {
     const errors = validateCreationForm(
       { ...valid, withAgent: false, recipeId: "none" },
-      { takenBotNames: NONE_TAKEN, options },
+      { options, recipe: "present" },
     );
     expect(errors.recipe).toContain("switch the agent on");
   });
 
   it("refuses an option that is not on offer", () => {
     expect(
-      validateCreationForm({ ...valid, recipeId: "store" }, { takenBotNames: NONE_TAKEN, options })
-        .recipe,
+      validateCreationForm({ ...valid, recipeId: "store" }, { options, recipe: "present" }).recipe,
     ).toBe("Choose what goes in the environment.");
   });
 });
@@ -208,97 +201,114 @@ describe("validateCreationForm, on an environment with no agent", () => {
    * pull request on the group repo. The old message stated the rule and left
    * the reader to deduce the order.
    */
-  it("says to merge a recipe first when the project has none", () => {
-    const options = recipeOptions({ roleLabel: "Prod", tier: undefined, services: [] });
-    expect(
-      validateCreationForm(
-        { name: "Acme - production", withAgent: false, botName: "", recipeId: "none" },
-        { takenBotNames: NONE_TAKEN, options },
-      ).recipe,
-    ).toBe("This project has no recipe on main yet. Merge one first, or switch the agent on.");
-  });
+  // F9: only HQ answering "none" says there is no recipe; a read not back yet, or one that failed,
+  // says so, and holds the form whatever is chosen.
+  it.each([
+    {
+      recipe: "absent",
+      withAgent: false,
+      says: "This project has no recipe on main yet. Merge one first, or switch the agent on.",
+    },
+    { recipe: "reading", withAgent: false, says: "Reading the project's recipe…" },
+    { recipe: "reading", withAgent: true, says: "Reading the project's recipe…" },
+    {
+      recipe: "unreadable",
+      withAgent: false,
+      says: "The project's recipe can't be read right now.",
+    },
+    {
+      recipe: "unreadable",
+      withAgent: true,
+      says: "The project's recipe can't be read right now.",
+    },
+  ] as const)(
+    "with the recipe $recipe, the agent $withAgent: $says",
+    ({ recipe, withAgent, says }) => {
+      const options = recipeOptions({ roleLabel: "Prod", tier: undefined, services: [], recipe });
+      expect(
+        validateCreationForm(
+          { name: "Acme - production", withAgent, recipeId: "none" },
+          { options, recipe },
+        ).recipe,
+      ).toBe(says);
+    },
+  );
 
   it("says to take the recipe when there is one", () => {
-    const options = recipeOptions({ roleLabel: "Prod", tier: TIER, services: ["app"] });
+    const options = recipeOptions({
+      roleLabel: "Prod",
+      tier: TIER,
+      services: ["app"],
+      recipe: "present",
+    });
     expect(
       validateCreationForm(
-        { name: "Acme - production", withAgent: false, botName: "", recipeId: "none" },
-        { takenBotNames: NONE_TAKEN, options },
+        { name: "Acme - production", withAgent: false, recipeId: "none" },
+        { options, recipe: "present" },
       ).recipe,
     ).toBe("Take the project's recipe, or switch the agent on to have one set up.");
   });
 });
 
+describe("creationRecipe — where the project's recipe stands for the creation forms", () => {
+  it.each([
+    { state: "loading", loading: true, recipe: "reading" },
+    // A dialog opened again says what the last read said, and waits for this one.
+    { state: "present", loading: true, recipe: "reading" },
+    { state: "absent", loading: true, recipe: "reading" },
+    { state: "present", loading: false, recipe: "present" },
+    { state: "absent", loading: false, recipe: "absent" },
+    { state: "unreadable", loading: false, recipe: "unreadable" },
+  ] as const)("$state, loading $loading: $recipe", ({ state, loading, recipe }) => {
+    expect(creationRecipe({ state, loading })).toBe(recipe);
+  });
+});
+
 describe("proposedEnvironmentName", () => {
-  it("names a Mate after its bot, not its role", () => {
-    expect(
-      proposedEnvironmentName({
-        groupName: "Todo",
-        roleLabel: "dev",
-        botName: "Fen",
-        taken: ["Todo - dev", "Todo - Vera"],
-      }),
-    ).toBe("Todo - Fen");
-  });
-
-  it("numbers a Mate whose bot's name is taken, and falls back to the role for a blank bot", () => {
-    expect(
-      proposedEnvironmentName({
-        groupName: "Todo",
-        roleLabel: "dev",
-        botName: "Fen",
-        taken: ["todo - fen"],
-      }),
-    ).toBe("Todo - Fen 2");
-    expect(
-      proposedEnvironmentName({ groupName: "Todo", roleLabel: "dev", botName: "  ", taken: [] }),
-    ).toBe("Todo - dev");
-  });
-
   it("names the environment after its role while that name is free", () => {
-    expect(proposedEnvironmentName({ groupName: "Shortlink", roleLabel: "dev", taken: [] })).toBe(
-      "Shortlink - dev",
+    expect(proposedEnvironmentName({ groupName: "Shortlink", roleLabel: "stage", taken: [] })).toBe(
+      "Shortlink - stage",
     );
   });
 
-  it("numbers the second Mate rather than proposing the first one's name", () => {
+  it("numbers the second stage rather than proposing the first one's name", () => {
     expect(
       proposedEnvironmentName({
         groupName: "Shortlink",
-        roleLabel: "dev",
-        taken: ["Shortlink - dev"],
+        roleLabel: "stage",
+        taken: ["Shortlink - stage"],
       }),
-    ).toBe("Shortlink - dev 2");
+    ).toBe("Shortlink - stage 2");
   });
 
   it("keeps counting past a run of them", () => {
     expect(
       proposedEnvironmentName({
         groupName: "Shortlink",
-        roleLabel: "dev",
-        taken: ["Shortlink - dev", "Shortlink - dev 2", "Shortlink - dev 3"],
+        roleLabel: "stage",
+        taken: ["Shortlink - stage", "Shortlink - stage 2", "Shortlink - stage 3"],
       }),
-    ).toBe("Shortlink - dev 4");
+    ).toBe("Shortlink - stage 4");
   });
 
   it("fills a gap left by a deleted environment", () => {
     expect(
       proposedEnvironmentName({
         groupName: "Shortlink",
-        roleLabel: "dev",
-        taken: ["Shortlink - dev", "Shortlink - dev 3"],
+        roleLabel: "stage",
+        taken: ["Shortlink - stage", "Shortlink - stage 3"],
       }),
-    ).toBe("Shortlink - dev 2");
+    ).toBe("Shortlink - stage 2");
   });
 
   it("reads a taken name regardless of case or padding", () => {
     expect(
       proposedEnvironmentName({
         groupName: "Shortlink",
-        roleLabel: "dev",
-        taken: ["  SHORTLINK - DEV  "],
+        roleLabel: "stage",
+        taken: ["  SHORTLINK - STAGE  "],
       }),
-    ).toBe("Shortlink - dev 2");
+    ).toBe("Shortlink - stage 2");
   });
 
   it("counts only the role it is naming", () => {
@@ -306,7 +316,7 @@ describe("proposedEnvironmentName", () => {
       proposedEnvironmentName({
         groupName: "Shortlink",
         roleLabel: "stage",
-        taken: ["Shortlink - dev", "Shortlink - dev 2"],
+        taken: ["Shortlink - production", "Shortlink - production 2"],
       }),
     ).toBe("Shortlink - stage");
   });
@@ -658,11 +668,9 @@ function change(overrides: Partial<FlowPullRequest> = {}): FlowPullRequest {
     title: "Mate: the group's import files",
     kind: "recipe",
     mateProjectId: "cleo-project",
-    author: "mate-cleo-project",
     url: "https://gitea.example.test/beviro/group/pulls/11",
-    checks: "none",
-    checkWord: undefined,
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: "abc1234",
@@ -698,11 +706,8 @@ describe("newMateRecipeChange — the change the recipe waits in", () => {
       found: { number: 11, mate: undefined },
     },
     {
-      case: "no proposal in a person's own change to the recipe",
-      flow: {
-        changesKnown: true,
-        pullRequests: [change({ title: "Add a stage tier", mateProjectId: undefined })],
-      },
+      case: "no proposal in another change to the recipe",
+      flow: { changesKnown: true, pullRequests: [change({ title: "Add a stage tier" })] },
       found: undefined,
     },
     {
@@ -718,6 +723,50 @@ describe("newMateRecipeChange — the change the recipe waits in", () => {
     { case: "none before the forge read anything", flow: undefined, found: undefined },
   ])("finds $case", ({ flow, found }) => {
     expect(newMateRecipeChange({ flow, mateName: (id) => names[id] })).toEqual(found);
+  });
+});
+
+// SPEC §3.2c with main's D24/D25: Cleo's proposal as HQ's stream says it — a change in the
+// application's recipe repository under zcp's exact title — shuts the door on Review the change
+// while it is open, and reads the recipe again once it lands.
+describe("the recipe's proposal, as HQ holds it", () => {
+  const proposal = (over: Partial<HqChange>): HqChange => ({
+    appId: "beviro",
+    repo: RECIPE_REPO,
+    number: 11,
+    mateProjectId: "cleo-project",
+    title: RECIPE_PROPOSAL_TITLE,
+    body: "",
+    state: "open",
+    head: "c0ffee",
+    mergedSha: null,
+    landedHead: null,
+    openedAt: "2026-10-02T09:00:00.000Z",
+    mergedAt: null,
+    closedAt: null,
+    updatedAt: "2026-10-02T09:00:00.000Z",
+    mergeability: "clean",
+    behind: false,
+    ...over,
+  });
+  const flow = (changes: ReadonlyArray<HqChange>) =>
+    flowChanges({ changes, hqAddress: "https://hq.example.test" });
+
+  it("is the change the recipe waits in while it is open", () => {
+    const { pullRequests } = flow([proposal({})]);
+    expect(
+      newMateRecipeChange({
+        flow: { changesKnown: true, pullRequests },
+        mateName: (id) => (id === "cleo-project" ? "Cleo" : undefined),
+      }),
+    ).toEqual({ number: 11, mate: "Cleo" });
+  });
+
+  it("is the landing the recipe is read again on once it merged", () => {
+    const { merged } = flow([
+      proposal({ state: "merged", mergedSha: "d00d", mergedAt: "2026-10-02T10:00:00.000Z" }),
+    ]);
+    expect(landedRecipeProposal(merged)).toBe(11);
   });
 });
 
@@ -739,11 +788,28 @@ describe("landedRecipeProposal — the proposal that landed last", () => {
 });
 
 describe("newMateDoorMates — the project's Mates, listed and coming", () => {
-  function listed(id: string, tagList: ReadonlyArray<string>): { readonly item: ZeropsCandidate } {
+  /** A project of Beviro, placed by HQ as `kind`; a Mate under the name HQ records, if any. */
+  function listed(
+    id: string,
+    kind: HqPlacement["kind"],
+    name = `Beviro - ${id}`,
+  ): { readonly item: ZeropsCandidate } {
+    const hq: HqPlacement = {
+      appId: "beviro",
+      appName: "Beviro",
+      kind,
+      mate: kind === "mate" ? { face: "" } : null,
+    };
     return {
       item: {
         key: `${id}:zcp`,
-        project: { id, name: `Beviro - ${id}`, status: "ACTIVE", tagList },
+        project: {
+          id,
+          name,
+          status: "ACTIVE",
+          tagList: kind === "mate" ? ["mate"] : [],
+          hq,
+        },
         group: "ready",
         service: { id: "zcp", name: "zcp", status: "ACTIVE" },
       },
@@ -756,12 +822,12 @@ describe("newMateDoorMates — the project's Mates, listed and coming", () => {
   ): ZeropsGroupPendingMember {
     return { projectId, kind, name, startedAt: 0 };
   }
-  it("names each Mate by its agent, then those still coming, and leaves the stops out", () => {
+  it("names each Mate by its project, then those still coming, and leaves the stops out", () => {
     const mates = newMateDoorMates({
       environments: [
-        listed("cleo-project", ["mate", "mate:g:beviro", "mate:role:dev", "mate:bot:Cleo"]),
-        listed("stage-project", ["mate:g:beviro", "mate:role:stage"]),
-        listed("unnamed-project", ["mate", "mate:g:beviro", "mate:role:dev"]),
+        listed("cleo-project", "mate", "Cleo"),
+        listed("stage-project", "stage"),
+        listed("beviro-project", "mate"),
       ],
       pending: [
         coming("wren-project", "mate", "Wren"),
@@ -771,7 +837,7 @@ describe("newMateDoorMates — the project's Mates, listed and coming", () => {
     });
     expect(mates).toEqual([
       { projectId: "cleo-project", name: "Cleo" },
-      { projectId: "unnamed-project", name: "Beviro - unnamed-project" },
+      { projectId: "beviro-project", name: "Beviro - beviro-project" },
       { projectId: "wren-project", name: "Wren" },
     ]);
   });
@@ -788,13 +854,13 @@ describe("recipeChangeView — where Review the change goes", () => {
 
 // The Add dialog stays on the press until the Mate needs no browser (live, 2026-10-01: a tab
 // closed 2 s after the dialog left a Mate with no container).
-describe("pressSteps — the press as Finish setup draws it", () => {
+describe("pressSteps — the press as the Add dialog draws it", () => {
+  // As a Mate's press runs (F6b): its record in its application before its container.
   const plan: ReadonlyArray<EnvironmentCreationStep> = [
     { kind: "create-project", name: "Beviro - Ivo", tagList: [], location: undefined },
+    { kind: "register" },
     { kind: "import-container", agents: [] },
     { kind: "close-off" },
-    { kind: "register" },
-    { kind: "share-reach" },
     { kind: "await-ready", withAgent: true },
   ];
   const at = (states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>, error?: string) =>
@@ -809,31 +875,31 @@ describe("pressSteps — the press as Finish setup draws it", () => {
   it.each([
     {
       case: "creating the project",
-      states: ["running", "queued", "queued", "queued", "queued", "queued"],
-      want: ["Project:active", "Container:waiting", "Closed off:waiting", "Registered:waiting"],
+      states: ["running", "queued", "queued", "queued", "queued"],
+      want: ["Project:active", "Registered:waiting", "Container:waiting", "Closed off:waiting"],
     },
     {
-      case: "registering it, closed off",
-      states: ["done", "done", "done", "running", "queued", "queued"],
-      want: ["Project:done", "Container:done", "Closed off:done", "Registered:active"],
+      case: "registering it, before its container",
+      states: ["done", "running", "queued", "queued", "queued"],
+      want: ["Project:done", "Registered:active", "Container:waiting", "Closed off:waiting"],
     },
     {
       case: "a container that would not come",
-      states: ["done", "failed", "queued", "queued", "queued", "queued"],
-      want: ["Project:done", "Container:failed", "Closed off:waiting", "Registered:waiting"],
+      states: ["done", "done", "failed", "queued", "queued"],
+      want: ["Project:done", "Registered:done", "Container:failed", "Closed off:waiting"],
     },
   ] as const)("draws $case", ({ states, want }) => {
     expect(drawn(at(states))).toEqual(want);
   });
 
-  // The dialog stays through the registration — a call or two — and goes before the group's
-  // sight of it and the wait for it, which the reconcile and the container cover.
+  // The dialog stays through the registration — a call or two — and goes before the wait for it,
+  // which the container covers.
   it("says nothing of what comes after the registration", () => {
-    expect(pressSteps(at(["done", "done", "done", "done", "running", "queued"]))).toHaveLength(4);
+    expect(pressSteps(at(["done", "done", "done", "done", "running"]))).toHaveLength(4);
   });
 
   it("leaves Registered out of a press that writes no registration", () => {
-    const progress = at(["done", "done", "done", "done", "running", "queued"]).filter(
+    const progress = at(["done", "done", "done", "done", "running"]).filter(
       (entry) => entry.step.kind !== "register",
     );
     expect(drawn(progress)).toEqual(["Project:done", "Container:done", "Closed off:done"]);
@@ -841,23 +907,23 @@ describe("pressSteps — the press as Finish setup draws it", () => {
 
   it.each([
     {
-      case: "closing off",
-      states: ["done", "done", "running", "queued", "queued", "queued"],
-      want: false,
-    },
-    {
       case: "registering",
-      states: ["done", "done", "done", "running", "queued", "queued"],
+      states: ["done", "running", "queued", "queued", "queued"],
       want: false,
     },
     {
-      case: "registered",
-      states: ["done", "done", "done", "done", "running", "queued"],
+      case: "closing off",
+      states: ["done", "done", "done", "running", "queued"],
+      want: false,
+    },
+    {
+      case: "registered and closed off",
+      states: ["done", "done", "done", "done", "running"],
       want: true,
     },
     {
-      case: "its registration refused",
-      states: ["done", "done", "done", "failed", "running", "queued"],
+      case: "its registration refused, closed off",
+      states: ["done", "failed", "done", "done", "running"],
       want: true,
     },
   ] as const)(

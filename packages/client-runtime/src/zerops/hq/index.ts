@@ -1,0 +1,99 @@
+export {
+  findOfficialHq,
+  hqAnchorName,
+  hqOrgTokenName,
+  ownersAndAdmins,
+  type OfficialHq,
+} from "./anchor.ts";
+export {
+  HQ_BIRTH_DOING,
+  HQ_BIRTH_START,
+  HQ_BIRTH_STEPS,
+  HQ_BIRTH_WAITS,
+  HQ_PROJECT_NAME,
+  hqImportYaml,
+  runHqBirth,
+  type HqBirthDeps,
+  type HqBirthOutcome,
+  type HqBirthPlatform,
+  type HqBirthRecord,
+  type HqBirthStep,
+  type HqBirthWaits,
+  type HqCoreArtifact,
+} from "./birth.ts";
+export {
+  attachToApp,
+  HQ_WRITE_UNCERTAIN,
+  HqError,
+  makeHqApi,
+  readHqHealth,
+  type Asked,
+  type HqApi,
+  type HqAttach,
+  type HqBirth,
+  type HqMate,
+  type HqEndpoint,
+  type HqHealth,
+  type HqSocket,
+  type HqStructure,
+  type HqAppContents,
+  type OpenHqSocket,
+} from "./client.ts";
+export {
+  deployAnswerFollowing,
+  deployAnswerSaid,
+  type DeployAnswerEnvironment,
+  type DeployAnswerJob,
+  type DeployAnswerSaid,
+} from "./deployAnswer.ts";
+export { deployLogTarget, inspectDeployLog, type DeployLogTarget } from "./deployLog.ts";
+export { applyMatesEvent, applyPeopleEvent } from "./mates.ts";
+export {
+  birthIntentOf,
+  menuRowsFromHq,
+  placeListing,
+  placeProject,
+  placeProjects,
+  placementsOf,
+  type HqPlacement,
+} from "./placement.ts";
+export {
+  applyChangesEvent,
+  applyAppReadsEvent,
+  applyStructureEvent,
+  structureEventOf,
+  type HqChanges,
+  type HqMates,
+  type HqAppReads,
+  type HqStructureEvent,
+} from "./stream.ts";
+export {
+  environmentsOf,
+  jobFailed,
+  jobInFlight,
+  jobsByService,
+  type HqEnvironment,
+  type HqJob,
+  type ServiceJobs,
+} from "./environments.ts";
+export { enrollmentRefusalWords, HQ_NOT_OPEN, hqRefusalWords, NO_HQ_WORDS } from "./refusals.ts";
+export {
+  EMPTY_REGISTRY,
+  registryFromHq,
+  type ZeropsRegistry,
+  type ZeropsRegistryGroup,
+  type ZeropsRegistryProject,
+} from "./registry.ts";
+
+export {
+  makeRepositoryStore,
+  repositoryKey,
+  selectRepositorySource,
+  type RepositoryTarget,
+} from "./repositoryStore.ts";
+
+export {
+  makeGitCredentialStore,
+  selectGitCredentials,
+  type GitCredentialSnapshot,
+} from "./gitCredentialStore.ts";

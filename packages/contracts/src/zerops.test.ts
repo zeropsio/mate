@@ -10,6 +10,7 @@ import {
   ZeropsAgentAuthState,
   ZeropsAgentId,
   ZeropsAgentLoginCancelInput,
+  ZeropsAgentLoginError,
   ZeropsAgentLoginPhase,
   ZeropsAgentLoginStartInput,
   ZeropsAgentLoginStartResult,
@@ -21,6 +22,7 @@ import {
   ZeropsLoginRemoveInput,
 } from "./zerops.ts";
 
+const decodeLoginError = Schema.decodeUnknownSync(ZeropsAgentLoginError);
 const decodeAgentId = Schema.decodeUnknownSync(ZeropsAgentId);
 const decodeAgentAuthState = Schema.decodeUnknownSync(ZeropsAgentAuthState);
 const decodeAgentAuth = Schema.decodeUnknownSync(ZeropsAgentAuth);
@@ -343,7 +345,7 @@ describe("ZeropsLogin", () => {
   it.each([
     { name: "an unknown kind", patch: { kind: "oauth" } },
     { name: "a state outside the classification", patch: { state: "local-only" } },
-    { name: "an id a signer tag could not carry", patch: { id: "claude:work" } },
+    { name: "an id outside the instance-id slug rules", patch: { id: "claude:work" } },
   ])("rejects $name", ({ patch }) => {
     expect(() =>
       decodeLogin({
@@ -420,7 +422,7 @@ describe("login-targeted agent login inputs", () => {
     expect(decode().loginId).toBe("codex-work");
   });
 
-  it("rejects a login id a signer tag could not carry", () => {
+  it("rejects a login id outside the instance-id slug rules", () => {
     expect(() => decodeLoginCancelInput({ agentId: "codex", loginId: "codex:work" })).toThrow();
   });
 });
@@ -453,4 +455,13 @@ describe("ZeropsLoginAddInput / ZeropsLoginRemoveInput", () => {
   it("decodes a removal", () => {
     expect(decodeLoginRemoveInput({ id: "codex-work" })).toEqual({ id: "codex-work" });
   });
+});
+
+it("decodes a signer persistence failure from adding a login", () => {
+  const decoded = decodeLoginError({
+    _tag: "ZeropsAgentLoginError",
+    reason: "signer-write-failed",
+    detail: "Sign-in could not be recorded.",
+  });
+  expect(decoded.reason).toBe("signer-write-failed");
 });

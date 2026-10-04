@@ -17,6 +17,7 @@
  * Pure: the words, the face and the steps; the views draw them.
  */
 import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
+import { enrollmentRefusalWords, NO_HQ_WORDS } from "@t3tools/client-runtime/zerops/hq";
 import type { MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
@@ -58,8 +59,6 @@ export type ArrivalKind =
   | "sign-in-colleague"
   /** Signed in, the ask on its way. */
   | "standing-up"
-  /** The ask did not go through. */
-  | "failed"
   /** Ready: the question the composer answers. */
   | "question";
 
@@ -81,8 +80,6 @@ export function arrivalHeadlineClauses(mate: Named, kind: ArrivalKind): Readonly
       return mate.project === undefined
         ? [`${keptWhole(mate.name)} is standing up development.`]
         : [`${keptWhole(mate.name)} is standing up development on ${keptWhole(mate.project)}.`];
-    case "failed":
-      return [`The message to ${keptWhole(mate.name)} didn't go through.`];
     case "question":
       return [mateQuestion(mate)];
   }
@@ -150,10 +147,6 @@ export function arrivalSentence(
       return context.agentReady === true
         ? "Its agent is ready. It starts in a moment."
         : "Signed in. It starts in a moment.";
-    case "failed":
-      return context.agentReady === true
-        ? `${name}'s agent is ready, but your ask to stand up development didn't reach it.`
-        : `${name} is signed in, but your ask to stand up development didn't reach it.`;
     case "reaching":
     case "unreachable":
     case "question":
@@ -179,7 +172,6 @@ export function arrivalFace(
     case "unreachable":
       return "sleep";
     case "coming-failed":
-    case "failed":
       return "needs";
     case "standing-up":
       return "working";
@@ -349,7 +341,7 @@ const timeOf = (startedAt: string | undefined, endedAt: string | undefined, nowM
 
 /**
  * The arrival's steps from the Mate's birth: its project's own steps first where it has them (a
- * New project's Git hosting and registration), then the Mate's copy of the project — the managed
+ * New project's HQ and registration), then the Mate's copy of the project — the managed
  * services its first import brings, what it waits on, on a quiet line under it — then its
  * workspace (the container, its address, closing it off, the runtimes' import, Mate answering,
  * the first connect: one step to the person) with the runtimes it imports under it, then — as
@@ -367,8 +359,8 @@ export function arrivalSteps(
     /** The tier's runtimes, imported once the project is closed off (`birthRuntimesFacts`). */
     readonly runtimes?: { readonly runtimes: ReadonlyArray<BirthService> };
     /** What the Mate's own setup says (`/mate/setup.json`); absent before it answers, or ever. */
-    readonly setup?: Pick<MateSetup, "git" | "signin" | "standup"> | undefined;
-    /** The steps this tab runs for it, while it holds them: under its project's row. */
+    readonly setup?: Pick<MateSetup, "git" | "gitFailure" | "signin" | "standup"> | undefined;
+    /** The steps this tab runs for it, while it holds them. */
     readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
     /**
      * An agent Mate signs nobody in to (Cursor, OpenCode, Grok, Antigravity) is ready on it, and
@@ -455,10 +447,21 @@ export function arrivalSteps(
   }
   const setup = progress.setup;
   if (setup?.git !== undefined) {
+    // Its enrollment with HQ: where it failed, why and what the person can do — a New project's
+    // first Mate has no stand-up to say it otherwise.
+    const failure = setup.git === "failed" ? setup.gitFailure : undefined;
     steps.push({
       id: "git",
       label: `${mate.name}'s Git access`,
-      state: setup.git === "done" ? "done" : "active",
+      state: setup.git === "done" ? "done" : setup.git === "failed" ? "failed" : "active",
+      ...optional(
+        "why",
+        failure === undefined
+          ? undefined
+          : failure.reason === "no_hq"
+            ? NO_HQ_WORDS
+            : enrollmentRefusalWords(failure.code),
+      ),
     });
   }
   if (progress.agentReady === true) {

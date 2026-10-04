@@ -18,7 +18,6 @@ function land(focusOnArrival: boolean) {
         coming={{ kind: "coming", sentence: KEEP_OPEN, below: null }}
         focusOnArrival={focusOnArrival}
         mate={{ name: "Ida", tint: "rose", shape: "seal", project: "Acme CRM", connected: false }}
-        onRetry={() => undefined}
         phase={null}
         signIn={null}
         signInRequired={false}

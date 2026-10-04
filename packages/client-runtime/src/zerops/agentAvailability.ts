@@ -35,10 +35,7 @@
  *
  * `classifyZeropsAgentAuth` no longer has a "the provider check hasn't
  * answered yet" limbo: the platform sign-in flag decides the moment it is
- * set, full stop. `agentOwnership.ts`'s `record-failed` still has no slot in
- * the composer/picker's action table, so it folds into `unrecorded` — the
- * one recovery offered either way is running the sign-in flow again, which
- * re-attempts the record write on success.
+ * set, full stop.
  *
  * ## Known inputs
  *
@@ -57,12 +54,14 @@ import {
   type ZeropsAgentAuthKind,
 } from "@t3tools/shared/zeropsAgentAuth";
 import type {
+  ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
   ZeropsAgentId,
   ZeropsAgentLoginPhase,
 } from "@t3tools/contracts";
 
 import type { ZeropsAgentAuthorizer } from "./agentOwnership.ts";
+import { agentAuthAction } from "./agentLogin.ts";
 import { mateLoginAsAgentRow } from "./logins.ts";
 import type { Known } from "./knowledge/index.ts";
 
@@ -72,7 +71,7 @@ export type ZeropsAgentSignInKind = Exclude<
   "authorized" | "registering"
 >;
 
-export type ZeropsAgentAvailability =
+export type ZeropsAgentAvailability = (
   | { readonly kind: "ready" }
   /** Signed in inside this container, the project flag seconds away — the CLI works, only ownership decides. */
   | { readonly kind: "registering" }
@@ -81,12 +80,16 @@ export type ZeropsAgentAvailability =
   | { readonly kind: "needs-sign-in"; readonly signInKind: ZeropsAgentSignInKind }
   /** Someone else signed this agent in — or the viewer could not be identified (turnRefusal treats both alike). */
   | { readonly kind: "someone-else"; readonly signerId: string | undefined }
-  /** Signed in on the project, but no signer was recorded for it (or this browser's own record write failed, H13). */
+  /** Signed in on the project, but no signer was recorded for it. */
   | { readonly kind: "unrecorded" }
-  /** The project records its sign-in for two or more people: nobody's until signed in again. */
-  | { readonly kind: "unsettled" }
   /** The agent's row is not known yet, or its read failed: the read says which. */
-  | { readonly kind: "unknown"; readonly read: ZeropsAgentAuthUnknown };
+  | { readonly kind: "unknown"; readonly read: ZeropsAgentAuthUnknown }
+) & {
+  readonly ended?: {
+    readonly action: "check-again" | "register-again";
+    readonly reason?: string | undefined;
+  };
+};
 
 const IN_PROGRESS_LOGIN_PHASES: ReadonlySet<ZeropsAgentLoginPhase> = new Set([
   "starting",
@@ -96,13 +99,12 @@ const IN_PROGRESS_LOGIN_PHASES: ReadonlySet<ZeropsAgentLoginPhase> = new Set([
 ]);
 
 /** One agent's row of the agent-auth feed (C13), with the signer of record (C14). */
-export interface ZeropsAgentAuthFacts extends ZeropsAgentAuthFields {
+export interface ZeropsAgentAuthFacts
+  extends ZeropsAgentAuthFields, Pick<ZeropsAgentAuth, "verification" | "registration"> {
   readonly flagToken: boolean;
   /** Only the phase matters here — the rest of the login session is presentation. */
   readonly loginPhase?: ZeropsAgentLoginPhase | undefined;
   readonly authorizedBy?: ZeropsAgentAuthorizer | undefined;
-  /** The project records its sign-in for two or more people: whose it is is not known. */
-  readonly signerUnknown?: boolean | undefined;
 }
 
 /**
@@ -173,8 +175,6 @@ export interface ZeropsAgentAvailabilityInput {
   readonly agent: ZeropsAgentAuthRead;
   /** The signed-in Zerops user's id, or `undefined` when nobody is signed in. */
   readonly viewerSubject: string | undefined;
-  /** This browser's own signer-record write for this agent has failed and not yet succeeded (H13). */
-  readonly recordFailed?: boolean | undefined;
 }
 
 export function resolveZeropsAgentAvailability(
@@ -194,12 +194,7 @@ export function resolveZeropsAgentAvailability(
       : agent.flagToken
         ? { kind: "ready" }
         : resolveZeropsAgentOwnership(
-            {
-              authorizedBy: agent.authorizedBy,
-              signerUnknown: agent.signerUnknown,
-              viewerSubject: input.viewerSubject,
-              recordFailed: input.recordFailed,
-            },
+            { authorizedBy: agent.authorizedBy, viewerSubject: input.viewerSubject },
             auth,
           );
 
@@ -217,28 +212,34 @@ export function resolveZeropsAgentAvailability(
     return { kind: "signing-in" };
   }
 
+  const action = agentAuthAction(agent);
+  if (
+    otherwise.kind !== "ready" &&
+    otherwise.kind !== "someone-else" &&
+    (action === "check-again" || action === "register-again")
+  ) {
+    return {
+      ...otherwise,
+      ended: { action, reason: agent.verification?.reason ?? agent.registration?.reason },
+    };
+  }
   return otherwise;
 }
 
 /**
  * Ownership, ported from `turnRefusal` rather than `resolveAgentOwnership`:
  * an unidentified viewer is `someone-else`, not `unrecorded` — the server
- * refuses it as somebody else's either way. `recordFailed` (this browser's
- * own just-attempted write, H13) only matters when nothing is recorded at
- * all; an `authorizedBy` tag the server already carries — naming the viewer
- * or somebody else — is the truth regardless of a stale local failure flag.
+ * refuses it as somebody else's either way.
  */
 function resolveZeropsAgentOwnership(
-  input: Pick<ZeropsAgentAuthFacts, "authorizedBy" | "signerUnknown"> &
-    Pick<ZeropsAgentAvailabilityInput, "viewerSubject" | "recordFailed">,
+  input: Pick<ZeropsAgentAuthFacts, "authorizedBy"> &
+    Pick<ZeropsAgentAvailabilityInput, "viewerSubject">,
   auth: Extract<ZeropsAgentAuthKind["kind"], "authorized" | "registering">,
 ): ZeropsAgentAvailability {
   const signer = input.authorizedBy?.subject;
   const runnable: ZeropsAgentAvailability =
     auth === "authorized" ? { kind: "ready" } : { kind: "registering" };
-  if (signer === undefined || signer.length === 0) {
-    return input.signerUnknown === true ? { kind: "unsettled" } : { kind: "unrecorded" };
-  }
+  if (signer === undefined || signer.length === 0) return { kind: "unrecorded" };
   if (input.viewerSubject !== signer) return { kind: "someone-else", signerId: signer };
   return runnable;
 }

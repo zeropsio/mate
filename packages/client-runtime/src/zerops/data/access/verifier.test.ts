@@ -1,9 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 
-import { ZeropsApiError, type ZeropsProject, type ZeropsUser } from "../../api.ts";
+import {
+  ZeropsApiError,
+  type ZeropsProject,
+  type ZeropsUser,
+  type ZeropsApiClient,
+} from "../../api.ts";
 import { account, organization, project as projectRef } from "../__fixtures__/index.ts";
 import { ZeropsOrganizationId, ZeropsProjectId, type ProjectRef } from "../types.ts";
 import type { GrantEvent } from "./grant.ts";
@@ -35,18 +39,20 @@ const elsewhere: ProjectRef = {
 };
 
 const verifierOver = (
-  client: Partial<AccessVerifierClient>,
+  client: Partial<AccessVerifierClient & Pick<ZeropsApiClient, "readAccessibleClientProjects">>,
   concurrency = 4,
   recentUser?: RestAccessVerifierOptions["recentUser"],
 ) => {
   const users: ZeropsUser[] = [];
   const verifier = makeRestAccessVerifier({
-    client: {
-      fetchUser: async () => user,
-      readAccessibleClientProjects: async () => ({ projects: [], direct: false }),
-      fetchProject: async (id) => project(id),
-      ...client,
-    },
+    client: Object.assign(
+      {
+        fetchUser: async () => user,
+        readAccessibleClientProjects: async () => ({ projects: [], direct: false }),
+        fetchProject: async (id: string) => project(id),
+      },
+      client,
+    ),
     account,
     concurrency,
     onUser: (read) => users.push(read),
@@ -98,8 +104,8 @@ describe("the round's user", () => {
 });
 
 const round = Effect.fnUntraced(function* (
-  client: Partial<AccessVerifierClient>,
-  carried: ReadonlyArray<ProjectRef> = [],
+  client: Partial<AccessVerifierClient & Pick<ZeropsApiClient, "readAccessibleClientProjects">>,
+  carried: ReadonlyArray<ProjectRef> = [projectRef("a")],
   concurrency = 4,
 ) {
   const events: GrantEvent[] = [];
@@ -119,35 +125,71 @@ const round = Effect.fnUntraced(function* (
   return { events, outcomes, result, users };
 });
 
-describe("the REST access verifier's round (DESIGN G1)", () => {
-  it.effect("lists every organization before it reads a project, then reports each read", () =>
-    Effect.gen(function* () {
-      const { events, result, users } = yield* round({
-        readAccessibleClientProjects: async () => ({
-          projects: [project("a"), project("b")],
-          direct: false,
-        }),
-      });
-
-      expect(result._tag).toBe("Success");
-      expect(users).toEqual([user]);
-      expect(events.map(({ type }) => type)).toEqual([
-        "ROUND_ACCOUNT",
-        "ROUND_PROJECT",
-        "ROUND_PROJECT",
-      ]);
-      expect(events[0]).toMatchObject({
-        round: 7,
-        organizations: [{ organization, mutationsAllowed: true }],
-        projects: [projectRef("a"), projectRef("b")],
-      });
-    }),
+describe("targeted renewal", () => {
+  it.effect.each([0, 1, 2])(
+    "reads selected project detail without listing any of three orgs (outage %s)",
+    (outage) =>
+      Effect.gen(function* () {
+        const reads: string[] = [];
+        const clients = ["org-1", "org-2", "org-3"];
+        const target = {
+          ...projectRef("opened"),
+          organization: { ...organization, organizationId: ZeropsOrganizationId.make("org-2") },
+        };
+        const { verifier } = verifierOver({
+          fetchUser: async () => ({
+            ...user,
+            clientUserList: clients.map((clientId) => ({
+              id: clientId,
+              clientId,
+              roleCode: "OWNER",
+            })),
+          }),
+          readAccessibleClientProjects: async (id) => {
+            reads.push(`list:${id}`);
+            if (id === clients[outage]) throw new ZeropsApiError("Unavailable", "server", 503);
+            return { projects: [], direct: true };
+          },
+          fetchProject: async (id) => {
+            reads.push(`project:${id}`);
+            return { ...project(id), clientId: "org-2" };
+          },
+        });
+        const events: GrantEvent[] = [];
+        const result = yield* Effect.result(
+          verifier.verifyRound({
+            round: 1,
+            carried: [target],
+            report: (event) => Effect.sync(() => events.push(event)),
+          }),
+        );
+        expect(result._tag).toBe("Success");
+        expect(reads).toEqual(["project:opened"]);
+        expect(events[0]).toMatchObject({ type: "ROUND_ACCOUNT", projects: [target] });
+      }),
   );
+});
 
+describe("the REST access verifier's round", () => {
   it.effect.each([
-    ["OWNER", { role: "OWNER", mutationsAllowed: true }],
-    ["READ_ONLY", { role: "READ_ONLY", mutationsAllowed: false }],
-    ["NO_ACCESS", { role: "NO_ACCESS", mutationsAllowed: false }],
+    [
+      "OWNER",
+      {
+        role: "OWNER",
+        mutationsAllowed: true,
+        userRoles: [{ clientUserId: "membership", roleCode: "OWNER" }],
+      },
+    ],
+    [
+      "READ_ONLY",
+      {
+        role: "READ_ONLY",
+        mutationsAllowed: false,
+        userRoles: [{ clientUserId: "membership", roleCode: "READ_ONLY" }],
+      },
+    ],
+    // Hidden from the viewer: its grants are not theirs to know.
+    ["NO_ACCESS", { role: "NO_ACCESS", mutationsAllowed: false, userRoles: [] }],
   ] as const)("verifies a project read with a %s override", ([roleCode, access]) =>
     Effect.gen(function* () {
       const { outcomes } = yield* round({
@@ -164,98 +206,6 @@ describe("the REST access verifier's round (DESIGN G1)", () => {
       });
     }),
   );
-
-  it.effect.each([
-    ["OWNER", { role: "OWNER", mutationsAllowed: true }],
-    ["READ_ONLY", { role: "READ_ONLY", mutationsAllowed: false }],
-    ["NO_ACCESS", { role: "NO_ACCESS", mutationsAllowed: false }],
-    [undefined, { role: "OWNER", mutationsAllowed: true }],
-  ] as const)(
-    "verifies a project the organization's direct list carries with %s overrides from the list itself, reading none",
-    ([roleCode, access]) =>
-      Effect.gen(function* () {
-        const reads: string[] = [];
-        const { outcomes } = yield* round({
-          readAccessibleClientProjects: async () => ({
-            projects: [
-              { ...project("a", roleCode), userRoles: project("a", roleCode).userRoles ?? [] },
-            ],
-            direct: true,
-          }),
-          fetchProject: async (id) => {
-            reads.push(id);
-            return project(id);
-          },
-        });
-
-        expect(outcomes.get(ZeropsProjectId.make("a"))).toEqual({
-          kind: "verified",
-          access: { project: projectRef("a"), ...access },
-        });
-        expect(reads).toEqual([]);
-      }),
-  );
-
-  it.effect(
-    "a round over a direct list of N projects reads no project, whatever N; a carried project it omits is still read",
-    () =>
-      Effect.gen(function* () {
-        const reads: string[] = [];
-        const listed = Array.from({ length: 40 }, (_, index) => ({
-          ...project(`p${index}`),
-          userRoles: [],
-        }));
-        const { outcomes } = yield* round(
-          {
-            readAccessibleClientProjects: async () => ({ projects: listed, direct: true }),
-            fetchProject: async (id) => {
-              reads.push(id);
-              return project(id);
-            },
-          },
-          [projectRef("created")],
-        );
-
-        expect(reads).toEqual(["created"]);
-        expect(outcomes.size).toBe(41);
-      }),
-  );
-
-  it.effect(
-    "reads each project a searched list names: its overrides are not the project's own",
-    () =>
-      Effect.gen(function* () {
-        const reads: string[] = [];
-        yield* round({
-          readAccessibleClientProjects: async () => ({
-            projects: [{ ...project("a"), userRoles: [] }],
-            direct: false,
-          }),
-          fetchProject: async (id) => {
-            reads.push(id);
-            return project(id);
-          },
-        });
-
-        expect(reads).toEqual(["a"]);
-      }),
-  );
-
-  it.effect("reads a project the direct list carries without its overrides", () =>
-    Effect.gen(function* () {
-      const reads: string[] = [];
-      yield* round({
-        readAccessibleClientProjects: async () => ({ projects: [project("a")], direct: true }),
-        fetchProject: async (id) => {
-          reads.push(id);
-          return project(id);
-        },
-      });
-
-      expect(reads).toEqual(["a"]);
-    }),
-  );
-
   it.effect.each([
     ["forbidden", "direct-forbidden"],
     ["not-found", "direct-not-found"],
@@ -274,16 +224,19 @@ describe("the REST access verifier's round (DESIGN G1)", () => {
 
   it.effect("an unavailable project read is that project's failure, and the round goes on", () =>
     Effect.gen(function* () {
-      const { outcomes, result } = yield* round({
-        readAccessibleClientProjects: async () => ({
-          projects: [project("down"), project("up")],
-          direct: false,
-        }),
-        fetchProject: async (id) => {
-          if (id === "down") throw new ZeropsApiError("Unavailable", "server", 503);
-          return project(id);
+      const { outcomes, result } = yield* round(
+        {
+          readAccessibleClientProjects: async () => ({
+            projects: [project("down"), project("up")],
+            direct: false,
+          }),
+          fetchProject: async (id) => {
+            if (id === "down") throw new ZeropsApiError("Unavailable", "server", 503);
+            return project(id);
+          },
         },
-      });
+        [projectRef("down"), projectRef("up")],
+      );
 
       expect(result._tag).toBe("Success");
       expect(outcomes.get(ZeropsProjectId.make("down"))).toEqual({
@@ -311,82 +264,6 @@ describe("the REST access verifier's round (DESIGN G1)", () => {
       expect(requested).toEqual(["created"]);
     }),
   );
-
-  it.effect(
-    "fails as a round, in the platform's words, when an organization list fails, before any project is read",
-    () =>
-      Effect.gen(function* () {
-        const { events, result } = yield* round({
-          readAccessibleClientProjects: async () => {
-            throw new ZeropsApiError("Zerops is down for maintenance.", "server", 503);
-          },
-        });
-
-        expect(result).toMatchObject({
-          _tag: "Failure",
-          failure: {
-            failure: { kind: "server", status: 503 },
-            message: "Zerops is down for maintenance.",
-          },
-        });
-        expect(events).toEqual([]);
-      }),
-  );
-
-  it.effect.each(["fetchUser", "readAccessibleClientProjects"] as const)(
-    "an abandoned round aborts its HTTP reads: %s",
-    (held) =>
-      Effect.gen(function* () {
-        const signals: Array<AbortSignal | undefined> = [];
-        const reading = Promise.withResolvers<void>();
-        /** A read that answers only when its round lets it go. */
-        const hang = (signal: AbortSignal | undefined) => {
-          signals.push(signal);
-          reading.resolve();
-          return new Promise<never>(() => undefined);
-        };
-        const { verifier } = verifierOver(
-          held === "fetchUser"
-            ? { fetchUser: (signal) => hang(signal) }
-            : { readAccessibleClientProjects: (_id, options) => hang(options?.signal) },
-        );
-        const round = yield* Effect.forkChild(
-          verifier.verifyRound({ round: 7, carried: [], report: () => Effect.void }),
-        );
-        yield* Effect.promise(() => reading.promise);
-
-        yield* Fiber.interrupt(round);
-
-        expect(signals).toHaveLength(1);
-        expect(signals[0]?.aborted).toBe(true);
-      }),
-  );
-
-  it.effect("reads at most `concurrency` projects at once", () =>
-    Effect.gen(function* () {
-      let inFlight = 0;
-      let most = 0;
-      yield* round(
-        {
-          readAccessibleClientProjects: async () => ({
-            projects: ["a", "b", "c", "d", "e", "f"].map((id) => project(id)),
-            direct: false,
-          }),
-          fetchProject: async (id) => {
-            inFlight++;
-            most = Math.max(most, inFlight);
-            await Promise.resolve();
-            inFlight--;
-            return project(id);
-          },
-        },
-        [],
-        4,
-      );
-
-      expect(most).toBe(4);
-    }),
-  );
 });
 
 describe("the REST access verifier's read of one project between rounds", () => {
@@ -397,7 +274,12 @@ describe("the REST access verifier's read of one project between rounds", () => 
 
       expect(yield* verifier.verifyProject(projectRef("a"))).toEqual({
         kind: "verified",
-        access: { project: projectRef("a"), role: "READ_ONLY", mutationsAllowed: false },
+        access: {
+          project: projectRef("a"),
+          role: "READ_ONLY",
+          mutationsAllowed: false,
+          userRoles: [{ clientUserId: "membership", roleCode: "READ_ONLY" }],
+        },
       });
     }),
   );

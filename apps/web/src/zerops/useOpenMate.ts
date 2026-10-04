@@ -4,7 +4,9 @@
  *
  * Its main chat opens (`resolvePrimaryConversation`), never whichever project anywhere was touched
  * last, which is what landing on the index would pick; its other chats are in its conversation
- * strip. A Mate with no conversation yet starts one in its environment's project. What its row
+ * strip. A Mate this page holds no socket to, or whose conversations it has not read, opens the
+ * main chat HQ names for it (`useHqMainChats`): the route connects it (A9). A Mate with no
+ * conversation yet starts one in its environment's project. What its row
  * shows is the listing's; what opens it is its machine (`mateLink`), so a row that stands for its
  * whole project while the project's services are read still opens its Mate.
  *
@@ -41,6 +43,7 @@ import { deletingMates, mateDeleting } from "./deletingMates";
 import { arrivalAwaitsAnswer, arrivalLinkHolds, mateComing } from "./mateComing";
 import { awaitMateConversation } from "./mateOpening";
 import { newMateView, useNewMate } from "./newMate";
+import { useHqMainChats } from "./useMenuMateReadings";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { pressComingInput, useMatePresses } from "./matePress";
 
@@ -59,6 +62,7 @@ export function useOpenMate(): OpenMate {
   const presses = useMatePresses();
   const creations = useNewMate((state) => state.creations);
   const { listing } = useZeropsCandidates();
+  const mainChatOf = useHqMainChats();
   return useCallback<OpenMate>(
     (mate, then) => {
       const projectId = "key" in mate ? mate.project.id : mate.projectId;
@@ -72,6 +76,14 @@ export function useOpenMate(): OpenMate {
       const ownView = () => {
         awaitMateConversation(projectId, then);
         void router.navigate(newMateView(projectId));
+      };
+      const openConversation = (conversation: ScopedThreadRef) => {
+        // Before the route changes, so the conversation paints with it.
+        then?.(conversation);
+        void router.navigate({
+          to: "/$environmentId/$threadId",
+          params: buildThreadRouteParams(conversation),
+        });
       };
       if (
         candidate === undefined
@@ -96,28 +108,29 @@ export function useOpenMate(): OpenMate {
         answerAwaited:
           candidate.arriving === undefined ? undefined : arrivalAwaitsAnswer(mateLink(candidate)),
       });
-      const environmentId = coming === undefined ? linkTarget(candidate) : undefined;
-      if (environmentId === undefined) {
+      if (coming !== undefined) {
         ownView();
+        return;
+      }
+      const told = mainChatOf(projectId);
+      const environmentId = linkTarget(candidate);
+      if (environmentId === undefined) {
+        if (told === undefined) ownView();
+        else openConversation(told);
         return;
       }
       const { primary } = resolvePrimaryConversation(
         threads.filter((thread) => thread.environmentId === environmentId),
       );
       if (primary !== undefined) {
-        const conversation = scopeThreadRef(environmentId, primary.id);
-        // Before the route changes, so the conversation paints with it.
-        then?.(conversation);
-        void router.navigate({
-          to: "/$environmentId/$threadId",
-          params: buildThreadRouteParams(conversation),
-        });
+        openConversation(scopeThreadRef(environmentId, primary.id));
         return;
       }
       const project = projects.find((entry) => entry.environmentId === environmentId);
       if (project === undefined) {
-        // Its conversations are not read yet: its own view waits for them.
-        ownView();
+        // Its conversations are not read yet: HQ's main chat opens, else its own view waits.
+        if (told === undefined) ownView();
+        else openConversation(told);
         return;
       }
       void handleNewThread(scopeProjectRef(project.environmentId, project.id)).then((opened) => {
@@ -130,6 +143,17 @@ export function useOpenMate(): OpenMate {
         if (threadId !== undefined) then?.(scopeThreadRef(project.environmentId, threadId));
       });
     },
-    [presses, creations, handleNewThread, linkTarget, listing, mateLink, projects, router, threads],
+    [
+      presses,
+      creations,
+      handleNewThread,
+      linkTarget,
+      listing,
+      mainChatOf,
+      mateLink,
+      projects,
+      router,
+      threads,
+    ],
   );
 }

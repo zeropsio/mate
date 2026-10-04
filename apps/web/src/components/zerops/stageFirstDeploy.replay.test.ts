@@ -1,25 +1,11 @@
-/**
- * A stage's first deploy, replayed as run 5 measured it (2–3 Oct 2026), under invented names: the
- * menu's heading line (`listedStopComing` → `headingLine`) and the projects page's stage cell
- * (`groupFlow` → `stopLine`), step by step. At every moment both name the same phase.
- *
- * The run: code landed on `main` at +642.3 s; the group's runner was imported at +651.5 s and
- * stood READY_TO_DEPLOY; the stage's project was made at +670.4 s and its import ran until
- * +710.5 s (the project ACTIVE by ~+700 s, the app NEW → CREATING at ~+700 s → ACTIVE at +710.5 s);
- * the runner was built +723.8 → +749.2 s; at +772.7 s the deploy job failed in the workflow's own
- * Test step, before it asked the broker for its grant — the failure only on `main`'s head; the fix
- * merged at +1010.9 s; the first build ran +1033.8 → +1097.3 s and the address turned on at
- * +1097.3 s.
- */
+/** Replay of origin's import/build boundaries with HQ deploy records replacing runner and forge statuses. */
 import {
   environmentRow,
   groupFlow,
-  groupRunner,
   listedStopComing,
   stopServes,
   type FlowPullRequest,
   type GroupFlowInput,
-  type MainHeadStatuses,
 } from "@t3tools/client-runtime/zerops";
 import {
   makeDeploymentStore,
@@ -39,6 +25,7 @@ import {
 import type { ServiceDeployInfo } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsServiceDeployedVersion } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import { stopLine } from "./projects/projectsView.logic";
@@ -112,7 +99,6 @@ function firstBuild() {
       return () => undefined;
     },
     nowMs: () => clock.ms,
-    random: () => 0.5,
     setTimer: () => () => undefined,
   });
   store.demand(stage);
@@ -154,35 +140,42 @@ function firstBuild() {
 }
 const BUILD = firstBuild();
 
-/** `main` after the first merge: the broker's deploy asked for, and the workflow's run on it. */
+/** HQ records the deploy it queued and the final failed job, without a forge read. */
 const FIRST = "8f7e6d5c4b3a29180f7e6d5c4b3a291807f6e5d4";
-const ASKED = { context: "mate/deploy/abacus-stage/app", state: "pending", created_at: iso(690) };
-const head = (sha: string, ...statuses: ReadonlyArray<object>): MainHeadStatuses => ({
+const emptyDeploy = {
+  id: "1",
+  kind: "deploy",
+  service: "app",
+  cause: "merge",
+  ref: null,
+  reason: null,
+  appVersionId: null,
+  processId: null,
+  requestedBy: null,
+  endedAt: null,
+  supersededBy: null,
+} as const;
+const queued = (sha = FIRST, seconds = 690): HqJob => ({
+  ...emptyDeploy,
   sha,
-  statuses: statuses as MainHeadStatuses["statuses"],
+  state: "queued",
+  at: iso(seconds),
 });
-/** +772.7 s: the workflow's Test step failed on the bare runner; the broker was never asked. */
-const FAILED_ON_MAIN = head(
-  FIRST,
-  {
-    context: "Zerops deploy / deploy (push)",
-    state: "failure",
-    description: "Failing after 11s",
-    created_at: iso(772.7),
-  },
-  ASKED,
-);
-
+const FAILED_ON_MAIN: HqJob = {
+  ...emptyDeploy,
+  sha: FIRST,
+  state: "failed",
+  at: iso(690),
+  endedAt: iso(772.7),
+};
 const pull = (number: number, mergedAt: number): FlowPullRequest => ({
   repository: "appdev",
   number,
   title: "Count the beads",
+  behind: false,
   kind: "code",
   mateProjectId: "p-abacus-mate",
-  author: "mate-p-abacus-mate",
   url: undefined,
-  checks: "none",
-  checkWord: undefined,
   mergeability: "mergeable",
   merged: true,
   mergedAt: iso(mergedAt),
@@ -202,11 +195,11 @@ interface Moment {
   readonly deployment: Shown<Deployment> | undefined;
   readonly routes?: number;
   /** The runner's status in the Gitea project. */
-  readonly runner: string;
+
   /** The code changes merged by then. */
   readonly merged?: ReadonlyArray<FlowPullRequest>;
   /** `main`'s head of `appdev` and its statuses, as the deploy half last read them. */
-  readonly head?: MainHeadStatuses;
+  readonly deploy?: HqJob;
 }
 
 /** What the menu's line and the page's cell say at one moment. */
@@ -223,10 +216,10 @@ function said(moment: Moment) {
       {
         hostname: "app",
         repository: "appdev",
-        ...(moment.head === undefined ? {} : { head: moment.head }),
+        deploy: { latest: moment.deploy ?? queued(), live: null },
       },
     ],
-    environment: "abacus-stage",
+    keyHeld: true,
   });
   const input: GroupFlowInput = {
     groupId: "g-abacus",
@@ -251,15 +244,13 @@ function said(moment: Moment) {
       gate: { allowed: false, reason: "Nothing is merged to release." },
       suggestion: "v0.1.0",
       waiting: 0,
+      waitingAtLeast: false,
+      untold: [],
     },
     mainHasCode: undefined,
     mainHead: undefined,
     productionAddable: false,
     pending: [],
-    runner: groupRunner({
-      slug: "abacus",
-      services: [{ name: "runnerabacus", status: moment.runner }],
-    }),
     nowMs,
   };
   const stop = groupFlow(input).stages[0];
@@ -283,6 +274,7 @@ function said(moment: Moment) {
       },
     ],
     waiting: 0,
+    waitingAtLeast: false,
     allOnStage: false,
   };
   const line = headingLine(heading, undefined);
@@ -321,10 +313,13 @@ function said(moment: Moment) {
         releasing: undefined,
         failed: undefined,
         waiting: 0,
-        release: { offered: false, tag: undefined },
+        release: { offered: false, tag: undefined, reason: undefined },
         releasedAge: undefined,
         since: undefined,
         atMainHead: false,
+        waitingAtLeast: false,
+        untold: [],
+        keyGap: undefined,
         firstDeploy: stop.firstDeploy,
       }).text,
     },
@@ -368,8 +363,6 @@ function cellPhase(cell: string): string {
   return `unknown: ${cell}`;
 }
 
-const READY = "READY_TO_DEPLOY";
-
 describe("a stage's first deploy, replayed as run 5 measured it", () => {
   const moments: ReadonlyArray<Moment & { readonly line: string | null; readonly cell: string }> = [
     {
@@ -377,7 +370,7 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       projectStatus: "CREATING",
       services: [],
       deployment: undefined,
-      runner: READY,
+
       line: "Stage coming up · making the project",
       cell: "Setting up a stage…",
     },
@@ -386,7 +379,7 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       t: 696.1,
       services: [],
       deployment: NONE,
-      runner: READY,
+
       line: "Stage coming up · adding the app",
       cell: "Setting up a stage…",
     },
@@ -395,28 +388,28 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       t: 700.8,
       services: [app("CREATING")],
       deployment: NONE,
-      runner: READY,
+
       line: "Stage coming up · adding the app",
       cell: "Setting up a stage…",
     },
     {
       t: 712.6,
       deployment: NONE,
-      runner: READY,
-      line: "Stage awaits the runner · it hasn’t started",
-      cell: "Waiting for the runner · it hasn’t started",
+
+      line: "Stage coming up · first deploy on its way",
+      cell: "First deploy on its way",
     },
     {
       t: 730,
       deployment: NONE,
-      runner: "CREATING",
-      line: "Stage awaits the runner · it’s being built",
-      cell: "Waiting for the runner · it’s being built",
+
+      line: "Stage coming up · first deploy on its way",
+      cell: "First deploy on its way",
     },
     {
       t: 750,
       deployment: NONE,
-      runner: "ACTIVE",
+
       line: "Stage coming up · first deploy on its way",
       cell: "First deploy on its way",
     },
@@ -424,8 +417,8 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       // The failure posted, and read on the deploy half's next minute.
       t: 790,
       deployment: NONE,
-      runner: "ACTIVE",
-      head: FAILED_ON_MAIN,
+
+      deploy: FAILED_ON_MAIN,
       line: "Stage didn’t come up · its first deploy failed",
       cell: "First deploy failed",
     },
@@ -433,8 +426,8 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       // Where the pass-34 bound held "on its way" for up to 15 minutes.
       t: 1000,
       deployment: NONE,
-      runner: "ACTIVE",
-      head: FAILED_ON_MAIN,
+
+      deploy: FAILED_ON_MAIN,
       line: "Stage didn’t come up · its first deploy failed",
       cell: "First deploy failed",
     },
@@ -444,12 +437,8 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       t: 1025,
       deployment: NONE,
       merged: [pull(1, 642.3), pull(2, 1010.9)],
-      runner: "ACTIVE",
-      head: head(FIX, {
-        context: "Zerops deploy / deploy (push)",
-        state: "pending",
-        created_at: iso(1011),
-      }),
+
+      deploy: queued(FIX, 1011),
       line: "Stage coming up · first deploy on its way",
       cell: "First deploy on its way",
     },
@@ -457,7 +446,7 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       t: 1033.9,
       deployment: BUILD.building,
       merged: [pull(1, 642.3), pull(2, 1010.9)],
-      runner: "ACTIVE",
+
       line: "Stage coming up · building the app",
       cell: "Deploying… 5d0e7a1",
     },
@@ -467,7 +456,7 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       services: [app("UPGRADING")],
       deployment: BUILD.ended,
       merged: [pull(1, 642.3), pull(2, 1010.9)],
-      runner: "ACTIVE",
+
       line: "Stage coming up · building the app",
       cell: "Deploying… 5d0e7a1",
     },
@@ -476,7 +465,7 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       t: 1096.4,
       deployment: BUILD.unstated,
       merged: [pull(1, 642.3), pull(2, 1010.9)],
-      runner: "ACTIVE",
+
       line: "Stage coming up · building the app",
       cell: "Deploying… 5d0e7a1",
     },
@@ -484,7 +473,7 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       t: 1097.6,
       deployment: BUILD.running,
       merged: [pull(1, 642.3), pull(2, 1010.9)],
-      runner: "ACTIVE",
+
       line: "Stage coming up · turning its address on",
       cell: "Deployed 5d0e7a1",
     },
@@ -493,7 +482,7 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       deployment: BUILD.running,
       routes: 1,
       merged: [pull(1, 642.3), pull(2, 1010.9)],
-      runner: "ACTIVE",
+
       line: null,
       cell: "Deployed 5d0e7a1",
     },
@@ -527,41 +516,14 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
   });
 });
 
-describe("a push job that failed before the stage was added (H1)", () => {
-  // The runner already up: main's push job failed at +660 s, before Add stage at +670.4 s. The
-  // broker's dispatch of the same workflow on the same commit fails too, and posts nothing.
-  const before = head(FIRST, {
-    context: "Zerops deploy / deploy (push)",
-    state: "failure",
-    created_at: iso(660),
-  });
-
-  it("says it failed once the stage's import is done, and set up until then", () => {
+describe("HQ's job fails before the import finishes", () => {
+  it("shows the import first and the failed deploy as soon as it ends", () => {
     expect(
-      said({
-        t: 700.8,
-        services: [app("CREATING")],
-        deployment: NONE,
-        runner: "ACTIVE",
-        head: before,
-      }),
+      said({ t: 700.8, services: [app("CREATING")], deployment: NONE, deploy: FAILED_ON_MAIN }),
     ).toMatchObject({ line: "Stage coming up · adding the app", cell: "Setting up a stage…" });
-    expect(said({ t: 712.6, deployment: NONE, runner: "ACTIVE", head: before })).toMatchObject({
+    expect(said({ t: 790, deployment: NONE, deploy: FAILED_ON_MAIN })).toMatchObject({
       line: "Stage didn’t come up · its first deploy failed",
       cell: "First deploy failed",
-    });
-  });
-
-  it("says nothing failed while the broker retries a refusal (H2)", () => {
-    const refused = head(FIRST, {
-      context: "mate/deploy/abacus-stage/app",
-      state: "failure",
-      description: "has no workflow zerops.yml for the stage",
-      created_at: iso(700),
-    });
-    expect(said({ t: 712.6, deployment: NONE, runner: "ACTIVE", head: refused })).toMatchObject({
-      line: "Stage coming up · first deploy on its way",
-      cell: "First deploy on its way",
     });
   });
 });

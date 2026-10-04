@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqMates, HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
+import type { ThreadDigest } from "@t3tools/shared/mateLink";
 import type { Project, Thread } from "../types";
 import {
   browseInputEndPaddingClass,
@@ -9,9 +13,11 @@ import {
   enumerateCommandPaletteItems,
   filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
+  hqChatMateNames,
   reduceCommandPaletteUiState,
   type CommandPaletteGroup,
   paletteNoMatchMessage,
+  paletteListsRead,
 } from "./CommandPalette.logic";
 
 describe("browseInputEndPaddingClass", () => {
@@ -488,6 +494,131 @@ describe("buildThreadActionItems", () => {
   });
 });
 
+describe("buildThreadActionItems — chats HQ lists", () => {
+  const OPEN = EnvironmentId.make("environment-open");
+  const PARKED = EnvironmentId.make("environment-parked");
+
+  /** A chat as its Mate digests it. */
+  const digest = (id: string, over: Partial<ThreadDigest> = {}): ThreadDigest => ({
+    id: ThreadId.make(id),
+    title: `Chat ${id}`,
+    kind: "idle",
+    turnId: null,
+    turnState: "completed",
+    completedAt: "2026-03-18T00:00:00.000Z",
+    ...over,
+  });
+
+  /** A Mate HQ holds, its environment `environmentId`, with the chats `list`. */
+  const mate = (environmentId: EnvironmentId, list: ReadonlyArray<ThreadDigest>): MateLiveView => ({
+    presence: { online: true, since: "2026-03-18T00:00:00.000Z", overview: "live" },
+    identity: { environmentId, serverVersion: "0.11.90", update: null },
+    main: null,
+    threads: { list, omitted: 0 },
+    logins: {},
+    crew: { status: "off" },
+  });
+
+  const hq = (mates: HqMates) => ({
+    mates,
+    current: true,
+    connected: (environmentId: EnvironmentId) => environmentId === OPEN,
+    linkable: () => true,
+    lastVisitedAt: () => undefined,
+    mateName: (projectId: string) => (projectId === "project-parked" ? "Ida" : undefined),
+    renderStatus: (status: { readonly kind: string }) => `status:${status.kind}`,
+  });
+
+  it("lists an unopened Mate's chats from HQ without branch or terminal badges", async () => {
+    const runThread = vi.fn(async (_thread: unknown) => undefined);
+    const items = buildThreadActionItems({
+      threads: [
+        makeThread({
+          id: ThreadId.make("thread-open"),
+          environmentId: OPEN,
+          title: "Open chat",
+          branch: "feature/open",
+          updatedAt: "2026-03-19T00:00:00.000Z",
+        }),
+      ],
+      hq: hq(
+        new Map([
+          ["project-open", mate(OPEN, [digest("thread-open")])],
+          [
+            "project-parked",
+            mate(PARKED, [digest("thread-parked", { title: "Checkout flow", kind: "approval" })]),
+          ],
+        ]),
+      ),
+      projectTitleById: new Map([[PROJECT_ID, "Project"]]),
+      sortOrder: "updated_at",
+      icon: null,
+      renderLeadingContent: () => "shell status",
+      renderTrailingContent: () => "terminal",
+      runThread,
+    });
+
+    expect(items.map((item) => item.value)).toEqual(["thread:thread-open", "thread:thread-parked"]);
+    const parked = items[1];
+    expect(parked).toMatchObject({
+      title: "Checkout flow",
+      description: "Ida",
+      titleLeadingContent: "status:approval",
+    });
+    expect(parked?.titleTrailingContent).toBeUndefined();
+    expect(parked?.searchTerms).not.toContain("feature/open");
+    await parked?.run();
+    expect(runThread).toHaveBeenCalledWith({ environmentId: PARKED, id: "thread-parked" });
+  });
+
+  it("takes a Mate's chats from HQ, not from what was kept of it, once it has no socket", () => {
+    const items = buildThreadActionItems({
+      threads: [
+        makeThread({
+          id: ThreadId.make("thread-parked"),
+          environmentId: PARKED,
+          title: "Checkout (as kept)",
+          branch: "feature/checkout",
+        }),
+      ],
+      hq: hq(
+        new Map([
+          [
+            "project-parked",
+            mate(PARKED, [digest("thread-parked", { title: "Checkout flow", kind: "working" })]),
+          ],
+        ]),
+      ),
+      projectTitleById: new Map([[PROJECT_ID, "Project"]]),
+      sortOrder: "updated_at",
+      icon: null,
+      renderTrailingContent: () => "terminal",
+      runThread: async (_thread) => undefined,
+    });
+
+    expect(items.map((item) => [item.value, item.title, item.titleTrailingContent])).toEqual([
+      ["thread:thread-parked", "Checkout flow", undefined],
+    ]);
+  });
+
+  it("lists the chats of HQ's view kept from before without a status", () => {
+    const [item] = buildThreadActionItems({
+      threads: [],
+      hq: {
+        ...hq(new Map([["project-parked", mate(PARKED, [digest("t1", { kind: "approval" })])]])),
+        current: false,
+      },
+      projectTitleById: new Map(),
+      sortOrder: "updated_at",
+      icon: null,
+      runThread: async (_thread) => undefined,
+    });
+
+    expect(item?.value).toBe("thread:t1");
+    expect(item?.titleLeadingContent).toBeUndefined();
+  });
+});
+
 describe("buildBrowseGroups", () => {
   it("waits for asynchronous browse navigation actions", async () => {
     let finishNavigation: (() => void) | undefined;
@@ -562,6 +693,48 @@ describe("filterPinnedBrowseEntries", () => {
   });
 });
 
+// D3: a Mate HQ lists chats of is named as its project is in Zerops — as this client's listing reads
+// it, or, until the listing has it, as HQ's structure relays it.
+describe("hqChatMateNames", () => {
+  const STRUCTURE: HqStructure = {
+    ungrouped: [{ projectId: "p-lone", name: "Lone", mate: { face: "" } }],
+    apps: [
+      {
+        id: "app-1",
+        name: "Shop",
+        projects: [
+          { projectId: "p-ada", name: "Ada", kind: "mate", mate: { face: "" } },
+          { projectId: "p-bo", name: "Bo", kind: "mate", mate: { face: "" } },
+          { projectId: "p-stage", name: "Shop - stage", kind: "stage", mate: null },
+          { projectId: "p-unread", name: "", kind: "mate", mate: { face: "" } },
+        ],
+      },
+    ],
+  };
+  /** A listed project: a Mate's, with its container, or one no Mate lives in. */
+  const listed = (id: string, name: string, mate = true) =>
+    ({
+      key: `${id}:zcp`,
+      project: { id, name, status: "ACTIVE", tagList: mate ? ["mate"] : [] },
+      group: mate ? "ready" : "unavailable",
+      ...(mate ? { service: { id: "zcp", name: "zcp", status: "ACTIVE" } } : {}),
+    }) as ZeropsCandidate;
+
+  it("names each Mate by the listing first, else by HQ's structure, and nothing else", () => {
+    expect(
+      Object.fromEntries(
+        hqChatMateNames([listed("p-ada", "Ada Lin"), listed("p-shop", "Shop", false)], STRUCTURE),
+      ),
+    ).toEqual({ "p-ada": "Ada Lin", "p-bo": "Bo", "p-lone": "Lone" });
+  });
+
+  it("names only what the listing holds while HQ's structure is not known", () => {
+    expect(Object.fromEntries(hqChatMateNames([listed("p-ada", "Ada")], null))).toEqual({
+      "p-ada": "Ada",
+    });
+  });
+});
+
 describe('paletteNoMatchMessage: no "no matching" before the lists are read', () => {
   it.each([
     [
@@ -583,5 +756,35 @@ describe('paletteNoMatchMessage: no "no matching" before the lists are read', ()
     ["actions only, read", { isActionsOnly: true, listsRead: true }, "No matching actions."],
   ] as const)("%s", (_case, input, message) => {
     expect(paletteNoMatchMessage(input)).toBe(message);
+  });
+});
+
+describe("palette list settlement includes HQ and stays with its organization", () => {
+  const input = { organizationId: "org-a", bootstrapped: true, hqMatesRead: false } as const;
+  it("an empty socket catalog cannot earn no matches while HQ is unread", () => {
+    const state = paletteListsRead(null, input);
+    expect(state.read).toBe(false);
+    expect(paletteNoMatchMessage({ isActionsOnly: false, listsRead: state.read })).toBe("");
+  });
+  it("HQ answering cannot settle unread socket shells", () => {
+    expect(paletteListsRead(null, { ...input, bootstrapped: false, hqMatesRead: true }).read).toBe(
+      false,
+    );
+  });
+  it("earns no matches once both sources settle and keeps it through reconnect", () => {
+    const state = paletteListsRead(null, { ...input, hqMatesRead: true });
+    expect(state.read).toBe(true);
+    expect(paletteNoMatchMessage({ isActionsOnly: false, listsRead: state.read })).toBe(
+      "No matching commands, projects, or threads.",
+    );
+    expect(paletteListsRead(state, { ...input, bootstrapped: false })).toBe(state);
+  });
+  it("an organization change waits for that organization's HQ", () => {
+    const state = paletteListsRead(null, { ...input, hqMatesRead: true });
+    const next = paletteListsRead(state, { ...input, organizationId: "org-b" });
+    expect(next).toEqual({ organizationId: "org-b", read: false });
+    expect(
+      paletteListsRead(next, { ...input, organizationId: "org-b", hqMatesRead: true }).read,
+    ).toBe(true);
   });
 });

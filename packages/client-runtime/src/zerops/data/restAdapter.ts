@@ -1,10 +1,12 @@
+import * as Schema from "effect/Schema";
+import { derivePublicAccess } from "../publicRoutes.ts";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 
-import { DEFAULT_ZEROPS_DATA_POLICY, type ZeropsDataPolicy } from "./policy.ts";
+import { commandDeadlineMs, DEFAULT_ZEROPS_DATA_POLICY, type ZeropsDataPolicy } from "./policy.ts";
 import {
   decodeProjectCommandResponse,
   decodeEntityDirectResponse,
@@ -19,8 +21,6 @@ import {
   decodeStartServiceResponse,
   decodeSearchListPage,
   isRowIssue,
-  rememberMemberProjects,
-  type MemberProjectOf,
   type ProtocolDecodeIssue,
 } from "./platformProtocol.ts";
 import { mateDiagnostics } from "../diagnostics.ts";
@@ -31,7 +31,6 @@ import type {
   PlatformCommandReceipt,
   PlatformObservation,
   ProcessRef,
-  ProjectRef,
   PlatformReadRequest,
   PlatformReadResult,
   ReceiverEvent,
@@ -42,12 +41,22 @@ import type {
   ZeropsDataAdapter,
   ZeropsWireSubscriptionName,
 } from "./types.ts";
-import { ZeropsProcessId, tableEntityOf, type TableQueryDescriptor } from "./types.ts";
+import {
+  ZeropsProcessId,
+  ZeropsProjectId,
+  tableEntityOf,
+  type TableQueryDescriptor,
+} from "./types.ts";
 import { decodeTableSearch } from "./tableProtocol.ts";
 import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
+import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import type { PlatformWatchSocket, PlatformWatchTimers } from "./platformSocket.ts";
 import { makeProjectTagWriter, type ProjectTagLocks } from "./tagWriter.ts";
-import type { ZeropsCellAdapter, ZeropsCellSourceError } from "./cells.ts";
+import type {
+  ZeropsCellAdapter,
+  ZeropsCellSourceError,
+  ZeropsIntegrationTokenGrantMetadata,
+} from "./cells.ts";
 
 const PUBLIC_WS_PATH = "/api/rest/public/web-socket";
 
@@ -277,7 +286,7 @@ function reportDroppedRows(issues: ReadonlyArray<ProtocolDecodeIssue>): void {
 }
 
 function queryOrganizationId(query: EntityQueryDescriptor): string {
-  return query.kind === "process-history-window" || query.kind === "services-of-project"
+  return "project" in query
     ? query.project.organization.organizationId
     : query.organization.organizationId;
 }
@@ -288,8 +297,7 @@ function registrationOrganization(request: RegistrationRequest) {
   return descriptor.kind === "entity-updates" || descriptor.kind === "table-updates"
     ? descriptor.organization
     : descriptor.kind === "query-membership"
-      ? descriptor.query.kind === "process-history-window" ||
-        descriptor.query.kind === "services-of-project"
+      ? "project" in descriptor.query
         ? descriptor.query.project.organization
         : descriptor.query.organization
       : descriptor.query.project.organization;
@@ -312,11 +320,11 @@ function searchTerms(
   const terms: Array<Readonly<Record<string, unknown>>> = [
     { name: "clientId", operator: "eq", value: queryOrganizationId(query) },
   ];
-  if (query.kind === "process-history-window" || query.kind === "services-of-project")
+  if ("project" in query)
     terms.push({ name: "projectId", operator: "eq", value: query.project.projectId });
   if (query.kind === "projects-of-organization" && query.statuses.length)
     terms.push({ name: "status", operator: "in", value: query.statuses });
-  if (query.kind === "running-processes-of-organization") {
+  if (query.kind === "running-processes-of-project") {
     terms.push({ name: "status", operator: "in", value: query.statuses });
     terms.push({ name: "executorTag", operator: "ne", value: "L7_MASTER" });
   }
@@ -340,7 +348,8 @@ function tableSearch(query: TableQueryDescriptor) {
     body: {
       search: [
         { name: "clientId", operator: "eq", value: query.organization.organizationId },
-        query.kind === "active-versions-of-organization"
+        { name: "serviceStackId", operator: "in", value: query.serviceIds },
+        query.kind === "active-versions-of-services"
           ? { name: "status", operator: "eq", value: "ACTIVE" }
           : { name: "key", operator: "in", value: query.keys },
         ...(query.ids === undefined ? [] : [{ name: "id", operator: "in", value: query.ids }]),
@@ -363,6 +372,7 @@ function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle
       body: {
         search: [
           { name: "clientId", operator: "eq", value: descriptor.organization.organizationId },
+          { name: "serviceStackId", operator: "in", value: descriptor.serviceIds },
         ],
         sort: [],
         ...common,
@@ -382,6 +392,9 @@ function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle
       body: {
         search: [
           { name: "clientId", operator: "eq", value: descriptor.organization.organizationId },
+          ...("project" in descriptor
+            ? [{ name: "projectId", operator: "eq", value: descriptor.project.projectId }]
+            : []),
           ...(descriptor.entity === "process"
             ? [{ name: "executorTag", operator: "ne", value: "L7_MASTER" }]
             : []),
@@ -397,7 +410,7 @@ function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle
     const entity =
       descriptor.query.kind === "projects-of-organization"
         ? "project"
-        : descriptor.query.kind === "services-of-organization"
+        : descriptor.query.kind === "services-of-project"
           ? "service-stack"
           : "process";
     return {
@@ -447,8 +460,8 @@ function readHttp(ticket: PlatformReadRequest, offset = 0) {
     return { path: `/process/${target.ref.processId}`, method: "GET" as const };
   const query = target.descriptor;
   if (
-    query.kind === "active-versions-of-organization" ||
-    query.kind === "service-variables-of-organization"
+    query.kind === "active-versions-of-services" ||
+    query.kind === "service-variables-of-services"
   ) {
     const search = tableSearch(query);
     return {
@@ -462,12 +475,9 @@ function readHttp(ticket: PlatformReadRequest, offset = 0) {
       path: `/client/${query.organization.organizationId}/project?limit=500${offset ? `&offset=${offset}` : ""}`,
       method: "GET" as const,
     };
-  if (
-    query.kind === "services-of-organization" ||
-    query.kind === "running-processes-of-organization"
-  )
+  if (query.kind === "running-processes-of-project")
     return {
-      path: query.kind === "services-of-organization" ? "/service-stack/search" : "/process/search",
+      path: "/process/search",
       method: "POST" as const,
       body: {
         search: searchTerms(query),
@@ -514,40 +524,27 @@ function decodeRead(ticket: PlatformReadRequest, body: unknown) {
   if (ticket.target.kind !== "query") return decodeEntityDirectResponse(ticket, body);
   switch (ticket.target.descriptor.kind) {
     case "projects-of-organization":
-    case "services-of-organization":
     case "services-of-project":
-    case "running-processes-of-organization":
+    case "running-processes-of-project":
     case "process-history-window":
       return decodeEntityQueryResponse(ticket.target.descriptor, ticket, body, "direct-read");
     case "current-metrics-of-project":
     case "metric-history-of-project":
       return decodeMetricRead(ticket, body);
-    case "active-versions-of-organization":
-    case "service-variables-of-organization":
+    case "active-versions-of-services":
+    case "service-variables-of-services":
       return decodeTableSearch(ticket, body);
   }
 }
 
 /**
  * Creates the low-level account transport. The runtime owns receiver replacement,
- * desired-interest leases, retries and ingestion ordering.
+ * desired-interest leases, manual attempts and ingestion ordering.
  */
 export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): ZeropsDataAdapter {
   const policy = options.policy ?? DEFAULT_ZEROPS_DATA_POLICY;
   const tags = makeProjectTagWriter({ source: options.client, locks: options.locks });
   const openReceivers = new WeakMap<ReceiverHandle, OpenReceiverInternals>();
-  /**
-   * Whose every service and process this account's rows named: an organization-wide membership
-   * frame carries bare ids, and is placed by these (`decodeNativeFrame`).
-   */
-  const memberProjects = new Map<string, ProjectRef>();
-  const memberProjectOf: MemberProjectOf = (entity, id) => memberProjects.get(`${entity}:${id}`);
-  const remember = <Decoded extends { readonly observations: ReadonlyArray<PlatformObservation> }>(
-    decoded: Decoded,
-  ): Decoded => {
-    rememberMemberProjects(memberProjects, decoded.observations);
-    return decoded;
-  };
   let accountBufferedEvents = 0;
   let accountBufferedBytes = 0;
 
@@ -699,9 +696,8 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           );
           return;
         }
-        const decoded = decodeNativeFrame(data, registrations, memberProjectOf);
+        const decoded = decodeNativeFrame(data, registrations);
         if (decoded.kind === "observations") {
-          remember(decoded);
           reportDroppedRows(decoded.issues);
         }
         if (decoded.kind === "pong") {
@@ -935,18 +931,17 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
     ).pipe(
       Effect.flatMap((body) => restOfOrganizationSearch(request, http, body, context)),
       Effect.flatMap((body) => {
-        const decoded = remember(
+        const decoded =
           Array.isArray(body) &&
-            request.descriptor.kind === "query-membership" &&
-            request.baselineTicket !== null
+          request.descriptor.kind === "query-membership" &&
+          request.baselineTicket !== null
             ? decodeEntityQueryPages(
                 request.descriptor.query,
                 request.baselineTicket,
                 body,
                 "indexed-search",
               )
-            : decodeRegistrationResponse(request, body),
-        );
+            : decodeRegistrationResponse(request, body);
         reportDroppedRows(decoded.issues);
         const fatal = decoded.issues.find((issue) => !isRowIssue(issue));
         if (fatal !== undefined) return Effect.fail(adapterError("malformed", fatal.message));
@@ -977,8 +972,9 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
      * `POST /project/search` query the platform GUI uses for those
      * memberships applies that authorization server-side, at the cost of
      * Elasticsearch's indexing lag — so it seeds only unknown fields per the
-     * source-authority table, and is used solely to recover from a
-     * forbidden direct read, never as the first attempt.
+     * source-authority table, and is used only once the direct read
+     * refused this account (`ZeropsApiClient.projectListRefused`), never
+     * before.
      */
     const performSearch =
       (organizationId: string) =>
@@ -1028,48 +1024,45 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
       });
     const result = Effect.gen(function* () {
       const descriptor = ticket.target.kind === "query" ? ticket.target.descriptor : null;
-      if (
-        descriptor !== null &&
-        (descriptor.kind === "services-of-organization" ||
-          descriptor.kind === "running-processes-of-organization")
-      ) {
-        // The platform has no lag-free list of an organization's services or processes: its
+      if (descriptor !== null && descriptor.kind === "running-processes-of-project") {
+        // The platform has no lag-free list of a project's running processes: its
         // search is the read, as the platform's own app reads them.
         const pages = yield* traversePages(perform, decodeSearchListPage);
-        const decoded = remember(
-          decodeEntityQueryPages(descriptor, ticket, pages, "indexed-search"),
-        );
+        const decoded = decodeEntityQueryPages(descriptor, ticket, pages, "indexed-search");
         return { observations: decoded.observations } satisfies PlatformReadResult;
       }
       if (descriptor !== null && descriptor.kind === "services-of-project") {
         // The lag-free list of one project's services: the confirming read (§9 C19).
         const pages = yield* traversePages(perform, decodeDirectListPage);
-        const decoded = remember(decodeEntityQueryPages(descriptor, ticket, pages, "direct-read"));
+        const decoded = decodeEntityQueryPages(descriptor, ticket, pages, "direct-read");
         return { observations: decoded.observations } satisfies PlatformReadResult;
       }
       if (descriptor !== null && descriptor.kind === "projects-of-organization") {
-        const direct = yield* traversePages(perform, decodeDirectListPage).pipe(Effect.result);
+        const organizationId = queryOrganizationId(descriptor);
+        const search = traversePages(performSearch(organizationId), decodeSearchListPage);
+        // A refusal is the person's for the account epoch (`projectListRefused`): asked once.
+        const direct = options.client.projectListRefused(organizationId)
+          ? null
+          : yield* traversePages(perform, decodeDirectListPage).pipe(Effect.result);
         let pages: Array<NonNullable<ReturnType<typeof decodeDirectListPage>>>;
         let source: "direct-read" | "indexed-search" = "direct-read";
-        if (Result.isSuccess(direct)) pages = direct.success;
-        else if (
-          descriptor.kind === "projects-of-organization" &&
-          direct.failure.kind === "forbidden"
-        ) {
+        if (direct !== null && Result.isSuccess(direct)) pages = direct.success;
+        else if (direct === null || direct.failure.kind === "forbidden") {
+          if (direct !== null) options.client.noteProjectListRefused(organizationId);
           source = "indexed-search";
-          pages = yield* traversePages(
-            performSearch(queryOrganizationId(descriptor)),
-            decodeSearchListPage,
-          );
+          pages = yield* search;
         } else return yield* Effect.fail(direct.failure);
         const decoded = decodeEntityQueryPages(descriptor, ticket, pages, source);
         return { observations: decoded.observations } satisfies PlatformReadResult;
       }
       const body = yield* perform();
-      const decoded = remember(decodeRead(ticket, body));
+      const decoded = decodeRead(ticket, body);
       if (decoded.issues.length && decoded.observations.length === 0)
         return yield* Effect.fail(adapterError("malformed", decoded.issues[0]!.message));
-      return { observations: decoded.observations } satisfies PlatformReadResult;
+      return {
+        observations: decoded.observations,
+        ...(decoded.project === undefined ? {} : { project: decoded.project }),
+      } satisfies PlatformReadResult;
     });
     return result.pipe(
       Effect.catch((error) => {
@@ -1093,11 +1086,12 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
   const executeApi = <Value>(
     context: RequestContext,
     use: (signal: AbortSignal) => Promise<Value>,
+    deadlineMs: number = policy.httpDeadlineMs,
   ): Effect.Effect<Value, AdapterError> =>
     Effect.gen(function* () {
       const stage = stageSignal(
         context,
-        policy.httpDeadlineMs,
+        deadlineMs,
         options.timers,
         yield* Clock.currentTimeMillis,
       );
@@ -1131,10 +1125,9 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
       {
         readonly kind:
           | "update-project-tags"
+          | "rename-project"
           | "set-project-member-role"
-          | "create-project"
-          | "create-project-with-mate"
-          | "create-tool-project";
+          | "create-project";
       }
     >,
     project: unknown,
@@ -1257,6 +1250,18 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           ),
           Effect.mapError(uncertainCommandError),
         );
+      case "rename-project":
+        return executeApi(context, (signal) =>
+          tags.rename(command.project.projectId, command.name, {
+            signal,
+            beforeWrite: context.beforeProjectWrite,
+          }),
+        ).pipe(
+          Effect.flatMap((value) =>
+            projectCommandReceipt(command, value.project, { kind: command.kind, value }),
+          ),
+          Effect.mapError(uncertainCommandError),
+        );
       case "set-project-member-role":
         return executeApi(context, (signal) =>
           options.client.setProjectMemberRole(
@@ -1275,24 +1280,24 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           Effect.mapError(uncertainCommandError),
         );
       case "import-development-container":
-        return executeApi(context, (signal) =>
-          options.client.importDevelopmentContainer(
-            {
-              clientId: command.project.organization.organizationId,
-              projectId: command.project.projectId,
-              projectName: command.projectName,
-              ...(command.groupProjectIds === undefined
-                ? {}
-                : { groupProjectIds: command.groupProjectIds }),
-              ...(command.zcpVersion === undefined ? {} : { zcpVersion: command.zcpVersion }),
-              ...(command.agents === undefined ? {} : { agents: command.agents }),
-              ...(command.setupRuntimesYaml === undefined
-                ? {}
-                : { setupRuntimesYaml: command.setupRuntimesYaml }),
-            },
-            signal,
-            context.beforeProjectWrite,
-          ),
+        return executeApi(
+          context,
+          (signal) =>
+            options.client.importDevelopmentContainer(
+              {
+                clientId: command.project.organization.organizationId,
+                projectId: command.project.projectId,
+                projectName: command.projectName,
+                ...(command.zcpVersion === undefined ? {} : { zcpVersion: command.zcpVersion }),
+                ...(command.agents === undefined ? {} : { agents: command.agents }),
+                ...(command.setupRuntimesYaml === undefined
+                  ? {}
+                  : { setupRuntimesYaml: command.setupRuntimesYaml }),
+              },
+              signal,
+              context.beforeProjectWrite,
+            ),
+          commandDeadlineMs(command.kind, policy),
         ).pipe(
           Effect.map((value): PlatformCommandReceipt => ({
             processRefs: [],
@@ -1346,30 +1351,6 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
         ).pipe(
           Effect.flatMap((value) =>
             projectCommandReceipt(command, value, { kind: command.kind, value }),
-          ),
-          Effect.mapError(uncertainCommandError),
-        );
-      case "create-project-with-mate":
-        return executeApi(context, (signal) =>
-          options.client.createProjectWithZeropsMate(
-            {
-              clientId: command.organization.organizationId,
-              name: command.name,
-              ...(command.location === undefined ? {} : { location: command.location }),
-              ...(command.zcpVersion === undefined ? {} : { zcpVersion: command.zcpVersion }),
-              ...(command.agents === undefined ? {} : { agents: command.agents }),
-              ...(command.group === undefined ? {} : { group: command.group }),
-              ...(command.botName === undefined ? {} : { botName: command.botName }),
-              ...(command.face === undefined ? {} : { face: command.face }),
-              ...(command.standUpBy === undefined ? {} : { standUpBy: command.standUpBy }),
-              ...(command.madeBy === undefined ? {} : { madeBy: command.madeBy }),
-            },
-            signal,
-            context.beforeProjectWrite,
-          ),
-        ).pipe(
-          Effect.flatMap((value) =>
-            projectCommandReceipt(command, value.project, { kind: command.kind, value }),
           ),
           Effect.mapError(uncertainCommandError),
         );
@@ -1431,48 +1412,20 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
           }),
           Effect.mapError(uncertainCommandError),
         );
-      case "create-tool-project":
+      case "read-integration-token-grant":
         return executeApi(context, (signal) =>
-          options.client.createToolProject(
-            {
-              clientId: command.organization.organizationId,
-              kind: command.toolKind,
-              name: command.name,
-              appUrl: command.appUrl,
-              ...(command.location === undefined ? {} : { location: command.location }),
-            },
+          options.client.readIntegrationToken(
+            command.organization.organizationId,
+            command.tokenId,
             signal,
-            context.beforeProjectWrite,
           ),
         ).pipe(
-          Effect.flatMap((value) =>
-            projectCommandReceipt(command, value.project, { kind: command.kind, value }),
-          ),
-          Effect.mapError(uncertainCommandError),
-        );
-      case "list-integration-token-grants":
-        return executeApi(context, (signal) =>
-          options.client.listIntegrationTokens(command.organization.organizationId, signal),
-        ).pipe(
-          Effect.map((tokens): PlatformCommandReceipt => ({
+          Effect.map((token): PlatformCommandReceipt => ({
             processRefs: [],
             observations: [],
             result: {
               kind: command.kind,
-              // Metadata only: a token's value never leaves the API client.
-              value: tokens.map((token) => ({
-                tokenId: token.id,
-                name: token.name,
-                grants: token.projects ?? [],
-                ...(token.created === undefined ? {} : { created: token.created }),
-                ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
-                ...(token.createdByUser === undefined
-                  ? {}
-                  : { createdByUser: token.createdByUser }),
-                ...(token.createdByUser === undefined
-                  ? {}
-                  : { createdByUser: token.createdByUser }),
-              })),
+              value: token === undefined ? null : tokenGrantMetadata(token),
             },
           })),
           Effect.mapError(uncertainCommandError),
@@ -1481,10 +1434,20 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
         return executeApi(context, (signal) =>
           options.client.deleteProject(command.projectId, signal, context.beforeProjectWrite),
         ).pipe(
-          Effect.map((value): PlatformCommandReceipt => ({
-            processRefs: [],
+          Effect.map(({ processId }): PlatformCommandReceipt => ({
+            processRefs: [
+              {
+                kind: "process",
+                project: {
+                  kind: "project",
+                  organization: command.organization,
+                  projectId: ZeropsProjectId.make(command.projectId),
+                },
+                processId: ZeropsProcessId.make(processId),
+              },
+            ],
             observations: [],
-            result: { kind: command.kind, value },
+            result: { kind: command.kind, value: undefined },
           })),
           Effect.mapError(uncertainCommandError),
         );
@@ -1498,6 +1461,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
             command.project.projectId,
             signal,
             context.beforeProjectWrite,
+            command.keyTokenId,
           ),
         ).pipe(
           Effect.map((value): PlatformCommandReceipt => ({
@@ -1582,6 +1546,18 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
   };
 }
 
+/** A token as grant metadata: a token's value never leaves the API client. */
+const tokenGrantMetadata = (
+  token: ZeropsIntegrationToken,
+): ZeropsIntegrationTokenGrantMetadata => ({
+  tokenId: token.id,
+  name: token.name,
+  grants: token.projects ?? [],
+  ...(token.created === undefined ? {} : { created: token.created }),
+  ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
+  ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
+});
+
 const cellReadError = (cause: unknown): ZeropsCellSourceError => {
   if (cause instanceof ZeropsApiError) {
     switch (cause.kind) {
@@ -1607,8 +1583,119 @@ const cellRead = <Value>(run: () => Promise<Value>): Effect.Effect<Value, Zerops
  * The reads no stream carries, one per cell kind, over the REST API; secret-bearing source rows
  * are stripped at this boundary.
  */
+const PublicAccessProject = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  publicZone: Schema.NullOr(Schema.String),
+  zeropsSubdomainHost: Schema.NullOr(Schema.String),
+});
+const PublicAccessServices = Schema.Struct({
+  list: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      status: Schema.String,
+      isSystem: Schema.optionalKey(Schema.Boolean),
+      subdomainAccess: Schema.Boolean,
+      ports: Schema.Array(
+        Schema.Struct({
+          port: Schema.Finite,
+          scheme: Schema.optionalKey(Schema.String),
+        }),
+      ),
+      serviceStackTypeInfo: Schema.optionalKey(
+        Schema.NullOr(
+          Schema.Struct({
+            serviceStackTypeVersionName: Schema.optionalKey(Schema.String),
+            serviceStackTypeCategory: Schema.optionalKey(Schema.NullOr(Schema.String)),
+          }),
+        ),
+      ),
+    }),
+  ),
+});
+const PublicAccessRoutings = Schema.Struct({
+  list: Schema.Array(
+    Schema.Struct({
+      isSynced: Schema.Boolean,
+      sslEnabled: Schema.Boolean,
+      domains: Schema.Array(Schema.Struct({ domainName: Schema.String })),
+      locations: Schema.Array(
+        Schema.Struct({ path: Schema.String, port: Schema.Finite, serviceStackId: Schema.String }),
+      ),
+    }),
+  ),
+});
+
+const decodePublicAccessProject = Schema.decodeUnknownEffect(PublicAccessProject);
+const decodePublicAccessServices = Schema.decodeUnknownEffect(PublicAccessServices);
+const decodePublicAccessRoutings = Schema.decodeUnknownEffect(PublicAccessRoutings);
+
 export function makeZeropsCellReads(client: ZeropsApiClient): ZeropsCellAdapter {
   return {
+    readProjectPublicAccess: (input, context) =>
+      Effect.gen(function* () {
+        const id = input.project.projectId;
+        const read = (path: string) =>
+          cellRead(() =>
+            client.requestData({
+              path,
+              operationKind: "read",
+              signal: context.abortSignal,
+              background: true,
+            }),
+          );
+        const project = yield* read(`/project/${id}`);
+        const services = yield* read(`/project/${id}/service-stack?limit=500`);
+        const routings = yield* read(`/project/${id}/public-http-routing`);
+        const decodeFailure = () => ({
+          _tag: "ZeropsCellSourceError" as const,
+          kind: "decode" as const,
+          retryable: false,
+        });
+        const decoded = yield* decodePublicAccessProject(project).pipe(
+          Effect.mapError(decodeFailure),
+        );
+        const serviceRows = yield* decodePublicAccessServices(services).pipe(
+          Effect.mapError(decodeFailure),
+        );
+        const routingRows = yield* decodePublicAccessRoutings(routings).pipe(
+          Effect.mapError(decodeFailure),
+        );
+        if (decoded.id !== id) return yield* Effect.fail(decodeFailure());
+        return derivePublicAccess(
+          {
+            id: decoded.id,
+            name: decoded.name,
+            status: "UNKNOWN",
+            ...(decoded.publicZone === null ? {} : { publicZone: decoded.publicZone }),
+            ...(decoded.zeropsSubdomainHost === null
+              ? {}
+              : { zeropsSubdomainHost: decoded.zeropsSubdomainHost }),
+          },
+          serviceRows.list.map(({ serviceStackTypeInfo, ...service }) => ({
+            ...service,
+            ...(serviceStackTypeInfo === null || serviceStackTypeInfo === undefined
+              ? {}
+              : {
+                  serviceStackTypeInfo: {
+                    ...(serviceStackTypeInfo.serviceStackTypeVersionName === undefined
+                      ? {}
+                      : {
+                          serviceStackTypeVersionName:
+                            serviceStackTypeInfo.serviceStackTypeVersionName,
+                        }),
+                    ...(serviceStackTypeInfo.serviceStackTypeCategory == null
+                      ? {}
+                      : {
+                          serviceStackTypeCategory: serviceStackTypeInfo.serviceStackTypeCategory,
+                        }),
+                  },
+                }),
+          })),
+          routingRows.list,
+        );
+      }),
     readOrganizationLocations: (input, context) =>
       cellRead(() =>
         client.listClientLocations(input.organization.organizationId, context.abortSignal),
@@ -1633,14 +1720,7 @@ export function makeZeropsCellReads(client: ZeropsApiClient): ZeropsCellAdapter 
       cellRead(async () =>
         (
           await client.listIntegrationTokens(input.organization.organizationId, context.abortSignal)
-        ).map((token) => ({
-          tokenId: token.id,
-          name: token.name,
-          grants: token.projects ?? [],
-          ...(token.created === undefined ? {} : { created: token.created }),
-          ...(token.roleCode === undefined ? {} : { roleCode: token.roleCode }),
-          ...(token.createdByUser === undefined ? {} : { createdByUser: token.createdByUser }),
-        })),
+        ).map(tokenGrantMetadata),
       ),
     readOrganizationMembers: (input, context) =>
       cellRead(() =>

@@ -203,7 +203,7 @@ describe("SidebarUtilityMenu", () => {
     expect(markup).toContain('aria-label="Account: Ada"');
     expect(markup).toContain(">Zerops<");
     // The four unlabelled glyphs the row replaced are gone from the foot.
-    for (const label of ["Settings", "Zerops", "Usage", "Gitea"]) {
+    for (const label of ["Settings", "Zerops", "Usage", "Git"]) {
       expect(markup).not.toContain(`aria-label="${label}"`);
     }
   });

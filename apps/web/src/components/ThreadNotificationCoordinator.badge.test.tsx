@@ -1,5 +1,4 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import * as Option from "effect/Option";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
@@ -8,24 +7,40 @@ const state = vi.hoisted(() => ({
   mode: "notifications",
   inApp: false,
   toast: vi.fn(),
-  shells: new Map(),
+  /** HQ's view, by Mate: its environment's id is its project's, and its one chat. */
+  chats: new Map<string, Record<string, unknown>>(),
   navigate: vi.fn(),
   sound: vi.fn(),
   badge: vi.fn(),
   environmentIds: ["one", "two"],
+  /** Whether HQ's view is its answer now: false while its stream is down. */
+  current: true,
 }));
-vi.mock("@effect/atom-react", () => ({ useAtomValue: (id: string) => state.shells.get(id) }));
+vi.mock("@effect/atom-react", () => ({
+  useAtomValue: () => ({
+    organizationId: "org-1",
+    current: state.current,
+    mates: new Map(
+      state.environmentIds.map((id) => [
+        id,
+        {
+          presence: { online: true, since: "2026-09-13T07:00:00Z", overview: "live" },
+          identity: { environmentId: id, serverVersion: "0.11.90", update: null },
+          main: null,
+          threads: { list: state.chats.has(id) ? [state.chats.get(id)] : [], omitted: 0 },
+          logins: {},
+          crew: null,
+        },
+      ]),
+    ),
+  }),
+}));
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => state.navigate,
   useParams: () => ({}),
 }));
 vi.mock("./ui/toast", () => ({ toastManager: { add: state.toast } }));
-vi.mock("../state/shell", () => ({ environmentShell: { stateValueAtom: (id: string) => id } }));
-vi.mock("../state/environments", () => ({
-  useEnvironments: () => ({
-    environments: state.environmentIds.map((environmentId) => ({ environmentId })),
-  }),
-}));
+vi.mock("../state/zerops", () => ({ hqMatesViewAtom: "hq-mates" }));
 vi.mock("../hooks/useSettings", () => ({
   useClientSettings: (
     select: (settings: { notificationMode: string; inAppNotificationsEnabled: boolean }) => unknown,
@@ -57,27 +72,24 @@ class TestNotification extends EventTarget {
   }
 }
 
+/** A Mate's one chat as it digests it: at work on its turn. */
 const thread = {
   id: "thread",
   title: "Test thread",
-  archivedAt: null as string | null,
-  hasPendingApprovals: false,
-  hasPendingUserInput: false,
-  session: null,
-  latestTurn: { turnId: "turn", state: "running", completedAt: null as string | null },
+  kind: "working",
+  turnId: "turn",
+  turnState: "running",
+  completedAt: null as string | null,
 };
 let renderer: ReactTestRenderer | undefined;
 let focused = false;
 let visibility = "visible";
 
-function shell(overrides: Partial<typeof thread> = {}) {
-  return { status: "live", snapshot: Option.some({ threads: [{ ...thread, ...overrides }] }) };
+function digest(overrides: Record<string, unknown> = {}) {
+  return { ...thread, ...overrides };
 }
 function complete(environment = "one", completedAt = "2026-09-13T08:00:00Z") {
-  state.shells.set(
-    environment,
-    shell({ latestTurn: { turnId: "turn", state: "completed", completedAt } }),
-  );
+  state.chats.set(environment, digest({ kind: "idle", turnState: "completed", completedAt }));
 }
 async function render() {
   await act(async () => {
@@ -91,8 +103,9 @@ beforeEach(() => {
   state.mode = "notifications";
   state.inApp = false;
   state.environmentIds = ["one", "two"];
-  state.shells.set("one", shell());
-  state.shells.set("two", shell());
+  state.current = true;
+  state.chats.set("one", digest());
+  state.chats.set("two", digest());
   focused = false;
   visibility = "visible";
   TestNotification.permission = "granted";
@@ -142,15 +155,17 @@ it("counts notifying threads across environments, replaces repeat alerts, and cl
 it("does not badge old completions on first load or reconnect", async () => {
   complete();
   await render();
-  state.shells.set("one", { status: "connecting", snapshot: Option.none() });
+  // HQ's stream down: what it says once it is back is a baseline again.
+  state.current = false;
   await render();
   complete("one", "2026-09-13T08:01:00Z");
+  state.current = true;
   await render();
   expect(TestNotification.sent).toHaveLength(0);
   expect(state.badge.mock.calls.every(([count]) => count === 0)).toBe(true);
 });
 
-it("removes alerts only from environments that leave the client", async () => {
+it("removes alerts only from the Mates that leave HQ's view", async () => {
   await render();
   complete("one");
   complete("two");
@@ -203,14 +218,8 @@ it.each(["off", "sound", "focused", "denied", "archived"])(
     if (condition === "denied") TestNotification.permission = "denied";
     await render();
     complete();
-    if (condition === "archived")
-      state.shells.set(
-        "one",
-        shell({
-          archivedAt: "2026-09-13T08:00:00Z",
-          hasPendingApprovals: true,
-        }),
-      );
+    // An archived chat leaves its Mate's digest, waiting or not.
+    if (condition === "archived") state.chats.delete("one");
     await render();
     expect(TestNotification.sent).toHaveLength(0);
     expect(state.badge.mock.calls.every(([count]) => count === 0)).toBe(true);
@@ -221,7 +230,7 @@ it.each(["hasPendingApprovals", "hasPendingUserInput"] as const)(
   "badges %s and clears when notifications are disabled",
   async (flag) => {
     await render();
-    state.shells.set("one", shell({ [flag]: true }));
+    state.chats.set("one", digest({ kind: flag === "hasPendingApprovals" ? "approval" : "input" }));
     await render();
     expect(state.badge).toHaveBeenLastCalledWith(1);
     const notification = TestNotification.sent[0]!;
@@ -251,7 +260,7 @@ it("shows in-app alerts without adding a badge while focused", async () => {
 it("badges background failures with in-app notifications enabled", async () => {
   state.inApp = true;
   await render();
-  state.shells.set("one", shell({ latestTurn: { ...thread.latestTurn, state: "error" } }));
+  state.chats.set("one", digest({ kind: "failed", turnState: "error" }));
   await render();
   expect(TestNotification.sent[0]?.title).toBe("Thread failed");
   expect(state.badge).toHaveBeenLastCalledWith(1);

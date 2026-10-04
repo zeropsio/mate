@@ -10,17 +10,19 @@
  * - `ready`: up, nobody has signed in yet;
  * - `working`: at its first job;
  * - `blinking`: at work while its socket reconnects — its face still works;
- * - `remembered`: its row from this browser's memory, its socket not open yet.
+ * - `remembered`: its row from HQ's last word of it, stored while it slept, its socket not open yet.
  *
  * Fixtures only: nothing here ships, and no route imports this module.
  */
 import type { ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqMate, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { MateLiveView } from "@t3tools/shared/hqMates";
+import * as Schema from "effect/Schema";
 
-import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { overviewAgentActivity, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { mateComing, type MateComing } from "~/zerops/mateComing";
-import { activityFromMemory } from "~/zerops/menuMemory";
 
 export const COMING_PHASES = [
   "pending",
@@ -38,13 +40,23 @@ export type ComingPhase = (typeof COMING_PHASES)[number];
 
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
-const ACME = ["mate", "mate:g:acme", "mate:name:Acme Docs", "mate:role:dev"];
-const SIGNED = "mate:signer:claude-code:u-harness";
+/** A Mate of Acme Docs as HQ places it, wearing `face`, its record saying `record` too. */
+const acme = (face: string, record: Partial<HqMate>): HqPlacement => ({
+  appId: "acme",
+  appName: "Acme Docs",
+  kind: "mate",
+  mate: { face, ...record },
+});
+/** Signed in by the harness's person, as HQ's overview of the Mate names them. */
+const SIGNED: Partial<HqMate> = {
+  logins: { "claude-code": { signedInBy: "u-harness", present: true, token: false } },
+};
 
 function mate(
   id: string,
   bot: string,
-  tags: ReadonlyArray<string>,
+  face: string,
+  record: Partial<HqMate>,
   over: {
     readonly status?: string;
     readonly group?: ZeropsCandidate["group"];
@@ -63,11 +75,10 @@ function mate(
     key: `${id}:zcp`,
     project: {
       id,
-      name: `Acme Docs - ${bot}`,
+      name: bot,
       status,
-      // Made minutes ago: an unsigned one is still arriving (`mateArrivingUntil`).
-      created: minutesAgo(3),
-      tagList: [...ACME, `mate:bot:${bot}`, ...tags],
+      tagList: ["mate"],
+      hq: acme(face, record),
     },
     group,
     ...(service === null ? {} : { service: { id: "zcp", name: "zcp", status: service.status } }),
@@ -77,9 +88,11 @@ function mate(
   };
 }
 
-const FEN = mate("acme-fen", "Fen", [SIGNED, "mate:face:olive:clover"]);
-const ADA = mate("acme-ada", "Ada", [SIGNED, "mate:face:sky:flower"]);
-const QUINN_TAGS = ["mate:face:coral:gem", "mate:standup:u-harness"];
+const FEN = mate("acme-fen", "Fen", "olive:clover", SIGNED);
+const ADA = mate("acme-ada", "Ada", "sky:flower", SIGNED);
+const QUINN_FACE = "coral:gem";
+/** Its stand-up asked by the harness's person, as HQ's birth record names them. */
+const QUINN_ASKED: Partial<HqMate> = { standupRequestedBy: "u-harness" };
 
 const words = (
   id: string,
@@ -123,6 +136,37 @@ const QUINN_AT_WORK = words("acme-quinn", {
   liveStep: { words: "Setting up the project", code: undefined },
 });
 
+/** Quinn as HQ last told it, stored while it slept: its first job asked, no words back yet. */
+const QUINN_STORED = Schema.decodeUnknownSync(MateLiveView)({
+  presence: { online: false, since: minutesAgo(1), overview: "stored" },
+  identity: { environmentId: "env-acme-quinn", serverVersion: "0.11.90", update: null },
+  main: {
+    id: "thread-acme-quinn",
+    title: "Stand up development of the project.",
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    hasActionableProposedPlan: false,
+    interactionMode: "default",
+    backgroundLiveness: null,
+    session: { status: "running", lastError: null },
+    latestTurn: {
+      turnId: "turn-acme-quinn",
+      state: "running",
+      requestedAt: minutesAgo(1),
+      startedAt: minutesAgo(1),
+      completedAt: null,
+    },
+    latestUserMessageAt: minutesAgo(1),
+    updatedAt: minutesAgo(1),
+    latestUserMessagePreview: { text: "Stand up development of the project." },
+    latestMessagePreview: { role: "user", text: "Stand up development of the project." },
+    planProgress: null,
+    pendingQuestion: null,
+    usagePause: null,
+    liveStep: null,
+  },
+});
+
 const BORN_AT = Date.now() - 90_000;
 
 /** Quinn's birth, as this browser holds it. */
@@ -134,8 +178,7 @@ function birth(over: Partial<ZeropsPlacedBirth> = {}): ZeropsPlacedBirth {
       groupId: "acme",
       groupName: "Acme Docs",
       kind: "mate",
-      displayName: "Acme Docs - Quinn",
-      botName: "Quinn",
+      displayName: "Quinn",
       face: { tint: "coral", shape: "gem" },
     },
     ...over,
@@ -157,13 +200,13 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
         return undefined;
       case "coming":
       case "slow":
-        return mate("acme-quinn", "Quinn", QUINN_TAGS, {
+        return mate("acme-quinn", "Quinn", QUINN_FACE, QUINN_ASKED, {
           group: "provisioning",
           service: { status: "CREATING" },
           reached: false,
         });
       case "failed":
-        return mate("acme-quinn", "Quinn", QUINN_TAGS, {
+        return mate("acme-quinn", "Quinn", QUINN_FACE, QUINN_ASKED, {
           status: "NEW",
           group: "unavailable",
           service: null,
@@ -176,13 +219,14 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
         return mate(
           "acme-quinn",
           "Quinn",
-          [...QUINN_TAGS, ...(phase === "almost" ? [] : [SIGNED])],
+          QUINN_FACE,
+          { ...QUINN_ASKED, ...(phase === "almost" ? {} : SIGNED) },
           { group: "ready" },
         );
       case "ready":
-        return mate("acme-quinn", "Quinn", QUINN_TAGS);
+        return mate("acme-quinn", "Quinn", QUINN_FACE, QUINN_ASKED);
       case "working":
-        return mate("acme-quinn", "Quinn", [...QUINN_TAGS, SIGNED]);
+        return mate("acme-quinn", "Quinn", QUINN_FACE, { ...QUINN_ASKED, ...SIGNED });
     }
   })();
   const births: ReadonlyArray<ZeropsPlacedBirth> =
@@ -193,15 +237,7 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
     phase === "working" || phase === "blinking"
       ? QUINN_AT_WORK
       : phase === "remembered"
-        ? activityFromMemory({
-            subject: "Stand up development of the project.",
-            task: "Stand up development of the project.",
-            awaitingWords: true,
-            at: minutesAgo(1),
-            unread: false,
-            threadId: "thread-acme-quinn",
-            threadKey: "env-acme-quinn:thread-acme-quinn",
-          })
+        ? overviewAgentActivity(QUINN_STORED, false, {})
         : undefined;
   return {
     candidates: [FEN, ADA, ...(quinn === undefined ? [] : [quinn])],

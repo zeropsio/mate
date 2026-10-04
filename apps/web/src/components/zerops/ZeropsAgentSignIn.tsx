@@ -49,8 +49,10 @@ import { useAgentLogin } from "~/zerops/useAgentLogin";
 import { useAgentLoginCancel } from "~/zerops/useAgentLoginCancel";
 import { useAgentLoginSubmitCode } from "~/zerops/useAgentLoginSubmitCode";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
-import { useZeropsEnvironmentProject } from "~/zerops/useZeropsAgentSigner";
+import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
+import { useZeropsMemberNames } from "~/zerops/useZeropsMateOwners";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 import { ArrivalSpinner } from "./ZeropsArrivalSteps";
 import {
@@ -62,8 +64,11 @@ import {
   HIDE_WHATS_HAPPENING,
   loginRunning,
   openAgentOf,
+  REPLACE_SIGN_IN_PRESS,
+  replacedSignInLine,
   SHOW_WHATS_HAPPENING,
   signInAgents,
+  startsAtOnce,
   signInFoot,
   USUAL_AGENT_TITLE,
   USUAL_AGENT_WORD,
@@ -105,6 +110,10 @@ export interface AgentSignInViewProps {
   readonly arrives?: boolean;
   /** Opens with what the login prints already shown. */
   readonly watching?: boolean;
+  /** Who is signing in: a sign-in of their own is said as theirs. */
+  readonly viewerSubject?: string | undefined;
+  /** A member's name by their user id, for whose sign-in a login replaces. */
+  readonly nameOf?: ((subject: string) => string | undefined) | undefined;
 }
 
 /** The cards, and the one that stands open. */
@@ -128,13 +137,19 @@ export function AgentSignInView(props: AgentSignInViewProps) {
     props.onStart(agentId);
   };
 
-  // A dialog opened on an agent starts its login at once.
+  // A dialog opened on an agent starts its login at once, unless the agent holds a sign-in: a login
+  // started drops it, so the person presses first, told whose it replaces.
+  const [waitsForPress] = useState(() => {
+    const opened = agents.find((agent) => agent.agentId === chosen);
+    return fixed && opened !== undefined && !startsAtOnce(opened);
+  });
+  const [pressed, setPressed] = useState(false);
   const started = useRef(false);
   useEffect(() => {
-    if (!fixed || started.current || chosen === null) return;
+    if (!fixed || waitsForPress || started.current || chosen === null) return;
     started.current = true;
     props.onStart(chosen);
-  }, [chosen, fixed, props]);
+  }, [chosen, fixed, props, waitsForPress]);
 
   useEffect(() => {
     if (!cardsLeaving) return;
@@ -182,6 +197,21 @@ export function AgentSignInView(props: AgentSignInViewProps) {
             key={openAgent.agentId}
             origin={origin}
             since={since}
+            replace={
+              waitsForPress && !pressed
+                ? replacedSignInLine({
+                    agentId: openAgent.agentId,
+                    authorizedBy: openAgent.authorizedBy,
+                    viewerSubject: props.viewerSubject,
+                    nameOf: props.nameOf ?? NO_NAMES,
+                  })
+                : null
+            }
+            onReplace={() => {
+              setPressed(true);
+              setSince(Date.now());
+              props.onStart(openAgent.agentId);
+            }}
             onRetry={() => choose(openAgent.agentId, "fade")}
             onSwitch={
               fixed || agents.length < 2
@@ -253,6 +283,8 @@ function OpenCard({
   codeField,
   origin,
   since,
+  replace,
+  onReplace,
   onSwitch,
   onRetry,
   onSubmitCode,
@@ -262,6 +294,9 @@ function OpenCard({
   readonly agent: SignInAgent;
   readonly origin: { current: CardOrigin };
   readonly since: number | null;
+  /** What signing in replaces, while the login waits for the person's press; null once it does not. */
+  readonly replace: string | null;
+  readonly onReplace: () => void;
   readonly onSwitch: (() => void) | null;
   readonly onRetry: () => void;
 }) {
@@ -392,15 +427,25 @@ function OpenCard({
         )}
       </div>
       <div aria-live="polite" className="arrival-open-body">
-        <OpenCardSteps
-          agentId={agentId}
-          onOpenPage={openPage}
-          onRetry={onRetry}
-          onSubmit={submit}
-          sendFailed={sendFailed}
-          steps={steps}
-          words={words}
-        />
+        {replace === null ? (
+          <OpenCardSteps
+            agentId={agentId}
+            onOpenPage={openPage}
+            onRetry={onRetry}
+            onSubmit={submit}
+            sendFailed={sendFailed}
+            steps={steps}
+            words={words}
+          />
+        ) : (
+          <div className="arrival-open-step" data-sign-in-step="replace">
+            <span />
+            <span className="arrival-open-step-words">{replace}</span>
+            <Button data-sign-in-replace onClick={onReplace} size="sm">
+              {REPLACE_SIGN_IN_PRESS}
+            </Button>
+          </div>
+        )}
       </div>
       <div className="arrival-terminal-fold" data-open={showTerminal ? "" : undefined}>
         <div className="arrival-terminal-inner">
@@ -675,6 +720,19 @@ export function ZeropsAgentSignIn({
   const snapshot = zeropsAgentAuthView(useZeropsAgentAuth(environmentId)).snapshot;
   const project = useZeropsEnvironmentProject(environmentId);
   const usual = useUsualAgent(project?.projectId);
+  const viewerSubject = useZeropsSessionOptional()?.user?.id;
+  // Whose sign-in a dialog's login replaces, by name: read only where it is somebody else's.
+  const nameOf = useZeropsMemberNames({
+    clientId: project?.orgId,
+    enabled:
+      agentId !== null &&
+      (snapshot?.agents ?? []).some(
+        (agent) =>
+          agent.agentId === agentId &&
+          agent.authorizedBy !== undefined &&
+          agent.authorizedBy.subject !== viewerSubject,
+      ),
+  });
   const start = useAgentLogin(threadRef, { terminalSurface: "embedded" });
   const cancel = useAgentLoginCancel(threadRef);
   const submitCode = useAgentLoginSubmitCode(threadRef);
@@ -713,12 +771,14 @@ export function ZeropsAgentSignIn({
       codeField={codeField}
       fixed={login !== null || agentId !== null}
       mateName={mateName}
+      nameOf={nameOf}
       onCancel={onCancel}
       onStart={onStart}
       onSubmitCode={onSubmitCode}
       terminal={terminal}
       title={login?.title}
       usual={usual.usual}
+      viewerSubject={viewerSubject}
     />
   );
 }
@@ -756,6 +816,8 @@ function SignInTerminal({
 }
 
 const NOOP = () => {};
+/** No member's name known. */
+const NO_NAMES = (_subject: string): string | undefined => undefined;
 
 /** How long a dialog shows a sign-in done before it closes itself. */
 const SIGNED_IN_CLOSE_MS = 900;

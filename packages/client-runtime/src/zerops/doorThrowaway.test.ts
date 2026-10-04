@@ -16,12 +16,11 @@ import {
   DOOR_MINT_BURST,
   DOOR_MINT_PACE,
   DOOR_MINT_THROTTLE_MS,
-  GITEA_MINTS_PER_MINUTE,
   makeMintPace,
+  makeThrowawayDebt,
   makeThrowawayMintBudgets,
   planThrowawaySweep,
-  throwawaySweepDue,
-  THROWAWAY_DELETE_RETRY_MS,
+  THROWAWAY_REUSE_MS,
   THROWAWAY_SWEEP_AGE_MS,
   zeropsThrowawayPlatform,
 } from "./doorThrowaway.ts";
@@ -30,19 +29,6 @@ import { makeFakeZeropsRest } from "./testing/fakeZeropsRest.ts";
 
 const NOW = Date.parse("2026-09-16T10:00:00.000Z");
 const at = (msAgo: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - msAgo));
-
-describe("throwawaySweepDue", () => {
-  const DAY = 24 * 60 * 60 * 1000;
-  it.each([
-    ["never swept on this browser", null, true],
-    ["swept a minute ago", NOW - 60_000, false],
-    ["swept just under a day ago", NOW - DAY + 1, false],
-    ["swept a day ago", NOW - DAY, true],
-    ["swept by a clock that has since gone back", NOW + 60_000, true],
-  ] as const)("an account %s: %s", (_, lastSweptAtMs, due) => {
-    expect(throwawaySweepDue(lastSweptAtMs, NOW)).toBe(due);
-  });
-});
 
 describe("planThrowawaySweep", () => {
   // Only ours, only stale. Everything else on the account's token list is
@@ -54,7 +40,7 @@ describe("planThrowawaySweep", () => {
       true,
     ],
     [
-      "a Gitea sign-in throwaway older than five minutes",
+      "a Gitea sign-in throwaway main's client left, older than five minutes",
       { id: "b", name: "gitea-signin:git.example.com:n", created: at(600_000) },
       true,
     ],
@@ -240,60 +226,148 @@ describe("the door's mint pace", () => {
 });
 
 describe("zeropsThrowawayPlatform's diagnostics", () => {
-  it("tells door and Gitea mints apart and pairs each delete with its mint", async () => {
+  it("pairs each delete with its mint, and says a failed delete by its code", async () => {
     const client = {
-      mintThrowaway: async (input: { readonly name: string }) =>
-        input.name.startsWith("gitea-signin:")
-          ? { id: "gitea-token", token: "a-value", mintingToken: "access-1" }
-          : { id: "door-token", token: "a-value", mintingToken: "access-1" },
+      mintThrowaway: async (input: { readonly name: string }) => ({
+        id: `token-${input.name.slice(-1)}`,
+        token: "a-value",
+        mintingToken: "access-1",
+      }),
       deleteThrowaway: async (input: { readonly tokenId: string }) => {
-        if (input.tokenId === "gitea-token") throw new ZeropsApiError("gone", "not-found", 404);
+        if (input.tokenId === "token-2") throw new ZeropsApiError("gone", "not-found", 404);
       },
     } as unknown as ZeropsApiClient;
     const throwaways = zeropsThrowawayPlatform(client);
     mateDiagnostics.enable();
     mateDiagnostics.clear();
 
-    const door = await throwaways.mint({ clientId: "org", name: "mate-door:p1:n1" });
-    await throwaways.remove({ clientId: "org", tokenId: door.id });
-    const gitea = await throwaways.mint({ clientId: "org", name: "gitea-signin:git.example:n2" });
-    await expect(throwaways.remove({ clientId: "org", tokenId: gitea.id })).rejects.toThrow("gone");
+    const first = await throwaways.mint({ clientId: "org", name: "mate-door:p1:n1" });
+    await throwaways.remove({ clientId: "org", tokenId: first.id });
+    const second = await throwaways.mint({ clientId: "org", name: "mate-door:p2:n2" });
+    await expect(throwaways.remove({ clientId: "org", tokenId: second.id })).rejects.toThrow(
+      "gone",
+    );
 
     expect(mateDiagnostics.snapshot().map(({ t: _t, ...event }) => event)).toEqual([
-      {
-        kind: "throwaway",
-        action: "mint",
-        purpose: "door",
-        clientId: "org",
-        outcome: "ok",
-        tokenId: "door-token",
-      },
+      { kind: "throwaway", action: "mint", clientId: "org", outcome: "ok", tokenId: "token-1" },
+      { kind: "throwaway", action: "delete", clientId: "org", tokenId: "token-1", outcome: "ok" },
+      { kind: "throwaway", action: "mint", clientId: "org", outcome: "ok", tokenId: "token-2" },
       {
         kind: "throwaway",
         action: "delete",
         clientId: "org",
-        tokenId: "door-token",
-        outcome: "ok",
-      },
-      {
-        kind: "throwaway",
-        action: "mint",
-        purpose: "gitea",
-        clientId: "org",
-        outcome: "ok",
-        tokenId: "gitea-token",
-      },
-      {
-        kind: "throwaway",
-        action: "delete",
-        clientId: "org",
-        tokenId: "gitea-token",
+        tokenId: "token-2",
         outcome: "failed",
         code: "ZeropsApiError:not-found",
         status: 404,
       },
     ]);
     expect(JSON.stringify(mateDiagnostics.snapshot())).not.toContain("a-value");
+  });
+});
+
+// Step A, open question 10: an organization's tokens are listed only to take back what this
+// browser failed to delete — so a failed delete is owed, and one that went through is not.
+describe("zeropsThrowawayPlatform's debt", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("restores only this account's persisted organization debt after a reload", () => {
+    const entries = new Map<string, string>();
+    const storage = (account: string) => ({
+      getItem: (key: string) => entries.get(`${account}:${key}`) ?? null,
+      setItem: (key: string, value: string) => {
+        entries.set(`${account}:${key}`, value);
+      },
+      removeItem: (key: string) => {
+        entries.delete(`${account}:${key}`);
+      },
+    });
+    const debt = makeThrowawayDebt(storage("ada"));
+    debt.owe("org-1", NOW);
+    expect(makeThrowawayDebt(storage("ada")).failedAt("org-1")).toBe(NOW);
+    expect(makeThrowawayDebt(storage("bea")).failedAt("org-1")).toBeNull();
+    expect(makeThrowawayDebt(storage("ada")).failedAt("org-2")).toBeNull();
+    debt.settle("org-1", NOW);
+    expect(makeThrowawayDebt(storage("ada")).failedAt("org-1")).toBeNull();
+  });
+
+  it("keeps cleanup owed in memory if storage reads work but writes are blocked", () => {
+    const debt = makeThrowawayDebt({
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("blocked");
+      },
+      removeItem: () => {},
+    });
+    debt.owe("org-1", NOW);
+    expect(debt.failedAt("org-1")).toBe(NOW);
+  });
+
+  it("records debt before mint so a crash during mint or door exchange can be swept", async () => {
+    vi.useFakeTimers({ now: NOW });
+    const debt = makeThrowawayDebt();
+    const client = {
+      mintThrowaway: async () => {
+        expect(debt.failedAt("org-1")).toBe(NOW);
+        return { id: "crash-token", token: "throwaway", mintingToken: "minting" };
+      },
+    } as unknown as ZeropsApiClient;
+    await zeropsThrowawayPlatform(client, { debt }).mint({
+      clientId: "org-1",
+      name: "mate-door:crash:n1",
+    });
+    expect(debt.failedAt("org-1")).toBe(NOW);
+  });
+
+  it("successful cleanup never settles another door's outstanding token", async () => {
+    vi.useFakeTimers({ now: NOW });
+    const debt = makeThrowawayDebt();
+    let next = 0;
+    const client = {
+      mintThrowaway: async () => ({
+        id: `concurrent-${++next}`,
+        token: "throwaway",
+        mintingToken: "minting",
+      }),
+      deleteThrowaway: async () => {},
+    } as unknown as ZeropsApiClient;
+    const platform = zeropsThrowawayPlatform(client, { debt });
+    const first = await platform.mint({ clientId: "org-1", name: "mate-door:concurrent:n1" });
+    await platform.mint({ clientId: "org-1", name: "mate-door:concurrent:n2" });
+    await platform.remove({ clientId: "org-1", tokenId: first.id });
+    expect(debt.failedAt("org-1")).toBe(NOW);
+  });
+
+  it("owes the organization a sweep where a delete failed, and nothing where it went through", async () => {
+    vi.useFakeTimers({ now: NOW });
+    const client = {
+      mintThrowaway: async (input: { readonly name: string }) => ({
+        id: `token-${input.name.slice(-1)}`,
+        token: "a-value",
+        mintingToken: "access-1",
+      }),
+      deleteThrowaway: async (input: { readonly tokenId: string }) => {
+        if (input.tokenId === "token-2") throw new ZeropsApiError("refused", "forbidden", 403);
+      },
+    } as unknown as ZeropsApiClient;
+    const debt = makeThrowawayDebt();
+    const throwaways = zeropsThrowawayPlatform(client, { debt });
+
+    const kept = await throwaways.mint({ clientId: "org-a", name: "mate-door:p1:n1" });
+    await throwaways.remove({ clientId: "org-a", tokenId: kept.id });
+    const left = await throwaways.mint({ clientId: "org-b", name: "mate-door:p2:n2" });
+    await expect(throwaways.remove({ clientId: "org-b", tokenId: left.id })).rejects.toThrow(
+      "refused",
+    );
+
+    expect([debt.failedAt("org-a"), debt.failedAt("org-b")]).toEqual([null, NOW]);
+    // A sweep over what failed before it settles it; one that failed since stays owed.
+    debt.settle("org-b", NOW - 1);
+    expect(debt.failedAt("org-b")).toBe(NOW);
+    debt.settle("org-b", NOW);
+    expect(debt.failedAt("org-b")).toBeNull();
   });
 });
 
@@ -383,12 +457,6 @@ describe("throwaway hygiene", () => {
         mint: "a door throwaway",
         minted: true,
         run: (tab: Tab) => tab.throwaways().mint({ clientId: "org-1", name: "mate-door:p1:n1" }),
-      },
-      {
-        mint: "a Gitea sign-in throwaway",
-        minted: true,
-        run: (tab: Tab) =>
-          tab.throwaways().mint({ clientId: "org-1", name: "gitea-signin:git.example:n1" }),
       },
       {
         mint: "a NO_ACCESS token granting a project",
@@ -574,19 +642,16 @@ describe("throwaway hygiene", () => {
       const platform = tab.throwaways();
 
       const door = await platform.mint({ clientId: "org-1", name: "mate-door:p1:n1" });
-      const gitea = await platform.mint({ clientId: "org-1", name: "gitea-signin:git.example:n2" });
       await platform.remove({ clientId: "org-1", tokenId: door.id });
-      await platform.remove({ clientId: "org-1", tokenId: gitea.id });
 
       expect(tab.mints().map(({ body }) => body)).toEqual([
         expect.objectContaining({ name: "mate-door:p1:n1", roleCode: "NO_ACCESS", projects: [] }),
-        expect.objectContaining({ name: "gitea-signin:git.example:n2", roleCode: "NO_ACCESS" }),
       ]);
       expect(tab.rest.orphanTokens()).toEqual([]);
     });
   }
 
-  it("a background door mint past the bucket waits its gap; an asked-for one never waits; Gitea mints keep their own", async () => {
+  it("a background door mint past the bucket waits its gap; an asked-for one never waits", async () => {
     vi.useFakeTimers();
     const tab = signedInTab();
     const mint = (name: string, asked = false) =>
@@ -595,14 +660,10 @@ describe("throwaway hygiene", () => {
       tab.mints().filter(({ body }) => (body as { name: string }).name.startsWith(prefix)).length;
     const gap = 60_000 / DOOR_MINT_PACE.perMinute;
 
-    for (let n = 1; n <= GITEA_MINTS_PER_MINUTE; n += 1)
-      await mint(`gitea-signin:git.example:${n}`);
     for (let n = 1; n <= DOOR_MINT_BURST; n += 1) await mint(`mate-door:p1:${n}`);
     expect(minted("mate-door:")).toBe(DOOR_MINT_BURST);
-    expect(minted("gitea-signin:")).toBe(GITEA_MINTS_PER_MINUTE);
 
     const background = mint("mate-door:p1:background");
-    const fifthGitea = mint("gitea-signin:git.example:5");
     await settle();
     expect(minted("mate-door:")).toBe(DOOR_MINT_BURST);
 
@@ -616,10 +677,6 @@ describe("throwaway hygiene", () => {
     await vi.advanceTimersByTimeAsync(1);
     await background;
     expect(minted("mate-door:")).toBe(DOOR_MINT_BURST + 2);
-
-    await vi.advanceTimersByTimeAsync(60_000);
-    await fifthGitea;
-    expect(minted("gitea-signin:")).toBe(GITEA_MINTS_PER_MINUTE + 1);
   });
 
   it("a door mint the platform throttles holds the background ones, never an asked-for one", async () => {
@@ -683,28 +740,171 @@ describe("throwaway hygiene", () => {
     await first;
   });
 
-  it("a delete Zerops could not answer is tried once more, 5 s later", async () => {
+  // KRLS, 2026-10-03: while the organization's reads stalled, one person's HQ door left eight
+  // `mate-door:` throwaways in 21 s, one per try, none deleted. A door's next try presents the
+  // throwaway its last try was not taken with, while it is young — never one mint per try.
+  it("a door's next try presents the throwaway its last try was not taken with", async () => {
     vi.useFakeTimers();
     const tab = signedInTab();
-    const orphaned: Array<unknown> = [];
-    const firstDelete = tab.rest.hold("DELETE /client/org-1/integration-token/integration-1");
-
-    const connecting = connectThroughThrowaway({
-      platform: tab.throwaways(),
-      clientId: "org-1",
-      projectId: "p1",
-      nonce: "n1",
-      onOrphaned: (cause) => orphaned.push(cause),
-      connect: async () => "connected",
-    });
+    const presented: Array<string> = [];
+    const notTaken = (outcome: { readonly ok: boolean }) => !outcome.ok;
+    await expect(
+      connectThroughThrowaway({
+        platform: tab.throwaways({ asked: true }),
+        clientId: "org-1",
+        projectId: "p-hq",
+        nonce: "n1",
+        keep: notTaken,
+        connect: async (token) => {
+          presented.push(token);
+          throw new Error("HQ's door did not answer.");
+        },
+      }),
+    ).rejects.toThrow("HQ's door did not answer.");
     await settle();
-    firstDelete.fail(503);
-    await vi.advanceTimersByTimeAsync(THROWAWAY_DELETE_RETRY_MS - 1);
+    expect(tab.rest.orphanTokens()).toHaveLength(1);
+
+    await expect(
+      connectThroughThrowaway({
+        platform: tab.throwaways({ asked: true }),
+        clientId: "org-1",
+        projectId: "p-hq",
+        nonce: "n2",
+        keep: notTaken,
+        connect: async (token) => {
+          presented.push(token);
+          return "admitted";
+        },
+      }),
+    ).resolves.toBe("admitted");
+    await settle();
+
+    expect(tab.mints()).toHaveLength(1);
+    expect(new Set(presented).size).toBe(1);
+    // Taken at last, it is deleted.
+    expect(tab.rest.orphanTokens()).toEqual([]);
+  });
+
+  it("a throwaway held for a door nobody tries again is deleted once it is no longer young", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    await expect(
+      connectThroughThrowaway({
+        platform: tab.throwaways({ asked: true }),
+        clientId: "org-1",
+        projectId: "p-hq",
+        nonce: "n1",
+        keep: () => true,
+        connect: async () => {
+          throw new Error("HQ's door did not answer.");
+        },
+      }),
+    ).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(THROWAWAY_REUSE_MS - 1);
     expect(tab.rest.orphanTokens()).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1);
-
-    await expect(connecting).resolves.toBe("connected");
-    expect(orphaned).toEqual([]);
     expect(tab.rest.orphanTokens()).toEqual([]);
+
+    // The door's next try, past it, mints a new one.
+    await connectThroughThrowaway({
+      platform: tab.throwaways({ asked: true }),
+      clientId: "org-1",
+      projectId: "p-hq",
+      nonce: "n2",
+      connect: async () => "admitted",
+    });
+    expect(tab.mints()).toHaveLength(2);
+  });
+
+  // KRLS, 2026-10-03: mints the stall took past their answer stood on the account, and nothing
+  // here knew to sweep them.
+  it("a mint whose answer was lost owes the organization a sweep", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    const client = new ZeropsApiClient({
+      fetch: async (input, init) => {
+        const response = await tab.rest.fetch(input, init);
+        if (init?.method === "POST") throw new TypeError("Failed to fetch");
+        return response;
+      },
+    });
+    client.restoreSession(tab.session);
+    const debt = makeThrowawayDebt();
+    const platform = zeropsThrowawayPlatform(client, {
+      budgets: makeThrowawayMintBudgets(() => Date.now()),
+      debt,
+    });
+    await expect(
+      platform.mint({ clientId: "org-1", name: "mate-door:p1:n1" }),
+    ).rejects.toMatchObject({ kind: "uncertain" });
+    expect(tab.rest.integrationTokens()).toHaveLength(1);
+    expect(debt.failedAt("org-1")).toBe(Date.now());
+  });
+
+  it.each([
+    { kind: "forbidden" as const, status: 403, state: "failed" },
+    { kind: "network" as const, status: null, state: "unknown" },
+  ])("persists a $state cleanup outcome and its exact target without credentials", async (row) => {
+    const entries = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => entries.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        entries.set(key, value);
+      },
+      removeItem: (key: string) => {
+        entries.delete(key);
+      },
+    };
+    const debt = makeThrowawayDebt(storage);
+    const remove = vi
+      .fn()
+      .mockRejectedValue(new ZeropsApiError("Delete refused.", row.kind, row.status));
+    const client = {
+      mintThrowaway: async () => ({
+        id: "receipt-token",
+        token: "throwaway-secret",
+        mintingToken: "account-secret",
+      }),
+      deleteThrowaway: remove,
+    } as unknown as ZeropsApiClient;
+    const platform = zeropsThrowawayPlatform(client, { debt });
+    await platform.mint({ clientId: "org-receipt", name: "mate-door:receipt:n1" });
+    await expect(
+      platform.remove({ clientId: "org-receipt", tokenId: "receipt-token" }),
+    ).rejects.toThrow("Delete refused.");
+    const restored = makeThrowawayDebt(storage);
+    expect(restored.cleanupFailures("org-receipt")).toEqual([
+      {
+        attempt: "mate-door:receipt:n1",
+        tokenId: "receipt-token",
+        state: row.state,
+        reason: "Delete refused.",
+      },
+    ]);
+    expect(restored.sweepFailed("org-receipt")).toBe(true);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify([...entries.values()])).not.toContain("secret");
+  });
+
+  it("ends a failed delete after one attempt and leaves visible debt for the sweep", async () => {
+    vi.useFakeTimers();
+    const tab = signedInTab();
+    const debt = makeThrowawayDebt();
+    const platform = zeropsThrowawayPlatform(tab.client, {
+      debt,
+      budgets: makeThrowawayMintBudgets(() => Date.now()),
+    });
+    const minted = await platform.mint({ clientId: "org-1", name: "mate-door:delete:n1" });
+    const held = tab.rest.hold(`DELETE /client/org-1/integration-token/${minted.id}`);
+    const deleting = platform.remove({ clientId: "org-1", tokenId: minted.id });
+    const outcome = expect(deleting).rejects.toMatchObject({ kind: "server" });
+    await settle();
+    held.fail(503);
+    await settle();
+    expect(debt.failedAt("org-1")).toBe(Date.now());
+    await outcome;
+    expect(debt.sweepFailed("org-1")).toBe(true);
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(tab.rest.orphanTokens()).toHaveLength(1);
   });
 });

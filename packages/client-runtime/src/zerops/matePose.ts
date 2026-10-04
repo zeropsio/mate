@@ -51,13 +51,11 @@ export const MATE_ARRIVAL_WINDOW_MS = FIRST_BUILD_GIVE_UP_MS;
 /**
  * Until when a Mate is arriving, in epoch milliseconds — from its press, through its container
  * coming up, to its first sign-in, bounded to {@link MATE_ARRIVAL_WINDOW_MS} from its project's
- * creation. `undefined` when it is not arriving at all: somebody has signed its agent in (D6's
- * signer tag, `mateOwnerRecords` — a sign-out keeps it, so a Mate once signed in has arrived for
- * good), its container is unavailable, or its creation time is not known.
+ * creation. `undefined` when it is not arriving at all: HQ records somebody as its agent's signer (`mateOwnerRecords`), its container is unavailable, or its creation time is not known.
  */
 export function mateArrivingUntil(
   candidate: Pick<ZeropsCandidate, "group"> & {
-    readonly project: Pick<ZeropsCandidate["project"], "tagList" | "userRoles" | "created">;
+    readonly project: Pick<ZeropsCandidate["project"], "hq" | "userRoles" | "created">;
   },
 ): number | undefined {
   if (candidate.group === "unavailable") return undefined;

@@ -5,24 +5,23 @@
  * the first mate in the same step, then you should go to the mate detail and the only diff would
  * be the progress").
  *
- * A New project's creation takes, in order:
- * - `gitea` — the account's Git hosting, where it has none: the registry lives on it. A reconcile
- *   (`createToolProject`): a second try picks up where the first stopped.
- * - `registry` — the project's registry entry (`mate:gn:{groupId}:{slug}`), which is what makes
- *   the project exist. Written again for the same group, it reads its own write back and changes
- *   nothing.
- * - `create` — its first Mate's Zerops project, tagged into the project at birth. Once the platform
- *   takes it the Mate's birth carries the rest (`zeropsBirths.ts`), and the view hands the route to
- *   the Mate's own (`/mate/$projectId`), in its place.
+ * A New project's creation takes, in order — over the organization's HQ, which stands before
+ * any project does (ADR 0001):
+ * - `registry` — the project's application in HQ, which is what makes the project exist. HQ names
+ *   it: its id is the project's group from then on. Then its first Mate's birth intent there —
+ *   its face, before its project exists — which the project is created under (F6c).
+ * - `create` — its first Mate's Zerops project, named as the Mate is (D3), tagged into the project
+ *   at birth. Once the platform takes it the Mate's birth carries the rest (`zeropsBirths.ts`), and
+ *   the view hands the route to the Mate's own (`/mate/$projectId`), in its place.
  *
  * Until then this tab holds the creation — how far it got, and where it stopped and why — and
- * nothing else does: a reload forgets it, as it forgets an Add a Mate the platform has not taken
- * (`newMate.ts`). Each creation is keyed by the project's group, made on the press. A step that
- * stops says why on the view, with *Try again*, which resumes from that step with the same group —
- * except a creation the platform may have taken anyway (`uncertain`), which a second try could
- * make twice.
+ * its tab retains the non-secret context through reload, including an Add a Mate the platform has not taken
+ * (`newMate.ts`). Each creation is keyed by an id made on the press. A step that stops says why on
+ * the view, with *Try again*, which resumes from that step — except a creation the platform may
+ * have taken anyway (`uncertain`), which a second try could make twice.
  */
 import {
+  formatMateFace,
   recipeTierServices,
   splitRecipeTier,
   ZeropsApiError,
@@ -40,11 +39,11 @@ import {
   birthRuntimesFacts,
   deriveBirthProgress,
 } from "@t3tools/client-runtime/zerops/birthProgress";
-import type { ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
 import {
   isUncertainZeropsFailure,
   zeropsErrorMessage,
 } from "@t3tools/client-runtime/zerops/errors";
+import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 import { create } from "zustand";
 
 import type {
@@ -52,19 +51,24 @@ import type {
   BirthLineStep,
 } from "../components/zerops/ZeropsBirthProgress.logic";
 import { COMING_UP_LINE, NOT_SET_UP_LINE } from "../components/zerops/ZeropsProjectRow.logic";
-import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
+import {
+  captureAccountLifetime,
+  onAccountLifetimeClose,
+  onAccountLifetimeOpen,
+} from "./accountLifetime";
+import { restoreCreations, saveCreations } from "./creationMemory";
 import type { ArrivalSubstep } from "./mateArrival";
 import { asSentence, type MateComing } from "./mateComing";
 import { newMateView, useNewMate, type NewMateAgain } from "./newMate";
 
 /** A step of a New project's creation, before the platform has taken its first Mate's project. */
-export type NewProjectStep = "gitea" | "registry" | "create";
+export type NewProjectStep = "registry" | "create";
 
 /** What Create asked for: the project, its first Mate, and where. */
 export interface NewProjectAsk {
   readonly organizationId: string;
-  /** The project's group, made on the press: the creation's own id too. */
-  readonly groupId: string;
+  /** The creation's own id, made on the press: where its view is, and its group until HQ names one. */
+  readonly birthId: string;
   /** The project's name. */
   readonly name: string;
   /** Its first Mate's name. */
@@ -73,16 +77,15 @@ export interface NewProjectAsk {
   readonly locationId: string | null;
   /** Empty for every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`). */
   readonly agents: ReadonlyArray<ZeropsAgentType>;
-  /** Who pressed Create: the person whose sign-in its first Mate waits for (`mate:by:`). */
-  readonly madeBy?: string | undefined;
   /**
    * Add a Mate, not a New project: the Mate goes into the project `name` that stands — no Git
-   * hosting or registration of the project's own — its environment called `displayName`, and
-   * its own registration written where `registers`.
+   * hosting or registration of the project's own — its Zerops project named as the Mate is (D3),
+   * and its own registration written where `registers`.
    */
   readonly adds?:
     | {
-        readonly displayName: string;
+        /** The existing application in HQ. */
+        readonly appId: string;
         readonly registers: boolean;
         /** The managed services its recipe names, from the press (`recipeManaged`). */
         readonly managed?: ReadonlyArray<string> | undefined;
@@ -100,14 +103,14 @@ export interface NewProjectFailure {
 
 /** A New project's creation as this tab holds it. */
 export interface NewProjectBirth extends NewProjectAsk {
-  /** The creation's own id, its view's (`newProjectView`): a New project's group, an Add's own. */
-  readonly id: string;
   /** When Create was pressed, wall ms: the view's clock counts from here. */
   readonly startedAt: number;
-  /** The account had no Git hosting when Create was pressed: standing it up is a step. */
-  readonly withGitea: boolean;
-  /** The account's Gitea project, where the registry lives, once it stands. */
-  readonly giteaProjectId: string | null;
+  /** The organization's HQ, where the registry lives. */
+  readonly hq: HqEndpoint;
+  /** The project's application in HQ — its group — once registered. */
+  readonly appId: string | null;
+  /** Its first Mate's birth intent in that application, once HQ recorded it (`recordBirth`). */
+  readonly intent: string | null;
   /** The step running, or — `failed` — the one that stopped it; `created` once the platform took the Mate's project. */
   readonly step: NewProjectStep | "created";
   readonly failed: NewProjectFailure | null;
@@ -115,62 +118,91 @@ export interface NewProjectBirth extends NewProjectAsk {
   readonly projectId: string | null;
   /** Its Mate's press, each step's state as it moves; null before it is heard. */
   readonly progress: ReadonlyArray<EnvironmentCreationStepProgress> | null;
+  /** Presentation retained across reload; full plans may contain private configuration. */
+  readonly retainedSubsteps?: ReadonlyArray<ArrivalSubstep> | undefined;
 }
 
 export type NewProjectPatch = Partial<
-  Pick<NewProjectBirth, "step" | "giteaProjectId" | "failed" | "projectId" | "progress">
+  Pick<
+    NewProjectBirth,
+    "step" | "appId" | "intent" | "failed" | "projectId" | "progress" | "retainedSubsteps"
+  >
 >;
 
-/** What the first Mate's project is created with (`createProjectWithMate`). */
+/**
+ * What the first Mate's project is created with: the project alone, named as its Mate is (D3),
+ * under its birth intent. Its application and face are HQ's, written by its press's registration
+ * before its container (F6b) — and its intent's before that (F6c).
+ */
 export interface NewProjectCreation {
   readonly name: string;
   readonly location?: string;
-  readonly agents: ReadonlyArray<ZeropsAgentType>;
-  readonly group: { readonly groupId: string; readonly role: "dev"; readonly label: string };
-  readonly botName: string;
-  readonly face: ZeropsMateFace;
-  /** Who made it (`mate:by:`). */
-  readonly madeBy?: string;
+  /** The birth intent HQ holds of its Mate. */
+  readonly birth?: string;
 }
 
-/** What a New project's creation acts through: the platform, and the birth it hands over to. */
+/**
+ * Where the project stands once registered: its organization's HQ, its application in it, and its
+ * first Mate's birth intent there, which the Mate's attach closes.
+ */
+export interface NewProjectRegistration {
+  readonly hq: HqEndpoint;
+  readonly appId: string;
+  readonly intent: string;
+}
+
+/** What a New project's creation acts through: the platform, HQ, and the birth it hands over to. */
 export interface NewProjectPorts {
-  /** Stands the account's Gitea up. */
-  readonly ensureGitea: () => Promise<{ readonly projectId: string }>;
-  /**
-   * Writes `mate:gn:{groupId}:{slug}` on the account's Gitea project: a patch the TagWriter
-   * applies to its tags as they are — the fresh project's `mate:tool:gitea` kept.
-   */
+  /** Creates the project's application in HQ (`POST /api/apps`). */
   readonly registerGroup: (registration: {
-    readonly giteaProjectId: string;
-    readonly groupId: string;
+    readonly hq: HqEndpoint;
     readonly name: string;
-  }) => Promise<ProjectTagWrite>;
-  readonly createProject: (
-    creation: NewProjectCreation,
-  ) => Promise<{ readonly project: Pick<ZeropsProject, "id"> }>;
+  }) => Promise<{ readonly appId: string }>;
   /**
-   * The platform took the first Mate's project: its birth begins (`creationAccepted`), on the
-   * creation's own clock — `startedAt` is the press's, so its row counts on, never from 0:00.
+   * Records the first Mate's birth intent in its application (`POST /api/births`): its face,
+   * before its project exists, under HQ's id.
    */
-  readonly accepted: (projectId: string, giteaProjectId: string | null, startedAt: number) => void;
+  readonly recordBirth: (birth: {
+    readonly hq: HqEndpoint;
+    readonly appId: string;
+    readonly face: string;
+  }) => Promise<{ readonly id: string }>;
+  /**
+   * Creates the first Mate's project, alone: its press attaches it to its application, then
+   * imports its container (F6b).
+   */
+  readonly createProject: (creation: NewProjectCreation) => Promise<{
+    readonly project: Pick<ZeropsProject, "id">;
+  }>;
+  /**
+   * The platform took the first Mate's project: its birth begins, on the creation's own clock —
+   * `startedAt` is the press's, so its row counts on, never from 0:00 — and its press attaches it,
+   * then imports its container.
+   */
+  readonly accepted: (
+    projectId: string,
+    registration: NewProjectRegistration | null,
+    startedAt: number,
+  ) => void;
 }
 
 // ── What its surfaces draw ───────────────────────────────────────────────────────────────────
 
 /**
  * Where the project and its first Mate stand in the account's projects, as the creation knows
- * them: its row in the menu from the press, and its birth's from the moment the platform takes it.
+ * them: its row in the menu from the press, and its birth's from the moment the platform takes it
+ * — in the group HQ named, once it named one.
  */
-export function newProjectPlacement(ask: NewProjectAsk): BirthPlacement {
+export function newProjectPlacement(
+  ask: NewProjectAsk & { readonly appId?: string | null },
+): BirthPlacement {
   return {
-    groupId: ask.groupId,
+    groupId: ask.appId ?? ask.birthId,
     groupName: ask.name,
     kind: "mate",
-    // The group has no project of its own; its first Mate is named after its bot, the way every
-    // Mate added afterwards is — "Acme CRM - Vera"; an added one as Add named it.
-    displayName: ask.adds?.displayName ?? `${ask.name} - ${ask.botName}`,
-    botName: ask.botName,
+    // The group has no project of its own; its first Mate's project is named as the Mate is, the
+    // way every Mate added afterwards is (D3).
+    displayName: ask.botName,
     face: ask.face,
   };
 }
@@ -189,7 +221,8 @@ export function placedNewProjects(
       ? []
       : [
           {
-            projectId: birth.id,
+            projectId: birth.birthId,
+            ...(birth.intent === null ? {} : { intent: birth.intent }),
             startedAt: birth.startedAt,
             placement: newProjectPlacement(birth),
             // The first thing its Mate's birth will owe.
@@ -202,7 +235,7 @@ export function placedNewProjects(
   );
 }
 
-const ORDER: ReadonlyArray<NewProjectBirth["step"]> = ["gitea", "registry", "create", "created"];
+const ORDER: ReadonlyArray<NewProjectBirth["step"]> = ["registry", "create", "created"];
 
 /** A step's state: done once the creation is past it, and the running one active or failed. */
 function stateOf(birth: NewProjectBirth, own: NewProjectStep): BirthLineStep["state"] {
@@ -213,10 +246,7 @@ function stateOf(birth: NewProjectBirth, own: NewProjectStep): BirthLineStep["st
   return birth.failed === null ? "active" : "failed";
 }
 
-/**
- * The project's own steps, before its first Mate's: Git hosting where the account had none, then
- * the project's registration, under the project's name.
- */
+/** The project's own step, before its first Mate's: its registration, under the project's name. */
 export function newProjectSteps(birth: NewProjectBirth): ReadonlyArray<BirthLineStep> {
   // An added Mate's project stands: its copy is its first row.
   if (birth.adds !== undefined) return [];
@@ -226,12 +256,7 @@ export function newProjectSteps(birth: NewProjectBirth): ReadonlyArray<BirthLine
       state === "active" ? doing : state === "failed" ? birth.failed?.reason : undefined;
     return { id, label, state, ...(detail === undefined ? {} : { detail }) };
   };
-  return [
-    ...(birth.withGitea
-      ? [step("git-hosting", "Git hosting", "gitea", "Setting up Git hosting")]
-      : []),
-    step("registry", birth.name, "registry", "Registering the project"),
-  ];
+  return [step("registry", birth.name, "registry", "Registering the project")];
 }
 
 /**
@@ -324,12 +349,10 @@ export function newProjectHandOver(
  * Runs a New project's creation from the step it stands on until the platform takes its first
  * Mate's project, or until a step stops it — telling `moved` of each step it reaches.
  *
- * The order is the point: the registry lives on the Gitea project, so an account without one gets
- * it first (the first project brings Git hosting along; nobody is told to add it); the registry
- * entry is what makes the project exist, and a Mate created before it would be a Mate in a project
- * nobody has heard of. Git hosting that cannot be stood up creates nothing; a registry write that
- * fails creates nothing; a Mate's creation that fails leaves a registered project with no Mate in
- * it, which is one the person can add a Mate to, not a mess to clean up.
+ * The order is the point: the application is what makes the project exist, and a Mate created
+ * before it would be a Mate in a project nobody has heard of. A registration that fails creates
+ * nothing; a Mate's creation that fails leaves a registered project with no Mate in it, which is
+ * one the person can add a Mate to, not a mess to clean up.
  */
 export async function runNewProjectBirth(
   birth: NewProjectBirth,
@@ -341,58 +364,56 @@ export async function runNewProjectBirth(
     moved({ failed: { reason, uncertain } });
   };
 
-  let giteaProjectId = birth.giteaProjectId;
-  if (birth.step === "gitea") {
+  const { hq } = birth;
+  // Add's press owns its HQ intent and attach, through useEnvironmentCreation. It creates
+  // no application and never writes the new-project registration.
+  if (birth.adds !== undefined) {
     try {
-      giteaProjectId = (await ports.ensureGitea()).projectId;
+      const { project } = await ports.createProject({ name: birth.botName });
+      ports.accepted(project.id, null, birth.startedAt);
+      moved({ step: "created", projectId: project.id });
+    } catch (cause) {
+      stop(zeropsErrorMessage(cause), isUncertainZeropsFailure(cause));
+    }
+    return;
+  }
+  let appId = birth.appId;
+  if (appId === null) {
+    try {
+      appId = (await ports.registerGroup({ hq, name: birth.name })).appId;
     } catch (cause) {
       stop(zeropsErrorMessage(cause));
       return;
     }
-    moved({ step: "registry", giteaProjectId });
+    moved({ appId });
   }
-
-  if (birth.step !== "create") {
-    if (giteaProjectId === null) {
-      stop("Git hosting is not set up.");
-      return;
-    }
+  // Recorded once: a creation tried again goes on under the intent it holds.
+  let intent = birth.intent;
+  if (intent === null) {
     try {
-      const registered = await ports.registerGroup({
-        giteaProjectId,
-        groupId: birth.groupId,
-        name: birth.name,
-      });
-      if (registered.kind === "refused") {
-        stop(registered.refusal.reason);
-        return;
-      }
+      intent = (await ports.recordBirth({ hq, appId, face: formatMateFace(birth.face) })).id;
     } catch (cause) {
       stop(zeropsErrorMessage(cause));
       return;
     }
-    moved({ step: "create" });
+    moved({ step: "create", intent });
   }
 
-  let projectId: string;
+  let created: Awaited<ReturnType<NewProjectPorts["createProject"]>>;
   try {
-    const created = await ports.createProject({
+    created = await ports.createProject({
       name: newProjectPlacement(birth).displayName,
       ...(birth.locationId === null ? {} : { location: birth.locationId }),
-      agents: birth.agents,
-      group: { groupId: birth.groupId, role: "dev", label: birth.name },
-      botName: birth.botName,
-      face: birth.face,
-      ...(birth.madeBy === undefined ? {} : { madeBy: birth.madeBy }),
+      birth: intent,
     });
-    projectId = created.project.id;
   } catch (cause) {
     stop(zeropsErrorMessage(cause), isUncertainZeropsFailure(cause));
     return;
   }
+  const projectId = created.project.id;
   // Its birth begins, and its view moves to it, in one breath: the menu draws its row from one or
   // the other, never neither.
-  ports.accepted(projectId, giteaProjectId, birth.startedAt);
+  ports.accepted(projectId, { hq, appId, intent }, birth.startedAt);
   moved({ step: "created", projectId });
 }
 
@@ -481,8 +502,8 @@ async function drive(birthId: string): Promise<void> {
       birth,
       {
         ...held.ports,
-        accepted: (projectId, giteaProjectId, startedAt) => {
-          if (held.isCurrent()) held.ports.accepted(projectId, giteaProjectId, startedAt);
+        accepted: (projectId, registration, startedAt) => {
+          if (held.isCurrent()) held.ports.accepted(projectId, registration, startedAt);
         },
       },
       (patch) => {
@@ -495,28 +516,25 @@ async function drive(birthId: string): Promise<void> {
 }
 
 /**
- * Create was pressed: the creation is held from now, and runs. Its id — its project's group — is
- * where its first Mate's view is (`newProjectView`).
+ * Create was pressed: the creation is held from now, and runs. Its id is where its first Mate's
+ * view is (`newProjectView`).
  */
 export function beginNewProjectBirth(input: {
   readonly ask: NewProjectAsk;
-  /** The account's Gitea, as the inventory names it — or none yet. */
-  readonly gitea: { readonly projectId: string } | undefined;
+  /** The official HQ held by the account. */
+  readonly hq: HqEndpoint;
   readonly ports: NewProjectPorts;
   /** Wall ms. */
   readonly now: number;
-  /** An Add's own id; a New project's is its group's. */
-  readonly id?: string;
 }): string {
-  const birthId = input.id ?? input.ask.groupId;
-  const adds = input.ask.adds !== undefined;
+  const birthId = input.ask.birthId;
   const birth: NewProjectBirth = {
     ...input.ask,
-    id: birthId,
     startedAt: input.now,
-    withGitea: !adds && input.gitea === undefined,
-    giteaProjectId: input.gitea?.projectId ?? null,
-    step: adds ? "create" : input.gitea === undefined ? "gitea" : "registry",
+    hq: input.hq,
+    appId: input.ask.adds?.appId ?? null,
+    intent: null,
+    step: input.ask.adds === undefined ? "registry" : "create",
     failed: null,
     projectId: null,
     progress: null,
@@ -539,7 +557,9 @@ export function progressNewProjectBirth(
   birthId: string,
   progress: ReadonlyArray<EnvironmentCreationStepProgress>,
 ): void {
-  patchBirth(birthId, { progress });
+  const creation = progress.find((entry) => entry.step.kind === "create-project");
+  const intent = creation?.step.kind === "create-project" ? creation.step.birth : undefined;
+  patchBirth(birthId, { progress, ...(intent === undefined ? {} : { intent }) });
 }
 
 /**
@@ -558,10 +578,9 @@ export function creationEnds(birth: NewProjectBirth): {
   if (birth.adds === undefined) return null;
   return {
     startOver: {
-      groupId: birth.groupId,
+      groupId: birth.adds.appId,
       again: {
         botName: birth.botName,
-        name: birth.adds.displayName,
         tint: birth.face.tint,
         shape: birth.face.shape,
       },
@@ -589,10 +608,14 @@ export function startAddOver(birthId: string): void {
 }
 
 /** *Try again* on a creation a step stopped: it resumes from that step, with the same project. */
-export function retryNewProjectBirth(birthId: string): void {
+export function retryNewProjectBirth(birthId: string, ports?: NewProjectPorts): void {
   const birth = useNewProjectBirths.getState().births[birthId];
   if (birth === undefined || birth.failed === null || birth.failed.uncertain) return;
-  patchBirth(birthId, { failed: null });
+  if (!driving.has(birthId) && ports !== undefined) {
+    driving.set(birthId, { ports, isCurrent: captureAccountLifetime(), running: false });
+  }
+  if (!driving.has(birthId)) return;
+  patchBirth(birthId, { failed: null, retainedSubsteps: undefined });
   void drive(birthId);
 }
 
@@ -627,7 +650,7 @@ export function refinishNewProjectBirth(
   if (registration === undefined || registration.state === "queued") return;
   const made = newProjectBirthOf(useNewProjectBirths.getState().births, projectId);
   if (made?.progress == null) return;
-  patchBirth(made.id, {
+  patchBirth(made.birthId, {
     progress: made.progress.map((entry) => (entry.step.kind === "register" ? registration : entry)),
   });
 }
@@ -640,9 +663,21 @@ export function newProjectBirthOf(
   return Object.values(births).find((birth) => birth.projectId === projectId);
 }
 
+let clearingCreations = false;
+useNewProjectBirths.subscribe((state) => {
+  if (!clearingCreations) saveCreations(state.births);
+});
+onAccountLifetimeOpen(() => {
+  useNewProjectBirths.setState({ births: restoreCreations() });
+});
+
 onAccountLifetimeClose(() => {
+  saveCreations(useNewProjectBirths.getState().births);
   driving.clear();
+  // Clearing the renderer must not erase the tab's saved context.
+  clearingCreations = true;
   useNewProjectBirths.setState({ births: {} });
+  clearingCreations = false;
 });
 
 /** The managed services a recipe's yaml names, in its order: none where it names none. */
@@ -654,9 +689,10 @@ export function recipeManaged(yaml: string): ReadonlyArray<string> | undefined {
 }
 
 /**
- * The managed services an added Mate's copy waits on, named from the press so its line under the
- * copy stands from the first frame: as its plan names them once its press is heard, as its recipe
- * did before. A New project's first Mate has none of its own.
+ * A New project's press as its dialog draws it, until the first Mate needs no browser: the
+ * project's registration, the project itself — its creation's wait
+ * part of the press — then its Mate's close-off and registration, from the Mate's own press
+ * (`progress`, null before it begins).
  */
 export function creationManaged(birth: NewProjectBirth): ReadonlyArray<string> | undefined {
   if (birth.adds === undefined) return undefined;
@@ -739,11 +775,13 @@ function pressedStep(
 
 /**
  * The steps this tab runs for a creation, as its view draws them under its project's row: a New
- * project registered and created, then its Mate closed off and registered; an added Mate's copy
- * created, its container, closed off and registered. Each in its state, and one that stopped with
- * why — a registration refused left to an owner, with who finishes it, never a stop.
+ * project registered and created, then its Mate registered, its container imported and closed
+ * off; an added Mate follows the same HQ order after its copy is created. Each step carries its
+ * state and the full reason when it stops. A refused registration offers Finish setup.
  */
 export function creationSubsteps(birth: NewProjectBirth): ReadonlyArray<ArrivalSubstep> {
+  if (birth.progress === null && birth.retainedSubsteps !== undefined)
+    return birth.retainedSubsteps;
   const said = (
     id: string,
     label: string,
@@ -755,8 +793,7 @@ export function creationSubsteps(birth: NewProjectBirth): ReadonlyArray<ArrivalS
     if (step === null) return said(id, label, "waiting");
     return said(id, label, step.state, step.state === "failed" ? step.error : undefined);
   };
-  // A Mate's registration comes after its close-off, and the press goes on past a refusal: the
-  // Mate runs, its registration not finished, and why — *Finish setup* finishes it. Nothing stopped.
+  // A refused registration keeps its reason until Finish setup replaces that step.
   const pressedRegistration = fromPress("registered", `${birth.botName} registered`);
   const registered =
     pressedRegistration.state === "failed"
@@ -769,14 +806,15 @@ export function creationSubsteps(birth: NewProjectBirth): ReadonlyArray<ArrivalS
       : pressedRegistration;
   if (birth.adds === undefined) {
     const own = (id: string, label: string, step: NewProjectStep): ArrivalSubstep => {
-      const state = birth.step === "gitea" ? "waiting" : stateOf(birth, step);
+      const state = stateOf(birth, step);
       return said(id, label, state, state === "failed" ? birth.failed?.reason : undefined);
     };
     return [
       own("registered-project", "Registered", "registry"),
       own("created", "Created", "create"),
-      fromPress("closed-off", "Closed off"),
       registered,
+      fromPress("container", "Container"),
+      fromPress("closed-off", "Closed off"),
     ];
   }
   // Before the platform took its project the creation says where it stands; after, its press.
@@ -796,8 +834,8 @@ export function creationSubsteps(birth: NewProjectBirth): ReadonlyArray<ArrivalS
             );
   return [
     created,
+    ...(birth.adds.registers ? [registered] : []),
     fromPress("container", "Container"),
     fromPress("closed-off", "Closed off"),
-    ...(birth.adds.registers ? [registered] : []),
   ];
 }

@@ -40,6 +40,8 @@ const app = vi.hoisted(() => ({
   projects: [] as Array<unknown>,
   /** The active organization's listing, as the jump box and a project's page look a Mate up in it. */
   listing: { state: "unread", waitingFor: null } as unknown,
+  /** The main chat HQ names for the Mate, where its overview names one. */
+  toldMain: undefined as ScopedThreadRef | undefined,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -58,6 +60,9 @@ vi.mock("../state/entities", () => ({
 }));
 vi.mock("./useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({ listing: app.listing }),
+}));
+vi.mock("./useMenuMateReadings", () => ({
+  useHqMainChats: () => () => app.toldMain,
 }));
 vi.mock("./matePress", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -116,6 +121,7 @@ beforeEach(() => {
   app.births = [];
   app.projects = [{ id: ProjectId.make("project-fen"), environmentId: ENVIRONMENT }];
   app.listing = { state: "unread", waitingFor: null };
+  app.toldMain = undefined;
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -143,6 +149,22 @@ describe("useOpenMate — what it tells the caller of the conversation it opened
     app.newThread = null;
     app.threadsLater = [shell("thread-arrived")];
     expect(await openFen()).toEqual([{ environmentId: ENVIRONMENT, threadId: "thread-arrived" }]);
+  });
+});
+
+// A9: a Mate this page holds no socket to opens its main chat by HQ's word of it — the route then
+// connects it, on the known thread's early read — never waiting on a socket to discover it.
+describe("useOpenMate — a Mate HQ tells of", () => {
+  it("routes to the main chat HQ names before any socket", async () => {
+    app.reachable = false;
+    app.projects = [];
+    app.toldMain = { environmentId: ENVIRONMENT, threadId: ThreadId.make("thread-main") };
+    const told = await openFen();
+    expect(told).toEqual([{ environmentId: ENVIRONMENT, threadId: "thread-main" }]);
+    expect(app.navigate).toHaveBeenCalledExactlyOnceWith({
+      to: "/$environmentId/$threadId",
+      params: { environmentId: ENVIRONMENT, threadId: "thread-main" },
+    });
   });
 });
 

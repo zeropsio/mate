@@ -126,6 +126,40 @@ export function signInAgents(
 }
 
 /**
+ * Whether a dialog opened on an agent starts its login at once: only where the agent holds no
+ * credential. A login started drops the one the agent holds (Toby, 2026-10-02: the dialog opened
+ * over a working Codex sign-in, and the probe read it signed out two seconds later), so where one
+ * stands — a colleague's, the person's own, one nobody recorded — the person presses first.
+ */
+export const startsAtOnce = (agent: Partial<Pick<ZeropsAgentAuth, "credPresent">>): boolean =>
+  agent.credPresent !== true;
+
+/** The press that starts a login over a sign-in the agent holds. */
+export const REPLACE_SIGN_IN_PRESS = "Sign in with your account";
+
+/**
+ * What signing in replaces, said before the press: whose sign-in it is where the Mate recorded it,
+ * and never an accusation where it did not (`ZeropsAgentAuth.authorizedBy`: absent is unknown).
+ */
+export function replacedSignInLine(input: {
+  readonly agentId: ZeropsAgentId;
+  readonly authorizedBy: { readonly subject: string } | undefined;
+  readonly viewerSubject: string | undefined;
+  /** A member's name by their user id. */
+  readonly nameOf: (subject: string) => string | undefined;
+}): string {
+  const { authorizedBy } = input;
+  if (authorizedBy === undefined) {
+    return `Signing in replaces the sign-in ${ZEROPS_AGENT_NAMES[input.agentId]} has now.`;
+  }
+  if (authorizedBy.subject === input.viewerSubject) return "Signing in replaces your own sign-in.";
+  const name = input.nameOf(authorizedBy.subject);
+  return name === undefined
+    ? "Signing in replaces another member's sign-in."
+    : `Signing in replaces ${name}'s sign-in.`;
+}
+
+/**
  * The card standing open: the one the person chose, else one whose login is still running — a
  * login started in another tab, or before a reload, opens its own card again.
  */

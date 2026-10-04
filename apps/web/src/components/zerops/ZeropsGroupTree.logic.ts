@@ -61,12 +61,6 @@ export function groupNameIsPlaceholder(group: ZeropsGroup): boolean {
 }
 
 /**
- * Which roles a group could still be given, in the order the UI offers them.
- * A role already taken is not offered again; `devstage` is left out entirely
- * because it is a thing you mark an existing environment as, not a thing you
- * create.
- */
-/**
  * Which roles a group can still be given.
  *
  * Only production is capped, and only at one: it is what the pipeline deploys

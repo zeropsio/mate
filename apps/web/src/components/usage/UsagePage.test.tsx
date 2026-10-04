@@ -298,7 +298,8 @@ describe("UsagePage dimensions", () => {
     const markup = renderPage();
 
     expect(breakdownOptions(markup)).toEqual(["Model", "Hour"]);
-    expect(markup).not.toContain("Mates");
+    // The page's scope line names Mates on every page; no dimension does here.
+    expect(markup.replace("Only Mates the app is connected to.", "")).not.toContain("Mates");
     expect(markup).not.toContain("people");
     expect(markup).toContain("expensive-model");
   });
@@ -487,5 +488,11 @@ describe("UsagePage dimensions", () => {
 
     expect(markup).toContain("Lena · shop could not report usage.");
     expect(markup).toContain("label b could not report usage.");
+  });
+});
+
+describe("UsagePage scope", () => {
+  it("says it counts only the Mates the app is connected to", () => {
+    expect(renderPage()).toContain("Only Mates the app is connected to.");
   });
 });

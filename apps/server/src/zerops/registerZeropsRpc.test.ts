@@ -5,9 +5,14 @@
  */
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 
 import { ZeropsCliFailed, ZeropsCliNotFound } from "./ZeropsCli.ts";
-import { runZeropsMateCheckUpdate, runZeropsMateUpdate } from "./registerZeropsRpc.ts";
+import {
+  runZeropsMateCheckUpdate,
+  runZeropsMateUpdate,
+  runAgentAuthCheck,
+} from "./registerZeropsRpc.ts";
 
 const stubMateUpdate = (result: Effect.Effect<any, ZeropsCliNotFound | ZeropsCliFailed>) => ({
   mateStatus: () => Effect.die("not used"),
@@ -19,6 +24,7 @@ const stubMateUpdateService = (
   check: Effect.Effect<any> = Effect.die("not used"),
 ) => ({
   current: Effect.succeed(undefined),
+  changes: Stream.make(undefined),
   refresh,
   check,
 });
@@ -201,6 +207,49 @@ describe("runZeropsMateCheckUpdate", () => {
         isZeropsEnvironment: true,
       });
       expect(result).toBeNull();
+    }),
+  );
+});
+
+describe("manual auth check", () => {
+  it.effect("makes one new attempt for the operator and refuses another member", () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      const deps = {
+        zeropsAgentAuth: {
+          latest: Effect.succeed({
+            available: true,
+            agents: [
+              {
+                agentId: "codex" as const,
+                credPresent: true,
+                flagOAuth: false,
+                flagToken: false,
+                providerAuth: "unknown" as const,
+                state: "local-only" as const,
+                authorizedBy: { subject: "owner" },
+              },
+            ],
+          }),
+          recheckNow: (id: string) =>
+            Effect.sync(() => {
+              calls.push(id);
+            }),
+        },
+        zeropsLogins: {
+          latest: Effect.succeed([]),
+          resolve: () => Effect.succeed(undefined),
+          recheckNow: () => Effect.void,
+        },
+        subject: "zerops-user:owner",
+      };
+      yield* runAgentAuthCheck(deps, { agentId: "codex" });
+      expect(calls).toEqual(["codex"]);
+      const refused = yield* Effect.flip(
+        runAgentAuthCheck({ ...deps, subject: "zerops-user:someone-else" }, { agentId: "codex" }),
+      );
+      expect(refused.reason).toBe("invalid-login");
+      expect(calls).toEqual(["codex"]);
     }),
   );
 });

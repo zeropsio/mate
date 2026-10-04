@@ -2,11 +2,14 @@
  * How a Mate is named by the machinery around it, and how to read those names
  * back.
  *
- * zcp registers a Mate's bot in Gitea as `mate-{projectId}` and works on
- * `mate/{login}` (gitea-mate `mate.go`, zcp `gitea_repo.go`). Those two shapes
- * are the only place a Mate's project id leaks into somebody else's namespace,
- * and four modules have to turn them back into a Mate — whose change this is,
- * who said this, whose branch this is.
+ * Main's zcp registered a Mate's bot in Gitea as `mate-{projectId}` and worked
+ * on `mate/{login}` (gitea-mate `mate.go`, main's zcp `gitea_repo.go`). Against
+ * HQ, zcp works on `mate/{projectId}` and pushes each change to
+ * `mate/{projectId}/{number}` (zcp `hqMateBranch`, `hq.Client.ChangeBranch`), and
+ * a Mate migrated from main still carries `mate/mate-{projectId}` until zcp moves
+ * it. Those shapes are the only place a Mate's project id leaks into somebody
+ * else's namespace, and four modules have to turn them back into a Mate — whose
+ * change this is, who said this, whose branch this is.
  *
  * Its own module because both `projectFlow.ts` and `gitTab.ts` need it and
  * they already point one way: a rule that lived in the first and was wanted by
@@ -19,8 +22,15 @@
 
 const BOT_LOGIN_PREFIX = "mate-";
 const MATE_BRANCH_PREFIX = "mate/";
+/**
+ * A Zerops project id: 22 characters of base64url. What sets HQ's `mate/{projectId}` apart from a
+ * branch a person named `mate/something`.
+ */
+const PROJECT_ID = /^[A-Za-z0-9_-]{22}$/u;
+/** HQ's branch of a Mate's change: its project id, then the change's number. */
+const CHANGE_BRANCH = /^([A-Za-z0-9_-]{22})\/\d+$/u;
 
-/** The bot login of a Mate's project — what the broker registers it as. */
+/** The bot login of a Mate's project — what main's broker registered it as. */
 export function mateBotLogin(projectId: string): string {
   return `${BOT_LOGIN_PREFIX}${projectId}`;
 }
@@ -32,20 +42,26 @@ export function mateProjectOfLogin(login: string | undefined): string | undefine
   return projectId.length > 0 ? projectId : undefined;
 }
 
-/** The Mate's project behind zcp's branch name, or `undefined` for any other branch. */
+/**
+ * The Mate's project behind zcp's branch name — main's `mate/mate-{projectId}`, HQ's
+ * `mate/{projectId}` or a change's `mate/{projectId}/{number}` — or `undefined` for any other
+ * branch.
+ */
 export function mateProjectOfBranch(ref: string | undefined): string | undefined {
   if (ref === undefined || !ref.startsWith(MATE_BRANCH_PREFIX)) return undefined;
-  return mateProjectOfLogin(ref.slice(MATE_BRANCH_PREFIX.length));
+  const rest = ref.slice(MATE_BRANCH_PREFIX.length);
+  if (rest.startsWith(BOT_LOGIN_PREFIX)) return mateProjectOfLogin(rest);
+  if (PROJECT_ID.test(rest)) return rest;
+  return CHANGE_BRANCH.exec(rest)?.[1];
 }
 
 /**
  * A branch as a person reads it.
  *
- * `mate/mate-PXGYIVK9RLWlE3eTL3Qwow` is a project id inside a bot login inside
- * a ref: three machine names and nothing a reader can use. It is the same leak
- * `changeAuthorName` closed for a change's author, in the same words — a Mate's
- * own working branch is named after the Mate, and every other branch is named
- * after itself, because a person chose that name and it means something.
+ * `mate/PXGYIVK9RLWlE3eTL3Qwow` is a project id inside a ref (on main, inside a
+ * bot login too): machine names and nothing a reader can use. A Mate's own working
+ * branch is named after the Mate, and every other branch is named after itself,
+ * because a person chose that name and it means something.
  */
 export function branchLabel(ref: string | null, mateName: string | undefined): string {
   if (ref === null || ref.length === 0) return "detached";

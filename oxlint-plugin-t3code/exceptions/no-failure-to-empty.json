@@ -1,13 +1,5 @@
 [
   {
-    "path": "apps/web/src/components/zerops/ZeropsGitSurface.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "project?.tagList ?? []",
-    "owner": "state-model 1.3",
-    "reason": "unread project tags read as no tags; inventory selectors return tags as unread, never []",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsGitTab.tsx",
     "kind": "LogicalExpression",
     "fingerprint": "data?.workingTree.files ?? EMPTY_CHANGED",
@@ -28,7 +20,7 @@
     "kind": "LogicalExpression",
     "fingerprint": "flow?.environments ?? []",
     "owner": "state-model 4.5",
-    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "reason": "an unread or failed group flow reads as empty",
     "expires": "never"
   },
   {
@@ -36,7 +28,7 @@
     "kind": "LogicalExpression",
     "fingerprint": "flow?.pullRequests ?? EMPTY_PULLS",
     "owner": "state-model 4.5",
-    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "reason": "an unread or failed group flow reads as empty",
     "expires": "never"
   },
   {
@@ -44,7 +36,7 @@
     "kind": "LogicalExpression",
     "fingerprint": "flow?.release.contents ?? []",
     "owner": "state-model 4.5",
-    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
+    "reason": "an unread or failed group flow reads as empty",
     "expires": "never"
   },
   {
@@ -52,15 +44,7 @@
     "kind": "LogicalExpression",
     "fingerprint": "mateNames ?? EMPTY_MATE_NAMES",
     "owner": "state-model 4.5",
-    "reason": "an unread or failed group flow reads as empty; useGroupFlow hands the view Known halves",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
-    "kind": "LogicalExpression",
-    "fingerprint": "groupDeploys.get(group.groupId)?.pullRequests ?? []",
-    "owner": "state-model 4.5",
-    "reason": "an unread group's pull requests, releases and missing stops read as none; useGroupFlow hands the view Known halves",
+    "reason": "an unread or failed group flow reads as empty",
     "expires": "never"
   },
   {
@@ -68,39 +52,7 @@
     "kind": "LogicalExpression",
     "fingerprint": "groupDeploys.get(group.groupId)?.releases ?? []",
     "owner": "state-model 4.5",
-    "reason": "an unread group's pull requests, releases and missing stops read as none; useGroupFlow hands the view Known halves",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.getBranch(slug, GROUP_REPOSITORY, \"main\").catch(() => undefined)",
-    "owner": "state-model 4.6",
-    "reason": "a failed main-branch read is told as \"no main to tag\"; per-verb attempts (4.5) name the cause and 4.6 deletes the provider",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "client.listTags(flow.slug, GROUP_REPOSITORY).catch(() => [])",
-    "owner": "state-model 4.6",
-    "reason": "a failed tag read reads as the release not existing; per-verb attempts (4.5) name the cause and 4.6 deletes the provider",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/addGroupEnvironment.ts",
-    "kind": "CallExpression",
-    "fingerprint": "gitea.getBranch(slug, GROUP_REPOSITORY, write.branch).catch(() => undefined)",
-    "owner": "state-model 4.2",
-    "reason": "a failed branch read is taken as no branch left by an earlier attempt; the write then meets Gitea refusing an existing branch. The registry projection and forge store answer it as Known",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/addGroupEnvironment.ts",
-    "kind": "CallExpression",
-    "fingerprint": "gitea.listPullRequests(slug, GROUP_REPOSITORY, { state: \"open\" }).catch( (): ReadonlyArray<{ readonly number: number; readonly head?: { readonly ref?: string } | undefined; }> => [], )",
-    "owner": "state-model 4.2",
-    "reason": "a failed pull-request read is taken as no open request; the write then opens one. The registry projection and forge store answer it as Known",
+    "reason": "an unread group's pull requests, releases and missing stops read as none",
     "expires": "never"
   },
   {
@@ -112,91 +64,11 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/useZeropsDeployedVersion.ts",
+    "path": "apps/web/src/zerops/readZeropsCell.ts",
     "kind": "CallExpression",
     "fingerprint": "readZeropsCell(cells, request, signal).catch(() => undefined)",
     "owner": "state-model 4.6",
     "reason": "readZeropsCellOnce turns a failed cell read into no answer; the deployment store (4.4) replaces its callers and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client .commitDetail(slug, repo, read.head) .then((detail): ReadonlyArray<GiteaCommit> => detail === undefined ? [] : [{ sha: detail.sha, subject: detail.subject }], ) .catch((): ReadonlyArray<GiteaCommit> => [])",
-    "owner": "state-model 4.6",
-    "reason": "a failed commit read reads as nothing waiting to go live; the forge store (4.1) holds release contents as Known and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client .compareCommits(slug, repo, read.from, read.head) .catch((): ReadonlyArray<GiteaCommit> => [])",
-    "owner": "state-model 4.6",
-    "reason": "a failed compare reads as nothing waiting to go live; the forge store (4.1) holds release contents as Known and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
-    "kind": "CallExpression",
-    "fingerprint": "memo .read(read, () => client.listCommitStatuses(read.owner, read.repo, read.sha), RUNNING) .catch(() => null)",
-    "owner": "state-model 4.6",
-    "reason": "null marks a status read that did not answer and the row stays silent; the forge store (4.1) holds statuses as Known and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupDeploys.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client.getBranch(slug, repository, \"main\").catch(() => null)",
-    "owner": "state-model 4.6",
-    "reason": "a failed main-branch read leaves the head unknown by omission; the forge store (4.1) holds heads as Known and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupEnvironmentReconcile.ts",
-    "kind": "CallExpression",
-    "fingerprint": "addGroupEnvironment({ client, tokens: brokerGrantTokens(data.current.runtime), writeTags: projectTagsWrite(data.current, clientId), gitea, clientId, giteaProjectId, groupId: entry.groupId, environment: { displayName: entry.displayName, tier: entry.tier, project: entry.projectId, }, signal: controller.signal, }).catch((): AddGroupEnvironmentOutcome | undefined => undefined)",
-    "owner": "state-model 4.7",
-    "reason": "a failed repair reads as no outcome and the entry is given back for the next pass; the reconciler becomes an account worker with typed attempts",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupForge.ts",
-    "kind": "CallExpression",
-    "fingerprint": "reads.statuses .read( { owner: slug, repo: GROUP_REPOSITORY, sha }, () => client.listCommitStatuses(slug, GROUP_REPOSITORY, sha), asked, ) .catch(() => [])",
-    "owner": "state-model 4.6",
-    "reason": "a failed status read reads as no checks; the forge store (4.1) holds statuses as Known and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupForge.ts",
-    "kind": "CallExpression",
-    "fingerprint": "reads.statuses .read( { owner: slug, repo: repository, sha: head }, () => client.listCommitStatuses(slug, repository, head), LIVE, ) .catch(() => [])",
-    "owner": "state-model 4.6",
-    "reason": "a failed status read reads as no checks; the forge store (4.1) holds statuses as Known and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsGroupForge.ts",
-    "kind": "CallExpression",
-    "fingerprint": "code(`tags/${tagId}/date`, () => client.tagDate(slug, GROUP_REPOSITORY, tagId)) .then((read) => read.value) .catch(() => undefined)",
-    "owner": "state-model 4.6",
-    "reason": "an unread tag date holds no release in flight, so Release stays offered rather than refused on a read that did not answer; the forge store (4.1) holds it as Known and 4.6 deletes the hook",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateNextStep.ts",
-    "kind": "LogicalExpression",
-    "fingerprint": "project?.tagList ?? []",
-    "owner": "state-model 1.3",
-    "reason": "unread project tags read as no tags; inventory selectors return tags as unread, never []",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsRepositoryCommits.ts",
-    "kind": "CallExpression",
-    "fingerprint": "client.listTags(owner, GROUP_REPOSITORY).catch(() => [])",
-    "owner": "state-model 4.1",
-    "reason": "a failed tag read shows the history without release names; the forge store holds tags as Known",
     "expires": "never"
   },
   {
@@ -205,14 +77,6 @@
     "fingerprint": "result._tag === \"Success\" ? result.value.terminalId : undefined",
     "owner": "karel",
     "reason": "a login start's settled command result, not a read: a failed start focuses no terminal, and the command itself reports the failure",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/giteaClient.ts",
-    "kind": "CallExpression",
-    "fingerprint": "response.json().catch(() => null)",
-    "owner": "karel",
-    "reason": "an unparseable error body carries no detail; the refusal itself is still thrown, so no failure becomes a negative",
     "expires": "never"
   },
   {

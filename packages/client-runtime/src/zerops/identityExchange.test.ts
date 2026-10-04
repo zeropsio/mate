@@ -32,6 +32,7 @@ const MINTED = "the-throwaway-value";
 interface MintCall {
   readonly clientId: string;
   readonly name: string;
+  readonly door?: string;
 }
 
 /** Records what was minted and what was taken back, and never a value. */
@@ -95,7 +96,9 @@ describe("exchangeZeropsContainerIdentity", () => {
       { reason: "user" },
     );
 
-    expect(minted).toEqual([{ clientId: CLIENT_ID, name: `mate-door:${PROJECT_ID}:a1b2c3` }]);
+    expect(minted).toEqual([
+      { clientId: CLIENT_ID, name: `mate-door:${PROJECT_ID}:a1b2c3`, door: PROJECT_ID },
+    ]);
   });
 
   it("hands the door the throwaway, never the account's own token", async () => {
@@ -335,7 +338,7 @@ describe("exchangeZeropsContainerIdentity", () => {
 });
 
 describe("the exchange's diagnostics", () => {
-  it.each(["restore", "auto-connect", "repair", "user"] as const)(
+  it.each(["restore", "repair", "user"] as const)(
     "names why the exchange was attempted: %s",
     async (reason) => {
       mateDiagnostics.enable();
@@ -594,6 +597,62 @@ describe("exchangeAtDoor: every answer read into the machine's failure classes (
       { reason: "restore", expectedProjectId: PROJECT_ID },
     );
     expect(handed).toEqual([read]);
+  });
+});
+
+// KRLS, 2026-10-03: while the organization's reads stalled, HQ's door minted a throwaway per try
+// and none was deleted. A Mate's door minted one per try the same way.
+describe("exchangeAtDoor: the throwaway a door did not take", () => {
+  const ENV = "env-door" as EnvironmentId;
+
+  it("is held for the door's next try, and deleted once the door takes it", async () => {
+    const mate = makeFakeMate({
+      origin: CONTAINER_ORIGIN,
+      projectId: PROJECT_ID,
+      environmentId: ENV,
+    });
+    mate.scriptDoor("500");
+    const minted: Array<MintCall> = [];
+    const held: Array<string> = [];
+    const removed: Array<string> = [];
+    const platform: ZeropsThrowawayPlatform = {
+      mint: async (input) => {
+        const kept = input.door === undefined ? undefined : held.pop();
+        if (kept !== undefined) return { id: kept, token: MINTED };
+        minted.push({ clientId: input.clientId, name: input.name });
+        return { id: `token-${String(minted.length)}`, token: MINTED };
+      },
+      remove: async (input) => {
+        removed.push(input.tokenId);
+      },
+      hold: ({ throwaway: kept }) => {
+        held.push(kept.id);
+      },
+    };
+    const exchange = () =>
+      exchangeAtDoor(
+        {
+          throwaway: throwaway(platform),
+          readDescriptor: mate.readDescriptor,
+          prepare: mate.prepare,
+          environmentOf: (credential) => credential.environmentId,
+        },
+        CONTAINER_ORIGIN,
+        { reason: "restore", expectedProjectId: PROJECT_ID },
+      );
+
+    expect(await exchange()).toMatchObject({ ok: false });
+    expect({ minted: minted.length, held, removed }).toEqual({
+      minted: 1,
+      held: ["token-1"],
+      removed: [],
+    });
+    expect(await exchange()).toMatchObject({ ok: true });
+    expect({ minted: minted.length, held, removed }).toEqual({
+      minted: 1,
+      held: [],
+      removed: ["token-1"],
+    });
   });
 });
 

@@ -1,6 +1,6 @@
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import type { StopView } from "@t3tools/client-runtime/zerops/flow";
-import type { ReactNode } from "react";
+import { cloneElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
@@ -15,9 +15,20 @@ vi.mock("../ui/menu", () => ({
   MenuGroupLabel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   MenuSeparator: () => <hr />,
   MenuTrigger: (props: Record<string, unknown>) => <button type="button" {...props} />,
-  MenuItem: ({ children, disabled }: { children: ReactNode; disabled?: boolean }) => (
-    <div aria-disabled={disabled === true ? "true" : undefined}>{children}</div>
-  ),
+  MenuItem: ({
+    children,
+    disabled,
+    render,
+  }: {
+    children: ReactNode;
+    disabled?: boolean;
+    render?: ReactElement;
+  }) =>
+    render === undefined ? (
+      <div aria-disabled={disabled === true ? "true" : undefined}>{children}</div>
+    ) : (
+      cloneElement(render, undefined, children)
+    ),
 }));
 
 const STOP: StopView = {
@@ -39,13 +50,14 @@ const menu = (
   props: Partial<{
     stop: StopView;
     routes: ReadonlyArray<ZeropsPublicRoute>;
+    projectId: string;
     onOpenStop: (() => void) | undefined;
   }> = {},
 ) =>
   renderToStaticMarkup(
     <ZeropsStopMenu
       name="production"
-      onOpenProject={() => undefined}
+      projectId={props.projectId ?? "shop-prod"}
       onOpenStop={props.onOpenStop}
       routes={props.routes ?? []}
       stop={props.stop ?? STOP}
@@ -54,6 +66,14 @@ const menu = (
   );
 
 describe("ZeropsStopMenu", () => {
+  it.each(["shop-stage", "shop-prod"])(
+    "opens project %s in the Zerops GUI in a new tab",
+    (projectId) => {
+      expect(menu({ projectId })).toContain(
+        `<a href="https://app.zerops.io/project/${projectId}" rel="noreferrer" target="_blank">Open in Zerops</a>`,
+      );
+    },
+  );
   it("is opened by a trigger named for the stop, in the caller's hand", () => {
     const html = menu();
     expect(html).toContain('aria-label="More for production"');

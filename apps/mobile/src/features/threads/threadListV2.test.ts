@@ -10,6 +10,7 @@ import {
   ProviderInstanceId,
   ThreadId,
   TurnId,
+  type OrchestrationSession,
 } from "@t3tools/contracts";
 import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 import { threadStatusVectors } from "@t3tools/shared/threadStatus.vectors";
@@ -272,20 +273,18 @@ describe("threadListV2StatusPresentation", () => {
   });
 
   it("renders Connecting for a starting session", () => {
+    const session: OrchestrationSession = {
+      threadId: ThreadId.make("t"),
+      status: "starting",
+      providerName: "Codex",
+      runtimeMode: "full-access",
+      activeTurnId: null,
+      lastError: null,
+      updatedAt: NOW,
+    };
     expect(
       threadListV2StatusPresentation(
-        resolveThreadStatus({
-          ...makeThread({ id: ThreadId.make("t"), title: "t" }),
-          session: {
-            threadId: ThreadId.make("t"),
-            status: "starting",
-            providerName: "Codex",
-            runtimeMode: "full-access",
-            activeTurnId: null,
-            lastError: null,
-            updatedAt: NOW,
-          },
-        }),
+        resolveThreadStatus({ ...makeThread({ id: ThreadId.make("t"), title: "t" }), session }),
       ).label,
     ).toBe("Connecting");
   });

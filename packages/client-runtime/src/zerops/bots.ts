@@ -8,10 +8,9 @@
  * same thing three times; a name says the one thing the row is missing, and it
  * gives the user something to address ("ask Ada to take the migration").
  *
- * The name lives in the project's `mate:bot:` tag (`groups.ts`), for the same
- * reasons the group does: it survives the container being rebuilt, it needs no
- * store, and it is visible in the Zerops GUI, where a project's tags are how a
- * person recognises it.
+ * The name is HQ's record of the Mate (ADR 0002, `groups.ts`), beside its
+ * application: it survives the container being rebuilt, and every surface reads
+ * the one record.
  *
  * Names are assigned at creation and are the user's to change. Nothing here
  * decides what an agent is *doing* — that is `resolveThreadStatus`, the one
@@ -236,24 +235,6 @@ export function generateBotName(taken: ReadonlyArray<string>, randomBytes: Rando
 }
 
 /**
- * The name a Mate keeps, or a fresh one when it has none.
- *
- * Setting up the container of a half-made Mate is a recovery, not a creation:
- * the Mate already has a name and its Zerops project is named after it.
- * Generating a new one renamed the row and left the project pointing at the
- * old name — a `Lighthouse - Enzo` holding a Mate called Dara. A name that
- * collides with a sibling's is kept too: it is already on the project, and
- * renaming it behind the person's back is not ours to do.
- */
-export function keptOrGeneratedBotName(
-  existing: string | undefined,
-  taken: ReadonlyArray<string>,
-  randomBytes: RandomBytes,
-): string {
-  return hasBotName(existing) ? existing.trim() : generateBotName(taken, randomBytes);
-}
-
-/**
  * Rejection sampling, so a pool size that does not divide 256 does not make the
  * first names likelier than the last.
  */
@@ -264,22 +245,4 @@ function pick(size: number, randomBytes: RandomBytes): number {
       if (byte < limit) return byte % size;
     }
   }
-}
-
-/**
- * What to call this environment in a menu row: its agent's name, falling back
- * to the project's own name for an environment created before names existed or
- * by something that does not know about them.
- */
-export function botDisplayName(input: {
-  readonly bot: string | undefined;
-  readonly projectName: string;
-}): string {
-  const bot = input.bot?.trim();
-  return bot !== undefined && bot.length > 0 ? bot : input.projectName;
-}
-
-/** Whether this row is showing a real agent name or falling back. */
-export function hasBotName(bot: string | undefined): bot is string {
-  return bot !== undefined && bot.trim().length > 0;
 }

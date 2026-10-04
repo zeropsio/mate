@@ -2,8 +2,8 @@
  * How a login is named (crew mode's *Runs on*, PRD §2.3) — pure.
  *
  * A login is a provider instance. The two defaults are the drivers' default
- * instances (`claudeAgent`, `codex`), and their signer tags keep the agent ids
- * (`mate:signer:claude-code:{userId}`). Every other login is `<driver>-<slug>`:
+ * instances (`claudeAgent`, `codex`), and their signers are kept under the
+ * agent ids (`claude-code`, `codex`). Every other login is `<driver>-<slug>`:
  * never a default's id, never an agent id, and its own signer key — so a second
  * Claude login can never be read as the first one's (D6 per login).
  *
@@ -30,11 +30,6 @@ export function extraLoginAgent(id: string): ZeropsAgentId | undefined {
   if (id.length > LOGIN_ID_MAX_LENGTH) return undefined;
   const driver = EXTRA_LOGIN_ID.exec(id)?.[1];
   return AGENT_IDS.find((agent) => LOGIN_DRIVER_KIND[agent] === driver);
-}
-
-/** Whether a `mate:signer:{key}:…` tag names a login this build records a signer for. */
-export function isLoginSignerKey(key: string): boolean {
-  return AGENT_IDS.some((agent) => agent === key) || extraLoginAgent(key) !== undefined;
 }
 
 /** Room for `<driver>-` and a `-NN` suffix inside {@link LOGIN_ID_MAX_LENGTH}. */

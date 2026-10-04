@@ -1,9 +1,15 @@
 // @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
 import { describe, expect, it } from "vite-plus/test";
 
-import type { GitCheckRow } from "./gitTab.ts";
-import type { RecipeReach } from "./recipeReach.ts";
-import { RELEASE_NOT_A_RELEASER, RELEASE_NOTHING_NEW_ON_MAIN } from "./release.ts";
+import { isRecipeProposal } from "./projectFlow.ts";
+import { recipeReach, type RecipeReach } from "./recipeReach.ts";
+import { releaseOffer, RELEASE_NOTHING_NEW_ON_MAIN } from "./release.ts";
+
+/** HQ's rule refusing the person the release, in its words (`releasePermission`). */
+const NOT_A_RELEASER = {
+  allowed: false,
+  reason: "You need at least Basic user access to this project's production to release it.",
+} as const;
 import {
   changeReview,
   crewTaskReview,
@@ -19,13 +25,6 @@ import {
 const NOW = Date.parse("2026-09-29T10:00:00Z");
 const minutesAgo = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
 
-const check = (name: string, tone: GitCheckRow["tone"], description?: string): GitCheckRow => ({
-  name,
-  tone,
-  word: tone,
-  ...(description === undefined ? {} : { description }),
-});
-
 function change(over: Partial<ChangeReviewInput> = {}): ChangeReviewInput {
   return {
     pull: {
@@ -33,17 +32,15 @@ function change(over: Partial<ChangeReviewInput> = {}): ChangeReviewInput {
       kind: "code",
       baseBranch: "main",
       mergeability: "mergeable",
-      checks: "passing",
-      checkRows: [check("build", "ok", "pnpm build · 34s")],
       merged: false,
       mergedAt: undefined,
-      mergeBase: "mb",
-      baseSha: "mb",
+      behind: false,
     },
     mateName: "Nova",
     readout: "read",
     commits: 1,
     downstream: { production: true, stage: true },
+    offered: { merge: true, close: true },
     now: NOW,
     ...over,
   };
@@ -51,27 +48,75 @@ function change(over: Partial<ChangeReviewInput> = {}): ChangeReviewInput {
 
 const pull = (over: Partial<ChangeReviewInput["pull"]>) => ({ ...change().pull, ...over });
 
+describe("change and release reviews share the release verdict", () => {
+  const squash = "a".repeat(40);
+  const later = "b".repeat(40);
+  const previous = "c".repeat(40);
+
+  it.each([
+    { name: "merged + released", merged: true, main: squash, production: squash, allowed: false },
+    {
+      name: "merged + not released",
+      merged: true,
+      main: squash,
+      production: previous,
+      allowed: true,
+    },
+    { name: "not merged", merged: false, main: previous, production: previous, allowed: false },
+    {
+      name: "released with later merges",
+      merged: true,
+      main: later,
+      production: squash,
+      allowed: true,
+    },
+  ])("$name", ({ merged, main, production, allowed }) => {
+    const offer = releaseOffer({
+      candidate: new Map([["app", main]]),
+      production: new Map([["app", production.slice(0, 7)]]),
+      permission: { allowed: true },
+      tags: ["v0.1.0"],
+      live: { state: "known", moved: [] },
+    });
+    const dialog = releaseReview({
+      tag: offer.suggestion,
+      gate: offer.gate,
+      permission: { allowed: true },
+      changes: allowed ? 1 : 0,
+      onStage: undefined,
+      services: ["app"],
+      replaces: { kind: "release", tag: "v0.1.0" },
+      outcome: { kind: "offered" },
+      now: NOW,
+    });
+    const footer = changeReview(
+      change({
+        pull: pull({ merged }),
+        waiting: { count: allowed ? 1 : 0, live: "v0.1.0" },
+        release: offer.gate,
+      }),
+    );
+    expect(offer.gate.allowed).toBe(allowed);
+    expect(dialog.verdict.title).toBe(allowed ? "Ready to release" : "Nothing to release");
+    expect(footer.primary?.label).toBe(!merged ? "Merge" : allowed ? "Review release" : undefined);
+    if (merged && !allowed) {
+      expect(footer.consequence).toBe(RELEASE_NOTHING_NEW_ON_MAIN);
+      expect(footer.verdict.why).not.toContain("waits for production");
+    }
+  });
+});
+
 describe("changeReview: the verdict comes first (R2)", () => {
   it.each<[string, Partial<ChangeReviewInput>, Record<string, unknown>]>([
     [
-      "ready",
-      {},
+      "ready: grey, not green",
+      { commits: 3 },
       {
         state: "ready",
-        tone: "ok",
-        title: "Ready to merge",
-        why: "Checks passed · no conflicts with main · 1 commit",
-        fix: undefined,
-      },
-    ],
-    [
-      "ready with nothing checked: grey, not green",
-      { pull: pull({ checks: "none", checkRows: [] }), commits: 3 },
-      {
-        state: "unchecked",
         tone: "quiet",
         title: "Ready to merge",
-        why: "No checks ran · no conflicts with main · 3 commits",
+        why: "No conflicts with main · 3 commits",
+        fix: undefined,
       },
     ],
     [
@@ -114,52 +159,33 @@ describe("changeReview: the verdict comes first (R2)", () => {
     ],
     [
       "behind main, and it still merges cleanly",
-      { pull: pull({ mergeBase: "mb", baseSha: "newer" }), behindBy: 2 },
+      { pull: pull({ behind: true }) },
       {
         state: "behind-clean",
         tone: "attention",
         title: "Behind main",
-        why: "2 changes landed on main since Nova branched · it still merges cleanly",
+        why: "main moved on since Nova branched · it still merges cleanly",
       },
     ],
     [
-      "checks failing, named",
+      "nothing main does not have",
+      { pull: pull({ mergeability: "empty" }) },
       {
-        pull: pull({
-          checks: "failing",
-          checkRows: [check("build", "failed", "tsc exited 2 · 41s"), check("lint", "ok")],
-        }),
-      },
-      {
-        state: "checks-failed",
-        tone: "failed",
-        title: "Checks failing: build",
-        why: "tsc exited 2 · 41s",
-      },
-    ],
-    [
-      "checks running",
-      {
-        pull: pull({
-          checks: "pending",
-          checkRows: [check("build", "busy"), check("e2e", "busy", "3 of 12 pages")],
-        }),
-      },
-      {
-        state: "checks-running",
-        tone: "busy",
-        title: "Checks running: build and e2e",
-        why: "Merging waits for them",
+        state: "empty",
+        tone: "quiet",
+        title: "Nothing to merge",
+        why: "main already has all of it",
         fix: undefined,
       },
     ],
     [
-      "Gitea still working out whether it merges",
+      "HQ not having said yet whether it merges",
       { pull: pull({ mergeability: "checking" }) },
       {
         state: "checking",
         tone: "busy",
         title: "Checking whether it merges cleanly",
+        why: "HQ works it out after every push",
         fix: undefined,
       },
     ],
@@ -188,37 +214,19 @@ describe("changeReview: the verdict comes first (R2)", () => {
         conflict: { files: ["src/server/index.ts"], by: undefined },
       },
       "resolve it",
-      "Rebase it on main, resolve the conflicts, and push.",
-    ],
-    [
-      "failing checks",
-      { pull: pull({ checks: "failing", checkRows: [check("build", "failed", "tsc exited 2")] }) },
-      "fix it",
-      "Find out why, fix them, and push.",
+      "Merge main into it, resolve the conflicts, and deliver it again.",
     ],
     [
       "a branch main moved past",
-      { pull: pull({ baseSha: "newer" }) },
+      { pull: pull({ behind: true }) },
       "update it",
-      "Bring it up to date with main, check it still works, and push.",
+      "Merge main into it, check it still works, and deliver it again.",
     ],
   ])("hands %s to the Mate, the problem written out", (_name, over, verb, ask) => {
     const fix = changeReview(change(over)).verdict.fix;
     expect(fix?.verb).toBe(verb);
     expect(fix?.problem.ask).toBe(ask);
     expect(fix?.problem.what).toMatch(/#2/u);
-  });
-
-  it("says the failing check's own words as the error the Mate reads", () => {
-    const fix = changeReview(
-      change({
-        pull: pull({ checks: "failing", checkRows: [check("build", "failed", "tsc exited 2")] }),
-      }),
-    ).verdict.fix;
-    expect(fix?.problem).toMatchObject({
-      what: "The checks on pull request #2 are failing: build",
-      error: "tsc exited 2",
-    });
   });
 });
 
@@ -249,22 +257,16 @@ describe("changeReview: the button says what will happen (R5)", () => {
       { enabled: false, safe: false },
     ],
     [
-      "failing checks",
-      { pull: pull({ checks: "failing", checkRows: [check("build", "failed")] }) },
-      "Merging waits until the checks pass.",
-      { enabled: false, safe: false },
-    ],
-    [
-      "running checks",
-      { pull: pull({ checks: "pending", checkRows: [check("build", "busy")] }) },
-      "Merging waits for the checks to finish.",
+      "HQ not having said yet whether it merges",
+      { pull: pull({ mergeability: "checking" }) },
+      "Merging waits until HQ knows it merges cleanly.",
       { enabled: false, safe: false },
     ],
     [
       // Amber: still pressable, never pressed for the person — no focus, no ⌘↵.
       "behind main but clean",
-      { pull: pull({ baseSha: "newer" }), behindBy: 2 },
-      "Squash-merges 1 commit into main, on top of 2 changes it wasn't checked with. Production isn't touched until you release.",
+      { pull: pull({ behind: true }) },
+      "Squash-merges 1 commit into main, on top of changes it wasn't checked with. Production isn't touched until you release.",
       { enabled: true, safe: false },
     ],
   ])("%s", (_name, over, consequence, primary) => {
@@ -279,7 +281,7 @@ describe("changeReview: the button says what will happen (R5)", () => {
       {
         pull: pull({ merged: true, mergedAt: minutesAgo(1) }),
         waiting: { count: 1, live: "v0.1.0" },
-        releaseOffered: true,
+        release: { allowed: true },
       },
       "Production still serves v0.1.0 until you release.",
       "Review release",
@@ -333,14 +335,13 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     production: false,
     later: [],
     unused: [],
-    declarations: false,
     ...over,
   });
   const recipe = (over: Partial<ChangeReviewInput["pull"]> = {}) =>
-    pull({ kind: "recipe", checks: "none", checkRows: [], ...over });
+    pull({ kind: "recipe", ...over });
   const merged = recipe({ merged: true, mergedAt: minutesAgo(0) });
   /** Where production waits for a release: a code change's review would offer it now. */
-  const releasable = { releaseOffered: true, waiting: { count: 2, live: "v0.1.0" } } as const;
+  const releasable = { release: { allowed: true }, waiting: { count: 2, live: "v0.1.0" } } as const;
 
   it.each<[string, Partial<RecipeReach>, string, string]>([
     [
@@ -399,18 +400,6 @@ describe("changeReview: a recipe change says what its merge does, and is never r
       "no environment changes",
     ],
     [
-      "the declarations",
-      { declarations: true },
-      "The project deploys to the environments it declares.",
-      "the project deploys to what it declares",
-    ],
-    [
-      "the stage's recipe and the declarations",
-      { stages: 1, declarations: true },
-      "The stage gets any service added to its recipe, created empty; the services it has stay as they are. The project deploys to the environments it declares.",
-      "the stage gets any new service",
-    ],
-    [
       "nothing anything is made from: its READMEs",
       {},
       "No environment changes.",
@@ -430,6 +419,24 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     });
     expect(after.consequence).toBe(sentence);
     expect(after.primary).toBeUndefined();
+  });
+
+  // zcp's second kind of recipe change modifies a tier — a host's verticalAutoscaling — rather
+  // than adding one, and a person merges it: what the stage has keeps the scale it was made with.
+  // A review reads no title, so it reads as any recipe change; it is no recipe proposal.
+  it("a scale change to a tier says the stage's services stay as they are, and merges as any change", () => {
+    const reached = recipeReach({
+      files: [{ filename: "3 — Stage/import.yaml" }],
+      environments: [{ tier: "stage" }],
+    });
+    const review = changeReview(change({ pull: recipe(), recipe: reached, ...releasable }));
+    expect(review.consequence).toBe(
+      "Squash-merges 1 commit into main. The stage gets any service added to its recipe, created empty; the services it has stay as they are.",
+    );
+    expect(review.primary).toEqual({ label: "Merge", enabled: true, safe: true });
+    expect(
+      isRecipeProposal({ kind: "recipe", title: "Mate: app's scale in the group recipe" }),
+    ).toBe(false);
   });
 
   const UNREAD =
@@ -467,6 +474,7 @@ function release(over: Partial<ReleaseReviewInput> = {}): ReleaseReviewInput {
   return {
     tag: "v0.1.57",
     gate: { allowed: true },
+    permission: { allowed: true },
     changes: 2,
     onStage: { total: 2, running: 2 },
     services: ["app", "api"],
@@ -500,9 +508,14 @@ describe("releaseReview", () => {
       { state: "release-ready", why: "1 change merged since v0.1.56" },
     ],
     [
-      "not a releaser",
-      { gate: { allowed: false, reason: RELEASE_NOT_A_RELEASER } },
-      { state: "release-blocked", tone: "attention", title: "Only releasers can release" },
+      "not a releaser, in HQ's words for who may",
+      { gate: NOT_A_RELEASER, permission: NOT_A_RELEASER },
+      {
+        state: "release-blocked",
+        tone: "attention",
+        title: "Only releasers can release",
+        why: "You need at least Basic user access to this project's production to release it",
+      },
     ],
     [
       "nothing new",
@@ -562,7 +575,7 @@ describe("releaseReview", () => {
   it.each<[string, Partial<ReleaseReviewInput>, string, boolean | undefined]>([
     [
       "blocked",
-      { gate: { allowed: false, reason: RELEASE_NOT_A_RELEASER } },
+      { gate: NOT_A_RELEASER, permission: NOT_A_RELEASER },
       "Production keeps running v0.1.56.",
       false,
     ],
@@ -661,7 +674,7 @@ function rollback(over: Partial<RollbackReviewInput> = {}): RollbackReviewInput 
     nextTag: "v0.1.58",
     live: "v0.1.57",
     services: ["app", "api"],
-    mayRelease: true,
+    permission: { allowed: true },
     press: { kind: "idle" },
     outcome: { kind: "offered" },
     now: NOW,
@@ -683,10 +696,27 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "Tags main as v0.1.58 with v0.1.55's commits. Production redeploys app and api from them.",
     ],
     [
-      "not a releaser",
-      { mayRelease: false },
-      { state: "rollback-blocked", tone: "attention", title: "Only releasers can roll back" },
+      "not a releaser, in HQ's words for who may",
+      { permission: NOT_A_RELEASER },
+      {
+        state: "rollback-blocked",
+        tone: "attention",
+        title: "Only releasers can roll back",
+        why: "You need at least Basic user access to this project's production to release it",
+      },
       "Production keeps running v0.1.57.",
+    ],
+    [
+      // HQ asks its rule again at the press, so a rule not asked yet holds nothing back.
+      "while who may is not known yet",
+      { permission: undefined },
+      {
+        state: "rollback-ready",
+        tone: "quiet",
+        title: "Goes back to v0.1.55",
+        why: "Production runs v0.1.57 now",
+      },
+      "Tags main as v0.1.58 with v0.1.55's commits. Production redeploys app and api from them.",
     ],
     [
       "tagging",
@@ -700,7 +730,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "You can close this. The project's line in the menu follows the release.",
     ],
     [
-      // The tag existing is not production running it: the broker and the deploy still decide.
+      // The tag existing is not production running it: HQ's deploy still decides.
       "tagged, on its way",
       {
         press: { kind: "done" },
@@ -726,7 +756,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "Production runs v0.1.55's commits again, as v0.1.58.",
     ],
     [
-      "the broker refused it, or its deploy failed",
+      "HQ refused it, or its deploy failed",
       {
         press: { kind: "done" },
         outcome: { kind: "failed", detail: "The deploy of app failed", service: "app" },
@@ -740,7 +770,7 @@ describe("rollbackReview: roll back gets the same review, naming where it goes b
       "Production still runs v0.1.57.",
     ],
     [
-      "a newer tag sits above the one it made",
+      "a newer release sits above the one it made",
       {
         press: { kind: "done" },
         outcome: { kind: "superseded", by: "v0.1.59", live: "v0.1.59" },
@@ -1007,6 +1037,110 @@ describe("crewTaskReview: only work that went in is in (the press's answer is no
   });
 });
 
+describe("changeReview: Merge, offered by HQ's rule (T8a)", () => {
+  // A verb this person cannot finish is not offered (guide 0.8); the foot says what it takes, in
+  // HQ's own refusal words.
+  it("offers no Merge where merge_change is not offered, and says what it takes", () => {
+    const review = changeReview(change({ offered: { merge: false, close: false } }));
+    expect(review.verdict.state).toBe("ready");
+    expect(review.primary).toBeUndefined();
+    expect(review.consequence).toBe(
+      "You need at least Basic user access to one of this project's Zerops projects to do this.",
+    );
+  });
+
+  // Its facts not held yet — HQ has not placed the projects: Merge stands where it will, unpressed.
+  it("holds Merge back while HQ's rule has not been asked", () => {
+    const review = changeReview(change({ offered: undefined }));
+    expect(review.primary).toMatchObject({ label: "Merge", enabled: false, safe: false });
+    expect(review.consequence).toBe(
+      "Squash-merges 1 commit into main. Production isn't touched until you release.",
+    );
+  });
+});
+
+describe("changeReview: Close without merging, the review its one confirmation (T8a)", () => {
+  const ASKED = { kind: "asked" } as const;
+
+  it.each<[string, Partial<ChangeReviewInput>, { label: string; enabled: boolean } | undefined]>([
+    [
+      "beside Merge, where close_change is offered",
+      {},
+      { label: "Close without merging…", enabled: true },
+    ],
+    ["nowhere close_change is not offered", { offered: { merge: true, close: false } }, undefined],
+    // An owner or admin closes what they may not merge (an application with no project left).
+    [
+      "to a person who may close and not merge",
+      { offered: { merge: false, close: true } },
+      { label: "Close without merging…", enabled: true },
+    ],
+    ["while Merge runs", { press: { kind: "running" } }, undefined],
+    [
+      "after a refused Merge",
+      { press: { kind: "refused", reason: "No." } },
+      { label: "Close without merging…", enabled: true },
+    ],
+    ["on a merged change", { pull: pull({ merged: true, mergedAt: minutesAgo(1) }) }, undefined],
+    ["on a closed one", { pull: pull({ state: "closed" }) }, undefined],
+  ])("is offered %s", (_name, over, secondary) => {
+    expect(changeReview(change(over)).secondary).toEqual(secondary);
+  });
+
+  it("asks before it closes, in the review's own words, never for ⌘↵", () => {
+    const review = changeReview(change({ close: ASKED }));
+    expect(review.verdict).toMatchObject({
+      state: "close-confirm",
+      tone: "attention",
+      title: "Close #2 without merging?",
+      why: "Nothing of it reaches main",
+    });
+    expect(review.consequence).toBe("Closes #2 for good; Nova's branch stays as it is.");
+    expect(review.primary).toEqual({ label: "Close without merging", enabled: true, safe: false });
+    expect(review.secondary).toEqual({ label: "Keep it open", enabled: true });
+  });
+
+  it.each<[string, ChangeReviewInput["close"], Record<string, unknown>, boolean, boolean]>([
+    [
+      "closing",
+      { kind: "running" },
+      { state: "closing", tone: "busy", title: "Closing #2", why: "Without merging" },
+      false,
+      false,
+    ],
+    [
+      "refused: a deliberate press tries again",
+      { kind: "refused", reason: "This change is merged or closed already." },
+      {
+        state: "close-refused",
+        tone: "attention",
+        title: "Not closed",
+        why: "This change is merged or closed already.",
+      },
+      true,
+      true,
+    ],
+  ])("while pressed: %s", (_name, close, verdict, enabled, keepOpen) => {
+    const review = changeReview(change({ close }));
+    expect(review.verdict).toMatchObject(verdict);
+    expect(review.primary).toEqual({ label: "Close without merging", enabled, safe: false });
+    expect(review.secondary !== undefined).toBe(keepOpen);
+  });
+
+  it("says it was closed once its close is done, before HQ's stream has it", () => {
+    const review = changeReview(change({ close: { kind: "done" } }));
+    expect(review.verdict).toMatchObject({
+      state: "closed",
+      tone: "done",
+      title: "Closed without merging",
+      why: "You closed it; its branch is still there",
+    });
+    expect(review.consequence).toBe("It never reached main; nothing merges from here.");
+    expect(review.primary).toBeUndefined();
+    expect(review.secondary).toBeUndefined();
+  });
+});
+
 describe("changeReview: a change closed without merging", () => {
   it("says so, and offers no Merge", () => {
     const review = changeReview(change({ pull: pull({ state: "closed", merged: false }) }));
@@ -1014,6 +1148,7 @@ describe("changeReview: a change closed without merging", () => {
       state: "closed",
       tone: "done",
       title: "Closed without merging",
+      why: "Somebody closed it; its branch is still there",
     });
     expect(review.primary).toBeUndefined();
     expect(review.consequence).toBe("It never reached main; nothing merges from here.");
@@ -1063,8 +1198,7 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
   it("keeps no keys for a change behind main while it is read: it never takes them", () => {
     const review = changeReview(
       change({
-        pull: pull({ mergeBase: "old", baseSha: "new" }),
-        behindBy: 2,
+        pull: pull({ behind: true }),
         readout: "reading",
       }),
     );
@@ -1079,3 +1213,20 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
     ).toBe("Merging waits until the conflict is resolved.");
   });
 });
+
+it.each([undefined, true, false])(
+  "an empty review offers only Close with merge permission %s",
+  (merge) => {
+    const model = changeReview(
+      change({
+        pull: pull({ mergeability: "empty" }),
+        commits: 20,
+        offered: merge === undefined ? undefined : { merge, close: true },
+      }),
+    );
+    expect(model.verdict.state).toBe("empty");
+    expect(model.consequence).toBe("Nothing to deliver: main already has this.");
+    expect(model.primary).toBeUndefined();
+    expect(model.secondary?.label).toBe(merge === undefined ? undefined : "Close without merging…");
+  },
+);

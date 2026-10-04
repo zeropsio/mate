@@ -10,6 +10,9 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
+import { unavailable } from "./zerops/zeropsApiRead.ts";
+import { ZeropsRestartRead } from "./zerops/ZeropsRestartRead.ts";
 
 import { OrchestrationCommandInvariantError } from "./orchestration/Errors.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
@@ -30,6 +33,7 @@ const makeThread = (
 ) => ({
   id: ThreadId.make(id),
   archivedAt,
+  updatedAt,
   deletedAt: null,
   session: {
     threadId: ThreadId.make(id),
@@ -303,3 +307,105 @@ it.effect("does not fail startup when the live provider session inventory cannot
     Effect.tap(() => Effect.sync(() => assert.equal(queried, false))),
   );
 });
+
+const bootAt = "2026-08-20T12:05:00.000Z";
+const processAt = "2026-08-20T12:04:00.000Z";
+const continuation = "its running turn was interrupted. Send a message to continue.";
+const restartProcess = {
+  projectId: "project-mate",
+  serviceStackId: "zcp-own",
+  actionName: "stack.restart",
+  status: "FINISHED",
+  started: processAt,
+  finished: "2026-08-20T12:04:30.000Z",
+  createdByUser: { fullName: "Ales Rechtorik" },
+};
+
+for (const row of [
+  {
+    label: "process with person",
+    processes: [restartProcess],
+    expected: `Fen was restarted by Ales Rechtorik at ${processAt}; ${continuation}`,
+  },
+  {
+    label: "process without person",
+    processes: [{ ...restartProcess, createdByUser: null }],
+    expected: `Fen was restarted at ${processAt}; ${continuation}`,
+  },
+  {
+    label: "read failed",
+    failed: true,
+    processes: [],
+    expected: `Mate restarted at ${bootAt}; ${continuation}`,
+  },
+  {
+    label: "only actions that could interrupt this turn, newest first",
+    processes: [
+      { ...restartProcess, actionName: "stack.start", started: "2026-08-20T12:04:45.000Z" },
+      { ...restartProcess, started: bootAt },
+      { ...restartProcess, started: "2026-08-20T12:06:00.000Z" },
+      { ...restartProcess, serviceStackId: "other-service", started: "2026-08-20T12:04:50.000Z" },
+      { ...restartProcess, projectId: "other-project", started: "2026-08-20T12:04:50.000Z" },
+      { ...restartProcess, status: "RUNNING", started: "2026-08-20T12:04:50.000Z" },
+      { ...restartProcess, actionName: "stack.build", started: "2026-08-20T12:04:50.000Z" },
+      { ...restartProcess, started: updatedAt },
+      { ...restartProcess, started: "invalid" },
+      { ...restartProcess, started: "2026-08-20T12:03:00.000Z" },
+      restartProcess,
+    ],
+    expected: `Fen was restarted by Ales Rechtorik at ${processAt}; ${continuation}`,
+  },
+  { label: "no process", processes: [], expected: `Fen restarted at ${bootAt}; ${continuation}` },
+  {
+    label: "container replaced without process",
+    processes: [],
+    containerStartedAt: processAt,
+    expected: `Fen's container was replaced at ${processAt}; ${continuation}`,
+  },
+]) {
+  it.effect(`explains an orphaned turn: ${row.label}, reading once for all threads`, () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse(bootAt));
+      const commands: OrchestrationCommand[] = [];
+      let reads = 0;
+      yield* runReconciliation({
+        threads: [makeThread("orphan-one", "running"), makeThread("orphan-two", "running")],
+        directory: {
+          getBinding: () => Effect.succeedNone,
+          upsert: () => Effect.void,
+          getProvider: () => Effect.die("unused"),
+          listThreadIds: () => Effect.die("unused"),
+          listBindings: () => Effect.die("unused"),
+        },
+        dispatch: (command) =>
+          Effect.sync(() => {
+            commands.push(command);
+            return { sequence: commands.length };
+          }),
+      }).pipe(
+        Effect.provideService(ZeropsRestartRead, {
+          read: Effect.suspend(() => {
+            reads++;
+            return row.failed
+              ? Effect.fail(unavailable("unreachable"))
+              : Effect.succeed({
+                  name: "Fen",
+                  processes: row.processes,
+                  containerStartedAt: row.containerStartedAt ?? null,
+                  serviceId: "zcp-own",
+                  projectId: "project-mate",
+                });
+          }),
+        }),
+      );
+      assert.equal(commands.length, 2);
+      for (const command of commands) {
+        assert.equal(
+          command.type === "thread.session.set" && command.session.lastError,
+          row.expected,
+        );
+      }
+      assert.equal(reads, 1);
+    }),
+  );
+}

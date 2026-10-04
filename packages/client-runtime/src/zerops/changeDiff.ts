@@ -4,13 +4,13 @@
  * Nowhere in the app could a pull request's diff be read before merging it
  * (pass 16's audit): a person merged on a title and a check's colour. The
  * review lists the files with their +/− and opens a file's diff in place, so
- * it needs the diff Gitea hands over (`/pulls/{index}.diff`) as lines a row
+ * it needs the patch HQ hands over for each file (`changeReadout.ts`) as lines a row
  * can draw — each with its number on the side it belongs to, the hunk's
  * header kept as git wrote it.
  *
  * Keyed by the path a file has after the change — a deleted file's last path —
- * which is the name Gitea's file listing (`/pulls/{index}/files`) uses, so a
- * row finds its diff by the name it already shows.
+ * which is the path HQ's detail names a file by, so a row finds its diff by the
+ * name it already shows.
  *
  * A diff too long to read whole is read only so far: the file the read stopped
  * inside says so, and a file past it is not there at all.

@@ -47,8 +47,6 @@ const record = (targetKey: string, environmentId = ENV_A): RegistrationRecord =>
 const NO_INDEX: DescriptorIndex = {
   serving: new Map(),
   reported: new Map(),
-  unanswered: [],
-  failed: [],
 };
 
 describe("rowTarget — the Mate a listing row stands for", () => {

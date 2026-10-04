@@ -37,7 +37,7 @@ import {
   type ZeropsAgentOwnership,
 } from "../agentOwnership.ts";
 
-/** Why a login is not the viewer's to run: somebody else's, nobody's on record, or their own record failed. */
+/** Why a login is not the viewer's to run: somebody else's, or nobody's on record. */
 export type CrewLockOwnership = Exclude<ZeropsAgentOwnership, "mine" | "none">;
 
 /** A login the viewer may not run, and whose sign-in its one way out opens. */
@@ -51,11 +51,9 @@ export interface CrewLock {
 /** A login as its conversation reads it (`resolveSpentLogin`, `resolveAgentAuthorizer`). */
 export interface CrewLoginFacts {
   /** Its agent's row — a login beyond the defaults as one (`mateLoginAsAgentRow`). */
-  readonly agent: Pick<ZeropsAgentAuth, "agentId" | "credPresent" | "flagToken" | "signerUnknown">;
-  /** Its recorded signer, this browser's own record counted until the feed carries it. */
+  readonly agent: Pick<ZeropsAgentAuth, "agentId" | "credPresent" | "flagToken">;
+  /** Its recorded signer. */
   readonly authorizedBy: ZeropsAgentAuthorizer | undefined;
-  /** This browser's own record of signing it in failed (H13). */
-  readonly recordFailed: boolean;
 }
 
 /** `null` where the viewer may run `login`: theirs, a project token's, or nobody's (no facts, no credential). */
@@ -69,8 +67,6 @@ export function crewLoginLock(
     credPresent: facts.agent.credPresent,
     authorizedBy: facts.authorizedBy,
     viewerSubject,
-    recordFailed: facts.recordFailed,
-    signerUnknown: facts.agent.signerUnknown,
   });
   if (agentOwnershipAllowsTurns(ownership)) return null;
   return { login, agentId: facts.agent.agentId, ownership: ownership as CrewLockOwnership };

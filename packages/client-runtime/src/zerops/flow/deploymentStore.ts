@@ -2,17 +2,11 @@
  * The deployment store (DESIGN §2.D D6, §4.7 "Deployment"): what each stop's services run, one
  * fact per service, for the account epoch's post-grant stage.
  *
- * A stop is one Zerops project of a group. A view demands it; while it does, the store follows
- * the data runtime's listings of that project's services — the platform's pushed deployment facet
- * is where existence and time come from (§6.1) — and of its running processes, whose builds say
- * what deploys now and name the version they build (A11). It publishes the stop each time either
- * listing changes, with each service's deployment beside it (`stopServices`). The names the
- * builds gave are kept while the stop is demanded: a version that activates after its build
- * ended is still named by it. A version a push left unstated that no build named is what the
- * account's store states of the service (A14): its organization's active versions and the deploy
- * it last started, streamed — nothing is read for it. A process demand the platform refuses fails what it could
- * not prove, rather than checking forever, and is asked for again on the retry ladder (§4.0)
- * while the stop is demanded. A stop nobody demands shows `unread`.
+ * A stop is one Zerops project of a group. Summary surfaces share service demand and the embedded
+ * active deployment. Opened detail upgrades the same entry to include running processes and the
+ * account's version/variable facts. Names its builds supplied stay with the entry until its last
+ * surface closes. Closing the last detail releases detail work while summaries keep their demand.
+ * A refused demand fails visibly until a manual Again. A stop nobody demands shows `unread`.
  *
  * A stop read again keeps its last answer while nothing new is known (`heldThroughRecheck`):
  * "Checking what runs here…" is said only before the first one.
@@ -33,7 +27,6 @@ import {
 import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
-import { INITIAL_BACKOFF, scheduleRetry, type Backoff } from "../knowledge/retryPolicy.ts";
 import {
   afterBuilds,
   buildNames,
@@ -52,32 +45,32 @@ export type DeploymentInvalidation = Extract<Invalidation, { readonly topic: "de
 export interface DeploymentStorePorts {
   /** The project's service listing, as the data runtime holds it now. */
   readonly services: (project: ProjectRef) => CollectionRead<ServiceRecord>;
-  /** The project's running processes, as the data runtime holds them now. */
-  readonly processes: (project: ProjectRef) => CollectionRead<ProcessRecord>;
+  /** The project's running processes while demanded by detail; `null` for summary alone. */
+  readonly processes: (project: ProjectRef) => CollectionRead<ProcessRecord> | null;
   /** What the account's store states the service runs now (A14), without a read. */
   readonly deployedVersion: (service: ServiceRef) => Shown<ZeropsServiceDeployedVersion>;
   /**
-   * Holds the demand both listings and the services' versions need and tells `changed` each time
-   * any of them changes, until the returned stop; tells `refused` once when the platform takes no
-   * demand for the processes.
+   * Holds service demand, adding processes for detail; tells `changed` when shared facts move,
+   * and `refused` when the platform takes no demand. The returned stop releases this scope.
    */
   readonly follow: (
     project: ProjectRef,
     changed: () => void,
     refused: (reason: LeaseAdmissionError["reason"]) => void,
+    scope: "summary" | "detail",
   ) => () => void;
   readonly nowMs: () => number;
-  /** The jitter source of the retry ladder. */
-  readonly random: () => number;
   /** Arms a timer; the returned function disarms it. */
   readonly setTimer: (delayMs: number, fire: () => void) => () => void;
 }
 
 export interface DeploymentStore {
   /** Shows the stop until the returned release. */
-  readonly demand: (project: ProjectRef) => () => void;
+  readonly demand: (project: ProjectRef, scope?: "summary" | "detail") => () => void;
   /** The stop's runtime services and what each runs; `unread` while nobody demands it. */
   readonly stop: (project: ProjectRef) => Shown<ReadonlyArray<StopService>>;
+  /** One manual attempt for a stop a view still shows. */
+  readonly again: (project: ProjectRef) => void;
   /** Whether a view demands the stop that holds the service. */
   readonly shows: (service: ServiceRef) => boolean;
   /** Told the project of every stop that was published again. */
@@ -90,16 +83,13 @@ export interface DeploymentStore {
 interface Entry {
   readonly project: ProjectRef;
   leases: number;
+  detailLeases: number;
   /** Every app version a build of the stop named while it was demanded, by id. */
   names: ReadonlyMap<string, string>;
   /** Why the platform took no demand for the stop's running processes, while it did not. */
   refused: ProcessRefusal | null;
   /** How often the platform refused the demand; it keeps a demand it admitted. */
   refusals: number;
-  /** Where the next ask for a refused demand sits on the ladder. */
-  backoff: Backoff;
-  /** Disarms the next ask for a refused demand. */
-  disarm: () => void;
   shown: Known<ReadonlyArray<StopService>>;
   /** The services seen building while demanded and not seen running since (`afterBuilds`). */
   built: ReadonlyMap<string, SeenBuild>;
@@ -107,12 +97,6 @@ interface Entry {
   disarmGrace: () => void;
   unfollow: () => void;
 }
-
-/** A demand refused for capacity may be admitted later; one for another account never is. */
-const RETRIED_REFUSALS: ReadonlySet<LeaseAdmissionError["reason"]> = new Set([
-  "account-capacity",
-  "receiver-capacity",
-]);
 
 const UNREAD: Known<never> = { state: "unread", waitingFor: null };
 
@@ -168,27 +152,15 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
       () => publish(entry),
       (reason) => {
         if (disposed || entries.get(projectKeyOf(entry.project)) !== entry) return;
-        const nowMs = ports.nowMs();
-        const scheduled = RETRIED_REFUSALS.has(reason)
-          ? scheduleRetry(entry.backoff, nowMs, ports.random)
-          : null;
-        entry.refused = {
-          reason,
-          attempt: ++entry.refusals,
-          retryAtMs: scheduled?.retryAtMs ?? null,
-        };
-        if (scheduled !== null) {
-          entry.backoff = scheduled.backoff;
-          entry.disarm = ports.setTimer(scheduled.retryAtMs - nowMs, () => askAgain(entry));
-        }
+        entry.refused = { reason, attempt: ++entry.refusals };
         publish(entry);
       },
+      entry.detailLeases > 0 ? "detail" : "summary",
     );
   };
 
   /** Asked again, the stop reads as its listings say until the platform answers. */
   const askAgain = (entry: Entry): void => {
-    entry.disarm = () => undefined;
     entry.unfollow();
     const refused = entry.refused;
     follow(entry);
@@ -199,7 +171,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
   };
 
   return {
-    demand: (project) => {
+    demand: (project, scope = "summary") => {
       if (disposed) return () => undefined;
       const key = projectKeyOf(project);
       let entry = entries.get(key);
@@ -207,11 +179,10 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
         const created: Entry = {
           project,
           leases: 0,
+          detailLeases: scope === "detail" ? 1 : 0,
           names: new Map(),
           refused: null,
           refusals: 0,
-          backoff: INITIAL_BACKOFF,
-          disarm: () => undefined,
           shown: UNREAD,
           built: new Map(),
           disarmGrace: () => undefined,
@@ -223,6 +194,13 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
         // Its listings may be read already: the stop is known as it is first demanded.
         publish(created);
         entry = created;
+      } else if (scope === "detail") {
+        entry.detailLeases += 1;
+        if (entry.detailLeases === 1) {
+          entry.unfollow();
+          follow(entry);
+          publish(entry);
+        }
       }
       const held = entry;
       held.leases += 1;
@@ -231,14 +209,26 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
         if (released || disposed) return;
         released = true;
         held.leases -= 1;
-        if (held.leases > 0) return;
-        held.disarm();
+        if (scope === "detail") held.detailLeases -= 1;
+        if (held.leases > 0) {
+          if (scope === "detail" && held.detailLeases === 0) {
+            held.unfollow();
+            follow(held);
+            publish(held);
+          }
+          return;
+        }
         held.disarmGrace();
         held.unfollow();
         entries.delete(key);
       };
     },
     stop: (project) => entries.get(projectKeyOf(project))?.shown ?? UNREAD,
+    again: (project) => {
+      if (disposed) return;
+      const entry = entries.get(projectKeyOf(project));
+      if (entry !== undefined) askAgain(entry);
+    },
     shows: (service) => entries.has(projectKeyOf(service.project)),
     subscribe: (listener) => {
       listeners.add(listener);
@@ -255,7 +245,6 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
       if (disposed) return;
       disposed = true;
       for (const entry of entries.values()) {
-        entry.disarm();
         entry.disarmGrace();
         entry.unfollow();
       }

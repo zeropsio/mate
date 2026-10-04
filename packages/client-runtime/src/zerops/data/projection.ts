@@ -108,6 +108,51 @@ const observationOf = (state: ZeropsDataState, project?: ProjectRef): ViewObserv
   access: state.access,
 });
 
+type RuntimeListing = "services" | "processes";
+const runtimeViews = new WeakMap<
+  Interests,
+  Map<ProjectKey, Record<RuntimeListing, InterestsOfView>>
+>();
+
+/**
+ * Runtime listings depend on their service/process streams alone. Metadata, history and metrics
+ * can fail independently after a deploy; their failure must not stale a current runtime answer.
+ */
+function runtimeObservationOf(
+  state: ZeropsDataState,
+  project: ProjectRef,
+  listing: RuntimeListing,
+): ViewObservation {
+  let views = runtimeViews.get(state.interests);
+  if (views === undefined) {
+    views = new Map();
+    runtimeViews.set(state.interests, views);
+  }
+  const key = projectKeyOf(project);
+  let view = views.get(key);
+  if (view === undefined) {
+    const index = interestIndexOf(state.interests);
+    const services: InterestState[] = [];
+    const optionalServices: InterestState[] = [];
+    const processes: InterestState[] = [];
+    const optionalProcesses: InterestState[] = [];
+    for (const position of index.positions.get(key) ?? []) {
+      const desired = index.interests[position]!;
+      const kind = desired.descriptor.kind;
+      if (kind === "project-topology" || kind === "project-inventory")
+        (desired.required ? services : optionalServices).push(desired.interest);
+      if (kind === "project-topology" || kind === "project-activity")
+        (desired.required ? processes : optionalProcesses).push(desired.interest);
+    }
+    view = {
+      services: { required: services, optional: optionalServices },
+      processes: { required: processes, optional: optionalProcesses },
+    };
+    views.set(key, view);
+  }
+  return { ...view[listing], access: state.access };
+}
+
 const projectKnowledge = (
   record: ProjectRecord | undefined,
   ref: ProjectRef,
@@ -182,10 +227,10 @@ export const selectService = (
 });
 
 type ProjectQuery = Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>;
-type ServiceQuery = Extract<EntityQueryDescriptor, { readonly kind: "services-of-organization" }>;
+type ServiceQuery = Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>;
 type RunningQuery = Extract<
   EntityQueryDescriptor,
-  { readonly kind: "running-processes-of-organization" }
+  { readonly kind: "running-processes-of-project" }
 >;
 
 const unresolvedProjectQuery = (
@@ -237,10 +282,10 @@ export function selectProjectsOf(
   };
 }
 
-const unresolvedServiceQuery = (organization: OrganizationRef): QueryState<ServiceQuery> => {
+const unresolvedServiceQuery = (project: ProjectRef): QueryState<ServiceQuery> => {
   const descriptor: ServiceQuery = {
-    kind: "services-of-organization",
-    organization,
+    kind: "services-of-project",
+    project,
     schemaVersion: 1,
   };
   return {
@@ -293,13 +338,13 @@ export function selectServicesOf(
 ): CollectionRead<ServiceRecord> {
   const projectKey = projectKeyOf(project);
   const descriptor: ServiceQuery = {
-    kind: "services-of-organization",
-    organization: project.organization,
+    kind: "services-of-project",
+    project: project,
     schemaVersion: 1,
   };
   const query =
     (state.inventory.queries.get(queryKeyOf(descriptor)) as QueryState<ServiceQuery> | undefined) ??
-    unresolvedServiceQuery(project.organization);
+    unresolvedServiceQuery(project);
   const relationshipKeys = new Set<ServiceKey>();
   for (const key of query.memberKeys) {
     const ref = state.inventory.memberRefs.get(key);
@@ -315,17 +360,17 @@ export function selectServicesOf(
       return ref?.kind === "service" ? [{ knowledge: "unresolved" as const, ref }] : [];
     }),
     query,
-    observation: observationOf(state, project),
+    observation: runtimeObservationOf(state, project, "services"),
     project,
   };
 }
 
 const RUNNING_STATUSES = ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const;
 
-const unresolvedRunningQuery = (organization: OrganizationRef): QueryState<RunningQuery> => {
+const unresolvedRunningQuery = (project: ProjectRef): QueryState<RunningQuery> => {
   const descriptor: RunningQuery = {
-    kind: "running-processes-of-organization",
-    organization,
+    kind: "running-processes-of-project",
+    project,
     statuses: RUNNING_STATUSES,
     schemaVersion: 1,
   };
@@ -347,14 +392,14 @@ export function selectRunningProcessesOf(
   project: ProjectRef,
 ): CollectionRead<ProcessRecord> {
   const descriptor: RunningQuery = {
-    kind: "running-processes-of-organization",
-    organization: project.organization,
+    kind: "running-processes-of-project",
+    project: project,
     statuses: RUNNING_STATUSES,
     schemaVersion: 1,
   };
   const query =
     (state.activity.queries.get(queryKeyOf(descriptor)) as QueryState<RunningQuery> | undefined) ??
-    unresolvedRunningQuery(project.organization);
+    unresolvedRunningQuery(project);
   // The organization's read of what runs is the word on a process it does not carry: one whose
   // status was last said before that read began finished meanwhile — a build that ended while the
   // socket was down, whose FINISHED was never pushed. Only a status said after the read stands.
@@ -374,7 +419,7 @@ export function selectRunningProcessesOf(
   return {
     value: running.map((record) => processKnowledge(record, record.ref)),
     query,
-    observation: observationOf(state, project),
+    observation: runtimeObservationOf(state, project, "processes"),
     project,
   };
 }

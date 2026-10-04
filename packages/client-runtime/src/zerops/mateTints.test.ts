@@ -2,7 +2,7 @@ import { MATE_SHAPE_OF_TINT, MATE_TINT_IDS } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsCandidate } from "./candidates.ts";
-import { withZeropsChangedFace } from "./groups.ts";
+import { changedMateFace, readZeropsMembership } from "./groups.ts";
 import {
   assignCandidateMateTints,
   assignMateTints,
@@ -47,9 +47,21 @@ describe("assignMateTints", () => {
   });
 });
 
+/**
+ * A Mate's project named `name` in Zerops — its name (D3) — and its record in HQ, its face, in the
+ * application it is placed in.
+ */
+function recorded(name: string, face = ""): Pick<ZeropsCandidate["project"], "name" | "hq"> {
+  return { name, hq: { appId: "app-acme", appName: "Acme", kind: "mate", mate: { face } } };
+}
+
 describe("assignCandidateMateTints", () => {
-  function candidate(id: string, tagList: ReadonlyArray<string>, withMate = true): ZeropsCandidate {
-    const base = { key: `${id}:zcp`, project: { id, name: id, status: "ACTIVE", tagList } };
+  function candidate(
+    id: string,
+    over: Partial<ZeropsCandidate["project"]> = {},
+    withMate = true,
+  ): ZeropsCandidate {
+    const base = { key: `${id}:zcp`, project: { id, name: id, status: "ACTIVE", ...over } };
     return withMate
       ? { ...base, group: "ready", service: { id: "zcp", name: "zcp", status: "ACTIVE" } }
       : { ...base, group: "unavailable", reason: "no container", missingContainer: true };
@@ -57,9 +69,13 @@ describe("assignCandidateMateTints", () => {
 
   it("keys tints by project and names a Mate the way the menu does", () => {
     const tints = assignCandidateMateTints([
-      candidate("crm-dev", ["mate:bot:Ada"]),
-      candidate("crm-stage", []),
-      candidate("crm-prod", ["mate:role:prod"], false),
+      candidate("crm-dev", recorded("Ada")),
+      candidate("crm-stage"),
+      candidate(
+        "crm-prod",
+        { hq: { appId: "app-acme", appName: "Acme", kind: "production", mate: null } },
+        false,
+      ),
     ]);
     expect([...tints.keys()].sort()).toEqual(["crm-dev", "crm-stage"]);
     expect(tints.get("crm-dev")).toBe(assignMateTints(["Ada", "crm-stage"]).get("Ada"));
@@ -67,19 +83,23 @@ describe("assignCandidateMateTints", () => {
 
   it("gives a project with two containers one tint", () => {
     const tints = assignCandidateMateTints([
-      candidate("crm-dev", ["mate:bot:Ada"]),
-      { ...candidate("crm-dev", ["mate:bot:Ada"]), key: "crm-dev:zcp2" },
+      candidate("crm-dev", recorded("Ada")),
+      { ...candidate("crm-dev", recorded("Ada")), key: "crm-dev:zcp2" },
     ]);
     expect(tints.size).toBe(1);
   });
 });
 
 describe("a Mate's own face", () => {
-  function mate(id: string, tagList: ReadonlyArray<string>): ZeropsCandidate {
+  /** A Mate on the account, with its record in HQ where it has one. */
+  function mate(
+    id: string,
+    record?: Pick<ZeropsCandidate["project"], "name" | "hq">,
+  ): ZeropsCandidate {
     return {
       key: `${id}:zcp`,
       group: "ready",
-      project: { id, name: id, status: "ACTIVE", tagList },
+      project: { id, name: id, status: "ACTIVE", tagList: ["mate"], ...record },
       service: { id: "zcp", name: "zcp", status: "ACTIVE" },
     };
   }
@@ -90,12 +110,12 @@ describe("a Mate's own face", () => {
    */
   it("leaves an account where nobody picked a face exactly as it was", () => {
     const tints = assignCandidateMateTints([
-      mate("p-ada", ["mate:bot:Ada"]),
-      mate("p-fen", ["mate:bot:Fen"]),
-      mate("p-nova", ["mate:bot:Nova"]),
-      mate("p-otto", ["mate:bot:Otto"]),
-      mate("p-juno", ["mate:bot:Juno"]),
-      mate("crm-stage", []),
+      mate("p-ada", recorded("Ada")),
+      mate("p-fen", recorded("Fen")),
+      mate("p-nova", recorded("Nova")),
+      mate("p-otto", recorded("Otto")),
+      mate("p-juno", recorded("Juno")),
+      mate("crm-stage"),
     ]);
     expect(Object.fromEntries(tints)).toEqual({
       "p-ada": "sky",
@@ -110,32 +130,27 @@ describe("a Mate's own face", () => {
   it.each([
     {
       case: "a picked tint is the Mate's, and a Mate whose name gives it that tint keeps it",
-      mates: [
-        mate("p-ada", ["mate:bot:Ada"]),
-        mate("p-otto", ["mate:bot:Otto", "mate:face:sky:gem"]),
-      ],
+      mates: [mate("p-ada", recorded("Ada")), mate("p-otto", recorded("Otto", "sky:gem"))],
       tints: { "p-ada": "sky", "p-otto": "sky" },
     },
     {
       case: "two Mates may pick one tint",
       mates: [
-        mate("p-ada", ["mate:bot:Ada", "mate:face:coral:gem"]),
-        mate("p-fen", ["mate:bot:Fen", "mate:face:coral:seal"]),
+        mate("p-ada", recorded("Ada", "coral:gem")),
+        mate("p-fen", recorded("Fen", "coral:seal")),
       ],
       tints: { "p-ada": "coral", "p-fen": "coral" },
     },
     {
       case: "a face whose tint this client does not know is derived from the name",
-      mates: [mate("p-ada", ["mate:bot:Ada", "mate:face:teal:gem"])],
+      mates: [mate("p-ada", recorded("Ada", "teal:gem"))],
       tints: { "p-ada": "sky" },
     },
     {
       case: "past eight picked tints the rest take their own again",
       mates: [
-        ...MATE_TINT_IDS.map((tint) =>
-          mate(`p-${tint}`, [`mate:bot:${tint}`, `mate:face:${tint}:gem`]),
-        ),
-        mate("p-ada", ["mate:bot:Ada"]),
+        ...MATE_TINT_IDS.map((tint) => mate(`p-${tint}`, recorded(tint, `${tint}:gem`))),
+        mate("p-ada", recorded("Ada")),
       ],
       tints: {
         ...Object.fromEntries(MATE_TINT_IDS.map((tint) => [`p-${tint}`, tint])),
@@ -150,13 +165,13 @@ describe("a Mate's own face", () => {
     { case: "its own tint, when nobody wears it", mates: [], name: "Quinn", tint: "olive" },
     {
       case: "the next free tint when another Mate wears its own",
-      mates: [mate("p-milo", ["mate:bot:Milo"])],
+      mates: [mate("p-milo", recorded("Milo"))],
       name: "Cleo",
       tint: "slate",
     },
     {
       case: "its own tint again once all eight are worn",
-      mates: MATE_TINT_IDS.map((tint) => mate(`p-${tint}`, [`mate:face:${tint}:gem`])),
+      mates: MATE_TINT_IDS.map((tint) => mate(`p-${tint}`, recorded(`p-${tint}`, `${tint}:gem`))),
       name: "Quinn",
       tint: "olive",
     },
@@ -170,11 +185,11 @@ describe("a Mate's own face", () => {
    * with it, Cleo leaves every Mate already on the account as it was.
    */
   it("never recolours a Mate already on the account", () => {
-    const milo = mate("p-milo", ["mate:bot:Milo"]);
+    const milo = mate("p-milo", recorded("Milo"));
     expect(assignCandidateMateTints([milo]).get("p-milo")).toBe("sand");
     expect(preferredMateTint("Cleo")).toBe("sand");
     const tint = newMateTint([milo], "Cleo");
-    const cleo = mate("p-cleo", ["mate:bot:Cleo", `mate:face:${tint}:${MATE_SHAPE_OF_TINT[tint]}`]);
+    const cleo = mate("p-cleo", recorded("Cleo", `${tint}:${MATE_SHAPE_OF_TINT[tint]}`));
     expect(Object.fromEntries(assignCandidateMateTints([milo, cleo]))).toEqual({
       "p-milo": "sand",
       "p-cleo": tint,
@@ -188,87 +203,94 @@ describe("a Mate's own face", () => {
    */
   it("recolours nobody when a new Mate picks a tint another Mate wears", () => {
     const account = [
-      mate("p-ada", ["mate:bot:Ada"]),
-      mate("p-fen", ["mate:bot:Fen"]),
-      mate("p-nova", ["mate:bot:Nova"]),
-      mate("p-otto", ["mate:bot:Otto"]),
-      mate("p-juno", ["mate:bot:Juno"]),
-      mate("crm-stage", []),
+      mate("p-ada", recorded("Ada")),
+      mate("p-fen", recorded("Fen")),
+      mate("p-nova", recorded("Nova")),
+      mate("p-otto", recorded("Otto")),
+      mate("p-juno", recorded("Juno")),
+      mate("crm-stage"),
     ];
     const before = Object.fromEntries(assignCandidateMateTints(account));
     const worn = before["crm-stage"]!;
-    const quinn = mate("p-quinn", ["mate:bot:Quinn", `mate:face:${worn}:gem`]);
+    const quinn = mate("p-quinn", recorded("Quinn", `${worn}:gem`));
     expect(Object.fromEntries(assignCandidateMateTints([...account, quinn]))).toEqual({
       ...before,
       "p-quinn": worn,
     });
   });
 
+  /** The face HQ records for `candidate` once `face` is saved over the one it wears. */
+  function changed(candidate: ZeropsCandidate, face: Parameters<typeof changedMateFace>[1]) {
+    const worn = readZeropsMembership(candidate.project).face;
+    return mate(
+      candidate.project.id,
+      recorded(candidate.project.name, changedMateFace(worn, face)),
+    );
+  }
+
   /**
    * A face changed after its birth. Ada wore her name's sky, and Otto, whose
    * name asks for sky too, walked on to violet: were Ada's name to leave the
-   * sharing when she picked, Otto would take sky back. Every Mate here, its
-   * face changed in turn, leaves every other Mate as it was.
+   * sharing when she picked, Otto would take sky back. Every Mate HQ records
+   * here, its face changed in turn, leaves every other Mate as it was.
    */
-  it.each(["p-ada", "p-fen", "p-nova", "p-otto", "p-juno", "crm-stage"])(
+  it.each(["p-ada", "p-fen", "p-nova", "p-otto", "p-juno"])(
     "recolours nobody when %s's face is changed",
-    (changed) => {
+    (id) => {
       const account = [
-        mate("p-ada", ["mate:bot:Ada"]),
-        mate("p-fen", ["mate:bot:Fen"]),
-        mate("p-nova", ["mate:bot:Nova"]),
-        mate("p-otto", ["mate:bot:Otto"]),
-        mate("p-juno", ["mate:bot:Juno"]),
-        mate("crm-stage", []),
+        mate("p-ada", recorded("Ada")),
+        mate("p-fen", recorded("Fen")),
+        mate("p-nova", recorded("Nova")),
+        mate("p-otto", recorded("Otto")),
+        mate("p-juno", recorded("Juno")),
+        mate("crm-stage"),
       ];
       const before = Object.fromEntries(assignCandidateMateTints(account));
       const after = account.map((entry) =>
-        entry.project.id === changed
-          ? mate(
-              changed,
-              withZeropsChangedFace(entry.project.tagList, { tint: "rose", shape: "clover" }),
-            )
-          : entry,
+        entry.project.id === id ? changed(entry, { tint: "rose", shape: "clover" }) : entry,
       );
       expect(Object.fromEntries(assignCandidateMateTints(after))).toEqual({
         ...before,
-        [changed]: "rose",
+        [id]: "rose",
       });
     },
   );
 
   it("recolours nobody when a Mate whose face was picked at its birth changes it", () => {
     const account = [
-      mate("p-ada", ["mate:bot:Ada"]),
-      mate("p-otto", ["mate:bot:Otto"]),
-      mate("p-quinn", ["mate:bot:Quinn", "mate:face:olive:gem"]),
+      mate("p-ada", recorded("Ada")),
+      mate("p-otto", recorded("Otto")),
+      mate("p-quinn", recorded("Quinn", "olive:gem")),
     ];
     const before = Object.fromEntries(assignCandidateMateTints(account));
-    const quinn = mate(
-      "p-quinn",
-      withZeropsChangedFace(account[2]!.project.tagList, { tint: "sky", shape: "seal" }),
-    );
+    const quinn = changed(account[2]!, { tint: "sky", shape: "seal" });
     expect(Object.fromEntries(assignCandidateMateTints([account[0]!, account[1]!, quinn]))).toEqual(
       { ...before, "p-quinn": "sky" },
     );
   });
 
   it.each([
-    { case: "the one it picked", tagList: ["mate:face:coral:seal"], tint: "coral", shape: "seal" },
-    { case: "its tint's own when it picked none", tagList: [], tint: "coral", shape: "pentagon" },
+    { case: "the one it picked", face: "coral:seal", tint: "coral", shape: "seal" },
+    {
+      case: "its tint's own when it picked none",
+      face: undefined,
+      tint: "coral",
+      shape: "pentagon",
+    },
     {
       case: "its tint's own when this client does not know the one it picked",
-      tagList: ["mate:face:coral:blob"],
+      face: "coral:blob",
       tint: "sky",
       shape: "pick",
     },
     {
       case: "the one it picked, whatever tint it ends up wearing",
-      tagList: ["mate:face:teal:gem"],
+      face: "teal:gem",
       tint: "rose",
       shape: "gem",
     },
-  ] as const)("shapes a Mate as $case", ({ tagList, tint, shape }) => {
-    expect(mateShapeOf(tagList, tint)).toBe(shape);
+  ] as const)("shapes a Mate as $case", ({ face, tint, shape }) => {
+    const project = face === undefined ? {} : recorded("Ada", face);
+    expect(mateShapeOf(project, tint)).toBe(shape);
   });
 });

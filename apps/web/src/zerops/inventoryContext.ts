@@ -158,9 +158,8 @@ export const InventoryContext = createContext<Inventory | null>(null);
 
 /**
  * The inventory's projects and services as held, before withholding: only for the wiring that a
- * withholding must not end — the account's Gitea and what rests on it (`useAccountGitea`), and
- * the projects each group's deploy read covers (DESIGN law 5, M7). Nothing renders from it; every
- * surface reads `InventoryContext`.
+ * withholding must not end — the projects each group's deploy read covers (DESIGN law 5, M7).
+ * Nothing renders from it; every surface reads `InventoryContext`.
  */
 export const HeldInventoryContext = createContext<Pick<Inventory, "projects" | "services"> | null>(
   null,
@@ -200,8 +199,7 @@ export function useProjectDialog<T>(
 export interface AccountTrouble {
   readonly lapse: { readonly sentence: string; readonly retry: boolean } | null;
   readonly trouble: InventoryTroubleVoice | null;
-  /** The grant is lapsed, a trouble is spoken, or a read of the organization in view is pending. */
-  readonly unanswered: boolean;
+  readonly running: boolean;
   /** What isn't answering (`troubleSubject`); null when nothing is named. */
   readonly subject: string | null;
   readonly retry: () => void;

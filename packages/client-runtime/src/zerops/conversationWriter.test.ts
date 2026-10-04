@@ -103,16 +103,6 @@ describe("resolveConversationWriter", () => {
       expected: "nobody-yet",
     },
     {
-      name: "a sign-in recorded for two people is nobody's yet",
-      input: input({ ownership: "unsettled" }),
-      expected: "nobody-yet",
-    },
-    {
-      name: "the viewer's failed record is nobody's yet",
-      input: input({ ownership: "record-failed" }),
-      expected: "nobody-yet",
-    },
-    {
       name: "a token belongs to the project: anyone writes",
       input: input({
         feed: known(snapshot([claude({ flagToken: true, flagOAuth: false })])),

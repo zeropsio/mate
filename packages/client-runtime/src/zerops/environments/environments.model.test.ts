@@ -272,9 +272,10 @@ const violations = (
       found.push(`I7: waiting(${credential.on}) was stranded; its inputs already allow more`);
     }
   }
-  // A held credential behind a blocked link: the block is being re-read, its re-read waits on
+  // A wanted held credential behind a blocked link: the block is being re-read, its re-read waits on
   // presence, or the block predates the credential and installing it retries the link.
   if (
+    machine.guards.want &&
     credential.kind === "held" &&
     machine.link.phase === "blocked" &&
     credential.rereading === null &&

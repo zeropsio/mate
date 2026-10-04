@@ -2,15 +2,14 @@ import { assert, describe, it } from "@effect/vitest";
 
 import {
   STAND_UP_MESSAGE,
-  hasGitVariables,
-  isStandUpCommand,
   parseZcpStatus,
   setupDocument,
   standUpCommandIds,
   standUpDecision,
-  standUpRequestedBy,
   standUpSigners,
   type SetupFacts,
+  type SetupStep,
+  type StandUpWait,
 } from "./zeropsSetupSteps.ts";
 
 const NOW = "2026-10-01T12:00:00Z";
@@ -27,10 +26,10 @@ const status = (overrides: Record<string, unknown> = {}) => ({
 const facts = (overrides: Partial<SetupFacts> = {}): SetupFacts => ({
   now: NOW,
   startedAt: BOOT,
-  gitAt: undefined,
+  git: { state: "waiting" },
   status: undefined,
-  tagsRead: true,
   requestedBy: "user-a",
+  standUpWait: undefined,
   signinAt: undefined,
   record: undefined,
   standUpTurn: undefined,
@@ -104,57 +103,27 @@ describe("parseZcpStatus", () => {
   });
 });
 
-describe("standUpRequestedBy and standUpSigners", () => {
-  const tags = [
-    "mate:face:coral:gem",
-    "mate:standup:user-a",
-    "mate:signer:claude-code:user-a",
-    "mate:signer:codex:user-b",
-    "mate:signer:login-7:user-a",
-  ];
-
-  it("names who asked for the stand-up", () => {
-    assert.strictEqual(standUpRequestedBy(tags), "user-a");
-    assert.isUndefined(standUpRequestedBy(["mate:standup:"]));
-    assert.isUndefined(standUpRequestedBy([]));
-  });
+describe("standUpSigners", () => {
+  const signers = {
+    "claude-code": "user-a",
+    codex: "user-b",
+    "claudeAgent-work": "user-a",
+  };
 
   it("lists the agents a person signed in, never another login or person", () => {
-    assert.deepStrictEqual(standUpSigners(tags, "user-a"), ["claude-code"]);
-    assert.deepStrictEqual(standUpSigners(tags, "user-b"), ["codex"]);
-    assert.deepStrictEqual(standUpSigners(tags, "user-c"), []);
-  });
-
-  it("an agent recorded for two people is nobody's", () => {
-    const both = ["mate:signer:claude-code:user-a", "mate:signer:claude-code:user-b"];
-    assert.deepStrictEqual(standUpSigners(both, "user-a"), []);
+    assert.deepStrictEqual(standUpSigners(signers, "user-a"), ["claude-code"]);
+    assert.deepStrictEqual(standUpSigners(signers, "user-b"), ["codex"]);
+    assert.deepStrictEqual(standUpSigners(signers, "user-c"), []);
   });
 });
 
 describe("the stand-up command", () => {
-  it("carries the browser's words and ids, so the two never run twice", () => {
+  it("carries the ask's words and the ids the client draws it by, the same after a restart", () => {
     assert.strictEqual(STAND_UP_MESSAGE, "Stand up development of the project.");
     assert.deepStrictEqual(standUpCommandIds("thread-1"), {
       commandId: "mate-standup-thread-1-1",
       messageId: "mate-standup-thread-1-1",
     });
-  });
-
-  const commands: ReadonlyArray<[string, unknown, boolean]> = [
-    ["a browser's stand-up", { type: "thread.turn.start", commandId: "mate-standup-t-2" }, true],
-    ["any other turn", { type: "thread.turn.start", commandId: "c-1" }, false],
-    ["another command", { type: "thread.create", commandId: "mate-standup-t-1" }, false],
-  ];
-  for (const [name, command, expected] of commands) {
-    it(`${name} is ${expected ? "" : "not "}a stand-up`, () =>
-      assert.strictEqual(isStandUpCommand(command as never), expected));
-  }
-});
-
-describe("hasGitVariables", () => {
-  it("needs all three of the broker's variables", () => {
-    assert.isTrue(hasGitVariables(["A", "GITEA_URL", "GITEA_TOKEN", "MATE_BROKER_URL"]));
-    assert.isFalse(hasGitVariables(["GITEA_URL", "GITEA_TOKEN"]));
   });
 });
 
@@ -279,18 +248,27 @@ describe("setupDocument", () => {
     }
   });
 
-  it("git waits until the broker's variables arrive", () => {
-    assert.deepStrictEqual(stepOf(setupDocument(facts()), "git"), {
-      id: "git",
-      state: "waiting",
-      at: "",
+  // The Mate's Git access is its enrollment with HQ (zcp's `outcome.json`, C-7): done once
+  // enrolled, waiting while zcp has said nothing, failed with zcp's reason where it said why not.
+  const gitSteps: ReadonlyArray<[string, SetupFacts["git"], SetupStep]> = [
+    ["enrolled", { state: "done", at: NOW }, { id: "git", state: "done", at: NOW }],
+    ["pending", { state: "waiting" }, { id: "git", state: "waiting", at: "" }],
+    [
+      "no official HQ",
+      { state: "failed", reason: "no_hq" },
+      { id: "git", state: "failed", at: "", reason: "no_hq" },
+    ],
+    [
+      "HQ refused",
+      { state: "failed", reason: "refused", code: "not_a_mate" },
+      { id: "git", state: "failed", at: "", reason: "refused", code: "not_a_mate" },
+    ],
+  ];
+  for (const [name, git, step] of gitSteps) {
+    it(`git: ${name}`, () => {
+      assert.deepStrictEqual(stepOf(setupDocument(facts({ git })), "git"), step);
     });
-    assert.deepStrictEqual(stepOf(setupDocument(facts({ gitAt: NOW })), "git"), {
-      id: "git",
-      state: "done",
-      at: NOW,
-    });
-  });
+  }
 
   const runtimes: ReadonlyArray<[string, unknown, string, string]> = [
     ["no status file: an older zcp", undefined, "unknown", ""],
@@ -383,7 +361,6 @@ describe("setupDocument", () => {
       { record: { startedAt: NOW, ran: true }, standUpTurn: "failed" },
       "failed",
     ],
-    ["nothing asked, nothing started: no stand-up to run", { requestedBy: undefined }, "none"],
     [
       "started, zcp says running but stopped refreshing its file: its MCP server died",
       {
@@ -403,6 +380,11 @@ describe("setupDocument", () => {
         ),
       },
       "running",
+    ],
+    [
+      "HQ's birth names nobody who asked, its project closed off: no stand-up to run",
+      { requestedBy: undefined, nobodyAsked: true },
+      "none",
     ],
     ["settled with none ran: none", { record: { startedAt: NOW, ran: false } }, "none"],
     [
@@ -480,14 +462,53 @@ describe("setupDocument", () => {
       },
       "done",
     ],
-    [
-      "the tags not read yet: it may yet be asked",
-      { requestedBy: undefined, tagsRead: false },
-      "waiting",
-    ],
   ];
   for (const [name, overrides, state] of standups) {
     it(`standup: ${name}`, () =>
       assert.strictEqual(stepOf(setupDocument(facts(overrides)), "standup")?.state, state));
   }
+
+  // A stand-up nothing started waits, and says why where the server knows: the client words it.
+  const waits: ReadonlyArray<[string, StandUpWait | undefined, SetupStep]> = [
+    [
+      "zcp found no official HQ",
+      { reason: "no_hq" },
+      { id: "standup", state: "waiting", at: "", reason: "no_hq" },
+    ],
+    [
+      "HQ refused the enrollment, with its code",
+      { reason: "not_enrolled", code: "not_a_mate" },
+      { id: "standup", state: "waiting", at: "", reason: "not_enrolled", code: "not_a_mate" },
+    ],
+    [
+      "not enrolled, with nothing more said",
+      { reason: "not_enrolled" },
+      { id: "standup", state: "waiting", at: "", reason: "not_enrolled" },
+    ],
+    [
+      "enrolled, HQ has not sent the Mate",
+      { reason: "not_linked" },
+      { id: "standup", state: "waiting", at: "", reason: "not_linked" },
+    ],
+    ["asked: the sign-in says the rest", undefined, { id: "standup", state: "waiting", at: "" }],
+  ];
+  for (const [name, wait, step] of waits) {
+    it(`a stand-up waiting says why — ${name}`, () =>
+      assert.deepStrictEqual(stepOf(setupDocument(facts({ standUpWait: wait })), "standup"), step));
+  }
+
+  it("a stand-up under way says no reason", () =>
+    assert.deepStrictEqual(
+      stepOf(
+        setupDocument(
+          facts({
+            standUpWait: { reason: "not_linked" },
+            record: { startedAt: NOW, ran: true },
+            standUpTurn: "running",
+          }),
+        ),
+        "standup",
+      ),
+      { id: "standup", state: "running", at: NOW },
+    ));
 });

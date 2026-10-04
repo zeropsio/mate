@@ -14,12 +14,16 @@ import {
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
 import {
+  formatMateFace,
   hasMate,
   isGenericPlatformError,
+  mayOffer,
+  newMateTint,
+  type OfferAsker,
   readZeropsToolKind,
+  readZeropsMembership,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
-  type ZeropsGiteaState,
   type FlowReleaseRow,
   type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
@@ -30,8 +34,8 @@ import {
   mateOnlyOwnerOpensIt,
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
-import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
+import { MATE_SHAPE_OF_TINT, type ServiceStatusToneId } from "@t3tools/shared/brand";
 
 export type ZeropsRowCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
@@ -43,7 +47,20 @@ export type ZeropsRowCandidate = ZeropsCandidate & {
   readonly presence?: CandidatePresence;
 };
 
+/** HQ's current absence is a fact; a local birth still owns its progress. */
+export function mateOutsideHq(
+  project: ZeropsCandidate["project"],
+  known: boolean,
+  birthing: boolean,
+): boolean {
+  return known && project.hq === undefined && !birthing;
+}
+
+export const NOT_IN_HQ_LINE = "Not in this HQ";
+
 export interface ZeropsRowInput {
+  /** A current HQ structure places no record here, and no local birth is in progress. */
+  readonly outsideHq?: boolean;
   readonly candidate: ZeropsRowCandidate;
   /** Absent = the health probe has not answered yet. */
   readonly health: ZeropsContainerHealth | undefined;
@@ -96,6 +113,23 @@ export interface ZeropsRowInput {
   };
 }
 
+/**
+ * A row's verbs for this person: every one where its Mate's door opens for them — HQ's rule
+ * (`observe_mate`) over what the client holds — none where it does not, nor where the client knows
+ * nobody.
+ */
+export function mateRowCan(asker: OfferAsker | null, projectId: string): ZeropsRowInput["can"] {
+  const opens = mayOffer(asker, "observe_mate", { projectId });
+  return {
+    open: opens,
+    enable: opens,
+    setUpMate: opens,
+    start: opens,
+    restart: opens,
+    remove: opens,
+  };
+}
+
 export type ZeropsRowAction =
   /** The card's one action: a connected Mate opens, a ready one connects and then opens. */
   | { readonly kind: "open"; readonly label: "Open" }
@@ -115,6 +149,7 @@ export type ZeropsRowAction =
   | { readonly kind: "retry-probe"; readonly label: "Try again" }
   /** The container is on its way, the probe or the socket still busy: no verb yet. */
   | { readonly kind: "pending" }
+  | { readonly kind: "not-in-hq" }
   | { readonly kind: "none" };
 
 /**
@@ -138,6 +173,20 @@ export function setUpMateVerb(input: {
   return input.settingUpKey === input.candidateKey
     ? { disabled: true, label: "Setting up…" }
     : { disabled: true, label: "Set up Mate" };
+}
+
+/**
+ * The record *Set up Mate* writes to HQ (`POST /api/mates`): the face a new Mate is born with —
+ * the tint its name gets among the account's (`newMateTint`) and that tint's shape. Its name is its
+ * project's in Zerops (D3). None for a project whose Mate HQ holds already.
+ */
+export function setUpMateRecord(input: {
+  readonly project: ZeropsCandidate["project"];
+  readonly candidates: ReadonlyArray<ZeropsCandidate>;
+}): { readonly face: string } | undefined {
+  if (input.project.hq?.mate != null) return undefined;
+  const tint = newMateTint(input.candidates, input.project.name);
+  return { face: formatMateFace({ tint, shape: MATE_SHAPE_OF_TINT[tint] }) };
 }
 
 export interface ZeropsRowPresentation {
@@ -247,7 +296,7 @@ function isConnectionInFlight(candidate: ZeropsRowCandidate): boolean {
 }
 
 export function isZeropsToolCandidate(candidate: ZeropsCandidate): boolean {
-  return readZeropsToolKind(candidate.project.tagList) !== undefined;
+  return readZeropsToolKind(candidate.project) !== undefined;
 }
 
 /**
@@ -298,6 +347,9 @@ function isStopped(candidate: ZeropsRowCandidate): boolean {
 
 export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPresentation {
   const { candidate, health, runningProcessKind } = input;
+  if (input.outsideHq) {
+    return { status: { label: NOT_IN_HQ_LINE, tone: "off" }, detail: NOT_IN_HQ_LINE };
+  }
 
   // Whose Mate it is outranks whatever its container is doing. A person who
   // cannot open it is not waiting for it to start, and telling them it is
@@ -484,7 +536,9 @@ export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowActio
 }
 
 export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
-  const { candidate, health, can, role } = input;
+  const { candidate, health, can } = input;
+  const role = input.role ?? readZeropsMembership(candidate.project).role;
+  if (input.outsideHq) return { kind: "not-in-hq" };
   if (isZeropsToolCandidate(candidate)) return { kind: "none" };
   // A verb the door would refuse is not offered (D5). The row says why in
   // place of it.
@@ -502,7 +556,14 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
       if (candidate.creationFailed !== undefined) {
         return can.remove ? { kind: "remove", label: "Remove" } : { kind: "none" };
       }
-      if (candidate.missingContainer === true && can.setUpMate && mateSetupOffered(role)) {
+      // Missing HQ membership cannot establish that an existing environment is a dev box.
+      // Only an explicit dev role or a declared Mate justifies setting up a container here.
+      if (
+        candidate.missingContainer === true &&
+        can.setUpMate &&
+        mateSetupOffered(role) &&
+        (role === "dev" || role === "devstage" || hasMate(candidate))
+      ) {
         return { kind: "set-up-mate", label: "Set up Mate" };
       }
       if (transitionalStatus(candidate) !== undefined) return { kind: "none" };
@@ -561,31 +622,22 @@ export function environmentSummaryLine(
 
 /**
  * A release row's tone as a dot's: where it stands against production first —
- * running there, or its deploy failed — else the broker's verdict; none before
+ * running there, or its deploy failed — else HQ's verdict on it; none before
  * it spoke.
  */
 export function releaseRowTone(
   release: Pick<FlowReleaseRow, "verdict" | "standing">,
-): ServiceStatusToneId | undefined {
+): ServiceStatusToneId {
   if (release.standing === "live") return "ok";
   if (release.standing === "deploy-failed") return "failed";
-  switch (release.verdict) {
-    case "approved":
-      return "ok";
-    case "refused":
-      return "failed";
-    case "pending":
-      return "busy";
-    case "unknown":
-      return undefined;
-  }
+  return release.verdict === "approved" ? "ok" : "failed";
 }
 
 /**
  * A deploy's tone as a dot's, for a group environment's row.
  *
  * `undefined` where the row model says `neutral`: nothing has been deployed
- * there, or nobody is signed in to Gitea to be told how it went, and a dot
+ * there, or nothing has said yet how it went, and a dot
  * without a word is exactly what rule R5 forbids. A row that has nothing to
  * say about its deploy says nothing.
  */
@@ -599,52 +651,5 @@ export function deployRowTone(tone: GroupRowTone): ServiceStatusToneId | undefin
       return "failed";
     case "neutral":
       return undefined;
-  }
-}
-
-export type ZeropsToolLine =
-  /** Its services are coming up, or the project itself still is. */
-  | { readonly kind: "setting-up" }
-  /** Up: where it is, as a link, the host as its label. */
-  | { readonly kind: "link"; readonly url: string; readonly label: string }
-  /** The project is there and its web service is not. */
-  | { readonly kind: "unavailable" }
-  /** Nothing to say yet: unread, or up without an address. */
-  | { readonly kind: "none" };
-
-/**
- * Gitea's one line on its card, from its own state (`tools.ts`) rather than
- * the platform's service list: "setting up" while it comes up, its address
- * once it is there — never the hostnames "broker, db, volume, web", which
- * say nothing about whether it is ready or where it is. The address is the
- * derived one (`deriveGiteaState`), never a guessed host.
- */
-export function giteaToolLine(input: {
-  readonly projectStatus: string;
-  readonly phase: ZeropsGiteaState["phase"] | undefined;
-  readonly url: string | undefined;
-}): ZeropsToolLine {
-  if (input.projectStatus !== "ACTIVE") {
-    return input.phase === "unavailable" ? { kind: "unavailable" } : { kind: "setting-up" };
-  }
-  switch (input.phase) {
-    case undefined:
-      return { kind: "none" };
-    case "provisioning":
-      return { kind: "setting-up" };
-    case "unavailable":
-      return { kind: "unavailable" };
-    case "running":
-      return input.url === undefined
-        ? { kind: "none" }
-        : { kind: "link", url: input.url, label: hostOf(input.url) };
-  }
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
   }
 }

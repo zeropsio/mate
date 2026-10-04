@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
-  AGENT_OWNERSHIP_RETRY_RECORD_LABEL,
   agentOwnershipAllowsTurns,
   agentOwnershipComposerNotice,
   agentOwnershipNeedsAttention,
@@ -52,22 +51,6 @@ describe("resolveAgentOwnership", () => {
       expected: "unrecorded",
     },
     {
-      name: "not known when the project records it for two people",
-      credPresent: true,
-      authorizedBy: undefined,
-      viewerSubject: "user-a",
-      signerUnknown: true,
-      expected: "unsettled",
-    },
-    {
-      name: "the viewer's own record wins over a not-known one",
-      credPresent: true,
-      authorizedBy: { subject: "user-a", at: AT },
-      viewerSubject: "user-a",
-      signerUnknown: true,
-      expected: "mine",
-    },
-    {
       name: "unrecorded when we cannot identify the viewer",
       credPresent: true,
       authorizedBy: { subject: "user-b", at: AT },
@@ -79,51 +62,9 @@ describe("resolveAgentOwnership", () => {
     credPresent: boolean;
     authorizedBy: { subject: string; at: string } | undefined;
     viewerSubject: string | undefined;
-    signerUnknown?: boolean;
     expected: ZeropsAgentOwnership;
   }>)("$name", ({ name: _name, expected, ...input }) => {
     expect(resolveAgentOwnership(input)).toBe(expected);
-  });
-
-  it("a sign-in whose record failed says so and can be retried (H13)", () => {
-    // The viewer's own just-tried write failing outranks a record of nobody,
-    // or of the viewer — the authorizer comes resolved against the latest
-    // sign-in (`resolveAgentAuthorizer`), so a stale earlier record is already
-    // the viewer's here.
-    expect(
-      resolveAgentOwnership({
-        credPresent: true,
-        authorizedBy: { subject: "user-a", at: AT },
-        viewerSubject: "user-a",
-        recordFailed: true,
-      }),
-    ).toBe("record-failed");
-    expect(
-      resolveAgentOwnership({
-        credPresent: true,
-        viewerSubject: "user-a",
-        recordFailed: true,
-      }),
-    ).toBe("record-failed");
-  });
-
-  // Somebody else signed in since the viewer's write failed: retrying it would write the
-  // viewer's tag over theirs. The row says whose the agent is now, and offers no retry.
-  it("a failed record of the viewer's yields to somebody else's sign-in since", () => {
-    expect(
-      resolveAgentOwnership({
-        credPresent: true,
-        authorizedBy: { subject: "user-b", at: AT },
-        viewerSubject: "user-a",
-        recordFailed: true,
-      }),
-    ).toBe("someone-else");
-  });
-
-  it("no credential still means nobody, even mid-retry", () => {
-    expect(
-      resolveAgentOwnership({ credPresent: false, viewerSubject: "user-a", recordFailed: true }),
-    ).toBe("none");
   });
 
   it("never reports someone-else without both a record and an identified viewer", () => {
@@ -168,10 +109,6 @@ describe("agentOwnershipNotice", () => {
       "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.",
     );
   });
-
-  it("says the record failed, not that the agent belongs to someone else", () => {
-    expect(agentOwnershipNotice("record-failed")).toBe("Your sign-in could not be recorded.");
-  });
 });
 
 describe("the composer notice and the gate (D6)", () => {
@@ -180,9 +117,6 @@ describe("the composer notice and the gate (D6)", () => {
     ["none", true],
     ["someone-else", false],
     ["unrecorded", false],
-    ["record-failed", false],
-    // Recorded for two people: the server refuses everyone until it is signed in again.
-    ["unsettled", false],
   ] as const)("%s may start a turn: %s", (ownership, allowed) => {
     expect(agentOwnershipAllowsTurns(ownership)).toBe(allowed);
   });
@@ -205,25 +139,8 @@ describe("the composer notice and the gate (D6)", () => {
     expect(agentOwnershipComposerNotice("none")).toBeUndefined();
   });
 
-  // Never a name that may be the wrong one: that it is recorded for more than one person, and
-  // the one way out.
-  it("says a login recorded for two people is nobody's until signed in again", () => {
-    const words =
-      "This Mate's sign-in is recorded for more than one person. Sign it in again to make it yours.";
-    expect(agentOwnershipComposerNotice("unsettled", "Jan")).toBe(words);
-    expect(agentOwnershipNotice("unsettled")).toBe(words);
-  });
-
   it("offers one recovery, and it is the person's own sign-in", () => {
     expect(AGENT_OWNERSHIP_RECOVERY_LABEL).toBe("Sign in with your own account");
-  });
-
-  it("record-failed replaces the composer with its own line and a retry, never Sign in again", () => {
-    expect(agentOwnershipComposerNotice("record-failed")).toBe(
-      "Your sign-in could not be recorded.",
-    );
-    expect(agentOwnershipAllowsTurns("record-failed")).toBe(false);
-    expect(AGENT_OWNERSHIP_RETRY_RECORD_LABEL).toBe("Try again");
   });
 });
 
@@ -233,8 +150,6 @@ describe("agentOwnershipNeedsAttention", () => {
     { ownership: "unrecorded", expected: false },
     { ownership: "mine", expected: false },
     { ownership: "none", expected: false },
-    { ownership: "record-failed", expected: true },
-    { ownership: "unsettled", expected: true },
   ] satisfies ReadonlyArray<{ ownership: ZeropsAgentOwnership; expected: boolean }>)(
     "$ownership → $expected",
     ({ ownership, expected }) => {

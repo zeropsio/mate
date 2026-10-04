@@ -2852,6 +2852,7 @@ export function ArchivedThreadsPanel() {
 
   return (
     <SettingsPageContainer>
+      <p className="text-xs text-muted-foreground">Only Mates the app is connected to.</p>
       {archivedGroups.length === 0 ? (
         <SettingsSection
           id={isLoadingArchive ? undefined : searchableSetting("archive").id}

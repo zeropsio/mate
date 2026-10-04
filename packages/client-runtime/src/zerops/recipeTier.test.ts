@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   deployTargetTier,
-  ENVIRONMENTS_DOCUMENT_PATH,
   RECIPE_TIER_PATHS,
   recipeProjectImportYaml,
   recipeServicesWithout,
@@ -51,7 +50,6 @@ describe("the group repo's paths", () => {
       stage: "3 — Stage/import.yaml",
       production: "4 — Small Production/import.yaml",
     });
-    expect(ENVIRONMENTS_DOCUMENT_PATH).toBe("environments.yaml");
   });
 });
 
@@ -274,7 +272,7 @@ services:
 });
 
 describe("deployTargetTier — a stage or a production, whole", () => {
-  it("starts every runtime the broker deploys empty, and builds a utility", () => {
+  it("starts every runtime HQ deploys empty, and builds a utility", () => {
     expect(deployTargetTier(MATE_TIER)).toBe(`#zeropsPreprocessor=on
 project:
   name: Acme - Vera
@@ -379,13 +377,12 @@ services:
     - hostname: db
       type: postgresql:single@18
 `,
-      { name: "Imperial Titan - stage", tagList: ["mate:g:x", "mate:role:stage"] },
+      { name: "Imperial Titan - stage", tagList: ["mate"] },
     );
     expect(doc).toBe(`project:
     name: Imperial Titan - stage
     tags:
-      - mate:g:x
-      - mate:role:stage
+      - mate
     envVariables:
         APP_KEY: <@generateRandomString(<32>)>
 services:
@@ -421,5 +418,17 @@ describe("recipeProjectImportYaml never carries the project's isolation", () => 
       { name: "Acme - Ada" },
     );
     expect(doc).toContain("    APP_KEY: k");
+  });
+});
+
+describe("project import tags", () => {
+  it("emits only the Mate marker even when its caller supplies legacy metadata", () => {
+    const yaml = recipeProjectImportYaml(
+      "project:\n  name: old\n  tags: [old]\nservices:\n  - hostname: app\n",
+      { name: "New", tagList: ["mate", "mate:face:rose:seal", "billing"] },
+    );
+    expect(yaml).toContain("  tags:\n    - mate\n");
+    expect(yaml).not.toContain("mate:face:");
+    expect(yaml).not.toContain("billing");
   });
 });

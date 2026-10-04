@@ -2,8 +2,13 @@ import {
   connectionCatalogDisplayUrl,
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
-import type { ZeropsService, ZeropsStatHistoryItem } from "@t3tools/client-runtime/zerops";
-import { projectsNeverSeen } from "@t3tools/client-runtime/zerops/account/runtime";
+import {
+  grantListing,
+  projectGrantsOf,
+  type ZeropsService,
+  type ZeropsStatHistoryItem,
+} from "@t3tools/client-runtime/zerops";
+import { projectsNeverSeen, heldEvidence } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   processRecordToActivityProcess,
   projectKeyOf,
@@ -23,6 +28,16 @@ import {
   candidateListingsAtom,
   type RegistrationRecord,
 } from "@t3tools/client-runtime/zerops/environments";
+import {
+  placeListing,
+  placementsOf,
+  type HqChanges,
+  type HqEnvironment,
+  type HqMates,
+  type HqPlacement,
+  type HqAppReads,
+  type HqStructure,
+} from "@t3tools/client-runtime/zerops/hq";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   admittedOnly,
@@ -33,6 +48,8 @@ import {
 } from "@t3tools/client-runtime/zerops/projections";
 import { projectTopology, type ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import type { EnvironmentId } from "@t3tools/contracts";
+import type { HqPeople } from "@t3tools/shared/hqMates";
+import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import { Atom } from "effect/unstable/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
@@ -84,6 +101,191 @@ export const zeropsSessionAtom = Atom.make<ZeropsSessionView | null>(null).pipe(
   Atom.keepAlive,
   Atom.withLabel("zerops:session"),
 );
+
+/**
+ * The organization's structure as HQ last told this tab (`ZeropsHqStructure`, ADR 0002): its
+ * applications and the projects HQ places in them.
+ */
+export interface HqStructureView {
+  /** A definitive refusal, or an outage whose reconnect backoff has reached its cap. */
+  readonly failure?: string | null;
+  /** Connection recovery, kept visible while the last known data stands. */
+  readonly reconnecting?: { readonly delayMs: number; readonly capped: boolean } | null;
+  readonly organizationId: string;
+  /** Null while nothing is known: never read here, nothing remembered from before. */
+  readonly structure: HqStructure | null;
+  /**
+   * Each application's changes, as this stream last told them; null until its snapshot carried
+   * them. Never remembered across loads: a change's state is HQ's to say again.
+   */
+  readonly changes: HqChanges | null;
+  /**
+   * HQ-owned releases, repository heads and stage/production recipes for each readable app.
+   * Null until the stream's first snapshot; never remembered across loads.
+   */
+  readonly appReads: HqAppReads | null;
+  /** When `structure` was HQ's answer, wall ms. */
+  readonly readAt: number | null;
+  /** `structure` is HQ's answer now. */
+  readonly current: boolean;
+  /** When HQ stopped answering, wall ms, while it does not; the last known structure stands. */
+  readonly unavailableSince: number | null;
+}
+
+export const hqStructureAtom = Atom.make<HqStructureView | null>(null).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("zerops:hq-structure"),
+);
+
+/**
+ * Where HQ places each project of the organization in view, as last known; null while nothing
+ * is known of its structure — its projects are then placed nowhere.
+ */
+export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement> | null => {
+  const view = get(hqStructureAtom);
+  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
+  return view === null || view.organizationId !== organizationId || view.structure === null
+    ? null
+    : placementsOf(view.structure, get(hqLoginsAtom), get(hqReadyAgentsAtom));
+}).pipe(Atom.withLabel("zerops:hq-placements"));
+
+/**
+ * Each application's stage and production as HQ last said them, with their deploys, by its id
+ * (SPEC §3.2b); an application HQ sent none this build can read for is missing. Null while nothing
+ * is known of the organization's structure.
+ */
+export const hqEnvironmentsAtom = Atom.make(
+  (get): ReadonlyMap<string, ReadonlyArray<HqEnvironment>> | null => {
+    const view = get(hqStructureAtom);
+    const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
+    return view === null || view.organizationId !== organizationId || view.structure === null
+      ? null
+      : new Map(
+          view.structure.apps.flatMap((app) =>
+            app.environments === undefined ? [] : [[app.id, app.environments] as const],
+          ),
+        );
+  },
+).pipe(Atom.withLabel("zerops:hq-environments"));
+
+/**
+ * Each application's changes in the organization in view, as HQ last said them (SPEC §3.2a); null
+ * while nothing is known of them.
+ */
+export const hqChangesAtom = Atom.make((get): HqChanges | null => {
+  const view = get(hqStructureAtom);
+  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
+  return view === null || view.organizationId !== organizationId ? null : view.changes;
+}).pipe(Atom.withLabel("zerops:hq-changes"));
+
+/**
+ * The Mates the reader may observe, as HQ last told this tab beside the structure (`hq/mates.ts`):
+ * each by its project, its presence and its overview's sections.
+ */
+export interface HqMatesView {
+  readonly organizationId: string;
+  /** Null while nothing is known: HQ sent none — one from before the overviews — or not yet. */
+  readonly mates: HqMates | null;
+  /** `mates` is HQ's answer now; else what was last known of them, and none of them is live. */
+  readonly current: boolean;
+}
+
+export const hqMatesViewAtom = Atom.make<HqMatesView | null>(null).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("zerops:hq-mates-view"),
+);
+
+/**
+ * Whether the organization in view has an official HQ, as `useAccountHq` decided it — from the
+ * verdict this browser keeps, or its member list. Null while neither has said.
+ */
+export const hqOfficialAtom = Atom.make<boolean | null>(null).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("zerops:hq-official"),
+);
+
+/** The people HQ last named for the reader's view, by their Zerops user id. */
+export interface HqPeopleView {
+  readonly organizationId: string;
+  /** Null while nothing is known: HQ named none — one from before the overviews — or not yet. */
+  readonly people: HqPeople | null;
+}
+
+export const hqPeopleViewAtom = Atom.make<HqPeopleView | null>(null).pipe(
+  Atom.keepAlive,
+  Atom.withLabel("zerops:hq-people-view"),
+);
+
+/** The Mates of the organization in view, as HQ last told them; null while none is known. */
+export const hqMatesAtom = Atom.make((get): HqMatesView | null => {
+  const view = get(hqMatesViewAtom);
+  const session = get(zeropsSessionAtom);
+  const organizationId =
+    get(hqStructureAtom)?.organizationId ??
+    (session?.status === "signed-in" && session.organizationStatus === "selected"
+      ? (session.activeOrganization?.organizationId ?? null)
+      : null);
+  return view === null || view.organizationId !== organizationId ? null : view;
+}).pipe(Atom.withLabel("zerops:hq-mates"));
+
+/** The project whose Mate HQ says serves `environmentId`, in `view`; null where HQ names none. */
+export function hqProjectOf(view: HqMatesView | null, environmentId: EnvironmentId): string | null {
+  for (const [projectId, mate] of view?.mates ?? []) {
+    if (mate.identity?.environmentId === environmentId) return projectId;
+  }
+  return null;
+}
+
+/** `hqProjectOf` for one environment: re-read only when HQ moves the project it names. */
+export const hqProjectAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make((get) => hqProjectOf(get(hqMatesAtom), environmentId)).pipe(
+    Atom.withLabel(`zerops:hq-project:${environmentId}`),
+  ),
+);
+
+/** The people HQ named for the organization in view, by Zerops user id; null while none are. */
+export const hqPeopleAtom = Atom.make((get): HqPeople | null => {
+  const view = get(hqPeopleViewAtom);
+  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
+  return view === null || view.organizationId !== organizationId ? null : view.people;
+}).pipe(Atom.withLabel("zerops:hq-people"));
+
+const sameLogins = (
+  left: ReadonlyMap<string, OverviewLogins>,
+  right: ReadonlyMap<string, OverviewLogins>,
+) => JSON.stringify([...left]) === JSON.stringify([...right]);
+
+/**
+ * Each Mate's logins, as HQ's overview of it says them, by project (`placementsOf` joins them onto
+ * its record): the same map while none of them moves, so a Mate at work redraws no listing.
+ */
+export const hqLoginsAtom = Atom.make(
+  (get): ReadonlyMap<string, OverviewLogins> =>
+    new Map(
+      [...(get(hqMatesAtom)?.mates ?? new Map())].flatMap(([projectId, mate]) =>
+        mate.logins === undefined ? [] : [[projectId, mate.logins] as const],
+      ),
+    ),
+).pipe(Atom.withEquality(sameLogins), Atom.withLabel("zerops:hq-logins"));
+
+const hqReadyAgentsAtom = Atom.make(
+  (get): ReadonlyMap<string, boolean> =>
+    new Map(
+      [...(get(hqMatesAtom)?.mates ?? new Map())].flatMap(([id, mate]) =>
+        mate.identity?.runsWithoutSignIn === undefined
+          ? []
+          : [[id, mate.identity.runsWithoutSignIn] as const],
+      ),
+    ),
+).pipe(
+  Atom.withEquality(
+    (a: ReadonlyMap<string, boolean>, b: ReadonlyMap<string, boolean>) =>
+      JSON.stringify([...a]) === JSON.stringify([...b]),
+  ),
+  Atom.withLabel("zerops:hq-ready-agents"),
+);
+
+const NO_PLACEMENTS: ReadonlyMap<string, HqPlacement> = new Map();
 
 /** The account's inventory as `ZeropsInventoryProvider` projects it; null before its first grant. */
 export const zeropsInventoryAtom = Atom.make<InventoryProjection | null>(null).pipe(
@@ -159,8 +361,14 @@ const organizationListingAtom = Atom.make(
     const listed = get(candidateListingsAtom(runtime)).find(
       ({ organizationId }) => organizationId === organization.organizationId,
     );
+    const placements = get(hqPlacementsAtom) ?? NO_PLACEMENTS;
+    const listing = listed?.listing ?? UNREAD;
+    // Each project's own grants, as the access grant's last round read them: the records carry
+    // none, and a Mate's owner is its `OWNER` grant (F11).
+    const grants = projectGrantsOf(heldEvidence(get(runtime.access.view).machine));
     return {
-      listing: listed?.listing ?? UNREAD,
+      // Each project where HQ places it (ADR 0002): its group, its kind, its Mate's face.
+      listing: grantListing(placeListing(listing, placements), grants),
       withheldMembers: get(runtime.reads.projectsOf(organization)).value.some(
         (member) => member.knowledge === "unavailable" && member.reason === "forbidden",
       ),
@@ -192,11 +400,7 @@ export const candidateRowsAtom = Atom.make((get): Shown<ReadonlyArray<CandidateR
   return listing.state === "known" ? admittedOnly(listing, admits) : listing;
 }).pipe(Atom.withLabel("zerops:candidate-rows"));
 
-/**
- * Whether the active organization's listing is whole for the person looking
- * (`listingWholeForPerson`): known, and lacking only projects they can never see or that can never
- * be read — what the menu remembers of it (`menuSkeleton.ts`), complete or not.
- */
+/** Whether the listing lacks anything still on its way for this person. */
 export const candidateListingWholeAtom = Atom.make((get): boolean => {
   const session = get(zeropsSessionAtom);
   const runtime = get(zeropsDataRuntimeAtom);
@@ -221,16 +425,19 @@ export const candidateListingWholeAtom = Atom.make((get): boolean => {
 }).pipe(Atom.withLabel("zerops:candidate-listing-whole"));
 
 /**
- * The names the active organization's Mates go by (`takenBotNames`), read off its project list:
- * a name lives on its project's tags, so it is known the moment the list is — a project the grant
- * has not verified yet, or that this account may not open, still holds its name, and no project's
- * services need reading. Complete only as the list is, with every project's tags read and no
+ * The names the active organization's Mates go by (`takenBotNames`), read off its project list
+ * where HQ places each: a project the grant has not verified yet, or that this account may not
+ * open, still holds its name, and no project's services need reading. Complete only as the list
+ * is, with HQ's structure answered and no
  * member withheld (`takenBotNames`), so a name missing from it is never called free while it may
  * still be there; nothing while the account's access lapses.
  */
 export const takenBotNamesAtom = Atom.make((get): TakenBotNames => {
   const { listing, withheldMembers } = get(organizationListingAtom);
-  return takenBotNames(listing, { withheldMembers });
+  return takenBotNames(listing, {
+    withheldMembers,
+    structureKnown: get(hqPlacementsAtom) !== null && get(hqStructureAtom)?.current === true,
+  });
 }).pipe(Atom.withLabel("zerops:taken-bot-names"));
 
 /**
@@ -332,7 +539,9 @@ export function projectTopologySnapshotFromRead(
   historyByService: ReadonlyMap<string, HistoryReadView> = EMPTY_HISTORY_READS,
 ): ProjectTopologySnapshot {
   const required = topology.observation.required;
-  const failed = required.find((interest) => interest.status === "failed");
+  const failed = [...required, ...topology.observation.optional].find(
+    (interest) => interest.status === "failed",
+  );
   const liveness: ProjectTopologyLiveness =
     required.length > 0 && required.every((interest) => interest.status === "observing")
       ? "live"

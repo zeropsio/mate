@@ -15,7 +15,6 @@ import type {
   ZeropsAgentAvailability,
   ZeropsAgentSignInKind,
 } from "@t3tools/client-runtime/zerops/agentAvailability";
-import { agentOwnershipComposerNotice } from "@t3tools/client-runtime/zerops/agentOwnership";
 import { knownPresentation } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsAgentId } from "@t3tools/contracts";
 
@@ -116,6 +115,18 @@ export function resolveZeropsAgentPickerPanelView(input: {
       ? undefined
       : `This session runs on ${input.lockedToAgentName}. ${agentName} is used after Archive and start fresh.`;
 
+  if (availability.ended !== undefined) {
+    const checking = availability.ended.action === "check-again";
+    const action = checking ? "Check again" : "Register again";
+    return {
+      agentName,
+      statusLine:
+        `${checking ? "Couldn't verify" : "Registration failed"}. ${availability.ended.reason ?? ""} ${action} in Coding agents.`.trim(),
+      primaryAction: null,
+      showCancel: false,
+      sessionLockNotice,
+    };
+  }
   switch (availability.kind) {
     case "unknown":
       return {
@@ -165,14 +176,6 @@ export function resolveZeropsAgentPickerPanelView(input: {
       return {
         agentName,
         statusLine: "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.",
-        primaryAction: { kind: "use-my-account", label: "Use my account", disabled: false },
-        showCancel: false,
-        sessionLockNotice,
-      };
-    case "unsettled":
-      return {
-        agentName,
-        statusLine: agentOwnershipComposerNotice("unsettled") ?? "",
         primaryAction: { kind: "use-my-account", label: "Use my account", disabled: false },
         showCancel: false,
         sessionLockNotice,

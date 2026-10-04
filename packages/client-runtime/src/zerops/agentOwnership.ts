@@ -19,9 +19,9 @@
  * that on 2026-09-09: **only the person who signed an agent in operates it**,
  * and the server enforces it — `orchestration.dispatchCommand` refuses a
  * turn-starting command on an OAuth-authorized agent whose recorded signer is
- * not the session's subject. The record is a tag on the Mate's own project
- * (`mateAccess.ts`, `mate:signer:{agent}:{userId}`), written by the app as the
- * person, which the Mate's own key cannot forge.
+ * not the session's subject. The record is the Mate server's own: the person
+ * whose session started the sign-in it saw succeed, carried on the feed as
+ * `authorizedBy`.
  *
  * What this module decides is what the person is *told*; the server decides
  * what runs, and the two read the same field.
@@ -50,11 +50,7 @@ import {
 export interface ZeropsAgentAuthorizer {
   /** The Zerops user id the door put on the session that drove the login. */
   readonly subject: string;
-  /**
-   * When, if anything recorded it. The project tag that carries the record
-   * says who and not when, so this is absent for everything written since —
-   * the fact the product needs is whose login it is.
-   */
+  /** When, if anything recorded it: the fact the product needs is whose login it is. */
   readonly at?: string | Date | undefined;
 }
 
@@ -66,20 +62,7 @@ export type ZeropsAgentOwnership =
   /** Someone else did, and we know it. */
   | "someone-else"
   /** A credential exists but no authorizer was recorded. */
-  | "unrecorded"
-  /**
-   * The viewer just signed this agent in themselves, but the write that
-   * records it (`mate:signer:{agent}:{userId}`) failed (H13) — distinct from
-   * `unrecorded`, which says nothing about whose fault it is: this one
-   * knows, because it is the write this browser just tried and watched fail.
-   */
-  | "record-failed"
-  /**
-   * A credential the project records for two or more people: whose it is is not known, and the
-   * server refuses every turn on it until somebody signs it in again — which writes the one
-   * record. Never a name that may be the wrong one.
-   */
-  | "unsettled";
+  | "unrecorded";
 
 export interface ZeropsAgentOwnershipInput {
   /** Whether a credential artifact exists at all (`ZeropsAgentAuth.credPresent`). */
@@ -87,15 +70,6 @@ export interface ZeropsAgentOwnershipInput {
   readonly authorizedBy?: ZeropsAgentAuthorizer | undefined;
   /** The signed-in Zerops user's id, or `undefined` when nobody is signed in. */
   readonly viewerSubject: string | undefined;
-  /**
-   * True when this browser's own attempt to write the signer record for this
-   * agent has failed and not yet succeeded (`useZeropsAgentSignerRecord`'s
-   * `recordFailed`). It speaks while the agent is recorded for nobody or for
-   * the viewer; one recorded for somebody else since is theirs, and says so.
-   */
-  readonly recordFailed?: boolean | undefined;
-  /** The project records the sign-in for two or more people (`ZeropsAgentAuth.signerUnknown`). */
-  readonly signerUnknown?: boolean | undefined;
 }
 
 /**
@@ -116,18 +90,7 @@ export function resolveOwnedAgentId(
 export function resolveAgentOwnership(input: ZeropsAgentOwnershipInput): ZeropsAgentOwnership {
   if (!input.credPresent) return "none";
   const recorded = input.authorizedBy?.subject;
-  // The viewer's own failed write is what happened here — unless the agent is somebody else's
-  // since: a retry would write the viewer's record over theirs.
-  if (
-    input.recordFailed === true &&
-    (recorded === undefined || recorded.length === 0 || recorded === input.viewerSubject)
-  ) {
-    return "record-failed";
-  }
-
-  if (recorded === undefined || recorded.length === 0) {
-    return input.signerUnknown === true ? "unsettled" : "unrecorded";
-  }
+  if (recorded === undefined || recorded.length === 0) return "unrecorded";
 
   // A viewer we cannot identify is not evidence that the agent belongs to
   // someone else — say nothing rather than the wrong thing.
@@ -148,12 +111,8 @@ export function agentOwnershipNotice(ownership: ZeropsAgentOwnership): string | 
       return "Signed in by another project member — only they can run this agent.";
     case "unrecorded":
       return "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.";
-    case "record-failed":
-      return "Your sign-in could not be recorded.";
     case "mine":
       return "Signed in by you.";
-    case "unsettled":
-      return UNSETTLED_WORDS;
     case "none":
       return undefined;
   }
@@ -161,7 +120,7 @@ export function agentOwnershipNotice(ownership: ZeropsAgentOwnership): string | 
 
 /** Whether the notice deserves attention rather than a quiet aside. */
 export function agentOwnershipNeedsAttention(ownership: ZeropsAgentOwnership): boolean {
-  return ownership === "someone-else" || ownership === "record-failed" || ownership === "unsettled";
+  return ownership === "someone-else";
 }
 
 /**
@@ -193,21 +152,11 @@ export function agentOwnershipComposerNotice(
         : `Signed in by ${name} — only they can run this agent.`;
     case "unrecorded":
       return "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.";
-    case "record-failed":
-      return "Your sign-in could not be recorded.";
-    case "unsettled":
-      return UNSETTLED_WORDS;
     case "mine":
     case "none":
       return undefined;
   }
 }
 
-/** A login recorded for two people, in the words its person reads, and the one way out. */
-const UNSETTLED_WORDS =
-  "This Mate's sign-in is recorded for more than one person. Sign it in again to make it yours.";
-
 /** The one action the notice offers. */
 export const AGENT_OWNERSHIP_RECOVERY_LABEL = "Sign in with your own account";
-/** `record-failed`'s one action: the write itself, tried again — no need to sign in again. */
-export const AGENT_OWNERSHIP_RETRY_RECORD_LABEL = "Try again";

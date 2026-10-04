@@ -40,6 +40,11 @@ export interface RegistrationRecords {
    * this one does not; false when nothing changed.
    */
   readonly remember: (record: RegistrationRecord) => boolean;
+  /**
+   * Drops the target's record: its Mate is gone from where the platform lists it, so nothing
+   * reads it again on a load. False when none was kept.
+   */
+  readonly forget: (targetKey: TargetKey) => boolean;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -119,6 +124,13 @@ export function makeRegistrationRecords(storage: RecordsStorage): RegistrationRe
         REGISTRATION_RECORDS_KEY,
         JSON.stringify([...current.filter((entry) => entry !== older), next]),
       );
+      return true;
+    },
+    forget: (targetKey) => {
+      const current = list();
+      const kept = current.filter((entry) => entry.targetKey !== targetKey);
+      if (kept.length === current.length) return false;
+      storage.setItem(REGISTRATION_RECORDS_KEY, JSON.stringify(kept));
       return true;
     },
   };

@@ -3,6 +3,14 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./hqStream": {
+      "types": "./src/hqStream.ts",
+      "import": "./src/hqStream.ts"
+    },
+    "./hqObservation": {
+      "types": "./src/hqObservation.ts",
+      "import": "./src/hqObservation.ts"
+    },
     "./brand": {
       "types": "./src/brand.ts",
       "import": "./src/brand.ts"
@@ -55,9 +63,61 @@
       "types": "./src/threadStatus.ts",
       "import": "./src/threadStatus.ts"
     },
+    "./zeropsDoor": {
+      "types": "./src/zeropsDoor.ts",
+      "import": "./src/zeropsDoor.ts"
+    },
     "./zeropsRoles": {
       "types": "./src/zeropsRoles.ts",
       "import": "./src/zeropsRoles.ts"
+    },
+    "./zeropsPermissions": {
+      "types": "./src/zeropsPermissions.ts",
+      "import": "./src/zeropsPermissions.ts"
+    },
+    "./mateAccess": {
+      "types": "./src/mateAccess.ts",
+      "import": "./src/mateAccess.ts"
+    },
+    "./mateLink": {
+      "types": "./src/mateLink.ts",
+      "import": "./src/mateLink.ts"
+    },
+    "./hqMates": {
+      "types": "./src/hqMates.ts",
+      "import": "./src/hqMates.ts"
+    },
+    "./hqAttachments": {
+      "types": "./src/hqAttachments.ts",
+      "import": "./src/hqAttachments.ts"
+    },
+    "./hqGit": {
+      "types": "./src/hqGit.ts",
+      "import": "./src/hqGit.ts"
+    },
+    "./hqChanges": {
+      "types": "./src/hqChanges.ts",
+      "import": "./src/hqChanges.ts"
+    },
+    "./hqAppReads": {
+      "types": "./src/hqAppReads.ts",
+      "import": "./src/hqAppReads.ts"
+    },
+    "./hqRecipe": {
+      "types": "./src/hqRecipe.ts",
+      "import": "./src/hqRecipe.ts"
+    },
+    "./hqDeploys": {
+      "types": "./src/hqDeploys.ts",
+      "import": "./src/hqDeploys.ts"
+    },
+    "./hqRelease": {
+      "types": "./src/hqRelease.ts",
+      "import": "./src/hqRelease.ts"
+    },
+    "./primaryConversation": {
+      "types": "./src/primaryConversation.ts",
+      "import": "./src/primaryConversation.ts"
     },
     "./zeropsAgentAuth": {
       "types": "./src/zeropsAgentAuth.ts",
@@ -330,6 +390,10 @@
     "./liveBatch": {
       "types": "./src/liveBatch.ts",
       "import": "./src/liveBatch.ts"
+    },
+    "./mateFaces": {
+      "types": "./src/mateFaces.ts",
+      "import": "./src/mateFaces.ts"
     }
   },
   "scripts": {

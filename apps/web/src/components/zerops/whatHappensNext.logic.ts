@@ -8,9 +8,7 @@
  * - a Mate is up in about 1½–2 minutes, ready to be signed in;
  * - a Mate added to a project with code then sets up development, deploying that code, by itself:
  *   6–10 minutes for a small app, about 12 for a storefront with four runtimes (SPN's Bruno,
- *   2026-10-02: 16 with one failed deploy its agent fixed), so it says up to 15;
- * - the account's first project brings Git hosting along, which comes up in about 3 minutes
- *   alongside the project and its Mate, and holds neither up.
+ *   2026-10-02: 16 with one failed deploy its agent fixed), so it says up to 15.
  *
  * Pure: the words; `WhatHappensNext.tsx` draws them.
  */
@@ -36,7 +34,6 @@ export interface WhatHappensNext {
 
 const MATE_UP = "about 1½–2 min";
 const DEVELOPMENT_UP = "up to 15 min";
-const GIT_HOSTING_UP = "about 3 min";
 
 /** The Mate as the steps name it: its name as it will be called, or the Mate until it has one. */
 function named(botName: string): { readonly subject: string; readonly object: string } {
@@ -86,29 +83,17 @@ export function newMateNext(input: {
   };
 }
 
-/**
- * Once a project is created: Git hosting where the account has none — for all its projects,
- * coming up alongside — then the project and its first Mate, then its person signs it in, then
- * tells it what to build.
- */
+/** Once a project is created: the project and its first Mate, then its person signs it in, then tells it what to build. */
 export function newProjectNext(input: {
   readonly projectName: string;
   readonly botName: string;
-  /** The account's organization, which the Git hosting is for. */
-  readonly organizationName: string | undefined;
-  /** The account has no Git hosting yet: this project brings it along. */
-  readonly withGitHosting: boolean;
 }): WhatHappensNext {
   const { object } = named(input.botName);
   const project = input.projectName.replace(/\s+/g, " ").trim();
-  const comeUp = `${project.length === 0 ? "The project" : project} and ${object} come up`;
-  const team = input.organizationName?.trim() || "Your team";
+  const subject = project.length > 0 ? project : "The project";
   return {
     steps: [
-      ...(input.withGitHosting
-        ? [{ words: `${team} gets Git hosting, for all its projects`, time: GIT_HOSTING_UP }]
-        : []),
-      { words: input.withGitHosting ? `${comeUp} meanwhile` : comeUp, time: MATE_UP },
+      { words: `${subject} and ${object} come up`, time: MATE_UP },
       signInStep(object),
       { words: `You tell ${object} what to build`, time: undefined },
     ],

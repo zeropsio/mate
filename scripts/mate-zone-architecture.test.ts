@@ -120,8 +120,11 @@ function isPlainStringLiteral(value: string): boolean {
   return true;
 }
 
+// Over the source with its comments blanked: prose that reads "import (" is no import.
 function collectDynamicImportArguments(source: string): ReadonlyArray<string> {
-  return [...source.matchAll(DYNAMIC_IMPORT_CALL_PATTERN)].map((match) => match[1]!.trim());
+  return [...scanSourceLiterals(source).commentFree.matchAll(DYNAMIC_IMPORT_CALL_PATTERN)].map(
+    (match) => match[1]!.trim(),
+  );
 }
 
 function collectImportStatements(source: string): ReadonlyArray<ImportStatement> {
@@ -281,16 +284,24 @@ function decodeSourceLiteral(raw: string): string {
 function scanSourceLiterals(source: string): {
   readonly literals: ReadonlyArray<SourceLiteral>;
   readonly jsxSource: string;
+  /** The source with its comments blanked and its literals kept. */
+  readonly commentFree: string;
 } {
   const literals: Array<SourceLiteral> = [];
   const jsxCharacters = source.split("");
+  const codeCharacters = source.split("");
 
-  const mask = (start: number, end: number) => {
+  const blank = (characters: Array<string>, start: number, end: number) => {
     for (let index = start; index < end; index += 1) {
-      if (jsxCharacters[index] !== "\n" && jsxCharacters[index] !== "\r") {
-        jsxCharacters[index] = " ";
+      if (characters[index] !== "\n" && characters[index] !== "\r") {
+        characters[index] = " ";
       }
     }
+  };
+  const mask = (start: number, end: number) => blank(jsxCharacters, start, end);
+  const maskComment = (start: number, end: number) => {
+    mask(start, end);
+    blank(codeCharacters, start, end);
   };
 
   const readQuoted = (start: number, quote: "'" | '"'): number => {
@@ -319,14 +330,14 @@ function scanSourceLiterals(source: string): {
   const readLineComment = (start: number): number => {
     const newline = source.indexOf("\n", start + 2);
     const end = newline === -1 ? source.length : newline;
-    mask(start, end);
+    maskComment(start, end);
     return end;
   };
 
   const readBlockComment = (start: number): number => {
     const close = source.indexOf("*/", start + 2);
     const end = close === -1 ? source.length : close + 2;
-    mask(start, end);
+    maskComment(start, end);
     return end;
   };
 
@@ -403,7 +414,11 @@ function scanSourceLiterals(source: string): {
     }
   }
 
-  return { literals, jsxSource: jsxCharacters.join("") };
+  return {
+    literals,
+    jsxSource: jsxCharacters.join(""),
+    commentFree: codeCharacters.join(""),
+  };
 }
 
 function findLocalThreadStatusPhrases(source: string): ReadonlyArray<string> {
@@ -492,10 +507,12 @@ const PURE_EFFECT_MODULES: ReadonlySet<string> = new Set([
   "effect/Struct",
 ]);
 
-// Shared modules that compute values, import nothing and run nothing.
+// Shared modules that compute values, import only other pure shared modules and run nothing.
 const PURE_SHARED_MODULES: ReadonlySet<string> = new Set([
   "@t3tools/shared/basePath",
   "@t3tools/shared/brand",
+  "@t3tools/shared/mateFaces",
+  "@t3tools/shared/messagePreview",
   "@t3tools/shared/semver",
 ]);
 
@@ -680,15 +697,13 @@ function collectPureZoneViolations(
   });
 }
 
-// Rule 6: dependencies run one way — data ← environments ← flow and
-// data ← forge ← flow — and nothing under `cr/zerops` depends on `account/`
-// except `account/` itself and the `testing/` harness, which drives sessions.
+// Rule 6: dependencies run one way — data ← environments ← flow — and nothing under `cr/zerops`
+// depends on `account/` except `account/` itself and the `testing/` harness, which drives sessions.
 // Every import edge counts, type-only included: the rule is about the module
 // graph, not the emitted code. Test files are not part of the graph.
 const FORBIDDEN_LAYER_EDGES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
-  ["data", new Set(["environments", "forge", "flow"])],
+  ["data", new Set(["environments", "flow"])],
   ["environments", new Set(["flow"])],
-  ["forge", new Set(["flow"])],
 ]);
 
 interface OneWayViolation {
@@ -754,9 +769,8 @@ function collectOneWayViolations(
 
 // Rule 6, its construction half: the account runtime's modules — its invalidation bus, which one
 // owner holds (§6.2), and the post-grant stage's, built on the epoch's first grant: the
-// registration records, the container store (with its probe store), the exchange driver, the Gitea
-// sessions, the forge store, the flow's command attempts and the deployment store — are
-// constructed by the account runtime only. A call of a constructor anywhere else is reported; its
+// registration records, the container store (with its probe store), the exchange driver and the
+// deployment store — are constructed by the account runtime only. A call of a constructor anywhere else is reported; its
 // declaration is not, nor a test's or a test fixture's.
 const ACCOUNT_RUNTIME_FILE = `${CLIENT_RUNTIME_ZEROPS_DIR}/account/accountRuntime.ts`;
 const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
@@ -765,9 +779,6 @@ const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
   "makeRegistrationRecords",
   "makeContainerStore",
   "makeExchangeDriver",
-  "makeGiteaSessions",
-  "makeForgeStore",
-  "makeFlowCommands",
   "makeDeploymentStore",
 ];
 
@@ -2634,6 +2645,8 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         "data/access/grant.ts": [
           'import { later } from "./later.ts";',
           "// Date.now() and performance.now() in a comment are prose, not reads.",
+          "// A key, the import (`api.ts`): a comment is prose, never a dynamic import.",
+          "/* Nor is the import (`./later.ts`) a block comment names. */",
           'export const label = "new Date()";',
           "export const stamp = (wall: number) => new Date(wall);",
           "",
@@ -2744,6 +2757,29 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("pure zones allow face definitions but reject transitive DateTime formatting", () =>
+    Effect.gen(function* () {
+      const fixtureRoot = yield* makeClientRuntimeZeropsFixture({
+        "environments/gate.ts": 'import { presentation } from "../knowledge/presentation.ts";\n',
+        "knowledge/presentation.ts": 'import * as DateTime from "effect/DateTime";\n',
+        "projections/groups.ts": 'import { readMateFace } from "@t3tools/shared/mateFaces";\n',
+      });
+      const zerops = CLIENT_RUNTIME_ZEROPS_DIR;
+      const rejected = (file: string) => ({
+        root: `${zerops}/${file}`,
+        file: `${zerops}/knowledge/presentation.ts`,
+        reason: "imports effect/DateTime, which is not a pure effect data module",
+      });
+      assert.deepStrictEqual(yield* collectPureZoneViolations(fixtureRoot, MACHINE_ZONE), [
+        rejected("environments/gate.ts"),
+        rejected("knowledge/presentation.ts"),
+      ]);
+      assert.deepStrictEqual(yield* collectPureZoneViolations(fixtureRoot, PURE_PROJECTION_ZONE), [
+        rejected("environments/gate.ts"),
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("rule 3 fixture: projections and the named pure modules read no clock", () =>
     Effect.gen(function* () {
       const fixtureRoot = yield* makeClientRuntimeZeropsFixture({
@@ -2803,18 +2839,15 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
       const fixtureRoot = yield* makeClientRuntimeZeropsFixture({
         "data/runtime.ts": 'import type { Reach } from "../environments/reachability.ts";\n',
         "data/access/grant.ts": 'import { flow } from "../../flow/groupFlow.ts";\n',
-        "data/commands.ts": 'import { forge } from "../forge";\n',
         "data/state.ts": 'import type { Known } from "../knowledge/known.ts";\n',
         "environments/gate.ts": [
           'import { runtime } from "../data/runtime.ts";',
           'import { flow } from "../flow/groupFlow.ts";',
           "",
         ].join("\n"),
-        "forge/forgeStore.ts": 'export * from "../flow/release.ts";\n',
         "flow/groupFlow.ts": [
           'import { runtime } from "../data/runtime.ts";',
           'import { gate } from "../environments/gate.ts";',
-          'import { store } from "../forge/forgeStore.ts";',
           "",
         ].join("\n"),
         "knowledge/known.ts": 'import type { Session } from "../account/session.ts";\n',
@@ -2837,11 +2870,6 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           reason: "data/ must not depend on flow/",
         },
         {
-          file: `${zerops}/data/commands.ts`,
-          specifier: "../forge",
-          reason: "data/ must not depend on forge/",
-        },
-        {
           file: `${zerops}/data/runtime.ts`,
           specifier: "../environments/reachability.ts",
           reason: "data/ must not depend on environments/",
@@ -2850,11 +2878,6 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           file: `${zerops}/environments/gate.ts`,
           specifier: "../flow/groupFlow.ts",
           reason: "environments/ must not depend on flow/",
-        },
-        {
-          file: `${zerops}/forge/forgeStore.ts`,
-          specifier: "../flow/release.ts",
-          reason: "forge/ must not depend on flow/",
         },
         {
           file: `${zerops}/groupReach.ts`,
@@ -2909,16 +2932,10 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           'const label = "connectCrossTabInvalidations(";',
           "",
         ].join("\n"),
-        [`${zerops}/forge/giteaSession.ts`]:
-          "export function makeGiteaSessions(ports) { return ports; }\n",
         [`${zerops}/environments/exchangeDriver.test.ts`]: "makeExchangeDriver(ports);\n",
         [`${zerops}/flow/groupFlow.ts`]: "const bus = makeInvalidationBus (options);\n",
-        "apps/web/src/zerops/accountForge.ts": "const store = makeForgeStore(ports);\n",
-        "apps/web/src/zerops/AccountShell.tsx": [
-          "const driver = makeExchangeDriver(ports);",
-          "const sessions = makeGiteaSessions(ports);",
-          "",
-        ].join("\n"),
+        "apps/web/src/zerops/accountForge.ts": "const store = makeDeploymentStore(ports);\n",
+        "apps/web/src/zerops/AccountShell.tsx": "const driver = makeExchangeDriver(ports);\n",
         "apps/web/src/zerops/zeropsContainers.ts": [
           "const store = makeContainerStore({ clock, probe, readMateFlag, intents });",
           "const records = makeRegistrationRecords(storage);",
@@ -2942,7 +2959,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         },
         {
           file: "apps/web/src/zerops/accountForge.ts",
-          reason: "constructs makeForgeStore, a module of the account runtime, outside it",
+          reason: "constructs makeDeploymentStore, a module of the account runtime, outside it",
         },
         {
           file: "apps/web/src/zerops/accountInvalidations.ts",
@@ -2951,10 +2968,6 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
         {
           file: "apps/web/src/zerops/AccountShell.tsx",
           reason: "constructs makeExchangeDriver, a module of the account runtime, outside it",
-        },
-        {
-          file: "apps/web/src/zerops/AccountShell.tsx",
-          reason: "constructs makeGiteaSessions, a module of the account runtime, outside it",
         },
         {
           file: "apps/web/src/zerops/zeropsContainers.ts",

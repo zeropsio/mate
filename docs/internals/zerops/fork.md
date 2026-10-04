@@ -51,7 +51,8 @@ Measured against the real upstream repo, 2026-08-28:
 - **Owned product** — `apps/server/src/zerops/**`, `apps/web/src/zerops/**`,
   `apps/web/src/components/zerops/**`, `packages/client-runtime/src/zerops/**`,
   `apps/mobile/src/features/zerops/**`,
-  `packages/shared/src/{brand,threadStatus,crewHome,crewTemplates}.ts`, `docs/internals/zerops/**`
+  `packages/shared/src/{brand,threadStatus,crewHome,crewTemplates}.ts`, `apps/hq/**`, `packages/hq-git/**`,
+  `docs/internals/zerops/**`
   - _Rule:_ Ours only. The client design system (`design-system.md`) governs the client dirs: tokens
     only, protected roots render only, one status resolver.
 - **Removed** — per row in §4
@@ -135,6 +136,25 @@ Claude CLI × Codex CLI × Effect version × fixture set) live in `compat.md`.
   - _Zerops path?:_ none — a Zerops environment is reached over its own public URL, not a
     device-local browser guest
   - _Decision:_ delete as one slice
+- The Mate's summary to HQ (`apps/server/src/zerops/zeropsHqSummary.ts`) and HQ's live merge of it
+  into the structure (`apps/hq/src/mateLive.ts`)
+  - _What it is:_ the link's first upstream message — a Mate's main chat, its running and waiting
+    counts and its signers — which HQ merged into every structure it streamed
+  - _Zerops path?:_ replaced by the Mate's overview (step A): the Mate sends it
+    (`zeropsHqOverview.ts`), HQ keeps it (`mateOverviews.ts`) and streams each Mate's view beside
+    the structure
+  - _Decision:_ deleted — `b04a59ac81` (A1), `61d9a5e9ba` (A2); the link's `summary` type and its
+    schemas with `dd4ea18dd3` (A12)
+- Auto-connect (`packages/client-runtime/src/zerops/autoConnect.ts`) and the desktop's keep-alive
+  (`apps/web/src/components/RunningThreadKeepAlive.tsx`)
+  - _What it is:_ auto-connect wanted every ready Mate of the active organization, up to 48, beside
+    every Mate the browser remembered; the keep-alive held a detail stream open for each running
+    thread of every saved environment
+  - _Zerops path?:_ replaced by leases (step A): a Mate is connected while the route, the Mate on
+    screen, the one left last, an action or a Connect holds it, and parked otherwise; what draws a
+    Mate this tab has not opened reads HQ's overview of it
+  - _Decision:_ deleted — `90f1f5aff7` (auto-connect), `a5d8a35435` (keep-alive), with A9
+    (`2a78cb1ede`)
 
 ### 4.1 Names
 

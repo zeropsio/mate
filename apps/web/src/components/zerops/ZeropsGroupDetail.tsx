@@ -1,3 +1,5 @@
+import { useStopPublicAccess } from "~/zerops/useStopPublicAccess";
+import { RuntimeStopPublicAccess, StopPublicAccessStatus } from "./StopPublicAccess";
 /**
  * A project group's page, and one stop's, in place of the thread.
  *
@@ -9,31 +11,36 @@
  * (the owner, 2026-09-19).
  *
  * Nothing here is fetched twice: the flow is the account-wide read every
- * Zerops surface shares (`projectFlowContext`), and the history is the one
- * read that is opened rather than polled (`useZeropsRepositoryCommits`).
+ * Zerops surface shares (`projectFlowContext`), and the history and what each
+ * release carried are HQ's comparisons, asked once and held (`useZeropsCompares`).
  *
  * Structural only — what a row says is `projectFlow.ts`'s and
  * `groupHistory.ts`'s (rule R5).
  */
+import { useAtomValue } from "@effect/atom-react";
+import { hqEnvironmentsAtom } from "~/state/zerops";
+import { StopReadAgain } from "./StopReadAgain";
 import {
+  cannotTellWhatRuns,
   assignCandidateMateTints,
-  botDisplayName,
   buildZeropsGroupTree,
   heldGroupLabel,
   hasMate,
   mateShapeOf,
   changeState,
   deployWord,
-  environmentNameUnderGroup,
   flowVerbKey,
   flowVerbLabel,
-  readZeropsGroupTags,
+  readZeropsMembership,
   PROJECT_ALL_CLEAR,
   projectAttention,
   releaseContentsCommits,
   releaseContentsSummary,
-  releasesCarried,
-  type GiteaCommit,
+  carriedReads,
+  movedCommits,
+  movedCount,
+  releaseTagsByCommit,
+  type MovedCommits,
   type ReleaseContentsSummary,
   shortCommit,
   sidebarChangeLabel,
@@ -42,13 +49,14 @@ import {
   type ProjectAttentionKind,
   type EnvironmentRow,
   type FlowPullRequest,
+  type CompareRead,
   type FlowReleaseRow,
   type GroupEnvironmentRowInput,
   type GroupEnvironmentTier,
   type GroupRowTone,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
-  type ZeropsRouteOffer,
+  type ZeropsProject,
   sameCommit,
   firstDeployLine,
   firstDeployTone,
@@ -61,19 +69,22 @@ import {
   earlierReleasesLabel,
   NONE_YET,
   NOT_PUBLIC_YET,
-  serviceBuildToggleLabel,
+  notInZerops,
   serviceRows,
   stopCardTitle,
   stopFailedDeploy,
+  stopKeyGap,
   stopMetaLine,
   stopTone,
   stopVerdict,
   stopView,
   type Deployment,
+  type RunAgain,
   type StopServiceRow,
   type StopVerdict,
   type StopView,
 } from "@t3tools/client-runtime/zerops/flow";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { KnownAffordance, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   candidatesNotice,
@@ -87,10 +98,18 @@ import { ChevronRightIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
 import { Fragment, useCallback, useContext, useId, useMemo, useState } from "react";
 
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { mateFaceFor, mateFaceOf, mateReviewWaits } from "~/zerops/agentActivity";
+import {
+  activityOfNow,
+  mateFaceFor,
+  mateFaceOf,
+  mateReviewWaits,
+  type ZeropsAgentActivity,
+} from "~/zerops/agentActivity";
+import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
 import { useAddMate } from "~/zerops/newMate";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { useListingPatience } from "~/zerops/useListingPatience";
@@ -98,17 +117,17 @@ import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus, type MateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
-import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
-import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
-import type { ZeropsCommitDetailResult } from "~/zerops/useZeropsCommitDetail";
-import type { ZeropsCommitsState } from "~/zerops/useZeropsRepositoryCommits";
-import { useZeropsCommitDetailReader } from "~/zerops/useZeropsCommitDetail";
-import type { ZeropsDeployRun, ZeropsDeployRunRequest } from "~/zerops/useZeropsDeployRun";
-import { useZeropsDeployRun } from "~/zerops/useZeropsDeployRun";
 import {
-  useZeropsRepositoriesCommits,
-  useZeropsRepositoryCommits,
-} from "~/zerops/useZeropsRepositoryCommits";
+  type FlowVerbOutcome,
+  type ZeropsProjectFlow,
+  useZeropsProjectFlowOptional,
+} from "~/zerops/projectFlowContext";
+import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
+import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
+import { useZeropsCompares, type ComparedCommits } from "~/zerops/useZeropsCompares";
+import { useZeropsRecipeFailure } from "~/zerops/useZeropsAppRecipes";
+import { ZeropsReadFailure } from "./ZeropsReadFailure";
+import { useZeropsHistory, type ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import {
@@ -117,12 +136,10 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { failedJob, runAgainLabel, ZeropsDeployRunView } from "./ZeropsDeployRun";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
-import { ZeropsHistoryView, type HistoryNames } from "./ZeropsHistoryView";
+import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
 import {
   FlatCard,
   MateFace,
@@ -135,11 +152,13 @@ import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { MateUpdateStatusText } from "./MateUpdateLine";
 import { ZeropsProjectMenu } from "./ZeropsProjectMenu";
 import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
+import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
+import { ZeropsDeployLog } from "./ZeropsDeployLog";
+import { deployAnswerSaid, type DeployAnswerJob } from "@t3tools/client-runtime/zerops/hq";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
-import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
+import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
-import { useRenameGroup } from "~/zerops/useRenameGroup";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -153,7 +172,7 @@ import {
 import { useStopServices } from "~/zerops/accountForge";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
-import { unreadFlowWords } from "~/zerops/giteaReach.logic";
+import { unreadFlowWords } from "~/zerops/hqRead.logic";
 import { PageWaitLine } from "./WaitLine";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
@@ -169,8 +188,8 @@ const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
  * it by (`buildZeropsGroupTree`).
  *
  * A page titled by its route parameter shows a raw id; a page that wants to
- * *rename* the project needs the group itself, because the name lives on every
- * environment in it.
+ * *rename* the project needs the group itself, the HQ application its name is
+ * kept on.
  */
 function useGroup(groupId: string): ZeropsGroup | undefined {
   const { listing } = useZeropsCandidates();
@@ -208,10 +227,9 @@ function useWithheldStops(environments: ReadonlyArray<EnvironmentRow> | undefine
   return { withheldNotice, shown };
 }
 
-/** What the group is called — never the raw group id. */
 /**
  * The project's name: the listing's, else — the listing failed, lapsed, or withholds every member —
- * the label its members carry in the inventory as held; undefined only while neither knows it.
+ * the name HQ places its members under; undefined only while neither knows it.
  */
 function useGroupName(groupId: string): string | undefined {
   const held = useContext(HeldInventoryContext);
@@ -238,18 +256,16 @@ function useMateMenus(): {
   readonly dialogs: React.ReactNode;
   readonly trouble: string | null;
 } {
-  const { activeOrganization } = useZeropsSession();
   const { listing } = useZeropsCandidates();
-  const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const { serverVersions } = useZeropsContainers();
-  const registry = useZeropsRegistry(activeOrganization?.id);
+  const registry = useZeropsRegistry();
   const actions = useMateActions({ registry, serverVersions });
   const menuForMate = useCallback(
     (projectId: string) => {
       const found = findCandidate(listing, (entry) => entry.project.id === projectId);
       if (found.kind !== "found") return null;
       const candidate = found.row;
-      const tags = readZeropsGroupTags(candidate.project.tagList);
+      const tags = readZeropsMembership(candidate.project);
       const menu = (extra: ReadonlyArray<ZeropsMenuAction>) => {
         const entries = actions.actionsFor(candidate, tags, extra);
         // A menu with nothing in it is a button that opens an empty box.
@@ -270,7 +286,7 @@ function useMateMenus(): {
       return (
         <ZeropsMateUpdateControl
           environmentId={candidate.environmentId}
-          mateName={botDisplayName({ bot: tags.bot, projectName: candidate.project.name })}
+          mateName={candidate.project.name}
         >
           {({ menuActions }) => menu(menuActions)}
         </ZeropsMateUpdateControl>
@@ -281,68 +297,12 @@ function useMateMenus(): {
   return { menuForMate, dialogs: actions.dialogs, trouble: actions.trouble };
 }
 
-/**
- * The project's own quiet actions, on its own page.
- *
- * *Rename project* had lived only on the projects screen, so the page whose
- * whole subject is this project could not name it (the owner, 2026-09-19:
- * "why isn't there options to rename group?"). The write is `useRenameGroup`'s,
- * shared with that screen, so one rename means one thing wherever it is
- * offered.
- */
+/** The project's own menu uses the same writer decision and rename form as its row. */
 function useGroupActions(groupId: string): {
   readonly menu: React.ReactNode;
-  readonly trouble: string | null;
 } {
   const group = useGroup(groupId);
-  const [renaming, setRenaming] = useState(false);
-  const rename = useRenameGroup();
-  if (group === undefined) return { menu: null, trouble: rename.trouble };
-  const unnamed = group.nameSource === "id";
-  return {
-    trouble: rename.trouble,
-    menu: (
-      <>
-        <ZeropsProjectMenu
-          actions={[
-            {
-              id: "rename-group",
-              label: unnamed ? "Name this project" : "Rename project",
-              onSelect: () => {
-                setRenaming(true);
-              },
-              disabled: rename.renaming,
-            },
-          ]}
-          label={`More for ${group.name}`}
-        />
-        {renaming ? (
-          <ZeropsRenameDialog
-            description="The name is written onto every environment in the project."
-            initialValue={unnamed ? "" : group.name}
-            key={`rename-group:${group.groupId}`}
-            label="Project name"
-            onCancel={() => {
-              setRenaming(false);
-            }}
-            onOpenChange={(open) => {
-              if (!open) setRenaming(false);
-            }}
-            onSubmit={(name) => {
-              setRenaming(false);
-              void rename.rename(group, name);
-            }}
-            open
-            submitLabel="Rename"
-            title={unnamed ? "Name this project" : "Rename the project"}
-            validate={(value) =>
-              value.trim().length === 0 ? "Give the project a name." : undefined
-            }
-          />
-        ) : null}
-      </>
-    ),
-  };
+  return { menu: group === undefined ? null : <ZeropsProjectRenameMenu group={group} /> };
 }
 
 /** Every environment of a group, by the sha it runs, whole or short as its version name spells it. */
@@ -366,14 +326,11 @@ function groupRepository(environments: ReadonlyArray<EnvironmentRow>): string | 
   return undefined;
 }
 
-/**
- * What a history may call things: a Mate by its name rather than its bot
- * login, and a stop without the project's name in front of it.
- */
-function useHistoryNames(groupName: string | undefined): HistoryNames {
+/** What a history may call a Mate: its name rather than its bot login. */
+function useHistoryNames(): HistoryNames {
   const flowValue = useZeropsProjectFlowOptional();
   const mateNames = flowValue?.mateNames;
-  return useMemo(() => ({ mateNames, groupName }), [mateNames, groupName]);
+  return useMemo(() => ({ mateNames }), [mateNames]);
 }
 
 /** How "Who is on it" names the listing it is drawn from, while that listing cannot say "none". */
@@ -402,7 +359,8 @@ function useGroupMates(groupId: string): {
   readonly refresh: () => void;
 } {
   const { listing, refresh } = useZeropsCandidates();
-  const activity = useZeropsAgentActivity();
+  // Each Mate as its menu row reads it: HQ's word, or its socket's.
+  const activityOf = useMateRowActivity(useZeropsAgentActivity());
   const updates = useZeropsMateUpdateStates();
   const nowMs = useNowMs();
   const flow = useZeropsProjectFlowOptional()?.flows.get(groupId);
@@ -421,41 +379,18 @@ function useGroupMates(groupId: string): {
     // (the owner, 2026-09-19).
     return (group?.environments ?? [])
       .filter(({ item }) => hasMate(item))
-      .map(({ item }) => {
-        const tags = readZeropsGroupTags(item.project.tagList);
-        const live =
-          item.group === "connected" && item.environmentId !== undefined
-            ? activity.get(item.environmentId)
-            : undefined;
-        const subject = live?.subject;
-        const tint = tints.get(item.project.id) ?? "slate";
-        const mine = mateIsViewers(item.project, viewer);
-        return {
-          projectId: item.project.id,
-          name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
-          tint,
-          shape: mateShapeOf(item.project.tagList, tint),
-          // Its row's face (`mateFaceOf`): needing you while it asks, or while its own change
-          // waits for your review — your own Mate only; another's waits on its owner.
-          face: mateFaceOf({
-            connected: candidateContainerRuns(item),
-            activity: live,
-            reviewWaits: mateReviewWaits(flow, item.project.id),
-            mine,
-            pose: matePoseOf(item, nowMs),
-          }),
-          asks: mine && mateFaceFor(item.group === "connected", live) === "needs",
-          ...(live?.kind === "failed" ? { failed: true } : {}),
-          subject,
-          snippet: subject === undefined ? undefined : live?.snippet,
-          when:
-            live === undefined || subject === undefined
-              ? undefined
-              : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at)),
+      .map(({ item }) =>
+        groupMateOf({
+          nowMs,
+          item,
+          read: activityOf(item),
+          tint: tints.get(item.project.id) ?? "slate",
+          reviewWaits: mateReviewWaits(flow, item.project.id),
+          mine: mateIsViewers(item.project, viewer),
           update: mateUpdateStatus(updates.of(item)),
-        };
-      });
-  }, [activity, flow, groupId, listing, nowMs, updates, viewer]);
+        }),
+      );
+  }, [activityOf, flow, groupId, listing, updates, viewer, nowMs]);
   const patient = useListingPatience(listing);
   const notice = useMemo(
     () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs, { patient }),
@@ -463,32 +398,6 @@ function useGroupMates(groupId: string): {
   );
   return { mates, notice, refresh };
 }
-
-/**
- * Where a stop answers from, and what it could answer from.
- *
- * Both, because the section that lists the addresses is the section somebody
- * would add one from — and it could only list them: the ask lived on the
- * projects screen's row menu, so an environment's own page showed a service
- * that serves HTTP to nobody and no way to open it.
- */
-function useStopRoutes(projectId: string): {
-  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  readonly offers: ReadonlyArray<ZeropsRouteOffer>;
-} {
-  const { listing } = useZeropsCandidates();
-  return useMemo(() => {
-    const found = findCandidate(listing, (entry) => entry.project.id === projectId);
-    const candidate = found.kind === "found" ? found.row : undefined;
-    return {
-      routes: candidate?.routes ?? EMPTY_ROUTES,
-      offers: candidate?.routeOffers ?? EMPTY_OFFERS,
-    };
-  }, [listing, projectId]);
-}
-
-const EMPTY_ROUTES: ReadonlyArray<ZeropsPublicRoute> = [];
-const EMPTY_OFFERS: ReadonlyArray<ZeropsRouteOffer> = [];
 
 /** Opens a Mate's own conversation, as selecting its row in the menu does (`useOpenMate`). */
 function useOpenMateOf(): (projectId: string) => void {
@@ -511,6 +420,7 @@ function useProjectAttention(
     readonly environments: ReadonlyArray<EnvironmentRow>;
     readonly pullRequests: ReadonlyArray<FlowPullRequest>;
     readonly notLive: number;
+    readonly notLiveAtLeast: boolean;
     readonly canRelease: boolean;
   },
 ): {
@@ -521,7 +431,7 @@ function useProjectAttention(
   const mateNames = flowValue?.mateNames;
   const openMate = useOpenMateOf();
   const navigate = useNavigate();
-  const { environments, pullRequests, notLive, canRelease } = input;
+  const { environments, pullRequests, notLive, notLiveAtLeast, canRelease } = input;
 
   const items = useMemo(
     () =>
@@ -543,10 +453,11 @@ function useProjectAttention(
           })),
         pullRequests,
         notLive,
+        notLiveAtLeast,
         canRelease,
         mateNames: mateNames ?? EMPTY_MATE_NAMES,
       }),
-    [canRelease, environments, mateNames, mates, notLive, pullRequests],
+    [canRelease, environments, mateNames, mates, notLive, notLiveAtLeast, pullRequests],
   );
 
   const onAct = useCallback(
@@ -598,8 +509,10 @@ function useReleaseOffer(groupId: string): ReleaseOffer {
     },
     [groupId, openReview],
   );
+  const gate = flow?.release.gate;
   return {
-    offered: flow?.release.gate.allowed ?? false,
+    offered: gate?.allowed ?? false,
+    reason: gate === undefined || gate.allowed ? undefined : gate.reason,
     releasing:
       flow?.release.inFlight !== undefined ||
       (flowValue?.pending.has(flowVerbKey({ kind: "release", groupId })) ?? false),
@@ -626,55 +539,133 @@ export function ZeropsReleaseVerb({
 
 /**
  * Where each declared stage of the group that runs nothing stands on its first deploy
- * (`stageFirstDeploy`), as its cell on the projects page and the menu say it: on the minute clock,
- * from what the flow and the account already hold.
+ * (`stageFirstDeploy`), as its cell on the projects page and the menu say it: on the minute clock
+ * its setting up is read by, from what the platform runs and HQ's jobs of its deploys.
  */
 function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDeploy | undefined {
+  const { listing } = useZeropsCandidates();
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
-  // The project and its services as the menu and the projects page read them: the candidate
-  // listing, which lists a project not active yet with none of its services.
-  const { listing } = useZeropsCandidates();
-  const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const nowMs = useNowMs();
   return (projectId) => {
-    if (flow === undefined) return undefined;
-    const candidate = candidates.find((entry) => entry.project.id === projectId);
-    const row = flow.environments.find(
+    const row = flow?.environments.find(
       (entry) => entry.projectId === projectId && entry.tier === "stage",
     );
+    const candidate = heldCandidates(listing).rows.find((entry) => entry.project.id === projectId);
     return stageFirstDeploy({
-      projectStatus: candidate?.project.status,
-      services: candidate?.services?.statuses,
-      deployment: flowValue?.deployments.get(projectId),
-      headFailure: row?.firstDeployFailure,
-      declared: row !== undefined,
-      mainHasCode: undefined,
-      merged: flow.merged,
-      runner: flowValue?.runners?.get(groupId),
       createdAt: candidate?.project.created,
+      projectStatus: candidate?.project.status,
+      services: candidate?.services === undefined ? undefined : candidate.services.statuses,
+      deployment: flowValue?.deployments.get(projectId),
+      deploys: row?.deploys,
+      keyGap: row?.keyGap ?? false,
       nowMs,
     });
   };
 }
 
+type RuntimeStopIdentity = {
+  readonly projectId: string;
+  readonly name: string;
+  readonly tier: "production" | "stage";
+};
+export function runtimeStopsOf(
+  groupId: string,
+  projects: ReadonlyArray<ZeropsProject>,
+  declared: ReadonlyArray<RuntimeStopIdentity> | undefined,
+): ReadonlyArray<RuntimeStopIdentity> {
+  const stops = new Map<string, RuntimeStopIdentity>();
+  for (const project of projects) {
+    const membership = readZeropsMembership(project);
+    if (membership.groupId !== groupId) continue;
+    if (membership.role !== "prod" && membership.role !== "stage" && membership.role !== "devstage")
+      continue;
+    stops.set(project.id, {
+      projectId: project.id,
+      name: project.name,
+      tier: membership.role === "prod" ? "production" : "stage",
+    });
+  }
+  if (declared !== undefined) for (const stop of declared) stops.set(stop.projectId, stop);
+  return [...stops.values()];
+}
+
+function useRuntimeStops(groupId: string): ReadonlyArray<RuntimeStopIdentity> {
+  const inventory = useZeropsInventory();
+  const held = useContext(HeldInventoryContext);
+  const declared = useAtomValue(hqEnvironmentsAtom)?.get(groupId);
+  return runtimeStopsOf(groupId, held?.projects ?? inventory.projects, declared);
+}
+
+/** Runtime remains readable when HQ's changes/release detail has not answered. */
+export function ZeropsRuntimeStops({
+  stops,
+  deployments,
+  onOpen,
+}: {
+  readonly stops: ReadonlyArray<{
+    readonly projectId: string;
+    readonly name: string;
+    readonly tier: "production" | "stage";
+  }>;
+  readonly deployments: ReadonlyMap<string, Shown<Deployment>> | undefined;
+  readonly onOpen?: (projectId: string) => void;
+}) {
+  if (stops.length === 0) return null;
+  return (
+    <Section title="Environments">
+      <ul className="flex flex-col gap-3">
+        {stops.map((stop) => {
+          const view = stopView({
+            deployment: deployments?.get(stop.projectId) ?? UNREAD_DEPLOYMENT,
+            row: undefined,
+            nowMs: 0,
+          });
+          const words = (
+            <>
+              <span className="text-sm font-medium">{stop.name}</span>
+              <ZeropsRoleTag label={stop.tier === "production" ? "prod" : "stage"} />
+              <StatusDot label={view.line} sentence tone={STOP_DOT_TONE[view.tone] ?? "off"} />
+            </>
+          );
+          return (
+            <li className="flex min-w-0 flex-col gap-2" key={stop.projectId}>
+              <div className="flex min-w-0 items-center gap-3">
+                {onOpen === undefined ? (
+                  <span className="flex min-w-0 items-center gap-3">{words}</span>
+                ) : (
+                  <button
+                    className="flex min-w-0 items-center gap-3 text-left"
+                    type="button"
+                    onClick={() => onOpen(stop.projectId)}
+                  >
+                    {words}
+                  </button>
+                )}
+                <StopReadAgain projectId={stop.projectId} />
+              </div>
+              <RuntimeStopPublicAccess projectId={stop.projectId} />
+            </li>
+          );
+        })}
+      </ul>
+    </Section>
+  );
+}
+
 export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
+  const recipeFailure = useZeropsRecipeFailure(groupId);
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
+  const runtimeStops = useRuntimeStops(groupId);
+  const navigate = useNavigate();
   const environments = flow?.environments ?? [];
   const repo = groupRepository(environments);
-  const commits = useZeropsRepositoryCommits(
-    flow === undefined || repo === undefined
-      ? null
-      : { giteaOrigin: flowValue?.giteaOrigin, owner: flow.slug, repo },
-  );
+  const history = useZeropsHistory({ appId: groupId, repo, repos: flow?.repos });
+  const tags = useReleaseTags(flow?.releases);
+  const openChange = useOpenChange(groupId, repo);
   const waiting = releaseContentsSummary(flow?.release.contents ?? [], 20);
   const groupName = useGroupName(groupId);
-  const readDetail = useZeropsCommitDetailReader({
-    giteaOrigin: flowValue?.giteaOrigin,
-    owner: flow?.slug,
-    repo,
-  });
   const openProjects = useOpenProjects();
   // The New Mate dialog over this page, as from every "Add a Mate" (`ZeropsNewMateHost`).
   const addMate = useAddMate();
@@ -682,7 +673,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const mates_ = useMateMenus();
   const release = useReleaseOffer(groupId);
   const crumbs = useCrumbs();
-  const names = useHistoryNames(groupName);
+  const names = useHistoryNames();
   const { mates, notice: matesNotice, refresh: rereadMates } = useGroupMates(groupId);
   const openMate = useOpenMateOf();
   const { withheldNotice, shown } = useWithheldStops(environments);
@@ -691,12 +682,20 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     environments: shown,
     pullRequests: flow?.pullRequests ?? EMPTY_PULLS,
     notLive: waiting.total,
+    notLiveAtLeast: waiting.atLeast,
     canRelease: release.offered,
   });
 
   if (flow === undefined) {
     return (
       <DetailShell crumbs={crumbs} title={groupName}>
+        <ZeropsRuntimeStops
+          stops={runtimeStops}
+          deployments={flowValue?.deployments}
+          onOpen={(projectId) => {
+            void navigate({ to: "/group/$groupId/$projectId", params: { groupId, projectId } });
+          }}
+        />
         <UnreadDetail groupId={groupId} />
       </DetailShell>
     );
@@ -704,8 +703,11 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 
   return (
     <ZeropsGroupPane
-      commits={commits}
+      readFailures={
+        <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
+      }
       environments={environments}
+      history={history}
       groupId={groupId}
       attention={attention.items}
       mates={mates}
@@ -732,10 +734,11 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 
       onSetUp={openProjects}
       release={release}
-      trouble={actions.trouble ?? mates_.trouble}
+      trouble={mates_.trouble}
+      onOpenChange={openChange}
       pullRequests={flow.pullRequests}
-      readDetail={readDetail}
       repo={repo}
+      tags={tags}
       waiting={waiting}
       withheldNotice={withheldNotice}
       firstDeployOf={firstDeployOf}
@@ -751,8 +754,9 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
  * changes waiting, without an account behind it.
  */
 export function ZeropsGroupPane({
-  commits,
+  readFailures,
   environments,
+  history,
   attention,
   groupId,
   mates,
@@ -768,15 +772,22 @@ export function ZeropsGroupPane({
   onOpenMate,
   onSetUp,
   trouble,
+  onOpenChange,
   pullRequests,
-  readDetail,
   release,
   repo,
+  tags,
   waiting,
   withheldNotice,
   firstDeployOf,
 }: {
-  readonly commits: ZeropsCommitsState;
+  readonly readFailures?: React.ReactNode;
+  /** What has landed on the repository, as HQ compares it. */
+  readonly history: ZeropsHistoryState;
+  /** `full sha → the release that shipped it`. */
+  readonly tags: ReadonlyMap<string, ReadonlyArray<string>>;
+  /** Opens the review of the change that landed a commit. */
+  readonly onOpenChange?: ((change: HistoryChange, from: HTMLElement) => void) | undefined;
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly groupId: string;
   /** The project's name; undefined while the listing has not named it — never its id. */
@@ -785,7 +796,6 @@ export function ZeropsGroupPane({
   /** Where a project with nothing set up goes to get something set up. */
   readonly onSetUp: () => void;
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
-  readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
   readonly release: ReleaseOffer;
   /** The repository its history is read from; absent where none is declared. */
   readonly repo: string | undefined;
@@ -850,6 +860,7 @@ export function ZeropsGroupPane({
       {trouble === null || trouble === undefined ? null : (
         <p className="text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
       )}
+      {readFailures}
       <AttentionPanel items={attention} onAct={onAct} release={release} />
 
       <Section title="Who is on it">
@@ -893,7 +904,6 @@ export function ZeropsGroupPane({
               <StopLine
                 environment={environment}
                 groupId={groupId}
-                groupName={name}
                 key={environment.projectId}
                 notice={withheldNotice?.(environment.projectId) ?? null}
                 firstDeploy={firstDeployOf?.(environment.projectId)}
@@ -905,7 +915,7 @@ export function ZeropsGroupPane({
 
       <Section title="In flight">
         {pullRequests.length === 0 ? (
-          <Note>Nothing open. Every change the Mates made has landed.</Note>
+          <Note>Nothing open.</Note>
         ) : (
           <ul className="flex flex-col">
             {pullRequests.map((pull) => (
@@ -921,7 +931,7 @@ export function ZeropsGroupPane({
       </Section>
 
       {waiting.total === 0 ? null : (
-        <Section title={`Merged, not live · ${String(waiting.total)}`}>
+        <Section title={`Merged, not live · ${String(waiting.total)}${waiting.atLeast ? "+" : ""}`}>
           <ul className="mb-3 flex flex-col gap-1">
             {waiting.subjects.map((subject) => (
               <li className="truncate text-sm text-foreground" key={subject}>
@@ -929,7 +939,9 @@ export function ZeropsGroupPane({
               </li>
             ))}
             {waiting.more === 0 ? null : (
-              <li className="text-sm text-muted-foreground">+{waiting.more} more</li>
+              <li className="text-sm text-muted-foreground">
+                {`+${String(waiting.more)}${waiting.atLeast ? "+" : ""} more`}
+              </li>
             )}
           </ul>
         </Section>
@@ -944,10 +956,11 @@ export function ZeropsGroupPane({
           />
         ) : (
           <ZeropsHistoryView
-            commits={commits}
+            history={history}
             names={names}
-            readDetail={readDetail}
+            onOpenChange={onOpenChange}
             request={{ repo, deployed }}
+            tags={tags}
           />
         )}
       </Section>
@@ -962,8 +975,10 @@ export function ZeropsStopDetailPage({
   readonly groupId: string;
   readonly projectId: string;
 }) {
+  const recipeFailure = useZeropsRecipeFailure(groupId);
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
+  const runtimeStops = useRuntimeStops(groupId).filter((entry) => entry.projectId === projectId);
   const stop = flow?.environments.find((entry) => entry.projectId === projectId);
   const declared = flow?.environmentInputs.find((entry) => entry.projectId === projectId);
   // A stop whose project the grant withholds draws nothing of it (DESIGN §3.4),
@@ -975,26 +990,33 @@ export function ZeropsStopDetailPage({
   const deployed = useMemo(() => deployedShas(shown), [shown]);
   const stage = stop?.tier === "stage";
   const production = stop?.tier === "production";
-  const forge = useStopForge(flowValue?.giteaOrigin, flow?.slug);
   // Only a stage draws its deploys: a production moves by release, and its
   // releases are the list it is read by.
-  const commits = useZeropsRepositoryCommits(
-    flow === undefined || repo === undefined || !stage
-      ? null
-      : { giteaOrigin: flowValue?.giteaOrigin, owner: flow.slug, repo },
-  );
-  const readDetail = useZeropsCommitDetailReader({ ...forge, repo });
-  const releaseReads = useStopReleaseReads({
-    ...forge,
-    services: production && withheld === null ? declared?.services : undefined,
+  const history = useZeropsHistory({
+    appId: groupId,
+    repo: stage ? repo : undefined,
+    repos: flow?.repos,
   });
+  const mainHead =
+    repo === undefined
+      ? undefined
+      : (flow?.repos?.find(({ name }) => name === repo)?.mainHead ?? undefined);
+  const tags = useReleaseTags(flow?.releases);
+  const openChange = useOpenChange(groupId, repo);
+  const openCarried = useOpenCarriedChange(groupId);
+  const carried = useStopCarried(
+    groupId,
+    flow?.releases,
+    production && withheld === null ? declared?.services : undefined,
+  );
   const release = useReleaseOffer(groupId);
   const openReview = useOpenReview();
   const stopGroupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: stopGroupName });
-  const names = useHistoryNames(stopGroupName);
-  const openProjects = useOpenProjects();
-  const { routes, offers } = useStopRoutes(projectId);
+  const names = useHistoryNames();
+  const publicAccess = useStopPublicAccess(projectId);
+  const routes = publicAccess.access.routes;
+  const offers = publicAccess.access.offers;
   const route = useEnableRoute();
   const inventory = useZeropsInventory();
   const platform = useStopServices(
@@ -1014,7 +1036,7 @@ export function ZeropsStopDetailPage({
           environment: declared.environment,
           services: declared.services,
           platform,
-          mainHead: stage && commits.kind === "read" ? commits.commits[0]?.sha : undefined,
+          mainHead: stage ? mainHead : undefined,
           routes,
           offers,
           nowMs,
@@ -1025,22 +1047,27 @@ export function ZeropsStopDetailPage({
     flow === undefined || stop === undefined
       ? undefined
       : stopFailedDeploy({ tier: stop.tier, rows: services, releases: flow.releases });
-  // The build behind the deploy that failed — its service's repository, the
-  // commit it deployed — read whether or not its row is open: whether its job
-  // is known decides the verdict's *Run again*.
-  const failedRow =
-    failedDeploy === undefined
-      ? undefined
-      : services.find((row) => row.hostname === failedDeploy.service);
-  const failedRun = useZeropsDeployRun(
-    failedDeploy === undefined || failedRow === undefined
-      ? null
-      : serviceBuildRequest({ repository: failedRow.repository, sha: failedDeploy.sha }, forge),
-  );
+  // *Run again* asks HQ, by its rule for who develops the application.
+  const mayRunAgain = useChangeOffers()(groupId)?.redeploy ?? false;
+  const mayKeepKey = useKeepDeployKeyOffer();
+  // Why HQ refused the last *Run again*, until another is pressed.
+  const [runAgainRefused, setRunAgainRefused] = useState<string | null>(null);
+  // What HQ answered of the deploys the last verb pressed here asked for.
+  const [deployAnswer, setDeployAnswer] = useState<HqDeployAnswer | undefined>(undefined);
+  /** A verb pressed here, its refusal or its deploys said until the next. */
+  const said = (asked: Promise<FlowVerbOutcome>) => {
+    setRunAgainRefused(null);
+    setDeployAnswer(undefined);
+    void asked.then((outcome) => {
+      setRunAgainRefused(outcome.ok ? null : outcome.reason);
+      setDeployAnswer(outcome.ok ? outcome.deploys : undefined);
+    });
+  };
 
   if (flowValue === null || flow === undefined || stop === undefined) {
     return (
-      <DetailShell crumbs={crumbs} title={undefined}>
+      <DetailShell crumbs={crumbs} title={runtimeStops?.[0]?.name}>
+        <ZeropsRuntimeStops stops={runtimeStops} deployments={flowValue?.deployments} />
         <UnreadDetail groupId={groupId} />
       </DetailShell>
     );
@@ -1057,85 +1084,116 @@ export function ZeropsStopDetailPage({
   const view = stopView({ deployment, row: stop, nowMs });
   const live = flow.releases.find((entry) => entry.standing === "live");
   const releasedAge = live?.taggedAt === undefined ? "" : formatRelativeTimeLabel(live.taggedAt);
-  const job = failedJob(failedRun.state);
+  const redeploy = failedDeploy?.redeploy;
+  // How many changes production lacks, at least that many where HQ stopped counting.
+  const notLive = movedCount(flow.release.contents);
   const verdict = stopVerdict({
     tier: stop.tier,
     view,
     releasing: flow.release.inFlight ?? (release.releasing ? release.tag : undefined),
-    failed:
-      failedDeploy === undefined ? undefined : { ...failedDeploy, jobKnown: job !== undefined },
-    waiting: releaseContentsSummary(flow.release.contents, 20).total,
+    failed: failedDeploy === undefined ? undefined : { ...failedDeploy, mayRunAgain },
+    waiting: notLive.count,
+    waitingAtLeast: notLive.atLeast,
+    untold: production ? flow.release.untold : NO_UNTOLD,
     release,
     releasedAge: releasedAge.length === 0 ? undefined : releasedAge,
     since: view.activatedAt === null ? undefined : formatRelativeTimeLabel(view.activatedAt),
-    atMainHead:
-      stage && commits.kind === "read" && sameCommit(view.version?.sha, commits.commits[0]?.sha),
+    atMainHead: stage && sameCommit(view.version?.sha, mainHead),
+    keyGap:
+      declared === undefined
+        ? undefined
+        : stopKeyGap({ ...declared, mayKeep: mayKeepKey(projectId), project: stop.name }),
     firstDeploy,
   });
 
   return (
-    <ZeropsStopPane
-      commits={commits}
-      crumbs={crumbs}
-      deployed={deployed}
-      enablingServiceId={route.enablingServiceId}
-      forge={forge}
+    <>
+      <StopPublicAccessStatus shown={publicAccess.shown} again={publicAccess.again} />
+      <ZeropsStopPane
+        readAgain={<StopReadAgain projectId={projectId} />}
+        readFailures={
+          <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
+        }
+        carried={carried}
+        crumbs={crumbs}
+        deployed={deployed}
+        enablingServiceId={route.enablingServiceId}
+        history={history}
 
-      groupId={groupId}
-      groupName={stopGroupName}
-      names={names}
-      onEnableRoute={(serviceId) => {
-        void route.enable(projectId, serviceId);
-      }}
-      onOpenProject={openProjects}
-      onRollBack={(tag, from) => {
-        openReview({ kind: "rollback", groupId, tag }, { from });
-      }}
-      pending={flowValue.pending}
-      readDetail={readDetail}
-      release={release}
-      releaseReads={releaseReads}
-      releases={production ? flow.releases : NO_RELEASES}
-      repo={repo}
-      routeTrouble={route.trouble}
-      routes={routes}
-      runAgain={
-        job === undefined
-          ? undefined
-          : {
-              rerunning: failedRun.rerunning,
-              failure: failedRun.rerunFailure,
-              onRunAgain: () => {
-                void failedRun.rerun(job.id);
-              },
-            }
-      }
-      services={services}
-      stop={stop}
-      trouble={flowValue.trouble}
-      verdict={verdict}
-      view={view}
-      waiting={production ? releaseContentsCommits(flow.release.contents) : NO_COMMITS}
-    />
+        groupId={groupId}
+        names={names}
+        onEnableRoute={(serviceId) => {
+          void route.enable(projectId, serviceId);
+        }}
+        onOpenCarriedChange={openCarried}
+        onOpenChange={openChange}
+        onRollBack={(tag, from) => {
+          openReview({ kind: "rollback", groupId, tag }, { from });
+        }}
+        pending={flowValue.pending}
+        release={release}
+        releases={production ? flow.releases : NO_RELEASES}
+        repo={repo}
+        routeTrouble={route.trouble}
+        routes={routes}
+        deployAgain={
+          mayRunAgain
+            ? {
+                running: (service) =>
+                  flowValue.pending.has(
+                    flowVerbKey({ kind: "redeploy", groupId, projectId, service }),
+                  ),
+                onDeployAgain: (again) => said(flowValue.redeploy(groupId, projectId, again)),
+              }
+            : undefined
+        }
+        addService={
+          mayRunAgain
+            ? {
+                running: (service) =>
+                  flowValue.pending.has(
+                    flowVerbKey({ kind: "add-service", groupId, projectId, service }),
+                  ),
+                onAdd: (service) => said(flowValue.addService(groupId, projectId, service)),
+              }
+            : undefined
+        }
+        notInZerops={
+          declared === undefined || withheld !== null
+            ? undefined
+            : notInZerops({ recipeServices: declared.recipeServices, platform })
+        }
+        deployAnswer={deployAnswer}
+        runAgain={
+          redeploy === undefined || !mayRunAgain
+            ? undefined
+            : {
+                running: flowValue.pending.has(
+                  flowVerbKey({ kind: "redeploy", groupId, projectId, service: redeploy.service }),
+                ),
+                refused: runAgainRefused,
+                onRunAgain: () => said(flowValue.redeploy(groupId, projectId, redeploy)),
+              }
+        }
+        services={services}
+        stop={stop}
+        tags={tags}
+        trouble={flowValue.trouble}
+        verdict={verdict}
+        view={view}
+        untold={production ? flow.release.untold : NO_UNTOLD}
+        waiting={
+          production
+            ? {
+                commits: releaseContentsCommits(flow.release.contents),
+                total: notLive.count,
+                atLeast: notLive.atLeast,
+              }
+            : NOTHING_WAITING
+        }
+      />
+    </>
   );
-}
-
-/** Where a service's build is read from: its own repository and the commit it runs. */
-interface StopBuildForge {
-  readonly giteaOrigin: string | undefined;
-  readonly owner: string | undefined;
-}
-
-/**
- * The read behind one service's build — that service's repository and commit,
- * never the stop's first service's. `null` where it names no commit: nothing to read.
- */
-export function serviceBuildRequest(
-  row: Pick<StopServiceRow, "repository" | "sha">,
-  forge: StopBuildForge,
-): ZeropsDeployRunRequest | null {
-  if (row.sha === undefined) return null;
-  return { ...forge, repo: row.repository, sha: row.sha };
 }
 
 /** A commit merged to `main` and not in front of people yet. */
@@ -1144,13 +1202,45 @@ interface WaitingCommit {
   readonly subject: string;
 }
 
-/** *Run again* on the verdict: the failed job of the service whose deploy failed. */
+/**
+ * What `main` has that a production does not: the commits HQ listed, and how many there are in
+ * all — at least that many where HQ stopped counting.
+ */
+interface StopWaiting {
+  readonly commits: ReadonlyArray<WaitingCommit>;
+  readonly total: number;
+  readonly atLeast: boolean;
+}
+
+/** *Run again* on the verdict: the failed deploy, asked again in HQ. */
 interface StopRunAgain {
-  readonly rerunning: boolean;
-  /** Why Gitea refused the last one, until another is pressed. */
-  readonly failure: string | null;
+  readonly running: boolean;
+  /** Why HQ refused the last one, until another is pressed. */
+  readonly refused: string | null;
   readonly onRunAgain: () => void;
 }
+
+/**
+ * *Deploy … again* on a service that runs a version HQ did not make for it (`StopServiceDrift`):
+ * HQ's live commit there, asked again by whoever may *Run again* (the deploy-jobs design).
+ */
+interface StopDeployAgain {
+  /** Whether it is under way for the service. */
+  readonly running: (service: string) => boolean;
+  readonly onDeployAgain: (redeploy: RunAgain) => void;
+}
+
+/**
+ * *Add <service>* on a service the recipe declares and the project lacks (audit D2): imported and
+ * deployed by HQ, asked by whoever may *Run again* — HQ never adds one by itself.
+ */
+interface StopAddService {
+  /** Whether it is under way for the service. */
+  readonly running: (service: string) => boolean;
+  readonly onAdd: (service: string) => void;
+}
+
+const NOTHING_MISSING: ReadonlyArray<string> = [];
 
 /** A stop's role, as its tag reads beside its name. */
 const ROLE_TAG: Record<GroupEnvironmentTier, ZeropsEnvironmentRole> = {
@@ -1158,54 +1248,85 @@ const ROLE_TAG: Record<GroupEnvironmentTier, ZeropsEnvironmentRole> = {
   production: "prod",
 };
 
-/**
- * Where a stop's repositories live, held across renders: the build and
- * release reads that take it are not asked again by a render alone.
- */
-function useStopForge(giteaOrigin: string | undefined, owner: string | undefined): StopBuildForge {
-  return useMemo(() => ({ giteaOrigin, owner }), [giteaOrigin, owner]);
+/** `full sha → the releases that shipped it`, from HQ's records (`releaseTagsByCommit`). */
+function useReleaseTags(
+  releases: ReadonlyArray<FlowReleaseRow> | undefined,
+): ReadonlyMap<string, ReadonlyArray<string>> {
+  return useMemo(() => releaseTagsByCommit(releases ?? NO_RELEASES), [releases]);
 }
 
-/**
- * A production's releases say what each carried: its code services'
- * repositories, read once when the page opens, never on the clock. Held
- * across renders, so the release rows are measured once per read.
- * `undefined` without the services — a stage, or a withheld stop.
- */
-function useStopReleaseReads({
-  giteaOrigin,
-  owner,
-  services,
-}: StopBuildForge & {
-  readonly services: GroupEnvironmentRowInput["services"] | undefined;
-}): StopReleaseReads | undefined {
-  const repositoryOf = useMemo(
-    () =>
-      services === undefined
-        ? NO_REPOSITORIES
-        : new Map(
-            services.flatMap((entry) =>
-              entry.repository === undefined ? [] : [[entry.hostname, entry.repository] as const],
-            ),
-          ),
-    [services],
-  );
-  const repositories = [...new Set(repositoryOf.values())];
-  const reads = useZeropsRepositoriesCommits(
-    owner !== undefined && repositories.length > 0 ? { giteaOrigin, owner, repositories } : null,
-  );
+/** Opens the review of the change that landed a commit of `repo`, from where it was pressed. */
+function useOpenChange(
+  groupId: string,
+  repo: string | undefined,
+): ((change: HistoryChange, from: HTMLElement) => void) | undefined {
+  const openReview = useOpenReview();
   return useMemo(
-    () => (services === undefined ? undefined : { reads, repositoryOf }),
-    [services, reads, repositoryOf],
+    () =>
+      repo === undefined
+        ? undefined
+        : (change: HistoryChange, from: HTMLElement) => {
+            openReview(
+              { kind: "change", groupId, repository: repo, number: change.number },
+              { from },
+            );
+          },
+    [groupId, openReview, repo],
   );
 }
 
-/** A production's code repositories, read for what its releases carried. */
-interface StopReleaseReads {
-  /** `repository → its read`. */
-  readonly reads: ReadonlyMap<string, ZeropsCommitsState>;
-  /** `hostname → repository`, the code services only. */
-  readonly repositoryOf: ReadonlyMap<string, string>;
+/** Opens the review of the change that landed a commit a release carried, in its repository. */
+function useOpenCarriedChange(
+  groupId: string,
+): (repository: string, change: HistoryChange, from: HTMLElement) => void {
+  const openReview = useOpenReview();
+  return useCallback(
+    (repository, change, from) => {
+      openReview({ kind: "change", groupId, repository, number: change.number }, { from });
+    },
+    [groupId, openReview],
+  );
+}
+
+/**
+ * What each of a production's releases carried, by its tag, as HQ compares it (`carriedReads`):
+ * every release against the one before it, read once and held. `undefined` without the services —
+ * a stage, or a withheld stop.
+ */
+function useStopCarried(
+  groupId: string,
+  releases: ReadonlyArray<FlowReleaseRow> | undefined,
+  services: GroupEnvironmentRowInput["services"] | undefined,
+): ReadonlyMap<string, ComparedCommits> | undefined {
+  const reads = useMemo(() => {
+    if (services === undefined || releases === undefined) return undefined;
+    const repositoryOf = new Map(
+      services.flatMap((entry) =>
+        entry.repository === undefined ? [] : [[entry.hostname, entry.repository] as const],
+      ),
+    );
+    return carriedReads({ releases, repositoryOf });
+  }, [releases, services]);
+  const asks = useMemo(
+    () => (reads === undefined ? NO_ASKS : new Map([[groupId, [...reads.values()].flat()]])),
+    [groupId, reads],
+  );
+  const compares = useZeropsCompares(asks);
+  return useMemo(() => {
+    if (reads === undefined) return undefined;
+    const answered = compares.get(groupId);
+    return new Map(
+      [...reads].map(([tag, tagReads]) => [
+        tag,
+        answered === undefined
+          ? CARRIED_READING
+          : {
+              ...movedCommits({ reads: tagReads, ...answered }),
+              again: () => answered.again(tagReads),
+            },
+      ]),
+    );
+  }, [compares, groupId, reads]);
 }
 
 /** How many releases a production lists before the rest wait behind a quiet verb. */
@@ -1224,77 +1345,93 @@ const RELEASES_SHOWN = 5;
  * and how the stop got here (a production's releases, a stage's deploys).
  */
 export function ZeropsStopPane({
-  buildOf,
-  commits,
+  readFailures,
+  readAgain,
+  carried,
   crumbs,
   deployed,
   enablingServiceId,
-  forge,
   groupId,
-  groupName,
+  history,
   names,
   onEnableRoute,
-  onOpenProject,
+  onOpenCarriedChange,
+  onOpenChange,
   onRollBack,
   pending,
-  readDetail,
   release,
-  releaseReads,
   releases,
   repo,
   routeTrouble,
   routes,
   runAgain,
+  deployAgain,
+  addService,
+  notInZerops = NOTHING_MISSING,
+  deployAnswer,
   services,
   stop,
+  tags,
   trouble,
+  untold,
   verdict,
   view,
   waiting,
 }: {
+  readonly readFailures?: React.ReactNode;
+  /** Runtime read recovery belongs beside the verdict that reports it. */
+  readonly readAgain?: React.ReactNode;
   readonly crumbs: ReadonlyArray<Crumb>;
   readonly groupId: string;
-  /** The project's name, so the stop's own title does not repeat it. */
-  readonly groupName: string | undefined;
   readonly stop: EnvironmentRow;
   /** What the stop runs, as the left menu reads it — its menu is that menu. */
   readonly view: StopView;
   readonly verdict: StopVerdict;
   /** One row per service, as `serviceRows` says it. */
   readonly services: ReadonlyArray<StopServiceRow>;
-  /** Where an opened service's build is read from. */
-  readonly forge: StopBuildForge;
-  /**
-   * The build behind a service's commit where the caller already holds it — the design harness's
-   * canned runs; read from Gitea by `forge` otherwise.
-   */
-  readonly buildOf?: ((row: StopServiceRow) => ZeropsDeployRun) | undefined;
   /** Offered on a production that is behind — the one stop a release moves. */
   readonly release: ReleaseOffer;
   readonly runAgain?: StopRunAgain | undefined;
-  /** What `main` has that this production does not; empty for a stage. */
-  readonly waiting: ReadonlyArray<WaitingCommit>;
+  /** Offered beside a service that runs what HQ did not deploy, to whoever may run it again. */
+  readonly deployAgain?: StopDeployAgain | undefined;
+  /** Offered beside a service the recipe declares and the project lacks, by the same rule. */
+  readonly addService?: StopAddService | undefined;
+  /** The services the stop's tier declares and its project lacks (`notInZerops`). */
+  readonly notInZerops?: ReadonlyArray<string> | undefined;
+  /** What HQ answered of the deploys the last verb pressed here asked for. */
+  readonly deployAnswer?: HqDeployAnswer | undefined;
+  /** What `main` has that this production does not; nothing for a stage. */
+  readonly waiting: StopWaiting;
+  /** A production's services whose commit cannot be told, said beside what waits. */
+  readonly untold: ReadonlyArray<string>;
   /** Every public address of the stop, for its menu; each service row lists its own. */
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  readonly onOpenProject: () => void;
   /** A production's releases, newest first; empty for a stage. */
   readonly releases: ReadonlyArray<FlowReleaseRow>;
   /**
-   * What a production's code repositories read, so each release row says what it carried;
-   * `undefined` on a stage, where the rows are their shas.
+   * What each of a production's releases carried, by its tag, as HQ compares it; `undefined` on a
+   * stage, where the rows are their shas.
    */
-  readonly releaseReads?: StopReleaseReads | undefined;
+  readonly carried?: ReadonlyMap<string, ComparedCommits> | undefined;
+  /** Opens the review of the change that landed a commit a release carried. */
+  readonly onOpenCarriedChange?:
+    | ((repository: string, change: HistoryChange, from: HTMLElement) => void)
+    | undefined;
   /** The flow's verbs under way (`flowVerbKey`). */
   readonly pending: ReadonlySet<string>;
   /** Opens the roll back's review from the row pressed: nothing rolls back from a row (R1). */
   readonly onRollBack: (tag: string, from: HTMLElement) => void;
   /** What the last flow verb's refusal said — a *Roll back* refused says so here. */
   readonly trouble: string | null;
-  readonly commits: ZeropsCommitsState;
+  /** A stage's deploys: what has landed on its repository, as HQ compares it. */
+  readonly history: ZeropsHistoryState;
+  /** `full sha → the release that shipped it`. */
+  readonly tags: ReadonlyMap<string, ReadonlyArray<string>>;
+  /** Opens the review of the change that landed a commit of the stage's history. */
+  readonly onOpenChange?: ((change: HistoryChange, from: HTMLElement) => void) | undefined;
   /** `environment name → the whole sha it runs`, for the history's own marks. */
   readonly deployed: ReadonlyMap<string, string>;
   readonly names: HistoryNames;
-  readonly readDetail?: ((sha: string) => Promise<ZeropsCommitDetailResult>) | undefined;
   readonly repo: string | undefined;
   readonly onEnableRoute?: ((serviceId: string) => void) | undefined;
   /** Which one is being opened, so its row says so and takes no second press. */
@@ -1302,36 +1439,36 @@ export function ZeropsStopPane({
   readonly routeTrouble?: string | null;
 }) {
   const [allReleases, setAllReleases] = useState(false);
-  const title = environmentNameUnderGroup(groupName, stop.name);
+  const title = stop.name;
   const production = stop.tier === "production";
   const earlier = Math.max(0, releases.length - RELEASES_SHOWN);
   const listed = allReleases ? releases : releases.slice(0, RELEASES_SHOWN);
-  // Over the whole list, not the rows shown: the last row drawn is measured
-  // against the first one not drawn.
-  const changes = useMemo(
-    () =>
-      releaseReads === undefined
-        ? NO_CHANGES
-        : releasesCarried({
-            releases,
-            repositoryOf: releaseReads.repositoryOf,
-            commits: new Map(
-              [...releaseReads.reads].flatMap(([repository, state]) =>
-                state.kind === "read"
-                  ? [[repository, state.commits] as [string, ReadonlyArray<GiteaCommit>]]
-                  : [],
-              ),
-            ),
-          }),
-    [releaseReads, releases],
-  );
   const verb = verdict.verb;
+  const answer = deployAnswer === undefined ? undefined : deployAnswerSaid(deployAnswer);
+  const answered = new Map(
+    answer?.environments
+      .find(({ environment }) => environment === stop.name)
+      ?.jobs.map((job) => [job.service, job] as const),
+  );
+  // Jobs of services not listed yet (including a recipe import), and HQ's note, stay in Services.
+  const otherDeploys =
+    deployAnswer === undefined
+      ? undefined
+      : {
+          ...deployAnswer,
+          jobs: deployAnswer.jobs.filter(
+            ({ environment, service }) =>
+              environment !== stop.name ||
+              (!services.some((row) => row.hostname === service) &&
+                !notInZerops.includes(service ?? "")),
+          ),
+        };
   return (
     <DetailShell
       actions={
         <ZeropsStopMenu
           name={title}
-          onOpenProject={onOpenProject}
+          projectId={stop.projectId}
           onOpenStop={undefined}
           routes={routes}
           stop={view}
@@ -1344,6 +1481,7 @@ export function ZeropsStopPane({
       title={title}
       titleTag={<ZeropsRoleTag label={ROLE_TAG[stop.tier]} />}
     >
+      {readFailures}
       <div>
         <VerdictPanel detail={verdict.detail} text={verdict.text} tone={verdict.tone}>
           {verb?.kind === "release" ? (
@@ -1351,27 +1489,29 @@ export function ZeropsStopPane({
           ) : verb?.kind === "run-again" && runAgain !== undefined ? (
             <Button
               data-zerops-primary-action="Run again"
-              disabled={runAgain.rerunning}
+              disabled={runAgain.running}
               onClick={runAgain.onRunAgain}
               size="compact"
               variant="outline"
             >
-              {runAgainLabel(runAgain.rerunning)}
+              {flowVerbLabel("redeploy", runAgain.running)}
             </Button>
-          ) : undefined}
+          ) : (
+            readAgain
+          )}
         </VerdictPanel>
-        {runAgain?.failure === null || runAgain?.failure === undefined ? null : (
+        {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
           <p className="mt-1.5 px-3 text-sm text-[var(--zerops-status-failed-text)]">
-            {runAgain.failure}
+            {runAgain.refused}
           </p>
         )}
       </div>
 
       <FlatCard className="flex flex-col divide-y divide-border px-4">
-        {waiting.length === 0 ? null : (
-          <CardGroup title={stopCardTitle("waiting", waiting.length)}>
+        {waiting.commits.length === 0 ? null : (
+          <CardGroup title={stopCardTitle("waiting", waiting.total, waiting.atLeast)}>
             <ul className="flex flex-col">
-              {waiting.map((commit) => (
+              {waiting.commits.map((commit) => (
                 <li
                   className={cn(CARD_ROW_CLASS, "grid-cols-[4.5rem_minmax(0,1fr)]")}
                   key={commit.sha}
@@ -1383,6 +1523,9 @@ export function ZeropsStopPane({
                 </li>
               ))}
             </ul>
+            {untold.length === 0 ? null : (
+              <p className="py-2 text-sm text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
+            )}
           </CardGroup>
         )}
 
@@ -1393,15 +1536,57 @@ export function ZeropsStopPane({
             <ul className="flex flex-col">
               {services.map((row) => (
                 <StopServiceLine
-                  buildOf={buildOf}
+                  projectId={stop.projectId}
+                  deployAgain={deployAgain}
+                  answer={answered.get(row.hostname)}
                   enablingServiceId={enablingServiceId ?? null}
-                  forge={forge}
                   key={row.hostname}
                   onEnableRoute={onEnableRoute}
                   row={row}
+                  said={verdict.detail}
                 />
               ))}
             </ul>
+          )}
+          {notInZerops.length === 0 ? null : (
+            <ul className="flex flex-col" data-zerops-surface="stop-not-in-zerops">
+              {notInZerops.map((hostname) => (
+                <li className={cn(CARD_ROW_CLASS, "grid-cols-[minmax(0,1fr)_auto]")} key={hostname}>
+                  <span className="min-w-0 truncate text-sm text-muted-foreground">
+                    {hostname} ·{" "}
+                    {answered.get(hostname) === undefined ? (
+                      "declared in the recipe, not in Zerops"
+                    ) : (
+                      <span data-zerops-job-state={answered.get(hostname)?.state}>
+                        {answered.get(hostname)?.line}
+                      </span>
+                    )}
+                  </span>
+                  {addService === undefined ? (
+                    <span />
+                  ) : (
+                    <Button
+                      disabled={addService.running(hostname)}
+                      onClick={() => addService.onAdd(hostname)}
+                      size="compact"
+                      variant="outline"
+                    >
+                      {addService.running(hostname)
+                        ? flowVerbLabel("add-service", true)
+                        : `${flowVerbLabel("add-service", false)} ${hostname}`}
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {otherDeploys === undefined ? null : (
+            <ZeropsDeployAnswer
+              answer={otherDeploys}
+              showEnvironment={otherDeploys.jobs.some(
+                ({ environment }) => environment !== stop.name,
+              )}
+            />
           )}
           {routeTrouble === null || routeTrouble === undefined ? null : (
             <p className="py-2 text-sm text-[var(--zerops-status-failed-text)]">{routeTrouble}</p>
@@ -1412,17 +1597,9 @@ export function ZeropsStopPane({
           <CardGroup title={stopCardTitle("releases", releases.length)}>
             <ul className="flex flex-col">
               <ZeropsReleaseRows
-                {...(releaseReads === undefined
+                {...(carried === undefined
                   ? {}
-                  : {
-                      carried: {
-                        changes,
-                        reads: releaseReads.reads,
-                        repositoryOf: releaseReads.repositoryOf,
-                        forge,
-                        names,
-                      },
-                    })}
+                  : { carried: { carried, names, onOpenChange: onOpenCarriedChange } })}
                 groupId={groupId}
                 onRollBack={onRollBack}
                 pending={pending}
@@ -1449,7 +1626,7 @@ export function ZeropsStopPane({
             aside={DEPLOYS_ASIDE}
             title={stopCardTitle(
               "deploys",
-              repo !== undefined && commits.kind === "read" ? commits.commits.length : undefined,
+              repo !== undefined && history.kind === "read" ? history.total : undefined,
             )}
           >
             {repo === undefined ? (
@@ -1457,15 +1634,16 @@ export function ZeropsStopPane({
                 No repository is declared for this environment&rsquo;s services, so its history
                 cannot be read.
               </p>
-            ) : commits.kind === "read" && commits.commits.length === 0 ? (
+            ) : history.kind === "read" && history.commits.length === 0 ? (
               <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
             ) : (
               <ZeropsHistoryView
-                commits={commits}
                 here={stop.name}
+                history={history}
                 names={names}
-                readDetail={readDetail}
+                onOpenChange={onOpenChange}
                 request={{ repo, deployed }}
+                tags={tags}
               />
             )}
           </CardGroup>
@@ -1483,12 +1661,12 @@ export function ZeropsStopPane({
 const CARD_ROW_CLASS = "grid min-h-11 items-center gap-x-4 border-t border-border/60 py-2";
 
 /**
- * A service's row: the same five places on every row, so the status dots run
+ * A service's row: the same four places on every row, so the status dots run
  * down one column — collapsed to name and state over the rest on a phone.
  */
 const SERVICE_ROW_CLASS = cn(
   CARD_ROW_CLASS,
-  "grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-y-1 sm:grid-cols-[1.25rem_minmax(0,1.1fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.4fr)]",
+  "grid-cols-[minmax(0,1fr)_auto] gap-y-1 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1.4fr)]",
 );
 
 /**
@@ -1520,55 +1698,49 @@ function CardGroup({
 
 /**
  * One service of a stop: what it is, what it runs, how that deploy went, and
- * where it answers. Its chevron opens the build behind the commit *it* runs.
+ * where it answers.
  */
 function StopServiceLine({
+  projectId,
   row,
-  forge,
-  buildOf,
   onEnableRoute,
   enablingServiceId,
+  deployAgain,
+  answer,
+  said,
 }: {
+  readonly projectId: string;
   readonly row: StopServiceRow;
-  readonly forge: StopBuildForge;
-  readonly buildOf: ((row: StopServiceRow) => ZeropsDeployRun) | undefined;
+  readonly answer: DeployAnswerJob | undefined;
   readonly onEnableRoute: ((serviceId: string) => void) | undefined;
   readonly enablingServiceId: string | null;
+  readonly deployAgain: StopDeployAgain | undefined;
+  /** What the verdict over the rows already says: HQ's words for a failure, never said twice. */
+  readonly said: string | undefined;
 }) {
-  const [open, setOpen] = useState(false);
-  const request = serviceBuildRequest(row, forge);
+  const publicAccess = useStopPublicAccess(projectId);
   const dot = STOP_DOT_TONE[row.tone];
+  // HQ's live commit, asked again over a version HQ did not deploy, where HQ takes the ask.
+  const again = row.drift?.redeploy;
   // Nothing to offer where the caller cannot act on it — a row with a button
   // that does nothing is worse than no row.
   const offers = onEnableRoute === undefined ? [] : row.offers;
+  const deployLog =
+    answer === undefined
+      ? row.deployLog
+      : answer.jobId === row.deployLog?.jobId
+        ? row.deployLog
+        : answer.deployLog;
   return (
     <li className="flex flex-col">
       <div className={SERVICE_ROW_CLASS}>
-        {request === null ? (
-          <span aria-hidden="true" />
-        ) : (
-          <button
-            aria-expanded={open}
-            aria-label={serviceBuildToggleLabel(row.hostname, open)}
-            className="flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
-            onClick={() => {
-              setOpen((current) => !current);
-            }}
-            type="button"
-          >
-            <ChevronRightIcon
-              aria-hidden="true"
-              className={cn("size-3.5 transition-transform", open && "rotate-90")}
-            />
-          </button>
-        )}
         <span className="flex min-w-0 flex-col">
           <span className="truncate text-sm leading-5 font-medium text-foreground">
             {row.hostname}
           </span>
           <span className="truncate text-xs leading-4 text-muted-foreground">{row.repository}</span>
         </span>
-        <span className="col-span-2 col-start-2 flex min-w-0 flex-col sm:col-span-1 sm:col-start-3 sm:row-start-1">
+        <span className="col-span-2 col-start-1 flex min-w-0 flex-col sm:col-span-1 sm:col-start-2 sm:row-start-1">
           {/* No commit and a state: what runs is not stated yet, so nothing is claimed. */}
           {row.commit !== undefined ? (
             <span className="truncate font-mono text-[13px] leading-5 text-foreground tabular-nums">
@@ -1581,17 +1753,22 @@ function StopServiceLine({
             <span className="truncate text-xs leading-4 text-muted-foreground">{row.line}</span>
           )}
         </span>
-        <span className="col-start-3 row-start-1 min-w-0 text-[13px] text-foreground sm:col-start-4">
-          {row.status === undefined ? null : dot === undefined ? (
-            <span className="truncate text-muted-foreground">{row.status}</span>
+        <span className="col-start-2 row-start-1 flex min-w-0 text-line text-foreground sm:col-start-3">
+          {row.status === undefined ||
+          (answer !== undefined &&
+            (row.runs === undefined || row.job !== undefined)) ? null : dot === undefined ? (
+            <span className="min-w-0 break-words text-muted-foreground">{row.status}</span>
           ) : (
             <StatusDot label={row.status} sentence tone={dot} />
           )}
         </span>
-        <span className="col-span-2 col-start-2 flex min-w-0 flex-col gap-1 sm:col-span-1 sm:col-start-5 sm:row-start-1">
-          {row.routes.length === 0 && offers.length === 0 ? (
+        <span className="col-span-2 col-start-1 flex min-w-0 flex-col gap-1 sm:col-span-1 sm:col-start-4 sm:row-start-1">
+          {(!publicAccess.bound || publicAccess.access.state === "ready") &&
+          row.routes.length === 0 &&
+          offers.length === 0 ? (
             <span className="truncate text-[13px] text-muted-foreground">{NOT_PUBLIC_YET}</span>
           ) : null}
+          <StopPublicAccessStatus shown={publicAccess.shown} again={publicAccess.again} />
           {row.routes.map((route) => (
             <a
               className="flex min-w-0 items-center gap-1.5 text-[13px] text-foreground underline-offset-2 hover:underline"
@@ -1633,25 +1810,67 @@ function StopServiceLine({
           })}
         </span>
       </div>
-      {!open || request === null ? null : buildOf === undefined ? (
-        <ServiceBuild request={request} />
-      ) : (
-        <ServiceBuildView run={buildOf(row)} />
+      {/* Its newest job, where it is not what the service runs: where it stands, and why. */}
+      {answer !== undefined ? (
+        <span
+          className="pb-2 text-xs leading-4 text-muted-foreground"
+          data-zerops-job-state={answer.state}
+        >
+          {answer.line}
+        </span>
+      ) : row.job === undefined ? null : (
+        <span
+          className="flex min-w-0 flex-col pb-2 text-xs leading-4 text-muted-foreground"
+          data-zerops-surface="stop-service-job"
+          data-zerops-job-state={row.job.state}
+        >
+          <span className="truncate">{row.job.line}</span>
+          {row.job.reason === undefined || row.job.reason === said ? null : (
+            <span>{row.job.reason}</span>
+          )}
+        </span>
+      )}
+      {deployLog === undefined ? null : (
+        <ZeropsDeployLog
+          key={deployLog.jobId}
+          projectId={projectId}
+          service={row.hostname}
+          target={deployLog}
+        />
+      )}
+      {/* What it runs, where HQ did not make it run that: never overwritten, said here. */}
+      {row.drift === undefined ? null : (
+        <span
+          className="flex min-w-0 flex-wrap items-center gap-2 pb-2 text-xs leading-4"
+          data-zerops-surface="stop-service-drift"
+        >
+          <span className="text-status-attention-text">{row.drift.line}</span>
+          {deployAgain === undefined || again === undefined ? null : (
+            <Button
+              disabled={deployAgain.running(again.service)}
+              onClick={() => deployAgain.onDeployAgain(again)}
+              size="compact"
+              variant="outline"
+            >
+              {deployAgain.running(again.service)
+                ? flowVerbLabel("redeploy", true)
+                : `Deploy ${shortCommit(again.sha)} again`}
+            </Button>
+          )}
+          {row.drift.zerops === undefined ? null : (
+            <a
+              className="inline-flex items-center gap-1 text-foreground underline-offset-2 hover:underline"
+              href={row.drift.zerops}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open in Zerops
+              <ExternalLinkIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
+            </a>
+          )}
+        </span>
       )}
     </li>
-  );
-}
-
-/** The build behind one service's commit — read only while its row is open. */
-function ServiceBuild({ request }: { readonly request: ZeropsDeployRunRequest }) {
-  return <ServiceBuildView run={useZeropsDeployRun(request)} />;
-}
-
-function ServiceBuildView({ run }: { readonly run: ZeropsDeployRun }) {
-  return (
-    <div className="mb-2 ml-9 rounded-md bg-muted/50 px-3 py-2">
-      <ZeropsDeployRunView run={run} />
-    </div>
   );
 }
 
@@ -1663,9 +1882,8 @@ function ServiceBuildView({ run }: { readonly run: ZeropsDeployRun }) {
  * nothing opens over it, its one button is pinned in view, and after a merge its *Review release*
  * opens the release's review, which has no page of its own.
  *
- * `#4` used to be a link into Gitea, which is a sign-in page for everybody: the app holds the only
- * Gitea token, so everything a change is — its description, files, checks, conversation and
- * commits — is read here as the person.
+ * `#4` used to be a link into Gitea, which was a sign-in page for everybody. Everything a change is
+ * — its description, files, conversation and commits — is read here from HQ, as the person.
  */
 export function ZeropsChangeDetailPage({
   groupId,
@@ -1709,9 +1927,12 @@ const UNREAD_DEPLOYMENT: Shown<Deployment> = { state: "unread", waitingFor: null
 const NO_SERVICE_ROWS: ReadonlyArray<StopServiceRow> = [];
 /** What a stage lists in a production's place: it has no releases and waits for none. */
 const NO_RELEASES: ReadonlyArray<FlowReleaseRow> = [];
-const NO_REPOSITORIES: ReadonlyMap<string, string> = new Map();
-const NO_CHANGES: ReturnType<typeof releasesCarried> = new Map();
-const NO_COMMITS: ReadonlyArray<WaitingCommit> = [];
+/** What a release carried while HQ is asked: nothing is known yet. */
+const CARRIED_READING: MovedCommits = { state: "reading" };
+const NO_ASKS: ReadonlyMap<string, ReadonlyArray<CompareRead>> = new Map();
+const NOTHING_WAITING: StopWaiting = { commits: [], total: 0, atLeast: false };
+/** A stage, whose verdict never speaks of what production runs. */
+const NO_UNTOLD: ReadonlyArray<string> = [];
 
 /**
  * Where a detail page sits, outermost first — a containment trail, not a way
@@ -1782,6 +2003,8 @@ export interface ReleaseOffer {
   readonly releasing: boolean;
   /** The version it would cut, where the flow suggested one. */
   readonly tag: string | undefined;
+  /** Why it is not offered, as the flow's gate says; `undefined` while it is. */
+  readonly reason: string | undefined;
   /** Opens the release's review from what was pressed: nothing is tagged from a page (R1). */
   readonly onReview: (from: HTMLElement) => void;
 }
@@ -1940,6 +2163,51 @@ const ATTENTION_TONE: Record<ProjectAttentionKind, ServiceStatusToneId> = {
 };
 
 /** One Mate on a project's page: who it is and what it is on. */
+/**
+ * A Mate on the project as its page draws it: what it is on while a word of now says it — HQ's
+ * live word or its socket's reading — and asleep, saying nothing, otherwise. Its face is its row's
+ * (`mateFaceOf`): needing you while it asks, or while its own change waits for your review — your
+ * own Mate only; another's waits on its owner.
+ */
+export function groupMateOf(input: {
+  readonly nowMs?: number;
+  readonly item: ZeropsCandidate;
+  /** What its menu row reads (`useMateRowActivity`). */
+  readonly read: ZeropsAgentActivity | undefined;
+  readonly tint: MateTintId;
+  readonly reviewWaits: boolean;
+  /** The viewer's own Mate (`mateIsViewers`). */
+  readonly mine: boolean;
+  readonly update: MateUpdateStatus | null | undefined;
+}): GroupMate {
+  const { item, tint, mine } = input;
+  const live = activityOfNow(input.read);
+  const connected = item.group === "connected" || live !== undefined;
+  const subject = live?.subject;
+  return {
+    projectId: item.project.id,
+    name: item.project.name,
+    tint,
+    shape: mateShapeOf(item.project, tint),
+    face: mateFaceOf({
+      connected,
+      activity: live,
+      reviewWaits: input.reviewWaits,
+      mine,
+      pose: input.nowMs === undefined ? undefined : matePoseOf(item, input.nowMs),
+    }),
+    asks: mine && mateFaceFor(connected, live) === "needs",
+    ...(live?.kind === "failed" ? { failed: true } : {}),
+    subject,
+    snippet: subject === undefined ? undefined : live?.snippet,
+    when:
+      live === undefined || subject === undefined
+        ? undefined
+        : compactSidebarTimeLabel(formatRelativeTimeLabel(live.at)),
+    update: input.update,
+  };
+}
+
 export interface GroupMate {
   readonly projectId: string;
   readonly name: string;
@@ -2032,17 +2300,19 @@ function MateLine({
   );
 }
 
+/** A stop's version column shares its page's runtime answer, including a failure or wait. */
+function stopLineVersion(deployment: Shown<Deployment> | undefined, row: EnvironmentRow): string {
+  return stopView({ deployment: deployment ?? UNREAD_DEPLOYMENT, row, nowMs: 0 }).line;
+}
+
 function StopLine({
   environment,
   firstDeploy,
   groupId,
-  groupName,
   notice,
 }: {
   readonly environment: EnvironmentRow;
   readonly groupId: string;
-  /** The project's name, so a stop under it does not repeat it. */
-  readonly groupName: string | undefined;
   /**
    * Said in place of the stop while the grant withholds its project: its
    * tier stays, and its name, what it runs and its page do not (DESIGN §3.4).
@@ -2054,7 +2324,8 @@ function StopLine({
   const navigate = useNavigate();
   const deployments = useZeropsProjectFlowOptional()?.deployments;
   // The one rule every surface words a stop by (`stopTone`), with the platform's answer beside it.
-  const tone = stopTone(deployments?.get(environment.projectId), environment);
+  const deployment = deployments?.get(environment.projectId);
+  const tone = stopTone(deployment, environment);
   // No word for what runs and a first deploy asked for: the line its cell and its page say.
   const said = deployWord(tone);
   const firstWord = said === undefined ? firstDeployLine(firstDeploy) : undefined;
@@ -2071,6 +2342,7 @@ function StopLine({
       <li className="flex min-w-0 items-baseline gap-3 px-2 py-2">
         <span className="shrink-0 text-sm font-medium text-foreground">{environment.tier}</span>
         <span className="truncate text-xs text-muted-foreground">{notice}</span>
+        <StopReadAgain projectId={environment.projectId} />
       </li>
     );
   }
@@ -2083,12 +2355,11 @@ function StopLine({
         onClick={open}
         type="button"
       >
-        {/* `Links - stage` under a page titled `Links` says it twice. */}
         <span className="min-w-0 truncate text-sm font-medium text-foreground">
-          {environmentNameUnderGroup(groupName, environment.name)}
+          {environment.name}
         </span>
         <span className="truncate text-end font-mono text-xs text-muted-foreground tabular-nums">
-          {environment.version.label ?? "none"}
+          {stopLineVersion(deployment, environment)}
         </span>
         {/* Never a wordless dot on its own: a colour that has to be learnt is
             a colour nobody reads, and a screen reader gets nothing from it. */}
@@ -2104,6 +2375,7 @@ function StopLine({
         )}
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
       </button>
+      <StopReadAgain projectId={environment.projectId} />
     </li>
   );
 }
@@ -2162,8 +2434,7 @@ export interface Crumb {
 
 /**
  * A detail page whose flow is not read yet: the boot's wait line past its beat while the app reads
- * it, and its own words where nothing will (`unreadFlowWords`) — Gitea refused the app's sign-in,
- * a Gitea it cannot reach, a project not here any more, or reads that failed.
+ * it, and its own words where nothing will (`unreadFlowWords`) — HQ is unavailable, a project not here any more, or reads that failed.
  */
 function UnreadDetail({ groupId }: { readonly groupId: string }) {
   const flowValue = useZeropsProjectFlowOptional();
@@ -2171,11 +2442,9 @@ function UnreadDetail({ groupId }: { readonly groupId: string }) {
     flowValue === null
       ? null
       : unreadFlowWords({
-          signInTrouble: flowValue.signInTrouble,
-          gitea: flowValue.giteaReach,
-          groupsRead: flowValue.groupsRead,
-          groupKnown: flowValue.slugs.has(groupId),
-          failure: flowValue.groupFailures.get(groupId),
+          failure: flowValue.readFailure,
+          groupsRead: flowValue.groupsRead === true,
+          groupKnown: flowValue.knownGroups?.has(groupId) === true,
         });
   if (words !== null) return <Note>{words}</Note>;
   return <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />;
@@ -2320,4 +2589,21 @@ function ListingNotice({
 
 function Note({ children }: { readonly children: React.ReactNode }) {
   return <p className="text-sm text-muted-foreground">{children}</p>;
+}
+
+function ProjectReadFailures({
+  recipe,
+  comparison,
+}: {
+  readonly recipe: ReturnType<typeof useZeropsRecipeFailure>;
+  readonly comparison: ZeropsProjectFlow["release"]["comparisonFailure"];
+}) {
+  return (
+    <>
+      {recipe === undefined ? null : <ZeropsReadFailure action="Read recipe again" {...recipe} />}
+      {comparison === undefined ? null : (
+        <ZeropsReadFailure action="Compare again" {...comparison} />
+      )}
+    </>
+  );
 }

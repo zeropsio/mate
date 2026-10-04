@@ -1,249 +1,388 @@
 {
-  "version": 1,
-  "about": "The shared role function. One copy lives here (Go, internal/roles) and one in the Mate fork (packages/shared/src/zeropsRoles.fixtures.json); both test suites assert the files are byte-identical and that their implementation reproduces every case. See docs/roles.md for the rules.",
+  "version": 2,
+  "about": "The shared role function's cases: what a person may do with each Mate (open, listed, hidden) and whether they may create projects. This file is the only copy: the Go twin went with the broker (ADR 0004). zeropsRoles.test.ts replays every case and compares the whole answer.",
   "registry": {
     "groups": [
       {
         "id": "g-acme",
         "slug": "acme",
         "projects": [
-          { "id": "p-fen", "kind": "mate" },
-          { "id": "p-nova", "kind": "mate" },
-          { "id": "p-stage", "kind": "stage" },
-          { "id": "p-prod", "kind": "production" }
+          {
+            "id": "p-fen",
+            "kind": "mate"
+          },
+          {
+            "id": "p-nova",
+            "kind": "mate"
+          },
+          {
+            "id": "p-stage",
+            "kind": "stage"
+          },
+          {
+            "id": "p-prod",
+            "kind": "production"
+          }
         ]
       },
       {
         "id": "g-beta",
         "slug": "beta",
         "projects": [
-          { "id": "p-bmate", "kind": "mate" },
-          { "id": "p-bstage", "kind": "stage" }
+          {
+            "id": "p-bmate",
+            "kind": "mate"
+          },
+          {
+            "id": "p-bdev",
+            "kind": "devstage"
+          },
+          {
+            "id": "p-bstage",
+            "kind": "stage"
+          }
         ]
       }
     ]
   },
   "cases": [
     {
-      "name": "org owner: site admin, opens every Mate, releases in every group",
-      "person": { "id": "u-owner", "orgRole": "OWNER", "status": "ACTIVE", "canCreateProjects": false },
+      "name": "org owner: opens every Mate, a devstage one included, and creates projects",
+      "person": {
+        "id": "u-owner",
+        "orgRole": "OWNER",
+        "status": "ACTIVE",
+        "canCreateProjects": false
+      },
       "overrides": {},
       "expect": {
         "active": true,
-        "siteAdmin": true,
         "canCreate": true,
-        "claims": ["g:acme:read", "g:acme:release", "g:acme:write", "g:beta:read", "g:beta:release", "g:beta:write", "org:owner"],
-        "mates": { "p-fen": "open", "p-nova": "open", "p-bmate": "open" },
-        "groups": {
-          "acme": { "read": true, "write": true, "release": true },
-          "beta": { "read": true, "write": true, "release": true }
+        "mates": {
+          "p-fen": "open",
+          "p-nova": "open",
+          "p-bmate": "open",
+          "p-bdev": "open"
         }
       }
     },
     {
-      "name": "org admin: everything but site admin (D10)",
-      "person": { "id": "u-admin", "orgRole": "ADMIN", "status": "ACTIVE", "canCreateProjects": false },
+      "name": "org admin: opens every Mate and creates projects (D10)",
+      "person": {
+        "id": "u-admin",
+        "orgRole": "ADMIN",
+        "status": "ACTIVE",
+        "canCreateProjects": false
+      },
       "overrides": {},
       "expect": {
         "active": true,
-        "siteAdmin": false,
         "canCreate": true,
-        "claims": ["g:acme:read", "g:acme:release", "g:acme:write", "g:beta:read", "g:beta:release", "g:beta:write"],
-        "mates": { "p-fen": "open", "p-nova": "open", "p-bmate": "open" },
-        "groups": {
-          "acme": { "read": true, "write": true, "release": true },
-          "beta": { "read": true, "write": true, "release": true }
+        "mates": {
+          "p-fen": "open",
+          "p-nova": "open",
+          "p-bmate": "open",
+          "p-bdev": "open"
         }
       }
     },
     {
-      "name": "read-only member who created a Mate: writes its group, opens only that Mate, no release (D11)",
-      "person": { "id": "u-jan", "orgRole": "READ_ONLY", "status": "ACTIVE", "canCreateProjects": true },
-      "overrides": { "p-fen": "OWNER" },
+      "name": "read-only member who created a Mate: opens only that Mate, sees the rest listed (D11)",
+      "person": {
+        "id": "u-jan",
+        "orgRole": "READ_ONLY",
+        "status": "ACTIVE",
+        "canCreateProjects": true
+      },
+      "overrides": {
+        "p-fen": "OWNER"
+      },
       "expect": {
         "active": true,
-        "siteAdmin": false,
         "canCreate": true,
-        "claims": ["g:acme:read", "g:acme:write", "g:beta:read"],
-        "mates": { "p-fen": "open", "p-nova": "listed", "p-bmate": "listed" },
-        "groups": {
-          "acme": { "read": true, "write": true, "release": false },
-          "beta": { "read": true, "write": false, "release": false }
+        "mates": {
+          "p-fen": "open",
+          "p-nova": "listed",
+          "p-bmate": "listed",
+          "p-bdev": "listed"
         }
       }
     },
     {
-      "name": "read-only member with nothing of their own: reads, sees every Mate listed, opens none (D5)",
-      "person": { "id": "u-viewer", "orgRole": "READ_ONLY", "status": "ACTIVE", "canCreateProjects": false },
+      "name": "read-only member with nothing of their own: sees every Mate listed, opens none (D5)",
+      "person": {
+        "id": "u-viewer",
+        "orgRole": "READ_ONLY",
+        "status": "ACTIVE",
+        "canCreateProjects": false
+      },
       "overrides": {},
       "expect": {
         "active": true,
-        "siteAdmin": false,
         "canCreate": false,
-        "claims": ["g:acme:read", "g:beta:read"],
-        "mates": { "p-fen": "listed", "p-nova": "listed", "p-bmate": "listed" },
-        "groups": {
-          "acme": { "read": true, "write": false, "release": false },
-          "beta": { "read": true, "write": false, "release": false }
+        "mates": {
+          "p-fen": "listed",
+          "p-nova": "listed",
+          "p-bmate": "listed",
+          "p-bdev": "listed"
         }
       }
     },
     {
-      "name": "a releaser: read-only member with BASIC_USER on production",
-      "person": { "id": "u-rel", "orgRole": "READ_ONLY", "status": "ACTIVE", "canCreateProjects": false },
-      "overrides": { "p-prod": "BASIC_USER" },
+      "name": "BASIC_USER on production alone opens no Mate",
+      "person": {
+        "id": "u-rel",
+        "orgRole": "READ_ONLY",
+        "status": "ACTIVE",
+        "canCreateProjects": false
+      },
+      "overrides": {
+        "p-prod": "BASIC_USER"
+      },
       "expect": {
         "active": true,
-        "siteAdmin": false,
         "canCreate": false,
-        "claims": ["g:acme:read", "g:acme:release", "g:acme:write", "g:beta:read"],
-        "mates": { "p-fen": "listed", "p-nova": "listed", "p-bmate": "listed" },
-        "groups": {
-          "acme": { "read": true, "write": true, "release": true },
-          "beta": { "read": true, "write": false, "release": false }
+        "mates": {
+          "p-fen": "listed",
+          "p-nova": "listed",
+          "p-bmate": "listed",
+          "p-bdev": "listed"
         }
       }
     },
     {
-      "name": "a group with no production project yet: its Mate's creator does not release",
-      "person": { "id": "u-beta", "orgRole": "READ_ONLY", "status": "ACTIVE", "canCreateProjects": true },
-      "overrides": { "p-bmate": "OWNER" },
+      "name": "a Mate's creator in a group with no production opens their Mate",
+      "person": {
+        "id": "u-beta",
+        "orgRole": "READ_ONLY",
+        "status": "ACTIVE",
+        "canCreateProjects": true
+      },
+      "overrides": {
+        "p-bmate": "OWNER"
+      },
       "expect": {
         "active": true,
-        "siteAdmin": false,
         "canCreate": true,
-        "claims": ["g:acme:read", "g:beta:read", "g:beta:write"],
-        "mates": { "p-fen": "listed", "p-nova": "listed", "p-bmate": "open" },
-        "groups": {
-          "acme": { "read": true, "write": false, "release": false },
-          "beta": { "read": true, "write": true, "release": false }
+        "mates": {
+          "p-fen": "listed",
+          "p-nova": "listed",
+          "p-bmate": "open",
+          "p-bdev": "listed"
         }
       }
     },
     {
-      "name": "org owner lowered to READ_ONLY on a colleague's Mate: sees it listed, stays site admin",
-      "person": { "id": "u-owner2", "orgRole": "OWNER", "status": "ACTIVE", "canCreateProjects": false },
-      "overrides": { "p-nova": "READ_ONLY" },
+      "name": "org owner lowered to READ_ONLY on a colleague's Mate: sees it listed",
+      "person": {
+        "id": "u-owner2",
+        "orgRole": "OWNER",
+        "status": "ACTIVE",
+        "canCreateProjects": false
+      },
+      "overrides": {
+        "p-nova": "READ_ONLY"
+      },
       "expect": {
         "active": true,
-        "siteAdmin": true,
         "canCreate": true,
-        "claims": ["g:acme:read", "g:acme:release", "g:acme:write", "g:beta:read", "g:beta:release", "g:beta:write", "org:owner"],
-        "mates": { "p-fen": "open", "p-nova": "listed", "p-bmate": "open" },
-        "groups": {
-          "acme": { "read": true, "write": true, "release": true },
-          "beta": { "read": true, "write": true, "release": true }
+        "mates": {
+          "p-fen": "open",
+          "p-nova": "listed",
+          "p-bmate": "open",
+          "p-bdev": "open"
         }
       }
     },
     {
-      "name": "org owner lowered to READ_ONLY on production: no release there, the override wins",
-      "person": { "id": "u-owner3", "orgRole": "OWNER", "status": "ACTIVE", "canCreateProjects": false },
-      "overrides": { "p-prod": "READ_ONLY" },
+      "name": "an override on production changes no Mate",
+      "person": {
+        "id": "u-owner3",
+        "orgRole": "OWNER",
+        "status": "ACTIVE",
+        "canCreateProjects": false
+      },
+      "overrides": {
+        "p-prod": "READ_ONLY"
+      },
       "expect": {
         "active": true,
-        "siteAdmin": true,
         "canCreate": true,
-        "claims": ["g:acme:read", "g:acme:write", "g:beta:read", "g:beta:release", "g:beta:write", "org:owner"],
-        "mates": { "p-fen": "open", "p-nova": "open", "p-bmate": "open" },
-        "groups": {
-          "acme": { "read": true, "write": true, "release": false },
-          "beta": { "read": true, "write": true, "release": true }
+        "mates": {
+          "p-fen": "open",
+          "p-nova": "open",
+          "p-bmate": "open",
+          "p-bdev": "open"
         }
       }
     },
     {
       "name": "not ACTIVE (invited, disabled, removed): nothing, whatever the role",
-      "person": { "id": "u-gone", "orgRole": "ADMIN", "status": "INVITED", "canCreateProjects": true },
+      "person": {
+        "id": "u-gone",
+        "orgRole": "ADMIN",
+        "status": "INVITED",
+        "canCreateProjects": true
+      },
       "overrides": {},
       "expect": {
         "active": false,
-        "siteAdmin": false,
         "canCreate": false,
-        "claims": [],
-        "mates": { "p-fen": "hidden", "p-nova": "hidden", "p-bmate": "hidden" },
-        "groups": {
-          "acme": { "read": false, "write": false, "release": false },
-          "beta": { "read": false, "write": false, "release": false }
+        "mates": {
+          "p-fen": "hidden",
+          "p-nova": "hidden",
+          "p-bmate": "hidden",
+          "p-bdev": "hidden"
         }
       }
     },
     {
-      "name": "NO_ACCESS member with can-create-projects who created a Mate (the test org's shape): their Mate and its group only",
-      "person": { "id": "u-noacc", "orgRole": "NO_ACCESS", "status": "ACTIVE", "canCreateProjects": true },
-      "overrides": { "p-fen": "OWNER" },
+      "name": "NO_ACCESS member with can-create-projects who created a Mate (the test org's shape): their Mate only",
+      "person": {
+        "id": "u-noacc",
+        "orgRole": "NO_ACCESS",
+        "status": "ACTIVE",
+        "canCreateProjects": true
+      },
+      "overrides": {
+        "p-fen": "OWNER"
+      },
       "expect": {
         "active": true,
-        "siteAdmin": false,
         "canCreate": true,
-        "claims": ["g:acme:read", "g:acme:write"],
-        "mates": { "p-fen": "open", "p-nova": "hidden", "p-bmate": "hidden" },
-        "groups": {
-          "acme": { "read": true, "write": true, "release": false },
-          "beta": { "read": false, "write": false, "release": false }
+        "mates": {
+          "p-fen": "open",
+          "p-nova": "hidden",
+          "p-bmate": "hidden",
+          "p-bdev": "hidden"
         }
       }
     },
     {
-      "name": "org BASIC_USER: BASIC_USER on every project, so every Mate opens and production releases; no project creation",
-      "person": { "id": "u-basic", "orgRole": "BASIC_USER", "status": "ACTIVE", "canCreateProjects": false },
+      "name": "org BASIC_USER: BASIC_USER on every project, so every Mate opens; no project creation",
+      "person": {
+        "id": "u-basic",
+        "orgRole": "BASIC_USER",
+        "status": "ACTIVE",
+        "canCreateProjects": false
+      },
       "overrides": {},
       "expect": {
         "active": true,
-        "siteAdmin": false,
         "canCreate": false,
-        "claims": ["g:acme:read", "g:acme:release", "g:acme:write", "g:beta:read", "g:beta:write"],
-        "mates": { "p-fen": "open", "p-nova": "open", "p-bmate": "open" },
-        "groups": {
-          "acme": { "read": true, "write": true, "release": true },
-          "beta": { "read": true, "write": true, "release": false }
+        "mates": {
+          "p-fen": "open",
+          "p-nova": "open",
+          "p-bmate": "open",
+          "p-bdev": "open"
         }
       }
     },
     {
       "name": "a Mate handed over: OWNER override on a Mate someone else created reads like the creator (D11)",
-      "person": { "id": "u-heir", "orgRole": "READ_ONLY", "status": "ACTIVE", "canCreateProjects": false },
-      "overrides": { "p-nova": "OWNER" },
+      "person": {
+        "id": "u-heir",
+        "orgRole": "READ_ONLY",
+        "status": "ACTIVE",
+        "canCreateProjects": false
+      },
+      "overrides": {
+        "p-nova": "OWNER"
+      },
       "expect": {
         "active": true,
-        "siteAdmin": false,
         "canCreate": false,
-        "claims": ["g:acme:read", "g:acme:write", "g:beta:read"],
-        "mates": { "p-fen": "listed", "p-nova": "open", "p-bmate": "listed" },
-        "groups": {
-          "acme": { "read": true, "write": true, "release": false },
-          "beta": { "read": true, "write": false, "release": false }
+        "mates": {
+          "p-fen": "listed",
+          "p-nova": "open",
+          "p-bmate": "listed",
+          "p-bdev": "listed"
         }
       }
     },
     {
       "name": "org admin shut out of one Mate by a NO_ACCESS override: that Mate is hidden, the rest open",
-      "person": { "id": "u-admin2", "orgRole": "ADMIN", "status": "ACTIVE", "canCreateProjects": false },
-      "overrides": { "p-fen": "NO_ACCESS" },
+      "person": {
+        "id": "u-admin2",
+        "orgRole": "ADMIN",
+        "status": "ACTIVE",
+        "canCreateProjects": false
+      },
+      "overrides": {
+        "p-fen": "NO_ACCESS"
+      },
       "expect": {
         "active": true,
-        "siteAdmin": false,
         "canCreate": true,
-        "claims": ["g:acme:read", "g:acme:release", "g:acme:write", "g:beta:read", "g:beta:release", "g:beta:write"],
-        "mates": { "p-fen": "hidden", "p-nova": "open", "p-bmate": "open" },
-        "groups": {
-          "acme": { "read": true, "write": true, "release": true },
-          "beta": { "read": true, "write": true, "release": true }
+        "mates": {
+          "p-fen": "hidden",
+          "p-nova": "open",
+          "p-bmate": "open",
+          "p-bdev": "open"
         }
       }
     },
     {
-      "name": "an empty registry: no groups, no Mates, an owner still carries org:owner",
-      "registry": { "groups": [] },
-      "person": { "id": "u-owner4", "orgRole": "OWNER", "status": "ACTIVE", "canCreateProjects": false },
+      "name": "a devstage Mate's creator: their OWNER override opens it, the rest listed",
+      "person": {
+        "id": "u-dev",
+        "orgRole": "READ_ONLY",
+        "status": "ACTIVE",
+        "canCreateProjects": true
+      },
+      "overrides": {
+        "p-bdev": "OWNER"
+      },
+      "expect": {
+        "active": true,
+        "canCreate": true,
+        "mates": {
+          "p-fen": "listed",
+          "p-nova": "listed",
+          "p-bmate": "listed",
+          "p-bdev": "open"
+        }
+      }
+    },
+    {
+      "name": "a role this build does not know is no role: an unknown org role and an unknown override open nothing",
+      "person": {
+        "id": "u-future",
+        "orgRole": "SUPERUSER",
+        "status": "ACTIVE",
+        "canCreateProjects": false
+      },
+      "overrides": {
+        "p-fen": "SUPERUSER",
+        "p-nova": "BASIC_USER"
+      },
+      "expect": {
+        "active": true,
+        "canCreate": false,
+        "mates": {
+          "p-fen": "hidden",
+          "p-nova": "open",
+          "p-bmate": "hidden",
+          "p-bdev": "hidden"
+        }
+      }
+    },
+    {
+      "name": "an empty registry: no Mates",
+      "registry": {
+        "groups": []
+      },
+      "person": {
+        "id": "u-owner4",
+        "orgRole": "OWNER",
+        "status": "ACTIVE",
+        "canCreateProjects": false
+      },
       "overrides": {},
       "expect": {
         "active": true,
-        "siteAdmin": true,
         "canCreate": true,
-        "claims": ["org:owner"],
-        "mates": {},
-        "groups": {}
+        "mates": {}
       }
     }
   ]

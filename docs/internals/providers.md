@@ -410,3 +410,14 @@ when a request opens (approval) or user input is requested, via
 [ingest]: ../../apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts
 [cmd]: ../../apps/server/src/orchestration/Layers/ProviderCommandReactor.ts
 [checkpoint]: ../../apps/server/src/orchestration/Layers/CheckpointReactor.ts
+
+## Turns interrupted by a server restart
+
+Startup reconciliation settles orphaned provider sessions as errors and stops their directory
+bindings without clearing `resumeCursor`. Zerops startup reads the project's direct process list
+once with `ZeropsMateKey`, shared by all orphaned threads, with a five-second deadline and no retry.
+Each thread selects the newest finished restart, stop or deploy on its own service after its last
+activity and before startup. PID 1's Linux start time identifies a new container generation when
+no process matches; unavailable evidence falls back to a plain timestamped restart message.
+The next turn follows the existing adapter resume path. The copy does not promise preserved
+conversation history: adapters may reject or replace a saved session that no longer exists.

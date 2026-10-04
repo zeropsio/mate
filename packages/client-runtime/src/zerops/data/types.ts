@@ -11,9 +11,7 @@ import type { ZeropsProject } from "../api.ts";
 import type { ZeropsProjectGrant, ZeropsTokenDelegation } from "../groupReach.ts";
 import type { Shown } from "../knowledge/known.ts";
 import type { ZeropsServiceDeployedVersion } from "./deployedVersion.ts";
-import type { ZeropsEnvironmentRole, ZeropsMateFace } from "../groups.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
-import type { ZeropsToolKind } from "../tools.ts";
 import type { ZeropsIntegrationTokenGrantMetadata } from "./cells.ts";
 import type { ProjectTagPatch } from "./tagPatch.ts";
 import type { ProjectTagWrite } from "./tagWriter.ts";
@@ -387,29 +385,27 @@ export type FacetPatch<Fields> = Readonly<Partial<Fields>>;
 type IndexedQueryForTarget<Target extends EntityReadTarget> = Target["kind"] extends "project"
   ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
   : Target["kind"] extends "service"
-    ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-organization" }>
+    ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
     : Extract<
         EntityQueryDescriptor,
-        { readonly kind: "running-processes-of-organization" | "process-history-window" }
+        { readonly kind: "running-processes-of-project" | "process-history-window" }
       >;
 
 type DirectCollectionQueryForTarget<Target extends EntityReadTarget> =
   Target["kind"] extends "project"
     ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
     : Target["kind"] extends "service"
-      ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-organization" }>
+      ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
       : Target["kind"] extends "process"
         ? Extract<
             EntityQueryDescriptor,
-            { readonly kind: "running-processes-of-organization" | "process-history-window" }
+            { readonly kind: "running-processes-of-project" | "process-history-window" }
           >
         : never;
 
 type EntityUpdateRegistrationForTarget<Target extends EntityReadTarget> = RegistrationRequest & {
-  readonly descriptor: {
-    readonly kind: "entity-updates";
+  readonly descriptor: Extract<RegistrationDescriptor, { readonly kind: "entity-updates" }> & {
     readonly entity: Target["kind"];
-    readonly organization: OrganizationRef;
   };
 };
 
@@ -554,15 +550,6 @@ export type QueryDescriptor =
     }
   | {
       /**
-       * Every service of the organization, in one search and one subscription: a project's
-       * services are its slice of these (`selectServicesOf`), never a search of their own.
-       */
-      readonly kind: "services-of-organization";
-      readonly organization: OrganizationRef;
-      readonly schemaVersion: 1;
-    }
-  | {
-      /**
        * One project's services, read directly and lag-free (`GET /project/{id}/service-stack`),
        * never subscribed: only the confirming read an absence asks for (§9 C19).
        */
@@ -572,8 +559,8 @@ export type QueryDescriptor =
     }
   | {
       /** The organization's running processes, read and subscribed once for every project. */
-      readonly kind: "running-processes-of-organization";
-      readonly organization: OrganizationRef;
+      readonly kind: "running-processes-of-project";
+      readonly project: ProjectRef;
       /** Wire filters admit only known status strings. Unknown values are observation data. */
       readonly statuses: ReadonlyArray<RunningProcessStatus>;
       readonly schemaVersion: 1;
@@ -603,8 +590,9 @@ export type QueryDescriptor =
        * Every version the organization's services run now (`POST /app-version/search`, status
        * `ACTIVE`): what each runs and from where, which a service's own row does not say (A14).
        */
-      readonly kind: "active-versions-of-organization";
+      readonly kind: "active-versions-of-services";
       readonly organization: OrganizationRef;
+      readonly serviceIds: ReadonlyArray<string>;
       /** Only these versions: a read by id of rows the list's frames named (`entityTable.ts`). */
       readonly ids?: ReadonlyArray<string>;
       readonly schemaVersion: 1;
@@ -614,8 +602,9 @@ export type QueryDescriptor =
        * The organization's service variables of these keys (`POST /user-data/search`, `key in`):
        * the Mate flag and the deploy a service last started, for every service in one search.
        */
-      readonly kind: "service-variables-of-organization";
+      readonly kind: "service-variables-of-services";
       readonly organization: OrganizationRef;
+      readonly serviceIds: ReadonlyArray<string>;
       readonly keys: ReadonlyArray<string>;
       /** Only these variables: a read by id of rows the list's frames named (`entityTable.ts`). */
       readonly ids?: ReadonlyArray<string>;
@@ -625,23 +614,23 @@ export type QueryDescriptor =
 /** The searches whose rows the entity table holds as the platform sends them (`entityTable.ts`). */
 export type TableQueryDescriptor = Extract<
   QueryDescriptor,
-  { readonly kind: "active-versions-of-organization" | "service-variables-of-organization" }
+  { readonly kind: "active-versions-of-services" | "service-variables-of-services" }
 >;
 
 /** The platform entities the entity table holds, by their search's path. */
 export type TableEntity = "app-version" | "user-data";
 
 export const tableEntityOf = (descriptor: TableQueryDescriptor): TableEntity =>
-  descriptor.kind === "active-versions-of-organization" ? "app-version" : "user-data";
+  descriptor.kind === "active-versions-of-services" ? "app-version" : "user-data";
 
 export type EntityQueryDescriptor = Extract<
   QueryDescriptor,
   {
     readonly kind:
       | "projects-of-organization"
-      | "services-of-organization"
       | "services-of-project"
-      | "running-processes-of-organization"
+      | "services-of-project"
+      | "running-processes-of-project"
       | "process-history-window";
   }
 >;
@@ -649,7 +638,7 @@ export type EntityQueryDescriptor = Extract<
 export type QueryMemberRef<Descriptor extends EntityQueryDescriptor> =
   Descriptor["kind"] extends "projects-of-organization"
     ? ProjectRef
-    : Descriptor["kind"] extends "services-of-organization" | "services-of-project"
+    : Descriptor["kind"] extends "services-of-project" | "services-of-project"
       ? ServiceRef
       : ProcessRef;
 
@@ -675,19 +664,11 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
           String(descriptor.schemaVersion),
         ]),
       );
-    case "services-of-organization":
+    case "running-processes-of-project":
       return QueryKey.make(
         scopedKey([
           descriptor.kind,
-          organizationKeyOf(descriptor.organization),
-          String(descriptor.schemaVersion),
-        ]),
-      );
-    case "running-processes-of-organization":
-      return QueryKey.make(
-        scopedKey([
-          descriptor.kind,
-          organizationKeyOf(descriptor.organization),
+          projectKeyOf(descriptor.project),
           canonicalStringSet(descriptor.statuses),
           String(descriptor.schemaVersion),
         ]),
@@ -723,20 +704,22 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
           String(descriptor.schemaVersion),
         ]),
       );
-    case "active-versions-of-organization":
+    case "active-versions-of-services":
       return QueryKey.make(
         scopedKey([
           descriptor.kind,
           organizationKeyOf(descriptor.organization),
+          canonicalStringSet(descriptor.serviceIds),
           descriptor.ids === undefined ? "" : canonicalStringSet(descriptor.ids),
           String(descriptor.schemaVersion),
         ]),
       );
-    case "service-variables-of-organization":
+    case "service-variables-of-services":
       return QueryKey.make(
         scopedKey([
           descriptor.kind,
           organizationKeyOf(descriptor.organization),
+          canonicalStringSet(descriptor.serviceIds),
           canonicalStringSet(descriptor.keys),
           descriptor.ids === undefined ? "" : canonicalStringSet(descriptor.ids),
           String(descriptor.schemaVersion),
@@ -1283,10 +1266,10 @@ export type CollectionQueryForRecord<Record extends ZeropsEntityRecord> =
   Record extends ProjectRecord
     ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
     : Record extends ServiceRecord
-      ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-organization" }>
+      ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
       : Extract<
           EntityQueryDescriptor,
-          { readonly kind: "running-processes-of-organization" | "process-history-window" }
+          { readonly kind: "running-processes-of-project" | "process-history-window" }
         >;
 
 export interface RetainedMembershipOperation<Member extends EntityRef = EntityRef> {
@@ -1378,14 +1361,6 @@ export type InterestState =
       readonly sinceReceiptOrdinal: ReceiptOrdinal;
     }
   | {
-      readonly status: "recovering";
-      readonly identity: InterestIdentity;
-      readonly reason: "disconnect" | "registration" | "malformed" | "overflow" | "foreground";
-      readonly attempt: number;
-      readonly nextRetryAtMs: number;
-      readonly progress: InterestProgress;
-    }
-  | {
       readonly status: "paused";
       readonly identity: InterestIdentity;
       readonly reason: "background" | "offline" | "no-leases";
@@ -1429,6 +1404,20 @@ export interface ProjectEffectiveAccess {
   readonly project: ProjectRef;
   readonly role: ProjectAccessRole;
   readonly mutationsAllowed: boolean;
+  /**
+   * The project's own grants, every member's, as the read that verified it carried them (its
+   * `userRoles`): what HQ's rule weighs above the org role, and who its `OWNER` is. Absent where no
+   * read said — access the runtime holds for a project it made itself — and empty for one hidden
+   * from the viewer, whose grants are not theirs to know.
+   */
+  readonly userRoles?: ReadonlyArray<ProjectGrant>;
+}
+
+/** One member's grant on a project, as its `userRoles` names it. */
+export interface ProjectGrant {
+  /** The `clientUser` id: the member row the grant names. */
+  readonly clientUserId: string;
+  readonly roleCode: string;
 }
 
 export interface OrganizationEffectiveAccess {
@@ -1560,16 +1549,15 @@ export type PlatformCommandKind =
   | "start-service"
   | "start-project"
   | "update-project-tags"
+  | "rename-project"
   | "set-project-member-role"
   | "import-development-container"
   | "enable-zerops-mate"
   | "enable-subdomain-access"
   | "create-project"
-  | "create-project-with-mate"
   | "import-project"
   | "import-services"
-  | "create-tool-project"
-  | "list-integration-token-grants"
+  | "read-integration-token-grant"
   | "set-integration-token-projects"
   | "list-token-delegations"
   | "delete-token-delegation"
@@ -1595,17 +1583,23 @@ export type CommandAttemptState =
 export type RuntimeInterestDescriptor =
   | { readonly kind: "organization-inventory"; readonly organization: OrganizationRef }
   /** What the organization's services run: its active versions, listed and streamed (A14). */
-  | { readonly kind: "organization-versions"; readonly organization: OrganizationRef }
+  | {
+      readonly kind: "project-versions";
+      readonly project: ProjectRef;
+      readonly serviceIds: ReadonlyArray<string>;
+    }
   /**
    * The organization's service variables the app reads (`SERVICE_VARIABLE_KEYS`): the Mate flag
    * and the deploy a service last started, listed and streamed.
    */
-  | { readonly kind: "organization-variables"; readonly organization: OrganizationRef }
+  | {
+      readonly kind: "project-variables";
+      readonly project: ProjectRef;
+      readonly serviceIds: ReadonlyArray<string>;
+    }
   | {
       readonly kind: "project-topology";
       readonly project: ProjectRef;
-      /** Compatibility request bit; runtimes expose metrics as a separate optional interest. */
-      readonly includeCurrentMetrics: boolean;
     }
   | { readonly kind: "project-inventory"; readonly project: ProjectRef }
   /**
@@ -1613,6 +1607,8 @@ export type RuntimeInterestDescriptor =
    * platform answers for before its lists do: read on its own, lag-free.
    */
   | { readonly kind: "project-record"; readonly project: ProjectRef }
+  /** A visible permission decision demands its access facts; the grant owns the sole read. */
+  | { readonly kind: "project-access"; readonly project: ProjectRef }
   /** A project's services read on their own, lag-free, to confirm one is gone (§9 C19). */
   | { readonly kind: "project-services-check"; readonly project: ProjectRef }
   | { readonly kind: "project-current-metrics"; readonly project: ProjectRef }
@@ -1632,7 +1628,13 @@ export type RuntimeInterestDescriptor =
 export type RegistrationDescriptor =
   | {
       readonly kind: "entity-updates";
-      readonly entity: "project" | "service" | "process";
+      readonly entity: "project";
+      readonly organization: OrganizationRef;
+    }
+  | {
+      readonly kind: "entity-updates";
+      readonly entity: "service" | "process";
+      readonly project: ProjectRef;
       readonly organization: OrganizationRef;
     }
   | { readonly kind: "query-membership"; readonly query: EntityQueryDescriptor }
@@ -1646,11 +1648,12 @@ export type RegistrationDescriptor =
     }
   /** A table list's membership stream (`listStream`): the ids its search admits, as they change. */
   | { readonly kind: "table-list"; readonly query: TableQueryDescriptor }
-  /** A table entity's update stream (`updateStream`): every changed row of the organization. */
+  /** A table entity's update stream (`updateStream`) restricted to its service IDs. */
   | {
       readonly kind: "table-updates";
       readonly entity: TableEntity;
       readonly organization: OrganizationRef;
+      readonly serviceIds: ReadonlyArray<string>;
     };
 
 export interface RequestContext {
@@ -1799,6 +1802,8 @@ export interface RegistrationReceipt {
 export type PlatformReadRequest = ReadTicket;
 
 export interface PlatformReadResult {
+  /** Direct project answer, retained for access classification of this same read. */
+  readonly project?: ZeropsProject;
   readonly observations: ReadonlyArray<PlatformObservation>;
 }
 
@@ -1824,19 +1829,30 @@ export interface UpdateProjectTagsCommandIntent {
   readonly patch: ProjectTagPatch;
 }
 
+/**
+ * The one write of a project's name — a Mate's (D3): put on a fresh read by the TagWriter, which
+ * keeps the project's record, so a rename and a tag write never undo each other.
+ */
+export interface RenameProjectCommandIntent {
+  readonly kind: "rename-project";
+  readonly project: ProjectRef;
+  readonly name: string;
+}
+
 /** The five roles a project override may carry (`groupReach.ts`'s vocabulary). */
 export type MateProjectRoleCode = "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY" | "NO_ACCESS";
 
 /**
  * Handing a Mate to a person — a per-project role override (guide 0.8, D11).
- * Lowered, the same command takes a Mate away.
+ * Lowered, the same command takes a Mate away; `null` takes the project off the
+ * person's list, as a hand over does to the Mate's previous owner (F23).
  */
 export interface SetProjectMemberRoleCommandIntent {
   readonly kind: "set-project-member-role";
   readonly project: ProjectRef;
   /** The `clientUser` id — what a project's `userRoles` names. */
   readonly clientUserId: string;
-  readonly roleCode: MateProjectRoleCode;
+  readonly roleCode: MateProjectRoleCode | null;
 }
 
 export interface ImportDevelopmentContainerCommandIntent {
@@ -1844,8 +1860,6 @@ export interface ImportDevelopmentContainerCommandIntent {
   readonly project: ProjectRef;
   /** The project's name: the Mate's key is named after it (`zcp-<name>`). */
   readonly projectName: string;
-  /** The group's environments, this one included: the key reads the others. */
-  readonly groupProjectIds?: ReadonlyArray<string>;
   readonly zcpVersion?: string;
   readonly agents?: ReadonlyArray<ZeropsAgentType>;
   /** The tier's runtimes, for zcp to import on boot (`MATE_SETUP_RUNTIMES`). */
@@ -1870,27 +1884,6 @@ export interface CreateProjectCommandIntent {
   readonly location?: string;
 }
 
-export interface CreateProjectWithMateCommandIntent {
-  readonly kind: "create-project-with-mate";
-  readonly organization: OrganizationRef;
-  readonly name: string;
-  readonly location?: string;
-  readonly zcpVersion?: string;
-  readonly agents?: ReadonlyArray<ZeropsAgentType>;
-  readonly group?: {
-    readonly groupId: string;
-    readonly role?: ZeropsEnvironmentRole;
-    readonly label?: string;
-  };
-  readonly botName?: string;
-  /** The face its person picked (`mate:face:`). */
-  readonly face?: ZeropsMateFace;
-  /** Who asks, by making it, for the project's development to be stood up (`mate:standup:`). */
-  readonly standUpBy?: string;
-  /** Who makes it: whose sign-in it waits for until somebody signs it in (`mate:by:`). */
-  readonly madeBy?: string;
-}
-
 export interface ImportProjectCommandIntent {
   readonly kind: "import-project";
   readonly organization: OrganizationRef;
@@ -1903,31 +1896,19 @@ export interface ImportServicesCommandIntent {
   readonly yaml: string;
 }
 
-export interface CreateToolProjectCommandIntent {
-  readonly kind: "create-tool-project";
-  readonly organization: OrganizationRef;
-  readonly toolKind: ZeropsToolKind;
-  readonly name: string;
-  readonly location?: string;
-  /**
-   * Where the consent page of Gitea's own sign-in lives: the origin this
-   * shell is served from. Only the shell knows it (`giteaRecipe.ts`).
-   */
-  readonly appUrl: string;
-}
-
 /**
- * `GET /client/{id}/integration-token/list`, as grant metadata.
+ * `GET /client/{id}/integration-token/{tokenId}`, as grant metadata.
  *
  * A read shaped as a command because its caller is a write sequence, not a
- * screen: `secure-container-token` has to look up the token the container
- * import just minted, in the middle of a creation, and a resource lease is the
- * wrong instrument for one answer used once. Grant metadata carries no token
- * value, exactly as the resource of the same name does.
+ * screen: the Mate-key repair reads a token right before it rewrites it, and a
+ * resource lease is the wrong instrument for one answer used once. One token,
+ * never the organization's whole list. Grant metadata carries no token value,
+ * exactly as the resource of the tokens does.
  */
-export interface ListIntegrationTokenGrantsCommandIntent {
-  readonly kind: "list-integration-token-grants";
+export interface ReadIntegrationTokenGrantCommandIntent {
+  readonly kind: "read-integration-token-grant";
   readonly organization: OrganizationRef;
+  readonly tokenId: string;
 }
 
 export interface SetIntegrationTokenProjectsCommandIntent {
@@ -1972,6 +1953,8 @@ export interface DeleteTokenDelegationCommandIntent {
 export interface HardenMateCommandIntent {
   readonly kind: "harden-mate";
   readonly project: ProjectRef;
+  /** The key the Mate named to HQ by its id: that one alone is hardened (audit K3). */
+  readonly keyTokenId?: string;
 }
 
 /**
@@ -1991,16 +1974,15 @@ export type PlatformCommandIntent =
   | StartServiceCommandIntent
   | StartProjectCommandIntent
   | UpdateProjectTagsCommandIntent
+  | RenameProjectCommandIntent
   | SetProjectMemberRoleCommandIntent
   | ImportDevelopmentContainerCommandIntent
   | EnableZeropsMateCommandIntent
   | EnableSubdomainAccessCommandIntent
   | CreateProjectCommandIntent
-  | CreateProjectWithMateCommandIntent
   | ImportProjectCommandIntent
   | ImportServicesCommandIntent
-  | CreateToolProjectCommandIntent
-  | ListIntegrationTokenGrantsCommandIntent
+  | ReadIntegrationTokenGrantCommandIntent
   | SetIntegrationTokenProjectsCommandIntent
   | ListTokenDelegationsCommandIntent
   | DeleteTokenDelegationCommandIntent
@@ -2041,6 +2023,7 @@ export type PlatformCommandResult =
   | { readonly kind: "start-service"; readonly value: void }
   | { readonly kind: "start-project"; readonly value: void }
   | { readonly kind: "update-project-tags"; readonly value: ProjectTagWrite }
+  | { readonly kind: "rename-project"; readonly value: ProjectTagWrite }
   | { readonly kind: "set-project-member-role"; readonly value: ZeropsProject }
   | {
       readonly kind: "import-development-container";
@@ -2049,19 +2032,12 @@ export type PlatformCommandResult =
   | { readonly kind: "enable-zerops-mate"; readonly value: void }
   | { readonly kind: "enable-subdomain-access"; readonly value: void }
   | { readonly kind: "create-project"; readonly value: ZeropsProject }
-  | {
-      readonly kind: "create-project-with-mate";
-      readonly value: { readonly project: ZeropsProject; readonly serviceName: string };
-    }
   | { readonly kind: "import-project"; readonly value: { readonly projectId: string } }
   | { readonly kind: "import-services"; readonly value: void }
   | {
-      readonly kind: "create-tool-project";
-      readonly value: { readonly project: ZeropsProject };
-    }
-  | {
-      readonly kind: "list-integration-token-grants";
-      readonly value: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
+      readonly kind: "read-integration-token-grant";
+      /** `null` once the token is gone. */
+      readonly value: ZeropsIntegrationTokenGrantMetadata | null;
     }
   | { readonly kind: "set-integration-token-projects"; readonly value: void }
   | {
@@ -2073,6 +2049,8 @@ export type PlatformCommandResult =
       readonly kind: "harden-mate";
       readonly value: {
         readonly tokenLowered: boolean;
+        /** Why a key of the Mate's could not be lowered: the platform refused this account. */
+        readonly keyNotLowered: string | null;
         readonly delegationsDropped: number;
         readonly isolationSteps: number;
         readonly restarted: boolean;
@@ -2156,8 +2134,7 @@ export interface CollectionRead<Record extends ZeropsEntityRecord> {
   readonly query: QueryState<CollectionQueryForRecord<Record>>;
   readonly observation: ViewObservation;
   /**
-   * The project this read is the slice of, when it is one project's services or processes: the
-   * query behind it is the organization's.
+   * The project this collection read belongs to, for service and process scopes.
    */
   readonly project?: ProjectRef;
 }
@@ -2270,8 +2247,16 @@ export interface ZeropsDataCommands {
     patch: ProjectTagPatch,
   ) => Effect.Effect<CommandExecution<ProjectTagWrite>, CommandAdmissionError | AdapterError>;
   /**
+   * Names a project — a Mate's name is its project's (D3) — on a fresh read, its tags put back as
+   * that read holds them, serialized with every tag write to it and verified by reading back.
+   */
+  readonly renameProject: (
+    project: ProjectRef,
+    name: string,
+  ) => Effect.Effect<CommandExecution<ProjectTagWrite>, CommandAdmissionError | AdapterError>;
+  /**
    * Hands a Mate to a person, or takes it away (guide 0.8, D11) — the one
-   * command that writes a project's `userRoles`.
+   * command that writes a role override, on the person's own role list.
    */
   readonly setProjectMemberRole: (
     project: ProjectRef,
@@ -2296,14 +2281,6 @@ export interface ZeropsDataCommands {
       readonly organization: OrganizationRef;
     },
   ) => Effect.Effect<CommandExecution<ZeropsProject>, CommandAdmissionError | AdapterError>;
-  readonly createProjectWithMate: (
-    input: Omit<CreateProjectWithMateCommandIntent, "kind" | "organization"> & {
-      readonly organization: OrganizationRef;
-    },
-  ) => Effect.Effect<
-    CommandExecution<{ readonly project: ZeropsProject; readonly serviceName: string }>,
-    CommandAdmissionError | AdapterError
-  >;
   readonly importProject: (
     organization: OrganizationRef,
     yaml: string,
@@ -2315,18 +2292,12 @@ export interface ZeropsDataCommands {
     project: ProjectRef,
     yaml: string,
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
-  readonly createToolProject: (
-    input: Omit<CreateToolProjectCommandIntent, "kind" | "organization"> & {
+  readonly readIntegrationTokenGrant: (
+    input: Omit<ReadIntegrationTokenGrantCommandIntent, "kind" | "organization"> & {
       readonly organization: OrganizationRef;
     },
   ) => Effect.Effect<
-    CommandExecution<{ readonly project: ZeropsProject }>,
-    CommandAdmissionError | AdapterError
-  >;
-  readonly listIntegrationTokenGrants: (
-    organization: OrganizationRef,
-  ) => Effect.Effect<
-    CommandExecution<ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>>,
+    CommandExecution<ZeropsIntegrationTokenGrantMetadata | null>,
     CommandAdmissionError | AdapterError
   >;
   readonly setIntegrationTokenProjects: (
@@ -2347,9 +2318,14 @@ export interface ZeropsDataCommands {
       readonly organization: OrganizationRef;
     },
   ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
-  readonly isolateProjectEnv: (project: ProjectRef) => Effect.Effect<
+  readonly isolateProjectEnv: (
+    project: ProjectRef,
+    keyTokenId?: string,
+  ) => Effect.Effect<
     CommandExecution<{
       readonly tokenLowered: boolean;
+      /** Why a key of the Mate's could not be lowered: the platform refused this account. */
+      readonly keyNotLowered: string | null;
       readonly delegationsDropped: number;
       readonly isolationSteps: number;
       readonly restarted: boolean;
@@ -2382,25 +2358,10 @@ export interface ZeropsDataRuntime {
     never,
     Scope.Scope
   >;
-  /**
-   * Re-reads an organization's inventory. Every interest held on the
-   * organization is re-established on a fresh receiver, so each baseline is
-   * read again, while what the reads already hold stays readable until the
-   * new baseline replaces it. No lease is released: a released lease drops
-   * what it read, and a screen that re-took its leases painted "Reading…"
-   * over the list it had a moment ago. An organization nobody holds is left
-   * alone, and so is a paused interest — the return to the foreground
-   * re-reads it.
-   *
-   * `retry` is a person's Try now: the organization's subscriptions that are
-   * not observing — stalled, recovering or failed — start over at once on the
-   * socket that is open, which it does not replace, and the ones observing
-   * keep their registrations.
-   */
-  readonly refresh: (
-    organization: OrganizationRef,
-    options?: { readonly retry?: boolean },
-  ) => Effect.Effect<void>;
+  /** An explicit attempt re-establishes held demand in this org or project, retaining its values. */
+  readonly refresh: (scope: OrganizationRef | ProjectRef) => Effect.Effect<void>;
+  /** Re-reads one project and its services, sharing an outstanding check per project. */
+  readonly refreshPresence: (project: ProjectRef) => Effect.Effect<void>;
   /**
    * Idempotent. It closes admission and advances the account fence before
    * interrupting work, closing receivers and clearing retained grants/model state.

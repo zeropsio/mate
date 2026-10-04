@@ -1,5 +1,4 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import type { RandomBytes } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   ZeropsAccountId,
@@ -10,6 +9,7 @@ import {
 import type { Invalidation, Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import * as Cause from "effect/Cause";
+import * as DateTime from "effect/DateTime";
 import { AsyncResult } from "effect/unstable/reactivity";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -27,7 +27,6 @@ import {
   readContainerAgain,
   removeFailedZeropsProject,
   retryZeropsProjectConnection,
-  setUpMateBotName,
   showsZeropsBirthLine,
   ZeropsProjectsHeader,
 } from "./ZeropsProjectsPage";
@@ -40,12 +39,10 @@ import pressSource from "../../zerops/matePress.ts?raw";
 import creationSource from "../../zerops/useEnvironmentCreation.ts?raw";
 import mateActionsSource from "../../zerops/useMateActions.tsx?raw";
 import groupDetailSource from "./ZeropsGroupDetail.tsx?raw";
-import giteaPageSource from "./ZeropsGiteaPage.tsx?raw";
+import gitPageSource from "./ZeropsGitPage.tsx?raw";
 import sidebarTreeSource from "./SidebarZeropsTree.tsx?raw";
 import sidebarSource from "../Sidebar.tsx?raw";
-import newProjectSource from "./ZeropsNewProjectHost.tsx?raw";
-import gitBlockSource from "./ZeropsGitBlock.tsx?raw";
-import deployRunSource from "./ZeropsDeployRun.tsx?raw";
+import newProjectPortsSource from "../../zerops/useNewProjectBirthPorts.ts?raw";
 import verdictPanelSource from "./primitives/VerdictPanel.tsx?raw";
 import releaseRowsSource from "./ZeropsReleaseRows.tsx?raw";
 import historyViewSource from "./ZeropsHistoryView.tsx?raw";
@@ -82,22 +79,21 @@ describe("same-origin Zerops identity bootstrap", () => {
       "readZeropsCellOnce(runtime.cells, request, unmountRef.current?.signal)",
     );
     expect(projectsPageSource).not.toContain(".readAuthorizedAgents(");
-    // The recipe is the group repo's, read as the person over Gitea — there is
-    // no Zerops endpoint for it and no mock standing in for one any more.
+    // The recipe is the application's, read as the person through its HQ — there
+    // is no Zerops endpoint for it and no mock standing in for one any more.
     expect(projectsPageSource).not.toContain(".readRecipeGroup(");
     expect(projectsPageSource).toContain("useZeropsGroupRecipe(");
   });
 
   it("routes project and service writes through typed runtime commands", () => {
     for (const method of [
-      "writeProjectTags",
+      "writeProject",
       "importDevelopmentContainer",
       "enableZeropsMate",
       "enableSubdomainAccess",
       "createProject",
       "importProject",
       "importServicesIntoProject",
-      "createToolProject",
       "deleteProject",
     ]) {
       expect(projectsPageSource).not.toContain(`client.${method}(`);
@@ -480,48 +476,18 @@ describe("removeFailedZeropsProject", () => {
   });
 });
 
-describe("setUpMateBotName", () => {
-  /** Always the pool's first name, so a generated one is predictable. */
-  const firstName: RandomBytes = (bytes) => bytes.fill(0);
-
-  it.each<{
-    readonly name: string;
-    readonly existing: string | undefined;
-    readonly taken: { readonly names: ReadonlyArray<string>; readonly complete: boolean };
-    readonly named: "kept" | "fresh" | "wait";
-  }>([
-    {
-      name: "a partial listing never hands out a fresh name as free",
-      existing: undefined,
-      taken: { names: [], complete: false },
-      named: "wait",
-    },
-    {
-      name: "a Mate that has a name keeps it while the rest are read",
-      existing: "Fen",
-      taken: { names: [], complete: false },
-      named: "kept",
-    },
-    {
-      name: "a complete listing hands out a fresh name nobody goes by",
-      existing: undefined,
-      taken: { names: ["Fen"], complete: true },
-      named: "fresh",
-    },
-  ])("$name", ({ existing, taken, named }) => {
-    const name = setUpMateBotName(existing, taken, firstName);
-    if (named === "wait") expect(name).toBeUndefined();
-    else if (named === "kept") expect(name).toBe(existing);
-    else {
-      expect(name).toBeDefined();
-      expect(taken.names).not.toContain(name);
-    }
-  });
-});
-
 describe("hasNoZeropsProject", () => {
-  const candidate = (tagList: ReadonlyArray<string>) =>
-    ({ project: { id: tagList.join("|"), name: "p", status: "ACTIVE", tagList } }) as never;
+  const candidate = (tagList: ReadonlyArray<string>, appId?: string, tool?: "gitea") =>
+    ({
+      project: {
+        id: [...tagList, appId ?? ""].join("|"),
+        name: "p",
+        status: "ACTIVE",
+        tagList,
+        ...(tool === undefined ? {} : { hqTool: tool }),
+        ...(appId === undefined ? {} : { hq: { appId, appName: "P", kind: "mate", mate: null } }),
+      },
+    }) as never;
   const listing = (
     value: ReadonlyArray<ZeropsCandidate>,
     overrides: Partial<Extract<Known<ReadonlyArray<ZeropsCandidate>>, { state: "known" }>> = {},
@@ -536,10 +502,10 @@ describe("hasNoZeropsProject", () => {
 
   it.each([
     ["nothing at all", [], true],
-    ["a project in a group", [candidate(["mate:g:aaa", "mate:role:dev"])], false],
+    ["a project in a group", [candidate([], "aaa")], false],
     ["a project in no group", [candidate([])], false],
     // A tool is not a project: an account holding only Gitea has not started.
-    ["only a tool", [candidate(["mate:tool:gitea"])], true],
+    ["only a tool", [candidate([], undefined, "gitea")], true],
   ] as const)("says an account with %s has no project: %s", (_case, candidates, expected) => {
     expect(hasNoZeropsProject({ listing: listing(candidates) })).toBe(expected);
   });
@@ -554,7 +520,7 @@ describe("hasNoZeropsProject", () => {
         failure: { kind: "transport", detail: "gateway" },
         atMs: 10,
         attempt: 1,
-        retryAtMs: 90,
+        retryAtMs: null,
       },
     },
     { name: "partial", listing: listing([], { coverage: "partial" }) },
@@ -582,13 +548,14 @@ describe("hasNoZeropsProject", () => {
 });
 
 describe("the projects listing", () => {
-  const held = (coverage: "complete" | "partial"): Known<ReadonlyArray<ZeropsCandidate>> => ({
-    state: "known",
-    value: [],
-    asOf: { ordinal: 1, atMs: 10 },
-    coverage,
-    freshness: { kind: "live" },
-  });
+  const held = (coverage: "complete" | "partial") =>
+    ({
+      state: "known",
+      value: [],
+      asOf: { ordinal: 1, atMs: 10 },
+      coverage,
+      freshness: { kind: "live" },
+    }) satisfies Known<ReadonlyArray<ZeropsCandidate>>;
 
   it("the projects page shows a placeholder, never 'No projects', while the inventory is unread", () => {
     const unread: Known<ReadonlyArray<ZeropsCandidate>> = { state: "unread", waitingFor: null };
@@ -610,7 +577,7 @@ describe("the projects listing", () => {
           failure: { kind: "transport", detail: "gateway" },
           atMs: 10,
           attempt: 1,
-          retryAtMs: 90,
+          retryAtMs: null,
         },
         0,
       ),
@@ -644,7 +611,7 @@ describe("the projects listing", () => {
         failure: { kind: "transport", detail: "gateway" },
         atMs: 10,
         attempt: 1,
-        retryAtMs: 90,
+        retryAtMs: null,
       },
       0,
     );
@@ -711,6 +678,27 @@ describe("the projects listing", () => {
       expect(projectsTroubleView(input)).toEqual(view);
     });
   });
+  it("keeps a complete stale listing's reconnect notice beside its rows", () => {
+    const listing = {
+      ...held("complete"),
+      freshness: {
+        kind: "stale",
+        sinceMs: 10,
+        reason: {
+          kind: "source-recovering",
+          retryAtMs: 1_000,
+          coverageGap: true,
+        },
+      },
+    } as const;
+    expect(projectsListingNotice(listing, 0)).toMatchObject({
+      region: "value",
+      message: {
+        text: `Reconnecting… Last data as of ${DateTime.formatLocal(DateTime.makeUnsafe(listing.asOf.atMs), { timeStyle: "medium" })}. Changes while disconnected may be missing.`,
+      },
+      affordance: { kind: "retry-now" },
+    });
+  });
 });
 
 describe("an environment's menu", () => {
@@ -727,15 +715,18 @@ describe("an environment's menu", () => {
   it("gates each verb on what this person may finish, wherever the menu is drawn", () => {
     // Guide 0.8: a verb the platform would refuse from this role is not
     // offered. The gate lives with the verb now, so a second surface cannot
-    // grow a menu without it.
+    // grow a menu without it: the platform's own verbs by its role function,
+    // HQ's by HQ's rule (`mayOffer`), none of either for an unknown person.
     expect(mateActionsSource).toContain("resolveMateVerbs({ project: candidate.project, viewer })");
-    expect(mateActionsSource).toContain("...(verbs.assign");
-    expect(mateActionsSource).toContain("...(verbs.move");
-    expect(mateActionsSource).toContain("...(verbs.rename");
-    expect(mateActionsSource).toContain("...(verbs.move && tags.groupId !== undefined");
-    // Change face writes the project's tags, as a rename does: the same gate, on a Mate.
+    expect(mateActionsSource).toContain("...(platformVerbs.assign");
+    // A Mate's name is its project's (D3): renaming it is the platform's verb.
+    expect(mateActionsSource).toContain("...(platformVerbs.rename");
+    expect(mateActionsSource).toContain('mayOffer(asker, "edit_mate_record"');
+    expect(mateActionsSource).toContain("...(hqVerbs.move");
+    expect(mateActionsSource).toContain("...(hqVerbs.leave && tags.groupId !== undefined");
+    // Change face writes HQ's record of the Mate: HQ's gate, on a Mate.
     expect(mateActionsSource).toContain(
-      "resolveMateVerbs({ project: candidate.project, viewer }).rename;\n      if (!changeFaceOffered({ candidate, mayRename })) return undefined;",
+      "if (!changeFaceOffered({ candidate, mayEdit: hqVerbsOf(candidate).edit })) return undefined;",
     );
   });
 
@@ -761,9 +752,7 @@ describe("a status word's hand", () => {
   it.each([
     ["the projects screen", projectsPageSource],
     ["a project's own page", groupDetailSource],
-    ["the Git page", giteaPageSource],
-    ["the Git tab", gitBlockSource],
-    ["a deploy's run", deployRunSource],
+    ["the Git page", gitPageSource],
     ["the verdict panel", verdictPanelSource],
     ["a project's releases", releaseRowsSource],
     ["a history", historyViewSource],
@@ -790,15 +779,10 @@ describe("a status word's hand", () => {
 });
 
 describe("the tools line", () => {
-  it("names a tool after the project it opens, never after the tool", () => {
-    // `toolProjectName` deliberately does not call it "Gitea" — the project
-    // holds the broker and the groups' runners as well — so a line saying
-    // "Gitea" named something the account does not contain, and sent anybody
-    // who went looking for it in Zerops to a project that is not there.
-    expect(projectsPageSource).toContain(
-      "const name = candidate.project.name || TOOL_LABEL[kind];",
-    );
-    expect(projectsPageSource).not.toContain("name={TOOL_LABEL[kind]}");
+  it("is the organization's HQ, whose project is no project of the page's", () => {
+    expect(projectsPageSource).toContain("hqTool={<ZeropsHqTool />}");
+    // The project its anchor names, never one by its name (`withoutOfficialHq`).
+    expect(projectsPageSource).toContain("withoutOfficialHq(groupTree.ungrouped, accountHq.hq)");
   });
 });
 
@@ -823,9 +807,10 @@ describe("a project's next step on the projects page", () => {
     expect(groupDetailSource).toContain('openReview({ kind: "release", groupId }, { from });');
   });
 
-  it("merges, releases and rolls back from no row: every such verb opens a review", () => {
+  it("merges, closes, releases and rolls back from no row: every such verb opens a review", () => {
     for (const source of [projectsPageSource, groupDetailSource]) {
-      expect(source).not.toContain("mergePullRequest(");
+      expect(source).not.toContain(".merge(");
+      expect(source).not.toContain(".close(");
       expect(source).not.toContain(".release(");
       expect(source).not.toContain(".rollBack(");
     }
@@ -843,24 +828,13 @@ describe("a project's next step on the projects page", () => {
     expect(groupDetailSource).toContain("<ReleaseAction release={release} />");
   });
 
-  it("says whose production is in the Add production verb's tooltip, and to assistive technology", () => {
-    // Not a line in the cell: the verb explains itself where it is pressed.
-    expect(projectsPageSource).toContain("<TooltipPopup>{PRODUCTION_ADDED_HERE}</TooltipPopup>");
-    expect(projectsPageSource).toContain("aria-describedby={hintId}");
-    expect(projectsPageSource).toContain('<span className="sr-only" id={hintId}>');
-  });
-
-  it("offers production as the flow's next step, and again from the project's menu", () => {
+  it("offers production from the project's menu, never as a step in its row", () => {
     // No missing-tier rows ("not set up yet") and no foot of add verbs: a
-    // project's menu adds a Mate or a stage as before. Production is its
-    // flow's own next step (`groupFlow`'s `add-production`) *and* the menu's
-    // own verb — `mainHasCode`/`mainHead` go unread for every group today, so
-    // the flow's own gate stays silent for a group whose code arrived another
-    // way (a recipe's own birth, or a merge that scrolled off); the menu's
-    // verb answers on `creatableRoles` instead, which is always read.
-    expect(projectsPageSource).toContain('requestEnvironment(group.groupId, "prod")');
+    // project's menu adds a Mate, a stage or production. Adding production is
+    // never a step that waits (`nextStepAwaitsSomebody`), so the row draws no
+    // verb for it; the menu answers on `creatableRoles`, which is always read.
     expect(projectsPageSource.match(/requestEnvironment\(group\.groupId, "prod"\)/gu)).toHaveLength(
-      2,
+      1,
     );
     expect(projectsPageSource).toContain('creatableRoles(group).includes("prod")');
     expect(projectsPageSource).not.toContain("?.missing ??");
@@ -901,8 +875,10 @@ describe("a creation under way on the projects page", () => {
   it("lists the organization again the moment a creation is accepted, as New project does", () => {
     expect(creationSource).toContain("beginPress(");
     expect(creationSource).toContain('invalidateZerops({ topic: "inventory"');
-    expect(newProjectSource).toContain("beginPress(");
-    expect(newProjectSource).toContain('invalidateZerops({ topic: "inventory", organization });');
+    expect(newProjectPortsSource).toContain("beginPress(");
+    expect(newProjectPortsSource).toContain(
+      'invalidateZerops({ topic: "inventory", organization });',
+    );
   });
 
   it("says why a merge or a release was refused, in the page's own trouble line", () => {
@@ -977,30 +953,57 @@ describe("a declared environment's row", () => {
   it("says an empty stage's first deploy as its cell does", () => {
     const row = { line: "main", tone: "neutral", version: version(undefined) } as const;
     expect(declaredEnvironmentSummary(row, { kind: "on-its-way" })).toBe("First deploy on its way");
-    expect(declaredEnvironmentSummary(row, { kind: "runner", why: "missing" })).toBe(
-      "Waiting for the runner · it isn’t there",
-    );
+    expect(declaredEnvironmentSummary(row, { kind: "failed" })).toBe("First deploy failed");
+    expect(declaredEnvironmentSummary(row, { kind: "held" })).toBe("Awaiting a deploy key");
   });
 });
 
 describe("a group's one line about itself", () => {
+  const NONE = { finishing: undefined, halfMade: undefined };
   it.each([
-    [{ placeholder: true, unfinished: "production", gitea: "" }, "This project has no name yet"],
+    [{ ...NONE, placeholder: true, unfinished: "production" }, "This project has no name yet"],
     [
-      { placeholder: false, unfinished: "production", gitea: "" },
+      { ...NONE, placeholder: false, unfinished: "production" },
       "Couldn't finish setting up production",
     ],
+    [{ ...NONE, placeholder: false, unfinished: "stage" }, "Couldn't finish setting up stage"],
+    [{ ...NONE, placeholder: false, unfinished: undefined }, undefined],
+    // Audit R2: a half-made environment is said, and finished only when the person asks.
     [
-      { placeholder: false, unfinished: "stage", gitea: "Gitea side …" },
-      "Couldn't finish setting up stage",
+      { placeholder: false, unfinished: undefined, finishing: undefined, halfMade: "stage" },
+      "Setting up stage isn't finished",
     ],
-    [{ placeholder: false, unfinished: undefined, gitea: "Gitea side …" }, "Gitea side …"],
-    [{ placeholder: false, unfinished: undefined, gitea: "" }, undefined],
+    [
+      { placeholder: false, unfinished: "stage", finishing: "stage", halfMade: "stage" },
+      "Finishing stage…",
+    ],
   ] as const)("reads %j as %j — never the platform's own words", (input, expected) => {
     expect(projectsGroupLine(input)).toBe(expected);
   });
 
   it("keeps a background repair's failure off the page's error line", () => {
     expect(projectsPageSource).not.toContain("setToolError(`${entry.displayName}");
+  });
+});
+
+describe("project rename permissions on the projects surfaces", () => {
+  it("uses the same permission-aware rename menu for the row and detail", () => {
+    expect(projectsPageSource).toContain("<ZeropsProjectRenameMenu");
+    expect(groupDetailSource).toContain("<ZeropsProjectRenameMenu");
+    for (const source of [projectsPageSource, groupDetailSource]) {
+      expect(source).not.toContain('id: "rename-group"');
+    }
+  });
+
+  it("preserves the existing environment creation offers independently of rename permission", () => {
+    expect(projectsPageSource).toContain("...(groupIsEmpty(group)");
+    expect(projectsPageSource).toContain("...(addsOfferedFor(group)");
+    expect(projectsPageSource).toContain(
+      '...(mayCreate && !groupIsEmpty(group) && creatableRoles(group).includes("prod")',
+    );
+    expect(projectsPageSource).toContain(
+      "productionAddable({\n              group,\n              mayCreate,",
+    );
+    expect(projectsPageSource).toContain("if (creationRunning) return;");
   });
 });

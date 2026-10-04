@@ -17,7 +17,6 @@ import {
   latestFinishedWordsAt,
   messageReceipt,
   namedToolCall,
-  noteLine,
   incidentsStanding,
   operationLineWords,
   operationUnreturnedWords,
@@ -31,7 +30,6 @@ import {
   readUsageLimitNotice,
   stretchFace,
   stretchIncidents,
-  stretchNotes,
   stretchOperations,
   activityCounts,
 } from "./conversation.logic";
@@ -316,7 +314,6 @@ describe("deriveConversationStructure", () => {
       last: true,
       startedAt: at(0),
     });
-    expect(stretchNotes(only!.stretches[0]!, only!.answer).map((note) => note.id)).toEqual(["a1"]);
   });
 
   it("starts a stretch at every message sent into the turn", () => {
@@ -363,7 +360,6 @@ describe("deriveConversationStructure", () => {
     expect(only!.answer).toBeNull();
     expect(only!.stretches.map((stretch) => stretch.live)).toEqual([false, true]);
     expect(only!.stretches[1]!.endedAt).toBeNull();
-    expect(stretchNotes(only!.stretches[1]!, only!.answer).map((note) => note.id)).toEqual(["a2"]);
   });
 
   it("gives messages sent back to back a stretch each, the empty one included", () => {
@@ -1145,17 +1141,6 @@ describe("activityCounts", () => {
     ]);
     expect(activityCounts([], [spawn(["a"])])).toEqual([{ kind: "helpers", count: 1 }]);
     expect(activityCounts([], [])).toEqual([]);
-  });
-});
-
-describe("noteLine", () => {
-  it.each([
-    ["**Deployed.** Checking `appstage` next.", "Deployed. Checking appstage next."],
-    ["## Plan\n\n- first\n- second", "Plan"],
-    ["> [!WARNING]\n> The build is broken", "The build is broken"],
-    ["See [the preview](https://x.dev/a?b=1).", "See the preview."],
-  ])("%j", (text, expected) => {
-    expect(noteLine(text)).toBe(expected);
   });
 });
 

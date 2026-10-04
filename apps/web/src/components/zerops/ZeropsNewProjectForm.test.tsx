@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
 
 import { Dialog } from "../ui/dialog";
+import birthPortsSource from "../../zerops/useNewProjectBirthPorts.ts?raw";
 import hostSource from "./ZeropsNewProjectHost.tsx?raw";
 import { ZeropsNewProjectForm } from "./ZeropsNewProjectForm";
 import { zeropsNewProjectScopeStepVisible } from "./ZeropsNewProjectHost";
@@ -25,16 +26,25 @@ const ORGANIZATION: ZeropsOrganization = {
 };
 
 describe("ZeropsNewProjectHost source", () => {
-  it("reads no tags of its own: its group is a registry patch on a fresh read", () => {
-    expect(hostSource).not.toContain("readGroupRegistry(");
-    expect(hostSource).not.toContain("planGroupRegistration(");
-    expect(hostSource).toContain("runtime.commands.updateProjectTags(");
-    expect(hostSource).toContain('kind: "registry-group"');
+  it("writes no tags for its group: the group is an application HQ creates, and HQ names", () => {
+    expect(hostSource).not.toContain("runtime.commands.updateProjectTags(");
+    expect(birthPortsSource).not.toContain("runtime.commands.updateProjectTags(");
+    expect(birthPortsSource).toContain(".createApp(groupName)");
+    // HQ stands before any project does (ADR 0001): no project brings it along.
+    expect(hostSource).not.toContain("runHqBirth(");
+    expect(birthPortsSource).not.toContain("runHqBirth(");
   });
 
-  it("creates through the typed runtime command", () => {
-    expect(hostSource).toContain("runtime.commands.createProjectWithMate(");
-    expect(hostSource).not.toContain("client.createProjectWithZeropsMate(");
+  // F6b (2026-10-03): the project alone, then its press — its Mate attached to its application
+  // before its container, which the press imports — never project and container in one call.
+  it("creates the project alone through the typed runtime command, its press bringing the container", () => {
+    // gap-create extracts the callable ports so a reloaded creation can use the same steps.
+    expect(hostSource).toContain("ports: birthPorts(ask)");
+    expect(birthPortsSource).toContain("runtime.commands.createProject(");
+    expect(hostSource).not.toContain("createProjectWithMate");
+    expect(birthPortsSource).not.toContain("createProjectWithMate");
+    expect(birthPortsSource).toContain("container: { agents: ask.agents }");
+    expect(birthPortsSource).not.toContain("containerImported");
   });
 
   it("loads organization locations through the broker's demand-scoped atom", () => {
@@ -100,14 +110,12 @@ function projectForm(props: Partial<FormProps> = {}): ReactElement {
         defaultTintFor={(name) => TINTS[name] ?? "slate"}
         locationError={null}
         locationId={null}
-        locationLoading={false}
+        loading={false}
         locations={[]}
         onCancel={() => {}}
         onCreate={() => {}}
         onLocation={() => {}}
-        organizationName="Mate s.r.o."
         takenBotNames={{ names: ["Fen"], complete: true }}
-        withGitHosting={false}
         {...props}
       />
     </Dialog>
@@ -318,34 +326,18 @@ describe("ZeropsNewProjectForm — the project and its first Mate", () => {
   });
 });
 
-// Board D1, 2026-09-30: the dialog ends with what happens next — Git hosting only where the
-// account has none, then the project and its Mate, then the person signs it in.
+// Board D1, 2026-09-30: the dialog ends with what happens next — the project and its Mate, then
+// the person signs it in.
 describe("ZeropsNewProjectForm — what happens next", () => {
-  it.each([
-    {
-      case: "an account with Git hosting",
-      withGitHosting: false,
-      steps: [
-        ["Acme Shop and Vera come up", "about 1½–2 min"],
-        ["You sign Vera in with your Claude or ChatGPT subscription", ""],
-        ["You tell Vera what to build", ""],
-      ],
-    },
-    {
-      case: "the account's first project, Git hosting alongside",
-      withGitHosting: true,
-      steps: [
-        ["Mate s.r.o. gets Git hosting, for all its projects", "about 3 min"],
-        ["Acme Shop and Vera come up meanwhile", "about 1½–2 min"],
-        ["You sign Vera in with your Claude or ChatGPT subscription", ""],
-        ["You tell Vera what to build", ""],
-      ],
-    },
-  ])("$case", ({ withGitHosting, steps }) => {
-    const tree = mount(projectForm({ withGitHosting }));
+  it("says the project and its Mate come up, then the person signs it in", () => {
+    const tree = mount(projectForm());
     type(tree, PROJECT_FIELD, "Acme Shop");
     type(tree, MATE_FIELD, "Vera");
-    expect(nextSteps(tree)).toEqual(steps);
+    expect(nextSteps(tree)).toEqual([
+      ["Acme Shop and Vera come up", "about 1½–2 min"],
+      ["You sign Vera in with your Claude or ChatGPT subscription", ""],
+      ["You tell Vera what to build", ""],
+    ]);
   });
 });
 

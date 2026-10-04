@@ -2,14 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import type { ZeropsLocation, ZeropsOrganizationMember } from "../api.ts";
 import type { Shown } from "../knowledge/index.ts";
-import type { ZeropsIntegrationTokenGrantMetadata } from "./cells.ts";
-import {
-  selectLocationChoice,
-  selectMembers,
-  selectTokenGrants,
-  selectVariableNames,
-  settledValue,
-} from "./cellSelectors.ts";
+import { selectLocationChoice, selectMembers, settledValue } from "./cellSelectors.ts";
 
 const PRAGUE: ZeropsLocation = { id: "prg1", name: "Prague", pingUrl: "https://ping.test" };
 const FAILURE = { kind: "transport", detail: "Zerops did not answer." } as const;
@@ -56,25 +49,6 @@ describe("selectLocationChoice", () => {
   });
 });
 
-describe("selectTokenGrants", () => {
-  const grants: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata> = [
-    { tokenId: "token-a", name: "zcp-a", grants: [{ projectId: "project-a", roleCode: "ADMIN" }] },
-  ];
-  const expected: Readonly<Record<string, ReturnType<typeof selectTokenGrants>>> = {
-    unread: { status: "pending" },
-    reading: { status: "pending" },
-    failed: { status: "failed" },
-    "known settled": { status: "known", grants },
-    // A retained value is planned from only once a read confirmed it.
-    "known revalidating": { status: "pending" },
-    "known stale": { status: "failed" },
-    withheld: { status: "pending" },
-  };
-  it.each(everyState(grants))("%s", (name, shown) => {
-    expect(selectTokenGrants(shown)).toEqual(expected[name]);
-  });
-});
-
 describe("settledValue", () => {
   // Only a read that settled the resource and succeeded answers a one-shot reader.
   const expected: Readonly<Record<string, ReturnType<typeof settledValue<string>>>> = {
@@ -104,21 +78,5 @@ describe("selectMembers", () => {
   };
   it.each(everyState(members))("%s", (name, shown) => {
     expect(selectMembers(shown)).toEqual(expected[name]);
-  });
-});
-
-describe("selectVariableNames", () => {
-  const names = ["ZEROPS_TOKEN_project-a"];
-  const expected: Readonly<Record<string, ReturnType<typeof selectVariableNames>>> = {
-    unread: { status: "pending" },
-    reading: { status: "pending" },
-    failed: { status: "pending" },
-    "known settled": { status: "known", names },
-    "known revalidating": { status: "known", names },
-    "known stale": { status: "known", names },
-    withheld: { status: "pending" },
-  };
-  it.each(everyState<ReadonlyArray<string>>(names))("%s", (name, shown) => {
-    expect(selectVariableNames(shown)).toEqual(expected[name]);
   });
 });

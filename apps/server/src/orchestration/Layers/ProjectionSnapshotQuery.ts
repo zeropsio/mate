@@ -107,6 +107,10 @@ const HELPER_STEP_ACTIVITY_TOTAL_LIMIT = 600;
 // A task's progress ticks a snapshot keeps besides its first: the Agents
 // surface's recent activity holds six.
 const TASK_PROGRESS_KEEP = 6;
+// A client folds these into its helper roster and background work, so a
+// snapshot keeps every one in its scope past the budgets above.
+const TASK_LIFECYCLE_EDGE_KINDS = ["task.started", "task.updated", "task.completed"];
+const TASK_LIFECYCLE_KINDS = [...TASK_LIFECYCLE_EDGE_KINDS, "task.progress"];
 // Snapshot payloads are decoded and projected in small sequential batches so
 // one client read does not retain the raw payloads for the full activity window.
 const THREAD_DETAIL_ACTIVITY_PAYLOAD_BATCH_SIZE = 25;
@@ -1532,7 +1536,10 @@ scoped_activities AS MATERIALIZED (
   // of calls, which pushed the Mate's own record out); and the start of
   // every helper whose later rows the page holds. A helper's result often
   // lands turns after the one that sent it, and without its start the
-  // helpers block lands on the turn that received it.
+  // helpers block lands on the turn that received it. Every task lifecycle
+  // row in scope (its superseded progress ticks aside) stays past the
+  // budgets: a client folds them into its helper roster and background work,
+  // and a reload that lost them would lose helpers a live stream retained.
   const pageActivityIdsSql = (
     threadId: string,
     scopes: ReadonlyArray<Statement.Fragment>,
@@ -1573,6 +1580,11 @@ scoped_activities AS MATERIALIZED (
         )
         SELECT activity_id AS "activityId"
         FROM page_activity_ids
+        UNION
+        SELECT activity_id AS "activityId"
+        FROM scoped_activities
+        WHERE ${sql.in("kind", TASK_LIFECYCLE_KINDS)}
+          AND activity_id NOT IN (SELECT activity_id FROM superseded_activity_ids)
         UNION
         SELECT starts.activity_id AS "activityId"
         FROM projection_thread_activities AS starts
@@ -1625,14 +1637,9 @@ scoped_activities AS MATERIALIZED (
   const listThreadActivityIdsByThread = SqlSchema.findAll({
     Request: ThreadIdLookupInput,
     Result: ProjectionThreadActivityIdRowSchema,
-    execute: ({ threadId }) =>
-      // A client that doesn't page reads the newest rows; the budget looks
-      // no further back than its scan.
-      pageActivityIdsSql(
-        threadId,
-        [
-          // By time: a row's sequence is often unset.
-          sql`created_at >= COALESCE(
+    execute: ({ threadId }) => {
+      // By time: a row's sequence is often unset.
+      const scanStart = sql`COALESCE(
           (
             SELECT created_at
             FROM projection_thread_activities
@@ -1641,10 +1648,20 @@ scoped_activities AS MATERIALIZED (
             LIMIT 1 OFFSET ${THREAD_DETAIL_UNPAGED_SCAN_LIMIT - 1}
           ),
           ''
-        )`,
+        )`;
+      // A client that doesn't page reads the newest rows; the budget looks
+      // no further back than its scan, save for the thread's task lifecycles.
+      return pageActivityIdsSql(
+        threadId,
+        [
+          sql`created_at >= ${scanStart}`,
+          // A progress tick older than the scan is superseded by those inside it.
+          sql`created_at < ${scanStart}
+            AND ${sql.in("kind", TASK_LIFECYCLE_EDGE_KINDS)}`,
         ],
         THREAD_DETAIL_ACTIVITY_LIMIT,
-      ),
+      );
+    },
   });
 
   const listThreadActivityRowsByIds = SqlSchema.findAll({

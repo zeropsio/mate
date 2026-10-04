@@ -1,16 +1,21 @@
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/provisioning";
+import { newMateTint, offerAsker } from "@t3tools/client-runtime/zerops";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
+import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   connectFailureLine,
   creationFailedLine,
+  setUpMateRecord,
   setUpMateVerb,
-  giteaToolLine,
   deriveZeropsRestartAction,
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
   mateIsUp,
+  mateOutsideHq,
+  mateRowCan,
   mateSetupOffered,
   releaseRowTone,
   zeropsReasonSentence,
@@ -50,6 +55,28 @@ function input(
 ): ZeropsRowInput {
   return { candidate, health, can };
 }
+
+describe("a container outside this HQ", () => {
+  it.each([
+    [true, false, true],
+    [false, false, false],
+    [true, true, false],
+  ])("requires a current HQ and no local birth (%s, %s)", (known, birthing, outside) => {
+    expect(mateOutsideHq(READY.project, known, birthing)).toBe(outside);
+  });
+
+  it.each([undefined, "initializing", "ready"] as const)(
+    "has a settled state and no verb, whatever its probe says (%s)",
+    (health) => {
+      const row = { ...input(READY, health), outsideHq: true };
+      expect(deriveZeropsRowAction(row)).toEqual({ kind: "not-in-hq" });
+      expect(deriveZeropsRowPresentation(row)).toEqual({
+        status: { label: "Not in this HQ", tone: "off" },
+        detail: "Not in this HQ",
+      });
+    },
+  );
+});
 
 describe("a Mate the platform restarts", () => {
   const restarting = (status: string): ZeropsRowCandidate => ({
@@ -230,17 +257,27 @@ describe("deriveZeropsRowAction", () => {
   describe("Set up Mate", () => {
     const bare: ZeropsRowCandidate = {
       key: "bare",
-      project: { id: "bare", name: "bare", status: "ACTIVE", tagList: [] },
+      project: { id: "bare", name: "bare", status: "ACTIVE", tagList: ["mate"] },
       group: "unavailable",
       reason: "no Zerops Mate container in this project",
       missingContainer: true,
     };
 
-    it("is offered on a project that merely has no container", () => {
+    it("is offered on a declared Mate that has lost its container", () => {
       expect(deriveZeropsRowAction(input(bare, undefined))).toEqual({
         kind: "set-up-mate",
         label: "Set up Mate",
       });
+    });
+
+    it.each([
+      ["central-prometheus", []],
+      ["Beviro - production", ["mate:g:foreign", "mate:role:prod"]],
+      ["ZIT - stage", ["mate:g:foreign", "mate:role:stage"]],
+      ["Imperial Titan - production", ["mate:g:foreign", "mate:role:prod"]],
+    ])("does not offer to convert an unrecorded environment (%s)", (name, tagList) => {
+      const foreign = { ...bare, project: { ...bare.project, name, tagList } };
+      expect(deriveZeropsRowAction(input(foreign, undefined))).toEqual({ kind: "none" });
     });
 
     it("is never offered to a tool, which has no container by design", () => {
@@ -474,7 +511,7 @@ describe("deriveZeropsRowPresentation", () => {
       input(
         {
           key: "bare",
-          project: { id: "bare", name: "bare", status: "ACTIVE", tagList: [] },
+          project: { id: "bare", name: "bare", status: "ACTIVE", tagList: ["mate"] },
           group: "unavailable",
           reason: "no Zerops Mate container in this project",
           missingContainer: true,
@@ -771,51 +808,6 @@ describe("connectFailureLine", () => {
   });
 });
 
-describe("giteaToolLine", () => {
-  const URL = "https://web-abc-3000.prg1.zerops.app";
-  it.each([
-    [
-      "the project is still being created",
-      "CREATING",
-      undefined,
-      undefined,
-      { kind: "setting-up" },
-    ],
-    [
-      "its services are unread on an active project",
-      "ACTIVE",
-      undefined,
-      undefined,
-      { kind: "none" },
-    ],
-    ["its web service is provisioning", "ACTIVE", "provisioning", URL, { kind: "setting-up" }],
-    [
-      "it runs and has an address",
-      "ACTIVE",
-      "running",
-      URL,
-      { kind: "link", url: URL, label: "web-abc-3000.prg1.zerops.app" },
-    ],
-    ["it runs without an address yet", "ACTIVE", "running", undefined, { kind: "none" }],
-    [
-      "its web service is gone from an active project",
-      "ACTIVE",
-      "unavailable",
-      undefined,
-      { kind: "unavailable" },
-    ],
-    ["the project is stopped", "STOPPED", "unavailable", undefined, { kind: "unavailable" }],
-  ] as const)("says the right thing when %s", (_case, projectStatus, phase, url, expected) => {
-    expect(giteaToolLine({ projectStatus, phase, url })).toEqual(expected);
-  });
-
-  it("never lists the services by hostname", () => {
-    expect(
-      JSON.stringify(giteaToolLine({ projectStatus: "ACTIVE", phase: "running", url: URL })),
-    ).not.toMatch(/broker|db|volume/u);
-  });
-});
-
 // A first build past its grace (measured 2026-10-02: about a minute) is still on its way: a slow
 // or queued build looks the same from its status as one that failed, so the row says it is taking
 // longer, never that it is gone.
@@ -912,19 +904,72 @@ describe("setUpMateVerb", () => {
   }
 });
 
+describe("setUpMateRecord", () => {
+  const lone = (id: string, hq?: ZeropsCandidate["project"]["hq"]): ZeropsCandidate => ({
+    key: `${id}:zcp`,
+    group: "unavailable",
+    reason: "no container",
+    missingContainer: true,
+    project: { id, name: id, status: "ACTIVE", tagList: [], ...(hq === undefined ? {} : { hq }) },
+  });
+
+  // D3: the Mate is called what its project is; only its face is HQ's to record.
+  it("records the face a new Mate of its project's name is born with, and no name", () => {
+    const record = setUpMateRecord({
+      project: lone("scratch").project,
+      candidates: [lone("scratch")],
+    });
+    const tint = newMateTint([lone("scratch")], "scratch");
+    expect(record).toEqual({ face: `${tint}:${MATE_SHAPE_OF_TINT[tint]}` });
+  });
+
+  it("writes nothing for a Mate whose record HQ holds already", () => {
+    const held = lone("p-ada", {
+      appId: null,
+      appName: null,
+      kind: "mate",
+      mate: { face: "sky:flower" },
+    });
+    expect(setUpMateRecord({ project: held.project, candidates: [held] })).toBeUndefined();
+  });
+});
+
 describe("releaseRowTone", () => {
   it.each([
     ["the release production runs", { verdict: "approved", standing: "live" }, "ok"],
     ["a release whose deploy failed", { verdict: "approved", standing: "deploy-failed" }, "failed"],
     ["an approved release", { verdict: "approved", standing: undefined }, "ok"],
     ["a refused release", { verdict: "refused", standing: undefined }, "failed"],
-    ["a release still being judged", { verdict: "pending", standing: undefined }, "busy"],
-    [
-      "a release the broker has not spoken on",
-      { verdict: "unknown", standing: undefined },
-      undefined,
-    ],
   ] as const)("colours %s by where it stands first", (_case, release, tone) => {
     expect(releaseRowTone(release)).toBe(tone);
+  });
+});
+
+describe("mateRowCan — a row's verbs, where its Mate's door opens for this person", () => {
+  const PROJECTS = [{ id: "p1", userRoles: [{ clientUserId: "cu-ada", roleCode: "OWNER" }] }];
+  const asker = (roleCode: string) =>
+    offerAsker(
+      { userId: "u-ada", clientUserId: "cu-other", roleCode, canCreateProjects: false },
+      PROJECTS,
+    );
+  it.each([
+    ["a member", "BASIC_USER", true],
+    ["an org admin", "ADMIN", true],
+    ["a read-only member, whose row is listed", "READ_ONLY", false],
+    ["a member with no access", "NO_ACCESS", false],
+  ])("%s: %s", (_name, roleCode, opens) => {
+    expect(mateRowCan(asker(roleCode), "p1")).toEqual(opens ? ALL : NONE);
+  });
+
+  it("offers a row's owner all of it through their grant on its project", () => {
+    const owner = offerAsker(
+      { userId: "u-ada", clientUserId: "cu-ada", roleCode: "NO_ACCESS", canCreateProjects: true },
+      PROJECTS,
+    );
+    expect(mateRowCan(owner, "p1").open).toBe(true);
+  });
+
+  it("offers nothing where the client knows no one: unknown is no", () => {
+    expect(mateRowCan(offerAsker(undefined, PROJECTS), "p1")).toEqual(NONE);
   });
 });

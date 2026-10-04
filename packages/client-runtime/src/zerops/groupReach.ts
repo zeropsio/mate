@@ -1,49 +1,30 @@
 /**
- * A Mate's group is its token.
+ * A Mate's key reaches its own project.
  *
- * The problem this replaces: an agent inside a `zcp` container could see
- * exactly one project, because the integration token the platform mints for
- * that container grants `ADMIN` on its own project and nothing else. So a Mate
- * asked to ship something could not learn that its group had a production
- * environment at all — measured 2026-09-06, one concluded there was nowhere to
- * run anything and provisioned a runtime and a database of its own.
+ * Every Mate holds one integration token, the `ZCP_API_KEY` of its `zcp`
+ * container: `NO_ACCESS` at the organization and `BASIC_USER` on the project
+ * it lives in, and no grant on any other project. The agent in that container
+ * reads and changes its own project through it, and nothing else.
  *
- * The obvious fix is to write the group into the container's environment. That
- * is a **copy**, and a copy has two structural faults: it goes stale silently
- * (a renamed group, a new stage, a service added to production all leave the
- * Mate confidently reporting last week's shape), and a service env write
- * reaches new processes only, so every refresh costs a container restart.
+ * It once read its application's other projects too, `READ_ONLY` on each, so
+ * an agent could see its stage and production. That grant reads a
+ * production's unmarked secrets — a database's `connectionString` in plain
+ * text — for anybody with a terminal in the Mate, and somebody had to keep
+ * writing it as the application changed (ADR 0003). An agent reaches past its
+ * project through HQ instead: zerops_observe reads permitted stage and
+ * production status, active versions and logs. So this client adds no grant beside a
+ * Mate's own: not at the key's mint, not at a birth, not on a screen's read.
+ * A grant a key already holds is not taken away here; a separate step
+ * removes it.
  *
- * So do not copy the fact across the boundary — move the boundary. The
- * platform already knows the group; what stopped the agent from asking was
- * authority, not information. Widen the container's own token to the group:
- *
- * - `BASIC_USER` on the project it lives in;
- * - `READ_ONLY` on every other project in the group.
- *
- * Then `zerops_*` and `zcli` answer for the whole group, the answer is the
- * platform's own and cannot be stale, and there is nothing to write into an
- * environment and nothing to restart.
- *
- * ## Why `READ_ONLY`, and why that is the interesting half
- *
- * `READ_ONLY` is a real platform role (`OWNER`, `ADMIN`, `BASIC_USER`,
- * `READ_ONLY`, `NO_ACCESS`). With it, a Mate reads a sibling's project and
- * services and is refused anything that changes them — `PUT
- * /service-stack/{id}/restart` on a production service answers **403**
- * (measured 2026-09-06). The rule "deploy to production through the
- * repository's pipeline, never directly" stops being a sentence in a markdown
- * file that an agent may or may not honour, and becomes something the platform
- * enforces.
- *
- * ## Reach changes in place
- *
- * `PUT /client/{clientId}/integration-token/{tokenId}` rewrites an existing
- * token's grants, and the **same token string** — the one already in the
- * container's environment — loses and gains sight of a sibling immediately
- * (measured: 200 → 403 → 200 across two writes, no new token, no restart).
- * That is what makes this maintainable rather than a one-time seeding: group
- * membership changes are a single call against a token that never moves.
+ * What stays is the lowering (guide 0.2). The platform mints a container's
+ * token with `ADMIN` on its project; a key this client mints holds
+ * `BASIC_USER` from the start, and one it did not mint — the pool's from
+ * sign-up, an older account's, one made in the Zerops GUI — is lowered in
+ * place by its harden (`hardenMate`), when a person finishes setting it up,
+ * never on a screen's read (step A, A11): `PUT
+ * /client/{clientId}/integration-token/{tokenId}` rewrites the grants of the
+ * same token string the container holds, with no restart.
  *
  * Nothing here reaches a network (rule R1): the caller performs the write.
  *
@@ -53,8 +34,12 @@
 /** The platform's project roles, as its own validation error enumerates them. */
 export type ZeropsProjectRole = "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY" | "NO_ACCESS";
 
-/** The platform names a dev container's token after the project it serves. */
-const ZCP_TOKEN_NAME_PREFIX = "zcp-";
+/**
+ * The names a Mate's key comes with: a press's, `zcp-<project>`, as the platform named the one it
+ * minted with a container; and the Zerops GUI's, `zerops-zcp-<service>` (the audit, 2026-10-03:
+ * 63 `zerops-zcp-zcp` keys on KRLS, none of which `zcp-` matched).
+ */
+const MATE_KEY_NAME_PREFIXES: ReadonlyArray<string> = ["zcp-", "zerops-zcp-"];
 
 /**
  * What a Mate holds on the project it lives in — everything zcp's bootstrap
@@ -117,30 +102,23 @@ export interface ZeropsTokenDelegation {
 }
 
 /**
- * The token that belongs to a Mate's container, out of every token on the
- * account.
+ * Whether `token` is a key of the Mate whose own project is `projectId`: one of the names a
+ * Mate's key comes with, and its only grant this project, at a Mate's own role, either one.
  *
- * Both halves of the test are needed. The name alone is not enough: it is
- * `zcp-<project name>` at mint time and a project can be renamed afterwards.
- * The grant alone is not enough either — a deploy token scoped to one project
- * looks identical by that test. Together they are unambiguous, and they stay
- * true after this module has widened *and* lowered the token, because the
- * match is "writes this project", never "grants only this project" and never
- * one exact role.
+ * Both halves of the test are needed. The grant alone is not enough — a deploy key, or a person's
+ * own token scoped to the project, looks identical by it; the name alone is not either. A key
+ * widened beyond its project is not taken for one: the harden finds the key its Mate holds by its
+ * id once the Mate enrolled it with HQ, and by this rule only until then.
  */
-export function findMateIntegrationToken(
-  tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  projectId: string,
-): ZeropsIntegrationToken | undefined {
-  return tokens.find((token) => isMateKeyOf(token, projectId));
-}
-
 function isMateKeyOf(token: ZeropsIntegrationToken, projectId: string): boolean {
+  const grants = token.projects ?? [];
+  const [grant] = grants;
   return (
-    token.name.startsWith(ZCP_TOKEN_NAME_PREFIX) &&
-    (token.projects ?? []).some(
-      (grant) => grant.projectId === projectId && MATE_SELF_GRANT_ROLES.has(grant.roleCode),
-    )
+    MATE_KEY_NAME_PREFIXES.some((prefix) => token.name.startsWith(prefix)) &&
+    grants.length === 1 &&
+    grant !== undefined &&
+    grant.projectId === projectId &&
+    MATE_SELF_GRANT_ROLES.has(grant.roleCode)
   );
 }
 
@@ -158,11 +136,15 @@ function newestFirst(keys: ReadonlyArray<ZeropsIntegrationToken>): Array<ZeropsI
   });
 }
 
+/** Whether `key` was made before the container made at `container` (wall ms); any, where unknown. */
+const madeBefore = (key: ZeropsIntegrationToken, container: number): boolean =>
+  Number.isNaN(container) || createdMs(key) <= container;
+
 /**
- * The key a Mate's container holds, out of every key that is its (`findMateIntegrationToken`):
- * the one key, or — where a raced press or an older platform key left two — the newest made before
- * its container. A key made after it is an orphan, and keys nothing tells apart are never guessed
- * at: undefined.
+ * The key a Mate's container holds, out of every key that is its (`isMateKeyOf`): the newest made
+ * before its container — the one there is, or the newest where a raced press or an older platform
+ * key left two. A key made after it is an orphan; where the container's age is unknown, only a key
+ * that is the one there is stands, and keys nothing tells apart are never guessed at: undefined.
  */
 export function findHeldMateKey(
   tokens: ReadonlyArray<ZeropsIntegrationToken>,
@@ -170,23 +152,9 @@ export function findHeldMateKey(
   containerCreated: string | undefined,
 ): ZeropsIntegrationToken | undefined {
   const keys = tokens.filter((token) => isMateKeyOf(token, projectId));
-  if (keys.length <= 1) return keys[0];
   const container = containerCreated === undefined ? Number.NaN : Date.parse(containerCreated);
-  if (Number.isNaN(container)) return undefined;
-  return newestFirst(keys.filter((key) => createdMs(key) <= container))[0];
-}
-
-/**
- * A Mate not hardened yet, as the platform's token list says it: it has keys, and none is below
- * `ADMIN` on its own project — so the key its container holds surely is. A leftover `ADMIN` key
- * beside a lowered one says nothing of the container's.
- */
-export function mateNeedsHarden(
-  tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  projectId: string,
-): boolean {
-  const keys = tokens.filter((token) => isMateKeyOf(token, projectId));
-  return keys.length > 0 && keys.every((key) => selfRoleOf(key, projectId) === "ADMIN");
+  if (Number.isNaN(container)) return keys.length === 1 ? keys[0] : undefined;
+  return newestFirst(keys.filter((key) => madeBefore(key, container)))[0];
 }
 
 /** A key's role on its Mate's own project. */
@@ -195,147 +163,79 @@ function selfRoleOf(token: ZeropsIntegrationToken, projectId: string): string | 
 }
 
 /**
- * Whether this viewer may harden the Mate: it needs it (`mateNeedsHarden`), and the viewer may
- * write its key — an org owner, or the key's creator.
+ * Every key of a Mate still `ADMIN` on its own project, made before its container where its age is
+ * known: what a harden lowers.
  */
-export function mateHardenableBy(
-  tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  projectId: string,
-  viewer: { readonly userId: string | undefined; readonly roleCode: string | undefined },
-): boolean {
-  if (!mateNeedsHarden(tokens, projectId)) return false;
-  if (viewer.roleCode === "OWNER") return true;
-  return tokens.some(
-    (token) =>
-      isMateKeyOf(token, projectId) &&
-      viewer.userId !== undefined &&
-      token.createdByUser === viewer.userId,
-  );
-}
-
-/** Every key of a Mate still `ADMIN` on its own project: what a harden lowers. */
 export function mateAdminKeys(
   tokens: ReadonlyArray<ZeropsIntegrationToken>,
   projectId: string,
+  containerCreated: string | undefined,
 ): ReadonlyArray<ZeropsIntegrationToken> {
+  const container = containerCreated === undefined ? Number.NaN : Date.parse(containerCreated);
   return tokens.filter(
-    (token) => isMateKeyOf(token, projectId) && selfRoleOf(token, projectId) === "ADMIN",
+    (token) =>
+      isMateKeyOf(token, projectId) &&
+      selfRoleOf(token, projectId) === "ADMIN" &&
+      madeBefore(token, container),
   );
 }
 
-/** The key a press reuses where no container holds one yet: the newest. */
+/** The name a press gives the key it mints with a Mate's container (`api.ts` `mateKeyName`). */
+const PRESS_KEY_NAME_PREFIX = "zcp-";
+
+/**
+ * The key a press reuses where no container holds one yet: the newest of the keys a press mints,
+ * by the name it gives them, writing this project at a Mate's own role — whatever else an earlier
+ * client let it reach, so a press never mints a second key beside one it made.
+ */
 export function newestMateKey(
   tokens: ReadonlyArray<ZeropsIntegrationToken>,
   projectId: string,
 ): ZeropsIntegrationToken | undefined {
-  return newestFirst(tokens.filter((token) => isMateKeyOf(token, projectId)))[0];
+  return newestFirst(
+    tokens.filter(
+      (token) =>
+        token.name.startsWith(PRESS_KEY_NAME_PREFIX) &&
+        (token.projects ?? []).some(
+          (grant) => grant.projectId === projectId && MATE_SELF_GRANT_ROLES.has(grant.roleCode),
+        ),
+    ),
+  )[0];
 }
 
-/**
- * What a Mate's token should grant: `BASIC_USER` on its own project,
- * `READ_ONLY` on the rest of its group, in a fixed order so an unchanged group
- * produces an identical document.
- *
- * The Mate's own project is always first and always writable, whatever the
- * caller passed in the group — a Mate that lost write access to the project it
- * lives in could not do its job, and no group edit may cause that. A group of
- * one still produces a document, and it is not the one the platform minted:
- * being alone is not a reason to keep `ADMIN`.
- */
-export function buildGroupGrants(input: {
-  readonly selfProjectId: string;
-  readonly groupProjectIds: ReadonlyArray<string>;
-}): ReadonlyArray<ZeropsProjectGrant> {
-  const siblings = [...new Set(input.groupProjectIds)]
-    .filter((projectId) => projectId !== input.selfProjectId)
-    .sort();
-  return [
-    { projectId: input.selfProjectId, roleCode: MATE_SELF_PROJECT_ROLE },
-    ...siblings.map((projectId): ZeropsProjectGrant => ({ projectId, roleCode: "READ_ONLY" })),
-  ];
-}
-
-/**
- * The same project → role pairs, in any order. The platform's ids are base64, so two orderings
- * that disagree on case — `localeCompare` against the code-unit sort the write uses — never
- * matched what was just written, and every read rewrote the token (pass 30, 2026-10-02).
- */
 function sameGrants(
-  current: ReadonlyArray<ZeropsProjectGrant>,
-  wanted: ReadonlyArray<ZeropsProjectGrant>,
+  left: ReadonlyArray<ZeropsProjectGrant>,
+  right: ReadonlyArray<ZeropsProjectGrant>,
 ): boolean {
-  const roles = new Map(current.map((grant) => [grant.projectId, grant.roleCode]));
-  return (
-    current.length === wanted.length &&
-    roles.size === wanted.length &&
-    wanted.every((grant) => roles.get(grant.projectId) === grant.roleCode)
-  );
+  const key = (grant: ZeropsProjectGrant) => `${grant.projectId}=${grant.roleCode}`;
+  const sorted = (grants: ReadonlyArray<ZeropsProjectGrant>) => grants.map(key).sort();
+  return sorted(left).join(";") === sorted(right).join(";");
 }
 
 /**
- * The write to make, or `undefined` when the token already reaches exactly its
- * group — so opening a screen that reconciles this is not a write, and a group
- * that has not moved is not touched.
+ * The write that lowers a Mate's key, or `undefined` when it holds what it
+ * should: `MATE_SELF_PROJECT_ROLE` on its own project — added where it has no
+ * grant there — and every other grant it holds exactly as it is. A key the
+ * platform minted with `ADMIN` is lowered in place, its string unchanged; a key
+ * already lowered is not written.
  *
  * Comparison is order-insensitive: the platform returns grants in its own
- * order, and comparing them as pairs is what keeps an unchanged group from
- * being rewritten on every read.
+ * order.
  */
-export function planGroupReach(input: {
+export function planMateKey(input: {
   readonly token: ZeropsIntegrationToken;
   readonly selfProjectId: string;
-  readonly groupProjectIds: ReadonlyArray<string>;
 }): { readonly tokenId: string; readonly projects: ReadonlyArray<ZeropsProjectGrant> } | undefined {
-  const wanted = buildGroupGrants({
-    selfProjectId: input.selfProjectId,
-    groupProjectIds: input.groupProjectIds,
-  });
-  if (sameGrants(input.token.projects ?? [], wanted)) return undefined;
+  const current = input.token.projects ?? [];
+  const own: ZeropsProjectGrant = {
+    projectId: input.selfProjectId,
+    roleCode: MATE_SELF_PROJECT_ROLE,
+  };
+  const wanted = current.some((grant) => grant.projectId === input.selfProjectId)
+    ? current.map((grant) => (grant.projectId === input.selfProjectId ? own : grant))
+    : [own, ...current];
+  if (sameGrants(current, wanted)) return undefined;
   return { tokenId: input.token.id, projects: wanted };
-}
-
-/** One group, as the reconcile sees it: who is in it, and which are Mates. */
-export interface ZeropsGroupReachGroup {
-  /** Every project in the group, Mates included. */
-  readonly projectIds: ReadonlyArray<string>;
-  /** The projects that hold a Mate — the only ones with a token to widen. */
-  readonly mateProjectIds: ReadonlyArray<string>;
-}
-
-export interface ZeropsGroupReachWrite {
-  readonly tokenId: string;
-  readonly name: string;
-  readonly projects: ReadonlyArray<ZeropsProjectGrant>;
-}
-
-/**
- * Every token write the account needs, and no others.
- *
- * Safe to run on every read of the projects screen, which is the point: this
- * changes a token's grants and never a container's environment, so nothing
- * restarts and a group that has not moved produces an empty list. A Mate whose
- * token cannot be found is skipped rather than guessed at — an account can
- * hold a container this client did not create.
- *
- * It is also how a Mate this client never created gets lowered — the pool's
- * Mate from sign-up, an older account's, one built in the Zerops GUI. Every
- * Mate in the list is planned for, solo groups included, because a solo Mate
- * holding `ADMIN` is exactly the shape 0.2 exists to end.
- */
-export function planAccountGroupReach(input: {
-  readonly groups: ReadonlyArray<ZeropsGroupReachGroup>;
-  readonly tokens: ReadonlyArray<ZeropsIntegrationToken>;
-}): ReadonlyArray<ZeropsGroupReachWrite> {
-  const writes: Array<ZeropsGroupReachWrite> = [];
-  for (const group of input.groups) {
-    for (const selfProjectId of group.mateProjectIds) {
-      const token = findMateIntegrationToken(input.tokens, selfProjectId);
-      if (token === undefined) continue;
-      const plan = planGroupReach({ token, selfProjectId, groupProjectIds: group.projectIds });
-      if (plan !== undefined) writes.push({ ...plan, name: token.name });
-    }
-  }
-  return writes;
 }
 
 /** The page's exclusive locks (`navigator.locks`): `hold` runs once the lock is this tab's. */
@@ -394,58 +294,4 @@ export function makeTokenWriteLock(
     });
     return next;
   };
-}
-
-/**
- * Writes tokens' project lists. A write replaces a token's whole list, so each is planned from
- * the list read under that token's lock (`hold`), right before it — never from a list read
- * earlier, a shared, possibly old one least of all. It writes the plan as it stands: an org role
- * only where the plan names one (the broker's own, read under the lock), else the write lowers it
- * to none. A read outside the lock only finds the next token to write. It writes each token at
- * most once and at most what its first plan asked for, and answers how many it wrote.
- */
-export async function writeTokenProjectsFresh(input: {
-  readonly read: () => Promise<ReadonlyArray<ZeropsIntegrationToken>>;
-  readonly plan: (
-    tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  ) => ReadonlyArray<ZeropsGroupReachWrite & { readonly roleCode?: string | undefined }>;
-  readonly write: (
-    write: ZeropsGroupReachWrite & { readonly roleCode?: string | undefined },
-  ) => Promise<void>;
-  /** Serializes each token's read-then-write; without it, nothing else writes these tokens. */
-  readonly hold?: TokenWriteHold;
-}): Promise<number> {
-  const hold: TokenWriteHold = input.hold ?? ((_tokenId, run) => run());
-  let written = 0;
-  let attempts = 0;
-  let most: number | null = null;
-  /** Tokens whose write failed: the others are still written, and the run fails at its end. */
-  const refused = new Map<string, unknown>();
-  /** Tokens this run already asked about under their lock: a write that did not show is not repeated. */
-  const tried = new Set<string>();
-  while (most === null || attempts < most) {
-    const writes = input.plan(await input.read());
-    most ??= writes.length;
-    const next = writes.find(
-      (planned) => !refused.has(planned.tokenId) && !tried.has(planned.tokenId),
-    );
-    if (next === undefined) break;
-    attempts += 1;
-    tried.add(next.tokenId);
-    try {
-      const wrote = await hold(next.tokenId, async () => {
-        const tokens = await input.read();
-        const write = input.plan(tokens).find((planned) => planned.tokenId === next.tokenId);
-        if (write === undefined) return false;
-        await input.write(write);
-        return true;
-      });
-      if (wrote) written += 1;
-    } catch (cause) {
-      refused.set(next.tokenId, cause);
-    }
-  }
-  const [failure] = refused.values();
-  if (refused.size > 0) throw failure;
-  return written;
 }

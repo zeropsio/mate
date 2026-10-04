@@ -10,6 +10,8 @@
  * forgotten when the account closes. Nothing live is kept: a row's dots, timers and status come
  * from its conversation, which a remembered row has not heard yet.
  */
+import { placementsOf, placeProject } from "@t3tools/client-runtime/zerops/hq";
+import { menuMemory } from "./menuMemory";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -386,7 +388,10 @@ let pending = new Map<
   { readonly candidates: ReadonlyArray<ZeropsCandidate>; readonly atMs: number }
 >();
 let writing: ReturnType<typeof setTimeout> | null = null;
-const drawn = new WeakMap<ReadonlyArray<SkeletonRow>, ReadonlyArray<CandidateRow>>();
+const drawn = new WeakMap<
+  ReadonlyArray<SkeletonRow>,
+  { readonly structure: unknown; readonly candidates: ReadonlyArray<CandidateRow> }
+>();
 
 function readStored(): MenuSkeleton {
   try {
@@ -422,10 +427,18 @@ export function rememberedCandidatesOf(
   if (organizationId === undefined) return undefined;
   const rows = skeleton.organizations[organizationId]?.rows;
   if (rows === undefined) return undefined;
-  let candidates = drawn.get(rows);
+  const structure = menuMemory().structures[organizationId];
+  const cached = drawn.get(rows);
+  let candidates = cached?.structure === structure ? cached?.candidates : undefined;
   if (candidates === undefined) {
-    candidates = rows.map(candidateOfSkeleton);
-    drawn.set(rows, candidates);
+    const placements = structure === undefined ? null : placementsOf(structure);
+    candidates = rows.map((row) => {
+      const candidate = candidateOfSkeleton(row);
+      return placements === null
+        ? candidate
+        : { ...candidate, project: placeProject(candidate.project, placements) };
+    });
+    drawn.set(rows, { structure, candidates });
   }
   return candidates;
 }

@@ -1,5 +1,6 @@
 import { assignCandidateMateTints } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId } from "@t3tools/contracts";
 import { MATE_SHAPE_OF_TINT, type MateShapeId, type MateTintId } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
@@ -21,84 +22,97 @@ const FEN = EnvironmentId.make("env-fen");
 const JUNO = EnvironmentId.make("env-juno");
 const STAGE = EnvironmentId.make("env-stage");
 
+/** A project's candidate: Acme Docs' dev project is Fen's, named as Fen is (D3). */
 function candidate(
   id: string,
   tagList: ReadonlyArray<string>,
   environmentId?: EnvironmentId,
+  hq?: HqPlacement,
 ): ZeropsCandidate {
+  const name = id === "acme-docs-dev" ? "Fen" : id;
   return {
     key: `${id}:zcp`,
-    project: { id, name: id, status: "ACTIVE", tagList },
+    project: { id, name, status: "ACTIVE", tagList, ...(hq === undefined ? {} : { hq }) },
     group: environmentId === undefined ? "ready" : "connected",
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },
     ...(environmentId === undefined ? {} : { environmentId }),
   };
 }
 
-const FEN_TAGS = ["mate", "mate:g:aaa", "mate:role:dev", "mate:name:Acme Docs", "mate:bot:Fen"];
-const FEN_DEV = candidate("acme-docs-dev", FEN_TAGS, FEN);
-const JUNO_LOOSE = candidate("scratch", ["mate", "mate:bot:Juno"], JUNO);
-const ACME_STAGE = candidate("acme-docs-stage", ["mate:g:aaa", "mate:role:stage"], STAGE);
+/** Where HQ places a project of Acme Docs. */
+function acme(kind: HqPlacement["kind"], mate: HqPlacement["mate"] = null): HqPlacement {
+  return { appId: "aaa", appName: "Acme Docs", kind, mate };
+}
+
+/** Fen, wearing `face` as HQ records it ("" where nobody picked one). */
+const fen = (face = "") => acme("mate", { face });
+const FEN_DEV = candidate("acme-docs-dev", ["mate"], FEN, fen());
+/** A Mate in no project, going by its project's name as every Mate does. */
+const LOOSE = candidate("scratch", ["mate"], JUNO);
+const ACME_STAGE = candidate("acme-docs-stage", [], STAGE, acme("stage"));
 
 describe("zeropsMateIdentities", () => {
   it("names the Mate in each connected environment, with its colour and its project", () => {
-    const mates = zeropsMateIdentities([FEN_DEV, JUNO_LOOSE, ACME_STAGE]);
+    const mates = zeropsMateIdentities([FEN_DEV, LOOSE, ACME_STAGE]);
     expect(mates.get(FEN)).toMatchObject({ name: "Fen", project: "Acme Docs" });
     // The way into Zerops for this Mate: its project on the dashboard.
     expect(mates.get(FEN)?.projectUrl).toBe("https://app.zerops.io/project/acme-docs-dev");
-    expect(mates.get(JUNO)).toMatchObject({ name: "Juno", project: undefined });
+    expect(mates.get(JUNO)).toMatchObject({ name: "scratch", project: undefined });
     // Two Mates, two colours — the same assignment the left menu makes.
     expect(mates.get(FEN)?.tint).not.toBe(mates.get(JUNO)?.tint);
   });
 
   it.each([
-    { name: "names who asked for it", tags: [...FEN_TAGS, "mate:standup:u-ada"], by: "u-ada" },
-    { name: "is absent once it was sent", tags: FEN_TAGS, by: undefined },
-  ])("carries the project's stand-up ask: $name", ({ tags, by }) => {
-    const mate = zeropsMateIdentities([candidate("acme-docs-dev", tags, FEN)]).get(FEN);
+    { name: "names who asked for it", asker: "u-ada", by: "u-ada" },
+    { name: "is absent once it was sent", asker: null, by: undefined },
+  ])("carries the stand-up ask HQ records: $name", ({ asker, by }) => {
+    const placed = acme("mate", { face: "", standupRequestedBy: asker });
+    const mate = zeropsMateIdentities([candidate("acme-docs-dev", ["mate"], FEN, placed)]).get(FEN);
     expect(mate?.standUp).toEqual(by === undefined ? undefined : { by });
   });
 
   it.each([
-    { name: "names who made it", tags: [...FEN_TAGS, "mate:by:u-ada"], by: "u-ada" },
-    { name: "is absent on a Mate born before it", tags: FEN_TAGS, by: undefined },
-  ])("carries who made it: $name", ({ tags, by }) => {
-    const mate = zeropsMateIdentities([candidate("acme-docs-dev", tags, FEN)]).get(FEN);
-    expect(mate?.madeBy).toBe(by);
+    { name: "names who made it", maker: "u-ada", madeBy: "u-ada" },
+    { name: "is absent on a Mate recorded before HQ kept it", maker: null, madeBy: undefined },
+  ])("carries who made it, as HQ records it: $name", ({ maker, madeBy }) => {
+    const placed = acme("mate", { face: "", madeBy: maker });
+    const mate = zeropsMateIdentities([candidate("acme-docs-dev", ["mate"], FEN, placed)]).get(FEN);
+    expect(mate?.madeBy).toBe(madeBy);
   });
 
   /**
-   * A Mate wears the face its person picked (`mate:face:`); one nobody picked
+   * A Mate wears the face its person picked (HQ's record); one nobody picked
    * a face for wears exactly the one it wore before: its derived tint, and
    * that tint's own shape.
    */
   it.each<{
     readonly case: string;
-    readonly tags: ReadonlyArray<string>;
+    /** The face as HQ records it. */
+    readonly picked: string;
     readonly face: { readonly tint: MateTintId; readonly shape: MateShapeId } | "as before";
   }>([
     {
       case: "the face its person picked",
-      tags: ["mate:face:sky:seal"],
+      picked: "sky:seal",
       face: { tint: "sky", shape: "seal" },
     },
-    { case: "the face it wore before, when nobody picked one", tags: [], face: "as before" },
+    { case: "the face it wore before, when nobody picked one", picked: "", face: "as before" },
     {
       case: "its tint's own shape beside a picked tint",
-      tags: ["mate:face:rose:blob"],
+      picked: "rose:blob",
       face: { tint: "rose", shape: MATE_SHAPE_OF_TINT.rose },
     },
     {
       case: "a picked shape beside the tint it wore before",
-      tags: ["mate:face:teal:clover"],
+      picked: "teal:clover",
       face: { tint: assignCandidateMateTints([FEN_DEV]).get("acme-docs-dev")!, shape: "clover" },
     },
-  ])("gives a Mate $case", ({ tags, face }) => {
-    const fen = zeropsMateIdentities([candidate("acme-docs-dev", [...FEN_TAGS, ...tags], FEN)]).get(
+  ])("gives a Mate $case", ({ picked, face }) => {
+    const mate = zeropsMateIdentities([candidate("acme-docs-dev", ["mate"], FEN, fen(picked))]).get(
       FEN,
     );
     const before = assignCandidateMateTints([FEN_DEV]).get("acme-docs-dev")!;
-    expect({ tint: fen?.tint, shape: fen?.shape }).toEqual(
+    expect({ tint: mate?.tint, shape: mate?.shape }).toEqual(
       face === "as before" ? { tint: before, shape: MATE_SHAPE_OF_TINT[before] } : face,
     );
   });
@@ -125,7 +139,7 @@ describe("zeropsMateIdentities", () => {
     // yet: the header and the composer must not wait seconds to learn this is
     // Fen's conversation.
     const ready: ZeropsCandidate = {
-      ...candidate("acme-docs-dev", FEN_TAGS),
+      ...candidate("acme-docs-dev", ["mate"], undefined, fen()),
       containerOrigin: "https://node-id-1.runtime.zcp.zerops.app",
     };
     const mates = zeropsMateIdentities(

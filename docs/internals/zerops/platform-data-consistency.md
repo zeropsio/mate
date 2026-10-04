@@ -50,7 +50,7 @@ mutable API client instance is reused.
   observation stamp.
 - **Query** — Descriptor, ordered IDs, unresolved IDs, observed total, traversal/window coverage.
   Query key includes scope/filter/sort/projection/window/schema version.
-- **Interest** — `establishing`, `observing`, `recovering`, `paused`, `failed`, plus reason and
+- **Interest** — `establishing`, `observing`, `paused`, `failed`, plus reason and
   generation.
 - **Read** — Pending/succeeded/failed and completion marker independent of whether values changed.
 - **Access** — Existing account/project verification scope, deadline and revocation policy; arrival
@@ -93,7 +93,8 @@ Terminal records remain available to retained history/operation views.
    admitted as indexed search, so the interest still completes and per-project
    anchors keep their authority. An unopened project's inventory
    never downloads process history. Hydrate unresolved
-   added IDs with one shared in-flight request per target/facet and bounded retries.
+   added IDs with one shared in-flight request per target/facet. A failed attempt waits for
+   a visible manual **again**.
 5. On a direct result reject obsolete generations. For each owned field group,
    suppress values if a native observation arrived after the ticket began, or a
    later-started direct read has already applied. Apply unaffected groups. **Mark
@@ -107,34 +108,21 @@ Terminal records remain available to retained history/operation views.
    Apply an admitted baseline to its declared scope/window, then the latest intervening
    membership operation per ID, including removal markers. This is a local conflict
    policy; it does not prove source ordering. Release markers when no older active
-   read needs them. Overflow discards the uncertain baseline and enters recovery.
+   read needs them. Overflow discards the uncertain baseline and reports failure.
 7. Finish establishment/recovery when required registrations and baseline read
    completions have crossed the ingestion queue's completion markers. Do not wait
    for a quiet source, empty queue or uncontested field replacement.
-8. On disconnect, registration failure, malformed required data or overflow mark
-   affected interests recovering before any lossy discard, and fence old
-   generations. The failure's scope decides what recovers. A required direct read
-   that failed, a registration the platform refused with an HTTP error status
-   (429 included: a refusal took no effect) and a malformed frame naming its
-   subscription fail only the interests that depend on them: each re-establishes
-   on the live receiver under a new generation and its own backoff, and every
-   other interest keeps observing. Socket login or greeting failure, close or
-   missed pong, overflow, a malformed frame naming no subscription the receiver
-   holds, the registration churn budget, an establishment past its deadline and
-   uncertain registration ownership (no answer, or one that could not be read)
-   use a new receiver, and every interest on the old one recovers there. Optional
-   interests never replace it: they fail with their own retry. Rebuild active
-   registrations and direct anchors through the same algorithm. One recovery
-   cycle per organization re-establishes the interests that are due concurrently
-   under a bound, the organization inventory first. Only a retry that failed at
-   the receiver replaces it, and the round then starts no more retries there. An
-   open receiver that fails while the cycle waits is replaced at once; a failed
-   socket login is retried on the cycle's backoff, one login per rung.
-9. Bound establishment/token/open/greeting/read deadlines and recovery attempts.
-   Repeated failures reach an explicit failed state with controlled retry, never
-   an endless initial spinner. Foreground return also checks expired access,
-   recovers paused interests and resumes recovery that stopped while the tab was
-   hidden, before reporting observing.
+8. On disconnect, registration failure, malformed data or overflow, fence affected work and
+   publish a failed attempt immediately. A registration refusal fails only its dependents; a
+   socket failure, malformed frame or uncertain ownership fails the receiver's demand. Optional metrics can fail without
+   withholding service topology. No automatic recovery cycle or retry ladder runs. A visible
+   manual **again** re-establishes the held scope with new identities and baselines.
+9. Bound establishment/token/open/greeting/read deadlines. The first failed attempt has a
+   visible cause and manual action. Foreground return re-establishes healthy paused demand and
+   checks expired access, but preserves failed interests. Removing project or metric demand stops
+   routing its registrations on the organization's one receiver; no safe native unsubscribe has
+   been established, so the receiver is replaced once its released registrations reach the
+   policy bound, rebuilding the surviving healthy registrations.
 
 Example: GET starts → push observes FINISHED → GET returns RUNNING. Retain FINISHED,
 record the GET's successful completion and finish recovery when other prerequisites
@@ -179,24 +167,25 @@ upstream unsubscribe or rely on unknown same-name replacement/retention semantic
 Keep desired interests and actual wire registrations separately observable. Bound
 both; receiver replacement and replay of desired interests is the conservative
 fallback for registration churn. Never recycle another account's receiver.
-Successful establishment resets that interest's recovery budget; the limit bounds
-consecutive failed recovery attempts. A shared physical observation is admitted
-once, using a still-current dependent selected when ingestion runs.
+A shared physical observation is admitted once, using a still-current dependent selected when
+ingestion runs. A failed interest retains no automatic retry budget or intermediate recovering state.
+A late successful completion cannot move a failed or paused interest back to observing.
 
 Registration requests share one account-wide concurrency bound. The organization
 inventory's own registrations, its project feed and project list, are admitted
 ahead of waiting project registrations; a registration's deadline starts when it
 is sent, not while it waits for its turn. A registration the platform refused
-with an HTTP error status took no effect, so its interests register again on the
+with an HTTP error status took no effect; a manual attempt may register again on the
 same receiver. A required interest's registration without an answer, or with an
 answer that could not be read, may have left a subscription nobody owns, so its
-receiver is replaced. A subscription nobody owns names no registration the
+receiver fails and a manual attempt replaces it. A subscription nobody owns names no registration the
 adapter holds: should a refused or optional registration have taken effect after
-all, its first frame replaces the receiver.
+all, its first frame fails the receiver rather than initiating recovery.
 
 Native frames are the ordinary data path. A valid admitted update performs no REST
-reread. Repair triggers are reconnect, foreground recovery, failed decoding/loss,
-unresolved references and explicit refresh. Healthy receivers have no periodic
+reread. New baselines come from explicit refresh and foreground return of healthy paused demand;
+unresolved demanded references get one hydration attempt. Disconnect, decoding failure or loss
+stays failed until a manual attempt. Healthy receivers have no periodic
 inventory, process or metric reread. Heartbeats test transport health; they do not
 prove complete source delivery. A silent source omission with no observable fault
 can remain until a new baseline or explicit refresh; `observing` retains its weaker
@@ -205,7 +194,8 @@ lossless stream and previously made account size multiply idle REST traffic.
 Coalesce per scope and bound total concurrency. Search refresh every 160 seconds
 in legacy is a client convention, not a measured subscription TTL.
 
-Account inventory demands `organization-inventory` and `project-inventory`:
+Account inventory demands `organization-inventory` only for the selected organization;
+`project-inventory` belongs to the opened project or an explicit action. It reads
 project/service updates and service membership, without process searches. Visible
 topology and operation activity add their process demand; current metrics and
 history have separate leases. Web and retained mobile candidate lists use the
@@ -218,10 +208,10 @@ renew access.
 
 Operational constants live in one tested runtime policy module: HTTP, heartbeat,
 open, greeting and registration deadlines; ingress bytes/events; hydration,
-registration and recovery concurrency; retained terminal processes; telemetry
+registration concurrency; retained terminal processes; telemetry
 buckets; log lines; receiver registrations; and background receiver lifetime.
 Their values are not part of public view semantics. A budget breach is visible as
-partial/recovering/failed, never silently discarded data reported live.
+partial/failed, never silently discarded data reported live.
 
 Keep ingestion and access deadlines independent of animation frames. Coalesce
 publication to affected atoms; bounded log/metric rendering can use its own cadence.

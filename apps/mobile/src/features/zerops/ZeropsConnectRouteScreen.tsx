@@ -17,7 +17,11 @@ import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { ConnectionSheetButton } from "../connection/ConnectionSheetButton";
 import { useSetHomeEnvironmentId } from "../home/home-list-options";
-import { candidatePickerBody, type MobileCandidate } from "./candidate-listing";
+import {
+  candidatePickerAction,
+  candidatePickerBody,
+  type MobileCandidate,
+} from "./candidate-listing";
 import { connectMate } from "./connect";
 import { zeropsErrorMessage } from "./errors";
 import {
@@ -38,11 +42,13 @@ type ZeropsConnectSurfaceProps = {
 function CandidateRow(props: {
   readonly candidate: MobileCandidate;
   readonly presentation: ZeropsCandidatePresentation;
+  readonly opened: boolean;
   readonly busy: boolean;
   readonly disabled: boolean;
   readonly onPress: () => void;
 }) {
   const { presentation } = props;
+  const action = candidatePickerAction(presentation.action, props.opened);
   return (
     <View className="gap-3 rounded-[18px] bg-card px-4 py-4">
       <View className="flex-row items-start justify-between gap-4">
@@ -65,12 +71,12 @@ function CandidateRow(props: {
         <Text className="text-sm leading-normal text-foreground-muted">{presentation.notice}</Text>
       ) : null}
 
-      {presentation.action ? (
+      {action ? (
         <ConnectionSheetButton
           compact
           disabled={props.disabled}
           icon={presentation.section === "connected" ? "arrow.right.circle" : "link"}
-          label={props.busy ? "Connecting..." : presentation.action}
+          label={props.busy ? "Connecting..." : action}
           tone={presentation.section === "ready" ? "primary" : "secondary"}
           onPress={props.onPress}
         />
@@ -268,9 +274,18 @@ function ListingNotice(props: { readonly notice: CandidatesNotice; readonly onRe
 }
 
 function ProjectPickerSurface(props: { readonly onDone: (environmentId: EnvironmentId) => void }) {
-  const { user, signOut, newRecoveryToken, clearNewRecoveryToken } = useZeropsSession();
+  const {
+    user,
+    signOut,
+    newRecoveryToken,
+    clearNewRecoveryToken,
+    organizations,
+    activeOrganization,
+    selectOrganization,
+  } = useZeropsSession();
   const { environments } = useZeropsData();
-  const { listing, readAtMs, error, refresh } = useZeropsCandidates();
+  const [openedProjectId, setOpenedProjectId] = useState<string | null>(null);
+  const { listing, readAtMs, error, refresh } = useZeropsCandidates(openedProjectId);
   const connectingRef = useRef(false);
   const [connectingKey, setConnectingKey] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -279,7 +294,9 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
   const body = useMemo(() => candidatePickerBody(listing, readAtMs), [listing, readAtMs]);
   // What this person may do with each Mate, from the one role function the
   // door runs too (D5). Undefined when nobody is signed in to judge by.
-  const viewerOrganization = user?.clientUserList?.[0];
+  const viewerOrganization = user?.clientUserList?.find(
+    ({ clientId }) => clientId === activeOrganization?.id,
+  );
   const visibilityOf = useCallback(
     (candidate: MobileCandidate): RoleMateVisibility | undefined => {
       const organizationId = viewerOrganization?.clientId;
@@ -405,6 +422,22 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
         </View>
       </View>
 
+      {organizations.length > 1 ? (
+        <View className="gap-2">
+          <Text className="font-t3-bold text-base text-foreground">Organization</Text>
+          {organizations.map((organization) => (
+            <ConnectionSheetButton
+              key={organization.id}
+              compact
+              icon="building.2"
+              label={organization.name}
+              disabled={isConnecting}
+              tone={activeOrganization?.id === organization.id ? "primary" : "secondary"}
+              onPress={() => selectOrganization(organization.id)}
+            />
+          ))}
+        </View>
+      ) : null}
       {visibleError ? <ErrorBanner message={visibleError} /> : null}
 
       {body.kind === "notice" ? (
@@ -432,7 +465,14 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
                   disabled={isConnecting}
                   key={candidate.key}
                   presentation={presentation}
-                  onPress={() => void openCandidate(candidate)}
+                  opened={openedProjectId === candidate.project.id}
+                  onPress={() => {
+                    if (openedProjectId !== candidate.project.id) {
+                      setOpenedProjectId(candidate.project.id);
+                      return;
+                    }
+                    void openCandidate(candidate);
+                  }}
                 />
               ))}
             </View>

@@ -1,104 +1,234 @@
 /**
- * Takes back the throwaways a crash left behind.
- *
- * Every throwaway is deleted in a `finally` (`doorThrowaway.ts`), but a tab
- * closed mid-connect, a killed renderer or a lost network leaves the row on
- * the account — and Zerops refuses to remove a member who still holds tokens
- * (measured 2026-09-15), so the rows are not harmless: enough of them and a
- * leaver cannot be taken off the org.
- *
- * So the app sweeps at start-up, once a day per account on a browser
- * (`throwawaySweepDue`), over the person's own `mate-door:*` and
- * `gitea-signin:*` tokens older than five minutes. Anything younger is left alone: five minutes is the window the door
- * itself allows, so another tab's live connect is never swept out from under
- * it, and nothing else on the token list is ours to touch.
- *
- * It runs beside `useZeropsGroupReach` for the same reason that one does: the
- * projects screen is where an account is read, and a repair nobody asked for
- * belongs where it costs nothing. Failures are swallowed — a token the account
- * may not delete, or a network that dropped, must not put an error on a screen
- * that is otherwise fine.
+ * One inventory-owned cleanup attempt for the account's persisted door debt. Outstanding mints
+ * wait past the door window; failed cleanup stays visible until an explicit again. An explicit
+ * cleanup also discovers legacy leftovers, without an unconditional token-list read on loads.
  */
-
 import {
   planThrowawaySweep,
-  throwawaySweepDue,
+  THROWAWAY_SWEEP_AGE_MS,
+  throwawayCleanupFailureState,
+  type ThrowawayCleanupFailure,
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
-import { useEffect, useRef } from "react";
+import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { readZeropsCell } from "./useZeropsDeployedVersion";
+import { readZeropsCell } from "./readZeropsCell";
+import { accountThrowawayDebt } from "./throwawayDebt";
 import { useZeropsData } from "./zeropsDataContext";
-
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
-/** When this browser last swept each account, by organization id. */
-const SWEPT_STORAGE_KEY = "zerops-mate.throwaway-swept.v1";
+/** Past the door's window, so the newest recorded mint is eligible for the sweep. */
+const PAST_THE_WINDOW_MS = 1_000;
 
-const readSwept = (): Record<string, number> => {
-  try {
-    const held: unknown = JSON.parse(localStorage.getItem(SWEPT_STORAGE_KEY) ?? "{}");
-    return typeof held === "object" && held !== null ? (held as Record<string, number>) : {};
-  } catch {
-    return {};
-  }
+type CleanupState = {
+  readonly state: "idle" | "waiting" | "running" | "done" | "failed" | "unknown";
+  readonly failure: string | null;
 };
+export interface ThrowawaySweepView extends CleanupState {
+  readonly again: () => void;
+}
 
-const rememberSwept = (clientId: string, atMs: number): void => {
-  try {
-    localStorage.setItem(SWEPT_STORAGE_KEY, JSON.stringify({ ...readSwept(), [clientId]: atMs }));
-  } catch {
-    // Storage blocked: the next open sweeps again, as before.
-  }
-};
+const IDLE: CleanupState = { state: "idle", failure: null };
 
 export function useZeropsThrowawaySweep(input: {
   readonly clientId: string | undefined;
   readonly enabled: boolean;
-}): void {
+}): ThrowawaySweepView {
   const { client } = useZeropsSession();
   const { organizationRef, runtime } = useZeropsData();
-  const swept = useRef<string | null>(null);
   const { clientId, enabled } = input;
+  const debt = accountThrowawayDebt(client);
+  // Mint and deletion can finish in the same millisecond: the outcome, not just its time,
+  // must wake the presentation and cancel any queued inventory cleanup.
+  const snapshot = () =>
+    clientId === undefined
+      ? ""
+      : JSON.stringify([
+          debt.failedAt(clientId),
+          debt.cleanupFailures(clientId),
+          debt.sweepFailed(clientId),
+        ]);
+  const cleanupSnapshot = useSyncExternalStore(debt.subscribe, snapshot, snapshot);
+  const [failedAt, failures, needsAgain] = useMemo(
+    () =>
+      JSON.parse(cleanupSnapshot || "[null,[],false]") as readonly [
+        number | null,
+        ReadonlyArray<ThrowawayCleanupFailure>,
+        boolean,
+      ],
+    [cleanupSnapshot],
+  );
+  const [ask, setAsk] = useState<{
+    readonly debt: typeof debt;
+    readonly clientId: string | undefined;
+    readonly n: number;
+  } | null>(null);
+  const asked = ask?.debt === debt && ask.clientId === clientId ? ask.n : 0;
+  const [view, setView] = useState({ debt, clientId, ...IDLE });
+  const scope = useRef<AbortController | null>(null);
+  const attempted = useRef<{
+    readonly debt: typeof debt;
+    readonly clientId: string;
+    readonly asked: number;
+    running: boolean;
+  } | null>(null);
+  const again = useCallback(() => {
+    const active = attempted.current;
+    if (active?.running && active.debt === debt && active.clientId === clientId) return;
+    setAsk((value) => ({
+      debt,
+      clientId,
+      n: value?.debt === debt && value.clientId === clientId ? value.n + 1 : 1,
+    }));
+  }, [clientId, debt]);
+
+  // A new mint updates the queue without aborting a cleanup already in flight. An organization
+  // or account change does abort it, before its next delete or any settlement of the old debt.
+  useEffect(() => {
+    const controller = new AbortController();
+    scope.current = controller;
+    return () => controller.abort();
+  }, [clientId, debt]);
 
   useEffect(() => {
-    if (!enabled || clientId === undefined) return;
-    if (swept.current === clientId) return;
-    swept.current = clientId;
-    const lastSwept = readSwept()[clientId];
-    if (!throwawaySweepDue(typeof lastSwept === "number" ? lastSwept : null, Date.now())) return;
-
-    const controller = new AbortController();
-    void (async () => {
+    const controller = scope.current;
+    if (!enabled || clientId === undefined || controller === null || controller.signal.aborted)
+      return;
+    const previous = attempted.current;
+    const alreadyAttempted =
+      previous?.debt === debt && previous.clientId === clientId && previous.asked === asked;
+    if (alreadyAttempted && previous.running) return;
+    const explicit = asked > 0 && !alreadyAttempted;
+    if (failedAt === null && !explicit) return;
+    const publish = (next: CleanupState) => {
+      if (!controller.signal.aborted) setView({ debt, clientId, ...next });
+    };
+    const publishOutstandingFailure = () => {
+      const failure = debt.cleanupFailures(clientId)[0];
+      publish({
+        state: failure?.state ?? "failed",
+        failure: failure?.reason ?? "Sign-in cleanup failed. Delete again.",
+      });
+    };
+    if (!explicit && needsAgain) {
+      const failure = failures[0];
+      if (failure === undefined && alreadyAttempted) return;
+      publish({
+        state: failure?.state ?? "failed",
+        failure: failure?.reason ?? "Sign-in cleanup failed. Delete again.",
+      });
+      return;
+    }
+    if (alreadyAttempted) return;
+    const sweep = async () => {
+      const attempt = { debt, clientId, asked, running: true };
+      attempted.current = attempt;
+      publish({ state: "running", failure: null });
+      // Capture the eligible debt before the list read: a mint arriving meanwhile stays owed.
+      const upToMs = Math.min(
+        debt.failedAt(clientId) ?? Date.now(),
+        Date.now() - THROWAWAY_SWEEP_AGE_MS - 1,
+      );
       try {
-        // The account's one token list, shared with every reader of it (the account's cells).
+        const targets = explicit ? failures : [];
+        if (targets.length > 0 && targets.every((target) => target.tokenId !== undefined)) {
+          for (const target of targets) {
+            if (controller.signal.aborted || target.tokenId === undefined) return;
+            try {
+              await client.deleteIntegrationToken(
+                { clientId, tokenId: target.tokenId },
+                controller.signal,
+              );
+            } catch (cause) {
+              if (controller.signal.aborted) return;
+              if (!(cause instanceof ZeropsApiError && cause.kind === "not-found")) {
+                const state = throwawayCleanupFailureState(cause);
+                const failure =
+                  cause instanceof Error ? cause.message : "Zerops did not confirm cleanup.";
+                debt.failCleanup(clientId, Date.now(), { ...target, state, reason: failure });
+                publish({ state, failure });
+                return;
+              }
+            }
+            if (controller.signal.aborted) return;
+            debt.finish(clientId, target.attempt);
+          }
+          const outstanding = debt.cleanupFailures(clientId)[0];
+          publish(
+            outstanding === undefined
+              ? { state: "done", failure: null }
+              : {
+                  state: outstanding.state,
+                  failure: outstanding.reason,
+                },
+          );
+          return;
+        }
         const request = {
           kind: "tokens",
           account: runtime.scope,
           organization: organizationRef(clientId),
         } as const;
-        const tokens = await readZeropsCell(runtime.cells, request, controller.signal);
+        const tokens = await readZeropsCell(runtime.cells, request, controller.signal, explicit);
+        if (controller.signal.aborted) return;
         const stale = planThrowawaySweep({
-          tokens: tokens.map((token) => ({
-            id: token.tokenId,
-            name: token.name,
-            ...(token.created === undefined ? {} : { created: token.created }),
-          })),
+          tokens: tokens
+            .filter(
+              (token) =>
+                token.createdByUser === undefined || token.createdByUser === client.session?.userId,
+            )
+            .map((token) => ({
+              id: token.tokenId,
+              name: token.name,
+              ...(token.created === undefined ? {} : { created: token.created }),
+            })),
           nowEpochMs: Date.now(),
         });
-        // Each delete makes the shared list read again (the client tells the store of it).
         for (const tokenId of stale) {
           if (controller.signal.aborted) return;
+          if (!explicit && debt.sweepFailed(clientId)) {
+            publishOutstandingFailure();
+            return;
+          }
           await client.deleteIntegrationToken({ clientId, tokenId }, controller.signal);
         }
-        rememberSwept(clientId, Date.now());
-      } catch {
-        // Housekeeping: the next sign-in tries again.
-        swept.current = null;
+        if (controller.signal.aborted) return;
+        if (!explicit && debt.sweepFailed(clientId)) {
+          publishOutstandingFailure();
+          return;
+        }
+        debt.settle(clientId, upToMs);
+        publish({ state: "done", failure: null });
+      } catch (cause) {
+        // Explicit legacy discovery can fail without an existing debt: own its next cleanup too.
+        if (controller.signal.aborted) return;
+        debt.failSweep(clientId, upToMs);
+        publish({
+          state: "failed",
+          failure: cause instanceof Error ? cause.message : "Zerops did not confirm cleanup.",
+        });
+      } finally {
+        attempt.running = false;
       }
-    })();
-
-    return () => {
-      controller.abort();
     };
-  }, [client, clientId, enabled, organizationRef, runtime]);
+    const wait = explicit
+      ? 0
+      : Math.max(0, failedAt! + THROWAWAY_SWEEP_AGE_MS + PAST_THE_WINDOW_MS - Date.now());
+    if (wait > 0) publish({ state: "waiting", failure: null });
+    const timer = setTimeout(() => void sweep(), wait);
+    return () => clearTimeout(timer);
+  }, [
+    asked,
+    client,
+    clientId,
+    debt,
+    enabled,
+    failedAt,
+    failures,
+    needsAgain,
+    organizationRef,
+    runtime,
+  ]);
+
+  return { ...(view.debt === debt && view.clientId === clientId ? view : IDLE), again };
 }

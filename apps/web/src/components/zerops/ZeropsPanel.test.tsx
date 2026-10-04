@@ -104,7 +104,7 @@ const mateState = vi.hoisted(() => ({
       serviceId?: string;
     }
   >(),
-  faces: new Map<string, { face: string }>(),
+  faces: new Map<string, { face: string; remembered?: true }>(),
 }));
 
 vi.mock("../../zerops/useZeropsMates", () => ({
@@ -539,11 +539,27 @@ describe("ZeropsPanel — the Mate's home", () => {
       connected: false,
       serviceId: "svc-zcp",
     });
-    mateState.faces.set(THREAD_REF.environmentId, { face: "working" });
+    // What it said last, at rest: no socket stands, and HQ holds no live link of it.
+    mateState.faces.set(THREAD_REF.environmentId, { face: "working", remembered: true });
     const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
 
     expect(html).toContain('data-mate-face-state="sleep"');
     expect(html).toContain(">Fen</span>");
+  });
+
+  it("wears the face HQ's live word gives it, its socket not up yet", () => {
+    feedState.topology = resolved(VIEW_WITH_ZCP);
+    mateState.mates.set(THREAD_REF.environmentId, {
+      name: "Fen",
+      tint: "coral",
+      project: "Acme",
+      connected: false,
+      serviceId: "svc-zcp",
+    });
+    mateState.faces.set(THREAD_REF.environmentId, { face: "working" });
+    const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
+
+    expect(html).toContain('data-mate-face-state="working"');
   });
 });
 

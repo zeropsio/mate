@@ -16,11 +16,11 @@ import { isThrowawayName } from "../authorization/zeropsThrowaway.ts";
 import {
   buildZeropsContainerUrl,
   isZcpService,
+  mateContainerOf,
+  severalMatesLine,
   zeropsRegionFromPublicZone,
 } from "./containerAddress.ts";
 import { withMateProjectRole } from "./mateAccess.ts";
-import { buildGiteaImportYaml } from "./giteaRecipe.ts";
-import { projectTagWriteBody } from "./groupRegistry.ts";
 import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
 import {
   pickProjectCreation,
@@ -29,13 +29,12 @@ import {
   type ZeropsProjectCreation,
 } from "./projectCreation.ts";
 import {
-  buildGroupGrants,
   findHeldMateKey,
   makeTokenWriteLock,
   mateAdminKeys,
   MATE_SELF_PROJECT_ROLE,
   newestMateKey,
-  planGroupReach,
+  planMateKey,
   type TokenWriteHold,
 } from "./groupReach.ts";
 import type {
@@ -44,21 +43,7 @@ import type {
   ZeropsProjectRole,
   ZeropsTokenDelegation,
 } from "./groupReach.ts";
-import { brokerReachesEveryProject, withBrokerProjectGrant } from "./groupEnvironments.ts";
-import {
-  withZeropsGroupTags,
-  withZeropsMateAtBirth,
-  type ZeropsEnvironmentRole,
-  type ZeropsMateFace,
-} from "./groups.ts";
-import {
-  formatToolTag,
-  GITEA_BROKER_TOKEN_NAME,
-  planGiteaProjectSetup,
-  readZeropsToolKind,
-  type ZeropsGiteaSetupAction,
-  type ZeropsToolKind,
-} from "./tools.ts";
+import type { HqPlacement } from "./hq/placement.ts";
 import { agentsFromOAuthFlags } from "./agentSelection.ts";
 import {
   buildCreateProjectBody,
@@ -86,6 +71,8 @@ const PUBLIC_API_PREFIX = "/api/rest/public";
 
 /** A throwaway delete's own deadline; it never runs on a caller's signal. */
 export const THROWAWAY_DELETE_TIMEOUT_MS = 15_000;
+/** How long an app version's archive may take to upload. */
+const APP_VERSION_UPLOAD_TIMEOUT_MS = 120_000;
 
 export interface ZeropsClientMembership {
   readonly id: string;
@@ -182,31 +169,54 @@ export interface ZeropsProject {
    * and `GET /project/{id}` — return it.
    */
   readonly tagList?: ReadonlyArray<string>;
+  /**
+   * Where the organization's HQ places this project (ADR 0002): its application, its kind, its
+   * Mate's face. Not a platform field: the client joins it from HQ's structure where
+   * projects enter the screen (`placeProjects`), and it is absent while that structure is unknown
+   * or places no such project.
+   */
+  readonly hq?: HqPlacement;
+  readonly hqTool?: "gitea";
   /** Round-tripped by every project write, which must not blank it. */
   readonly description?: string;
   /**
-   * Round-tripped by every tag write (`writeProjectTags`). `PUT
+   * Round-tripped by every record write (`writeProject`). `PUT
    * /project/{id}` replaces the record, so a tag write that omitted these two
-   * would quietly take a shared IPv4 away or reset somebody's credit limit —
-   * on any project, the Gitea project the whole account depends on among
-   * them.
+   * would quietly take a shared IPv4 away or reset somebody's credit limit on
+   * any project.
    */
   readonly publicIpV4Shared?: boolean;
   readonly maxCreditLimit?: number | null;
 }
 
-function isCompleteCommandProject(value: unknown): value is ZeropsProject {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    typeof value.id === "string" &&
-    value.id.trim().length > 0 &&
-    "name" in value &&
-    typeof value.name === "string" &&
-    "status" in value &&
-    typeof value.status === "string"
-  );
+/**
+ * The body of `PUT /project/{id}` that writes a project's name and tags.
+ *
+ * Five fields, and `userRoles` is not among them. The platform replaces the
+ * record, and `userRoles` is an object on the wire whose omission means "leave
+ * the roles alone" and whose inclusion would rewrite who can reach the
+ * project. A name or a tag write has no business doing that.
+ */
+function projectWriteBody(input: {
+  readonly name: string;
+  readonly description?: string | undefined;
+  readonly tagList: ReadonlyArray<string>;
+  readonly publicIpV4Shared?: boolean | undefined;
+  readonly maxCreditLimit?: number | null | undefined;
+}): {
+  readonly name: string;
+  readonly description: string;
+  readonly tagList: ReadonlyArray<string>;
+  readonly publicIpV4Shared: boolean;
+  readonly maxCreditLimit: number | null;
+} {
+  return {
+    name: input.name,
+    description: input.description ?? "",
+    tagList: input.tagList.includes("mate") ? ["mate"] : [],
+    publicIpV4Shared: input.publicIpV4Shared ?? false,
+    maxCreditLimit: input.maxCreditLimit ?? null,
+  };
 }
 
 /**
@@ -385,14 +395,6 @@ function isManagedService(service: ZeropsService): boolean {
   return category !== undefined && category !== "USER";
 }
 
-/** A tool project the reconcile has to have by now (`createToolProject`). */
-function requireToolProject(project: ZeropsProject | undefined): ZeropsProject {
-  if (project === undefined) {
-    throw new Error("The tool project has not been created yet.");
-  }
-  return project;
-}
-
 /** One record from `GET /service-stack/{id}/env`. */
 export interface ZeropsServiceEnvVar {
   readonly id: string;
@@ -453,38 +455,6 @@ export type ZeropsApiErrorKind =
   | "invalid-input"
   | "server"
   | "unexpected";
-
-/**
- * The tags a project is created with when Mate makes it: its group, its role
- * in that group, the group's name, then the Mate as *New Mate* makes one
- * (`withZeropsMateAtBirth`): the `mate` marker, the agent's own name, the face
- * its person picked, who made it and who asked for its development to be stood up.
- *
- * A project made from the wizard **is** a group with one dev environment in
- * it — that is what a project is (`spec-mate.md` §10). Creating it ungrouped
- * left an environment nothing could ever be added to: "Add stage" and "Add
- * production" render for a group, and a loose project is not one.
- */
-function taggedProjectAtBirth(input: {
-  readonly group?: {
-    readonly groupId: string;
-    readonly role?: ZeropsEnvironmentRole;
-    readonly label?: string;
-  };
-  readonly botName?: string;
-  readonly face?: ZeropsMateFace;
-  readonly standUpBy?: string;
-  readonly madeBy?: string;
-}): ReadonlyArray<string> {
-  const membership = input.group
-    ? withZeropsGroupTags([], {
-        groupId: input.group.groupId,
-        ...(input.group.role ? { role: input.group.role } : {}),
-        ...(input.group.label ? { label: input.group.label } : {}),
-      })
-    : [];
-  return withZeropsMateAtBirth(membership, { ...input, role: input.group?.role });
-}
 
 export class ZeropsApiError extends Error {
   readonly kind: ZeropsApiErrorKind;
@@ -718,6 +688,8 @@ interface RequestOptions {
    * writes a project.
    */
   readonly mayHaveWritten?: boolean;
+  /** The answer carries no JSON (an upload's empty body): it is not read. */
+  readonly ignoreAnswer?: boolean;
 }
 
 /**
@@ -811,7 +783,7 @@ async function readProjectPages<T extends { readonly id: string }>(
 
 /**
  * A Mate's key is named as the platform named the one it used to mint with the container,
- * `zcp-<project>`: `findMateIntegrationToken` finds either by that and its grant.
+ * `zcp-<project>`: `findHeldMateKey` finds either by that and its grant.
  */
 function mateKeyName(projectName: string): string {
   return `zcp-${projectName}`;
@@ -821,6 +793,62 @@ function mateKeyName(projectName: string): string {
  * Owns request serialization so N parallel 401s cause exactly one refresh, and
  * so the caller never has to think about the Authorization header.
  */
+/** A routing of a project's own domains (`GET /project/{id}/public-http-routing`). */
+export interface ZeropsPublicHttpRouting {
+  readonly id: string;
+  /** Whether it is in place as it reads, or waits for the project's routings to be synced. */
+  readonly isSynced: boolean;
+  readonly domains: ReadonlyArray<{
+    readonly domainName: string;
+    /** The certificate's state: `ACTIVE` once the domain serves over HTTPS. */
+    readonly sslStatus: string | undefined;
+    /** Why the certificate could not be installed, where the platform says. */
+    readonly sslError: string | undefined;
+  }>;
+}
+
+const textOf = (value: unknown): string | undefined =>
+  typeof value === "string" && value.length > 0 ? value : undefined;
+
+export function publicHttpRoutingsOf(
+  items: ReadonlyArray<unknown>,
+): ReadonlyArray<ZeropsPublicHttpRouting> {
+  return items.flatMap((item): ReadonlyArray<ZeropsPublicHttpRouting> => {
+    if (typeof item !== "object" || item === null) return [];
+    const { id, isSynced, domains } = item as {
+      readonly id?: unknown;
+      readonly isSynced?: unknown;
+      readonly domains?: unknown;
+    };
+    const routingId = textOf(id);
+    if (routingId === undefined) return [];
+    return [
+      {
+        id: routingId,
+        isSynced: isSynced === true,
+        domains: (Array.isArray(domains) ? domains : []).flatMap((domain: unknown) => {
+          if (typeof domain !== "object" || domain === null) return [];
+          const { domainName, sslStatus, sslCertificateInstallationError } = domain as {
+            readonly domainName?: unknown;
+            readonly sslStatus?: unknown;
+            readonly sslCertificateInstallationError?: unknown;
+          };
+          const name = textOf(domainName);
+          return name === undefined
+            ? []
+            : [
+                {
+                  domainName: name,
+                  sslStatus: textOf(sslStatus),
+                  sslError: textOf(sslCertificateInstallationError),
+                },
+              ];
+        }),
+      },
+    ];
+  });
+}
+
 export class ZeropsApiClient {
   /** Asked before every project write; none admits every write. */
   #writeAdmission: WriteAdmission | null = null;
@@ -1094,6 +1122,24 @@ export class ZeropsApiClient {
   } | null = null;
 
   /**
+   * The organizations whose direct project list refused this account, each with the account epoch
+   * it refused in. Zerops answers `GET /client/{id}/project` with 403 for a Developer or Guest
+   * membership, whose access is per project, and that is its final answer for the person: their
+   * lists read `/project/search` from then on, the read the platform applies their roles to.
+   */
+  readonly #projectListRefusals = new Map<string, number>();
+
+  /** Whether `clientId`'s direct project list refused this account in this epoch. */
+  projectListRefused(clientId: string): boolean {
+    return this.#projectListRefusals.get(clientId) === this.#generation;
+  }
+
+  /** Keeps `clientId`'s direct project list refused for the rest of this account epoch. */
+  noteProjectListRefused(clientId: string): void {
+    this.#projectListRefusals.set(clientId, this.#generation);
+  }
+
+  /**
    * `GET /client/{id}/project` — the direct read. It is lag-free: a project is
    * visible here before its create call has even returned, while the
    * Elasticsearch-backed `POST /project/search` trails it. Anything just
@@ -1138,18 +1184,23 @@ export class ZeropsApiClient {
   /**
    * `listAccessibleClientProjects`, saying which read answered. `direct` is the
    * lag-free client read, whose rows carry each project's `userRoles` exactly as
-   * `GET /project/{id}` does (measured 2026-10-01, 6 of 6 projects equal); the
-   * search fallback's rows do not, so a caller judging access from a row trusts
-   * only a direct one.
+   * `GET /project/{id}` does (measured 2026-10-01, 6 of 6 projects equal). The
+   * search fallback's rows carry only the searcher's own grants (measured
+   * 2026-10-03 as the KRLS Developer: Cyd's row named their `OWNER` alone, its
+   * own read the Mate key's `BASIC_USER` beside it), so a caller judging access
+   * or anyone's grant from a row trusts only a direct one.
    */
   async readAccessibleClientProjects(
     clientId: string,
     options: ListProjectsOptions = {},
   ): Promise<{ readonly projects: ReadonlyArray<ZeropsProject>; readonly direct: boolean }> {
-    try {
-      return { projects: await this.listClientProjects(clientId, options), direct: true };
-    } catch (cause) {
-      if (!(cause instanceof ZeropsApiError) || cause.kind !== "forbidden") throw cause;
+    if (!this.projectListRefused(clientId)) {
+      try {
+        return { projects: await this.listClientProjects(clientId, options), direct: true };
+      } catch (cause) {
+        if (!(cause instanceof ZeropsApiError) || cause.kind !== "forbidden") throw cause;
+        this.noteProjectListRefused(clientId);
+      }
     }
 
     const limit = options.limit ?? 500;
@@ -1178,17 +1229,17 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `PUT /project/{id}` with `tagList` — the one call that writes a project's
-   * tags, and only the TagWriter makes it (`data/tagWriter.ts`), with a list
-   * it just applied a patch to.
+   * `PUT /project/{id}` with `name` and `tagList` — the one call that writes a
+   * project's name and tags, and only the TagWriter makes it
+   * (`data/tagWriter.ts`), with a record it just read and changed.
    *
-   * `project` is the read that list came from: the platform replaces the
+   * `project` is the read the record came from: the platform replaces the
    * record, so the fields the write must not change are round-tripped from it
-   * (`projectTagWriteBody`), and `userRoles` is never sent.
+   * (`projectWriteBody`), and `userRoles` is never sent.
    */
-  async writeProjectTags(
+  async writeProject(
     project: ZeropsProject,
-    tagList: ReadonlyArray<string>,
+    record: { readonly name: string; readonly tagList: ReadonlyArray<string> },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<ZeropsProject> {
@@ -1198,10 +1249,10 @@ export class ZeropsApiClient {
         method: "PUT",
         signal: signal ?? null,
         body: JSON.stringify(
-          projectTagWriteBody({
-            name: project.name,
+          projectWriteBody({
+            name: record.name,
             description: project.description,
-            tagList,
+            tagList: record.tagList,
             publicIpV4Shared: project.publicIpV4Shared,
             maxCreditLimit: project.maxCreditLimit,
           }),
@@ -1223,37 +1274,47 @@ export class ZeropsApiClient {
    * are, which for a plain member is `READ_ONLY` — they see the Mate and never
    * open it.
    *
-   * **The one write in this client that carries `userRoles`.** Every other
-   * project write sends `name`, `description` and `tagList` and must not name
-   * roles at all; `PUT /project/{id}` replaces whatever it is sent, so a tag
-   * write that carried a stale `userRoles` would silently rewrite who may open
-   * the Mate. This one sends the whole list with one entry changed, for the
-   * same reason in reverse.
+   * It is written on the person, `PUT /client-user/{id}/roles`, never on the
+   * project: `PUT /project/{id}` with `userRoles` replaces the project's whole
+   * list, refuses to name an integration token (`400 userNotFound`), and a
+   * list of people only drops the Mate key's own grant (measured 2026-10-03,
+   * `f7-handover-probe.json`). The person's list is read and sent back whole
+   * with this project's role set — or, `null`, without it: what a hand over
+   * takes from the Mate's previous owner (F23) — so their other projects keep
+   * theirs. What it answers is the project as the platform holds it after the
+   * write.
    */
   async setProjectMemberRole(
     input: {
       readonly projectId: string;
       /** The `clientUser` id — what a project's `userRoles` names. */
       readonly clientUserId: string;
-      readonly roleCode: ZeropsProjectRole;
+      readonly roleCode: ZeropsProjectRole | null;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
   ): Promise<ZeropsProject> {
     const generation = this.#generation;
     this.#assertGeneration(generation);
-    const project = await this.fetchProject(input.projectId, signal);
+    const roles = `/client-user/${input.clientUserId}/roles`;
+    const held = await this.#request<{
+      readonly projectRoleList?: ReadonlyArray<{
+        readonly projectId: string;
+        readonly roleCode: string;
+      }>;
+    }>(roles, { signal: signal ?? null }, { operationKind: "read" });
     this.#assertGeneration(generation);
-    return this.#request<ZeropsProject>(
-      `/project/${input.projectId}`,
+    await this.#request(
+      roles,
       {
         method: "PUT",
         signal: signal ?? null,
         body: JSON.stringify({
-          name: project.name,
-          description: project.description ?? "",
-          tagList: project.tagList ?? [],
-          userRoles: withMateProjectRole(project.userRoles, input.clientUserId, input.roleCode),
+          projectRoleList: withMateProjectRole(
+            held.projectRoleList,
+            input.projectId,
+            input.roleCode,
+          ),
         }),
       },
       {
@@ -1261,6 +1322,8 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
+    this.#assertGeneration(generation);
+    return this.fetchProject(input.projectId, signal);
   }
 
   /**
@@ -1297,241 +1360,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Stands up the account's Gitea and the broker beside it — as a **reconcile**
-   * rather than a script.
-   *
-   * It runs in the background right after sign-up, on the new owner's session,
-   * and takes about three minutes. A tab closes, a call fails, a laptop
-   * sleeps; the next time an owner opens the app this has to pick up exactly
-   * where it stopped. `planGiteaProjectSetup` decides what is still missing
-   * from what exists — the project, the broker's token by name, the services —
-   * and an account whose Gitea is up plans nothing at all.
-   *
-   * Order is fixed by two facts. The region is only knowable once the project
-   * exists (`publicZone`), and the import needs it to write a `GITEA_DOMAIN`
-   * that resolves. And the broker's token has to grant `BASIC_USER` on this
-   * project, which likewise does not exist until it does.
-   *
-   * No `zcp` container: a tool is not an environment and has no agent.
-   */
-  async createToolProject(
-    input: {
-      readonly clientId: string;
-      readonly kind: ZeropsToolKind;
-      readonly name: string;
-      readonly location?: string;
-      /** Where the consent page of Gitea's own sign-in lives: this shell's origin. */
-      readonly appUrl: string;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly project: ZeropsProject }> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-
-    const existing = (await this.listAccessibleClientProjects(input.clientId)).find(
-      (candidate) => readZeropsToolKind(candidate.tagList) === input.kind,
-    );
-    this.#assertGeneration(generation);
-    const [services, tokens] = await Promise.all([
-      existing === undefined
-        ? Promise.resolve<ReadonlyArray<ZeropsService>>([])
-        : this.listProjectServices(existing.id, signal),
-      this.listIntegrationTokens(input.clientId, signal),
-    ]);
-    this.#assertGeneration(generation);
-
-    const actions = planGiteaProjectSetup({
-      ...(existing === undefined ? { project: undefined } : { project: { id: existing.id } }),
-      services: services.filter((service) => service.isSystem !== true),
-      tokenNames: tokens.map((token) => token.name),
-    });
-    let project = existing;
-    if (actions.length === 0) {
-      if (project === undefined) throw new Error("A finished setup must have a project.");
-      return { project };
-    }
-
-    try {
-      project = await this.#runGiteaSetup({
-        actions,
-        // A creation that fails afterwards still made a project, and the
-        // caller has to be told which one rather than left to find it.
-        onProject: (created) => {
-          project = created;
-        },
-        clientId: input.clientId,
-        kind: input.kind,
-        name: input.name,
-        ...(input.location === undefined ? {} : { location: input.location }),
-        appUrl: input.appUrl,
-        tokens,
-        project,
-        signal,
-        ...(beforeWrite === undefined ? {} : { beforeWrite }),
-      });
-    } catch (cause) {
-      // Resumable, not lost: the next run reads what exists and plans the
-      // rest. But the caller has to hear that it is not finished.
-      if (project === undefined) throw cause;
-      throw new ZeropsApiError(
-        `Project "${project.name}" exists, but its tool setup could not be confirmed. Open that project and check its services before continuing.`,
-        "uncertain",
-      );
-    }
-
-    return { project: requireToolProject(project) };
-  }
-
-  async #runGiteaSetup(input: {
-    readonly actions: ReadonlyArray<ZeropsGiteaSetupAction>;
-    readonly onProject: (project: ZeropsProject) => void;
-    readonly clientId: string;
-    readonly kind: ZeropsToolKind;
-    readonly name: string;
-    readonly location?: string;
-    readonly appUrl: string;
-    readonly tokens: ReadonlyArray<ZeropsIntegrationToken>;
-    readonly project: ZeropsProject | undefined;
-    readonly signal?: AbortSignal | undefined;
-    readonly beforeWrite?: () => Promise<void>;
-  }): Promise<ZeropsProject> {
-    const generation = this.#generation;
-    const { signal, beforeWrite, tokens } = input;
-    let project = input.project;
-    let brokerToken: string | undefined;
-
-    for (const action of input.actions) {
-      this.#assertGeneration(generation);
-      switch (action) {
-        case "create-project": {
-          const response = await this.#request<unknown>(
-            `/client/${input.clientId}/project`,
-            {
-              method: "POST",
-              signal: signal ?? null,
-              body: JSON.stringify(
-                buildCreateProjectBody({
-                  clientId: input.clientId,
-                  name: input.name,
-                  ...(input.location ? { location: input.location } : {}),
-                  tagList: [formatToolTag(input.kind)],
-                }),
-              ),
-            },
-            {
-              operationKind: "project-write",
-              ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-            },
-          );
-          if (!isCompleteCommandProject(response)) {
-            throw new ZeropsApiError(
-              "Zerops may have created the tool project, but its response was incomplete. Check your projects before trying again.",
-              "uncertain",
-            );
-          }
-          project = response;
-          input.onProject(response);
-          break;
-        }
-        case "mint-broker-token":
-        case "regenerate-broker-token": {
-          // No token before the project it serves exists.
-          requireToolProject(project);
-          const current = tokens.find((token) => token.name === GITEA_BROKER_TOKEN_NAME);
-          brokerToken =
-            action === "regenerate-broker-token" && current !== undefined
-              ? await this.regenerateIntegrationToken(
-                  { clientId: input.clientId, tokenId: current.id },
-                  signal,
-                  beforeWrite,
-                )
-              : (
-                  await this.mintIntegrationToken(
-                    {
-                      clientId: input.clientId,
-                      name: GITEA_BROKER_TOKEN_NAME,
-                      // Org `BASIC_USER` reaches every project of the org,
-                      // this one included, so no project needs a grant of its
-                      // own: a per-project grant is an edit of this token, and
-                      // only its creator or an org OWNER may make one.
-                      roleCode: "BASIC_USER",
-                      projects: [],
-                    },
-                    signal,
-                    beforeWrite,
-                  )
-                ).token;
-          break;
-        }
-        case "grant-broker-token": {
-          // A regenerate replaces a value and nothing else. A broker token at
-          // org `BASIC_USER` already reaches this project; an older one at org
-          // `READ_ONLY` reaches every group environment and not this project,
-          // and without this grant the broker reads the project on its org
-          // role and every write into it is refused: no runner is imported and
-          // a job queues for ever (measured 2026-09-20).
-          const target = requireToolProject(project);
-          const listed = (await this.listIntegrationTokens(input.clientId, signal)).find(
-            (token) => token.name === GITEA_BROKER_TOKEN_NAME,
-          );
-          // Nothing to re-grant: the mint above made a fresh org `BASIC_USER` token.
-          if (listed === undefined || brokerReachesEveryProject(listed)) break;
-          // The write replaces the broker's whole project list: it is planned from the token as
-          // read under its lock, not as the setup read it before the create and the regenerate.
-          await this.#holdToken(listed.id, async () => {
-            const broker = (await this.listIntegrationTokens(input.clientId, signal)).find(
-              (token) => token.id === listed.id,
-            );
-            if (broker === undefined || brokerReachesEveryProject(broker)) return;
-            const write = withBrokerProjectGrant(broker.projects, target.id);
-            if (!write.ok) throw new ZeropsApiError(write.reason, "uncertain");
-            // The same array back means the broker already reaches the project.
-            if (write.grants === broker.projects) return;
-            await this.setIntegrationTokenProjects(
-              {
-                clientId: input.clientId,
-                tokenId: broker.id,
-                name: GITEA_BROKER_TOKEN_NAME,
-                projects: write.grants,
-                roleCode: broker.roleCode ?? "READ_ONLY",
-              },
-              signal,
-              beforeWrite,
-            );
-          });
-          break;
-        }
-        case "import-services": {
-          const target = requireToolProject(project);
-          const region = target.publicZone ? zeropsRegionFromPublicZone(target.publicZone) : null;
-          if (region === null || brokerToken === undefined) {
-            throw new ZeropsApiError(
-              `Project "${target.name}" exists, but its tool setup could not be confirmed. Open that project and check its services before continuing.`,
-              "uncertain",
-            );
-          }
-          await this.importServicesIntoProject(
-            target.id,
-            buildGiteaImportYaml({
-              region,
-              appUrl: input.appUrl,
-              clientId: input.clientId,
-              projectId: target.id,
-              brokerToken,
-            }),
-            signal,
-            beforeWrite,
-          );
-          break;
-        }
-      }
-    }
-
-    return requireToolProject(project);
-  }
-
-  /**
    * `POST /client/{id}/integration-token` — mints a token and returns its
    * value, which the platform shows exactly once.
    *
@@ -1563,12 +1391,12 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Mints a throwaway — `NO_ACCESS`, no projects, no flags — for one door or
-   * one Gitea sign-in (`authorization/zeropsThrowaway.ts`).
+   * Mints a throwaway — `NO_ACCESS`, no projects, no flags — for one door
+   * (`authorization/zeropsThrowaway.ts`).
    *
    * It carries no rights, so it is an `account-write` that a closed account
-   * window does not hold up (spec-mate C6): the door and the broker decide
-   * what it opens, with their own keys, when it is presented.
+   * window does not hold up (spec-mate C6): the door decides what it opens,
+   * with its own key, when it is presented.
    *
    * `beforeMint` is a wait of the caller's own — a rate budget — that the
    * mint queues behind. The wait belongs to the account epoch the mint was
@@ -1841,22 +1669,11 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Creates a project and imports the platform's development-container recipe
-   * into it — the "New project" path, and the same one an exhausted pool
-   * takes.
-   *
-   * The container's `VSCODE_PASSWORD` is generated here and leaves only inside
-   * the import request: it is deliberately absent from the return value, so no
-   * caller can put it on a screen, in a log or in storage.
-   */
-  /**
    * `POST /client/{clientId}/project` with an explicit tag list, and nothing
-   * else — no container.
-   *
-   * Separate from {@link createProjectWithZeropsMate} because a production
-   * environment is a project that deliberately has no agent
-   * (`createEnvironment.ts`), and because the caller owns the tags: the group
-   * name mirror is one of them, and this client must not decide it.
+   * else — no container: a Mate's comes after its project is attached to its
+   * application (`importDevelopmentContainer`), and a production environment
+   * is a project that deliberately has no agent (`createEnvironment.ts`). The
+   * caller owns the tags, and this client must not decide them.
    */
   async createProject(
     input: {
@@ -1877,7 +1694,7 @@ export class ZeropsApiClient {
           buildCreateProjectBody({
             clientId: input.clientId,
             name: input.name,
-            tagList: input.tagList,
+            tagList: input.tagList.includes("mate") ? ["mate"] : [],
             ...(input.location ? { location: input.location } : {}),
           }),
         ),
@@ -1928,8 +1745,8 @@ export class ZeropsApiClient {
     projectId: string,
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
+  ): Promise<{ readonly processId: string }> {
+    const response = await this.#request<{ readonly id?: unknown }>(
       `/project/${projectId}`,
       { method: "DELETE", signal: signal ?? null },
       {
@@ -1937,6 +1754,12 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
+    if (typeof response.id !== "string" || response.id.length === 0)
+      throw new ZeropsApiError(
+        "Zerops accepted the deletion but did not return its process, so it cannot be followed.",
+        "uncertain",
+      );
+    return { processId: response.id };
   }
 
   /**
@@ -1944,9 +1767,9 @@ export class ZeropsApiClient {
    * that carries the agent, imported into a project that already exists,
    * holding the Mate's own key.
    *
-   * The key is minted here, by the person, with the Mate's reach and nothing
-   * more (`buildGroupGrants`): `BASIC_USER` on its project, `READ_ONLY` on
-   * the group's other environments, no delegation. It goes into the container
+   * The key is minted here, by the person, with its own project and nothing
+   * more: `BASIC_USER` there, no grant on any other project (ADR 0003), no
+   * delegation. It goes into the container
    * as the secret `ZCP_API_KEY`, and the platform is asked for no token of
    * its own (`createIntegrationToken: false`). The platform's would be
    * `ADMIN`, a project variable every service can read, and a one-time
@@ -1955,10 +1778,12 @@ export class ZeropsApiClient {
    *
    * Every write is safe to make again, so a press tried again finishes what
    * the first one started:
-   * - a project that has its container already makes no write at all;
+   * - a project that has its container already makes no write at all, and one holding several zcp
+   *   services is refused, naming them: a project holds one Mate (audit D2);
    * - a key an earlier press minted, its container never imported, is reused
-   *   — its reach set again and its value regenerated, because the value is
-   *   shown once and nothing kept it — never a second key beside it.
+   *   — its own grant set again where it is not `BASIC_USER` (`planMateKey`),
+   *   and its value regenerated, because the value is shown once and nothing
+   *   kept it — never a second key beside it.
    *
    * The value lives in this call alone: it is in the import's body and in no
    * answer, no log and no error.
@@ -1969,8 +1794,6 @@ export class ZeropsApiClient {
       readonly projectId: string;
       /** The project's name: the key is `zcp-<name>`, as the platform names its own. */
       readonly projectName: string;
-      /** The group's environments, this one included: the key reads the others. */
-      readonly groupProjectIds?: ReadonlyArray<string>;
       readonly zcpVersion?: string;
       readonly agents?: ReadonlyArray<ZeropsAgentType>;
       /** The tier's runtimes, for zcp to import on boot (`MATE_SETUP_RUNTIMES`). */
@@ -1980,14 +1803,14 @@ export class ZeropsApiClient {
     beforeWrite?: () => Promise<void>,
   ): Promise<{ readonly serviceName: string; readonly imported: boolean }> {
     const services = await this.listProjectServices(input.projectId, signal);
-    const container = services.find(isZcpService);
-    if (container !== undefined) return { serviceName: container.name, imported: false };
+    const container = mateContainerOf(services);
+    if (container.kind === "several") throw new Error(severalMatesLine(container.names));
+    if (container.kind === "one") return { serviceName: container.service.name, imported: false };
 
     const generation = this.#generation;
-    const grants = buildGroupGrants({
-      selfProjectId: input.projectId,
-      groupProjectIds: input.groupProjectIds ?? [input.projectId],
-    });
+    const grants: ReadonlyArray<ZeropsProjectGrant> = [
+      { projectId: input.projectId, roleCode: MATE_SELF_PROJECT_ROLE },
+    ];
     const tokens = await this.listIntegrationTokens(input.clientId, signal);
     const earlier = newestMateKey(tokens, input.projectId);
     this.#assertGeneration(generation);
@@ -2031,18 +1854,14 @@ export class ZeropsApiClient {
         );
         if (current === undefined) return;
         this.#assertGeneration(generation);
-        const reach = planGroupReach({
-          token: current,
-          selfProjectId: input.projectId,
-          groupProjectIds: input.groupProjectIds ?? [input.projectId],
-        });
-        if (reach === undefined) return;
+        const lowered = planMateKey({ token: current, selfProjectId: input.projectId });
+        if (lowered === undefined) return;
         await this.setIntegrationTokenProjects(
           {
             clientId: input.clientId,
             tokenId: current.id,
             name: current.name,
-            projects: reach.projects,
+            projects: lowered.projects,
           },
           signal,
           beforeWrite,
@@ -2084,101 +1903,6 @@ export class ZeropsApiClient {
     return { serviceName, imported: true };
   }
 
-  async createProjectWithZeropsMate(
-    input: {
-      readonly clientId: string;
-      readonly name: string;
-      readonly location?: string;
-      readonly zcpVersion?: string;
-      readonly agents?: ReadonlyArray<ZeropsAgentType>;
-      /** The group this environment joins, and what it is for (`groups.ts`). */
-      readonly group?: {
-        readonly groupId: string;
-        readonly role?: ZeropsEnvironmentRole;
-        /** The group's display name, mirrored into `mate:name:`. */
-        readonly label?: string;
-      };
-      /** The agent's name, written at birth so its menu row is somebody. */
-      readonly botName?: string;
-      /** The face its person picked, written beside its name (`mate:face:`). */
-      readonly face?: ZeropsMateFace;
-      /** Who asks, by adding it, for the project's development to be stood up (`mate:standup:`). */
-      readonly standUpBy?: string;
-      /** Who makes it: whose sign-in it waits for until somebody signs it in (`mate:by:`). */
-      readonly madeBy?: string;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly project: ZeropsProject; readonly serviceName: string }> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-    const projectResponse = await this.#request<unknown>(
-      `/client/${input.clientId}/project`,
-      {
-        method: "POST",
-        signal: signal ?? null,
-        body: JSON.stringify(
-          buildCreateProjectBody({
-            clientId: input.clientId,
-            name: input.name,
-            ...(input.location ? { location: input.location } : {}),
-            // Born a Mate, in its project, with its name: the whole identity
-            // goes on before the container does, so a creation that fails
-            // halfway still leaves a project that says what it was meant to be.
-            tagList: taggedProjectAtBirth(input),
-          }),
-        ),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    if (!isCompleteCommandProject(projectResponse)) {
-      throw new ZeropsApiError(
-        "Zerops may have created the project, but its response was incomplete. Check your projects before trying again.",
-        "uncertain",
-      );
-    }
-    const project = projectResponse;
-
-    let serviceName: string;
-    try {
-      this.#assertGeneration(generation);
-      // **Deliberately not the caller's signal.** What that signal cancels is
-      // the creation, and by this line the creation has happened: the project
-      // is on the account, tagged a Mate, named after one. Abandon the
-      // container here and what is left is a Mate with no agent in it —
-      // `Lighthouse - Enzo`, 2026-09-20, whose process list holds
-      // `project.create` and then nothing at all until a person ran the
-      // recovery five minutes later. Its *Finish setup* is the same call.
-      //
-      // The session generation is the one check that still stops it, and it
-      // should: a signed-out client must send nothing.
-      ({ serviceName } = await this.importDevelopmentContainer(
-        {
-          clientId: input.clientId,
-          projectId: project.id,
-          projectName: project.name,
-          ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
-          ...(input.agents ? { agents: input.agents } : {}),
-        },
-        undefined,
-        beforeWrite,
-      ));
-    } catch (cause) {
-      // The guidance is the person's; the platform's own status, code and
-      // detail ride along, because a swallowed cause is why the half-made Mate
-      // went undiagnosed for a day.
-      const guidance = `Project "${project.name}" was created, but its container setup could not be confirmed. Open that project and check its services before continuing.`;
-      throw cause instanceof ZeropsApiError
-        ? new ZeropsApiError(guidance, "uncertain", cause.status, cause.code, cause.detail)
-        : new ZeropsApiError(guidance, "uncertain");
-    }
-
-    return { project, serviceName };
-  }
-
   /**
    * `POST /client/{id}/project/import` — creates a project **and** its
    * services from one whole-project document.
@@ -2187,9 +1911,9 @@ export class ZeropsApiClient {
    * then import-services: the platform's own preprocessor runs over the
    * document, so a recipe's `<@generateRandomString(<32>)>` arrives as a real
    * secret rather than the literal directive (measured 2026-09-06 — a probe
-   * import came back with `APP_KEY` set to 32 generated characters). It also
-   * honours the project block's `tags:`, so the group's membership is written
-   * at birth rather than in a second call that could fail on its own.
+   * import came back with `APP_KEY` set to 32 generated characters). Project
+   * tags contain only the Mate marker; HQ binds the accepted project id to
+   * its birth intent and owns its membership.
    *
    * `recipeProjectImportYaml` composes the document.
    */
@@ -2198,8 +1922,15 @@ export class ZeropsApiClient {
     yaml: string,
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly projectId: string }> {
-    return this.#request<{ readonly projectId: string }>(
+  ): Promise<{
+    readonly projectId: string;
+    readonly serviceStacks?: ReadonlyArray<{
+      readonly id: string;
+      readonly name: string;
+      readonly processes: ReadonlyArray<{ readonly id: string }>;
+    }>;
+  }> {
+    return this.#request(
       `/client/${clientId}/project/import`,
       { method: "POST", body: JSON.stringify({ yaml }), signal: signal ?? null },
       {
@@ -2237,17 +1968,40 @@ export class ZeropsApiClient {
    *
    * The bare `…/integration-token` GET answers 405; the listing is under
    * `/list` (measured 2026-09-06). `groupReach.ts` picks a Mate's own token
-   * out of this.
+   * out of this. The platform answers the whole list: `limit` and `offset`
+   * are ignored (measured 2026-10-03).
    */
   async listIntegrationTokens(
     clientId: string,
     signal?: AbortSignal,
   ): Promise<ReadonlyArray<ZeropsIntegrationToken>> {
     const body = await this.#request<{ readonly list?: ReadonlyArray<ZeropsIntegrationToken> }>(
-      `/client/${clientId}/integration-token/list?limit=100`,
+      `/client/${clientId}/integration-token/list`,
       { signal: signal ?? null },
     );
     return body.list ?? [];
+  }
+
+  /**
+   * `GET /client/{id}/integration-token/{tokenId}` — one token, with the project grants it
+   * carries, in the shape the list gives each (HQ and the Mate's door read a token this way): one
+   * small answer where the list is every token on the account, whole. `undefined` once the token
+   * is gone.
+   */
+  async readIntegrationToken(
+    clientId: string,
+    tokenId: string,
+    signal?: AbortSignal,
+  ): Promise<ZeropsIntegrationToken | undefined> {
+    try {
+      return await this.#request<ZeropsIntegrationToken>(
+        `/client/${clientId}/integration-token/${tokenId}`,
+        { signal: signal ?? null },
+      );
+    } catch (cause) {
+      if (cause instanceof ZeropsApiError && cause.kind === "not-found") return undefined;
+      throw cause;
+    }
   }
 
   /**
@@ -2258,7 +2012,7 @@ export class ZeropsApiClient {
    * gains or loses sight of a project immediately, with nothing written into
    * its environment and no restart (measured 2026-09-06: a read of a sibling
    * went 200 → 403 → 200 across two of these calls, on one unchanged token).
-   * That is what makes a Mate's group maintainable rather than seeded once.
+   * That is what lets a Mate's key be lowered where it runs.
    *
    * The whole body is sent because the platform replaces the record: omitting
    * a field is not "leave it alone", it is "set it to nothing".
@@ -2271,9 +2025,7 @@ export class ZeropsApiClient {
       readonly projects: ReadonlyArray<ZeropsProjectGrant>;
       /**
        * The token's own org role, round-tripped. `PUT` replaces the record, so
-       * omitting it would lower the token — which matters for exactly one token
-       * on the account: an older broker token is org `READ_ONLY` and would
-       * stop being able to read the org at all (`docs/vocabulary.md`).
+       * omitting it would change the token's org role.
        */
       readonly roleCode?: string | undefined;
     },
@@ -2304,6 +2056,46 @@ export class ZeropsApiClient {
       // Landed or not, it may have: every reader of the organization's tokens reads them again.
       this.#tokensWritten(input.clientId);
     }
+  }
+
+  /**
+   * HQ's append-only birth journal. The direct env file reflects writes before project search
+   * (verified.md, 2026-10-02); expose only this plain metadata, never unrelated env values.
+   */
+  async readProjectBirthEnv(projectId: string): Promise<ReadonlyMap<string, string>> {
+    const response = await this.#request<{ readonly envFile: string }>(
+      `/project/${projectId}/env-file`,
+      {},
+      { operationKind: "read" },
+    );
+    const entries = new Map<string, string>();
+    for (const line of response.envFile.split("\n")) {
+      const match = /^(MATE_HQ_BIRTH_[A-Za-z0-9_]+)="((?:[^"\\]|\\.)*)"$/u.exec(line);
+      if (match?.[1] === undefined || match[2] === undefined) continue;
+      const escapes: Readonly<Record<string, string>> = { n: "\n", r: "\r", t: "\t" };
+      entries.set(
+        match[1],
+        match[2].replace(/\\(.)/gu, (_, char: string) => escapes[char] ?? char),
+      );
+    }
+    return entries;
+  }
+
+  /**
+   * A create-once slot: project env keys are unique case-insensitively. Never update or delete
+   * a birth slot. The process id is retained by the journal; it is not an env entry id.
+   */
+  async createProjectEnv(
+    projectId: string,
+    key: string,
+    content: string,
+  ): Promise<{ readonly processId: string }> {
+    const response = await this.#request<{ readonly id: string }>(
+      `/project/${projectId}/env`,
+      { method: "POST", body: JSON.stringify({ key, content, sensitive: false }) },
+      { operationKind: "project-write" },
+    );
+    return { processId: response.id };
   }
 
   /**
@@ -2346,8 +2138,7 @@ export class ZeropsApiClient {
    * `GET /project/{id}/service-stack` — the project's own services.
    *
    * Answered under `list`, not the `items` the search endpoints use (measured
-   * 2026-09-18): reading only `items` made every project look empty, and the
-   * page could not find the broker to keep an environment's deploy token on.
+   * 2026-09-18): reading only `items` made every project look empty.
    */
   async listProjectServices(
     projectId: string,
@@ -2485,9 +2276,7 @@ export class ZeropsApiClient {
    * and the isolation half, together, for one Mate's own project.
    *
    * The token half lowers the Mate's own grant to `BASIC_USER` and leaves
-   * every other grant as it is: what the Mate reads of its group is the
-   * group-reach reconcile's (`planAccountGroupReach`), and a key the press
-   * minted already has it. Every delegation the token carries is then dropped: the one-time mint the platform grants at
+   * every other grant as it is (`planMateKey`); a key the press minted holds nothing else. Every delegation the token carries is then dropped: the one-time mint the platform grants at
    * creation, which nothing here needs (`groupReach.ts`, guide 0.4).
    *
    * Idempotent, and cheap to prove so: a token already at `BASIC_USER` with
@@ -2506,65 +2295,41 @@ export class ZeropsApiClient {
     projectId: string,
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
+    /**
+     * The id of the key the Mate's container holds, as the Mate named it to HQ: that key alone is
+     * hardened, and the organization's token list is neither read nor matched (audit K3).
+     */
+    keyTokenId?: string,
   ): Promise<{
     readonly tokenLowered: boolean;
+    /** Why a key of the Mate's could not be lowered — the platform refused this account the write. */
+    readonly keyNotLowered: string | null;
     readonly delegationsDropped: number;
     readonly isolationSteps: number;
     readonly restarted: boolean;
   }> {
     const generation = this.#generation;
-    // The key its container holds: where two are its, the one made before the container.
-    const container = (await this.listProjectServices(projectId, signal)).find(isZcpService);
-    const tokens = await this.listIntegrationTokens(clientId, signal);
-    const token = findHeldMateKey(tokens, projectId, container?.created);
-
     let tokenLowered = false;
+    let keyNotLowered: string | null = null;
     let delegationsDropped = 0;
 
-    // The key its container holds, and every other key of the Mate still ADMIN on its project —
-    // a raced press's, an older platform key — whichever the container holds.
-    const keys = [
-      ...new Set([
-        ...(token === undefined ? [] : [token.id]),
-        ...mateAdminKeys(tokens, projectId).map((key) => key.id),
-      ]),
-    ];
+    const keys =
+      keyTokenId === undefined ? await this.#mateKeys(clientId, projectId, signal) : [keyTokenId];
     for (const tokenId of keys) {
-      this.#assertGeneration(generation);
-      // The write replaces the token's whole project list: it is planned from the token as read
-      // under its lock. Only the Mate's own grant is lowered; what else it reads is its group's,
-      // kept as it is (`planAccountGroupReach` keeps it). A key already lowered is left alone.
-      const lowered = await this.#holdToken(tokenId, async () => {
-        const current = (await this.listIntegrationTokens(clientId, signal)).find(
-          (listed) => listed.id === tokenId,
-        );
-        if (current === undefined) return false;
-        this.#assertGeneration(generation);
-        const projects = (current.projects ?? []).map((grant): ZeropsProjectGrant =>
-          grant.projectId === projectId && grant.roleCode !== MATE_SELF_PROJECT_ROLE
-            ? { ...grant, roleCode: MATE_SELF_PROJECT_ROLE }
-            : grant,
-        );
-        if (!projects.some((grant, index) => grant !== current.projects?.[index])) return false;
-        await this.setIntegrationTokenProjects(
-          { clientId, tokenId: current.id, name: current.name, projects },
-          signal,
-          beforeWrite,
-        );
-        return true;
-      });
-      tokenLowered ||= lowered;
-
-      this.#assertGeneration(generation);
-      const delegations = await this.listIntegrationTokenDelegations({ clientId, tokenId }, signal);
-      for (const delegation of delegations) {
-        this.#assertGeneration(generation);
-        await this.deleteIntegrationTokenDelegation(
-          { clientId, tokenId, delegationId: delegation.id },
-          signal,
-          beforeWrite,
-        );
-        delegationsDropped += 1;
+      // A key this account may not write — an org admin's adoption of a Mate whose key an owner
+      // made — is said and left as it is: the rest of the harden still runs.
+      try {
+        await this.#hardenKey(clientId, projectId, tokenId, generation, signal, beforeWrite, {
+          lowered: () => {
+            tokenLowered = true;
+          },
+          dropped: () => {
+            delegationsDropped += 1;
+          },
+        });
+      } catch (cause) {
+        if (!(cause instanceof ZeropsApiError) || cause.kind !== "forbidden") throw cause;
+        keyNotLowered ??= cause.message;
       }
     }
 
@@ -2578,6 +2343,7 @@ export class ZeropsApiClient {
 
     return {
       tokenLowered,
+      keyNotLowered,
       delegationsDropped,
       isolationSteps: isolation.steps,
       restarted: isolation.restarted,
@@ -2585,9 +2351,77 @@ export class ZeropsApiClient {
   }
 
   /**
-   * The names of a service's own variables — never a value. It is all the app
-   * ever learns about an environment's deploy token once it has written it:
-   * whether the broker's service carries it (`deployToken.ts`, D27).
+   * The keys of a Mate HQ knows no key id of, matched on the organization's token list: the one its
+   * container holds — where two are its, the newest made before the container — and every other
+   * still ADMIN on its project, a raced press's or an older platform key.
+   */
+  async #mateKeys(
+    clientId: string,
+    projectId: string,
+    signal: AbortSignal | undefined,
+  ): Promise<ReadonlyArray<string>> {
+    const container = (await this.listProjectServices(projectId, signal)).find(isZcpService);
+    const tokens = await this.listIntegrationTokens(clientId, signal);
+    const token = findHeldMateKey(tokens, projectId, container?.created);
+    return [
+      ...new Set([
+        ...(token === undefined ? [] : [token.id]),
+        ...mateAdminKeys(tokens, projectId, container?.created).map((key) => key.id),
+      ]),
+    ];
+  }
+
+  /** One key of a Mate lowered to its own project, and its delegations dropped. */
+  async #hardenKey(
+    clientId: string,
+    projectId: string,
+    tokenId: string,
+    generation: number,
+    signal: AbortSignal | undefined,
+    beforeWrite: (() => Promise<void>) | undefined,
+    told: { readonly lowered: () => void; readonly dropped: () => void },
+  ): Promise<void> {
+    this.#assertGeneration(generation);
+    // The write replaces the token's whole project list: it is planned from the token as read
+    // by its id under its lock — one small answer, never the organization's whole list again.
+    // Only the Mate's own grant is lowered, every other kept as it is (`planMateKey`). A key
+    // already lowered is left alone.
+    const lowered = await this.#holdToken(tokenId, async () => {
+      const current = await this.readIntegrationToken(clientId, tokenId, signal);
+      if (current === undefined) return false;
+      this.#assertGeneration(generation);
+      const projects = (current.projects ?? []).map((grant): ZeropsProjectGrant =>
+        grant.projectId === projectId && grant.roleCode !== MATE_SELF_PROJECT_ROLE
+          ? { ...grant, roleCode: MATE_SELF_PROJECT_ROLE }
+          : grant,
+      );
+      if (!projects.some((grant, index) => grant !== current.projects?.[index])) return false;
+      await this.setIntegrationTokenProjects(
+        { clientId, tokenId: current.id, name: current.name, projects },
+        signal,
+        beforeWrite,
+      );
+      return true;
+    });
+    if (lowered) told.lowered();
+
+    this.#assertGeneration(generation);
+    const delegations = await this.listIntegrationTokenDelegations({ clientId, tokenId }, signal);
+    for (const delegation of delegations) {
+      this.#assertGeneration(generation);
+      await this.deleteIntegrationTokenDelegation(
+        { clientId, tokenId, delegationId: delegation.id },
+        signal,
+        beforeWrite,
+      );
+      told.dropped();
+    }
+  }
+
+  /**
+   * The names of a service's own variables — never a value: whether a
+   * variable the app wrote is there, as HQ's birth reads its own token's
+   * (`hq/birth.ts`).
    */
   async listServiceVariableNames(
     serviceId: string,
@@ -2738,6 +2572,67 @@ export class ZeropsApiClient {
     return { processId: typeof process?.id === "string" ? process.id : undefined };
   }
 
+  /**
+   * `GET /project/{id}/public-http-routing` — the project's routings of its own domains, each
+   * domain with its certificate's state (`sslStatus`: `WAITING_FOR_DNS`, `ACTIVE`, …).
+   */
+  async listPublicHttpRoutings(
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<ZeropsPublicHttpRouting>> {
+    const response = await this.#request<{
+      readonly list?: ReadonlyArray<unknown>;
+      readonly items?: ReadonlyArray<unknown>;
+    }>(
+      `/project/${projectId}/public-http-routing`,
+      { signal: signal ?? null },
+      {
+        operationKind: "read",
+      },
+    );
+    return publicHttpRoutingsOf(response.list ?? response.items ?? []);
+  }
+
+  /**
+   * `POST /project/{id}/public-http-routing` — routes the domains to the locations, with SSL. It
+   * serves nothing until the project's routings are synced (`syncPublicHttpRouting`).
+   */
+  async createPublicHttpRouting(
+    projectId: string,
+    routing: {
+      readonly domains: ReadonlyArray<string>;
+      readonly locations: ReadonlyArray<{
+        readonly path: string;
+        readonly port: number;
+        readonly serviceStackId: string;
+      }>;
+    },
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.#request(
+      `/project/${projectId}/public-http-routing`,
+      {
+        method: "POST",
+        signal: signal ?? null,
+        body: JSON.stringify({ sslEnabled: true, ...routing }),
+      },
+      { operationKind: "project-write" },
+    );
+  }
+
+  /** `PUT /project/{id}/sync-public-http-routing` — puts the project's routings in place: a process. */
+  async syncPublicHttpRouting(
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<{ readonly processId: string | undefined }> {
+    const process = await this.#request<{ readonly id?: unknown }>(
+      `/project/${projectId}/sync-public-http-routing`,
+      { method: "PUT", signal: signal ?? null },
+      { operationKind: "project-write" },
+    );
+    return { processId: typeof process?.id === "string" ? process.id : undefined };
+  }
+
   /** `GET /process/{id}` — where one process stands (`PENDING`, `RUNNING`, `FINISHED`, …). */
   async readProcessStatus(processId: string, signal?: AbortSignal): Promise<string | undefined> {
     const process = await this.#request<{ readonly status?: unknown }>(
@@ -2825,6 +2720,75 @@ export class ZeropsApiClient {
       (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
     );
     return current !== undefined && readsAsEnabled(current.content);
+  }
+
+  /**
+   * `POST /service-stack/{id}/app-version` — the first of the three calls a deploy through the API
+   * is (then {@link uploadAppVersionArchive} and {@link buildAndDeployAppVersion}). A version exists
+   * whether or not its answer arrives, so a lost answer is `uncertain`.
+   */
+  async createAppVersion(
+    serviceId: string,
+    name: string,
+    signal?: AbortSignal,
+  ): Promise<{ readonly id: string }> {
+    const response = await this.#request<{ readonly id?: string }>(
+      `/service-stack/${serviceId}/app-version`,
+      { method: "POST", signal: signal ?? null, body: JSON.stringify({ name }) },
+      { operationKind: "project-write" },
+    );
+    if (!response.id) {
+      throw new ZeropsApiError(
+        "Zerops accepted the app version but did not return its id, so it cannot be deployed.",
+        "uncertain",
+      );
+    }
+    return { id: response.id };
+  }
+
+  /** `PUT /app-version/{id}/upload` — the code's `tar.gz`, as raw bytes; it answers no body. */
+  async uploadAppVersionArchive(
+    appVersionId: string,
+    archive: Uint8Array<ArrayBuffer>,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.#request(
+      `/app-version/${appVersionId}/upload`,
+      {
+        method: "PUT",
+        signal: signal ?? AbortSignal.timeout(APP_VERSION_UPLOAD_TIMEOUT_MS),
+        headers: { "Content-Type": "application/octet-stream" },
+        body: archive,
+      },
+      { operationKind: "project-write", ignoreAnswer: true },
+    );
+  }
+
+  /**
+   * `PUT /app-version/{id}/build-and-deploy` — builds the uploaded code with `zeropsYaml`'s
+   * `setup` entry and deploys it; the answer is the process that does so.
+   */
+  async buildAndDeployAppVersion(
+    appVersionId: string,
+    input: { readonly zeropsYaml: string; readonly setup: string },
+    signal?: AbortSignal,
+  ): Promise<{ readonly processId: string }> {
+    const response = await this.#request<{ readonly id?: string }>(
+      `/app-version/${appVersionId}/build-and-deploy`,
+      {
+        method: "PUT",
+        signal: signal ?? null,
+        body: JSON.stringify({ zeropsYaml: input.zeropsYaml, zeropsYamlSetup: input.setup }),
+      },
+      { operationKind: "project-write" },
+    );
+    if (!response.id) {
+      throw new ZeropsApiError(
+        "Zerops accepted the deploy but did not return its process, so it cannot be followed.",
+        "uncertain",
+      );
+    }
+    return { processId: response.id };
   }
 
   /**
@@ -3107,7 +3071,7 @@ export class ZeropsApiClient {
         );
       throw error;
     }
-    if (response.status === 204) return undefined as T;
+    if (response.status === 204 || options.ignoreAnswer === true) return undefined as T;
     const result = (await response.json()) as T;
     this.#assertGeneration(generation);
     return result;

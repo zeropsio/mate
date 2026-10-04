@@ -25,6 +25,7 @@ import type {
   CrewTask,
   Crewmate,
 } from "@t3tools/contracts";
+import { GITHUB_ALERT_WORDS, quoteWords } from "@t3tools/shared/messagePreview";
 
 /* ------------------------------------------------------------ helpers */
 
@@ -259,24 +260,34 @@ export function crewKeepGoingLine(
 /** The goal's title while the crew has none of its own yet. */
 export const CREW_BRIEF_EMPTY_WORD = "What's the crew for?";
 
+/** A callout's word as `quoteWords` leaves it, alone on the line its marker stood on. */
+const CALLOUT_WORD_LINES = new Set(Array.from(GITHUB_ALERT_WORDS.values(), (word) => `${word}:`));
+
 /**
  * The goal's text as its title's tooltip reads it: markdown read as plain
- * text — heading lines dropped, list, quote and emphasis markers stripped —
- * at most two lines.
+ * text — heading lines dropped, list, quote and emphasis markers stripped, a
+ * callout's word run into its first line as a Mate's message reads it
+ * (`quoteWords`) — at most two lines.
  */
 export function crewBriefPlainText(excerpt: string): string {
-  return excerpt
+  const lines = quoteWords(excerpt)
     .split(/\r?\n/u)
     .filter((line) => !/^\s*#/u.test(line))
     .map((line) =>
       line
-        .replace(/^\s*(?:[-*+]|\d+[.)]|>)\s+/u, "")
+        .replace(/^\s*(?:[-*+]|\d+[.)])\s+/u, "")
         .replace(/\*\*|__|`/gu, "")
         .trim(),
     )
-    .filter((line) => line !== "")
-    .slice(0, 2)
-    .join("\n");
+    .filter((line) => line !== "");
+  const read: Array<string> = [];
+  for (const line of lines) {
+    const word = read.at(-1);
+    if (word !== undefined && CALLOUT_WORD_LINES.has(word))
+      read[read.length - 1] = `${word} ${line}`;
+    else read.push(line);
+  }
+  return read.slice(0, 2).join("\n");
 }
 
 /** The tab's ···, a crewmate's ··· and its ⌄ on the conversation's line: each press. */
@@ -335,21 +346,15 @@ export const crewSendToWord = (name: string | null): string =>
  * the conversation's own words (`agentOwnershipComposerNotice`, pinned to
  * these by the phrases' test), the crew named where the conversation names
  * its agent — in the Crew tab the crew is what they may not run — its dash
- * held to the word before it, so no line starts with it. Why nobody runs it,
- * or why the viewer's own record failed, reads as the conversation says it.
+ * held to the word before it, so no line starts with it. Why nobody runs it
+ * reads as the conversation says it.
  */
-export function crewLockWords(
-  ownership: "someone-else" | "unrecorded" | "record-failed" | "unsettled",
-): string {
+export function crewLockWords(ownership: "someone-else" | "unrecorded"): string {
   switch (ownership) {
     case "someone-else":
       return "Signed in by another project member\u00a0— only they can run this crew.";
     case "unrecorded":
       return "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.";
-    case "record-failed":
-      return "Your sign-in could not be recorded.";
-    case "unsettled":
-      return "This Mate's sign-in is recorded for more than one person. Sign it in again to make it yours.";
   }
 }
 
@@ -450,6 +455,15 @@ export function crewNeedSentence(
   const mate = crewPossessive(mateName);
   const task = crew.board.tasks.find((candidate) => candidate.id === row.taskId);
   switch (row.kind) {
+    case "interrupted":
+      return (
+        (row.operation?.status === "failed" ? "Stopped · " : "Interrupted · ") +
+        (row.text ?? "Its work stays in its copy.")
+      );
+    case "copy-missing":
+      return "Its crew copy is missing";
+    case "conversation-copy":
+      return "Conversation points elsewhere";
     case "question":
       return row.text === null || row.text.trim() === ""
         ? "It asks you something."
@@ -510,6 +524,8 @@ export function crewNeedSentence(
 
 /** What a row lets you press about what it needs. */
 export const CREW_ROW_VERBS = {
+  rebuildCopy: "Rebuild crew copy",
+  useCrewCopy: "Use crew copy",
   answer: "Answer",
   review: "Review",
   reviewWhatItHas: "Review what it has",
@@ -542,6 +558,10 @@ export function crewRowVerbLine(
 ): string {
   const mate = crewPossessive(mateName);
   switch (verb) {
+    case "rebuildCopy":
+      return "Rebuilds this copy from its saved work. It leaves other copies alone.";
+    case "useCrewCopy":
+      return "This conversation uses its crew copy.";
     case "answer":
       return "Write your answer right here.";
     case "review":
@@ -1060,8 +1080,8 @@ export function crewmateWhoseLine(kind: Crewmate["kind"], mateName: string): str
 /** The Mate's own chat, as its face on the line says it while another chat is open. */
 export const mateOwnChatWord = (mateName: string): string => `${mateName}'s own chat`;
 
-/** A line's markdown lead-in: a heading's hashes, a list's bullet or number, a quote. */
-const MARKDOWN_LEAD = /^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s*)/u;
+/** A line's markdown lead-in: a heading's hashes, a list's bullet or number. */
+const MARKDOWN_LEAD = /^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)/u;
 
 /** How a job is written to its crewmate: "You own Game Rules: …". */
 const YOU_OWN = "You own ";
@@ -1103,10 +1123,10 @@ function personsLine(plain: string, name: string): string {
 /**
  * A job's first line in plain words and the person's: what its crewmate's
  * empty conversation says under _Its job_. Markdown's marks go — a heading's
- * hashes, a list's bullet, emphasis, code ticks, a link's address — and the
- * words the job says to its crewmate become the person's line
- * (`personsLine`). Its first sentence always stays; a later one stays only
- * while it speaks about the crewmate, never to it: "You read, plan and
+ * hashes, a list's bullet, a quote's marker, emphasis, code ticks, a link's
+ * address — and the words the job says to its crewmate become the person's
+ * line (`personsLine`). Its first sentence always stays; a later one stays
+ * only while it speaks about the crewmate, never to it: "You read, plan and
  * review; you never change files." is the crewmate's instruction, not the
  * person's line.
  */
@@ -1123,9 +1143,9 @@ function jobSentences(line: string): ReadonlyArray<string> {
   return line.split(/(?<=[.!?])\s+/u).filter((sentence) => sentence.length > 0);
 }
 
-/** A job line without markdown's marks. */
+/** A job line without markdown's marks, its quote read as a Mate's message reads one (`quoteWords`). */
 function plainJobLine(jobFirstLine: string): string {
-  return jobFirstLine
+  return quoteWords(jobFirstLine)
     .replace(MARKDOWN_LEAD, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1")
     .replace(/`([^`]*)`/gu, "$1")
@@ -1185,4 +1205,86 @@ export function crewRunsOnWord(runsOn: {
   return ["Runs on " + runsOn.login, runsOn.model, runsOn.effort]
     .filter((part) => part !== null)
     .join(" · ");
+}
+
+/** Durable stages, in the same words on every client. */
+export function crewOperationStageWord(stage: string): string {
+  switch (stage) {
+    case "prepared":
+      return "ready to start";
+    case "legacy-state-recorded":
+      return "its last task state recorded; the outcome is unknown";
+    case "copy-rebuilt":
+      return "its copy rebuilt";
+    case "snapshotting-refs":
+      return "its saved work recorded";
+    case "inspecting-refs":
+      return "its saved work checked";
+    case "opening-conversation":
+      return "its conversation opened";
+    case "preparing-copy":
+      return "its copy preparation ended";
+    case "attempt-recorded":
+      return "its work recorded";
+    case "admitting":
+    case "admitted":
+      return "allowed to start";
+    case "dispatching":
+      return "starting its turn";
+    case "dispatched":
+    case "working":
+      return "its turn started";
+    case "committing":
+      return "its preservation step ended";
+    case "merging":
+      return "its merge ended";
+    case "setting-up":
+      return "its setup ended";
+    case "checking":
+      return "its check ended";
+    case "landing":
+      return "its landing ended";
+    default:
+      return "its last recorded step";
+  }
+}
+
+export const crewCopyAssignmentDetail = (
+  copy: NonNullable<CrewAttention["copyAssignment"]>,
+): string =>
+  `Current copy: ${copy.currentPath ?? "none"} · Crew copy: ${copy.crewPath} · Crew copy set when the conversation opened`;
+export const crewOperationDetail = (stage: string): string =>
+  `Last confirmed: ${crewOperationStageWord(stage)} · Its work stays in its copy`;
+
+/** Work the server still owns after the agent's live step ended. */
+export function crewPendingOperationWord(
+  operation: NonNullable<CrewAttention["operation"]>,
+  mateName: string,
+): string | null {
+  switch (operation.stage) {
+    case "dispatched":
+      return null;
+    case "committing":
+      return "Preserving its work";
+    case "inspecting-refs":
+      return "Checking its saved work";
+    case "checking":
+      return CREW_CHECKING_ITS_WORK;
+    case "merging":
+      return "Preparing its work for checking";
+    case "setting-up":
+      return "Setting up its copy";
+    case "rebuilding-copy":
+      return "Rebuilding its crew copy";
+    case "landing":
+      return `Adding its work to ${crewPossessive(mateName)} code`;
+    case "reading-landing":
+      return "Checking whether its work is in the code";
+    case "opening-conversation":
+      return "Opening its conversation";
+    case "preparing-copy":
+      return CREW_COPY_READYING;
+    default:
+      return "Getting ready to start";
+  }
 }

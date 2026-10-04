@@ -15,9 +15,9 @@
  *
  * `&viewer=other` draws every state for a viewer who may not run the crew's
  * agent — signed in by another project member (D6) — so each can be put
- * beside its open twin; `&viewer=unrecorded` and `&viewer=record-failed` for
- * the other two reasons. A view (setup, goal, job) is not the viewer's to open
- * then, and the tab draws what the app does in its place: the column.
+ * beside its open twin; `&viewer=unrecorded` for the other reason. A view
+ * (setup, goal, job) is not the viewer's to open then, and the tab draws what
+ * the app does in its place: the column.
  *
  * The column is the real `CrewPanelBody` in the real `RightPanelTabs`, over a
  * fixture crew; a view (setup, goal, job) is the real view in the same frame,
@@ -72,7 +72,6 @@ const STATE = params.get("state") ?? "idle";
 const VIEWERS: Readonly<Record<string, CrewLockOwnership>> = {
   other: "someone-else",
   unrecorded: "unrecorded",
-  "record-failed": "record-failed",
 };
 const CLOSED = VIEWERS[params.get("viewer") ?? ""] ?? null;
 /** Every login of Fen's is closed to such a viewer: Fen's own chat, and each crewmate's. */

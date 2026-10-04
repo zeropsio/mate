@@ -22,7 +22,6 @@ import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { CrewEngine } from "./CrewEngine.ts";
 import { CREW_ID } from "./CrewHome.ts";
-import { DEV_SERVER_PIDFILE } from "./CrewRuntime.ts";
 import { CrewThreadDirectory, CrewToolHost } from "./crewSeams.ts";
 import { CrewStore } from "./CrewStore.ts";
 import { installCrewThreadPolicy } from "./CrewThreadPolicy.ts";
@@ -33,6 +32,7 @@ import {
   withCrewEngine,
   withCrewEngines,
   writeCrewHome,
+  type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
 import {
   KAREL,
@@ -156,9 +156,7 @@ describe("CrewEngine", () => {
             transcriptPath: transcript,
           });
           assert.isTrue(packet?.startsWith("crew-state seq"));
-          yield* eventually(
-            Effect.map(latest, (snapshot) => snapshot.crewmates[0]!.stints[0]?.state === "active"),
-          );
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.stints[0]?.state === "active");
           yield* command({
             _tag: "message",
             handle: "backend",
@@ -469,7 +467,7 @@ describe("CrewEngine", () => {
           "jobs/erik.md": "You write the plan.\n",
         });
         yield* command({ _tag: "apply" });
-        yield* eventually(Effect.map(latest, everyCopyReady));
+        yield* snapshotWhere(everyCopyReady);
         yield* command({ _tag: "message", handle: "backend", text: "First", attachments: [] });
         const { atOnce } = yield* pressDuringTurnEnd(world, () => ({
           _tag: "tell",
@@ -688,7 +686,7 @@ describe("CrewEngine", () => {
     ),
   );
 
-  it.live("a refused queued task starts again once a login's sign-in changes", () =>
+  it.live("a refused queued task needs an explicit Try again after a login sign-in changes", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* applied(world);
@@ -704,12 +702,15 @@ describe("CrewEngine", () => {
         yield* snapshotWhere((current) => current.attention.length === 1);
         yield* Ref.set(world.refusal, undefined);
         yield* world.signedIn;
+        const refused = yield* latest;
+        assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, 0);
+        yield* command({ _tag: "taskRetry", taskId: refused.board.tasks[0]!.id });
         const started = yield* snapshotWhere(
           (current) => current.board.tasks[0]?.state === "working",
         );
         assert.deepStrictEqual(
           [started.attention, (yield* Ref.get(world.admitted)).at(-1)?.principal],
-          [[], { kind: "crew", startedBy: "user-karel" }],
+          [[], KAREL],
         );
       }),
     ),
@@ -734,7 +735,7 @@ describe("CrewEngine", () => {
           "jobs/erik.md": "You write the plan.\n",
         });
         yield* command({ _tag: "apply" });
-        yield* eventually(Effect.map(latest, everyCopyReady));
+        yield* snapshotWhere(everyCopyReady);
         const none = yield* Effect.flip(
           command({ _tag: "tell", text: "Everyone, go.", mentions: [] }),
         );
@@ -1074,51 +1075,78 @@ describe("CrewEngine", () => {
       ),
   );
 
-  it.live("a writer's conversation without its copy as its worktree gets it back at boot", () =>
-    withCrewEngines([
-      (world) =>
-        Effect.gen(function* () {
-          yield* applied(world);
-          yield* eventually(
-            Effect.map(dispatchedOf(world, "thread.crew.create"), (creates) => creates.length > 0),
-          );
-          const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
-            (entry) => entry.crew.crewmate === "backend",
-          )!;
-          yield* Ref.set(world.threads, [
-            {
-              ...runningPersonThread(),
-              id: created.threadId,
-              crew: created.crew,
-              session: null,
-              worktreePath: null,
-            } as unknown as OrchestrationThreadShell,
-          ]);
-        }),
-      (world) =>
-        Effect.gen(function* () {
-          yield* (yield* ServerCommandReadiness).complete;
-          const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
-            (entry) => entry.crew.crewmate === "backend",
-          )!;
-          yield* eventually(
-            Effect.map(dispatchedOf(world, "thread.meta.update"), (updates) => updates.length > 0),
-          );
-          const [update] = yield* dispatchedOf(world, "thread.meta.update");
-          assert.deepStrictEqual(
-            [
-              update?.threadId,
-              update?.worktreePath,
-              created.worktreePath?.endsWith("/.crew/backend"),
-            ],
-            [created.threadId, created.worktreePath, true],
-          );
-        }),
-    ]),
-  );
+  for (const path of [null, "/chosen/copy"]) {
+    it.live(`boot preserves the conversation path ${path} and offers a selected crew copy`, () =>
+      withCrewEngines([
+        (world) =>
+          Effect.gen(function* () {
+            yield* applied(world);
+            yield* command({ _tag: "message", handle: "backend", text: "Work", attachments: [] });
+            const [created] = yield* dispatchedOf(world, "thread.crew.create");
+            yield* Ref.set(world.threads, [
+              {
+                ...runningPersonThread(),
+                id: created!.threadId,
+                crew: created!.crew,
+                session: null,
+                latestTurn: null,
+                worktreePath: path,
+              } as unknown as OrchestrationThreadShell,
+            ]);
+          }),
+        (world) =>
+          Effect.gen(function* () {
+            yield* (yield* ServerCommandReadiness).complete;
+            const snapshot = yield* snapshotWhere((frame) =>
+              frame.attention.some((row) => row.kind === "conversation-copy"),
+            );
+            assert.deepStrictEqual(yield* dispatchedOf(world, "thread.meta.update"), []);
+            const need = snapshot.attention.find((row) => row.kind === "conversation-copy")!;
+            const [created] = yield* dispatchedOf(world, "thread.crew.create");
+            assert.deepStrictEqual(need.copyAssignment, {
+              threadId: created!.threadId,
+              currentPath: path,
+              crewPath: created!.worktreePath,
+              source: "crew-stint",
+            });
+            yield* command({
+              _tag: "useCrewCopy",
+              handle: "backend",
+              threadId: created!.threadId,
+              expectedPath: path,
+            });
+            const [update] = yield* dispatchedOf(world, "thread.meta.update");
+            assert.deepStrictEqual(
+              [update?.worktreePath, update?.expectedWorktreePath],
+              [created!.worktreePath, path],
+            );
+            yield* Ref.set(world.threads, [
+              {
+                ...runningPersonThread(),
+                id: created!.threadId,
+                crew: created!.crew,
+                session: null,
+                latestTurn: null,
+                worktreePath: "/new/choice",
+              } as unknown as OrchestrationThreadShell,
+            ]);
+            const error = yield* Effect.flip(
+              command({
+                _tag: "useCrewCopy",
+                handle: "backend",
+                threadId: created!.threadId,
+                expectedPath: path,
+              }),
+            );
+            assert.strictEqual(error.reason, "wrong-state");
+            assert.strictEqual((yield* dispatchedOf(world, "thread.meta.update")).length, 1);
+          }),
+      ]),
+    );
+  }
 
   it.live(
-    "after a restart: policies install at once, the sweep waits for readiness, a died turn re-queues",
+    "after a restart: policies install at once and a died turn ends without a new dispatch",
     () => {
       let turnsBefore = 0;
       return withCrewEngines([
@@ -1140,24 +1168,18 @@ describe("CrewEngine", () => {
         (world) =>
           Effect.gen(function* () {
             assert.strictEqual(yield* Ref.get(world.installs), 2);
-            yield* Effect.sleep("300 millis");
-            assert.strictEqual(
-              (yield* dispatchedOf(world, "thread.turn.start")).length,
-              turnsBefore,
-            );
             yield* (yield* ServerCommandReadiness).complete;
             const snapshot = yield* snapshotWhere(
-              (current) =>
-                current.board.tasks[0]?.attempts === 2 &&
-                current.board.tasks[0]?.state === "working",
+              (frame) =>
+                frame.attention.some((row) => row.kind === "interrupted") &&
+                Boolean(frame.hosts[0]?.integration),
             );
             assert.deepStrictEqual(
               [
                 (yield* dispatchedOf(world, "thread.turn.start")).length,
-                (yield* Ref.get(world.admitted)).at(-1)?.principal,
-                snapshot.lastError,
+                snapshot.board.tasks[0]!.attempts,
               ],
-              [turnsBefore + 1, { kind: "crew", startedBy: "user-karel" }, null],
+              [turnsBefore, 1],
             );
             const thread = snapshot.crewmates[0]!.currentThreadId!;
             const member = yield* (yield* CrewThreadDirectory).memberFor(thread);
@@ -1311,9 +1333,7 @@ describe("CrewEngine", () => {
           write(world.root, ".crew/backend/x.txt", "x\n"),
         );
         yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
-        yield* eventually(
-          Effect.map(latest, (snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1),
-        );
+        yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.ahead === 1);
         const kept = yield* Effect.flip(
           command({ _tag: "removeCrewmate", handle: "backend", discardUnlanded: false }),
         );
@@ -1367,7 +1387,7 @@ describe("CrewEngine", () => {
             ].join("\n"),
           });
           yield* command({ _tag: "apply" });
-          yield* eventually(Effect.map(latest, everyCopyReady));
+          yield* snapshotWhere(everyCopyReady);
           const ports = yield* command({ _tag: "addCrewPorts", host: "appdev", count: 2 });
           yield* command({ _tag: "appRun", handle: "backend" });
           const running = yield* snapshotWhere(
@@ -1418,10 +1438,10 @@ describe("CrewEngine", () => {
   );
 
   /** zcp's dev server, faked: a process started in `cwd` whose pid is in zcp's pidfile. */
-  const startDevServer = (cwd: string) => {
+  const startDevServer = (world: CrewWorld, cwd: string) => {
     const child = NodeChildProcess.spawn("sleep", ["60"], { cwd, detached: true, stdio: "ignore" });
     child.unref();
-    NodeFS.writeFileSync(DEV_SERVER_PIDFILE, `${child.pid}\n`);
+    NodeFS.writeFileSync(world.devServerPidFile, `${child.pid}\n`);
     return child.pid!;
   };
 
@@ -1439,7 +1459,7 @@ describe("CrewEngine", () => {
           git(world.root, ["add", "-A"]);
           git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
           yield* applied(world);
-          started.push(startDevServer(world.root));
+          started.push(startDevServer(world, world.root));
           const thread = yield* firstTurn(world, () => undefined);
           const directory = yield* CrewThreadDirectory;
           const member = Option.getOrThrow(yield* directory.memberFor(thread));
@@ -1456,7 +1476,7 @@ describe("CrewEngine", () => {
           );
           const claimTurn = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
           const shaped = Option.getOrThrow(yield* directory.memberFor(thread)).gate;
-          started.push(startDevServer(NodePath.join(world.root, ".crew/backend")));
+          started.push(startDevServer(world, NodePath.join(world.root, ".crew/backend")));
           yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
           const held = yield* snapshotWhere(
             (snapshot) => snapshot.hosts[0]?.claim.state === "held",
@@ -1467,7 +1487,7 @@ describe("CrewEngine", () => {
           );
           yield* command({ _tag: "claimRelease", host: "appdev" });
           const releaseTurn = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
-          started.push(startDevServer(world.root));
+          started.push(startDevServer(world, world.root));
           yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
           const released = yield* snapshotWhere(
             (snapshot) => snapshot.hosts[0]?.claim.state === "none",
@@ -1509,7 +1529,6 @@ describe("CrewEngine", () => {
                 process.kill(pid);
               } catch {}
             }
-            NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
           }),
         ),
       );
@@ -1549,7 +1568,7 @@ describe("CrewEngine", () => {
           ].join("\n"),
         });
         yield* command({ _tag: "apply" });
-        yield* eventually(Effect.map(latest, everyCopyReady));
+        yield* snapshotWhere(everyCopyReady);
         const thread = yield* firstTurn(world, () => undefined);
         const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
         yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
@@ -1568,7 +1587,7 @@ describe("CrewEngine", () => {
     ),
   );
 
-  it.live("an Allow waiting on a turn that a restart ended goes out when the engine boots", () => {
+  it.live("an Allow waiting on a turn stays requested when the engine restarts", () => {
     const started: Array<number> = [];
     return withCrewEngines([
       (world) =>
@@ -1581,7 +1600,7 @@ describe("CrewEngine", () => {
           git(world.root, ["add", "-A"]);
           git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
           yield* applied(world);
-          started.push(startDevServer(world.root));
+          started.push(startDevServer(world, world.root));
           const thread = yield* firstTurn(world, () => undefined);
           const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
           yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
@@ -1592,26 +1611,16 @@ describe("CrewEngine", () => {
       (world) =>
         Effect.gen(function* () {
           yield* (yield* ServerCommandReadiness).complete;
-          const starting = yield* snapshotWhere(
-            (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
+          const stopped = yield* snapshotWhere(
+            (frame) =>
+              frame.attention.some((need) => need.kind === "interrupted") &&
+              frame.hosts[0]?.claim.state === "requested",
           );
-          // The claim reads starting a moment before its turn is dispatched.
-          yield* eventually(
-            Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
-              turns.at(-1)!.message.text.includes("Show your work on appdev"),
+          assert.strictEqual(stopped.hosts[0]?.claim.state, "requested");
+          assert.isFalse(
+            (yield* dispatchedOf(world, "thread.turn.start")).some((turn) =>
+              turn.message.text.includes("Show your work on appdev"),
             ),
-          );
-          assert.deepStrictEqual(
-            [
-              starting.hosts[0]!.claim,
-              (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.message.text.split("\n")[1],
-              (yield* Ref.get(world.admitted)).at(-1)?.principal,
-            ],
-            [
-              { state: "starting", handle: "backend", grantWaiting: false },
-              "Show your work on appdev",
-              KAREL,
-            ],
           );
         }),
     ]).pipe(
@@ -1622,7 +1631,6 @@ describe("CrewEngine", () => {
               process.kill(pid);
             } catch {}
           }
-          NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
         }),
       ),
     );
@@ -1642,7 +1650,7 @@ describe("CrewEngine", () => {
           git(world.root, ["add", "-A"]);
           git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
           yield* applied(world);
-          started.push(startDevServer(world.root));
+          started.push(startDevServer(world, world.root));
           const thread = yield* firstTurn(world, () => undefined);
           const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
           yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
@@ -1686,7 +1694,6 @@ describe("CrewEngine", () => {
                 process.kill(pid);
               } catch {}
             }
-            NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
           }),
         ),
       );
@@ -1705,7 +1712,7 @@ describe("CrewEngine", () => {
         git(world.root, ["add", "-A"]);
         git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
         yield* applied(world);
-        started.push(startDevServer(world.root));
+        started.push(startDevServer(world, world.root));
         const thread = yield* firstTurn(world, () => undefined);
         yield* command({ _tag: "showOnDev", handle: "backend" });
         const turnsWhileRunning = (yield* dispatchedOf(world, "thread.turn.start")).length;
@@ -1738,7 +1745,6 @@ describe("CrewEngine", () => {
               process.kill(pid);
             } catch {}
           }
-          NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
         }),
       ),
     );
@@ -1765,7 +1771,7 @@ describe("CrewEngine", () => {
           devGrant: true,
           leadMayStart: false,
         });
-        started.push(startDevServer(world.root));
+        started.push(startDevServer(world, world.root));
         const thread = yield* firstTurn(world, () => undefined);
         const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(thread));
         yield* (yield* CrewToolHost).showOnDev(member, { reason: "See the camera" });
@@ -1796,7 +1802,6 @@ describe("CrewEngine", () => {
               process.kill(pid);
             } catch {}
           }
-          NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
         }),
       ),
     );
@@ -1814,7 +1819,7 @@ describe("CrewEngine", () => {
         git(world.root, ["add", "-A"]);
         git(world.root, ["commit", "-q", "-m", "zerops.yaml"]);
         yield* applied(world);
-        started.push(startDevServer(world.root));
+        started.push(startDevServer(world, world.root));
         yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
         const [created] = yield* dispatchedOf(world, "thread.crew.create");
         yield* world.publish(spiEvent("turn.completed", created!.threadId, { state: "completed" }));
@@ -1850,7 +1855,6 @@ describe("CrewEngine", () => {
               process.kill(pid);
             } catch {}
           }
-          NodeFS.rmSync(DEV_SERVER_PIDFILE, { force: true });
         }),
       ),
     );
@@ -2067,7 +2071,7 @@ describe("CrewEngine", () => {
             "jobs/lead.md": "Plan the work.\n",
           });
           yield* command({ _tag: "apply" });
-          yield* eventually(Effect.map(latest, everyCopyReady));
+          yield* snapshotWhere(everyCopyReady);
           yield* command({ _tag: "message", handle: "backend", text: "Start", attachments: [] });
           const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
             (entry) => entry.crew.crewmate === "backend",

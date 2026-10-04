@@ -38,6 +38,14 @@ import { Atom } from "effect/unstable/reactivity";
 export function createZeropsCommandAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
 ) {
+  const standUpRetry = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:zerops:standUp:retry",
+    tag: WS_METHODS.zeropsStandUpRetry,
+  });
+  const agentAuthCheck = createEnvironmentRpcCommand(runtime, {
+    label: "environment-data:zerops:agentAuth:check",
+    tag: WS_METHODS.zeropsAgentAuthCheck,
+  });
   const agentLoginStart = createEnvironmentRpcCommand(runtime, {
     label: "environment-data:zerops:agentLogin:start",
     tag: WS_METHODS.zeropsAgentLoginStart,
@@ -91,6 +99,8 @@ export function createZeropsCommandAtoms<R, E>(
   });
 
   return {
+    standUpRetry,
+    agentAuthCheck,
     agentLoginStart,
     agentLoginCancel,
     agentLoginSubmitCode,

@@ -22,20 +22,22 @@ import * as Stream from "effect/Stream";
 import type * as Rpc from "effect/unstable/rpc/Rpc";
 import type * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 
+import type { ZeropsSetup } from "./ZeropsSetup.ts";
 import type { ZeropsCli } from "./ZeropsCli.ts";
 import type { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
-import type * as ZeropsAgentSignOutModule from "./ZeropsAgentSignOut.ts";
 import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import type * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
-import type * as ZeropsLoginSignOutModule from "./ZeropsLoginSignOut.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
+import type * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 
 type ZeropsRpcTag =
+  | typeof WS_METHODS.zeropsStandUpRetry
   | typeof WS_METHODS.zeropsLifecycleGet
+  | typeof WS_METHODS.zeropsAgentAuthCheck
   | typeof WS_METHODS.zeropsAgentLoginStart
   | typeof WS_METHODS.zeropsAgentLoginCancel
   | typeof WS_METHODS.zeropsAgentLoginSubmitCode
@@ -66,21 +68,12 @@ export type ZeropsRpcHandlers = {
 };
 
 export interface RegisterZeropsRpcDeps {
+  readonly zeropsSetup?: ZeropsSetup["Service"] | undefined;
   readonly zeropsLifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"];
   readonly zeropsAgentAuth: ZeropsAgentAuth.ZeropsAgentAuth["Service"];
   readonly zeropsAgentLogin: ZeropsAgentLoginModule.ZeropsAgentLogin["Service"];
-  readonly zeropsAgentSignOut: ZeropsAgentSignOutModule.ZeropsAgentSignOut["Service"];
-  /**
-   * Stops `agentId`'s live provider sessions, dispatched through the
-   * orchestration layer `ws.ts` owns — see `ZeropsAgentSignOut.ts`'s own
-   * "Why `stopAgentSessions` is a parameter" doc comment. Never fails: `ws.ts`
-   * catches its own dispatch/read errors before handing this in.
-   */
-  readonly stopAgentSessions: (agentId: ZeropsAgentId) => Effect.Effect<void>;
+  readonly zeropsSignOut: ZeropsSignOutModule.ZeropsSignOut["Service"];
   readonly zeropsLogins: ZeropsLoginsModule.ZeropsLogins["Service"];
-  readonly zeropsLoginSignOut: ZeropsLoginSignOutModule.ZeropsLoginSignOut["Service"];
-  /** {@link stopAgentSessions} for a login beyond the defaults, by its id. */
-  readonly stopLoginSessions: (loginId: string) => Effect.Effect<void>;
   readonly zeropsBrowserStream: ZeropsBrowserStreamModule.ZeropsBrowserStream["Service"];
   readonly zeropsCli: ZeropsCli["Service"];
   readonly zeropsMateUpdate: ZeropsMateUpdate["Service"];
@@ -206,17 +199,61 @@ export const resolveLoginTarget = (
     return { id: login.id, env: ZeropsLoginsModule.mateLoginEnvironment(login) };
   });
 
+/** An operator asks once; the feed carries the resulting verification/registration receipt. */
+export const runAgentAuthCheck = (
+  deps: {
+    readonly zeropsAgentAuth: Pick<
+      ZeropsAgentAuth.ZeropsAgentAuth["Service"],
+      "latest" | "recheckNow"
+    >;
+    readonly zeropsLogins: Pick<
+      ZeropsLoginsModule.ZeropsLogins["Service"],
+      "latest" | "resolve" | "recheckNow"
+    >;
+    readonly subject: string;
+  },
+  input: { readonly agentId: ZeropsAgentId; readonly loginId?: string | undefined },
+) =>
+  Effect.gen(function* () {
+    const userId = deps.subject.startsWith("zerops-user:")
+      ? deps.subject.slice("zerops-user:".length)
+      : deps.subject;
+    let signer: string | undefined;
+    if (input.loginId === undefined) {
+      const snapshot = yield* deps.zeropsAgentAuth.latest;
+      const agent = snapshot.agents.find((row) => row.agentId === input.agentId);
+      if (!snapshot.available || agent === undefined) {
+        return yield* new ZeropsAgentLoginError({
+          reason: "unavailable",
+          detail: "This environment cannot check this login.",
+        });
+      }
+      signer = agent.authorizedBy?.subject;
+    } else {
+      yield* resolveLoginTarget(deps.zeropsLogins, input.agentId, input.loginId);
+      signer = (yield* deps.zeropsLogins.latest).find(
+        (row) => row.id === input.loginId,
+      )?.signedInBy;
+    }
+    if (signer !== undefined && signer !== userId) {
+      return yield* new ZeropsAgentLoginError({
+        reason: "invalid-login",
+        detail: "Only the member who signed this login in can check or register it again.",
+      });
+    }
+    yield* input.loginId === undefined
+      ? deps.zeropsAgentAuth.recheckNow(input.agentId)
+      : deps.zeropsLogins.recheckNow(input.loginId);
+  });
+
 /** Registers the Zerops feed RPCs. Called once from `ws.ts`. */
 export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandlers => {
   const {
     zeropsLifecycle,
     zeropsAgentAuth,
     zeropsAgentLogin,
-    zeropsAgentSignOut,
-    stopAgentSessions,
+    zeropsSignOut,
     zeropsLogins,
-    zeropsLoginSignOut,
-    stopLoginSessions,
     zeropsBrowserStream,
     zeropsDataConsole,
     zeropsGitRemoteProbe,
@@ -226,8 +263,18 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
   } = deps;
 
   return {
+    [WS_METHODS.zeropsStandUpRetry]: () =>
+      observeRpcEffect(
+        WS_METHODS.zeropsStandUpRetry,
+        deps.zeropsSetup?.retry(subject) ?? Effect.succeed(false),
+        { "rpc.aggregate": "zerops" },
+      ),
     [WS_METHODS.zeropsLifecycleGet]: (input) =>
       observeRpcEffect(WS_METHODS.zeropsLifecycleGet, zeropsLifecycle.get(input.threadId), {
+        "rpc.aggregate": "zerops",
+      }),
+    [WS_METHODS.zeropsAgentAuthCheck]: (input) =>
+      observeRpcEffect(WS_METHODS.zeropsAgentAuthCheck, runAgentAuthCheck(deps, input), {
         "rpc.aggregate": "zerops",
       }),
     [WS_METHODS.zeropsAgentLoginStart]: (input) =>
@@ -260,24 +307,20 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       const loginId = input.loginId;
       return observeRpcEffect(
         WS_METHODS.zeropsAgentLoginSignOut,
-        loginId === undefined
-          ? zeropsAgentSignOut.signOut(input.agentId, () => stopAgentSessions(input.agentId))
-          : zeropsLoginSignOut.signOut(loginId, () => stopLoginSessions(loginId)),
+        zeropsSignOut.signOut(loginId === undefined ? { agentId: input.agentId } : { loginId }),
         { "rpc.aggregate": "zerops" },
       );
     },
     // The API key rides only into the settings' secret store: no span
     // attribute or log line here names it.
     [WS_METHODS.zeropsLoginAdd]: (input) =>
-      observeRpcEffect(WS_METHODS.zeropsLoginAdd, zeropsLogins.add(input), {
+      observeRpcEffect(WS_METHODS.zeropsLoginAdd, zeropsLogins.add(input, subject), {
         "rpc.aggregate": "zerops",
       }),
     [WS_METHODS.zeropsLoginRemove]: (input) =>
-      observeRpcEffect(
-        WS_METHODS.zeropsLoginRemove,
-        zeropsLoginSignOut.remove(input.id, () => stopLoginSessions(input.id)),
-        { "rpc.aggregate": "zerops" },
-      ),
+      observeRpcEffect(WS_METHODS.zeropsLoginRemove, zeropsSignOut.remove(input.id), {
+        "rpc.aggregate": "zerops",
+      }),
     [WS_METHODS.subscribeZeropsLifecycle]: (input) =>
       observeRpcStream(
         WS_METHODS.subscribeZeropsLifecycle,

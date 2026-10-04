@@ -251,6 +251,7 @@
       "title": "Zerops Git tab",
       "components": [
         "apps/web/src/components/zerops/ZeropsGitBlock.tsx",
+        "apps/web/src/components/zerops/ZeropsGitBlockCommits.tsx",
         "apps/web/src/components/zerops/ZeropsGitPanel.tsx",
         "apps/web/src/components/zerops/ZeropsGitSurface.tsx",
         "apps/web/src/components/zerops/ZeropsGitTab.tsx",
@@ -281,14 +282,6 @@
       ],
       "reverseStates": [
         {
-          "action": "Open pull request",
-          "reverse": "none: a pull request is closed in Gitea, which owns it."
-        },
-        {
-          "action": "Merge",
-          "reverse": "none: a merge is undone by a revert, which is a new change."
-        },
-        {
           "action": "Release",
           "reverse": "Roll back to this"
         },
@@ -299,10 +292,6 @@
         {
           "action": "Update from main",
           "reverse": "none: the checkout keeps what it pulled."
-        },
-        {
-          "action": "Sign in to Gitea",
-          "reverse": "none: the session ends with the tab (nothing is persisted)."
         }
       ],
       "docs": {
@@ -310,6 +299,7 @@
       },
       "tests": [
         "apps/web/src/components/zerops/ZeropsGitBlock.test.tsx",
+        "apps/web/src/components/zerops/ZeropsGitBlockCommits.test.tsx",
         "apps/web/src/components/zerops/ZeropsGitPanel.test.tsx",
         "packages/client-runtime/src/zerops/gitTab.test.ts",
         "packages/client-runtime/src/zerops/release.test.ts"
@@ -332,11 +322,12 @@
         "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
         "apps/web/src/zerops/ZeropsReviewProvider.tsx",
         "apps/web/src/zerops/review.ts",
-        "apps/web/src/zerops/useGiteaPicture.ts",
-        "apps/web/src/zerops/useZeropsChangeReadout.ts",
+        "apps/web/src/zerops/useChangePicture.ts",
+        "apps/web/src/zerops/useZeropsChangeDetail.ts",
         "apps/web/src/zerops/useZeropsChangeRun.ts",
         "apps/web/src/zerops/useZeropsReviewMates.ts",
         "packages/client-runtime/src/zerops/changeDiff.ts",
+        "packages/client-runtime/src/zerops/changeReadout.ts",
         "packages/client-runtime/src/zerops/recipeReach.ts",
         "packages/client-runtime/src/zerops/reviewVerdict.ts"
       ],
@@ -359,13 +350,17 @@
       "contracts": [
         "@t3tools/client-runtime/zerops/reviewVerdict",
         "@t3tools/client-runtime/zerops/changeDiff",
-        "@t3tools/client-runtime/zerops/giteaClient",
+        "@t3tools/client-runtime/zerops/changeReadout",
         "@t3tools/client-runtime/zerops/projectFlow"
       ],
       "reverseStates": [
         {
           "action": "Merge",
           "reverse": "none: a merge is undone by a revert, which is a new change."
+        },
+        {
+          "action": "Close without merging",
+          "reverse": "none: a closed change is not reopened."
         },
         {
           "action": "Release",
@@ -390,9 +385,11 @@
         "apps/web/src/components/zerops/review/ZeropsChangeReview.test.tsx",
         "apps/web/src/components/zerops/review/ZeropsCrewTaskReview.test.tsx",
         "apps/web/src/components/zerops/review/ZeropsReview.logic.test.ts",
+        "apps/web/src/zerops/useChangePicture.test.ts",
         "apps/web/src/zerops/useZeropsChangeComments.test.ts",
-        "apps/web/src/zerops/useZeropsChangeReadout.test.ts",
+        "apps/web/src/zerops/useZeropsChangeDetail.test.ts",
         "packages/client-runtime/src/zerops/changeDiff.test.ts",
+        "packages/client-runtime/src/zerops/changeReadout.test.ts",
         "packages/client-runtime/src/zerops/recipeReach.test.ts",
         "packages/client-runtime/src/zerops/reviewVerdict.test.ts"
       ],
@@ -800,6 +797,8 @@
         "apps/web/src/components/zerops/SidebarProjectFold.tsx",
         "apps/web/src/components/zerops/SidebarProductionChip.tsx",
         "apps/web/src/components/zerops/SidebarProductionChip.logic.ts",
+        "apps/web/src/components/zerops/StopReadAgain.tsx",
+        "apps/web/src/components/zerops/StopPublicAccess.tsx",
         "apps/web/src/components/zerops/SidebarHeadingLine.tsx",
         "apps/web/src/components/zerops/SidebarHeadingLine.logic.ts",
         "apps/web/src/components/zerops/SidebarProjects.logic.ts",
@@ -823,6 +822,7 @@
         "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
         "apps/web/src/components/zerops/MateLinkLine.tsx",
         "apps/web/src/components/zerops/MateLinkStage.tsx",
+        "apps/web/src/components/zerops/MateDetailFailure.tsx",
         "apps/web/src/components/zerops/RouteStandIn.tsx",
         "apps/web/src/components/zerops/ConversationFooterStandIn.tsx",
         "apps/web/src/components/zerops/WaitLine.tsx",
@@ -840,29 +840,38 @@
         "apps/web/src/components/zerops/projects/ProjectList.tsx",
         "apps/web/src/components/zerops/projects/projectsView.logic.ts",
         "apps/web/src/components/zerops/ZeropsAskDialog.tsx",
-        "apps/web/src/components/zerops/ZeropsDeployRun.tsx",
         "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
         "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
         "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
         "apps/web/src/components/zerops/ZeropsReleaseRows.tsx",
+        "apps/web/src/components/zerops/ZeropsDeployAnswer.tsx",
+        "apps/web/src/components/zerops/ZeropsDeployLog.tsx",
         "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
         "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.logic.ts",
         "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
         "apps/web/src/components/zerops/ZeropsOrganizationScope.tsx",
         "apps/web/src/components/zerops/ZeropsProjectMenu.tsx",
+        "apps/web/src/components/zerops/ZeropsProjectRenameMenu.tsx",
         "apps/web/src/components/zerops/ZeropsProjectRow.logic.ts",
         "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+        "apps/web/src/components/zerops/ZeropsThrowawayCleanup.tsx",
         "apps/web/src/zerops/useMateActions.tsx",
+        "apps/web/src/zerops/RestartMateConfirmation.tsx",
+        "apps/web/src/components/zerops/ZeropsRestartMateDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsRestartMateDialog.logic.ts",
         "apps/web/src/zerops/useSidebarMateMenus.tsx",
         "apps/web/src/components/zerops/ZeropsPullRequestRow.tsx",
         "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
         "apps/web/src/components/zerops/ZeropsStopMenu.tsx",
         "apps/web/src/components/zerops/ZeropsAssignMateDialog.tsx",
         "apps/web/src/components/zerops/ZeropsRenameDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsRenameProjectDialog.tsx",
         "apps/web/src/components/zerops/ZeropsChangeFaceDialog.tsx",
         "apps/web/src/components/zerops/ZeropsChangeFaceDialog.logic.ts",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.tsx",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts",
+        "apps/web/src/components/zerops/ZeropsDeleteProjectDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteProjectForm.tsx",
         "apps/web/src/zerops/deletingMates.ts",
         "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
         "apps/web/src/zerops/agentActivity.ts",
@@ -872,17 +881,19 @@
         "packages/client-runtime/src/zerops/bots.ts",
         "packages/client-runtime/src/zerops/candidates.ts",
         "packages/client-runtime/src/zerops/containerHealth.ts",
-        "packages/client-runtime/src/zerops/giteaRecipe.ts",
+        "apps/web/src/components/zerops/ZeropsHqTool.tsx",
+        "apps/web/src/components/zerops/ZeropsHqGate.tsx",
         "packages/client-runtime/src/zerops/groupTree.ts",
         "packages/client-runtime/src/zerops/groups.ts",
         "packages/client-runtime/src/zerops/mateEnvironments.ts",
         "packages/client-runtime/src/zerops/mateTints.ts",
-        "packages/client-runtime/src/zerops/provisioning.ts",
         "packages/client-runtime/src/zerops/publicRoutes.ts",
         "packages/client-runtime/src/zerops/registrationHandoff.ts",
         "packages/client-runtime/src/zerops/tools.ts",
         "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
-        "packages/client-runtime/src/zerops/projectFlow.ts"
+        "packages/client-runtime/src/zerops/projectFlow.ts",
+        "apps/web/src/zerops/useZeropsMenu.tsx",
+        "apps/web/src/components/zerops/ZeropsReadFailure.tsx"
       ],
       "entryPoints": [
         {
@@ -988,6 +999,10 @@
         {
           "action": "Change face",
           "reverse": "Change face"
+        },
+        {
+          "action": "Clean up sign-in tokens",
+          "reverse": "none: Deleted throwaway tokens cannot be restored. A failure stays visible with Try again."
         }
       ],
       "docs": {
@@ -995,6 +1010,7 @@
       },
       "tests": [
         "apps/web/src/components/zerops/ZeropsEnvironmentRow.test.tsx",
+        "apps/web/src/components/zerops/ZeropsThrowawayCleanup.test.tsx",
         "apps/web/src/components/zerops/ZeropsMateCard.test.tsx",
         "apps/web/src/components/zerops/ZeropsNextStepBanner.test.tsx",
         "apps/web/src/components/zerops/ZeropsNewMateForm.test.tsx",
@@ -1012,10 +1028,15 @@
         "apps/web/src/components/zerops/SidebarJumpButton.test.tsx",
         "apps/web/src/components/zerops/SidebarProductionChip.test.tsx",
         "apps/web/src/components/zerops/SidebarProductionChip.logic.test.ts",
+        "apps/web/src/components/zerops/StopReadAgain.test.tsx",
+        "apps/web/src/components/zerops/StopPublicAccess.test.tsx",
+        "apps/web/src/zerops/useStopPublicAccess.test.tsx",
         "apps/web/src/components/zerops/SidebarHeadingLine.logic.test.ts",
         "apps/web/src/components/zerops/SidebarMateMenu.test.tsx",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.test.tsx",
         "apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsDeleteProjectDialog.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteProjectForm.test.tsx",
         "apps/web/src/components/zerops/ZeropsChangeFaceDialog.test.tsx",
         "apps/web/src/components/zerops/ZeropsChangeFaceDialog.logic.test.ts",
         "apps/web/src/zerops/deletingMates.test.ts",
@@ -1037,13 +1058,11 @@
         "apps/web/src/components/zerops/ZeropsStopMenu.test.tsx",
         "apps/web/src/components/zerops/ZeropsReleaseRows.test.tsx",
         "apps/web/src/components/zerops/ZeropsGroupDetail.test.tsx",
-        "apps/web/src/components/zerops/ZeropsDeployRun.test.tsx",
         "apps/web/src/zerops/agentActivity.test.ts",
         "packages/client-runtime/src/zerops/mateTints.test.ts",
         "packages/client-runtime/src/zerops/publicRoutes.test.ts",
         "packages/client-runtime/src/zerops/accountScope.test.ts",
         "packages/client-runtime/src/zerops/candidates.test.ts",
-        "packages/client-runtime/src/zerops/provisioning.test.ts",
         "packages/client-runtime/src/zerops/autoEnterProvisioning.test.ts",
         "packages/client-runtime/src/zerops/registrationHandoff.test.ts",
         "packages/client-runtime/src/zerops/containerHealth.test.ts",
@@ -1054,25 +1073,36 @@
         "packages/client-runtime/src/zerops/data/inventory.test.ts",
         "packages/client-runtime/src/zerops/data/projection.test.ts",
         "packages/client-runtime/src/zerops/identityExchange.test.ts",
-        "packages/client-runtime/src/zerops/projectFlow.test.ts"
+        "packages/client-runtime/src/zerops/projectFlow.test.ts",
+        "packages/client-runtime/src/zerops/hq/menuRows.test.ts",
+        "apps/web/src/zerops/useAccountVoice.test.ts",
+        "apps/web/src/zerops/useProjectTopology.demand.test.ts",
+        "packages/client-runtime/src/zerops/data/demandScope.test.ts",
+        "apps/web/src/components/zerops/ZeropsReadFailure.test.tsx"
       ],
       "captures": []
     },
     {
-      "id": "zerops-gitea",
-      "title": "Gitea overview",
+      "id": "zerops-git",
+      "title": "Git page",
       "components": [
-        "apps/web/src/components/zerops/ZeropsGiteaPage.tsx",
-        "packages/client-runtime/src/zerops/giteaOverview.ts"
+        "apps/web/src/components/zerops/ZeropsGitPage.tsx",
+        "apps/web/src/components/zerops/ZeropsGitPage.logic.ts",
+        "apps/web/src/components/zerops/ZeropsGitCredentials.tsx",
+        "apps/web/src/components/zerops/ZeropsRepositoryBrowser.tsx",
+        "apps/web/src/zerops/useGitCredentials.ts",
+        "apps/web/src/zerops/useRepositorySource.ts",
+        "apps/web/src/zerops/useZeropsAppReleases.ts",
+        "packages/client-runtime/src/zerops/gitOverview.ts"
       ],
       "entryPoints": [
         {
           "kind": "route",
-          "value": "/gitea"
+          "value": "/git"
         },
         {
           "kind": "sidebar-item",
-          "value": "Gitea (the footer)"
+          "value": "Git (the account menu)"
         }
       ],
       "clients": {
@@ -1085,19 +1115,46 @@
       },
       "providers": "n/a",
       "connectionModes": ["zerops-door"],
-      "contracts": ["@t3tools/client-runtime/zerops/giteaOverview"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/gitOverview",
+        "@t3tools/client-runtime/zerops/hq"
+      ],
       "reverseStates": [
         {
-          "action": "Open a repository or a pull request in Gitea",
-          "reverse": "none: navigation, in a new tab."
+          "action": "Open a change's own page",
+          "reverse": "none: navigation."
+        },
+        {
+          "action": "Browse a repository",
+          "reverse": "Back to repositories"
+        },
+        {
+          "action": "Back to repositories",
+          "reverse": "Browse a repository"
+        },
+        {
+          "action": "Create Git password",
+          "reverse": "Revoke"
+        },
+        {
+          "action": "Revoke",
+          "reverse": "none: A revoked password cannot be restored. Create Git password issues a new one."
+        },
+        {
+          "action": "Read again",
+          "reverse": "none: An explicit read changes no remote state."
         }
       ],
-      "docs": {
-        "none": "No docs/user page documents the Gitea overview yet."
-      },
+      "docs": "docs/user/git.md",
       "tests": [
-        "apps/web/src/components/zerops/ZeropsGiteaPage.test.tsx",
-        "packages/client-runtime/src/zerops/giteaOverview.test.ts"
+        "apps/web/src/components/zerops/ZeropsGitPage.test.tsx",
+        "apps/web/src/components/zerops/ZeropsGitPage.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsGitCredentials.test.tsx",
+        "apps/web/src/components/zerops/ZeropsRepositoryBrowser.test.tsx",
+        "packages/client-runtime/src/zerops/hq/gitCredentialStore.test.ts",
+        "packages/client-runtime/src/zerops/hq/repositoryStore.test.ts",
+        "apps/web/src/zerops/hqAppLoad.test.tsx",
+        "packages/client-runtime/src/zerops/gitOverview.test.ts"
       ],
       "captures": []
     },

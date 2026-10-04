@@ -3,6 +3,7 @@
  * connection runtime, the connection catalog and its links, the probe over `fetch`, and this
  * account's storage. Adapters only: every decision is the runtime's.
  */
+import { accountThrowawayDebt } from "./throwawayDebt";
 import { fetchRemoteSessionState } from "@t3tools/client-runtime/authorization";
 import {
   connectionAdmission,
@@ -55,11 +56,18 @@ import { environmentCatalog } from "~/connection/catalog";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
+import { hqMatesAtom, hqMatesViewAtom, hqOfficialAtom, hqProjectOf } from "~/state/zerops";
 
 import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
-import { endKeptSession, keptSessionHeld, keptSessions } from "./keptSessions";
+import {
+  endKeptSession,
+  forgetKeptMateSession,
+  keptSessionHeld,
+  keptSessions,
+} from "./keptSessions";
 import { mateDescriptors } from "./mateDescriptors";
-import { pressingProjects } from "./matePress";
+import { makeDoorCaps } from "./doorCaps";
+import { pressesInFlight } from "./matePress";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
@@ -102,7 +110,22 @@ const retryLinkCommand = createRuntimeCommand(connectionAtomRuntime, {
     EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.retryNow(environmentId))),
 });
 
+const parkCommand = createRuntimeCommand(connectionAtomRuntime, {
+  label: "web:zerops:park",
+  execute: (environmentId: EnvironmentId) =>
+    EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.park(environmentId))),
+});
+
+const unparkCommand = createRuntimeCommand(connectionAtomRuntime, {
+  label: "web:zerops:unpark",
+  execute: (environmentId: EnvironmentId) =>
+    EnvironmentRegistry.pipe(Effect.flatMap((registry) => registry.unpark(environmentId))),
+});
+
 const quiet = { reportFailure: false } as const;
+
+/** Each Mate's backoff cap, kept across loads under the account's storage (`doorCaps.ts`). */
+const doorCaps = makeDoorCaps(accountLocalStorage, () => Date.now());
 
 const servedApp = () => ({ origin: window.location.origin, basePath: appBasePath() });
 
@@ -247,6 +270,67 @@ export function linkPhaseOf(state: SupervisorConnectionState): LinkPhase | null 
   }
 }
 
+const NO_PROJECTS: ReadonlySet<string> = new Set();
+
+/**
+ * The projects whose Mate HQ holds online, as HQ tells this tab now — in whatever organization
+ * it streams, as a Mate it holds online is up wherever the person looks. Null while what this
+ * tab holds is not HQ's answer now — nothing yet, or only what was last known of them — of an
+ * HQ that is there or not decided yet; none where the organization has no official HQ, as no
+ * answer is coming.
+ */
+export function onlinePort(
+  registry: AtomRegistry.AtomRegistry,
+): NonNullable<AccountEnvironmentPorts["online"]> {
+  return {
+    read: () => {
+      const view = registry.get(hqMatesViewAtom);
+      if (view === null || !view.current) {
+        return registry.get(hqOfficialAtom) === false ? NO_PROJECTS : null;
+      }
+      if (view.mates === null) return NO_PROJECTS;
+      return new Set(
+        [...view.mates].flatMap(([projectId, mate]) => (mate.presence.online ? [projectId] : [])),
+      );
+    },
+    subscribe: (listener) => {
+      const stopView = registry.subscribe(hqMatesViewAtom, listener);
+      const stopOfficial = registry.subscribe(hqOfficialAtom, listener);
+      return () => {
+        stopView();
+        stopOfficial();
+      };
+    },
+  };
+}
+
+/**
+ * The organization an official HQ's current word on its Mates speaks for: a project it lists that
+ * HQ does not hold online is read only once a lease waits on it. None while the organization's HQ
+ * is not official or not decided yet, while what this tab holds is not HQ's answer now, or where
+ * HQ names no Mates at all — one from before the overviews, whose word says nothing of them.
+ */
+export function hqOrganizationPort(
+  registry: AtomRegistry.AtomRegistry,
+): NonNullable<AccountEnvironmentPorts["hqOrganization"]> {
+  return {
+    read: () => {
+      const view = registry.get(hqMatesViewAtom);
+      return registry.get(hqOfficialAtom) === true && view?.current === true && view.mates !== null
+        ? view.organizationId
+        : null;
+    },
+    subscribe: (listener) => {
+      const stopView = registry.subscribe(hqMatesViewAtom, listener);
+      const stopOfficial = registry.subscribe(hqOfficialAtom, listener);
+      return () => {
+        stopView();
+        stopOfficial();
+      };
+    },
+  };
+}
+
 /**
  * The catalog's environments, and every publication of each one's link: a repeated rejection is
  * counted by the runtime, never coalesced here.
@@ -353,6 +437,31 @@ export const recordsStorage: AccountEnvironmentPorts["records"] = {
 // ── The ports ────────────────────────────────────────────────────────────────────────────────
 
 /**
+ * HQ's index of the Mates the reader observes (`hqMatesAtom`): the project whose Mate serves an
+ * environment, for a route or an action no record or descriptor names yet.
+ */
+export function hqIndexPort(
+  registry: AtomRegistry.AtomRegistry,
+): NonNullable<AccountEnvironmentPorts["hqIndex"]> {
+  return {
+    projectOf: (environmentId) => hqProjectOf(registry.get(hqMatesAtom), environmentId),
+    // Read once as it mounts, so the listener hears HQ's next word, not the atom's own first read.
+    subscribe: (listener) => {
+      let mounted = false;
+      const stop = registry.subscribe(
+        hqMatesAtom,
+        () => {
+          if (mounted) listener();
+        },
+        { immediate: true },
+      );
+      mounted = true;
+      return stop;
+    },
+  };
+}
+
+/**
  * The Mate environments' ports on the web, for one account epoch: `client` is the session's, and
  * `registry` the atom registry the connection runtime publishes to.
  */
@@ -372,6 +481,7 @@ export function webEnvironmentPorts(input: {
             throwaway: client.session?.accessToken
               ? {
                   platform: zeropsThrowawayPlatform(client, {
+                    debt: accountThrowawayDebt(client),
                     signal: request.signal,
                     asked: request.asked,
                   }),
@@ -402,6 +512,8 @@ export function webEnvironmentPorts(input: {
       },
       // A kept session its Mate gave no word on mints next time: that exchange waits on the pace.
       kept: presentsKept,
+      // A Mate's backoff cap outlives the load that reached it.
+      capped: doorCaps,
       readDescriptor: async (origin, signal) =>
         descriptorFacts(
           await mateDescriptors.descriptor(zeropsMateBaseUrl(origin, servedApp()), signal),
@@ -411,6 +523,13 @@ export function webEnvironmentPorts(input: {
       },
       remove: (environmentId) => {
         void runAtomCommand(registry, environmentCatalog.remove, environmentId, quiet);
+      },
+      forgetKept: forgetKeptMateSession,
+      park: (environmentId) => {
+        void runAtomCommand(registry, parkCommand, environmentId, quiet);
+      },
+      unpark: (environmentId) => {
+        void runAtomCommand(registry, unparkCommand, environmentId, quiet);
       },
     },
     probe: (origin, signal, ask) =>
@@ -430,7 +549,11 @@ export function webEnvironmentPorts(input: {
       return environmentId === null ? null : EnvironmentId.make(environmentId);
     },
     admission: connectionAdmission,
-    // A press or a harden this tab is running: its Mate is not connected meanwhile.
-    pressing: pressingProjects,
+    // Any press in flight: the background mints no throwaway meanwhile.
+    pressInFlight: pressesInFlight,
+    hqIndex: hqIndexPort(registry),
+    // A Mate HQ holds online is up: its container is never probed.
+    online: onlinePort(registry),
+    hqOrganization: hqOrganizationPort(registry),
   };
 }

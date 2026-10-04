@@ -3,11 +3,8 @@
  */
 
 import {
-  botDisplayName,
-  GROUP_REPOSITORY,
   hasMate,
   isRecipeProposal,
-  readZeropsGroupTags,
   ZEROPS_BOT_NAME_MAX_LENGTH,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
@@ -20,6 +17,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import { MATE_SHAPE_OF_TINT, type MateShapeId, type MateTintId } from "@t3tools/shared/brand";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
 export interface RecipeOption {
   readonly id: string;
@@ -39,7 +37,8 @@ export interface RecipeOption {
  * created and could not build.
  *
  * A project with no merged recipe is offered only the second, and the option
- * says why rather than leaving a list of one that reads like a stub.
+ * says why rather than leaving a list of one that reads like a stub — only where HQ answered that
+ * there is none: a recipe still being read, or one that could not be read, is not a missing one.
  */
 export function recipeOptions(input: {
   /** The word for what is being added, as the dialog says it: "Mate", "stage", "production". */
@@ -48,6 +47,8 @@ export function recipeOptions(input: {
   readonly tier: Extract<EnvironmentRecipeChoice, { kind: "tier" }> | undefined;
   /** Every service that tier declares, for the line under it. */
   readonly services: ReadonlyArray<string>;
+  /** Where the recipe stands (`creationRecipe`). */
+  readonly recipe: CreationRecipe;
 }): ReadonlyArray<RecipeOption> {
   const options: Array<RecipeOption> = [];
   if (input.tier !== undefined) {
@@ -68,7 +69,7 @@ export function recipeOptions(input: {
     id: "none",
     label: "Nothing yet",
     detail:
-      options.length === 0
+      options.length === 0 && input.recipe === "absent"
         ? "This project has no recipe on main yet. The agent sets the application up."
         : "The agent sets the application up.",
     choice: { kind: "none" },
@@ -76,16 +77,18 @@ export function recipeOptions(input: {
   return options;
 }
 
+/**
+ * A stage's or a production's form: one name, its project's, whether an agent runs in it or not —
+ * its agent goes by it (D3).
+ */
 export interface CreationForm {
   readonly name: string;
   readonly withAgent: boolean;
-  readonly botName: string;
   readonly recipeId: string;
 }
 
 export interface CreationFormErrors {
   readonly name?: string;
-  readonly botName?: string;
   readonly recipe?: string;
 }
 
@@ -142,51 +145,68 @@ export function validateBotName(
 export function validateCreationForm(
   form: CreationForm,
   context: {
-    readonly takenBotNames: TakenBotNames;
     readonly options: ReadonlyArray<RecipeOption>;
+    /** Where the recipe stands (`creationRecipe`). */
+    readonly recipe: CreationRecipe;
   },
 ): CreationFormErrors {
-  const errors: { name?: string; botName?: string; recipe?: string } = {};
+  const errors: { name?: string; recipe?: string } = {};
   if (form.name.trim().length === 0) errors.name = "Give the environment a name.";
 
-  if (form.withAgent) {
-    const botError = validateBotName(form.botName, context.takenBotNames);
-    if (botError !== undefined) errors.botName = botError;
-  }
-
+  // What is created comes from this read: a recipe not read yet, or not read at all, holds it.
+  const held = creationRecipeHold(context.recipe);
   const option = context.options.find((entry) => entry.id === form.recipeId);
-  if (option === undefined) errors.recipe = "Choose what goes in the environment.";
+  if (held !== undefined) errors.recipe = held;
+  else if (option === undefined) errors.recipe = "Choose what goes in the environment.";
   else if (option.choice.kind === "none" && !form.withAgent) {
     // Name the way out, not just the rule. With no recipe on `main` the fix is
     // not in this dialog at all — it is a pull request on the group repo.
-    const noRecipe = context.options.every((entry) => entry.choice.kind === "none");
-    errors.recipe = noRecipe
-      ? "This project has no recipe on main yet. Merge one first, or switch the agent on."
-      : "Take the project's recipe, or switch the agent on to have one set up.";
+    errors.recipe =
+      context.recipe === "absent"
+        ? "This project has no recipe on main yet. Merge one first, or switch the agent on."
+        : "Take the project's recipe, or switch the agent on to have one set up.";
   }
   return errors;
 }
 
+/**
+ * Where the project's recipe stands for the creation forms: being read — no answer this time yet,
+ * whatever the last read said (`useZeropsGroupRecipe`'s `loading`) — or what HQ answered: a recipe,
+ * none on `main`, or a read that failed.
+ */
+export type CreationRecipe = "reading" | "present" | "absent" | "unreadable";
+
+export function creationRecipe(read: {
+  readonly state: NewMateRecipeRead;
+  readonly loading: boolean;
+}): CreationRecipe {
+  return read.loading || read.state === "loading" ? "reading" : read.state;
+}
+
+const RECIPE_UNREADABLE = "The project's recipe can't be read right now.";
+
+/** What holds a stage's or a production's form: its recipe still being read, or not readable. */
+export function creationRecipeHold(recipe: CreationRecipe): string | undefined {
+  if (recipe === "reading") return READING_RECIPE;
+  return recipe === "unreadable" ? RECIPE_UNREADABLE : undefined;
+}
+
 export function hasCreationErrors(errors: CreationFormErrors): boolean {
-  return errors.name !== undefined || errors.botName !== undefined || errors.recipe !== undefined;
+  return errors.name !== undefined || errors.recipe !== undefined;
 }
 
 /**
- * What to call a new environment: a Mate after its bot — `Todo - Fen`, the
- * name the person will say — and a stage or a production after its role;
- * numbered once the plain name is taken, since a group holds N Mates and two
- * environments must not share one name (the owner, 2026-09-17, on
- * "Todo - dev 2": "why is it called that and not Todo - Fen?").
+ * What to call a new stage or production: after its project and its role — `Todo - stage` — so it
+ * reads in the organization's project list in Zerops, numbered once the plain name is taken. A
+ * suggestion the person may change, here or in Zerops: nothing reads it back (D3). A Mate's project
+ * is called what the Mate is.
  */
 export function proposedEnvironmentName(input: {
   readonly groupName: string;
   readonly roleLabel: string;
-  /** The Mate's bot, when the environment runs one; it names the Mate. */
-  readonly botName?: string | undefined;
   readonly taken: ReadonlyArray<string>;
 }): string {
-  const who = input.botName?.trim() ? input.botName.trim() : input.roleLabel;
-  const base = `${input.groupName} - ${who}`;
+  const base = `${input.groupName} - ${input.roleLabel}`;
   const taken = new Set(input.taken.map((name) => name.trim().toLowerCase()));
   if (!taken.has(base.toLowerCase())) return base;
   for (let suffix = 2; ; suffix += 1) {
@@ -198,8 +218,7 @@ export function proposedEnvironmentName(input: {
 /**
  * The New Mate dialog asks three things — a name, a colour, a shape — and decides the rest: the
  * Mate gets its own copy of the project with the project's recipe deployed (the tier read from
- * the group repo's `main`), runs its agent, and is called what the project calls it
- * (`proposedEnvironmentName`).
+ * the group repo's `main`), runs its agent, and its project is called what the Mate is (D3).
  */
 
 /** The name a new Mate's face follows: what is typed, or while the field is blank the last name typed. */
@@ -301,7 +320,7 @@ export function newMateWords(input: {
   };
 }
 
-/** Where the recipe on the group repo's `main` stands, as it answered (`useZeropsGroupRecipe`). */
+/** Where the recipe on its repository's `main` stands, as HQ answered (`useZeropsGroupRecipe`). */
 export type NewMateRecipeRead = "loading" | "present" | "absent" | "unreadable";
 
 /** One of the project's Mates, as the door names it. */
@@ -394,7 +413,7 @@ export function newMateDoor(input: {
 }
 
 /**
- * The project's Mates, as the door counts and names them: the listed ones by their agent, in the
+ * The project's Mates, as the door counts and names them: the listed ones by their project, in the
  * tree's order, then the ones still coming up — a Mate the platform took and the listing does not
  * hold yet is setting the project up as surely as one it does.
  */
@@ -407,10 +426,7 @@ export function newMateDoorMates(input: {
       ? [
           {
             projectId: item.project.id,
-            name: botDisplayName({
-              bot: readZeropsGroupTags(item.project.tagList).bot,
-              projectName: item.project.name,
-            }),
+            name: item.project.name,
           },
         ]
       : [],
@@ -449,8 +465,7 @@ export function newMateRecipeChange(input: {
     if (first === undefined || pull.number < first.number) first = pull;
   }
   if (first === undefined) return undefined;
-  const mate = first.mateProjectId === undefined ? undefined : input.mateName(first.mateProjectId);
-  return { number: first.number, mate };
+  return { number: first.number, mate: input.mateName(first.mateProjectId) };
 }
 
 /** The proposal of the recipe that landed last, by its number: another landing may put one on `main`. */
@@ -464,7 +479,7 @@ export function landedRecipeProposal(merged: ReadonlyArray<FlowPullRequest>): nu
   return newest;
 }
 
-/** Where *Review the change* goes: the recipe's change on the group repo, on its own page. */
+/** Where *Review the change* goes: the recipe's change in its recipe repository, on its own page. */
 export function recipeChangeView(
   groupId: string,
   number: number,
@@ -478,7 +493,7 @@ export function recipeChangeView(
 } {
   return {
     to: "/change/$groupId/$repository/$number",
-    params: { groupId, repository: GROUP_REPOSITORY, number: String(number) },
+    params: { groupId, repository: RECIPE_REPO, number: String(number) },
   };
 }
 
@@ -494,15 +509,16 @@ const PRESS_STEPS: ReadonlyArray<{
   readonly kinds: ReadonlyArray<EnvironmentCreationStep["kind"]>;
 }> = [
   { label: "Project", kinds: ["create-project", "import-project", "import-managed"] },
+  { label: "Registered", kinds: ["register"] },
   { label: "Container", kinds: ["import-container"] },
   { label: "Closed off", kinds: ["close-off"] },
-  { label: "Registered", kinds: ["register"] },
 ];
 
 /**
- * The press as *Finish setup* on a Mate's view draws it: Project, Container, Closed off,
- * Registered — what the Mate needs before it needs no browser, and the registration a call or two
- * after. A step a press does not make is left out.
+ * The press as the Add dialog draws it, in the order it runs: Project, Registered — its record in
+ * its application before its container (F6b) — Container, Closed off: what the Mate needs before
+ * it needs no browser. The wait for it comes after, the dialog gone. A step a press does not make
+ * is left out.
  */
 export function pressSteps(
   progress: ReadonlyArray<EnvironmentCreationStepProgress>,

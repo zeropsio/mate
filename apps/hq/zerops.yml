@@ -1,0 +1,48 @@
+# HQ Core (service `hq`; never `core`, every project's reserved system service). Deployed as an app
+# version built locally: the archive holds the self-contained bundle (`vp pack`, see vite.config.ts),
+# so the build stage only checks that it parses and the runtime runs no `npm install`.
+zerops:
+  - setup: hq
+    build:
+      base: nodejs@24
+      os: ubuntu
+      buildCommands:
+        - node --check dist/main.mjs
+      deployFiles: ./
+    deploy:
+      # The new container starts beside the old one, which keeps serving: the old one holds the
+      # leader lock, the new one answers /health as a standby (200). Only then does the old one go;
+      # its lock is released and the new one leads under the next epoch. A version whose /health
+      # never answers 200 fails, and the old one keeps serving (measured, T0 §3).
+      temporaryShutdown: false
+      # Go durations as strings: the platform refuses integers, and retryPeriod must be 10s–1h.
+      readinessCheck:
+        httpGet:
+          port: 8080
+          path: /health
+        failureTimeout: 60s
+        retryPeriod: 10s
+    run:
+      base: nodejs@24
+      os: ubuntu
+      # Ubuntu 24.04 ships git 2.43; the git-core PPA carries the latest. It ships pg_dump 16, and a
+      # backup set's dump needs the database's own major (postgresql@18): the PGDG repository's.
+      prepareCommands:
+        - sudo DEBIAN_FRONTEND=noninteractive apt-get update -q
+        - sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q software-properties-common postgresql-common
+        - sudo add-apt-repository -y ppa:git-core/ppa
+        - sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+        - sudo DEBIAN_FRONTEND=noninteractive apt-get update -q
+        - sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q git postgresql-client-18
+      ports:
+        - port: 8080
+          httpSupport: true
+      # Mounted at /mnt/vol, owned by zerops: the git repositories' home, and the backup sets'
+      # staging.
+      volume:
+        hostname: vol
+      envVariables:
+        PORT: "8080"
+        # The direct connection (5432): an advisory lock does not survive the pooler on 6432.
+        DATABASE_URL: ${db_connectionString}
+      start: node dist/main.mjs

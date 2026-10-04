@@ -50,7 +50,7 @@ describe("MateFace", () => {
     expect(html).not.toMatch(/#[0-9a-f]{6}/iu);
   });
 
-  // A Mate picks its shape and its colour apart (`mate:face:`): any shape in
+  // A Mate picks its shape and its colour apart (HQ's record of its face): any shape in
   // any colour, turning by that shape's own symmetry.
   it.each<[MateTintId, MateShapeId]>([
     ["coral", "gem"],

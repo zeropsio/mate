@@ -233,7 +233,7 @@ export interface LineCrewmate {
   readonly status: string | null;
 }
 
-/** A crew as this browser last read it (`menuMemory.ts`): its faces, the lead first. */
+/** A crew as HQ last told this tab of it (`useMateCrew`): its faces, the lead first. */
 export interface RememberedLineCrew {
   readonly faces: ReadonlyArray<{
     readonly handle: string;
@@ -246,8 +246,8 @@ export interface RememberedLineCrew {
 /**
  * The crew on the line, the lead first — or `null` for a Mate with no crew,
  * which draws no divider and no faces. Read from the crew's feed once it is
- * applied; until the feed answers, from what this browser last read of it,
- * each face at rest, so a reload paints the line it keeps; and in a
+ * applied; until the feed answers, from the crew HQ holds of it, each face
+ * at rest, so a reload paints the line it keeps; and in a
  * crewmate's chat with neither, that crewmate alone, named as its chat was
  * (its title is its name when its stint began). A crewmate is one person
  * across its conversations: it is on screen in any of its stints, a retired

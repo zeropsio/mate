@@ -11,7 +11,7 @@
  *
  * Served by the dev server at `/design-arrival.html` — `?state=<id>` for the state it opens on
  * (coming, coming-new, signin, signin-claude, signin-codex, checking-code, signin-failed,
- * terminal, standing-up, conversation, stopped, not-created, colleague, crew, dialog), `?theme=dark`.
+ * terminal, standing-up, conversation, not-created, colleague, crew, dialog), `?theme=dark`.
  * `window.__arrivalHarness.go(id)` moves to a state from a script. Fixtures only: nothing here
  * ships, and no route imports this module.
  */
@@ -149,7 +149,7 @@ function comingProgress(
   const mate = deriveBirthProgress(creatingFacts(), nowMs);
   if (kind === "coming-new") {
     const steps: ReadonlyArray<ArrivalStepInput> = [
-      { id: "git-hosting", label: "Git hosting", state: "done" },
+      { id: "hq", label: "HQ", state: "done" },
       { id: "registry", label: "Acme Shop", state: "done" },
       ...mate.steps,
     ];
@@ -203,6 +203,8 @@ interface HarnessState {
   readonly unknown?: KnownMessage;
   readonly conversation?: boolean;
   readonly dialog?: ZeropsAgentId;
+  /** The dialog's agent holds a colleague's sign-in: their name. */
+  readonly heldBy?: string;
   readonly crew?: boolean;
   readonly watching?: boolean;
 }
@@ -309,7 +311,6 @@ const STATES: ReadonlyArray<HarnessState> = [
     phase: null,
     conversation: true,
   },
-  { id: "stopped", label: "4 Stopped · the ask didn't go through", mate: WREN, phase: "failed" },
   {
     id: "not-created",
     label: "4 Stopped · it could not be added",
@@ -341,6 +342,15 @@ const STATES: ReadonlyArray<HarnessState> = [
     phase: null,
     conversation: true,
     dialog: "claude-code",
+  },
+  {
+    id: "dialog-held",
+    label: "6 The sign-in in a dialog, over a colleague's sign-in",
+    mate: WREN,
+    phase: null,
+    conversation: true,
+    dialog: "codex",
+    heldBy: "Ann",
   },
 ];
 
@@ -450,6 +460,9 @@ function useFixtureSignIn(initial: Logins, onSignedIn: () => void, fail: boolean
   return { logins, onStart, onSubmitCode, onCancel };
 }
 
+/** The colleague whose sign-in a dialog's agent holds. */
+const HOLDER = "u-holder";
+
 function FixtureSignIn({
   state,
   onSignedIn,
@@ -473,6 +486,9 @@ function FixtureSignIn({
     .map((agentId) => ({
       agentId,
       login: logins[agentId],
+      ...(state.heldBy === undefined || agentId !== fixed
+        ? {}
+        : { credPresent: true, authorizedBy: { subject: HOLDER } }),
     }));
   return (
     <AgentSignInView
@@ -480,6 +496,7 @@ function FixtureSignIn({
       codeField
       fixed={fixed !== null}
       mateName={state.mate.name}
+      nameOf={(subject) => (subject === HOLDER ? state.heldBy : undefined)}
       onCancel={onCancel}
       onStart={onStart}
       onSubmitCode={onSubmitCode}
@@ -489,6 +506,7 @@ function FixtureSignIn({
         </pre>
       )}
       usual={state.id === "colleague" ? null : "claude-code"}
+      viewerSubject="u-harness"
       watching={state.watching === true}
     />
   );
@@ -617,13 +635,7 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
     <MateEmptyStateView
       addedBy={state.addedBy}
       coming={comingOf(state, nowMs)}
-      // Waiting for its first sign-in, it is still arriving (`mateArrivingUntil`).
-      mate={
-        state.logins === undefined
-          ? state.mate
-          : { ...state.mate, arrivingUntil: nowMs + 30 * 60_000 }
-      }
-      onRetry={() => go("standing-up")}
+      mate={state.mate}
       phase={state.phase}
       runtimes={signInRuntimes(nowMs - openedAt)}
       signIn={

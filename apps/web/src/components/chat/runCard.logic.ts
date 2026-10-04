@@ -9,6 +9,7 @@
  */
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { MateMarkState } from "@t3tools/shared/brand";
+import { quoteWords } from "@t3tools/shared/messagePreview";
 
 import {
   browserCheckCaption,
@@ -246,11 +247,11 @@ export function reachesEarlier(
 
 /**
  * A thought's words as one quiet run of text, for the two lines a thought
- * shows and the one the now line carries: its markdown's marks dropped, its
- * paragraphs run together.
+ * shows and the one the now line carries: its markdown's marks dropped, a
+ * callout said as its word (`quoteWords`), its paragraphs run together.
  */
 export function thoughtRunText(text: string): string {
-  return text
+  return quoteWords(text)
     .split(/\n\s*\n/u)
     .map((paragraph) => {
       // A title standing alone reads as a sentence of its own, not the start of the next.
@@ -262,7 +263,7 @@ export function thoughtRunText(text: string): string {
     .replace(/\*\*([^*\n]+)\*\*/gu, "$1")
     .replace(/__([^_\n]+)__/gu, "$1")
     .replace(/`([^`\n]+)`/gu, "$1")
-    .replace(/^\s{0,3}(?:#{1,6}|>|[-*+]|\d+[.)])\s+/gmu, "")
+    .replace(/^\s{0,3}(?:#{1,6}|[-*+]|\d+[.)])\s+/gmu, "")
     .replace(/\s+/gu, " ")
     .trim();
 }

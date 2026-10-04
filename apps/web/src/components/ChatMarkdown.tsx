@@ -17,6 +17,7 @@ import type {
   ThreadLinkedPullRequest,
 } from "@t3tools/contracts";
 import { faviconUrlForOrigin } from "@t3tools/shared/favicon";
+import { GITHUB_ALERT_WORDS } from "@t3tools/shared/messagePreview";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -303,19 +304,6 @@ const CHAT_MARKDOWN_REHYPE_PLUGINS = [
   rehypeNormalizeWindowsImageSrc,
   [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
 ] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
-
-/**
- * GitHub's five alert kinds, drawn as callouts: the word run into the first line
- * says the urgency, the tone says it again. Their tones are the product's status
- * grammar and live in the stylesheet (`.chat-markdown-callout[data-alert]`).
- */
-const CALLOUTS = new Map<string, string>([
-  ["note", "Note"],
-  ["tip", "Tip"],
-  ["important", "Important"],
-  ["warning", "Warning"],
-  ["caution", "Caution"],
-]);
 
 function extractFenceLanguage(className: string | undefined): string {
   const match = className?.match(CODE_FENCE_LANGUAGE_REGEX);
@@ -1171,7 +1159,7 @@ export interface MarkdownPicture {
 
 /**
  * Draws a text's pictures that come from an address of their own, where the text's host reads
- * them its own way: a change's description reads its Gitea's pictures as the person, sized to its
+ * them its own way: a change's description reads its pictures from HQ as the person, sized to its
  * column. Absent, they load as any page's pictures do.
  */
 export const MarkdownPictureContext = React.createContext<
@@ -2095,7 +2083,11 @@ const CHAT_MARKDOWN_COMPONENTS = {
   },
   blockquote: function MarkdownBlockquote({ node: _node, children, ...props }) {
     const kind = String((props as Record<string, unknown>)["data-alert"] ?? "");
-    const label = CALLOUTS.get(kind);
+    // GitHub's five alert kinds, drawn as callouts: the word run into the first line
+    // says the urgency, the tone says it again. The word is the one every plain
+    // reading of a message keeps (`quoteWords`); the tones are the product's status
+    // grammar and live in the stylesheet (`.chat-markdown-callout[data-alert]`).
+    const label = GITHUB_ALERT_WORDS.get(kind);
     if (label === undefined) {
       return <blockquote {...props}>{children}</blockquote>;
     }

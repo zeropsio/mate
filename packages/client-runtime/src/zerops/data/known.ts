@@ -8,9 +8,8 @@
  *
  * No I/O, but not in the pure zone: it value-imports `interestKeyOf` from the runtime, so a
  * projection takes these `Known` values as inputs and never imports this module. A stale value is
- * stale since it was read. A read with no value yet takes the caller's `nowMs` for a recovering
- * feeder's `reading.sinceMs` and a failed one's `failed.atMs`, because the runtime keeps no time
- * for either transition.
+ * stale since it was read. A read with no value yet takes the caller's `nowMs` for a failed
+ * feeder's `failed.atMs`, because the runtime keeps no time for that transition.
  */
 import type { AbsenceEvidence, Freshness, Known, Stamp } from "../knowledge/known.ts";
 import { interestKeyOf } from "./runtime.ts";
@@ -33,7 +32,6 @@ import type {
 const RANK: Record<InterestState["status"], number> = {
   observing: 0,
   establishing: 1,
-  recovering: 2,
   paused: 3,
   failed: 4,
 };
@@ -81,8 +79,6 @@ function notYetKnown<T>(source: InterestState | null, nowMs: number): Known<T> {
       return { state: "unread", waitingFor: null };
     case "establishing":
       return { state: "reading", sinceMs: source.startedAtMs, attempt: 1 };
-    case "recovering":
-      return { state: "reading", sinceMs: nowMs, attempt: source.attempt };
     case "paused":
       return {
         state: "unread",
@@ -126,12 +122,6 @@ function freshnessOf(source: InterestState | null, asOf: Stamp): Freshness {
       return { kind: "live" };
     case "establishing":
       return { kind: "revalidating", sinceMs: source.startedAtMs };
-    case "recovering":
-      return {
-        kind: "stale",
-        reason: { kind: "source-recovering", retryAtMs: source.nextRetryAtMs },
-        sinceMs: asOf.atMs,
-      };
     case "paused":
       return source.reason === "no-leases"
         ? unobserved(asOf.atMs)
@@ -139,12 +129,19 @@ function freshnessOf(source: InterestState | null, asOf: Stamp): Freshness {
     case "failed":
       return {
         kind: "stale",
-        reason: {
-          kind: "revalidation-failed",
-          failure: { kind: "transport", detail: source.reason },
-          attempt: source.attempts,
-          retryAtMs: source.retryAtMs,
-        },
+        reason:
+          source.retryAtMs !== null
+            ? {
+                kind: "source-recovering",
+                retryAtMs: source.retryAtMs,
+                coverageGap: true,
+              }
+            : {
+                kind: "revalidation-failed",
+                failure: { kind: "transport", detail: source.reason },
+                attempt: source.attempts,
+                retryAtMs: source.retryAtMs,
+              },
         sinceMs: asOf.atMs,
       };
   }
@@ -185,7 +182,7 @@ function knownCollection<Record extends ProjectRecord | ServiceRecord>(
 /**
  * The interest an organization's projects read is as current as: its inventory interest. A reader
  * that holds a read until it changes compares this too, because that interest failing or
- * recovering changes the read's knowledge while its query stays as it was.
+ * pausing changes the read's knowledge while its query stays as it was.
  */
 export function projectsSourceOf(read: CollectionRead<ProjectRecord>): InterestState | null {
   return sourceOf(read.observation, organizationFeeders(read.query.descriptor.organization));
@@ -210,18 +207,23 @@ const projectFeeders = feedersOnce(
   (project: ProjectRef): ReadonlySet<InterestKey> =>
     new Set([
       interestKeyOf({ kind: "project-inventory", project }),
-      interestKeyOf({ kind: "project-topology", project, includeCurrentMetrics: false }),
-      interestKeyOf({ kind: "project-topology", project, includeCurrentMetrics: true }),
+      interestKeyOf({ kind: "project-topology", project }),
     ]),
 );
 
 /**
- * The receipt ordinal of the confirming read of a project's services (§9 C19): its own lag-free
- * read (`project-services-check`), observing. The organization's search behind the inventory may
- * trail a service it lacks, so it never confirms an absence. `null` while that read has not run.
+ * A complete direct project service list proves absence. A membership search alone cannot:
+ * its index may lag. A separately requested confirming read also supplies this proof.
  */
 export function servicesCheckOrdinalOf(read: CollectionRead<ServiceRecord>): number | null {
   if (read.project === undefined) return null;
+  if (
+    read.query.status === "observed" &&
+    read.query.source === "direct-read" &&
+    read.query.coverage.kind === "exhausted-traversal" &&
+    servicesSourceOf(read)?.status === "observing"
+  )
+    return read.query.stamp.receiptOrdinal;
   const check = interestKeyOf({ kind: "project-services-check", project: read.project });
   for (const interests of [read.observation.required, read.observation.optional]) {
     for (const interest of interests) {

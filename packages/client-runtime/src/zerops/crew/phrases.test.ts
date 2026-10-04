@@ -49,6 +49,7 @@ import {
   crewNeedSentence,
   crewNoDevHostWord,
   crewOnItsOwnWords,
+  crewOperationStageWord,
   crewPendingNotice,
   crewPersonLands,
   crewPlanStartLine,
@@ -74,6 +75,17 @@ import {
   CREW_NOT_SHIPPED_SHORT,
   mateOwnChatWord,
 } from "./phrases.ts";
+
+it.each([
+  ["preparing-copy", "its copy preparation ended"],
+  ["committing", "its preservation step ended"],
+  ["merging", "its merge ended"],
+  ["setting-up", "its setup ended"],
+  ["checking", "its check ended"],
+  ["landing", "its landing ended"],
+])("a confirmed %s receipt describes the ending without claiming success", (stage, word) => {
+  expect(crewOperationStageWord(stage)).toBe(word);
+});
 
 const crew = crewSnapshotFixture();
 const run = crew.run!;
@@ -427,6 +439,8 @@ describe("crewNeedSentence", () => {
 describe("a row's words", () => {
   it("names each press in plain words", () => {
     expect(Object.values(CREW_ROW_VERBS)).toEqual([
+      "Rebuild crew copy",
+      "Use crew copy",
       "Answer",
       "Review",
       "Review what it has",
@@ -527,6 +541,13 @@ describe("the setup's and the job's words", () => {
       "- **Money** as integer cents\n> keep `REST`",
       "Money as integer cents\nkeep REST",
     ],
+    // A person's brief reads a callout as a Mate's message does: its word run into its first line.
+    [
+      "a callout's word run into its first line",
+      "> [!WARNING]\n> Keep the save format stable.\n\nThen the camera.",
+      "Warning: Keep the save format stable.\nThen the camera.",
+    ],
+    ["a quote in a quote", "> > Keep it small.", "Keep it small."],
     ["at most two lines", "One.\n\nTwo.\nThree.", "One.\nTwo."],
     ["nothing left", "## Done when", ""],
   ])("reads the goal's first lines as plain text: %s", (_name, excerpt, plain) => {
@@ -906,6 +927,13 @@ describe("a crewmate's empty conversation", () => {
       says: "Keeps the README current. Always.",
     },
     { name: "World Server", line: "## Game rules", says: "Game rules" },
+    {
+      name: "Game Rules",
+      line: "> > You own Game Rules: turns and scoring",
+      says: "Turns and scoring",
+    },
+    // A callout's marker line, read as a Mate's message reads it: its word.
+    { name: "World Server", line: "> [!WARNING]", says: "Warning:" },
     { name: "World Server", line: "   ", says: "" },
   ])(
     "reads a job's first line in plain words, leaving out what it says to its crewmate: $line",
@@ -970,12 +998,9 @@ describe("a crew closed to the viewer (D6)", () => {
     );
   });
 
-  it.each(["unrecorded", "record-failed"] as const)(
-    "says %s in the conversation's own words",
-    (ownership) => {
-      expect(crewLockWords(ownership)).toBe(agentOwnershipComposerNotice(ownership));
-    },
-  );
+  it("says unrecorded in the conversation's own words", () => {
+    expect(crewLockWords("unrecorded")).toBe(agentOwnershipComposerNotice("unrecorded"));
+  });
 
   it("offers the conversation's one way out", () => {
     expect(CREW_LOCK_ACTION).toBe(AGENT_OWNERSHIP_RECOVERY_LABEL);

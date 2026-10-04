@@ -39,15 +39,13 @@ export interface DiagnosticFailure {
   readonly status?: number;
 }
 
-export type ThrowawayPurpose = "door" | "gitea";
-
 /**
- * Why an exchange at a Mate's door was attempted: the reload's restore, the
- * auto-connect of ready Mates, the repair of a session the door stopped
+ * Why an exchange at a Mate's door was attempted: a lease's restore (the
+ * route's, the Mate left last), the repair of a session the door stopped
  * accepting, or the projects page's connect (a person's click or retry, a
  * creation's birth, the served environment's one automatic connect).
  */
-export type IdentityExchangeReason = "restore" | "auto-connect" | "repair" | "user";
+export type IdentityExchangeReason = "restore" | "repair" | "user";
 
 /**
  * Why a round of the access grant started: the epoch's first, the grant's own
@@ -89,7 +87,7 @@ interface MateDiagnosticSpans {
   };
   /** One pass over every group of the project flow; `answered` is how many groups it read. */
   readonly "flow-pass": {
-    readonly start: { readonly pass: "forge" | "deploys"; readonly groups: number };
+    readonly start: { readonly pass: "forge"; readonly groups: number };
     readonly end: { readonly answered: number };
   };
 }
@@ -127,7 +125,6 @@ export type MateDiagnosticEvent =
   | ({
       readonly kind: "throwaway";
       readonly action: "mint";
-      readonly purpose: ThrowawayPurpose;
       readonly clientId: string;
     } & (
       | { readonly outcome: "ok"; readonly tokenId: string }
@@ -137,7 +134,7 @@ export type MateDiagnosticEvent =
       readonly kind: "throwaway";
       readonly action: "delete";
       readonly clientId: string;
-      /** Pairs the delete with its mint, which names the purpose. */
+      /** Pairs the delete with its mint. */
       readonly tokenId: string;
     } & ({ readonly outcome: "ok" } | ({ readonly outcome: "failed" } & DiagnosticFailure)))
   /** The connection runtime that holds the environment catalog. */

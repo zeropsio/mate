@@ -24,7 +24,7 @@ services:
 describe("recipeProjectImportYaml", () => {
   const out = recipeProjectImportYaml(TIER, {
     name: "Aurora - production",
-    tagList: ["mate:g:6qxmgx4chfcm", "mate:role:prod"],
+    tagList: ["mate"],
   });
 
   it("keeps the project-level env the strip would have taken", () => {
@@ -44,9 +44,8 @@ describe("recipeProjectImportYaml", () => {
     expect(out).not.toContain("laravel-minimal-small-prod");
   });
 
-  it("replaces the recipe's tags with the group's membership", () => {
-    expect(out).toContain("    - mate:g:6qxmgx4chfcm");
-    expect(out).toContain("    - mate:role:prod");
+  it("replaces the recipe's tags with the ones the environment is born with", () => {
+    expect(out).toContain("    - mate\n");
     // The published tag and its key go together; a stray item is rejected.
     expect(out).not.toContain("- published");
     expect(out.match(/^\s+tags:/gmu)).toHaveLength(1);

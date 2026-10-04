@@ -1,38 +1,30 @@
 /**
- * What has been said on one change, read as the person, and the way to say
- * something back.
+ * What has been said on one change, read from HQ as the person, and the way to say something back
+ * (SPEC §3.2a: HQ keeps a change's comments, and `comment_change` decides who may write one).
  *
- * Read on open like the history, never on the sixty-second clock: a
- * conversation nobody has open costs nothing. What was read is kept for the
- * change, so opening it again shows what was said at once while it is read
- * again. A posted comment is put into the list straight away rather than
- * waiting for a re-read — the person just wrote it, and a comment box that
- * clears and then shows nothing for a second reads as a comment that was lost.
+ * Read on open, never on a clock: a conversation nobody has open costs nothing. What was read is
+ * kept for the change, so opening it again shows what was said at once while it is read again. A
+ * posted comment is put into the list straight away rather than waiting for a re-read — the
+ * person just wrote it, and a comment box that clears and then shows nothing for a second reads
+ * as a comment that was lost.
  *
- * A refusal answers its reason, because this is the whole of what the surface
- * shows: there is no last-good conversation to fall back on. *Try again*
- * (`retry`) asks once more.
+ * A refusal answers its reason, because this is the whole of what the surface shows: there is no
+ * last-good conversation to fall back on. *Try again* (`retry`) asks once more. Until the
+ * organization's official HQ is known, it is still being read.
  */
-import type { GiteaIssueComment } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import { HQ_NOT_OPEN } from "@t3tools/client-runtime/zerops/hq";
+import type { ChangeLink, HqChangeComment } from "@t3tools/shared/hqChanges";
 import { useCallback, useEffect, useState } from "react";
 
 import { LRUCache } from "~/lib/lruCache";
 
-import { giteaClientFor, useGiteaReadable } from "./accountGiteaSessions";
+import { useOfficialHq } from "./accountHq";
 
 export type ZeropsChangeCommentsState =
-  | { readonly kind: "no-gitea" }
   | { readonly kind: "reading" }
-  | { readonly kind: "read"; readonly comments: ReadonlyArray<GiteaIssueComment> }
+  | { readonly kind: "read"; readonly comments: ReadonlyArray<HqChangeComment> }
   | { readonly kind: "failed"; readonly reason: string };
-
-export interface ZeropsChangeCommentsRequest {
-  readonly giteaOrigin: string | undefined;
-  readonly owner: string | undefined;
-  readonly repo: string | undefined;
-  readonly number: number | undefined;
-}
 
 export interface ZeropsChangeComments {
   readonly state: ZeropsChangeCommentsState;
@@ -45,21 +37,16 @@ export interface ZeropsChangeComments {
 }
 
 /** Conversations kept by change, so one opened again shows what was said at once. */
-const kept = new LRUCache<ReadonlyArray<GiteaIssueComment>>(24, 2 * 1024 * 1024);
-
-function keyOf(origin: string, owner: string, repo: string, number: number): string {
-  return `${origin}|${owner}/${repo}#${String(number)}`;
-}
+const kept = new LRUCache<ReadonlyArray<HqChangeComment>>(24, 2 * 1024 * 1024);
 
 /** What was said, roughly as much as keeping it weighs. */
-function weight(comments: ReadonlyArray<GiteaIssueComment>): number {
+function weight(comments: ReadonlyArray<HqChangeComment>): number {
   return comments.reduce((sum, comment) => sum + comment.body.length * 2 + 128, 0);
 }
 
 /** What is known of a change's conversation before it is read (again). */
 function known(key: string | null): ZeropsChangeCommentsState {
-  if (key === null) return { kind: "no-gitea" };
-  const comments = kept.get(key);
+  const comments = key === null ? null : kept.get(key);
   return comments === null ? { kind: "reading" } : { kind: "read", comments };
 }
 
@@ -68,18 +55,15 @@ export function forgetChangeComments(): void {
   kept.clear();
 }
 
-export function useZeropsChangeComments(
-  request: ZeropsChangeCommentsRequest | null,
-): ZeropsChangeComments {
-  const giteaOrigin = request?.giteaOrigin;
-  const owner = request?.owner;
-  const repo = request?.repo;
-  const number = request?.number;
-  const readable = useGiteaReadable(giteaOrigin);
+export function useZeropsChangeComments(link: ChangeLink | null): ZeropsChangeComments {
+  const hq = useOfficialHq();
+  const appId = link?.appId;
+  const repo = link?.repo;
+  const number = link?.number;
   const key =
-    giteaOrigin === undefined || owner === undefined || repo === undefined || number === undefined
+    hq === null || appId === undefined || repo === undefined || number === undefined
       ? null
-      : keyOf(giteaOrigin, owner, repo, number);
+      : `${hq.address}|${appId}/${repo}#${String(number)}`;
   const [saying, setSaying] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const retry = useCallback(() => {
@@ -98,18 +82,8 @@ export function useZeropsChangeComments(
   }
 
   useEffect(() => {
-    if (
-      key === null ||
-      !readable ||
-      giteaOrigin === undefined ||
-      owner === undefined ||
-      repo === undefined ||
-      number === undefined
-    ) {
-      return;
-    }
-    const client = giteaClientFor(giteaOrigin);
-    if (client === null) return;
+    if (key === null || hq === null) return;
+    if (appId === undefined || repo === undefined || number === undefined) return;
     let live = true;
     const answer = (next: ZeropsChangeCommentsState) => {
       if (!live) return;
@@ -117,7 +91,7 @@ export function useZeropsChangeComments(
         current.key === key && current.attempt === attempt ? { ...current, state: next } : current,
       );
     };
-    void client.listIssueComments(owner, repo, number).then(
+    void hq.api.changeComments({ appId, repo, number }).then(
       (comments) => {
         kept.set(key, comments, weight(comments));
         answer({ kind: "read", comments });
@@ -129,27 +103,19 @@ export function useZeropsChangeComments(
     return () => {
       live = false;
     };
-  }, [attempt, giteaOrigin, key, number, owner, readable, repo]);
+  }, [appId, attempt, hq, key, number, repo]);
 
   const say = useCallback(
     async (body: string): Promise<string | null> => {
-      if (
-        giteaOrigin === undefined ||
-        owner === undefined ||
-        repo === undefined ||
-        number === undefined
-      ) {
-        return "This change is not on a repository we can reach.";
-      }
-      const client = giteaClientFor(giteaOrigin);
-      if (client === null) return "Sign in to Gitea to say something here.";
+      if (key === null || hq === null) return HQ_NOT_OPEN;
+      if (appId === undefined || repo === undefined || number === undefined) return HQ_NOT_OPEN;
       setSaying(true);
       try {
-        const posted = await client.createIssueComment(owner, repo, number, body);
+        const posted = await hq.api.commentOnChange({ appId, repo, number }, body);
         setHeld((current) => {
           const comments =
             current.state.kind === "read" ? [...current.state.comments, posted] : [posted];
-          kept.set(keyOf(giteaOrigin, owner, repo, number), comments, weight(comments));
+          kept.set(key, comments, weight(comments));
           return { ...current, state: { kind: "read", comments } };
         });
         return null;
@@ -159,7 +125,7 @@ export function useZeropsChangeComments(
         setSaying(false);
       }
     },
-    [giteaOrigin, owner, repo, number],
+    [appId, hq, key, number, repo],
   );
 
   return { state, say, saying, retry };

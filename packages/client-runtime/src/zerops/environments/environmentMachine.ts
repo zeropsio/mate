@@ -88,7 +88,10 @@ export type ContainerVerdict =
 
 // ── Region L: link ────────────────────────────────────────────────────────────────────────────
 
-/** What the supervisor says, before this machine stamps a connect. */
+/**
+ * What the supervisor says, before this machine stamps a connect. `idle` is a link the registry
+ * holds closed — not opened yet, or parked (krok-a-hub §3): no drop.
+ */
 export type LinkPhase =
   | { readonly phase: "idle" }
   | { readonly phase: "connecting" }
@@ -204,7 +207,7 @@ export interface DescriptorFacts {
 
 /** The guard inputs the driver computes outside this target (§4.4 WANT and CAN). */
 export interface EnvironmentGuards {
-  /** Any WANT reason holds: route, record, Connect, a live intent, auto-connect, a hardened birth. */
+  /** Any lease holds: the route's, the screen's, the Mate left last, an action's, a Connect's. */
   readonly want: boolean;
   readonly routeTarget: boolean;
   readonly visible: boolean;
@@ -237,8 +240,9 @@ export interface EnvironmentMachine {
   readonly credential: Credential;
   readonly link: Link;
   /**
-   * When the link last stopped being connected; null while it is connected, or before it first
-   * was. DESIGN §9 C1b bounds a conversation shown without verified access by it.
+   * When the link last dropped — stopped being connected while the registry still held it open;
+   * null while it is connected, before it first was, and after a park. DESIGN §9 C1b bounds a
+   * conversation shown without verified access by it.
    */
   readonly linkLostAt: Instant | null;
   readonly container: ContainerVerdict;
@@ -759,6 +763,7 @@ const judgeDescriptorBlock = (
   const credential = machine.credential;
   const link = machine.link;
   if (
+    !machine.guards.want ||
     credential.kind !== "held" ||
     credential.staleBlock ||
     credential.rereading !== null ||
@@ -821,7 +826,8 @@ const onLink = (
         }
       : next;
   }
-  const dropped = machine.link.phase === "connected";
+  // A park closes the link on purpose: only a link lost while the registry holds it open drops.
+  const dropped = machine.link.phase === "connected" && phase.phase !== "idle";
   // A drop is a question for the platform: its inventory is read again at once, so a restart it
   // reports (the service RESTARTING) reads as one within a read's time, whatever a push does.
   if (dropped) {
@@ -885,6 +891,18 @@ const apply = (
         identityAnswered:
           event.guards.zeropsFailing && !before.zeropsFailing ? false : machine.identityAnswered,
       };
+      // With no connection demand, abandon pending work but keep an installed credential.
+      // The driver aborts the old attempt once it is no longer tracked by the machine.
+      if (!event.guards.want) {
+        if (credential.kind === "held")
+          return { ...next, credential: { ...credential, rereading: null } };
+        if (credential.kind === "exchanging" || credential.kind === "backoff")
+          return {
+            ...next,
+            probing: null,
+            credential: { kind: "none", reconnect: credential.reconnect },
+          };
+      }
       const mintMoved = !sameJson(before.identityMint, event.guards.identityMint);
       if (credential.kind === "refused" && credential.reason.kind === "access" && mintMoved) {
         return inputChanged(next, "input-change");

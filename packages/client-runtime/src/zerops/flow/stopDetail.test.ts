@@ -18,12 +18,15 @@ import {
   type StopView,
 } from "./deployment.ts";
 import {
+  driftOf,
   earlierReleasesLabel,
+  jobOf,
+  notInZerops,
   openStopLabel,
-  serviceBuildToggleLabel,
   serviceRows,
   stopCardTitle,
   stopFailedDeploy,
+  stopKeyGap,
   stopMetaLine,
   stopVerdict,
   type StopFailedDeploy,
@@ -31,6 +34,26 @@ import {
   type StopServiceRow,
   type StopVerdict,
 } from "./stopDetail.ts";
+import { jobInFlight, type HqJob } from "../hq/environments.ts";
+
+/** HQ's job of a deploy in `state`. */
+const deployRecord = (state: HqJob["state"], over: Partial<HqJob> = {}): HqJob => ({
+  id: "1",
+  kind: "deploy",
+  service: "api",
+  sha: "0000000000000000000000000000000000000000",
+  state,
+  cause: "merge",
+  ref: null,
+  reason: null,
+  appVersionId: null,
+  processId: null,
+  requestedBy: null,
+  at: "2026-10-02T10:00:00.000Z",
+  endedAt: jobInFlight({ state }) ? null : "2026-10-02T10:04:00.000Z",
+  supersededBy: null,
+  ...over,
+});
 
 const V13: DeployedVersion = {
   name: "v0.1.13",
@@ -73,10 +96,13 @@ const BASE: VerdictInput = {
   releasing: undefined,
   failed: undefined,
   waiting: 0,
-  release: { offered: false, tag: undefined },
+  waitingAtLeast: false,
+  untold: [],
+  release: { offered: false, tag: undefined, reason: undefined },
   releasedAge: undefined,
   since: undefined,
   atMainHead: false,
+  keyGap: undefined,
 };
 
 const FAILED: StopFailure = {
@@ -84,7 +110,9 @@ const FAILED: StopFailure = {
   service: "nextstore",
   sha: undefined,
   running: { label: "v0.1.13", since: undefined },
-  jobKnown: true,
+  redeploy: { service: "nextstore", sha: "9c41d2e000000000000000000000000000000000", after: "7" },
+  message: undefined,
+  mayRunAgain: true,
 };
 
 describe("stopVerdict", () => {
@@ -105,7 +133,7 @@ describe("stopVerdict", () => {
       expected: { tone: "busy", text: "Deploying…", detail: undefined, verb: null },
     },
     {
-      name: "failed with what still runs and the job known",
+      name: "failed with what still runs, asked again by one who may",
       input: { failed: FAILED },
       expected: {
         tone: "failed",
@@ -125,8 +153,58 @@ describe("stopVerdict", () => {
       },
     },
     {
-      name: "failed with nothing known to run and no job",
-      input: { failed: { ...FAILED, running: undefined, jobKnown: false } },
+      // The migration holds a service it brought where it does not run its target (T13): HQ's
+      // final failed record says what runs and what Run brings, so it is the detail.
+      name: "held at migration, in HQ's words, run by one who may",
+      input: {
+        tier: "stage",
+        failed: {
+          ...FAILED,
+          label: "9c41d2e",
+          message: "Held at migration: nextstore runs 47ae139; Run brings it to 9c41d2e.",
+        },
+      },
+      expected: {
+        tone: "failed",
+        text: "The deploy of 9c41d2e failed on nextstore.",
+        detail: "Held at migration: nextstore runs 47ae139; Run brings it to 9c41d2e.",
+        verb: { kind: "run-again" },
+      },
+    },
+    {
+      // HQ refuses every deploy with it, so its failures follow from it and are not said.
+      name: "a deploy key that no longer works, over the deploy it failed",
+      input: {
+        tier: "stage",
+        failed: FAILED,
+        keyGap: { kind: "invalid", project: "Shop - stage" },
+      },
+      expected: {
+        tone: "failed",
+        text: "Its deploy key no longer works.",
+        detail:
+          "Someone with Full access to the Shop - stage project in Zerops mints a new one here.",
+        verb: null,
+      },
+    },
+    {
+      name: "no deploy key yet, over the deploy it failed",
+      input: {
+        tier: "production",
+        failed: FAILED,
+        keyGap: { kind: "missing", project: "Shop - production" },
+      },
+      expected: {
+        tone: "failed",
+        text: "It has no deploy key yet.",
+        detail:
+          "Someone with Full access to the Shop - production project in Zerops mints one here.",
+        verb: null,
+      },
+    },
+    {
+      name: "failed with nothing known to run, for one who may not ask it again",
+      input: { failed: { ...FAILED, running: undefined, mayRunAgain: false } },
       expected: {
         tone: "failed",
         text: "The deploy of v0.1.14 failed on nextstore.",
@@ -141,7 +219,11 @@ describe("stopVerdict", () => {
     },
     {
       name: "production with nothing deployed and changes merged offers its first release",
-      input: { view: EMPTY, waiting: 3, release: { offered: true, tag: "v0.1.0" } },
+      input: {
+        view: EMPTY,
+        waiting: 3,
+        release: { offered: true, tag: "v0.1.0", reason: undefined },
+      },
       expected: {
         tone: "off",
         text: "Nothing deployed yet.",
@@ -160,14 +242,9 @@ describe("stopVerdict", () => {
       },
     },
     {
-      name: "a stage whose first deploy waits for the runner says so, as its cell does",
-      input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "runner", why: "not-started" } },
-      expected: {
-        tone: "off",
-        text: "Waiting for the runner · it hasn’t started.",
-        detail: undefined,
-        verb: null,
-      },
+      name: "a stage whose first deploy failed says so, as its cell does",
+      input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "failed" } },
+      expected: { tone: "failed", text: "First deploy failed.", detail: undefined, verb: null },
     },
     {
       name: "a stage whose first deploy is on its way says so",
@@ -210,7 +287,60 @@ describe("stopVerdict", () => {
     },
     {
       name: "production behind with the release offered",
-      input: { waiting: 3, release: { offered: true, tag: "v0.1.14" } },
+      input: { waiting: 3, release: { offered: true, tag: "v0.1.14", reason: undefined } },
+      expected: {
+        tone: "busy",
+        text: "3 changes not live.",
+        detail: "Production runs v0.1.13",
+        verb: { kind: "release", tag: "v0.1.14" },
+      },
+    },
+    {
+      name: "production behind by more than HQ counts",
+      input: {
+        waiting: 10000,
+        waitingAtLeast: true,
+        release: { offered: true, tag: "v0.1.14", reason: undefined },
+      },
+      expected: {
+        tone: "busy",
+        text: "10000+ changes not live.",
+        detail: "Production runs v0.1.13",
+        verb: { kind: "release", tag: "v0.1.14" },
+      },
+    },
+    {
+      // What production runs on a service cannot be told: nothing is known to be live, and the
+      // release is offered — never "already runs what is merged".
+      name: "production none of whose services can be told, nothing counted",
+      input: { untold: ["api"], release: { offered: true, tag: "v0.1.14", reason: undefined } },
+      expected: {
+        tone: "busy",
+        text: "Can't tell what api runs.",
+        detail: "Production runs v0.1.13",
+        verb: { kind: "release", tag: "v0.1.14" },
+      },
+    },
+    {
+      name: "production with two services that cannot be told",
+      input: {
+        untold: ["api", "web"],
+        release: { offered: true, tag: "v0.1.14", reason: undefined },
+      },
+      expected: {
+        tone: "busy",
+        text: "Can't tell what api and web run.",
+        detail: "Production runs v0.1.13",
+        verb: { kind: "release", tag: "v0.1.14" },
+      },
+    },
+    {
+      name: "production behind, one of its services untold beside the count",
+      input: {
+        waiting: 3,
+        untold: ["web"],
+        release: { offered: true, tag: "v0.1.14", reason: undefined },
+      },
       expected: {
         tone: "busy",
         text: "3 changes not live.",
@@ -220,7 +350,7 @@ describe("stopVerdict", () => {
     },
     {
       name: "production one change behind, release not offered",
-      input: { waiting: 1, release: { offered: false, tag: "v0.1.14" } },
+      input: { waiting: 1, release: { offered: false, tag: "v0.1.14", reason: undefined } },
       expected: {
         tone: "busy",
         text: "1 change not live.",
@@ -230,11 +360,27 @@ describe("stopVerdict", () => {
     },
     {
       name: "production behind, offered but no tag known",
-      input: { waiting: 2, release: { offered: true, tag: undefined } },
+      input: { waiting: 2, release: { offered: true, tag: undefined, reason: undefined } },
       expected: {
         tone: "busy",
         text: "2 changes not live.",
         detail: "Production runs v0.1.13",
+        verb: null,
+      },
+    },
+    {
+      name: "production whose release is not offered says why, not what main has",
+      input: {
+        release: {
+          offered: false,
+          tag: "v0.1.14",
+          reason: "Releases move to HQ next; none is offered until then.",
+        },
+      },
+      expected: {
+        tone: "ok",
+        text: "Releases move to HQ next; none is offered until then.",
+        detail: "v0.1.13",
         verb: null,
       },
     },
@@ -312,6 +458,45 @@ describe("stopVerdict", () => {
   });
 });
 
+describe("stopKeyGap", () => {
+  it.each([
+    { name: "a key that works", keyHeld: true, keyInvalid: false, mayKeep: false, kind: undefined },
+    {
+      name: "a broken key, to anyone",
+      keyHeld: true,
+      keyInvalid: true,
+      mayKeep: true,
+      kind: "invalid",
+    },
+    {
+      name: "no key, to one who may not mint",
+      keyHeld: false,
+      keyInvalid: false,
+      mayKeep: false,
+      kind: "missing",
+    },
+    // One who may mint is offered the mint itself, and told nothing here.
+    {
+      name: "no key, to one who may mint",
+      keyHeld: false,
+      keyInvalid: false,
+      mayKeep: true,
+      kind: undefined,
+    },
+    {
+      name: "no key, while who may mint is not known",
+      keyHeld: false,
+      keyInvalid: false,
+      mayKeep: undefined,
+      kind: undefined,
+    },
+  ] as const)("$name", ({ keyHeld, keyInvalid, mayKeep, kind }) => {
+    expect(stopKeyGap({ keyHeld, keyInvalid, mayKeep, project: "Shop - stage" })).toEqual(
+      kind === undefined ? undefined : { kind, project: "Shop - stage" },
+    );
+  });
+});
+
 describe("stopMetaLine", () => {
   it.each<{ tier: "production" | "stage"; source: string; services: number; expected: string }>([
     {
@@ -340,24 +525,18 @@ describe("stopCardTitle", () => {
   it.each<{
     group: Parameters<typeof stopCardTitle>[0];
     count: number | undefined;
+    atLeast?: boolean;
     expected: string;
   }>([
     { group: "waiting", count: 3, expected: "Waiting for release · 3" },
+    // HQ stopped counting, as the verdict above it says.
+    { group: "waiting", count: 10000, atLeast: true, expected: "Waiting for release · 10000+" },
     { group: "services", count: 2, expected: "Services · 2" },
     { group: "releases", count: 12, expected: "Releases · 12" },
     { group: "deploys", count: 0, expected: "Deploys · 0" },
     { group: "deploys", count: undefined, expected: "Deploys" },
-  ])("$group with $count", ({ group, count, expected }) => {
-    expect(stopCardTitle(group, count)).toBe(expected);
-  });
-});
-
-describe("serviceBuildToggleLabel", () => {
-  it.each([
-    { open: false, expected: "Show how api was deployed" },
-    { open: true, expected: "Hide how api was deployed" },
-  ])("open: $open", ({ open, expected }) => {
-    expect(serviceBuildToggleLabel("api", open)).toBe(expected);
+  ])("$group with $count", ({ group, count, atLeast, expected }) => {
+    expect(stopCardTitle(group, count, atLeast)).toBe(expected);
   });
 });
 
@@ -431,7 +610,7 @@ const GITEA: ReadonlyArray<EnvironmentServiceState> = [
     hostname: "api",
     repository: "api",
     appVersionName: `${SHA_API} v0.1.13 gitea`,
-    statuses: [{ context: "mate/deploy/production/api", state: "success" }],
+    deploy: { latest: deployRecord("live"), live: deployRecord("live") },
   },
   { hostname: "docs", repository: "docs", appVersionName: `${SHA_DOCS} v0.1.9 gitea` },
 ];
@@ -464,6 +643,39 @@ describe("serviceRows", () => {
     expect(rowsOf(PLATFORM).map((row) => row.hostname)).toEqual(["api", "docs", "web"]);
   });
 
+  it("carries a service's newest deploy HQ records as failed, its commit and HQ's words", () => {
+    const rows = serviceRows({
+      environment: "stage",
+      services: [
+        {
+          hostname: "api",
+          repository: "api",
+          appVersionName: SHA_API,
+          deploy: {
+            latest: deployRecord("failed", { id: "4", sha: SHA_DOCS, reason: "No zerops.yaml." }),
+            live: null,
+          },
+        },
+        {
+          hostname: "web",
+          repository: "web",
+          appVersionName: SHA_WEB,
+          deploy: { latest: deployRecord("live"), live: deployRecord("live") },
+        },
+      ],
+      platform: PLATFORM,
+      mainHead: undefined,
+      routes: [],
+      offers: [],
+      nowMs: 100_000,
+      age: (iso) => iso,
+    });
+    expect(rows.map(({ hostname, failed }) => [hostname, failed])).toEqual([
+      ["api", { jobId: "4", sha: SHA_DOCS, message: "No zerops.yaml." }],
+      ["web", undefined],
+    ]);
+  });
+
   it.each([
     { name: "a service the platform lists and no tier builds", hostname: "worker" },
     { name: "a service no tier builds, though its version is read", hostname: "db" },
@@ -494,6 +706,9 @@ describe("serviceRows", () => {
       runs: { label: "v0.1.13", since: "since 2026-09-25T10:00:00Z" },
       routes: [route("api")],
       offers: [],
+      failed: undefined,
+      job: undefined,
+      drift: undefined,
     },
     {
       hostname: "docs",
@@ -507,6 +722,9 @@ describe("serviceRows", () => {
       runs: { label: "v0.1.9", since: undefined },
       routes: [],
       offers: [OFFERS[0]!],
+      failed: undefined,
+      job: undefined,
+      drift: undefined,
     },
     {
       hostname: "web",
@@ -520,6 +738,9 @@ describe("serviceRows", () => {
       runs: undefined,
       routes: [],
       offers: [],
+      failed: undefined,
+      job: undefined,
+      drift: undefined,
     },
   ])("$hostname", (expected) => {
     expect(rowsOf(PLATFORM).find((row) => row.hostname === expected.hostname)).toEqual(expected);
@@ -704,10 +925,10 @@ describe("serviceRows", () => {
       offers: [],
       nowMs: 100_000,
       age: (iso) => iso,
-      firstDeploy: { kind: "runner", why: "waking" },
+      firstDeploy: { kind: "on-its-way" },
     });
     expect({ word: row?.word, status: row?.status }).toEqual({
-      word: "Waiting for the runner · it’s waking up",
+      word: "First deploy on its way",
       status: undefined,
     });
   });
@@ -716,7 +937,7 @@ describe("serviceRows", () => {
     { hostname: "api", tone: "good", status: "Deployed" },
     { hostname: "web", tone: "neutral", status: "Deployed" },
   ])(
-    "reads $hostname from Gitea alone while the platform is unread",
+    "reads $hostname from the flow alone while the platform is unread",
     ({ hostname, ...expected }) => {
       const row = rowsOf({ state: "unread", waitingFor: null }).find(
         (entry) => entry.hostname === hostname,
@@ -749,6 +970,234 @@ describe("serviceRows", () => {
   });
 });
 
+describe("jobOf — a service's newest job, said where it is not live", () => {
+  const SHA = "5c3ea18b00000000000000000000000000000000";
+  const age = (iso: string) => `at ${iso}`;
+  it.each<{ name: string; job: HqJob | undefined; expected: ReturnType<typeof jobOf> }>([
+    { name: "no job", job: undefined, expected: undefined },
+    { name: "live", job: deployRecord("live", { sha: SHA }), expected: undefined },
+    {
+      name: "superseded",
+      job: deployRecord("superseded", { sha: SHA, supersededBy: "2" }),
+      expected: undefined,
+    },
+    {
+      name: "a delta, which deploys no commit",
+      job: deployRecord("building", { kind: "delta", service: null, sha: null }),
+      expected: undefined,
+    },
+    {
+      name: "queued",
+      job: deployRecord("queued", { sha: SHA }),
+      expected: { state: "queued", line: "5c3ea18 queued", reason: undefined },
+    },
+    {
+      name: "submitting",
+      job: deployRecord("submitting", { sha: SHA }),
+      expected: { state: "submitting", line: "Submitting 5c3ea18", reason: undefined },
+    },
+    {
+      name: "building",
+      job: deployRecord("building", { sha: SHA, processId: "pr-1" }),
+      expected: { state: "building", line: "Building 5c3ea18", reason: undefined },
+    },
+    {
+      name: "its build failed: when it ended, and why",
+      job: deployRecord("failed", { sha: SHA, reason: "No zerops.yaml." }),
+      expected: {
+        state: "failed",
+        line: "5c3ea18 failed at 2026-10-02T10:04:00.000Z",
+        reason: "No zerops.yaml.",
+      },
+    },
+    {
+      name: "HQ refused it: when it ended, and why",
+      job: deployRecord("refused", { sha: SHA, reason: "Zerops did not answer: timeout" }),
+      expected: {
+        state: "refused",
+        line: "HQ refused 5c3ea18 at 2026-10-02T10:04:00.000Z",
+        reason: "Zerops did not answer: timeout",
+      },
+    },
+    {
+      name: "HQ skipped it: when, and why",
+      job: deployRecord("skipped", { sha: SHA, reason: "web has no zerops.yaml at 5c3ea18" }),
+      expected: {
+        state: "skipped",
+        line: "HQ skipped 5c3ea18 at 2026-10-02T10:04:00.000Z",
+        reason: "web has no zerops.yaml at 5c3ea18",
+      },
+    },
+    {
+      name: "ended with blank words: no reason",
+      job: deployRecord("refused", { sha: SHA, reason: "  " }),
+      expected: {
+        state: "refused",
+        line: "HQ refused 5c3ea18 at 2026-10-02T10:04:00.000Z",
+        reason: undefined,
+      },
+    },
+  ])("$name", ({ job, expected }) => {
+    expect(jobOf(job, age)).toEqual(expected);
+  });
+});
+
+// The deploy-jobs design: HQ never overwrites a version it did not make; the person decides.
+describe("driftOf — a service running a version HQ did not deploy", () => {
+  const LIVE_SHA = "3f9c1b2000000000000000000000000000000000";
+  const live = deployRecord("live", { id: "5", sha: LIVE_SHA, appVersionId: "av-hq" });
+  const state = (over: Partial<EnvironmentServiceState> = {}): EnvironmentServiceState => ({
+    hostname: "app",
+    serviceId: "svc-app",
+    appVersionName: "hotfix by hand",
+    activeVersionId: "av-hand",
+    deploy: { latest: live, live },
+    ...over,
+  });
+  it.each<{ name: string; state: EnvironmentServiceState; expected: ReturnType<typeof driftOf> }>([
+    {
+      name: "another version than HQ's live one: drift, with HQ's commit to deploy again",
+      state: state(),
+      expected: {
+        line: "app runs “hotfix by hand”, which HQ did not deploy",
+        redeploy: { service: "app", sha: LIVE_SHA, after: "5" },
+        zerops: "https://app.zerops.io/service-stack/svc-app",
+      },
+    },
+    {
+      name: "a version that names nothing",
+      state: state({ appVersionName: undefined }),
+      expected: {
+        line: "app runs a version HQ did not deploy",
+        redeploy: { service: "app", sha: LIVE_SHA, after: "5" },
+        zerops: "https://app.zerops.io/service-stack/svc-app",
+      },
+    },
+    {
+      name: "a newer job ended without running, asked again after it",
+      state: state({
+        deploy: { latest: deployRecord("failed", { id: "6", sha: LIVE_SHA }), live },
+      }),
+      expected: {
+        line: "app runs “hotfix by hand”, which HQ did not deploy",
+        redeploy: { service: "app", sha: LIVE_SHA, after: "6" },
+        zerops: "https://app.zerops.io/service-stack/svc-app",
+      },
+    },
+    {
+      // HQ asks again only a service's newest job: a live one an older job, nothing is offered.
+      name: "a newer job of another commit ended without running: said, nothing to ask again",
+      state: state({
+        deploy: {
+          latest: deployRecord("refused", { id: "6", sha: "9".repeat(40) }),
+          live,
+        },
+      }),
+      expected: {
+        line: "app runs “hotfix by hand”, which HQ did not deploy",
+        redeploy: undefined,
+        zerops: "https://app.zerops.io/service-stack/svc-app",
+      },
+    },
+    {
+      name: "a version named by a whole commit, said by its short one",
+      state: state({ appVersionName: "c".repeat(40) }),
+      expected: {
+        line: "app runs “ccccccc”, which HQ did not deploy",
+        redeploy: { service: "app", sha: LIVE_SHA, after: "5" },
+        zerops: "https://app.zerops.io/service-stack/svc-app",
+      },
+    },
+    {
+      name: "the service's id not known: no link",
+      state: state({ serviceId: undefined }),
+      expected: {
+        line: "app runs “hotfix by hand”, which HQ did not deploy",
+        redeploy: { service: "app", sha: LIVE_SHA, after: "5" },
+        zerops: undefined,
+      },
+    },
+    { name: "HQ's own version", state: state({ activeVersionId: "av-hq" }), expected: undefined },
+    {
+      name: "what runs not read",
+      state: state({ activeVersionId: undefined }),
+      expected: undefined,
+    },
+    { name: "nothing runs", state: state({ activeVersionId: null }), expected: undefined },
+    {
+      name: "a job of HQ's under way",
+      state: state({
+        deploy: { latest: deployRecord("building", { id: "6", sha: LIVE_SHA }), live },
+      }),
+      expected: undefined,
+    },
+    {
+      name: "HQ put nothing live",
+      state: state({ deploy: { latest: deployRecord("failed"), live: null } }),
+      expected: undefined,
+    },
+    {
+      name: "HQ's live job names no version (before H6)",
+      state: state({
+        deploy: { latest: { ...live, appVersionId: null }, live: { ...live, appVersionId: null } },
+      }),
+      expected: undefined,
+    },
+  ])("$name", ({ state: service, expected }) => {
+    expect(driftOf(service)).toEqual(expected);
+  });
+
+  it("stands on the service's row, with its newest job", () => {
+    const failed = deployRecord("failed", { id: "6", sha: LIVE_SHA, reason: "No zerops.yaml." });
+    const [row] = serviceRows({
+      environment: "stage",
+      services: [{ ...state({ deploy: { latest: failed, live } }), repository: "app" }],
+      platform: { state: "unread", waitingFor: null },
+      mainHead: undefined,
+      routes: [],
+      offers: [],
+      nowMs: 100_000,
+      age: (iso) => `at ${iso}`,
+    });
+    expect({ job: row?.job, drift: row?.drift?.redeploy }).toEqual({
+      job: {
+        state: "failed",
+        line: "3f9c1b2 failed at 2026-10-02T10:04:00.000Z",
+        reason: "No zerops.yaml.",
+      },
+      drift: { service: "app", sha: LIVE_SHA, after: "6" },
+    });
+  });
+});
+
+// Audit D2: a service its tier declares and the project lacks — a person deleted it, or a delta
+// did not import it — is said, for a person to add; HQ never adds it by itself.
+describe("notInZerops — what the recipe declares and the project lacks", () => {
+  it.each<{
+    readonly name: string;
+    readonly recipeServices: ReadonlyArray<string> | undefined;
+    readonly platform: Shown<ReadonlyArray<StopService>>;
+    readonly missing: ReadonlyArray<string>;
+  }>([
+    { name: "all there", recipeServices: ["api", "web"], platform: PLATFORM, missing: [] },
+    {
+      name: "a declared database the project lacks",
+      recipeServices: ["api", "db", "web"],
+      platform: PLATFORM,
+      missing: ["db"],
+    },
+    { name: "the recipe not read", recipeServices: undefined, platform: PLATFORM, missing: [] },
+    {
+      name: "what the project holds not read",
+      recipeServices: ["api", "db"],
+      platform: { state: "unread", waitingFor: null },
+      missing: [],
+    },
+  ])("$name", ({ recipeServices, platform, missing }) => {
+    expect(notInZerops({ recipeServices, platform })).toEqual(missing);
+  });
+});
+
 describe("stopFailedDeploy", () => {
   const SHA_N13 = "47ae139000000000000000000000000000000000";
   const SHA_N14 = "9c41d2e000000000000000000000000000000000";
@@ -764,6 +1213,9 @@ describe("stopFailedDeploy", () => {
     runs: { label: "v0.1.13", since: "6m ago" },
     routes: [],
     offers: [],
+    failed: undefined,
+    job: undefined,
+    drift: undefined,
     ...over,
   });
   const releaseRow = (tag: string, over: Partial<FlowReleaseRow> = {}): FlowReleaseRow => ({
@@ -772,7 +1224,7 @@ describe("stopFailedDeploy", () => {
     detail: undefined,
     line: "",
     entries: [],
-    taggedAt: undefined,
+    taggedAt: "2026-09-25T07:00:00Z",
     standing: undefined,
     word: "Approved",
     rollBack: false,
@@ -803,6 +1255,27 @@ describe("stopFailedDeploy", () => {
         service: "nextstore",
         sha: SHA_N14,
         running: { label: "v0.1.13", since: "6m ago" },
+        redeploy: undefined,
+        message: undefined,
+      },
+    },
+    {
+      name: "a failed release HQ records as the service's newest failed deploy is asked again",
+      tier: "production",
+      rows: [
+        serviceRow("nextstore", {
+          tone: "bad",
+          failed: { jobId: "7", sha: SHA_N14, message: undefined },
+        }),
+      ],
+      releases: [FAILED_14, LIVE_13],
+      expected: {
+        label: "v0.1.14",
+        service: "nextstore",
+        sha: SHA_N14,
+        running: { label: "v0.1.13", since: "6m ago" },
+        redeploy: { service: "nextstore", sha: SHA_N14, after: "7" },
+        message: undefined,
       },
     },
     {
@@ -813,25 +1286,85 @@ describe("stopFailedDeploy", () => {
       expected: undefined,
     },
     {
-      name: "a production whose running commit's deploy failed, with no release that did",
+      name: "a production whose newest deploy failed, with no release that did",
       tier: "production",
-      rows: [serviceRow("nextstore", { tone: "bad" })],
+      rows: [
+        serviceRow("nextstore", {
+          tone: "bad",
+          failed: { jobId: "7", sha: SHA_N14, message: undefined },
+        }),
+      ],
       releases: [LIVE_13],
-      expected: { label: "v0.1.13", service: "nextstore", sha: SHA_N13, running: undefined },
+      expected: {
+        label: "9c41d2e",
+        service: "nextstore",
+        sha: SHA_N14,
+        running: { label: "v0.1.13", since: "6m ago" },
+        redeploy: { service: "nextstore", sha: SHA_N14, after: "7" },
+        message: undefined,
+      },
     },
     {
-      name: "a stage reads its services, never the releases",
+      name: "a stage reads its services, never the releases, and names what still runs",
       tier: "stage",
-      rows: [serviceRow("api", { tone: "bad", runs: { label: "b21d904", since: undefined } })],
+      rows: [
+        serviceRow("api", {
+          tone: "bad",
+          failed: { jobId: "7", sha: SHA_N14, message: undefined },
+          runs: { label: "47ae139", since: undefined },
+        }),
+      ],
       releases: [FAILED_14],
-      expected: { label: "b21d904", service: "api", sha: SHA_N13, running: undefined },
+      expected: {
+        label: "9c41d2e",
+        service: "api",
+        sha: SHA_N14,
+        running: { label: "47ae139", since: undefined },
+        redeploy: { service: "api", sha: SHA_N14, after: "7" },
+        message: undefined,
+      },
     },
     {
-      name: "a failed service naming no version names no deploy",
+      name: "a service whose failed commit is what it runs names nothing else as running",
       tier: "stage",
-      rows: [serviceRow("api", { tone: "bad", runs: undefined, commit: undefined })],
+      rows: [
+        serviceRow("api", {
+          tone: "bad",
+          failed: { jobId: "7", sha: SHA_N13, message: undefined },
+        }),
+      ],
       releases: [],
-      expected: undefined,
+      expected: {
+        label: "47ae139",
+        service: "api",
+        sha: SHA_N13,
+        running: undefined,
+        redeploy: { service: "api", sha: SHA_N13, after: "7" },
+        message: undefined,
+      },
+    },
+    {
+      name: "a service the migration holds carries HQ's words for it, and is run again",
+      tier: "production",
+      rows: [
+        serviceRow("nextstore", {
+          tone: "bad",
+          failed: {
+            jobId: "7",
+            sha: SHA_N14,
+            message: "Held at migration: nextstore runs 47ae139; Run brings it to 9c41d2e.",
+          },
+        }),
+      ],
+      releases: [FAILED_14, LIVE_13],
+      expected: {
+        label: "v0.1.14",
+        service: "nextstore",
+        sha: SHA_N14,
+        running: { label: "v0.1.13", since: "6m ago" },
+        redeploy: { service: "nextstore", sha: SHA_N14, after: "7" },
+        message: "Held at migration: nextstore runs 47ae139; Run brings it to 9c41d2e.",
+      },
     },
     {
       name: "nothing failed",
@@ -842,5 +1375,28 @@ describe("stopFailedDeploy", () => {
     },
   ])("$name", ({ tier, rows, releases, expected }) => {
     expect(stopFailedDeploy({ tier, rows, releases })).toEqual(expected);
+  });
+});
+
+describe("serviceRows — durable deploy log handles", () => {
+  it.each(["building", "failed", "live"] as const)("keeps %s deploy inspectable", (state) => {
+    const latest = deployRecord(state, { id: "7", processId: "p7", appVersionId: "v7" });
+    const [row] = serviceRows({
+      environment: "stage",
+      services: [
+        {
+          hostname: "api",
+          repository: "api",
+          deploy: { latest, live: state === "live" ? latest : null },
+        },
+      ],
+      platform: { state: "unread", waitingFor: null },
+      mainHead: undefined,
+      routes: [],
+      offers: [],
+      nowMs: 0,
+      age: () => "now",
+    });
+    expect(row?.deployLog).toEqual({ jobId: "7", processId: "p7", appVersionId: "v7" });
   });
 });

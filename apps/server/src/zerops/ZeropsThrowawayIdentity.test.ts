@@ -1,39 +1,20 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
-import type * as Scope from "effect/Scope";
-import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
+import * as ServerConfig from "../config.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsIdentityStatusModule from "./ZeropsIdentityStatus.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { make as makeMateKey } from "./ZeropsMateKey.ts";
-import {
-  DOOR_MEMBER_LIST_RETRY_ATTEMPTS,
-  DOOR_THROWAWAY_MAX_AGE_MS,
-  verifyThrowawayCaller,
-} from "./ZeropsThrowawayIdentity.ts";
-
-/**
- * Runs a check that may retry the member-list read to completion under the
- * fake clock: forks it, advances the clock well past every retry delay it
- * could possibly hit, then joins. `DOOR_MEMBER_LIST_RETRY_ATTEMPTS - 1`
- * retries at `DOOR_MEMBER_LIST_RETRY_DELAY` each is the most any one call
- * sleeps for; five seconds is comfortably past that.
- */
-const runPastMemberListRetries = <A, E>(check: Effect.Effect<A, E, Scope.Scope>) =>
-  Effect.gen(function* () {
-    const fiber = yield* Effect.forkChild(check);
-    yield* TestClock.adjust(Duration.seconds(5));
-    return yield* Fiber.join(fiber);
-  });
+import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
+import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
+import { DOOR_THROWAWAY_MAX_AGE_MS, verifyThrowawayCaller } from "./ZeropsThrowawayIdentity.ts";
 
 const PROJECT_ID = "nTV3oMB2SS634ImDJnQckg";
 const CLIENT_ID = "BkC8AGjFQMyFrLbzjHoE9g";
@@ -74,22 +55,31 @@ const stub = (
   ),
 ) => {
   const seen: Array<SeenRequest> = [];
-  const layer = Layer.mergeAll(
-    Layer.succeed(
-      HttpClient.HttpClient,
-      HttpClient.make((request) => {
-        const authorization = request.headers.authorization;
-        seen.push({ url: request.url, authorization });
-        return Effect.succeed(
-          HttpClientResponse.fromWeb(
-            request,
-            route(request.url, authorization?.replace("Bearer ", "")),
+  const layer = ZeropsProjectAccessModule.layer.pipe(
+    Layer.provideMerge(
+      ZeropsOrgReadModule.layer.pipe(
+        Layer.provideMerge(
+          Layer.mergeAll(
+            Layer.succeed(
+              HttpClient.HttpClient,
+              HttpClient.make((request) => {
+                const authorization = request.headers.authorization;
+                seen.push({ url: request.url, authorization });
+                return Effect.succeed(
+                  HttpClientResponse.fromWeb(
+                    request,
+                    route(request.url, authorization?.replace("Bearer ", "")),
+                  ),
+                );
+              }),
+            ),
+            Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
+            ZeropsIdentityStatusModule.layer,
+            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
           ),
-        );
-      }),
+        ),
+      ),
     ),
-    Layer.succeed(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
-    ZeropsIdentityStatusModule.layer,
   );
   return { layer, seen } as const;
 };
@@ -396,73 +386,33 @@ describe("verifyThrowawayCaller", () => {
     });
   }
 
-  // The member-list read at step 6 is retried: a live Mate container measured
-  // 2026-09-22 has `GET /client/{org}/user/list` answer `200` seven times out
-  // of eight and, once, `400 userNotFound` — a platform flake, not a verdict,
-  // since the very next call was `200`. Refusing on that flake would throw a
-  // real colleague out of their own Mate.
-  it.effect("admits the caller when the member list flakes once, then answers 200", () => {
-    let call = 0;
-    // scene() cannot answer a different status per call, so this test drives
-    // its own stub directly with the same routes scene() would otherwise use.
-    const stubbed = stub((url) => {
-      if (url.endsWith(`/project/${PROJECT_ID}`)) {
-        return json({ id: PROJECT_ID, clientId: CLIENT_ID }, 200);
-      }
-      if (url.endsWith("/user/info")) return json({ id: TOKEN_ID }, 200);
-      if (url.includes("/integration-token/")) return json(TOKEN_RECORD, 200, { date: API_NOW });
-      if (url.endsWith("/user/list")) {
-        call += 1;
-        return call === 1
-          ? json({ error: { code: "userNotFound", message: "User not found." } }, 400)
-          : json(MEMBERS, 200);
-      }
-      return json({ message: "unexpected route" }, 500);
-    });
-    return runPastMemberListRetries(
-      verifyThrowawayCaller({ environment, token: PRESENTED }).pipe(
-        Effect.tap((caller) =>
-          Effect.sync(() => {
-            assert.strictEqual(caller.userId, USER_ID);
-            assert.strictEqual(
-              stubbed.seen.filter((request) => request.url.endsWith("/user/list")).length,
-              2,
-            );
-          }),
-        ),
-        Effect.provide(stubbed.layer),
-      ),
-    );
-  });
-
   it.effect(
-    "answers unavailable, never a refusal, when the member list answers 400 userNotFound three times running",
+    "one failed member read ends unavailable; a caller's new check reads once again",
     () => {
+      let calls = 0;
       const stubbed = stub((url) => {
-        if (url.endsWith(`/project/${PROJECT_ID}`)) {
-          return json({ id: PROJECT_ID, clientId: CLIENT_ID }, 200);
-        }
-        if (url.endsWith("/user/info")) return json({ id: TOKEN_ID }, 200);
+        if (url.endsWith(`/project/${PROJECT_ID}`))
+          return json({ id: PROJECT_ID, clientId: CLIENT_ID });
+        if (url.endsWith("/user/info")) return json({ id: TOKEN_ID });
         if (url.includes("/integration-token/")) return json(TOKEN_RECORD, 200, { date: API_NOW });
         if (url.endsWith("/user/list")) {
-          return json({ error: { code: "userNotFound", message: "User not found." } }, 400);
+          calls += 1;
+          return calls === 1 ? json({ message: "User not found." }, 400) : json(MEMBERS);
         }
         return json({ message: "unexpected route" }, 500);
       });
-      return runPastMemberListRetries(
-        Effect.flip(verifyThrowawayCaller({ environment, token: PRESENTED })).pipe(
-          Effect.tap((error) =>
-            Effect.sync(() => {
-              assert.strictEqual(error._tag, "ZeropsApiUnavailableError");
-              assert.strictEqual(
-                stubbed.seen.filter((request) => request.url.endsWith("/user/list")).length,
-                DOOR_MEMBER_LIST_RETRY_ATTEMPTS,
-              );
-            }),
-          ),
-          Effect.provide(stubbed.layer),
-        ),
-      );
+      return Effect.gen(function* () {
+        const first = yield* Effect.flip(verifyThrowawayCaller({ environment, token: PRESENTED }));
+        assert.strictEqual(first._tag, "ZeropsApiUnavailableError");
+        assert.strictEqual(
+          "reason" in first ? first.reason : undefined,
+          "The Zerops API answered 400 for this org's member list.",
+        );
+        assert.strictEqual(calls, 1);
+        const caller = yield* verifyThrowawayCaller({ environment, token: PRESENTED });
+        assert.strictEqual(caller.userId, USER_ID);
+        assert.strictEqual(calls, 2);
+      }).pipe(Effect.provide(stubbed.layer));
     },
   );
 
@@ -481,26 +431,21 @@ describe("verifyThrowawayCaller", () => {
     );
   });
 
-  it.effect(
-    "answers unavailable, not admitted, when the member list answers 500 three times running",
-    () => {
-      const { layer, seen } = scene({ memberStatus: 500 });
-      return runPastMemberListRetries(
-        Effect.flip(verifyThrowawayCaller({ environment, token: PRESENTED })).pipe(
-          Effect.tap((error) =>
-            Effect.sync(() => {
-              assert.strictEqual(error._tag, "ZeropsApiUnavailableError");
-              assert.strictEqual(
-                seen.filter((request) => request.url.endsWith("/user/list")).length,
-                DOOR_MEMBER_LIST_RETRY_ATTEMPTS,
-              );
-            }),
-          ),
-          Effect.provide(layer),
-        ),
-      );
-    },
-  );
+  it.effect("answers unavailable, not admitted, when the member list answers 500 once", () => {
+    const { layer, seen } = scene({ memberStatus: 500 });
+    return Effect.flip(verifyThrowawayCaller({ environment, token: PRESENTED })).pipe(
+      Effect.tap((error) =>
+        Effect.sync(() => {
+          assert.strictEqual(error._tag, "ZeropsApiUnavailableError");
+          assert.strictEqual(
+            seen.filter((request) => request.url.endsWith("/user/list")).length,
+            1,
+          );
+        }),
+      ),
+      Effect.provide(layer),
+    );
+  });
 
   it.effect("answers unavailable when this Mate has no key of its own", () => {
     const { layer, seen } = stub(
@@ -619,13 +564,67 @@ describe("verifyThrowawayCaller", () => {
         environment: { ...environment, apiToken: "boot-snapshot" },
         token: PRESENTED,
       }).pipe(
-        Effect.provide(layer),
+        Effect.provide(
+          ZeropsProjectAccessModule.layer.pipe(
+            Layer.provideMerge(
+              ZeropsOrgReadModule.layer.pipe(
+                Layer.provideMerge(
+                  Layer.mergeAll(
+                    layer,
+                    ServerConfig.layer({
+                      zerops: environment,
+                    } as ServerConfig.ServerConfig["Service"]),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
         Effect.provideService(ZeropsMateKeyModule.ZeropsMateKey, mateKey),
         Effect.provide(ZeropsIdentityStatusModule.layer),
       );
       assert.strictEqual(caller.userId, USER_ID);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
   });
+
+  // R6: HQ's relay, while it holds, lets in a creator it opens for, and the member list is not
+  // read; whomever it lists or leaves out, this Mate's own read decides, with today's refusals.
+  for (const [name, relayed, admitted, readsList] of [
+    [
+      "lets in a creator HQ's relay opens for, reading no member list",
+      { userId: USER_ID, role: "OWNER", visibility: "open" },
+      { role: "OWNER" },
+      false,
+    ],
+    [
+      "asks its own read about a creator HQ's relay only lists",
+      { userId: USER_ID, role: "READ_ONLY", visibility: "listed" },
+      { role: "BASIC_USER" },
+      true,
+    ],
+    [
+      "asks its own read about a creator HQ's relay leaves out",
+      { userId: "another-person", role: "OWNER", visibility: "open" },
+      { role: "BASIC_USER" },
+      true,
+    ],
+  ] as const) {
+    it.effect(name, () => {
+      const { layer, seen } = scene();
+      return Effect.gen(function* () {
+        yield* (yield* ZeropsProjectAccessModule.ZeropsProjectAccess).relayed({
+          members: [relayed],
+          ageMs: 0,
+        });
+        const caller = yield* verifyThrowawayCaller({ environment, token: PRESENTED });
+        assert.deepStrictEqual({ role: caller.role }, admitted);
+        assert.strictEqual(
+          seen.some((request) => request.url.endsWith("/user/list")),
+          readsList,
+        );
+      }).pipe(Effect.provide(layer));
+    });
+  }
 
   it.effect("records the identity status of its own-project read", () => {
     const { layer } = scene();

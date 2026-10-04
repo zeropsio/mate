@@ -8,9 +8,9 @@
  *
  * - Coming up, the Mate's own steps in the slot, with their times.
  * - No agent signed in yet — the person who added it, a colleague, anyone — "Sign Fen in to
- *   start." over the sign-in itself (`ZeropsAgentSignIn`); only the sentence differs. Its person's
- *   first sign-in sends the stand-up (`mateStandUp.ts`, from `ChatView`); while it is on its way
- *   the face works, and a send that did not go through says so with *Try again*.
+ *   start." over the sign-in itself (`ZeropsAgentSignIn`); only the sentence differs. Once its
+ *   person signs in, the Mate's server stands development up itself (`mateStandUp.ts`); until
+ *   the ask shows in the conversation the face works.
  * - Ready: the question the composer answers.
  *
  * A new state's words arrive where the last ones began and the slot hands over in place
@@ -22,6 +22,8 @@
  * then the slot says it is checking, or why it could not.
  */
 import { signInReadSettled } from "@t3tools/client-runtime/zerops/conversationWriter";
+import { useMateStandUp } from "../../zerops/useMateStandUp";
+import { Button } from "../ui/button";
 import { mateArriving, resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import {
   birthRuntimesFacts,
@@ -34,7 +36,6 @@ import {
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { RotateCcwIcon } from "lucide-react";
 import { Fragment, useContext, useEffect, useId, useMemo, useRef, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
@@ -49,22 +50,16 @@ import {
 import type { MateViewKind } from "../../zerops/mateComing";
 import type { ZeropsMateIdentity } from "../../zerops/mateIdentities";
 import {
-  MATE_STAND_UP_RETRY_LABEL,
   mateStandUpPhase,
   mateStandUpSignedIn,
   type MateStandUpPhase,
 } from "../../zerops/mateStandUp";
-import { retryMateStandUp, useMateStandUpAttempt } from "../../zerops/useMateStandUp";
-import {
-  useLocalAgentSigners,
-  useZeropsEnvironmentProject,
-} from "../../zerops/useZeropsAgentSigner";
+import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
 import { InventoryContext } from "../../zerops/inventoryContext";
 import { useZeropsAgentAuth } from "../../zerops/useZeropsFeeds";
 import { useNowMs } from "../../zerops/useNowMs";
 import { useZeropsMemberNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
-import { Button } from "../ui/button";
 import { ArrivalSwap } from "./ArrivalSwap";
 import { ArrivalRuntimesLine } from "./ZeropsArrivalSteps";
 import { MateFace } from "./primitives";
@@ -85,8 +80,8 @@ export function ZeropsMateEmptyState({
       addedBy={state.addedBy}
       agentReady={state.agentReady}
       mate={mate}
-      onRetry={state.onRetry}
       phase={state.phase}
+      standUpFailure={state.standUpFailure}
       runtimes={state.runtimes}
       signIn={state.signIn}
       signInRequired={state.signInRequired}
@@ -99,6 +94,7 @@ export function ZeropsMateEmptyState({
 export interface MateEmptyState {
   /** The stand-up's phase for this viewer, or `null` where it is not theirs. */
   readonly phase: MateStandUpPhase | null;
+  readonly standUpFailure?: { readonly retrying: boolean; readonly retry: () => void } | undefined;
   /** The sign-in, once the agents' sign-in is known; null before. */
   readonly signIn: ReactNode | null;
   readonly signInRequired: boolean;
@@ -118,7 +114,6 @@ export interface MateEmptyState {
    * (null where not); undefined for anybody else.
    */
   readonly addedBy: string | null | undefined;
-  readonly onRetry: () => void;
   /** Its project's runtimes, as its project's read lists them; undefined while it is unread. */
   readonly runtimes: ReadonlyArray<BirthRuntimeFact> | undefined;
 }
@@ -149,8 +144,6 @@ export function useMateEmptyState({
     environmentId === null ? undefined : serverConfigs.get(environmentId)?.providers;
   const signInRequired = agentAuth !== null && zeropsAgentSignInRequired(agentAuth, providers);
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
-  const localSigners = useLocalAgentSigners(environmentId);
-  const attempt = useMateStandUpAttempt(environmentId);
   // The stand-up goes into the Mate's main conversation, the one opening it lands on.
   const threads = useThreadShells();
   const main = useMemo(
@@ -164,8 +157,9 @@ export function useMateEmptyState({
   const viewerSignedIn =
     agentAuth !== null &&
     viewerSubject !== undefined &&
-    mateStandUpSignedIn(agentAuth, viewerSubject, localSigners, undefined);
+    mateStandUpSignedIn(agentAuth, viewerSubject);
   const agentReady = !viewerSignedIn && zeropsOtherAgentReady(providers);
+  const standUp = useMateStandUp({ environmentId, threadRef, messageCount: 0 });
   const phase = mateStandUpPhase({
     marker: mate.standUp,
     viewer: viewerSubject,
@@ -178,7 +172,6 @@ export function useMateEmptyState({
           : viewerSignedIn || agentReady
             ? "signed-in"
             : "someone-else",
-    attempt,
   });
   // Somebody else added it and nobody has signed it in: the sentence names them — whichever flow
   // made it, as its row does (`mateOwnerView`).
@@ -200,6 +193,14 @@ export function useMateEmptyState({
 
   return {
     phase,
+    standUpFailure: standUp.sendFailed
+      ? {
+          retrying: standUp.retrying,
+          retry: () => {
+            void standUp.retry();
+          },
+        }
+      : undefined,
     signIn:
       agentAuth === null ? null : (
         <ZeropsAgentSignIn
@@ -213,9 +214,6 @@ export function useMateEmptyState({
     unknown: agentAuthUnknown,
     signInKnown: signInReadSettled(agentAuthRead),
     addedBy: colleague && adder !== undefined ? (nameOf(adder) ?? null) : undefined,
-    onRetry: () => {
-      if (environmentId !== null) retryMateStandUp(environmentId);
-    },
     runtimes,
   };
 }
@@ -269,7 +267,6 @@ export function mateArrivalKind(input: {
   }
   if (phase === "sign-in") return "sign-in";
   if (phase === "standing-up") return "standing-up";
-  if (phase === "failed") return "failed";
   if (!input.signInRequired) return "question";
   return input.addedBy === undefined ? "sign-in-plain" : "sign-in-colleague";
 }
@@ -289,10 +286,10 @@ const SIGN_IN_KINDS: ReadonlySet<ArrivalKind> = new Set([
 export function MateEmptyStateView({
   mate,
   phase,
+  standUpFailure,
   signIn,
   signInRequired,
   unknown,
-  onRetry,
   coming = null,
   addedBy,
   agentReady = false,
@@ -301,12 +298,12 @@ export function MateEmptyStateView({
 }: {
   readonly mate: DrawnMate;
   readonly phase: MateStandUpPhase | null;
+  readonly standUpFailure?: { readonly retrying: boolean; readonly retry: () => void } | undefined;
   /** The sign-in, once the agents' sign-in is known; null before. */
   readonly signIn: ReactNode | null;
   /** No agent is signed in: nothing typed here could be acted on. */
   readonly signInRequired: boolean;
   readonly unknown: KnownMessage | null;
-  readonly onRetry: () => void;
   /** Still coming up (or never came, or on its way to its conversation). */
   readonly coming?: MateEmptyComing | null;
   /** A colleague's view of a Mate nobody has signed in (`MateEmptyState.addedBy`). */
@@ -331,7 +328,12 @@ export function MateEmptyStateView({
     if (holder !== null && holder !== document.body) return;
     headline.current?.focus({ preventScroll: true });
   }, [focusOnArrival]);
-  const kind = mateArrivalKind({ coming, phase, signInRequired, addedBy });
+  const kind = mateArrivalKind({
+    coming,
+    phase: standUpFailure === undefined ? phase : null,
+    signInRequired,
+    addedBy,
+  });
   // The minute clock its pose reads: it wakes only while it arrives (`mateArriving`).
   const nowMs = useNowMs();
   const clauses = arrivalHeadlineClauses(mate, kind);
@@ -339,7 +341,26 @@ export function MateEmptyStateView({
     coming !== null && coming.over !== true && coming.sentence !== undefined
       ? coming.sentence
       : arrivalSentence(mate, kind, { addedBy: addedBy ?? undefined, agentReady });
-  const slot = arrivalSlot({ kind, coming, signIn, unknown, onRetry, runtimes });
+  const slot =
+    standUpFailure === undefined
+      ? arrivalSlot({ kind, coming, signIn, unknown, runtimes })
+      : {
+          id: "stand-up-failed",
+          node: (
+            <div className="flex flex-col items-center gap-3" role="status">
+              <p>The message to {mate.name} didn't go through.</p>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={standUpFailure.retrying}
+                onClick={standUpFailure.retry}
+              >
+                {standUpFailure.retrying ? "Trying again…" : "Try again"}
+              </Button>
+            </div>
+          ),
+        };
+
   // A press's words change while its steps run, stop and go again: on a narrow screen each holds
   // two lines' room, so none of it moves the rows under them.
   const pressed = coming?.pressed === true && coming.over !== true ? "" : undefined;
@@ -418,7 +439,6 @@ function arrivalSlot(input: {
   readonly coming: MateEmptyComing | null;
   readonly signIn: ReactNode | null;
   readonly unknown: KnownMessage | null;
-  readonly onRetry: () => void;
   readonly runtimes: ReadonlyArray<BirthRuntimeFact> | undefined;
 }): { readonly id: string; readonly node: ReactNode } {
   const { kind, coming, signIn, unknown } = input;
@@ -428,18 +448,6 @@ function arrivalSlot(input: {
     case "reaching":
     case "unreachable":
       return { id: kind, node: coming?.below ?? null };
-    case "failed":
-      return {
-        id: "retry",
-        node: (
-          <div className="arrival-acts">
-            <Button data-mate-standup-retry onClick={input.onRetry}>
-              <RotateCcwIcon aria-hidden="true" />
-              {MATE_STAND_UP_RETRY_LABEL}
-            </Button>
-          </div>
-        ),
-      };
     case "standing-up":
       return { id: "none", node: null };
     default:

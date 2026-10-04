@@ -35,10 +35,9 @@ export type CapabilityAsk =
   | { readonly kind: "identityMint" };
 
 /**
- * Door and Gitea throwaway mints (spec-mate C6, D6(b)): once the epoch's first grant was admitted,
- * whatever the window. A throwaway carries no rights, so no organization or project role is
- * checked — the door and the broker decide roles. A mint that grants a project is a
- * `platformWrite` of that project instead.
+ * Door throwaway mints (spec-mate C6, D6(b)): once the epoch's first grant was admitted, whatever
+ * the window. A throwaway carries no rights, so no organization or project role is checked — the
+ * door decides roles. A mint that grants a project is a `platformWrite` of that project instead.
  */
 export const identityMint = (machine: GrantMachine): GrantCapability => {
   switch (machine.phase.phase) {
@@ -67,15 +66,12 @@ const answer = (ask: CapabilityAsk, machine: GrantMachine, ctx: GrantContext): G
   }
 };
 
-/**
- * A capability of any class (§4.3): the grant's refusals, and those of a Mate's connection and a
- * Gitea session.
- */
+/** A capability of any class (§4.3): the grant's refusals, and those of a Mate's connection. */
 export type Capability =
   | GrantCapability
   | {
       readonly allowed: false;
-      readonly reason: "mate-not-connected" | "gitea-session";
+      readonly reason: "mate-not-connected";
       readonly waitable: boolean;
     };
 
@@ -99,40 +95,6 @@ export const mate = (input: MateCapabilityInput): Capability => {
   if (!input.project.allowed) return input.project;
   if (input.credential === "held" && input.link === "connected") return { allowed: true };
   return { allowed: false, reason: "mate-not-connected", waitable: input.link === "reconnecting" };
-};
-
-/** The phase of one Gitea session (`forge/giteaSessionMachine.ts`), as `forge(origin)` weighs it. */
-export type GiteaSessionKind =
-  | "idle"
-  | "acquiring"
-  | "signed-in"
-  | "reacquiring"
-  | "pending"
-  | "unavailable"
-  | "waiting"
-  | "refused"
-  | "closed";
-
-/**
- * Forge commands on one Gitea origin (§4.3): its session is signed in. A session getting a token
- * or waiting for Gitea to finish setting up may still bring one; any other has none coming.
- */
-export const forge = (session: GiteaSessionKind): Capability => {
-  switch (session) {
-    case "signed-in":
-      return { allowed: true };
-    case "closed":
-      return { allowed: false, reason: "epoch-closed", waitable: false };
-    case "acquiring":
-    case "reacquiring":
-    case "pending":
-      return { allowed: false, reason: "gitea-session", waitable: true };
-    case "idle":
-    case "unavailable":
-    case "waiting":
-    case "refused":
-      return { allowed: false, reason: "gitea-session", waitable: false };
-  }
 };
 
 /**

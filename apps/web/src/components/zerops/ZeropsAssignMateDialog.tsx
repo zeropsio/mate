@@ -6,13 +6,15 @@
  * being reassigned needs somebody to say whose it is now. That somebody is an
  * org owner or admin, and what they write is a per-project role override.
  *
- * One list, one verb. The list is the org's members; picking one raises them
- * to `OWNER` here, which is what makes the Mate open for them and theirs to
- * rename. Nothing else on the project moves.
+ * One list, one verb. The list is the org's people (`handOverCandidates`),
+ * never one of its integration tokens, and nobody is picked until the person
+ * picks; picking one raises them to `OWNER` here, which is what makes the Mate
+ * open for them and theirs to rename. Nothing else on the project moves. The
+ * dialog stays while the platform answers, and says its refusal.
  */
 import { useId, useState } from "react";
 
-import { mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
+import { handOverCandidates, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -28,6 +30,8 @@ import { Label } from "../ui/label";
 export interface AssignableMember {
   /** The `clientUser` id — what a project's `userRoles` names. */
   readonly id: string;
+  /** `ACTIVE` once the person has joined the organization. */
+  readonly status?: string | undefined;
   readonly user?:
     | {
         readonly fullName?: string | undefined;
@@ -46,19 +50,30 @@ export function assignableMemberLabel(member: AssignableMember): string {
 export function ZeropsAssignMateForm({
   projectName,
   members,
-  currentOwnerId,
   onCancel,
   onSubmit,
+  pending,
+  error,
+  readingOrganization,
+  readFailed,
 }: {
   readonly projectName: string;
   readonly members: ReadonlyArray<AssignableMember>;
-  /** Whoever the project already names as its owner, pre-selected. */
-  readonly currentOwnerId?: string | undefined;
+  /** The organization whose people are still being read, while there is nobody to pick yet. */
+  readonly readingOrganization?: string | undefined;
+  /** The organization whose people could not be read, and the way to read them again. */
+  readonly readFailed?:
+    | { readonly organization: string; readonly onReadAgain: () => void }
+    | undefined;
   readonly onCancel: () => void;
   readonly onSubmit: (clientUserId: string) => void;
+  /** The platform is answering the hand-over. */
+  readonly pending: boolean;
+  /** Why the platform refused it, in its words; null before a refusal. */
+  readonly error: string | null;
 }) {
   const id = useId();
-  const [selected, setSelected] = useState(currentOwnerId ?? members[0]?.id ?? "");
+  const [selected, setSelected] = useState("");
 
   return (
     <form
@@ -66,7 +81,7 @@ export function ZeropsAssignMateForm({
       data-zerops-surface="assign-mate"
       onSubmit={(event) => {
         event.preventDefault();
-        if (selected.length === 0) return;
+        if (pending || selected.length === 0) return;
         onSubmit(selected);
       }}
     >
@@ -81,27 +96,54 @@ export function ZeropsAssignMateForm({
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-member`}>Owner</Label>
           <select
+            aria-busy={readingOrganization === undefined ? undefined : true}
             autoFocus
             className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+            disabled={readingOrganization !== undefined}
             id={`${id}-member`}
             onChange={(event) => {
               setSelected(event.target.value);
             }}
             value={selected}
           >
-            {members.map((member) => (
+            <option disabled value="">
+              {readingOrganization === undefined
+                ? "Pick a person"
+                : `Reading ${readingOrganization}…`}
+            </option>
+            {handOverCandidates(members).map((member) => (
               <option key={member.id} value={member.id}>
                 {assignableMemberLabel(member)}
               </option>
             ))}
           </select>
         </div>
+        {readFailed === undefined ? null : (
+          <div className="mt-3 flex flex-col items-start gap-3">
+            <p className="text-sm text-foreground" role="alert">
+              Couldn't read {readFailed.organization}'s members from Zerops.
+            </p>
+            <Button onClick={readFailed.onReadAgain} size="sm" type="button" variant="secondary">
+              Try again
+            </Button>
+          </div>
+        )}
       </DialogPanel>
       <DialogFooter>
-        <Button onClick={onCancel} type="button" variant="ghost">
+        <p
+          className="me-auto min-h-4 self-center text-line leading-4 text-status-failed-text"
+          role="alert"
+        >
+          {error}
+        </p>
+        <Button disabled={pending} onClick={onCancel} type="button" variant="ghost">
           Cancel
         </Button>
-        <Button disabled={selected.length === 0} type="submit">
+        <Button
+          aria-busy={pending || undefined}
+          disabled={pending || selected.length === 0}
+          type="submit"
+        >
           Hand it over
         </Button>
       </DialogFooter>
@@ -116,7 +158,14 @@ export function ZeropsAssignMateDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   return (
-    <Dialog open onOpenChange={onOpenChange}>
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        // A hand-over the platform is answering is seen through: its refusal has somewhere to land.
+        if (!next && form.pending) return;
+        onOpenChange(next);
+      }}
+    >
       <DialogPopup>
         <ZeropsAssignMateForm {...form} />
       </DialogPopup>

@@ -1,101 +1,36 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { GiteaCommitStatus } from "./giteaClient.ts";
 import { environmentRow, type EnvironmentRow } from "./groupRows.ts";
 import {
   compareForRelease,
+  flowReleaseOf,
   isReleaseTag,
   releaseRunBy,
   nameStopByRelease,
-  newestReleaseTag,
-  planReleaseReads,
-  readReleaseMessage,
   releaseEntries,
   releaseGate,
+  releaseCandidate,
   releaseInFlight,
   releaseInFlightReason,
-  releaseMessage,
   releaseOffer,
   releaseRow,
-  releaseStatusContext,
-  releaseVerdict,
   releaseWord,
+  RELEASE_CHECKING,
   RELEASE_NOTHING_MERGED,
   RELEASE_NOTHING_NEW_ON_MAIN,
-  RELEASE_NOT_A_RELEASER,
-  rollbackTo,
   shortCommit,
-  suggestReleaseTags,
   type FlowRelease,
   type FlowReleaseRow,
 } from "./release.ts";
+import type { MovedCommits } from "./releaseCompare.ts";
 
 const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
+/** What goes live, compared: nothing beyond what each case's own entries say. */
+const COMPARED: MovedCommits = { state: "known", moved: [] };
 const WEB = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
 const OLD = "1111111111111111111111111111111111111111";
 
-describe("the tag's message", () => {
-  it("is one line per service, in service order", () => {
-    expect(
-      releaseMessage([
-        { service: "web", commit: WEB },
-        { service: "api", commit: API },
-      ]),
-    ).toBe(`api ${API}\nweb ${WEB}`);
-  });
-
-  it("lower-cases a sha, so it compares equal to a version's name", () => {
-    expect(releaseMessage([{ service: "api", commit: API.toUpperCase() }])).toBe(`api ${API}`);
-  });
-
-  it("drops anything that is not a full sha rather than writing a tag the broker refuses", () => {
-    expect(releaseMessage([{ service: "api", commit: "3f9c1b2" }])).toBe("");
-  });
-
-  it.each([
-    { name: "two services", message: `api ${API}\nweb ${WEB}`, expected: 2 },
-    { name: "blank lines between them", message: `api ${API}\n\n\nweb ${WEB}\n`, expected: 2 },
-    {
-      name: "a short sha, which makes the whole tag unreadable",
-      message: `api 3f9c1b2`,
-      expected: 0,
-    },
-    { name: "a third word", message: `api ${API} extra`, expected: 0 },
-    { name: "a line with no sha", message: `api`, expected: 0 },
-    { name: "nothing at all", message: "", expected: 0 },
-  ])("reads $name", ({ message, expected }) => {
-    expect(readReleaseMessage(message)).toHaveLength(expected);
-  });
-
-  it("round-trips: what it writes is what it reads", () => {
-    const entries = [
-      { service: "api", commit: API },
-      { service: "web", commit: WEB },
-    ];
-    expect(readReleaseMessage(releaseMessage(entries))).toEqual(entries);
-  });
-});
-
-describe("what to call the next release", () => {
-  it.each([
-    { name: "a group that has never released", tags: [], patch: "v0.1.0", minor: "v0.1.0" },
-    { name: "one release", tags: ["v1.2.0"], patch: "v1.2.1", minor: "v1.3.0" },
-    {
-      name: "the newest by version, not by name",
-      tags: ["v1.9.0", "v1.10.0", "v1.2.0"],
-      patch: "v1.10.1",
-      minor: "v1.11.0",
-    },
-    {
-      name: "tags that are not ours, ignored",
-      tags: ["release-3", "v2.0.0", "nightly"],
-      patch: "v2.0.1",
-      minor: "v2.1.0",
-    },
-  ])("suggests, for $name", ({ tags, patch, minor }) => {
-    expect(suggestReleaseTags(tags)).toEqual({ patch, minor });
-  });
-
+describe("a release's name", () => {
   it.each([
     { tag: "v1.2.3", expected: true },
     { tag: "v1.2", expected: false },
@@ -103,10 +38,6 @@ describe("what to call the next release", () => {
     { tag: "v1.2.3-rc1", expected: false },
   ])("recognises $tag as ours: $expected", ({ tag, expected }) => {
     expect(isReleaseTag(tag)).toBe(expected);
-  });
-
-  it("has no newest tag among tags that are none of ours", () => {
-    expect(newestReleaseTag(["nightly", "release-3"])).toBeUndefined();
   });
 });
 
@@ -151,29 +82,56 @@ describe("what Release shows before it is pressed", () => {
   });
 });
 
-describe("the app's own gate", () => {
+/** HQ's rule, in its words (`releasePermission`, `hqRefusalWords`). */
+const RELEASER = { allowed: true } as const;
+const NOT_RELEASER = { allowed: false, reason: "Only somebody with Basic user can." } as const;
+
+describe("the gate HQ's rule decides", () => {
   const entries = [{ service: "api", commit: API }];
 
   it.each([
-    { name: "a releaser with something to release", mayRelease: true, entries, allowed: true },
+    { name: "a releaser with something to release", permission: RELEASER, entries, allowed: true },
     {
-      name: "somebody who is not in the release right",
-      mayRelease: false,
+      name: "somebody HQ's rule refuses, in its words",
+      permission: NOT_RELEASER,
       entries,
       allowed: false,
-      reason: RELEASE_NOT_A_RELEASER,
+      reason: NOT_RELEASER.reason,
+    },
+    {
+      name: "somebody HQ's rule cannot be asked about yet",
+      permission: undefined,
+      entries,
+      allowed: false,
+      reason: RELEASE_CHECKING,
     },
     {
       name: "a releaser with nothing merged",
-      mayRelease: true,
+      permission: RELEASER,
       entries: [],
       allowed: false,
       reason: RELEASE_NOTHING_MERGED,
     },
-  ])("for $name", ({ mayRelease, entries: list, allowed, reason }) => {
-    const gate = releaseGate({ mayRelease, entries: list });
+  ])("for $name", ({ permission, entries: list, allowed, reason }) => {
+    const gate = releaseGate({ permission, entries: list });
     expect(gate.allowed).toBe(allowed);
     if (!gate.allowed) expect(gate.reason).toBe(reason);
+  });
+
+  // What goes live is what the review shows before the press (main C05): a release is not offered
+  // over a list still being read, nor over one HQ could not compare.
+  it.each([
+    { name: "still being read", live: { state: "reading" } as const, reason: RELEASE_CHECKING },
+    {
+      name: "not compared, in HQ's words",
+      live: { state: "failed", reason: "HQ has no such commit." } as const,
+      reason: "Can't check what can be released: HQ has no such commit.",
+    },
+  ])("holds a releaser back while what goes live is $name", ({ live, reason }) => {
+    expect(releaseGate({ permission: RELEASER, entries, live })).toEqual({
+      allowed: false,
+      reason,
+    });
   });
 });
 
@@ -185,7 +143,8 @@ describe("what Release offers, from what the environments run", () => {
 
   it("compares the stage against production, per service, and offers the next patch", () => {
     const offer = releaseOffer({
-      mayRelease: true,
+      live: COMPARED,
+      permission: RELEASER,
       candidate: stage,
       production: new Map([
         ["api", OLD],
@@ -201,17 +160,51 @@ describe("what Release offers, from what the environments run", () => {
     ]);
   });
 
+  it("carries what HQ compared it would put live once known, and holds Release until then", () => {
+    const moved = {
+      repository: "apidev",
+      services: ["api"],
+      commits: [
+        {
+          sha: API,
+          subject: "Quicker gallery",
+          authorName: "Ada",
+          at: "2026-10-02T10:00:00.000Z",
+          change: null,
+        },
+      ],
+      total: 1,
+      truncated: false,
+    };
+    const offer = (live: MovedCommits) =>
+      releaseOffer({
+        permission: RELEASER,
+        candidate: stage,
+        production: new Map([["api", OLD]]),
+        tags: ["v1.2.0"],
+        live,
+      });
+    expect(offer({ state: "known", moved: [moved] })).toMatchObject({
+      gate: { allowed: true },
+      contents: [moved],
+    });
+    expect(offer({ state: "reading" })).toMatchObject({
+      gate: { allowed: false, reason: RELEASE_CHECKING },
+      contents: [],
+    });
+  });
+
   it.each([
     {
       name: "a stage two services ahead of production",
-      mayRelease: true,
+      permission: RELEASER,
       stage,
       production: new Map([["api", OLD]]),
       allowed: true,
     },
     {
       name: "a production already running everything main holds",
-      mayRelease: true,
+      permission: RELEASER,
       stage,
       production: new Map(stage),
       allowed: false,
@@ -219,7 +212,7 @@ describe("what Release offers, from what the environments run", () => {
     },
     {
       name: "repositories with nothing merged",
-      mayRelease: true,
+      permission: RELEASER,
       stage: new Map<string, string>(),
       production: new Map([["api", OLD]]),
       allowed: false,
@@ -227,15 +220,16 @@ describe("what Release offers, from what the environments run", () => {
     },
     {
       name: "somebody who is not a releaser",
-      mayRelease: false,
+      permission: NOT_RELEASER,
       stage,
       production: new Map<string, string>(),
       allowed: false,
-      reason: RELEASE_NOT_A_RELEASER,
+      reason: NOT_RELEASER.reason,
     },
-  ])("answers, for $name", ({ mayRelease, stage: stageCommits, production, allowed, reason }) => {
+  ])("answers, for $name", ({ permission, stage: stageCommits, production, allowed, reason }) => {
     const gate = releaseOffer({
-      mayRelease,
+      live: COMPARED,
+      permission,
       candidate: stageCommits,
       production,
       tags: [],
@@ -246,7 +240,8 @@ describe("what Release offers, from what the environments run", () => {
 
   it("carries the entries the tag would list, so the verb tags what the offer showed", () => {
     const offer = releaseOffer({
-      mayRelease: true,
+      live: COMPARED,
+      permission: RELEASER,
       candidate: new Map([
         ["api", API.toUpperCase()],
         ["web", "hotfix"],
@@ -295,7 +290,8 @@ describe("a release lists what is merged", () => {
     },
   ])("answers, for $name", ({ candidate, production, allowed, reason }) => {
     const offer = releaseOffer({
-      mayRelease: true,
+      live: COMPARED,
+      permission: RELEASER,
       candidate,
       production,
       tags: [],
@@ -308,77 +304,90 @@ describe("a release lists what is merged", () => {
   });
 
   it("never says a sentence about a stage, which a release does not depend on", () => {
-    for (const reason of [
-      RELEASE_NOTHING_MERGED,
-      RELEASE_NOTHING_NEW_ON_MAIN,
-      RELEASE_NOT_A_RELEASER,
-    ]) {
+    for (const reason of [RELEASE_NOTHING_MERGED, RELEASE_NOTHING_NEW_ON_MAIN]) {
       expect(reason).not.toMatch(/stage/iu);
     }
   });
 });
 
-describe("rolling back", () => {
-  const earlier = `api ${OLD}\nweb ${WEB}`;
+describe("what a release lists, from HQ's repositories", () => {
+  const repos = [
+    { name: "appdev", mainHead: API, updatedAt: "2026-10-02T09:00:00.000Z" },
+    { name: "webdev", mainHead: null, updatedAt: "2026-10-02T08:00:00.000Z" },
+    { name: "group", mainHead: OLD, updatedAt: "2026-10-02T09:30:00.000Z" },
+  ];
 
-  it("is a new tag carrying the earlier one's message, exactly", () => {
+  it("takes each production runtime at its repository's main, and the recipe's main to tag", () => {
     expect(
-      rollbackTo({ tag: "v1.2.0", message: earlier, existingTags: ["v1.2.0", "v1.3.0"] }),
-    ).toEqual({ tag: "v1.3.1", message: earlier });
+      releaseCandidate({
+        productionRepositories: new Map([
+          ["app", "appdev"],
+          ["web", "webdev"],
+          ["mail", "mailer"],
+        ]),
+        repos,
+      }),
+    ).toEqual({ candidate: new Map([["app", API]]), groupHead: OLD });
   });
 
-  it("never reuses a name, even rolling back to the newest but one", () => {
-    const result = rollbackTo({
-      tag: "v1.2.0",
-      message: earlier,
-      existingTags: ["v1.2.0", "v1.3.0"],
-    });
-    expect(["v1.2.0", "v1.3.0"]).not.toContain(result?.tag);
-  });
-
-  it("refuses a tag whose message this build cannot read", () => {
+  it("has nothing to tag where the recipe has no main", () => {
     expect(
-      rollbackTo({ tag: "v1.2.0", message: "deployed the invoices work", existingTags: [] }),
+      releaseCandidate({ productionRepositories: new Map(), repos: repos.slice(0, 2) }).groupHead,
     ).toBeUndefined();
   });
 });
 
-describe("the broker's verdict on a tag", () => {
-  const status = (state: GiteaCommitStatus["state"], description?: string): GiteaCommitStatus => ({
-    context: releaseStatusContext("v1.2.0"),
-    state,
-    ...(description === undefined ? {} : { description }),
+describe("a release as HQ records it", () => {
+  it("reads as the flow lists it: its verdict, its entries and when it was made", () => {
+    expect(
+      flowReleaseOf({
+        tag: "v0.1.2",
+        sha: OLD,
+        entries: [
+          { service: "api", sha: API },
+          { service: "web", sha: WEB },
+        ],
+        by: "u1",
+        at: "2026-10-02T10:00:00.000Z",
+        state: "approved",
+        reason: null,
+        rollbackOf: null,
+      }),
+    ).toEqual({
+      tag: "v0.1.2",
+      verdict: "approved",
+      detail: undefined,
+      line: "api 3f9c1b2 · web 77ab0e1",
+      entries: [
+        { service: "api", commit: API },
+        { service: "web", commit: WEB },
+      ],
+      taggedAt: "2026-10-02T10:00:00.000Z",
+    });
   });
 
+  it("carries why a refused one was refused", () => {
+    expect(
+      flowReleaseOf({
+        tag: "v0.1.1",
+        sha: OLD,
+        entries: [{ service: "api", sha: API }],
+        by: "u1",
+        at: "2026-10-01T10:00:00.000Z",
+        state: "refused",
+        reason: "the tag's commit failed its checks",
+        rollbackOf: null,
+      }),
+    ).toMatchObject({ verdict: "refused", detail: "the tag's commit failed its checks" });
+  });
+});
+
+describe("the one word beside a release's dot", () => {
   it.each([
-    { name: "approved", statuses: [status("success")], verdict: "approved", word: "Approved" },
-    {
-      name: "refused, with the reason",
-      statuses: [status("failure", "ada is not a releaser")],
-      verdict: "refused",
-      word: "Refused",
-    },
-    {
-      name: "still being checked",
-      statuses: [status("pending")],
-      verdict: "pending",
-      word: "Checking",
-    },
-    { name: "nothing said yet", statuses: [], verdict: "unknown", word: undefined },
-  ] as const)("reads $name", ({ statuses, verdict, word }) => {
-    expect(releaseVerdict("v1.2.0", statuses).verdict).toBe(verdict);
+    { verdict: "approved", word: "Approved" },
+    { verdict: "refused", word: "Refused" },
+  ] as const)("says $word for $verdict", ({ verdict, word }) => {
     expect(releaseWord(verdict)).toBe(word);
-  });
-
-  it("does not take another tag's verdict for this one", () => {
-    const statuses = [{ context: "mate/release/v1.1.0", state: "success" } as GiteaCommitStatus];
-    expect(releaseVerdict("v1.2.0", statuses).verdict).toBe("unknown");
-  });
-
-  it("carries the description a refusal came with", () => {
-    expect(releaseVerdict("v1.2.0", [status("failure", "ada is not a releaser")]).detail).toBe(
-      "ada is not a releaser",
-    );
   });
 });
 
@@ -390,6 +399,8 @@ describe("shortCommit", () => {
 
 describe("a release's row", () => {
   const TAGGED = "2026-09-25T07:00:00Z";
+  const EARLIER = "2026-09-25T06:00:00Z";
+  const EARLIEST = "2026-09-25T05:00:00Z";
   const release = (
     tag: string,
     over: Partial<FlowRelease> & { readonly api?: string; readonly web?: string } = {},
@@ -404,7 +415,7 @@ describe("a release's row", () => {
         { service: "api", commit: api },
         { service: "web", commit: web },
       ],
-      taggedAt: undefined,
+      taggedAt: TAGGED,
       ...rest,
     };
   };
@@ -413,17 +424,22 @@ describe("a release's row", () => {
       ["api", api],
       ["web", web],
     ]);
-  const NONE_FAILED = new Map<string, string | undefined>();
+  const NONE_FAILED = new Map<string, string>();
 
   /** The newest-first list's rows, each told whether it is the one `releaseRunBy` names. */
   const rows = (
     releases: ReadonlyArray<FlowRelease>,
     production: ReadonlyMap<string, string>,
-    failed: ReadonlyMap<string, string | undefined> = NONE_FAILED,
+    failed: ReadonlyMap<string, string> = NONE_FAILED,
   ) => {
     const live = releaseRunBy(releases, production);
     return releases.map((entry, index) =>
-      releaseRow(entry, index, { production, failed, live: entry.tag === live }),
+      releaseRow(entry, index, {
+        production,
+        failed,
+        live: entry.tag === live,
+        newer: releases.slice(0, index),
+      }),
     );
   };
   const brief = (row: FlowReleaseRow) => ({
@@ -471,8 +487,8 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "a commit it lists failed its production deploy after the tag: Deploy failed",
-      releases: [release("v1.3.0", { taggedAt: TAGGED }), release("v1.2.0", { web: OLD })],
+      name: "a commit it lists failed its production deploy after it was made: Deploy failed",
+      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
       production: runs(API, OLD),
       failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
       expected: [
@@ -481,21 +497,13 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "a failure with no tag time to measure it against: Deploy failed",
-      releases: [release("v1.3.0", { verdict: "unknown" }), release("v1.2.0", { web: OLD })],
-      production: runs(API, OLD),
-      failed: new Map([[`web@${WEB}`, undefined]]),
-      expected: [
-        { tag: "v1.3.0", standing: "deploy-failed", word: "Deploy failed", rollBack: false },
-        { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
-      ],
-    },
-    {
-      name: "an older release with no tag time lists the failed commit: its failure is the newest's",
+      // HQ deploys production to the newest release only: an older one listing the same commit
+      // did not fail with it.
+      name: "an older release lists the failed commit: its failure is the newest's that lists it",
       releases: [
-        release("v1.4.0", { taggedAt: TAGGED }),
-        release("v1.3.0", { web: OLD }),
-        release("v1.2.0"),
+        release("v1.4.0"),
+        release("v1.3.0", { web: OLD, taggedAt: EARLIER }),
+        release("v1.2.0", { taggedAt: EARLIEST }),
       ],
       production: runs(API, OLD),
       failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
@@ -506,8 +514,8 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "a failure posted before the tag belongs to an earlier release of the commit",
-      releases: [release("v1.3.0", { taggedAt: TAGGED }), release("v1.2.0", { web: OLD })],
+      name: "a failure posted before it was made belongs to an earlier release of the commit",
+      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
       production: runs(API, OLD),
       failed: new Map([[`web@${WEB}`, "2026-09-25T06:55:00Z"]]),
       expected: [
@@ -516,15 +524,8 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "a failure whose time is not read does not outlast a tag whose time is",
-      releases: [release("v1.3.0", { taggedAt: TAGGED })],
-      production: runs(API, OLD),
-      failed: new Map([[`web@${WEB}`, undefined]]),
-      expected: [{ tag: "v1.3.0", standing: undefined, word: "Approved", rollBack: false }],
-    },
-    {
       name: "a failed commit production runs anyway is not what failed",
-      releases: [release("v1.3.0", { taggedAt: TAGGED }), release("v1.2.0", { web: OLD })],
+      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
       production: runs(OLD, WEB),
       failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
       expected: [
@@ -540,7 +541,7 @@ describe("a release's row", () => {
         release("v1.2.0"),
       ],
       production: runs(API, WEB),
-      failed: new Map([[`web@${OLD}`, undefined]]),
+      failed: new Map([[`web@${OLD}`, "2026-09-25T07:05:00Z"]]),
       expected: [
         { tag: "v1.4.0", standing: undefined, word: "Refused", rollBack: false },
         { tag: "v1.3.0", standing: undefined, word: "Refused", rollBack: false },
@@ -548,17 +549,7 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "one the broker still judges reads Checking and offers no roll-back",
-      releases: [release("v1.3.0", { verdict: "pending", web: OLD }), release("v1.2.0")],
-      production: runs(API, WEB),
-      failed: NONE_FAILED,
-      expected: [
-        { tag: "v1.3.0", standing: undefined, word: "Checking", rollBack: false },
-        { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
-      ],
-    },
-    {
-      name: "production runs none of them: every row keeps the broker's word",
+      name: "production runs none of them: every row keeps HQ's word",
       releases: [release("v1.3.0"), release("v1.2.0", { api: OLD })],
       production: new Map<string, string>(),
       failed: NONE_FAILED,
@@ -573,7 +564,7 @@ describe("a release's row", () => {
 
   it("says which of its commits failed, on which service, and nothing for any other row", () => {
     const [failed, live] = rows(
-      [release("v1.3.0", { taggedAt: TAGGED }), release("v1.2.0", { web: OLD })],
+      [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
       runs(API, OLD),
       new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
     );
@@ -678,7 +669,6 @@ describe("the release a stop is named by", () => {
       name: "production",
       tier: "production",
       sources: "release",
-      environment: "production",
       services: [
         { hostname: "medusa", appVersionName: `${MEDUSA} v0.1.9 ada` },
         { hostname: "nextstore", appVersionName: `${NEXT(5)} v0.1.13 broker` },
@@ -698,55 +688,12 @@ describe("the release a stop is named by", () => {
   });
 });
 
-describe("planReleaseReads", () => {
-  const table: ReadonlyArray<{
-    readonly name: string;
-    readonly heads: ReadonlyArray<readonly [string, string]>;
-    readonly running: ReadonlyArray<readonly [string, string]>;
-    readonly expected: ReadonlyArray<{ service: string; head: string; from: string | undefined }>;
-  }> = [
-    {
-      name: "a service production already runs is not read",
-      heads: [["web", "aaa"]],
-      running: [["web", "aaa"]],
-      expected: [],
-    },
-    {
-      name: "a service production runs behind is read from what it runs",
-      heads: [["web", "bbb"]],
-      running: [["web", "aaa"]],
-      expected: [{ service: "web", head: "bbb", from: "aaa" }],
-    },
-    {
-      // The first release: production runs nothing, so there is no base to
-      // compare against — and the head is exactly what would go live.
-      name: "a service production runs nothing of is read with no base",
-      heads: [["web", "bbb"]],
-      running: [],
-      expected: [{ service: "web", head: "bbb", from: undefined }],
-    },
-    {
-      name: "every service is decided on its own",
-      heads: [
-        ["api", "ccc"],
-        ["web", "bbb"],
-      ],
-      running: [["api", "ccc"]],
-      expected: [{ service: "web", head: "bbb", from: undefined }],
-    },
-  ];
-
-  it.each(table.map((row) => [row.name, row] as const))("%s", (_name, row) => {
-    expect(planReleaseReads(new Map(row.heads), new Map(row.running))).toEqual(row.expected);
-  });
-});
-
 describe("a release in flight", () => {
   const TAGGED = "2026-09-24T10:00:00Z";
   const at = (minutes: number) => Date.parse(TAGGED) + minutes * 60_000;
   const newest = {
     tag: "v0.1.3",
-    verdict: "pending" as const,
+    verdict: "approved" as const,
     entries: [
       { service: "api", commit: API },
       { service: "web", commit: WEB },
@@ -760,29 +707,15 @@ describe("a release in flight", () => {
 
   it.each([
     {
-      name: "Release is not offered while the newest release tag is pending and production does not run it yet",
+      name: "Release is not offered while production does not run the newest release yet",
       release: newest,
       production: notYet,
       nowMs: at(2),
       inFlight: "v0.1.3",
     },
     {
-      name: "an approved tag production does not run yet is still in flight",
-      release: { ...newest, verdict: "approved" as const },
-      production: notYet,
-      nowMs: at(2),
-      inFlight: "v0.1.3",
-    },
-    {
-      name: "a tag the broker has not spoken about yet is in flight",
-      release: { ...newest, verdict: "unknown" as const },
-      production: notYet,
-      nowMs: at(0),
-      inFlight: "v0.1.3",
-    },
-    {
-      name: "a tag production runs is done",
-      release: { ...newest, verdict: "approved" as const },
+      name: "a release production runs is done",
+      release: newest,
       production: new Map([
         ["api", API],
         ["web", WEB],
@@ -791,24 +724,17 @@ describe("a release in flight", () => {
       inFlight: undefined,
     },
     {
-      name: "Release is offered again after the in-flight release failed",
+      name: "Release is offered again over a release HQ refused",
       release: { ...newest, verdict: "refused" as const },
       production: notYet,
       nowMs: at(2),
       inFlight: undefined,
     },
     {
-      name: "a tag older than 30 minutes with no final state stops counting",
+      name: "a release older than 30 minutes production still does not run stops counting",
       release: newest,
       production: notYet,
       nowMs: at(31),
-      inFlight: undefined,
-    },
-    {
-      name: "a tag whose time is not read is not held in flight",
-      release: { ...newest, taggedAt: undefined },
-      production: notYet,
-      nowMs: at(2),
       inFlight: undefined,
     },
     {
@@ -826,7 +752,8 @@ describe("a release in flight", () => {
 
   it("keeps Release from being offered, and says which tag is on its way", () => {
     const gate = releaseOffer({
-      mayRelease: true,
+      live: COMPARED,
+      permission: RELEASER,
       candidate: new Map([["api", API]]),
       production: new Map([["api", OLD]]),
       inFlight: "v0.1.3",
@@ -837,7 +764,8 @@ describe("a release in flight", () => {
 });
 
 describe("a production whose version names spell short shas", () => {
-  // Since 2026-09-30 the broker names a deploy `{tag} {short sha}`, so what production runs
+  // Since 2026-09-30 a release's deploy is named `{tag} {short sha}` — by main's broker, and by
+  // HQ's Core after it — so what production runs
   // reads as the seven-hex prefix of the commit a release lists.
   const short = (sha: string) => sha.slice(0, 7);
   const RUNS = new Map([
@@ -869,10 +797,6 @@ describe("a production whose version names spell short shas", () => {
     expect(releaseRunBy([listing("v1.1.0", OLD), listing("v1.0.0")], RUNS)).toBe("v1.0.0");
   });
 
-  it("reads nothing for a service it already runs main's head of", () => {
-    expect(planReleaseReads(new Map([["api", API]]), RUNS)).toEqual([]);
-  });
-
   it("holds no release in flight once production runs every commit it lists", () => {
     expect(
       releaseInFlight({
@@ -901,7 +825,25 @@ describe("a production whose version names spell short shas", () => {
       production: RUNS,
       failed: new Map([[`api@${short(OLD)}`, "2026-09-30T10:05:00Z"]]),
       live: false,
+      newer: [],
     });
     expect(row.standing).toBe("deploy-failed");
   });
+});
+
+it("a snapshot never waits for a production deployment", () => {
+  expect(
+    releaseInFlight({
+      newest: {
+        tag: "v0.1.0",
+        verdict: "approved",
+        entries: [{ service: "api", commit: API }],
+        taggedAt: "2026-09-29T10:00:00Z",
+        snapshot: true,
+      },
+      production: new Map(),
+      failed: new Map(),
+      nowMs: Date.parse("2026-09-29T10:00:01Z"),
+    }),
+  ).toBeUndefined();
 });

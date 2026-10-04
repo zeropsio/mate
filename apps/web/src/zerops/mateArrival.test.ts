@@ -102,6 +102,54 @@ describe("arrivalSteps — what the Mate's own setup says (`/mate/setup.json`)",
     expect(you).toEqual({ id: "you", label: "Wren's agent is ready", state: "done" });
   });
 });
+// A New project's first Mate has no stand-up, so its Git access is the one place its HQ says it
+// cannot come: failed, with why and what the person can do — and done once it is granted.
+describe("arrivalSteps — Git access that failed", () => {
+  const gitStep = (setup: Parameters<typeof arrivalSteps>[0]["setup"]) =>
+    arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN, NOW).find(
+      (step) => step.id === "git",
+    );
+
+  it.each([
+    {
+      case: "no official HQ: an admin sets it up",
+      setup: { git: "failed", gitFailure: { reason: "no_hq" }, signin: "waiting", standup: "none" },
+      why: "This organization has no HQ yet. Ask an admin to set it up.",
+    },
+    {
+      case: "HQ refused it: its reason",
+      setup: {
+        git: "failed",
+        gitFailure: { reason: "refused", code: "not_a_mate" },
+        signin: "waiting",
+        standup: "none",
+      },
+      why: "HQ has no record of this Mate yet. Finish its setup from its menu.",
+    },
+    {
+      case: "failed, why not said",
+      setup: { git: "failed", signin: "waiting", standup: "none" },
+      why: undefined,
+    },
+  ] as const)("$case", ({ setup, why }) => {
+    expect(gitStep(setup)).toEqual({
+      id: "git",
+      label: "Wren's Git access",
+      state: "failed",
+      ...(why === undefined ? {} : { why }),
+    });
+  });
+
+  it("is done once it is granted, after it failed", () => {
+    const failed = { git: "failed", gitFailure: { reason: "no_hq" } } as const;
+    expect(gitStep({ ...failed, signin: "waiting", standup: "none" })?.state).toBe("failed");
+    expect(gitStep({ git: "done", signin: "waiting", standup: "none" })).toEqual({
+      id: "git",
+      label: "Wren's Git access",
+      state: "done",
+    });
+  });
+});
 
 describe("arrivalSteps", () => {
   it("reads a Mate's six birth steps as its copy, its workspace and the person's sign-in", () => {
@@ -222,7 +270,7 @@ describe("arrivalSteps", () => {
     const steps = arrivalSteps(
       {
         steps: [
-          { id: "git-hosting", label: "Git hosting", state: "done" },
+          { id: "hq", label: "HQ", state: "done" },
           { id: "registry", label: "Acme Shop", state: "done" },
           ...mate.steps,
         ],
@@ -231,7 +279,7 @@ describe("arrivalSteps", () => {
       NOW,
     );
     expect(steps.map(({ id, label, state }) => ({ id, label, state }))).toEqual([
-      { id: "git-hosting", label: "Git hosting", state: "done" },
+      { id: "hq", label: "HQ", state: "done" },
       { id: "registry", label: "Acme Shop", state: "done" },
       { id: "workspace", label: "Vera's workspace", state: "active" },
       {
@@ -408,12 +456,6 @@ describe("the stage's words", () => {
       headline: "Wren is standing up development on Beviro.",
       sentence: "Signed in. It starts in a moment.",
       face: "working",
-    },
-    {
-      kind: "failed",
-      headline: "The message to Wren didn't go through.",
-      sentence: "Wren is signed in, but your ask to stand up development didn't reach it.",
-      face: "needs",
     },
     {
       kind: "question",

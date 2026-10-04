@@ -255,7 +255,9 @@ here (the owner decides only what the orchestrator brief §6 lists).
   `reduceZeropsOperations` (R5-R9, one `phaseFor`), `composeSession` — strip, map and every card
   read its single `ZeropsThreadModel`, never their own derivation. Concept:
   `../../../../zcp/plans/mate-session-model-2026-09-05.md`.
-- **2026-09-05** — In the group model (spec §10) a Zerops project is an **environment** and the tag
+- **2026-09-05** — **Superseded 2026-10-03 in part by "In UI copy an HQ application is a project"
+  below: the layer above is a "project", never a "group".**
+  In the group model (spec §10) a Zerops project is an **environment** and the tag
   layer above it is a **group**; user-facing copy says "environment" for the former (menu rows,
   "Creating the environment", "No environment has Mate yet") and "group" for the latter. The
   glossary's `environment → project` row is about T3's connected-server sense and does not apply to
@@ -746,7 +748,9 @@ ago`, `No services yet`); the platform's core, build runtimes and the Mate's con
   - _Why:_ The listings flickered and reordered on every refresh;
     `packages/client-runtime/src/zerops/listingOrder.ts`, `environments/containerStore.ts` (a
     re-probe never moves a level on its own), `ZeropsInventoryProvider.carryForwardServiceOutcome`
-- **2026-09-17** — **The left menu draws each project as a timeline, the way its code travels**
+- **2026-09-17** — **Superseded 2026-10-02 in part by the HQ row below: a change is a Mate's, kept
+  in HQ without checks, and `#N title` is the way to its page, not into Gitea.**
+  **The left menu draws each project as a timeline, the way its code travels**
   (D26): the Mates as the menu's own rows; under each Mate its open pull requests — `#4 title` as
   the way into Gitea, the checks as a dot with the word as its title (`StatusDot dotOnly`), _Merge_
   where Gitea says it merges — folded behind "N pull requests" past three (`pullRequestsFolded`); a
@@ -757,7 +761,10 @@ ago`, `No services yet`); the platform's core, build runtimes and the Mate's con
   screen agrees.
   - _Why:_ the owner: "in the menu I imagine each group as a timeline: mates, their open PRs, stage,
     production"
-- **2026-09-17** — **The Git tab is the Mate's own leg; the projects screen carries the project's
+- **2026-09-17** — **Superseded 2026-10-02 in part by the HQ row below: the Git tab reads the Mate's
+  change from HQ, with no checks and no sign-in line, and a project's changes and environments come
+  down HQ's stream (`hqChangesAtom`, `hqEnvironmentsAtom`).**
+  **The Git tab is the Mate's own leg; the projects screen carries the project's
   flow** (D26). The right-panel Git tab keeps only the Mate's repositories — branch, pull request,
   checks, one verb — and the sign-in line; no environments, releases or recipe changes. The projects
   screen's list under the Mate cards reads: the Mates' open pull requests (`ZeropsPullRequestRow`,
@@ -769,7 +776,9 @@ ago`, `No services yet`); the platform's core, build runtimes and the Mate's con
   minute, so the menu, the screen and the tab never disagree.
   - _Why:_ the owner: "this seems like git for the whole project, shouldn't it be git for this Mate
     and have project git somewhere else"
-- **2026-09-17** — **The footer's Gitea button opens the Gitea overview** (`/gitea`,
+- **2026-09-17** — **Superseded 2026-10-02 by the HQ row below: _Git_ opens `/git`, every
+  application's repositories and the changes open on them as HQ holds them (`gitOverview.ts`).**
+  **The footer's Gitea button opens the Gitea overview** (`/gitea`,
   `GitPullRequestIcon`, lit like the Zerops button on its page): one section per owner (a project's
   org), a row per repository — its name the way into Gitea, "2 open pull requests" as its line — and
   the pull requests under it, newest first, the title the way to the pull request's page. The page
@@ -826,7 +835,9 @@ e014b0e` on the page, `↳ {name} · follows main` in the left menu — drawn on
     page disagreed about what a production ran, and "+ Add stage" read as a step before production:
     "these are extremely important findings the whole UI should be built around"; then, 2026-09-24,
     of a strip that named steps without their verbs: "why is it there when I can't click it?"
-- **2026-09-24** — **In the left menu a Mate wears the card's face, and its owner rides on the
+- **2026-09-24** — **Superseded 2026-10-02 in part by the HQ row below: the signer is the one the
+  Mate's server recorded, as HQ relays it, not a `mate:signer` tag (`mateOwnerRecords`).**
+  **In the left menu a Mate wears the card's face, and its owner rides on the
   corner.** The Mate row's `MateFace` is `md` (28 px) in the spine's unchanged 20 px column — the
   face overhangs it, so the spine keeps its x and the row's gap widens to `gap-3.5`. The Mate's
   owner — its project's `OWNER` entry where there is one, else whoever signed its agent in
@@ -870,7 +881,11 @@ stage…`; a new project's group is placed by the birth's start — and the list
     různě přehazuje" as a project was added, and after _Add production_ nothing showed that anything
     was happening; `projectOrderPreference.ts`, `projectsView.logic.ts`, `groups.ts` (`pending`),
     `groupFlow.ts` (`creating`, `deploying`), `ZeropsProjectFlowProvider.tsx`
-- **2026-09-25** — **A stop's page says what the stop runs in one sentence, in the words the left
+- **2026-09-25** — **Superseded 2026-10-02 in part by the HQ row below: Core tags and records
+  releases (T9a), and the client reads them from HQ and rolls back there (T9b); what each release
+  carried and a repository's history are HQ's comparisons (`carriedReads`, `useZeropsHistory`),
+  where `useZeropsRepositoriesCommits` and its 30-commit read of Gitea are gone.**
+  **A stop's page says what the stop runs in one sentence, in the words the left
   menu and the projects page use, and lists everything else in one card.** The detail pages
   (project, stop, change) stand in `ZeropsHostedFrame` `expanded` with the /zerops bar: the
   breadcrumb in the bar, the organization switcher and the account on its right; the header and
@@ -898,7 +913,19 @@ stage…`; a new project's group is placed by the birth's start — and the list
   a build runs, what ran before it, never what the build deploys, and no commit while nothing states
   what ran before), its word and age — none where it runs nothing, which its commit's place says
   once as _Nothing deployed yet_ — and its address, the _Open to the internet_ offer, or _Not public
-  yet_; "Tagged by" is dropped; _Releases · N_ on a production; _Deploys · N_ on a stage, muted _on
+  yet_; under it HQ's newest job of the service where that is not what runs (`jobOf`): _{sha}
+  queued_, _Submitting {sha}_, _Building {sha}_, _{sha} failed 1h ago_, _HQ refused {sha} 1h ago_
+  or _HQ skipped {sha} 1h ago_ — nothing is tried twice — HQ's reason under the line unless the
+  verdict already says it; where the service runs a version HQ did not put there while no job of
+  HQ's is under way (`driftOf`), _{service} runs “{name}”, which HQ did not deploy_ in the
+  attention tone, with _Deploy {sha} again_ — HQ's live commit, to whoever may _Run again_, while
+  the service's newest job is of that commit — and _Open in Zerops_: HQ never overwrites it by
+  itself (the deploy-jobs design, 2026-10-03); after the services, each one the stop's tier
+  declares and its project lacks (`notInZerops`, audit D2): _{service} · declared in the recipe,
+  not in Zerops_, with _Add {service}_ to whoever may _Run again_ — HQ never adds one by itself.
+  A verb pressed here, and a merge's or a release's review once pressed, says under its verdict
+  where HQ answered the deploys it asked for stand, by environment (`deployAnswerSaid`): _api
+  b21d904 building · web 5c3ea18 queued behind api b21d904_; "Tagged by" is dropped; _Releases · N_ on a production; _Deploys · N_ on a stage, muted _on
   main_, the running commit marked _Running here_ and a release tag drawn as the role-tag pill. A
   group with nothing in it says _None yet_. Releases are drawn by the shared `ZeropsReleaseRows`,
   the rows /zerops draws: the release production runs reads `Live`, one whose deploy failed reads
@@ -1525,7 +1552,9 @@ stage…`; a new project's group is placed by the birth's start — and the list
   name; the client masks what an older server stored. The conversation itself shows what was
   written.
   - _Why:_ the owner, on the finding that the menu showed a colleague's pasted admin password: "yes"
-- **2026-09-27** — **A reload paints the left menu as it stood** (`menuMemory.ts`). Measured on a
+- **2026-09-27** — **Superseded 2026-10-02 in part: a project's change rows stand until HQ answers,
+  not Gitea (`changesKnown`), and a stop's line reads its releases from HQ (T9b).**
+  **A reload paints the left menu as it stood** (`menuMemory.ts`). Measured on a
   live account, a reload painted each Mate as its name alone and grew the rows to three lines as
   each socket connected — 74 moves in 9 seconds — change rows arrived with Gitea ten seconds in, a
   production was named twice (the platform's version, then its release), and _Mine_ painted every
@@ -1892,7 +1921,9 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   thoughts and calls fold, behind "Show work". A run the person watched stays open until they leave
   the conversation.
   - _Why:_ coming back meant scrolling past every command of every run to find what each run said
-- **2026-09-29** — **No scroll inside the run's card, and nothing out of reach** (the owner's D4:
+- **2026-09-29** — **Superseded 2026-10-02 in part: past 2,000 lines a diff says how many lines it
+  leaves out, and links to no Gitea (`ZeropsReview.logic.ts`).**
+  **No scroll inside the run's card, and nothing out of reach** (the owner's D4:
   "everything to always be available one way or other"). The conversation is the one scroll, and
   every fold opens: a long run's earlier lines behind "Show N earlier", a command past four lines
   and an output past twelve behind "Show all N lines", a clamped thought on a click, a folded run
@@ -1971,7 +2002,9 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   where the Mate is. One commit, `cf210626b`, brings it back.
   - _Why:_ its busy blue broke S3, the approved mock draws none, the room above it was the spine's,
     and the live step says the same thing in words
-- **2026-09-29** — **A change row says _Review_ and merges nothing** (M8). Under its Mate, 28 px:
+- **2026-09-29** — **Superseded 2026-10-02 in part: a change has no checks, so its mark is muted or
+  amber, and one drawn from memory stays untinted until HQ answers (`changeMarkTone`).**
+  **A change row says _Review_ and merges nothing** (M8). Under its Mate, 28 px:
   the pull-request mark in the faces' column — muted, red where its checks fail, amber where it fell
   behind `main` — `#N title` at 56, the way to its page, and _Review_ in blue on the right edge. No
   _Merge_, no _Ask_, no check dot: the verdict is the review's. A change drawn from memory stays
@@ -2055,7 +2088,10 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   it went down and no production runtime log are read.
   - _Why:_ the plan's note ("down since 09:12, both containers stopped, exit 137") needs reads the
     client does not make
-- **2026-09-29** — **A chip is drawn only once what decides it is read.** Until then the menu draws
+- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: releases are Core's (T9a),
+  and the chip reads them from HQ (T9b); it waits while HQ's releases are coming
+  (`releasesComing`, `SidebarZeropsTree.tsx:812`), never on Gitea.**
+  **A chip is drawn only once what decides it is read.** Until then the menu draws
   the chip it remembers, else — while only Gitea's answer is missing — what the platform alone says,
   never remembered, else nothing; down and stopped settle at once, and without a Gitea session the
   chip settles on the platform's facts. Its menu dates the stages as of the moment it opens.
@@ -2064,7 +2100,9 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   before the project's name does.** Under a 340 px heading the chip keeps its dot, `prod` and the
   version; under 260 only the dot and `prod`, or "prod down".
   - _Why:_ at 256 px a long project name beside the whole chip cut to four letters
-- **2026-09-29** — **What the stops' rows held lives in the chip's menu.** Production's row, which
+- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: releases are Core's (T9a),
+  and a failed release is HQ's record, said in HQ's words (T9b).**
+  **What the stops' rows held lives in the chip's menu.** Production's row, which
   opens the environment's page; a note of what went wrong; "Ask Nova to fix it" while in trouble,
   whose first press shows what will be written and whose second opens the conversation; the public
   links; the stages and how long ago each was deployed; "N changes wait for production" with
@@ -2203,7 +2241,9 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   a sentence is marked_ row.
   - _Why:_ text scrolled half visible under the header; commas stood apart from the code before
     them; the brand mark said nothing of who lives there
-- **2026-09-29** — **The Mate's own change waits at the composer's top, as _Review_** (C3, R1). The
+- **2026-09-29** — **Superseded 2026-10-02 in part: HQ, not Gitea, says whether the change merges,
+  and the strip waits on HQ's answer (`changesKnown`).**
+  **The Mate's own change waits at the composer's top, as _Review_** (C3, R1). The
   strip is the composer's first section, on its edges and corners: the Mate's face asking, "Nova is
   waiting for your review of #2", the change's title, and _Review_, its one blue button, which opens
   the review — nothing merges from here. It keeps the old rule (this Mate's own code change that
@@ -2212,7 +2252,9 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   **Supersedes:** the merge of the 2026-09-26 _Mate's conversation offers only its own merge_ row.
   - _Why:_ a blue banner, inset 22 px from the composer, merged on one click and said in blue what
     the menu said in amber
-- **2026-09-29** — **A reload paints the composer's top it will keep.** Each conversation's strip is
+- **2026-09-29** — **Superseded 2026-10-02 in part: HQ's answer, not Gitea's, confirms the
+  remembered strip.**
+  **A reload paints the composer's top it will keep.** Each conversation's strip is
   remembered in this browser, per account (`composerTopMemory.ts`, 64 conversations), and painted in
   the first frame; Gitea's answer confirms it, changes its words or takes it away.
   - _Why:_ measured live: the strip arrived with Gitea's answer 8.6 s after a reload, and the
@@ -2267,7 +2309,9 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   - _Why:_ the same act had five doors that behaved differently — two asked first, three merged on
     one click, a roll back asked nothing — and nowhere could a pull request's diff be read before it
     merged
-- **2026-09-29** — **The verdict comes first, and blocks where it must** (R2). One line under the
+- **2026-09-29** — **Superseded 2026-10-02 in part: a change has no checks; merging waits only until
+  HQ knows the change merges cleanly (`reviewVerdict.ts`).**
+  **The verdict comes first, and blocks where it must** (R2). One line under the
   title says whether it is safe and why ("Ready to merge · checks passed · no conflicts with main"),
   in its tone, red where checks fail — a failure is red (S3) where the plan drew amber. Failing
   checks block even where Gitea would merge, and so do checks still running and Gitea still
@@ -2279,7 +2323,10 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   "Conflicts with main in index.ts", and the change on `main` that touched the file, found from
   where `main`'s head stands.
   - _Why:_ blocking it would make every merge force the other Mates to rebase
-- **2026-09-29** — **The change can be read** (R3, R4). What it does, in two to four sentences of
+- **2026-09-29** — **Superseded 2026-10-02 in part: HQ answers a change's files, diffs and commits
+  in one read (`changeReadout.ts`), a diff past 2,000 lines links nowhere, and there are no checks
+  to list.**
+  **The change can be read** (R3, R4). What it does, in two to four sentences of
   the Mate's newest answer that links this change, and a link to that run. Its files with a letter
   and +/− each, a file's diff opening in place, read from Gitea only when a file first opens and
   never past 2 MiB; 400 lines, then "Show all N lines" up to 2,000, past that a link to the rest on
@@ -2288,7 +2335,9 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   carries none — and no "about 3 minutes", which nothing reads yet.
   - _Why:_ the person starts from the intent, not the files, and a pull request's diff could be read
     nowhere before it merged
-- **2026-09-29** — **_Merge_ takes only the head the review showed.** It stays off while the head's
+- **2026-09-29** — **Superseded 2026-10-02 in part: HQ, not Gitea, refuses a merge whose head moved
+  (`head_moved`).**
+  **_Merge_ takes only the head the review showed.** It stays off while the head's
   files are read, its keys and its sentence kept in place; it sends that head, and Gitea refuses one
   pushed since. A change closed without merging reviews as closed, with nothing to press.
   - _Why:_ Gitea cannot pin a pull request's files or diff to a commit, but a merge's head can be
@@ -2386,7 +2435,9 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   Mate row's, in a band with 16 px corners; its chip and buttons keep their own, stronger hover.
   - _Why:_ folded headings stood 32 px apart, touching, and a heading gave no sign it could be
     pressed
-- **2026-09-29** — **A Mate nobody owns sits on an empty seat, and a Mate nobody signed in says so**
+- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: the signer is the one the
+  Mate's server recorded, as HQ relays it, not a `mate:signer` tag.**
+  **A Mate nobody owns sits on an empty seat, and a Mate nobody signed in says so**
   (the owner: "mate without auth / owner should have the state specially handled"). Two facts the
   menu reads from the first paint: the project's `OWNER` entry and the `mate:signer` tag written
   when someone signs its agent in (`mateOwnerRecords`, `mateOwnerView`). No owner: a dashed 16 px
@@ -2541,7 +2592,9 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   - _Why:_ a heading stood 16 from its first Mate's name and 16 from the next folded one, and an
     open project's last words 58 from the next heading: three steps in no order; now heading to
     row < row to row < project to project
-- **2026-09-29** — **A Mate's face is picked at its birth and rides on its project as
+- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: a Mate's name and face are
+  HQ's, their only writer, not project tags (`groups.ts`).**
+  **A Mate's face is picked at its birth and rides on its project as
   `mate:face:<tint>:<shape>`.** The person who adds a Mate picks its colour and its shape apart, and
   the pair is one project tag, written at birth beside the agent's name on whichever call creates
   the project; every other tag write keeps it — a move, a leave, a role change, a rename, a signer —
@@ -2591,7 +2644,10 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   application's radio cards.
   - _Why:_ the form asked what nobody adding a Mate decides — the environment's name, whether it
     runs an agent, which application — and nothing of who the Mate is
-- **2026-09-29** — **A new Mate stands development up once its person has signed in.** _Add a Mate_
+- **2026-09-29** — **Superseded 2026-10-02 in part by the HQ row below: the ask is HQ's birth record
+  (`standupRequestedBy`), not a `mate:standup:` tag, and the Mate's server sends the stand-up once
+  its asker has signed in (`ZeropsSetup.ts`).**
+  **A new Mate stands development up once its person has signed in.** _Add a Mate_
   writes `mate:standup:<userId>` on the Mate's project, naming who pressed it (read permissively,
   kept through every other tag write, cleared by its own patch). The moment that person has signed
   an agent in, their own client sends "Stand up development of the project." as them, through the
@@ -2829,7 +2885,9 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   changed after birth, "the rest share the tints their names give them among themselves alone" of
   the 2026-09-29 _picked tint recolours nobody_ row: its name stays among them.
   - _Why:_ the rule that a pick recolours nobody would have broken on the first face changed live
-- **2026-09-30** — **_New project_ asks who its first Mate is, and that Mate stands development up
+- **2026-09-30** — **Superseded 2026-10-02 in part by the HQ row below: the name, the face and the
+  stand-up ask are HQ's birth record, not project tags.**
+  **_New project_ asks who its first Mate is, and that Mate stands development up
   after its sign-in.** Under the project's name the wizard asks for its _First Mate_ as New Mate
   does, in the same picker: the name, proposed free on the account and selected so a key replaces
   it, beside the face the name, a colour and a shape make, the face following the name until a pick
@@ -2986,7 +3044,9 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   finished work under it, and _Change its job_ only where the crew's door would take it; a later
   conversation links the one before. Name and face stay empty until the crew is read.
   - _Why:_ a face in a void, a sentence that read as nobody's, and a fake "Message Lead…"
-- **2026-09-30** — **A Mate that is not yours wears a 16 px badge on a paler face** (the owner, of
+- **2026-09-30** — **Superseded 2026-10-02 in part by the HQ row below: the owner is named from the
+  signer HQ relays, not a signer tag.**
+  **A Mate that is not yours wears a 16 px badge on a paler face** (the owner, of
   the 12 px badge: "the not yours should have the avatar bigger and maybe some other small visual
   diff also"; option A of the board "Colleague's Mate badge", taken with "paler face won't work
   because it will simply look like a different shade of color, but I guess do it along the avatar
@@ -3085,7 +3145,9 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   project's services as the arrival's chips — the zcp service first while a process runs on it —
   in the order first seen.
   - _Why:_ "Connecting…" said nothing while the platform knew exactly what was happening
-- **2026-09-30** — **Two signer records for one login name nobody.** When a login carries signer
+- **2026-09-30** — **Superseded 2026-10-02 by the HQ row below: the Mate's server keeps one signer
+  per login, replaced at each sign-in (`zeropsSignIns.ts`), so no record names two people.**
+  **Two signer records for one login name nobody.** When a login carries signer
   tags for two people, the Mate reads as signed in, no ownership notice shows and no owner badge
   names anyone; the server still lets in anyone the tags name.
   - _Why:_ a restart showed "Signed in by another project member" to the person who signed it in;
@@ -3169,7 +3231,9 @@ no-cache`.
   person's — the sign-in, else _Draft:_ and the unsent words, else the ask, else "Nothing asked
   yet" once the conversations are read; a draft never covers the Mate's line.
   - _Why:_ a lone name floated mid-row, and the row grew 48 → 76 px when the first message landed
-- **2026-09-30** — **A colleague's Mate waits on its owner, not on the viewer** (the owner: "sana
+- **2026-09-30** — **Superseded 2026-10-02 in part by the HQ row below: a Mate is the viewer's when
+  the signer HQ relays names them, not a signer tag (`mateIsViewers`).**
+  **A colleague's Mate waits on its owner, not on the viewer** (the owner: "sana
   doesn't wait for me, it waits for karlos" / "but I can merge that's true"). The needs face, the
   amber dot, the stack, folded headings, the jump box, the crew line and the projects pages count
   only the viewer's own Mates — those whose signer tag names the viewer (`mateIsViewers`); another's
@@ -3271,7 +3335,10 @@ no-cache`.
   that can't verify the sign-in — still shows.
   - _Why:_ the status and the auth snapshot raced at the end of registration, so the banner came
     and went above the timeline
-- **2026-09-30** — **The first ask waits for its signer record** (Ada's first ask was refused as
+- **2026-09-30** — **Superseded 2026-10-02 in part by the HQ row below: the signer record is the
+  Mate's server's own, written at the sign-in, so no tag is waited for; a turn waits up to 30 s only
+  on a sign-in code still being checked (`SIGN_IN_CHECK_WAIT`).**
+  **The first ask waits for its signer record** (Ada's first ask was refused as
   unrecorded a second before its tag landed). When this server's own login succeeded, was started
   by the same person and is under 30 minutes old, the turn gate re-reads the signer tags every 1 s
   for up to 15 s — over no record, another person's, or one that names two people — before it
@@ -3323,7 +3390,9 @@ no-cache`.
   text it had"). The echo stays one line (2026-09-28), now the first line of the words, never a
   picture label, with its pictures as a strip of thumbnails under it.
   - _Why:_ a message with a picture starts with its `[Picture 1]` line
-- **2026-10-01** — **A coming-up Mate hands over the moment it answers** (Vera's creating browser
+- **2026-10-01** — **Superseded 2026-10-03 in part by "A Mate is connected while something holds it"
+  below: the Mate on screen holds its own lease, and no ceiling is left to pass.**
+  **A coming-up Mate hands over the moment it answers** (Vera's creating browser
   held "Almost there" for over an hour). A registered or connected Mate always wins over a leftover
   setup record; every recorded Mate's setup record ends on load; the Mate on screen connects past
   auto-connect's ceiling, and its connect is retried by the environment machine's ladder.
@@ -3345,12 +3414,15 @@ no-cache`.
     Zerops calls on a Mate page — waited on the pace and the Zerops API to reach Mates that were up,
     and left each dropped session live on its Mate for a day, while the same storage keeps the
     Zerops token that can open every Mate
-- **2026-10-02** — **Every Mate in the menu connects on its own** (the owner, on a new Mate past the
+- **2026-10-02** — **Superseded 2026-10-03 by "A Mate is connected while something holds it" below.**
+  **Every Mate in the menu connects on its own** (the owner, on a new Mate past the
   twelfth that sat asleep and empty until clicked: "that's stupid, no?"). Auto-connect wants every
   ready Mate the roster lists, up to a bound of 48 that no account comes near (the largest has 27).
   - _Why:_ the ceiling of 12 rationed a throwaway per Mate per load; with sessions kept across loads
     a reconnect mints nothing, and the first connect of the day waits on the door's mint pace
-- **2026-10-01** — **A new Mate's setup needs no browser after the press** (the owner: "never ever be
+- **2026-10-01** — **Superseded 2026-10-02 in part by "A Mate's key reaches only its own project"
+  below: the key holds no grant on its siblings, and the press gives no sibling reach.**
+  **A new Mate's setup needs no browser after the press** (the owner: "never ever be
   tied to user having to have browser open"). Every step that needs the person's rights runs in the
   Add press, in the foreground: the project, the container with its own key (BASIC_USER on its
   project, READ_ONLY on its siblings, no delegation), close-off, the registry and sibling reach.
@@ -3374,6 +3446,72 @@ no-cache`.
   recipe behind says so, and one call proposes it as a recipe change for Review.
   - _Why:_ a new Mate's catalog import ran Meilisearch out of memory at the recipe's 1 GB, and the
     fix its agent made stopped at that one Mate
+- **2026-10-02** — **HQ replaces Gitea and its broker** (the owner, 2026-10-02). Every organization
+  has one HQ, and the app waits for it: an owner or an admin sees it born, anybody else is told whom
+  to ask (`ZeropsHqGate`). The organization's structure — its applications, their Mates and
+  environments — is HQ's and comes down its stream. A Mate's push opens a change in HQ; a person
+  merges or closes it there, as themselves through HQ's own door, and HQ refuses a merge whose head
+  moved since the review (`head_moved`). A change carries no checks. HQ keeps each environment and
+  its deploy token: Core deploys each stage from the archive of the commit `main` moved to, and each
+  production from the newest approved release (`apps/hq/src/deploys.ts`). Core tags and records a
+  release, and a roll back is a new release (T9a, `apps/hq/src/releases.ts`); the client releases,
+  rolls back and reads releases there (T9b). A Mate's birth is HQ's record — its name and face, who
+  asked for its stand-up (`standupRequestedBy`) and that its project is closed off — and whose a
+  login is stays the Mate's server's own record (`~/.mate/signed-in.json`), which HQ relays. The Git
+  page is `/git`, every application's repositories and the changes open on them. An agent reaches
+  past its own project only through HQ, later. **Supersedes:** the 2026-09-17 _footer's Gitea
+  button_ and the 2026-09-30 _two signer records_ rows, and the Gitea, broker and tag parts of the
+  rows marked above.
+  - _Why:_ the owner's call: HQ is mandatory per organization and holds its structure, and an
+    agent's reach past its project waits on it
+- **2026-10-02** — **The old Gitea system stays as it is** (the owner, 2026-10-02). The Gitea
+  project, its broker token, the `deploy-*` tokens and each Mate's `GITEA_TOKEN` stay where they
+  are, and nothing writes to them. The client keeps a project tagged `mate:tool:gitea` out of the
+  applications and never writes to it (`tools.ts`). Retiring it is a separate decision, later.
+  - _Why:_ accounts that ran it still have it, and HQ replaces it without taking it down
+- **2026-10-02** — **Superseded 2026-10-03 in part by "A Mate's key is lowered only when Finish
+  setup adopts it" below: the projects page lowers no key on its read.**
+  **A Mate's key reaches only its own project** (the owner, ADR 0003). The key a
+  Mate's container holds is `NO_ACCESS` at the org and `BASIC_USER` on its own project, and nothing
+  more: the mint grants its own project alone (`api.ts:1791`), the press gives no sibling reach, and
+  the projects page only lowers a key minted `ADMIN` — for the Mates HQ places in an application —
+  keeping any other grant a key already holds (`planMateKey`, `groupReach.ts:233`;
+  `useZeropsMateKeys`). The `READ_ONLY` grants on siblings an earlier client gave are taken off by
+  hand. An agent reaches its application's stage, production and other Mates only through HQ, later:
+  a zcp tool that asks HQ, and HQ's rule over what the people who control the Mate may see.
+  **Supersedes:** the sibling reach of the 2026-10-01 _setup needs no browser_ row.
+  - _Why:_ a `READ_ONLY` grant on a production project reads its unmarked secrets — a database's
+    connection string in clear — for anyone with the Mate's terminal, and grants are writes somebody
+    must keep in step; HQ would need Admin rights to keep them
+- **2026-10-03** — **A Mate's key is lowered only when Finish setup adopts it** (step A, A11: a load
+  reads no token list). No page's read lowers a key; `useZeropsMateKeys` is gone. Finish setup
+  lowers the key of a Mate it adopts — one HQ holds no record of — for whoever may adopt it, and
+  the harden reads the key itself as it runs (`hardenMate`); a Mate HQ holds is never hardened. A
+  key the adopter may not write stays as it was, and Finish setup says so ("The Mate's key couldn't
+  be lowered: …; an owner can do it."). **Supersedes:** the projects page's lowering in the
+  2026-10-02 _A Mate's key reaches only its own project_ row; the key's reach there stands.
+  - _Why:_ the lowering read the organization's token list on every load, to find the keys only an
+    adoption leaves `ADMIN`
+- **2026-10-03** — **A Mate is connected while something holds it** (step A, A9). A load connects
+  the route's Mate alone. A Mate is connected while the route names it, while it is on screen — its
+  own view, its birth — while it is the one left last, for 5 minutes, while an action from outside
+  its view holds it until the action answers, or while a Connect runs; with nothing holding it, it
+  is parked: its socket closed, its registration, kept session and cached data kept, and unparked
+  through no door. Rows, faces, notifications, the palette and the crew line read HQ's overview of
+  a Mate this tab has not opened. A command on a parked Mate is sent once it connects, or after
+  30 s regardless.
+  **Supersedes:** the 2026-10-02 _Every Mate in the menu connects on its own_ row, and the
+  auto-connect ceiling in the 2026-10-01 _A coming-up Mate hands over the moment it answers_ row.
+  - _Why:_ a load of the 20-odd-Mate account opened a socket per Mate in every tab, each through a
+    door, for surfaces HQ's overview now feeds
+- **2026-10-03** — **In UI copy an HQ application is a project** (F29). The layer above Zerops
+  projects — HQ's application, the code's _group_ or _app_ — is a "project" wherever the person
+  reads it: "Move to project…", "New project", "No project", "Leave the project"; never _group_ or
+  _application_. A Zerops project shown beside one, a Mate's or a stage's, is called by its name, as
+  its row in the left menu draws it, and never "project" in the same dialog (glossary,
+  `design-system.md` §2). **Supersedes:** the word "group" in the 2026-09-05 group-model row.
+  - _Why:_ the menus that open the Move dialog already said "project", and the dialog spoke of
+    groups and explained that a group is what you call the application
 - **2026-10-02** — **A Mate names who made it** (the owner, on pass 34's open choices: "use
   recommended"; the entries below take the same answer). New project and Add a Mate tag a
   development Mate's project `mate:by:<userId>` at birth; the tag is never cleared and shows in the
@@ -3522,6 +3660,23 @@ no-cache`.
   The stream asks with `limit=100`, `desc=0`, `projectId`, and a `from` only as the newest line's id;
   the backfill keeps its time. "Waiting for the build's first line…" shows only while the build step
   runs and the stream's handshake has stood.
+- **2026-10-03** — **A Mate's name is its Zerops project's name** (D3, the owner: Zerops is the
+  source of truth, HQ stores only what Zerops lacks, and a name's source is Zerops). A Mate is called
+  what its project is, wherever it is drawn; HQ keeps no name of a Mate or of a Mate on its way
+  (migration `0030`), only its face, its place and its birth. _Rename Mate_ renames the project
+  (`renameProject`, by the TagWriter that puts back the tags a fresh read holds), offered where the
+  platform takes it — effective `OWNER` or `ADMIN` there; a rename in Zerops reaches every surface by
+  the project's own update. A new Mate's project is named as the Mate is, typed in one field;
+  _Set up Mate_ derives only a face. A stage or a production is offered `<project> - stage` or
+  `<project> - production`, numbered once taken, a suggestion nothing reads back; it has one name,
+  and an agent in it goes by it. A stop's row, its page, its line in a history and its find in the
+  jump box name it whole, as Zerops has it — no prefix is cut. An application's title stays HQ's.
+  **Supersedes:** the 2026-09-29 _New Mate_ row's "called what the project calls its Mates ('Acme
+  Docs - Quinn')", and the name in "A Mate's birth is HQ's record — its name and face" of the
+  2026-10-02 HQ row.
+  - _Why:_ HQ's name drew over the project's, so a rename in HQ left the project's, a rename in
+    Zerops changed nothing on screen, and a moved Mate kept its old project's prefix; and a stop's
+    name read back for its project's prefix cut `Shopper - stage` to `per - stage` under `Shop`
 
 - **2026-10-03** — **The MCP servers a Mate's agents can call are a right-panel tab, and /mcp opens
   it** (the owner: "a proper mcp management dialog … or one of the right side tabs? it feels like
@@ -3536,6 +3691,29 @@ no-cache`.
   - _Why:_ Claude Code's /mcp in a Mate answers with one line of text, Codex has none, and an MCP
     server a person adds is useful only if it reaches whichever agent the conversation runs on.
 
+- **2026-10-04** — **Origin's load and agent readiness fixes use HQ's facts.** A ready agent outside
+  Mate's personal sign-in flow is relayed in its overview's identity, alongside provider changes.
+  HQ's placement joins it onto the Mate's record: the signer comes first, else the maker of a Mate
+  with that ready agent. No `mate:runs:` tag is written. The server's stand-up reads its asker from
+  HQ and still admits the turn through project access. Cold menus remember candidate rows only as
+  a standing-in tree and join HQ's placement; unread detail pages say HQ's failure or an earned
+  missing project, without a Gitea session or another account read.
+
+- **2026-10-04** — **A Mate observes its application's stage and production through HQ**
+  (parity 84, 260, 275; ADR 0003's boundary stands). `zerops_observe` uses the Mate's enrollment,
+  never a sibling Zerops grant. HQ lists only environments of the Mate's current application that
+  every active person able to operate that Mate may read. Permission facts are read for each call;
+  an unavailable read refuses rather than taking stale permissions. Status and active-version
+  metadata are projected from direct Zerops reads with the environment's checked deploy key;
+  service logs are one bounded read, up to 100 entries of 4,096 characters each. Environment
+  variables, raw platform records, deploy keys and signed log URLs stay in HQ. A failure ends the
+  call and the agent asks again explicitly.
+  - _Why:_ the removed sibling grants read unmarked secrets and need writes to keep them aligned.
+    HQ now supplies the observation they previously enabled, without either property. A Mate's
+    credential is shared by its terminal's operators, so it cannot inherit just one person's reach.
+  - _Supersedes:_ only "later" in the 2026-10-02 HQ and own-project key rows. Their key scope and
+    legacy-grant removal rules still stand.
+
 - **2026-10-04** — **The projects page is one dense list, a row per project** (pass 39). A row's
   first line is the project's name and its Mates as faces with whole names (two named, then "+N"),
   with production's version only where production runs one. Its second line is the one thing that
@@ -3544,8 +3722,12 @@ no-cache`.
   "nothing" (no "None open", "Not set up", "Nothing waiting to release"). Preview, Rename, Add Mate,
   Add stage and Add production are in the row's ··· menu. Rows that need the person rise first,
   keeping the person's order within each group. A row holds the place it was last drawn while a
-  Mate reconnects or a read is out (`rowRiseMemory.ts`), and says "Gitea didn't answer" when that
-  read failed. The page has one tab, and the containers outside a project are one folded group.
+  Mate reconnects or a read is out (`rowRiseMemory.ts`). Where its changes are not known it says
+  why: "HQ didn't answer", or "Needs Basic user access" where HQ's rule withholds them. Every row
+  holds the reads of its stops (production and stages), opened or not; a stop whose read failed
+  is named on the first line beside its one Again, and what HQ still holds of a project (a deletion
+  under way, records left) stands beside its name. The page has one tab, and the containers
+  outside a project are one folded group.
   **Supersedes:** of the 2026-09-24 _projects listing_ row, the _Next steps_ strip, the _Only a Mate
   so far_ tiles and `groupPlacementMemory.ts`. Creations drawn from their birth and the in-flight
   words stand.

@@ -11,16 +11,23 @@
  * — which the server leaves open to every member, a colleague having to be
  * able to stop an agent they may not start.
  *
+ * A Mate this page holds no socket to is acted on by HQ's word of it (`mateMenuTarget`): its
+ * environment and its main chat's last finished turn. Stopping a run holds the Mate connected
+ * until it answers (`useMateCommand`).
+ *
  * The group registry is read only once somebody opens a Mate's menu: it is
  * what *Finish setup* needs to know a Mate unregistered, and the menu is on every screen.
  */
+import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { botDisplayName, readZeropsGroupTags } from "@t3tools/client-runtime/zerops";
+import { readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 
@@ -29,16 +36,16 @@ import type { ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
 import { toastManager } from "~/components/ui/toast";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { threadEnvironment } from "~/state/threads";
-import { useAtomCommand } from "~/state/use-atom-command";
+import { hqMatesAtom } from "~/state/zerops";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useUiStateStore } from "~/uiStateStore";
 
+import { useMateCommand } from "./accountEnvironments";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { useMateActions } from "./useMateActions";
 import { useMutedMates } from "./mutedMates";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { useZeropsRegistry } from "./useZeropsRegistry";
-import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsContainers } from "./zeropsContainers";
 
 /** The shared verbs this menu carries, relabelled for a Mate's own menu. */
@@ -62,6 +69,45 @@ export function sidebarMateVerbs(
   });
 }
 
+/**
+ * Where a Mate's menu acts: its environment — its socket's, else the one HQ names — when the
+ * chat its row reads last finished, for *Mark as unread*: this page's shell of it, else HQ's word,
+ * and the run *Stop* interrupts while that chat works.
+ */
+export function mateMenuTarget(input: {
+  /** Its socket's environment, where this page holds one. */
+  readonly environmentId: EnvironmentId | undefined;
+  /** HQ's word of it, where HQ holds one. */
+  readonly told: MateLiveView | undefined;
+  readonly activity: ZeropsAgentActivity | undefined;
+  /** Each chat's last finished turn as this page's shells hold it, by thread key. */
+  readonly completedAt: ReadonlyMap<string, string>;
+}): {
+  readonly environmentId: EnvironmentId | undefined;
+  readonly finished: string | undefined;
+  readonly stop:
+    | { readonly environmentId: EnvironmentId; readonly input: { readonly threadId: ThreadId } }
+    | undefined;
+} {
+  const { activity, told } = input;
+  const environmentId = input.environmentId ?? told?.identity?.environmentId;
+  const toldFinished =
+    activity !== undefined && told?.main?.id === activity.threadId
+      ? (told.main.latestTurn?.completedAt ?? undefined)
+      : undefined;
+  return {
+    environmentId,
+    finished:
+      activity === undefined
+        ? undefined
+        : (input.completedAt.get(activity.threadKey) ?? toldFinished),
+    stop:
+      environmentId === undefined || activity === undefined || activity.face !== "working"
+        ? undefined
+        : { environmentId, input: { threadId: activity.threadId } },
+  };
+}
+
 export function useSidebarMateMenus(input: {
   /** Every conversation's shell: what *Mark as unread* marks is its last finished turn. */
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
@@ -72,15 +118,15 @@ export function useSidebarMateMenus(input: {
   ) => MateRowActions | undefined;
   readonly dialogs: ReactNode;
 } {
-  const { activeOrganization } = useZeropsSession();
   const { serverVersions } = useZeropsContainers();
-  const registry = useZeropsRegistry(activeOrganization?.id);
+  const registry = useZeropsRegistry();
   const mateActions = useMateActions({ registry, serverVersions });
   const { muted, toggle } = useMutedMates();
   const markThreadUnread = useUiStateStore((store) => store.markThreadUnread);
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
-  const interrupt = useAtomCommand(threadEnvironment.interruptTurn, { reportFailure: false });
+  const interrupt = useMateCommand(threadEnvironment.interruptTurn, { reportFailure: false });
   const router = useRouter();
+  const hq = useAtomValue(hqMatesAtom);
   const { copyToClipboard } = useCopyToClipboard<{ readonly name: string }>({
     onCopy: ({ name }) => {
       toastManager.add({ type: "success", title: `Link to ${name} copied` });
@@ -115,14 +161,18 @@ export function useSidebarMateMenus(input: {
       candidate: ZeropsCandidatePresentation,
       activity: ZeropsAgentActivity | undefined,
     ): MateRowActions | undefined => {
-      const environmentId = candidate.environmentId;
-      const tags = readZeropsGroupTags(candidate.project.tagList);
-      const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
+      const { environmentId, finished, stop } = mateMenuTarget({
+        environmentId: candidate.environmentId,
+        told: hq?.mates?.get(candidate.project.id),
+        activity,
+        completedAt,
+      });
+      const tags = readZeropsMembership(candidate.project);
+      const name = candidate.project.name;
       const threadRef =
         environmentId === undefined || activity === undefined
           ? undefined
           : scopeThreadRef(environmentId, activity.threadId);
-      const finished = activity === undefined ? undefined : completedAt.get(activity.threadKey);
       return {
         muted: environmentId !== undefined && muted.includes(environmentId),
         toggleMute:
@@ -152,13 +202,10 @@ export function useSidebarMateMenus(input: {
         rename: mateActions.renameInPlace(candidate),
         changeFace: mateActions.changeFace(candidate),
         stop:
-          environmentId === undefined || activity === undefined || activity.face !== "working"
+          stop === undefined
             ? undefined
             : () => {
-                void interrupt({
-                  environmentId,
-                  input: { threadId: activity.threadId },
-                }).then((result) => {
+                void interrupt(stop).then((result) => {
                   if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
                     const error = squashAtomCommandFailure(result);
                     toastManager.add({
@@ -175,6 +222,7 @@ export function useSidebarMateMenus(input: {
     [
       completedAt,
       copyToClipboard,
+      hq,
       interrupt,
       markThreadUnread,
       markThreadVisited,

@@ -94,6 +94,34 @@ const connected = (): EnvironmentMachine => {
 };
 
 describe("environment machine (DESIGN §4.4)", () => {
+  it.each(["exchange", "descriptor", "backoff"] as const)(
+    "losing demand ends a pending %s without losing the kept registration",
+    (kind) => {
+      const linked = connected();
+      const pending =
+        kind === "exchange"
+          ? drive(linked, [{ type: "LINK", link: { phase: "blocked", reason: "authentication" } }])
+              .machine
+          : drive(linked, [{ type: "LINK", link: { phase: "blocked", reason: "configuration" } }])
+              .machine;
+      const machine = kind === "backoff" ? drive(pending, [{ type: "TICK" }]).machine : pending;
+      const stopped = drive(machine, [
+        { type: "GUARDS", guards: { ...GUARDS, want: false, routeTarget: false } },
+      ]);
+      expect(stopped.machine.record).toBe(ENV_A);
+      expect(stopped.machine.timer).toBeNull();
+      expect(stopped.machine.credential).toMatchObject(
+        kind === "descriptor" ? { kind: "held", rereading: null } : { kind: "none" },
+      );
+      const blocked = drive(stopped.machine, [
+        { type: "LINK", link: { phase: "blocked", reason: "configuration" } },
+      ]);
+      expect(blocked.effects.filter((effect) => effect.kind === "run")).toEqual([]);
+      const resumed = drive(blocked.machine, [{ type: "GUARDS", guards: GUARDS }]);
+      expect(resumed.effects.some((effect) => effect.kind === "run")).toBe(true);
+    },
+  );
+
   it("blocked(configuration) on a redeployed Mate re-reads the descriptor and records the replacement", () => {
     const blocked = drive(connected(), [
       { type: "LINK", link: { phase: "blocked", reason: "configuration" } },
@@ -736,6 +764,17 @@ describe("the link's drop (C1b)", () => {
       (effect) => effect.kind === "run" && effect.op.kind === "refresh-presence",
     );
     expect(refreshes).toHaveLength(asks);
+  });
+
+  // A9 (krok-a-hub §3): a Mate no lease holds is parked, its link closed on purpose.
+  it("a link the registry parks has no drop: nothing stamped, nothing asked", () => {
+    const parked = drive(connected(), [{ type: "LINK", link: { phase: "idle" } }]);
+    expect(parked.machine.linkLostAt).toBeNull();
+    expect(
+      parked.effects.filter(
+        (effect) => effect.kind === "run" && effect.op.kind === "refresh-presence",
+      ),
+    ).toEqual([]);
   });
 
   it("a link that never connected has no drop", () => {

@@ -7,6 +7,7 @@
  * test can say which credential did what.
  */
 import type { FetchImplementation, ZeropsProject, ZeropsUser } from "../api.ts";
+import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import type { ZeropsSession } from "../session.ts";
 import type { HarnessTab } from "./browserTabs.ts";
 
@@ -32,6 +33,13 @@ export interface FakeZeropsRest {
     readonly totp?: string;
   }) => void;
   readonly addProject: (project: ZeropsProject) => void;
+  /** An integration token the organization holds, as its list and its own read answer it. */
+  readonly addIntegrationToken: (clientId: string, token: ZeropsIntegrationToken) => void;
+  /** The organization's token as the platform holds it now. */
+  readonly integrationToken: (
+    clientId: string,
+    tokenId: string,
+  ) => ZeropsIntegrationToken | undefined;
   /** A session the platform would have issued to this person, e.g. to seed storage. */
   readonly issueSession: (userId: string) => ZeropsSession;
   /** The access token answers 401 from now on; its refresh token still works. */
@@ -116,6 +124,16 @@ const failure = (status: number, code: string) => json(status, { error: { code }
 export function makeFakeZeropsRest(): FakeZeropsRest {
   const accounts = new Map<string, Account>();
   const projects = new Map<string, ZeropsProject>();
+  /** Each organization's tokens, by id. */
+  const tokens = new Map<string, Map<string, ZeropsIntegrationToken>>();
+  const tokensOf = (clientId: string) => {
+    let held = tokens.get(clientId);
+    if (held === undefined) {
+      held = new Map();
+      tokens.set(clientId, held);
+    }
+    return held;
+  };
   /** Access token → the person it authenticates and the refresh token issued with it. */
   const accessTokens = new Map<
     string,
@@ -150,6 +168,37 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
     [...projects.values()].filter((project) => project.clientId === clientId);
   const memberOf = (userId: string, clientId: string | undefined) =>
     accounts.get(userId)?.user.clientUserList?.some((m) => m.clientId === clientId) === true;
+  const membershipOf = (userId: string, clientId: string | undefined) =>
+    accounts.get(userId)?.user.clientUserList?.find((m) => m.clientId === clientId);
+  /**
+   * A NO_ACCESS member sees an organization only through their project grants (measured
+   * 2026-10-03 as the KRLS Developer): its list answers 403, a search lists the projects their
+   * grants name, and only those projects answer them.
+   */
+  const throughGrantsOnly = (userId: string, clientId: string | undefined) =>
+    membershipOf(userId, clientId)?.roleCode === "NO_ACCESS";
+  const grantedTo = (userId: string, project: ZeropsProject) => {
+    const membership = membershipOf(userId, project.clientId);
+    return project.userRoles?.some(({ clientUserId }) => clientUserId === membership?.id) === true;
+  };
+  /** A search row: the project with only the searcher's own grants, in the search's own shape. */
+  const searchRow = (userId: string, project: ZeropsProject) => {
+    const membership = membershipOf(userId, project.clientId);
+    return {
+      ...project,
+      userRoles: (project.userRoles ?? [])
+        .filter(({ clientUserId }) => clientUserId === membership?.id)
+        .map(({ clientUserId, roleCode }) => ({
+          id: `role-${project.id}-${clientUserId}`,
+          clientId: project.clientId,
+          clientUserId,
+          projectId: project.id,
+          roleCode,
+          created: "2026-10-03T00:00:00Z",
+          lastUpdate: "2026-10-03T00:00:00Z",
+        })),
+    };
+  };
 
   const handle = (request: FakeZeropsRequest): Response => {
     const bearer = request.token === null ? undefined : accessTokens.get(request.token)?.userId;
@@ -157,6 +206,7 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
     if (projectList !== null) {
       if (bearer === undefined) return failure(401, "unauthorized");
       if (!memberOf(bearer, projectList[1])) return failure(403, "forbidden");
+      if (throughGrantsOnly(bearer, projectList[1])) return failure(403, "insufficientPermissions");
       const list = projectsOf(projectList[1]!);
       return json(200, { list, total: list.length });
     }
@@ -169,6 +219,8 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
       const project = projects.get(projectId!);
       if (project === undefined) return failure(404, "projectNotFound");
       if (!memberOf(bearer, project.clientId)) return failure(403, "forbidden");
+      if (throughGrantsOnly(bearer, project.clientId) && !grantedTo(bearer, project))
+        return failure(403, "insufficientPermissions");
       if (method === "GET") return json(200, project);
       const concurrent = concurrentTagWrites.get(projectId!);
       concurrentTagWrites.delete(projectId!);
@@ -178,6 +230,30 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
           : { ...project, tagList: concurrent(project.tagList ?? []) };
       const updated = { ...current, ...(request.body as Partial<ZeropsProject>) };
       projects.set(projectId!, updated);
+      return json(200, updated);
+    }
+    const tokenList = /^GET \/client\/([^/]+)\/integration-token\/list$/.exec(request.route);
+    if (tokenList !== null) {
+      if (bearer === undefined) return failure(401, "unauthorized");
+      if (!memberOf(bearer, tokenList[1])) return failure(403, "forbidden");
+      // The whole list, every time: the platform ignores `limit` and `offset` (measured 2026-10-03).
+      return json(200, { list: [...tokensOf(tokenList[1]!).values()] });
+    }
+    const tokenRecord = /^(GET|PUT) \/client\/([^/]+)\/integration-token\/([^/]+)$/.exec(
+      request.route,
+    );
+    if (tokenRecord !== null) {
+      const [, method, clientId, tokenId] = tokenRecord;
+      if (bearer === undefined) return failure(401, "unauthorized");
+      if (!memberOf(bearer, clientId)) return failure(403, "forbidden");
+      const held = tokensOf(clientId!);
+      const current = held.get(tokenId!);
+      if (current === undefined) return failure(404, "integrationTokenNotFound");
+      if (method === "GET") return json(200, current);
+      // The platform replaces the record with what the write sent.
+      const { name, roleCode, projects: grants } = request.body as ZeropsIntegrationToken;
+      const updated = { ...current, name, roleCode, projects: grants };
+      held.set(tokenId!, updated);
       return json(200, updated);
     }
     const tokenRoute = /^(POST|DELETE) \/client\/([^/]+)\/integration-token(?:\/([^/]+))?$/.exec(
@@ -246,6 +322,21 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
         refreshTokens.delete(session.refreshToken);
         return json(200, {});
       }
+      case "POST /project/search": {
+        if (bearer === undefined) return failure(401, "unauthorized");
+        const { search } = request.body as {
+          readonly search: ReadonlyArray<{ readonly name: string; readonly value: string }>;
+        };
+        const clientId = search.find(({ name }) => name === "clientId")?.value;
+        const items = projectsOf(clientId ?? "")
+          .filter(
+            (project) =>
+              memberOf(bearer, project.clientId) &&
+              (!throughGrantsOnly(bearer, project.clientId) || grantedTo(bearer, project)),
+          )
+          .map((project) => searchRow(bearer, project));
+        return json(200, { items, totalHits: items.length });
+      }
       case "GET /user/info": {
         const account = bearer === undefined ? undefined : accounts.get(bearer);
         return account === undefined ? failure(401, "unauthorized") : json(200, account.user);
@@ -291,6 +382,10 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
     addProject: (project) => {
       projects.set(project.id, project);
     },
+    addIntegrationToken: (clientId, token) => {
+      tokensOf(clientId).set(token.id, token);
+    },
+    integrationToken: (clientId, tokenId) => tokens.get(clientId)?.get(tokenId),
     issueSession,
     expireAccessToken: (accessToken) => {
       accessTokens.delete(accessToken);

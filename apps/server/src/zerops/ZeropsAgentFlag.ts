@@ -122,14 +122,29 @@ export const planClearSignedIn = (
 // I/O
 // ---------------------------------------------------------------------------
 
-/** A retryable failure to read or write the service's own env — network, a bad status, or this container's own service id being unavailable. */
+/** A failure to read or write the service's own env — network, a bad status, or this container's own service id being unavailable. */
 export class ZeropsAgentFlagError extends Schema.TaggedError<ZeropsAgentFlagError>()(
   "ZeropsAgentFlagError",
-  { reason: Schema.String },
+  {
+    reason: Schema.String,
+    process: Schema.optional(
+      Schema.Struct({
+        id: Schema.String,
+        status: Schema.optional(Schema.String),
+        reason: Schema.optional(Schema.String),
+      }),
+    ),
+  },
 ) {
   override get message(): string {
     return this.reason;
   }
+}
+
+export interface RegistrationProcess {
+  readonly id: string;
+  readonly status?: string;
+  readonly reason?: string;
 }
 
 export interface MarkSignedInResult {
@@ -137,12 +152,13 @@ export interface MarkSignedInResult {
   readonly changed: boolean;
   /** True when an existing (wrong-valued or sensitive) row had to be replaced, rather than created fresh. */
   readonly migrated: boolean;
+  readonly process?: RegistrationProcess;
 }
 
 /**
  * Tolerant row decode: an entry missing a required field, or of the wrong
  * shape, drops out rather than poisoning the whole read — the same
- * tolerance `ZeropsProjectSigners.ts`'s tag/member parsing uses for a
+ * tolerance `ZeropsProjectSigners.ts`'s member parsing uses for a
  * platform list this server does not fully own.
  */
 export const readServiceEnvRows = (body: unknown): ReadonlyArray<ServiceEnvRow> | undefined => {
@@ -187,6 +203,21 @@ const readServiceEnv = Effect.fn("ZeropsAgentFlag.readEnv")(function* (input: {
   return readServiceEnvRows(body);
 });
 
+/** Platform process messages are user-facing; cap them and remove control characters. */
+const registrationProcessReason = (body: unknown): string | undefined => {
+  if (typeof body !== "object" || body === null || !("error" in body)) return undefined;
+  const error = body.error;
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("message" in error) ||
+    typeof error.message !== "string"
+  )
+    return undefined;
+  const message = error.message.replace(/\p{C}/gu, " ").trim().slice(0, 500);
+  return message.length === 0 ? undefined : message;
+};
+
 const createUserDataRow = Effect.fn("ZeropsAgentFlag.createRow")(function* (input: {
   readonly apiBaseUrl: string;
   readonly serviceId: string;
@@ -208,6 +239,26 @@ const createUserDataRow = Effect.fn("ZeropsAgentFlag.createRow")(function* (inpu
   if (response === undefined || response.status !== 200) {
     return yield* new ZeropsAgentFlagError({ reason: `Could not write ${input.key}.` });
   }
+  const body = yield* readJson(response).pipe(
+    Effect.catchTag("ZeropsApiUnavailableError", () => Effect.succeed(undefined)),
+  );
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("id" in body) ||
+    typeof body.id !== "string" ||
+    body.id.length === 0
+  ) {
+    return yield* new ZeropsAgentFlagError({
+      reason: "Zerops did not return a registration process.",
+    });
+  }
+  const reason = registrationProcessReason(body);
+  return {
+    id: body.id,
+    ...("status" in body && typeof body.status === "string" ? { status: body.status } : {}),
+    ...(reason === undefined ? {} : { reason }),
+  };
 });
 
 const deleteUserDataRow = Effect.fn("ZeropsAgentFlag.deleteRow")(function* (input: {
@@ -227,11 +278,77 @@ const deleteUserDataRow = Effect.fn("ZeropsAgentFlag.deleteRow")(function* (inpu
   }
 });
 
+/** Follow only the accepted process id. A failed read ends this attempt; no new write is made. */
+const followRegistration = (
+  apiBaseUrl: string,
+  accepted: RegistrationProcess,
+  onAccepted?: (process: RegistrationProcess) => Effect.Effect<void>,
+) =>
+  Effect.gen(function* () {
+    const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
+    let process = accepted;
+    while (true) {
+      if (onAccepted !== undefined) yield* onAccepted(process);
+      if (process.status === "FINISHED") return process;
+      if (process.status === "FAILED" || process.status === "CANCELED") {
+        return yield* new ZeropsAgentFlagError({
+          reason:
+            process.reason ??
+            (process.status === "FAILED"
+              ? "Zerops registration failed."
+              : "Zerops registration was canceled."),
+          process,
+        });
+      }
+      const { response } = yield* requestWithMateKey(mateKey, (token) =>
+        zeropsGet({
+          url: `${apiBaseUrl}/process/${encodeURIComponent(process.id)}`,
+          token,
+        }),
+      ).pipe(
+        Effect.timeout("5 seconds"),
+        Effect.catchCause(() => Effect.succeed({ response: undefined })),
+      );
+      const body =
+        response?.status === 200
+          ? yield* readJson(response).pipe(
+              Effect.timeout("5 seconds"),
+              Effect.orElseSucceed(() => undefined),
+            )
+          : undefined;
+      const status =
+        typeof body === "object" && body !== null && "status" in body ? body.status : undefined;
+      if (
+        typeof status !== "string" ||
+        ![
+          "PENDING",
+          "RUNNING",
+          "ROLLBACKING",
+          "CANCELING",
+          "FINISHED",
+          "FAILED",
+          "CANCELED",
+        ].includes(status)
+      ) {
+        return yield* new ZeropsAgentFlagError({
+          reason:
+            "Could not read the registration process. Check its outcome before registering again.",
+          process,
+        });
+      }
+      const reason = registrationProcessReason(body);
+      process = { id: accepted.id, status, ...(reason === undefined ? {} : { reason }) };
+      if (status !== "FINISHED" && status !== "FAILED" && status !== "CANCELED")
+        yield* Effect.sleep("1 second");
+    }
+  });
+
 /** `markSignedIn`'s I/O, testable directly against a mocked `HttpClient` without a `ZeropsAgentFlag` layer. */
 export const markSignedIn = Effect.fn("ZeropsAgentFlag.markSignedIn")(function* (input: {
   readonly environment: ZeropsEnvironment;
   readonly serviceId: string | undefined;
   readonly agentId: ZeropsAgentId;
+  readonly onAccepted?: (process: RegistrationProcess) => Effect.Effect<void>;
 }) {
   if (input.serviceId === undefined) {
     return yield* new ZeropsAgentFlagError({
@@ -250,13 +367,22 @@ export const markSignedIn = Effect.fn("ZeropsAgentFlag.markSignedIn")(function* 
   if (plan.action === "recreate") {
     yield* deleteUserDataRow({ apiBaseUrl, id: plan.deleteId });
   }
-  if (plan.action !== "noop") {
-    yield* createUserDataRow({ apiBaseUrl, serviceId: input.serviceId, key, content: "true" });
-  }
+  const process =
+    plan.action === "noop"
+      ? undefined
+      : yield* createUserDataRow({
+          apiBaseUrl,
+          serviceId: input.serviceId,
+          key,
+          content: "true",
+        }).pipe(
+          Effect.flatMap((process) => followRegistration(apiBaseUrl, process, input.onAccepted)),
+        );
   return {
     key,
     changed: plan.action !== "noop",
     migrated: plan.action === "recreate",
+    ...(process === undefined ? {} : { process }),
   } satisfies MarkSignedInResult;
 });
 
@@ -292,6 +418,7 @@ export class ZeropsAgentFlag extends Context.Service<
   {
     readonly markSignedIn: (
       agentId: ZeropsAgentId,
+      onAccepted?: (process: RegistrationProcess) => Effect.Effect<void>,
     ) => Effect.Effect<MarkSignedInResult, ZeropsAgentFlagError>;
     readonly clearSignedIn: (agentId: ZeropsAgentId) => Effect.Effect<void, ZeropsAgentFlagError>;
   }
@@ -313,9 +440,14 @@ export const make = (options: {
       );
 
     return ZeropsAgentFlag.of({
-      markSignedIn: (agentId) =>
+      markSignedIn: (agentId, onAccepted) =>
         withHttp(
-          markSignedIn({ environment: options.environment, serviceId: options.serviceId, agentId }),
+          markSignedIn({
+            environment: options.environment,
+            serviceId: options.serviceId,
+            agentId,
+            ...(onAccepted === undefined ? {} : { onAccepted }),
+          }),
         ),
       clearSignedIn: (agentId) =>
         withHttp(

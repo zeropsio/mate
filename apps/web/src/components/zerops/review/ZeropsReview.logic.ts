@@ -8,10 +8,14 @@
  *
  * Pure: no DOM, no clock.
  */
-import { giteaReachWords, type GiteaReach } from "~/zerops/giteaReach.logic";
-import { sha1 } from "@noble/hashes/legacy";
-import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
-import type { ReviewPrimary, ReviewVerdict } from "@t3tools/client-runtime/zerops";
+import {
+  linksChange,
+  type Moved,
+  type ReviewPrimary,
+  type ReviewVerdict,
+} from "@t3tools/client-runtime/zerops";
+import { parseAttachmentUrl, type ChangeLink } from "@t3tools/shared/hqChanges";
+import { quoteWords } from "@t3tools/shared/messagePreview";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
 
@@ -131,15 +135,14 @@ export function reviewDescription(input: {
 }
 
 /**
- * Where one of a description's pictures is read from. A picture on the app's own Gitea — a
- * change's attachment, a file of its repository — is read as the person and shown from its bytes:
- * a private repository answers nobody without a token, and a page's own `<img>` carries none. An
- * attachment written by its repository's older address is read by its own, `/attachments/{uuid}`
- * (the older one does not even answer a preflight: 405). A picture anywhere else stays a plain
- * link, never read with the person's token; one inline or scripted is nothing.
+ * Where one of a description's pictures is read from. A change's picture at the organization's
+ * official HQ (`parseAttachmentUrl`) is read as the person and shown from its bytes: HQ answers
+ * nobody without a session, and a page's own `<img>` carries none. A picture anywhere else — HQ's
+ * other addresses among them — stays a plain link, never read with the person's session; one
+ * inline or scripted is nothing.
  */
 export type DescriptionPicture =
-  | { readonly kind: "gitea"; readonly url: string }
+  | { readonly kind: "hq"; readonly url: string }
   | { readonly kind: "elsewhere"; readonly url: string }
   | { readonly kind: "none" };
 
@@ -172,29 +175,19 @@ function pictureSize(value: string | number | undefined): number | null {
   return Number.isInteger(size) && size > 0 && size <= PICTURE_SIZE_MAX ? size : null;
 }
 
-/** `/{owner}/{repo}/attachments/{uuid}`: an attachment by its repository's older address. */
-const REPOSITORY_ATTACHMENT = /^\/[^/]+\/[^/]+\/attachments\/([^/?#]+)$/u;
-
-export function descriptionPicture(
-  src: string,
-  giteaOrigin: string | undefined,
-): DescriptionPicture {
-  const gitea = originOf(giteaOrigin);
+export function descriptionPicture(src: string, hqAddress: string | undefined): DescriptionPicture {
   let url: URL;
   try {
-    url = new URL(src, gitea ?? undefined);
+    // Written without its host, it is read against the HQ — and with no HQ known it is no
+    // address at all.
+    url = new URL(src, originOf(hqAddress) ?? undefined);
   } catch {
     return { kind: "none" };
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") return { kind: "none" };
-  // Written without its host, it is read against the Gitea — and with no Gitea known it is
-  // no address at all.
-  if (url.origin !== gitea) return { kind: "elsewhere", url: url.href };
-  const attachment = REPOSITORY_ATTACHMENT.exec(url.pathname)?.[1];
-  return {
-    kind: "gitea",
-    url: attachment === undefined ? url.href : `${gitea}/attachments/${attachment}`,
-  };
+  return hqAddress !== undefined && parseAttachmentUrl(url.href, hqAddress) !== null
+    ? { kind: "hq", url: url.href }
+    : { kind: "elsewhere", url: url.href };
 }
 
 function originOf(address: string | undefined): string | null {
@@ -212,13 +205,13 @@ const HOSTLESS_ADDRESS = /(\]\(\s*<?|\b(?:src|href)\s*=\s*["']?)\/(?!\/)/gu;
 const FENCE = /^\s{0,3}(?:```|~~~)/u;
 
 /**
- * A description with every address Gitea wrote without its host — the web editor writes an
- * uploaded picture as `![image](/attachments/…)` — pointing at its Gitea, so its pictures are
- * read there and its links open the change they name. Code is left as it was written.
+ * A description with every address written without its host pointing at the organization's
+ * official HQ, so its pictures are read there and its links open the change they name. Code is
+ * left as it was written.
  */
-export function absoluteDescription(text: string, giteaOrigin: string | undefined): string {
-  const gitea = originOf(giteaOrigin);
-  if (gitea === null) return text;
+export function absoluteDescription(text: string, hqAddress: string | undefined): string {
+  const hq = originOf(hqAddress);
+  if (hq === null) return text;
   let inCode = false;
   return text
     .split("\n")
@@ -227,7 +220,7 @@ export function absoluteDescription(text: string, giteaOrigin: string | undefine
         inCode = !inCode;
         return line;
       }
-      return inCode ? line : line.replace(HOSTLESS_ADDRESS, `$1${gitea}/`);
+      return inCode ? line : line.replace(HOSTLESS_ADDRESS, `$1${hq}/`);
     })
     .join("\n");
 }
@@ -265,31 +258,27 @@ export function remarkFold(input: {
   return { hidden: folds ? input.total - DIALOG_REMARKS_SHOWN : 0 };
 }
 
-/**
- * Whether `text` links the change at `changePath` (`/{org}/{repo}/pulls/{n}`) — its page or one
- * under it, never a change whose number only starts the same (`/pulls/5` is not `/pulls/53`).
- */
-export function linksChange(text: string, changePath: string): boolean {
-  const escaped = changePath.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  return new RegExp(`${escaped}(?![0-9])`, "u").test(text);
-}
-
-/** The newest of a Mate's answers that links the change: the run that made it. */
+/** The newest of a Mate's answers that links the change at the official HQ: the run that made it. */
 export function changeRunMessage<M extends { readonly role: string; readonly text: string }>(
   messages: ReadonlyArray<M>,
-  changePath: string,
+  change: ChangeLink,
+  hqAddress: string,
 ): M | undefined {
   return messages.findLast(
-    (message) => message.role === "assistant" && linksChange(message.text, changePath),
+    (message) => message.role === "assistant" && linksChange(message.text, change, hqAddress),
   );
 }
 
 /** How much of what the Mate said stands in the review: four lines of it, about. */
 const RUN_WORDS_MAX = 400;
 
-/** A message's markdown read as plain sentences: no code blocks, marks, links or bullets. */
+/**
+ * A message's markdown read as plain sentences: no code blocks, marks, links, bullets or quote
+ * markers. A GitHub callout keeps its word, run into its first line as the chat draws it
+ * (`quoteWords`).
+ */
 function plainText(text: string): string {
-  return text
+  return quoteWords(text)
     .replace(/```[\s\S]*?```/gu, " ")
     .replace(/!\[[^\]]*\]\([^)]*\)/gu, " ")
     .replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1")
@@ -302,17 +291,14 @@ function plainText(text: string): string {
 
 /**
  * What a change does, in the words of the run that made it: the sentences of the Mate's
- * message that links it, the link's own sentence left out, up to about four lines. The rest
- * is the run's, one click away.
+ * message that links it, every sentence with an address left out — the link's own among them —
+ * up to about four lines. The rest is the run's, one click away.
  */
-export function runWords(text: string, changePath: string): string | undefined {
+export function runWords(text: string): string | undefined {
   const sentences = plainText(text)
     .split(/(?<=[.!?])\s+/u)
     .map((sentence) => sentence.trim())
-    .filter(
-      (sentence) =>
-        sentence.length > 0 && !linksChange(sentence, changePath) && !/https?:\/\//u.test(sentence),
-    );
+    .filter((sentence) => sentence.length > 0 && !/https?:\/\//u.test(sentence));
   const kept: Array<string> = [];
   let length = 0;
   for (const sentence of sentences) {
@@ -327,18 +313,17 @@ export function runWords(text: string, changePath: string): string | undefined {
 
 /** How many lines of one file's diff stand before "Show all N lines" opens the rest. */
 export const REVIEW_DIFF_LINES_SHOWN = 400;
-/** A file's diff longer than this is never drawn whole here: the rest is on Gitea. */
+/** A file's diff longer than this is never drawn whole here. */
 export const REVIEW_DIFF_LINES_MAX = 2_000;
 
-/** What follows the lines a file's diff shows: a way to the rest, here or on Gitea. */
+/** What follows the lines a file's diff shows: the way to the rest, or that it is not here. */
 export type DiffRest =
   | { readonly kind: "show"; readonly label: string }
-  | { readonly kind: "gitea"; readonly words: string };
+  | { readonly kind: "cut"; readonly words: string };
 
 /**
  * How much of one file's diff stands (D4): its first lines, all of them once opened — and where
- * it is too long to show here, or the read stopped inside it (`cut`), what is missing, said,
- * with the rest one link away on Gitea. Everything stays reachable one way or another.
+ * it is too long to show here, or the read stopped inside it (`cut`), what is missing, said.
  */
 export function diffFold(input: {
   readonly total: number;
@@ -350,24 +335,15 @@ export function diffFold(input: {
   const shown = input.all && !tooMany ? total : Math.min(total, REVIEW_DIFF_LINES_SHOWN);
   if (tooMany) {
     const more = `${String(total - shown)}${cut ? "+" : ""}`;
-    return { shown, rest: { kind: "gitea", words: `${more} more lines, too many to show here.` } };
+    return { shown, rest: { kind: "cut", words: `${more} more lines, too many to show here.` } };
   }
   if (shown < total) {
     return { shown, rest: { kind: "show", label: `Show all ${String(total)} lines` } };
   }
   return {
     shown,
-    rest: cut ? { kind: "gitea", words: "The rest is too long to read here." } : undefined,
+    rest: cut ? { kind: "cut", words: "The rest is too long to read here." } : undefined,
   };
-}
-
-/**
- * A file's diff on Gitea: the change's files page, scrolled to the file — Gitea names each file's
- * box `diff-` and the SHA-1 of its path.
- */
-export function giteaFileUrl(pullUrl: string | undefined, path: string): string | undefined {
-  if (pullUrl === undefined) return undefined;
-  return `${pullUrl}/files#diff-${bytesToHex(sha1(utf8ToBytes(path)))}`;
 }
 
 /** The status letter in a file row's 16 px box. */
@@ -428,86 +404,58 @@ export interface ReleaseChangeRow {
 const LANDED_AS = /\s*\(#(\d+)\)\s*$/u;
 
 /**
- * What a release carries, one row per change: a commit is the change it landed as — matched by
- * the commit Gitea says the change landed as, never by the `(#54)` in its subject, since numbers
- * are per repository and the recipe's #54 is not appdev's — whose Mate wrote it and when; a
- * commit nobody reviewed is its own words.
+ * What HQ compared, one row per change: a commit is the change HQ says it landed — in the
+ * repository it was compared in, since numbers are per repository — whose Mate wrote it and when;
+ * a commit nobody reviewed is its own words. One commit several services take is one row.
  */
 export function releaseChangeRows(input: {
-  readonly commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
-  readonly merged: ReadonlyArray<{
-    readonly repository: string;
-    readonly number: number;
-    readonly title: string;
-    readonly mateProjectId: string | undefined;
-    readonly mergedAt: string | undefined;
-    readonly mergeCommitSha?: string | undefined;
-  }>;
+  readonly moved: ReadonlyArray<Moved>;
   readonly marks: ReadonlyMap<string, ReleaseStageMark>;
 }): ReadonlyArray<ReleaseChangeRow> {
-  const bySha = new Map(
-    input.merged.flatMap((change) =>
-      change.mergeCommitSha === undefined
-        ? []
-        : [[change.mergeCommitSha.toLowerCase(), change] as const],
-    ),
-  );
-  return input.commits.map((commit) => {
-    const key = commit.sha.toLowerCase();
-    const change = bySha.get(key);
-    return {
-      key,
-      title:
-        change === undefined
-          ? commit.subject
-          : `#${String(change.number)} ${change.title.replace(LANDED_AS, "")}`,
-      change:
-        change === undefined ? undefined : { repository: change.repository, number: change.number },
-      mateProjectId: change?.mateProjectId,
-      mergedAt: change?.mergedAt,
-      stage: input.marks.get(key) ?? "none",
-    };
-  });
+  const rows = new Map<string, ReleaseChangeRow>();
+  for (const { repository, commits } of input.moved) {
+    for (const commit of commits) {
+      const key = commit.sha.toLowerCase();
+      if (rows.has(key)) continue;
+      const { change } = commit;
+      rows.set(key, {
+        key,
+        title:
+          change === null
+            ? commit.subject
+            : `#${String(change.number)} ${change.title.replace(LANDED_AS, "")}`,
+        change: change === null ? undefined : { repository, number: change.number },
+        mateProjectId: change?.mateProjectId,
+        mergedAt: change === null ? undefined : commit.at,
+        stage: input.marks.get(key) ?? "none",
+      });
+    }
+  }
+  return [...rows.values()];
 }
 
+/** A roll back's two lists: what production runs that it takes off, and what it brings back. */
+export type RollbackSide = "leaving" | "coming-back";
+
 /**
- * Which of a change's files `main` moved under it, and the newest commit that did — for a change
- * that no longer merges; `undefined` for one that does, or while either read is out.
- *
- * Which end of `main`'s commits is the newest is told by where `main`'s head sits among them
- * (`head`), as the stage marks tell it (`stageMarks.ts`), never by the order a read happens to
- * list them in; with the head not among them, no commit is named.
+ * What a roll back's list says where it has no rows: HQ still comparing, why it could not, or —
+ * an answer as well — that nothing moves that way.
  */
-export function changeConflict(input: {
-  readonly mergeability: string;
-  readonly files: ReadonlyArray<{ readonly filename: string }> | undefined;
-  readonly mainSince:
-    | ReadonlyArray<{
-        readonly sha: string;
-        readonly subject: string;
-        readonly at?: string | undefined;
-        readonly files?: ReadonlyArray<string> | undefined;
-      }>
-    | undefined;
-  /** `main`'s head, as the change was read against it. */
-  readonly head: string | undefined;
-}):
-  | {
-      readonly files: ReadonlyArray<string>;
-      readonly by: { readonly subject: string; readonly at: string | undefined } | undefined;
-    }
-  | undefined {
-  if (input.mergeability !== "conflicting" || input.files === undefined) return undefined;
-  const commits = input.mainSince;
-  if (commits === undefined) return undefined;
-  const touched = new Set(commits.flatMap((commit) => commit.files ?? []));
-  const overlap = input.files.map((file) => file.filename).filter((path) => touched.has(path));
-  const moved = (commit: (typeof commits)[number]) =>
-    (commit.files ?? []).some((path) => overlap.includes(path));
-  const head = input.head?.toLowerCase();
-  const at = commits.findIndex((commit) => commit.sha.toLowerCase() === head);
-  const by = at === -1 ? undefined : at === 0 ? commits.find(moved) : commits.findLast(moved);
-  return { files: overlap, by: by === undefined ? undefined : { subject: by.subject, at: by.at } };
+export function rollbackListNote(
+  side: RollbackSide,
+  list:
+    | { readonly state: "reading" }
+    | { readonly state: "failed"; readonly reason: string }
+    | { readonly state: "known" },
+): string {
+  switch (list.state) {
+    case "reading":
+      return "Comparing in HQ…";
+    case "failed":
+      return `Can't tell what ${side === "leaving" ? "leaves production" : "comes back"}: ${list.reason.replace(/\.$/u, "")}.`;
+    case "known":
+      return side === "leaving" ? "Nothing leaves production." : "Nothing comes back.";
+  }
 }
 
 /**
@@ -527,28 +475,20 @@ export function crewLandCommand(task: { readonly id: string; readonly state: str
 
 /**
  * What a change's review says before the change is read, when the project's flow does not hold
- * it: it spins only while a read of it is in flight. A read never sent says why — the Gitea
- * sign-in refused, the project's changes failing, a project not known here — never a spinner that
- * does not end.
+ * it: it spins only while a read of it is in flight. A read never sent says why — no account to
+ * read it through, or the organization's HQ not known yet — never a spinner that does not end.
  */
 export function changeReadVerdict(input: {
   readonly repository: string;
   readonly number: number;
-  /** The read of the change on its own. */
+  /** The read of the change on its own; `idle` until the organization's official HQ is known. */
   readonly read:
     | { readonly kind: "idle" | "reading" | "gone" }
-    | { readonly kind: "failed"; readonly reason: string };
+    | { readonly kind: "refused" | "unavailable"; readonly reason: string };
   /** Whether there is an account's flow to read it through at all. */
   readonly provided: boolean;
-  /** Whether the project's Gitea org is known. */
-  readonly ownerKnown: boolean;
-  /** Whether a Gitea request can go out as the person now. */
-  readonly readable: boolean;
-  readonly signInTrouble: string | null;
-  /** Why the project's changes were never read, where they failed. */
-  readonly changesFailure: string | undefined;
-  /** Whether the app can fetch its own Gitea session, and why not (`giteaReach`). */
-  readonly gitea: GiteaReach;
+  readonly failure?: string | undefined;
+  readonly projectKnown?: boolean | undefined;
 }): ReviewVerdict {
   const which = `${input.repository} #${String(input.number)}`;
   const verdict = (
@@ -561,24 +501,12 @@ export function changeReadVerdict(input: {
   if (read.kind === "gone") {
     return verdict("attention", `${input.repository} has no change #${String(input.number)}`);
   }
-  if (read.kind === "failed")
+  if (read.kind === "refused" || read.kind === "unavailable")
     return verdict("attention", "This change could not be read", read.reason);
   if (!input.provided) return verdict("quiet", "Nothing here reads this change");
-  if (input.signInTrouble !== null) {
-    return verdict("attention", "Gitea isn't signed in", input.signInTrouble);
-  }
-  if (!input.readable) {
-    // A Gitea the app cannot reach is named; else the app is fetching its own Gitea session
-    // (signed in from the app's own): nothing waits on the person, so never sign-in words.
-    const blocked = giteaReachWords(input.gitea);
-    return blocked === null
-      ? verdict("quiet", "Reading this change")
-      : verdict("attention", blocked.title, blocked.why);
-  }
-  if (input.changesFailure !== undefined) {
-    return verdict("attention", "This project's changes couldn't be read", input.changesFailure);
-  }
-  if (!input.ownerKnown) return verdict("attention", "This change's project isn't known here");
-  // About to be asked for: the read goes out after this frame.
-  return verdict("quiet", "Reading this change");
+  if (input.failure !== undefined)
+    return verdict("attention", "This change could not be read", input.failure);
+  if (input.projectKnown === false)
+    return verdict("attention", "This change's project isn't known here");
+  return verdict("quiet", "Waiting for the organization's HQ");
 }

@@ -83,14 +83,6 @@ export default defineConfig({
       "apps/web/src/lib/vendor/qrcodegen.ts",
       "apps/mobile/uniwind-types.d.ts",
       "*.icon/**",
-      // A byte-identical copy of `internal/roles/fixtures.json` in
-      // `zeropsio/gitea-mate`; both repositories assert the two files match, so
-      // reformatting it here would break the Go side's test, not ours.
-      "packages/shared/src/zeropsRoles.fixtures.json",
-      // A byte-identical copy of `import/gitea-project.yaml` in
-      // `zeropsio/gitea-mate`; `giteaRecipe.test.ts` asserts the two files
-      // match, so reformatting it here would break the copy, not improve it.
-      "packages/client-runtime/src/zerops/giteaProjectImport.yaml",
     ],
     sortPackageJson: {},
     overrides: [
@@ -160,6 +152,7 @@ export default defineConfig({
       "t3code/no-native-title-tooltip": "error",
       "t3code/no-platform-globals": "error",
       "t3code/no-arbitrary-values": "error",
+      "t3code/no-direct-permission-rule": "error",
       "t3code/no-restyle": "error",
       "t3code/no-unknown-classes": "error",
       "t3code/require-static-classes": "error",

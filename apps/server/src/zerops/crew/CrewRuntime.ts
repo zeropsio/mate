@@ -13,8 +13,8 @@
  * The claim is one `crew_claim` row per host, moved in one store transaction
  * per event; `none` removes it. An event the claim's state does not take is
  * refused (`CrewClaimRefused`), never applied. zcp's dev server writes its
- * pid to {@link DEV_SERVER_PIDFILE}, and the pid is the dev command itself,
- * started in its `workDir`.
+ * pid to {@link DEV_SERVER_PIDFILE} (read through {@link DevServerPidFile}), and the pid is the dev
+ * command itself, started in its `workDir`.
  *
  * @module CrewRuntime
  */
@@ -41,6 +41,14 @@ import { type CrewClaimRow, CrewStore, type CrewStoreError } from "./CrewStore.t
 
 /** zcp's dev-server pidfile: its default log file plus `.pid` (zcp `ops/dev_server.go`). */
 export const DEV_SERVER_PIDFILE = "/tmp/zcp-dev-server.log.pid";
+
+/**
+ * Where the crew reads the dev server's pid: zcp's own pidfile, unless a test's world names its
+ * own, which no other run on the machine writes.
+ */
+export const DevServerPidFile = Context.Reference<string>("t3/zerops/crew/DevServerPidFile", {
+  defaultValue: () => DEV_SERVER_PIDFILE,
+});
 
 const SERVED_TIMEOUT = Duration.seconds(10);
 
@@ -353,5 +361,5 @@ export const makeCrewRuntime = (options: CrewRuntimeOptions) =>
 
 export const layer = Layer.effect(
   CrewRuntime,
-  makeCrewRuntime({ devServerPidFile: DEV_SERVER_PIDFILE }),
+  Effect.flatMap(DevServerPidFile, (devServerPidFile) => makeCrewRuntime({ devServerPidFile })),
 );

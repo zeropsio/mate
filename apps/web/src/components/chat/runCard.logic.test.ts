@@ -97,6 +97,10 @@ describe("thoughtRunText", () => {
       run: "Reuse withDatabase() from the users tests: start it migrate",
     },
     { text: "Keep snake_case_names as they are.", run: "Keep snake_case_names as they are." },
+    {
+      text: "Checked the scale.\n\n> [!WARNING]\n> My earlier claim was incorrect.",
+      run: "Checked the scale. Warning: My earlier claim was incorrect.",
+    },
   ])("reads $text as one run of words", ({ text, run }) => {
     expect(thoughtRunText(text)).toBe(run);
   });

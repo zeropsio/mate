@@ -3,29 +3,14 @@ import {
   birthRuntimesFacts,
   deriveBirthProgress,
 } from "@t3tools/client-runtime/zerops/birthProgress";
-import type { ProjectTagWrite } from "@t3tools/client-runtime/zerops/data";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { isUncertainZeropsFailure } from "@t3tools/client-runtime/zerops/errors";
-
-import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { arrivalSteps } from "./mateArrival";
 import { useNewMate } from "./newMate";
+import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
   beginNewProjectBirth,
-  newProjectComing,
-  newProjectHandOver,
-  newProjectProgress,
-  newProjectSteps,
-  newProjectView,
-  placedNewProjects,
-  retryNewProjectBirth,
-  runNewProjectBirth,
-  useNewProjectBirths,
-  type NewProjectAsk,
-  type NewProjectBirth,
-  type NewProjectPatch,
-  type NewProjectPorts,
   addCreateProject,
   creationEnds,
   comingPlanned,
@@ -39,12 +24,25 @@ import {
   progressNewProjectBirth,
   refinishNewProjectBirth,
   registrationUnfinished,
+  newProjectComing,
+  newProjectHandOver,
+  newProjectProgress,
+  newProjectSteps,
+  newProjectView,
+  placedNewProjects,
+  retryNewProjectBirth,
+  runNewProjectBirth,
+  useNewProjectBirths,
+  type NewProjectAsk,
+  type NewProjectBirth,
+  type NewProjectPatch,
+  type NewProjectPorts,
 } from "./newProjectBirth";
 
 /** What Create asked for: Acme CRM, and Vera in it. */
 const ASK: NewProjectAsk = {
   organizationId: "org-acme",
-  groupId: "g-acme",
+  birthId: "b-acme",
   name: "Acme CRM",
   botName: "Vera",
   face: { tint: "rose", shape: "seal" },
@@ -55,14 +53,17 @@ const ASK: NewProjectAsk = {
 const PRESSED_AT = Date.parse("2026-09-30T10:00:00.000Z");
 const NOW = PRESSED_AT + 5_000;
 
-/** Acme CRM's creation, pressed at `PRESSED_AT`, on an account whose Git hosting stands. */
+/** The organization's HQ. */
+const HQ = { projectId: "hq-1", address: "https://hq-30db-8080.prg1.zerops.app" } as const;
+
+/** Acme CRM's creation, pressed at `PRESSED_AT`, in an organization whose HQ stands. */
 function birth(over: Partial<NewProjectBirth> = {}): NewProjectBirth {
   return {
     ...ASK,
-    id: ASK.groupId,
     startedAt: PRESSED_AT,
-    withGitea: false,
-    giteaProjectId: "gitea-1",
+    hq: HQ,
+    appId: null,
+    intent: null,
     step: "registry",
     failed: null,
     projectId: null,
@@ -70,10 +71,6 @@ function birth(over: Partial<NewProjectBirth> = {}): NewProjectBirth {
     ...over,
   };
 }
-
-/** The same creation on an account that had no Git hosting when Create was pressed. */
-const bare = (over: Partial<NewProjectBirth> = {}) =>
-  birth({ withGitea: true, giteaProjectId: null, step: "gitea", ...over });
 
 const NO_ROOM = { reason: "No room in this account.", uncertain: false } as const;
 
@@ -88,41 +85,19 @@ describe("a New project's own steps, before its first Mate's", () => {
     readonly steps: ReadonlyArray<readonly [string, string, string, string | undefined]>;
   }>([
     {
-      case: "an account with Git hosting registers the project, under its name",
+      case: "it registers the project in HQ, under its name",
       birth: birth(),
       steps: [["registry", "Acme CRM", "active", "Registering the project"]],
     },
     {
-      case: "an account without stands Git hosting up first",
-      birth: bare(),
-      steps: [
-        ["git-hosting", "Git hosting", "active", "Setting up Git hosting"],
-        ["registry", "Acme CRM", "waiting", undefined],
-      ],
-    },
-    {
-      case: "Git hosting that could not be stood up says why, and nothing after it begins",
-      birth: bare({ failed: NO_ROOM }),
-      steps: [
-        ["git-hosting", "Git hosting", "failed", "No room in this account."],
-        ["registry", "Acme CRM", "waiting", undefined],
-      ],
-    },
-    {
       case: "a registration that stopped says why",
-      birth: birth({ withGitea: true, failed: NO_ROOM }),
-      steps: [
-        ["git-hosting", "Git hosting", "done", undefined],
-        ["registry", "Acme CRM", "failed", "No room in this account."],
-      ],
+      birth: birth({ failed: NO_ROOM }),
+      steps: [["registry", "Acme CRM", "failed", "No room in this account."]],
     },
     {
-      case: "creating the Mate's project, the project's own are done",
-      birth: birth({ withGitea: true, step: "create" }),
-      steps: [
-        ["git-hosting", "Git hosting", "done", undefined],
-        ["registry", "Acme CRM", "done", undefined],
-      ],
+      case: "creating the Mate's project, the project's own is done",
+      birth: birth({ step: "create" }),
+      steps: [["registry", "Acme CRM", "done", undefined]],
     },
     {
       case: "once the platform took it, still done",
@@ -152,20 +127,9 @@ describe("how far a New project's creation has got", () => {
       detail: "Registering the project",
     },
     {
-      case: "and while Git hosting is stood up",
-      birth: bare(),
-      states: [
-        "git-hosting:active",
-        "registry:waiting",
-        ...MATE_STEPS.map((id) => `${id}:waiting`),
-      ],
-      detail: "Setting up Git hosting",
-    },
-    {
       case: "creating its project is the Mate's own first step",
-      birth: birth({ withGitea: true, step: "create" }),
+      birth: birth({ step: "create" }),
       states: [
-        "git-hosting:done",
         "registry:done",
         "project:active",
         ...MATE_STEPS.slice(1).map((id) => `${id}:waiting`),
@@ -210,18 +174,10 @@ describe("how far a New project's creation has got", () => {
       },
       NOW,
     );
-    const progress = newProjectProgress(
-      birth({ withGitea: true, step: "created", projectId: "p-vera" }),
-      mate,
-      NOW,
-    );
-    expect(states(progress.steps)).toEqual([
-      "git-hosting:done",
-      "registry:done",
-      ...states(mate.steps),
-    ]);
+    const progress = newProjectProgress(birth({ step: "created", projectId: "p-vera" }), mate, NOW);
+    expect(states(progress.steps)).toEqual(["registry:done", ...states(mate.steps)]);
     expect(progress.active?.detail).toBe(mate.active?.detail);
-    expect(progress.doneCount).toBe(mate.doneCount + 2);
+    expect(progress.doneCount).toBe(mate.doneCount + 1);
     // The whole creation's clock, not the Mate's project's.
     expect(progress.startedAt).toBe("2026-09-30T10:00:00.000Z");
   });
@@ -263,9 +219,9 @@ describe("what its view says under the headline", () => {
 
 describe("where Create lands", () => {
   it("is the first Mate's own view before anything is made, by the creation's id", () => {
-    expect(newProjectView("g-acme")).toEqual({
+    expect(newProjectView("b-acme")).toEqual({
       to: "/mate/new/$birthId",
-      params: { birthId: "g-acme" },
+      params: { birthId: "b-acme" },
     });
   });
 
@@ -289,18 +245,17 @@ describe("where Create lands", () => {
 
 describe("the menu draws it from the press", () => {
   const PLACED = {
-    projectId: "g-acme",
+    projectId: "b-acme",
     startedAt: PRESSED_AT,
     step: "tags",
     overdue: false,
-    // The platform has not answered with its project: the menu takes the listed one for it.
+    // The platform has not answered with its project: the listing may hold it already.
     awaitingProject: true,
     placement: {
-      groupId: "g-acme",
+      groupId: "b-acme",
       groupName: "Acme CRM",
       kind: "mate",
-      displayName: "Acme CRM - Vera",
-      botName: "Vera",
+      displayName: "Vera",
       face: { tint: "rose", shape: "seal" },
     },
   } as const;
@@ -322,6 +277,12 @@ describe("the menu draws it from the press", () => {
       births: [birth({ failed: NO_ROOM })],
       organizationId: "org-acme",
       placed: [{ ...PLACED, failed: true }],
+    },
+    {
+      case: "once HQ named its application, in that group",
+      births: [birth({ step: "create", appId: "app-acme" })],
+      organizationId: "org-acme",
+      placed: [{ ...PLACED, placement: { ...PLACED.placement, groupId: "app-acme" } }],
     },
     {
       case: "one in another organization is not drawn here",
@@ -346,32 +307,32 @@ describe("the menu draws it from the press", () => {
   });
 });
 
-const PROJECT = { id: "p-vera", name: "Acme CRM - Vera", status: "ACTIVE" } as const;
-const WRITTEN: ProjectTagWrite = {
-  kind: "written",
-  project: { id: "gitea-1", name: "Gitea", status: "ACTIVE" },
-};
+const PROJECT = { id: "p-vera", name: "Vera", status: "ACTIVE" } as const;
 
 type RegisterArgs = Parameters<NewProjectPorts["registerGroup"]>[0];
+type IntentArgs = Parameters<NewProjectPorts["recordBirth"]>[0];
+type AcceptedArgs = Parameters<NewProjectPorts["accepted"]>;
 
 /** Ports that do what they are asked, each call written down in `order`. */
 function ports(over: Partial<NewProjectPorts> = {}) {
   const order: Array<string> = [];
   const made: NewProjectPorts = {
-    ensureGitea: vi.fn(async () => {
-      order.push("gitea");
-      return { projectId: "gitea-new" };
+    registerGroup: vi.fn(async ({ hq, name }: RegisterArgs) => {
+      order.push(`register:${hq.projectId}:${name}`);
+      return { appId: "app-acme" };
     }),
-    registerGroup: vi.fn(async ({ giteaProjectId, groupId, name }: RegisterArgs) => {
-      order.push(`register:${giteaProjectId}:${groupId}:${name}`);
-      return WRITTEN;
+    recordBirth: vi.fn(async ({ appId, face }: IntentArgs) => {
+      order.push(`intent:${appId}:${face}`);
+      return { id: "b-vera" };
     }),
     createProject: vi.fn(async () => {
       order.push("create");
       return { project: PROJECT };
     }),
-    accepted: vi.fn((projectId: string, giteaProjectId: string | null) => {
-      order.push(`accepted:${projectId}:${String(giteaProjectId)}`);
+    accepted: vi.fn((...[projectId, registration]: AcceptedArgs) => {
+      if (registration === null) throw new Error("Expected a new-project registration");
+      const { hq, appId } = registration;
+      order.push(`accepted:${projectId}:${hq.projectId}:${appId}`);
     }),
     ...over,
   };
@@ -379,71 +340,82 @@ function ports(over: Partial<NewProjectPorts> = {}) {
 }
 
 describe("runNewProjectBirth — the project, then its first Mate", () => {
-  it("stands Git hosting up where the account has none, registers the project on it, then creates its Mate", async () => {
+  it("registers the project in the organization's HQ, then creates its Mate", async () => {
     const { order, ports: made } = ports();
     const moved: Array<NewProjectPatch> = [];
-    await runNewProjectBirth(bare(), made, (patch) => moved.push(patch));
-    // The registry lives on the Gitea project: the project is registered there before anything
-    // is created in it.
+    await runNewProjectBirth(birth(), made, (patch) => moved.push(patch));
+    // The registry lives in HQ: the project is registered there before anything is created in it,
+    // and its Mate goes into the application HQ named.
     expect(order).toEqual([
-      "gitea",
-      "register:gitea-new:g-acme:Acme CRM",
+      "register:hq-1:Acme CRM",
+      "intent:app-acme:rose:seal",
       "create",
-      "accepted:p-vera:gitea-new",
+      "accepted:p-vera:hq-1:app-acme",
     ]);
+    // Its Mate's row counts on from the press, not from when the platform answered; its container
+    // is its press's, after its attach (F6b).
+    expect(made.accepted).toHaveBeenCalledWith(
+      "p-vera",
+      expect.objectContaining({ appId: "app-acme" }),
+      PRESSED_AT,
+    );
     expect(moved).toEqual([
-      { step: "registry", giteaProjectId: "gitea-new" },
-      { step: "create" },
+      { appId: "app-acme" },
+      { step: "create", intent: "b-vera" },
       { step: "created", projectId: "p-vera" },
     ]);
   });
 
-  it("never stands a second Gitea up for an account that has one", async () => {
+  // F6c (2026-10-03): a press cut off between its project and its attach left a Mate another
+  // browser finished under a new name in no application. Its birth intent is HQ's before its
+  // project exists, and the project names it, so any browser finishes it where and as asked.
+  it("records its first Mate's birth intent between its application and its project, once, and creates the project under it", async () => {
     const { order, ports: made } = ports();
-    await runNewProjectBirth(birth(), made, () => undefined);
-    expect(made.ensureGitea).not.toHaveBeenCalled();
-    expect(order[0]).toBe("register:gitea-1:g-acme:Acme CRM");
+    const moved: Array<NewProjectPatch> = [];
+    await runNewProjectBirth(birth(), made, (patch) => moved.push(patch));
+    expect(order.slice(0, 3)).toEqual([
+      "register:hq-1:Acme CRM",
+      "intent:app-acme:rose:seal",
+      "create",
+    ]);
+    expect(made.createProject).toHaveBeenCalledWith({ name: "Vera", birth: "b-vera" });
+    expect(made.accepted).toHaveBeenCalledWith(
+      "p-vera",
+      expect.objectContaining({ appId: "app-acme", intent: "b-vera" }),
+      PRESSED_AT,
+    );
+    // Held by the creation, so a creation tried again records none twice.
+    expect(moved).toContainEqual(expect.objectContaining({ intent: "b-vera" }));
+    const again = ports();
+    await runNewProjectBirth(
+      birth({ step: "create", appId: "app-acme", intent: "b-vera" }),
+      again.ports,
+      () => undefined,
+    );
+    expect(again.ports.recordBirth).not.toHaveBeenCalled();
   });
 
   it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk>; readonly args: object }>([
     {
-      case: "named after its Mate, tagged into the project, with the face picked and no stand-up",
+      // D3: the project's name is its Mate's, whole; its application and face are HQ's, which
+      // the press's registration writes.
+      case: "named as its Mate is, and nothing of its place on the project",
       ask: {},
-      args: {
-        name: "Acme CRM - Vera",
-        agents: [],
-        group: { groupId: "g-acme", role: "dev", label: "Acme CRM" },
-        botName: "Vera",
-        face: { tint: "rose", shape: "seal" },
-      },
+      args: { name: "Vera", birth: "b-1" },
     },
     {
-      case: "in the location chosen, with the agents selected",
+      // Its agents are its container's, which its press imports.
+      case: "in the location chosen",
       ask: { locationId: "prg1", agents: ["claude-code"] },
-      args: {
-        name: "Acme CRM - Vera",
-        location: "prg1",
-        agents: ["claude-code"],
-        group: { groupId: "g-acme", role: "dev", label: "Acme CRM" },
-        botName: "Vera",
-        face: { tint: "rose", shape: "seal" },
-      },
-    },
-    {
-      case: "naming who pressed Create, whose sign-in it waits for",
-      ask: { madeBy: "user-ada" },
-      args: {
-        name: "Acme CRM - Vera",
-        agents: [],
-        group: { groupId: "g-acme", role: "dev", label: "Acme CRM" },
-        botName: "Vera",
-        face: { tint: "rose", shape: "seal" },
-        madeBy: "user-ada",
-      },
+      args: { name: "Vera", location: "prg1", birth: "b-1" },
     },
   ])("creates its first Mate $case", async ({ ask, args }) => {
     const { ports: made } = ports();
-    await runNewProjectBirth(birth({ step: "create", ...ask }), made, () => undefined);
+    await runNewProjectBirth(
+      birth({ step: "create", appId: "app-acme", intent: "b-1", ...ask }),
+      made,
+      () => undefined,
+    );
     expect(made.createProject).toHaveBeenCalledWith(args);
   });
 
@@ -455,37 +427,26 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     readonly failed: NewProjectPatch["failed"];
   }>([
     {
-      case: "Git hosting that cannot be stood up creates nothing",
-      birth: bare(),
-      over: { ensureGitea: () => Promise.reject(new Error("No room in this account.")) },
-      order: [],
-      failed: { reason: "No room in this account.", uncertain: false },
-    },
-    {
-      case: "a registry write that fails creates nothing",
-      birth: birth(),
-      over: { registerGroup: () => Promise.reject(new Error("Only owners write tags.")) },
-      order: [],
-      failed: { reason: "Only owners write tags.", uncertain: false },
-    },
-    {
-      case: "a registry that refuses the project creates nothing, and says why",
+      case: "a registration HQ refuses creates nothing, and says why",
       birth: birth(),
       over: {
-        registerGroup: async () => ({
-          kind: "refused",
-          refusal: { code: "registry-conflict", reason: "A project is already called that." },
-          project: WRITTEN.project,
-        }),
+        registerGroup: () => Promise.reject(new Error("An application named Acme CRM exists.")),
       },
       order: [],
-      failed: { reason: "A project is already called that.", uncertain: false },
+      failed: { reason: "An application named Acme CRM exists.", uncertain: false },
+    },
+    {
+      case: "a birth intent HQ refuses leaves a registered project, and creates no Mate project",
+      birth: birth(),
+      over: { recordBirth: () => Promise.reject(new Error("HQ is not answering right now.")) },
+      order: ["register:hq-1:Acme CRM"],
+      failed: { reason: "HQ is not answering right now.", uncertain: false },
     },
     {
       case: "a creation the platform refused leaves a registered project, and no Mate",
       birth: birth(),
       over: { createProject: () => Promise.reject(new Error("Project name is taken.")) },
-      order: ["register:gitea-1:g-acme:Acme CRM"],
+      order: ["register:hq-1:Acme CRM", "intent:app-acme:rose:seal"],
       failed: { reason: "Project name is taken.", uncertain: false },
     },
     {
@@ -499,7 +460,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
             message: "The project may already exist.",
           }),
       },
-      order: ["register:gitea-1:g-acme:Acme CRM"],
+      order: ["register:hq-1:Acme CRM", "intent:app-acme:rose:seal"],
       failed: { reason: "The project may already exist.", uncertain: true },
     },
   ])("stops where it fails: $case", async ({ birth: made, over, order: expected, failed }) => {
@@ -517,14 +478,24 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     readonly order: ReadonlyArray<string>;
   }>([
     {
-      case: "a registration, on the Gitea stood up before",
-      birth: bare({ step: "registry", giteaProjectId: "gitea-new" }),
-      order: ["register:gitea-new:g-acme:Acme CRM", "create", "accepted:p-vera:gitea-new"],
+      case: "a registration",
+      birth: birth(),
+      order: [
+        "register:hq-1:Acme CRM",
+        "intent:app-acme:rose:seal",
+        "create",
+        "accepted:p-vera:hq-1:app-acme",
+      ],
+    },
+    {
+      case: "its Mate's birth intent, its application not made again",
+      birth: birth({ appId: "app-1" }),
+      order: ["intent:app-1:rose:seal", "create", "accepted:p-vera:hq-1:app-1"],
     },
     {
       case: "its Mate's creation, with nothing before it made again",
-      birth: birth({ step: "create" }),
-      order: ["create", "accepted:p-vera:gitea-1"],
+      birth: birth({ step: "create", appId: "app-1", intent: "b-1" }),
+      order: ["create", "accepted:p-vera:hq-1:app-1"],
     },
     { case: "nothing, once the platform took it", birth: birth({ step: "created" }), order: [] },
   ])("resumes from the step it stopped on: $case", async ({ birth: made, order: expected }) => {
@@ -543,48 +514,47 @@ describe("the tab holds a New project's creation until the platform takes it", (
     closeAccountLifetime();
   });
 
-  const held = () => useNewProjectBirths.getState().births["g-acme"];
+  const held = () => useNewProjectBirths.getState().births["b-acme"];
 
   it("holds it from the press, and moves it to its Mate's project once the platform takes it", async () => {
     const { ports: fake } = ports();
     const birthId = beginNewProjectBirth({
       ask: ASK,
-      gitea: undefined,
+      hq: HQ,
       ports: fake,
       now: PRESSED_AT,
     });
-    expect(birthId).toBe("g-acme");
-    expect(held()).toMatchObject({ step: "gitea", withGitea: true, startedAt: PRESSED_AT });
+    expect(birthId).toBe("b-acme");
+    expect(held()).toMatchObject({ step: "registry", hq: HQ, startedAt: PRESSED_AT });
     await vi.waitFor(() => expect(held()?.projectId).toBe("p-vera"));
-    expect(held()).toMatchObject({ step: "created", giteaProjectId: "gitea-new", failed: null });
+    expect(held()).toMatchObject({ step: "created", hq: HQ, appId: "app-acme", failed: null });
     expect(fake.accepted).toHaveBeenCalledTimes(1);
-    // Its Mate's row counts on from the press, not from when the platform answered.
-    expect(fake.accepted).toHaveBeenCalledWith("p-vera", "gitea-new", PRESSED_AT);
   });
 
   it("resumes from the step that stopped it, with the same project, on Try again", async () => {
     let refuse = true;
     const { order, ports: fake } = ports({
       registerGroup: vi.fn(async () => {
-        if (refuse) throw new Error("The registry could not be read.");
+        if (refuse) throw new Error("HQ is not answering right now.");
         order.push("register");
-        return WRITTEN;
+        return { appId: "app-acme" };
       }),
     });
-    beginNewProjectBirth({ ask: ASK, gitea: { projectId: "gitea-1" }, ports: fake, now: 0 });
+    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: 0 });
     await vi.waitFor(() => expect(held()?.failed).not.toBeNull());
     expect(held()).toMatchObject({ step: "registry", failed: { uncertain: false } });
 
     refuse = false;
-    retryNewProjectBirth("g-acme");
+    retryNewProjectBirth("b-acme");
     expect(held()?.failed).toBeNull();
     await vi.waitFor(() => expect(held()?.step).toBe("created"));
-    expect(order).toEqual(["register", "create", "accepted:p-vera:gitea-1"]);
-    expect(fake.registerGroup).toHaveBeenLastCalledWith({
-      giteaProjectId: "gitea-1",
-      groupId: "g-acme",
-      name: "Acme CRM",
-    });
+    expect(order).toEqual([
+      "register",
+      "intent:app-acme:rose:seal",
+      "create",
+      "accepted:p-vera:hq-1:app-acme",
+    ]);
+    expect(fake.registerGroup).toHaveBeenLastCalledWith({ hq: HQ, name: "Acme CRM" });
   });
 
   it("never tries again a creation the platform may have taken", async () => {
@@ -593,50 +563,33 @@ describe("the tab holds a New project's creation until the platform takes it", (
         Promise.reject({ _tag: "ZeropsDataAdapterError", kind: "uncertain", message: "Unsure." }),
       ),
     });
-    beginNewProjectBirth({ ask: ASK, gitea: { projectId: "gitea-1" }, ports: fake, now: 0 });
+    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: 0 });
     await vi.waitFor(() => expect(held()?.failed?.uncertain).toBe(true));
-    retryNewProjectBirth("g-acme");
+    retryNewProjectBirth("b-acme");
     expect(held()?.failed?.uncertain).toBe(true);
     expect(fake.createProject).toHaveBeenCalledTimes(1);
   });
 
-  it("holds an added Mate by its own id, and its press's progress after the platform took it", async () => {
-    const { ports: fake } = ports();
-    const birthId = beginNewProjectBirth({
-      ask: { ...ASK, botName: "Ida", adds: { displayName: "Acme CRM - Ida", registers: true } },
-      id: "add-1",
-      gitea: undefined,
-      ports: fake,
-      now: PRESSED_AT,
-    });
-    expect(birthId).toBe("add-1");
-    const add = () => useNewProjectBirths.getState().births["add-1"];
-    expect(add()).toMatchObject({ id: "add-1", step: "create", withGitea: false, progress: null });
-    await vi.waitFor(() => expect(add()?.projectId).toBe("p-vera"));
-    expect(fake.ensureGitea).not.toHaveBeenCalled();
-    const progress = pressed(["close-off", "running"]);
-    progressNewProjectBirth("add-1", progress);
-    expect(add()?.progress).toEqual(progress);
-    // A creation it does not hold hears nothing.
-    progressNewProjectBirth("add-2", progress);
-    expect(useNewProjectBirths.getState().births["add-2"]).toBeUndefined();
-  });
-
   it("forgets every creation, and lets none land, once its account is signed out", async () => {
-    let accept: (value: { readonly project: typeof PROJECT }) => void = () => undefined;
+    let accept: (value: {
+      readonly project: typeof PROJECT;
+      readonly serviceName: string;
+    }) => void = () => undefined;
     const { ports: fake } = ports({
       createProject: vi.fn(
         () =>
-          new Promise<{ readonly project: typeof PROJECT }>((resolve) => {
-            accept = resolve;
-          }),
+          new Promise<{ readonly project: typeof PROJECT; readonly serviceName: string }>(
+            (resolve) => {
+              accept = resolve;
+            },
+          ),
       ),
     });
-    beginNewProjectBirth({ ask: ASK, gitea: { projectId: "gitea-1" }, ports: fake, now: 0 });
+    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: 0 });
     await vi.waitFor(() => expect(fake.createProject).toHaveBeenCalled());
     closeAccountLifetime();
     expect(useNewProjectBirths.getState().births).toEqual({});
-    accept({ project: PROJECT });
+    accept({ project: PROJECT, serviceName: "zcp" });
     await new Promise((settled) => setTimeout(settled, 0));
     expect(fake.accepted).not.toHaveBeenCalled();
     expect(useNewProjectBirths.getState().births).toEqual({});
@@ -649,7 +602,7 @@ type Kind =
   | "import-container"
   | "close-off"
   | "register"
-  | "share-reach";
+  | "await-ready";
 type RunState = "queued" | "running" | "done" | "failed";
 
 /** A press's progress: each step's kind and state, in order, with what a stop said. */
@@ -657,7 +610,7 @@ const pressed = (...entries: ReadonlyArray<readonly [Kind, RunState]>) =>
   entries.map(([kind, state]) => ({
     step:
       kind === "create-project"
-        ? ({ kind, name: "Acme CRM - Ida" } as never)
+        ? ({ kind, name: "Ida" } as never)
         : kind === "import-managed"
           ? ({ kind, yaml: "" } as never)
           : kind === "import-container"
@@ -670,9 +623,10 @@ const pressed = (...entries: ReadonlyArray<readonly [Kind, RunState]>) =>
 /** Ida added to Acme CRM, from Add: a Mate into a project that stands. */
 const added = (over: Partial<NewProjectBirth> = {}) =>
   birth({
-    id: "add-1",
+    birthId: "add-1",
+    appId: "app-acme",
     botName: "Ida",
-    adds: { displayName: "Acme CRM - Ida", registers: true },
+    adds: { appId: "app-acme", registers: true },
     step: "create",
     ...over,
   });
@@ -688,23 +642,14 @@ const drawnSubsteps = (made: NewProjectBirth) =>
 describe("creationSubsteps — a New project's steps this tab runs, under its row", () => {
   it.each([
     {
-      case: "Git hosting first: nothing of the project's own begun",
-      made: bare(),
-      want: [
-        "Registered:waiting",
-        "Created:waiting",
-        "Closed off:waiting",
-        "Vera registered:waiting",
-      ],
-    },
-    {
       case: "registering",
       made: birth(),
       want: [
         "Registered:active",
         "Created:waiting",
-        "Closed off:waiting",
         "Vera registered:waiting",
+        "Container:waiting",
+        "Closed off:waiting",
       ],
     },
     {
@@ -713,19 +658,32 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
       want: [
         "Registered:failed (No room in this account.)",
         "Created:waiting",
-        "Closed off:waiting",
         "Vera registered:waiting",
+        "Container:waiting",
+        "Closed off:waiting",
       ],
     },
     {
       case: "creating its Mate's project",
       made: birth({ step: "create" }),
-      want: ["Registered:done", "Created:active", "Closed off:waiting", "Vera registered:waiting"],
+      want: [
+        "Registered:done",
+        "Created:active",
+        "Vera registered:waiting",
+        "Container:waiting",
+        "Closed off:waiting",
+      ],
     },
     {
       case: "taken, its Mate's press not yet heard",
       made: birth({ step: "created", projectId: "p-1" }),
-      want: ["Registered:done", "Created:done", "Closed off:waiting", "Vera registered:waiting"],
+      want: [
+        "Registered:done",
+        "Created:done",
+        "Vera registered:waiting",
+        "Container:waiting",
+        "Closed off:waiting",
+      ],
     },
     {
       case: "closing off",
@@ -735,10 +693,16 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         progress: pressed(
           ["close-off", "running"],
           ["register", "queued"],
-          ["share-reach", "queued"],
+          ["await-ready", "queued"],
         ),
       }),
-      want: ["Registered:done", "Created:done", "Closed off:active", "Vera registered:waiting"],
+      want: [
+        "Registered:done",
+        "Created:done",
+        "Vera registered:waiting",
+        "Container:waiting",
+        "Closed off:active",
+      ],
     },
     {
       case: "a close-off that stopped",
@@ -750,8 +714,9 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
       want: [
         "Registered:done",
         "Created:done",
-        "Closed off:failed (close-off said no.)",
         "Vera registered:waiting",
+        "Container:waiting",
+        "Closed off:failed (close-off said no.)",
       ],
     },
     {
@@ -759,13 +724,14 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
       made: birth({
         step: "created",
         projectId: "p-1",
-        progress: pressed(["close-off", "done"], ["register", "failed"], ["share-reach", "done"]),
+        progress: pressed(["close-off", "done"], ["register", "failed"], ["await-ready", "done"]),
       }),
       want: [
         "Registered:done",
         "Created:done",
-        "Closed off:done",
         "Not registered:unfinished (Register said no.)",
+        "Container:waiting",
+        "Closed off:done",
       ],
     },
     {
@@ -773,9 +739,15 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
       made: birth({
         step: "created",
         projectId: "p-1",
-        progress: pressed(["close-off", "done"], ["register", "done"], ["share-reach", "running"]),
+        progress: pressed(["close-off", "done"], ["register", "done"], ["await-ready", "running"]),
       }),
-      want: ["Registered:done", "Created:done", "Closed off:done", "Vera registered:done"],
+      want: [
+        "Registered:done",
+        "Created:done",
+        "Vera registered:done",
+        "Container:waiting",
+        "Closed off:done",
+      ],
     },
   ])("$case", ({ made, want }) => {
     expect(drawnSubsteps(made)).toEqual(want);
@@ -787,11 +759,11 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
     {
       case: "pressed, its plan not yet made",
       made: added(),
-      want: ["Created:active", "Container:waiting", "Closed off:waiting", "Ida registered:waiting"],
+      want: ["Created:active", "Ida registered:waiting", "Container:waiting", "Closed off:waiting"],
     },
     {
       case: "where its registration is nobody's here to write",
-      made: added({ adds: { displayName: "Acme CRM - Ida", registers: false } }),
+      made: added({ adds: { appId: "app-acme", registers: false } }),
       want: ["Created:active", "Container:waiting", "Closed off:waiting"],
     },
     {
@@ -805,16 +777,16 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
           ["register", "queued"],
         ),
       }),
-      want: ["Created:active", "Container:waiting", "Closed off:waiting", "Ida registered:waiting"],
+      want: ["Created:active", "Ida registered:waiting", "Container:waiting", "Closed off:waiting"],
     },
     {
       case: "refused before the platform took it",
       made: added({ failed: NO_ROOM }),
       want: [
         "Created:failed (No room in this account.)",
+        "Ida registered:waiting",
         "Container:waiting",
         "Closed off:waiting",
-        "Ida registered:waiting",
       ],
     },
     {
@@ -830,7 +802,7 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
           ["register", "queued"],
         ),
       }),
-      want: ["Created:done", "Container:active", "Closed off:waiting", "Ida registered:waiting"],
+      want: ["Created:done", "Ida registered:waiting", "Container:active", "Closed off:waiting"],
     },
     {
       case: "a container that stopped",
@@ -846,9 +818,9 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
       }),
       want: [
         "Created:done",
+        "Ida registered:waiting",
         "Container:failed (import-container said no.)",
         "Closed off:waiting",
-        "Ida registered:waiting",
       ],
     },
     {
@@ -861,10 +833,10 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
           ["import-container", "done"],
           ["close-off", "done"],
           ["register", "done"],
-          ["share-reach", "running"],
+          ["await-ready", "running"],
         ),
       }),
-      want: ["Created:done", "Container:done", "Closed off:done", "Ida registered:done"],
+      want: ["Created:done", "Ida registered:done", "Container:done", "Closed off:done"],
     },
     {
       case: "a registration refused: Ida runs on, not registered, and why",
@@ -876,14 +848,14 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
           ["import-container", "done"],
           ["close-off", "done"],
           ["register", "failed"],
-          ["share-reach", "done"],
+          ["await-ready", "done"],
         ),
       }),
       want: [
         "Created:done",
+        "Not registered:unfinished (Register said no.)",
         "Container:done",
         "Closed off:done",
-        "Not registered:unfinished (Register said no.)",
       ],
     },
   ])("$case", ({ made, want }) => {
@@ -892,16 +864,16 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
 });
 
 describe("an added Mate held from the press", () => {
-  it("is placed in its project by its own id, its environment named as Add named it", () => {
+  // D3: its project is named as the Mate is, the one name its row draws.
+  it("is placed in its project by its own id, its project named as Add named it", () => {
     expect(placedNewProjects([added()], ASK.organizationId)).toEqual([
       expect.objectContaining({
         projectId: "add-1",
         awaitingProject: true,
         placement: expect.objectContaining({
-          groupId: ASK.groupId,
+          groupId: "app-acme",
           groupName: "Acme CRM",
-          displayName: "Acme CRM - Ida",
-          botName: "Ida",
+          displayName: "Ida",
         }),
       }),
     ]);
@@ -911,32 +883,13 @@ describe("an added Mate held from the press", () => {
     expect(newProjectSteps(added())).toEqual([]);
   });
 
-  it("creates its Mate without Git hosting or a registration of its own", async () => {
-    const calls: Array<string> = [];
-    const patches: Array<NewProjectPatch> = [];
-    await runNewProjectBirth(
-      added({ giteaProjectId: null }),
-      {
-        ensureGitea: async () => {
-          calls.push("gitea");
-          return { projectId: "gitea-new" };
-        },
-        registerGroup: async () => {
-          calls.push("registry");
-          throw new Error("not asked");
-        },
-        createProject: async () => {
-          calls.push("create");
-          return { project: { id: "p-ida" } };
-        },
-        accepted: (projectId) => {
-          calls.push(`accepted:${projectId}`);
-        },
-      },
-      (patch) => patches.push(patch),
-    );
-    expect(calls).toEqual(["create", "accepted:p-ida"]);
-    expect(patches).toEqual([{ step: "created", projectId: "p-ida" }]);
+  it("delegates an Add to its existing HQ press, without registering another application or intent", async () => {
+    const { ports: fake } = ports({ accepted: vi.fn() });
+    await runNewProjectBirth(added(), fake, () => undefined);
+    expect(fake.registerGroup).not.toHaveBeenCalled();
+    expect(fake.recordBirth).not.toHaveBeenCalled();
+    expect(fake.createProject).toHaveBeenCalledWith({ name: "Ida" });
+    expect(fake.accepted).toHaveBeenCalledWith("p-vera", null, PRESSED_AT);
   });
 });
 
@@ -949,20 +902,30 @@ describe("creationManaged — the managed services an added Mate's copy waits on
     { case: "a New project's first Mate: none of its own", made: birth(), want: undefined },
     {
       case: "pressed: as its recipe names them",
-      made: added({ adds: { displayName: "Acme CRM - Ida", registers: true, managed: ["db"] } }),
+      made: added({
+        adds: {
+          appId: "app-acme",
+          registers: true,
+          managed: ["db"],
+        },
+      }),
       want: ["db"],
     },
     {
       case: "planned: as its plan names them",
       made: added({
-        adds: { displayName: "Acme CRM - Ida", registers: true, managed: ["db"] },
+        adds: {
+          appId: "app-acme",
+          registers: true,
+          managed: ["db"],
+        },
         progress: [{ step: { kind: "import-managed", yaml: PLANNED }, state: "queued" }],
       }),
       want: ["db", "cache"],
     },
     {
       case: "a recipe that brings none",
-      made: added({ adds: { displayName: "Acme CRM - Ida", registers: true } }),
+      made: added({ adds: { appId: "app-acme", registers: true } }),
       want: undefined,
     },
   ])("$case", ({ made, want }) => {
@@ -986,13 +949,15 @@ describe("creationRuntimes — the runtimes an added Mate's workspace brings, fr
     { case: "a New project's first Mate brings none", made: birth(), want: undefined },
     {
       case: "pressed: as its recipe names them",
-      made: added({ adds: { displayName: "Acme CRM - Ida", registers: true, runtimes: APP } }),
+      made: added({
+        adds: { appId: "app-acme", registers: true, runtimes: APP },
+      }),
       want: APP,
     },
     {
       case: "planned: as its plan names them",
       made: added({
-        adds: { displayName: "Acme CRM - Ida", registers: true },
+        adds: { appId: "app-acme", registers: true },
         progress: [
           {
             step: {
@@ -1023,7 +988,7 @@ describe("comingPlanned — what a Mate's view names before its project lists it
     step: "created",
     projectId: "p-ida",
     adds: {
-      displayName: "Acme CRM - Ida",
+      appId: "app-acme",
       registers: true,
       managed: ["db"],
       runtimes: [{ hostname: "appdev", role: "dev" }],
@@ -1054,7 +1019,7 @@ describe("comingPlanned — what a Mate's view names before its project lists it
   it("keeps an added Mate's rows and their lines from the press through the hand-over and the press's end", () => {
     const pressedAdd = added({
       adds: {
-        displayName: "Acme CRM - Ida",
+        appId: "app-acme",
         registers: true,
         managed: ["db"],
         runtimes: [{ hostname: "appdev", role: "dev" }],
@@ -1099,7 +1064,7 @@ describe("comingPlanned — what a Mate's view names before its project lists it
 // Run 6's review: an Add's port flattened its stop to a string, so one Zerops may have made
 // offered Try again, which made a second; and a run that threw left Created spinning for good.
 describe("addCreateProject — an Add's press as its creation's port", () => {
-  const STEP = { kind: "create-project", name: "Acme CRM - Ida", tagList: [] } as never;
+  const STEP = { kind: "create-project", name: "Ida", tagList: [] } as never;
   type Script = (onAccepted: (projectId: string) => void) => Promise<never> | Promise<unknown>;
   const portOf = (script: Script) => {
     const settled = vi.fn();
@@ -1204,12 +1169,16 @@ describe("addCreateProject — an Add's press as its creation's port", () => {
       },
     }));
     beginNewProjectBirth({
-      id: "add-1",
-      ask: { ...ASK, botName: "Ida", adds: { displayName: "Acme CRM - Ida", registers: true } },
-      gitea: { projectId: "gitea-1" },
+      ask: {
+        ...ASK,
+        birthId: "add-1",
+        botName: "Ida",
+        adds: { appId: "app-acme", registers: true },
+      },
+      hq: HQ,
       now: 0,
       ports: {
-        ensureGitea: () => Promise.reject(new Error("not asked")),
+        recordBirth: () => Promise.reject(new Error("not asked")),
         registerGroup: () => Promise.reject(new Error("not asked")),
         createProject: () => addCreateProject({ run, settled: () => undefined }),
         accepted: () => undefined,
@@ -1235,8 +1204,8 @@ describe("creationEnds — a creation that stopped can end", () => {
       made: refused,
       want: {
         startOver: {
-          groupId: "g-acme",
-          again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose", shape: "seal" },
+          groupId: "app-acme",
+          again: { botName: "Ida", tint: "rose", shape: "seal" },
         },
       },
     },
@@ -1279,7 +1248,7 @@ describe("creationEnds — a creation that stopped can end", () => {
 
     it("Dismiss takes it out of the menu, another Add beside it staying, and asks for nothing", () => {
       useNewProjectBirths.setState({
-        births: { "add-1": refused, "add-2": added({ id: "add-2", botName: "Otto" }) },
+        births: { "add-1": refused, "add-2": added({ birthId: "add-2", botName: "Otto" }) },
       });
       dismissNewProjectBirth("add-1");
       expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
@@ -1294,8 +1263,8 @@ describe("creationEnds — a creation that stopped can end", () => {
       startAddOver("add-1");
       expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
       expect(useNewMate.getState().asked).toMatchObject({
-        groupId: "g-acme",
-        again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose", shape: "seal" },
+        groupId: "app-acme",
+        again: { botName: "Ida", tint: "rose", shape: "seal" },
       });
     });
 
@@ -1329,7 +1298,7 @@ describe("a registration not finished — Finish setup at once, and its step fol
       ["import-container", "done"],
       ["close-off", "done"],
       ["register", "failed"],
-      ["share-reach", "done"],
+      ["await-ready", "done"],
     ),
   });
   const through = added({
@@ -1389,12 +1358,105 @@ describe("a registration not finished — Finish setup at once, and its step fol
     ])("draw its registration: $case", ({ finish, want }) => {
       refinishNewProjectBirth("p-ida", finish);
       const made = useNewProjectBirths.getState().births["add-1"]!;
-      expect(drawnSubsteps(made).at(-1)).toBe(want);
+      expect(
+        drawnSubsteps(made).find(
+          (step) => step.startsWith("Ida registered:") || step.startsWith("Not registered:"),
+        ),
+      ).toBe(want);
     });
 
     it("once through, offers it no more", () => {
       refinishNewProjectBirth("p-ida", pressed(["register", "done"]));
       expect(registrationUnfinished(useNewProjectBirths.getState().births, "p-ida")).toBe(false);
     });
+  });
+});
+
+describe("an Add's HQ intent in its creation progress", () => {
+  it("keeps the intent ID for listing reconciliation, without matching names", () => {
+    openAccountLifetime("u-ada");
+    useNewProjectBirths.setState({ births: { "add-1": added() } });
+    progressNewProjectBirth("add-1", [
+      {
+        step: {
+          kind: "create-project",
+          name: "Ida",
+          tagList: ["mate"],
+          birth: "hq-birth",
+          location: undefined,
+        },
+        state: "running",
+      },
+    ]);
+    expect(
+      placedNewProjects(Object.values(useNewProjectBirths.getState().births), ASK.organizationId)[0]
+        ?.intent,
+    ).toBe("hq-birth");
+    closeAccountLifetime();
+  });
+});
+
+// Reload is an account close/open with the same tab's non-secret personal context retained.
+describe("creation context across reload", () => {
+  beforeEach(() => {
+    const entries = new Map<string, string>();
+    vi.stubGlobal("window", {
+      sessionStorage: {
+        getItem: (key: string) => entries.get(key) ?? null,
+        setItem: (key: string, value: string) => entries.set(key, value),
+      },
+    });
+    openAccountLifetime("u-reload");
+  });
+  afterEach(() => {
+    closeAccountLifetime();
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps a refused creation's route, progress and reason and retries manually from that step", async () => {
+    const fake = ports({ createProject: () => Promise.reject(new Error("No room.")) }).ports;
+    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: PRESSED_AT });
+    await vi.waitFor(() =>
+      expect(useNewProjectBirths.getState().births[ASK.birthId]?.failed?.reason).toBe("No room."),
+    );
+    const before = useNewProjectBirths.getState().births[ASK.birthId]!;
+    closeAccountLifetime();
+    openAccountLifetime("u-reload");
+    const restored = useNewProjectBirths.getState().births[ASK.birthId]!;
+    expect(restored).toMatchObject({
+      appId: before.appId,
+      intent: before.intent,
+      startedAt: PRESSED_AT,
+      failed: before.failed,
+    });
+    expect(creationSubsteps(restored)).toEqual(creationSubsteps(before));
+    const again = ports().ports;
+    retryNewProjectBirth(ASK.birthId, again);
+    await vi.waitFor(() =>
+      expect(useNewProjectBirths.getState().births[ASK.birthId]?.projectId).toBe("p-vera"),
+    );
+    expect(again.registerGroup).not.toHaveBeenCalled();
+    expect(again.recordBirth).not.toHaveBeenCalled();
+  });
+
+  it("ends an interrupted write visibly as uncertain and never replays it on reload or retry", async () => {
+    const fake = ports({
+      createProject: vi.fn(
+        () => new Promise<{ readonly project: { readonly id: string } }>(() => undefined),
+      ),
+    }).ports;
+    beginNewProjectBirth({ ask: ASK, hq: HQ, ports: fake, now: PRESSED_AT });
+    await vi.waitFor(() => expect(fake.createProject).toHaveBeenCalledOnce());
+    closeAccountLifetime();
+    openAccountLifetime("u-reload");
+    const restored = useNewProjectBirths.getState().births[ASK.birthId]!;
+    expect(restored?.failed).toMatchObject({ uncertain: true });
+    expect(newProjectComing(restored)).toMatchObject({ verb: "go-to-projects" });
+    const again = ports().ports;
+    retryNewProjectBirth(ASK.birthId, again);
+    expect(again.createProject).not.toHaveBeenCalled();
+    closeAccountLifetime();
+    openAccountLifetime("u-other");
+    expect(useNewProjectBirths.getState().births).toEqual({});
   });
 });

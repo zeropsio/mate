@@ -17,12 +17,7 @@
  *
  * Pure: no React, no clock, no store.
  */
-import type {
-  MateMarkState,
-  MateShapeId,
-  MateTintId,
-  ServiceStatusToneId,
-} from "@t3tools/shared/brand";
+import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { MatePoseFacts } from "@t3tools/client-runtime/zerops";
 import { maskSecrets, messageWords } from "@t3tools/shared/messagePreview";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
@@ -86,11 +81,9 @@ export interface JumpChange {
   readonly projectName: string | undefined;
   /** What the menu calls it (`sidebarChangeLabel`). */
   readonly label: string;
-  readonly checkTone: ServiceStatusToneId | undefined;
-  readonly checkWord: string | undefined;
-  /** The Mate whose change it is, where it is one's. */
-  readonly mateProjectId: string | undefined;
-  /** The Mate's name, or the person's. */
+  /** The Mate whose change it is. */
+  readonly mateProjectId: string;
+  /** The Mate's name, where the menu knows it. */
   readonly whose: string | undefined;
 }
 
@@ -98,7 +91,7 @@ export interface JumpStop {
   /** The stop's own Zerops project. */
   readonly projectId: string;
   readonly groupId: string;
-  /** Its project and its name: `Shop production`. */
+  /** Its name, as Zerops has its project: `Shop - production`. */
   readonly title: string;
   /** What it runs. */
   readonly line: string;
@@ -126,13 +119,14 @@ export const EMPTY_JUMP_INDEX: SidebarJumpIndex = {
 /** What the menu's row of a Mate says of its conversation (`agentActivity.ts`). */
 export type JumpActivity = Pick<
   ZeropsAgentActivity,
-  "threadId" | "kind" | "face" | "subject" | "snippet" | "pausedUntil"
+  "threadId" | "kind" | "face" | "subject" | "snippet" | "pausedUntil" | "remembered"
 >;
 
 /**
  * A Mate as the box lists it, from what its row knows: the face its row
- * wears (`mateFaceOf`, its review waiting and its pose included), and what it is on only while its container is
- * connected — the row's own rule, so the two never say two things.
+ * wears (`mateFaceOf`, its review waiting included), and what it is on only while a word of now
+ * says it — HQ's live word, or its connected container's — the row's own rule, so the two never
+ * say two things. Its conversation is offered to write to only through its connected container.
  */
 export function jumpMateOf(input: {
   readonly projectId: string;
@@ -153,14 +147,14 @@ export function jumpMateOf(input: {
   readonly mine: boolean;
   readonly pose?: MatePoseFacts | undefined;
 }): JumpMate {
-  const live = input.connected ? input.activity : undefined;
+  const live = input.activity?.remembered === true ? undefined : input.activity;
   return {
     projectId: input.projectId,
     name: input.name,
     tint: input.tint,
     shape: input.shape,
     face: mateFaceOf({
-      connected: input.runs ?? input.connected,
+      connected: input.connected || input.runs === true,
       activity: live,
       reviewWaits: input.reviewWaits === true,
       mine: input.mine,
@@ -171,7 +165,10 @@ export function jumpMateOf(input: {
     snippet: live?.snippet,
     environmentId: input.environmentId,
     connected: input.connected,
-    conversation: live === undefined ? undefined : { threadId: live.threadId, kind: live.kind },
+    conversation:
+      live === undefined || !input.connected
+        ? undefined
+        : { threadId: live.threadId, kind: live.kind },
     owner: input.owner,
     pausedUntil: live?.pausedUntil,
     mine: input.mine,
@@ -187,16 +184,11 @@ export function jumpMateOf(input: {
  */
 export function withLiveMates(
   index: SidebarJumpIndex,
-  activityOf: (environmentId: string) => JumpActivity | undefined,
+  activityOf: (mate: JumpMate) => JumpActivity | undefined,
 ): SidebarJumpIndex {
   return {
     ...index,
-    mates: index.mates.map((mate) =>
-      jumpMateOf({
-        ...mate,
-        activity: mate.environmentId === undefined ? undefined : activityOf(mate.environmentId),
-      }),
-    ),
+    mates: index.mates.map((mate) => jumpMateOf({ ...mate, activity: activityOf(mate) })),
   };
 }
 

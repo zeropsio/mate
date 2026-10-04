@@ -13,6 +13,25 @@ import { deployedVersion, environmentRow, type EnvironmentRow } from "./groupRow
 import type { Shown } from "./knowledge/known.ts";
 import { nameStopByRelease } from "./release.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
+import { jobInFlight, type HqJob } from "./hq/environments.ts";
+
+/** HQ's job of a deploy in `state`. */
+const deployRecord = (state: HqJob["state"]): HqJob => ({
+  id: "1",
+  kind: "deploy",
+  service: "app",
+  sha: "0000000000000000000000000000000000000000",
+  state,
+  cause: "merge",
+  ref: null,
+  reason: null,
+  appVersionId: null,
+  processId: null,
+  requestedBy: null,
+  at: "2026-10-02T10:00:00.000Z",
+  endedAt: jobInFlight({ state }) ? null : "2026-10-02T10:04:00.000Z",
+  supersededBy: null,
+});
 
 const MAIN_SHA = "055a7e8f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f";
 const STAGE_SHA = "e014b0e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d1";
@@ -24,11 +43,9 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     title: "Greet with a fuller line",
     kind: "code",
     mateProjectId: "p-wren",
-    author: "mate-p-wren",
     url: undefined,
-    checks: "none",
-    checkWord: undefined,
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: "abc",
@@ -50,28 +67,26 @@ const NOTHING_RUNS = known({ kind: "none" });
 const runs = (sha: string): Shown<Deployment> =>
   known({ kind: "running", activatedAt: null, version: deployedVersion(sha) });
 
-/** A declared stop's row as the deploy half reads it: the version name and the broker's status. */
+/** A declared stop's row as the deploy half reads it: the version name and its deploy's status. */
 function declared(input: {
   readonly projectId: string;
   readonly name: string;
   readonly tier: "stage" | "production";
   readonly appVersionName?: string;
-  readonly status?: "success" | "failure" | "pending";
+  readonly status?: HqJob["state"];
 }): EnvironmentRow {
-  const environment = input.tier;
   return environmentRow({
     projectId: input.projectId,
     name: input.name,
     tier: input.tier,
     sources: input.tier === "production" ? "release" : ["main"],
-    environment,
     services: [
       {
         hostname: "app",
         ...(input.appVersionName === undefined ? {} : { appVersionName: input.appVersionName }),
         ...(input.status === undefined
           ? {}
-          : { statuses: [{ context: `mate/deploy/${environment}/app`, state: input.status }] }),
+          : { deploy: { latest: deployRecord(input.status), live: null } }),
       },
     ],
   });
@@ -87,7 +102,7 @@ function group(over: Partial<GroupFlowInput>): GroupFlowInput {
     merged: [],
     stops: [],
     missing: [],
-    release: { gate: CLOSED, suggestion: "v0.1.0", waiting: 0 },
+    release: { gate: CLOSED, suggestion: "v0.1.0", waiting: 0, waitingAtLeast: false, untold: [] },
     mainHasCode: undefined,
     mainHead: undefined,
     productionAddable: true,
@@ -127,12 +142,18 @@ const FSADFDASFSA = group({
       route: undefined,
     },
   ],
-  release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
+  release: {
+    gate: { allowed: true },
+    suggestion: "v0.1.0",
+    waiting: 1,
+    waitingAtLeast: false,
+    untold: [],
+  },
   mainHasCode: true,
   mainHead: MAIN_SHA,
 });
 
-/** `sm-fixture`: #1 mergeable with no checks, a stage on e014b0e, no production, code on main. */
+/** `sm-fixture`: #1 mergeable, a stage on e014b0e, no production, code on main. */
 const SM_FIXTURE = group({
   groupId: "sm-fixture",
   mates: [{ projectId: "p-wren", name: "Wren", preview: undefined, waiting: false, talked: false }],
@@ -147,7 +168,7 @@ const SM_FIXTURE = group({
         name: "stage",
         tier: "stage",
         appVersionName: STAGE_SHA,
-        status: "success",
+        status: "live",
       }),
       deployment: runs(STAGE_SHA),
       route: "https://app-31f4-3000.prg1.zerops.app",
@@ -200,6 +221,15 @@ const ZEROPS_MATE = group({
 });
 
 describe("groupFlow", () => {
+  it("says how many at least are not live where HQ stopped counting", () => {
+    const flow = groupFlow({
+      ...FSADFDASFSA,
+      release: { ...FSADFDASFSA.release, waiting: 10000, waitingAtLeast: true },
+    });
+    expect(flow.main.notLiveAtLeast).toBe(true);
+    expect(flow.nextStep.text).toBe("10000+ changes not live");
+  });
+
   it("offers the release where production runs nothing and one change is merged (fsadfdasfsa)", () => {
     const flow = groupFlow(FSADFDASFSA);
     expect(flow.production).toMatchObject({
@@ -208,7 +238,12 @@ describe("groupFlow", () => {
       line: "Nothing deployed yet",
       stop: { projectId: "p-prod", state: "empty", version: undefined },
     });
-    expect(flow.main).toEqual({ head: "055a7e8", hasCode: true, notLive: 1 });
+    expect(flow.main).toEqual({
+      head: "055a7e8",
+      hasCode: true,
+      notLive: 1,
+      notLiveAtLeast: false,
+    });
     expect(flow.nextStep).toEqual({
       kind: "release",
       text: "1 change not live",
@@ -217,16 +252,27 @@ describe("groupFlow", () => {
     });
   });
 
+  it.each(["mergeable", "conflicting"] as const)(
+    "keeps a recipe change in the shared flow and its %s next step",
+    (mergeability) => {
+      const recipe = pull({ repository: "group", kind: "recipe", number: 3, mergeability });
+      const flow = groupFlow({ ...SM_FIXTURE, pullRequests: [recipe] });
+      expect(flow.pullRequests.map(({ pull: change }) => change)).toEqual([recipe]);
+      expect(flow.nextStep.kind).toBe(mergeability === "mergeable" ? "merge" : "unblock");
+      expect(flow.nextStep.target).toEqual({ kind: "change", repository: "group", number: 3 });
+    },
+  );
+
   it("asks for the merge first, and adds production once it has landed (sm-fixture)", () => {
     const flow = groupFlow(SM_FIXTURE);
     expect(flow.nextStep).toEqual({
       kind: "merge",
-      text: "Pull request #1 waits for your merge",
+      text: "Change #1 waits for your merge",
       verb: "Review",
       target: { kind: "change", repository: "app", number: 1 },
     });
     expect(flow.pullRequests).toEqual([
-      { pull: pull(), blocked: null, state: { word: "Unchecked", tone: "off" } },
+      { pull: pull(), blocked: null, state: { word: "Ready to merge", tone: "off" } },
     ]);
     expect(flow.stages).toEqual([
       {
@@ -260,7 +306,12 @@ describe("groupFlow", () => {
       line: "After the first merge",
       addable: false,
     });
-    expect(flow.main).toEqual({ head: undefined, hasCode: false, notLive: 0 });
+    expect(flow.main).toEqual({
+      head: undefined,
+      hasCode: false,
+      notLive: 0,
+      notLiveAtLeast: false,
+    });
     expect(flow.mates[0]?.preview).toBe("https://appstage-1a2b-3000.prg1.zerops.app");
     expect(flow.nextStep).toEqual({
       kind: "none",
@@ -312,7 +363,7 @@ describe("groupFlow", () => {
         name: "stage",
         tier: "stage",
         appVersionName: STAGE_SHA,
-        status: "failure",
+        status: "failed",
       }),
     })),
   };
@@ -330,7 +381,7 @@ describe("groupFlow", () => {
           name: "stage",
           tier: "stage",
           appVersionName: STAGE_SHA,
-          status: "failure",
+          status: "failed",
         }),
         deployment: runs(STAGE_SHA),
         route: undefined,
@@ -401,11 +452,11 @@ describe("groupFlow", () => {
       case: "a change that cannot land is the Mate's to fix",
       input: {
         ...SM_FIXTURE,
-        pullRequests: [pull({ mergeability: "conflicting", checks: "failing" })],
+        pullRequests: [pull({ mergeability: "conflicting" })],
       },
       step: {
         kind: "unblock",
-        text: "#1 checks failed",
+        text: "#1 conflicts with main",
         verb: "Ask Wren",
         target: { kind: "change", repository: "app", number: 1 },
       },
@@ -414,11 +465,11 @@ describe("groupFlow", () => {
       case: "a merge the person can make outranks one that cannot land",
       input: {
         ...SM_FIXTURE,
-        pullRequests: [pull({ number: 2, mergeability: "conflicting", checks: "failing" }), pull()],
+        pullRequests: [pull({ number: 2, mergeability: "conflicting" }), pull()],
       },
       step: {
         kind: "merge",
-        text: "Pull request #1 waits for your merge",
+        text: "Change #1 waits for your merge",
         verb: "Review",
         target: { kind: "change", repository: "app", number: 1 },
       },
@@ -428,22 +479,22 @@ describe("groupFlow", () => {
       input: { ...FSADFDASFSA, pullRequests: [pull({ number: 5, mateProjectId: "p-juno" })] },
       step: {
         kind: "merge",
-        text: "Pull request #5 waits for your merge",
+        text: "Change #5 waits for your merge",
         verb: "Review",
         target: { kind: "change", repository: "app", number: 5 },
       },
     },
     {
-      case: "a recipe change is not the flow's merge",
+      case: "a recipe change waits for review before a release",
       input: {
         ...FSADFDASFSA,
         pullRequests: [pull({ repository: "group", kind: "recipe", number: 6 })],
       },
       step: {
-        kind: "release",
-        text: "1 change not live",
-        verb: "Review release",
-        target: { kind: "release", tag: "v0.1.0" },
+        kind: "merge",
+        text: "Change #6 waits for your merge",
+        verb: "Review",
+        target: { kind: "change", repository: "group", number: 6 },
       },
     },
   ])("takes the worst step first: $case", ({ input, step }) => {
@@ -452,7 +503,13 @@ describe("groupFlow", () => {
 
   const productionOf = (
     over: Partial<GroupFlowStopInput>,
-    release: GroupFlowInput["release"] = { gate: CLOSED, suggestion: "v0.1.1", waiting: 0 },
+    release: GroupFlowInput["release"] = {
+      gate: CLOSED,
+      suggestion: "v0.1.1",
+      waiting: 0,
+      waitingAtLeast: false,
+      untold: [],
+    },
   ) => {
     const [stop] = FSADFDASFSA.stops;
     return groupFlow({
@@ -472,7 +529,7 @@ describe("groupFlow", () => {
           name: "production",
           tier: "production",
           appVersionName: released,
-          status: "success",
+          status: "live",
         }),
         deployment: runs(MAIN_SHA),
       }),
@@ -487,7 +544,7 @@ describe("groupFlow", () => {
             name: "production",
             tier: "production",
             appVersionName: released,
-            status: "success",
+            status: "live",
           }),
           "v0.1.4",
         ),
@@ -507,7 +564,7 @@ describe("groupFlow", () => {
           name: "production",
           tier: "production",
           appVersionName: released,
-          status: "success",
+          status: "live",
         }),
         deployment: known({
           kind: "running",
@@ -522,7 +579,7 @@ describe("groupFlow", () => {
       },
     },
     {
-      case: "deploy-failed: the broker's status on the release failed, whatever is waiting",
+      case: "deploy-failed: the release's deploy failed on production, whatever is waiting",
       production: productionOf(
         {
           row: declared({
@@ -530,11 +587,17 @@ describe("groupFlow", () => {
             name: "production",
             tier: "production",
             appVersionName: released,
-            status: "failure",
+            status: "failed",
           }),
           deployment: runs(MAIN_SHA),
         },
-        { gate: { allowed: true }, suggestion: "v0.1.1", waiting: 2 },
+        {
+          gate: { allowed: true },
+          suggestion: "v0.1.1",
+          waiting: 2,
+          waitingAtLeast: false,
+          untold: [],
+        },
       ),
       // The failure does not swallow the release that might clear it (D28):
       // a broken production still carries the candidate a new tag would cut.
@@ -550,6 +613,41 @@ describe("groupFlow", () => {
       production: productionOf({}),
       expected: { kind: "empty", line: "Nothing deployed yet", stop: { state: "empty" } },
     },
+    ...(
+      [
+        { deployment: { state: "unread", waitingFor: null }, line: "Checking what runs here…" },
+        {
+          deployment: {
+            state: "failed",
+            failure: { kind: "transport", detail: "closed" },
+            atMs: 0,
+            attempt: 1,
+            retryAtMs: null,
+          },
+          line: "Couldn't read what runs here. Zerops didn't answer.",
+        },
+      ] as const
+    ).map(({ deployment, line }) => ({
+      case: `the flow's version stands while unread, but the runtime failure stays visible: ${deployment.state}`,
+      production: productionOf({
+        row: declared({
+          projectId: "p-prod",
+          name: "production",
+          tier: "production",
+          appVersionName: released,
+          status: "live",
+        }),
+        deployment,
+      }),
+      expected:
+        deployment.state === "unread"
+          ? { kind: "live", line: "v0.1.0", stop: { state: "deployed" } }
+          : {
+              kind: "checking",
+              line,
+              stop: { state: "checking", version: undefined, readFailed: true },
+            },
+    })),
     {
       case: "checking: the platform has not answered and the row names nothing",
       production: productionOf({
@@ -566,7 +664,7 @@ describe("groupFlow", () => {
           name: "production",
           tier: "production",
           appVersionName: released,
-          status: "pending",
+          status: "building",
         }),
         deployment: runs(MAIN_SHA),
       }),
@@ -580,7 +678,7 @@ describe("groupFlow", () => {
           name: "production",
           tier: "production",
           appVersionName: released,
-          status: "success",
+          status: "live",
         }),
         deployment: known({
           kind: "deploying",
@@ -591,12 +689,31 @@ describe("groupFlow", () => {
       expected: { kind: "deploying", line: "Deploying…", stop: { state: "deploying" } },
     },
     {
-      case: "the row's name stands for a deploy while the platform's answer is on its way",
+      case: "the flow's name stands for a deploy while the platform answer is on its way",
       production: productionOf({ deployment: undefined }),
       expected: { kind: "live", line: "055a7e8", stop: { state: "deployed" } },
     },
   ])("reads production as $case", ({ production, expected }) => {
     expect(production).toMatchObject(expected);
+  });
+
+  // A production service whose commit cannot be told counts nothing, and is no proof that nothing
+  // waits: the release stays offered.
+  it("offers the release where what production runs cannot be told, though nothing is counted", () => {
+    const flow = groupFlow({
+      ...FSADFDASFSA,
+      release: {
+        gate: { allowed: true },
+        suggestion: "v0.1.0",
+        waiting: 0,
+        waitingAtLeast: false,
+        untold: ["app"],
+      },
+    });
+    expect(flow.production).toMatchObject({
+      kind: "ready-to-release",
+      candidate: { tag: "v0.1.0", waiting: 0 },
+    });
   });
 
   it("says a release is on its way and offers no Release while one is in flight", () => {
@@ -606,6 +723,8 @@ describe("groupFlow", () => {
         gate: { allowed: false, reason: "Releasing v0.1.0…" },
         suggestion: "v0.1.1",
         waiting: 1,
+        waitingAtLeast: false,
+        untold: [],
         inFlight: "v0.1.0",
       },
     });
@@ -624,7 +743,7 @@ describe("groupFlow", () => {
             name: "production",
             tier: "production",
             appVersionName: MAIN_SHA,
-            status: "failure",
+            status: "failed",
           }),
           deployment: runs(MAIN_SHA),
         },
@@ -655,7 +774,7 @@ describe("groupFlow", () => {
             name: "production",
             tier: "production",
             appVersionName: MAIN_SHA,
-            status: "failure",
+            status: "failed",
           }),
           deployment: runs(MAIN_SHA),
         },
@@ -805,7 +924,13 @@ describe("groupFlow — creations under way", () => {
     const flow = groupFlow({
       ...LANDED,
       merged: [pull({ merged: true })],
-      release: { gate: { allowed: true }, suggestion: "v0.1.0", waiting: 1 },
+      release: {
+        gate: { allowed: true },
+        suggestion: "v0.1.0",
+        waiting: 1,
+        waitingAtLeast: false,
+        untold: [],
+      },
       pending: [creating({ kind: "production" })],
     });
     expect(flow.production.kind).toBe("creating");
@@ -834,82 +959,113 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
     projectId: "p-pantry-stage",
     name: "Pantry - stage",
     tier: "stage",
+    createdAt: at(MINUTE),
+    projectStatus: "ACTIVE",
     row: declared({ projectId: "p-pantry-stage", name: "Pantry - stage", tier: "stage" }),
     deployment: NOTHING_RUNS,
     route: undefined,
-    createdAt: at(2 * MINUTE),
     ...over,
   });
-  const stuck = { kind: "unable", why: "not-started" } as const;
-  const able = { kind: "able" } as const;
+  /** The stage's row with HQ's newest job of each of its services, asked for `msAgo`. */
+  const withDeploys = (
+    ...deploys: ReadonlyArray<
+      Partial<HqJob> & { readonly state: HqJob["state"]; readonly msAgo: number }
+    >
+  ): EnvironmentRow =>
+    environmentRow({
+      projectId: "p-pantry-stage",
+      name: "Pantry - stage",
+      tier: "stage",
+      sources: ["main"],
+      services: deploys.map(({ state, msAgo, ...over }, index) => {
+        const latest: HqJob = { ...deployRecord(state), at: at(msAgo), ...over };
+        return { hostname: `app${String(index)}`, deploy: { latest, live: null } };
+      }),
+    });
+  it.each([
+    { keyHeld: false, keyInvalid: false, keyGap: true },
+    { keyHeld: true, keyInvalid: true, keyGap: true },
+    { keyHeld: true, keyInvalid: false, keyGap: false },
+  ])("reads HQ's key, held $keyHeld and invalid $keyInvalid, as a gap: $keyGap", (key) => {
+    const row = environmentRow({
+      projectId: "p-pantry-stage",
+      name: "Pantry - stage",
+      tier: "stage",
+      sources: ["main"],
+      services: [],
+      keyHeld: key.keyHeld,
+      keyInvalid: key.keyInvalid,
+    });
+    expect(row.keyGap).toBe(key.keyGap);
+  });
+
   it.each([
     {
-      case: "asked for, the runner not started: it awaits the runner",
-      over: {},
-      runner: stuck,
-      mainHasCode: true,
-      first: { kind: "runner", why: "not-started" },
-    },
-    {
-      case: "asked for, the runner able: on its way",
-      over: {},
-      runner: able,
-      mainHasCode: true,
+      case: "HQ queued its first deploy: on its way",
+      row: withDeploys({ state: "queued", msAgo: MINUTE }),
       first: { kind: "on-its-way" },
     },
     {
-      case: "asked for, the runner unread: nothing promised",
+      case: "HQ building one service, another queued: on its way",
+      row: withDeploys({ state: "building", msAgo: MINUTE }, { state: "queued", msAgo: MINUTE }),
+      first: { kind: "on-its-way" },
+    },
+    {
+      case: "HQ says its build failed: the first deploy failed, however long ago",
+      row: withDeploys({ state: "failed", msAgo: 60 * MINUTE }),
+      first: { kind: "failed" },
+    },
+    {
+      case: "HQ refused it, nothing tried twice: the first deploy failed",
+      row: withDeploys({ state: "refused", msAgo: MINUTE }),
+      first: { kind: "failed" },
+    },
+    {
+      case: "HQ holds no deploy key for it: held for the key",
+      row: { ...withDeploys({ state: "queued", msAgo: MINUTE }), keyGap: true },
+      first: { kind: "held" },
+    },
+    {
+      case: "a job HQ still follows, however long ago it was asked: on its way",
+      row: withDeploys({ state: "building", msAgo: 60 * MINUTE }),
+      first: { kind: "on-its-way" },
+    },
+    {
+      case: "a job superseded, none after it: nothing promised",
+      row: withDeploys({ state: "superseded", msAgo: MINUTE }),
+      first: undefined,
+    },
+  ])("$case", ({ row, first }) => {
+    const flow = groupFlow(group({ stops: [stageStop({ row })], nowMs: NOW }));
+    expect(flow.stages[0]?.firstDeploy).toEqual(first);
+  });
+
+  const queued = withDeploys({ state: "queued", msAgo: MINUTE });
+  it.each([
+    {
+      case: "HQ records no deploy of it: nothing promised",
       over: {},
-      runner: undefined,
-      mainHasCode: true,
-      first: undefined,
-    },
-    {
-      case: "made a window ago, its first deploy never came: nothing promised",
-      over: { createdAt: at(20 * MINUTE) },
-      runner: able,
-      mainHasCode: true,
-      first: undefined,
-    },
-    {
-      case: "when it was made unknown: nothing promised",
-      over: { createdAt: undefined },
-      runner: able,
-      mainHasCode: true,
-      first: undefined,
-    },
-    {
-      case: "main has no code: nothing asked for",
-      over: {},
-      runner: stuck,
-      mainHasCode: false,
       first: undefined,
     },
     {
       case: "not declared: nothing asked for",
       over: { row: undefined },
-      runner: stuck,
-      mainHasCode: true,
       first: undefined,
     },
     {
       case: "what runs there unread: nothing said of its first deploy",
-      over: { deployment: undefined },
-      runner: stuck,
-      mainHasCode: true,
+      over: { row: queued, deployment: undefined },
       first: undefined,
     },
     {
       case: "its project still being made (run 5): the import first, never the runner",
       over: { projectStatus: "CREATING", services: [] },
-      runner: stuck,
       mainHasCode: true,
       first: { kind: "setting-up", step: "project" },
     },
     {
       case: "its app still being added: the import first, never the runner",
       over: { services: [{ hostname: "app", status: "CREATING", runtime: true }] },
-      runner: stuck,
       mainHasCode: true,
       first: { kind: "setting-up", step: "app" },
     },
@@ -919,54 +1075,23 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
         services: [{ hostname: "app", status: "NEW", runtime: true }],
         deployment: undefined,
       },
-      runner: stuck,
       mainHasCode: true,
       first: { kind: "setting-up", step: "app" },
     },
     {
       case: "its import done: the runner",
       over: { services: [{ hostname: "app", status: "ACTIVE", runtime: true }] },
-      runner: stuck,
-      mainHasCode: true,
-      first: { kind: "runner", why: "not-started" },
-    },
-    {
-      case: "running a deploy: none to wait for",
-      over: { deployment: runs(STAGE_SHA) },
-      runner: stuck,
       mainHasCode: true,
       first: undefined,
     },
-  ])("$case", ({ over, runner, mainHasCode, first }) => {
-    const flow = groupFlow(group({ stops: [stageStop(over)], mainHasCode, runner, nowMs: NOW }));
+    {
+      case: "running a deploy: none to wait for",
+      over: { row: queued, deployment: runs(STAGE_SHA) },
+      first: undefined,
+    },
+  ])("$case", ({ over, first }) => {
+    const flow = groupFlow(group({ stops: [stageStop(over)], nowMs: NOW }));
     expect(flow.stages[0]?.firstDeploy).toEqual(first);
-  });
-
-  it("proves main has code by a merged code change, as the release does", () => {
-    const flow = groupFlow(
-      group({ stops: [stageStop()], merged: [pull({ kind: "code" })], runner: stuck, nowMs: NOW }),
-    );
-    expect(flow.stages[0]?.firstDeploy).toEqual({ kind: "runner", why: "not-started" });
-  });
-
-  it("counts the window from main's last code landing where that is later than the stage", () => {
-    const merged = [pull({ kind: "code", merged: true, mergedAt: at(3 * MINUTE) })];
-    const old = stageStop({ createdAt: at(60 * MINUTE) });
-    expect(
-      groupFlow(group({ stops: [old], merged, runner: able, nowMs: NOW })).stages[0]?.firstDeploy,
-    ).toEqual({ kind: "on-its-way" });
-    // A recipe change landing asks for no deploy of the code.
-    const recipe = [pull({ kind: "recipe", merged: true, mergedAt: at(3 * MINUTE) })];
-    expect(
-      groupFlow(
-        group({
-          stops: [old],
-          merged: [...recipe, ...merged.map((entry) => ({ ...entry, mergedAt: at(40 * MINUTE) }))],
-          runner: able,
-          nowMs: NOW,
-        }),
-      ).stages[0]?.firstDeploy,
-    ).toBeUndefined();
   });
 
   it("says a first deploy failed where a build of it was seen to end with nothing running", () => {
@@ -975,90 +1100,26 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       ...(NOTHING_RUNS.state === "known" ? { value: { kind: "none", afterBuild: true } } : {}),
     } as Shown<Deployment>;
     const flow = groupFlow(
-      group({
-        stops: [stageStop({ deployment: failedBuild })],
-        mainHasCode: true,
-        runner: able,
-        nowMs: NOW,
-      }),
+      group({ stops: [stageStop({ row: queued, deployment: failedBuild })], nowMs: NOW }),
     );
     expect(flow.stages[0]?.firstDeploy).toEqual({ kind: "failed" });
   });
 
-  it("promises nothing without a clock", () => {
-    const flow = groupFlow(group({ stops: [stageStop()], mainHasCode: true, runner: able }));
-    expect(flow.stages[0]?.firstDeploy).toBeUndefined();
-  });
-
-  describe("a failure on main's head (run 5: the workflow failed before any build)", () => {
-    const failing = (reason?: string, over: Partial<GroupFlowStopInput> = {}) =>
-      stageStop({
-        row: {
-          ...declared({ projectId: "p-pantry-stage", name: "Pantry - stage", tier: "stage" }),
-          firstDeployFailure: { reason },
-        },
-        ...over,
-      });
-    const first = (stop: GroupFlowStopInput, over: Partial<GroupFlowInput> = {}) =>
-      groupFlow(group({ stops: [stop], mainHasCode: true, runner: able, nowMs: NOW, ...over }))
-        .stages[0]?.firstDeploy;
-
-    it.each([
-      {
-        // H1: the push job failed before Add stage; the broker's dispatch of the same workflow on
-        // the same commit fails too and posts nothing.
-        case: "the push job failed before the stage was made: failed once its import is done",
-        stop: failing(undefined, { createdAt: at(MINUTE) }),
-        over: {},
-        first: { kind: "failed" },
-      },
-      {
-        case: "with the job's own words: failed, and why",
-        stop: failing("the build step exited with 1"),
-        over: {},
-        first: { kind: "failed", reason: "the build step exited with 1" },
-      },
-      {
-        case: "a merge into another repository after it: still failed",
-        stop: failing(),
-        over: {
-          merged: [
-            pull({ kind: "code", merged: true, mergedAt: at(MINUTE / 2), repository: "workerdev" }),
-          ],
-        },
-        first: { kind: "failed" },
-      },
-      {
-        case: "past the window: still failed — a fact, however long ago",
-        stop: failing(undefined, { createdAt: at(40 * MINUTE) }),
-        over: {},
-        first: { kind: "failed" },
-      },
-      {
-        case: "while the stage is still being made: the import first",
-        stop: failing(undefined, {
-          services: [{ hostname: "app", status: "CREATING", runtime: true }],
-        }),
-        over: {},
-        first: { kind: "setting-up", step: "app" },
-      },
-    ])("$case", ({ stop, over, first: expected }) => {
-      expect(first(stop, over)).toEqual(expected);
-    });
-
-    it("starts again with a newer commit on main: its head has no failure, then it builds", () => {
-      const fix = [pull({ kind: "code", merged: true, mergedAt: at(MINUTE / 2) })];
-      expect(first(stageStop(), { merged: fix })).toEqual({ kind: "on-its-way" });
-      expect(first(failing(undefined, { deployment: runs(STAGE_SHA) }), { merged: fix })).toBe(
-        undefined,
-      );
+  it("reports HQ's failed job with its words after the import, and the import first", () => {
+    const row = withDeploys({ state: "failed", reason: "the build exited with 1", msAgo: MINUTE });
+    const first = (over: Partial<GroupFlowStopInput>) =>
+      groupFlow(group({ stops: [stageStop({ row, ...over })], nowMs: NOW })).stages[0]?.firstDeploy;
+    expect(first({})).toEqual({ kind: "failed", reason: "the build exited with 1" });
+    expect(first({ services: [{ hostname: "app", status: "CREATING", runtime: true }] })).toEqual({
+      kind: "setting-up",
+      step: "app",
     });
   });
 
   it("is setting up while its own import runs, and only then", () => {
     const settingUp = (over: Partial<GroupFlowStopInput>) =>
-      groupFlow(group({ stops: [stageStop(over)], mainHasCode: true, runner: stuck, nowMs: NOW }))
-        .stages[0]?.firstDeploy?.kind === "setting-up"
+      groupFlow(group({ stops: [stageStop(over)], mainHasCode: true, nowMs: NOW })).stages[0]
+        ?.firstDeploy?.kind === "setting-up"
         ? true
         : undefined;
     const making = { hostname: "app", status: "NEW", runtime: true };

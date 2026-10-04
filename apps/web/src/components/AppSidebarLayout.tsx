@@ -22,7 +22,11 @@ import { isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
-import { SidebarChromeHeader, SidebarCornerMark } from "./sidebar/SidebarChrome";
+import {
+  SidebarChromeFooter,
+  SidebarChromeHeader,
+  SidebarCornerMark,
+} from "./sidebar/SidebarChrome";
 import { MainAppLocationTracker } from "./sidebar/mainAppLocation";
 import { useProjects } from "../state/entities";
 import {
@@ -36,6 +40,7 @@ import { Sidebar, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } fro
 import { resolveSidebarOpenerPlacement } from "./ui/sidebarState";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { SidebarRevealBridge } from "./zerops/SidebarRevealBridge";
+import { useHqGate } from "../zerops/hqGate";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "var(--desktop-window-controls-inset, 90px)";
 
@@ -201,6 +206,9 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   // Settings routes show the settings nav in place of the thread sidebar.
   const pathname = useLocation({ select: (location) => location.pathname });
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+  // Behind the organization's gate (ADR 0001) the menu holds the account alone: no Mate, no
+  // project, nothing to start.
+  const gated = useHqGate(pathname).gate.kind !== "open";
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
   // Subscribed rather than read once: the clamp must track live window size,
@@ -288,6 +296,12 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           <>
             <SidebarChromeHeader isElectron={isElectron} />
             <SettingsSidebarNav pathname={pathname} />
+          </>
+        ) : gated ? (
+          <>
+            <SidebarChromeHeader isElectron={isElectron} />
+            <div className="min-h-0 flex-1" />
+            <SidebarChromeFooter />
           </>
         ) : (
           <ThreadSidebar />

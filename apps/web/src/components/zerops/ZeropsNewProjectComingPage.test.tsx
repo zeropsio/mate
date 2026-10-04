@@ -13,6 +13,15 @@ const app = vi.hoisted(() => ({
   navigate: vi.fn(async (_to: unknown) => undefined),
 }));
 
+vi.mock("~/zerops/useNewProjectBirthPorts", () => ({
+  useNewProjectBirthPorts: () => () => ({
+    registerGroup: () => new Promise(() => undefined),
+    recordBirth: () => new Promise(() => undefined),
+    createProject: () => new Promise(() => undefined),
+    accepted: () => undefined,
+  }),
+}));
+
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => app.navigate,
   Link: ({ children }: { readonly children?: ReactNode }) => h("a", null, children),
@@ -59,20 +68,20 @@ vi.mock("../ui/button", () => ({
   }) => h("button", { onClick }, children),
 }));
 
-/** Acme CRM, pressed a moment ago on an account with no Git hosting: standing it up. */
+/** Acme CRM, pressed a moment ago: registering it in the organization's HQ. */
 const ACME: NewProjectBirth = {
-  id: "g-acme",
   organizationId: "org-acme",
-  groupId: "g-acme",
+  birthId: "b-acme",
   name: "Acme CRM",
   botName: "Vera",
   face: { tint: "rose", shape: "seal" },
   locationId: null,
   agents: [],
   startedAt: Date.parse("2026-09-30T10:00:00.000Z"),
-  withGitea: true,
-  giteaProjectId: null,
-  step: "gitea",
+  hq: { projectId: "hq-1", address: "https://hq-1-8080.prg1.zerops.app" },
+  appId: null,
+  intent: null,
+  step: "registry",
   failed: null,
   projectId: null,
   progress: null,
@@ -82,11 +91,11 @@ let tree: ReactTestRenderer | undefined;
 
 function hold(birth: NewProjectBirth | undefined) {
   act(() => {
-    useNewProjectBirths.setState({ births: birth === undefined ? {} : { [birth.id]: birth } });
+    useNewProjectBirths.setState({ births: birth === undefined ? {} : { [birth.birthId]: birth } });
   });
 }
 
-function openView(birthId = "g-acme") {
+function openView(birthId = "b-acme") {
   act(() => {
     tree = create(h(ZeropsNewProjectComingPage, { birthId }));
   });
@@ -148,20 +157,19 @@ describe("a New project's first Mate, before its project exists", () => {
     expect(kind()).toBe("coming");
     expect(said()).toContain("Vera on Acme CRM");
     // The project's own steps, then its first Mate's workspace, then the person's own sign-in.
-    expect(steps()).toEqual([
-      "git-hosting:active",
-      "registry:waiting",
-      "workspace:waiting",
-      "you:you",
-    ]);
-    expect(said()).toContain("Git hosting");
+    expect(steps()).toEqual(["registry:active", "workspace:waiting", "you:you"]);
+    expect(said()).toContain("Acme CRM");
     expect(said()).toContain("Vera's workspace");
     expect(said()).toContain("You sign Vera in with your Claude or ChatGPT subscription");
     expect(app.navigate).not.toHaveBeenCalled();
   });
 
   it("hands the route to its Mate's own view the moment the platform takes its project, in place of this one", () => {
-    hold({ ...ACME, withGitea: false, giteaProjectId: "gitea-1", step: "create" });
+    hold({
+      ...ACME,
+      appId: "app-acme",
+      step: "create",
+    });
     openView();
     expect(app.navigate).not.toHaveBeenCalled();
     hold({ ...ACME, step: "created", projectId: "p-vera" });
@@ -181,7 +189,7 @@ describe("a New project's first Mate, before its project exists", () => {
     act(() => {
       button("Try again")?.props.onClick();
     });
-    expect(useNewProjectBirths.getState().births["g-acme"]?.failed).toBeNull();
+    expect(useNewProjectBirths.getState().births["b-acme"]?.failed).toBeNull();
   });
 
   it("never offers to make again what the platform may have made, only the way to the projects", () => {
@@ -211,22 +219,21 @@ describe("a New project's first Mate, before its project exists", () => {
 describe("the steps this tab runs, on the Mate's own view", () => {
   const IDA: NewProjectBirth = {
     ...ACME,
-    id: "add-1",
+    birthId: "add-1",
     botName: "Ida",
-    withGitea: false,
-    giteaProjectId: "gitea-1",
     step: "create",
-    adds: { displayName: "Acme CRM - Ida", registers: true },
+    adds: { appId: "g-acme", registers: true },
   };
 
   it("draws a New project's under the project's row, and asks for the tab while they run", () => {
-    hold({ ...ACME, withGitea: false, giteaProjectId: "gitea-1", step: "registry" });
+    hold({ ...ACME, step: "registry" });
     openView();
     expect(substeps()).toEqual([
       "registry › Registered:active",
       "registry › Created:waiting",
-      "registry › Closed off:waiting",
       "registry › Vera registered:waiting",
+      "registry › Container:waiting",
+      "registry › Closed off:waiting",
     ]);
     expect(steps()[0]).toBe("registry:active");
     expect(said()).toContain(KEEP_TAB_OPEN_LINE);
@@ -240,9 +247,9 @@ describe("the steps this tab runs, on the Mate's own view", () => {
     expect(steps()).toEqual(["copy:active", "workspace:waiting", "you:you"]);
     expect(substeps()).toEqual([
       "copy › Created:active",
+      "copy › Ida registered:waiting",
       "copy › Container:waiting",
       "copy › Closed off:waiting",
-      "copy › Ida registered:waiting",
     ]);
     expect(said()).toContain(KEEP_TAB_OPEN_LINE);
   });
@@ -257,7 +264,7 @@ describe("the steps this tab runs, on the Mate's own view", () => {
       then: {
         asked: expect.objectContaining({
           groupId: "g-acme",
-          again: { botName: "Ida", name: "Acme CRM - Ida", tint: "rose", shape: "seal" },
+          again: { botName: "Ida", tint: "rose", shape: "seal" },
         }),
       },
     },

@@ -65,7 +65,15 @@ export interface AccessGrantView {
 /** The tab's signals, and the organizations' live lists, as the account runtime hands them over. */
 export type GrantSignal = Extract<
   GrantEvent,
-  { readonly type: "VISIBILITY" | "WAKE" | "ONLINE" | "OFFLINE" | "PROJECTS_LISTED" }
+  {
+    readonly type:
+      | "VISIBILITY"
+      | "WAKE"
+      | "ONLINE"
+      | "OFFLINE"
+      | "USER_RETRY"
+      | "PROJECTS_DEMANDED";
+  }
 >;
 
 /** What the grant asks the account's owners of pull-based facts to revalidate. */
@@ -86,7 +94,8 @@ export interface ZeropsAccessGrant {
   readonly signal: (event: GrantSignal) => Effect.Effect<void>;
   /**
    * Hears the account's bus for the caller's scope: each `access: renew-now` is a person's retry,
-   * which a round in flight joins (G7).
+   * which a round in flight joins (G7); each `access: grants-written`, a project's grants this
+   * account wrote, which the grant reads again at once (`GRANTS_WRITTEN`).
    */
   readonly listen: (bus: InvalidationBus) => Effect.Effect<void, never, Scope.Scope>;
   readonly view: Atom.Atom<AccessGrantView>;
@@ -136,17 +145,6 @@ const grantKey = (evidence: Evidence): string =>
       access.mutationsAllowed,
     ]),
   ]);
-
-/** The projects the runtime's access holds, a command's included. */
-const establishedProjects = (access: AccessState): ReadonlyArray<ProjectRef> => {
-  const held =
-    access.status === "verified"
-      ? access.projects
-      : access.status === "verifying" || access.status === "failed"
-        ? (access.previous?.projects ?? [])
-        : [];
-  return held.filter(({ role }) => role !== "NO_ACCESS").map(({ project }) => project);
-};
 
 /**
  * Why a round the machine started while handling `event` runs. A hidden tab's visibility or wake
@@ -319,10 +317,9 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
           mateDiagnostics.record({ kind: "access-round-cause", round, cause: roundCause(event) });
           return Effect.gen(function* () {
             // Projects a command established since are the grant's too: read them.
-            const established = establishedProjects(yield* options.access);
             const fiber = yield* options.fork(
               port
-                .verifyRound({ round, carried: [...carried, ...established], report: send })
+                .verifyRound({ round, carried, report: send })
                 .pipe(
                   Effect.catch((cause: AccessRoundFailure) =>
                     send({ type: "ROUND_FAILED", round, failure: cause.failure }, cause.message),
@@ -522,9 +519,13 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
       Effect.flatMap(bus.subscribe, (subscription) =>
         Stream.fromSubscription(subscription).pipe(
           Stream.runForEach((invalidation) =>
-            invalidation.topic === "access" && invalidation.change === "renew-now"
-              ? send({ type: "USER_RETRY" })
-              : Effect.void,
+            invalidation.topic !== "access"
+              ? Effect.void
+              : invalidation.change === "renew-now"
+                ? send({ type: "USER_RETRY" })
+                : invalidation.change === "grants-written"
+                  ? send({ type: "GRANTS_WRITTEN" })
+                  : Effect.void,
           ),
           Effect.forkScoped,
         ),

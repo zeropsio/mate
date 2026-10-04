@@ -1,37 +1,47 @@
 // @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
+import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import { describe, expect, it } from "vite-plus/test";
 
-import { releaseContentsCommits } from "./projectFlow.ts";
 import { compareForRelease, type FlowReleaseRow, type ReleaseGate } from "./release.ts";
+import type { Moved } from "./releaseCompare.ts";
+import { movedCount } from "./releaseCompare.ts";
 import {
   holdReleaseFacts,
   releaseFacts,
   releaseFollows,
+  releaseOutcomeOf,
   releaseStageMarks,
   releaseStep,
   type ReleaseFacts,
 } from "./releaseFacts.ts";
-import type { ServiceChanges, StageStandings } from "./stageMarks.ts";
 import {
   releaseReview,
   rollbackReview,
   type ReleaseOutcome,
   type ReviewPress,
 } from "./reviewVerdict.ts";
+import type { StageStandings } from "./stageMarks.ts";
 
 const NOW = Date.parse("2026-09-29T10:00:00Z");
 const HEAD = ["5e1d", "0a7c", "93b2", "e46f", "1d08", "c7a5", "2b9e", "f031", "6d4a", "8e72"].join(
   "",
 );
 
-const ONE_CHANGE: ReadonlyArray<ServiceChanges> = [
-  { service: "app", commits: [{ sha: HEAD, subject: "Shelf labels for the tins" }] },
+const commit: CompareCommit = {
+  sha: HEAD,
+  subject: "Shelf labels for the tins",
+  authorName: "Ada",
+  at: "2026-09-29T09:00:00.000Z",
+  change: { number: 1, title: "Shelf labels for the tins", mateProjectId: "p-wren" },
+};
+const ONE_CHANGE: ReadonlyArray<Moved> = [
+  { repository: "app", services: ["app"], commits: [commit], total: 1, truncated: false },
 ];
 
 /** What the project reads at one moment: the release that runs, what waits, what each service runs. */
 interface Moment {
   readonly live: string | undefined;
-  readonly contents: ReadonlyArray<ServiceChanges>;
+  readonly contents: ReadonlyArray<Moved>;
   readonly production: string | undefined;
 }
 
@@ -45,7 +55,6 @@ function current(
     live: moment.live,
     releases,
     contents: moment.contents,
-    mainHeads: new Map([["app", HEAD]]),
     comparison: compareForRelease({
       candidate: new Map([["app", HEAD]]),
       production:
@@ -81,7 +90,7 @@ function row(
     entries: [{ service: "app", commit: HEAD }],
     taggedAt: new Date(NOW - 40_000).toISOString(),
     standing,
-    word: undefined,
+    word: "Approved",
     rollBack: false,
     failedEntry: undefined,
     ...over,
@@ -106,7 +115,6 @@ function walk(steps: ReadonlyArray<Step>) {
       held,
       press: step.press,
       clockMs: step.nowMs ?? NOW,
-      nowMs: step.nowMs ?? NOW,
       read: (tag) => current(tag, step.moment, step.releases),
     });
     held = shown.held;
@@ -115,7 +123,8 @@ function walk(steps: ReadonlyArray<Step>) {
     const model = releaseReview({
       tag: facts.tag,
       gate,
-      changes: releaseContentsCommits(facts.contents).length,
+      permission: gate,
+      changes: movedCount(facts.contents).count,
       onStage: undefined,
       services: facts.services,
       replaces: facts.replaces,
@@ -229,7 +238,7 @@ describe("what a release replaces: the first only when nothing was released befo
   it.each<[string, string | undefined, ReadonlyArray<FlowReleaseRow>, ReleaseFacts["replaces"]]>([
     ["nothing released", undefined, [], { kind: "first" }],
     [
-      "only a refused tag",
+      "only a refused release",
       undefined,
       [row("v0.1.0", undefined, { verdict: "refused" })],
       { kind: "first" },
@@ -278,31 +287,27 @@ describe("what a release replaces: the first only when nothing was released befo
 });
 
 describe("a held release's changes follow the stage as it stands now", () => {
-  const [, , , released] = walk(
+  const released = walk(
     release(
       "v0.1.0",
       "v0.1.1",
       { live: undefined, contents: ONE_CHANGE, production: undefined },
       { live: "v0.1.0", contents: [], production: HEAD },
     ),
-  );
+  ).at(-1);
   const OLDER = HEAD.replace(/^5e1d/u, "0b2c");
   const stage = (over: Partial<StageStandings>): StageStandings => ({
     runs: new Map([["app", OLDER]]),
-    deploying: undefined,
-    failed: new Set(),
+    deploying: new Map(),
+    failed: new Map(),
     ...over,
   });
 
   it.each<[string, StageStandings | undefined, string]>([
     ["no stage", undefined, "none"],
-    ["the stage deploys it", stage({ deploying: HEAD }), "deploying-on-stage"],
+    ["the stage deploys it", stage({ deploying: new Map([["app", HEAD]]) }), "deploying-on-stage"],
     ["the stage runs it", stage({ runs: new Map([["app", HEAD]]) }), "on-stage"],
-    [
-      "its stage deploy failed",
-      stage({ runs: new Map([["app", HEAD]]), failed: new Set(["app"]) }),
-      "failed-on-stage",
-    ],
+    ["its stage deploy failed", stage({ failed: new Map([["app", HEAD]]) }), "failed-on-stage"],
   ])("released, %s: %s", (_name, standing, mark) => {
     if (released === undefined) throw new Error("no released step");
     expect(released.model.verdict.state).toBe("released");
@@ -375,26 +380,6 @@ describe("a release that never lands ends: past the cutoff it says so", () => {
     });
   });
 
-  it("a newest tag whose date is never read still ends, measured from the press", () => {
-    const unread = (tagged: FlowReleaseRow): FlowReleaseRow => ({ ...tagged, taggedAt: undefined });
-    const steps = walk([
-      tagging,
-      { ...onItsWay, inFlight: undefined, releases: onItsWay.releases.map(unread) },
-      { ...later(10, unread(row("v0.1.1", undefined))), inFlight: undefined },
-      later(31, unread(row("v0.1.1", undefined))),
-    ]);
-    expect(steps.map((step) => step.model.verdict.state)).toEqual([
-      "releasing",
-      "releasing",
-      "releasing",
-      "release-stalled",
-    ]);
-    expect(steps.at(-1)?.follows.ticking).toBe(false);
-    expect(steps.at(-1)?.model.verdict.why).toBe(
-      "Tagged 31 minutes ago · production doesn't run it",
-    );
-  });
-
   it("a failed release whose deploy moved nothing offers no roll back; one that moved some does", () => {
     const failed = row("v0.1.1", "deploy-failed", {
       failedEntry: { service: "app", commit: HEAD },
@@ -418,7 +403,7 @@ describe("a release that never lands ends: past the cutoff it says so", () => {
   });
 });
 
-describe("a followed release ends when a newer tag sits above it", () => {
+describe("a followed release ends when a newer one sits above it", () => {
   const before: Moment = { live: "v0.1.0", contents: ONE_CHANGE, production: "4c3b2a1" };
   const after: Moment = { live: "v0.1.1", contents: [], production: HEAD };
   const [, tagging, onItsWay, released] = release("v0.1.1", "v0.1.2", before, after, [
@@ -426,7 +411,6 @@ describe("a followed release ends when a newer tag sits above it", () => {
   ]);
   if (tagging === undefined || onItsWay === undefined || released === undefined)
     throw new Error("no steps");
-  // Only the newest tag's date is read: v0.1.1's is gone once v0.1.2 sits above it.
   const above = (
     minutes: number,
     newer: FlowReleaseRow,
@@ -441,9 +425,9 @@ describe("a followed release ends when a newer tag sits above it", () => {
     moment: { ...before, live },
     releases: [newer, ...below],
   });
-  const v011 = row("v0.1.1", undefined, { taggedAt: undefined });
+  const v011 = row("v0.1.1", undefined);
 
-  it("A: stalled, then v0.1.2 is tagged in another window: it ends, and never ticks again", () => {
+  it("A: stalled, then v0.1.2 is made in another window: it ends, and never ticks again", () => {
     const steps = walk([
       tagging,
       onItsWay,
@@ -493,7 +477,7 @@ describe("a followed release ends when a newer tag sits above it", () => {
     expect(steps.at(-1)?.model.verdict.title).toBe("v0.1.2 was tagged after v0.1.1");
   });
 
-  it("a refused tag above it is no newer release", () => {
+  it("a refused release above it is no newer release", () => {
     const steps = walk([
       tagging,
       onItsWay,
@@ -547,7 +531,7 @@ describe("a release opened on its way follows its own tag to the end", () => {
       "Production still runs what it ran before.",
     ],
     [
-      "the broker refused it",
+      "HQ refused it",
       ended(
         "refused",
         before,
@@ -642,11 +626,71 @@ describe("rollbackReview: a roll back that landed names what it replaced", () =>
       nextTag: "v0.1.2",
       live: "v0.1.1",
       services: ["app"],
-      mayRelease: true,
+      permission: { allowed: true },
       press,
       outcome,
       now: NOW,
     });
     expect(model.meta).toBe(meta);
   });
+});
+
+it("ends a saved snapshot without waiting for production or starting a clock", () => {
+  const tagged = {
+    tag: "v0.1.0",
+    snapshot: true,
+    verdict: "approved",
+    standing: undefined,
+    taggedAt: "2026-09-29T10:00:00Z",
+    entries: [],
+    detail: undefined,
+    line: "",
+    word: "Saved",
+    rollBack: false,
+    failedEntry: undefined,
+  } as const;
+  const follows = releaseFollows({
+    made: tagged.tag,
+    held: undefined,
+    press: { kind: "done" },
+    inFlight: undefined,
+    suggestion: "v0.1.1",
+    releases: [tagged],
+    nowMs: NOW,
+  });
+  expect(follows.ticking).toBe(false);
+  const outcome = releaseOutcomeOf({
+    tagged,
+    releasing: true,
+    pressing: false,
+    tag: tagged.tag,
+    clockMs: NOW,
+  });
+  expect(outcome).toEqual({ kind: "released", at: tagged.taggedAt, snapshot: true });
+  const model = releaseReview({
+    tag: tagged.tag,
+    gate: { allowed: true },
+    permission: { allowed: true },
+    changes: 1,
+    onStage: undefined,
+    services: ["app"],
+    replaces: { kind: "first" },
+    outcome,
+    now: NOW,
+  });
+  expect(model.verdict.title).toBe("Saved v0.1.0");
+  expect(model.consequence).toBe("The release snapshot is recorded. Nothing was deployed.");
+});
+
+it("describes a snapshot's saved commits without claiming they redeploy", () => {
+  const facts = releaseFacts({
+    tag: "v0.1.0",
+    snapshot: true,
+    live: undefined,
+    releases: [],
+    contents: [],
+    comparison: [{ service: "app", candidate: "a123456", production: undefined, changed: true }],
+    productionServices: [],
+  });
+  expect(facts.where).toEqual([{ service: "app", line: "saved at a123456" }]);
 });

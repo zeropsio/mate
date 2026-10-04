@@ -132,7 +132,7 @@ describe("ZeropsEnvironmentCreation", () => {
   });
 
   it("says where a stage's first deploy comes from, rather than sending anyone out", () => {
-    // A stage tracks main and the broker deploys the difference on its own, so
+    // A stage tracks main and HQ deploys the difference on its own, so
     // the old sentence — "deploy from the Zerops dashboard or ask an agent to"
     // — sent the reader out of the product for something already on its way
     // (measured on the test account, 2026-09-20).
@@ -146,8 +146,8 @@ describe("ZeropsEnvironmentCreation", () => {
     expect(html).toContain("The environment is set up.");
     expect(html).not.toContain(" is up");
     expect(html).not.toContain("Zerops dashboard");
-    // The card cannot see the group's runner: it promises no time (run 4, F2 — the runner was
-    // dead and "within a few minutes" stood for 4.6 min).
+    // The card cannot see what holds the deploy: it promises no time (run 4, F2 — "within a few
+    // minutes" stood for 4.6 min).
     expect(html).not.toContain("within a few minutes");
   });
 

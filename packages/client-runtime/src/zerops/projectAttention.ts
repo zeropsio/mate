@@ -69,6 +69,8 @@ export interface ProjectAttentionInput {
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   /** How many commits are merged and not in front of people yet. */
   readonly notLive: number;
+  /** Whether that is only how many at least: HQ stopped counting (`movedCount`). */
+  readonly notLiveAtLeast: boolean;
   /** Whether *Release* is offered at all; it is not always the account's to press. */
   readonly canRelease: boolean;
   /** What a Mate is called, for a change that names one. */
@@ -114,8 +116,7 @@ export function projectAttention(
     const blocked = pullRequestBlocked(pull);
     // Checks merely running are not waiting on anybody: waiting is correct.
     if (blocked === null || blocked.ask === undefined) continue;
-    const mate =
-      pull.mateProjectId === undefined ? undefined : input.mateNames.get(pull.mateProjectId);
+    const mate = input.mateNames.get(pull.mateProjectId);
     items.push({
       kind: "change-blocked",
       text: `#${String(pull.number)} ${blocked.word.toLocaleLowerCase()}`,
@@ -127,7 +128,7 @@ export function projectAttention(
   if (input.notLive > 0 && input.canRelease) {
     items.push({
       kind: "not-live",
-      text: changesNotLive(input.notLive),
+      text: changesNotLive(input.notLive, input.notLiveAtLeast),
       verb: "Release",
       target: undefined,
     });
@@ -138,10 +139,37 @@ export function projectAttention(
 
 /**
  * How many changes are merged and not live — the one way it is said, on the stop's verdict, the
- * projects page, the project page and the left menu's next step.
+ * projects page, the project page and the left menu's next step — with `+` where it is only how
+ * many at least, as the release's summary says it.
  */
-export function changesNotLive(count: number): string {
-  return count === 1 ? "1 change not live" : `${String(count)} changes not live`;
+export function changesNotLive(count: number, atLeast: boolean): string {
+  return `${changesCountWords(count, atLeast)} not live`;
+}
+
+/** How many changes: `1 change`, `12 changes`, `10000+ changes` where HQ stopped counting. */
+export function changesCountWords(count: number, atLeast: boolean): string {
+  return count === 1 && !atLeast ? "1 change" : `${String(count)}${atLeast ? "+" : ""} changes`;
+}
+
+/**
+ * What production runs on services no comparison could start from (`productionRuns`' `untold`):
+ * a version named by hand, or a service the account does not list. Said, never read as nothing
+ * waiting.
+ */
+export function cannotTellWhatRuns(services: ReadonlyArray<string>): string {
+  return `Can't tell what ${serviceNames(services)} ${services.length === 1 ? "runs" : "run"}`;
+}
+
+/** Services a release redeploys while it releases: what they ran is going, and they deploy. */
+export function servicesDeploying(services: ReadonlyArray<string>): string {
+  return `${serviceNames(services)} ${services.length === 1 ? "is" : "are"} deploying`;
+}
+
+/** `app`, `app and api`, `app, api and web`. */
+function serviceNames(services: ReadonlyArray<string>): string {
+  return services.length < 2
+    ? services.join("")
+    : `${services.slice(0, -1).join(", ")} and ${services.at(-1) ?? ""}`;
 }
 
 /**

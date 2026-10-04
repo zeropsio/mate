@@ -89,9 +89,21 @@ describe("matePose", () => {
 describe("mateArriving", () => {
   const created = "2026-10-03T10:00:00Z";
   const born = Date.parse(created);
-  const unsigned = { tagList: ["mate", "mate:bot:Kai"], created };
-  // A sign-out keeps the tag: a Mate once signed in has arrived for good.
-  const signedOnce = { tagList: ["mate", "mate:signer:claude-code:u-eva"], created };
+  const unsigned = { created };
+  // HQ, rather than project labels, owns the observed signer.
+  const signedOnce = {
+    hq: {
+      appId: "a",
+      appName: "App",
+      kind: "mate" as const,
+      mate: {
+        name: "Kai",
+        face: "rose:seal",
+        logins: { "claude-code": { signedInBy: "u-eva", present: true, token: false } },
+      },
+    },
+    created,
+  };
 
   const cases: ReadonlyArray<{
     readonly name: string;
@@ -136,7 +148,7 @@ describe("mateArriving", () => {
       arriving: false,
     },
     {
-      name: "signed in once, signed out since, a minute old",
+      name: "HQ records its signer, a minute old",
       candidate: { project: signedOnce, group: "connected" },
       atMs: born + 60_000,
       arriving: false,
@@ -155,7 +167,7 @@ describe("mateArriving", () => {
     },
     {
       name: "unsigned, its creation time not known",
-      candidate: { project: { tagList: [] }, group: "connected" },
+      candidate: { project: {}, group: "connected" },
       atMs: born,
       arriving: false,
     },

@@ -3,32 +3,29 @@
  * groups it under, and the person who owns it — so the Usage page can roll an
  * environment's spend up per Mate, per project and per person.
  *
- * Every name is the one the left menu draws: the Mate by `botDisplayName`, the
- * project by the group header `buildZeropsGroupTree` derives (never the single
- * project's own `mate:name:` tag, which can differ), the owner by
- * `resolveMateOwner` over the org's members. An environment no Mate lives in is
- * left out.
+ * Every name is the one the left menu draws: the Mate by its project's name, the
+ * project by the group header `buildZeropsGroupTree` derives, the owner by
+ * `resolveMateOwnerPerson` over HQ's people — no member list read. An
+ * environment no Mate lives in is left out.
  */
-import {
-  botDisplayName,
-  buildZeropsGroupTree,
-  hasMate,
-  readZeropsGroupTags,
-} from "@t3tools/client-runtime/zerops";
-import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
+import { buildZeropsGroupTree, hasMate } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import { resolveMateOwner } from "@t3tools/client-runtime/zerops/mateAccess";
+import {
+  resolveMateOwnerPerson,
+  type MateOwnerPerson,
+} from "@t3tools/client-runtime/zerops/mateAccess";
 import type { EnvironmentId } from "@t3tools/contracts";
+import type { HqPeople } from "@t3tools/shared/hqMates";
 
 import { groupNameIsPlaceholder } from "~/components/zerops/ZeropsGroupTree.logic";
 
 import { rowEnvironment } from "./environmentOrigins";
-import { zeropsMateOwner, type ZeropsOrganizationMembersStatus } from "./useZeropsMateOwners";
+import { zeropsMateOwnerOf } from "./useZeropsMateOwners";
 import type { ZeropsOrganizationStatus, ZeropsSessionStatus } from "./ZeropsSessionProvider";
 
 export interface UsageEnvironmentOwner {
-  /** Stable person key: the Zerops user id (member.user?.id), else the member id. */
+  /** Stable person key: the Zerops user id. */
   readonly id: string;
   readonly name: string;
   readonly initials: string;
@@ -60,25 +57,20 @@ function groupNamesByProject(
   return names;
 }
 
-/** The owner as the Mate's corner badge draws them, keyed by person; null when the list names nobody. */
+/** The owner as the Mate's corner badge draws them, keyed by person; null when HQ names nobody. */
 function usageOwner(
-  member: ZeropsOrganizationMember | undefined,
+  person: MateOwnerPerson | undefined,
   viewerUserId: string | null,
 ): UsageEnvironmentOwner | null {
-  const badge = zeropsMateOwner(member);
-  if (member === undefined || badge === undefined) return null;
-  const userId = member.user?.id;
-  return {
-    id: userId ?? member.id,
-    ...badge,
-    isViewer: userId !== undefined && userId === viewerUserId,
-  };
+  const badge = zeropsMateOwnerOf(person, viewerUserId);
+  return person === undefined || badge === undefined ? null : { id: person.userId, ...badge };
 }
 
 export function usageEnvironmentIdentities(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
   readonly registeredOrigins: ReadonlyMap<string, EnvironmentId>;
-  readonly members: ReadonlyArray<ZeropsOrganizationMember>;
+  /** The people HQ names for the view (`hqPeopleAtom`); null while it names none. */
+  readonly people: HqPeople | null;
   /** The signed-in Zerops user's id; null when nobody is. */
   readonly viewerUserId: string | null;
 }): UsageEnvironmentIdentities {
@@ -88,12 +80,11 @@ export function usageEnvironmentIdentities(input: {
     const environmentId = rowEnvironment(candidate, input.registeredOrigins);
     if (environmentId === undefined || identities.has(environmentId) || !hasMate(candidate))
       continue;
-    const tags = readZeropsGroupTags(candidate.project.tagList);
     identities.set(environmentId, {
-      mateName: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
+      mateName: candidate.project.name,
       projectName: projectNames.get(candidate.project.id) ?? null,
       owner: usageOwner(
-        resolveMateOwner({ project: candidate.project, members: input.members }),
+        resolveMateOwnerPerson({ project: candidate.project, people: input.people }),
         input.viewerUserId,
       ),
     });
@@ -103,23 +94,30 @@ export function usageEnvironmentIdentities(input: {
 
 /**
  * Whether an owner missing from the identities means "nobody" yet: `resolving`
- * while the session, the organization, the member list or the candidate
- * listing is still arriving; `unavailable` when one of them will not (signed
- * out, no organization chosen, a failed or withheld read).
+ * while the session, the organization, HQ's people or the candidate listing is
+ * still arriving; `unavailable` when one of them will not (signed out, no
+ * organization chosen, an HQ that names nobody, a failed or withheld read).
  */
 export type UsageOwnersStatus = "resolving" | "resolved" | "unavailable";
+
+/**
+ * Where HQ's people stand for the Usage page: `idle` with nobody signed in, `loading` until HQ or
+ * this browser's memory of it names them, `ready` once named, `failed` where HQ answered naming
+ * nobody — one from before the overviews.
+ */
+export type UsagePeopleStatus = "idle" | "loading" | "ready" | "failed";
 
 export function usageOwnersStatus(input: {
   readonly session: ZeropsSessionStatus;
   readonly organization: ZeropsOrganizationStatus;
-  readonly members: ZeropsOrganizationMembersStatus;
+  readonly people: UsagePeopleStatus;
   readonly listing: Shown<unknown>["state"];
 }): UsageOwnersStatus {
   if (input.session === "loading") return "resolving";
   if (input.session !== "signed-in") return "unavailable";
-  if (input.members === "failed") return "unavailable";
+  if (input.people === "failed") return "unavailable";
   if (
-    input.members === "idle" &&
+    input.people === "idle" &&
     input.organization !== "idle" &&
     input.organization !== "loading"
   ) {
@@ -128,6 +126,6 @@ export function usageOwnersStatus(input: {
   if (input.listing === "failed" || input.listing === "gone" || input.listing === "withheld") {
     return "unavailable";
   }
-  if (input.members !== "ready" || input.listing !== "known") return "resolving";
+  if (input.people !== "ready" || input.listing !== "known") return "resolving";
   return "resolved";
 }

@@ -98,6 +98,79 @@ describe("FakeZeropsRest", () => {
     await expect(failureOf(clientOf(rest).listClientProjects("org-2"))).resolves.toBe("forbidden");
   });
 
+  // Measured 2026-10-03 as the KRLS Developer (NO_ACCESS, OWNER on Cyd by its grant): the
+  // organization's list answers 403; `/project/search` lists the projects their grants name, each
+  // row carrying only their own grant; `GET /project/{id}` answers one of those whole, every
+  // member's grant on it.
+  it("answers a NO_ACCESS member as Zerops does: refused the list, searched to their grants", async () => {
+    const rest = platform();
+    const developer: ZeropsUser = {
+      id: "user-dev",
+      email: "developer@example.test",
+      clientUserList: [{ id: "cu-dev", clientId: "org-1", roleCode: "NO_ACCESS" }],
+    };
+    rest.addUser({ user: developer, password: "secret" });
+    const grants = [
+      { clientUserId: "cu-mate", roleCode: "BASIC_USER" },
+      { clientUserId: "cu-dev", roleCode: "OWNER" },
+    ];
+    rest.addProject({
+      id: "cyd",
+      clientId: "org-1",
+      name: "Cyd",
+      status: "ACTIVE",
+      userRoles: grants,
+    });
+    const client = clientOf(rest, rest.issueSession("user-dev"));
+
+    await expect(failureOf(client.listClientProjects("org-1"))).resolves.toBe("forbidden");
+    const searched = await client.listAccessibleClientProjects("org-1");
+    expect(
+      searched.map(({ id, userRoles }) => [
+        id,
+        userRoles?.map(({ clientUserId, roleCode }) => [clientUserId, roleCode]),
+      ]),
+    ).toEqual([["cyd", [["cu-dev", "OWNER"]]]]);
+    expect(searched[0]?.userRoles?.[0]).toMatchObject({ clientId: "org-1", projectId: "cyd" });
+    await expect(client.fetchProject("cyd")).resolves.toMatchObject({ userRoles: grants });
+    await expect(failureOf(client.fetchProject("p1"))).resolves.toBe("forbidden");
+  });
+
+  it("lists an organization's integration tokens whole, reads one by its id, rewrites it in place", async () => {
+    const rest = platform();
+    const client = clientOf(rest);
+    rest.addIntegrationToken("org-1", {
+      id: "t1",
+      name: "zcp-One",
+      roleCode: "NO_ACCESS",
+      projects: [{ projectId: "p1", roleCode: "ADMIN" }],
+    });
+
+    await expect(client.listIntegrationTokens("org-1")).resolves.toEqual([
+      {
+        id: "t1",
+        name: "zcp-One",
+        roleCode: "NO_ACCESS",
+        projects: [{ projectId: "p1", roleCode: "ADMIN" }],
+      },
+    ]);
+    await expect(client.readIntegrationToken("org-1", "t1")).resolves.toMatchObject({
+      id: "t1",
+      projects: [{ projectId: "p1", roleCode: "ADMIN" }],
+    });
+    await expect(client.readIntegrationToken("org-1", "gone")).resolves.toBeUndefined();
+    await client.setIntegrationTokenProjects({
+      clientId: "org-1",
+      tokenId: "t1",
+      name: "zcp-One",
+      projects: [{ projectId: "p1", roleCode: "BASIC_USER" }],
+    });
+    expect(rest.integrationToken("org-1", "t1")).toMatchObject({
+      roleCode: "NO_ACCESS",
+      projects: [{ projectId: "p1", roleCode: "BASIC_USER" }],
+    });
+  });
+
   it("answers each project with the failure a test gives it", async () => {
     const rest = platform();
     const client = clientOf(rest);
@@ -188,12 +261,12 @@ describe("FakeZeropsRest", () => {
 
     const client = clientOf(rest);
     const read = await client.fetchProject("p1");
-    await client.writeProjectTags(read, ["mate:g:g1"]);
+    await client.writeProject(read, { name: read.name, tagList: ["mate"] });
 
     // The whole-list PUT lands on the other writer's list and drops its tag.
     const tags = rest.project("p1")?.tagList ?? [];
     expect(seen).toEqual([[]]);
-    expect(tags).toEqual(["mate:g:g1"]);
+    expect(tags).toEqual(["mate"]);
     expect(rest.requests().map(({ route }) => route)).toEqual([
       "GET /project/p1",
       "PUT /project/p1",

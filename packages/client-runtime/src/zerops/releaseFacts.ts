@@ -15,13 +15,9 @@
  */
 
 import { RELEASE_IN_FLIGHT_MS, type FlowReleaseRow, type ReleaseComparison } from "./release.ts";
+import type { Moved } from "./releaseCompare.ts";
 import type { ReleaseOutcome, ReleaseReplaces, ReviewPress } from "./reviewVerdict.ts";
-import {
-  stageMarks,
-  type ServiceChanges,
-  type StageMark,
-  type StageStandings,
-} from "./stageMarks.ts";
+import { stageMarks, type StageMark, type StageStandings } from "./stageMarks.ts";
 
 /** A release's own facts, as the review shows them. */
 export interface ReleaseFacts {
@@ -29,32 +25,23 @@ export interface ReleaseFacts {
   readonly tag: string;
   /** What production ran as it was offered: what this one replaces, and where a roll back goes. */
   readonly replaces: ReleaseReplaces;
-  /** What goes out, service by service (`releaseContents`). */
-  readonly contents: ReadonlyArray<ServiceChanges>;
-  /** Where each service's `main` was, which orients its commits (`stageMarks`). */
-  readonly mainHeads: ReadonlyMap<string, string> | undefined;
+  /** What goes out, per comparison HQ answered (`ZeropsReleaseOffer.contents`). */
+  readonly contents: ReadonlyArray<Moved>;
   /** Where: per service, what it redeploys from, or what it stays on. */
   readonly where: ReadonlyArray<{ readonly service: string; readonly line: string }>;
   /** The production services that redeploy — every one, when the comparison moves none. */
   readonly services: ReadonlyArray<string>;
-  /**
-   * When it was tagged, as first read once held. Only the newest tag's date is read, and a read
-   * can fail: held, the age outlives a newer tag above it.
-   */
-  readonly taggedAt?: string | undefined;
-  /** When the review first held it — the press, or the first look — for a tag whose date is unread. */
-  readonly seenAt?: number | undefined;
 }
 
 /** The facts as the project reads them now. */
 export function releaseFacts(input: {
+  readonly snapshot?: boolean;
   readonly tag: string;
   /** The release production runs in full now (`releaseRunBy`), if any does. */
   readonly live: string | undefined;
-  /** Every release of the group: the first release is one with none before it. */
+  /** Every release of the application: the first release is one with none before it. */
   readonly releases: ReadonlyArray<Pick<FlowReleaseRow, "tag" | "verdict">>;
-  readonly contents: ReadonlyArray<ServiceChanges>;
-  readonly mainHeads: ReadonlyMap<string, string> | undefined;
+  readonly contents: ReadonlyArray<Moved>;
   /** Per service, `main` against production (`compareForRelease`). */
   readonly comparison: ReadonlyArray<ReleaseComparison>;
   /** Production's services, for a release that moves none of them. */
@@ -70,12 +57,14 @@ export function releaseFacts(input: {
           ? { kind: "unnamed" }
           : { kind: "first" },
     contents: input.contents,
-    mainHeads: input.mainHeads,
     where: input.comparison.map((row) => ({
       service: row.service,
-      line: row.changed
-        ? `redeploys from ${row.candidate ?? "main"}`
-        : `stays on ${row.production ?? "what it runs"}`,
+      line:
+        input.snapshot === true
+          ? `saved at ${row.candidate ?? "main"}`
+          : row.changed
+            ? `redeploys from ${row.candidate ?? "main"}`
+            : `stays on ${row.production ?? "what it runs"}`,
     })),
     services: moving.length === 0 ? input.productionServices : moving,
   };
@@ -117,7 +106,7 @@ export function holdReleaseFacts<F extends { readonly tag: string }>(input: {
 export function releaseFollows(input: {
   /** The tag this review's own press made. */
   readonly made: string | undefined;
-  readonly held: Pick<ReleaseFacts, "tag" | "taggedAt" | "seenAt"> | undefined;
+  readonly held: { readonly tag: string } | undefined;
   readonly press: ReviewPress;
   /** The release tag on its way to production (`releaseInFlight`). */
   readonly inFlight: string | undefined;
@@ -130,16 +119,14 @@ export function releaseFollows(input: {
   readonly tag: string;
   readonly tagged: FlowReleaseRow | undefined;
   readonly releasing: boolean;
-  /** When the followed tag was tagged, else when the review first held it; `undefined` before. */
-  readonly sinceMs: number | undefined;
   /**
    * On its way longer than {@link RELEASE_IN_FLIGHT_MS} and neither live nor failed: the wait is
    * over, and the review says the tag hasn't landed.
    */
   readonly stalled: boolean;
   /**
-   * The newer tag the broker did not refuse that sits above the followed one, and what production
-   * runs in full: the follow is over. `undefined` while the followed tag is the newest, or live.
+   * The newer release HQ did not refuse that sits above the followed one, and what production runs
+   * in full: the follow is over. `undefined` while the followed release is the newest, or live.
    */
   readonly superseded: { readonly by: string; readonly live: string | undefined } | undefined;
   /** Whether the release's clock runs: on its way, and not yet live, failed, stalled or followed. */
@@ -153,11 +140,6 @@ export function releaseFollows(input: {
     input.press.kind === "done" ||
     input.inFlight === tag ||
     pinned === tag;
-  const held = pinned === tag ? input.held : undefined;
-  const sinceMs =
-    [tagged?.taggedAt, held?.taggedAt]
-      .map((at) => (at === undefined ? Number.NaN : Date.parse(at)))
-      .find((ms) => !Number.isNaN(ms)) ?? held?.seenAt;
   const at = input.releases.findIndex((entry) => entry.tag === tag);
   const newer =
     releasing && at > 0 && tagged?.standing !== "live"
@@ -167,36 +149,36 @@ export function releaseFollows(input: {
     newer === undefined
       ? undefined
       : { by: newer.tag, live: input.releases.find((entry) => entry.standing === "live")?.tag };
-  const stalled =
-    releasing &&
-    superseded === undefined &&
-    releaseStalled({ tagged, sinceMs, nowMs: input.nowMs });
+  const stalled = releasing && superseded === undefined && releaseStalled(tagged, input.nowMs);
   return {
     tag,
     tagged,
     releasing,
-    sinceMs,
     stalled,
     superseded,
-    ticking: releasing && tagged?.standing === undefined && !stalled && superseded === undefined,
+    ticking:
+      releasing &&
+      tagged?.snapshot !== true &&
+      tagged?.standing === undefined &&
+      !stalled &&
+      superseded === undefined,
   };
 }
 
 /**
- * Whether a tag on its way has waited out {@link RELEASE_IN_FLIGHT_MS} with neither a landing nor
- * a failure — the cutoff `releaseInFlight` stops holding Release back at. Measured from `sinceMs`:
- * the tag's date, else when the review first held it, so a tag whose date is never read still
- * ends. A tag not read at all yet counts from there too.
+ * Whether a tag on its way has waited out {@link RELEASE_IN_FLIGHT_MS} since HQ made it, with
+ * neither a landing nor a failure — the cutoff `releaseInFlight` stops holding Release back at. A
+ * release HQ has not listed yet has no age to measure.
  */
-export function releaseStalled(input: {
-  readonly tagged: FlowReleaseRow | undefined;
-  readonly sinceMs: number | undefined;
-  readonly nowMs: number;
-}): boolean {
-  const { tagged, sinceMs } = input;
-  if (tagged !== undefined && (tagged.standing !== undefined || tagged.verdict === "refused"))
+function releaseStalled(tagged: FlowReleaseRow | undefined, nowMs: number): boolean {
+  if (
+    tagged === undefined ||
+    tagged.snapshot === true ||
+    tagged.standing !== undefined ||
+    tagged.verdict === "refused"
+  )
     return false;
-  return sinceMs !== undefined && input.nowMs - sinceMs >= RELEASE_IN_FLIGHT_MS;
+  return nowMs - Date.parse(tagged.taggedAt) >= RELEASE_IN_FLIGHT_MS;
 }
 
 /** Where the tag it made stands: on its way, live, or failed — `offered` before it was made. */
@@ -205,15 +187,15 @@ export function releaseOutcomeOf(input: {
   readonly releasing: boolean;
   /** Past the cutoff with no landing and no failure (`releaseFollows`). */
   readonly stalled?: boolean | undefined;
-  /** A newer tag above it (`releaseFollows`). */
+  /** A newer release above it (`releaseFollows`). */
   readonly superseded?: { readonly by: string; readonly live: string | undefined } | undefined;
-  /** When it was tagged, or first held (`releaseFollows`), for its clock. */
-  readonly sinceMs?: number | undefined;
   readonly pressing: boolean;
   readonly tag: string;
   readonly clockMs: number;
 }): ReleaseOutcome {
   const { tagged } = input;
+  if (tagged?.snapshot === true && tagged.verdict === "approved")
+    return { kind: "released", at: tagged.taggedAt, snapshot: true };
   if (tagged?.standing === "live") return { kind: "released", at: tagged.taggedAt };
   if (tagged?.standing === "deploy-failed" || tagged?.verdict === "refused") {
     const service = tagged.failedEntry?.service;
@@ -221,7 +203,7 @@ export function releaseOutcomeOf(input: {
       kind: "failed",
       detail:
         tagged.verdict === "refused"
-          ? (tagged.detail ?? "The broker refused the tag")
+          ? (tagged.detail ?? "HQ refused the release")
           : service === undefined
             ? "Its production deploy failed"
             : `The deploy of ${service} failed`,
@@ -231,17 +213,11 @@ export function releaseOutcomeOf(input: {
   }
   if (!input.releasing) return { kind: "offered" };
   if (input.superseded !== undefined) return { kind: "superseded", ...input.superseded };
-  const since =
-    input.sinceMs ?? (tagged?.taggedAt === undefined ? Number.NaN : Date.parse(tagged.taggedAt));
-  if (input.stalled === true)
-    return {
-      kind: "stalled",
-      at: tagged?.taggedAt,
-      ...(Number.isNaN(since) ? {} : { sinceMs: since }),
-    };
+  if (input.stalled === true) return { kind: "stalled", at: tagged?.taggedAt };
   if (input.pressing && tagged === undefined) {
     return { kind: "releasing", progress: `Tagging main as ${input.tag}` };
   }
+  const since = tagged?.taggedAt === undefined ? Number.NaN : Date.parse(tagged.taggedAt);
   if (Number.isNaN(since)) {
     return { kind: "releasing", progress: `Production redeploys from ${input.tag}` };
   }
@@ -259,8 +235,6 @@ export function releaseStep(input: {
   readonly held: ReleaseFacts | undefined;
   readonly press: ReviewPress;
   readonly clockMs: number;
-  /** The minute clock: when a review first holds a release. */
-  readonly nowMs: number;
   readonly read: (tag: string) => ReleaseFacts;
 }): {
   readonly outcome: ReleaseOutcome;
@@ -275,25 +249,16 @@ export function releaseStep(input: {
     releasing: follows.releasing,
     stalled: follows.stalled,
     superseded: follows.superseded,
-    sinceMs: follows.sinceMs,
     pressing: press.kind === "running",
     tag: follows.tag,
     clockMs: input.clockMs,
   });
   const current = input.read(follows.tag);
-  const kept = holdReleaseFacts({ held: input.held, current, press, outcome });
-  // Held, it keeps when it was first held and the tag's date once read: only the newest tag's
-  // date is read, and the age has to outlive a newer tag above it.
-  const taggedAt = kept?.taggedAt ?? follows.tagged?.taggedAt;
-  const held =
-    kept === undefined || (kept.seenAt !== undefined && kept.taggedAt === taggedAt)
-      ? kept
-      : { ...kept, seenAt: kept.seenAt ?? input.nowMs, taggedAt };
-  const facts = held ?? current;
+  const held = holdReleaseFacts({ held: input.held, current, press, outcome });
   return {
     outcome,
     held,
-    facts,
+    facts: held ?? current,
     productionMoved: held !== undefined && !sameReplaces(current.replaces, held.replaces),
   };
 }
@@ -311,8 +276,10 @@ function sameReplaces(left: ReleaseReplaces, right: ReleaseReplaces): boolean {
  * deploying it is on stage, or failed there, later.
  */
 export function releaseStageMarks(
-  facts: Pick<ReleaseFacts, "contents" | "mainHeads">,
+  facts: Pick<ReleaseFacts, "contents">,
   stage: StageStandings | undefined,
+  /** Each repository's `main` head (`ZeropsProjectFlow.repos`): a stage on it runs every change. */
+  mainHeads?: ReadonlyMap<string, string>,
 ): ReadonlyMap<string, StageMark> {
-  return stageMarks({ contents: facts.contents, mainHeads: facts.mainHeads, stage });
+  return stageMarks({ contents: facts.contents, stage, mainHeads });
 }

@@ -40,14 +40,19 @@
  * It exists as an argument and a local, and nowhere else: not in storage, not
  * in a returned value, not in a log line. {@link withThrowaway} is the only
  * way to use one, and it hands the value to one callback and deletes the token
- * in `finally` — admitted, refused, or the network gone.
+ * in `finally` — admitted, refused, or the network gone. A door that did not
+ * take it may have it held in this page's memory for its next try, while it is
+ * young (`ZeropsThrowawayPlatform.hold`): a try that fails then costs no mint.
  *
  * @module authorization/zeropsThrowaway
  */
 
 /** A throwaway minted to open one Mate: `mate-door:{projectId}:{nonce}`. */
 export const DOOR_THROWAWAY_PREFIX = "mate-door";
-/** A throwaway minted for one Gitea: `gitea-signin:{host}:{nonce}`. */
+/**
+ * A throwaway main's client mints for its Gitea sign-in: `gitea-signin:{host}:{nonce}`. This
+ * client mints none; it only takes the person's own leftovers back (`isThrowawayName`).
+ */
 export const GITEA_THROWAWAY_PREFIX = "gitea-signin";
 
 /**
@@ -60,22 +65,9 @@ export function doorThrowawayName(projectId: string, nonce: string): string {
 }
 
 /**
- * Names a throwaway after the Gitea it is for — its **host**, without a scheme
- * and without a path, because that is what the broker compares its own
- * `GITEA_PUBLIC_URL` against.
+ * Whether a token on the account is a throwaway left behind by a crash: one of ours, or a Gitea
+ * sign-in's that main's client left in the same organization.
  */
-export function giteaThrowawayName(giteaUrl: string, nonce: string): string {
-  return `${GITEA_THROWAWAY_PREFIX}:${throwawayHost(giteaUrl)}:${nonce}`;
-}
-
-function throwawayHost(url: string): string {
-  const withoutScheme = url.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//iu, "");
-  const host = withoutScheme.split("/")[0] ?? "";
-  if (host.length === 0) throw new Error(`"${url}" names no Gitea host.`);
-  return host;
-}
-
-/** Whether a token on the account is one of ours, left behind by a crash. */
 export function isThrowawayName(name: string): boolean {
   return (
     name.startsWith(`${DOOR_THROWAWAY_PREFIX}:`) || name.startsWith(`${GITEA_THROWAWAY_PREFIX}:`)
@@ -95,6 +87,8 @@ export interface ZeropsThrowawayPlatform {
   readonly mint: (input: {
     readonly clientId: string;
     readonly name: string;
+    /** The door it is for: the throwaway held for that door is handed back, while young. */
+    readonly door?: string;
   }) => Promise<{ readonly id: string; readonly token: string }>;
   /**
    * `DELETE /client/{org}/integration-token/{tokenId}`, as the person who
@@ -106,15 +100,37 @@ export interface ZeropsThrowawayPlatform {
     readonly clientId: string;
     readonly tokenId: string;
   }) => Promise<void>;
+  /**
+   * Holds a throwaway its door did not take for the door's next try: the next mint for that
+   * door hands it back while it is young, and it is removed once it is not. Absent: every
+   * throwaway is removed after its try.
+   */
+  readonly hold?: (input: {
+    readonly clientId: string;
+    readonly door: string;
+    readonly throwaway: { readonly id: string; readonly token: string };
+  }) => void;
 }
+
+/** How one use of a throwaway went: what it answered, or what it threw. */
+export type ThrowawayOutcome<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly cause: unknown };
 
 export interface WithThrowawayInput<T> {
   readonly platform: ZeropsThrowawayPlatform;
   readonly clientId: string;
-  /** {@link doorThrowawayName} or {@link giteaThrowawayName}. */
+  /** {@link doorThrowawayName}. */
   readonly name: string;
   /** The one place the value is ever seen. Its result is what this returns. */
   readonly use: (token: string) => Promise<T>;
+  /** The door it is for, where a throwaway it did not take is held for its next try. */
+  readonly door?: string;
+  /**
+   * Whether the door did not take it with this outcome, so it is held for the door's next try
+   * rather than removed. Absent: every outcome removes it.
+   */
+  readonly keep?: (outcome: ThrowawayOutcome<T>) => boolean;
   /**
    * Called when the token could not be taken back. The throwaway has no
    * rights and the start-up sweep is the backstop, so this never fails the
@@ -135,29 +151,42 @@ export interface WithThrowawayInput<T> {
  *
  * Nothing interrupts the deletion: the caller giving up, the account closing
  * or somebody else signing in to the tab mid-call all leave it running, and it
- * acts as the person who minted or not at all. Who waits for it depends on the
- * receiver:
- *
- * - A door exchange does not: its answer is returned as soon as it is known,
- *   and the deletion runs on to its own end. Its deadline and its one retry
- *   are not the exchange's to sit through; the exchange has a deadline of its
- *   own (DESIGN §4.4).
- * - A Gitea sign-in does: it sends the browser on to Gitea as soon as it
- *   answers, and a page being left takes an unfinished delete with it.
+ * acts as the person who minted or not at all. Nobody waits for it: a door
+ * exchange's answer is returned as soon as it is known, and the deletion runs
+ * on to its own end. Its deadline and its one retry are not the exchange's to
+ * sit through; the exchange has a deadline of its own (DESIGN §4.4).
  *
  * A deletion that itself fails is reported and swallowed: the caller's outcome
  * is the answer, and a token with no rights is not worth turning a successful
  * sign-in into a failure over.
+ *
+ * A door that did not take it (`keep`) has it held for its next try instead, where the platform
+ * holds throwaways, and the next mint for that door hands it back while it is young.
  */
 export async function withThrowaway<T>(input: WithThrowawayInput<T>): Promise<T> {
-  const minted = await input.platform.mint({ clientId: input.clientId, name: input.name });
+  const { door } = input;
+  const minted = await input.platform.mint({
+    clientId: input.clientId,
+    name: input.name,
+    ...(door === undefined ? {} : { door }),
+  });
+  let outcome: ThrowawayOutcome<T> = { ok: false, cause: undefined };
   try {
-    return await input.use(minted.token);
+    const value = await input.use(minted.token);
+    outcome = { ok: true, value };
+    return value;
+  } catch (cause) {
+    outcome = { ok: false, cause };
+    throw cause;
   } finally {
-    const orphaned = (cause: unknown) => input.onOrphaned?.(cause);
-    const deletion = (async () => {
-      await input.platform.remove({ clientId: input.clientId, tokenId: minted.id });
-    })().catch(orphaned);
-    if (!input.name.startsWith(`${DOOR_THROWAWAY_PREFIX}:`)) await deletion;
+    const hold = input.platform.hold;
+    if (door !== undefined && hold !== undefined && input.keep?.(outcome) === true) {
+      hold({ clientId: input.clientId, door, throwaway: minted });
+    } else {
+      const orphaned = (cause: unknown) => input.onOrphaned?.(cause);
+      void (async () => {
+        await input.platform.remove({ clientId: input.clientId, tokenId: minted.id });
+      })().catch(orphaned);
+    }
   }
 }

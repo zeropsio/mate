@@ -58,8 +58,8 @@ export interface MateLink {
   readonly errorsSinceConnect: number;
   /**
    * Its Mate has answered on this page: its link is connected or was, or its probe found it ready
-   * while nothing wants its link — one auto-connect leaves unlinked (its close-off pending, past
-   * the ceiling). A link wanted after a ready probe answers by connecting: until then its Mate
+   * while nothing wants its link — one no lease holds. A link wanted after a ready probe
+   * answers by connecting: until then its Mate
    * is still on its way. Once answered, it is no longer arriving, whatever it waits for now.
    */
   readonly answered: boolean;

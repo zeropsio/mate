@@ -202,8 +202,8 @@ describe("Zerops platform protocol decoding", () => {
 
   it("drops one malformed row alone, keeping the good rows and the read whole", () => {
     const descriptor = {
-      kind: "services-of-organization" as const,
-      organization: project.organization,
+      kind: "services-of-project" as const,
+      project: project,
       schemaVersion: 1 as const,
     };
     const result = decodeEntityQueryResponse(
@@ -242,8 +242,8 @@ describe("Zerops platform protocol decoding", () => {
       },
       {
         descriptor: {
-          kind: "services-of-organization" as const,
-          organization: project.organization,
+          kind: "services-of-project" as const,
+          project: project,
           schemaVersion: 1 as const,
         },
         row: { id: "", projectId: "project", name: "app", status: "ACTIVE" },
@@ -266,8 +266,8 @@ describe("Zerops platform protocol decoding", () => {
       },
       {
         descriptor: {
-          kind: "services-of-organization" as const,
-          organization: project.organization,
+          kind: "services-of-project" as const,
+          project: project,
           schemaVersion: 1 as const,
         },
         row: { id: "service", projectId: "project", name: "app", status: "ACTIVE", rootId: "" },
@@ -337,8 +337,8 @@ describe("Zerops platform protocol decoding", () => {
 
   it("routes arbitrary names through the registry and decodes list deletes as membership only", () => {
     const descriptor = {
-      kind: "running-processes-of-organization" as const,
-      organization: project.organization,
+      kind: "running-processes-of-project" as const,
+      project: project,
       statuses: ["PENDING", "RUNNING"] as const,
       schemaVersion: 1 as const,
     };
@@ -350,7 +350,6 @@ describe("Zerops platform protocol decoding", () => {
         data: { add: ["process-a"], delete: ["process-b"] },
       }),
       new Map([[request.subscriptionName, request]]),
-      () => project,
     );
 
     expect(decoded).toMatchObject({ kind: "observations" });
@@ -365,49 +364,43 @@ describe("Zerops platform protocol decoding", () => {
   });
 
   it.each([
-    ["services-of-organization", "service"],
-    ["running-processes-of-organization", "process"],
-  ] as const)(
-    "places each id of an organization's %s frame in the project a row named it with, and leaves out one no row named",
-    (kind, entity) => {
-      const descriptor =
-        kind === "services-of-organization"
-          ? { kind, organization: project.organization, schemaVersion: 1 as const }
-          : {
-              kind,
-              organization: project.organization,
-              statuses: ["PENDING", "RUNNING"] as const,
-              schemaVersion: 1 as const,
-            };
-      const request = registration(descriptor);
-      const named = new Map([[`${entity}:known`, project]]);
-      const decoded = decodeNativeFrame(
-        JSON.stringify({
-          type: "search",
-          subscriptionName: request.subscriptionName,
-          data: { add: ["known", "unnamed"], delete: ["gone-unnamed"] },
-        }),
-        new Map([[request.subscriptionName, request]]),
-        (asked, id) => named.get(`${asked}:${id}`),
-      );
+    ["services-of-project", "service"],
+    ["running-processes-of-project", "process"],
+  ] as const)("places bare IDs from a %s frame in its requested project", (kind, entity) => {
+    const descriptor =
+      kind === "services-of-project"
+        ? { kind, project: project, schemaVersion: 1 as const }
+        : {
+            kind,
+            project: project,
+            statuses: ["PENDING", "RUNNING"] as const,
+            schemaVersion: 1 as const,
+          };
+    const request = registration(descriptor);
+    const decoded = decodeNativeFrame(
+      JSON.stringify({
+        type: "search",
+        subscriptionName: request.subscriptionName,
+        data: { add: ["known", "unnamed"], delete: ["gone-unnamed"] },
+      }),
+      new Map([[request.subscriptionName, request]]),
+    );
 
-      expect(decoded.kind).toBe("observations");
-      if (decoded.kind !== "observations") return;
-      expect(decoded.issues).toEqual([]);
-      expect(decoded.observations).toEqual([
-        expect.objectContaining({
-          kind: "query-membership-observed",
-          operation: "add",
-          member: expect.objectContaining({ kind: entity, project }),
-        }),
-      ]);
-    },
-  );
+    expect(decoded.kind).toBe("observations");
+    if (decoded.kind !== "observations") return;
+    expect(decoded.issues).toEqual([]);
+    expect(decoded.observations).toHaveLength(3);
+    for (const observation of decoded.observations)
+      expect(observation).toMatchObject({
+        kind: "query-membership-observed",
+        member: { kind: entity, project },
+      });
+  });
 
   it("rejects blank native membership ids as a malformed frame", () => {
     const descriptor = {
-      kind: "services-of-organization" as const,
-      organization: project.organization,
+      kind: "services-of-project" as const,
+      project: project,
       schemaVersion: 1 as const,
     };
     const request = registration(descriptor);
@@ -428,7 +421,7 @@ describe("Zerops platform protocol decoding", () => {
     const request: RegistrationRequest = {
       identity: interest,
       subscriptionName: ZeropsWireSubscriptionName.make("process-update"),
-      descriptor: { kind: "entity-updates", entity: "process", organization },
+      descriptor: { kind: "entity-updates", entity: "process", organization, project },
       baselineTicket: null,
     };
     const decoded = decodeNativeFrame(
@@ -509,7 +502,7 @@ describe("Zerops platform protocol decoding", () => {
     const request: RegistrationRequest = {
       identity: interest,
       subscriptionName: ZeropsWireSubscriptionName.make("process-update"),
-      descriptor: { kind: "entity-updates", entity: "process", organization },
+      descriptor: { kind: "entity-updates", entity: "process", organization, project },
       baselineTicket: null,
     };
     const decoded = decodeNativeFrame(
@@ -617,7 +610,7 @@ describe("Zerops platform protocol decoding", () => {
     const request: RegistrationRequest = {
       identity: interest,
       subscriptionName: ZeropsWireSubscriptionName.make("invalid-process-update"),
-      descriptor: { kind: "entity-updates", entity: "process", organization },
+      descriptor: { kind: "entity-updates", entity: "process", organization, project },
       baselineTicket: null,
     };
     const decode = () =>
@@ -797,8 +790,8 @@ describe("Zerops platform protocol decoding", () => {
     const command: PlatformCommand = {
       kind: "update-project-tags",
       project,
-      patch: { kind: "agent-name", name: "Ada" },
-      attemptId: ZeropsCommandAttemptId.make("name-attempt"),
+      patch: { kind: "mate" },
+      attemptId: ZeropsCommandAttemptId.make("declare-attempt"),
       accountEpoch: AccountEpoch.make(1),
       startedAtReceiptOrdinal: ReceiptOrdinal.make(2),
       dispatchOrdinal: DispatchOrdinal.make(3),
@@ -807,7 +800,7 @@ describe("Zerops platform protocol decoding", () => {
       id: "project",
       name: "application",
       status: "ACTIVE",
-      tagList: ["mate", "mate:bot:Ada"],
+      tagList: ["mate"],
     });
 
     expect(result.issues).toEqual([]);
@@ -826,7 +819,7 @@ describe("Zerops platform protocol decoding", () => {
     const command: PlatformCommand = {
       kind: "update-project-tags",
       project,
-      patch: { kind: "group-membership", next: {} },
+      patch: { kind: "mate" },
       attemptId: ZeropsCommandAttemptId.make("tags-attempt"),
       accountEpoch: AccountEpoch.make(1),
       startedAtReceiptOrdinal: ReceiptOrdinal.make(2),
@@ -884,8 +877,8 @@ describe("Zerops platform protocol decoding", () => {
         },
       },
       baselineTicket: ticket({
-        kind: "services-of-organization",
-        organization: project.organization,
+        kind: "services-of-project",
+        project: project,
         schemaVersion: 1,
       }),
     } as RegistrationRequest;
@@ -903,8 +896,8 @@ describe("Zerops platform protocol decoding", () => {
         },
       },
       baselineTicket: ticket({
-        kind: "services-of-organization",
-        organization: project.organization,
+        kind: "services-of-project",
+        project: project,
         schemaVersion: 1,
       }),
     } as RegistrationRequest;
@@ -965,8 +958,8 @@ describe("Zerops platform protocol decoding", () => {
 
   it("consumes a query registration response into observations", () => {
     const descriptor = {
-      kind: "services-of-organization" as const,
-      organization: project.organization,
+      kind: "services-of-project" as const,
+      project: project,
       schemaVersion: 1 as const,
     };
     const result = decodeRegistrationResponse(registration(descriptor), {
@@ -1016,8 +1009,8 @@ describe("Zerops platform protocol decoding", () => {
         },
       },
       baselineTicket: ticket({
-        kind: "services-of-organization",
-        organization: project.organization,
+        kind: "services-of-project",
+        project: project,
         schemaVersion: 1,
       }),
     } as RegistrationRequest;
@@ -1035,8 +1028,8 @@ describe("Zerops platform protocol decoding", () => {
         },
       },
       baselineTicket: ticket({
-        kind: "services-of-organization",
-        organization: project.organization,
+        kind: "services-of-project",
+        project: project,
         schemaVersion: 1,
       }),
     } as RegistrationRequest;
@@ -1077,7 +1070,7 @@ describe("the datastream's deploy frames", () => {
   const updates = (entity: "service" | "process"): RegistrationRequest => ({
     identity: interest,
     subscriptionName: ZeropsWireSubscriptionName.make(`${entity}-update`),
-    descriptor: { kind: "entity-updates", entity, organization },
+    descriptor: { kind: "entity-updates", entity, organization, project },
     baselineTicket: null,
   });
   const decodeUpdate = (entity: "service" | "process", row: Record<string, unknown>) => {
@@ -1298,3 +1291,36 @@ describe("a service read's active version name (A14)", () => {
     );
   });
 });
+
+it.each(["READ_ONLY", "NO_ACCESS"])(
+  "preserves %s project grants in the direct answer used by admission",
+  (roleCode) => {
+    const {
+      requestId,
+      owner,
+      receiptOrdinalAtStart,
+      readStartOrdinal,
+      dispatchOrdinal,
+      startedAtMs,
+    } = directProcessTicket();
+    const ticket: ReadTicket = {
+      requestId,
+      owner,
+      receiptOrdinalAtStart,
+      readStartOrdinal,
+      dispatchOrdinal,
+      startedAtMs,
+      kind: "direct",
+      target: { kind: "project", ref: project },
+    };
+    const userRoles = [{ clientUserId: "member", roleCode }];
+    expect(
+      decodeEntityDirectResponse(ticket, {
+        id: project.projectId,
+        name: "Mate",
+        status: "ACTIVE",
+        userRoles,
+      }).project?.userRoles,
+    ).toEqual(userRoles);
+  },
+);

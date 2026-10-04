@@ -195,13 +195,20 @@ describe("slackAfterScroll — the room shrinks as a scroll up stops needing it"
 // is read, and taken away only where the list's own empty state is the one
 // thing to do.
 describe("newProjectOffered — New project at the menu's foot (D11)", () => {
-  const project = (id: string, tagList: ReadonlyArray<string>): ZeropsCandidate => ({
+  /** A project of CRM, where HQ places it as `kind`. */
+  const project = (id: string, kind: "mate" | "stage"): ZeropsCandidate => ({
     key: `${id}:zcp`,
-    project: { id, name: id, status: "ACTIVE", tagList },
+    project: {
+      id,
+      name: id,
+      status: "ACTIVE",
+      tagList: kind === "mate" ? ["mate"] : [],
+      hq: { appId: "crm", appName: "CRM", kind, mate: null },
+    },
     group: "ready",
   });
-  const MATE = project("crm-dev", ["mate", "mate:g:crm", "mate:role:dev"]);
-  const STAGE = project("crm-stage", ["mate:g:crm", "mate:role:stage"]);
+  const MATE = project("crm-dev", "mate");
+  const STAGE = project("crm-stage", "stage");
   const BIRTH = { placement: { kind: "mate" } } as unknown as ZeropsPlacedBirth;
 
   it.each([

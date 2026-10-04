@@ -19,6 +19,7 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import type * as Stream from "effect/Stream";
 
 import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceRegistry.ts";
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
@@ -107,6 +108,7 @@ export class ProviderInstances extends Context.Service<
     readonly agentOf: (instanceId: string) => Effect.Effect<ProviderInstanceAgent | undefined>;
     /** The configured instances as the registry holds them now (`ServerProvider` each). */
     readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
+    readonly changes: Stream.Stream<ReadonlyArray<ServerProvider>>;
   }
 >()("t3/spi/providerInstances") {}
 
@@ -150,6 +152,7 @@ export const layer = Layer.effect(
           };
         }),
       providers: registry.getProviders,
+      changes: registry.streamChanges,
     } satisfies ProviderInstances["Service"];
   }),
 );

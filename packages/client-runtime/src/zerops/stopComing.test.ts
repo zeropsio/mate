@@ -1,18 +1,21 @@
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
+import type { Deployment } from "./flow/deployment.ts";
+import { groupFlow } from "./groupFlow.ts";
+import { deployedVersion, environmentRow } from "./groupRows.ts";
+import type { HqJob } from "./hq/environments.ts";
+import type { Shown } from "./knowledge/known.ts";
 import {
   comingLine,
   COMING_UP_WINDOW_MS,
   firstDeploy,
-  groupRunner,
-  runnerHostname,
+  listedStopComing,
   stopComing,
   stopDeployed,
   stopImport,
   stopServes,
   type FirstDeploy,
-  type GroupRunner,
   type StopComing,
 } from "./stopComing.ts";
 
@@ -108,11 +111,11 @@ describe("stopComing — where a stage or a production coming up has got", () =>
       coming: undefined,
     },
     {
-      case: "no address while what runs there is unread: the neutral wait, never the runner",
+      case: "no address while what runs there is unread: the neutral wait, never on its way",
       over: {
         deployed: undefined,
         routes: 0,
-        firstDeploy: { kind: "runner", why: "waking" } as FirstDeploy,
+        firstDeploy: { kind: "on-its-way" } as FirstDeploy,
       },
       coming: { kind: "coming", step: "awaiting-deploy" },
     },
@@ -122,13 +125,22 @@ describe("stopComing — where a stage or a production coming up has got", () =>
       coming: { kind: "failed", reason: "its first deploy failed" },
     },
     {
-      case: "a first deploy known not to have run: the runner holding it",
+      case: "a first deploy known not to have run, HQ deploying it: on its way",
       over: {
         deployed: false,
         routes: 0,
-        firstDeploy: { kind: "runner", why: "waking" } as FirstDeploy,
+        firstDeploy: { kind: "on-its-way" } as FirstDeploy,
       },
-      coming: { kind: "coming", step: "runner", why: "waking" },
+      coming: { kind: "coming", step: "deploy-on-its-way" },
+    },
+    {
+      case: "a first deploy known not to have run, held for a deploy key",
+      over: {
+        deployed: false,
+        routes: 0,
+        firstDeploy: { kind: "held" } as FirstDeploy,
+      },
+      coming: { kind: "coming", step: "awaiting-key" },
     },
     {
       case: "listed with no runtime yet (run 5, +696 s): adding the app, never the runner",
@@ -136,7 +148,7 @@ describe("stopComing — where a stage or a production coming up has got", () =>
         services: [],
         deployed: false,
         routes: 0,
-        firstDeploy: { kind: "runner", why: "not-started" } as FirstDeploy,
+        firstDeploy: { kind: "on-its-way" } as FirstDeploy,
       },
       coming: { kind: "coming", step: "app" },
     },
@@ -229,101 +241,208 @@ describe("stopServes — only a stop that serves lands up", () => {
   });
 });
 
-describe("groupRunner — the group's runner, from the Gitea project's services as held", () => {
-  it("is named runner + the slug without dashes, cut to 25 characters", () => {
-    expect(runnerHostname("brine")).toBe("runnerbrine");
-    expect(runnerHostname("north-pantry")).toBe("runnernorthpantry");
-    expect(runnerHostname("a-very-long-group-slug-name")).toBe("runneraverylonggroupslugn");
+describe("firstDeploy — where a stage's first deploy stands by HQ's jobs of it", () => {
+  const job = (over: Partial<HqJob>): HqJob => ({
+    id: "1",
+    kind: "deploy",
+    service: "app",
+    sha: "e014b0e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d1",
+    state: "queued",
+    cause: "env_added",
+    ref: null,
+    reason: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: null,
+    at: ago(60_000),
+    endedAt: null,
+    supersededBy: null,
+    ...over,
   });
-
-  // Only what the client sees: a READY_TO_DEPLOY runner may be building or have failed its
-  // build, and which broker an org runs — one that rebuilds it or not — is not the app's to know.
+  const ended = (state: HqJob["state"], over: Partial<HqJob> = {}) =>
+    job({ state, endedAt: ago(30_000), ...over });
   it.each([
-    { status: "ACTIVE", runner: { kind: "able" } },
-    { status: "UPGRADING", runner: { kind: "able" } },
-    { status: "NEW", runner: { kind: "unable", why: "building" } },
-    { status: "CREATING", runner: { kind: "unable", why: "building" } },
-    { status: "READY_TO_DEPLOY", runner: { kind: "unable", why: "not-started" } },
-    { status: "ACTION_FAILED", runner: { kind: "unable", why: "not-started" } },
-    { status: "STOPPED", runner: { kind: "unable", why: "waking" } },
-    { status: "STOPPING", runner: { kind: "unable", why: "waking" } },
-    { status: "STARTING", runner: { kind: "unable", why: "waking" } },
-    { status: "DELETING", runner: { kind: "unable", why: "missing" } },
-    { status: "SOMETHING_NEW", runner: undefined },
-  ])("$status", ({ status, runner }) => {
-    expect(groupRunner({ slug: "brine", services: [{ name: "runnerbrine", status }] })).toEqual(
-      runner,
-    );
+    { case: "HQ has no job", deploys: [], first: { kind: "awaited" } },
+    { case: "queued", deploys: [job({})], first: { kind: "on-its-way" } },
+    {
+      case: "submitting",
+      deploys: [job({ state: "submitting" })],
+      first: { kind: "on-its-way" },
+    },
+    { case: "building", deploys: [job({ state: "building" })], first: { kind: "on-its-way" } },
+    {
+      case: "asked for long ago and not ended: HQ still follows it, so still on its way",
+      deploys: [job({ state: "building", at: ago(COMING_UP_WINDOW_MS * 4) })],
+      first: { kind: "on-its-way" },
+    },
+    {
+      case: "its build failed, however long ago: final",
+      deploys: [ended("failed", { endedAt: ago(COMING_UP_WINDOW_MS * 4) })],
+      first: { kind: "failed" },
+    },
+    {
+      case: "HQ refused it — Zerops did not answer, and nothing is tried twice: final",
+      deploys: [ended("refused", { reason: "Zerops did not answer: timeout" })],
+      first: { kind: "failed", reason: "Zerops did not answer: timeout" },
+    },
+    {
+      case: "HQ skipped it, its commit carrying no zerops.yaml: nothing promised",
+      deploys: [ended("skipped", { reason: "web has no zerops.yaml at e014b0e" })],
+      first: { kind: "awaited" },
+    },
+    {
+      case: "one service's build failed, another queued: failed",
+      deploys: [job({}), ended("failed", { service: "api" })],
+      first: { kind: "failed" },
+    },
+    {
+      case: "live where nothing runs: nothing promised",
+      deploys: [ended("live")],
+      first: { kind: "awaited" },
+    },
+    {
+      case: "superseded only: nothing promised",
+      deploys: [ended("superseded", { supersededBy: "2" })],
+      first: { kind: "awaited" },
+    },
+  ])("$case", ({ deploys, first }) => {
+    expect(firstDeploy({ deploys, keyGap: false })).toEqual(first);
   });
 
-  it("is missing where the Gitea project's services hold none, unknown where they are unread", () => {
-    expect(groupRunner({ slug: "brine", services: [{ name: "web", status: "ACTIVE" }] })).toEqual({
-      kind: "unable",
-      why: "missing",
-    });
-    expect(groupRunner({ slug: "brine", services: undefined })).toBeUndefined();
+  // HQ deploys nothing without a key that works: whatever it has queued waits for one.
+  it.each([
+    { case: "no job", deploys: [], first: { kind: "held" } },
+    { case: "a job queued", deploys: [job({})], first: { kind: "held" } },
+    {
+      case: "refused for the key",
+      deploys: [ended("refused", { reason: "stage has no deploy token yet" })],
+      first: { kind: "held" },
+    },
+    {
+      case: "its build failed before: still failed",
+      deploys: [ended("failed")],
+      first: { kind: "failed" },
+    },
+  ])("no deploy key that works, $case", ({ deploys, first }) => {
+    expect(firstDeploy({ deploys, keyGap: true })).toEqual(first);
   });
 });
 
-describe("firstDeploy — where a stage's first deploy stands while it runs nothing", () => {
-  const stuck = { kind: "unable", why: "not-started" } as const;
-  const able = { kind: "able" } as const;
-  const asked = {
-    declared: true,
-    mainHasCode: true,
-    runner: undefined as GroupRunner | undefined,
-    askedAt: ago(60_000),
-    nowMs: NOW,
+describe("listedStopComing — a production, read the way the menu reads it", () => {
+  // Karel's xyz (2026-10-02): a production no release reached, its runtimes up on the import's
+  // no-code version, read "Production coming up · turning its address on" until its window ran out.
+  const SHA = "7c41d9e0a2b35f6e8d1c0b9a4f3e2d1c0b9a8f7e";
+  const known = (value: Deployment): Shown<Deployment> => ({
+    state: "known",
+    value,
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  });
+  const live: HqJob = {
+    id: "1",
+    kind: "deploy",
+    service: "app",
+    sha: SHA,
+    state: "live",
+    cause: "release",
+    ref: "v1.0.0",
+    reason: null,
+    appVersionId: null,
+    processId: null,
+    requestedBy: null,
+    at: ago(30_000),
+    endedAt: ago(30_000),
+    supersededBy: null,
   };
-  it.each([
-    { case: "not declared", over: { declared: false, runner: stuck }, first: { kind: "awaited" } },
-    { case: "main empty", over: { mainHasCode: false, runner: stuck }, first: { kind: "awaited" } },
-    {
-      case: "main unread",
-      over: { mainHasCode: undefined, runner: able },
-      first: { kind: "awaited" },
-    },
-    { case: "asked for, the runner able", over: { runner: able }, first: { kind: "on-its-way" } },
-    {
-      case: "asked for, the runner unknown: the neutral wait, never on its way",
-      over: { runner: undefined },
-      first: { kind: "awaited" },
-    },
-    {
-      case: "asked for, the runner not started",
-      over: { runner: stuck },
-      first: { kind: "runner", why: "not-started" },
-    },
-    {
-      case: "asked for a window ago, the runner able: not on its way any more",
-      over: { runner: able, askedAt: ago(COMING_UP_WINDOW_MS) },
-      first: { kind: "awaited" },
-    },
-    {
-      case: "asked for when unknown: never on its way",
-      over: { runner: able, askedAt: undefined },
-      first: { kind: "awaited" },
-    },
-    {
-      case: "a runner not started, asked a window ago: nothing promised any more",
-      over: { runner: stuck, askedAt: ago(COMING_UP_WINDOW_MS * 4) },
-      first: { kind: "awaited" },
-    },
-    {
-      case: "a stopped runner, asked a window ago: no job queued that would wake it",
-      over: {
-        runner: { kind: "unable", why: "waking" } as const,
-        askedAt: ago(COMING_UP_WINDOW_MS),
+  const comingOf = (deployment: Shown<Deployment> | undefined, released: boolean) => {
+    const appVersionName = released ? `${SHA} v1.0.0 u-jan` : undefined;
+    const flow = groupFlow({
+      groupId: "g-xyz",
+      mates: [],
+      pullRequests: [],
+      merged: [],
+      stops: [
+        {
+          projectId: "p-xyz-prod",
+          name: "xyz - production",
+          tier: "production",
+          row: environmentRow({
+            projectId: "p-xyz-prod",
+            name: "xyz - production",
+            tier: "production",
+            sources: "release",
+            services: [
+              {
+                hostname: "app",
+                ...(appVersionName === undefined ? {} : { appVersionName }),
+                ...(released ? { deploy: { latest: live, live } } : {}),
+              },
+            ],
+          }),
+          deployment,
+          route: undefined,
+        },
+      ],
+      missing: [],
+      release: {
+        gate: { allowed: false, reason: "" },
+        suggestion: "v1.0.0",
+        waiting: 0,
+        waitingAtLeast: false,
+        untold: [],
       },
-      first: { kind: "awaited" },
+      mainHasCode: true,
+      mainHead: undefined,
+      productionAddable: false,
+      pending: [],
+    });
+    if (!("stop" in flow.production)) throw new Error("the production is listed");
+    return listedStopComing(
+      "production",
+      {
+        stop: flow.production.stop,
+        projectStatus: "ACTIVE",
+        createdAt: ago(60_000),
+        services: [db("ACTIVE"), app("ACTIVE")],
+        building: false,
+        routes: 0,
+      },
+      NOW,
+    );
+  };
+
+  it.each([
+    {
+      case: "the platform knows it runs nothing: no line",
+      deployment: known({ kind: "none" }),
+      released: false,
+      coming: undefined,
     },
     {
-      case: "a runner not there, its ask unknown: nothing promised",
-      over: { runner: { kind: "unable", why: "missing" } as const, askedAt: undefined },
-      first: { kind: "awaited" },
+      case: "what it runs unread, and HQ records no deploy: no line",
+      deployment: undefined,
+      released: false,
+      coming: undefined,
     },
-  ])("$case", ({ over, first }) => {
-    expect(firstDeploy({ ...asked, ...over })).toEqual(first);
+    {
+      case: "what it runs being read again: no line",
+      deployment: { state: "reading", sinceMs: 0, attempt: 1 } as const,
+      released: false,
+      coming: undefined,
+    },
+    {
+      case: "a release runs and its address is not on yet: the address step",
+      deployment: known({
+        kind: "running",
+        activatedAt: null,
+        version: deployedVersion(`${SHA} v1.0.0 u-jan`),
+      }),
+      released: true,
+      coming: { kind: "coming", step: "address" },
+    },
+  ])("$case", ({ deployment, released, coming }) => {
+    expect(comingOf(deployment, released)).toEqual(coming);
   });
 });
 
@@ -340,9 +459,9 @@ describe("comingLine — the line an environment coming up says", () => {
       { fact: "Production coming up", rest: "adding the app" },
     ],
     [
-      "demo",
-      { kind: "coming", step: "runner", why: "waking" },
-      { fact: "demo awaits the runner", rest: "it’s waking up" },
+      "Stage",
+      { kind: "coming", step: "awaiting-key" },
+      { fact: "Stage coming up", rest: "awaits a deploy key" },
     ],
   ])("%s %j", (subject, coming, line) => {
     expect(comingLine(subject, coming)).toEqual(line);
@@ -401,7 +520,7 @@ describe("stopImport — where an environment's own import has got, the one orde
       ...base,
       deployed: false,
       routes: 0,
-      firstDeploy: { kind: "runner", why: "waking" },
+      firstDeploy: { kind: "on-its-way" },
       ...made,
       services: [app("ACTIVE")],
       ...over,

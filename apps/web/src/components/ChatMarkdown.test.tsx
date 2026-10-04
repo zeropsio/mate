@@ -897,20 +897,16 @@ describe("ChatMarkdown links read as part of the sentence", () => {
 });
 
 describe("ChatMarkdown links to a change of the person's group", () => {
-  const GITEA = "https://forge-7c1d-3000.prg1.zerops.app";
-  const flow = {
-    giteaOrigin: GITEA,
-    flows: new Map(),
-    slugs: new Map([["group-1", "orchard"]]),
-  } as unknown as ZeropsProjectFlowValue;
+  const HQ = "https://hq-7c1d-8080.prg1.zerops.app";
+  const flow = { hqAddress: HQ, flows: new Map() } as unknown as ZeropsProjectFlowValue;
 
   it.each([
     {
       name: "a link in the Mate's own words",
-      text: `The changes are in the [site pull request](${GITEA}/orchard/site/pulls/7), with screenshots.`,
-      words: "site pull request",
+      text: `The changes are in the [site change](${HQ}/changes/group-1/site/7), with screenshots.`,
+      words: "site change",
     },
-    { name: "a bare address", text: `See ${GITEA}/orchard/site/pulls/7/files.`, words: "site #7" },
+    { name: "a bare address", text: `See ${HQ}/changes/group-1/site/7.`, words: "site #7" },
   ])("$name opens the change's review in the app, wearing the change's mark", async (link) => {
     const opened: string[] = [];
     const openChange = (href: string) => () => opened.push(href);

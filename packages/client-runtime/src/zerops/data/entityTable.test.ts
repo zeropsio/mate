@@ -7,11 +7,13 @@ import {
   makeInitialEntityTableState,
   reduceTableObservation,
   releaseTableLists,
+  retryAbsentTableRows,
   SEARCH_LAG_MS,
   serviceVariableOf,
   TOMBSTONE_MS,
   serviceVariablesDescriptor,
   tableRowsWanted,
+  finishTableRowRead,
   wantTableRows,
   type EntityTableState,
 } from "./entityTable.ts";
@@ -39,8 +41,24 @@ const other: OrganizationRef = {
   ...organization,
   organizationId: ZeropsOrganizationId.make("org-other"),
 };
-const versions = activeVersionsDescriptor(organization);
-const variables = serviceVariablesDescriptor(organization);
+const versions = activeVersionsDescriptor(organization, [
+  "s-1",
+  "s-2",
+  "s-3",
+  "service",
+  "service-a",
+  "app",
+  "mate",
+]);
+const variables = serviceVariablesDescriptor(organization, [
+  "s-1",
+  "s-2",
+  "s-3",
+  "service",
+  "service-a",
+  "app",
+  "mate",
+]);
 const complete: QueryCoverage = {
   kind: "exhausted-traversal",
   traversedPages: 1,
@@ -50,7 +68,7 @@ const complete: QueryCoverage = {
 
 const version = (id: string, status = "ACTIVE", source = "CLI"): AppVersionRow => ({
   id,
-  serviceId: `service-of-${id}`,
+  serviceId: "s-1",
   projectId: "project-1",
   status,
   source,
@@ -70,7 +88,7 @@ const answered = (
   startMs = start,
 ): TableObservation => ({
   kind: "table-rows-observed",
-  entity: descriptor.kind === "active-versions-of-organization" ? "app-version" : "user-data",
+  entity: descriptor.kind === "active-versions-of-services" ? "app-version" : "user-data",
   rows,
   source: "direct-read",
   coverage: complete,
@@ -98,7 +116,12 @@ const pushed = (
   registration: {
     identity: identity(),
     subscriptionName: ZeropsWireSubscriptionName.make(`wire-${entity}-updates`),
-    descriptor: { kind: "table-updates", entity, organization: owner },
+    descriptor: {
+      kind: "table-updates",
+      entity,
+      organization: owner,
+      serviceIds: ["s-1", "s-2", "s-3", "service", "service-a", "app", "mate"],
+    },
     baselineTicket: null,
   } as unknown as RegistrationRequest & { readonly descriptor: { readonly kind: "table-updates" } },
 });
@@ -135,7 +158,7 @@ const run = (
   );
 
 const sourceOf = (state: EntityTableState, id: string, owner = organization) => {
-  const answer = activeVersionOf(state, owner, id);
+  const answer = activeVersionOf(state, owner, id, "s-1");
   return answer.known ? (answer.row?.source ?? null) : "unknown";
 };
 
@@ -208,13 +231,12 @@ describe("the entity table's active versions", () => {
       versions: { "v-1": "GIT" },
     },
     {
-      name: "keeps a row pushed just before a search its index may not show yet, and asks",
+      name: "keeps a recent push until a fresh answer, without a delayed reread",
       steps: [
         [2, pushed("app-version", [version("v-1")]), 1_000],
         [4, answered(versions, [], 3, 1_000 + SEARCH_LAG_MS - 1)],
       ],
       versions: { "v-1": "CLI" },
-      wanted: ["v-1"],
     },
     {
       name: "drops a row pushed long before a search that no longer names it",
@@ -245,7 +267,22 @@ describe("the entity table's active versions", () => {
       steps: [
         [2, answered(versions, [version("v-1")], 1)],
         [3, pushed("app-version", [version("v-9")], other)],
-        [4, answered(activeVersionsDescriptor(other), [version("v-9")], 3)],
+        [
+          4,
+          answered(
+            activeVersionsDescriptor(other, [
+              "s-1",
+              "s-2",
+              "s-3",
+              "service",
+              "service-a",
+              "app",
+              "mate",
+            ]),
+            [version("v-9")],
+            3,
+          ),
+        ],
         [6, answered(versions, [], 5, 10_000_000)],
       ],
       versions: { "v-1": null },
@@ -267,7 +304,22 @@ describe("the entity table's active versions", () => {
 
   it("keeps another organization's versions when one organization's search answers", () => {
     const state = run([
-      [2, answered(activeVersionsDescriptor(other), [version("v-9")], 1)],
+      [
+        2,
+        answered(
+          activeVersionsDescriptor(other, [
+            "s-1",
+            "s-2",
+            "s-3",
+            "service",
+            "service-a",
+            "app",
+            "mate",
+          ]),
+          [version("v-9")],
+          1,
+        ),
+      ],
       [4, answered(versions, [], 3, 10_000_000)],
     ]);
     expect(sourceOf(state, "v-9", other)).toBe("CLI");
@@ -302,7 +354,10 @@ describe("the entity table's active versions", () => {
       [4, membership(versions, "add", "v-2")],
     ]);
     const released = releaseTableLists(state, new Set([queryKeyOf(versions)]));
-    expect(activeVersionOf(released, organization, "v-1")).toEqual({ known: false, row: null });
+    expect(activeVersionOf(released, organization, "v-1", "s-1")).toEqual({
+      known: false,
+      row: null,
+    });
     expect(released.rows["app-version"].size).toBe(0);
     expect(tableRowsWanted(released)).toEqual([]);
   });
@@ -330,7 +385,7 @@ describe("the entity table's active versions", () => {
         } as TableObservation,
       ],
     ]);
-    expect(activeVersionOf(state, organization, "v-2").known).toBe(false);
+    expect(activeVersionOf(state, organization, "v-2", "s-1").known).toBe(false);
   });
 });
 
@@ -392,7 +447,22 @@ describe("the entity table's service variables", () => {
       [3, membership(variables, "remove", "u-1")],
       [5, answered(byId, [], 4)],
       // Another organization's answer prunes nothing of this one's.
-      [6, answered(serviceVariablesDescriptor(other), [], 6)],
+      [
+        6,
+        answered(
+          serviceVariablesDescriptor(other, [
+            "s-1",
+            "s-2",
+            "s-3",
+            "service",
+            "service-a",
+            "app",
+            "mate",
+          ]),
+          [],
+          6,
+        ),
+      ],
       // A search that began before the deletion was read says nothing of it.
       [7, answered(variables, [variable("u-1", "s-1", "ZCP_MATE_ENABLED", "1")], 3)],
     ]);
@@ -427,7 +497,7 @@ describe("the entity table's reads by id", () => {
       [7, answered(byId(["v-1"]), [], 6, 4_000), 4_000],
     ]);
     expect(sourceOf(state, "v-1")).toBe("CLI");
-    expect(dueOf(state, "v-1")).toBe(1_000 + SEARCH_LAG_MS);
+    expect(dueOf(state, "v-1")).toBeNull();
   });
 
   it("retires a row a read by id no longer returns once the lag has passed", () => {
@@ -448,50 +518,6 @@ describe("the entity table's reads by id", () => {
       [6, answered(byId(["v-1"]), [version("v-1")], 5, 2_000), 2_000],
     ]);
     expect(sourceOf(state, "v-1")).toBe(null);
-  });
-
-  it("asks again about a version it was owed and found absent, on a widening back-off", () => {
-    let state = wantTableRows(
-      makeInitialEntityTableState(),
-      "app-version",
-      organization,
-      ["v-9"],
-      1,
-      0,
-    );
-    state = run([[2, answered(versions, [], 1, 0), 0]], state);
-    const due: Array<number | null> = [];
-    for (const [at, ms] of [
-      [3, SEARCH_LAG_MS],
-      [4, 40_000],
-      [5, 200_000],
-      [6, 900_000],
-    ] as const) {
-      state = run([[at, answered(byId(["v-9"]), [], at - 1, ms), ms]], state);
-      due.push(dueOf(state, "v-9"));
-    }
-    expect(due).toEqual([SEARCH_LAG_MS + 30_000, 160_000, 800_000, 1_500_000]);
-    expect(askedAbsent(state, "app-version", "v-9")).toEqual({ retryAtMs: 1_500_000 });
-    // Owed and asked already: wanting it again asks nothing sooner.
-    expect(
-      dueOf(wantTableRows(state, "app-version", organization, ["v-9"], 7, 900_001), "v-9"),
-    ).toBe(1_500_000);
-  });
-
-  it("does not call an id absent before the index could show it, and looks again after the lag", () => {
-    let state = wantTableRows(
-      makeInitialEntityTableState(),
-      "app-version",
-      organization,
-      ["v-9"],
-      1,
-      5_000,
-    );
-    state = run([[3, answered(byId(["v-9"]), [], 2, 6_000), 6_000]], state);
-    expect(askedAbsent(state, "app-version", "v-9")).toBe(null);
-    expect(dueOf(state, "v-9")).toBe(5_000 + SEARCH_LAG_MS);
-    state = run([[5, answered(byId(["v-9"]), [], 4, 15_000), 15_000]], state);
-    expect(askedAbsent(state, "app-version", "v-9")).toEqual({ retryAtMs: 15_000 + 30_000 });
   });
 
   it("keeps asking for an id its list named after a full search began", () => {
@@ -517,7 +543,78 @@ describe("the entity table's reads by id", () => {
         [5, lagging, 2_500],
       ]);
       expect(serviceVariableOf(state, organization, "s-1", "ZCP_MATE_ENABLED").content).toBe("1");
-      expect(dueOf(state, "u-1")).toBe(1_000 + SEARCH_LAG_MS);
+      expect(dueOf(state, "u-1")).toBeNull();
     }
   });
+});
+
+it("leaves an absent table row failed with no automatic next read", () => {
+  const requested = wantTableRows(
+    makeInitialEntityTableState(),
+    "app-version",
+    organization,
+    ["missing"],
+    1,
+    0,
+    ["s-1"],
+  );
+  const state = run(
+    [[3, answered({ ...versions, ids: ["missing"] }, [], 2, 20_000), 20_000]],
+    requested,
+  );
+  expect(askedAbsent(state, "app-version", "missing")).toEqual({ retryAtMs: null });
+  expect(tableRowsWanted(state)).toEqual([]);
+});
+
+it("releases one project's metadata without discarding another project's rows", () => {
+  const first = activeVersionsDescriptor(organization, ["s-1"]);
+  const second = activeVersionsDescriptor(organization, ["s-2"]);
+  const state = run([
+    [2, answered(first, [{ ...version("v-1"), serviceId: "s-1" }], 1, 0), 0],
+    [4, answered(second, [{ ...version("v-2"), serviceId: "s-2" }], 3, 20_000), 20_000],
+  ]);
+  const released = releaseTableLists(state, new Set([queryKeyOf(first)]));
+  expect(activeVersionOf(released, organization, "v-2", "s-2").row?.id).toBe("v-2");
+  expect(activeVersionOf(released, organization, "v-1", "s-1").row).toBeNull();
+});
+
+it.each(["unopened-a", "unopened-b"])(
+  "a version list for another service does not answer %s",
+  (serviceId) => {
+    const state = run([[2, answered(versions, [], 1, 0), 0]]);
+    expect(activeVersionOf(state, organization, "unlisted-version", serviceId).known).toBe(false);
+  },
+);
+
+it.each(["s-1", "s-2"])("manual metadata again retries only absent rows for %s", (serviceId) => {
+  const query = activeVersionsDescriptor(organization, [serviceId]);
+  const other = activeVersionsDescriptor(organization, ["other-service"]);
+  const failed = run([
+    [1, membership(query, "add", "missing"), 0],
+    [3, answered({ ...query, ids: ["missing"] }, [], 2, 10), 10],
+    [4, membership(other, "add", "other-missing"), 20],
+    [6, answered({ ...other, ids: ["other-missing"] }, [], 5, 30), 30],
+  ]);
+  expect(tableRowsWanted(failed)).toEqual([]);
+  const retried = retryAbsentTableRows(failed, organization, [serviceId], 40);
+  expect(tableRowsWanted(retried).flatMap((batch) => batch.ids)).toEqual(["missing"]);
+  expect(askedAbsent(retried, "app-version", "other-missing")).toEqual({ retryAtMs: null });
+});
+
+it("ends owed IDs unavailable after one read without consuming newer evidence", () => {
+  let state = wantTableRows(
+    makeInitialEntityTableState(),
+    "app-version",
+    organization,
+    ["old"],
+    1,
+    0,
+    ["s-1"],
+  );
+  state = wantTableRows(state, "app-version", organization, ["new"], 3, 0, ["s-1"]);
+  state = finishTableRowRead(state, "app-version", organization, ["old", "new"], 2);
+  expect(tableRowsWanted(state).flatMap((batch) => batch.ids)).toEqual(["new"]);
+  expect(askedAbsent(state, "app-version", "old")).toEqual({ retryAtMs: null });
+  const again = retryAbsentTableRows(state, organization, ["s-1"], 10);
+  expect(tableRowsWanted(again).flatMap((batch) => batch.ids)).toEqual(["old", "new"]);
 });

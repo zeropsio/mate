@@ -2,11 +2,13 @@
  * Multi-environment usage state.
  *
  * Every connected environment answers the same typed query; the client merges
- * the results. Raw transcripts never leave the machine that produced them.
+ * the results; one this browser is not connected to is left out, not asked.
+ * Raw transcripts never leave the machine that produced them.
  *
  * @module state/usage
  */
 import { useAtomValue } from "@effect/atom-react";
+import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import {
   USAGE_CONTRACT_VERSION,
   type EnvironmentId,
@@ -30,32 +32,58 @@ export interface EnvironmentUsageStatus {
   readonly summary: UsageSummary | null;
 }
 
+/** What the window's atom reads: each environment's presentation, and its summary query. */
+export interface UsageByWindowSources {
+  readonly presentationsAtom: Atom.Atom<
+    ReadonlyMap<
+      EnvironmentId,
+      {
+        readonly entry: { readonly target: { readonly label: string } };
+        readonly connection: { readonly phase: EnvironmentConnectionPhase };
+      }
+    >
+  >;
+  readonly usageSummary: (target: {
+    readonly environmentId: EnvironmentId;
+    readonly input: UsageSummaryInput;
+  }) => Atom.Atom<AsyncResult.AsyncResult<UsageSummary, unknown>>;
+}
+
 /**
- * Reads every environment's summary for one window.
+ * Reads every connected environment's summary for one window: a Mate this
+ * browser holds no socket to is not woken to report.
  *
  * Keyed by the serialised window so switching ranges does not thrash the atom
  * cache, and so each environment's query is shared with any other reader of the
  * same window.
  */
-const usageByWindowAtom = Atom.family((windowKey: string) =>
-  Atom.make((get): readonly EnvironmentUsageStatus[] => {
-    const input = JSON.parse(windowKey) as UsageSummaryInput;
-    const presentations = get(environmentPresentations.presentationsAtom);
+export function createUsageByWindowAtomFamily(sources: UsageByWindowSources) {
+  return Atom.family((windowKey: string) =>
+    Atom.make((get): readonly EnvironmentUsageStatus[] => {
+      const input = JSON.parse(windowKey) as UsageSummaryInput;
+      const presentations = get(sources.presentationsAtom);
 
-    const statuses: EnvironmentUsageStatus[] = [];
-    for (const [environmentId, presentation] of presentations) {
-      const result = get(serverEnvironment.usageSummary({ environmentId, input }));
-      statuses.push({
-        environmentId,
-        label: presentation.entry.target.label,
-        isPending: result.waiting,
-        error: result._tag === "Failure" ? "This environment could not report usage." : null,
-        summary: Option.getOrNull(AsyncResult.value(result)),
-      });
-    }
-    return statuses;
-  }).pipe(Atom.withLabel(`web-usage:window:${windowKey}`)),
-);
+      const statuses: EnvironmentUsageStatus[] = [];
+      for (const [environmentId, presentation] of presentations) {
+        if (presentation.connection.phase !== "connected") continue;
+        const result = get(sources.usageSummary({ environmentId, input }));
+        statuses.push({
+          environmentId,
+          label: presentation.entry.target.label,
+          isPending: result.waiting,
+          error: result._tag === "Failure" ? "This environment could not report usage." : null,
+          summary: Option.getOrNull(AsyncResult.value(result)),
+        });
+      }
+      return statuses;
+    }).pipe(Atom.withLabel(`web-usage:window:${windowKey}`)),
+  );
+}
+
+const usageByWindowAtom = createUsageByWindowAtomFamily({
+  presentationsAtom: environmentPresentations.presentationsAtom,
+  usageSummary: serverEnvironment.usageSummary,
+});
 
 export interface UsageView {
   /** The environments the predicate includes, merged. */

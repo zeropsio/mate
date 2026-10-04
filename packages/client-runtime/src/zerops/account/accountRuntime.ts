@@ -13,9 +13,8 @@
  *   lapse never tears it down (G11). Nothing in it runs before the platform confirmed the
  *   account's organizations, projects and roles (AL-01, AL-04, MC-10): the Mate environments —
  *   the registration records, the container store with its probe store, and the exchange driver,
- *   joined and fed by `environments.ts` — and the project flow's stores: the deployment store,
- *   and on a host that gives the forge its ports the person's Gitea sessions, the forge store and
- *   the flow's command attempts, fed by `flow.ts`.
+ *   joined and fed by `environments.ts` — and the project flow's deployment store, fed by
+ *   `flow.ts`.
  *
  * It hands the tab's signals (§6.4, the PlatformSignals port) to the grant, the bus and the
  * post-grant stage: the page's visibility, its network and the coalesced wake become the grant's
@@ -30,7 +29,7 @@ import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import type { AccessGrantView } from "../data/access/grantDriver.ts";
 import type { AccessVerifier } from "../data/access/verifier.ts";
@@ -48,18 +47,8 @@ import { makeExchangeDriver } from "../environments/exchangeDriver.ts";
 import { makeRegistrationRecords } from "../environments/records.ts";
 import { makeDeploymentStore, type DeploymentStore } from "../flow/deploymentStore.ts";
 import type { EnvelopeServices } from "../flow/envelopeInvalidations.ts";
-import { makeFlowCommands } from "../flow/flowCommands.ts";
-import { makeForgeStore } from "../forge/forgeStore.ts";
-import { makeGiteaSessions } from "../forge/giteaSession.ts";
-import {
-  deploymentStorePorts,
-  envelopeServices,
-  makeForgeWiring,
-  type AccountForge,
-  type AccountForgePorts,
-  type ForgeStage,
-} from "./flow.ts";
-import { holdInventoryDemand, holdListedProjects } from "./inventoryDemand.ts";
+import { deploymentStorePorts, envelopeServices } from "./flow.ts";
+import { holdInventoryDemand, holdAccessDemand } from "./inventoryDemand.ts";
 import {
   makeEnvironmentWiring,
   type AccountEnvironmentPorts,
@@ -75,7 +64,6 @@ export type {
   DoorRequest,
   RegisteredEnvironment,
 } from "./environments.ts";
-export type { AccountForge, AccountForgePorts } from "./flow.ts";
 export {
   evidenceProjectRefs,
   heldEvidence,
@@ -94,8 +82,6 @@ export interface AccountRuntimePorts {
   readonly atomRegistry: AtomRegistry.AtomRegistry;
   /** What the post-grant stage's Mate environments reach their sources through. */
   readonly environments: AccountEnvironmentPorts;
-  /** What the person's Gitea is reached through; a host without Gitea surfaces gives none. */
-  readonly forge?: AccountForgePorts;
 }
 
 /** The epoch's post-grant stage, as surfaces read it. */
@@ -103,13 +89,12 @@ export interface PostGrantStage {
   readonly environments: AccountEnvironments;
   /** What each stop's services run (D6). */
   readonly deployments: DeploymentStore;
-  /** The person's Gitea; `null` on a host that gave the forge no ports. */
-  readonly forge: AccountForge | null;
   /** The services a Mate's envelope names by hostname, as the account holds them (§6.1). */
   readonly services: EnvelopeServices;
 }
 
 export interface AccountRuntime {
+  readonly selectOrganization: (organizationId: string | null) => void;
   readonly data: ManagedZeropsDataRuntime;
   /** The account's invalidation bus: every owner of pull-based facts hears it, every surface sends to it. */
   readonly invalidations: InvalidationBus;
@@ -138,6 +123,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
   ports: AccountRuntimePorts,
 ): Effect.fn.Return<AccountRuntime> {
   const { data, signals } = ports;
+  const activeOrganization = Atom.make<string | null>(null);
   const epoch = yield* Scope.make();
   /** The bus's own scope: it closes first, so nothing still coalescing reaches a subscriber. */
   const busScope = yield* Scope.make();
@@ -149,7 +135,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
   const services = yield* Effect.context<never>();
   let stage: {
     readonly environments: EnvironmentStage;
-    readonly forge: ForgeStage | null;
     readonly deployments: DeploymentStore;
   } | null = null;
   let closed = false;
@@ -176,10 +161,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
             "project" in descriptor &&
             projectKeyOf(descriptor.project) === projectKeyOf(invalidation.project),
         );
-      case "forge-org":
-      case "forge-repo":
-      case "forge-pr":
-        return stage?.forge?.shows(invalidation) ?? false;
       case "deployment":
         return stage?.deployments.shows(invalidation.service) ?? false;
       default:
@@ -215,27 +196,9 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     const deployments = makeDeploymentStore(
       deploymentStorePorts(data, ports.atomRegistry, services),
     );
-    const forge =
-      ports.forge === undefined
-        ? null
-        : (() => {
-            const forgeWiring = makeForgeWiring({
-              ports: ports.forge,
-              signals,
-              invalidations,
-              services,
-            });
-            const sessions = makeGiteaSessions(forgeWiring.sessionPorts);
-            return forgeWiring.start({
-              sessions,
-              store: makeForgeStore(forgeWiring.storePorts(sessions)),
-              commands: makeFlowCommands(forgeWiring.commandPorts(sessions)),
-            });
-          })();
-    // Finalizers run in reverse: the Gitea tokens are forgotten first, then the stores end.
+    // Finalizers run in reverse: the deployment store ends, then the environments.
     yield* Scope.addFinalizer(postGrantScope, Effect.sync(built.dispose));
     yield* Scope.addFinalizer(postGrantScope, Effect.sync(deployments.dispose));
-    if (forge !== null) yield* Scope.addFinalizer(postGrantScope, Effect.sync(forge.dispose));
     // Each owner of pull-based facts reads again what an invalidation names (§6.2).
     const subscription = yield* invalidations.subscribe.pipe(Scope.provide(postGrantScope));
     yield* PubSub.take(subscription).pipe(
@@ -248,11 +211,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
             case "deployment":
               deployments.invalidate(invalidation);
               return;
-            case "forge-org":
-            case "forge-repo":
-            case "forge-pr":
-              forge?.invalidate(invalidation);
-              return;
             default:
               return;
           }
@@ -261,7 +219,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       Effect.forever,
       Effect.forkIn(postGrantScope),
     );
-    return { environments: built, forge, deployments };
+    return { environments: built, deployments };
   });
 
   const follow = (view: AccessGrantView): Effect.Effect<void> =>
@@ -273,7 +231,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
         yield* Deferred.succeed(postGrant, {
           environments: stage.environments.environments,
           deployments: stage.deployments,
-          forge: stage.forge?.forge ?? null,
           services: envelopeServices(data, ports.atomRegistry),
         });
       }
@@ -283,7 +240,6 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
   const hear = (signal: PlatformSignal): Effect.Effect<void> =>
     Effect.sync(() => {
       stage?.environments.hear(signal);
-      stage?.forge?.hear(signal);
     }).pipe(Effect.andThen(heardByAccount(signal)));
 
   const heardByAccount = (signal: PlatformSignal): Effect.Effect<void> => {
@@ -317,10 +273,10 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     );
     yield* data.access.listen(invalidations).pipe(Scope.provide(busScope));
     yield* data.listen(invalidations).pipe(Scope.provide(busScope));
-    yield* holdInventoryDemand({ data, atomRegistry: ports.atomRegistry }).pipe(
+    yield* holdInventoryDemand({ data, atomRegistry: ports.atomRegistry, activeOrganization }).pipe(
       Scope.provide(demandScope),
     );
-    yield* holdListedProjects({ data, atomRegistry: ports.atomRegistry }).pipe(
+    yield* holdAccessDemand({ data, atomRegistry: ports.atomRegistry }).pipe(
       Scope.provide(demandScope),
     );
     yield* Queue.take(heard).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
@@ -344,6 +300,9 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
 
   return {
     data,
+    selectOrganization: (id) => {
+      if (!closed) ports.atomRegistry.set(activeOrganization, id);
+    },
     invalidations,
     postGrant: Deferred.await(postGrant),
     close: (reason) =>

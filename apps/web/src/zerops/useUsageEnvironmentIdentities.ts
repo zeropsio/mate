@@ -1,24 +1,24 @@
 /**
  * Who each usage environment belongs to (`usageEnvironmentIdentities.ts`),
- * off the same candidate listing, registered environments and org members the
- * left menu reads. Empty while nobody is signed in to Zerops; `owners` says
- * whether that emptiness is final yet (`usageOwnersStatus`).
+ * off the same candidate listing, registered environments and HQ's people the
+ * left menu reads — no member list. Empty while nobody is signed in to Zerops;
+ * `owners` says whether that emptiness is final yet (`usageOwnersStatus`).
  */
 import { useAtomValue } from "@effect/atom-react";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
-import { zeropsEnvironmentsAtom } from "../state/zerops";
+import { hqPeopleAtom, hqStructureAtom, zeropsEnvironmentsAtom } from "../state/zerops";
 import { registeredZeropsOrigins } from "./environmentOrigins";
 import {
   usageEnvironmentIdentities,
   usageOwnersStatus,
   type UsageEnvironmentIdentities,
   type UsageOwnersStatus,
+  type UsagePeopleStatus,
 } from "./usageEnvironmentIdentities";
 import { useMatesSettled } from "./useMatesSettled";
 import { useZeropsCandidates } from "./useZeropsCandidates";
-import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const NONE: UsageEnvironmentIdentities = new Map();
@@ -33,10 +33,16 @@ export function useUsageEnvironmentIdentities(): {
   const signedIn = session.status === "signed-in";
   const { listing } = useZeropsCandidates();
   const environments = useAtomValue(zeropsEnvironmentsAtom);
-  const { members, status } = useZeropsOrganizationMembersRead({
-    clientId: session.activeOrganization?.id,
-    enabled: signedIn,
-  });
+  const people = useAtomValue(hqPeopleAtom);
+  const hqAnswered = useAtomValue(hqStructureAtom)?.current === true;
+  const peopleStatus: UsagePeopleStatus =
+    !signedIn || session.activeOrganization === null
+      ? "idle"
+      : people !== null
+        ? "ready"
+        : hqAnswered
+          ? "failed"
+          : "loading";
   const viewerUserId = session.user?.id ?? null;
   const identities = useMemo(
     () =>
@@ -44,16 +50,16 @@ export function useUsageEnvironmentIdentities(): {
         ? usageEnvironmentIdentities({
             candidates: heldCandidates(listing).rows,
             registeredOrigins: registeredZeropsOrigins(environments),
-            members,
+            people,
             viewerUserId,
           })
         : NONE,
-    [signedIn, listing, environments, members, viewerUserId],
+    [signedIn, listing, environments, people, viewerUserId],
   );
   const owners = usageOwnersStatus({
     session: session.status,
     organization: session.organizationStatus,
-    members: status,
+    people: peopleStatus,
     listing: listing.state,
   });
   const listed = useMatesSettled();

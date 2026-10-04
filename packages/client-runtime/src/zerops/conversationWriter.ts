@@ -77,8 +77,6 @@ export function resolveConversationWriter(input: ConversationWriterInput): Conve
       return SOMEONE;
     case "none":
     case "unrecorded":
-    case "record-failed":
-    case "unsettled":
       return NOBODY_YET;
   }
 }

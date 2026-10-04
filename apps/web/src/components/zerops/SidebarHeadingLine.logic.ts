@@ -17,7 +17,7 @@
  *
  * Pure: no clock of its own, no platform globals.
  */
-import { comingLine, type StopComing } from "@t3tools/client-runtime/zerops";
+import { changesCountWords, comingLine, type StopComing } from "@t3tools/client-runtime/zerops";
 
 import type { ChipState, ProductionChip, ReleaseFailure } from "./SidebarProductionChip.logic";
 
@@ -46,6 +46,8 @@ export interface HeadingLineInput {
   }>;
   /** Changes merged and not live (`GroupFlowMain.notLive`). */
   readonly waiting: number;
+  /** Whether that is only how many at least (`GroupFlowMain.notLiveAtLeast`). */
+  readonly waitingAtLeast: boolean;
   /** A stage runs `main`'s head: every change waiting is on it. */
   readonly allOnStage: boolean;
 }
@@ -75,9 +77,6 @@ export interface HeadingLine {
   readonly verb: HeadingLineVerb | undefined;
 }
 
-const plural = (count: number, one: string, many: string) =>
-  `${String(count)} ${count === 1 ? one : many}`;
-
 /** "Stage", or the stage's own name where the project has several. */
 function stageWord(
   stages: HeadingLineInput["stages"],
@@ -87,7 +86,7 @@ function stageWord(
 }
 
 function failureReason(failure: ReleaseFailure | undefined): string {
-  if (failure?.kind === "refused") return "the broker refused it";
+  if (failure?.kind === "refused") return "HQ refused it";
   return failure?.service === undefined
     ? "its deploy failed"
     : `${failure.service}’s deploy failed`;
@@ -180,7 +179,7 @@ export function headingLine(
   if (chip === undefined || chip.state === "creating" || input.waiting <= 0) return undefined;
   const served = RELEASED.has(chip.state) ? chip.version : undefined;
   return {
-    fact: `${plural(input.waiting, "change", "changes")} not released`,
+    fact: `${changesCountWords(input.waiting, input.waitingAtLeast)} not released`,
     rest:
       chip.state === "empty"
         ? "nothing is live yet"
@@ -226,7 +225,8 @@ export function headingLanding(
 
 /** A folded heading's release mark, after its faces (D): the release, and nothing else. */
 export type HeadingMark =
-  | { readonly kind: "waiting"; readonly count: number }
+  /** How many changes wait, and whether that is only how many at least. */
+  | { readonly kind: "waiting"; readonly count: number; readonly atLeast: boolean }
   | { readonly kind: "releasing"; readonly version: string | undefined }
   | { readonly kind: "live" }
   | { readonly kind: "failed" };
@@ -246,5 +246,5 @@ export function headingMark(
   if (landing?.kind === "live") return { kind: "live" };
   if (chip.state === "releasing") return { kind: "releasing", version: chip.next };
   if (chip.state === "creating" || input.waiting <= 0) return undefined;
-  return { kind: "waiting", count: input.waiting };
+  return { kind: "waiting", count: input.waiting, atLeast: input.waitingAtLeast };
 }

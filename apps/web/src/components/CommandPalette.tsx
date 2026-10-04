@@ -1,6 +1,10 @@
 "use client";
 
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedThreadKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import {
   canCreateProjectInEnvironment,
   getCloneDestinationBrowsePath,
@@ -11,6 +15,7 @@ import {
 } from "@t3tools/client-runtime/operations/projects";
 import { connectionStatusText } from "@t3tools/client-runtime/connection";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import {
   canPreloadBrowsePath,
   createBrowseNavigationCoordinator,
@@ -30,7 +35,7 @@ import {
   type SourceControlProviderKind,
   type SourceControlRepositoryInfo,
 } from "@t3tools/contracts";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import {
   ArrowLeftIcon,
@@ -89,6 +94,7 @@ import {
   waitForProject,
 } from "../state/entities";
 import { useThreadSearch } from "../state/queries";
+import { hqMatesAtom, hqStructureAtom } from "../state/zerops";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadActionProjectRef, startNewThreadFromContext } from "../lib/chatThreadActions";
 import {
@@ -117,6 +123,7 @@ import {
   buildThreadActionItems,
   enumerateCommandPaletteItems,
   type CommandPaletteActionItem,
+  type CommandPaletteHqThreads,
   type CommandPaletteOpenIntent,
   type CommandPaletteSubmenuItem,
   type CommandPaletteView,
@@ -124,11 +131,13 @@ import {
   filterPinnedBrowseEntries,
   getCommandPaletteInputPlaceholder,
   getCommandPaletteMode,
+  hqChatMateNames,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
   reduceCommandPaletteUiState,
   type SearchOverlayMode,
   paletteNoMatchMessage,
+  paletteListsRead,
 } from "./CommandPalette.logic";
 import { orderItemsByPreferredIds, sortLogicalProjectsForSidebar } from "./Sidebar.logic";
 import { resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
@@ -144,11 +153,18 @@ import {
   CommandPaletteMetaDot,
   ThreadCommandSubtitle,
 } from "./ThreadCommandSubtitle";
-import { ThreadRowLeadingStatus, ThreadRowTrailingStatus } from "./ThreadStatusIndicators";
+import {
+  ThreadRowLeadingStatus,
+  ThreadRowResolvedStatus,
+  ThreadRowTrailingStatus,
+} from "./ThreadStatusIndicators";
 import { SidebarJumpBox } from "./zerops/SidebarJumpBox";
 import { useSidebarJump } from "../zerops/sidebarJump";
 import { askNewProject } from "../zerops/newProjectAsk";
+import { useHqMatesRead } from "../zerops/useHqMatesRead";
+import { useHqGate } from "../zerops/hqGate";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
+import { candidateListingAtom } from "../zerops/useZeropsCandidates";
 import { slashKeyOpensJumpBox } from "../zerops/jumpSlash";
 import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../state/server";
 import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "../providerInstances";
@@ -683,6 +699,9 @@ function OpenCommandPaletteDialog(props: {
   readonly onLeaveCommands?: () => void;
 }) {
   const navigate = useNavigate();
+  // Behind the organization's gate (ADR 0001) nothing is offered to make.
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const gated = useHqGate(pathname).gate.kind !== "open";
   const { clearOpenIntent, openIntent, openOverlayMode, setOpen } = props;
   const [query, setQuery] = useState(props.initialQuery ?? "");
   const deferredQuery = useDeferredValue(query);
@@ -712,10 +731,14 @@ function OpenCommandPaletteDialog(props: {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threadShells = useThreadShells();
-  // Read once is read: a reconnect's retry keeps the lists it had, so the sentence never toggles.
+  // Unopened Mates' chats come from HQ, independently of this tab's socket shells.
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
-  const [listsRead, setListsRead] = useState(bootstrapped);
-  if (bootstrapped && !listsRead) setListsRead(true);
+  const { organizationId, settled: hqMatesRead } = useHqMatesRead();
+  const readInput = { organizationId, bootstrapped, hqMatesRead };
+  const [listReadState, setListReadState] = useState(() => paletteListsRead(null, readInput));
+  const nextListReadState = paletteListsRead(listReadState, readInput);
+  if (nextListReadState !== listReadState) setListReadState(nextListReadState);
+  const listsRead = nextListReadState.read;
   // Every thread link the palette offers — a thread row, a project's latest
   // thread — opens only into an environment the route gate would open, and
   // never into a crewmate's thread, which is the crew's to open.
@@ -765,10 +788,7 @@ function OpenCommandPaletteDialog(props: {
   const [viewStack, setViewStack] = useState<CommandPaletteView[]>([]);
   const currentView = viewStack.at(-1) ?? null;
   const environmentIds = useMemo(
-    () =>
-      environments
-        .filter((environment) => environment.connection.phase === "connected")
-        .map((environment) => environment.environmentId),
+    () => environments.map((environment) => environment.environmentId),
     [environments],
   );
   const threadSearchQuery = currentView === null && !isActionsOnly ? deferredQuery : "";
@@ -1194,10 +1214,37 @@ function OpenCommandPaletteDialog(props: {
     ],
   );
 
+  const hqMates = useAtomValue(hqMatesAtom);
+  const candidateListing = useAtomValue(candidateListingAtom);
+  const hqStructure = useAtomValue(hqStructureAtom);
+  const mateNames = useMemo(
+    () => hqChatMateNames(heldCandidates(candidateListing).rows, hqStructure?.structure ?? null),
+    [candidateListing, hqStructure],
+  );
+  const threadLastVisitedAtById = useUiStateStore((store) => store.threadLastVisitedAtById);
+  // Every Mate's chats HQ lists, of those this browser holds no socket to: titles and status only.
+  const hqThreads = useMemo((): CommandPaletteHqThreads => {
+    const connected = new Set(
+      environments
+        .filter((environment) => environment.connection.phase === "connected")
+        .map((environment) => environment.environmentId),
+    );
+    return {
+      mates: hqMates?.mates ?? null,
+      current: hqMates?.current === true,
+      connected: (environmentId) => connected.has(environmentId),
+      linkable,
+      lastVisitedAt: (environmentId, threadId) =>
+        threadLastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, threadId))],
+      mateName: (projectId) => mateNames.get(projectId),
+      renderStatus: (status) => <ThreadRowResolvedStatus status={status} />,
+    };
+  }, [environments, hqMates, mateNames, linkable, threadLastVisitedAtById]);
   const allThreadItems = useMemo(
     () =>
       buildThreadActionItems({
         threads,
+        hq: hqThreads,
         ...(activeThreadId ? { activeThreadId } : {}),
         projectTitleById,
         sortOrder: clientSettings.sidebarThreadSortOrder,
@@ -1252,6 +1299,7 @@ function OpenCommandPaletteDialog(props: {
     [
       activeThreadId,
       clientSettings.sidebarThreadSortOrder,
+      hqThreads,
       navigate,
       projectCwdById,
       projectFaviconPathById,
@@ -1674,17 +1722,19 @@ function OpenCommandPaletteDialog(props: {
     },
   });
 
-  actionItems.push({
-    kind: "action",
-    value: "action:add-project",
-    searchTerms: ["add project", "create", "zerops", "environment"],
-    title: "Create Zerops project",
-    icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
-    run: async () => {
-      setOpen(false);
-      askNewProject();
-    },
-  });
+  if (!gated) {
+    actionItems.push({
+      kind: "action",
+      value: "action:add-project",
+      searchTerms: ["add project", "create", "zerops", "environment"],
+      title: "Create Zerops project",
+      icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        setOpen(false);
+        askNewProject();
+      },
+    });
+  }
 
   const changeThemeItem: CommandPaletteSubmenuItem = {
     kind: "submenu",

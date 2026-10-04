@@ -173,8 +173,8 @@ describe("Zerops data model coordination", () => {
     (mode) => {
       const initialIdentity = identity(1, 1, 1, `query-${mode}`);
       const descriptor = {
-        kind: "services-of-organization" as const,
-        organization: project().organization,
+        kind: "services-of-project" as const,
+        project: project(),
         schemaVersion: 1 as const,
       };
       const ticket = queryTicket(descriptor, initialIdentity, 1, 0, 1);
@@ -545,12 +545,12 @@ describe("Zerops data model coordination", () => {
     });
   });
 
-  it("bounds long pending-baseline membership deltas and recovers the affected interest", () => {
+  it("bounds long pending-baseline membership deltas and fails the affected interest until manual again", () => {
     const tiny = makeZeropsDataPolicy({ membershipMarkersPerQuery: 2 });
     const id = identity();
     const descriptor = {
-      kind: "services-of-organization" as const,
-      organization: project("marker-project").organization,
+      kind: "services-of-project" as const,
+      project: project("marker-project"),
       schemaVersion: 1 as const,
     };
     const ticket = queryTicket(descriptor, id, 1, 0, 1);
@@ -600,16 +600,17 @@ describe("Zerops data model coordination", () => {
       failure: "cancelled",
     });
     expect(state.interests.get(id.key)?.interest).toMatchObject({
-      status: "recovering",
+      status: "failed",
       reason: "overflow",
+      retryAtMs: null,
     });
   });
 
-  describe("a late failure never strands a paused or failed interest in recovering", () => {
+  describe("failures require a manual attempt and preserve paused or already failed interests", () => {
     const tiny = makeZeropsDataPolicy({ membershipMarkersPerQuery: 1 });
     const servicesQuery = {
-      kind: "services-of-organization" as const,
-      organization: project("held-project").organization,
+      kind: "services-of-project" as const,
+      project: project("held-project"),
       schemaVersion: 1 as const,
     };
     const held = {
@@ -687,6 +688,58 @@ describe("Zerops data model coordination", () => {
       },
     } as const;
 
+    it.each(Object.entries(failures))(
+      "publishes %s as failed with no scheduled retry",
+      (_, apply) => {
+        const id = identity();
+        let state = reduce(
+          makeInitialZeropsDataState(scope()),
+          {
+            kind: "interest-upserted",
+            interest: desiredInterest(id, 1),
+          },
+          tiny,
+        );
+        state = reduce(
+          state,
+          { kind: "read-started", ticket: queryTicket(servicesQuery, id, 1, 0, 1) },
+          tiny,
+        );
+        state = apply(state, id);
+        expect(state.interests.get(id.key)?.interest).toMatchObject({
+          status: "failed",
+          retryable: true,
+          attempts: 1,
+          retryAtMs: null,
+        });
+      },
+    );
+
+    it.each(Object.entries(held))("keeps %s after a late successful read", (_, interest) => {
+      const id = identity();
+      const heldInterest = { ...interest, identity: id } as DesiredInterestState["interest"];
+      const ticket = directTicket({ kind: "service", ref: service() }, id);
+      let state = reduce(makeInitialZeropsDataState(scope()), {
+        kind: "interest-upserted",
+        interest: {
+          ...desiredInterest(id, 1),
+          interest: heldInterest,
+          wire: {
+            status: "registered",
+            receiver: id.receiver,
+            subscriptionName: entityRegistration("service", id).subscriptionName,
+          },
+        },
+      });
+      state = reduce(state, { kind: "read-started", ticket });
+      state = reduce(state, {
+        kind: "read-completion",
+        stamp: stamp(1),
+        completion: { kind: "read-succeeded", ticket },
+      });
+      expect(state.interests.get(id.key)?.interest).toEqual(heldInterest);
+    });
+
     for (const [holding, interest] of Object.entries(held)) {
       for (const [failure, apply] of Object.entries(failures)) {
         it(`keeps a ${holding} interest ${holding} after a ${failure}`, () => {
@@ -720,8 +773,8 @@ describe("Zerops data model coordination", () => {
     });
     const inventoryMember = service("inactive-inventory-member", project("inactive-inventory"));
     const inventoryDescriptor = {
-      kind: "services-of-organization" as const,
-      organization: inventoryMember.project.organization,
+      kind: "services-of-project" as const,
+      project: inventoryMember.project,
       schemaVersion: 1 as const,
     };
     const inventoryTicket = queryTicket(inventoryDescriptor, id, 1, 0, 1);
@@ -745,8 +798,8 @@ describe("Zerops data model coordination", () => {
 
     const activityMember = process("inactive-activity-member", project("inactive-activity"));
     const activityDescriptor = {
-      kind: "running-processes-of-organization" as const,
-      organization: activityMember.project.organization,
+      kind: "running-processes-of-project" as const,
+      project: activityMember.project,
       statuses: ["RUNNING" as const],
       schemaVersion: 1 as const,
     };
@@ -1104,8 +1157,8 @@ describe("Zerops data model coordination", () => {
     const id = identity();
     const projectRef = project("running-retention-project");
     const descriptor = {
-      kind: "running-processes-of-organization" as const,
-      organization: projectRef.organization,
+      kind: "running-processes-of-project" as const,
+      project: projectRef,
       statuses: ["PENDING", "RUNNING"] as const,
       schemaVersion: 1 as const,
     };

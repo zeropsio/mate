@@ -16,9 +16,9 @@ vi.mock("@tanstack/react-router", async () => {
   };
 });
 
-import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { act } from "react";
 
+import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { FLOW_PROPS, item, MERGING, mount, renderFlow, type Item } from "./flowTestFixtures";
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 
@@ -26,7 +26,7 @@ const render = renderFlow;
 
 describe("the containers no project holds", () => {
   const rows = (kinds: ReadonlyArray<ZeropsRowAction["kind"]>) =>
-    kinds.map((action, index) => ({ item: item(`loose-${String(index)}`, []), action }));
+    kinds.map((action, index) => ({ item: item(`loose-${String(index)}`), action }));
 
   it("fold into one line with their states and a re-probe for the ones not answering", () => {
     const html = render({
@@ -41,15 +41,27 @@ describe("the containers no project holds", () => {
     expect(line).not.toContain("data-test-mate=");
   });
 
+  it("keeps their summary for a container with room for it, never a cut 'Not in a…'", () => {
+    const html = render({ ungrouped: rows(["open", "start"]) });
+    const summary = html.slice(
+      html.lastIndexOf("<span", html.indexOf("Not in a project")),
+      html.indexOf("Not in a project"),
+    );
+    expect(summary).toContain("hidden");
+    expect(summary).toContain("@2xl/flow:block");
+  });
+
   it("offers no re-probe when every container answers", () => {
     expect(render({ ungrouped: rows(["open"]) })).not.toContain("Try again");
   });
 
   it("count a project with no Mate in the one folded group, its row inside it", () => {
     const rows = [
-      { item: item("loose", []), action: "open" as const },
-      { item: item("zerops-ads", [], false), action: "set-up-mate" as const },
+      { item: item("loose"), action: "open" as const },
+      { item: item("zerops-ads", undefined, false), action: "set-up-mate" as const },
     ];
+    const html = render({ ungrouped: rows });
+    expect(html).toContain("Not in a project · 1 ready · 1 without a Mate");
     const tree = mount(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} ungrouped={rows} />);
     const fold = tree.root.findByProps({ "data-zerops-surface": "other-containers" });
     expect(fold.findAll((node) => node.children.join("") === "2")).not.toHaveLength(0);
@@ -61,32 +73,19 @@ describe("the containers no project holds", () => {
 });
 
 describe("the tools", () => {
-  const GITEA = item("mate-gitea", ["mate:tool:gitea"], false);
-
-  it("are one quiet line at the end, after the containers", () => {
+  it("are one quiet line at the end, after the containers: the organization's HQ", () => {
     const html = render({
       groups: [MERGING],
-      tools: [{ item: GITEA, kind: "gitea" }],
-      ungrouped: [{ item: item("loose", []), action: "open" }],
+      ungrouped: [{ item: item("loose"), action: "open" }],
     });
-    expect(html).toContain('data-test-tool="mate-gitea"');
+    expect(html).toContain('data-test-hq-tool="true"');
     expect(html.indexOf('data-zerops-surface="other-containers"')).toBeLessThan(
       html.indexOf('data-zerops-tools="true"'),
     );
   });
 
-  it("offer Gitea only to an account that has started and has none", () => {
-    expect(render({ groups: [MERGING], onCreateTool: () => {} })).toContain("Add Gitea");
-    expect(
-      render({
-        groups: [MERGING],
-        onCreateTool: () => {},
-        tools: [{ item: GITEA, kind: "gitea" }],
-      }),
-    ).not.toContain("Add Gitea");
-    expect(render({ onCreateProject: () => {}, onCreateTool: () => {} })).not.toContain(
-      "Add Gitea",
-    );
+  it("wait for an account that has started", () => {
+    expect(render({ onCreateProject: () => {} })).not.toContain('data-test-hq-tool="true"');
   });
 });
 

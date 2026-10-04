@@ -67,7 +67,7 @@ function accountOf(size: number) {
           },
           source: "direct-read",
           ticket: queryTicket(
-            { kind: "services-of-organization", organization: ref.organization, schemaVersion: 1 },
+            { kind: "services-of-project", project: ref, schemaVersion: 1 },
             id,
             ordinal,
             ordinal,

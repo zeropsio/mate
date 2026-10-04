@@ -1,5 +1,8 @@
+import { useStopPublicAccess } from "~/zerops/useStopPublicAccess";
+import { StopPublicAccessStatus } from "./StopPublicAccess";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import type { StopView } from "@t3tools/client-runtime/zerops/flow";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import { MoreHorizontalIcon } from "lucide-react";
 
 import {
@@ -29,7 +32,7 @@ export function ZeropsStopMenu({
   name,
   stop,
   routes,
-  onOpenProject,
+  projectId,
   onOpenStop,
   triggerClassName,
 }: {
@@ -37,11 +40,13 @@ export function ZeropsStopMenu({
   /** What the stop runs, or the line that stands in for it while that is not known. */
   readonly stop: StopView;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  readonly onOpenProject: () => void;
+  readonly projectId: string;
   readonly onOpenStop: (() => void) | undefined;
   /** The trigger's look, which is the surface's: sidebar tokens there, page tokens on a page. */
   readonly triggerClassName: string;
 }) {
+  const publicAccess = useStopPublicAccess(projectId);
+  routes = publicAccess.bound ? publicAccess.access.routes : routes;
   // `v1.4.0 · 77ab0e1 · tagged by ada` — the whole of what one row abbreviates.
   const version = stop.version;
   const detail =
@@ -66,18 +71,21 @@ export function ZeropsStopMenu({
       <MenuPopup align="end" className="max-w-[24rem] min-w-56">
         <MenuGroup data-zerops-surface="stop-menu-running">
           <MenuGroupLabel>Running</MenuGroupLabel>
-          {/* A fact, not a door: the commit's page in Gitea is a sign-in page
-              for everybody, and the environment's own page is right below. */}
+          {/* A fact, not a door: the environment's own page is right below. */}
           <MenuItem disabled>{detail}</MenuItem>
           {/* The question people actually ask of a version is what came before
-              it, and a commit page answers only for one — and, with no Gitea
-              session in the browser, answers it with a sign-in page. */}
+              it, and a commit page answers only for one. */}
           {onOpenStop === undefined ? null : (
             <MenuItem onClick={onOpenStop}>Open this environment</MenuItem>
           )}
         </MenuGroup>
         <MenuSeparator />
-        <MenuItem onClick={onOpenProject}>Open in Zerops</MenuItem>
+        <MenuItem
+          render={<a href={zeropsProjectUrl(projectId)} rel="noreferrer" target="_blank" />}
+        >
+          Open in Zerops
+        </MenuItem>
+        <StopPublicAccessStatus shown={publicAccess.shown} again={publicAccess.again} />
         {routes.length === 0 ? null : (
           <>
             <MenuSeparator />

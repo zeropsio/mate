@@ -5,16 +5,13 @@ import {
   REVIEW_DIFF_LINES_MAX,
   REVIEW_DIFF_LINES_SHOWN,
   absoluteDescription,
-  changeConflict,
   changeFileLetter,
   changeRunMessage,
   commitFold,
   crewLandCommand,
   descriptionPicture,
   focusesPrimaryLate,
-  linksChange,
   diffFold,
-  giteaFileUrl,
   keyStaysInReview,
   pressesPrimary,
   changeReadVerdict,
@@ -24,6 +21,7 @@ import {
   reviewPictureBox,
   reviewKindLine,
   reviewOrigin,
+  rollbackListNote,
   runWords,
   sizeWords,
 } from "./ZeropsReview.logic";
@@ -101,55 +99,47 @@ describe("reviewDescription: the change's own words first, the run's when it wro
   });
 });
 
-describe("descriptionPicture: a picture is read as the person only from the app's own Gitea", () => {
-  const GITEA = "https://git.example.test";
+describe("descriptionPicture: a picture is read as the person only where it is a change's picture at the official HQ", () => {
+  const HQ = "https://hq.example.test";
+  const PICTURE = "/api/apps/g1/changes/appdev/2/attachments/a1b2c3";
   it.each([
     [
-      "an attachment on its Gitea, read as the person",
-      `${GITEA}/attachments/5f1c2a`,
-      { kind: "gitea", url: `${GITEA}/attachments/5f1c2a` },
+      "a change's picture at the official HQ, read as the person",
+      `${HQ}${PICTURE}`,
+      { kind: "hq", url: `${HQ}${PICTURE}` },
+    ],
+    ["one written without its host", PICTURE, { kind: "hq", url: `${HQ}${PICTURE}` }],
+    [
+      "one written without its scheme",
+      `//hq.example.test${PICTURE}`,
+      { kind: "hq", url: `${HQ}${PICTURE}` },
     ],
     [
-      "an attachment by its repository's older address, read where Gitea answers other origins",
-      `${GITEA}/acme/appdev/attachments/5f1c2a`,
-      { kind: "gitea", url: `${GITEA}/attachments/5f1c2a` },
+      "anything else at the HQ: a plain link",
+      `${HQ}/changes/g1/appdev/2`,
+      { kind: "elsewhere", url: `${HQ}/changes/g1/appdev/2` },
     ],
     [
-      "an address Gitea wrote without its host",
-      "/attachments/5f1c2a",
-      { kind: "gitea", url: `${GITEA}/attachments/5f1c2a` },
-    ],
-    [
-      "an address without its scheme",
-      "//git.example.test/attachments/5f1c2a",
-      { kind: "gitea", url: `${GITEA}/attachments/5f1c2a` },
-    ],
-    [
-      "a file of the repository on its Gitea",
-      `${GITEA}/acme/appdev/raw/commit/b21d904/docs/page.png`,
-      { kind: "gitea", url: `${GITEA}/acme/appdev/raw/commit/b21d904/docs/page.png` },
-    ],
-    [
-      "a picture anywhere else: a plain link, never read with the token",
+      "a picture anywhere else: a plain link, never read with the person's session",
       "https://pictures.example/cat.png",
       { kind: "elsewhere", url: "https://pictures.example/cat.png" },
     ],
     [
-      "the Gitea's host over plain http: a plain link",
-      "http://git.example.test/attachments/5f1c2a",
-      { kind: "elsewhere", url: "http://git.example.test/attachments/5f1c2a" },
+      "the HQ's host over plain http: a plain link",
+      `http://hq.example.test${PICTURE}`,
+      { kind: "elsewhere", url: `http://hq.example.test${PICTURE}` },
     ],
     ["an inline picture: nothing to read", "data:image/png;base64,iVBORw0KGgo=", { kind: "none" }],
     ["a script: nothing", "javascript:alert(1)", { kind: "none" }],
   ] as const)("%s", (_case, src, picture) => {
-    expect(descriptionPicture(src, GITEA)).toEqual(picture);
+    expect(descriptionPicture(src, HQ)).toEqual(picture);
   });
 
-  it("reads nothing as the person with no Gitea known", () => {
-    expect(descriptionPicture("/attachments/5f1c2a", undefined)).toEqual({ kind: "none" });
-    expect(descriptionPicture("https://git.example.test/attachments/5f1c2a", undefined)).toEqual({
+  it("reads nothing as the person while the official HQ is not known", () => {
+    expect(descriptionPicture(PICTURE, undefined)).toEqual({ kind: "none" });
+    expect(descriptionPicture(`${HQ}${PICTURE}`, undefined)).toEqual({
       kind: "elsewhere",
-      url: "https://git.example.test/attachments/5f1c2a",
+      url: `${HQ}${PICTURE}`,
     });
   });
 });
@@ -189,15 +179,15 @@ describe("reviewPictureBox: a picture holds its box from the size its descriptio
   );
 });
 
-describe("absoluteDescription: what Gitea wrote without its host points at its Gitea", () => {
-  const GITEA = "https://git.example.test";
+describe("absoluteDescription: what was written without its host points at the official HQ", () => {
+  const HQ = "https://hq.example.test";
   it.each([
-    ["a picture", "![The page](/attachments/5f1c2a)", `![The page](${GITEA}/attachments/5f1c2a)`],
-    ["a link", "See [#3](/acme/appdev/pulls/3).", `See [#3](${GITEA}/acme/appdev/pulls/3).`],
+    ["a picture", "![The page](/attachments/5f1c2a)", `![The page](${HQ}/attachments/5f1c2a)`],
+    ["a link", "See [#3](/changes/g1/appdev/3).", `See [#3](${HQ}/changes/g1/appdev/3).`],
     [
       "a picture written as HTML",
       '<img src="/attachments/5f1c2a" width="640" alt="The page">',
-      `<img src="${GITEA}/attachments/5f1c2a" width="640" alt="The page">`,
+      `<img src="${HQ}/attachments/5f1c2a" width="640" alt="The page">`,
     ],
     [
       "an address that has its host",
@@ -209,13 +199,13 @@ describe("absoluteDescription: what Gitea wrote without its host points at its G
     [
       "nothing inside a fenced block of code",
       "```md\n![a](/attachments/1)\n```\n![b](/attachments/2)",
-      `\`\`\`md\n![a](/attachments/1)\n\`\`\`\n![b](${GITEA}/attachments/2)`,
+      `\`\`\`md\n![a](/attachments/1)\n\`\`\`\n![b](${HQ}/attachments/2)`,
     ],
   ])("%s", (_case, text, written) => {
-    expect(absoluteDescription(text, GITEA)).toBe(written);
+    expect(absoluteDescription(text, HQ)).toBe(written);
   });
 
-  it("leaves the text alone with no Gitea known", () => {
+  it("leaves the text alone while the official HQ is not known", () => {
     expect(absoluteDescription("![a](/attachments/1)", undefined)).toBe("![a](/attachments/1)");
   });
 });
@@ -249,33 +239,50 @@ describe("remarkFold: the dialog, a quick look, shows the newest of a long conve
 });
 
 describe("runWords: what it does, in the Mate's words (R3)", () => {
-  const link = "https://gitea.example/snap/appdev/pulls/2";
+  const link = "https://hq.example.test/changes/g1/appdev/2";
   it("keeps the run's own sentences and leaves the link to the change out", () => {
-    const text = `Added a **/status** route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.\n\nPull request carrying this to main, ready for a person to merge: ${link}`;
-    expect(runWords(text, "/snap/appdev/pulls/2")).toBe(
+    const text = `Added a **/status** route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.\n\nThe change carrying this to main, ready for a person to merge: ${link}`;
+    expect(runWords(text)).toBe(
       "Added a /status route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.",
     );
   });
 
   it("stops at a sentence once four lines' worth is said", () => {
     const sentence = "This sentence is exactly seventy-five characters long, give or take a few.";
-    const words = runWords(Array.from({ length: 12 }, () => sentence).join(" "), "/x/y/pulls/1");
+    const words = runWords(Array.from({ length: 12 }, () => sentence).join(" "));
     expect(words?.length).toBeLessThanOrEqual(400);
     expect(words?.endsWith(".")).toBe(true);
   });
 
   it("says nothing where the run said only the link", () => {
-    expect(runWords(`Opened ${link}`, "/snap/appdev/pulls/2")).toBeUndefined();
+    expect(runWords(`Opened ${link}`)).toBeUndefined();
   });
 
   it("reads a list as sentences, not as its bullets", () => {
-    expect(runWords("- Added the route.\n- Wrote a test for it.\n", "/a/b/pulls/3")).toBe(
+    expect(runWords("- Added the route.\n- Wrote a test for it.\n")).toBe(
       "Added the route. Wrote a test for it.",
+    );
+  });
+
+  it("reads a quote as its words, not as its markers", () => {
+    expect(
+      runWords("Added the route.\n\n> It stays behind the sign-in.\n> > Like the rest.\n"),
+    ).toBe("Added the route. It stays behind the sign-in. Like the rest.");
+  });
+
+  // e2e 2026-10-03: "What it does" printed "> [!WARNING] > My earlier claim was incorrect…".
+  it("says a callout's word into its first line, as the chat draws it", () => {
+    expect(
+      runWords(
+        `Opened change #2 for review.\n\n> [!WARNING]\n> My earlier claim was incorrect: the scaling option supports this update.\n\n${link}`,
+      ),
+    ).toBe(
+      "Opened change #2 for review. Warning: My earlier claim was incorrect: the scaling option supports this update.",
     );
   });
 });
 
-describe("diffFold: a long file's diff folds, the fold opens, and past what fits it says where the rest is (D4)", () => {
+describe("diffFold: a long file's diff folds, the fold opens, and past what fits it says so (D4)", () => {
   const SHOWN = REVIEW_DIFF_LINES_SHOWN;
   const MAX = REVIEW_DIFF_LINES_MAX;
   it.each<[string, { total: number; all: boolean; cut: boolean }, ReturnType<typeof diffFold>]>([
@@ -291,12 +298,12 @@ describe("diffFold: a long file's diff folds, the fold opens, and past what fits
       { shown: SHOWN + 1, rest: undefined },
     ],
     [
-      "one too long to show here: the rest is on Gitea",
+      "one too long to show here",
       { total: MAX + 1, all: false, cut: false },
       {
         shown: SHOWN,
         rest: {
-          kind: "gitea",
+          kind: "cut",
           words: `${String(MAX + 1 - SHOWN)} more lines, too many to show here.`,
         },
       },
@@ -304,12 +311,12 @@ describe("diffFold: a long file's diff folds, the fold opens, and past what fits
     [
       "one the read stopped inside, short",
       { total: 40, all: false, cut: true },
-      { shown: 40, rest: { kind: "gitea", words: "The rest is too long to read here." } },
+      { shown: 40, rest: { kind: "cut", words: "The rest is too long to read here." } },
     ],
     [
       "one the read stopped inside, opened",
       { total: SHOWN + 1, all: true, cut: true },
-      { shown: SHOWN + 1, rest: { kind: "gitea", words: "The rest is too long to read here." } },
+      { shown: SHOWN + 1, rest: { kind: "cut", words: "The rest is too long to read here." } },
     ],
     [
       "one too long to show that the read stopped inside",
@@ -317,33 +324,13 @@ describe("diffFold: a long file's diff folds, the fold opens, and past what fits
       {
         shown: SHOWN,
         rest: {
-          kind: "gitea",
+          kind: "cut",
           words: `${String(MAX + 1 - SHOWN)}+ more lines, too many to show here.`,
         },
       },
     ],
   ])("%s", (_case, input, fold) => {
     expect(diffFold(input)).toEqual(fold);
-  });
-});
-
-describe("giteaFileUrl: a file's diff on Gitea, where the review cannot show it all", () => {
-  it.each([
-    [
-      "the change's files page, at the file",
-      "https://git.example.test/acme/appdev/pulls/2",
-      "src/server/index.ts",
-      "https://git.example.test/acme/appdev/pulls/2/files#diff-408bfb63e4d90c09d55141f33cb31d40842d79c0",
-    ],
-    [
-      "a path with more than ASCII in it",
-      "https://git.example.test/acme/appdev/pulls/2",
-      "docs/café menu.md",
-      "https://git.example.test/acme/appdev/pulls/2/files#diff-703f1bfa43b096a5c1ef12d5a2c86f9c593d2952",
-    ],
-    ["nothing where the change has no page", undefined, "src/server/index.ts", undefined],
-  ])("%s", (_case, pullUrl, path, url) => {
-    expect(giteaFileUrl(pullUrl, path)).toBe(url);
   });
 });
 
@@ -379,33 +366,42 @@ describe("sizeWords", () => {
 });
 
 describe("releaseChangeRows: what goes out, one row per change", () => {
-  const merged = [
-    {
-      repository: "appdev",
-      number: 54,
-      title: "Performance tuning across the storefront",
-      mateProjectId: "p-juno",
-      mergedAt: "2026-09-28T09:00:00Z",
-      mergeCommitSha: "aaa111",
-    },
-    {
-      repository: "appdev",
-      number: 55,
-      title: "Clearer copy on the admin sign-in",
-      mateProjectId: "p-cleo",
-      mergedAt: "2026-09-29T09:00:00Z",
-      mergeCommitSha: "BBB222",
-    },
-  ];
+  const commit = (
+    sha: string,
+    subject: string,
+    change: {
+      readonly number: number;
+      readonly title: string;
+      readonly mateProjectId: string;
+    } | null,
+  ) => ({ sha, subject, authorName: "Juno", at: "2026-09-28T09:00:00Z", change });
+  const moved = (repository: string, commits: ReadonlyArray<ReturnType<typeof commit>>) => ({
+    repository,
+    services: ["app"],
+    commits,
+    total: commits.length,
+    truncated: false,
+  });
 
-  it("names each commit by the change it landed as, which opens, whose Mate, and whether stage runs it", () => {
+  it("names each commit by the change HQ says it landed, which opens, whose Mate, and whether stage runs it", () => {
     const rows = releaseChangeRows({
-      commits: [
-        { sha: "AAA111", subject: "Performance tuning across the storefront (#54)" },
-        { sha: "bbb222", subject: "Clearer copy on the admin sign-in (#55)" },
-        { sha: "ccc333", subject: "A person's direct fix" },
+      moved: [
+        moved("appdev", [
+          commit("aaa111", "Performance tuning across the storefront (#54)", {
+            number: 54,
+            title: "Performance tuning across the storefront (#54)",
+            mateProjectId: "p-juno",
+          }),
+          commit("bbb222", "Clearer copy on the admin sign-in", {
+            number: 55,
+            title: "Clearer copy on the admin sign-in",
+            mateProjectId: "p-cleo",
+          }),
+          commit("ccc333", "A person's direct fix", null),
+        ]),
+        // One commit two services take is one row.
+        moved("appdev", [commit("aaa111", "Performance tuning across the storefront (#54)", null)]),
       ],
-      merged,
       marks: new Map([
         ["aaa111", "on-stage"],
         ["bbb222", "deploying-on-stage"],
@@ -425,7 +421,7 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
         title: "#55 Clearer copy on the admin sign-in",
         change: { repository: "appdev", number: 55 },
         mateProjectId: "p-cleo",
-        mergedAt: "2026-09-29T09:00:00Z",
+        mergedAt: "2026-09-28T09:00:00Z",
         stage: "deploying-on-stage",
       },
       {
@@ -439,90 +435,45 @@ describe("releaseChangeRows: what goes out, one row per change", () => {
     ]);
   });
 
-  it.each([
-    // Numbers are per repository: the recipe repo's #54 is not appdev's.
-    ["a commit naming #54 that another repository's #54 landed as", "ddd444", undefined],
-    ["the commit appdev's #54 landed as", "aaa111", "p-juno"],
-  ])("credits by the commit a change landed as: %s", (_case, sha, mate) => {
-    const [row] = releaseChangeRows({
-      commits: [{ sha, subject: "Performance tuning across the storefront (#54)" }],
-      merged: [
-        ...merged,
-        {
-          repository: "recipe",
-          number: 54,
-          title: "Add a staging environment",
-          mateProjectId: "p-uma",
-          mergedAt: "2026-09-27T09:00:00Z",
-          mergeCommitSha: "eee555",
-        },
+  it("opens a change in the repository it was compared in: numbers are per repository", () => {
+    const rows = releaseChangeRows({
+      moved: [
+        moved("recipe", [
+          commit("eee555", "Add a staging environment", {
+            number: 54,
+            title: "Add a staging environment",
+            mateProjectId: "p-uma",
+          }),
+        ]),
+        moved("appdev", [
+          commit("aaa111", "Performance tuning", {
+            number: 54,
+            title: "Performance tuning",
+            mateProjectId: "p-juno",
+          }),
+        ]),
       ],
       marks: new Map(),
     });
-    expect(row?.mateProjectId).toBe(mate);
+    expect(rows.map(({ change, mateProjectId }) => [change, mateProjectId])).toEqual([
+      [{ repository: "recipe", number: 54 }, "p-uma"],
+      [{ repository: "appdev", number: 54 }, "p-juno"],
+    ]);
   });
 });
 
-describe("changeConflict: which files main moved under a change that no longer merges", () => {
-  const files = [{ filename: "src/server/index.ts" }, { filename: "src/routes/status.ts" }];
-  const HEAD = "c".repeat(40);
-  const routes = {
-    sha: "a".repeat(40),
-    subject: "Routes (#3)",
-    at: "2026-09-29T07:00:00Z",
-    files: ["src/server/index.ts"],
-  };
-  const tidy = {
-    sha: "b".repeat(40),
-    subject: "Tidy (#4)",
-    at: "2026-09-29T08:00:00Z",
-    files: ["README.md"],
-  };
-  // main's head, the newest of them.
-  const health = {
-    sha: HEAD,
-    subject: "Health routes (#5)",
-    at: "2026-09-29T09:40:00Z",
-    files: ["src/server/index.ts"],
-  };
-  const oldestFirst = [routes, tidy, health];
-  const newest = {
-    files: ["src/server/index.ts"],
-    by: { subject: "Health routes (#5)", at: "2026-09-29T09:40:00Z" },
-  };
+describe("rollbackListNote: what a roll back's list says where it lists nothing", () => {
   it.each([
+    ["leaving", { state: "reading" }, "Comparing in HQ…"],
     [
-      "names the overlap and the newest commit that made it, main's commits oldest first",
-      { mergeability: "conflicting", files, mainSince: oldestFirst, head: HEAD },
-      newest,
+      "coming-back",
+      { state: "failed", reason: "HQ is not answering right now." },
+      "Can't tell what comes back: HQ is not answering right now.",
     ],
-    [
-      "names the same newest commit with main's commits newest first",
-      { mergeability: "conflicting", files, mainSince: [health, tidy, routes], head: HEAD },
-      newest,
-    ],
-    [
-      "names no commit where main's head is not among them to tell which is newest",
-      { mergeability: "conflicting", files, mainSince: oldestFirst, head: "d".repeat(40) },
-      { files: ["src/server/index.ts"], by: undefined },
-    ],
-    [
-      "says nothing for a change that merges",
-      { mergeability: "mergeable", files, mainSince: oldestFirst, head: HEAD },
-      undefined,
-    ],
-    [
-      "waits for main's side",
-      { mergeability: "conflicting", files, mainSince: undefined, head: HEAD },
-      undefined,
-    ],
-    [
-      "finds no overlap where main's commits named no files",
-      { mergeability: "conflicting", files, mainSince: [{ sha: HEAD, subject: "x" }], head: HEAD },
-      { files: [], by: undefined },
-    ],
-  ])("%s", (_name, input, expected) => {
-    expect(changeConflict(input)).toEqual(expected);
+    ["leaving", { state: "known" }, "Nothing leaves production."],
+    ["coming-back", { state: "known" }, "Nothing comes back."],
+  ] as const)("%s, %o", (side, list, words) => {
+    expect(rollbackListNote(side, list)).toBe(words);
   });
 });
 
@@ -538,26 +489,19 @@ describe("crewLandCommand: Land now takes only work never reported or sent back"
   });
 });
 
-describe("linksChange: a message links this change, never one whose number starts the same", () => {
-  it.each([
-    ["its own address", "Ready to merge: https://gitea.example/snap/appdev/pulls/5", true],
-    ["its address before punctuation", "(https://gitea.example/snap/appdev/pulls/5).", true],
-    ["its files page", "https://gitea.example/snap/appdev/pulls/5/files", true],
-    ["#53's address", "https://gitea.example/snap/appdev/pulls/53", false],
-    ["another repository's #5", "https://gitea.example/snap/api/pulls/5", false],
-  ])("%s: %s", (_case, text, links) => {
-    expect(linksChange(text, "/snap/appdev/pulls/5")).toBe(links);
-  });
+describe("changeRunMessage: the run that made a change is the newest answer linking it", () => {
+  const HQ = "https://hq.example.test";
+  const change = (number: number) => ({ appId: "g1", repo: "appdev", number });
 
   it("picks the run that linked #5, not a newer one that linked #53", () => {
     const messages = [
-      { role: "assistant", text: "Added the route. PR: https://gitea.example/snap/appdev/pulls/5" },
+      { role: "assistant", text: `Added the route. Change: ${HQ}/changes/g1/appdev/5` },
       { role: "user", text: "Now the footer." },
-      { role: "assistant", text: "Footer done. PR: https://gitea.example/snap/appdev/pulls/53" },
+      { role: "assistant", text: `Footer done. Change: ${HQ}/changes/g1/appdev/53` },
     ];
-    expect(changeRunMessage(messages, "/snap/appdev/pulls/5")?.text).toContain("Added the route.");
-    expect(changeRunMessage(messages, "/snap/appdev/pulls/53")?.text).toContain("Footer done.");
-    expect(changeRunMessage(messages, "/snap/appdev/pulls/7")).toBeUndefined();
+    expect(changeRunMessage(messages, change(5), HQ)?.text).toContain("Added the route.");
+    expect(changeRunMessage(messages, change(53), HQ)?.text).toContain("Footer done.");
+    expect(changeRunMessage(messages, change(7), HQ)).toBeUndefined();
   });
 });
 
@@ -594,35 +538,26 @@ describe("keyStaysInReview: what is typed in the review acts on nothing behind i
 });
 
 describe("changeReadVerdict: a change the flow does not hold, until it is read", () => {
-  const base = {
-    repository: "apidev",
-    number: 1,
-    provided: true,
-    ownerKnown: true,
-    readable: true,
-    signInTrouble: null,
-    changesFailure: undefined,
-    gitea: "ready",
-  } as const;
+  const base = { repository: "apidev", number: 1, provided: true } as const;
   it.each([
     ["a read in flight", { read: { kind: "reading" } }, "busy", "Reading this change"],
     [
-      "no read sent: the organization has no Gitea",
-      { read: { kind: "idle" }, readable: false, gitea: "none" },
+      "no read sent: the organization has no HQ",
+      { read: { kind: "idle" }, failure: "This organization has no HQ." },
       "attention",
-      "This organization has no Gitea.",
+      "This change could not be read",
     ],
     [
-      "no read sent: Gitea's broker has no public address",
-      { read: { kind: "idle" }, readable: false, gitea: "no-broker-address" },
+      "no read sent: HQ has no public address",
+      { read: { kind: "idle" }, failure: "HQ has no public address." },
       "attention",
-      "Gitea's broker has no public address.",
+      "This change could not be read",
     ],
     [
-      "no read sent: the Gitea project's services not read yet",
-      { read: { kind: "idle" }, readable: false, gitea: "unknown" },
+      "no read sent: HQ is not discovered yet",
+      { read: { kind: "idle" } },
       "quiet",
-      "Reading this change",
+      "Waiting for the organization's HQ",
     ],
     [
       "no change by that number",
@@ -632,32 +567,25 @@ describe("changeReadVerdict: a change the flow does not hold, until it is read",
     ],
     [
       "a read that failed",
-      { read: { kind: "failed", reason: "Gitea did not answer" } },
+      { read: { kind: "unavailable", reason: "HQ is not answering right now." } },
       "attention",
       "This change could not be read",
     ],
     [
-      "no read sent: Gitea refused the sign-in",
-      { read: { kind: "idle" }, readable: false, signInTrouble: "Gitea refused the sign-in" },
-      "attention",
-      "Gitea isn't signed in",
-    ],
-    [
-      "no read sent: the project's changes failed",
-      { read: { kind: "idle" }, ownerKnown: false, changesFailure: "403 on the org" },
-      "attention",
-      "This project's changes couldn't be read",
-    ],
-    [
-      // The app fetches its own Gitea session: nothing waits on the person, so no sign-in words.
-      "no read sent: the app is fetching its own Gitea session",
-      { read: { kind: "idle" }, readable: false },
+      "no read sent: the organization's HQ is not known yet",
+      { read: { kind: "idle" } },
       "quiet",
-      "Reading this change",
+      "Waiting for the organization's HQ",
     ],
     [
-      "no read sent: the project's Gitea is not known",
-      { read: { kind: "idle" }, ownerKnown: false },
+      "HQ is down before a read",
+      { read: { kind: "idle" }, failure: "HQ is down." },
+      "attention",
+      "This change could not be read",
+    ],
+    [
+      "HQ knows no such project",
+      { read: { kind: "idle" }, projectKnown: false },
       "attention",
       "This change's project isn't known here",
     ],

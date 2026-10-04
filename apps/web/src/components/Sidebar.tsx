@@ -127,11 +127,12 @@ import {
   useThreadShells,
 } from "../state/entities";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
+import { hqStructureAtom } from "../state/zerops";
 import { vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
 import { useThreadSearch } from "../state/queries";
-import { useAtomCommand } from "../state/use-atom-command";
+import { useMateCommand } from "../zerops/accountEnvironments";
 import {
   buildThreadRouteParams,
   resolveActiveThreadRouteRef,
@@ -228,10 +229,12 @@ import {
 } from "../zerops/useMenuMateReadings";
 import { useAskMateToFix } from "../zerops/fixRequest";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
+import { useZeropsMenu } from "../zerops/useZeropsMenu";
 import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { AccountVoiceLine } from "./zerops/AccountVoiceLine";
 import { useListingPatience } from "../zerops/useListingPatience";
+import { hqOutageLine, requestHqSnapshot } from "../zerops/hqStructure";
 import { useNowMs } from "../zerops/useNowMs";
 import { useZeropsContainers } from "../zerops/zeropsContainers";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
@@ -246,7 +249,6 @@ import { newProjectOffered } from "./zerops/SidebarProjects.logic";
 import { releaseFailureOf } from "./zerops/SidebarProductionChip.logic";
 import { useZeropsAgentActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
-import { mateDeleting, useDeletingMates } from "../zerops/deletingMates";
 import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
@@ -258,37 +260,29 @@ import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
 import {
   canCreateProjectsInOrganization,
-  readZeropsGroupTags,
+  readZeropsMembership,
   type EnvironmentRow,
 } from "@t3tools/client-runtime/zerops";
 import {
   menuMemory,
   rememberedChangeOf,
   rememberedChanges,
-  rememberedRowOf,
   rememberMenu,
   withChanges,
-  withRows,
   withChips,
-  withCrews,
-  type RememberedRow,
 } from "../zerops/menuMemory";
 import {
-  menuRowsOf,
   menuSkeletonSnapshot,
-  menuWiring,
   onMenuSkeletonChange,
   projectOpenedIn,
-  rememberedCandidatesOf,
   rememberMenuCandidates,
 } from "../zerops/menuSkeleton";
-import { useHeldForKey } from "../zerops/useHeldFor";
-import { candidateListingWholeAtom, zeropsSessionAtom } from "../state/zerops";
+import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
+import { zeropsSessionAtom } from "../state/zerops";
 import {
   candidatesNotice,
   findCandidate,
   heldCandidates,
-  STILL_READING_PATIENCE_MS,
 } from "@t3tools/client-runtime/zerops/projections";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { MiddleTruncate } from "./ui/middle-truncate";
@@ -1804,10 +1798,8 @@ export default function Sidebar() {
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();
 
-  // The left menu lists environments that have Mate. Membership is the
-  // container's presence, not a live session, so a sleeping container changes
-  // a dot rather than rearranging the menu (`mateEnvironments.ts`). Everything
-  // else about the account is the projects screen's job.
+  // HQ owns the menu rows. Platform inventory enriches names/state and access gates actions;
+  // neither a sleeping container nor unfinished inventory changes placement membership.
   const zeropsSession = useZeropsSession();
   const zeropsSignedIn = zeropsSession.status === "signed-in";
   // Whether this person may create a project — the part of *Add production*'s
@@ -1819,56 +1811,11 @@ export default function Sidebar() {
       : canCreateProjectsInOrganization(zeropsSession.activeOrganization);
   const { listing: zeropsListing, refresh: refreshZeropsCandidates } = useZeropsCandidates();
   const zeropsHeld = useMemo(() => heldCandidates(zeropsListing), [zeropsListing]);
-  const zeropsCandidates = zeropsHeld.rows;
-  // What the tree draws: until the listing holds its rows, the tree this browser last drew for
-  // the person and the organization (`menuSkeleton.ts`) — a reload paints the menu at once, and
-  // the listing replaces it in place when it lands. The listing's organization is the one the
-  // inventory reads, a commit behind the session's on a switch: until they agree, the listing is
-  // the last organization's, neither drawn nor remembered as this one's.
+  const zeropsCandidates = useZeropsMenu(zeropsHeld.rows);
   const zeropsOrganizationId = zeropsSession.activeOrganization?.id;
   const zeropsListingOrganizationId =
     useAtomValue(zeropsSessionAtom)?.activeOrganization?.organizationId;
-  const zeropsWiring = useMemo(
-    () =>
-      menuWiring({
-        organizationId: zeropsOrganizationId,
-        listingOrganizationId: zeropsListingOrganizationId,
-        listing: zeropsListing,
-        complete: zeropsHeld.complete,
-      }),
-    [zeropsHeld.complete, zeropsListing, zeropsListingOrganizationId, zeropsOrganizationId],
-  );
-  // A listing known but not whole and read for this long, in this organization, is what there
-  // is — a project withheld for good, or one whose container is never read, is no longer painted
-  // from memory — and a read failed for good says so alone.
-  const zeropsGraceOver = useHeldForKey(zeropsWiring.graceKey, STILL_READING_PATIENCE_MS);
-  // Whether it lacks only projects this person can never see or that can never be read.
-  const zeropsListingWhole = useAtomValue(candidateListingWholeAtom);
-  // The memory as it stands: what reads it — the tree, the open row — follows its writes.
   const zeropsSkeleton = useSyncExternalStore(onMenuSkeletonChange, menuSkeletonSnapshot);
-  const zeropsMenu = useMemo(
-    () =>
-      menuRowsOf({
-        listing: zeropsListing,
-        held: zeropsHeld,
-        remembered: zeropsSignedIn
-          ? rememberedCandidatesOf(zeropsSkeleton, zeropsOrganizationId)
-          : undefined,
-        current: zeropsWiring.current,
-        graceOver: zeropsGraceOver,
-        whole: zeropsListingWhole,
-      }),
-    [
-      zeropsGraceOver,
-      zeropsHeld,
-      zeropsListing,
-      zeropsListingWhole,
-      zeropsOrganizationId,
-      zeropsSignedIn,
-      zeropsSkeleton,
-      zeropsWiring.current,
-    ],
-  );
   // The creations under way in the organization in view, drawn in their
   // groups before the listing holds them — the projects page's own placing —
   // and the New projects this tab is making, from the press.
@@ -1886,10 +1833,7 @@ export default function Sidebar() {
     [zeropsPresses, zeropsMade, zeropsSession.activeOrganization?.id],
   );
   // Whose each Mate is, for the badge on the corner of its face.
-  const zeropsMateOwner = useZeropsMateOwners({
-    candidates: zeropsCandidates,
-    enabled: zeropsSignedIn,
-  });
+  const zeropsMateOwner = useZeropsMateOwners();
   // Each container's health, as the container store holds it — the tree's
   // "some Mate in the group is up" part of *Add production*'s gate.
   const { health: zeropsHealth } = useZeropsContainers();
@@ -1921,7 +1865,7 @@ export default function Sidebar() {
       if (zeropsProjectFlow === null || flow === undefined) return undefined;
       return {
         pullRequests: flow.pullRequests,
-        // Until Gitea answers, the tree draws the change rows it remembers.
+        // Until HQ tells them, the tree draws the change rows it remembers.
         changesKnown: flow.changesKnown,
         // The pull requests that have landed on `main`: without it `groupFlow`
         // never sees a group's own merged code, so it read `main` as empty and
@@ -1934,6 +1878,9 @@ export default function Sidebar() {
         // What a release would put in front of people: the count the
         // chips' menus say waits for production.
         releaseContents: flow.release.contents,
+        releaseUntold: flow.release.untold,
+        // Until HQ answers the releases, production's chip says only what the platform says.
+        releasesKnown: flow.releasesKnown,
         // The release that did not go through, which turns the chip amber.
         releaseFailure: releaseFailureOf({
           releases: flow.releases,
@@ -2006,6 +1953,13 @@ export default function Sidebar() {
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const sidebarProjectSortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
+  // HQ not answering: the menu draws the structure it last read, says since when and how old that
+  // is (SPEC §6.2.3); the Mates' conversations go on without HQ.
+  const zeropsHqView = useAtomValue(hqStructureAtom);
+  const zeropsHqOutage =
+    zeropsHqView?.organizationId === zeropsSession.activeOrganization?.id
+      ? hqOutageLine(zeropsHqView, timestampFormat, zeropsNowMs)
+      : null;
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const {
     settleThread,
@@ -2019,7 +1973,7 @@ export default function Sidebar() {
     archiveThread,
     deleteThread,
   } = useThreadActions();
-  const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
+  const updateThreadMetadata = useMateCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
   const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{ path: string }>({
@@ -2382,16 +2336,16 @@ export default function Sidebar() {
     void router.navigate({ to: "/zerops" });
   }, [isMobile, router, setOpenMobile]);
 
-  // What each connected agent is doing — the one derivation the projects
-  // screen reads too (`agentActivity.ts`), so a Mate says the same thing in
-  // both places.
+  // What each Mate is doing, as HQ or its socket tells it — the one
+  // derivation the projects screen reads too (`agentActivity.ts`), so a Mate
+  // says the same thing in both places.
   const zeropsAgentActivity = useZeropsAgentActivity();
   // Each Mate's own menu: the projects screen's verbs, and this viewer's own.
   const zeropsMateMenus = useSidebarMateMenus({ threads });
-  // What a Mate's row says: its conversation's while its socket is up or only
-  // blinking, and until then what this browser remembers it saying
-  // (`menuMemory.ts`) — a reload paints whole rows, not names that grow as
-  // each Mate connects, and a Mate at work never falls asleep for a blink.
+  // What a Mate's row says: HQ's word of it, or its socket's reading, live
+  // while either stands and at rest otherwise (`useMateRowActivity`) — a
+  // reload paints whole rows from HQ's last word, and a Mate at work never
+  // falls asleep for a blink.
   const zeropsRowActivity = useMateRowActivity(zeropsAgentActivity);
   // Whether a Mate's conversations are read: one with none says nothing was asked yet.
   const zeropsConversationsRead = useMateConversationsRead();
@@ -2404,38 +2358,38 @@ export default function Sidebar() {
   // The tree as drawn of a read listing, for the next reload to paint before it lands again —
   // never a Mate on its way off Zerops.
   useEffect(() => {
-    // Under the organization the listing is of, and only while it is the one in view.
-    const under = zeropsWiring.rememberUnder;
-    if (zeropsMenu.toRemember === null || under === null) return;
+    // HQ owns the row list; remember its enriched rows only for the organization in view.
+    if (
+      zeropsOrganizationId === undefined ||
+      zeropsListingOrganizationId !== zeropsOrganizationId ||
+      !zeropsHeld.complete
+    )
+      return;
     rememberMenuCandidates(
-      under,
-      zeropsMenu.toRemember.filter((candidate) => !mateDeleting(candidate.project, zeropsDeleting)),
+      zeropsOrganizationId,
+      zeropsCandidates.filter((candidate) => !mateDeleting(candidate.project, zeropsDeleting)),
     );
-  }, [zeropsDeleting, zeropsMenu, zeropsWiring.rememberUnder]);
+  }, [
+    zeropsCandidates,
+    zeropsDeleting,
+    zeropsHeld.complete,
+    zeropsListingOrganizationId,
+    zeropsOrganizationId,
+  ]);
+
+  // Forget the change rows and the chips of groups the listing no longer holds.
+  // The Mates, their crews with them, are remembered as HQ tells them (`hqStructure.ts`).
   useEffect(() => {
     if (!zeropsHeld.complete) return;
-    const rows: Record<string, RememberedRow> = {};
-    const listed = new Set<string>();
     const groups = new Set<string>();
     for (const candidate of zeropsCandidates) {
-      const { groupId } = readZeropsGroupTags(candidate.project.tagList);
+      const { groupId } = readZeropsMembership(candidate.project);
       if (groupId !== undefined) groups.add(groupId);
-      if (mateDeleting(candidate.project, zeropsDeleting)) continue;
-      listed.add(candidate.project.id);
-      if (candidate.group !== "connected" || candidate.environmentId === undefined) continue;
-      const live = zeropsAgentActivity.get(candidate.environmentId);
-      if (live !== undefined) rows[candidate.project.id] = rememberedRowOf(live);
     }
-    rememberMenu((memory) =>
-      withCrews(
-        withChips(withChanges(withRows(memory, rows, listed), {}, groups), {}, groups),
-        {},
-        listed,
-      ),
-    );
-  }, [zeropsAgentActivity, zeropsCandidates, zeropsDeleting, zeropsHeld.complete]);
+    rememberMenu((memory) => withChips(withChanges(memory, {}, groups), {}, groups));
+  }, [zeropsCandidates, zeropsHeld.complete]);
   // The change rows and the chips the tree drew of what it read, for
-  // the next reload to paint while Gitea and the platform answer again.
+  // the next reload to paint while HQ and the platform answer again.
   const zeropsRemembered = useMemo<SidebarRemembered>(
     () => ({
       changes: rememberedChanges,
@@ -2461,15 +2415,6 @@ export default function Sidebar() {
   }, []);
   // "Ask <your Mate> to fix it" from the production chip's menu (S6).
   const askMateToFix = useAskMateToFix();
-  // The Mates waiting on the viewer, for the header's faces and ⌥↓.
-  const zeropsActivityOf = useCallback(
-    (candidate: (typeof zeropsCandidates)[number]) =>
-      candidate.environmentId === undefined
-        ? undefined
-        : zeropsAgentActivity.get(candidate.environmentId),
-    [zeropsAgentActivity],
-  );
-
   // A Mate still coming up is open in its own view (`/mate/$projectId`) — a New
   // project's first Mate, before its project exists, by the creation's id.
   const comingMateRoute = useMatch({ from: "/_chat/mate/$projectId", shouldThrow: false });
@@ -2512,9 +2457,10 @@ export default function Sidebar() {
       ),
     [activeZeropsProjectId, zeropsMateOwner, zeropsMateScope],
   );
+  // The Mates waiting on the viewer, for the header's faces and ⌥↓: each read as its row reads it.
   const zeropsWaiting = useSidebarWaiting({
     candidates: zeropsCandidates,
-    activityOf: zeropsActivityOf,
+    activityOf: zeropsRowActivity,
     shown: zeropsShown,
     activeProjectId: activeZeropsProjectId,
     beforeReveal: isMobile
@@ -2640,13 +2586,11 @@ export default function Sidebar() {
     [activeThreads, pinnedThreads, settledThreads, snoozedThreads],
   );
   const searchEnvironmentIds = useMemo(
-    () =>
-      environments
-        .filter((environment) => environment.connection.phase === "connected")
-        .map((environment) => environment.environmentId),
+    () => environments.map((environment) => environment.environmentId),
     [environments],
   );
-  // useThreadSearch owns the debounce and the two-character floor.
+  // useThreadSearch owns the debounce, the two-character floor and asking only
+  // connected environments.
   const threadSearch = useThreadSearch(searchEnvironmentIds, threadSearchQuery);
   const threadSearchMatchByKey = useMemo(
     () =>
@@ -4253,12 +4197,21 @@ export default function Sidebar() {
             <SidebarZeropsTree
               activeProjectId={activeZeropsProjectId}
               births={zeropsPlacedBirths}
-              candidates={zeropsMenu.rows}
+              candidates={zeropsCandidates}
               health={zeropsHealth}
               mayCreate={zeropsMayCreate}
               className="mb-2"
-              complete={zeropsMenu.complete}
+              complete={zeropsHeld.complete}
               notice={zeropsNotice}
+              hqOutage={zeropsHqOutage}
+              onHqAgain={
+                !zeropsHqView?.failure
+                  ? undefined
+                  : () => {
+                      if (zeropsSession.activeOrganization)
+                        requestHqSnapshot(zeropsSession.activeOrganization.id);
+                    }
+              }
               onNoticeAct={(affordance) => {
                 if (affordance.kind === "go-to-projects") navigateToZeropsProjects();
                 else refreshZeropsCandidates();
@@ -4286,7 +4239,7 @@ export default function Sidebar() {
               remembered={zeropsRemembered}
               // A tree drawn from memory teaches the memory nothing: its chips and changes are
               // what it drew of them last time.
-              onDrawn={zeropsMenu.fromMemory ? undefined : rememberZeropsDrawn}
+              onDrawn={zeropsHqView?.current === true ? rememberZeropsDrawn : undefined}
               onSelect={(candidate) => {
                 if (isMobile) {
                   setOpenMobile(false);

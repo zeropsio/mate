@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  botDisplayName,
-  generateBotName,
-  hasBotName,
-  keptOrGeneratedBotName,
-  ZEROPS_BOT_NAME_POOL,
-} from "./bots.ts";
+import { generateBotName, ZEROPS_BOT_NAME_POOL } from "./bots.ts";
 import type { RandomBytes } from "./newProject.ts";
 
 /** Deterministic bytes, so a name choice is a fact rather than a coin flip. */
@@ -72,49 +66,5 @@ describe("generateBotName", () => {
     // or the first names in the pool come up more often than the last.
     const name = generateBotName([], bytesReturning(255, 1));
     expect(ZEROPS_BOT_NAME_POOL).toContain(name);
-  });
-});
-
-describe("botDisplayName", () => {
-  it.each([
-    ["the agent's name when it has one", "Ada", "crm-dev", "Ada"],
-    ["the project's name when it does not", undefined, "crm-dev", "crm-dev"],
-    ["the project's name for a blank one", "   ", "crm-dev", "crm-dev"],
-  ] as const)("shows %s", (_label, bot, projectName, expected) => {
-    expect(botDisplayName({ bot, projectName })).toBe(expected);
-  });
-});
-
-describe("hasBotName", () => {
-  it.each([
-    ["Ada", true],
-    [undefined, false],
-    ["  ", false],
-  ] as const)("%s -> %s", (bot, expected) => {
-    expect(hasBotName(bot)).toBe(expected);
-  });
-});
-
-describe("keptOrGeneratedBotName", () => {
-  const zeros: RandomBytes = (size) => new Uint8Array(size);
-
-  it("keeps the name a Mate already has", () => {
-    // Setting up the container of a Mate that was half-made is a recovery, not
-    // a new Mate: it had a name, the project is named after it, and generating
-    // a fresh one renamed the row while the project kept pointing at the old
-    // one — `Lighthouse - Enzo` holding a Mate called Dara (measured on the
-    // test account, 2026-09-20).
-    expect(keptOrGeneratedBotName("Enzo", ["Wren"], zeros)).toBe("Enzo");
-  });
-
-  it.each([undefined, "", "   "])("generates one when there is none (%s)", (existing) => {
-    const name = keptOrGeneratedBotName(existing, [], zeros);
-    expect(ZEROPS_BOT_NAME_POOL).toContain(name);
-  });
-
-  it("keeps a name even when a sibling has taken it", () => {
-    // The name is already on the project; a collision is the person's to
-    // resolve by renaming, not ours to resolve by renaming behind their back.
-    expect(keptOrGeneratedBotName("Ada", ["Ada"], zeros)).toBe("Ada");
   });
 });

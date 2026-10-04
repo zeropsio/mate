@@ -58,7 +58,7 @@ import {
   type CrewLaneRow,
   type CrewStoreError,
 } from "./CrewStore.ts";
-import { landedAssignmentsScript, landingTrailers } from "./crewTrailers.ts";
+import { landingTrailers } from "./crewTrailers.ts";
 import { EXCLUDE_LINE, type LaneKey } from "./CrewWorkspace.ts";
 
 export type CrewIntegrationError =
@@ -125,11 +125,6 @@ export type LandOutcome =
   | { readonly _tag: "refused"; readonly refusal: LandingRefusal }
   | LaneNotReady;
 
-/** A landing anchor found at boot: it landed, or it restarts from the WIP step. */
-export type InFlightLanding =
-  | { readonly _tag: "landed"; readonly assignment: string; readonly commit: string }
-  | { readonly _tag: "restart"; readonly assignment: string };
-
 export interface RefChange {
   readonly ref: string;
   readonly before: string | null;
@@ -137,12 +132,12 @@ export interface RefChange {
 }
 
 export interface CrewIntegrationService {
+  readonly landingEvidence: (
+    host: string,
+    assignment: string,
+  ) => Effect.Effect<string | null, CrewIntegrationError>;
   readonly mergeIn: (key: LaneKey) => Effect.Effect<MergeOutcome, CrewIntegrationError>;
   readonly land: (input: LandInput) => Effect.Effect<LandOutcome, CrewIntegrationError>;
-  /** Boot: resolve every `refs/t3/crew/landing/*` anchor left by a killed landing. */
-  readonly inFlight: (
-    host: string,
-  ) => Effect.Effect<ReadonlyArray<InFlightLanding>, CrewIntegrationError>;
   /** Dispatch: record the lane's policed refs. */
   readonly snapshotRefs: (
     key: LaneKey,
@@ -155,13 +150,6 @@ export interface CrewIntegrationService {
     key: LaneKey,
     explained?: ReadonlyArray<string>,
   ) => Effect.Effect<ReadonlyArray<RefChange>, CrewIntegrationError>;
-  /** Recorded landings on `host` whose trailer H's first-parent history no longer carries. */
-  readonly verifyLandings: (
-    host: string,
-  ) => Effect.Effect<
-    ReadonlyArray<{ readonly assignment: string; readonly title: string }>,
-    CrewIntegrationError
-  >;
 }
 
 export class CrewIntegration extends Context.Service<CrewIntegration, CrewIntegrationService>()(
@@ -334,43 +322,6 @@ export const make = Effect.gen(function* () {
       }
     });
 
-  const inFlight: CrewIntegrationService["inFlight"] = (host) =>
-    Semaphore.withPermits(
-      landingLock(host),
-      1,
-    )(
-      Effect.gen(function* () {
-        const out = yield* run(
-          host,
-          "inFlight",
-          landedAssignmentsScript("HEAD") +
-            `${git("integration", ["for-each-ref", "--format=%(refname:strip=4)", "refs/t3/crew/landing/"])} | sed 's/^/anchor\t/'\n`,
-        );
-        const anchors = fieldsOf(out, "anchor");
-        if (anchors.length === 0) return [];
-        const landed = new Set(fieldsOf(out, "landed"));
-        const resolved = yield* run(
-          host,
-          "inFlight",
-          anchors
-            .map(
-              (assignment) =>
-                (landed.has(assignment) ? findLanding(assignment) : "") +
-                `${git("integration", ["update-ref", "-d", `refs/t3/crew/landing/${assignment}`])} || exit 1\n`,
-            )
-            .join(""),
-        );
-        const commits = fieldsOf(resolved, "landed-commit");
-        let next = 0;
-        return anchors.map((assignment): InFlightLanding => {
-          if (!landed.has(assignment)) return { _tag: "restart", assignment };
-          const commit = commits[next] ?? "";
-          next += 1;
-          return { _tag: "landed", assignment, commit };
-        });
-      }),
-    );
-
   const readPoliced = (row: CrewLaneRow) =>
     run(
       row.host,
@@ -432,16 +383,17 @@ export const make = Effect.gen(function* () {
       return changes;
     });
 
-  const verifyLandings: CrewIntegrationService["verifyLandings"] = (host) =>
-    Effect.gen(function* () {
-      const out = yield* run(host, "verifyLandings", landedAssignmentsScript("HEAD"));
-      const landed = new Set(fieldsOf(out, "landed"));
-      return (yield* store.landingsOnHost(host))
-        .filter((landing) => !landed.has(landing.assignment))
-        .map((landing) => ({ assignment: landing.assignment, title: landing.title }));
-    });
-
-  return CrewIntegration.of({ mergeIn, land, inFlight, snapshotRefs, police, verifyLandings });
+  const landingEvidence: CrewIntegrationService["landingEvidence"] = (host, assignment) =>
+    run(host, "landingEvidence", findLanding(assignment)).pipe(
+      Effect.map((out) => field(out, "landed-commit") ?? null),
+    );
+  return CrewIntegration.of({
+    landingEvidence,
+    mergeIn,
+    land,
+    snapshotRefs,
+    police,
+  });
 });
 
 export const layer = Layer.effect(CrewIntegration, make);

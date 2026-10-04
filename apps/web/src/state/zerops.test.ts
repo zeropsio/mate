@@ -10,7 +10,10 @@ import {
   type ProtocolDecodeResult,
 } from "@t3tools/client-runtime/zerops/data";
 import { candidateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
+import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import { MateLiveView } from "@t3tools/shared/hqMates";
+import * as Schema from "effect/Schema";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -23,13 +26,18 @@ import {
   scope,
   stamp,
 } from "../zerops/__fixtures__/platformData";
+import type { InventoryProjection } from "../zerops/inventoryContext";
 import {
   candidateRowsAtom,
+  hqMatesViewAtom,
+  hqStructureAtom,
   takenBotNamesAtom,
   zeropsDataRuntimeAtom,
   zeropsInventoryAtom,
   zeropsSessionAtom,
 } from "./zerops";
+
+const mateLiveView = Schema.decodeUnknownSync(MateLiveView);
 
 const owner = project();
 const PROJECT: ZeropsProject = {
@@ -91,8 +99,8 @@ function readRuntime(
     ),
   );
   const services = {
-    kind: "services-of-organization" as const,
-    organization: owner.organization,
+    kind: "services-of-project" as const,
+    project: owner,
     schemaVersion: 1 as const,
   };
   ingest(
@@ -152,7 +160,84 @@ describe("the candidate rows", () => {
       .find(({ organizationId }) => organizationId === organization.organizationId);
 
     expect(heldCandidates(rows).rows.map(({ key }) => key)).toEqual([`${PROJECT.id}:${ZCP.id}`]);
-    expect(rows).toBe(listed?.listing);
+    // HQ places nothing yet: each row is the listing's own.
+    expect(rows).toEqual(listed?.listing);
+    expect(heldCandidates(rows).rows[0]).toBe(heldCandidates(listed!.listing).rows[0]);
+  });
+
+  it("each row carries where the organization's HQ places its project", () => {
+    const registry = AtomRegistry.make();
+    registry.set(zeropsDataRuntimeAtom, readRuntime());
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    registry.set(zeropsInventoryAtom, {
+      projects: [PROJECT],
+      services: new Map([[PROJECT.id, { status: "resolved" as const, services: [ZCP] }]]),
+      projectRefs: new Map([[projectKeyOf(owner), owner]]),
+      authority: new Map(),
+      account: { kind: "authorized" },
+    });
+    registry.set(hqStructureAtom, {
+      organizationId: organization.organizationId,
+      changes: null,
+      appReads: null,
+      structure: {
+        ungrouped: [],
+        apps: [
+          {
+            id: "app-kanban",
+            name: "Kanban",
+            projects: [
+              {
+                projectId: PROJECT.id,
+                name: PROJECT.name,
+                kind: "mate",
+                mate: { face: "" },
+              },
+            ],
+          },
+        ],
+      },
+      readAt: 1_000,
+      current: true,
+      unavailableSince: null,
+    });
+
+    expect(heldCandidates(registry.get(candidateRowsAtom)).rows[0]?.project.hq).toEqual({
+      appId: "app-kanban",
+      appName: "Kanban",
+      kind: "mate",
+      mate: { face: "" },
+    });
+
+    // Who signed Ada's agent in, as HQ's overview of her says it: on her row, which stays the
+    // same row while what she does moves and her logins do not.
+    const logins = { "claude-code": { signedInBy: "u-jan", present: true, token: false } };
+    const told = (moved: boolean) =>
+      mateLiveView({
+        presence: { online: true, since: "2026-10-03T10:00:00.000Z", overview: "live" },
+        logins,
+        ...(moved ? { crew: { status: "none" } } : {}),
+      });
+    // Read as the menu reads it: kept, not built afresh for each look.
+    const unsubscribe = registry.subscribe(candidateRowsAtom, () => undefined);
+    registry.set(hqMatesViewAtom, {
+      organizationId: organization.organizationId,
+      mates: new Map([[PROJECT.id, told(false)]]),
+      current: true,
+    });
+    const row = heldCandidates(registry.get(candidateRowsAtom)).rows[0];
+    expect(row?.project.hq?.mate).toEqual({ face: "", logins });
+    registry.set(hqMatesViewAtom, {
+      organizationId: organization.organizationId,
+      mates: new Map([[PROJECT.id, told(true)]]),
+      current: true,
+    });
+    expect(heldCandidates(registry.get(candidateRowsAtom)).rows[0]).toBe(row);
+    unsubscribe();
   });
 });
 
@@ -161,11 +246,26 @@ describe("the names the organization's Mates go by", () => {
   const UMA: ZeropsProject = {
     id: "project-uma",
     clientId: owner.organization.organizationId,
-    name: "heron uma",
+    name: "Uma",
     status: "ACTIVE",
-    tagList: ["mate", "mate:bot:Uma"],
+    tagList: ["mate"],
   };
-  const named = { ...PROJECT, tagList: ["mate", "mate:bot:Ada"] };
+  // D3: each Mate goes by its project's name.
+  const named = { ...PROJECT, name: "Ada", tagList: ["mate"] };
+  /** HQ places both Mates, in one application. */
+  const STRUCTURE: HqStructure = {
+    ungrouped: [],
+    apps: [
+      {
+        id: "app-heron",
+        name: "Heron",
+        projects: [
+          { projectId: PROJECT.id, name: "Ada", kind: "mate", mate: { face: "" } },
+          { projectId: UMA.id, name: "Uma", kind: "mate", mate: { face: "" } },
+        ],
+      },
+    ],
+  };
 
   it.each([
     {
@@ -183,13 +283,28 @@ describe("the names the organization's Mates go by", () => {
       expected: { names: ["Ada"], complete: false },
     },
     {
+      label: "a list read whole, with HQ's structure not answered now: a name is unread",
+      listed: [named, UMA],
+      totalCount: 2,
+      account: { kind: "authorized" as const },
+      current: false,
+      expected: { names: ["Ada", "Uma"], complete: false },
+    },
+    {
       label: "an account whose access lapsed",
       listed: [named, UMA],
       totalCount: 2,
       account: { kind: "withheld" as const, reason: "access-lapsed" as const, cause: null },
       expected: { names: [], complete: false },
     },
-  ])("$label", ({ listed, totalCount, account, expected }) => {
+  ] as ReadonlyArray<{
+    readonly label: string;
+    readonly listed: ReadonlyArray<ZeropsProject>;
+    readonly totalCount: number;
+    readonly account: InventoryProjection["account"];
+    readonly current?: boolean;
+    readonly expected: { readonly names: ReadonlyArray<string>; readonly complete: boolean };
+  }>)("$label", ({ listed, totalCount, account, current = true, expected }) => {
     const registry = AtomRegistry.make();
     registry.set(zeropsDataRuntimeAtom, readRuntime(listed, totalCount));
     registry.set(zeropsSessionAtom, {
@@ -204,6 +319,15 @@ describe("the names the organization's Mates go by", () => {
       projectRefs: new Map([[projectKeyOf(owner), owner]]),
       authority: new Map(),
       account,
+    });
+    registry.set(hqStructureAtom, {
+      organizationId: organization.organizationId,
+      changes: null,
+      appReads: null,
+      structure: STRUCTURE,
+      readAt: 1_000,
+      current,
+      unavailableSince: current ? null : 2_000,
     });
 
     const taken = registry.get(takenBotNamesAtom);

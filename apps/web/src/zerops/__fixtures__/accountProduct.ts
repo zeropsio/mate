@@ -24,31 +24,47 @@ import { useConversationView } from "../../routes/-environmentTargets";
 import { RouteGateView } from "../../routes/-routeGate";
 import { ZeropsDataProvider } from "../ZeropsDataProvider";
 import { conversationAccess, useZeropsInventory, withheldProjectNotice } from "../inventoryContext";
+import { useZeropsSession } from "../ZeropsSessionProvider";
 import { useNowMs } from "../useNowMs";
 import { useZeropsCandidates } from "../useZeropsCandidates";
 import { ZeropsInventoryProvider } from "../ZeropsInventoryProvider";
-import { useKnown, useZeropsData } from "../zeropsDataContext";
+import { useKnown, useZeropsData, useZeropsDataInterest } from "../zeropsDataContext";
 import { harnessRuntime } from "./harnessRuntime";
 
 export function AccountProduct({
   datastream,
   cellAdapter,
+  overRest,
+  demandedProjects = [],
   children,
 }: {
   readonly datastream: FakeDatastream;
   /** Where the runtime's cells read; every cell is unavailable without one. */
   readonly cellAdapter?: ZeropsCellAdapter;
+  /** Cells, commands and token writes through the harness's REST platform (`harnessRuntime`). */
+  readonly overRest?: boolean;
   readonly children: ReactNode;
+  readonly demandedProjects?: ReadonlyArray<string>;
 }) {
   const [registry] = useState(() => AtomRegistry.make());
-  const [makeRuntime] = useState(() => harnessRuntime(datastream, cellAdapter));
+  const [makeRuntime] = useState(() =>
+    harnessRuntime(datastream, cellAdapter, overRest === undefined ? {} : { overRest }),
+  );
   return createElement(RegistryContext, {
     value: registry,
     children: createElement(ZeropsDataProvider, {
       makeRuntime,
       // The product and the account's one line at the menu's foot, as the sidebar places it.
       children: createElement(ZeropsInventoryProvider, {
-        children: createElement(Fragment, null, children, createElement(AccountVoiceLine)),
+        children: createElement(
+          Fragment,
+          null,
+          demandedProjects.map((projectId) =>
+            createElement(ProjectNotice, { key: projectId, projectId }),
+          ),
+          children,
+          createElement(AccountVoiceLine),
+        ),
       }),
     }),
   });
@@ -72,8 +88,23 @@ export function ProductChild({
   return label;
 }
 
-/** What a project's region says while the grant withholds its content, as `id: notice`. */
+/** Demand represents an opened project or an explicit action in a product fixture. */
+function useProjectDemand(projectId: string) {
+  const { projectRef } = useZeropsData();
+  const session = useZeropsSession();
+  const orgId = session.activeOrganization?.id;
+  const descriptor = useMemo(
+    () =>
+      orgId === undefined
+        ? null
+        : { kind: "project-inventory" as const, project: projectRef(orgId, projectId) },
+    [orgId, projectId, projectRef],
+  );
+  useZeropsDataInterest(descriptor);
+}
+
 export function ProjectNotice({ projectId }: { readonly projectId: string }) {
+  useProjectDemand(projectId);
   const notice = withheldProjectNotice(useZeropsInventory(), projectId);
   return notice === null ? null : `${projectId}: ${notice}`;
 }
@@ -144,7 +175,9 @@ export function Conversation({
   readonly link: Link;
   readonly linkLostAt: Instant | null;
 }) {
-  const conversation = useConversationView(conversationAccess(useZeropsInventory(), projectId), {
+  useProjectDemand(projectId);
+  const inventory = useZeropsInventory();
+  const conversation = useConversationView(conversationAccess(inventory, projectId), {
     link,
     linkLostAt,
   });

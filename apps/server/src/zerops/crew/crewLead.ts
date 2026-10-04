@@ -1,3 +1,4 @@
+import { operationHolds } from "./crewOperations.ts";
 /**
  * crewLead — the lead (PRD §4.6, §5.4, §5.5; CONCEPT §5): it plans and
  * reviews, has no copy of the code and no tasks of its own. The person talks
@@ -173,7 +174,12 @@ export const wakeLead = (
 ): Effect.Effect<void, CrewCommandError> =>
   Effect.gen(function* () {
     const run = runningRun(applied);
-    if (run === undefined || isWorking(core, applied, lead.row.handle)) return;
+    if (
+      run === undefined ||
+      isWorking(core, applied, lead.row.handle) ||
+      (yield* operationHolds(core, lead.row.handle))
+    )
+      return;
     const spent = core.memory.wakeCounts.get(run.run) ?? 0;
     if (spent >= LEAD_WAKES_MAX) return;
     const next = nextWake(applied, core, yield* asRefusal(core.store.assignments(CREW_ID)));

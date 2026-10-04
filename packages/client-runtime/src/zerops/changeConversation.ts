@@ -5,63 +5,51 @@
  * and offered nothing to do about either ("the interface is poor, no buttons,
  * no comments, no passing actions to agent" — the owner, 2026-09-19). Three
  * things are missing from a read-only page, and all three are the same seam:
- * somebody says something, and either the forge or a Mate acts on it.
+ * somebody says something, and either the change keeps it or a Mate acts on it.
  *
- * Gitea keeps a pull request's conversation on the issue of the same number,
- * so a comment here is an issue comment. A Mate writes under its bot login
- * (`mate-{projectId}`) and must be named, never shown as `mate-abc123` — a
- * conversation where half the speakers are machine identifiers is not one.
+ * HQ keeps a change's conversation (SPEC §3.2a): what people said on it, each
+ * comment by the Zerops user who wrote it, who is named as the organization's
+ * members name them — never by an id. A Mate's words on main's Gitea, brought
+ * over (T13), are the Mate's, named as the application names it.
  *
  * Pure: who said it, what the sentence handed to a Mate says, and nothing
  * about how any of it is drawn (R5).
  */
 
-import type { GiteaIssueComment } from "./giteaClient.ts";
-import { mateProjectOfLogin } from "./mateIdentity.ts";
+import type { HqChangeComment } from "@t3tools/shared/hqChanges";
 
 /** One turn in a change's conversation, named rather than logged-in-as. */
 export interface ChangeRemark {
-  readonly id: number;
-  /** The Mate's name for a Mate's, the login for a person's. */
+  readonly id: string;
   readonly speaker: string;
-  /** The Mate's project behind a bot login; `undefined` for a person's. */
-  readonly mateProjectId: string | undefined;
   /** `true` where the speaker is the person reading — their own words. */
   readonly mine: boolean;
   readonly body: string;
-  readonly at: string | undefined;
+  readonly at: string;
 }
 
-/**
- * The conversation as a surface shows it: oldest first, empty bodies dropped.
- *
- * Gitea writes a comment for events that are not remarks — a merge, a review
- * with no words — and those arrive with nothing in `body`. A blank bubble is
- * noise, so they never reach the page.
- */
+/** The conversation as a surface shows it: oldest first, as HQ keeps it. */
 export function changeRemarks(input: {
-  readonly comments: ReadonlyArray<GiteaIssueComment>;
-  /** `projectId → the Mate's name`, as the flow knows them. */
-  readonly mateNames: ReadonlyMap<string, string>;
-  /** The login of whoever is reading, so their own words can be marked. */
+  readonly comments: ReadonlyArray<HqChangeComment>;
+  /** The name a Zerops user goes by in the organization, where a member is them. */
+  readonly nameOf: (userId: string) => string | undefined;
+  /** The name of the application's Mate in that project, for its words brought over from Gitea. */
+  readonly mateNameOf: (projectId: string) => string | undefined;
+  /** The Zerops user reading, so their own words can be marked. */
   readonly me: string | undefined;
 }): ReadonlyArray<ChangeRemark> {
-  const remarks: Array<ChangeRemark> = [];
-  for (const comment of input.comments) {
-    const body = comment.body.trim();
-    if (body.length === 0) continue;
-    const mateProjectId = mateProjectOfLogin(comment.author);
-    const named = mateProjectId === undefined ? undefined : input.mateNames.get(mateProjectId);
-    remarks.push({
-      id: comment.id,
-      speaker: named ?? comment.author ?? "somebody",
-      mateProjectId,
-      mine: input.me !== undefined && comment.author !== undefined && comment.author === input.me,
-      body,
-      at: comment.at,
-    });
-  }
-  return remarks;
+  const nameOf = (comment: HqChangeComment): string | undefined => {
+    if (comment.authorUserId !== null) return input.nameOf(comment.authorUserId);
+    if (comment.authorMateProjectId !== null) return input.mateNameOf(comment.authorMateProjectId);
+    return undefined;
+  };
+  return input.comments.map((comment) => ({
+    id: comment.id,
+    speaker: nameOf(comment) ?? "somebody",
+    mine: comment.authorUserId === input.me,
+    body: comment.body,
+    at: comment.createdAt,
+  }));
 }
 
 /** `Nothing said yet` / `1 comment` / `4 comments` — the section's own count. */

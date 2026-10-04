@@ -1,0 +1,23 @@
+{
+  "name": "@t3tools/hq",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vp pack",
+    "start": "node dist/main.mjs",
+    "test": "vp test run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "@effect/sql-pg": "catalog:",
+    "@t3tools/hq-git": "workspace:*",
+    "@t3tools/shared": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

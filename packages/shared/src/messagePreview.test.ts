@@ -5,6 +5,7 @@ import {
   MESSAGE_PREVIEW_MAX_LENGTH,
   messagePreviewText,
   messageWords,
+  quoteWords,
   SECRET_MASK,
 } from "./messagePreview.ts";
 
@@ -60,6 +61,35 @@ describe("messageWords", () => {
   it("drops markdown's marks the way a preview does, and keeps every word", () => {
     const long = `**Done.** ${"word ".repeat(60)}\n\n- the \`end\``;
     expect(messageWords(long)).toBe(`Done. ${"word ".repeat(60)}the end`);
+  });
+
+  it("says a callout's word into its first line, as the chat draws it", () => {
+    expect(messageWords("> [!WARNING]\n> My earlier claim was incorrect.")).toBe(
+      "Warning: My earlier claim was incorrect.",
+    );
+  });
+});
+
+describe("quoteWords", () => {
+  it.each([
+    [
+      "a quote",
+      "Added it.\n\n> It stays behind the sign-in.",
+      "Added it.\n\nIt stays behind the sign-in.",
+    ],
+    ["a quote in a quote", "> > Like the rest.", "Like the rest."],
+    // e2e 2026-10-03: a Mate's "> [!WARNING]" read as "> [!WARNING] > My earlier claim…".
+    [
+      "a callout, its word run into its first line",
+      "> [!WARNING]\n> My earlier claim was incorrect.",
+      "Warning:\nMy earlier claim was incorrect.",
+    ],
+    ["a callout's kind in any case", "> [!note]\n> Read this.", "Note:\nRead this."],
+    // GitHub's rule: a marker with words after it on its line is an ordinary quote.
+    ["a marker with words after it", "> [!TIP] aside", "[!TIP] aside"],
+    ["a marker outside a quote", "[!CAUTION]", "[!CAUTION]"],
+  ])("%s", (_name, markdown, words) => {
+    expect(quoteWords(markdown)).toBe(words);
   });
 });
 

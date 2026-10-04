@@ -8,10 +8,9 @@
  */
 import {
   assignCandidateMateTints,
-  botDisplayName,
   hasMate,
   mateShapeOf,
-  readZeropsGroupTags,
+  readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -31,6 +30,7 @@ import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
  */
 export function waitingMatesOf<T extends ZeropsCandidate>(input: {
   readonly candidates: ReadonlyArray<T>;
+  /** What its row reads (`useMateRowActivity`): HQ's word, or its socket's. */
   readonly activityOf: (candidate: T) => ZeropsAgentActivity | undefined;
   /** Its own change waits for the person's review (`mateReviewWaits`). */
   readonly reviewWaits: (candidate: T) => boolean;
@@ -47,25 +47,24 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
   return input.candidates
     .flatMap((candidate): ReadonlyArray<WaitingMate> => {
       if (!hasMate(candidate) || !input.shown(candidate)) return [];
-      // The face its row wears (`mateFaceOf`): asking, or its change waiting for your review.
-      const connected = candidate.group === "connected";
+      // The face its row wears (`mateFaceOf`): asking, or its change waiting for your review —
+      // read from HQ or its socket, as the row reads it; a word at rest asks nothing now.
       const face = mateFaceOf({
-        connected,
-        activity: connected ? input.activityOf(candidate) : undefined,
+        connected: candidate.group === "connected",
+        activity: input.activityOf(candidate),
         reviewWaits: input.reviewWaits(candidate),
         mine: mateIsViewers(candidate.project, input.viewer),
         // Only a face that needs you stands here, and no pose of its life gives that.
         pose: undefined,
       });
       if (face !== "needs") return [];
-      const tags = readZeropsGroupTags(candidate.project.tagList);
       const tint = input.tints.get(candidate.project.id) ?? "slate";
       return [
         {
           projectId: candidate.project.id,
-          name: botDisplayName({ bot: tags.bot, projectName: candidate.project.name }),
+          name: candidate.project.name,
           tint,
-          shape: mateShapeOf(candidate.project.tagList, tint),
+          shape: mateShapeOf(candidate.project, tint),
           face,
         },
       ];
@@ -98,7 +97,7 @@ export function useSidebarWaiting<T extends ZeropsCandidate>(input: {
   const viewer = useZeropsSessionOptional()?.user?.id;
   const reviewWaits = useCallback(
     (candidate: T) => {
-      const groupId = readZeropsGroupTags(candidate.project.tagList).groupId;
+      const groupId = readZeropsMembership(candidate.project).groupId;
       return mateReviewWaits(
         groupId === undefined ? undefined : flows?.get(groupId),
         candidate.project.id,

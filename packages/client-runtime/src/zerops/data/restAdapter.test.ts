@@ -2,6 +2,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as Fiber from "effect/Fiber";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
@@ -36,6 +37,10 @@ import {
   type RegistrationRequest,
   type RequestContext,
 } from "./types.ts";
+
+const decodeBody = Schema.decodeUnknownSync(
+  Schema.fromJsonString(Schema.Struct({ search: Schema.Array(Schema.Unknown) })),
+);
 
 const timers: PlatformWatchTimers = {
   setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
@@ -170,11 +175,11 @@ const startProjectCommand: PlatformCommand = {
   dispatchOrdinal: DispatchOrdinal.make(8),
 };
 
-const nameProjectCommand: PlatformCommand = {
+const declareMateCommand: PlatformCommand = {
   kind: "update-project-tags",
   project,
-  patch: { kind: "agent-name", name: "Ada" },
-  attemptId: ZeropsCommandAttemptId.make("name-attempt"),
+  patch: { kind: "mate" },
+  attemptId: ZeropsCommandAttemptId.make("declare-attempt"),
   accountEpoch: scope.epoch,
   startedAtReceiptOrdinal: ReceiptOrdinal.make(9),
   dispatchOrdinal: DispatchOrdinal.make(10),
@@ -191,7 +196,7 @@ function updateRegistration(name = "opaque-service-updates"): RegistrationReques
   return {
     identity: interest,
     subscriptionName: ZeropsWireSubscriptionName.make(name),
-    descriptor: { kind: "entity-updates", entity: "service", organization },
+    descriptor: { kind: "entity-updates", entity: "service", organization, project },
     baselineTicket: null,
   };
 }
@@ -246,8 +251,8 @@ function servicesTicket(): ReadTicket {
     target: {
       kind: "query",
       descriptor: {
-        kind: "services-of-organization",
-        organization: project.organization,
+        kind: "services-of-project",
+        project: project,
         schemaVersion: 1,
       },
     },
@@ -383,6 +388,7 @@ describe("ZeropsDataAdapter receiver", () => {
             kind: "entity-updates",
             entity: "service",
             organization: foreignOrganization,
+            project: { kind: "project", organization, projectId: ZeropsProjectId.make("project") },
           },
           baselineTicket: null,
         };
@@ -1037,63 +1043,56 @@ describe("ZeropsDataAdapter receiver", () => {
         init: { method: "DELETE" },
       });
       expect(result.result).toEqual({ kind: "delete-project", value: undefined });
+      expect(result.processRefs).toEqual([
+        {
+          kind: "process",
+          project: { kind: "project", organization, projectId: "project" },
+          processId: "delete-process-id",
+        },
+      ]);
     }),
   );
 
-  it.effect(
-    "creates the New project wizard's first Mate with the face and the stand-up it asks",
-    () =>
-      Effect.gen(function* () {
-        const bodies: Array<string> = [];
-        const client = clientFor((url, init) => {
-          if (typeof init?.body === "string") bodies.push(init.body);
-          // The container's key and its import answer as the platform does; the rest is the
-          // project.
-          const answer = url.includes("/integration-token/list")
-            ? { list: [] }
-            : url.endsWith("/integration-token")
-              ? { id: "token", token: ["test", "key"].join("-") }
-              : url.includes("/service-stack") || url.includes("/first-class-recipe/")
-                ? { list: [] }
-                : {
-                    id: "project",
-                    name: "Acme Docs - Ada",
-                    status: "CREATING",
-                    clientId: organization.organizationId,
-                  };
-          return new Response(JSON.stringify(answer), { status: 200 });
-        });
-        const adapter = makeZeropsDataAdapter({
-          client,
-          makeSocket: () => new FakeSocket(),
-          timers,
-        });
-
-        yield* adapter.execute(
+  // Several requests in one command — its services, the org's keys, a key, the import — have a
+  // minute between them, not one request's 15 s (`commandDeadlineMs`).
+  it.effect("gives a Mate's container import a minute, and a project's creation its 15 s", () =>
+    Effect.gen(function* () {
+      const stageTimers = new ManualTimers();
+      const adapter = makeZeropsDataAdapter({
+        client: clientFor((_url, init) => pendingUntilAbort(init?.signal)),
+        makeSocket: () => new FakeSocket(),
+        timers: stageTimers,
+      });
+      const importing = yield* adapter
+        .execute(
           {
-            kind: "create-project-with-mate",
-            organization,
-            name: "Acme Docs - Ada",
-            group: { groupId: "g-acme", role: "dev", label: "Acme Docs" },
-            botName: "Ada",
-            face: { tint: "coral", shape: "gem" },
-            standUpBy: "u-ada",
-            madeBy: "u-ada",
+            kind: "import-development-container",
+            project,
+            projectName: "Acme Docs - Ada",
             ...commandBase,
           },
           context(),
-        );
+        )
+        .pipe(Effect.result, Effect.forkChild);
+      yield* waitForTimer(stageTimers, 60_000);
+      expect(stageTimers.delays()).toEqual([60_000]);
+      stageTimers.fire(60_000);
+      expect(yield* Fiber.join(importing)).toMatchObject({
+        _tag: "Failure",
+        failure: { message: "Zerops command exceeded its deadline." },
+      });
 
-        // The project's own POST: the one body the platform creates it with.
-        for (const tag of [
-          "mate:bot:Ada",
-          "mate:face:coral:gem",
-          "mate:standup:u-ada",
-          "mate:by:u-ada",
-        ]) {
-          expect(bodies[0]).toContain(`"${tag}"`);
-        }
-      }),
+      const creating = yield* adapter
+        .execute(
+          { kind: "create-project", organization, name: "Acme", tagList: [], ...commandBase },
+          context(),
+        )
+        .pipe(Effect.result, Effect.forkChild);
+      yield* waitForTimer(stageTimers, 15_000);
+      expect(stageTimers.delays()).toEqual([15_000]);
+      stageTimers.fire(15_000);
+      yield* Fiber.join(creating);
+    }),
   );
 
   it.effect(
@@ -1130,13 +1129,13 @@ describe("ZeropsDataAdapter receiver", () => {
       const requests: RequestInit[] = [];
       const client = clientFor((_url, init) => {
         requests.push(init ?? {});
-        // The first read finds no name; the write and its read-back carry it.
+        // The first read finds no marker; the write and its read-back carry it.
         return new Response(
           JSON.stringify({
             id: "project",
             name: "application",
             status: "ACTIVE",
-            tagList: requests.length === 1 ? [] : ["mate", "mate:bot:Ada"],
+            tagList: requests.length === 1 ? [] : ["mate"],
           }),
           { status: 200 },
         );
@@ -1147,12 +1146,12 @@ describe("ZeropsDataAdapter receiver", () => {
         timers,
       });
 
-      const receipt = yield* adapter.execute(nameProjectCommand, context());
+      const receipt = yield* adapter.execute(declareMateCommand, context());
 
       expect(requests.map((request) => request.method ?? "GET")).toEqual(["GET", "PUT", "GET"]);
       expect(receipt.result).toMatchObject({
         kind: "update-project-tags",
-        value: { kind: "written", project: { id: "project", tagList: ["mate", "mate:bot:Ada"] } },
+        value: { kind: "written", project: { id: "project", tagList: ["mate"] } },
       });
       expect(receipt.observations).toEqual(
         expect.arrayContaining([
@@ -1161,11 +1160,52 @@ describe("ZeropsDataAdapter receiver", () => {
             ref: project,
             observation: expect.objectContaining({
               source: "command-response",
-              command: nameProjectCommand,
+              command: declareMateCommand,
             }),
           }),
         ]),
       );
+    }),
+  );
+
+  // D3: a Mate's rename is its project's, through the one writer of the project's record.
+  it.effect("renames a project on a fresh read, its tags put back, as a typed Project result", () =>
+    Effect.gen(function* () {
+      const requests: RequestInit[] = [];
+      const client = clientFor((_url, init) => {
+        requests.push(init ?? {});
+        return new Response(
+          JSON.stringify({
+            id: "project",
+            name: requests.length === 1 ? "Snap - Nova" : "Nova",
+            status: "ACTIVE",
+            tagList: ["mate"],
+          }),
+          { status: 200 },
+        );
+      });
+      const adapter = makeZeropsDataAdapter({
+        client,
+        makeSocket: () => new FakeSocket(),
+        timers,
+      });
+      const rename: PlatformCommand = {
+        kind: "rename-project",
+        project,
+        name: "Nova",
+        ...commandBase,
+      };
+
+      const receipt = yield* adapter.execute(rename, context());
+
+      expect(requests.map((request) => request.method ?? "GET")).toEqual(["GET", "PUT", "GET"]);
+      expect(String(requests[1]?.body)).toContain(
+        '"name":"Nova","description":"","tagList":["mate"]',
+      );
+      expect(receipt.result).toMatchObject({
+        kind: "rename-project",
+        value: { kind: "written", project: { id: "project", name: "Nova" } },
+      });
     }),
   );
 
@@ -1239,7 +1279,7 @@ describe("ZeropsDataAdapter receiver", () => {
   );
 
   it.effect(
-    "traverses the organization's search pages and publishes one exhausted membership baseline",
+    "traverses the opened project's direct service pages and publishes one exhausted membership baseline",
     () =>
       Effect.gen(function* () {
         const bodies: Array<Record<string, unknown>> = [];
@@ -1249,15 +1289,18 @@ describe("ZeropsDataAdapter receiver", () => {
           name: `app-${index}`,
           status: "ACTIVE",
         });
-        const client = clientFor((url, init) => {
-          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        const client = clientFor((url) => {
+          const body = Object.fromEntries(new URL(url).searchParams);
           bodies.push(body);
-          const offset = (body.offset as number | undefined) ?? 0;
+          const offset = Number(body.offset ?? 0);
           const items =
             offset === 0 ? Array.from({ length: 2000 }, (_, index) => row(index)) : [row(2000)];
-          return new Response(JSON.stringify({ items, totalHits: 2001, limit: 2000, offset }), {
-            status: 200,
-          });
+          return new Response(
+            JSON.stringify({ list: items, totalCount: 2001, limit: 2000, offset }),
+            {
+              status: 200,
+            },
+          );
         });
         const adapter = makeZeropsDataAdapter({
           client,
@@ -1274,10 +1317,7 @@ describe("ZeropsDataAdapter receiver", () => {
           ]),
           coverage: { kind: "exhausted-traversal", traversedPages: 2, observedTotal: 2001 },
         });
-        expect(bodies.map(({ search }) => search)).toEqual([
-          [{ name: "clientId", operator: "eq", value: organization.organizationId }],
-          [{ name: "clientId", operator: "eq", value: organization.organizationId }],
-        ]);
+        expect(bodies.map(({ offset }) => Number(offset ?? 0))).toEqual([0, 2000]);
       }),
   );
 
@@ -1647,6 +1687,38 @@ describe("ZeropsDataAdapter receiver", () => {
       }),
   );
 
+  // A 403 there is the platform's final answer for the person (E2E 2026-10-03: asked on every
+  // read, it answered 403 about 8 times a minute), whichever read heard it first.
+  it.effect(
+    "asks a forbidden direct project list once: later reads, and the client's own, go to the search",
+    () =>
+      Effect.gen(function* () {
+        const requests: string[] = [];
+        const client = clientFor((url) => {
+          requests.push(new URL(url).pathname);
+          if (url.includes("/client/"))
+            return new Response(JSON.stringify({ message: "forbidden" }), { status: 403 });
+          return new Response(JSON.stringify({ items: [], totalHits: 0 }), { status: 200 });
+        });
+        const adapter = makeZeropsDataAdapter({
+          client,
+          makeSocket: () => new FakeSocket(),
+          timers,
+        });
+
+        yield* adapter.read(projectsTicket(), context());
+        yield* adapter.read(projectsTicket(), context());
+        yield* Effect.promise(() => client.listAccessibleClientProjects("org"));
+
+        expect(requests).toEqual([
+          "/api/rest/public/client/org/project",
+          "/api/rest/public/project/search",
+          "/api/rest/public/project/search",
+          "/api/rest/public/project/search",
+        ]);
+      }),
+  );
+
   it.effect(
     "a forbidden read of the organization's services fails at once, never tried again",
     () =>
@@ -1666,7 +1738,7 @@ describe("ZeropsDataAdapter receiver", () => {
 
         expect(exit).toMatchObject({ _tag: "Failure", failure: { kind: "forbidden" } });
         expect(requests.map((url) => new URL(url).pathname)).toEqual([
-          "/api/rest/public/service-stack/search",
+          "/api/rest/public/project/project/service-stack",
         ]);
       }),
   );
@@ -1776,7 +1848,7 @@ describe("an organization past one page of its search", () => {
         const bodies: Array<Record<string, unknown>> = [];
         const row = (index: number) => ({
           id: `service-${index}`,
-          projectId: `project-${index % 40}`,
+          projectId: "project",
           name: `app-${index}`,
           status: "ACTIVE",
         });
@@ -1815,7 +1887,15 @@ describe("an organization past one page of its search", () => {
                 subscriptionName: ZeropsWireSubscriptionName.make("opaque-services"),
                 descriptor: {
                   kind: "query-membership",
-                  query: { kind: "services-of-organization", organization, schemaVersion: 1 },
+                  query: {
+                    kind: "services-of-project",
+                    project: {
+                      kind: "project",
+                      organization,
+                      projectId: ZeropsProjectId.make("project"),
+                    },
+                    schemaVersion: 1,
+                  },
                 },
                 baselineTicket: servicesTicket(),
               } as RegistrationRequest,
@@ -1879,8 +1959,12 @@ describe("one malformed row of the organization's", () => {
               descriptor: {
                 kind: "query-membership",
                 query: {
-                  kind: "services-of-organization",
-                  organization,
+                  kind: "services-of-project",
+                  project: {
+                    kind: "project",
+                    organization,
+                    projectId: ZeropsProjectId.make("project"),
+                  },
                   schemaVersion: 1,
                 },
               },
@@ -1947,8 +2031,9 @@ describe("one malformed row of the organization's", () => {
 
 describe("the entity table's streams", () => {
   const versions = {
-    kind: "active-versions-of-organization" as const,
+    kind: "active-versions-of-services" as const,
     organization,
+    serviceIds: ["s-1", "s-2", "service", "service-a", "app", "mate"],
     schemaVersion: 1 as const,
   };
   const versionsTicket = (): ReadTicket =>
@@ -2000,7 +2085,12 @@ describe("the entity table's streams", () => {
         const updates = {
           identity: interest,
           subscriptionName: ZeropsWireSubscriptionName.make("opaque/variables"),
-          descriptor: { kind: "table-updates", entity: "user-data", organization },
+          descriptor: {
+            kind: "table-updates",
+            entity: "user-data",
+            organization,
+            serviceIds: versions.serviceIds,
+          },
           baselineTicket: null,
         } as RegistrationRequest;
 
@@ -2037,14 +2127,18 @@ describe("the entity table's streams", () => {
           "/app-version/search",
           "/user-data/search",
         ]);
-        expect(requests[0]!.body).toContain(
-          `"search":[{"name":"clientId","operator":"eq","value":"${organization.organizationId}"},{"name":"status","operator":"eq","value":"ACTIVE"}]`,
-        );
+        expect(decodeBody(requests[0]!.body).search).toContainEqual({
+          name: "serviceStackId",
+          operator: "in",
+          value: versions.serviceIds,
+        });
         expect(requests[0]!.body).toContain('"wsOutputType":"listStream"');
         expect(requests[0]!.body).toContain('"subscriptionName":"opaque/versions"');
-        expect(requests[1]!.body).toContain(
-          `"search":[{"name":"clientId","operator":"eq","value":"${organization.organizationId}"}]`,
-        );
+        expect(decodeBody(requests[1]!.body).search).toContainEqual({
+          name: "serviceStackId",
+          operator: "in",
+          value: versions.serviceIds,
+        });
         expect(requests[1]!.body).toContain('"wsOutputType":"updateStream"');
         expect(answered.responseObservations).toEqual([
           expect.objectContaining({

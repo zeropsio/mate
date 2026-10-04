@@ -14,16 +14,9 @@ import * as TestClock from "effect/testing/TestClock";
 import { describe, expect, it } from "vite-plus/test";
 import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
 
-import {
-  SIGNER_RECHECK_INTERVAL,
-  buildSnapshot,
-  computeAgentAuthState,
-  make,
-  toZembedEnv,
-} from "./ZeropsAgentAuth.ts";
+import { buildSnapshot, computeAgentAuthState, make, toZembedEnv } from "./ZeropsAgentAuth.ts";
 import type { WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import { ZeropsAgentFlagError } from "./ZeropsAgentFlag.ts";
-import { SIGNERS_CACHE_TTL } from "./ZeropsProjectSigners.ts";
 
 // The §3 W-STATE matrix (docs/spec-welcome-mode.md), pinned verbatim against
 // `vscode-bootstrap-welcome.js`'s `computeAgentState`. `credVerifiable` is
@@ -159,22 +152,6 @@ describe("buildSnapshot provenance", () => {
     );
   });
 
-  it.each([
-    { name: "a credential recorded for two people: not known", cred: true, unknown: true },
-    { name: "no credential: nothing to say", cred: false, unknown: undefined },
-  ])("says whose it is is not known — $name", ({ cred, unknown }) => {
-    const snapshot = buildSnapshot(
-      undefined,
-      { "claude-code": cred, codex: false },
-      providerAuth,
-      {},
-      new Set(["claude-code"] as const),
-    );
-    const claude = snapshot.agents.find((agent) => agent.agentId === "claude-code");
-    expect(claude?.signerUnknown).toBe(unknown);
-    expect(claude?.authorizedBy).toBe(undefined);
-  });
-
   it("omits it when nothing was ever recorded, which is the pre-existing behaviour", () => {
     const snapshot = buildSnapshot(undefined, { "claude-code": true, codex: true }, providerAuth);
 
@@ -182,18 +159,9 @@ describe("buildSnapshot provenance", () => {
   });
 });
 
-// The record is written by the client AFTER the login lands (the tag on the
-// project, `useZeropsAgentSignerRecord`), so the publish the credential event
-// triggers reads the signers before the record exists. Nothing else republishes
-// on its own, so the feed re-reads for an agent still waiting on a signer, and
-// only for one.
-describe("signer catch-up", () => {
-  it("re-reads just past the signers cache, so the read is never the cached miss", () => {
-    expect(Duration.toMillis(SIGNER_RECHECK_INTERVAL)).toBeGreaterThan(
-      Duration.toMillis(SIGNERS_CACHE_TTL),
-    );
-  });
-
+// The walker keeps a sign-in before it asks for the re-check (`ZeropsAgentLogin`): the publish
+// that re-check makes names the person who signed in, with nothing left to wait for.
+describe("the signer", () => {
   const agentState = (snapshot: ZeropsAgentAuthSnapshot, agentId: ZeropsAgentId) =>
     snapshot.agents.find((agent) => agent.agentId === agentId);
 
@@ -215,55 +183,29 @@ describe("signer catch-up", () => {
   });
 
   /**
-   * A feed over a home directory whose Claude credential already exists, with
-   * a `readSigners` fake that answers whatever `answer` holds and counts its
-   * calls. The initial provider check the present credential requests is
-   * drained first, so the reads that follow are the tick's alone.
+   * A feed over a home directory whose Claude credential already exists, with a `readSigners`
+   * fake over `signers`. The initial provider check the present credential requests is drained
+   * first.
    */
-  const makeFeed = (input: {
-    readonly signers: Readonly<Partial<Record<ZeropsAgentId, string>>>;
-    /** The env store's document, as the file holds it. */
-    readonly env?: string;
-    /**
-     * Reads the tags the way `ZeropsProjectSigners` does: `readSigners` answers its cached read,
-     * and `readSignersFresh` reads `answer` now and caches it.
-     */
-    readonly cached?: boolean;
-  }) =>
+  const makeFeed = (initial: Readonly<Partial<Record<ZeropsAgentId, string>>>) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const homeDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-agent-auth-signers-" });
-      const envStorePath = path.join(homeDir, "zembed-env.json");
-      if (input.env !== undefined) {
-        yield* fs.writeFileString(envStorePath, input.env);
-      }
       const credential = path.join(homeDir, ".claude", ".credentials.json");
       yield* fs.makeDirectory(path.dirname(credential), { recursive: true });
       yield* fs.writeFileString(credential, "{}");
 
-      const answer = yield* Ref.make(input.signers);
-      const cache = yield* Ref.make(input.signers);
-      const calls = yield* Ref.make(0);
-      const freshCalls = yield* Ref.make(0);
+      const signers = yield* Ref.make(initial);
       const feed = yield* make({
         agentFlag: {
           markSignedIn: () => Effect.fail(new ZeropsAgentFlagError({ reason: "not used" })),
         },
-        refreshProviderAuth: () => Effect.succeed("unauthenticated" as const),
+        refreshProviderAuth: () =>
+          Effect.succeed({ status: "unauthenticated" as const, checkedAt: 0 }),
         homeDir,
-        envStorePath,
-        readSigners: Ref.update(calls, (n) => n + 1).pipe(
-          Effect.andThen(Ref.get(input.cached === true ? cache : answer)),
-        ),
-        ...(input.cached === true
-          ? {
-              readSignersFresh: Ref.update(freshCalls, (n) => n + 1).pipe(
-                Effect.andThen(Ref.get(answer)),
-                Effect.tap((read) => Ref.set(cache, read)),
-              ),
-            }
-          : {}),
+        envStorePath: path.join(homeDir, "zembed-env.json"),
+        readSigners: Ref.get(signers),
         isZeropsEnvironment: true,
         watch: noWatch,
       });
@@ -273,22 +215,85 @@ describe("signer catch-up", () => {
         subscription,
         (snapshot) => agentState(snapshot, "claude-code")?.providerAuth === "unauthenticated",
       );
-      return { feed, subscription, answer, calls, freshCalls };
+      return { feed, subscription, signers };
     });
 
-  itEffect.layer(NodeServices.layer)("ZeropsAgentAuth signer catch-up", (it) => {
-    it.effect("publishes the signer recorded after the login once the interval passes", () =>
+  itEffect.layer(NodeServices.layer)("ended attempts stay ended", (it) => {
+    for (const status of ["unknown", "authenticated"] as const) {
+      it.effect(`${status}: a day passing makes no attempt; the operator makes one`, () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem;
+            const path = yield* Path.Path;
+            const homeDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-auth-once-" });
+            yield* fs.makeDirectory(path.join(homeDir, ".codex"));
+            yield* fs.writeFileString(path.join(homeDir, ".codex", "auth.json"), "{}");
+            const probes = yield* Ref.make(0);
+            const writes = yield* Ref.make(0);
+            const feed = yield* make({
+              homeDir,
+              envStorePath: path.join(homeDir, "env.json"),
+              isZeropsEnvironment: true,
+              watch: noWatch,
+              refreshProviderAuth: () =>
+                Ref.update(probes, (n) => n + 1).pipe(
+                  Effect.as({
+                    status,
+                    checkedAt: 1,
+                    ...(status === "unknown" ? { reason: "Couldn't verify" } : {}),
+                  }),
+                ),
+              agentFlag: {
+                markSignedIn: () =>
+                  Ref.update(writes, (n) => n + 1).pipe(
+                    Effect.andThen(
+                      Effect.fail(new ZeropsAgentFlagError({ reason: "Unavailable" })),
+                    ),
+                  ),
+              },
+            });
+            const subscription = yield* feed.subscribe;
+            yield* TestClock.adjust("2 seconds");
+            yield* changeWhere(
+              subscription,
+              (snapshot) => agentState(snapshot, "codex")?.verification?.status === status,
+            );
+            assert.equal(yield* Ref.get(probes), 1);
+            assert.equal(yield* Ref.get(writes), status === "authenticated" ? 1 : 0);
+            yield* TestClock.adjust("1 day");
+            assert.equal(yield* Ref.get(probes), 1);
+            assert.equal(yield* Ref.get(writes), status === "authenticated" ? 1 : 0);
+            yield* feed.recheckNow("codex");
+            yield* TestClock.adjust("2 seconds");
+            yield* changeWhere(
+              subscription,
+              (snapshot) =>
+                agentState(snapshot, "codex")?.verification?.generation === 2 &&
+                agentState(snapshot, "codex")?.verification?.status === status,
+            );
+            assert.equal(yield* Ref.get(probes), 2);
+            assert.equal(yield* Ref.get(writes), status === "authenticated" ? 2 : 0);
+          }),
+        ),
+      );
+    }
+  });
+
+  itEffect.layer(NodeServices.layer)("ZeropsAgentAuth signer", (it) => {
+    it.effect("is published with the re-check that follows a sign-in made here", () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { feed, subscription, answer } = yield* makeFeed({ signers: {} });
-          assert.equal(agentState(subscription.latest, "claude-code")?.credPresent, true);
-          assert.equal(agentState(subscription.latest, "claude-code")?.authorizedBy, undefined);
+          const { feed, subscription, signers } = yield* makeFeed({ "claude-code": "user-b" });
+          assert.equal(
+            agentState(subscription.latest, "claude-code")?.authorizedBy?.subject,
+            "user-b",
+          );
 
-          yield* Ref.set(answer, { "claude-code": "user-a" });
-          yield* TestClock.adjust(SIGNER_RECHECK_INTERVAL);
+          yield* Ref.set(signers, { "claude-code": "user-a" });
+          yield* feed.recheckNow("claude-code");
           const published = yield* changeWhere(
             subscription,
-            (snapshot) => agentState(snapshot, "claude-code")?.authorizedBy !== undefined,
+            (snapshot) => agentState(snapshot, "claude-code")?.authorizedBy?.subject === "user-a",
           );
 
           assert.equal(agentState(published, "claude-code")?.authorizedBy?.subject, "user-a");
@@ -297,109 +302,6 @@ describe("signer catch-up", () => {
             agentState(yield* feed.latest, "claude-code")?.authorizedBy?.subject,
             "user-a",
           );
-        }),
-      ),
-    );
-
-    // Signing in over an earlier record: the snapshot named the earlier signer, and the cached
-    // read of the tags goes on naming them after the new record lands — with nothing else to
-    // republish, for good.
-    it.effect("publishes the record of a sign-in made here as soon as it lands", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { feed, subscription, answer } = yield* makeFeed({
-            signers: { "claude-code": "user-b" },
-            cached: true,
-          });
-          assert.equal(
-            agentState(subscription.latest, "claude-code")?.authorizedBy?.subject,
-            "user-b",
-          );
-
-          yield* feed.recheckNow("claude-code", "user-a");
-          yield* TestClock.adjust(Duration.seconds(2));
-          yield* Ref.set(answer, { "claude-code": "user-a" });
-          yield* TestClock.adjust(Duration.seconds(4));
-          const published = yield* changeWhere(
-            subscription,
-            (snapshot) => agentState(snapshot, "claude-code")?.authorizedBy?.subject === "user-a",
-          );
-
-          assert.equal(agentState(published, "claude-code")?.authorizedBy?.subject, "user-a");
-        }),
-      ),
-    );
-
-    it.effect("stops reading once the record names the person who signed in", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { feed, freshCalls } = yield* makeFeed({
-            signers: { "claude-code": "user-a" },
-            cached: true,
-          });
-
-          yield* feed.recheckNow("claude-code", "user-a");
-          yield* TestClock.adjust(Duration.seconds(4));
-          const settled = yield* Ref.get(freshCalls);
-          yield* TestClock.adjust(Duration.minutes(2));
-
-          assert.isAtMost(settled, 2);
-          assert.equal(yield* Ref.get(freshCalls), settled);
-        }),
-      ),
-    );
-
-    it.effect("gives up on a record that never lands", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { feed, freshCalls } = yield* makeFeed({
-            signers: { "claude-code": "user-b" },
-            cached: true,
-          });
-
-          yield* feed.recheckNow("claude-code", "user-a");
-          yield* TestClock.adjust(Duration.minutes(2));
-          const spent = yield* Ref.get(freshCalls);
-          yield* TestClock.adjust(Duration.minutes(2));
-
-          assert.isAbove(spent, 0);
-          assert.equal(yield* Ref.get(freshCalls), spent);
-        }),
-      ),
-    );
-
-    it.effect("reads nothing when every credentialed agent already has its signer", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { subscription, calls } = yield* makeFeed({
-            signers: { "claude-code": "user-a" },
-          });
-          assert.equal(
-            agentState(subscription.latest, "claude-code")?.authorizedBy?.subject,
-            "user-a",
-          );
-          const before = yield* Ref.get(calls);
-
-          yield* TestClock.adjust(Duration.times(SIGNER_RECHECK_INTERVAL, 2));
-
-          assert.equal(yield* Ref.get(calls), before);
-        }),
-      ),
-    );
-
-    it.effect("reads nothing for a token-authorized agent, whose key belongs to the project", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { subscription, calls } = yield* makeFeed({
-            signers: {},
-            env: '{"ZCP_AGENT_TOKEN_CLAUDE_CODE":"sk-project"}',
-          });
-          assert.equal(agentState(subscription.latest, "claude-code")?.state, "authorized-token");
-          const before = yield* Ref.get(calls);
-
-          yield* TestClock.adjust(Duration.times(SIGNER_RECHECK_INTERVAL, 2));
-
-          assert.equal(yield* Ref.get(calls), before);
         }),
       ),
     );
@@ -452,7 +354,10 @@ describe("a turn's authentication failure", () => {
                 }),
             },
             refreshProviderAuth: () =>
-              Ref.update(probes, (n) => n + 1).pipe(Effect.andThen(Ref.get(answer))),
+              Ref.update(probes, (n) => n + 1).pipe(
+                Effect.andThen(Ref.get(answer)),
+                Effect.map((status) => ({ status, checkedAt: 0 })),
+              ),
             homeDir,
             envStorePath,
             isZeropsEnvironment: true,

@@ -1,10 +1,13 @@
 import {
   assignCandidateMateTints,
-  readZeropsGroupTags,
-  withZeropsChangedFace,
+  changedMateFace,
+  heldOf,
+  mayOffer,
+  offerAsker,
+  readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { resolveMateVerbs } from "@t3tools/client-runtime/zerops/mateAccess";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -17,9 +20,20 @@ import {
 
 const ORG = "org-acme";
 
+/** Where HQ places a project of Acme Docs, as `kind`; a Mate by its name and face. */
+function inAcme(kind: HqPlacement["kind"], mate?: { face?: string }): HqPlacement {
+  return {
+    appId: "acme",
+    appName: "Acme Docs",
+    kind,
+    mate: mate === undefined ? null : { face: mate.face ?? "" },
+  };
+}
+
 function project(
   id: string,
   tagList: ReadonlyArray<string>,
+  hq: HqPlacement,
   userRoles?: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>,
 ): ZeropsCandidate["project"] {
   return {
@@ -28,15 +42,17 @@ function project(
     status: "ACTIVE",
     clientId: ORG,
     tagList,
+    hq,
     ...(userRoles === undefined ? {} : { userRoles }),
   };
 }
 
-function mate(id: string, tagList: ReadonlyArray<string>): ZeropsCandidate {
+/** A Mate of Acme Docs, its project named `name` in Zerops, faced as HQ records it. */
+function mate(id: string, name: string, face?: string): ZeropsCandidate {
   return {
     key: `${id}:zcp`,
     group: "ready",
-    project: project(id, tagList),
+    project: { ...project(id, ["mate"], inAcme("mate", face === undefined ? {} : { face })), name },
     service: { id: `zcp-${id}`, name: "zcp", status: "ACTIVE" },
   };
 }
@@ -57,11 +73,17 @@ describe("changeFaceWords — what the dialog says", () => {
 });
 
 /**
- * Changing a face writes the project's tags, so it is offered exactly where Rename is: effective
- * OWNER or ADMIN on the project (`resolveMateVerbs`), and only on a Mate.
+ * Changing a face is a write to HQ's record of the Mate, as a rename is, so it is offered exactly
+ * where Rename is: where HQ's rule offers the Mate's record (`mayOffer`, `edit_mate_record`:
+ * effective OWNER or ADMIN on the project), and only on a Mate.
  */
 describe("changeFaceOffered — where a Mate's menus offer Change face…", () => {
-  const viewer = (roleCode: string) => ({ id: ORG, membershipId: "member-ada", roleCode });
+  const viewer = (roleCode: string) => ({
+    userId: "user-ada",
+    clientUserId: "member-ada",
+    roleCode,
+    canCreateProjects: true,
+  });
 
   it.each([
     { who: "an org owner", role: "OWNER", override: undefined, offered: true },
@@ -87,16 +109,20 @@ describe("changeFaceOffered — where a Mate's menus offer Change face…", () =
     },
   ])("$who: $offered, as Rename is", ({ role, override, offered }) => {
     const candidate: ZeropsCandidate = {
-      ...mate("fen", ["mate", "mate:bot:Fen"]),
+      ...mate("fen", "Fen"),
       project: project(
         "fen",
-        ["mate", "mate:bot:Fen"],
+        ["mate"],
+        inAcme("mate", {}),
         override === undefined ? undefined : [{ clientUserId: "member-ada", roleCode: override }],
       ),
     };
-    const verbs = resolveMateVerbs({ project: candidate.project, viewer: viewer(role) });
-    expect(changeFaceOffered({ candidate, mayRename: verbs.rename })).toBe(offered);
-    expect(verbs.rename).toBe(offered);
+    const mayEdit = mayOffer(offerAsker(viewer(role), [candidate.project]), "edit_mate_record", {
+      projectId: candidate.project.id,
+      held: heldOf(candidate.project),
+    });
+    expect(changeFaceOffered({ candidate, mayEdit })).toBe(offered);
+    expect(mayEdit).toBe(offered);
   });
 
   it("is never offered where no Mate lives: a stage has no face to change", () => {
@@ -105,17 +131,17 @@ describe("changeFaceOffered — where a Mate's menus offer Change face…", () =
       group: "unavailable",
       reason: "no container",
       missingContainer: true,
-      project: project("stage", ["mate:role:stage"]),
+      project: project("stage", [], inAcme("stage")),
     };
-    expect(changeFaceOffered({ candidate: stage, mayRename: true })).toBe(false);
+    expect(changeFaceOffered({ candidate: stage, mayEdit: true })).toBe(false);
   });
 });
 
 describe("mateFaceOf — the face a Mate wears now, as every surface draws it", () => {
   const account = [
-    mate("p-ada", ["mate", "mate:bot:Ada"]),
-    mate("p-otto", ["mate", "mate:bot:Otto"]),
-    mate("p-quinn", ["mate", "mate:bot:Quinn", "mate:face:coral:seal"]),
+    mate("p-ada", "Ada"),
+    mate("p-otto", "Otto"),
+    mate("p-quinn", "Quinn", "coral:seal"),
   ];
   const tints = assignCandidateMateTints(account);
 
@@ -136,15 +162,15 @@ describe("mateFaceOf — the face a Mate wears now, as every surface draws it", 
     expect(mateFaceOf(tints, candidate.project)).toEqual(face);
   });
 
-  it("is the face the dialog saved, once the write has landed", () => {
+  it("is the face the dialog saved, once HQ's structure carries it", () => {
     const saved = { tint: "rose", shape: "gem" } as const;
     const after = account.map((entry) =>
       entry.project.id === "p-ada"
-        ? mate("p-ada", withZeropsChangedFace(entry.project.tagList, saved))
+        ? mate("p-ada", "Ada", changedMateFace(readZeropsMembership(entry.project).face, saved))
         : entry,
     );
     const ada = after[0]!;
-    expect(readZeropsGroupTags(ada.project.tagList).face).toMatchObject(saved);
+    expect(readZeropsMembership(ada.project).face).toMatchObject(saved);
     expect(mateFaceOf(assignCandidateMateTints(after), ada.project)).toEqual(saved);
   });
 });

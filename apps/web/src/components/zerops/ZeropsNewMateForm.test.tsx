@@ -33,18 +33,16 @@ function form(props: Partial<Props> = {}): ReactElement {
   return (
     <Dialog open onOpenChange={() => {}}>
       <ZeropsEnvironmentCreationForm
-        defaultBotName="Otto"
-        defaultName="Acme Docs - Otto"
+        defaultName="Otto"
         defaultTintFor={(name) => TINTS[name] ?? "slate"}
         defaultWithAgent
         groupName="Acme Docs"
         onCancel={() => {}}
         onCreate={() => {}}
-        proposeName={(botName) => `Acme Docs - ${botName}`}
         role="dev"
         takenBotNames={{ names: ["Fen"], complete: true }}
         tier={TIER}
-        tierLoading={false}
+        recipe="present"
         tierServices={["app"]}
         {...props}
       />
@@ -299,6 +297,7 @@ describe("the New Mate dialog", () => {
     expect(option(tree, to).props["aria-checked"]).toBe(true);
   });
 
+  // D3: its project is named as the Mate is, whole.
   it("adds the Mate with the project's recipe, its name and the face it was given", () => {
     const made: EnvironmentCreationChoice[] = [];
     const tree = mount(form({ onCreate: (choice) => made.push(choice) }));
@@ -309,9 +308,8 @@ describe("the New Mate dialog", () => {
     press(tree);
     expect(made).toEqual([
       {
-        name: "Acme Docs - Ada Lin",
+        name: "Ada Lin",
         withAgent: true,
-        botName: "Ada Lin",
         recipe: TIER,
         face: { tint: "amber", shape: "hexagon" },
       },
@@ -321,7 +319,7 @@ describe("the New Mate dialog", () => {
   it("waits while the recipe is read, says so, and adds the Mate the moment it arrives", () => {
     const made: EnvironmentCreationChoice[] = [];
     const onCreate = (choice: EnvironmentCreationChoice) => made.push(choice);
-    const tree = mount(form({ onCreate, tier: undefined, tierLoading: true }));
+    const tree = mount(form({ onCreate, tier: undefined, recipe: "reading" }));
     expect(lineText(tree)).toBe("Reading the project's recipe…");
     press(tree);
     expect(made).toEqual([]);
@@ -329,7 +327,7 @@ describe("the New Mate dialog", () => {
       host(tree, (node) => node.type === "button" && node.props.type === "submit").props,
     ).toMatchObject({ disabled: true, "aria-busy": true });
     act(() => {
-      tree.update(form({ onCreate, tier: TIER, tierLoading: false }));
+      tree.update(form({ onCreate, tier: TIER, recipe: "present" }));
     });
     expect(made.map((choice) => choice.recipe)).toEqual([TIER]);
   });
@@ -337,10 +335,10 @@ describe("the New Mate dialog", () => {
   it("does not add an empty Mate for a press made before the project was read as having no recipe", () => {
     const made: EnvironmentCreationChoice[] = [];
     const onCreate = (choice: EnvironmentCreationChoice) => made.push(choice);
-    const tree = mount(form({ onCreate, tier: undefined, tierLoading: true }));
+    const tree = mount(form({ onCreate, tier: undefined, recipe: "reading" }));
     press(tree);
     act(() => {
-      tree.update(form({ onCreate, tier: undefined, tierLoading: false }));
+      tree.update(form({ onCreate, tier: undefined, recipe: "absent" }));
     });
     expect(made).toEqual([]);
     expect(lineText(tree)).toBe("");
@@ -350,7 +348,7 @@ describe("the New Mate dialog", () => {
   });
 
   it("tells a project with nothing to deploy yet that its person says what to build", () => {
-    const tree = mount(form({ tier: undefined, tierLoading: false }));
+    const tree = mount(form({ tier: undefined, recipe: "absent" }));
     expect(next(tree)).toEqual({
       steps: [
         ["Otto comes up", "about 1½–2 min"],
@@ -364,7 +362,7 @@ describe("the New Mate dialog", () => {
   // Learning the project has nothing to deploy changes the block's words in its one place: both
   // versions stand there, one out of sight, so the dialog keeps its height.
   it("holds both versions of what happens next in one place while the recipe is read", () => {
-    const tree = mount(form({ tier: undefined, tierLoading: true }));
+    const tree = mount(form({ tier: undefined, recipe: "reading" }));
     const versions = tree.root.findAll(
       (node) => typeof node.type === "string" && node.props["data-zerops-next"] !== undefined,
     );
@@ -394,16 +392,16 @@ describe("the New Mate dialog", () => {
   ])("lets a press go once $case: only a press adds", ({ name, refused }) => {
     const made: EnvironmentCreationChoice[] = [];
     const onCreate = (choice: EnvironmentCreationChoice) => made.push(choice);
-    const tree = mount(form({ onCreate, tier: undefined, tierLoading: true }));
+    const tree = mount(form({ onCreate, tier: undefined, recipe: "reading" }));
     if (refused) type(tree, "Fen");
     press(tree);
     type(tree, name);
     act(() => {
-      tree.update(form({ onCreate, tier: TIER, tierLoading: false }));
+      tree.update(form({ onCreate, tier: TIER, recipe: "present" }));
     });
     expect(made).toEqual([]);
     press(tree);
-    expect(made.map((choice) => choice.botName)).toEqual([name]);
+    expect(made.map((choice) => choice.name)).toEqual([name]);
   });
 
   it("waits for every Mate's name before a new one passes as free", () => {
@@ -416,7 +414,7 @@ describe("the New Mate dialog", () => {
     act(() => {
       tree.update(form({ onCreate, takenBotNames: { names: ["Fen"], complete: true } }));
     });
-    expect(made.map((choice) => choice.botName)).toEqual(["Otto"]);
+    expect(made.map((choice) => choice.name)).toEqual(["Otto"]);
   });
 });
 
@@ -520,7 +518,7 @@ describe("the New Mate dialog, while the project takes no Mate", () => {
   it("drops a press made while the recipe was read once it says why, and adds only on a new one", () => {
     const made: EnvironmentCreationChoice[] = [];
     const onCreate = (choice: EnvironmentCreationChoice) => made.push(choice);
-    const tree = mount(form({ onCreate, tier: undefined, tierLoading: true }));
+    const tree = mount(form({ onCreate, tier: undefined, recipe: "reading" }));
     type(tree, "Ada");
     press(tree);
     act(() => {
@@ -532,6 +530,6 @@ describe("the New Mate dialog, while the project takes no Mate", () => {
     expect(made).toEqual([]);
     // What was typed stayed, out of sight, while the door was shut.
     press(tree);
-    expect(made.map((choice) => [choice.botName, choice.recipe])).toEqual([["Ada", TIER]]);
+    expect(made.map((choice) => [choice.name, choice.recipe])).toEqual([["Ada", TIER]]);
   });
 });

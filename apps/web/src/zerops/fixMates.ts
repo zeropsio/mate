@@ -8,7 +8,7 @@
  * conversation's composer, and one not connected has none to take them.
  */
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { botDisplayName, readZeropsGroupTags } from "@t3tools/client-runtime/zerops";
+import { readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
@@ -43,7 +43,7 @@ export function fixMatesOf(input: {
     if (candidate.missingContainer === true || candidate.creationFailed !== undefined) continue;
     // Not connected: there is no conversation here to write the problem into.
     if (candidate.group !== "connected" || candidate.environmentId === undefined) continue;
-    const tags = readZeropsGroupTags(project.tagList);
+    const tags = readZeropsMembership(project);
     const inProject =
       project.id === input.projectId ||
       (input.groupId !== undefined && tags.groupId === input.groupId);
@@ -55,7 +55,7 @@ export function fixMatesOf(input: {
       mateProjectId: project.id,
       mine: input.isMine(candidate) ?? true,
       ...(lastVisitedAt === undefined ? {} : { lastVisitedAt }),
-      name: botDisplayName({ bot: tags.bot, projectName: project.name }),
+      name: project.name,
     });
   }
   return fixMateChoice(options).map(({ lastVisitedAt: _lastVisitedAt, ...option }) => option);
@@ -84,7 +84,7 @@ export function useFixMates(
 ): ReadonlyArray<FixMateOption> {
   const { listing } = useZeropsCandidates();
   const candidates = heldCandidates(listing).rows;
-  const ownerOf = useZeropsMateOwners({ candidates, enabled: mate !== undefined });
+  const ownerOf = useZeropsMateOwners();
   const shells = useThreadShells();
   const visits = useUiStateStore((state) => state.threadLastVisitedAtById);
   const projectId = mate?.projectId;

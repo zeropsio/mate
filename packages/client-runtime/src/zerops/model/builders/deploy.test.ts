@@ -418,8 +418,8 @@ describe("buildDeployFields — a result that reports its own failure settles fa
 /**
  * `zerops_deploy` with `strategy: "git-push"` answers zcp's
  * `deployGitPushResponse` (`internal/tools/deploy_git_push.go`): an
- * `ops.GitPushResult` (`internal/ops/deploy_common.go`) and, on the account's
- * own Gitea, the pull request the pushed branch lands through. It is a deploy
+ * `ops.GitPushResult` (`internal/ops/deploy_common.go`) and, for a push to this
+ * Mate's HQ, the change the push lands through. It is a deploy
  * only once the build its push triggered was watched to ACTIVE (`DELIVERED`).
  * Read as a deploy, a two-second push to a branch said "Done", "Deploying
  * appdev." and five build steps it never ran.
@@ -557,7 +557,7 @@ describe("buildDeployFields — a git push says what it did, a deploy only once 
 
   it.each([
     { call: "running", expected: undefined },
-    { call: "pushedForPullRequest", expected: "Pushed to pull request #8." },
+    { call: "pushedForPullRequest", expected: "Pushed to change #8." },
     { call: "pushed", expected: "Pushed to main." },
     { call: "pushedWithNoBuildWired", expected: "Pushed to main." },
     { call: "upToDate", expected: "Nothing new to push." },

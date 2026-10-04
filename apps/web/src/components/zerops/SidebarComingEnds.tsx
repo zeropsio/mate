@@ -35,10 +35,10 @@ export function comingEndsEntries(birth: NewProjectBirth): ReadonlyArray<{
           {
             id: "start-over" as const,
             label: "Start over",
-            onSelect: () => startAddOver(birth.id),
+            onSelect: () => startAddOver(birth.birthId),
           },
         ]),
-    { id: "dismiss", label: "Dismiss", onSelect: () => dismissNewProjectBirth(birth.id) },
+    { id: "dismiss", label: "Dismiss", onSelect: () => dismissNewProjectBirth(birth.birthId) },
   ];
 }
 

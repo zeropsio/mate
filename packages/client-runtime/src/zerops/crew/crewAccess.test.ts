@@ -17,7 +17,6 @@ const agent = (fields: Partial<ZeropsAgentAuth> = {}): CrewLoginFacts["agent"] =
 const facts = (fields: Partial<CrewLoginFacts> = {}): CrewLoginFacts => ({
   agent: agent(),
   authorizedBy: { subject: JAN },
-  recordFailed: false,
   ...fields,
 });
 
@@ -35,12 +34,6 @@ describe("crewLoginLock — a login read as its conversation reads it", () => {
       facts({ authorizedBy: undefined }),
       JAN,
       { login: "claudeAgent", agentId: "claude-code", ownership: "unrecorded" },
-    ],
-    [
-      "closed while this browser's own record failed",
-      facts({ authorizedBy: undefined, recordFailed: true }),
-      JAN,
-      { login: "claudeAgent", agentId: "claude-code", ownership: "record-failed" },
     ],
     [
       "closed to a viewer nobody can name",

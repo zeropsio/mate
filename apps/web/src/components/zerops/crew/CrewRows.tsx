@@ -458,6 +458,9 @@ function CrewNeed(
       data-arrived={props.arrived ? "" : undefined}
     >
       <RowLine line={need.line} wraps />
+      {need.detail === undefined ? null : (
+        <RowLine line={{ text: need.detail, tone: "muted" }} wraps />
+      )}
       {answering ? (
         <AnswerBox
           {...props}

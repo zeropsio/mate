@@ -89,7 +89,7 @@ const STEP: Readonly<Record<string, EnvironmentCreationStep>> = {
   } as EnvironmentCreationStep,
   "close-off": { kind: "close-off" },
   register: { kind: "register" },
-  "share-reach": { kind: "share-reach" },
+  "await-ready": { kind: "await-ready", withAgent: true },
 };
 
 /**
@@ -174,10 +174,9 @@ export function beginHarnessPress(input: {
       ] as const)
     : undefined;
   return beginNewProjectBirth({
-    id: `harness-${input.flow}`,
     ask: {
       organizationId: "org-harness",
-      groupId: "g-harness",
+      birthId: `harness-${input.flow}`,
       name: input.project,
       botName: input.botName,
       face: FACE,
@@ -186,7 +185,7 @@ export function beginHarnessPress(input: {
       ...(adds
         ? {
             adds: {
-              displayName: `${input.project} - ${input.botName}`,
+              appId: "g-harness",
               registers: true,
               // As its recipe names them, at the press.
               managed,
@@ -195,13 +194,13 @@ export function beginHarnessPress(input: {
           }
         : {}),
     },
-    gitea: { projectId: "gitea-harness" },
+    hq: { projectId: "hq-harness", address: "https://hq.example" },
     now: Date.now(),
     ports: {
-      ensureGitea: async () => ({ projectId: "gitea-harness" }),
+      recordBirth: async () => ({ id: "intent-harness" }),
       registerGroup: async () => {
         await wait(400);
-        return { kind: "written" } as never;
+        return { appId: "g-harness" };
       },
       createProject: async () => {
         tries += 1;
@@ -218,7 +217,7 @@ export function beginHarnessPress(input: {
                   ["import-container", 800],
                   ["close-off", 5_200],
                   ["register", 2_000],
-                  ["share-reach", 400],
+                  ["await-ready", 400],
                 ],
             refused ? "create-project" : failAt,
             projectOf,
@@ -246,7 +245,7 @@ export function beginHarnessPress(input: {
           [
             ["close-off", 4_000],
             ["register", 3_600],
-            ["share-reach", 400],
+            ["await-ready", 400],
           ],
           failAt,
           projectOf,
@@ -299,7 +298,6 @@ export function HarnessPressPage({ birthId }: { readonly birthId: string }) {
           ),
         }}
         mate={mate}
-        onRetry={() => undefined}
         phase={null}
         signIn={null}
         signInRequired={false}
@@ -403,7 +401,6 @@ function HarnessMatePage({
         }}
         focusOnArrival
         mate={mate}
-        onRetry={() => undefined}
         phase={null}
         signIn={null}
         signInRequired={false}

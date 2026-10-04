@@ -1,3 +1,5 @@
+import { useAtomCommand } from "~/state/use-atom-command";
+import { zeropsCommands } from "~/state/zeropsCommands";
 import { serviceForPreview } from "../../zerops/serviceBrowserPolicy";
 import { ServiceBrowserLinkContext } from "../ServiceBrowserLink";
 import { ZeropsDataLinkContext } from "./dataLink";
@@ -29,6 +31,7 @@ import { useState } from "react";
 
 import { cn } from "~/lib/utils";
 
+import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { buildZeropsServiceMap } from "@t3tools/client-runtime/zerops/serviceMap";
 import { crewPortOwners } from "@t3tools/client-runtime/zerops/projections/crew";
@@ -38,16 +41,12 @@ import { useAgentSignOut } from "../../zerops/useAgentSignOut";
 import { useCrew } from "../../zerops/crew/useCrew";
 import { useMateLogins } from "../../zerops/useMateLogins";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
+import { activityOfNow, mateFaceFor } from "../../zerops/agentActivity";
 import { useZeropsAgentActivity } from "../../zerops/useZeropsAgentActivity";
-import {
-  useLocalAgentSigners,
-  useZeropsAgentSignerRecordState,
-  useZeropsEnvironmentProject,
-} from "../../zerops/useZeropsAgentSigner";
+import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
 import { useZeropsMemberNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 import { mateIdentityPose, zeropsMateAt } from "../../zerops/mateIdentities";
-import { mateFaceFor } from "../../zerops/agentActivity";
 import { useNowMs } from "../../zerops/useNowMs";
 import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
@@ -59,12 +58,14 @@ import { MicroLabel } from "./primitives";
 
 export function ZeropsPanel({
   threadRef,
+  visible = true,
   agentAuthCard,
   agentAuthUnknown = null,
   agentAuthSnapshot,
   runningToolLabel,
 }: {
   readonly threadRef: ScopedThreadRef | null;
+  readonly visible?: boolean;
   readonly agentAuthCard: ZeropsAgentAuthSnapshot | null;
   /** While the agent-auth feed has no snapshot: that it is checking, or why the read failed. */
   readonly agentAuthUnknown?: KnownMessage | null;
@@ -72,7 +73,7 @@ export function ZeropsPanel({
   /** The caller's own reading of `ZeropsThreadModel.running` (`ChatView`) — the map never derives this itself. */
   readonly runningToolLabel?: string | undefined;
 }) {
-  const topology = useProjectTopology(threadRef?.environmentId ?? null);
+  const topology = useProjectTopology(threadRef?.environmentId ?? null, { metrics: visible });
   const lifecycle = useZeropsLifecycle(
     threadRef?.environmentId ?? null,
     threadRef?.threadId ?? null,
@@ -81,6 +82,7 @@ export function ZeropsPanel({
     ZeropsAgentAuthSnapshot["agents"][number]["agentId"] | null
   >(null);
   const cancelAgentLogin = useAgentLoginCancel(threadRef);
+  const checkAuth = useAtomCommand(zeropsCommands.agentAuthCheck, "zerops agent auth check");
   const agentSignOut = useAgentSignOut(threadRef?.environmentId ?? null);
   // Absent on an older Mate: missing means unsupported, as for every capability.
   const signOutSupported =
@@ -88,9 +90,6 @@ export function ZeropsPanel({
       .agentSignOut === true;
   // Whose login each agent is, so a row can say so (D6). Silent for your own.
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
-  // D6: recorded by the conversation view, whichever door the sign-in used.
-  const signerRecord = useZeropsAgentSignerRecordState(threadRef?.environmentId);
-  const localSigners = useLocalAgentSigners(threadRef?.environmentId);
   const crew = useCrew(threadRef?.environmentId ?? null);
   // A dev service's crew ports name their routes by whose app answers there.
   const view = buildZeropsServiceMap(
@@ -130,6 +129,8 @@ export function ZeropsPanel({
   // Mate, and no service is marked as its container until one is known.
   const whoLivesHere = environmentId === undefined ? null : zeropsMateAt(mates, environmentId);
   const mateIdentity = whoLivesHere?.kind === "mate" ? whoLivesHere.mate : undefined;
+  // What it does now, where a word of now says it: HQ's live word, or its standing socket's.
+  const live = environmentId === undefined ? undefined : activityOfNow(activity.get(environmentId));
   const mate =
     mateIdentity === undefined || environmentId === undefined
       ? undefined
@@ -137,13 +138,12 @@ export function ZeropsPanel({
           name: mateIdentity.name,
           tint: mateIdentity.tint,
           shape: mateIdentity.shape,
-          // Asleep until the socket is up, as the lists draw it — a Mate is
-          // known from its project's tags and its container's origin before
-          // there is anything to resolve — and waking while it arrives
-          // (`mateFaceFor`).
+          // Asleep until its socket is up or HQ's live word says what it does, as the
+          // lists draw it: a Mate is known from its project's tags and its container's
+          // origin before there is anything to resolve — see `ChatHeader`.
           face: mateFaceFor(
-            mateIdentity.connected,
-            activity.get(environmentId),
+            mateIdentity.connected || live !== undefined,
+            live,
             mateIdentityPose(mateIdentity, nowMs),
           ),
         };
@@ -165,17 +165,21 @@ export function ZeropsPanel({
       )
     ) : (
       <ZeropsAgentAuthCard
+        onRecheck={(agentId, loginId) => {
+          if (threadRef === null) return;
+          void checkAuth({
+            environmentId: threadRef.environmentId,
+            input: { agentId, ...(loginId === undefined ? {} : { loginId }) },
+          });
+        }}
         onCancel={cancelAgentLogin}
-        onRetryRecord={signerRecord.retry}
         onSignIn={setAuthorizationAgentId}
         onSignOut={agentSignOut.signOut}
-        recordFailed={signerRecord.recordFailed}
         signOutError={signOutError}
         signOutPending={signOutPending}
         signOutSupported={signOutSupported}
         snapshot={agentAuthCard}
         viewerSubject={viewerSubject}
-        localSigners={localSigners}
         logins={logins}
         nameOf={loginSignerName}
         onAddLogin={
@@ -256,6 +260,13 @@ export function ZeropsPanel({
       <ScrollArea className="h-full">
         <div className="mx-auto w-full max-w-3xl space-y-5 p-4" data-zerops-project-panel>
           {body}
+          {topology.error === undefined ? null : (
+            <div>
+              <Button variant="outline" size="sm" onClick={topology.again}>
+                Try again
+              </Button>
+            </div>
+          )}
           {agents === null || hasCurrentControlPlane ? null : (
             <section className="space-y-2" data-zerops-agent-auth-tray>
               <MicroLabel>Coding agents</MicroLabel>

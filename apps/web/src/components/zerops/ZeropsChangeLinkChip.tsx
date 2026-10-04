@@ -1,8 +1,8 @@
 /**
  * A change's address in a conversation, drawn as the change it names.
  *
- * A Mate writes a pull request's url into its message and that message is
- * frozen the moment it is written: "two pull requests wait for review" goes on
+ * A Mate writes its change's address at HQ into its message, and that message
+ * is frozen the moment it is written: "two pull requests wait for review" goes on
  * saying so an hour after both landed, and the reader has only the bare url to
  * go on (the owner, 2026-09-20: "when I read this and nothing else while its
  * merged its hella confusing").
@@ -12,25 +12,22 @@
  * knew — and the change beside it says where things actually stand.
  *
  * It renders its children unchanged for every address it cannot claim: another
- * forge, a change this account cannot read, a session with no flow. A chip is
- * only ever an improvement on a link it is certain about.
+ * HQ, an organization whose official HQ is not known yet, a session with no flow. A chip is only ever an improvement on a
+ * link it is certain about.
  *
- * A change on this Gitea is drawn from its address at once, even on an org the
- * registry does not name yet — a group whose tag has not reached this tab. It
- * takes its word and its in-app open once the registry, live from the store,
- * names it.
+ * A change at the official HQ is drawn from its address at once — its
+ * application, repository and number are in it — and takes its word from the
+ * flow, or from HQ for one the flow does not carry (`useZeropsLandedChange`).
  */
-import {
-  changeState,
-  groupForGiteaOwner,
-  parseGiteaChangeUrl,
-} from "@t3tools/client-runtime/zerops";
+import { changeState, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import { parseChangeUrl } from "@t3tools/shared/hqChanges";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import { GitMergeIcon, GitPullRequestArrow } from "lucide-react";
+import { GitMergeIcon, GitPullRequestArrow, GitPullRequestClosed } from "lucide-react";
 import { createContext, useContext, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { AppLinkContext } from "../ServiceBrowserLink";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useZeropsProjectFlowOptional } from "../../zerops/projectFlowContext";
 import { useZeropsLandedChange } from "../../zerops/useZeropsLandedChange";
@@ -41,6 +38,9 @@ import { useZeropsLandedChange } from "../../zerops/useZeropsLandedChange";
  * landed glyph read as history, not a contradiction.
  */
 export const ChangeChipMomentContext = createContext<string | null>(null);
+
+/** A change closed without merging, as its review says it. */
+const CLOSED_WITHOUT_MERGING = "Closed without merging";
 
 const TONE_GLYPH: Record<ServiceStatusToneId, string> = {
   ok: "text-status-ok",
@@ -66,71 +66,87 @@ export function ZeropsChangeLinkChip({
   const flowValue = useZeropsProjectFlowOptional();
   const openInApp = useContext(AppLinkContext);
   const writtenAt = useContext(ChangeChipMomentContext);
-  const link = href === undefined ? null : parseGiteaChangeUrl(href, flowValue?.giteaOrigin);
+  const hqAddress = flowValue?.hqAddress;
+  const link =
+    href === undefined || hqAddress === undefined ? null : parseChangeUrl(href, hqAddress);
 
-  const groupId =
-    link !== null && flowValue !== null
-      ? groupForGiteaOwner(flowValue.slugs, link.owner)
-      : undefined;
-  const open =
-    groupId === undefined
-      ? undefined
-      : flowValue?.flows
-          .get(groupId)
-          ?.pullRequests.find(
-            (entry) => entry.repository === link?.repository && entry.number === link.number,
-          );
-  // Only a change the flow does not carry is asked for: the flow holds the open
-  // ones, and a landed change is exactly the case that reads as stale.
-  const landed = useZeropsLandedChange(
-    link === null || groupId === undefined || open !== undefined
-      ? null
-      : {
-          giteaOrigin: flowValue?.giteaOrigin,
-          owner: link.owner,
-          repository: link.repository,
-          number: link.number,
-        },
-  );
-  const pull = open ?? (landed.kind === "read" ? landed.pull : undefined);
+  // The flow carries an application's open changes and its newest landed ones.
+  const flow = link === null ? undefined : flowValue?.flows.get(link.appId);
+  const named = (entry: FlowPullRequest) =>
+    entry.repository === link?.repo && entry.number === link.number;
+  const held = flow?.pullRequests.find(named) ?? flow?.merged.find(named);
+  // Only a change the flow does not carry is asked for.
+  const landed = useZeropsLandedChange(link === null || held !== undefined ? null : link);
+  const pull = held ?? (landed.kind === "read" ? landed.pull : undefined);
   const follow = href === undefined ? null : (openInApp?.(href) ?? null);
-  // Drawn from the url while the registry or the forge is still answering: the
-  // repository and the number are in the address, so the chip does not have to
-  // arrive as a full-width url that turns into a chip a moment later. Only the
-  // word waits. `gone` and `failed` are answers, not waits: a change this
-  // account cannot read stays the link it was.
+  // Drawn from the url while HQ is still answering: the repository and the
+  // number are in the address, so the chip does not have to arrive as a
+  // full-width url that turns into a chip a moment later. Only the word waits.
+  // Missing, refused and unavailable are answers, shown beside the original link.
   const reading =
-    pull === undefined &&
-    link !== null &&
-    flowValue !== null &&
-    (groupId === undefined || landed.kind === "idle" || landed.kind === "reading");
-  if (pull === undefined && !reading) return children;
+    pull === undefined && link !== null && (landed.kind === "idle" || landed.kind === "reading");
+  if (pull === undefined && !reading) {
+    if (landed.kind === "gone" || landed.kind === "refused" || landed.kind === "unavailable") {
+      return (
+        <span className="inline-flex flex-wrap items-baseline gap-1">
+          {children}
+          {landed.kind === "gone" ? (
+            <span className="text-sm text-muted-foreground">
+              {`${link?.repo ?? ""} has no change #${String(link?.number ?? 0)}`}
+            </span>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger render={<span className="text-sm text-muted-foreground" />}>
+                This change could not be read
+              </TooltipTrigger>
+              <TooltipPopup>{landed.reason}</TooltipPopup>
+            </Tooltip>
+          )}
+          {landed.readAgain === undefined ? null : (
+            <Button variant="link" size="xs" onClick={landed.readAgain}>
+              Read again
+            </Button>
+          )}
+        </span>
+      );
+    }
+    return children;
+  }
 
-  const line = pull?.line ?? `${link?.repository ?? ""} #${String(link?.number ?? 0)}`;
+  const line = pull?.line ?? `${link?.repo ?? ""} #${String(link?.number ?? 0)}`;
   // The state is a glyph of one size, never a word of its own width: a change
   // landing reflows nothing in the sentence around it. The words are the
   // tooltip's.
-  const openState = pull === undefined || pull.merged ? undefined : changeState(pull);
+  // A change closed without merging is over: what it last conflicted with is no longer true.
+  const closed = pull !== undefined && !pull.merged && pull.state === "closed";
+  const openState = pull === undefined || pull.merged || closed ? undefined : changeState(pull);
   const state =
     pull === undefined
       ? undefined
       : pull.merged
-        ? { word: "Landed", tone: "ok" as const, merged: true }
-        : openState === undefined
-          ? undefined
-          : { word: openState.word, tone: openState.tone, merged: false };
+        ? { word: "Landed", tone: "ok" as const, kind: "landed" as const }
+        : closed
+          ? { word: CLOSED_WITHOUT_MERGING, tone: "off" as const, kind: "closed" as const }
+          : openState === undefined
+            ? undefined
+            : { word: openState.word, tone: openState.tone, kind: "open" as const };
   const landedSince =
     pull?.merged === true &&
     writtenAt !== null &&
     pull.mergedAt !== undefined &&
     Date.parse(pull.mergedAt) > Date.parse(writtenAt);
-  const Glyph = state?.merged ? GitMergeIcon : GitPullRequestArrow;
+  const Glyph =
+    state?.kind === "landed"
+      ? GitMergeIcon
+      : state?.kind === "closed"
+        ? GitPullRequestClosed
+        : GitPullRequestArrow;
   const chip = (
     <a
       className="inline-flex items-baseline gap-1 rounded-md border border-border bg-muted px-1.5 align-baseline text-sm no-underline"
-      data-zerops-change-state={state === undefined ? "reading" : state.merged ? "landed" : "open"}
+      data-zerops-change-state={state === undefined ? "reading" : state.kind}
       data-zerops-change-since={landedSince ? "landed" : undefined}
-      data-zerops-change-chip={`${pull?.repository ?? link?.repository ?? ""}#${String(pull?.number ?? link?.number ?? 0)}`}
+      data-zerops-change-chip={`${pull?.repository ?? link?.repo ?? ""}#${String(pull?.number ?? link?.number ?? 0)}`}
       href={href}
       onClick={(event) => {
         if (

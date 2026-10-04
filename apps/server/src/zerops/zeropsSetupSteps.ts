@@ -3,66 +3,43 @@
  * reports, and the rule that starts the stand-up here rather than in a browser.
  *
  * Pure. `ZeropsSetup` gathers the facts — zcp's status file
- * (`ZCP_STATUS_FILE`), the project's tags, the broker's variables, the durable
- * stand-up record — and these functions decide what they mean.
+ * (`ZCP_STATUS_FILE`), who asked for the stand-up (HQ), who signed an agent in
+ * here, the Mate's enrollment with HQ, the durable stand-up record — and these
+ * functions decide what they mean.
  *
  * The document is public, so it carries steps and times only: no names, no
  * error text, no ids (the setup contract, pass 28).
  *
  * @module zeropsSetupSteps
  */
-import type { OrchestrationCommand, ZeropsAgentId } from "@t3tools/contracts";
-import { readSignerTags } from "@t3tools/shared/zeropsAgentAuth";
+import type { ZeropsAgentId } from "@t3tools/contracts";
+
+import type { ProjectSigners } from "./ZeropsProjectSigners.ts";
 
 /* ------------------------------------------------------------ the stand-up */
 
 /** The ask, word for word, as the browser has sent it (`apps/web/src/zerops/mateStandUp.ts`). */
 export const STAND_UP_MESSAGE = "Stand up development of the project.";
 
-/** Who asked for the stand-up: `mate:standup:<userId>`, written by the press that made the Mate. */
-export const STAND_UP_TAG_PREFIX = "mate:standup:";
-
 const STAND_UP_ID_PREFIX = "mate-standup-";
 
 /**
- * The stand-up's command and message ids — the browser's own for its first
- * attempt, so a browser that sends it too is the same command, which the
- * engine takes once (its receipts).
+ * The stand-up's command and message ids: the same for a send resumed after a restart, which the
+ * engine takes once (its receipts), and the prefix the client draws the ask as a quiet line by.
  */
 export const standUpCommandIds = (threadId: string, attempt = 1) => {
   const id = `${STAND_UP_ID_PREFIX}${threadId}-${attempt}`;
   return { commandId: id, messageId: id };
 };
 
-/** Whether a command is a browser's stand-up, any attempt of it. */
-export const isStandUpCommand = (command: OrchestrationCommand): boolean =>
-  command.type === "thread.turn.start" && command.commandId.startsWith(STAND_UP_ID_PREFIX);
-
-export const standUpRequestedBy = (tags: ReadonlyArray<string>): string | undefined => {
-  for (const tag of tags) {
-    if (!tag.startsWith(STAND_UP_TAG_PREFIX)) continue;
-    const userId = tag.slice(STAND_UP_TAG_PREFIX.length);
-    if (userId.length > 0) return userId;
-  }
-  return undefined;
-};
-
 /** The order an agent is chosen in when a person signed in both. */
 const AGENT_ORDER: ReadonlyArray<ZeropsAgentId> = ["claude-code", "codex"];
 
-/**
- * The agents `userId` alone signed in on this project (`mate:signer:{agent}:{userId}`).
- * An agent recorded for two people is nobody's until signed in again (D6).
- */
+/** The agents this server saw `userId` sign in. */
 export const standUpSigners = (
-  tags: ReadonlyArray<string>,
+  signers: ProjectSigners,
   userId: string,
-): ReadonlyArray<ZeropsAgentId> => {
-  const signers = readSignerTags(tags, (key) =>
-    (AGENT_ORDER as ReadonlyArray<string>).includes(key),
-  );
-  return AGENT_ORDER.filter((agentId) => signers[agentId] === userId);
-};
+): ReadonlyArray<ZeropsAgentId> => AGENT_ORDER.filter((agentId) => signers[agentId] === userId);
 
 export type StandUpDecision =
   /** On the agent the asker signed in. */
@@ -101,16 +78,6 @@ export const standUpDecision = (input: {
         : undefined;
   if (start === undefined) return { kind: "wait" };
   return input.spoken ? { kind: "spoken" } : start;
-};
-
-/* ------------------------------------------------------------ git */
-
-/** What the broker delivers onto the zcp service once the Mate is registered. */
-export const GIT_VARIABLES: ReadonlyArray<string> = ["GITEA_URL", "GITEA_TOKEN", "MATE_BROKER_URL"];
-
-export const hasGitVariables = (keys: Iterable<string>): boolean => {
-  const present = new Set(keys);
-  return GIT_VARIABLES.every((key) => present.has(key));
 };
 
 /* ------------------------------------------------------------ zcp's status file */
@@ -252,7 +219,35 @@ export interface SetupStep {
   readonly state: string;
   /** When the step reached its state, RFC 3339; empty when not known. */
   readonly at: string;
+  /**
+   * Why a waiting stand-up waits, where the server knows ({@link StandUpWait}); why the Git
+   * access failed ({@link GitAccess}).
+   */
+  readonly reason?: StandUpWait["reason"] | "refused" | "send_failed";
+  /** HQ's refusal code, with `not_enrolled` or `refused`. */
+  readonly code?: string;
 }
+
+/**
+ * Why a stand-up nothing started waits, as far as the server knows: zcp found no official HQ;
+ * zcp holds no enrollment (with HQ's refusal code, where it refused); HQ has not sent the Mate.
+ * A stand-up asked for waits on its asker's sign-in, which the sign-in step says.
+ */
+export type StandUpWait =
+  | { readonly reason: "no_hq" }
+  | { readonly reason: "not_enrolled"; readonly code?: string }
+  | { readonly reason: "not_linked" };
+
+/**
+ * The Mate's Git access: its enrollment with HQ, whose credential reaches its application's
+ * repositories there. Granted once zcp holds an enrollment, since `at`; on its way while zcp has
+ * said nothing; failed where zcp said why not (`~/.zcp/hq/outcome.json`, spec-mate §2.8 C-7): no
+ * official HQ in the org, or HQ's refusal with its code.
+ */
+export type GitAccess =
+  | { readonly state: "done"; readonly at: string }
+  | { readonly state: "waiting" }
+  | { readonly state: "failed"; readonly reason: "no_hq" | "refused"; readonly code?: string };
 
 export interface SetupDocument {
   readonly version: 1;
@@ -264,18 +259,15 @@ export interface SetupFacts {
   readonly now: string;
   /** When this server started: the container is up. */
   readonly startedAt: string;
-  /** When the broker's variables were first seen on the zcp service. */
-  readonly gitAt: string | undefined;
+  /** The Mate's Git access, as its enrollment with HQ stands. */
+  readonly git: GitAccess;
   /** zcp's status file; `undefined` when absent (an older zcp) or unreadable. */
   readonly status: ZcpStatus | undefined;
-  /** Whether the project's tags have been read at all. */
-  readonly tagsRead: boolean;
-  /** Who asked for the stand-up, by the project's tags. */
+  /** Who asked for the stand-up, by the Mate's birth record at HQ. */
   readonly requestedBy: string | undefined;
-  /**
-   * When the asker's sign-in — anybody's, when nobody asked — was first seen recorded, or an
-   * agent Mate signs nobody in to (Cursor, OpenCode…) first seen ready.
-   */
+  /** Why a stand-up nothing started waits, where nobody's sign-in is what it waits on. */
+  readonly standUpWait: StandUpWait | undefined;
+  /** When the asker's sign-in — anybody's, when nobody asked — was first seen recorded. */
   readonly signinAt: string | undefined;
   /**
    * The durable record of the stand-up: `ran`, started here or by a browser;
@@ -287,8 +279,15 @@ export interface SetupFacts {
         readonly ran: boolean;
         /** Claimed, its send not confirmed out yet: its turn may not exist yet. */
         readonly claimed?: boolean;
+        /** Dispatch/admission failed before its ask went out. */
+        readonly failed?: boolean;
       }
     | undefined;
+  /**
+   * HQ's record of the Mate, which carries its ask from the write that made it (audit B3), names
+   * nobody who asked: a Mate with no stand-up to run (a New project's first).
+   */
+  readonly nobodyAsked?: boolean;
   /** Steps this server cannot say: left out of the document rather than guessed. */
   readonly unknown?: ReadonlyArray<"signin" | "standup">;
   /**
@@ -338,6 +337,8 @@ const zcpStandUpState = (facts: SetupFacts): Exclude<StandUpState, "idle"> | und
 
 const standUpStep = (facts: SetupFacts): SetupStep | null => {
   const standup = facts.status?.standup;
+  if (facts.record?.failed === true)
+    return { id: "standup", state: "failed", at: facts.record.startedAt, reason: "send_failed" };
   const zcpState = zcpStandUpState(facts);
   // Settled as never due: nothing ran here, so nothing is done — unless zcp ran one.
   if (facts.record !== undefined && !facts.record.ran) {
@@ -346,11 +347,9 @@ const standUpStep = (facts: SetupFacts): SetupStep | null => {
   if (facts.record === undefined) {
     if (zcpState !== undefined)
       return { id: "standup", state: zcpState, at: standup?.startedAt ?? "" };
-    // Nothing asked and nothing started: a Mate with no stand-up to run — once
-    // the tags have been read to say so.
-    return facts.tagsRead && facts.requestedBy === undefined
-      ? { id: "standup", state: "none", at: "" }
-      : { id: "standup", state: "waiting", at: "" };
+    // Nothing asked and nothing started: a Mate with no stand-up to run, as HQ's record says.
+    if (facts.nobodyAsked === true) return { id: "standup", state: "none", at: "" };
+    return { id: "standup", state: "waiting", at: "", ...facts.standUpWait };
   }
   // zcp's word, else its own turn's; with neither — its thread gone, its turn not found, and a
   // zcp that writes nothing — the server cannot say, and says nothing rather than running for good.
@@ -365,15 +364,30 @@ const standUpStep = (facts: SetupFacts): SetupStep | null => {
   return { id: "standup", state, at };
 };
 
+const gitStep = (git: GitAccess): SetupStep => {
+  switch (git.state) {
+    case "done":
+      return { id: "git", state: "done", at: git.at };
+    case "waiting":
+      return { id: "git", state: "waiting", at: "" };
+    case "failed":
+      return {
+        id: "git",
+        state: "failed",
+        at: "",
+        reason: git.reason,
+        ...(git.code === undefined ? {} : { code: git.code }),
+      };
+  }
+};
+
 export const setupDocument = (facts: SetupFacts): SetupDocument => ({
   version: 1,
   at: facts.now,
   steps: (
     [
       { id: "container", state: "done", at: facts.startedAt },
-      facts.gitAt === undefined
-        ? { id: "git", state: "waiting", at: "" }
-        : { id: "git", state: "done", at: facts.gitAt },
+      gitStep(facts.git),
       runtimesStep(facts.status),
       facts.signinAt === undefined
         ? { id: "signin", state: "waiting", at: "" }

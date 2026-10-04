@@ -3,27 +3,20 @@
  * runs, what was released (spec §10.11, D26).
  *
  * One project (a group) has Mates and environments, and its code travels one
- * way — a Mate's branch, a pull request, the stage that follows `main`, a
+ * way — a Mate's branch, its change in HQ, the stage that follows `main`, a
  * release, the production. The left menu draws that as a timeline under each
  * project, the projects screen as rows under the Mates, and a Mate's own Git
  * tab shows only its own leg of it. All three read what this module decides,
- * so no surface grows a second opinion about whose pull request a change is
- * or whether a release can be gone back to (design system R5).
+ * so no surface grows a second opinion about whose change it is or whether a
+ * release can be gone back to (design system R5).
  *
- * ## Whose pull request it is
+ * ## Whose change it is
  *
- * A Mate works on a branch zcp names after its bot — `mate/{login}`, the
- * login being `mate-{projectId}` (gitea-mate `mate.go`, zcp
- * `gitea_repo.go`) — and its stage deploy opens the pull request as that bot
- * (D25). So a pull request belongs to the Mate whose branch it is, and
- * failing that to the Mate whose bot opened it: a person who renamed the
- * branch in Gitea still sees it under the Mate that wrote it. A pull request
- * from a person's own branch belongs to nobody's Mate and is listed after
- * them, never dropped.
- *
- * A pull request on the group repo is a recipe change whoever opened it:
- * it changes what the environments are made of, not what runs in them
- * (`docs/group-repo.md`).
+ * HQ records the Mate that opened each change (SPEC §3.2a), and a change sits
+ * under that Mate: only Mates open changes, as people do not push (SPEC §5.4).
+ * A change in the application's recipe repository is a recipe change (kind
+ * `recipe`, SPEC §3.2c): it changes what the environments are made of, not
+ * what runs in them.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -31,21 +24,13 @@
  */
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import { changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
+import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { isSlashCommand } from "@t3tools/shared/userAsk";
 
-import {
-  checkDotTone,
-  checkTone,
-  checkWord,
-  gitChecks,
-  pullRequestBlocked,
-  type GitCheckRow,
-  type GitCheckTone,
-} from "./gitTab.ts";
-import type { MergeabilityKind } from "./forge/mergeState.ts";
-import type { GiteaCommitStatus, GiteaPullRequest } from "./giteaClient.ts";
-import { mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
-import { GROUP_REPOSITORY } from "./release.ts";
+import { pullRequestBlocked } from "./gitTab.ts";
+import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
+import { movedCount, type Moved } from "./releaseCompare.ts";
 
 export type FlowPullRequestKind = "code" | "recipe";
 
@@ -56,18 +41,13 @@ export interface FlowPullRequest {
   readonly number: number;
   readonly title: string;
   readonly kind: FlowPullRequestKind;
-  /** The Mate it belongs to; `undefined` for a person's own branch. */
-  readonly mateProjectId: string | undefined;
-  readonly author: string | undefined;
+  /** The Mate that opened it: only Mates open changes (SPEC §5.4). */
+  readonly mateProjectId: string;
   readonly url: string | undefined;
-  readonly checks: GitCheckTone;
-  /** The one word beside the checks' dot; `undefined` where no check ran. */
-  readonly checkWord: string | undefined;
-  /**
-   * Gitea's answers over the reads so far (`forge/mergeState.ts`), never the
-   * app's: Merge is offered only where it is `mergeable`.
-   */
+  /** HQ's word on whether it merges (`changeMergeability.ts`), never the app's. */
   readonly mergeability: MergeabilityKind;
+  /** Whether `main` has moved on past the commit it was cut from, as HQ judged with the above. */
+  readonly behind: boolean;
   /**
    * Whether it has already landed.
    *
@@ -85,106 +65,90 @@ export interface FlowPullRequest {
    */
   readonly mergeCommitSha?: string | undefined;
   /**
-   * `open` or `closed`, as Gitea says. A change read on its own by number may be closed without
+   * `open` or `closed`, as HQ says. A change read on its own by number may be closed without
    * ever merging: its review must not offer to merge it. Optional, as every flow built before a
    * review read it carries none.
    */
   readonly state?: string | undefined;
   readonly headSha: string | undefined;
   readonly baseBranch: string;
-  /** `appdev #4`, or `appdev #4 · ada` for a person's; `recipe #6` on the group repo. */
+  /** `appdev #4`; `#6` on the recipe repository, whose row wears the tag. */
   readonly line: string;
   readonly updatedAt: string | undefined;
-  /*
-   * What a review reads before anyone merges (pass 16, R4/R8). Optional, because every flow
-   * built before a review existed carries none of them, and a surface that is not a review
-   * never needs them.
-   */
-  /** The branch it comes from — `mate/mate-{projectId}` for a Mate's. */
+  /** The branch it comes from — `mate/{projectId}/{n}` for a Mate's change in HQ. */
   readonly headBranch?: string | undefined;
-  /** Every check on its head by name, with what each said — the broker's own left out. */
-  readonly checkRows?: ReadonlyArray<GitCheckRow> | undefined;
-  /** Lines added and removed and files touched, as Gitea counts them; absent where it did not. */
-  readonly additions?: number | undefined;
-  readonly deletions?: number | undefined;
-  readonly changedFiles?: number | undefined;
-  /** The commit its branch last shared with the base, as Gitea tested it. */
-  readonly mergeBase?: string | undefined;
-  /** The base branch's head as read: past {@link mergeBase}, `main` moved on since. */
-  readonly baseSha?: string | undefined;
   /**
    * Its description as its author wrote it, Markdown with its pictures; `undefined` where none was
    * written. What a review reads first.
    */
   readonly description?: string | undefined;
-  /** How many comments were said on it, as Gitea counts them: the room its conversation takes. */
-  readonly commentCount?: number | undefined;
 }
 
 /**
- * What zcp calls the pull request a Mate proposes the group's recipe in (`giteaRecipeBranchTitle`,
- * zcp `gitea_recipe_reconcile.go`): the tiers `main` lacks, `0 — AI Agent/import.yaml` among them,
- * which the broker merges by itself when it only adds files. A new Mate waits on it while `main`
- * has no recipe.
+ * A Mate's proposal of the application's recipe: the recipe repository's change of zcp's title
+ * (`RECIPE_PROPOSAL_TITLE`), the tiers `main` lacks, which Core lands by itself when it only adds
+ * files. A new Mate waits on it while `main` has no recipe.
  */
-export const RECIPE_PROPOSAL_TITLE = "Mate: the group's import files";
-
-/** A Mate's proposal of the group's recipe: the group repo's change of zcp's title. */
 export function isRecipeProposal(pull: Pick<FlowPullRequest, "kind" | "title">): boolean {
   return pull.kind === "recipe" && pull.title === RECIPE_PROPOSAL_TITLE;
 }
 
-/** The default branch until Gitea says otherwise. */
+/** Every change in HQ is onto `main`. */
 const FALLBACK_BASE = "main";
 
-/** One pull request of the project, from what Gitea said about it. */
-export function flowPullRequest(input: {
-  readonly repository: string;
-  readonly pull: GiteaPullRequest;
-  /** Every commit status on the pull request's head. */
-  readonly checks: ReadonlyArray<GiteaCommitStatus>;
-  /** How it merges over the reads of it so far (`forge/mergeState.ts`). */
-  readonly mergeability: MergeabilityKind;
-}): FlowPullRequest {
-  const { pull, repository } = input;
-  const kind: FlowPullRequestKind = repository === GROUP_REPOSITORY ? "recipe" : "code";
-  const mateProjectId = mateProjectOfBranch(pull.head?.ref) ?? mateProjectOfLogin(pull.user?.login);
-  const tone = checkTone(input.checks);
-  const author = pull.user?.login;
-  // A recipe change's row already wears the tag; a code change names its
-  // repository. A Mate's pull request sits under its Mate, so the line does
-  // not say who; a person's names the person, which is the only thing the
-  // row cannot show otherwise.
-  const what = kind === "recipe" ? `#${pull.number}` : `${repository} #${pull.number}`;
-  const line = mateProjectId === undefined && author !== undefined ? `${what} · ${author}` : what;
+/** One of a Mate's changes in HQ as a row, at the official HQ's address. */
+export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest {
+  const merged = change.state === "merged";
   return {
-    repository,
-    number: pull.number,
-    title: pull.title,
-    kind,
-    mateProjectId,
-    author,
-    url: pull.html_url,
-    checks: tone,
-    checkWord: checkWord(tone),
-    mergeability: input.mergeability,
-    merged: pull.merged === true,
-    mergedAt: pull.merged_at,
-    mergeCommitSha: pull.merge_commit_sha ?? undefined,
-    state: pull.state,
-    headSha: pull.head?.sha,
-    baseBranch: pull.base?.ref ?? FALLBACK_BASE,
-    line,
-    updatedAt: pull.updated_at,
-    headBranch: pull.head?.ref,
-    checkRows: gitChecks(input.checks),
-    additions: pull.additions,
-    deletions: pull.deletions,
-    changedFiles: pull.changed_files,
-    mergeBase: pull.merge_base,
-    baseSha: pull.base?.sha,
-    description: pull.body === undefined || pull.body.trim().length === 0 ? undefined : pull.body,
-    commentCount: pull.comments,
+    repository: change.repo,
+    number: change.number,
+    title: change.title,
+    kind: change.repo === RECIPE_REPO ? "recipe" : "code",
+    mateProjectId: change.mateProjectId,
+    url: changeUrl(hqAddress, change.appId, change.repo, change.number),
+    mergeability: mergeabilityKindOf(change.mergeability),
+    behind: change.behind,
+    merged,
+    mergedAt: change.mergedAt ?? undefined,
+    ...(merged && change.mergedSha !== null ? { mergeCommitSha: change.mergedSha } : {}),
+    state: change.state === "open" ? "open" : "closed",
+    headSha: change.head ?? undefined,
+    baseBranch: FALLBACK_BASE,
+    // Under its Mate the row does not say whose it is; a recipe change's row wears the tag, so
+    // its number alone names it.
+    line:
+      change.repo === RECIPE_REPO
+        ? `#${String(change.number)}`
+        : `${change.repo} #${String(change.number)}`,
+    updatedAt: change.updatedAt,
+    headBranch: `mate/${change.mateProjectId}/${String(change.number)}`,
+    description: change.body.trim().length === 0 ? undefined : change.body,
+  };
+}
+
+/**
+ * An application's changes in HQ as every surface shows them: the open ones a push reached — an
+ * open change with no head yet has nothing to show — and the landed ones, newest first. A change
+ * closed without merging is in neither, as a pull request closed on main was in no flow.
+ */
+export function flowChanges(input: {
+  readonly changes: ReadonlyArray<HqChange>;
+  /** The official HQ's address, which a change's own address is at. */
+  readonly hqAddress: string;
+}): {
+  readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  readonly merged: ReadonlyArray<FlowPullRequest>;
+} {
+  const row = (change: HqChange) => flowChange(change, input.hqAddress);
+  return {
+    pullRequests: input.changes
+      .filter((change) => change.state === "open" && change.head !== null)
+      .map(row),
+    // Filtered into a fresh array, so the sort touches nothing else.
+    merged: input.changes
+      .filter((change) => change.state === "merged")
+      .sort((left, right) => (right.mergedAt ?? "").localeCompare(left.mergedAt ?? ""))
+      .map(row),
   };
 }
 
@@ -211,8 +175,7 @@ export interface ChangeLandedEvent {
  * The landings that belong on one Mate's timeline, oldest first.
  *
  * A change with no `mergedAt` has no moment to be placed at and is left out
- * rather than guessed at. A person's own branch belongs to no conversation, and
- * another Mate's change belongs to that Mate's.
+ * rather than guessed at. Another Mate's change belongs to that Mate's.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  */
@@ -282,27 +245,20 @@ export function agentNotesFor(text: string, notes: ReadonlyArray<string>): Reado
   return isSlashCommand(text) ? [] : notes;
 }
 
-type ChangeLabelOf = Pick<
-  FlowPullRequest,
-  "repository" | "number" | "title" | "mateProjectId" | "author"
->;
+type ChangeLabelOf = Pick<FlowPullRequest, "repository" | "number" | "title" | "mateProjectId">;
 
 /**
- * Whether a change is named with its repository: when the changes of whoever opened it — its
- * Mate's, or a person's own — stand open in more than one repository, `#1` alone is two rows
- * that read the same (`appdev #1`, `apidev #1`).
+ * Whether a change is named with its repository: when its Mate's changes stand open in more than
+ * one repository, `#1` alone is two rows that read the same (`appdev #1`, `apidev #1`).
  */
 export function changeNamesRepository(
   pull: ChangeLabelOf,
   among?: ReadonlyArray<ChangeLabelOf>,
 ): boolean {
   if (among === undefined) return false;
-  const whose = (entry: ChangeLabelOf) =>
-    entry.mateProjectId === undefined
-      ? `person:${entry.author ?? ""}`
-      : `mate:${entry.mateProjectId}`;
-  const owner = whose(pull);
-  return among.some((entry) => whose(entry) === owner && entry.repository !== pull.repository);
+  return among.some(
+    (entry) => entry.mateProjectId === pull.mateProjectId && entry.repository !== pull.repository,
+  );
 }
 
 /**
@@ -338,8 +294,7 @@ export function agentLastSpokeAt(
 }
 
 /**
- * What a change is called on the menu: `#4 Add a due date to each todo`, and
- * `· ada` after it where no Mate's row stands above to say whose it is.
+ * What a change is called on the menu: `#4 Add a due date to each todo`.
  *
  * The number alone was tried and taken away again: a Mate's pull request is
  * titled with its commit message, so the row does echo the task on the row
@@ -348,31 +303,31 @@ export function agentLastSpokeAt(
  * distinction instead: a change is drawn branching off the line rather than
  * standing on it, so it reads as subordinate without having to go mute.
  *
- * `among` is what is drawn with it: where its opener's changes span repositories, each row
- * leads with its own — `apidev #1 Rebuild the API`.
+ * `among` is what is drawn with it: where its Mate's changes span repositories, each row leads
+ * with its own — `apidev #1 Rebuild the API`.
  */
 export function sidebarChangeLabel(
   pull: ChangeLabelOf,
   among?: ReadonlyArray<ChangeLabelOf>,
 ): string {
   const number = `#${pull.number} ${pull.title}`;
-  const title = changeNamesRepository(pull, among) ? `${pull.repository} ${number}` : number;
-  return pull.mateProjectId === undefined && pull.author !== undefined
-    ? `${title} · ${pull.author}`
-    : title;
+  return changeNamesRepository(pull, among) ? `${pull.repository} ${number}` : number;
+}
+
+/** The tag a change's row wears: `change` for a Mate's code, `recipe` for an environment's shape. */
+export function changeKindTag(pull: Pick<FlowPullRequest, "kind">): string {
+  return pull.kind === "recipe" ? "recipe" : "change";
 }
 
 /**
  * The line with the Mate's name on it — `appdev #4 · Vera` — for a row that
- * does not sit under its Mate. A person's line already names them.
+ * does not sit under its Mate.
  */
 export function pullRequestLineWith(
-  pull: Pick<FlowPullRequest, "line" | "mateProjectId">,
+  pull: Pick<FlowPullRequest, "line">,
   mateName: string | undefined,
 ): string {
-  return pull.mateProjectId !== undefined && mateName !== undefined
-    ? `${pull.line} · ${mateName}`
-    : pull.line;
+  return mateName === undefined ? pull.line : `${pull.line} · ${mateName}`;
 }
 
 /** Newest first — the one a person is most likely waiting on. */
@@ -381,10 +336,8 @@ export function byNewest(left: FlowPullRequest, right: FlowPullRequest): number 
 }
 
 /**
- * Each Mate's open pull requests, newest first, and the ones that are
- * nobody's Mate's — a person's own branch, or a Mate the caller does not list
- * (one the person may not open, say). Nothing is dropped: a change waiting to
- * land is waiting whoever wrote it.
+ * Each listed Mate's changes, newest first, and those whose Mate is no longer listed.
+ * Open work belongs to the application even after its container leaves.
  */
 export function pullRequestsByMate(
   pulls: ReadonlyArray<FlowPullRequest>,
@@ -393,15 +346,14 @@ export function pullRequestsByMate(
   readonly byMate: ReadonlyMap<string, ReadonlyArray<FlowPullRequest>>;
   readonly others: ReadonlyArray<FlowPullRequest>;
 } {
-  const known = new Set(mateProjectIds);
   const byMate = new Map<string, Array<FlowPullRequest>>(
     mateProjectIds.map((projectId) => [projectId, []]),
   );
   const others: Array<FlowPullRequest> = [];
   for (const pull of [...pulls].sort(byNewest)) {
-    const mate = pull.mateProjectId;
-    if (mate !== undefined && known.has(mate)) byMate.get(mate)?.push(pull);
-    else others.push(pull);
+    const own = byMate.get(pull.mateProjectId);
+    if (own === undefined) others.push(pull);
+    else own.push(pull);
   }
   return { byMate, others };
 }
@@ -418,25 +370,6 @@ export function pullRequestsFolded(count: number): boolean {
   return count > PULL_REQUESTS_SHOWN;
 }
 
-/**
- * Who wrote a change, as a person reads it.
- *
- * `author` is the Gitea login, and a Mate's login is `mate-{projectId}` — so
- * showing it raw puts `mate-0bPLTRRSSTuV54WMpcLoww` on a page where a name
- * belongs (the owner, 2026-09-19). A Mate's change names its Mate, or says
- * nothing at all rather than saying that; a person's names the person, whose
- * login is their name here.
- *
- * Two surfaces had reached this conclusion separately and one of them had
- * already drifted, which is why it is decided here and nowhere else.
- */
-export function changeAuthorName(
-  pull: Pick<FlowPullRequest, "author" | "mateProjectId">,
-  mateName: string | undefined,
-): string | undefined {
-  return pull.mateProjectId === undefined ? pull.author : mateName;
-}
-
 /** Where a change stands, as one word and the tone that means it. */
 export interface ChangeState {
   readonly word: string;
@@ -444,19 +377,15 @@ export interface ChangeState {
 }
 
 /**
- * Where a change stands, in one vocabulary.
- *
- * A list of changes used to mix two: `checkWord` answers in adjectives
- * (`Passing`, `Failing`) and `pullRequestBlocked` in phrases (`needs a
- * rebase`, `checks failed`), and both landed in the same column — so one row
- * read `Passing` and the next `needs a rebase`, in different registers, about
- * the same kind of thing. What is stopping a change outranks what its checks
- * did, because it is the thing somebody has to act on.
+ * Where a change stands, in one vocabulary: what is stopping it, because it is
+ * the thing somebody has to act on, or that nothing is. Saying nothing at all
+ * for a change nothing stops left a whole column blank, where "nothing wrong"
+ * and "not read yet" looked identical. Grey, because no signal is not a good
+ * signal — the same quiet its own page gives it.
  */
 export function changeState(pull: {
   readonly number: number;
   readonly mergeability: MergeabilityKind;
-  readonly checks: GitCheckTone;
 }): ChangeState | undefined {
   const blocked = pullRequestBlocked(pull);
   if (blocked !== null) {
@@ -465,38 +394,19 @@ export function changeState(pull: {
       tone: blocked.tone,
     };
   }
-  const word = checkWord(pull.checks);
-  // No check ran, and nothing is stopping it either. Saying nothing at all
-  // left a whole column blank on an account with no CI, where "nothing wrong"
-  // and "not read yet" then looked identical. Grey, because no signal is not a
-  // good signal — the same colour its own page gives it (`changeVerdict`).
-  if (word === undefined) return { word: "Unchecked", tone: "off" };
-  // From the one table, not a ternary of its own: `failing ? failed : ok`
-  // painted checks that were still *running* green, while the change's own
-  // page painted them blue. One fact, two colours, on two surfaces a click
-  // apart.
-  return { word, tone: checkDotTone(pull) ?? "off" };
+  return { word: "Ready to merge", tone: "off" };
 }
 
-/**
- * How a change merges, in merge's own terms.
- *
- * A page that reports the checks and then reports them again under *Merges*
- * says the same words twice and answers neither question. What the checks did
- * is one fact; whether the change can land, and what it is waiting on, is
- * another — so this says the second without repeating the first.
- */
+/** How a change merges, in merge's own terms: whether it can land, and what it is waiting on. */
 export function pullRequestMergeLine(pull: {
   readonly number: number;
   readonly mergeability: MergeabilityKind;
-  readonly checks: GitCheckTone;
   readonly baseBranch: string;
 }): string {
   const blocked = pullRequestBlocked(pull);
   if (blocked === null) return `Cleanly, into ${pull.baseBranch}`;
-  if (blocked.kind === "checks-running") return "Once the checks have finished";
-  if (blocked.kind === "checks-failed") return "Not while the checks are failing";
   if (blocked.kind === "checking") return "Still checking whether it can";
+  if (blocked.kind === "empty") return `Nothing to merge into ${pull.baseBranch}`;
   return `Not until it is rebased on ${pull.baseBranch}`;
 }
 
@@ -508,12 +418,9 @@ export interface ReleaseContentsSummary {
   readonly more: number;
   /** Every commit the release carries, listed or not. */
   readonly total: number;
+  /** Whether `total` is only how many at least: HQ stopped counting (`movedCount`). */
+  readonly atLeast: boolean;
 }
-
-/** What a release would carry, service by service. */
-type ReleaseContents = ReadonlyArray<{
-  readonly commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>;
-}>;
 
 /**
  * Every commit a release would carry, once each and in order: one commit reaches several services
@@ -533,6 +440,28 @@ export function releaseContentsCommits<Commit extends { readonly sha: string }>(
 }
 
 /**
+ * How many changes wait for production, said from a merged change's review: what the release
+ * carries (`listed`, `releaseContentsCommits`), and the change itself where that does not list it
+ * yet — HQ compares `main` again after a merge, and until it has, the change just merged waits no
+ * less (t8 A22: "1 change now waits for production"). A change merged before the release
+ * production runs is in production already; one not merged waits for nothing.
+ */
+export function waitingForProduction(input: {
+  readonly listed: ReadonlyArray<{ readonly sha: string }>;
+  readonly change: Pick<FlowPullRequest, "merged" | "mergedAt" | "mergeCommitSha">;
+  /** When the release production runs was tagged; `undefined` where it runs none. */
+  readonly liveSince: string | undefined;
+}): number {
+  const { change, listed, liveSince } = input;
+  const merge = change.mergeCommitSha?.toLowerCase();
+  const listsIt = merge !== undefined && listed.some(({ sha }) => sha.toLowerCase() === merge);
+  const sinceLive =
+    liveSince === undefined ||
+    (change.mergedAt !== undefined && Date.parse(change.mergedAt) > Date.parse(liveSince));
+  return listed.length + (change.merged && sinceLive && !listsIt ? 1 : 0);
+}
+
+/**
  * The words a release is about to put in front of people.
  *
  * "Release" names the mechanism, not the thing — and someone who has never
@@ -547,18 +476,21 @@ export function releaseContentsCommits<Commit extends { readonly sha: string }>(
  * once: the person is being told what changes, not how many services take it.
  */
 export function releaseContentsSummary(
-  contents: ReleaseContents,
+  contents: ReadonlyArray<Moved>,
   limit = 4,
 ): ReleaseContentsSummary {
   const commits = releaseContentsCommits(contents);
   const subjects = commits
     .map((commit) => commit.subject.trim())
     .filter((subject) => subject.length > 0);
-  const total = commits.length;
+  // HQ lists at most a hundred commits of a comparison and counts the rest: those it did not list
+  // are more, as much as the ones a hover has no room for.
+  const { count, atLeast } = movedCount(contents);
   return {
     subjects: subjects.slice(0, limit),
-    more: Math.max(0, subjects.length - limit),
-    total,
+    more: Math.max(0, subjects.length - limit) + Math.max(0, count - commits.length),
+    total: count,
+    atLeast,
   };
 }
 
@@ -570,8 +502,12 @@ export function releaseContentsSummary(
  * number with no noun, and the thing waiting is a change somebody made.
  */
 export function releaseWaitingLabel(summary: ReleaseContentsSummary): string | undefined {
-  return summary.total === 0 ? undefined : `${summary.total} waiting`;
+  return summary.total === 0 ? undefined : `${countOf(summary)} waiting`;
 }
+
+/** How many, and `+` where it is only how many at least. */
+const countOf = (summary: ReleaseContentsSummary): string =>
+  `${String(summary.total)}${summary.atLeast ? "+" : ""}`;
 
 /**
  * The same answer as one sentence, for the places a hover cannot reach — a
@@ -580,26 +516,32 @@ export function releaseWaitingLabel(summary: ReleaseContentsSummary): string | u
 export function releaseContentsSentence(summary: ReleaseContentsSummary): string | undefined {
   if (summary.total === 0) return undefined;
   const listed = summary.subjects.join("; ");
-  const change = summary.total === 1 ? "1 change" : `${summary.total} changes`;
+  const change =
+    summary.total === 1 && !summary.atLeast ? "1 change" : `${countOf(summary)} changes`;
   return listed.length === 0 ? `puts ${change} live` : `puts ${change} live — ${listed}`;
 }
 
 /** A verb the person runs on the flow, as the surfaces key its progress. */
 export type FlowVerb =
+  /** A change of the application `groupId`, merged or closed without merging in HQ. */
   | {
-      readonly kind: "merge";
-      readonly slug: string;
+      readonly kind: "merge" | "close";
+      readonly groupId: string;
       readonly repository: string;
       readonly number: number;
     }
-  | {
-      readonly kind: "open";
-      readonly slug: string;
-      readonly repository: string;
-      readonly head: string;
-    }
   | { readonly kind: "release"; readonly groupId: string }
-  | { readonly kind: "roll-back"; readonly groupId: string; readonly tag: string };
+  | { readonly kind: "roll-back"; readonly groupId: string; readonly tag: string }
+  /**
+   * In the environment `projectId`: a service's deploy asked again in HQ, or a service its tier
+   * declares added.
+   */
+  | {
+      readonly kind: "redeploy" | "add-service";
+      readonly groupId: string;
+      readonly projectId: string;
+      readonly service: string;
+    };
 
 /**
  * One key per verb and target: a row shows its own verb running and takes
@@ -609,26 +551,33 @@ export type FlowVerb =
 export function flowVerbKey(verb: FlowVerb): string {
   switch (verb.kind) {
     case "merge":
-      return `merge ${verb.slug}/${verb.repository}#${verb.number}`;
-    case "open":
-      return `open ${verb.slug}/${verb.repository} ${verb.head}`;
+    case "close":
+      return `${verb.kind} ${verb.groupId}/${verb.repository}#${verb.number}`;
     case "release":
       return `release ${verb.groupId}`;
     case "roll-back":
       return `roll-back ${verb.groupId} ${verb.tag}`;
+    case "redeploy":
+    case "add-service":
+      return `${verb.kind} ${verb.groupId}/${verb.projectId}/${verb.service}`;
   }
 }
 
-/** The verb's word on a row: what it does, or what it is doing while it runs. */
-export function flowVerbLabel(kind: FlowVerb["kind"], running: boolean): string {
+/**
+ * The verb's word on a row: what it does, or what it is doing while it runs. A change is closed
+ * only from its review, which says so in its own words.
+ */
+export function flowVerbLabel(kind: Exclude<FlowVerb["kind"], "close">, running: boolean): string {
   switch (kind) {
     case "merge":
       return running ? "Merging…" : "Merge";
-    case "open":
-      return running ? "Opening…" : "Open pull request";
     case "release":
       return running ? "Releasing…" : "Release";
     case "roll-back":
       return running ? "Rolling back…" : "Roll back to this";
+    case "redeploy":
+      return running ? "Redeploying…" : "Run again";
+    case "add-service":
+      return running ? "Adding…" : "Add";
   }
 }

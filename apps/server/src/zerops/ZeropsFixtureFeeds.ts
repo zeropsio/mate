@@ -20,6 +20,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
@@ -33,9 +34,10 @@ import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
-import * as ZeropsAgentSignOutModule from "./ZeropsAgentSignOut.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
+import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
+import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
 import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
 import * as ZeropsTurnAdmission from "./ZeropsTurnAdmission.ts";
@@ -44,8 +46,8 @@ import * as ZeropsBrowserStreamModule from "./ZeropsBrowserStream.ts";
 import * as ZeropsCliModule from "./ZeropsCli.ts";
 import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
-import * as ZeropsLoginSignOutModule from "./ZeropsLoginSignOut.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
+import * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 
 const strictParseOptions = {
@@ -409,19 +411,10 @@ const agentLoginLayer = (scene: ShowcaseScene) =>
  * `start`/`cancel`, sign-out is never simulated for a scene, it just
  * reports the same "unavailable" a real, non-Zerops server would.
  */
-const agentSignOutFixtureLayer = () =>
-  Layer.succeed(
-    ZeropsAgentSignOutModule.ZeropsAgentSignOut,
-    ZeropsAgentSignOutModule.ZeropsAgentSignOut.of({
-      signOut: () =>
-        Effect.fail(
-          new ZeropsAgentLoginError({
-            reason: "unavailable",
-            detail: "This environment does not offer a server-driven sign-out.",
-          }),
-        ),
-    }),
-  );
+const signOutFixtureLayer = Layer.succeed(
+  ZeropsSignOutModule.ZeropsSignOut,
+  ZeropsSignOutModule.unavailable,
+);
 
 /**
  * A fixture/showcase run never has a real agent-browser daemon and must
@@ -465,6 +458,7 @@ const zeropsMateUpdateFixtureLayer = () =>
     ZeropsMateUpdateModule.ZeropsMateUpdate,
     ZeropsMateUpdateModule.ZeropsMateUpdate.of({
       current: Effect.succeed(undefined),
+      changes: Stream.make(undefined),
       refresh: Effect.void,
       check: Effect.succeed(undefined),
     }),
@@ -501,22 +495,19 @@ const dataConsoleLayer = () =>
     }),
   ).pipe(Layer.provide(FetchHttpClient.layer));
 
-// A fixture scene has no platform to read tags or members from: nobody signed
-// anything in, nobody's membership can be confirmed, and nothing is ever
-// signed out.
+// A fixture scene saw nobody sign anything in, has no member list to confirm
+// anybody's membership by, and signs nothing out.
 const fixtureSignersLayer = Layer.succeed(
   ZeropsProjectSigners.ZeropsProjectSigners,
   ZeropsProjectSigners.ZeropsProjectSigners.of({
     signers: Effect.succeed({}),
-    fresh: Effect.succeed({}),
     turnRefusal: ({ agent, subject }) =>
       Effect.succeed(ZeropsProjectSigners.turnRefusal({ agent, signer: undefined, subject })),
     loginRefusal: ({ state, token, subject }) =>
       Effect.succeed(
         ZeropsProjectSigners.loginTurnRefusal({ state, token, signer: undefined, subject }),
       ),
-    isActiveMember: () => Effect.succeed(undefined),
-    checkLeaversNow: Effect.succeed(0),
+    hasProjectAccess: () => Effect.succeed(undefined),
   }),
 );
 
@@ -527,11 +518,6 @@ const fixtureSignersLayer = Layer.succeed(
 const loginsFixtureLayer = Layer.effect(
   ZeropsLoginsModule.ZeropsLogins,
   ZeropsLoginsModule.unavailable,
-);
-
-const loginSignOutFixtureLayer = Layer.succeed(
-  ZeropsLoginSignOutModule.ZeropsLoginSignOut,
-  ZeropsLoginSignOutModule.unavailable,
 );
 
 export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
@@ -549,9 +535,8 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
       Layer.provide(fixtureSignersLayer),
       Layer.provide(providerInstancesLayer),
     ),
-    agentSignOutFixtureLayer(),
+    signOutFixtureLayer,
     loginsFixtureLayer,
-    loginSignOutFixtureLayer,
     browserStreamLayer(),
     zeropsCliFixtureLayer(),
     zeropsMateUpdateFixtureLayer(),
@@ -583,6 +568,26 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     Layer.succeed(
       ZeropsMateKeyModule.ZeropsMateKey,
       ZeropsMateKeyModule.snapshotOnlyReader(undefined),
+    ),
+    // The project and the member list the door would read with that key
+    // answer the same, and reach for no platform: there is no key to read
+    // them with.
+    Layer.succeed(
+      ZeropsOrgReadModule.ZeropsOrgRead,
+      ZeropsOrgReadModule.ZeropsOrgRead.of({
+        project: () => Effect.succeed({ kind: "no-key" }),
+        members: () => Effect.succeed({ kind: "no-key" }),
+      }),
+    ),
+    // No HQ relays to a fixture scene, and nothing is read for it either.
+    Layer.succeed(
+      ZeropsProjectAccessModule.ZeropsProjectAccess,
+      ZeropsProjectAccessModule.ZeropsProjectAccess.of({
+        relayed: () => Effect.void,
+        relay: Effect.succeed(Option.none()),
+        read: Effect.succeed({ ok: false }),
+        changes: Stream.empty,
+      }),
     ),
   );
 };

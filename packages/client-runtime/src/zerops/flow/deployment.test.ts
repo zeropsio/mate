@@ -7,7 +7,6 @@ import type {
   ServiceDeployInfo,
   ServiceRecord,
 } from "../data/types.ts";
-import { ReceiptOrdinal } from "../data/types.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
 import { deployWord } from "../groupDeploys.ts";
 import { groupFlow } from "../groupFlow.ts";
@@ -124,6 +123,8 @@ const row = (version: EnvironmentRow["version"], tone: EnvironmentRow["tone"]): 
   versionRepository: "appdev",
   line: "main",
   tone,
+  deploys: [],
+  keyGap: false,
 });
 
 const NO_VERSION: EnvironmentRow["version"] = {
@@ -170,7 +171,10 @@ describe("stopView", () => {
       for (const entry of ROWS) {
         const view = stopView({ deployment: shown, row: entry.row, nowMs: NOW });
         const earned =
-          shown.state === "known" && shown.coverage === "complete" && shown.value.kind === "none";
+          shown.state === "known" &&
+          shown.freshness.kind !== "stale" &&
+          shown.coverage === "complete" &&
+          shown.value.kind === "none";
         const says = [view.word, view.line].some((text) => text.includes(NOTHING_DEPLOYED));
         expect(says, `${name}, ${entry.name}`).toBe(earned);
       }
@@ -244,7 +248,7 @@ describe("stopView", () => {
       expected: { tone: "good", word: "Deployed", line: "v1.6.0" },
     },
     {
-      name: "the row's release, uncoloured by Gitea, still names it",
+      name: "the row's release, with no tone of its own, still names it",
       row: row({ ...RUNNING.version, name: "v1.6.0", label: "v1.6.0" }, "neutral"),
       expected: { tone: "neutral", word: "Deployed", line: "v1.6.0" },
     },
@@ -269,7 +273,7 @@ describe("stopView", () => {
         },
         "good",
       ),
-      // Named by the platform; Gitea was read, and the platform says it runs.
+      // Named by the platform; HQ recorded a deploy, and the platform says it runs.
       expected: { tone: "good", word: "Deployed", line: "v1.4.0" },
     },
   ])("$name", ({ row: read, expected }) => {
@@ -338,13 +342,20 @@ describe("stopView", () => {
     });
   });
 
-  it("takes a version the deploy half read as running while the platform is still unread", () => {
+  it.each<Shown<Deployment>>([
+    { state: "unread", waitingFor: null },
+    { state: "reading", sinceMs: 0, attempt: 1 },
+  ])("keeps the flow's own version while the platform is $state", (deployment) => {
     const view = stopView({
-      deployment: { state: "unread", waitingFor: null },
+      deployment,
       row: ROWS[2]!.row,
       nowMs: NOW,
     });
-    expect(view).toMatchObject({ tone: "good", word: "Deployed", line: "3f9c1b2", afterMs: 0 });
+    expect(view).toMatchObject({
+      tone: "good",
+      word: "Deployed",
+      version: ROWS[2]!.row!.version,
+    });
   });
 });
 
@@ -461,7 +472,7 @@ describe("a service's deployment", () => {
     });
   });
 
-  it("marks a value the paused or recovering source no longer vouches for", () => {
+  it("marks a value the paused or failed source no longer vouches for", () => {
     const paused = serviceDeployment(
       servicesRead([record("s1", "app", deployed(null))], {
         interest: { status: "paused", identity: identity(), reason: "background" },
@@ -471,27 +482,21 @@ describe("a service's deployment", () => {
       state: "known",
       freshness: { kind: "paused", by: "background" },
     });
-    const recovering = serviceDeployment(
+    const failed = serviceDeployment(
       servicesRead([record("s1", "app", deployed(null))], {
         interest: {
-          status: "recovering",
+          status: "failed",
           identity: identity(),
           reason: "disconnect",
-          attempt: 2,
-          nextRetryAtMs: NOW,
-          progress: {
-            requiredRegistrations: 1,
-            completedRegistrations: 0,
-            requiredReads: 1,
-            completedReads: 0,
-            crossedReceiptOrdinal: ReceiptOrdinal.make(1),
-          },
+          attempts: 1,
+          retryable: true,
+          retryAtMs: null,
         },
       }),
     );
-    expect(recovering).toMatchObject({
+    expect(failed).toMatchObject({
       state: "known",
-      freshness: { kind: "stale", reason: { kind: "source-recovering", retryAtMs: NOW } },
+      freshness: { kind: "stale", reason: { kind: "revalidation-failed", retryAtMs: null } },
     });
   });
 
@@ -615,7 +620,7 @@ describe("stopServices", () => {
       name: "a refused process demand fails the none it could not prove",
       read: listed([record("s1", "app", deployed(null))]),
       processes: processesRead([], { coverage: { kind: "none" }, project: PROJECT }),
-      refused: { reason: "account-capacity", attempt: 1, retryAtMs: NOW + 2_000 },
+      refused: { reason: "account-capacity", attempt: 1 },
       expected: [["app", "failed"]],
     },
     {
@@ -905,19 +910,36 @@ describe("a deploy of a commit only moves forward", () => {
       version: deployedVersion(sha),
       previous: { kind: "running", activatedAt: null, version: deployedVersion(ran) },
     });
-  /** The deploy half's row: the commit a service runs and the broker's status on it, as read. */
-  const read = (sha: string, state: "pending" | "success" | "failure"): EnvironmentRow =>
+  /** The deploy half's row: the commit a service runs and HQ's record of its deploy, as read. */
+  const read = (sha: string, state: "queued" | "live" | "failed"): EnvironmentRow =>
     environmentRow({
       projectId: "p-stage",
       name: "stage",
       tier: "stage",
       sources: ["main"],
-      environment: "stage",
       services: [
         {
           hostname: "app",
           appVersionName: sha,
-          statuses: [{ context: "mate/deploy/stage/app", state }],
+          deploy: {
+            latest: {
+              id: "1",
+              kind: "deploy",
+              service: "app",
+              sha,
+              state,
+              cause: "merge",
+              ref: sha,
+              reason: null,
+              appVersionId: null,
+              processId: null,
+              requestedBy: null,
+              at: "2026-10-02T10:00:00.000Z",
+              endedAt: state === "queued" ? null : "2026-10-02T10:04:00.000Z",
+              supersededBy: null,
+            },
+            live: null,
+          },
         },
       ],
     });
@@ -932,76 +954,82 @@ describe("a deploy of a commit only moves forward", () => {
         { projectId: "p-stage", name: "stage", tier: "stage", row, deployment, route: undefined },
       ],
       missing: [],
-      release: { gate: { allowed: false, reason: "" }, suggestion: "v0.1.0", waiting: 0 },
+      release: {
+        gate: { allowed: false, reason: "" },
+        suggestion: "v0.1.0",
+        waiting: 0,
+        waitingAtLeast: false,
+        untold: [],
+      },
       mainHasCode: true,
       mainHead: undefined,
       productionAddable: false,
       pending: [],
     }).stages[0]?.state;
 
-  // The measured order: the platform's version went active before the broker's status turned
-  // success, and the forge's read from before that moment arrived after it.
+  // The measured order: the platform's version went active before the deploy's record turned
+  // live, and HQ's read from before that moment arrived after it.
   const STEPS = [
     {
       step: "the build runs",
       deployment: building(NEW, OLD),
-      row: read(OLD, "success"),
+      row: read(OLD, "live"),
       word: "Deploying…",
       state: "deploying",
     },
     {
       step: "the platform runs it, the row still reads the commit before",
       deployment: runs(NEW),
-      row: read(OLD, "success"),
+      row: read(OLD, "live"),
       word: "Deployed",
       state: "deployed",
     },
     {
       step: "a status read before that moment arrives after it",
       deployment: runs(NEW),
-      row: read(NEW, "pending"),
+      row: read(NEW, "queued"),
       word: "Deployed",
       state: "deployed",
     },
     {
       step: "the platform's answer goes unknown on a reconnect, the stale read standing",
       deployment: { state: "reading", sinceMs: 0, attempt: 1 },
-      row: read(NEW, "pending"),
+      row: read(NEW, "queued"),
       word: "Deployed",
       state: "deployed",
     },
     {
       step: "the active version arrives unstated, the stale read standing",
       deployment: { state: "unread", waitingFor: null },
-      row: read(NEW, "pending"),
+      row: read(NEW, "queued"),
       word: "Deployed",
       state: "deployed",
     },
     {
-      step: "the broker's success lands",
+      step: "HQ's record of it going live lands",
       deployment: runs(NEW),
-      row: read(NEW, "success"),
+      row: read(NEW, "live"),
       word: "Deployed",
       state: "deployed",
     },
     {
       step: "a newer commit's deploy starts its own sequence",
       deployment: building(NEWER, NEW),
-      row: read(NEW, "success"),
+      row: read(NEW, "live"),
       word: "Deploying…",
       state: "deploying",
     },
     {
       step: "the newer commit runs before its status says so",
       deployment: runs(NEWER),
-      row: read(NEWER, "pending"),
+      row: read(NEWER, "queued"),
       word: "Deployed",
       state: "deployed",
     },
     {
       step: "a failure on the commit it runs says so",
       deployment: runs(NEWER),
-      row: read(NEWER, "failure"),
+      row: read(NEWER, "failed"),
       word: "Failed",
       state: "failed",
     },
@@ -1077,5 +1105,138 @@ describe("heldThroughRecheck — a re-check keeps the last answer only where it 
     });
     expect(heldThroughRecheck(stopOf(deployment("running")), READING, NOW)).toEqual(READING);
     expect(heldThroughRecheck(stopOf(deployment("none")), PAUSED, NOW)).toEqual(PAUSED);
+  });
+});
+
+// The flow's version survives an unanswered runtime read; a failure still names its cause.
+it.each(["unread", "failed"] as const)(
+  "stopView handles a %s runtime answer beside the flow's version",
+  (state) => {
+    const deployment: Shown<Deployment> =
+      state === "unread"
+        ? { state, waitingFor: null }
+        : {
+            state,
+            failure: { kind: "transport", detail: "closed" },
+            atMs: 0,
+            attempt: 1,
+            retryAtMs: null,
+          };
+    const row = ROWS.find(({ row }) => row?.version.label !== undefined)!.row;
+    const view = stopView({ deployment, row, nowMs: NOW });
+    expect(view.version).toEqual(state === "unread" ? row!.version : undefined);
+    expect(view.line).toBe(
+      state === "unread"
+        ? row!.version.label
+        : "Couldn't read what runs here. Zerops didn't answer.",
+    );
+  },
+);
+
+it("a failed recheck reports the failure beside Again rather than presenting its stale runtime as healthy", () => {
+  const deployment = known(RUNNING, "complete", {
+    kind: "stale",
+    sinceMs: NOW,
+    reason: {
+      kind: "revalidation-failed",
+      failure: { kind: "transport", detail: "closed" },
+      attempt: 1,
+      retryAtMs: null,
+    },
+  });
+  expect(stopView({ deployment, row: ROWS[2]!.row, nowMs: NOW }).line).toContain(
+    "Zerops didn't answer.",
+  );
+  expect(stopTone(deployment, ROWS[2]!.row)).toBe("neutral");
+});
+
+it.each([
+  null,
+  {
+    id: "active",
+    status: "ACTIVE",
+    source: "GIT",
+    name: "v1.0.0",
+    activatedAt: null,
+    branch: null,
+    commit: null,
+    tag: null,
+    repository: null,
+  },
+])("a summary settles from services without demanding processes (%j)", (deploy) => {
+  const answer = stopServices(
+    {
+      services: servicesRead([record("app", "app", deployed(deploy))]),
+      processes: null,
+      names: new Map(),
+      refused: null,
+      stated: new Map(),
+    },
+    NOW,
+  );
+  expect(answer).toMatchObject({
+    state: "known",
+    value: [
+      {
+        deployment: {
+          state: "known",
+          value:
+            deploy === null ? { kind: "none" } : { kind: "running", version: { label: "v1.0.0" } },
+        },
+      },
+    ],
+  });
+});
+
+it("a completed summary missing the active version ends visibly instead of checking forever", () => {
+  const answer = stopServices(
+    {
+      services: servicesRead([record("app", "app", deployed(UNSTATED))]),
+      processes: null,
+      names: new Map(),
+      refused: null,
+      stated: new Map(),
+    },
+    NOW,
+  );
+  expect(answer).toMatchObject({
+    state: "known",
+    value: [{ deployment: { state: "failed", retryAtMs: null } }],
+  });
+});
+
+it("the embedded name of the active version settles a summary even when source is omitted", () => {
+  const answer = stopServices(
+    {
+      services: servicesRead([record("app", "app", deployed({ ...UNSTATED, name: "v1.0.0" }))]),
+      processes: null,
+      names: new Map(),
+      refused: null,
+      stated: new Map(),
+    },
+    NOW,
+  );
+  expect(answer).toMatchObject({
+    state: "known",
+    value: [
+      { deployment: { state: "known", value: { kind: "running", version: { label: "v1.0.0" } } } },
+    ],
+  });
+});
+
+it("a completed summary with an omitted deployment facet ends visibly", () => {
+  const answer = stopServices(
+    {
+      services: servicesRead([record("app", "app", UNRESOLVED_DEPLOYMENT)]),
+      processes: null,
+      names: new Map(),
+      refused: null,
+      stated: new Map(),
+    },
+    NOW,
+  );
+  expect(answer).toMatchObject({
+    state: "known",
+    value: [{ deployment: { state: "failed", retryAtMs: null } }],
   });
 });

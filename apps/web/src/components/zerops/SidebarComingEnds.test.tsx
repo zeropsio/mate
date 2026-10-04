@@ -11,18 +11,18 @@ import { comingEndsEntries, SidebarComingEnds } from "./SidebarComingEnds";
 
 /** Ida, added to Acme CRM from this tab, before Zerops took its project. */
 const IDA: NewProjectBirth = {
-  id: "add-1",
+  birthId: "add-1",
   organizationId: "org-acme",
-  groupId: "g-acme",
+  appId: "g-acme",
+  intent: null,
+  hq: { projectId: "hq", address: "https://hq.example" },
   name: "Acme CRM",
   botName: "Ida",
   face: { tint: "rose", shape: "seal" },
   locationId: null,
   agents: [],
-  adds: { displayName: "Acme CRM - Ida", registers: true },
+  adds: { appId: "g-acme", registers: true },
   startedAt: 0,
-  withGitea: false,
-  giteaProjectId: "gitea-1",
   step: "create",
   failed: null,
   projectId: null,
@@ -46,11 +46,11 @@ afterEach(() => {
 });
 
 const render = (made: NewProjectBirth) => {
-  useNewProjectBirths.setState({ births: { [made.id]: made } });
+  useNewProjectBirths.setState({ births: { [made.birthId]: made } });
   act(() => {
     tree = create(
       h(SidebarComingEnds, {
-        birthId: made.id,
+        birthId: made.birthId,
         name: "Ida",
         children: h("button", { "data-row": "" }),
       }),
@@ -90,7 +90,7 @@ describe("a coming Mate's ⋯ in the menu", () => {
     expect(useNewProjectBirths.getState().births["add-1"]).toBeUndefined();
     expect(useNewMate.getState().asked).toMatchObject({
       groupId: "g-acme",
-      again: { botName: "Ida", name: "Acme CRM - Ida" },
+      again: { botName: "Ida" },
     });
   });
 

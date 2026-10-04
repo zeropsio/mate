@@ -1,34 +1,30 @@
 /**
  * A group's history, as one list of commits with what happened to each.
  *
- * The menu draws a project as a timeline of where work *is*; this is the same
- * timeline over *time*, and it is assembled rather than fetched: Gitea answers
- * three separate questions and none of them is "what happened here".
+ * The menu draws a project as a timeline of where work *is*; this is the same timeline over
+ * *time*, and it is assembled rather than fetched, from three answers:
  *
- * - **`listCommits` on the group's default branch** — the spine. `compareCommits`
- *   cannot answer it: it takes two refs and reports what one has that the other
- *   does not, which is the right question for a release and the wrong one here.
- * - **What each environment runs** — the sha in the deployed version's name,
- *   read from Zerops (`groupDeploys.ts`), so a commit knows it is live.
- * - **The release tags** — `listTags` on the group repo, so a commit knows it
- *   was shipped and under what name.
+ * - **What `main` holds** — HQ's comparison from the repository's first commit to `main`'s head
+ *   (`GET /api/apps/:appId/repos/:repo/compare`), newest first and bounded: the spine. Each commit
+ *   names the change of HQ's that landed it, where one did.
+ * - **What each environment runs** — the sha in the deployed version's name, read from Zerops
+ *   (`groupDeploys.ts`), so a commit knows it is live.
+ * - **The releases** — HQ's records, so a commit knows it was shipped and under what name.
  *
- * A commit nobody deployed and nothing tagged is still a commit, and still a
- * row: the history is the branch's, not the deployments'. That is why this
- * folds annotations *onto* commits instead of interleaving three kinds of
- * event — the interleaved version has to invent an order for a deploy and a
- * tag that share a timestamp, and the answer it invents is arbitrary.
+ * A commit nobody deployed and nothing released is still a commit, and still a row: the history
+ * is the branch's, not the deployments'. That is why this folds annotations *onto* commits instead
+ * of interleaving three kinds of event — the interleaved version has to invent an order for a
+ * deploy and a release that share a timestamp, and the answer it invents is arbitrary.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
  * @module groupHistory
  */
 
-import type { GiteaCommit, GiteaTag } from "./giteaClient.ts";
-import { environmentNameUnderGroup } from "./groupRows.ts";
-import { shortCommit } from "./release.ts";
-import { mateProjectOfLogin } from "./mateIdentity.ts";
-import { isReleaseTag, readReleaseMessage, readSemver } from "./release.ts";
+import { COMPARE_COUNT_MAX, type CompareCommit } from "@t3tools/shared/hqChanges";
+import { compareReleaseTags } from "@t3tools/shared/hqRelease";
+
+import { rolledBackTo, shortCommit, type FlowRelease } from "./release.ts";
 import { resolveCommit } from "./versionName.ts";
 
 /** One commit on the branch, and what reached it. */
@@ -37,15 +33,17 @@ export interface HistoryEntry {
   /** The seven characters a person actually reads. */
   readonly shortSha: string;
   readonly subject: string;
-  /** Who Gitea says wrote it — a Mate's squash merge carries its bot. */
+  /** Who git says wrote it. */
   readonly author: string | undefined;
   readonly at: string | undefined;
+  /** The change of HQ's that landed it, and the Mate whose it is; `null` for a commit none did. */
+  readonly change: CompareCommit["change"];
   /**
    * The environments running this exact commit, in the order they were given —
    * which is the file's order, stage before production (`groupDeploys.ts`).
    */
   readonly deployedTo: ReadonlyArray<string>;
-  /** The release that shipped it, where one has — at most one, and its name. */
+  /** The releases that shipped it — the first, then the roll backs that brought it back. */
   readonly tags: ReadonlyArray<string>;
 }
 
@@ -60,11 +58,12 @@ export interface HistoryEntry {
  * no row.
  */
 export function groupHistory(input: {
-  readonly commits: ReadonlyArray<GiteaCommit>;
+  /** `main`'s commits, newest first, as HQ compares them. */
+  readonly commits: ReadonlyArray<CompareCommit>;
   /** `environment name → the sha it runs`, whole or short as its version name spells it. */
   readonly deployed: ReadonlyMap<string, string>;
-  /** `full sha → the release that shipped it` ({@link releaseTagsByCommit}). */
-  readonly tags: ReadonlyMap<string, string>;
+  /** `full sha → the releases that shipped it` ({@link releaseTagsByCommit}). */
+  readonly tags: ReadonlyMap<string, ReadonlyArray<string>>;
 }): ReadonlyArray<HistoryEntry> {
   const deployedBySha = new Map<string, Array<string>>();
   const branch = input.commits.map((commit) => commit.sha);
@@ -79,13 +78,11 @@ export function groupHistory(input: {
     sha: commit.sha,
     shortSha: shortCommit(commit.sha),
     subject: commit.subject,
-    author: commit.author,
+    author: commit.authorName,
     at: commit.at,
+    change: commit.change,
     deployedTo: deployedBySha.get(commit.sha.toLowerCase()) ?? [],
-    tags: (() => {
-      const tag = input.tags.get(commit.sha);
-      return tag === undefined ? [] : [tag];
-    })(),
+    tags: input.tags.get(commit.sha) ?? [],
   }));
 }
 
@@ -102,16 +99,13 @@ export function historyLine(
   names?: {
     /** `projectId → the Mate's name`, so a bot login never reaches the line. */
     readonly mateNames?: ReadonlyMap<string, string> | undefined;
-    /** The project, so a stop under it does not repeat it. */
-    readonly groupName?: string | undefined;
   },
 ): string | undefined {
-  // `author` is a Gitea login, and a Mate's is `mate-{projectId}`: putting it
-  // through raw wrote `mate-PXGYIVK9RLWlE3eTL3QwoW` where a name belongs.
-  const mateProjectId = mateProjectOfLogin(entry.author);
-  const who = mateProjectId === undefined ? entry.author : names?.mateNames?.get(mateProjectId);
-  const where = entry.deployedTo.map((stop) => environmentNameUnderGroup(names?.groupName, stop));
-  const parts = [who, ...where].filter(
+  // A change a Mate landed is the Mate's, whoever git says wrote its commit: named, or not said.
+  const who =
+    entry.change === null ? entry.author : names?.mateNames?.get(entry.change.mateProjectId);
+  // Each stop as Zerops names its project, whole (D3).
+  const parts = [who, ...entry.deployedTo].filter(
     (part): part is string => part !== undefined && part.length > 0,
   );
   // A history with no time in it is a list, not a history: the age is the one
@@ -127,7 +121,7 @@ export function historyLine(
  * Short because it sits at the end of a line that already carries a name and
  * wherever it went live; a full date would be the longest thing on the row and
  * the least often read. A commit dated in the future (a skewed committer
- * clock, which Gitea happily stores) reads as `now` rather than as a negative.
+ * clock, which git happily stores) reads as `now` rather than as a negative.
  */
 export function historyAge(at: string | undefined, now: number): string | undefined {
   if (at === undefined) return undefined;
@@ -146,14 +140,11 @@ export function historyAge(at: string | undefined, now: number): string | undefi
 }
 
 /**
- * What a history says in place of its rows: no Gitea token to read with, the
- * read under way, or a branch with nothing on it. A failed read says its own
- * reason instead.
+ * What a history says in place of its rows: the read under way, or a branch with nothing on it.
+ * A failed read says its own reason instead.
  */
-export function historyNote(kind: "no-gitea" | "reading" | "empty"): string {
+export function historyNote(kind: "reading" | "empty"): string {
   switch (kind) {
-    case "no-gitea":
-      return "Sign in to Gitea to read this repository’s history.";
     case "reading":
       return "Reading the history…";
     case "empty":
@@ -162,41 +153,51 @@ export function historyNote(kind: "no-gitea" | "reading" | "empty"): string {
 }
 
 /**
- * `sha → the release that first put it in front of people`, for any repository.
- *
- * A release tag lives on the group repository and lists every service's commit
- * in its message, so it cannot be matched to a service's history by the tag's
- * own target. It does not have to be: the message carries whole shas, and a
- * sha is unique across every repository in the org. A sha in the message that
- * also appears in this repository's commits *is* this repository's service, so
- * the hostname the entry names is not needed and no tier mapping has to be
- * threaded through to read it.
- *
- * A commit stays listed by every release made while it is still deployed, so
- * the lowest version that names it is the one that shipped it — that is the
- * release a person means by "when did this go live". Tags may arrive in any
- * order; anything that is not a `v{semver}` release of ours is ignored, as is
- * a message this build cannot read (`readReleaseMessage`).
+ * What a history says under its rows where HQ listed only the newest of them: how many earlier
+ * commits it counted, and at least that many where it stopped counting
+ * (`COMPARE_COUNT_MAX`); `undefined` where every commit is shown.
  */
-export function releaseTagsByCommit(tags: ReadonlyArray<GiteaTag>): ReadonlyMap<string, string> {
-  const releases = tags
-    .filter((tag) => isReleaseTag(tag.name))
-    .map((tag) => ({ tag, semver: readSemver(tag.name) }))
-    .filter(
-      (entry): entry is { tag: GiteaTag; semver: NonNullable<typeof entry.semver> } =>
-        entry.semver !== undefined,
-    )
-    .sort(
-      (left, right) =>
-        left.semver.major - right.semver.major ||
-        left.semver.minor - right.semver.minor ||
-        left.semver.patch - right.semver.patch,
-    );
-  const byCommit = new Map<string, string>();
-  for (const { tag } of releases) {
-    for (const entry of readReleaseMessage(tag.message ?? "")) {
-      if (!byCommit.has(entry.commit)) byCommit.set(entry.commit, tag.name);
+export function historyEarlier(shown: number, total: number): string | undefined {
+  const earlier = total - shown;
+  if (earlier <= 0) return undefined;
+  const atLeast = total >= COMPARE_COUNT_MAX ? "+" : "";
+  return `${String(earlier)}${atLeast} earlier ${earlier === 1 && atLeast === "" ? "commit" : "commits"}`;
+}
+
+/**
+ * `sha → the releases that put it in front of people`, for any repository: the one that first did,
+ * and every roll back that brought it back (`rolledBackTo`).
+ *
+ * A release lists every service's commit, whole, and a sha is unique across every repository of
+ * the application: a sha a release lists that also appears in this repository's commits *is* this
+ * repository's service, so no tier mapping has to be threaded through to read it.
+ *
+ * A commit stays listed by every release made while it is still deployed, so the lowest version
+ * that names it is the one that shipped it — the release a person means by "when did this go
+ * live". A roll back put back what an earlier release shipped: it names the commits it brought
+ * back — those the release just before it did not list for their service — and no other (e2e
+ * 2026-10-03: after B rolled back to v0.1.0, History named 30f75f9 v0.1.0 alone). A release HQ
+ * refused never went live, and names nothing. Oldest first.
+ */
+export function releaseTagsByCommit(
+  releases: ReadonlyArray<Pick<FlowRelease, "tag" | "entries" | "verdict">>,
+): ReadonlyMap<string, ReadonlyArray<string>> {
+  const byCommit = new Map<string, Array<string>>();
+  const oldestFirst = releases
+    .filter((release) => release.verdict !== "refused")
+    .sort((left, right) => compareReleaseTags(left.tag, right.tag));
+  oldestFirst.forEach((release, index) => {
+    const previous = oldestFirst[index - 1];
+    const back = rolledBackTo(release, oldestFirst) !== undefined;
+    for (const entry of release.entries) {
+      const named = byCommit.get(entry.commit);
+      if (named === undefined) {
+        byCommit.set(entry.commit, [release.tag]);
+        continue;
+      }
+      const before = previous?.entries.find(({ service }) => service === entry.service)?.commit;
+      if (back && before !== entry.commit) named.push(release.tag);
     }
-  }
+  });
   return byCommit;
 }

@@ -19,8 +19,9 @@
  * chat, so the header of a second chat speaks for that chat.
  * Nothing is decided here; it is all read off the one resolver.
  *
- * Knowable only for an environment Mate is connected to: an environment with
- * no thread shells has no entry, and the caller draws it asleep.
+ * Read off a chat's shell where this page holds one, or off HQ's overview of a Mate's main chat
+ * (`@t3tools/shared/mateLink`), which carries the fields a row reads and no more
+ * (`AgentActivityThread`). A Mate with neither has no entry, and the caller draws it asleep.
  */
 import {
   IMAGE_ONLY_BOOTSTRAP_PROMPT,
@@ -36,8 +37,16 @@ import {
   type FlowPullRequest,
   type MatePoseFacts,
 } from "@t3tools/client-runtime/zerops";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  OrchestrationLatestTurn,
+  OrchestrationSession,
+  ThreadId,
+  ThreadLiveStep,
+  ThreadMessagePreview,
+} from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
 import {
   hasUnseenCompletion,
@@ -48,6 +57,39 @@ import {
 
 import { threadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
 import { liveStepWords, type LiveStepWords } from "./liveStep";
+
+/**
+ * What a row reads of a chat: its shell's fields, of which HQ's overview of a Mate's main chat
+ * carries exactly these — its turn's and session's bare facts, its previews' words.
+ */
+export type AgentActivityThread = Pick<
+  EnvironmentThreadShell,
+  | "id"
+  | "environmentId"
+  | "title"
+  | "hasPendingApprovals"
+  | "hasPendingUserInput"
+  | "hasActionableProposedPlan"
+  | "interactionMode"
+  | "backgroundLiveness"
+  | "latestUserMessageAt"
+  | "updatedAt"
+> & {
+  readonly session: {
+    readonly status: OrchestrationSession["status"];
+    readonly lastError: string | null;
+  } | null;
+  readonly latestTurn: Pick<
+    OrchestrationLatestTurn,
+    "turnId" | "state" | "requestedAt" | "startedAt" | "completedAt"
+  > | null;
+  readonly latestUserMessagePreview?: { readonly text: string } | null | undefined;
+  readonly latestMessagePreview?: Pick<ThreadMessagePreview, "role" | "text"> | null | undefined;
+  readonly planProgress?: { readonly step: string } | null | undefined;
+  readonly pendingQuestion?: string | null | undefined;
+  readonly usagePause?: { readonly resetsAt: string } | null | undefined;
+  readonly liveStep?: ThreadLiveStep | null | undefined;
+};
 
 export interface ZeropsAgentActivity {
   readonly threadId: ThreadId;
@@ -123,9 +165,9 @@ export interface ZeropsAgentActivity {
    */
   readonly askedAt?: string;
   /**
-   * What this browser remembered the row saying (`menuMemory.ts`), standing
-   * until the Mate's own conversation is read: its words and its time, at
-   * rest, with nothing only true now.
+   * Not a word of now (`restingActivity`): HQ's last word of a Mate it holds no live link of, or a
+   * reading whose socket does not stand — its words and its time, at rest, with nothing only true
+   * then.
    */
   readonly remembered?: true;
 }
@@ -189,7 +231,7 @@ export function mateFaceAwaitingReview(
 
 /**
  * Whether a Mate's own change waits on the person's review: the composer's top's rule
- * (`mateNextStep`), on a project flow Gitea answered — the one reading of it for every surface
+ * (`mateNextStep`), on a project flow HQ answered — the one reading of it for every surface
  * that draws the Mate's face.
  */
 export function mateReviewWaits(
@@ -210,30 +252,35 @@ export function mateReviewWaits(
 }
 
 /**
- * The face a Mate wears wherever it is drawn (`mateFaceFor`), needing the person while its own
+ * The face a Mate wears wherever it is drawn (`mateFaceFor`), from what is known of it: awake while
+ * its container is connected or a word of now says what it does — HQ's live word, a standing
+ * socket's reading; a word at rest says nothing of now — and needing the person while its own
  * change waits for their review (`mateFaceAwaitingReview`).
  */
 export function mateFaceOf(input: {
   readonly connected: boolean;
   readonly activity:
-    | (Pick<ZeropsAgentActivity, "face"> & { readonly pausedUntil?: string | undefined })
+    | (Pick<ZeropsAgentActivity, "face" | "remembered"> & {
+        readonly pausedUntil?: string | undefined;
+      })
     | undefined;
   readonly reviewWaits: boolean;
   /** The viewer's own Mate (`mateIsViewers`). */
   readonly mine: boolean;
   /** Where it is in its life (`mateFaceFor`). */
-  readonly pose: MatePoseFacts | undefined;
+  readonly pose?: MatePoseFacts | undefined;
 }): MateMarkState {
+  const live = input.activity?.remembered === true ? undefined : input.activity;
   return mateFaceAwaitingReview(
-    mateFaceFor(input.connected, input.activity, input.pose),
+    mateFaceFor(input.connected || live !== undefined, live, input.pose),
     input.reviewWaits,
-    input.activity?.pausedUntil !== undefined,
+    live?.pausedUntil !== undefined,
     input.mine,
   );
 }
 
 export function agentActivitySnippet(
-  thread: Pick<EnvironmentThreadShell, "latestMessagePreview">,
+  thread: Pick<AgentActivityThread, "latestMessagePreview">,
 ): string | undefined {
   const preview = thread.latestMessagePreview;
   if (preview === undefined || preview === null || preview.role !== "assistant") return undefined;
@@ -247,10 +294,7 @@ export function agentActivitySnippet(
  * next not running yet, the second after a message is sent.
  */
 export function agentActivityAwaitsWords(
-  thread: Pick<
-    EnvironmentThreadShell,
-    "latestMessagePreview" | "latestUserMessageAt" | "latestTurn"
-  >,
+  thread: Pick<AgentActivityThread, "latestMessagePreview" | "latestUserMessageAt" | "latestTurn">,
 ): boolean {
   const said = thread.latestMessagePreview;
   if (said === undefined || said === null || said.role === "assistant") return false;
@@ -261,7 +305,7 @@ export function agentActivityAwaitsWords(
 }
 
 export function agentActivityAt(
-  thread: Pick<EnvironmentThreadShell, "latestTurn" | "latestUserMessageAt" | "updatedAt">,
+  thread: Pick<AgentActivityThread, "latestTurn" | "latestUserMessageAt" | "updatedAt">,
 ): string {
   const turn = thread.latestTurn;
   return (
@@ -275,7 +319,7 @@ export function agentActivityAt(
 
 export function agentActivitySubject(
   thread: Pick<
-    EnvironmentThreadShell,
+    AgentActivityThread,
     "title" | "planProgress" | "latestUserMessageAt" | "latestUserMessagePreview"
   >,
   kind: ThreadStatusKind,
@@ -313,7 +357,7 @@ function isPersonsWords(text: string): boolean {
  * speaks for the chat it heads.
  */
 export function threadAgentActivity(
-  thread: EnvironmentThreadShell,
+  thread: AgentActivityThread,
   lastVisitedAt: string | undefined,
 ): ZeropsAgentActivity {
   const visited = lastVisitedAt === undefined ? {} : { lastVisitedAt };
@@ -345,11 +389,12 @@ export function threadAgentActivity(
  * row holds its dots.
  */
 export function agentActivityLiveStep(
-  thread: Pick<EnvironmentThreadShell, "liveStep">,
+  thread: Pick<AgentActivityThread, "liveStep">,
   kind: ThreadStatusKind,
 ): { readonly liveStep?: LiveStepWords } {
-  if (kind !== "working" || thread.liveStep === undefined) return {};
-  return { liveStep: liveStepWords(thread.liveStep) };
+  const step = thread.liveStep ?? undefined;
+  if (kind !== "working" || step === undefined) return {};
+  return { liveStep: liveStepWords(step) };
 }
 
 /**
@@ -358,7 +403,7 @@ export function agentActivityLiveStep(
  * the way a preview is; a server from before it relays none.
  */
 export function agentActivityQuestion(
-  thread: Pick<EnvironmentThreadShell, "pendingQuestion">,
+  thread: Pick<AgentActivityThread, "pendingQuestion">,
   kind: ThreadStatusKind,
 ): { readonly question?: string } {
   if (kind !== "input") return {};
@@ -368,7 +413,7 @@ export function agentActivityQuestion(
 
 /** The error's first line, while the Mate stands stopped on it. */
 export function agentActivityErrorLine(
-  thread: Pick<EnvironmentThreadShell, "session">,
+  thread: Pick<AgentActivityThread, "session">,
   kind: ThreadStatusKind,
 ): { readonly errorLine?: string } {
   if (kind !== "failed") return {};
@@ -403,4 +448,49 @@ export function deriveZeropsAgentActivity(
     );
   }
   return activity;
+}
+
+/**
+ * An activity as last told, with nothing only true now — at rest, no status, no step, no
+ * question, no error, no pause — so no clock ticks and no *Stop* is offered from it.
+ */
+export function restingActivity(activity: ZeropsAgentActivity): ZeropsAgentActivity {
+  const { liveStep: _step, question: _question, errorLine: _error, ...words } = activity;
+  return {
+    ...words,
+    kind: "idle",
+    status: null,
+    face: "idle",
+    pausedUntil: undefined,
+    remembered: true,
+  };
+}
+
+/**
+ * The activity, where it is a word of now — HQ's live word, a standing socket's reading — and not
+ * one at rest (`restingActivity`), which says nothing of what the Mate does now.
+ */
+export function activityOfNow(
+  activity: ZeropsAgentActivity | undefined,
+): ZeropsAgentActivity | undefined {
+  return activity?.remembered === true ? undefined : activity;
+}
+
+/**
+ * A Mate's activity from HQ's overview of it: its main chat read as its shell is, with this
+ * device's visit — at rest unless HQ's word is live (`restingActivity`). Undefined where HQ holds
+ * no overview of it, or it has no main chat yet.
+ */
+export function overviewAgentActivity(
+  mate: MateLiveView,
+  live: boolean,
+  lastVisitedAtById: Readonly<Record<string, string>>,
+): ZeropsAgentActivity | undefined {
+  if (mate.identity === undefined || !mate.main) return undefined;
+  const { environmentId } = mate.identity;
+  const activity = threadAgentActivity(
+    { ...mate.main, environmentId },
+    lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, mate.main.id))],
+  );
+  return live ? activity : restingActivity(activity);
 }

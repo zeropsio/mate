@@ -23,7 +23,8 @@ import {
 } from "@tanstack/react-router";
 import {
   assignCandidateMateTints,
-  withZeropsChangedFace,
+  changedMateFace,
+  readZeropsMembership,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -52,7 +53,8 @@ const MENU_WIDTH = 435;
 
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
-function mate(bot: string, face?: string): ZeropsCandidate {
+/** A Mate of Acme Docs as HQ places it, wearing `face` as HQ records it ("" where none was picked). */
+function mate(bot: string, face = ""): ZeropsCandidate {
   const id = `acme-docs-${bot.toLowerCase()}`;
   return {
     key: `${id}:zcp`,
@@ -60,16 +62,10 @@ function mate(bot: string, face?: string): ZeropsCandidate {
     environmentId: EnvironmentId.make(`env-${id}`),
     project: {
       id,
-      name: `Acme Docs - ${bot}`,
+      name: bot,
       status: "ACTIVE",
-      tagList: [
-        "mate",
-        "mate:g:acme",
-        "mate:role:dev",
-        "mate:name:Acme Docs",
-        `mate:bot:${bot}`,
-        ...(face === undefined ? [] : [face]),
-      ],
+      tagList: ["mate"],
+      hq: { appId: "acme", appName: "Acme Docs", kind: "mate", mate: { face } },
     },
     service: { id: `zcp-${id}`, name: "zcp", status: "ACTIVE" },
   };
@@ -78,7 +74,7 @@ function mate(bot: string, face?: string): ZeropsCandidate {
 /** Fen and Ada wear their names' tints; Quinn's face was picked when it was added. */
 const MATES: ReadonlyArray<ZeropsCandidate> = [
   mate("Fen"),
-  mate("Quinn", "mate:face:coral:gem"),
+  mate("Quinn", "coral:gem"),
   mate("Ada"),
 ];
 const FEN = MATES[0]!.project.id;
@@ -130,7 +126,7 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
   ],
 ]);
 
-const NO_CREW = { status: "none", view: null, attention: [] } as const;
+const NO_CREW = { status: "none", crew: null, logins: {} } as const;
 
 declare global {
   interface Window {
@@ -167,23 +163,24 @@ function Harness() {
         waiting.current = null;
         setPending(false);
         if (verdict === "no") {
-          setError("Zerops rejected the request (forbidden).");
+          setError("HQ refused the change (forbidden).");
           return;
         }
-        // The write landed: the read that confirms it is what the menu redraws from, and the
+        // The write landed: HQ's stream that confirms it is what the menu redraws from, and the
         // dialog fades over it still saying Saving…, as the app's does.
         setMates((current) =>
-          current.map((entry) =>
-            entry.project.id === FEN
-              ? {
-                  ...entry,
-                  project: {
-                    ...entry.project,
-                    tagList: withZeropsChangedFace(entry.project.tagList, face),
-                  },
-                }
-              : entry,
-          ),
+          current.map((entry) => {
+            const placed = entry.project.hq;
+            if (entry.project.id !== FEN || placed?.mate == null) return entry;
+            const worn = readZeropsMembership(entry.project).face;
+            return {
+              ...entry,
+              project: {
+                ...entry.project,
+                hq: { ...placed, mate: { ...placed.mate, face: changedMateFace(worn, face) } },
+              },
+            };
+          }),
         );
         setDialog("closing");
       },
@@ -246,8 +243,7 @@ function Harness() {
   }, []);
 
   const actionsOf = (candidate: ZeropsCandidate): MateRowActions => {
-    const bot = candidate.project.tagList?.find((tag) => tag.startsWith("mate:bot:"));
-    const name = bot === undefined ? candidate.project.name : bot.slice("mate:bot:".length);
+    const name = candidate.project.name;
     return {
       muted: false,
       toggleMute: () => {},

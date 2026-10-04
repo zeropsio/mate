@@ -1,3 +1,4 @@
+import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
 import {
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
@@ -9,7 +10,6 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
@@ -39,7 +39,6 @@ import {
   type OrchestrationEvent,
   type OrchestrationShellStreamEvent,
   type OrchestrationShellStreamItem,
-  type OrchestrationThreadShell,
   OrchestrationGetFullThreadDiffError,
   OrchestrationGetSnapshotError,
   OrchestrationSearchThreadsError,
@@ -72,7 +71,6 @@ import {
   type TerminalError,
   type TerminalEvent,
   type TerminalMetadataStreamEvent,
-  type ZeropsAgentId,
   WS_METHODS,
   WsRpcGroup,
 } from "@t3tools/contracts";
@@ -139,19 +137,14 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import { overlayZeropsAgentAuth } from "./zerops/zeropsAgentProviderOverlay.ts";
 import { withoutUnworkableSlashCommands } from "./zerops/providerSlashCommands.ts";
-import { ZeropsTurnAdmission, principalUserId } from "./zerops/ZeropsTurnAdmission.ts";
+import { ZeropsTurnAdmission } from "./zerops/ZeropsTurnAdmission.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
-import * as ZeropsAgentSignOutModule from "./zerops/ZeropsAgentSignOut.ts";
-import { threadsToStopForAgent, waitUntilNotLive } from "./zerops/ZeropsAgentSignOut.ts";
-import * as ZeropsLoginSignOutModule from "./zerops/ZeropsLoginSignOut.ts";
-import { threadsToStopForLogin } from "./zerops/ZeropsLoginSignOut.ts";
 import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
 import { McpServers } from "./zerops/mcp/McpServers.ts";
+import * as ZeropsSignOutModule from "./zerops/ZeropsSignOut.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
 import { ZeropsCli } from "./zerops/ZeropsCli.ts";
 import { isZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
-import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
-import { isStandUpCommand } from "./zerops/zeropsSetupSteps.ts";
 import * as ZeropsDataConsoleModule from "./zerops/ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./zerops/ZeropsGitRemoteProbe.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
@@ -656,10 +649,9 @@ const makeWsRpcLayer = (
       const zeropsLifecycle = yield* ZeropsLifecycle.ZeropsLifecycle;
       const zeropsAgentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
       const turnAdmission = yield* ZeropsTurnAdmission;
+      const zeropsSetup = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsSetup));
       // A Mate's own server starts its stand-up; absent where no Zerops layer runs.
-      const zeropsSetup = yield* Effect.serviceOption(ZeropsSetup);
       const zeropsAgentLogin = yield* ZeropsAgentLoginModule.ZeropsAgentLogin;
-      const zeropsAgentSignOut = yield* ZeropsAgentSignOutModule.ZeropsAgentSignOut;
       const zeropsLogins = yield* ZeropsLoginsModule.ZeropsLogins;
       // The MCP tab's servers; absent where no Zerops layer runs.
       const mcpServers = yield* Effect.serviceOption(McpServers);
@@ -672,7 +664,7 @@ const makeWsRpcLayer = (
           : Effect.fail(
               new McpServersError({ operation, detail: "MCP servers can't be managed here." }),
             );
-      const zeropsLoginSignOut = yield* ZeropsLoginSignOutModule.ZeropsLoginSignOut;
+      const zeropsSignOut = yield* ZeropsSignOutModule.ZeropsSignOut;
       const zeropsBrowserStream = yield* ZeropsBrowserStreamModule.ZeropsBrowserStream;
       const zeropsCli = yield* ZeropsCli;
       const zeropsMateUpdate = yield* ZeropsMateUpdate;
@@ -1295,7 +1287,7 @@ const makeWsRpcLayer = (
                 ),
               );
 
-        const admitted = turnAdmission
+        return turnAdmission
           .admit({
             command: normalizedCommand,
             principal: { kind: "session", subject: currentSession.subject },
@@ -1311,144 +1303,7 @@ const makeWsRpcLayer = (
                 ),
             ),
           );
-        if (Option.isNone(zeropsSetup) || !isStandUpCommand(normalizedCommand)) return admitted;
-        // A browser's stand-up — an older cached client still sends one — goes
-        // through only while the Mate has none; one more is answered as taken.
-        const setup = zeropsSetup.value;
-        return setup
-          .browserStandUp(
-            normalizedCommand,
-            principalUserId({ kind: "session", subject: currentSession.subject }),
-          )
-          .pipe(
-            Effect.flatMap((verdict) =>
-              verdict === "claimed"
-                ? // A claim that surely did not go out (refused, failed) is withdrawn, so a
-                  // later "Try again" is real; one that may have (interrupted while queued
-                  // for startup, a defect) stands until the server sends it, same ids.
-                  admitted.pipe(
-                    Effect.onExit((exit) =>
-                      setup.browserStandUpEnded(
-                        normalizedCommand,
-                        Exit.isSuccess(exit)
-                          ? "through"
-                          : Cause.hasDies(exit.cause) || Cause.hasInterrupts(exit.cause)
-                            ? "unknown"
-                            : "failed",
-                      ),
-                    ),
-                  )
-                : verdict === "dispatch"
-                  ? admitted
-                  : projectionSnapshotQuery.getSnapshotSequence().pipe(
-                      Effect.map(({ snapshotSequence }) => ({ sequence: snapshotSequence })),
-                      Effect.mapError((cause) =>
-                        toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
-                      ),
-                    ),
-            ),
-          );
       };
-
-      /**
-       * Dispatching `thread.session.stop` only returns once the command is
-       * PERSISTED — the provider process behind it can still be alive for a
-       * moment after (and could still rewrite the credential file the CLI
-       * logout step is about to run against). So each stop, once
-       * dispatched, is followed by a short poll of the SAME thread's
-       * projected session status, capped at 10s: whichever comes first —
-       * confirmed stopped, or the cap — `stopAgentSessions` moves on.
-       */
-      const SESSION_STOP_POLL_INTERVAL = Duration.millis(250);
-      const SESSION_STOP_WAIT_TIMEOUT = Duration.seconds(10);
-      const isThreadSessionLive = (threadId: ThreadId) =>
-        projectionSnapshotQuery.getThreadShellById(threadId).pipe(
-          Effect.map(
-            Option.match({
-              onNone: () => false,
-              onSome: (thread) => thread.session !== null && thread.session.status !== "stopped",
-            }),
-          ),
-          Effect.catchCause(() => Effect.succeed(false)),
-        );
-
-      /**
-       * `zerops.agentLogin.signOut`'s step (c): stops every LIVE session
-       * `pick` names, by dispatching `thread.session.stop` through the same
-       * orchestration path a client's own archive/settle cleanup uses above —
-       * never touching `ProviderService`/`provider/**` directly
-       * (`ZeropsAgentSignOut.ts`'s own "Why `stopAgentSessions` is a
-       * parameter" doc comment). Best-effort end to end: a snapshot read that
-       * fails, or one thread's stop dispatch that fails, is logged and skipped
-       * rather than propagated — sign-out must still go on even when a
-       * session stop could not be confirmed.
-       */
-      const stopSessionsOf = (
-        target: Readonly<Record<string, string>>,
-        commandTag: string,
-        pick: (threads: ReadonlyArray<OrchestrationThreadShell>) => ReadonlyArray<ThreadId>,
-      ): Effect.Effect<void> =>
-        Effect.gen(function* () {
-          const shell = yield* projectionSnapshotQuery.getShellSnapshot().pipe(
-            Effect.map(Option.some),
-            Effect.catchCause((cause) =>
-              Effect.logWarning("zerops agent sign-out: could not read the shell snapshot", {
-                ...target,
-                cause,
-              }).pipe(Effect.as(Option.none())),
-            ),
-          );
-          if (Option.isNone(shell)) return;
-
-          const threadIds = pick(shell.value.threads);
-          yield* Effect.forEach(
-            threadIds,
-            (threadId) =>
-              Effect.gen(function* () {
-                // `thread.session.stop` needs no workspace/attachment
-                // normalization (unlike `project.create`/`thread.turn.start`),
-                // so it is built directly rather than through
-                // `normalizeDispatchCommand` — that function unconditionally
-                // pulls in FileSystem/Path/WorkspacePaths for branches this
-                // command never takes, which would leak into this handler's
-                // otherwise fully-resolved (R = never) requirements
-                // (`registerZeropsRpc.ts`'s own `ZeropsRpcHandlers` type
-                // pins every zerops RPC handler to no leftover services).
-                const stopCommand: OrchestrationCommand = {
-                  type: "thread.session.stop",
-                  commandId: yield* serverCommandId(commandTag),
-                  threadId,
-                  createdAt: yield* nowIso,
-                };
-                yield* dispatchNormalizedCommand(stopCommand);
-                yield* waitUntilNotLive(isThreadSessionLive(threadId), {
-                  pollInterval: SESSION_STOP_POLL_INTERVAL,
-                  timeout: SESSION_STOP_WAIT_TIMEOUT,
-                });
-              }).pipe(
-                Effect.catchCause((cause) =>
-                  Effect.logWarning("zerops agent sign-out: could not stop a live session", {
-                    ...target,
-                    threadId,
-                    cause,
-                  }),
-                ),
-              ),
-            { discard: true },
-          );
-        });
-
-      /** An agent's default login: every live session of its default instance. */
-      const stopAgentSessions = (agentId: ZeropsAgentId): Effect.Effect<void> =>
-        stopSessionsOf({ agentId }, `agent-sign-out:${agentId}`, (threads) =>
-          threadsToStopForAgent(threads, agentId),
-        );
-
-      /** A login beyond the defaults: every live session running on it. */
-      const stopLoginSessions = (loginId: string): Effect.Effect<void> =>
-        stopSessionsOf({ loginId }, `login-sign-out:${loginId}`, (threads) =>
-          threadsToStopForLogin(threads, loginId),
-        );
 
       // On Zerops, whether Claude Code and Codex can be picked is the
       // project's answer (its sign-in flag), not their drivers' — every
@@ -2372,14 +2227,12 @@ const makeWsRpcLayer = (
             "rpc.aggregate": "server",
           }),
         ...registerZeropsRpc({
+          zeropsSetup,
           zeropsLifecycle,
           zeropsAgentAuth,
           zeropsAgentLogin,
-          zeropsAgentSignOut,
-          stopAgentSessions,
+          zeropsSignOut,
           zeropsLogins,
-          zeropsLoginSignOut,
-          stopLoginSessions,
           zeropsBrowserStream,
           zeropsCli,
           zeropsMateUpdate,

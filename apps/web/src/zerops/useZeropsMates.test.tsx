@@ -53,7 +53,6 @@ const PROJECT: ZeropsProject = {
   status: "ACTIVE",
   publicZone: "fte2334ab.prg1-zerops.zone",
   zeropsSubdomainHost: "24cb",
-  tagList: ["mate:bot:Fen"],
 };
 const ZCP: ZeropsService = {
   id: "service-1",
@@ -117,8 +116,8 @@ function readRuntime(): ManagedZeropsDataRuntime {
     ),
   );
   const services = {
-    kind: "services-of-organization" as const,
-    organization: owner.organization,
+    kind: "services-of-project" as const,
+    project: owner,
     schemaVersion: 1 as const,
   };
   ingest(

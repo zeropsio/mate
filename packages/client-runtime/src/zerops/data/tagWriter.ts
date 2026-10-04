@@ -1,33 +1,14 @@
 /**
- * The TagWriter behind `updateProjectTags` (DESIGN §2.B B2, §6.5, §9 C12): the one writer of a
- * project's `tagList`.
- *
- * The platform has no conditional PUT and replaces the list wholesale, so every write is a
- * read-modify-write, and this is the only one:
- *
- * - **Serialized per project**, in this tab and — through Web Lock `mate:tags:<projectId>` — across
- *   the tabs of the browser. Two of our writers never interleave a read and a write.
- * - **Applied to a fresh read.** The patch meets the list as the platform holds it inside the
- *   lock, so every tag written since a caller last looked survives.
- * - **Verified by reading back.** The list is read again after the PUT; if another writer's whole
- *   list replaced ours in between, the patch no longer holds and is applied again to what is
- *   there now, a bounded number of times.
- *
- * What remains is the window between one read and its PUT, against a writer on another device
- * (C12): the same tag written by both is last-writer-wins, and a disjoint tag that writer added
- * in that window is lost with it.
+ * The sole project-record writer: serialized per project across this browser's tabs, based on
+ * a fresh platform read. Zerops owns the name; only the Mate marker is written to tags.
+ * One PUT and one read-back: a concurrent replacement fails visibly for a manual Again.
  */
 import type { ZeropsApiClient, ZeropsProject } from "../api.ts";
-import {
-  applyProjectTagPatch,
-  sameProjectTags,
-  type ProjectTagPatch,
-  type ProjectTagRefusal,
-} from "./tagPatch.ts";
+import { applyProjectTagPatch, sameProjectTags, type ProjectTagPatch } from "./tagPatch.ts";
 import type { AdapterError } from "./types.ts";
 
 /** The reads and the one PUT the writer makes. */
-export type ProjectTagSource = Pick<ZeropsApiClient, "fetchProject" | "writeProjectTags">;
+export type ProjectTagSource = Pick<ZeropsApiClient, "fetchProject" | "writeProject">;
 
 /** The page's exclusive locks (`navigator.locks`): `hold` runs once the lock is this tab's. */
 export interface ProjectTagLocks {
@@ -37,39 +18,41 @@ export interface ProjectTagLocks {
 export const projectTagsLockName = (projectId: string): string => `mate:tags:${projectId}`;
 
 export type ProjectTagWrite =
-  /** The patch is on the project now; `project` is the read that confirmed it. */
+  /** The change is on the project now; `project` is the read that confirmed it. */
   | { readonly kind: "written"; readonly project: ZeropsProject }
   /** The project already held it: nothing was written. */
-  | { readonly kind: "unchanged"; readonly project: ZeropsProject }
-  /** The list as read does not take the patch; nothing was written. */
-  | {
-      readonly kind: "refused";
-      readonly refusal: ProjectTagRefusal;
-      readonly project: ZeropsProject;
-    };
+  | { readonly kind: "unchanged"; readonly project: ZeropsProject };
+
+export interface ProjectWriteOptions {
+  readonly signal?: AbortSignal | undefined;
+  /** Runs before each PUT: the write's admission, asked again at the moment it is sent. */
+  readonly beforeWrite?: (() => Promise<void>) | undefined;
+}
 
 export interface ProjectTagWriter {
   readonly write: (
     projectId: string,
     patch: ProjectTagPatch,
-    options?: {
-      readonly signal?: AbortSignal | undefined;
-      /** Runs before each PUT: the write's admission, asked again at the moment it is sent. */
-      readonly beforeWrite?: (() => Promise<void>) | undefined;
-    },
+    options?: ProjectWriteOptions,
+  ) => Promise<ProjectTagWrite>;
+  /** Names the project `name`, its tags put back as a fresh read holds them. */
+  readonly rename: (
+    projectId: string,
+    name: string,
+    options?: ProjectWriteOptions,
   ) => Promise<ProjectTagWrite>;
 }
 
-/** PUTs one patch may make: the first, and a retry for each writer that replaced it. */
-export const PROJECT_TAG_WRITE_ATTEMPTS = 3;
-
-const replacedTooOften: AdapterError = {
+const replacedTooOften = (what: "tags" | "name"): AdapterError => ({
   _tag: "ZeropsDataAdapterError",
   kind: "rejected",
-  message: "This project's tags kept changing while they were being written. Try again.",
+  message:
+    what === "tags"
+      ? "This project's tags changed after the write. Try again."
+      : "This project's name changed after the write. Try again.",
   retryable: true,
   accountRevocationEvidence: false,
-};
+});
 
 export function makeProjectTagWriter(options: {
   readonly source: ProjectTagSource;
@@ -98,17 +81,29 @@ export function makeProjectTagWriter(options: {
     write: (projectId, patch, writeOptions = {}) =>
       serialized(projectId, async () => {
         const { signal, beforeWrite } = writeOptions;
-        let project = await source.fetchProject(projectId, signal);
-        for (let written = 0; ; written += 1) {
-          const current = project.tagList ?? [];
-          const next = applyProjectTagPatch(current, patch);
-          if (!next.ok) return { kind: "refused", refusal: next.refusal, project };
-          if (sameProjectTags(next.tags, current))
-            return { kind: written === 0 ? "unchanged" : "written", project };
-          if (written === PROJECT_TAG_WRITE_ATTEMPTS) throw replacedTooOften;
-          await source.writeProjectTags(project, next.tags, signal, beforeWrite);
-          project = await source.fetchProject(projectId, signal);
-        }
+        const project = await source.fetchProject(projectId, signal);
+        const next = applyProjectTagPatch(project.tagList ?? [], patch);
+        if (sameProjectTags(next, project.tagList ?? [])) return { kind: "unchanged", project };
+        await source.writeProject(
+          project,
+          { name: project.name, tagList: next },
+          signal,
+          beforeWrite,
+        );
+        const confirmed = await source.fetchProject(projectId, signal);
+        if (!sameProjectTags(confirmed.tagList ?? [], next)) throw replacedTooOften("tags");
+        return { kind: "written", project: confirmed };
+      }),
+    rename: (projectId, name, writeOptions = {}) =>
+      serialized(projectId, async () => {
+        const { signal, beforeWrite } = writeOptions;
+        const project = await source.fetchProject(projectId, signal);
+        if (project.name === name) return { kind: "unchanged", project };
+        const tags = project.tagList?.includes("mate") ? ["mate"] : [];
+        await source.writeProject(project, { name, tagList: tags }, signal, beforeWrite);
+        const confirmed = await source.fetchProject(projectId, signal);
+        if (confirmed.name !== name) throw replacedTooOften("name");
+        return { kind: "written", project: confirmed };
       }),
   };
 }

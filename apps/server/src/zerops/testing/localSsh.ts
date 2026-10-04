@@ -57,6 +57,14 @@ const pathWithTimeout = (): string => {
   return (shimmedPath = `${bin}:${process.env.PATH ?? "/usr/bin:/bin"}`);
 };
 
+/**
+ * How long the far side's processes may take to stop when their session is ended, before they are
+ * killed. A real service keeps running what a dropped ssh started, but there the repository outlives
+ * the session; here a test removes it once its session ends, so nothing of the session may outlive
+ * it: the spawner kills the whole group and waits until it is gone.
+ */
+const FAR_SIDE_STOP_GRACE = "1 second";
+
 /** Runs what ssh was asked to run on the far side, here instead. */
 export const localSshSpawner = (
   inner: ChildProcessSpawner.ChildProcessSpawner["Service"],
@@ -72,6 +80,7 @@ export const localSshSpawner = (
     return inner.spawn(
       ChildProcess.make("/bin/sh", ["-c", remote], {
         ...command.options,
+        forceKillAfter: FAR_SIDE_STOP_GRACE,
         ...(remoteEnv === undefined
           ? {}
           : { env: { ...command.options.env, ...remoteEnv }, extendEnv: true }),

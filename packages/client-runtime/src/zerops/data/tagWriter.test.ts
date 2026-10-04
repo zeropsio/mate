@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { ZeropsApiClient, type ZeropsProject } from "../api.ts";
-import { parseZeropsRegistry } from "../groupRegistry.ts";
 import { makeHarnessBrowser } from "../testing/browserTabs.ts";
 import { makeFakeZeropsRest } from "../testing/fakeZeropsRest.ts";
 import { makeProjectTagWriter, type ProjectTagSource } from "./tagWriter.ts";
 
 /**
- * One project on a platform with no conditional PUT: a write replaces the tag list wholesale.
- * `between` runs another device's write at a named point of ours.
+ * One project on a platform with no conditional PUT: a write replaces its record — its name and its
+ * tag list — wholesale. `between` runs another device's write at a named point of ours.
  */
 function platform(
   tags: ReadonlyArray<string>,
@@ -31,98 +30,46 @@ function platform(
       log.push("GET");
       return project;
     },
-    writeProjectTags: async (_read, tagList) => {
+    writeProject: async (read, record) => {
       log.push("PUT");
       before = project.tagList ?? [];
-      project = { ...project, tagList };
+      project = { ...project, ...record };
       if (afterWrite !== undefined) {
-        // Another device read before our write landed, and writes its whole list after it.
-        project = { ...project, tagList: afterWrite(before) };
+        // Another device read before our write landed, and writes its whole record after it.
+        project = { ...project, name: read.name, tagList: afterWrite(before) };
         afterWrite = undefined;
       }
-      return { ...project, tagList };
+      return { ...project, ...record };
     },
   };
-  return { source, log, tags: () => project.tagList ?? [] };
+  return { source, log, tags: () => project.tagList ?? [], name: () => project.name };
 }
 
 describe("updateProjectTags' writer", () => {
-  it.each([
-    {
-      when: "it wrote after the list our caller last saw",
-      between: { beforeRead: (tags: ReadonlyArray<string>) => [...tags, "theirs"] },
-      requests: ["GET", "PUT", "GET"],
-    },
-    {
-      when: "its whole list replaced ours after our write",
-      between: { afterWrite: (tags: ReadonlyArray<string>) => [...tags, "theirs"] },
-      requests: ["GET", "PUT", "GET", "PUT", "GET"],
-    },
-  ])("a concurrent writer's change survives our patch when $when", async (row) => {
-    const rest = platform(["mate:tool:gitea"], row.between);
+  it("writes only the Mate marker from a fresh project read", async () => {
+    const rest = platform(["mate:face:rose:seal", "person:own"], {
+      beforeRead: (tags) => [...tags, "theirs"],
+    });
     const writer = makeProjectTagWriter({ source: rest.source });
-
-    const written = await writer.write("p1", { kind: "agent-name", name: "Vera" });
-
-    expect(written.kind).toBe("written");
-    expect(rest.tags()).toEqual(
-      expect.arrayContaining(["mate:tool:gitea", "theirs", "mate:bot:Vera", "mate"]),
-    );
-    expect(rest.log).toEqual(row.requests);
+    expect((await writer.write("p1", { kind: "mate" })).kind).toBe("written");
+    expect(rest.tags()).toEqual(["mate"]);
+    expect(rest.log).toEqual(["GET", "PUT", "GET"]);
   });
 
-  it("a face changed puts back every tag the platform holds, and only its face changes", async () => {
-    const held = [
-      "mate:g:g1",
-      "mate:role:dev",
-      "mate:bot:Ada",
-      "mate",
-      "mate:face:coral:gem",
-      "person:own",
-    ];
-    const rest = platform(held, {
-      beforeRead: (tags: ReadonlyArray<string>) => [...tags, "theirs"],
-    });
+  it("a concurrent replacement fails visibly after one write", async () => {
+    const rest = platform([], { afterWrite: () => ["theirs"] });
     const writer = makeProjectTagWriter({ source: rest.source });
-
-    const written = await writer.write("p1", {
-      kind: "mate-face",
-      face: { tint: "sky", shape: "seal" },
-    });
-
-    expect(written.kind).toBe("written");
-    expect([...rest.tags()].sort()).toEqual(
-      [
-        ...held.filter((tag) => tag !== "mate:face:coral:gem"),
-        "theirs",
-        "mate:face:sky:seal",
-      ].sort(),
-    );
+    await expect(writer.write("p1", { kind: "mate" })).rejects.toMatchObject({ kind: "rejected" });
     expect(rest.log).toEqual(["GET", "PUT", "GET"]);
   });
 
   it("a patch the project already holds costs a read and writes nothing", async () => {
-    const rest = platform(["mate:bot:Vera", "mate"]);
+    const rest = platform(["mate"]);
     const writer = makeProjectTagWriter({ source: rest.source });
 
-    const written = await writer.write("p1", { kind: "agent-name", name: "Vera" });
+    const written = await writer.write("p1", { kind: "mate" });
 
     expect(written.kind).toBe("unchanged");
-    expect(rest.log).toEqual(["GET"]);
-  });
-
-  it("a patch the list refuses writes nothing and says why", async () => {
-    const rest = platform(["mate:tool:gitea"]);
-    const writer = makeProjectTagWriter({ source: rest.source });
-
-    const written = await writer.write("p1", {
-      kind: "registry-member",
-      groupId: "g1",
-      projectId: "p9",
-      member: "mate",
-    });
-
-    expect(written).toMatchObject({ kind: "refused", refusal: { code: "group-unknown" } });
     expect(rest.log).toEqual(["GET"]);
   });
 
@@ -130,35 +77,34 @@ describe("updateProjectTags' writer", () => {
     const rest = platform([]);
     const replaced: ProjectTagSource = {
       ...rest.source,
-      // Every write lands and is at once replaced by a list without it.
-      writeProjectTags: async (project) => project,
+      // Every write lands and is at once replaced by a record without it.
+      writeProject: async (project) => project,
     };
     const writer = makeProjectTagWriter({ source: replaced });
 
-    await expect(writer.write("p1", { kind: "agent-name", name: "Vera" })).rejects.toMatchObject({
+    await expect(writer.write("p1", { kind: "mate" })).rejects.toMatchObject({
       _tag: "ZeropsDataAdapterError",
       kind: "rejected",
       retryable: true,
     });
-    expect(rest.log).toEqual(["GET", "GET", "GET", "GET"]);
+    expect(rest.log).toEqual(["GET", "GET"]);
   });
 
   it("one page serializes its own writes to a project with no locks at all", async () => {
     const rest = platform([]);
     const writer = makeProjectTagWriter({ source: rest.source });
 
-    await Promise.all([
-      writer.write("p1", { kind: "agent-signer", agentId: "codex", userId: "u1" }),
-      writer.write("p1", { kind: "agent-name", name: "Vera" }),
+    const [first, second] = await Promise.all([
+      writer.write("p1", { kind: "mate" }),
+      writer.write("p1", { kind: "mate" }),
     ]);
 
-    expect(rest.tags()).toEqual(
-      expect.arrayContaining(["mate:signer:codex:u1", "mate:bot:Vera", "mate"]),
-    );
-    expect(rest.log).toEqual(["GET", "PUT", "GET", "GET", "PUT", "GET"]);
+    expect([first.kind, second.kind]).toEqual(["written", "unchanged"]);
+    expect(rest.tags()).toEqual(["mate"]);
+    expect(rest.log).toEqual(["GET", "PUT", "GET", "GET"]);
   });
 
-  it("two tabs register different groups; neither is lost", async () => {
+  it("two tabs declare one Mate at once: one writes, the other finds it written", async () => {
     const rest = makeFakeZeropsRest();
     rest.addUser({
       user: {
@@ -169,11 +115,11 @@ describe("updateProjectTags' writer", () => {
       password: "secret",
     });
     rest.addProject({
-      id: "gitea",
+      id: "p1",
       clientId: "org-1",
-      name: "Gitea",
+      name: "Acme - Vera",
       status: "ACTIVE",
-      tagList: ["mate:tool:gitea"],
+      tagList: ["person:own"],
     });
     const browser = makeHarnessBrowser();
     const writerIn = (tab: ReturnType<typeof browser.openTab>) => {
@@ -184,26 +130,60 @@ describe("updateProjectTags' writer", () => {
     const first = browser.openTab();
     const second = browser.openTab();
 
-    const [acme, beta] = await Promise.all([
-      writerIn(first).write("gitea", { kind: "registry-group", groupId: "g1", name: "Acme" }),
-      writerIn(second).write("gitea", { kind: "registry-group", groupId: "g2", name: "Beta" }),
+    const [declared, again] = await Promise.all([
+      writerIn(first).write("p1", { kind: "mate" }),
+      writerIn(second).write("p1", { kind: "mate" }),
     ]);
 
-    expect([acme.kind, beta.kind]).toEqual(["written", "written"]);
-    const registry = parseZeropsRegistry(rest.project("gitea")?.tagList);
-    expect(registry.groups.map(({ groupId, slug }) => [groupId, slug])).toEqual([
-      ["g1", "acme"],
-      ["g2", "beta"],
-    ]);
-    expect(registry.other).toEqual(["mate:tool:gitea"]);
-    // One tab's read, write and read-back, then the other's: never interleaved.
+    expect([declared.kind, again.kind]).toEqual(["written", "unchanged"]);
+    expect(rest.project("p1")?.tagList).toEqual(["mate"]);
+    // One tab's read, write and read-back, then the other's read: never interleaved.
     expect(rest.requests().map(({ route, tab }) => `${tab} ${route}`)).toEqual([
-      `${first.id} GET /project/gitea`,
-      `${first.id} PUT /project/gitea`,
-      `${first.id} GET /project/gitea`,
-      `${second.id} GET /project/gitea`,
-      `${second.id} PUT /project/gitea`,
-      `${second.id} GET /project/gitea`,
+      `${first.id} GET /project/p1`,
+      `${first.id} PUT /project/p1`,
+      `${first.id} GET /project/p1`,
+      `${second.id} GET /project/p1`,
     ]);
+  });
+});
+
+// D3: a Mate's name is its project's, written through the same record a tag write puts back.
+describe("a project renamed by the project's one writer", () => {
+  it("renames on a fresh read and puts back every tag the platform holds", async () => {
+    const rest = platform(["mate", "person:own"], {
+      beforeRead: (tags: ReadonlyArray<string>) => [...tags, "theirs"],
+    });
+    const writer = makeProjectTagWriter({ source: rest.source });
+
+    const renamed = await writer.rename("p1", "Nova");
+
+    expect(renamed).toMatchObject({ kind: "written", project: { name: "Nova" } });
+    expect([rest.name(), rest.tags()]).toEqual(["Nova", ["mate"]]);
+    expect(rest.log).toEqual(["GET", "PUT", "GET"]);
+  });
+
+  it("a name the project already has costs a read and writes nothing", async () => {
+    const rest = platform(["mate"]);
+    const writer = makeProjectTagWriter({ source: rest.source });
+
+    expect((await writer.rename("p1", "One")).kind).toBe("unchanged");
+    expect(rest.log).toEqual(["GET"]);
+  });
+
+  it("a rename and a tag write to one project never undo each other", async () => {
+    const rest = platform([]);
+    const writer = makeProjectTagWriter({ source: rest.source });
+
+    await Promise.all([writer.write("p1", { kind: "mate" }), writer.rename("p1", "Nova")]);
+
+    expect([rest.name(), rest.tags()]).toEqual(["Nova", ["mate"]]);
+  });
+
+  it("names it again where another writer's record replaced the name", async () => {
+    const rest = platform(["mate"], { afterWrite: (tags: ReadonlyArray<string>) => tags });
+    const writer = makeProjectTagWriter({ source: rest.source });
+
+    await expect(writer.rename("p1", "Nova")).rejects.toMatchObject({ kind: "rejected" });
+    expect(rest.log).toEqual(["GET", "PUT", "GET"]);
   });
 });

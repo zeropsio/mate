@@ -354,6 +354,29 @@ export const ZeropsAgentLoginState = Schema.Struct({
 });
 export type ZeropsAgentLoginState = typeof ZeropsAgentLoginState.Type;
 
+/** One login check, including an inconclusive ending; timestamps describe the source read. */
+export const ZeropsAuthVerification = Schema.Struct({
+  status: Schema.Literals(["checking", "authenticated", "unauthenticated", "unknown"]),
+  reason: Schema.optional(Schema.String),
+  checkedAt: Schema.optional(Schema.Number),
+  generation: Schema.optional(Schema.Number),
+});
+export type ZeropsAuthVerification = typeof ZeropsAuthVerification.Type;
+
+/** Local sign-in and platform registration are separate outcomes. Accepted writes retain their handle. */
+export const ZeropsAuthRegistration = Schema.Struct({
+  status: Schema.Literals(["pending", "accepted", "registered", "failed"]),
+  reason: Schema.optional(Schema.String),
+  process: Schema.optional(
+    Schema.Struct({
+      id: Schema.String,
+      status: Schema.optional(Schema.String),
+      reason: Schema.optional(Schema.String),
+    }),
+  ),
+});
+export type ZeropsAuthRegistration = typeof ZeropsAuthRegistration.Type;
+
 export const ZeropsAgentAuth = Schema.Struct({
   agentId: ZeropsAgentId,
   /** Whether the local credential artifact exists. Presence only — its contents are never read. */
@@ -372,17 +395,16 @@ export const ZeropsAgentAuth = Schema.Struct({
    * actually gates the flag write, never `credPresent` alone.
    */
   providerAuth: ServerProviderAuthStatus,
+  verification: Schema.optional(ZeropsAuthVerification),
+  registration: Schema.optional(ZeropsAuthRegistration),
   state: ZeropsAgentAuthState,
   /** A server-driven login attempt in progress (or just finished) for this agent — see {@link ZeropsAgentLoginState}. Absent when none has ever run this process's lifetime. */
   login: Schema.optional(ZeropsAgentLoginState),
   /**
-   * Which Zerops user signed this agent in, from the tag
-   * `mate:signer:{agent}:{userId}` on the Mate's own project (D6). The subject
-   * is the Zerops user id — the same value the door puts on the session grant.
-   *
-   * It lives on the project because a Mate's own key cannot write tags, so
-   * neither the container nor its agent can forge whose login this is. The app
-   * writes it as the person at the moment their sign-in succeeds.
+   * Which Zerops user signed this agent in (D6): the person whose door session
+   * started the sign-in the Mate's server saw succeed, kept by the server
+   * across restarts. The subject is the Zerops user id — the same value the
+   * door puts on the session grant.
    *
    * This exists because an agent CLI's credential is a *personal* one. Under
    * Anthropic's consumer terms a subscription login is yours to use on your
@@ -398,20 +420,10 @@ export const ZeropsAgentAuth = Schema.Struct({
   authorizedBy: Schema.optional(
     Schema.Struct({
       subject: Schema.String,
-      /**
-       * When the sign-in happened, if anything recorded it. The project tag
-       * that carries the record (D6) records who and not when, so this is
-       * absent for everything written since — the fact the product needs is
-       * whose login it is.
-       */
+      /** When the sign-in happened, if anything recorded it: the fact the product needs is whose login it is. */
       at: Schema.optional(Schema.DateTimeUtc),
     }),
   ),
-  /**
-   * The project records its sign-in for two or more people, so whose it is is not known: no
-   * `authorizedBy`, and nothing is said about whose it is (never a guess).
-   */
-  signerUnknown: Schema.optional(Schema.Boolean),
 });
 export type ZeropsAgentAuth = typeof ZeropsAgentAuth.Type;
 
@@ -423,8 +435,8 @@ export type ZeropsAgentAuth = typeof ZeropsAgentAuth.Type;
  * A login's id: the provider instance it is. The two defaults keep the
  * driver's default instance ids (`claudeAgent`, `codex`); another login is a
  * further instance of the same driver with its own home. The slug rules of
- * `ProviderInstanceId`, unbranded: the id also names the login in its signer
- * tag `mate:signer:{id}:{userId}`, which a colon would break.
+ * `ProviderInstanceId`, unbranded: the id is also the key its signer is kept
+ * under.
  */
 export const ZeropsLoginId = TrimmedNonEmptyString.check(
   Schema.isMaxLength(64),
@@ -466,12 +478,12 @@ export const ZeropsLogin = Schema.Struct({
   /** One of the two default instances, whose sign-in is the agent row's. */
   default: Schema.Boolean,
   state: ZeropsLoginState,
+  verification: Schema.optional(ZeropsAuthVerification),
+  registration: Schema.optional(ZeropsAuthRegistration),
   /** A project token authorizes it (a default only): it is nobody's login, and D6 does not apply. */
   token: Schema.Boolean,
-  /** The Zerops user id of whoever signed it in (or added its key), from its signer tag. */
+  /** The Zerops user id of whoever signed it in (or stored its key), as the Mate's server saw them. */
   signedInBy: Schema.optional(Schema.String),
-  /** Its signer tags name two or more people: whose it is is not known (`ZeropsAgentAuth`). */
-  signerUnknown: Schema.optional(Schema.Boolean),
   /** Its server-driven login, while one runs or just finished. */
   login: Schema.optional(ZeropsAgentLoginState),
 });
@@ -589,6 +601,8 @@ export const ZeropsAgentLoginErrorReason = Schema.Literals([
   "unavailable",
   /** No login of this agent is waiting for a code right now. */
   "not-awaiting-code",
+  /** The server could not persist who signed this login in. */
+  "signer-write-failed",
   /**
    * `zerops.agentLogin.signOut` refused a token-authorized agent: a project
    * API key belongs to the project, not to a person, so there is nobody's

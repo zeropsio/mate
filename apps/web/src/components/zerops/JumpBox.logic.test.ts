@@ -80,8 +80,6 @@ const INDEX: SidebarJumpIndex = {
       number: 41,
       projectName: "Shop",
       label: "#41 Two-step checkout: the basket step",
-      checkTone: "ok",
-      checkWord: "Passing",
       mateProjectId: "shop-kai",
       whose: "Kai",
     },
@@ -91,11 +89,9 @@ const INDEX: SidebarJumpIndex = {
       repository: "appdev",
       number: 6,
       projectName: "Shop",
-      label: "#6 Bump the linter · ada",
-      checkTone: undefined,
-      checkWord: undefined,
-      mateProjectId: undefined,
-      whose: "ada",
+      label: "#6 Bump the linter",
+      mateProjectId: "shop-nova",
+      whose: "Nova",
     },
   ],
   stops: [
@@ -316,23 +312,40 @@ describe("jumpMateOf and withLiveMates — a Mate as its row says it, read afres
       subject: "Run the build",
       conversation: { threadId: "thread-shop-nova", kind: "working" },
     });
+    // Its last word, at rest: nothing of now.
+    expect(
+      jumpMateOf({ ...base, connected: false, activity: activity({ remembered: true }) }),
+    ).toMatchObject({ face: "sleep", subject: undefined, conversation: undefined });
+    expect(jumpMateOf({ ...base, connected: true, activity: undefined }).face).toBe("idle");
+  });
+
+  it("reads an unopened Mate's words from HQ's live word, and offers no conversation to write to", () => {
     expect(jumpMateOf({ ...base, connected: false, activity: activity() })).toMatchObject({
-      face: "sleep",
-      subject: undefined,
+      face: "working",
+      subject: "Run the build",
       conversation: undefined,
     });
-    expect(jumpMateOf({ ...base, connected: true, activity: undefined }).face).toBe("idle");
   });
 
   // As on its row (`candidateContainerRuns`): a container that runs wears the face awake while
   // this browser's socket to it opens, and nothing of its conversation is read before it does.
   it("wears a running Mate awake before its socket opens, reading nothing of it yet", () => {
     expect(
-      jumpMateOf({ ...base, connected: false, runs: true, activity: activity() }),
+      jumpMateOf({ ...base, connected: false, runs: true, activity: undefined }),
     ).toMatchObject({ face: "idle", subject: undefined, conversation: undefined });
-    expect(jumpMateOf({ ...base, connected: false, runs: false, activity: activity() }).face).toBe(
+    expect(jumpMateOf({ ...base, connected: false, runs: false, activity: undefined }).face).toBe(
       "sleep",
     );
+  });
+
+  it("keeps HQ's live activity before this tab opens the Mate socket", () => {
+    expect(
+      jumpMateOf({ ...base, connected: false, runs: true, activity: activity() }),
+    ).toMatchObject({
+      face: "working",
+      subject: "Run the build",
+      conversation: undefined,
+    });
   });
 
   // Its pose as on its row (`mateFaceFor`): waking while it comes up and arrives, read afresh too.
@@ -416,8 +429,8 @@ describe("jumpMateOf and withLiveMates — a Mate as its row says it, read afres
   });
 
   it("puts each Mate's live conversation over what the menu last drew", () => {
-    const fresh = withLiveMates(INDEX, (environmentId) =>
-      environmentId === "env-shop-nova"
+    const fresh = withLiveMates(INDEX, (mate) =>
+      mate.projectId === "shop-nova"
         ? activity({ kind: "input", face: "needs", subject: "Only the items?" })
         : undefined,
     );

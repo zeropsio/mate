@@ -66,21 +66,6 @@ describe("CrewWorkspace", () => {
     ),
   );
 
-  it.effect("the boot sweep makes an absolute lane gitdir relative", () =>
-    withLanes((root) =>
-      Effect.gen(function* () {
-        const workspace = yield* CrewWorkspace.CrewWorkspace;
-        yield* workspace.create(BACKEND);
-        write(root, ".crew/backend/.git", `gitdir: ${root}/.git/worktrees/backend\n`);
-        yield* workspace.sweep(TEST_HOST);
-        assert.strictEqual(
-          read(root, ".crew/backend/.git"),
-          "gitdir: ../../.git/worktrees/backend\n",
-        );
-      }),
-    ),
-  );
-
   it.effect(
     "needs the exclude line: without it the person's add -A stages the lane as a gitlink",
     () =>
@@ -431,130 +416,6 @@ describe("CrewWorkspace", () => {
   );
 
   /** A landing as the person's history carries it: a commit with both trailers. */
-  const recordLanding = (root: string, assignment: string, number: number) =>
-    Effect.gen(function* () {
-      const store = yield* CrewStore.CrewStore;
-      write(root, `src/task-${number}.ts`, `export const task = ${number};\n`);
-      git(root, ["add", "-A"]);
-      git(root, [
-        "commit",
-        "-q",
-        "-m",
-        `Task ${number}`,
-        "-m",
-        `Crew-Lane: backend\nCrew-Assignment: ${assignment}`,
-      ]);
-      yield* store.putAssignment(
-        taskRow(assignment, number, "backend", git(root, ["rev-parse", "HEAD"])),
-      );
-    });
-
-  it.effect("brings lanes back after a self-deploy dropped their directories", () =>
-    withLanes((root) =>
-      Effect.gen(function* () {
-        const workspace = yield* CrewWorkspace.CrewWorkspace;
-        const store = yield* CrewStore.CrewStore;
-        yield* store.putMember(memberRow("backend"));
-        yield* workspace.create(BACKEND);
-        yield* recordLanding(root, "a-1", 1);
-        write(root, ".crew/backend/src/wip.ts", "export {};\n");
-        yield* workspace.commitTurn(BACKEND, { assignment: "a-2", turn: 1 });
-        const tip = git(root, ["rev-parse", "crew/backend"]);
-        yield* workspace.freeze(TEST_HOST);
-        NodeFS.rmSync(`${root}/.crew`, { recursive: true, force: true });
-        const recovered = yield* workspace.recover(TEST_HOST, [
-          { ...BACKEND, setup: "touch setup-ran" },
-        ]);
-        assert.deepStrictEqual(
-          {
-            recovered: recovered._tag === "recovered" ? recovered.readded : recovered,
-            setup: exists(root, ".crew/backend/setup-ran"),
-            wip: read(root, ".crew/backend/src/wip.ts"),
-            tip: git(root, ["rev-parse", "crew/backend"]),
-            frozen: Option.getOrUndefined(yield* store.getLane("game", "backend"))?.frozenSince,
-          },
-          { recovered: ["backend"], setup: true, wip: "export {};\n", tip, frozen: null },
-        );
-      }),
-    ),
-  );
-
-  it.effect("names what a container replacement lost: a landing and the lane's WIP", () =>
-    withLanes((root) =>
-      Effect.gen(function* () {
-        const workspace = yield* CrewWorkspace.CrewWorkspace;
-        const store = yield* CrewStore.CrewStore;
-        yield* store.putMember(memberRow("backend"));
-        yield* workspace.create(BACKEND);
-        const deployed = git(root, ["rev-parse", "HEAD"]);
-        yield* recordLanding(root, "a-1", 1);
-        write(root, ".crew/backend/src/wip.ts", "export {};\n");
-        yield* workspace.commitTurn(BACKEND, { assignment: "a-2", turn: 1 });
-        yield* workspace.freeze(TEST_HOST);
-        // The disk returns to the last deploy: HEAD and the branch move back, the lane is gone.
-        git(root, ["reset", "-q", "--hard", deployed]);
-        NodeFS.rmSync(`${root}/.crew`, { recursive: true, force: true });
-        git(root, ["worktree", "prune"]);
-        git(root, ["branch", "-f", "crew/backend", deployed]);
-        const recovered = yield* workspace.recover(TEST_HOST, [BACKEND]);
-        assert.deepStrictEqual(recovered, {
-          _tag: "lost",
-          landings: [{ assignment: "a-1", title: "Task 1" }],
-          branches: [],
-          wip: [
-            {
-              handle: "backend",
-              since: git(root, ["log", "-1", "--format=%cI", deployed]),
-            },
-          ],
-        });
-      }),
-    ),
-  );
-
-  it.effect("sweeps at boot: WIP for a dirty lane, rework left open, a 0-byte ref parks", () =>
-    withLanes((root) =>
-      Effect.gen(function* () {
-        const workspace = yield* CrewWorkspace.CrewWorkspace;
-        const store = yield* CrewStore.CrewStore;
-        const lanes = ["backend", "frontend", "map", "quiet"] as const;
-        for (const handle of lanes) yield* workspace.create({ ...BACKEND, handle });
-        write(root, ".crew/backend/src/api.ts", "export {};\n");
-        write(root, ".crew/frontend/README.md", "lane\n");
-        yield* workspace.commitTurn(
-          { crew: "game", handle: "frontend" },
-          { assignment: "a-2", turn: 1 },
-        );
-        write(root, "README.md", "person\n");
-        git(root, ["commit", "-q", "-am", "person"]);
-        gitExit(`${root}/.crew/frontend`, ["merge", "-q", "main"]);
-        NodeFS.writeFileSync(`${root}/.git/refs/heads/crew/map`, "");
-        const swept = yield* workspace.sweep(TEST_HOST);
-        assert.deepStrictEqual(
-          {
-            lanes: swept.lanes.map((lane) => [lane.handle, lane._tag]),
-            merging: swept.lanes.find((lane) => lane.handle === "frontend"),
-            broken: swept.brokenRefs,
-            mapState: Option.getOrUndefined(yield* store.getLane("game", "map"))?.state,
-            backendClean: git(`${root}/.crew/backend`, ["status", "--porcelain"]),
-          },
-          {
-            lanes: [
-              ["backend", "committed"],
-              ["frontend", "merging"],
-              ["map", "parked"],
-              ["quiet", "clean"],
-            ],
-            merging: { handle: "frontend", _tag: "merging", paths: ["README.md"] },
-            broken: ["refs/heads/crew/map"],
-            mapState: "parked",
-            backendClean: "",
-          },
-        );
-      }),
-    ),
-  );
-
   it.effect("removes a clean lane, keeps one with unlanded work until the person discards it", () =>
     withLanes((root) =>
       Effect.gen(function* () {
@@ -706,3 +567,23 @@ describe("CrewWorkspace", () => {
     );
   }
 });
+
+it.effect("dispatch refuses to reset a copy that still has preserved dirty work", () =>
+  withLanes((root) =>
+    Effect.gen(function* () {
+      const workspace = yield* CrewWorkspace.CrewWorkspace;
+      const store = yield* CrewStore.CrewStore;
+      yield* workspace.create(BACKEND);
+      const tip = git(root, ["rev-parse", "crew/backend"]);
+      yield* store.updateLane("game", "backend", (row) => ({ ...row, lastLanding: tip }));
+      write(root, "person.txt", "new landing\n");
+      git(root, ["add", "-A"]);
+      git(root, ["commit", "-q", "-m", "person"]);
+      write(root, ".crew/backend/README.md", "preserved edit\n");
+      const outcome = yield* workspace.prepareDispatch(BACKEND);
+      assert.strictEqual(outcome._tag, "dirty");
+      assert.strictEqual(git(root, ["rev-parse", "crew/backend"]), tip);
+      assert.strictEqual(read(root, ".crew/backend/README.md"), "preserved edit\n");
+    }),
+  ),
+);

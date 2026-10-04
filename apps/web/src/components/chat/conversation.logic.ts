@@ -929,37 +929,6 @@ export function readsAsAnswer(text: string): boolean {
   );
 }
 
-/** A message on the way to the answer — every assistant message but the turn's answer. */
-export function stretchNotes(stretch: Stretch, answer: MessageEntry | null): MessageEntry[] {
-  return stretch.entries.filter(
-    (entry): entry is MessageEntry =>
-      entry.kind === "message" &&
-      entry.message.role === "assistant" &&
-      entry !== answer &&
-      entry.message.text.trim().length > 0,
-  );
-}
-
-/** The first line of a note, markdown stripped to what reads in one line. */
-export function noteLine(text: string): string {
-  const firstBlock =
-    text
-      .split(/\n\s*\n/)
-      .map((block) => block.trim())
-      .find((block) => block.length > 0) ?? "";
-  return firstBlock
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`([^`]*)`/g, "$1")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, "")
-    .replace(/[*_~]{1,3}([^*_~]+)[*_~]{1,3}/g, "$1")
-    .replace(/^>\s?(?:\[![a-z]+\]\s*)?/gim, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 type ActivityAction = "edit" | "command" | "read" | "code-search" | "search" | "other";
 
 /** What a run's calls did, by kind: the effort its worked line counts. */

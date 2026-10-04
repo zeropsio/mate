@@ -1,3 +1,5 @@
+import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
+import { ZeropsThrowawayCleanup } from "./ZeropsThrowawayCleanup";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZeropsUpgradeRestart";
 /**
@@ -9,6 +11,7 @@ import { useZeropsUpgradeRestart, type UpgradeRecovery } from "~/zerops/useZerop
  */
 
 import { useAtomValue } from "@effect/atom-react";
+import * as DateTime from "effect/DateTime";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
@@ -29,6 +32,12 @@ import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
 import {
+  hqEnvironmentsAtom,
+  hqPeopleAtom,
+  hqPlacementsAtom,
+  hqStructureAtom,
+} from "~/state/zerops";
+import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
   useProjectOrder,
@@ -43,10 +52,8 @@ import {
 } from "@t3tools/client-runtime/zerops/candidates";
 import {
   mateIsViewers,
-  resolveMateOwnerName,
-  resolveMateVerbs,
+  resolveMateOwnerPerson,
   resolveMateVisibility,
-  type MateVerbs,
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -59,11 +66,7 @@ import {
   type KnownSurface,
   type Shown,
 } from "@t3tools/client-runtime/zerops/knowledge";
-import {
-  heldCandidates,
-  listsNoProject,
-  type TakenBotNames,
-} from "@t3tools/client-runtime/zerops/projections";
+import { heldCandidates, listsNoProject } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
@@ -80,9 +83,11 @@ import {
   beginPress,
   finishMateSetup,
   forgetPress,
-  pressViewer,
+  matePressPlacement,
   pressFailureLine,
   placedPressesIn,
+  mateFinishRegistration,
+  readMatePress,
   useMatePresses,
   type MatePress,
 } from "~/zerops/matePress";
@@ -92,9 +97,7 @@ import {
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
-import { useZeropsGroupReach } from "~/zerops/useZeropsGroupReach";
 import { useZeropsThrowawaySweep } from "~/zerops/useZeropsThrowawaySweep";
-import { useZeropsOrganizationMembers } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessionProvider";
 import { withheldProjectNotices } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
@@ -102,41 +105,35 @@ import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
-import { useZeropsDeployTokenGaps } from "~/zerops/useZeropsDeployTokenGaps";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { AuthGateState } from "~/environments/primary/auth";
-import { mateFaceOf, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import {
+  activityOfNow,
+  mateFaceOf,
+  mateReviewWaits,
+  type ZeropsAgentActivity,
+} from "~/zerops/agentActivity";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
+  changeKindTag,
   changeState,
-  environmentNameUnderGroup,
   halfMadeGroupEnvironments,
   assignCandidateMateTints,
-  botDisplayName,
   buildZeropsGroupTree,
   mateShapeOf,
   newMateTint,
-  toolProjectName,
-  flowVerbKey,
-  flowVerbLabel,
   deployWord,
   rankZeropsCandidateForListing,
   readZeropsToolKind,
   defaultAgentForRole,
-  generateBotName,
-  hasBotName,
-  keptOrGeneratedBotName,
-  type RandomBytes,
-  GROUP_BEING_SET_UP_LINE,
   hasMate,
   canCreateProjectsInOrganization,
   groupFlow,
   pullRequestLineWith,
-  PRODUCTION_ADDED_HERE,
+  releaseContentsCommits,
   type FlowPullRequest,
-  readZeropsGroupTags,
-  resolveGroupGitea,
+  readZeropsMembership,
   unionAgents,
   type EnvironmentCreationStepProgress,
   type EnvironmentRow,
@@ -144,41 +141,47 @@ import {
   type ZeropsAgentType,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
-  type ZeropsGroupTags,
-  type ZeropsToolKind,
+  type ZeropsMembership,
+  canWriteRegistry,
+  mayOffer,
+  offerAsker,
   firstDeployLine,
   type FirstDeploy,
   matePoseOf,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
+import { sessionOfferViewer } from "~/zerops/offerViewer";
 
 import { MateFace, MicroLabel, StatusDot } from "./primitives";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
+import { ZeropsHqTool } from "./ZeropsHqTool";
 import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { MateUpdateStatusText } from "./MateUpdateLine";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
+import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
 import { useZeropsAgentActivity } from "~/zerops/useZeropsAgentActivity";
 import { ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import {
   ZeropsEnvironmentCreationDialog,
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
-import { proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
+import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
-import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
-import { useRenameGroup } from "~/zerops/useRenameGroup";
+import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
+import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
+import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
-import { useAccountGitea, useAccountHoldsGitea } from "~/zerops/giteaProject";
-import { useZeropsGroupEnvironmentReconcile } from "~/zerops/useZeropsGroupEnvironmentReconcile";
-import { registryGroupSlug, useZeropsRegistry } from "~/zerops/useZeropsRegistry";
+import { officialHq, useAccountHq } from "~/zerops/accountHq";
+import { useFinishGroupEnvironment } from "~/zerops/useFinishGroupEnvironment";
+import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
-import { readZeropsCellOnce } from "~/zerops/useZeropsDeployedVersion";
+import { readZeropsCellOnce } from "~/zerops/readZeropsCell";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { ZeropsReleaseVerb } from "./ZeropsGroupDetail";
@@ -191,28 +194,38 @@ import {
 } from "./ZeropsGroupTree.logic";
 import { ZeropsProjectsFlow, type ProjectsFlowGroup } from "./projects/ZeropsProjectsFlow";
 import {
+  changeRowVerb,
+  changesUnknownOf,
   flowStepsAwaiting,
   groupFlowInputOf,
   groupMemberFactsOf,
   lastMergedCode,
-  matesKnownOf,
   parseProjectsSearch,
+  matesKnownOf,
   productionAddable,
   rowMateActivitiesOf,
-  TOOL_LABEL,
+  withoutOfficialHq,
+  shownUngrouped,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
+import {
+  applicationContents,
+  deleteOffered,
+  emptyApplications,
+  groupIsEmpty,
+} from "./projects/emptyApps.logic";
 import {
   type ZeropsRowAction,
   type ZeropsRowInput,
   connectFailureLine,
   deriveZeropsRowAction,
   setUpMateVerb,
+  mateOutsideHq,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
-  giteaToolLine,
   groupAddsOffered,
   isZeropsToolCandidate,
+  mateRowCan,
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope, ZeropsOrganizationSwitcher } from "./ZeropsOrganizationScope";
 import { ZeropsSessionAccountControl } from "./landing/ZeropsAccountControl";
@@ -370,7 +383,7 @@ export function hasNoZeropsProject(input: {
   // A tool is not a project: the tree lists it apart (`partitionZeropsToolProjects`).
   return listsNoProject(
     input.listing,
-    (candidate) => readZeropsToolKind(candidate.project.tagList) === undefined,
+    (candidate) => readZeropsToolKind(candidate.project) === undefined,
   );
 }
 
@@ -387,21 +400,6 @@ export function mateOpener(input: {
   readonly open: () => void;
 }): (() => void) | undefined {
   return !input.busy && input.action === "open" ? input.open : undefined;
-}
-
-/**
- * The name *Set up Mate* gives a half-made Mate: the one it already has, or a fresh one once every
- * Mate's name on the account is read. Until then a fresh name may already be somebody's (M5), so
- * there is none yet — `undefined`, and the setup waits for the listing.
- */
-export function setUpMateBotName(
-  existing: string | undefined,
-  taken: TakenBotNames,
-  randomBytes: RandomBytes,
-): string | undefined {
-  return hasBotName(existing) || taken.complete
-    ? keptOrGeneratedBotName(existing, taken.names, randomBytes)
-    : undefined;
 }
 
 const PROJECTS_SURFACE: KnownSurface<ReadonlyArray<ZeropsCandidate>> = {
@@ -422,17 +420,32 @@ export interface ProjectsListingNotice {
  * What the page says about the projects it does not hold in full (DESIGN
  * §3.4): a placeholder while they are unread or being read, the cause when the
  * read failed, "Still reading…" over a partial list, and nothing over a
- * complete one, nor over one a lapse withholds, which the app's one banner
+ * current complete one, nor over one a lapse withholds, which the app's one banner
  * names. Copy, delay and affordance are `knownPresentation`'s.
  */
 export function projectsListingNotice(
   listing: Shown<ReadonlyArray<ZeropsCandidate>>,
   nowMs: number,
 ): ProjectsListingNotice | null {
-  if (listing.state === "known" && listing.coverage === "complete") return null;
+  if (
+    listing.state === "known" &&
+    listing.coverage === "complete" &&
+    (listing.freshness.kind === "live" || listing.freshness.kind === "settled")
+  )
+    return null;
   const presentation = knownPresentation(listing, PROJECTS_SURFACE, {
     nowMs,
     updateOffered: false,
+    ...(listing.state === "known" &&
+    listing.freshness.kind === "stale" &&
+    listing.freshness.reason.kind === "source-recovering" &&
+    listing.freshness.reason.coverageGap
+      ? {
+          asOfTime: DateTime.formatLocal(DateTime.makeUnsafe(listing.asOf.atMs), {
+            timeStyle: "medium",
+          }),
+        }
+      : {}),
   });
   if (presentation.message === null) return null;
   return {
@@ -485,6 +498,8 @@ export function declaredEnvironmentSummary(
   /** A stage that runs nothing: where its first deploy stands, as its cell says it. */
   firstDeploy?: FirstDeploy | undefined,
 ): string {
+  if (row.version.label === undefined && firstDeploy !== undefined)
+    return firstDeployLine(firstDeploy) ?? row.line;
   return row.version.label === undefined && row.tone === "neutral"
     ? (firstDeployLine(firstDeploy) ?? NOTHING_DEPLOYED)
     : row.line;
@@ -492,19 +507,26 @@ export function declaredEnvironmentSummary(
 
 /**
  * The one line a group says about itself, in its own row: that it has no name
- * yet, that a stage or production the page repaired in the background is not
- * finished, or that the broker's Gitea side is still being set up. A repair's
- * failure is the group's to show, in the page's words — the platform's own
- * message is not the person's to read, and a line under the page is nobody's.
+ * yet, or where a stage or production stands whose setup is not finished —
+ * being finished, finished in vain, or waiting for the person's *Finish setting
+ * up* (audit R2: the page never finishes one by itself). A finish's failure is
+ * the group's to show, in the page's words — the platform's own message is not
+ * the person's to read, and a line under the page is nobody's.
  */
 export function projectsGroupLine(input: {
   readonly placeholder: boolean;
+  /** Its environment whose last finish did not go through. */
   readonly unfinished: GroupEnvironmentTier | undefined;
-  readonly gitea: string;
+  /** Its environment being finished now. */
+  readonly finishing: GroupEnvironmentTier | undefined;
+  /** Its environment whose setup is not finished. */
+  readonly halfMade: GroupEnvironmentTier | undefined;
 }): string | undefined {
   if (input.placeholder) return "This project has no name yet";
+  if (input.finishing !== undefined) return `Finishing ${input.finishing}…`;
   if (input.unfinished !== undefined) return `Couldn't finish setting up ${input.unfinished}`;
-  return input.gitea.length > 0 ? input.gitea : undefined;
+  if (input.halfMade !== undefined) return `Setting up ${input.halfMade} isn't finished`;
+  return undefined;
 }
 
 function SignedOutNotice({ message }: { readonly message: string }) {
@@ -512,7 +534,8 @@ function SignedOutNotice({ message }: { readonly message: string }) {
 }
 
 /**
- * The page's title row: the title, then the sort and the reload as a glyph. No creating action here — the left menu's
+ * The page's title row: the title, then the sort and the reload as a glyph.
+ * No creating action here — the left menu's
  * "New project" is the entry, and a filled pill beside the title was the
  * loudest thing on a page whose loud thing should be the Mate. No sentence
  * under the title either: the projects below say what the page is.
@@ -607,7 +630,7 @@ interface OpeningTarget {
 /**
  * The connect machinery of this page: the Mate a person asked to open, connected once its
  * container answers ready, landing the person in the conversation. A Mate this tab pressed is
- * connected by auto-connect once it answers, and that success lands them there all the same.
+ * connected by its coming view once it answers, and that success lands them there all the same.
  */
 export function useZeropsProjectConnection(): {
   readonly presses: ReadonlyArray<MatePress>;
@@ -625,8 +648,8 @@ export function useZeropsProjectConnection(): {
   readonly connectContainer: (containerOrigin: string) => Promise<void>;
   /**
    * Ends a birth or an opening on an admitted environment, from wherever it was admitted: this
-   * hook's own `connectContainer`, or a late success this page only observed (auto-connect
-   * reached the door first). The organization it was made in is read again, and the person lands
+   * hook's own `connectContainer`, or a late success this page only observed (another view's
+   * Connect reached the door first). The organization it was made in is read again, and the person lands
    * in the conversation — exactly what a successful `connectContainer` always does.
    */
   readonly finishBirth: (
@@ -792,7 +815,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const inventory = useZeropsInventory();
-  const { listing, isLoading, error, refresh: refreshCandidates } = useZeropsCandidates();
+  const { listing, error, refresh: refreshCandidates } = useZeropsCandidates();
   // The rows read so far; `listing` says whether they are all there are, and
   // the page's notice says so while they are not (`projectsListingNotice`).
   const observedCandidates = useMemo(() => heldCandidates(listing).rows, [listing]);
@@ -841,10 +864,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [creationVerdicts, nowMs, observedCandidates],
   );
   // A Mate this tab pressed lands the person in its conversation once it is
-  // connected. Auto-connect (the account runtime's) reaches the door — it never
+  // connected. A lease (the account runtime's) reaches the door — it never
   // navigates by design — so this watches for a project this page saw being
   // pressed, or one it is opening, turning up connected, and finishes from
-  // here. Gated strictly on those: an ordinary auto-connected environment must
+  // here. Gated strictly on those: an ordinary connected environment must
   // never pull anyone into a thread. A press is remembered for as long as the
   // page is mounted.
   const seenBirthsRef = useRef(new Set<string>());
@@ -891,10 +914,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   useEffect(() => () => unmountRef.current?.abort(), []);
 
   const [toolError, setToolError] = useState<string | null>(null);
-  /** The groups whose background repair of a stage or production did not finish. */
-  const [unfinished, setUnfinished] = useState<ReadonlyMap<string, GroupEnvironmentTier>>(
-    () => new Map(),
-  );
   const [creation, setCreation] = useState<EnvironmentCreationView | null>(null);
   // Ticks once a second while a creation runs, so the checklist's durations
   // move; stops the moment it settles.
@@ -913,13 +932,19 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // A creation the platform accepted is drawn in its group before the
   // listing holds its project, and a New project this tab is making from the
   // press — the same placing the left menu reads.
+  // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
+  const hqStructure = useAtomValue(hqStructureAtom);
+  // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
+  const hqKnown = useAtomValue(hqPlacementsAtom) !== null && hqStructure?.current === true;
   const groupTree = buildZeropsGroupTree(candidates, {
     rank: rankZeropsCandidateForListing,
     ...projectOrder,
     births: placedPressesIn(presses, activeOrganization?.id, Object.values(made)),
+    apps: emptyApplications(hqStructure, activeOrganization?.id),
   });
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
-  const activity = useZeropsAgentActivity();
+  // Each Mate as its menu row reads it: HQ's word of it, or its socket's.
+  const activityOf = useMateRowActivity(useZeropsAgentActivity());
   const updates = useZeropsMateUpdateStates();
   const withConversations = useAtomValue(environmentsWithSnapshotAtom);
   // What this person may do with each Mate, from the one role function the
@@ -935,22 +960,18 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         };
   const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
     viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
-  // Guide 0.8: a verb this person cannot finish is not offered. Every one of
-  // them is a platform write the platform would refuse from the wrong role.
-  const verbsOf = (candidate: ZeropsCandidate): MateVerbs =>
-    viewer === null
-      ? { open: true, rename: true, tag: true, move: true, delete: false, assign: false }
-      : resolveMateVerbs({ project: candidate.project, viewer });
-  // The member list is read when a row would use a name — a Mate this person
-  // may see and not open — and when they may hand a Mate over and so need
-  // somebody to hand it to. Never otherwise.
-  const anyListed = candidates.some((candidate) => visibilityOf(candidate) === "listed");
-  const anyAssignable = candidates.some((candidate) => verbsOf(candidate).assign);
-  const assignableMembers = useZeropsOrganizationMembers({
-    clientId: activeOrganization?.id,
-    enabled: anyListed || anyAssignable,
-  });
-  const members = assignableMembers;
+  // Whom HQ's rule is asked about for each row's verbs (`mateRowCan`): nobody where the session
+  // names nobody, and nothing is then offered.
+  const asker = useMemo(
+    () =>
+      offerAsker(
+        sessionOfferViewer(user, activeOrganization),
+        candidates.map((candidate) => candidate.project),
+      ),
+    [activeOrganization, candidates, user],
+  );
+  // Whose a Mate this person may see and not open is, named from HQ's people: no member list read.
+  const people = useAtomValue(hqPeopleAtom);
 
   /** A press of the organization on show: the page is not empty while one is on its way. */
   const activeBirths = presses.some((press) => press.organizationId === activeOrganization?.id);
@@ -975,33 +996,36 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     );
   };
 
+  // The organization's HQ, where the registry lives: its project is no project of the page's.
+  const accountHq = useAccountHq(activeOrganization?.id);
+  const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
+
   const rowInput = (
     candidate: ZeropsCandidatePresentation,
     role?: ZeropsEnvironmentRole | undefined,
   ): ZeropsRowInput => {
     const visibility = visibilityOf(candidate);
-    const openable = visibility !== "listed";
     const ownerName =
       visibility === "listed"
-        ? resolveMateOwnerName({ project: candidate.project, members })
+        ? resolveMateOwnerPerson({ project: candidate.project, people })?.name
         : undefined;
     const waiting = candidate.group !== "connected" && waitedOn(candidate);
     const mateFlag = candidateMateFlags.get(candidate.key);
     return {
+      outsideHq:
+        hasMate(candidate) &&
+        mateOutsideHq(
+          candidate.project,
+          hqKnown,
+          waiting || presses.some((press) => press.projectId === candidate.project.id),
+        ),
       candidate,
       health: candidateHealth.get(candidate.key),
       // A first build past its grace is still on its way, taking longer.
       firstBuildOverdue: firstBuildOverdue(candidate, nowMs),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
-      can: {
-        open: openable,
-        enable: openable,
-        setUpMate: openable,
-        start: openable,
-        restart: openable,
-        remove: openable,
-      },
+      can: mateRowCan(asker, candidate.project.id),
       ...(role === undefined ? {} : { role }),
       ...(visibility === undefined ? {} : { visibility }),
       ...(ownerName === undefined ? {} : { ownerName }),
@@ -1051,19 +1075,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const setUpMate = useCallback(
     async (candidate: ZeropsCandidate) => {
       if (!activeOrganization || settingUpKey !== null) return;
-      // A recovery keeps the name the Mate already has: the project is named
-      // after it, and a fresh name leaves the two disagreeing.
-      const botName = setUpMateBotName(
-        readZeropsGroupTags(candidate.project.tagList).bot,
-        taken,
-        (bytes) => crypto.getRandomValues(bytes),
-      );
-      if (botName === undefined) {
-        setConnectError(
-          "Still reading which names your Mates go by. Try Set up Mate again in a moment.",
-        );
-        return;
-      }
       const isCurrent = captureAccountLifetime();
       setSettingUpKey(candidate.key);
       setConnectError(null);
@@ -1075,13 +1086,29 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         const agents = group === undefined ? [] : await readGroupAgents(group.environments);
         if (!isCurrent()) return;
         const project = projectRef(activeOrganization.id, projectId);
-        // Already listed: the listing places it.
+        const hq = officialHq(accountHq);
+        // What it registers, by the rule Finish setup registers by, before its container: in the
+        // application HQ or the press this tab holds places it in, under that face (F6b);
+        // a new Mate in no application only where neither does.
+        const held = readMatePress(projectId);
+        const registration = mateFinishRegistration({
+          hq,
+          hqKnown,
+          structure: hqStructure?.structure ?? null,
+          project: candidate.project,
+          press: held,
+          writer: canWriteRegistry(sessionOfferViewer(user, activeOrganization)),
+          mayCreateRecord: mayOffer(asker, "create_mate_record", { projectId, held: "none" }),
+          standUp: false,
+          candidates,
+        });
+        // Already listed, the listing places it; still placed by the press it was made by.
         beginPress({
           projectId,
           organizationId: activeOrganization.id,
           startedAt: Date.now(),
           container: true,
-          placement: null,
+          placement: matePressPlacement(held) ?? null,
         });
         // Its container with its own key, and its project closed off before anyone is let in.
         const pressed = await finishMateSetup({
@@ -1093,18 +1120,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           projectId,
           projectName: candidate.project.name,
           container: { agents },
-          groupProjectIds: (group?.environments ?? []).flatMap(({ item }) =>
-            item.project.id === projectId ? [] : [item.project.id],
-          ),
-          viewer: pressViewer(user, activeOrganization),
-          registration: null,
+          registration,
+          hq,
           isCurrent,
         });
         if (!pressed.ok) throw new Error(pressed.error);
         if (!isCurrent()) return;
-        await runZeropsCommand(
-          runtime.commands.updateProjectTags(project, { kind: "agent-name", name: botName }),
-        );
+        // Declared a Mate.
+        await runZeropsCommand(runtime.commands.updateProjectTags(project, { kind: "mate" }));
       } catch (cause) {
         if (isCurrent()) setConnectError(zeropsErrorMessage(cause));
       } finally {
@@ -1117,16 +1140,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       }
     },
     [
+      accountHq,
       activeOrganization,
+      asker,
+      candidates,
       client,
       groupTree.groups,
+      hqKnown,
+      hqStructure,
       organizationRef,
       projectRef,
       readGroupAgents,
       setConnectError,
       settingUpKey,
       runtime,
-      taken,
       user,
     ],
   );
@@ -1151,18 +1178,15 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     ],
   );
 
-  // The quiet actions: rename an agent, move a project, rename a group. Each
+  // The quiet actions: rename an agent, move a project. Each
   // runs through the account-scoped command layer; observations update the model.
   const [rowDialog, setRowDialog] = useState<
     | { readonly kind: "rename-agent"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "move"; readonly candidate: ZeropsCandidate }
     | { readonly kind: "assign"; readonly candidate: ZeropsCandidate }
-    | { readonly kind: "rename-group"; readonly group: ZeropsGroup }
+    | { readonly kind: "delete-group"; readonly group: ZeropsGroup }
     | null
   >(null);
-  // The same write the project's own page uses, so one rename means one
-  // thing wherever it is offered.
-  const renameGroup = useRenameGroup();
   // The same write an environment's own page uses, so one way to open a
   // service to the internet means one thing wherever it is offered.
   const route = useEnableRoute();
@@ -1176,7 +1200,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    */
   const renderEnvironmentMenu = (
     candidate: ZeropsCandidatePresentation,
-    tags: ZeropsGroupTags,
+    tags: ZeropsMembership,
     mate: boolean,
     action?: ZeropsRowAction,
     updateMenuActions?: ReadonlyArray<ZeropsMenuAction>,
@@ -1187,6 +1211,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         actions={mate ? mateActions.actionsFor(candidate, tags, updateMenuActions ?? []) : []}
         enablingServiceId={route.enablingServiceId}
         label={`More for ${candidate.project.name}`}
+        projectId={tags.role === "prod" || tags.role === "stage" ? candidate.project.id : undefined}
         offers={candidate.routeOffers}
         onEnableRoute={(offer) => {
           void route.enable(candidate.project.id, offer.serviceId);
@@ -1225,7 +1250,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           case "confirm":
             return (
               <>
-                {quiet("Restarting interrupts work running in it.")}
+                <span className="min-w-0 truncate" data-zerops-surface="mate-subject">
+                  <RestartMateWarning
+                    name={candidate.project.name}
+                    projectId={candidate.project.id}
+                    environmentId={candidate.environmentId}
+                  />
+                </span>
                 <ZeropsMateVerb disabled={busy} label="Restart" onClick={upgradeRecovery.confirm} />
                 <ZeropsMateVerb label="Cancel" onClick={upgradeRecovery.cancel} />
               </>
@@ -1296,7 +1327,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     live: ZeropsAgentActivity | undefined,
     busy: boolean,
   ): React.ReactNode => {
-    if (candidate.group === "connected") {
+    if (action.kind === "not-in-hq") return presentation.detail;
+    if (candidate.group === "connected" || live !== undefined) {
       return live?.subject === undefined ? null : (
         <span className="min-w-0 truncate" data-zerops-surface="mate-subject">
           {live.subject}
@@ -1547,7 +1579,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const [creationRequest, setCreationRequest] = useState<{
     readonly groupId: string;
     readonly role: ZeropsEnvironmentRole;
-    readonly botName: string;
   } | null>(null);
   const requestedGroup = useMemo(
     () =>
@@ -1556,26 +1587,18 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         : groupTree.groups.find((entry) => entry.group.groupId === creationRequest.groupId),
     [creationRequest, groupTree.groups],
   );
-  const accountGitea = useAccountGitea(activeOrganization?.id);
-  const holdsGitea = useAccountHoldsGitea(activeOrganization?.id);
-  const giteaProjectId = accountGitea?.projectId;
-  // Read exactly as the account's Gitea project states it: an account on a
-  // devel region or behind a custom domain is read, never guessed.
-  const giteaOrigin = accountGitea?.state.url;
-  // The registry — which groups exist, and what each one's Gitea org is called
-  // (guide 4.1) — as the store holds the account's Gitea project's tags.
-  const registryState = useZeropsRegistry(activeOrganization?.id);
+  // The registry — which groups exist and which projects are in them (ADR 0002), read from HQ.
+  const registryState = useZeropsRegistry();
 
   // Every verb a Mate has, from the one place that defines them — shared with
   // a project's own page, which listed its Mates and could do nothing to them.
   const mateActions = useMateActions({ registry: registryState, serverVersions });
 
-  // The recipe is the group repo's, read as the person (guide 4.3) — never a
-  // sibling's export, which carried service shapes without their build setup
-  // and produced environments that could not build.
+  // The recipe is the application's, read as the person through its HQ (guide
+  // 4.3) — never a sibling's export, which carried service shapes without their
+  // build setup and produced environments that could not build.
   const groupRecipe = useZeropsGroupRecipe({
-    giteaOrigin,
-    slug: registryGroupSlug(registryState.registry, creationRequest?.groupId),
+    appId: creationRequest?.groupId,
     tier:
       creationRequest?.role === "prod"
         ? "production"
@@ -1589,18 +1612,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // is waiting to land, what was released — is read once for the account
   // (`ZeropsProjectFlowProvider`, D26); the page draws its share of it.
   const projectFlow = useZeropsProjectFlow();
+  // What HQ's rule shows this person of each project's changes: a project listed to them whose
+  // changes it does not says so in their steps, never "None yet".
+  const changeOffersOf = useChangeOffers();
 
   /**
-   * The face a Mate wears (`mateFaceOf`): the state of its conversation when its socket is up,
-   * else asleep, waking while it arrives — and needing you while its own change waits for your review, as its row in the
-   * menu and its conversation's composer say.
+   * The face a Mate wears (`mateFaceOf`): the state of its conversation while a word of now says
+   * it — HQ's, or its socket's — else asleep, and needing you while its own change waits for your
+   * review, as its row in the menu and its conversation's composer say.
    */
   const mateFace = (candidate: ZeropsCandidatePresentation): MateMarkState => {
-    const groupId = readZeropsGroupTags(candidate.project.tagList).groupId;
+    const groupId = readZeropsMembership(candidate.project).groupId;
     return mateFaceOf({
       connected: candidate.group === "connected" && candidate.environmentId !== undefined,
-      activity:
-        candidate.environmentId === undefined ? undefined : activity.get(candidate.environmentId),
+      activity: activityOf(candidate),
       reviewWaits: mateReviewWaits(
         groupId === undefined ? undefined : projectFlow.flows.get(groupId),
         candidate.project.id,
@@ -1629,18 +1654,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [groupDeploys],
   );
 
-  /** Each Mate's name, for a pull request's line — the bot's, the project's when it has none. */
+  /** Each Mate's name, for a pull request's line: its project's (D3). */
   const mateNames = useMemo(
     () =>
       new Map(
         groupTree.groups.flatMap(({ environments }) =>
-          environments.map(({ item }) => {
-            const tags = readZeropsGroupTags(item.project.tagList);
-            return [
-              item.project.id,
-              botDisplayName({ bot: tags.bot, projectName: item.project.name }),
-            ] as const;
-          }),
+          environments.map(({ item }) => [item.project.id, item.project.name] as const),
         ),
       ),
     [groupTree.groups],
@@ -1675,7 +1694,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const releaseContentLines = (group: ZeropsGroup) => {
     const flow = groupDeploys.get(group.groupId);
     if (flow === undefined || !flow.release.gate.allowed) return null;
-    const commits = flow.release.contents.flatMap((entry) => entry.commits);
+    // One commit several services take is one change (`releaseContentsCommits`).
+    const commits = releaseContentsCommits(flow.release.contents);
     if (commits.length === 0) return null;
     // Led in by what they are, one entry of the list: a sha and a subject
     // alone read as a stray commit.
@@ -1699,30 +1719,23 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   /**
    * One pull request's row, wherever it is drawn. Its verb is *Review*, the one
    * door to merging (pass 16, R1): the review reads the change, says whether it
-   * is safe and carries *Merge* — nothing merges from a row. `withMerge` is
-   * false where the project's next step already offers that door on it: one
-   * verb, once. `compact` stacks title, state and verb for a flow step's narrow
-   * column.
+   * is safe and carries *Merge* — nothing merges from a row, which says
+   * "Merging…" while the review's merge is under way. `withMerge` is false where
+   * the project's next step already offers that door on it: one verb, once.
+   * `compact` stacks title, state and verb for a flow step's narrow column.
    */
   const pullRequestRowOf = (
     group: ZeropsGroup,
     pull: FlowPullRequest,
     { withMerge, compact }: { readonly withMerge: boolean; readonly compact: boolean },
   ) => {
-    const slug = groupDeploys.get(group.groupId)?.slug;
     // One vocabulary down the column, the same one the project's own page and
-    // the left menu use: `changeState` answers a rebase and a passing check in
-    // the same register. `checkDotTone` alone said nothing at all about a
-    // change that no longer merges, which is the one a person needs to see.
+    // the left menu use (`changeState`): a change that no longer merges is the
+    // one a person needs to see.
     const state = changeState(pull);
-    const merging =
-      slug !== undefined &&
-      projectFlow.pending.has(
-        flowVerbKey({ kind: "merge", slug, repository: pull.repository, number: pull.number }),
-      );
     const action = withMerge ? (
       <ZeropsMateVerb
-        label={merging ? flowVerbLabel("merge", true) : REVIEW_LABEL}
+        label={changeRowVerb(projectFlow.pending, group.groupId, pull)}
         onClick={(event) => {
           openReview(
             {
@@ -1737,7 +1750,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       />
     ) : undefined;
     const key = `pull-${group.groupId}-${pull.repository}-${pull.number}`;
-    const line = pullRequestLineWith(pull, mateNames.get(pull.mateProjectId ?? ""));
+    const line = pullRequestLineWith(pull, mateNames.get(pull.mateProjectId));
     const open = () => {
       void navigate({
         to: "/change/$groupId/$repository/$number",
@@ -1777,29 +1790,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         line={line}
         onOpen={open}
         status={status}
-        tag={pull.kind === "recipe" ? "recipe" : "pr"}
+        tag={changeKindTag(pull)}
         title={pull.title}
       />
     );
   };
-
-  /**
-   * The one line a group says about itself: that the broker has not finished
-   * its Gitea side yet (`groupRows.ts`). The registry says which groups were
-   * asked for; the forge's listing of each org, on its own clock and on every
-   * screen, says which the broker has made (guide 4.5). A group whose org has
-   * not been answered for says nothing, so the heading never grows a line and
-   * then loses it.
-   */
-  const giteaOrganizations = projectFlow.organizations;
-  const groupLines = useMemo(() => {
-    const lines = new Map<string, string>();
-    for (const entry of registryState.registry.groups) {
-      const state = resolveGroupGitea({ organizationExists: giteaOrganizations.get(entry.slug) });
-      lines.set(entry.groupId, state === "being-set-up" ? GROUP_BEING_SET_UP_LINE : "");
-    }
-    return lines;
-  }, [giteaOrganizations, registryState.registry.groups]);
 
   /**
    * Publish a service on its `*.zerops.app` subdomain.
@@ -1819,15 +1814,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         return;
       }
       if (creationRunning) return;
-      setCreationRequest({
-        groupId,
-        role,
-        // A proposal only: the dialog refuses it until every Mate's name is
-        // read, and names the clash if one turns up (`validateBotName`).
-        botName: generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
-      });
+      setCreationRequest({ groupId, role });
     },
-    [addMate, creationRunning, taken],
+    [addMate, creationRunning],
   );
   // A stage or a production asked for from the left menu (`setUpEnvironment.ts`): its form opens
   // here, as this page's own ⋯ opens it — taken once, so a later visit opens nothing.
@@ -1857,11 +1846,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         role,
         choice,
         onPlanned: (steps) => {
-          setToolError(
-            tier !== null && giteaProjectId === undefined
-              ? "Your account's Gitea is still being set up."
-              : null,
-          );
+          setToolError(null);
           setCreationNowMs(Date.now());
           setCreation((current) =>
             current === null
@@ -1907,128 +1892,32 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           : { ...current, outcome: { kind: "done", deployments: outcome.deployments } },
       );
     },
-    [
-      activeOrganization,
-      creationRunning,
-      giteaProjectId,
-      groupTree.groups,
-      runCreation,
-      setConnectError,
-    ],
+    [activeOrganization, creationRunning, groupTree.groups, runCreation, setConnectError],
   );
 
-  /**
-   * Stands Gitea up as its own tagged project. Two platform calls with the
-   * user's own token and no container is read — the same shape every other
-   * creation in this model has.
-   */
-  const createTool = useCallback(async () => {
-    if (!activeOrganization) return;
-    setToolError(null);
-    try {
-      await runZeropsCommand(
-        runtime.commands.createToolProject({
-          organization: organizationRef(activeOrganization.id),
-          toolKind: "gitea",
-          name: toolProjectName("gitea"),
-          appUrl: window.location.origin,
-        }),
-      );
-    } catch (cause) {
-      setToolError(zeropsErrorMessage(cause));
-    }
-  }, [activeOrganization, organizationRef, runtime.commands]);
-
-  // A Mate's group is its token: every environment in the group readable,
-  // its own writable. Reconciled off the list this screen already has, once
-  // it is a complete read, whenever the groups or the tokens move — a grant
-  // write restarts nothing, and a group that has not moved is not written.
-  useZeropsGroupReach({
-    clientId: activeOrganization?.id,
-    enabled:
-      status === "signed-in" &&
-      !isLoading &&
-      listing.state === "known" &&
-      listing.coverage === "complete",
-    groups: useMemo(
-      () =>
-        groupTree.groups.map((entry) => ({
-          projectIds: entry.environments.map(({ item }) => item.project.id),
-          mateProjectIds: entry.environments
-            .filter(({ item }) => hasMate(item))
-            .map(({ item }) => item.project.id),
-        })),
-      [groupTree.groups],
-    ),
-  });
-
-  // A stage or a production whose creation lost its last writes — the
-  // registry, the broker's grant, the declaration — is finished here, off the
-  // same list, once no creation is on its way in this tab
-  // (`useZeropsGroupEnvironmentReconcile`).
-  // Only a group whose `environments.yaml` was read says what it declares: one still unread
-  // would read as declaring nothing, and every environment in it as half-made.
-  const declaredByGroup = useMemo(
-    () =>
-      new Map(
-        [...groupDeploys].flatMap(([groupId, state]) =>
-          state.declarationsRead
-            ? [[groupId, new Set(state.environments.map((entry) => entry.projectId))] as const]
-            : [],
-        ),
-      ),
-    [groupDeploys],
-  );
-  // An environment made before a job deployed (D27) has no deploy token on
-  // the broker; a person who may mint one finishes it here like any other
-  // write a creation lost.
-  const declaredProjects = useMemo(
-    () => [...declaredByGroup.values()].flatMap((projects) => [...projects]),
-    [declaredByGroup],
-  );
-  const [deployTokenGeneration, setDeployTokenGeneration] = useState(0);
-  const withoutDeployToken = useZeropsDeployTokenGaps({
-    giteaProjectId,
-    declaredProjects,
-    enabled:
-      status === "signed-in" &&
-      (activeOrganization?.roleCode === "ADMIN" || activeOrganization?.roleCode === "OWNER"),
-    generation: deployTokenGeneration,
-  });
+  // A stage or a production whose creation lost its last writes — its attach to its application,
+  // its deploy key — or whose key HQ does not hold, or holds broken (main E07), is said on its
+  // project's row and finished from its menu, when the person asks (`useFinishGroupEnvironment`).
+  // Only an application whose environments HQ has said says what it holds: one still unsaid would
+  // read as holding nothing, and every environment in it as half-made.
+  const heldEnvironments = useAtomValue(hqEnvironmentsAtom);
   const halfMade = useMemo(
     () =>
-      halfMadeGroupEnvironments({
-        projects: candidates.map((candidate) => candidate.project),
-        registry: registryState.registry,
-        declared: declaredByGroup,
-        withoutDeployToken,
-      }),
-    [candidates, declaredByGroup, registryState.registry, withoutDeployToken],
+      heldEnvironments === null
+        ? []
+        : halfMadeGroupEnvironments({
+            projects: candidates.map((candidate) => candidate.project),
+            registry: registryState.registry,
+            environments: heldEnvironments,
+            // A key is minted only by somebody HQ's rule lets keep it (`keep_deploy_token`).
+            mayKey: (projectId) => mayOffer(asker, "keep_deploy_token", { projectId }),
+          }),
+    [asker, candidates, heldEnvironments, registryState.registry],
   );
-  useZeropsGroupEnvironmentReconcile({
-    enabled: status === "signed-in" && projectFlow.readable && !isLoading && !creationRunning,
-    client,
-    data: { runtime, projectRef },
-    clientId: activeOrganization?.id,
-    giteaOrigin,
-    giteaProjectId,
-    halfMade,
-    // Not a failed creation: the project runs, and what is outstanding is
-    // said on its group's row (`projectsGroupLine`), not under the page.
-    onOutcome: (entry, outcome) => {
-      setDeployTokenGeneration((current) => current + 1);
-      setUnfinished((current) => {
-        const next = new Map(current);
-        if (outcome.failed === undefined) next.delete(entry.groupId);
-        else next.set(entry.groupId, entry.tier);
-        return next;
-      });
-    },
-  });
+  const finishing = useFinishGroupEnvironment({ client, clientId: activeOrganization?.id, hq });
 
-  // The throwaways a crashed tab left on the account. Nothing a person did
-  // asks for this; it is here because this is where an account is read.
-  useZeropsThrowawaySweep({
+  // Persisted cleanup debt is restored after a crash, once inventory admits the account.
+  const throwawayCleanup = useZeropsThrowawaySweep({
     clientId: activeOrganization?.id,
     // Not on sign-in alone: deleting a token is a `project-write`, and the api
     // admits one only through the epoch's grant (`admitWritesThrough`), which
@@ -2106,14 +1995,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       projectName: claimed.name,
       // The pool made its container.
       container: null,
-      groupProjectIds: [],
-      viewer: null,
       registration: null,
+      hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
       isCurrent: captureAccountLifetime(),
       // A container the pool made: its key at ADMIN, lowered.
       harden: true,
     });
   }, [
+    accountHq,
     clearLastRegistration,
     client,
     inventory.projects,
@@ -2188,7 +2077,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const input = rowInput(candidate, role);
     const presentation = deriveZeropsRowPresentation(input);
     const action = deriveZeropsRowAction(input);
-    const tags = readZeropsGroupTags(candidate.project.tagList);
+    const tags = readZeropsMembership(candidate.project);
     const busy = busyKeys.has(candidate.key);
     // The project itself is the row's concern. Only a project on its
     // way in, or out of reach, gets a word; one that is simply there
@@ -2235,9 +2124,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         // A group's stage or production: its name opens the stop's page.
         link={stopLinkOf(tags.groupId, candidate.project.id, role)}
         menu={renderEnvironmentMenu(candidate, tags, false)}
-        // `Links - stage` under a heading that says `Links`: the group's
-        // own page calls it `stage`, and so does the left menu.
-        name={environmentNameUnderGroup(tags.label, candidate.project.name)}
+        // As Zerops names the project, whole (D3).
+        name={candidate.project.name}
         status={
           projectTrouble ? (
             <StatusDot
@@ -2274,13 +2162,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const input = rowInput(candidate, role);
     const presentation = deriveZeropsRowPresentation(input);
     const action = deriveZeropsRowAction(input);
-    const tags = readZeropsGroupTags(candidate.project.tagList);
+    const tags = readZeropsMembership(candidate.project);
     const connected = candidate.group === "connected";
     const busy = busyKeys.has(candidate.key);
-    const live =
-      connected && candidate.environmentId !== undefined
-        ? activity.get(candidate.environmentId)
-        : undefined;
+    const live = activityOfNow(activityOf(candidate));
     const select = mateOpenerOf(candidate);
     // Not a hover-only verb on the line: a real, always-visible button
     // at the card's trailing edge, next to where the menu sits.
@@ -2313,9 +2198,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           {busy ? "Removing…" : "Remove"}
         </Button>
       ) : undefined;
-    const name = botDisplayName({ bot: tags.bot, projectName: candidate.project.name });
+    const name = candidate.project.name;
     const tint = tints.get(candidate.project.id) ?? "slate";
-    const shape = mateShapeOf(candidate.project.tagList, tint);
+    const shape = mateShapeOf(candidate.project, tint);
     // What the menu asked of this Mate's server — a check, an update — is
     // answered on its card, over its subject, until it settles: the menu
     // closes on the click, and the update restarts the Mate, so the card is
@@ -2373,60 +2258,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   };
 
   /**
-   * A tool, in the page's last quiet line: its name as the way to it, and its
-   * menu. The project's own name, not the tool's — it is deliberately not
-   * called "Gitea" (it holds the broker and the groups' runners too,
-   * `tools.ts`), and a line that says "Gitea" sends somebody to Zerops looking
-   * for a project by that name.
-   */
-  const renderTool = (candidate: ZeropsCandidatePresentation, kind: ZeropsToolKind) => {
-    // A tool has no Mate and never will: Gitea's own state (`deriveGiteaState`,
-    // read once for the account) says whether it is up and where it is; the
-    // platform's project status covers the minutes before its services exist.
-    const gitea = accountGitea?.projectId === candidate.project.id ? accountGitea.state : undefined;
-    const line = giteaToolLine({
-      projectStatus: candidate.project.status,
-      phase: gitea?.phase,
-      url: gitea?.url,
-    });
-    const name = candidate.project.name || TOOL_LABEL[kind];
-    return (
-      <span className="group/tool inline-flex items-center gap-1" data-zerops-surface="tool">
-        {line.kind === "link" ? (
-          <a
-            className="underline-offset-2 hover:text-foreground hover:underline"
-            data-zerops-surface="tool-link"
-            href={line.url}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {name}
-          </a>
-        ) : (
-          <span>
-            {name}
-            {line.kind === "setting-up"
-              ? " · Setting up."
-              : line.kind === "unavailable"
-                ? " · Not available."
-                : ""}
-          </span>
-        )}
-        <ZeropsProjectMenu
-          actions={[]}
-          enablingServiceId={route.enablingServiceId}
-          label={`More for ${name}`}
-          offers={candidate.routeOffers}
-          onEnableRoute={(offer) => {
-            void route.enable(candidate.project.id, offer.serviceId);
-          }}
-          routes={candidate.routes}
-        />
-      </span>
-    );
-  };
-
-  /**
    * A project's own quiet actions: its name, the environments a person adds
    * to it — another Mate, a stage, which is optional and never a step before
    * production (D16, D28) — and, where the recipe still has room for one, a
@@ -2448,7 +2279,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       mate.preview === undefined ? [] : [{ name: mate.name, url: mate.preview }],
     );
     return (
-      <ZeropsProjectMenu
+      <ZeropsProjectRenameMenu
         actions={[
           ...previews.map((preview) => ({
             id: `preview:${preview.name}`,
@@ -2458,13 +2289,19 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             },
           })),
           ...(previews.length === 0 ? [] : [{ id: "previews-end", separator: true as const }]),
-          {
-            id: "rename-group",
-            label: groupNameIsPlaceholder(group) ? "Name this project" : "Rename project",
-            onSelect: () => {
-              setRowDialog({ kind: "rename-group", group });
-            },
-          },
+          // A project with nothing in it is offered its first Mate, and nothing more.
+          ...(groupIsEmpty(group)
+            ? [
+                {
+                  id: "add-mate",
+                  label: "Add Mate",
+                  disabled: creationRunning,
+                  onSelect: () => {
+                    requestEnvironment(group.groupId, "dev");
+                  },
+                },
+              ]
+            : []),
           ...(addsOfferedFor(group)
             ? [
                 {
@@ -2485,7 +2322,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 },
               ]
             : []),
-          ...(mayCreate && creatableRoles(group).includes("prod")
+          ...(mayCreate && !groupIsEmpty(group) && creatableRoles(group).includes("prod")
             ? [
                 {
                   id: "add-production",
@@ -2497,29 +2334,50 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 },
               ]
             : []),
+          // A stage or a production whose setup is not finished, finished as the person asks.
+          ...halfMade
+            .filter((entry) => entry.groupId === group.groupId)
+            .map((entry) => ({
+              id: `finish-${entry.tier}`,
+              label: `Finish setting up ${entry.tier}`,
+              disabled: creationRunning || finishing.finishing.has(group.groupId),
+              onSelect: () => {
+                finishing.finish(entry);
+              },
+            })),
+          // A project with nothing in it goes, at whoever writes the structure's word.
+          ...(deleteOffered(
+            group,
+            mayOffer(asker, "delete_app", null),
+            applicationContents(hqStructure, activeOrganization?.id, group.groupId),
+          )
+            ? [
+                {
+                  id: "delete-group",
+                  label: `Delete ${group.name}…`,
+                  variant: "destructive" as const,
+                  onSelect: () => {
+                    setRowDialog({ kind: "delete-group", group });
+                  },
+                },
+              ]
+            : []),
         ]}
-        label={`More for ${group.name}`}
+        group={group}
       />
     );
   };
 
   /**
    * The rows of a project that are not one of its four steps: why *Release*
-   * is not offered, what it would carry, the releases (each with the way back
-   * to it) and the changes waiting on its recipe. `null` where it has none.
+   * is not offered, what it would carry and the releases (each with the way back
+   * to it). `null` where it has none.
    */
   const renderGroupRows = (group: ZeropsGroup): React.ReactNode => {
     const gate = releaseGateLine(group);
     const contents = releaseContentLines(group);
     const releases = groupDeploys.get(group.groupId)?.releases ?? [];
-    // The recipe changes waiting on somebody: last, under the environments
-    // they would change.
-    const recipes = (groupDeploys.get(group.groupId)?.pullRequests ?? [])
-      .filter((pull) => pull.kind === "recipe")
-      .map((pull) => pullRequestRowOf(group, pull, { withMerge: true, compact: false }));
-    if (gate === null && contents === null && releases.length === 0 && recipes.length === 0) {
-      return null;
-    }
+    if (gate === null && contents === null && releases.length === 0) return null;
     return (
       <>
         {gate}
@@ -2532,7 +2390,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           pending={projectFlow.pending}
           releases={releases}
         />
-        {recipes}
       </>
     );
   };
@@ -2541,8 +2398,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    * The verb of a project's next step, where the step says one (`groupFlow`).
    * Each acts on the thing it names: a Mate opens, a failed deploy's build opens
    * its page, a change — one to merge or one that cannot land — and a release
-   * open their review (pass 16, R1), and production is added here — not by the
-   * Mate.
+   * open their review (pass 16, R1).
    */
   const renderNextStep = (
     entry: ProjectsFlowGroup<ZeropsCandidatePresentation>,
@@ -2568,38 +2424,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       case "release":
         // The door to the release's review, which names the version and tags it.
         return <ZeropsReleaseVerb groupId={group.groupId} label={step.verb} />;
-      case "add-production": {
-        // Whose production is — the person's to add, not the Mate's — is the
-        // verb's to say where it is pressed; its cell stays one line. Beside
-        // the button, not in it, so its name stays "+ Add production".
-        const hintId = `add-production-hint-${group.groupId}`;
-        return (
-          <>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    aria-describedby={hintId}
-                    data-zerops-next-step-verb={step.kind}
-                    disabled={creationRunning}
-                    onClick={() => {
-                      requestEnvironment(group.groupId, "prod");
-                    }}
-                    size="compact"
-                    variant="outline"
-                  />
-                }
-              >
-                {`+ ${step.verb}`}
-              </TooltipTrigger>
-              <TooltipPopup>{PRODUCTION_ADDED_HERE}</TooltipPopup>
-            </Tooltip>
-            <span className="sr-only" id={hintId}>
-              {PRODUCTION_ADDED_HERE}
-            </span>
-          </>
-        );
-      }
+      case "add-production":
+        // Never a step that waits (`nextStepAwaitsSomebody`), so never a row's verb: adding
+        // production is the row's menu's offer.
+        return null;
       case "mate": {
         const mate = entry.mates.get(target.projectId);
         if (mate === undefined) return null;
@@ -2641,27 +2469,26 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const flowGroups = groupTree.groups.map(
     ({ group, environments }): ProjectsFlowGroup<ZeropsCandidatePresentation> => {
       const reads = groupDeploys.get(group.groupId);
+      const changesUnknown = changesUnknownOf({
+        offers: changeOffersOf(group.groupId),
+        changesFailure: reads?.changesFailure,
+      });
       const awaiting = flowStepsAwaiting({
         read: reads !== undefined,
         changesKnown: reads?.changesKnown === true,
-        changesFailed: reads?.changesFailure !== undefined,
-        // Out and expected back: a Gitea session is held or coming, and the
-        // group has an org to read (or the registry has not answered yet).
-        readOut:
-          projectFlow.signInTrouble === null &&
-          (projectFlow.slugs.size === 0 || projectFlow.slugs.has(group.groupId)),
+        changesUnknown,
+        // Out and expected back: an HQ is open, whose stream tells its changes.
+        readOut: projectFlow.hqAddress !== undefined,
       });
-      const members = groupMemberFactsOf(
-        environments,
-        (item) => (item.environmentId === undefined ? undefined : activity.get(item.environmentId)),
-        (item) => item.environmentId !== undefined && withConversations.has(item.environmentId),
-        user?.id,
-      );
+      const conversationsRead = (item: ZeropsCandidatePresentation) =>
+        item.environmentId !== undefined && withConversations.has(item.environmentId);
+      const members = groupMemberFactsOf(environments, activityOf, conversationsRead, user?.id);
       const isStop = (role: ZeropsEnvironmentRole | undefined) =>
         role === "stage" || role === "prod";
       const placeholder = groupNameIsPlaceholder(group);
       return {
         group,
+        contents: applicationContents(hqStructure, activeOrganization?.id, group.groupId),
         flow: groupFlow(
           groupFlowInputOf({
             groupId: group.groupId,
@@ -2674,7 +2501,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               addsOffered: addsOfferedFor(group),
             }),
             pending: group.pending,
-            runner: projectFlow.runners?.get(group.groupId),
             nowMs,
           }),
         ),
@@ -2683,15 +2509,16 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             const name = members[index]?.mate?.name;
             return name === undefined ? [] : [{ item, name }];
           }),
-          (environmentId) => activity.get(environmentId),
+          activityOf,
         ),
         matesKnown: matesKnownOf(
           environments.filter(({ item }) => hasMate(item)).map(({ item }) => item),
-          (environmentId) => withConversations.has(environmentId),
+          activityOf,
+          conversationsRead,
         ),
         awaiting: awaiting.steps,
         changesAwaiting: awaiting.changes,
-        changesFailed: reads?.changesFailure !== undefined,
+        changesUnknown,
         mates: new Map(
           environments
             .filter(({ item }) => hasMate(item))
@@ -2708,8 +2535,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         // project, and it disappears the moment one does.
         line: projectsGroupLine({
           placeholder,
-          unfinished: unfinished.get(group.groupId),
-          gitea: groupLines.get(group.groupId) ?? "",
+          unfinished: finishing.unfinished.get(group.groupId),
+          finishing: finishing.finishing.get(group.groupId),
+          halfMade: halfMade.find((entry) => entry.groupId === group.groupId)?.tier,
         }),
         placeholder,
       };
@@ -2722,16 +2550,21 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       ?.firstDeploy;
   // The page's one line of trouble: a refusal of something done here — a
   // merge or a release the project flow refused included — one at a time.
-  const trouble = toolError ?? renameGroup.trouble ?? route.trouble ?? projectFlow.trouble;
-  const ungroupedRows = groupTree.ungrouped.map((candidate) => ({
-    item: candidate,
-    action: deriveZeropsRowAction(rowInput(candidate)).kind,
-  }));
+  const trouble = toolError ?? route.trouble ?? projectFlow.trouble;
+  const ungroupedRows = shownUngrouped(
+    withoutOfficialHq(groupTree.ungrouped, accountHq.hq).map((candidate) => ({
+      item: candidate,
+      action: deriveZeropsRowAction(rowInput(candidate)).kind,
+    })),
+  );
 
   return (
     // The page's end clears the app's fixed "Open main sidebar" control, so
     // the last row is never under it with the menu closed.
     <div className="space-y-6 pb-12">
+      {status === "signed-in" && activeOrganization !== null && !inventory.isLoading ? (
+        <ZeropsThrowawayCleanup view={throwawayCleanup} />
+      ) : null}
       {listingNotice === null ? null : listingNotice.region === "placeholder" ? (
         // Nothing read yet: the one wait line at the page's centre, where the boot frame said it.
         <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={listingNotice.message.text} />
@@ -2794,14 +2627,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         onCreateProject={
           hasNoZeropsProject({ listing, creationPending: activeBirths }) ? askNewProject : undefined
         }
-        // A Gitea the grant withholds is still the account's: never offered a second.
-        {...(holdsGitea
-          ? {}
-          : {
-              onCreateTool: () => {
-                void createTool();
-              },
-            })}
+        hqTool={<ZeropsHqTool />}
         openMate={mateOpenerOf}
         onRetryContainers={(items) => {
           for (const candidate of items) runRowAction(candidate, "retry-probe");
@@ -2814,7 +2640,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           const tint = tints.get(candidate.project.id) ?? "slate";
           return (
             <MateFace
-              shape={mateShapeOf(candidate.project.tagList, tint)}
+              shape={mateShapeOf(candidate.project, tint)}
               size={size}
               state={mateFace(candidate)}
               tint={tint}
@@ -2832,56 +2658,36 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           if (candidate === undefined) return null;
           return <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} />;
         }}
-        renderTool={renderTool}
-        tools={groupTree.tools}
         ungrouped={ungroupedRows}
       />
       {mateActions.dialogs}
-      {rowDialog?.kind === "rename-group" ? (
-        <ZeropsRenameDialog
-          description="The name is written onto every environment in the project."
-          initialValue={rowDialog.group.nameSource === "id" ? "" : rowDialog.group.name}
-          key={`rename-group:${rowDialog.group.groupId}`}
-          label="Project name"
-          onCancel={() => {
+      {rowDialog?.kind === "delete-group" ? (
+        <ZeropsDeleteProjectDialog
+          group={rowDialog.group}
+          contents={applicationContents(
+            hqStructure,
+            activeOrganization?.id,
+            rowDialog.group.groupId,
+          )}
+          key={`delete-group:${rowDialog.group.groupId}`}
+          onClose={() => {
             setRowDialog(null);
           }}
-          onOpenChange={(open) => {
-            if (!open) setRowDialog(null);
-          }}
-          onSubmit={(name) => {
-            const { group } = rowDialog;
-            setRowDialog(null);
-            void renameGroup.rename(group, name);
-          }}
-          open
-          submitLabel="Rename"
-          title={rowDialog.group.nameSource === "id" ? "Name this project" : "Rename the project"}
-          validate={(value) => (value.trim().length === 0 ? "Give the project a name." : undefined)}
         />
       ) : null}
       {creationRequest === null || requestedGroup === undefined ? null : (
         <ZeropsEnvironmentCreationDialog
           tier={groupRecipe.tier}
           tierServices={groupRecipe.services}
-          tierLoading={groupRecipe.loading}
-          defaultBotName={creationRequest.botName}
+          recipe={creationRecipe(groupRecipe)}
+          recipeRereading={groupRecipe.rereading}
+          onRecipeRetry={groupRecipe.reread}
           defaultName={proposedEnvironmentName({
             groupName: requestedGroup.group.name,
             roleLabel:
               environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role,
-            botName: creationRequest.role === "dev" ? creationRequest.botName : undefined,
             taken: requestedGroup.environments.map(({ item }) => item.project.name),
           })}
-          proposeName={(botName) =>
-            proposedEnvironmentName({
-              groupName: requestedGroup.group.name,
-              roleLabel:
-                environmentRoleLabel(creationRequest.role)?.toLowerCase() ?? creationRequest.role,
-              botName: creationRequest.role === "dev" ? botName : undefined,
-              taken: requestedGroup.environments.map(({ item }) => item.project.name),
-            })
-          }
           defaultTintFor={(name) => newMateTint(candidates, name)}
           defaultWithAgent={defaultAgentForRole(creationRequest.role)}
           groupName={requestedGroup.group.name}

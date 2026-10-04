@@ -9,7 +9,12 @@ import {
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 
-import { candidatePickerBody, mobileCandidates, type MobileCandidate } from "./candidate-listing";
+import {
+  candidatePickerAction,
+  candidatePickerBody,
+  mobileCandidates,
+  type MobileCandidate,
+} from "./candidate-listing";
 
 const NOW_MS = 1_000_000;
 
@@ -257,5 +262,14 @@ describe("mobileCandidates", () => {
       },
       { key: unbuilt.key, group: "ready", reachability: null, connectable: false },
     ]);
+  });
+});
+
+describe("project detail selection", () => {
+  it.each([
+    { action: null, opened: false, expected: "View project" },
+    { action: "Connect", opened: false, expected: "View project" },
+  ])("offers $expected with opened=$opened and action=$action", ({ action, opened, expected }) => {
+    expect(candidatePickerAction(action, opened)).toBe(expected);
   });
 });

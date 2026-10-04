@@ -2,7 +2,6 @@
  * What a Mate's row in the left menu draws, read from what the row knows —
  * pure, so each rule has its table.
  */
-import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   matePose,
@@ -109,14 +108,14 @@ const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
  * 2026-09-29, of a *Sign in* on the row: it did nothing there, and stood on
  * the row's edge).
  *
- * To the person who made it — named at birth by `mate:by:`, whether New project or Add a Mate
- * made it, or by its stand-up's `mate:standup:` tag on a Mate born before that — the line says it
- * waits on them: "Waiting for your sign-in", in ink, with the amber dot of what needs them (board
- * D1, 2026-09-30). One state, one phrase whichever flow made it (run 4, 2026-10-02). A Mate whose
+ * To the person who made it — named by HQ's record, whether New project or Add a Mate made it, or
+ * by its stand-up's record on a Mate recorded before HQ kept its maker — the line says it waits
+ * on them: "Waiting for your sign-in", in ink, with the amber dot of what needs them (board D1,
+ * 2026-09-30). One state, one phrase whichever flow made it (run 4, 2026-10-02). A Mate whose
  * sign-in somebody is waited for never reads like a failure (the owner, 2026-10-01): anybody else
  * reads that it waits for a sign-in, quietly, and a viewer not known yet reads nothing. A Mate
  * that names nobody reads the fact. A Mate that runs on an agent that needs no sign-in (Cursor,
- * OpenCode…: `mate:runs:`) waits on nobody's sign-in and says none of it; its maker holds its
+ * OpenCode…: HQ's overview) waits on nobody's sign-in and says none of it; its maker holds its
  * seat, as its records name them.
  */
 export function mateOwnerView(input: {
@@ -125,7 +124,7 @@ export function mateOwnerView(input: {
     | undefined;
   /**
    * What its records say (`mateOwnerRecords`): `named` unknown while its roles are not read; a
-   * Mate that runs on an agent Mate signs nobody in to (`mate:runs:`) waits on no sign-in.
+   * Mate that runs on an agent Mate signs nobody in to (HQ's overview) waits on no sign-in.
    */
   readonly records: {
     readonly named: boolean | undefined;
@@ -134,9 +133,9 @@ export function mateOwnerView(input: {
   };
   /** The row already says what was asked under the name. */
   readonly asked: boolean;
-  /** Who added it, as its stand-up tag names them (`readZeropsGroupTags(…).standUp`). */
+  /** Who added it, as HQ's stand-up record names them (`readZeropsMembership(…).standUp`). */
   readonly standUpBy?: string | undefined;
-  /** Who made it, as its birth names them (`readZeropsGroupTags(…).madeBy`). */
+  /** Who made it, as HQ's record names them (`readZeropsMembership(…).madeBy`). */
   readonly madeBy?: string | undefined;
   /** The Zerops user looking, when known. */
   readonly viewer?: string | undefined;
@@ -192,13 +191,14 @@ export function ownerBadge(seat: OwnerSeat, isViewer: boolean): BadgeSeat | null
  * owner's badge (the owner, 2026-09-30: "the not yours should have the avatar
  * bigger and maybe some other small visual diff also"): a colleague's, and
  * nobody's until somebody signs it in. Known from the first paint: the owner
- * the member list names, or before the list has named them, the signer tag
- * against the viewer's own id; a Mate that may be the viewer's reads as theirs.
+ * HQ's people name, or before they have named them, the signer HQ's overview
+ * names against the viewer's own id; a Mate that may be the viewer's reads as
+ * theirs.
  */
 export function mateNotYours(input: {
   readonly seat: OwnerSeat;
   readonly isViewer: boolean;
-  /** The user id its tags make it the Mate of (`mateOwnerRecords.person`). */
+  /** The user id its signer is, as HQ's overview names them (`mateOwnerRecords`). */
   readonly signer: string | undefined;
   readonly viewer: string | undefined;
 }): boolean {
@@ -251,19 +251,17 @@ export function mateCrewItem(input: {
 }
 
 /**
- * The one colour a change row's pull-request mark may wear (S3): red where
- * its checks fail — broken — and amber where it has fallen behind `main` and
- * no longer merges — it didn't go through. Everything else is the mark's own
- * grey: checks running, Gitea still working the answer out, or nothing wrong.
- * The verdict itself lives in the review, not on the row; a change drawn from
- * memory says nothing until Gitea says it again.
+ * The one colour a change row's pull-request mark may wear (S3): amber where
+ * it has fallen behind `main` and no longer merges — it didn't go through.
+ * Everything else is the mark's own grey: still working the answer out, or
+ * nothing wrong. The verdict itself lives in the review, not on the row; a
+ * change drawn from memory says nothing until it is read again.
  */
 export function changeMarkTone(
-  pull: Pick<FlowPullRequest, "number" | "mergeability" | "checks">,
+  pull: Pick<FlowPullRequest, "number" | "mergeability">,
   remembered: boolean,
-): "failed" | "attention" | undefined {
+): "attention" | undefined {
   if (remembered) return undefined;
-  if (pull.checks === "failing") return "failed";
   return pullRequestBlocked(pull)?.kind === "behind" ? "attention" : undefined;
 }
 
@@ -291,8 +289,8 @@ export type MateRowReply =
   | { readonly kind: "live"; readonly words: string; readonly code: string | undefined }
   | { readonly kind: "pending" }
   /**
-   * The line remembered as holding words still to come, drawn from memory: its place kept, so a
-   * socket opening grows no row, and nothing in it — words on their way are only true now.
+   * The line told as holding words still to come, drawn at rest: its place kept, so a socket
+   * opening grows no row, and nothing in it — words on their way are only true now.
    */
   | { readonly kind: "held" }
   | undefined;
@@ -447,48 +445,24 @@ export function mateFinishingView(view: MateRowView): MateRowView {
   return { ...view, ask: view.reply === undefined ? undefined : view.ask, reply: undefined };
 }
 
-/** The socket's phases in which a conversation read through it still stands. */
-const STANDING_PHASES: ReadonlySet<EnvironmentConnectionPhase> = new Set([
-  "connected",
-  "reconnecting",
-]);
-
-/**
- * Which reading a Mate's row draws: its conversation's while its socket is up or only blinking —
- * reconnecting, when the conversation it was read from still stands — and what this browser
- * remembers of it otherwise (`menuMemory.ts`): a socket not opened yet this page, one that failed,
- * none at all. A Mate at its first job must not fall asleep in the menu because its socket
- * blinked (the owner, 2026-09-29).
- */
-export function mateRowActivity(input: {
-  /** Its conversation's reading, where this page has one. */
-  readonly live: ZeropsAgentActivity | undefined;
-  /** Its registered environment's socket, where there is one. */
-  readonly phase: EnvironmentConnectionPhase | undefined;
-  readonly remembered: ZeropsAgentActivity | undefined;
-}): ZeropsAgentActivity | undefined {
-  const standing = input.phase !== undefined && STANDING_PHASES.has(input.phase);
-  return (standing ? input.live : undefined) ?? input.remembered;
-}
-
 /**
  * A row's one reading of its Mate: the face and the words both from the activity it draws, so
  * the two never disagree (the owner, 2026-09-29: a new Mate at work read "Working on a reply"
  * under an asleep face — the words were this browser's memory of the row, drawn the moment its
  * candidate was not connected, and the face that moment's socket).
  *
- * | the activity drawn                    | face                    | a line of words to come |
- * | ------------------------------------- | ----------------------- | ----------------------- |
- * | read live (its socket up, or blinking) | the conversation's own  | the dots                |
- * | remembered (`menuMemory.ts`)          | asleep, idle if connected | held, empty             |
- * | none                                  | asleep, idle if connected | —                       |
+ * | the activity drawn                                  | face                      | a line of words to come |
+ * | --------------------------------------------------- | ------------------------- | ----------------------- |
+ * | live (HQ holds it live, or its socket up, blinking) | the conversation's own    | the dots                |
+ * | at rest (`restingActivity`)                         | asleep, idle if connected | held, empty             |
+ * | none                                                | asleep, idle if connected | —                       |
  *
  * Its own change waiting on the person's review lifts every face but work's to needs-you
  * (`mateFaceAwaitingReview`), as the composer's top wears it for the same fact — on the viewer's
  * own Mate only: another's waits on its owner, and rests here.
  *
  * A live reading stands while the socket blinks — reconnecting, a listing re-read — because the
- * conversation it was read from still stands; memory is only ever at rest.
+ * conversation it was read from still stands; a word at rest is only ever at rest.
  */
 export function mateRowReading(input: {
   /** Its container is connected right now. */

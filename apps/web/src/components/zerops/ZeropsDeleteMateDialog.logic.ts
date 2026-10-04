@@ -7,7 +7,7 @@
  * go with it. The dialog says so in one paragraph and asks for the Mate's name, typed, before its
  * button deletes anything: nothing about this can be undone.
  */
-import { hasMate } from "@t3tools/client-runtime/zerops";
+import { hasMate, type ZeropsEnvironmentServices } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
 /** What a Mate on its way off Zerops says: its dialog's button, and its row's line. */
@@ -28,10 +28,23 @@ export interface DeleteMateWords {
 }
 
 /**
- * What goes with the environment, counted from what its row already read: its developer's
- * services (`summarizeEnvironmentServices`, the Mate's own container not among them), in the
- * singular or the plural; none of them, and only the Mate's container goes; not read yet, and
- * the words carry no number they cannot back.
+ * Every service the deletion takes off Zerops, counted from what its row already read: its
+ * developer's (`summarizeEnvironmentServices`) and the Mate's own container, which that summary
+ * leaves out — the services the project shows in Zerops (e2e 2026-10-03: zcp, appdev and
+ * appstage read "its 2 services"). `undefined` while its services are unread.
+ */
+export function deleteMateServiceCount(candidate: {
+  readonly service?: ZeropsCandidate["service"];
+  readonly services?: Pick<ZeropsEnvironmentServices, "hostnames">;
+}): number | undefined {
+  const own = candidate.services?.hostnames.length;
+  if (own === undefined) return undefined;
+  return candidate.service === undefined ? own : own + 1;
+}
+
+/**
+ * What goes with the environment (`deleteMateServiceCount`), in the singular or the plural; no
+ * service at all; not read yet, and the words carry no number they cannot back.
  */
 function whatGoesWithIt(services: number | undefined): string {
   if (services === undefined) return "with its services and everything in them";
@@ -45,7 +58,7 @@ export function deleteMateWords(input: {
   readonly name: string;
   /** Its environment's name: the Zerops project it lives in. */
   readonly environment: string;
-  /** Its developer's services, as its row read them; `undefined` while unread. */
+  /** Every service that goes with it (`deleteMateServiceCount`); `undefined` while unread. */
   readonly services: number | undefined;
   /** Whose Mate it is, where that is a colleague — "Ada's Mate", as its row says it. */
   readonly owner: string | undefined;

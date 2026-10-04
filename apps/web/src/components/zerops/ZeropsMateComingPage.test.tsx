@@ -1,4 +1,26 @@
 // @vitest-environment happy-dom
+import { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
+import {
+  DEFAULT_ZEROPS_DATA_POLICY,
+  knownProjectsOf,
+  makeInitialZeropsDataState,
+  makeZeropsDataAdapter,
+  reduceZeropsDataState,
+  selectProjectsOf,
+} from "@t3tools/client-runtime/zerops/data";
+import { heldCandidates, selectCandidates } from "@t3tools/client-runtime/zerops/projections";
+import * as Effect from "effect/Effect";
+import { it as effectIt } from "@effect/vitest";
+import {
+  desiredInterest,
+  directTicket,
+  identity,
+  organization,
+  project,
+  scope,
+  stamp,
+} from "~/zerops/__fixtures__/platformData";
+import { listingWholeForPerson } from "~/zerops/listingWhole";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   MATE_VOICE_QUIET_MS,
@@ -37,9 +59,10 @@ const QUINN = {
   key: KEY,
   project: {
     id: PROJECT,
-    name: "Beviro - Quinn",
+    name: "Quinn",
     status: "ACTIVE",
-    tagList: ["mate", "mate:g:beviro", "mate:name:Beviro", "mate:role:dev", "mate:bot:Quinn"],
+    tagList: ["mate"],
+    hq: { appId: "beviro", appName: "Beviro", kind: "mate", mate: { face: "" } },
   },
   group: "ready",
   service: { id: "zcp", name: "zcp", status: "ACTIVE" },
@@ -67,6 +90,8 @@ const MAIN = {
 };
 
 const app = vi.hoisted(() => ({
+  standUpFailed: false,
+  standUpRetry: vi.fn(),
   navigate: vi.fn(async (_to: unknown) => undefined),
   connect: vi.fn(async (_target: unknown) => ({ _tag: "Success" as const })),
   onScreen: vi.fn((_projectId: string | null) => undefined),
@@ -77,12 +102,13 @@ const app = vi.hoisted(() => ({
   listing: { state: "unread", waitingFor: null } as unknown,
   threads: [] as Array<unknown>,
   projects: [] as Array<unknown>,
-  remembered: undefined as { readonly subject: string; readonly threadKey?: string } | undefined,
+  told: undefined as { readonly subject: string; readonly threadKey?: string } | undefined,
   creations: {} as Record<string, unknown>,
   processes: [] as Array<unknown>,
   birthProgress: false,
+  wholeForPerson: false,
 }));
-vi.mock("~/zerops/menuMemory", () => ({ rememberedActivity: () => app.remembered }));
+vi.mock("~/zerops/useMenuMateReadings", () => ({ useToldActivity: () => app.told }));
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => app.navigate,
@@ -105,20 +131,24 @@ vi.mock("~/state/entities", () => ({
   useProjects: () => app.projects,
 }));
 vi.mock("~/zerops/accountEnvironments", () => ({
+  useMateDetailRead: () => ({ failure: null, again: () => undefined }),
   useConnectMate: () => app.connect,
   useAccountEnvironments: () => environments,
 }));
 const environments = { setOnScreen: (projectId: string | null) => app.onScreen(projectId) };
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));
 vi.mock("~/zerops/useZeropsCandidates", () => ({
-  useZeropsCandidates: () => ({ listing: app.listing, refresh: app.refresh }),
+  useZeropsCandidates: () => ({
+    listing: app.listing,
+    wholeForPerson: app.wholeForPerson,
+    refresh: app.refresh,
+  }),
 }));
 // The menu's verbs: none offered on these Mates, which are all whole.
 vi.mock("~/zerops/useMateActions", () => ({
   useMateActions: () => ({ actionsFor: () => [], busyKey: null, trouble: null }),
 }));
 vi.mock("~/zerops/useZeropsRegistry", () => ({ useZeropsRegistry: () => null }));
-vi.mock("~/zerops/giteaProject", () => ({ useAccountGitea: () => undefined }));
 vi.mock("~/zerops/newMate", () => ({
   useNewMate: (select: (state: unknown) => unknown) =>
     select({ creations: app.creations, forget: () => undefined, handingOver: app.handingOver }),
@@ -164,6 +194,7 @@ vi.mock("~/zerops/inventoryContext", () => ({
 }));
 vi.mock("./ZeropsMateEmptyState", () => ({
   useMateEmptyState: () => ({
+    standUpFailure: app.standUpFailed ? { retrying: false, retry: app.standUpRetry } : undefined,
     phase: null,
     signIn: null,
     signInRequired: false,
@@ -175,10 +206,21 @@ vi.mock("./ZeropsMateEmptyState", () => ({
   MateEmptyStateView: ({
     coming,
     mate,
+    standUpFailure,
   }: {
+    readonly standUpFailure?: { retry: () => void };
     readonly coming: { readonly kind: string; readonly below: ReactNode };
     readonly mate: { readonly name: string };
-  }) => h("section", { "data-kind": coming.kind }, mate.name, coming.below),
+  }) =>
+    h(
+      "section",
+      { "data-kind": coming.kind },
+      mate.name,
+      coming.below,
+      standUpFailure === undefined
+        ? null
+        : h("button", { onClick: standUpFailure.retry }, "Try again"),
+    ),
 }));
 vi.mock("../chat/ConversationStrip", () => ({
   // What the header's line says after the Mate's name: what it is on.
@@ -245,13 +287,16 @@ beforeEach(() => {
   app.refresh.mockClear();
   app.handingOver.mockClear();
   app.listing = listingOf([QUINN]);
+  app.standUpFailed = false;
+  app.standUpRetry.mockClear();
   app.threads = [];
   app.projects = [];
   app.link = { key: undefined, environmentId: undefined, reachability: null };
-  app.remembered = undefined;
+  app.told = undefined;
   app.creations = {};
   app.processes = [];
   app.birthProgress = false;
+  app.wholeForPerson = false;
 });
 afterEach(async () => {
   const { useComposerDraftStore } = await import("~/composerDraftStore");
@@ -311,9 +356,8 @@ describe("a Mate's own view while its link is made", () => {
     expect(app.connect).toHaveBeenCalledExactlyOnceWith({ key: KEY });
   });
 
-  // The ceiling on auto-connect is for Mates not on screen (a live run, 2026-10-01: a browser
-  // with 21 registered stayed on "coming up" for an hour): the Mate whose view is open is wanted
-  // past it while the view stands.
+  // A live run, 2026-10-01: a browser with 21 registered stayed on "coming up" for an hour. The
+  // Mate whose view is open holds the screen's lease while the view stands (A9).
   it("puts its Mate on screen while it stands, and takes it off when it goes", () => {
     openView();
     expect(app.onScreen.mock.calls).toEqual([[PROJECT]]);
@@ -366,6 +410,118 @@ describe("a Mate's own view while its link is made", () => {
       expect(app.connect).not.toHaveBeenCalled();
       expect(app.navigate).not.toHaveBeenCalled();
     },
+  );
+
+  effectIt.effect(
+    "ends an ungranted link from the Developer's allowed project search, without reading other containers",
+    () =>
+      Effect.gen(function* () {
+        const allowed = { id: "cyd", name: "Cyd", status: "ACTIVE" };
+        const requests: string[] = [];
+        const client = new ZeropsApiClient({
+          baseUrl: organization.account.apiOrigin,
+          fetch: async (url, init) => {
+            const path = new URL(url).pathname;
+            requests.push(`${init?.method ?? "GET"} ${path}`);
+            const forbidden =
+              path.endsWith(`/client/${organization.organizationId}/project`) ||
+              path.endsWith(`/project/${PROJECT}`);
+            return new Response(
+              JSON.stringify(
+                forbidden
+                  ? { message: "forbidden" }
+                  : path.endsWith("/project/search")
+                    ? { items: [allowed], totalHits: 1 }
+                    : allowed,
+              ),
+              { status: forbidden ? 403 : 200 },
+            );
+          },
+        });
+        client.restoreSession({ accessToken: "test-token" });
+        const adapter = makeZeropsDataAdapter({
+          client,
+          makeSocket: () => {
+            throw new Error("No socket needed for these reads.");
+          },
+          timers: { setTimer: () => ({}), clearTimer: () => undefined },
+        });
+        const id = identity();
+        let state = reduceZeropsDataState(
+          makeInitialZeropsDataState(scope()),
+          {
+            kind: "interest-upserted",
+            interest: desiredInterest(id),
+          },
+          DEFAULT_ZEROPS_DATA_POLICY,
+        ).state;
+        const descriptor = {
+          kind: "projects-of-organization" as const,
+          organization,
+          statuses: [],
+          schemaVersion: 1 as const,
+        };
+        const tickets = [
+          directTicket({ kind: "query", descriptor }, id, 1),
+          directTicket({ kind: "project", ref: project(allowed.id) }, id, 2),
+          directTicket({ kind: "project", ref: project(PROJECT) }, id, 3),
+        ];
+        let ordinal = 0;
+        for (const ticket of tickets) {
+          const result = yield* adapter.read(ticket, {
+            abortSignal: new AbortController().signal,
+            deadlineMs: 4_000_000_000_000,
+          });
+          for (const input of result.observations) {
+            state = reduceZeropsDataState(
+              state,
+              {
+                kind: "observation",
+                observation: { input, stamp: stamp(++ordinal), accessEvidence: null },
+              },
+              DEFAULT_ZEROPS_DATA_POLICY,
+            ).state;
+          }
+        }
+        expect(requests).toEqual([
+          `GET /api/rest/public/client/${organization.organizationId}/project`,
+          "POST /api/rest/public/project/search",
+          "GET /api/rest/public/project/cyd",
+          `GET /api/rest/public/project/${PROJECT}`,
+        ]);
+        const read = selectProjectsOf(state, organization);
+        expect(read.query).toMatchObject({
+          status: "observed",
+          source: "indexed-search",
+          coverage: { kind: "exhausted-traversal" },
+        });
+        // No service read is required to establish which projects this person can see.
+        app.listing = selectCandidates(knownProjectsOf(read, 0), () => ({
+          state: "unread",
+          waitingFor: null,
+        }));
+        const held = heldCandidates(app.listing as ReturnType<typeof selectCandidates>);
+        expect(held.complete).toBe(false);
+        app.wholeForPerson = listingWholeForPerson({
+          read,
+          shown: new Set(held.rows.map((row) => row.project.id)),
+          neverSeen: () => false,
+        });
+        expect(app.wholeForPerson).toBe(true);
+        app.link = { key: undefined, environmentId: undefined, reachability: null };
+        openView();
+        expect(said()).toContain("This conversation isn't in your Zerops projects.");
+        expect(buttons()).toEqual(["Go to projects"]);
+        expect(app.connect).not.toHaveBeenCalled();
+        expect(app.navigate).not.toHaveBeenCalled();
+        // A project that is listed still waits for its own container, despite the whole scope.
+        act(() => tree?.update(h(ZeropsMateComingPage, { projectId: allowed.id })));
+        expect(said()).not.toContain("This conversation isn't in your Zerops projects.");
+        // Losing scope knowledge must remove the absent-project verdict.
+        app.wholeForPerson = false;
+        act(() => tree?.update(h(ZeropsMateComingPage, { projectId: PROJECT })));
+        expect(said()).not.toContain("This conversation isn't in your Zerops projects.");
+      }),
   );
 
   it("hands over at once once its conversation can be opened, telling what its door asked", () => {
@@ -475,7 +631,7 @@ describe("the footer in a Mate's own view", () => {
     app.link = link;
     app.listing = listingOf([candidate]);
     if ("row" in remembered) {
-      app.remembered = { subject: "Earlier", threadKey: `${ENV_QUINN}:${OLDER.threadId}` };
+      app.told = { subject: "Earlier", threadKey: `${ENV_QUINN}:${OLDER.threadId}` };
       rememberWriter(OLDER, remembered.row.writer);
     }
     if ("main" in remembered) {
@@ -496,7 +652,7 @@ describe("the footer in a Mate's own view", () => {
 describe("the header in a Mate's own view", () => {
   it("says what an existing Mate is on, as its menu row does, while its link is made", () => {
     app.link = { key: KEY, environmentId: undefined, reachability: { kind: "reconnecting" } };
-    app.remembered = { subject: "Rename the orders column" };
+    app.told = { subject: "Rename the orders column" };
     openView();
     expect(said()).toContain("Rename the orders column");
   });
@@ -516,7 +672,9 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
   } as unknown as ZeropsCandidate;
   const QUINN_MADE = {
     projectId: PROJECT,
-    groupId: "beviro",
+    appId: "beviro",
+    intent: null,
+    hq: { projectId: "hq", address: "https://hq.example" },
     groupName: "Beviro",
     botName: "Quinn",
     face: { tint: "sky", shape: "pick" },
@@ -752,6 +910,50 @@ describe("ComingBelow — a Mate half made", () => {
   it("offers nothing to anyone else", () => {
     expect(render(undefined).root.findAllByType("button")).toHaveLength(0);
   });
+
+  // F6b (e2e, 2026-10-03): Dan's view said he could not be added while his workspace's clock ran
+  // on, "139:30 of about 2 min", its spinner turning — the press this tab held never settled.
+  it("says its workspace stopped, its clock not running on, where its press never settled", () => {
+    const START = Date.parse("2026-10-03T05:00:00Z");
+    const at = (ms: number) => new Date(START + ms).toISOString();
+    const project = {
+      id: "project",
+      label: "Dan's project",
+      state: "done",
+      startedAt: at(0),
+      endedAt: at(29_000),
+    } as const;
+    const container = {
+      id: "container",
+      label: "Dan's container",
+      state: "active",
+      startedAt: at(29_000),
+    } as const;
+    let rendered: ReactTestRenderer | undefined;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming: HALF_MADE,
+          progress: {
+            steps: [project, container],
+            active: container,
+            failed: null,
+            doneCount: 1,
+            total: 2,
+            complete: false,
+          },
+          nowMs: START + 29_000 + 139 * 60_000 + 30_000,
+          mate: { name: "Dan", project: undefined },
+          you: null,
+        }),
+      );
+    });
+    const said = JSON.stringify(rendered!.toJSON());
+    expect(said).toContain("Dan's workspace");
+    expect(said).not.toContain("139:30");
+    expect(said).not.toContain("about 2 min");
+    expect(said).toContain("Stopped");
+  });
 });
 
 // Run 6's second review: a registration refused read as an owner's, with no reason and nothing to
@@ -946,23 +1148,23 @@ describe("comingSentenceOf — the sentence over a stop", () => {
 // press ended. The creation this tab holds names them from the press until the project's own read.
 describe("an added Mate's own view, after its hand-over", () => {
   const IDA: NewProjectBirth = {
-    id: "add-1",
+    birthId: "add-1",
     organizationId: "org-beviro",
-    groupId: "beviro",
+    appId: "beviro",
+    intent: null,
+    hq: { projectId: "hq", address: "https://hq.example" },
     name: "Beviro",
     botName: "Quinn",
     face: { tint: "sky", shape: "pick" },
     locationId: null,
     agents: [],
     startedAt: 0,
-    withGitea: false,
-    giteaProjectId: "gitea-1",
     step: "created",
     failed: null,
     projectId: PROJECT,
     progress: null,
     adds: {
-      displayName: "Beviro - Quinn",
+      appId: "beviro",
       registers: true,
       managed: ["db"],
       runtimes: [{ hostname: "appdev", role: "dev" }],
@@ -989,13 +1191,15 @@ describe("an added Mate's own view, after its hand-over", () => {
     app.creations = {
       [PROJECT]: {
         projectId: PROJECT,
-        groupId: "beviro",
+        appId: "beviro",
+        intent: null,
+        hq: { projectId: "hq", address: "https://hq.example" },
         groupName: "Beviro",
         botName: "Quinn",
         face: IDA.face,
       },
     };
-    useNewProjectBirths.setState({ births: { [IDA.id]: IDA } });
+    useNewProjectBirths.setState({ births: { [IDA.birthId]: IDA } });
   });
   afterEach(() => {
     forgetPress(PROJECT);
@@ -1015,7 +1219,7 @@ describe("an added Mate's own view, after its hand-over", () => {
     openView();
     const held = rows();
     expect(held).toEqual([
-      "copy[db]{created,container,closed-off,registered}",
+      "copy[db]{created,registered,container,closed-off}",
       "workspace[appdev]{}",
       "you[]{}",
     ]);
@@ -1023,4 +1227,16 @@ describe("an added Mate's own view, after its hand-over", () => {
     act(() => forgetPress(PROJECT));
     expect(rows()).toEqual(held);
   });
+});
+
+it("keeps the failed stand-up's recovery visible before a conversation exists", () => {
+  app.standUpFailed = true;
+  app.link = { key: KEY, environmentId: ENV_QUINN, reachability: null };
+  openView();
+  const again = tree?.root
+    .findAllByType("button")
+    .find((node) => node.children.join("") === "Try again");
+  expect(again).toBeDefined();
+  act(() => again?.props.onClick());
+  expect(app.standUpRetry).toHaveBeenCalledOnce();
 });

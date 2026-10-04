@@ -2816,6 +2816,106 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
   const activityIds = (snapshot: { thread: { activities: ReadonlyArray<{ id: string }> } }) =>
     snapshot.thread.activities.map((activity) => activity.id).toSorted();
 
+  it.effect(
+    "keeps task lifecycles outside the work-log cap when a client reloads, scoped to its page",
+    () =>
+      Effect.gen(function* () {
+        yield* seedFanOutThread();
+        const query = yield* ProjectionSnapshotQuery;
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM projection_thread_activities`;
+        yield* sql`
+        INSERT INTO projection_thread_activities (
+          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
+        ) VALUES
+          ('old-helper', 'thread-w', 'turn-1', 'tool', 'task.started', 'Earlier helper',
+            '{"taskId":"old","taskType":"subagent"}', 1, '2026-03-01T00:00:00.000Z'),
+          ('helper-start', 'thread-w', 'turn-5', 'tool', 'task.started', 'Review',
+            '{"taskId":"helper","taskType":"subagent","title":"Review"}', 2, '2026-03-01T00:04:00.000Z'),
+          ('helper-progress', 'thread-w', 'turn-5', 'tool', 'task.progress', 'Working',
+            '{"taskId":"helper","status":"running"}', 3, '2026-03-01T00:04:01.000Z'),
+          ('helper-update', 'thread-w', 'turn-5', 'tool', 'task.updated', 'Idle',
+            '{"taskId":"helper","status":"idle"}', 4, '2026-03-01T00:04:02.000Z'),
+          ('helper-end', 'thread-w', 'turn-5', 'tool', 'task.completed', 'Done',
+            '{"taskId":"helper","status":"completed"}', 5, '2026-03-01T00:04:03.000Z')
+      `;
+        let calls = 0;
+        const seedCallsUpTo = (count: number) =>
+          Effect.gen(function* () {
+            yield* sql`
+            WITH RECURSIVE seeded(n) AS (
+              VALUES (${calls + 1}) UNION ALL SELECT n + 1 FROM seeded WHERE n < ${count}
+            )
+            INSERT INTO projection_thread_activities (
+              activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
+            )
+            SELECT 'call-' || n, 'thread-w', 'turn-5', 'tool', 'tool.completed', 'Tool',
+              '{}', n + 5, '2026-03-01T00:04:04.000Z' FROM seeded
+          `;
+            calls = count;
+          });
+        // Each read one call past its own cap (500 unpaged, 3,000 a page); the last unpaged read
+        // holds the lifecycles beyond its scan, where a progress tick is superseded by later ones.
+        for (const { window, seed, cap, lifecycles } of [
+          {
+            window: undefined,
+            seed: 501,
+            cap: 500,
+            lifecycles: [
+              "old-helper",
+              "helper-start",
+              "helper-progress",
+              "helper-update",
+              "helper-end",
+            ],
+          },
+          {
+            window: { turnLimit: 1 },
+            seed: 3_001,
+            cap: 3_000,
+            lifecycles: ["helper-start", "helper-progress", "helper-update", "helper-end"],
+          },
+          {
+            window: undefined,
+            seed: 3_001,
+            cap: 500,
+            lifecycles: ["old-helper", "helper-start", "helper-update", "helper-end"],
+          },
+        ]) {
+          if (seed > calls) yield* seedCallsUpTo(seed);
+          const snapshot = yield* query.getThreadDetailSnapshot(threadW, window);
+          assert(Option.isSome(snapshot));
+          const activities = snapshot.value.thread.activities;
+          assert.deepEqual(
+            activities
+              .filter((activity) => activity.kind.startsWith("task."))
+              .map((activity) => activity.id),
+            lifecycles,
+          );
+          assert.equal(
+            activities.filter((activity) => activity.kind === "tool.completed").length,
+            cap,
+          );
+          assert.equal(new Set(activities.map((activity) => activity.id)).size, activities.length);
+        }
+        // A lifecycle in both selections must be delivered once, in sequence order.
+        yield* sql`
+        INSERT INTO projection_thread_activities (
+          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
+        ) VALUES ('recent-helper', 'thread-w', 'turn-5', 'tool', 'task.updated', 'Done',
+          '{"taskId":"helper","status":"completed"}', 3007, '2026-03-01T00:04:05.000Z')
+      `;
+        const snapshot = yield* query.getThreadDetailSnapshot(threadW, { turnLimit: 1 });
+        assert(Option.isSome(snapshot));
+        assert.equal(
+          snapshot.value.thread.activities.filter((activity) => activity.id === "recent-helper")
+            .length,
+          1,
+        );
+        assert.equal(snapshot.value.thread.activities.at(-1)?.id, "recent-helper");
+      }),
+  );
+
   it.effect("returns the full thread with no page metadata when no window is requested", () =>
     Effect.gen(function* () {
       yield* seedFanOutThread();

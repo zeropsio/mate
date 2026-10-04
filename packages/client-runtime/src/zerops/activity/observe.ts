@@ -95,7 +95,7 @@ export interface ObservationInput {
 }
 
 /** `undefined` appVersion.id + build.serviceStackId → no build log to offer. */
-function buildLogFor(stepSource: ActivityProcess | undefined): BuildLogQuery | undefined {
+export function buildLogFor(stepSource: ActivityProcess | undefined): BuildLogQuery | undefined {
   const appVersion = stepSource?.appVersion;
   const appVersionId = appVersion?.id;
   const buildServiceStackId = appVersion?.build?.serviceStackId;

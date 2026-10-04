@@ -69,6 +69,7 @@ const flagThrough = (
       scope,
       access: () => access,
       adapter: {
+        readProjectPublicAccess: () => Effect.never,
         readOrganizationLocations: () => Effect.succeed([]),
         readServiceAuthorizedAgents: () => Effect.succeed([]),
         readServiceMateFlag: read,

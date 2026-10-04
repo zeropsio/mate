@@ -3,18 +3,17 @@
  * person is looking at (`newProjectAsk.ts`), of the family New Mate belongs to (board D1, the
  * owner, 2026-09-30): every door asks here, and nothing navigates until Create.
  *
- * ## A project is a registry entry
+ * ## A project is an application in HQ
  *
- * Nothing platform-side is created for the project itself. The group is one
- * `mate:gn:{groupId}:{slug}` tag written on the account's Gitea project
- * (`groupCreation.ts`), and the account's broker builds the Gitea side from
- * it — the org, its teams, the group repo, its runner — in about eighty
- * seconds. The first Mate is an ordinary Zerops project created inside it and
- * tagged with the group at birth, so it never exists ungrouped.
+ * Nothing platform-side is created for the project itself. The group is an
+ * application in the organization's HQ (ADR 0002), which HQ names, and which
+ * stands before any project does (ADR 0001). The first Mate is an ordinary
+ * Zerops project, attached to the application in HQ as it is born, so it never
+ * exists ungrouped.
  *
- * That is why the registry write comes first and the Mate second: a Mate
- * tagged into a group the registry does not know about is a Mate with no reach
- * and no bot (guide 4.2).
+ * That is why the registration comes first and the Mate second: a Mate
+ * attached to a group the registry does not know about is a Mate in a project
+ * nobody has heard of.
  *
  * ## Two questions
  *
@@ -22,9 +21,9 @@
  * shape, asked with the picker *New Mate* uses (`MateFacePicker`) and the same
  * rules — the face follows the name until a pick sticks, the name is new on
  * the account (`ZeropsNewProjectForm`). The Mate is born as *New Mate* makes
- * one: its face on its project, and asking, on behalf of the person who made
- * it, for the project's development to be stood up, which their first sign-in
- * sends (`mateStandUp.ts`). No brief and no agent pick: the container offers
+ * one — its record in HQ, its project closed off — but asks for no stand-up:
+ * a new project has no code to stand up, and its person says what to build.
+ * No brief and no agent pick: the container offers
  * every agent when `ZCP_AGENTS` is absent, which an empty selection is
  * (`newProject.ts`). Where it lives is asked only where the account has more
  * than one place.
@@ -33,7 +32,7 @@
  *
  * Create closes the dialog and lands on the first Mate's own view at once (`/mate/new/$birthId`,
  * the owner, 2026-10-03: "why are these two screens separate?"). The steps this tab runs with the
- * person's session — Git hosting where the account has none, the project's registry entry, the
+ * person's session — the application and its birth intent in HQ, the
  * Mate's project, its close-off and its registration (`newProjectBirth.ts`, `matePress.ts`) — run
  * on in the account's creations, whatever the person opens next, and the view draws them under
  * the project's row, saying to keep the tab open only while they run. A step that stops says why
@@ -54,24 +53,15 @@ import {
   newMateTint,
   resolveAddProjectVerb,
   type ZeropsOrganization,
-  toolProjectName,
 } from "@t3tools/client-runtime/zerops";
 
-import { useAccountGitea, useAccountHoldsGitea } from "~/zerops/giteaProject";
-import { useNewMate } from "~/zerops/newMate";
-import {
-  beginNewProjectBirth,
-  newProjectPlacement,
-  newProjectView,
-  progressNewProjectBirth,
-  type NewProjectAsk,
-} from "~/zerops/newProjectBirth";
+import { officialHq, useAccountHq } from "~/zerops/accountHq";
+import { beginNewProjectBirth, newProjectView, type NewProjectAsk } from "~/zerops/newProjectBirth";
+import { useNewProjectBirthPorts } from "~/zerops/useNewProjectBirthPorts";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
+import { sessionOfferViewer } from "~/zerops/offerViewer";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
-import { invalidateZerops } from "~/zerops/accountInvalidations";
-import { captureAccountLifetime } from "~/zerops/accountLifetime";
-import { beginPress, finishMateSetup, pressViewer } from "~/zerops/matePress";
-import { runZeropsCommand, useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
+import { useKnown, useZeropsData } from "~/zerops/zeropsDataContext";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -101,15 +91,10 @@ export function ZeropsNewProjectHost() {
 
 function NewProjectDialog() {
   const dismiss = useNewProjectAsk((state) => state.dismiss);
-  const {
-    activeOrganization,
-    client,
-    organizationStatus,
-    organizations,
-    selectOrganization,
-    user,
-  } = useZeropsSession();
-  const { organizationRef, projectRef, runtime } = useZeropsData();
+  const birthPorts = useNewProjectBirthPorts();
+  const { activeOrganization, organizationStatus, organizations, selectOrganization, user } =
+    useZeropsSession();
+  const { organizationRef, runtime } = useZeropsData();
   const navigate = useNavigate();
   // The account's Mates: the names a new one may not take, and the tints its face walks past.
   const { listing } = useZeropsCandidates();
@@ -126,21 +111,13 @@ function NewProjectDialog() {
   } | null>(null);
   // Create was pressed: its first Mate's view is on its way, and a second press makes nothing.
   const [creating, setCreating] = useState(false);
-  const created = useNewMate((state) => state.created);
 
-  // The registry lives on the account's Gitea project, and only its owners and
-  // admins may write it (D3) — a stricter gate than *can create projects*, and
-  // the one the platform will actually apply.
-  const gitea = useAccountGitea(activeOrganization?.id);
-  // Git hosting comes along only for an account that holds none (`newProjectNext`).
-  const holdsGitea = useAccountHoldsGitea(activeOrganization?.id);
+  // The registry lives in the organization's HQ, where only its owners and admins create an
+  // application — a stricter gate than *can create projects*, and the one HQ applies.
+  const accountHq = useAccountHq(activeOrganization?.id);
   const addProject = resolveAddProjectVerb({
-    viewer: {
-      id: activeOrganization?.id ?? "",
-      membershipId: activeOrganization?.membershipId ?? "",
-      roleCode: activeOrganization?.roleCode,
-      canCreateProjects: activeOrganization?.canCreateProjects,
-    },
+    viewer: sessionOfferViewer(user, activeOrganization),
+    admins: accountHq.admins,
   });
   const canCreate = addProject.offered;
   const locationRequest = useMemo<LocationsCellRequest | null>(
@@ -230,91 +207,23 @@ function NewProjectDialog() {
     if (creating) return;
     setCreating(true);
     const organizationId = activeOrganization.id;
-    const organization = organizationRef(organizationId);
     const ask: NewProjectAsk = {
       organizationId,
-      groupId: generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
+      birthId: generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
       name,
       botName,
       face,
       locationId,
       // Every agent: an empty selection omits `ZCP_AGENTS` (`newProject.ts`).
       agents: [],
-      // Its first Mate waits for the sign-in of whoever pressed Create.
-      ...(user?.id ? { madeBy: user.id } : {}),
     };
-    const isCurrent = captureAccountLifetime();
     // The creation's id is its group's: its view is there from the press.
-    const birthId = ask.groupId;
+    const birthId = ask.birthId;
     beginNewProjectBirth({
       ask,
-      gitea: gitea === undefined ? undefined : { projectId: gitea.projectId },
+      hq: officialHq(accountHq),
       now: Date.now(),
-      ports: {
-        // The first project brings Git hosting along: the same stand-up the
-        // projects page offers an older account.
-        ensureGitea: async () => {
-          const { project } = await runZeropsCommand(
-            runtime.commands.createToolProject({
-              organization,
-              toolKind: "gitea",
-              name: toolProjectName("gitea"),
-              appUrl: window.location.origin,
-            }),
-          );
-          return { projectId: project.id };
-        },
-        registerGroup: ({ giteaProjectId, groupId, name: groupName }) =>
-          runZeropsCommand(
-            runtime.commands.updateProjectTags(projectRef(organizationId, giteaProjectId), {
-              kind: "registry-group",
-              groupId,
-              name: groupName,
-            }),
-          ),
-        createProject: (creation) =>
-          runZeropsCommand(runtime.commands.createProjectWithMate({ organization, ...creation })),
-        accepted: (projectId, giteaProjectId, startedAt) => {
-          // A New project's creation stands its Git hosting up before it is accepted.
-          if (giteaProjectId === null) return;
-          // The press goes on: the project closed off, the Mate's registry entry and the
-          // broker's grant. The listing is read again so the project's group catches up with
-          // it. Its row stands where the creation's stood, with the same face and name.
-          const placement = newProjectPlacement(ask);
-          beginPress({
-            projectId,
-            organizationId,
-            startedAt,
-            container: true,
-            placement,
-          });
-          invalidateZerops({ topic: "inventory", organization });
-          void finishMateSetup({
-            inputs: { client, data: { runtime, organizationRef, projectRef }, organizationId },
-            projectId,
-            projectName: placement.displayName,
-            // Imported a moment ago, with the project, by the one call that made it.
-            container: null,
-            groupProjectIds: [],
-            viewer: pressViewer(user, activeOrganization),
-            registration: {
-              giteaProjectId,
-              giteaOrigin: null,
-              groupId: ask.groupId,
-              kind: "mate",
-              displayName: placement.displayName,
-            },
-            isCurrent,
-            // Kept on the creation, whose view draws each step under the project's row.
-            onProgress: (progress) => {
-              if (isCurrent()) progressNewProjectBirth(birthId, progress);
-            },
-          });
-          // Who it is until the listing names it, as Add a Mate's are: its
-          // view's face, name and stand-up.
-          created({ projectId, groupId: ask.groupId, groupName: name, botName, face });
-        },
-      },
+      ports: birthPorts(ask),
     });
     // The dialog gives way to the first Mate's view at once: the steps run on without it.
     dismiss();
@@ -333,7 +242,7 @@ function NewProjectDialog() {
       defaultTintFor={(botName) => newMateTint(candidates, botName)}
       locationError={locationError}
       locationId={locationId}
-      locationLoading={locationStatus === "loading"}
+      loading={locationStatus === "loading"}
       locations={locations}
       onCancel={dismiss}
       onCreate={createProject}
@@ -341,12 +250,11 @@ function NewProjectDialog() {
         setLocationChoice({ key: locationKey, id });
       }}
       onOpenChange={onOpenChange}
-      organizationName={activeOrganization.name}
+
       proposeAnotherName={(current) =>
         generateBotName([...taken.names, current], (bytes) => crypto.getRandomValues(bytes))
       }
       takenBotNames={taken}
-      withGitHosting={!holdsGitea}
     />
   );
 }

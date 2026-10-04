@@ -1,14 +1,10 @@
+import { hqHomeMate } from "./homeLanding.logic";
+import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  homeDoor,
-  homeGuess,
-  homeView,
-  readHomeLanding,
-  writeHomeLanding,
-} from "./homeLanding.logic";
+import { homeGuess, homeView, readHomeLanding, writeHomeLanding } from "./homeLanding.logic";
 
 const ref = scopeThreadRef(EnvironmentId.make("env-quill"), ThreadId.make("thread-ivy"));
 
@@ -19,6 +15,7 @@ describe("homeView: the home never stands blank while it waits", () => {
     targeted: false,
     remembered: null,
     projectsRead: false,
+    hqMatesRead: true,
   } as const;
   it.each([
     ["landing unknown, nothing remembered: the wait line", {}, { kind: "wait" }],
@@ -49,6 +46,16 @@ describe("homeView: the home never stands blank while it waits", () => {
       "no landing, the projects read whole: the hero",
       { landing: "none", projectsRead: true, remembered: ref },
       { kind: "hero" },
+    ],
+    [
+      "platform and catalog settled, HQ unread: keep waiting",
+      { landing: "none", projectsRead: true, hqMatesRead: false },
+      { kind: "wait" },
+    ],
+    [
+      "platform and catalog settled, HQ unread: keep the remembered opening",
+      { landing: "none", projectsRead: true, hqMatesRead: false, remembered: ref },
+      { kind: "opening", ref },
     ],
     [
       "the draft would not start",
@@ -154,61 +161,37 @@ describe("homeGuess: the Mate the home will land on, as remembered", () => {
   });
 });
 
-describe("homeDoor: the home paints the projects page only when it stays there", () => {
-  const base = {
-    noEnvironments: false,
-    matesSettled: false,
-    projectsShown: false,
-    organization: "selected",
-    accountTrouble: false,
-    catalogFailed: false,
-  } as const;
-  it.each([
-    ["Mates registered, still reading: the landing", {}, "landing"],
-    ["Mates registered, read whole: the landing", { matesSettled: true }, "landing"],
-    // A cold load counts no environment until the account's Mates register: the projects page
-    // painted then is taken back a second later, when the landing moves to a Mate. Nor does it
-    // land anywhere meanwhile: with no usable environment, a cached thread is a dead Mate's.
-    ["no Mate registered yet, still reading: it waits", { noEnvironments: true }, "wait"],
+describe("the home from HQ, before any Mate socket opens", () => {
+  const mates = new Map([
     [
-      "no Mate to land on, read whole: the projects",
-      { noEnvironments: true, matesSettled: true },
-      "projects",
-    ],
-    // The Mates are never listed until something happens: the projects page says what.
-    [
-      "no organization chosen: the projects page, which asks for one",
-      { noEnvironments: true, organization: "needs-selection" },
-      "projects",
+      "old-online",
+      { presence: { online: true, since: "2026-10-03T10:00:00Z", overview: "none" as const } },
     ],
     [
-      "the organizations still loading: it waits",
-      { noEnvironments: true, organization: "loading" },
-      "wait",
+      "new-offline",
+      { presence: { online: false, since: "2026-10-04T10:00:00Z", overview: "none" as const } },
     ],
-    [
-      "the account's access failed: the projects page, which says so",
-      { noEnvironments: true, accountTrouble: true },
-      "projects",
-    ],
-    [
-      "the environment catalog failed to load: the projects page",
-      { noEnvironments: true, catalogFailed: true },
-      "projects",
-    ],
-    // Once painted it stays until a Mate is counted: a registration on its way or an organization
-    // switch unsettles the Mates again, and must not tear the page down.
-    [
-      "the projects page shown, the Mates unsettled again: it stays",
-      { noEnvironments: true, projectsShown: true },
-      "projects",
-    ],
-    [
-      "the projects page shown, a Mate counted: the landing",
-      { projectsShown: true, matesSettled: true },
-      "landing",
-    ],
-  ] as const)("%s", (_name, over, expected) => {
-    expect(homeDoor({ ...base, ...over })).toBe(expected);
+  ]) satisfies HqMates;
+  it("passes over a Mate being deleted", () => {
+    expect(hqHomeMate(mates, new Set(["old-online"]))).toBe("new-offline");
+  });
+  it("opens the online Mate without needing a registered environment", () => {
+    expect(hqHomeMate(mates)).toBe("old-online");
+  });
+  it("falls back to the last known Mate while they are all offline", () => {
+    expect(
+      hqHomeMate(
+        new Map(
+          [...mates].map(([id, mate]) => [
+            id,
+            { ...mate, presence: { ...mate.presence, online: false } },
+          ]),
+        ),
+      ),
+    ).toBe("new-offline");
+  });
+  it("earns no destination before HQ knows any Mate", () => {
+    expect(hqHomeMate(null)).toBeUndefined();
+    expect(hqHomeMate(new Map())).toBeUndefined();
   });
 });

@@ -14,7 +14,8 @@ const state = vi.hoisted(() => ({
   shells: [] as Array<unknown>,
   mate: true,
   view: null as unknown,
-  memory: { crews: {} as Record<string, unknown> },
+  /** The crew HQ holds of the Mate: its digest, or none. */
+  hqCrew: null as unknown,
 }));
 
 vi.mock("@tanstack/react-router", () => ({ useRouter: () => ({ navigate: vi.fn() }) }));
@@ -30,11 +31,13 @@ vi.mock("~/zerops/useZeropsMates", () => {
     useKnownMate: () => (state.mate ? fen : undefined),
   };
 });
-vi.mock("~/zerops/crew/useCrew", () => ({ useCrew: () => ({ view: state.view }) }));
+vi.mock("~/zerops/crew/useCrew", () => ({
+  useCrew: () => ({ view: state.view }),
+  useMateCrew: () => ({ crew: state.hqCrew, logins: {}, current: false, environmentId: undefined }),
+}));
 vi.mock("~/zerops/registrationRecords", () => ({
   useRegistrationRecord: () => ({ projectRef: { projectId: "project-fen" } }),
 }));
-vi.mock("~/zerops/menuMemory", () => ({ menuMemory: () => state.memory }));
 vi.mock("~/hooks/useThreadActions", async (original) => ({
   ...(await original<typeof import("~/hooks/useThreadActions")>()),
   useThreadActions: () => ({ archiveThread: vi.fn() }),
@@ -190,7 +193,7 @@ beforeEach(() => {
   state.shells = [];
   state.mate = true;
   state.view = null;
-  state.memory = { crews: {} };
+  state.hqCrew = null;
 });
 
 describe("ConversationStrip", () => {
@@ -289,17 +292,25 @@ describe("ConversationStrip", () => {
     expect(line({ current: "main" })).not.toContain("data-conversation-chats");
   });
 
-  it("paints the crew this browser remembers until its feed answers, every face at rest", () => {
+  it("paints the crew HQ holds until its feed answers, every face at rest", () => {
     state.shells = [shell("main")];
-    state.memory = {
-      crews: {
-        "project-fen": {
-          faces: [
-            { handle: "lead", displayName: "Lead", tint: "violet", lead: true },
-            { handle: "backend", displayName: "Backend", tint: "sky", lead: false },
-          ],
-        },
-      },
+    const crewmate = (handle: string, displayName: string, tint: string, lead: boolean) => ({
+      handle,
+      displayName,
+      tint,
+      lead,
+      threadId: null,
+      threadKind: "working",
+      loginKey: null,
+    });
+    state.hqCrew = {
+      crewmates: [
+        crewmate("lead", "Lead", "violet", true),
+        crewmate("backend", "Backend", "sky", false),
+      ],
+      attention: [],
+      readyTasks: [],
+      personLands: true,
     };
     const html = line({ current: "main" });
     expect(matePill(html)).toContain("data-on");

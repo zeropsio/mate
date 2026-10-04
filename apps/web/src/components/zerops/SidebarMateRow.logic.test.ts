@@ -1,5 +1,4 @@
 import { ThreadId } from "@t3tools/contracts";
-import { readZeropsGroupTags, withZeropsMateAtBirth } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -18,7 +17,6 @@ import {
   mateOwnerView,
   mateNotYours,
   ownerBadge,
-  mateRowActivity,
   mateRowAskLine,
   mateRowSentAsk,
   mateRowDraft,
@@ -161,8 +159,8 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
     expect(view.signInLine).toBe(line);
   });
 
-  // Whose sign-in a new Mate waits for (board D1, 2026-09-30): the person who added it — the
-  // stand-up's `mate:standup:` tag names them until their sign-in sends it — reads that it waits
+  // Whose sign-in a new Mate waits for (board D1, 2026-09-30): the person who added it — HQ's
+  // stand-up record names them until their sign-in lets it run — reads that it waits
   // on them, with the amber dot of what needs them. A Mate still being set up never reads like a
   // failure (the owner, 2026-10-01, of "none signed in" on a Mate setting up): anybody else reads
   // that it waits for a sign-in, quietly, and a viewer not known yet reads nothing.
@@ -239,48 +237,46 @@ describe("mateOwnerView — whose seat, and whether anybody signed its agent in"
     expect(view.waitsOnViewer).toBe(waits);
   });
 
-  // Run 4 (2026-10-02): one person made two Mates and both waited for that person's sign-in, yet
-  // the one New project made read "Nobody has signed in yet" and the one Add a Mate made "Waiting
-  // for your sign-in". One state, one phrase: both name their maker at birth.
-  describe("one wording whichever flow made it", () => {
-    const BORN = {
-      "New project": withZeropsMateAtBirth(["mate:g:larch", "mate:role:dev"], {
-        role: "dev",
-        botName: "Ada",
-        madeBy: "user-petra",
-      }),
-      "Add a Mate": withZeropsMateAtBirth(["mate:g:larch", "mate:role:dev"], {
-        role: "dev",
-        botName: "Fen",
-        madeBy: "user-petra",
-        standUpBy: "user-petra",
-      }),
-    };
-    const words = (flow: keyof typeof BORN, viewer: string) => {
-      const tags = readZeropsGroupTags(BORN[flow]);
-      const view = mateOwnerView({
-        owner: undefined,
-        records: NOBODY,
-        asked: false,
-        standUpBy: tags.standUp?.by,
-        madeBy: tags.madeBy,
-        viewer,
-        linked: true,
-      });
-      return { line: view.signInLine, waits: view.waitsOnViewer };
-    };
-
-    it.each([
-      { viewer: "user-petra", line: "Waiting for your sign-in", waits: true },
-      { viewer: "user-karel", line: "Waiting for sign-in", waits: false },
-    ])("to $viewer: $line", ({ viewer, line, waits }) => {
-      expect(words("New project", viewer)).toEqual({ line, waits });
-      expect(words("Add a Mate", viewer)).toEqual({ line, waits });
+  // One state, one phrase whichever flow made it (run 4, 2026-10-02): a Mate New project made asks
+  // no stand-up, and still waits for the sign-in of whoever made it, as HQ's record names them.
+  it.each([
+    {
+      case: "made by the viewer, no stand-up asked: it waits on them",
+      madeBy: "user-petra",
+      standUpBy: undefined,
+      line: "Waiting for your sign-in",
+      waits: true,
+    },
+    {
+      case: "made by somebody else, no stand-up asked: it waits for a sign-in",
+      madeBy: "user-karel",
+      standUpBy: undefined,
+      line: "Waiting for sign-in",
+      waits: false,
+    },
+    {
+      case: "made by the viewer, a stand-up asked by somebody else: it still waits on its maker",
+      madeBy: "user-petra",
+      standUpBy: "user-karel",
+      line: "Waiting for your sign-in",
+      waits: true,
+    },
+  ])("$case", ({ madeBy, standUpBy, line, waits }) => {
+    const view = mateOwnerView({
+      owner: undefined,
+      records: NOBODY,
+      asked: false,
+      madeBy,
+      standUpBy,
+      viewer: "user-petra",
+      linked: true,
     });
+    expect(view.signInLine).toBe(line);
+    expect(view.waitsOnViewer).toBe(waits);
   });
 
   // Mate signs people in to Claude Code and Codex only: a Mate on Cursor, OpenCode, Grok or
-  // Antigravity (`mate:runs:`) waits on no sign-in, and is its maker's, as its records say.
+  // Antigravity (HQ's overview) waits on no sign-in, and is its maker's, as its records say.
   it.each([
     { case: "its maker named: their picture", owner: PETRA, named: true, seat: "person" },
     {
@@ -351,38 +347,20 @@ describe("changeMarkTone — the one colour a change row's mark may wear", () =>
   const change = (overrides: Partial<Parameters<typeof changeMarkTone>[0]> = {}) => ({
     number: 4,
     mergeability: "mergeable" as const,
-    checks: "passing" as const,
     ...overrides,
   });
-  // Amber is "didn't go through", red is "broken" (S3); everything else is
-  // the mark's own grey — the verdict itself lives in the review.
+  // Amber is "didn't go through" (S3); everything else is the mark's own grey
+  // — the verdict itself lives in the review.
   it.each([
-    { case: "merges, checks passing", pull: change(), tone: undefined },
-    { case: "merges, no checks", pull: change({ checks: "none" }), tone: undefined },
-    { case: "merges, checks running", pull: change({ checks: "pending" }), tone: undefined },
-    { case: "merges, checks failing", pull: change({ checks: "failing" }), tone: "failed" },
-    {
-      case: "behind main",
-      pull: change({ mergeability: "conflicting", checks: "passing" }),
-      tone: "attention",
-    },
-    {
-      case: "behind main, checks failing",
-      pull: change({ mergeability: "conflicting", checks: "failing" }),
-      tone: "failed",
-    },
-    {
-      case: "behind main, checks running",
-      pull: change({ mergeability: "conflicting", checks: "pending" }),
-      tone: undefined,
-    },
-    { case: "Gitea still checking", pull: change({ mergeability: "checking" }), tone: undefined },
+    { case: "merges", pull: change(), tone: undefined },
+    { case: "behind main", pull: change({ mergeability: "conflicting" }), tone: "attention" },
+    { case: "HQ still checking", pull: change({ mergeability: "checking" }), tone: undefined },
   ] as const)("$case: $tone", ({ pull, tone }) => {
     expect(changeMarkTone(pull, false)).toBe(tone);
   });
 
-  it("says nothing for a change drawn from memory: its verdict is Gitea's to say again", () => {
-    expect(changeMarkTone(change({ checks: "failing" }), true)).toBeUndefined();
+  it("says nothing for a change drawn from memory: its verdict is HQ's to say again", () => {
+    expect(changeMarkTone(change({ mergeability: "conflicting" }), true)).toBeUndefined();
   });
 });
 
@@ -1198,40 +1176,6 @@ describe("pendingBornLine — a Mate the listing does not hold yet", () => {
     const line = pendingBornLine(member);
     expect(mateBornLineText(line, 43_000)).toBe(text);
     expect(line.tone).toBe(tone);
-  });
-});
-
-// Which reading a row draws. Its conversation's while its socket is up — or only blinking,
-// reconnecting, when the conversation it was read from still stands (a Mate at its first job
-// must not fall asleep in the menu because its socket blinked) — and what this browser remembers
-// of it otherwise: a socket not opened yet this page, one that failed, or none at all.
-describe("mateRowActivity — the conversation's reading while its socket stands, memory otherwise", () => {
-  const live = { kind: "working", remembered: undefined } as unknown as ZeropsAgentActivity;
-  const remembered = { kind: "idle", remembered: true } as unknown as ZeropsAgentActivity;
-  it.each([
-    { case: "connected", phase: "connected", drawn: live },
-    { case: "reconnecting: the socket blinked", phase: "reconnecting", drawn: live },
-    {
-      case: "connecting for the first time this page: memory",
-      phase: "connecting",
-      drawn: remembered,
-    },
-    { case: "its socket failed", phase: "error", drawn: remembered },
-    { case: "offline", phase: "offline", drawn: remembered },
-    { case: "available, never opened", phase: "available", drawn: remembered },
-    { case: "no socket here at all", phase: undefined, drawn: remembered },
-  ] as const)("$case", ({ phase, drawn }) => {
-    expect(mateRowActivity({ live, phase, remembered })).toBe(drawn);
-  });
-
-  it("draws nothing where neither is known", () => {
-    expect(mateRowActivity({ live: undefined, phase: "connected", remembered: undefined })).toBe(
-      undefined,
-    );
-  });
-
-  it("draws memory where the socket stands but its conversation is not read yet", () => {
-    expect(mateRowActivity({ live: undefined, phase: "connected", remembered })).toBe(remembered);
   });
 });
 

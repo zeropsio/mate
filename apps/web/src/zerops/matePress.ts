@@ -7,9 +7,9 @@
  * half-made Mate is finished from its ⋯ menu, in any browser, by an owner or an admin (*Finish
  * setup*) — the same steps.
  *
- * After the press the container does the rest — zcp imports the runtimes, the broker delivers Git,
- * the server starts the stand-up — and any browser, or none, reads where that stands off
- * `/mate/setup.json` (`mateSetup.ts`).
+ * After the press the container does the rest — zcp imports the runtimes and enrolls the Mate with
+ * its HQ, which is its Git access, the server starts the stand-up — and any browser, or none, reads
+ * where that stands off `/mate/setup.json` (`mateSetup.ts`).
  *
  * This tab keeps what it pressed, in memory, for as long as the screen needs it: where a new
  * environment is drawn before the listing holds it, and where its press stopped and how to try
@@ -17,12 +17,6 @@
  * group at birth — draws the rest.
  */
 import {
-  canWriteRegistry,
-  findHeldMateKey,
-  isZeropsMateClosedOff,
-  planGroupReach,
-  PRESS_STEP_ATTEMPTS,
-  PRESS_STEP_RETRY_MS,
   PROJECT_ENV_ISOLATION_KEY,
   resumableEnvironmentCreationStep,
   runEnvironmentCreation,
@@ -31,22 +25,33 @@ import {
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
+  formatMateFace,
   type RecipeRuntime,
   type ZeropsAgentType,
   type ZeropsApiClient,
-  type ZeropsGroupReachWrite,
-  type ZeropsIntegrationToken,
-  type TokenWriteHold,
+  type ZeropsMateFace,
   type ZeropsPlacedBirth,
+  heldOf,
+  mateContainerOf,
+  readMateFace,
+  readZeropsMembership,
+  severalMatesLine,
 } from "@t3tools/client-runtime/zerops";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
+import {
+  attachToApp,
+  birthIntentOf,
+  type HqEndpoint,
+  type HqPlacement,
+  type HqStructure,
+} from "@t3tools/client-runtime/zerops/hq";
+import type * as Effect from "effect/Effect";
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
-import { tokenWrites } from "./tokenWriteLock";
 import {
   browserLocks,
   matePressLockName,
@@ -54,14 +59,15 @@ import {
   withLockIfFree,
   type LockManagerLike,
 } from "./mateLocks";
-import { giteaClientFor } from "./accountGiteaSessions";
-import { addGroupEnvironment, writeRegistryMember } from "./addGroupEnvironment";
-import { brokerGrantTokens, grantBrokerProject, projectTagsWrite } from "./brokerGrant";
+import { accountHqApi } from "./accountHq";
+import { addGroupEnvironment } from "./addGroupEnvironment";
+import { createMateRecord, markClosedOffAtHq } from "./hqMateBirth";
 import {
   pressSteps,
   pressThrough,
   type PressStepView,
 } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
+import { setUpMateRecord } from "../components/zerops/ZeropsProjectRow.logic";
 import { useNewMate } from "./newMate";
 import { placedNewProjects, type NewProjectBirth } from "./newProjectBirth";
 import {
@@ -102,7 +108,18 @@ export interface MatePress {
   readonly finishing?: boolean;
   /** Each step's state as the press moves. */
   readonly progress?: ReadonlyArray<EnvironmentCreationStepProgress>;
+  /**
+   * Why the harden of the Mate it adopts left its key as it was: the platform refused this account
+   * the key's write — an admin's, on a key an owner made.
+   */
+  readonly keyNotLowered?: string;
   readonly state: MatePressState;
+  /** This account lifetime's stopped plan, shared by Try again and Finish setup. */
+  readonly resumeSetup?: (
+    heldLock: boolean,
+    onProgress?: Parameters<typeof runEnvironmentCreation>[0]["onProgress"],
+    platform?: EnvironmentCreationPlatform,
+  ) => Promise<EnvironmentCreationOutcome>;
 }
 
 interface MatePressStore {
@@ -117,13 +134,32 @@ onAccountLifetimeClose(() => {
 
 /** The platform took the project of a press: it is drawn from now on. */
 export function beginPress(press: Omit<MatePress, "state">): void {
-  usePressStore.setState((store) => ({
-    presses: { ...store.presses, [press.projectId]: { ...press, state: { kind: "pressing" } } },
-  }));
+  usePressStore.setState((store) => {
+    const stopped = store.presses[press.projectId];
+    return {
+      presses: {
+        ...store.presses,
+        [press.projectId]: {
+          ...press,
+          ...(stopped?.state.kind === "failed" && stopped.resumeSetup !== undefined
+            ? { resumeSetup: stopped.resumeSetup, progress: stopped.progress }
+            : {}),
+          state: { kind: "pressing" },
+        },
+      },
+    };
+  });
 }
 
-/** How long a Mate's row says its Finish setup stopped before the row is the Mate's again. */
-export const STOPPED_SHOWN_MS = 10_000;
+/** The harden of a Mate a press adopts could not lower its key, for `reason`. */
+function noteKeyNotLowered(projectId: string, reason: string): void {
+  usePressStore.setState((store) => {
+    const press = store.presses[projectId];
+    return press === undefined
+      ? store
+      : { presses: { ...store.presses, [projectId]: { ...press, keyNotLowered: reason } } };
+  });
+}
 
 /**
  * A Finish setup that stopped before the container it was bringing came — at its import, or
@@ -142,30 +178,32 @@ function stopStands(press: MatePress): boolean {
   );
 }
 
-/** A Finish setup that stopped and goes once its row has said so (`stopStands`). */
-const stopGoes = (press: MatePress): boolean =>
+/** A stopped Finish setup that already has its container brings nothing more. */
+const stoppedWithContainer = (press: MatePress): boolean =>
   press.finishing === true && press.state.kind === "failed" && !stopStands(press);
 
-/**
- * A press ran to its end, or stopped. A Finish setup that stopped on a Mate with its container —
- * one it had, or one it brought before a later step stopped — goes once its row has said so:
- * nothing of that Mate waits on the press, and its menu offers Finish setup again from the
- * platform's facts. One that stopped bringing its container stays, for its own view's *Try again*.
- */
-export function settlePress(projectId: string, state: MatePressState): void {
-  let stopped: MatePress | undefined;
+/** Keep a stopped press's reason and receipts until its creator explicitly continues it. */
+export function settlePress(
+  projectId: string,
+  state: MatePressState,
+  resumeSetup?: MatePress["resumeSetup"],
+): void {
   usePressStore.setState((store) => {
     const press = store.presses[projectId];
     if (press === undefined) return store;
-    const settled = { ...press, state };
-    if (stopGoes(settled)) stopped = settled;
-    return { presses: { ...store.presses, [projectId]: settled } };
+    const { resumeSetup: previousResume, ...held } = press;
+    const continuation = resumeSetup ?? (state.kind === "pressed" ? undefined : previousResume);
+    return {
+      presses: {
+        ...store.presses,
+        [projectId]: {
+          ...held,
+          state,
+          ...(continuation === undefined ? {} : { resumeSetup: continuation }),
+        },
+      },
+    };
   });
-  if (stopped === undefined) return;
-  const said = stopped;
-  setTimeout(() => {
-    if (readMatePress(projectId) === said) forgetPress(projectId);
-  }, STOPPED_SHOWN_MS);
 }
 
 /** A press moved on: each step's state, kept on a press this tab holds. */
@@ -211,7 +249,11 @@ function endPress(projectId: string, finishing: boolean): void {
  * (`endPress`) once its row has said so.
  */
 export function connectedPresses(
-  presses: ReadonlyArray<{ readonly projectId: string; readonly finishing?: boolean }>,
+  presses: ReadonlyArray<{
+    readonly projectId: string;
+    readonly finishing?: boolean;
+    readonly state?: MatePressState;
+  }>,
   candidates: ReadonlyArray<{ readonly project: { readonly id: string }; readonly group: string }>,
 ): ReadonlyArray<string> {
   const connected = new Set(
@@ -220,7 +262,9 @@ export function connectedPresses(
     ),
   );
   return presses.flatMap((press) =>
-    connected.has(press.projectId) && press.finishing !== true ? [press.projectId] : [],
+    connected.has(press.projectId) && press.finishing !== true && press.state?.kind !== "failed"
+      ? [press.projectId]
+      : [],
   );
 }
 
@@ -244,23 +288,167 @@ export function useForgetConnectedPresses(
   }, [candidates, creations, forgetCreation]);
 }
 
+/** The presses in flight in this browser, their project made or not (`whilePressing`). */
+let inFlight = 0;
+const inFlightListeners = new Set<() => void>();
+
 /**
- * The projects whose press or harden this tab is running — auto-connect holds them back
- * (`environments.ts`'s `pressing` port) — and a way to hear them change.
+ * Runs a press — any press's steps, or a New project's creation before them — counted in flight
+ * until it ends: the background mints no throwaway meanwhile (`pressesInFlight`), as the press
+ * reads the token list each throwaway is written to (E2E 2026-10-03).
  */
-export const pressingProjects = {
-  read: (): ReadonlySet<string> =>
-    new Set(
-      Object.values(usePressStore.getState().presses).flatMap((press) =>
-        press.state.kind === "pressing" ? [press.projectId] : [],
-      ),
-    ),
-  subscribe: (listener: () => void): (() => void) => usePressStore.subscribe(listener),
+export async function whilePressing<T>(run: () => Promise<T>): Promise<T> {
+  inFlight += 1;
+  if (inFlight === 1) for (const listener of inFlightListeners) listener();
+  try {
+    return await run();
+  } finally {
+    inFlight -= 1;
+    if (inFlight === 0) for (const listener of inFlightListeners) listener();
+  }
+}
+
+/** Whether a press is in flight in this browser (`environments.ts`'s `pressInFlight` port). */
+export const pressesInFlight = {
+  read: (): boolean => inFlight > 0,
+  subscribe: (listener: () => void): (() => void) => {
+    inFlightListeners.add(listener);
+    return () => {
+      inFlightListeners.delete(listener);
+    };
+  },
 };
 
 /** The press this tab holds for a project, read outside a render. */
 export function readMatePress(projectId: string): MatePress | undefined {
   return usePressStore.getState().presses[projectId];
+}
+
+/**
+ * Where a Mate's press placed it — its application and its face — as the press knew it when it
+ * began; undefined for a press of a stage or a production, or one that placed nothing.
+ */
+export function matePressPlacement(press: MatePress | undefined): BirthPlacement | undefined {
+  return press?.placement?.kind === "mate" ? press.placement : undefined;
+}
+
+/**
+ * A Mate HQ holds no record of, finished into the application its press placed it in, under the
+ * face it was made with — never a new Mate in none (F6b, 2026-10-03).
+ */
+export function placedMateRegistration(
+  hq: HqEndpoint,
+  placement: BirthPlacement,
+): Extract<PressRegistration, { readonly kind: "mate" }> {
+  return {
+    hq,
+    groupId: placement.groupId,
+    kind: "mate",
+    mate: { face: placement.face },
+    standUp: false,
+  };
+}
+
+/**
+ * What *Finish setup* and *Set up Mate* register for a Mate, by one rule, so neither mints a new
+ * Mate where HQ holds one or may yet (F6b, F6c, 2026-10-03):
+ *
+ * - HQ's structure not read: nothing — a project it places nowhere has no record only once it is;
+ * - HQ holds it in its application: there again, under HQ's face, by a registry writer — an
+ *   attach that finds it there writes nothing; nothing for anyone else;
+ * - HQ holds it in no application: nothing, its record standing;
+ * - HQ holds no record of it: into the application its project's birth intent names, under its
+ *   face, the attach closing the intent — in any browser; else into the application the press
+ *   this tab still holds placed it in, under its face; else, for whoever HQ's rule lets write one,
+ *   a new Mate in no application (`setUpMateRecord`) — what a refused attach leaves; else nothing.
+ *
+ * Its name is none of these: it is its project's in Zerops (D3).
+ */
+export function mateFinishRegistration(input: {
+  readonly hq: HqEndpoint;
+  /** HQ's structure is known: only then does a project it places nowhere have no record. */
+  readonly hqKnown: boolean;
+  /** HQ's structure, where its open birth intents are (`birthIntentOf`). */
+  readonly structure: HqStructure | null;
+  readonly project: ZeropsCandidate["project"];
+  readonly press: MatePress | undefined;
+  /** The viewer writes the registry: an owner or an admin (`canWriteRegistry`). */
+  readonly writer: boolean;
+  /** HQ's rule lets the viewer write the record of a Mate it holds none of (`create_mate_record`). */
+  readonly mayCreateRecord: boolean;
+  /** The stand-up a new record asks for. */
+  readonly standUp: boolean;
+  readonly candidates: ReadonlyArray<ZeropsCandidate>;
+}): PressRegistration | null {
+  if (!input.hqKnown) return null;
+  if (heldOf(input.project) !== "none") {
+    const { groupId, face } = readZeropsMembership(input.project);
+    if (groupId === undefined || !input.writer) return null;
+    return {
+      hq: input.hq,
+      groupId,
+      kind: "mate",
+      mate: {
+        face:
+          face?.tint === undefined || face.shape === undefined
+            ? undefined
+            : { tint: face.tint, shape: face.shape },
+      },
+      standUp: false,
+    };
+  }
+  const app = input.structure?.apps.find((entry) =>
+    entry.births?.some((birth) => birth.projectId === input.project.id),
+  );
+  const intent = app?.births?.find((birth) => birth.projectId === input.project.id);
+  if (app !== undefined && intent !== undefined) {
+    const face = readMateFace(intent.face);
+    return {
+      hq: input.hq,
+      groupId: app.id,
+      kind: "mate",
+      mate: {
+        face:
+          face?.tint === undefined || face.shape === undefined
+            ? undefined
+            : { tint: face.tint, shape: face.shape },
+      },
+      standUp: false,
+      intent: intent.id,
+    };
+  }
+  const creation = input.press?.progress?.find(
+    (entry) => entry.step.kind === "create-project" || entry.step.kind === "import-project",
+  );
+  const localId =
+    creation !== undefined &&
+    (creation.step.kind === "create-project" || creation.step.kind === "import-project")
+      ? creation.step.birth
+      : undefined;
+  const localIntent = localId === undefined ? undefined : birthIntentOf(input.structure, localId);
+  if (localId !== undefined && localIntent !== undefined) {
+    const face = readMateFace(localIntent.face);
+    return {
+      hq: input.hq,
+      groupId: localIntent.appId,
+      kind: "mate",
+      mate: {
+        face:
+          face?.tint === undefined || face.shape === undefined
+            ? undefined
+            : { tint: face.tint, shape: face.shape },
+      },
+      standUp: false,
+      intent: localId,
+    };
+  }
+  const placed = matePressPlacement(input.press);
+  if (placed !== undefined) return placedMateRegistration(input.hq, placed);
+  if (!input.mayCreateRecord) return null;
+  const record = setUpMateRecord(input);
+  return record === undefined
+    ? null
+    : { hq: input.hq, kind: "mate-record", record, standUp: input.standUp };
 }
 
 /** The project is gone: nothing more is said of it. */
@@ -300,6 +488,10 @@ const AWAITING_OWNER_LINE = "It still needs an owner to register it.";
 export const FINISHED_SETUP_LINE =
   "Its setup is finished. It comes up on its own now, with no browser needed.";
 
+/** A key the harden could not lower, and who can. */
+const keyNotLoweredLine = (reason: string) =>
+  `The Mate's key couldn't be lowered: ${reason.replace(/\.$/u, "")}; an owner can do it.`;
+
 /**
  * *Finish setup* as a Mate's own view draws it: the steps the Add dialog draws, and — once its
  * project is marked closed off — a clear end. Undefined for any other press. A step that stops is
@@ -317,13 +509,17 @@ export function finishSetupView(press: MatePress | undefined):
   const registered = progress.find((entry) => entry.step.kind === "register");
   const steps = pressSteps(progress);
   const done = press.state.kind === "pressed";
+  const finished =
+    registered?.state === "failed"
+      ? `${FINISHED_SETUP_LINE} ${AWAITING_OWNER_LINE}`
+      : FINISHED_SETUP_LINE;
   return {
     steps,
     line: !done
       ? "Finishing its setup…"
-      : registered?.state === "failed"
-        ? `${FINISHED_SETUP_LINE} ${AWAITING_OWNER_LINE}`
-        : FINISHED_SETUP_LINE,
+      : press.keyNotLowered === undefined
+        ? finished
+        : `${finished} ${keyNotLoweredLine(press.keyNotLowered)}`,
     done,
   };
 }
@@ -353,7 +549,9 @@ export function finishSetupRowLine(press: MatePress | undefined): string | undef
     case "pressing":
       return "Finishing setup…";
     case "pressed":
-      return "Setup finished";
+      return press.keyNotLowered === undefined
+        ? "Setup finished"
+        : `Setup finished. ${keyNotLoweredLine(press.keyNotLowered)}`;
     case "failed":
       return "Setup stopped";
   }
@@ -367,7 +565,6 @@ const PRESS_STEP_NAMES: Readonly<Record<EnvironmentCreationStep["kind"], string>
   "import-recipe": "Adding its services",
   "import-container": "Adding its container",
   "close-off": "Closing the project off",
-  "share-reach": "Letting the project's other Mates see it",
   register: "Registering it",
   "await-ready": "Waiting for it",
 };
@@ -390,7 +587,7 @@ export function pressComing(press: MatePress | undefined):
   return {
     startedAt: press.startedAt,
     // A Finish setup that stopped with its Mate's container brings nothing more: it is not coming.
-    container: press.container && !stopGoes(press),
+    container: press.container && !stoppedWithContainer(press),
     retryable: press.state.kind === "failed" && press.state.retry !== null,
   };
 }
@@ -437,181 +634,132 @@ export interface PressInputs {
   readonly organizationId: string;
 }
 
-/** The group registration a press writes, as the person who pressed may write it. */
-export interface PressRegistration {
-  /** The account's Gitea project, where the registry lives. */
-  readonly giteaProjectId: string;
-  /** The account's Gitea, where a stage or a production is declared. */
-  readonly giteaOrigin: string | null;
-  readonly groupId: string;
-  readonly kind: RoleProjectKind;
-  readonly displayName: string;
-}
+/**
+ * The group registration a press writes, as the person who pressed may write it: into the
+ * organization's HQ, a Mate with its face and its birth — in its application, or in none where HQ
+ * holds no record of it — a stage or a production as an environment of its application, keyed.
+ * A Mate's name is its project's in Zerops (D3), and none of HQ's.
+ */
+export type PressRegistration = {
+  /** The organization's HQ, where the registry lives. */
+  readonly hq: HqEndpoint;
+} & (
+  | {
+      readonly kind: "mate";
+      /** The project's group: its application in HQ. */
+      readonly groupId: string;
+      /** Its face as picked; none where the press gives it its name's own. */
+      readonly mate: { readonly face: ZeropsMateFace | undefined };
+      /**
+       * The person pressing asks for its stand-up, in its attach; one that closes a birth intent
+       * takes the intent's ask instead.
+       */
+      readonly standUp: boolean;
+      /** The birth intent its project was created under: the attach closes it. */
+      readonly intent?: string;
+    }
+  | {
+      /** A Mate HQ holds no record of, set up in no application (`POST /api/mates`). */
+      readonly kind: "mate-record";
+      /** Its face as HQ records it (`setUpMateRecord`). */
+      readonly record: { readonly face: string };
+      /** The person pressing asks for its stand-up, with its record. */
+      readonly standUp: boolean;
+    }
+  | {
+      readonly kind: "stage" | "production";
+      /** The project's group: its application in HQ. */
+      readonly groupId: string;
+    }
+);
 
 /**
- * The `register` step: a Mate's registry entry and the broker's grant where an older broker needs
- * one; for a stage or a production, `addGroupEnvironment` — the entry, the grant, its deploy token
- * and its declaration. Each write reads what is there first, so asking again writes nothing twice.
+ * The `register` step: a Mate's record in HQ — attached to its application, or in none — with its
+ * stand-up ask in the same write, naming `serviceId`, its zcp service, where its project holds it
+ * already (one Mate per project, audit D2); for a stage or a production, `addGroupEnvironment` —
+ * the attachment and its deploy key. Each write reads what is there first, so asking again writes
+ * nothing twice.
  */
 export function pressRegistration(
   inputs: PressInputs,
   registration: PressRegistration,
+  serviceId?: string,
 ): (projectId: string) => Promise<void> {
-  const writeTags = projectTagsWrite(inputs.data, inputs.organizationId);
+  const hq = accountHqApi(inputs.client, inputs.organizationId, registration.hq);
+  const service = serviceId === undefined ? {} : { serviceId };
   return async (projectId) => {
+    if (registration.kind === "mate-record") {
+      await createMateRecord(hq, {
+        projectId,
+        ...registration.record,
+        standUp: registration.standUp,
+        ...service,
+      });
+      return;
+    }
     if (registration.kind === "mate") {
-      const written = await writeRegistryMember({
-        client: inputs.client,
-        writeTags,
-        giteaProjectId: registration.giteaProjectId,
-        groupId: registration.groupId,
+      if (registration.intent !== undefined) await hq.bindBirth(registration.intent, projectId);
+      await attachToApp(hq, registration.groupId, {
         projectId,
-        member: "mate",
+        kind: "mate",
+        mate: {
+          // Empty where none was picked: the Mate wears its name's tint.
+          face: registration.mate.face === undefined ? "" : formatMateFace(registration.mate.face),
+          standUp: registration.standUp,
+          ...service,
+        },
+        ...(registration.intent === undefined ? {} : { birth: registration.intent }),
       });
-      if (written.kind === "refused") throw new Error(written.refusal.reason);
-      const grant = await grantBrokerProject({
-        client: brokerGrantTokens(inputs.data.runtime),
-        clientId: inputs.organizationId,
-        projectId,
-      });
-      if (grant.kind === "failed") throw new Error(grant.reason);
       return;
     }
     const added = await addGroupEnvironment({
       client: inputs.client,
-      tokens: brokerGrantTokens(inputs.data.runtime),
-      writeTags,
-      gitea: registration.giteaOrigin === null ? null : giteaClientFor(registration.giteaOrigin),
+      hq,
       clientId: inputs.organizationId,
-      giteaProjectId: registration.giteaProjectId,
       groupId: registration.groupId,
-      environment: {
-        displayName: registration.displayName,
-        tier: registration.kind,
-        project: projectId,
-      },
+      environment: { tier: registration.kind, project: projectId },
     });
     if (added.failed !== undefined) throw new Error(added.failed.reason);
   };
 }
 
-/** Whose press it is, for what it may write beyond its own project. */
-export interface PressViewer {
-  readonly userId: string;
-  /** The org role, as the platform spells it. */
-  readonly roleCode: string | undefined;
-}
+/** How long one command of a press is given to answer before the try counts as failed. */
+export const PRESS_CALL_CAP_MS = 60_000;
 
-/** The person pressing, where the session names them. */
-export function pressViewer(
-  user: { readonly id: string } | null | undefined,
-  organization: { readonly roleCode?: string | undefined } | null | undefined,
-): PressViewer | null {
-  return user === null || user === undefined
-    ? null
-    : { userId: user.id, roleCode: organization?.roleCode };
-}
+/** What a press's command that did not answer in time says, and the press with it once it stops. */
+export const PRESS_CALL_SILENT = "Zerops did not answer within a minute, so the setup stopped.";
 
 /**
- * The writes that give a group's other Mates sight of a new project: each Mate's key extended to
- * `READ_ONLY` on it (`planGroupReach`), where this person may edit the key — an org owner, or its
- * creator. A key that reads the project already, or that this person may not edit, is left alone;
- * the group-reach reconcile covers it later.
+ * One command of a press, given {@link PRESS_CALL_CAP_MS} to answer: one that has not is ended
+ * where it stands — never sent where it had not been — and its try fails, to be tried again as
+ * the step's tries are. A command that never answered held Dan's press "pressing" for two hours,
+ * its workspace's clock running on (F6b, 2026-10-03).
  */
-export function planShareReach(input: {
-  readonly tokens: ReadonlyArray<ZeropsIntegrationToken & { readonly createdByUser?: unknown }>;
-  /** The group's other environments: the Mates among them are those a key writes. */
-  readonly siblingProjectIds: ReadonlyArray<string>;
-  readonly projectId: string;
-  readonly viewer: PressViewer;
-}): ReadonlyArray<ZeropsGroupReachWrite & { readonly roleCode: string | undefined }> {
-  return input.siblingProjectIds.flatMap((mateProjectId) => {
-    // The key its container holds; where two are its and nothing tells them apart, none.
-    const token = findHeldMateKey(input.tokens, mateProjectId, undefined);
-    if (token === undefined) return [];
-    const editable =
-      input.viewer.roleCode === "OWNER" ||
-      (token as { readonly createdByUser?: unknown }).createdByUser === input.viewer.userId;
-    if (!editable) return [];
-    if ((token.projects ?? []).some((grant) => grant.projectId === input.projectId)) return [];
-    const plan = planGroupReach({
-      token,
-      selfProjectId: mateProjectId,
-      groupProjectIds: [...(token.projects ?? []).map((grant) => grant.projectId), input.projectId],
-    });
-    // The key's own org role goes round: the write replaces the whole record.
-    return plan === undefined ? [] : [{ ...plan, name: token.name, roleCode: token.roleCode }];
-  });
-}
-
-/**
- * Gives the group's other Mates sight of a new project: every environment the key mint counts
- * (`buildGroupGrants`), never the services listing, which a press seconds after a load may not
- * hold yet. A Mate's key is found in the account's token list (`findHeldMateKey`) and read again,
- * live, under its lock (`tokenWrites`, every token writer's) right before its write — the write
- * replaces the key's whole project list, so an older read would undo a grant made meanwhile.
- * Best-effort: a key it could not write is counted and left to the group-reach reconcile.
- */
-export async function shareGroupReach(input: {
-  readonly client: Pick<ZeropsApiClient, "listIntegrationTokens" | "setIntegrationTokenProjects">;
-  readonly organizationId: string;
-  readonly groupProjectIds: ReadonlyArray<string>;
-  readonly projectId: string;
-  readonly viewer: PressViewer;
-  /** Each key's read-then-write, one at a time with every other writer's; the page's own. */
-  readonly hold?: TokenWriteHold;
-}): Promise<{ readonly extended: number; readonly failed: number }> {
-  const hold = input.hold ?? tokenWrites;
-  const plan = (tokens: ReadonlyArray<ZeropsIntegrationToken>, siblingProjectId: string) =>
-    planShareReach({
-      tokens,
-      siblingProjectIds: [siblingProjectId],
-      projectId: input.projectId,
-      viewer: input.viewer,
-    })[0];
-  let extended = 0;
-  let failed = 0;
-  for (const siblingProjectId of input.groupProjectIds) {
-    if (siblingProjectId === input.projectId) continue;
-    try {
-      // A read that only finds the key; the write is planned from one read under its lock.
-      const found = plan(
-        await input.client.listIntegrationTokens(input.organizationId),
-        siblingProjectId,
-      );
-      if (found === undefined) continue;
-      const wrote = await hold(found.tokenId, async () => {
-        const write = plan(
-          await input.client.listIntegrationTokens(input.organizationId),
-          siblingProjectId,
-        );
-        if (write?.tokenId !== found.tokenId) return false;
-        await input.client.setIntegrationTokenProjects({
-          clientId: input.organizationId,
-          tokenId: write.tokenId,
-          name: write.name,
-          projects: write.projects,
-          roleCode: write.roleCode,
-        });
-        return true;
-      });
-      if (wrote) extended += 1;
-    } catch {
-      failed += 1;
-    }
+async function answered<Value, Failure>(
+  command: Effect.Effect<{ readonly value: Value }, Failure>,
+): Promise<Value> {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), PRESS_CALL_CAP_MS);
+  try {
+    return await runZeropsCommand(command, stop.signal);
+  } catch (cause) {
+    throw stop.signal.aborted ? new Error(PRESS_CALL_SILENT) : cause;
+  } finally {
+    clearTimeout(timer);
   }
-  return { extended, failed };
 }
 
-/** The press's platform calls, through the account's command layer. */
+/** The press's platform calls, through the account's command layer, each bounded (`answered`). */
 export function pressPlatform(
   inputs: PressInputs,
   options: {
-    /** The group's other environments: the Mate's key reads them. */
-    readonly groupProjectIds: ReadonlyArray<string>;
-    readonly viewer: PressViewer | null;
     /** Null where the press writes no registration. */
     readonly register: ((projectId: string) => Promise<void>) | null;
+    /**
+     * The organization's HQ, where the close-off is marked. Null where it is not open here: the
+     * close-off is then not marked, the press's marker holds the Mate, and *Finish setup* marks it.
+     */
+    readonly hq: HqEndpoint | null;
     readonly readObservedServices: EnvironmentCreationPlatform["readObservedServices"];
   },
 ): EnvironmentCreationPlatform {
@@ -620,57 +768,37 @@ export function pressPlatform(
   const projectOf = (projectId: string) => data.projectRef(organizationId, projectId);
   return {
     createProject: ({ clientId: _clientId, ...input }) =>
-      runZeropsCommand(data.runtime.commands.createProject({ organization, ...input })),
+      answered(data.runtime.commands.createProject({ organization, ...input })),
     // Reads, not writes: the platform's verdict on what the press made, waited on by the runner.
     readProjectCreation: (input) => client.readProjectCreation(input),
     importDevelopmentContainer: ({ projectId, projectName, agents, setupRuntimesYaml }) =>
-      runZeropsCommand(
+      answered(
         data.runtime.commands.importDevelopmentContainer({
           project: projectOf(projectId),
           projectName,
           agents,
-          groupProjectIds: [...options.groupProjectIds, projectId],
           ...(setupRuntimesYaml === undefined ? {} : { setupRuntimesYaml }),
         }),
       ),
     importServices: (projectId, yaml) =>
-      runZeropsCommand(data.runtime.commands.importServices(projectOf(projectId), yaml)),
+      answered(data.runtime.commands.importServices(projectOf(projectId), yaml)),
     importProject: ({ clientId: _clientId, yaml }) =>
-      runZeropsCommand(data.runtime.commands.importProject(organization, yaml)),
+      answered(data.runtime.commands.importProject(organization, yaml)),
     // The same hardening a Mate made before this pass is finished with: for a key the press
     // minted it writes nothing to the key, and closes the project off.
     closeOff: async (projectId) => {
-      await runZeropsCommand(data.runtime.commands.isolateProjectEnv(projectOf(projectId)));
+      await answered(data.runtime.commands.isolateProjectEnv(projectOf(projectId)));
     },
     readIsolation: async (projectId) =>
       (await client.readProjectEnv(organizationId, projectId)).find(
         (entry) => entry.key === PROJECT_ENV_ISOLATION_KEY,
       )?.content,
     markClosedOff: async (projectId) => {
-      const written = await runZeropsCommand(
-        data.runtime.commands.updateProjectTags(projectOf(projectId), { kind: "closed-off" }),
-      );
-      if (written.kind === "refused") throw new Error(written.refusal.reason);
+      if (options.hq === null) return;
+      await markClosedOffAtHq(accountHqApi(client, organizationId, options.hq), projectId);
     },
     register: async (projectId) => {
       await options.register?.(projectId);
-    },
-    shareReach: async (projectId) => {
-      const viewer = options.viewer;
-      if (viewer === null) return;
-      const shared = await shareGroupReach({
-        client,
-        organizationId,
-        groupProjectIds: options.groupProjectIds,
-        projectId,
-        viewer,
-      });
-      // Said on its step, never swallowed: the group-reach reconcile gives the sight later.
-      if (shared.failed > 0) {
-        throw new Error(
-          `${shared.failed} of the group's Mates could not be given sight of it yet.`,
-        );
-      }
     },
     readObservedServices: options.readObservedServices,
   };
@@ -694,14 +822,15 @@ export async function runPress(input: {
     readonly from: number;
     readonly projectId: string;
     readonly projectName: string;
+    readonly serviceName?: string;
   };
-  readonly onProjectAccepted?: (projectId: string, projectName: string) => void;
+  readonly onProjectAccepted?: (projectId: string, projectName: string) => void | Promise<void>;
   readonly onProgress?: Parameters<typeof runEnvironmentCreation>[0]["onProgress"];
   /** This browser's locks; the page's own where omitted. */
   readonly locks?: LockManagerLike | undefined;
   /** The caller holds the project's press lock already (`finishMateSetup`). */
   readonly heldLock?: boolean;
-  /** Between a step's tries and reads; the clock's own where omitted. */
+  /** Between accepted creation observations; the clock's own where omitted. */
   readonly sleep?: (ms: number) => Promise<void>;
 }): Promise<EnvironmentCreationOutcome> {
   const locks = "locks" in input ? input.locks : browserLocks();
@@ -754,33 +883,35 @@ async function pressRun(
   const end = new Promise<void>((resolve) => {
     ended = resolve;
   });
-  const outcome = await runEnvironmentCreation({
-    clientId: input.organizationId,
-    steps: input.steps,
-    platform: input.platform,
-    isCurrent: input.isCurrent,
-    describeError: zeropsErrorMessage,
-    sleep: input.sleep ?? sleep,
-    ...(input.resume === undefined ? {} : { resume: input.resume }),
-    onProjectAccepted: (projectId) => {
-      accepted = projectId;
-      if (input.heldLock !== true) {
-        void withExclusiveLock(input.locks, matePressLockName(projectId), () => end);
-      }
-      input.onProjectAccepted?.(projectId, projectName);
-    },
-    onProgress: (progress) => {
-      if (accepted !== undefined && input.isCurrent()) {
-        const held = readMatePress(accepted);
-        progressPress(accepted, progress);
-        // Closed off and registered: the Mate needs no browser, and its press record goes —
-        // Finish setup's once its view has said so.
-        if (held !== undefined && pressDoneAt(progress))
-          endPress(accepted, held.finishing === true);
-      }
-      input.onProgress?.(progress);
-    },
-  }).finally(ended);
+  const outcome = await whilePressing(() =>
+    runEnvironmentCreation({
+      clientId: input.organizationId,
+      steps: input.steps,
+      platform: input.platform,
+      isCurrent: input.isCurrent,
+      describeError: zeropsErrorMessage,
+      sleep: input.sleep ?? sleep,
+      ...(input.resume === undefined ? {} : { resume: input.resume }),
+      onProjectAccepted: async (projectId) => {
+        accepted = projectId;
+        if (input.heldLock !== true) {
+          void withExclusiveLock(input.locks, matePressLockName(projectId), () => end);
+        }
+        await input.onProjectAccepted?.(projectId, projectName);
+      },
+      onProgress: (progress) => {
+        if (accepted !== undefined && input.isCurrent()) {
+          const held = readMatePress(accepted);
+          progressPress(accepted, progress);
+          // Closed off and registered: the Mate needs no browser, and its press record goes —
+          // Finish setup's once its view has said so.
+          if (held !== undefined && pressDoneAt(progress))
+            endPress(accepted, held.finishing === true);
+        }
+        input.onProgress?.(progress);
+      },
+    }),
+  ).finally(ended);
   const projectId = outcome.projectId;
   if (projectId === undefined || !input.isCurrent()) return outcome;
   if (outcome.ok) {
@@ -788,30 +919,49 @@ async function pressRun(
     return outcome;
   }
   const from = input.steps.indexOf(outcome.failedStep);
-  const retry = resumableEnvironmentCreationStep(outcome.failedStep)
-    ? async () => {
+  const resumeSetup: MatePress["resumeSetup"] = resumableEnvironmentCreationStep(outcome.failedStep)
+    ? async (heldLock, onProgress = input.onProgress, platform = input.platform) => {
         settlePress(projectId, { kind: "pressing" });
-        await runPress({ ...input, heldLock: false, resume: { from, projectId, projectName } });
+        return runPress({
+          ...input,
+          heldLock,
+          platform,
+          ...(onProgress === undefined ? {} : { onProgress }),
+          resume: {
+            from,
+            projectId,
+            projectName,
+            ...(outcome.serviceName === undefined ? {} : { serviceName: outcome.serviceName }),
+          },
+        });
       }
-    : null;
-  settlePress(projectId, {
-    kind: "failed",
-    step: outcome.failedStep.kind,
-    reason: outcome.error,
-    retry,
-  });
+    : undefined;
+  settlePress(
+    projectId,
+    {
+      kind: "failed",
+      step: outcome.failedStep.kind,
+      reason: outcome.error,
+      retry:
+        resumeSetup === undefined
+          ? null
+          : async () => {
+              await resumeSetup(false);
+            },
+    },
+    resumeSetup,
+  );
   return outcome;
 }
-
-/** Who may finish a Mate's setup: an owner or an admin, who may write its registration. */
-export const canFinishMateSetup = canWriteRegistry;
 
 /**
  * The press's steps on a Mate whose project exists: its container with its key — nothing written
  * where it has one — its project closed off, its registration. A New project's first Mate goes on
  * with them once the platform took its project; *Finish setup* runs them on a half-made Mate, in
- * any browser — for one made before this pass, the close-off also lowers a key still at `ADMIN`
- * and moves it off the project's variables (`hardenMate`).
+ * any browser — for one it adopts, which HQ holds no record of, the close-off also lowers a key
+ * still at `ADMIN` and moves it off the project's variables (`hardenMate`). A project holds one
+ * Mate (audit D2): one holding several zcp services stops before anything is written, naming them,
+ * and the one it holds is the service its record names.
  */
 export async function finishMateSetup(input: {
   readonly inputs: PressInputs;
@@ -823,22 +973,21 @@ export async function finishMateSetup(input: {
    * would make a second container.
    */
   readonly container: { readonly agents: ReadonlyArray<ZeropsAgentType> } | null;
-  /** The group's other environments: a key minted here reads them. */
-  readonly groupProjectIds: ReadonlyArray<string>;
-  readonly viewer: PressViewer | null;
   /** Null where there is no registry to write it in. */
   readonly registration: PressRegistration | null;
+  /** The organization's HQ, where the close-off is marked; null where it is not open here. */
+  readonly hq: HqEndpoint | null;
   readonly isCurrent: () => boolean;
   /**
-   * A Mate made before the press: its key lowered from `ADMIN`, its delegations dropped and its
-   * key moved off the project's variables (`hardenMate`) before the steps run.
+   * A Mate adopted — one HQ holds no record of: its key lowered from `ADMIN`, its delegations
+   * dropped and its key moved off the project's variables (`hardenMate`) before the steps run.
    */
   readonly harden?: boolean;
   /** Each step's state as the press moves, for a dialog that stays on it. */
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
   /** This browser's locks; the page's own where omitted. */
   readonly locks?: LockManagerLike | undefined;
-  /** Between the harden's tries; the clock's own where omitted. */
+  /** Between accepted creation observations; the clock's own where omitted. */
   readonly sleep?: (ms: number) => Promise<void>;
 }): Promise<EnvironmentCreationOutcome> {
   const locks = "locks" in input ? input.locks : browserLocks();
@@ -869,60 +1018,72 @@ export async function finishMateSetup(input: {
   );
 }
 
-/**
- * An attempt tried again while it fails, a little apart, up to the press's own tries: what a
- * pool-claimed Mate's harden and *Finish setup*'s get.
- */
-export async function withPressTries(
-  attempt: () => Promise<void>,
-  wait: (ms: number) => Promise<void> = sleep,
-): Promise<{ readonly ok: true } | { readonly ok: false; readonly error: string }> {
-  for (let tried = 1; ; tried += 1) {
-    try {
-      await attempt();
-      return { ok: true };
-    } catch (cause) {
-      if (tried >= PRESS_STEP_ATTEMPTS) return { ok: false, error: zeropsErrorMessage(cause) };
-      await wait(PRESS_STEP_RETRY_MS);
-    }
+/** The id of the key the Mate of `input.projectId` named to HQ; none where HQ does not say one. */
+async function mateKeyAtHq(input: Parameters<typeof finishMateSetup>[0]): Promise<string | null> {
+  if (input.hq === null) return null;
+  try {
+    return await accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).mateKey(
+      input.projectId,
+    );
+  } catch {
+    // HQ not answering, or not telling this person: the harden matches the token list instead.
+    return null;
   }
+}
+
+/**
+ * The Mate's zcp service of the project, one Mate per project (audit D2): its id where the project
+ * holds one, none where it holds none yet; a project holding several is refused, naming them.
+ */
+async function mateServiceOf(
+  input: Parameters<typeof finishMateSetup>[0],
+): Promise<
+  | { readonly ok: true; readonly serviceId: string | undefined }
+  | { readonly ok: false; readonly error: string }
+> {
+  try {
+    const container = mateContainerOf(
+      await input.inputs.client.listProjectServices(input.projectId),
+    );
+    if (container.kind === "several")
+      return { ok: false, error: severalMatesLine(container.names) };
+    return { ok: true, serviceId: container.kind === "one" ? container.service.id : undefined };
+  } catch (cause) {
+    return { ok: false, error: zeropsErrorMessage(cause) };
+  }
+}
+
+/** A Finish setup stopped at `failedStep` before its steps ran, with Try again: it runs again, whole. */
+function finishStopped(
+  input: Parameters<typeof finishMateSetup>[0],
+  failedStep: EnvironmentCreationStep,
+  error: string,
+): EnvironmentCreationOutcome {
+  if (input.isCurrent()) {
+    settlePress(input.projectId, {
+      kind: "failed",
+      step: failedStep.kind,
+      reason: error,
+      retry: async () => {
+        settlePress(input.projectId, { kind: "pressing" });
+        await finishMateSetup(input);
+      },
+    });
+  }
+  return { ok: false, projectId: input.projectId, failedStep, error };
 }
 
 async function finishLocked(
   input: Parameters<typeof finishMateSetup>[0],
 ): Promise<EnvironmentCreationOutcome> {
-  if (input.harden === true) {
-    const hardened = await withPressTries(
-      () =>
-        runZeropsCommand(
-          input.inputs.data.runtime.commands.isolateProjectEnv(
-            input.inputs.data.projectRef(input.inputs.organizationId, input.projectId),
-          ),
-        ).then(() => undefined),
-      input.sleep,
-    );
-    if (!hardened.ok) {
-      if (input.isCurrent()) {
-        settlePress(input.projectId, {
-          kind: "failed",
-          step: "close-off",
-          reason: hardened.error,
-          // The harden is safe to ask again: Finish setup runs again, whole.
-          retry: async () => {
-            settlePress(input.projectId, { kind: "pressing" });
-            await finishMateSetup(input);
-          },
-        });
-      }
-      return {
-        ok: false,
-        projectId: input.projectId,
-        failedStep: { kind: "close-off" },
-        error: hardened.error,
-      };
-    }
-  }
+  // A menu can redraw the press before entering here. Its retained plan still owns the
+  // stopped step and accepted handles, and its captured account lifetime gates every call.
+  const resumeSetup = readMatePress(input.projectId)?.resumeSetup;
   const steps: ReadonlyArray<EnvironmentCreationStep> = [
+    // Its record in its application before its container (F6b, 2026-10-03): a Finish setup that
+    // stops after leaves a Mate HQ holds there. A failed registration stops here with its birth
+    // intent retained, for the creator to finish its setup explicitly.
+    ...(input.registration === null ? [] : [{ kind: "register" } as const]),
     ...(input.container === null
       ? []
       : [{ kind: "import-container", agents: input.container.agents } as const]),
@@ -931,21 +1092,46 @@ async function finishLocked(
     input.harden === true && input.container === null
       ? { kind: "close-off", isolated: true }
       : { kind: "close-off" },
-    // After the close-off: a refused registration leaves the Mate closed off and running.
-    ...(input.registration === null ? [] : [{ kind: "register" } as const]),
-    { kind: "share-reach" },
     { kind: "await-ready", withAgent: true },
   ];
+  // Read before anything is written: a project holding several zcp services is no one Mate's, and
+  // the one it holds is the Mate its record names.
+  const service = await mateServiceOf(input);
+  if (!service.ok) return finishStopped(input, steps[0]!, service.error);
+  const platform = pressPlatform(input.inputs, {
+    register:
+      input.registration === null
+        ? null
+        : pressRegistration(input.inputs, input.registration, service.serviceId),
+    hq: input.hq,
+    readObservedServices: async () => [],
+  });
+  if (resumeSetup !== undefined) return resumeSetup(true, input.onProgress, platform);
+  if (input.harden === true) {
+    let keyNotLowered: string | null = null;
+    // The key its Mate named to HQ by its id, hardened by it alone (audit K3); matched on the token
+    // list only where the Mate named none, or HQ does not say.
+    const keyTokenId = await mateKeyAtHq(input);
+    try {
+      const hardened = await runZeropsCommand(
+        input.inputs.data.runtime.commands.isolateProjectEnv(
+          input.inputs.data.projectRef(input.inputs.organizationId, input.projectId),
+          keyTokenId ?? undefined,
+        ),
+      );
+      keyNotLowered = hardened.keyNotLowered;
+    } catch (cause) {
+      return finishStopped(input, { kind: "close-off" }, zeropsErrorMessage(cause));
+    }
+    // A key the platform refused this account is said, and the adoption goes on (step A, A11).
+    if (keyNotLowered !== null && input.isCurrent()) {
+      noteKeyNotLowered(input.projectId, keyNotLowered);
+    }
+  }
   return runPress({
     organizationId: input.inputs.organizationId,
     steps,
-    platform: pressPlatform(input.inputs, {
-      groupProjectIds: input.groupProjectIds,
-      viewer: input.viewer,
-      register:
-        input.registration === null ? null : pressRegistration(input.inputs, input.registration),
-      readObservedServices: async () => [],
-    }),
+    platform,
     isCurrent: input.isCurrent,
     resume: { from: 0, projectId: input.projectId, projectName: input.projectName },
     ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
@@ -959,12 +1145,16 @@ async function finishLocked(
 
 interface MarkedCandidate {
   readonly service?: { readonly id: string } | undefined;
-  readonly project: { readonly tagList?: ReadonlyArray<string> | undefined };
+  readonly project: { readonly hq?: HqPlacement | undefined };
 }
+
+/** Whether HQ's record of the project's Mate says it is closed off. */
+const closedOffAtHq = (candidate: MarkedCandidate): boolean =>
+  candidate.project.hq?.mate?.closedOff === true;
 
 /**
  * The zcp services of the Mates whose press was interrupted before its close-off: the container
- * carries the press's marker (`MATE_SETUP_RUNTIMES`) while the project has no `mate:closed-off`.
+ * carries the press's marker (`MATE_SETUP_RUNTIMES`) while HQ does not know the project closed off.
  * A marker the store has not read, or could not, says nothing.
  */
 export function interruptedPresses(
@@ -974,7 +1164,7 @@ export function interruptedPresses(
   return new Set(
     candidates.flatMap((candidate) =>
       candidate.service !== undefined &&
-      !isZeropsMateClosedOff(candidate.project.tagList) &&
+      !closedOffAtHq(candidate) &&
       markers.get(candidate.service.id) === true
         ? [candidate.service.id]
         : [],
@@ -985,7 +1175,7 @@ export function interruptedPresses(
 /**
  * Which of these Mates' presses were interrupted before their close-off, as the account's store
  * states their containers' variables — the organization's own stream, no read of its own — for
- * every Mate whose project lacks the mark.
+ * every Mate HQ does not know closed off.
  */
 export function useInterruptedPresses(
   candidates: ReadonlyArray<
@@ -998,7 +1188,7 @@ export function useInterruptedPresses(
       candidates.flatMap((candidate) =>
         candidate.service === undefined ||
         candidate.project.clientId === undefined ||
-        isZeropsMateClosedOff(candidate.project.tagList)
+        closedOffAtHq(candidate)
           ? []
           : [
               [

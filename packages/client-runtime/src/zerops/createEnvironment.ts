@@ -28,19 +28,14 @@
  */
 
 import type { ZeropsAgentType } from "./newProject.ts";
-import {
-  withZeropsGroupTags,
-  withZeropsMateAtBirth,
-  type ZeropsEnvironmentRole,
-  type ZeropsMateFace,
-} from "./groups.ts";
+import { withZeropsMateTag, type ZeropsEnvironmentRole } from "./groups.ts";
 import {
   deployTargetTier,
   hasProjectBlock,
   recipeProjectImportYaml,
   recipeServicesYaml,
+  recipeTierZcpServices,
   splitRecipeTier,
-  type RecipeRuntime,
   type RecipeRuntimes,
   type RecipeTier,
 } from "./recipeTier.ts";
@@ -80,9 +75,6 @@ export type EnvironmentRecipeChoice =
 
 export interface EnvironmentCreationInput {
   readonly clientId: string;
-  readonly groupId: string;
-  /** The group's display name, mirrored into the project's tags. */
-  readonly groupName?: string;
   readonly role: ZeropsEnvironmentRole;
   /** What this environment is called, e.g. `"Beviro CRM - production"`. */
   readonly name: string;
@@ -92,39 +84,21 @@ export interface EnvironmentCreationInput {
   /** Overrides {@link defaultAgentForRole}. */
   readonly withAgent?: boolean;
   /**
-   * The agent's name, written onto the project at birth (`bots.ts`). A caller
-   * that omits it gets an environment whose menu row falls back to the project
-   * name — legible, but not somebody you can address.
-   */
-  readonly botName?: string;
-  /**
-   * The Zerops user adding this Mate. A dev environment with an agent is born asking for its
-   * development to be stood up on their behalf (`mate:standup:`): the services arrive empty
-   * (`startWithoutCode`), and their first sign-in sends the Mate the ask that finishes the setup.
-   */
-  readonly standUpBy?: string;
-  /**
-   * The Zerops user adding this Mate: a dev environment with an agent is born naming them
-   * (`mate:by:`), the person whose sign-in it waits for until somebody signs its agent in.
-   */
-  readonly madeBy?: string;
-  /**
-   * The face its person picked for the agent, written beside its name. A
-   * caller that omits it gets a Mate whose face is derived from its name.
-   */
-  readonly face?: ZeropsMateFace;
-  /**
    * The coding agents the new container offers, normally the ones this
    * group's existing environments are signed in with (`agentSelection.ts`).
    * Omitted or empty leaves the container offering every agent.
    */
   readonly agents?: ReadonlyArray<ZeropsAgentType>;
   /**
-   * The person writes the environment's group registration in the press (`register`): an owner
-   * or an admin, or anyone adding a stage or a production. A member's Mate waits for one of them
-   * (*Finish setup*).
+   * The press writes the environment's registration in the organization's HQ (`register`), which
+   * decides who may: an owner or an admin, or a member attaching their own new Mate.
    */
   readonly register?: boolean;
+  /**
+   * The birth intent HQ holds of the Mate (`recordBirth`), recorded before its project: the
+   * project handle is bound to it at HQ before its attach.
+   */
+  readonly birth?: string;
 }
 
 export type EnvironmentCreationStep =
@@ -133,12 +107,13 @@ export type EnvironmentCreationStep =
       readonly kind: "create-project";
       readonly name: string;
       readonly tagList: ReadonlyArray<string>;
+      readonly birth?: string;
       readonly location: string | undefined;
     }
   /**
    * `PUT /project/{id}/first-class-recipe/development-container` — the zcp
-   * that carries the agent, holding the key the person mints for it with the
-   * Mate's reach (`api.ts`, `importDevelopmentContainer`), and the tier's
+   * that carries the agent, holding the key the person mints for it on its
+   * own project (`api.ts`, `importDevelopmentContainer`), and the tier's
    * runtimes for zcp to import on its first boot (`MATE_SETUP_RUNTIMES`).
    *
    * `agents` is the group's own selection, so a Mate added to a group comes up
@@ -154,7 +129,7 @@ export type EnvironmentCreationStep =
       readonly runtimes?: RecipeRuntimes;
     }
   /**
-   * The project closed off and marked so (`mate:closed-off`): read back at
+   * The project closed off and marked so at HQ (`markClosedOff`): read back at
    * once — the container recipe leaves it `service service@zcp` within a
    * second of the import, and a new project starts `service` — and written
    * `service` only where it reads anything else (`projectIsolation.ts`). zcp
@@ -170,16 +145,9 @@ export type EnvironmentCreationStep =
       readonly isolated?: true;
     }
   /**
-   * The group's other Mates given sight of the new project: each one's key
-   * extended to `READ_ONLY` on it, where this person may edit those keys (an
-   * org owner, or their creator). Anyone else's press skips it, and the
-   * group-reach reconcile gives the sight later.
-   */
-  | { readonly kind: "share-reach" }
-  /**
-   * The environment's group registration: its registry entry, the broker's
-   * grant where an older broker needs one, and for a stage or a production
-   * its deploy token and its declaration. Each write is safe to make again.
+   * The environment's group registration: its registry entry, and for a stage
+   * or a production its deploy token and its declaration. Each write is safe to
+   * make again.
    */
   | { readonly kind: "register" }
   /**
@@ -213,6 +181,7 @@ export type EnvironmentCreationStep =
       readonly kind: "import-project";
       readonly name: string;
       readonly tagList: ReadonlyArray<string>;
+      readonly birth?: string;
       readonly yaml: string;
     }
   /** Poll until the services are up. Measured at ~2 minutes for a two-service recipe. */
@@ -242,8 +211,8 @@ export type EnvironmentCreationPlan =
  * (`splitRecipeTier`). The project goes in with its managed services alone —
  * its variables and generated secrets evaluated there and nowhere else — and
  * then the container, holding its key and the runtimes for zcp to import on
- * its first boot (`MATE_SETUP_RUNTIMES`). The press then closes the project
- * off and registers it, so nothing after it needs this browser. Measured on
+ * its first boot (`MATE_SETUP_RUNTIMES`) — registered in its application before it — and the
+ * press then closes the project off, so nothing after it needs this browser. Measured on
  * the add of 2026-09-30, the whole tier in one import cost the container's
  * build a queue behind the services' priority waves, and closing off
  * afterwards restarted nine services, a storage's restart failing: closed off
@@ -266,10 +235,18 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
   }
   const tier = recipe.kind === "tier" ? readTier(recipe.yaml, withAgent) : null;
   if (tier === undefined) return { ok: false, reason: "This project has no recipe merged yet." };
+  // A project holds one Mate (audit D2): the container is the press's, never the tier's too.
+  const zcp = withAgent && recipe.kind === "tier" ? recipeTierZcpServices(recipe.yaml) : [];
+  if (zcp.length > 0) {
+    return {
+      ok: false,
+      reason: `This project's recipe declares a Zerops Control Plane (${zcp.join(", ")}). A Mate brings its own: take it out of the recipe, then try again.`,
+    };
+  }
 
   // Membership first, then the name: naming is not a membership write, and
   // routing it through one clears the group (`groups.ts`).
-  const tagList = taggedAtBirth(input, withAgent);
+  const tagList = withAgent ? withZeropsMateTag([]) : [];
 
   // A recipe that describes a whole project creates one in a single call. Not
   // taken when the caller placed the environment in a region: the project
@@ -284,10 +261,19 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
           kind: "import-project",
           name,
           tagList,
+          ...(input.birth === undefined ? {} : { birth: input.birth }),
           yaml: recipeProjectImportYaml(tier.withProject, { name, tagList }),
         },
       ]
-    : [{ kind: "create-project", name, tagList, location: input.location }];
+    : [
+        {
+          kind: "create-project",
+          name,
+          tagList,
+          location: input.location,
+          ...(input.birth === undefined ? {} : { birth: input.birth }),
+        },
+      ];
   // Into a project that exists: the platform refuses a project block there,
   // and an import that names no service at all.
   if (tier !== null && !wholeProject && tier.firstImportHasServices) {
@@ -299,6 +285,11 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     );
   }
 
+  // A Mate's record in its application before its container (F6b, 2026-10-03): a press that
+  // stops after it leaves a Mate HQ holds there, which any browser finishes under its name. A
+  // registration refused — a member who may not write the registry — stops nothing: the
+  // container and the close-off still run, and the Mate waits for an owner, bare.
+  if (withAgent && input.register === true) steps.push({ kind: "register" });
   if (withAgent) {
     steps.push({
       kind: "import-container",
@@ -306,13 +297,9 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
       ...(tier?.runtimes === undefined ? {} : { runtimes: tier.runtimes }),
     });
   }
-  // The close-off first: it is what makes the Mate need no browser, and a registration the
-  // platform refuses — a member who may not write the registry, a broker grant that failed —
-  // never keeps the Mate open. The group's sight of it is best-effort, last, and the group-reach
-  // reconcile covers it anyway.
+  // The close-off after the container: it is what makes the Mate need no browser.
   if (withAgent) steps.push({ kind: "close-off" });
-  if (input.register === true) steps.push({ kind: "register" });
-  if (withAgent) steps.push({ kind: "share-reach" });
+  if (!withAgent && input.register === true) steps.push({ kind: "register" });
   // Last, and the only step that waits on anything: everything the person's rights are needed
   // for is done before it.
   steps.push({ kind: "await-ready", withAgent });
@@ -362,8 +349,6 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
       return "Adding the agent container";
     case "close-off":
       return "Closing the project off";
-    case "share-reach":
-      return "Letting the project's other Mates see it";
     case "register":
       return "Registering it in its project";
     case "import-recipe":
@@ -373,21 +358,4 @@ export function environmentCreationStepLabel(step: EnvironmentCreationStep): str
     case "await-ready":
       return step.withAgent ? "Waiting for the agent" : "Waiting for the services";
   }
-}
-
-/**
- * The tags a new environment is created with: its membership, and — when it
- * gets an agent — the `mate` marker, the agent's name and its face. The marker is
- * written here, at birth, rather than after the container import, so a
- * creation that fails between the two still leaves a project that says what
- * it was meant to be.
- */
-function taggedAtBirth(input: EnvironmentCreationInput, withAgent: boolean): ReadonlyArray<string> {
-  const membership = withZeropsGroupTags([], {
-    groupId: input.groupId,
-    role: input.role,
-    ...(input.groupName === undefined ? {} : { label: input.groupName }),
-  });
-  if (!withAgent) return membership;
-  return withZeropsMateAtBirth(membership, input);
 }

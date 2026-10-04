@@ -2,8 +2,8 @@
 
 The hosted client has one account boundary, outside the router and connection runtime. Only the
 Zerops callback can run before verification. A saved credential is not verification: Mate checks
-`user/info`, then reads current organizations, projects, effective project roles and services before
-mounting the product. Registration and second factors belong to the Zerops account application.
+`user/info` before mounting the product. HQ menu memory can paint earlier. Navigation reads only
+the selected organization; project roles and services are demanded when a project opens. Registration and second factors belong to the Zerops account application.
 
 ## Ownership and authority
 
@@ -23,6 +23,17 @@ new identity. Organization selection and navigation remain per tab. Drafts have 
 branches, including duplicated tabs; a reload resumes the tab's preceding branch. A new tab can
 start from the account's latest saved draft without overwriting the original. These preferences are
 local to the browser, not synchronized between devices.
+
+Project activity for deployment projections shares the account environment's active detail demand
+(route, screen, or explicit action). A cached sidebar row does not hold a project receiver. This
+keeps navigation from exhausting the data runtime's receiver budget before a cold Mate opens.
+A refused inventory acquisition is retained as a visible failure until manual **Again**, or until
+that project's demand ends. It is not retried by a timer.
+
+The hosted web and desktop wrapper use this presentation. Mobile has no global project-flow
+provider and therefore no corresponding background receiver sweep; its retained source uses the
+same shared acquisition state. Native presentation of that refusal is deferred while mobile is
+unreleased by this fork.
 
 ## Restoration and convergence
 
@@ -47,7 +58,10 @@ every scope the client asks for now (`GET /api/auth/session`, 3 s). A session th
 short of a scope, is forgotten, and a throwaway opens a new one; a kept session spends no mint and
 waits on no mint pace. No kept session outlives its login: the account's close ends every one at
 its Mate however the account closes, a stored login the platform refuses ends every one the origin
-holds, and a session displaced from the store is ended too.
+holds, and a session displaced from the store is ended too. HQ's session is kept by the same store
+and rules, per account, organization and HQ (K7): a load presents a live one through no door, one
+HQ no longer takes is forgotten, and the account's close revokes each at its HQ
+(`DELETE /api/session`).
 
 One inventory supplies overview, sidebar and restore. Direct platform lists and permission-filtered
 search are paginated; malformed pages, changing totals and duplicate pages fail the read. Reads use
@@ -57,6 +71,20 @@ organization read retains only that scope’s last verified list; successful sco
 Until 0.6, an incomplete access check conservatively disables mutations and offers retry; the
 per-project admission below replaces it. Stale content is hidden after the verification window; an
 initial failure never unlocks cached product content.
+
+HQ's structure carries each application's `contents`: `empty` uses the same held-record predicate
+as app deletion; `deletingProjectIds` names held projects deleting or absent in HQ's Zerops view.
+Removing a project from the visible inventory does not establish app emptiness. The product deletion follows Zerops's process stream, then calls HQ's `POST
+/api/projects/:projectId/deleted` once. HQ checks that id (`goneOf`), refuses it if it still exists,
+and releases its rows and overview in the request, publishing the structure change. Before the
+Zerops delete, `POST /api/projects/:projectId/deletion` authorizes the project's admin by the
+existing `edit_mate_record` rule and returns an opaque completion handle. HQ seals it with its
+existing key, bound to the user, project and deletion purpose; completion still requires active
+org membership. It carries no copied platform roles and remains verifiable after the project and
+its roles disappear. A failure stays in the dialog with a manual Again, which repeats only the
+unfinished completion or key retirement. The periodic reconcile remains for external deletions. Clients use
+only a current stream answer for Delete, and keep unfinished deletion visible until that answer
+changes. These fields add no stored copy of Zerops topology and no client timer.
 
 Platform writes are not automatically replayed after network loss. An ambiguous response is shown
 as uncertain, with instructions to inspect the current project/services. The new-project wizard
@@ -69,53 +97,54 @@ operations check the original session generation before subsequent writes.
 The rules in this section hold from slice 0.6 of the
 [client state model](client-state-model.md#status-by-phase).
 
-Access is verified by REST alone. A round reads `user/info`, every organization's project list and
-each listed project, four projects at a time. Inventory completeness, interest liveness and receiver
-state are not inputs, and from 2.3 a round re-reads no inventory. At most one round runs at a time;
-its deadline is 30 s plus 15 s for every four projects.
+Access is verified by REST alone. A round reads `user/info` (or reuses its recent answer), then
+only projects demanded by a route or explicit action through `GET /project/{id}`, four at a time.
+It never enumerates organization project lists. Navigation and inventory completeness are not
+admission evidence. The runtime shares the direct project result with access classification,
+including `userRoles`, and ingests its platform observations before completing the read. An
+unavailable observation from a 403/404 retains that denial kind; it is not a transport failure.
+At most one round runs; its deadline is 30 s plus 15 s for every four demanded projects.
 
-Evidence is stamped when the round's first request is sent, on both the wall clock and the monotonic
-clock. Authority ends 15 minutes after its stamp on whichever clock reaches that first. A wall clock
-set back by more than 60 s counts as a lapse and starts a round at once. A round whose result
-arrives after its own deadline, as in a tab frozen mid-round, is discarded and a new round starts.
-The deadline is checked whenever a write or an action is admitted and on every wake, hidden or
-visible.
+Evidence is stamped when the round's first request is sent, on both wall and monotonic clocks.
+Authority ends 15 minutes after its stamp on whichever clock reaches that first. A wall clock
+set back by more than 60 s counts as a lapse. A result arriving after its own deadline is discarded
+and shown as failed. Every write/action admission and wake checks the absolute deadline.
 
-Admission is per project. The account is admitted when `user/info` and every organization list
-answer; only their failure fails a round. Each project's authority rests on its own evidence stamp.
-A project whose read fails transiently keeps its older evidence until that evidence's own deadline;
-after it, the project's content is withheld and its writes are closed until a per-project retry
-(10, 20, 40, 60 s) succeeds. The account stays admitted and other projects are untouched. A 403 or
-404 on a project's read closes that project's writes at once, even mid-round; its content is
-withheld, and removed only after a direct read of the same project at least 5 s later confirms the
-answer. A lowered role in an admitted round applies at once.
+The account is admitted by `user/info`; each opened project's content and writes require its own
+role and evidence stamp. READ_ONLY can be verified without mutation authority; NO_ACCESS cannot
+admit project content. A transient project failure keeps older evidence until its own deadline,
+then withholds content and closes writes until a manual attempt succeeds. A 403/404 closes writes
+immediately and withholds content. One direct read of the same demanded project at least 5 s later
+confirms the denial before removal. Failure of that confirmation requires a manual attempt.
+A lowered role applies as soon as a round admits it. HQ navigation grants no mutation authority.
 
-Renewal is due at the stamp plus 15 minutes minus a lead of at least 3 minutes, widened to 60 s plus
-the epoch's 95th-percentile round duration plus 30 s when rounds are slower. A renewal never closes
-a write the held evidence still covers: writes stay open until the old deadline. A failed renewal
-retries at 10, 20, 40 and 60 s within that deadline. While lapsed, a visible tab starts a round at
-once on wake, then retries at 2, 5, 15, 30 and 60 s. A tab hidden for 60 minutes stops renewing; its
-grant lapses at the deadline, and its next wake starts a round before anything else that needs
-access.
+Healthy renewal is due before expiry, with a lead of at least 3 minutes, widened for slower rounds.
+A running renewal leaves writes open until the old evidence expires. A failed initial round or
+renewal stays failed: ticks, online and visible wake do not retry it. The person uses **Try now**.
+A tab hidden for 60 minutes stops healthy renewal; its grant still expires on time. Returning from
+that pause can start a healthy renewal, but cannot clear an existing failure.
 
 ## Server door and compatibility
 
 The client reaches a Mate only through the throwaway door
 ([spec §10.4](../../../../zcp/docs/spec-mate.md#104-the-door-post-apiauthzerops-throwaway)): it
 mints a rights-less integration token as the person, presents it once, and deletes it whether the
-door admitted or refused. The client checks no organization or project role for the mint; the door
-and the broker decide roles. From 2.4 a mint of `NO_ACCESS` with no projects and no flags is an
-account write: it runs only after the sign-in's first access grant, and a verification window that
-has closed since does not hold it up. Any mint that grants a project stays a project write and is
-refused while the window is closed. The delete carries the minting token, never the current
-session, with its own 15 s timeout and outside the exchange's cancellation, so it can neither run
-under another account nor end anyone's session. A token it could not delete is removed by the same
-account's next sweep.
+door admitted or refused. HQ's door takes the same throwaway, named for HQ's project
+(`apps/hq/src/door.ts`). The client makes no Gitea sign-in and mints no throwaway for a broker; its
+start-up sweep still takes back the person's own `gitea-signin:` throwaways that main's client
+leaves (`zeropsThrowaway.ts:71`). The client checks no organization or project role for the mint;
+the door it is presented to decides roles. From 2.4 a mint of `NO_ACCESS` with no projects and no
+flags is an account write: it runs only after the sign-in's first access grant, and a verification
+window that has closed since does not hold it up. Any mint that grants a project stays a project
+write and is refused while the window is closed. The delete carries the minting token, never the
+current session, with its own 15 s timeout and outside the exchange's cancellation, so it can
+neither run under another account nor end anyone's session. A token it could not delete is removed
+by the same account's next sweep.
 
 The window guards against a person whose access lapsed acting on the platform past it. Minting a
 token with no role, no project grant and no flag while project writes are closed cannot grant
-anything: the door and the broker decide what it opens when it is presented, re-reading the
-person's role with their own keys, and refuse a token that carries a grant or a flag. A mint that
+anything: the door it is presented to decides what it opens, re-reading the person's role with
+its own key, and refuses a token that carries a grant or a flag. A mint that
 grants a project would add authority, so it keeps the window.
 
 `packages/client-runtime/src/zerops/serverCompatibility.ts` defines the GUI's minimum supported

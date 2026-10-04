@@ -1881,20 +1881,35 @@ apps/mobile/src/features/cloud`
   the provider registry only through `spi/providerInstances.ts` — zone rule 2 green again.
   - _How it was established:_ `ZeropsAgentAuthVerify.test.ts` (21), `ZeropsAgentAuthIo.test.ts`,
     `ZeropsAgentAuthWatcher.test.ts`, `scripts/z3-zone-architecture.test.ts` 4/4
-- **Login is server-driven**: `zerops.agentLogin.start {agentId, threadId}` opens an
-  `agent-login-<agent>` terminal, writes the command, feeds the PTY bytes to a near-verbatim port of
-  the Zerops GUI walker's pure output parser (`zeropsAgentLoginOutputParser.ts`: chunk-boundary-safe
-  URL anchors, OSC 8, DEC graphics; 16 ported tests) and handler table trimmed to claude-code/codex,
-  with the walker's stall timer pressing Enter through any unrecognized screen (Claude's
-  login-method menu included); the feed's `login` field carries `phase` (`starting | menu |
-awaiting-browser | awaiting-code | succeeded | failed | cancelled`), `url`, `code`, `message`,
-  `terminalId`; success triggers `ZeropsAgentAuth.recheckNow`; one session per agent;
-  `zerops.agentLogin.cancel` sends Ctrl-C and closes. The card renders "Open sign-in link" + "Copy
-  link" (+ "Copy code" for Codex) and no longer types into a client terminal. The raw PTY stream
-  carries no newline at the soft-wrap point — the wrapping seen in F8 was the client terminal's
-  rendering.
-  - _How it was established:_ `ZeropsAgentLogin.test.ts` (9), `zeropsAgentLoginWalker.test.ts` (17)
-    fixtured on the F8 ledger lines; web card tests
+- **Login is server-driven**: `zerops.agentLogin.start {agentId, threadId, loginId?}` opens an
+  `agent-login-<key>` terminal (the agent id for a default login, the login's id for any other),
+  writes the command, feeds the PTY bytes to a near-verbatim port of the Zerops GUI walker's pure
+  output parser (`zeropsAgentLoginOutputParser.ts`: chunk-boundary-safe URL anchors, OSC 8, DEC
+  graphics; 16 ported tests) and handler table trimmed to claude-code/codex, with the walker's stall
+  timer pressing Enter through any unrecognized screen (Claude's login-method menu included); the
+  feed's `login` field carries `phase` (`starting | menu | awaiting-browser | awaiting-code |
+succeeded | failed | cancelled`), `url`, `code`, `message`, `terminalId`. The CLI signs in in a
+  scratch home `~/.mate/pending/<key>` (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`; Claude's seeded through
+  `seedClaudeConfig`, Codex's a shadow home over `~/.codex` via `spi/driverHomes.codexShadowHome`),
+  never in the home the login works with. A success waits up to 5 s for the credential to land
+  there, moves it into the login's own home by one rename (for Claude, `oauthAccount` into that
+  login's `.claude.json`), then saves the signer, triggers `ZeropsAgentAuth.recheckNow` (another
+  login: its own check), closes the terminal, and drops the scratch home. A cancel, a failure, an
+  exit, a restart, or a success that left no credential leaves the working credential as it was. A
+  server clears `~/.mate/pending` at boot, and each start clears its own leftover. One session per
+  login; `zerops.agentLogin.cancel` sends Ctrl-C and closes. The card renders "Open sign-in link" +
+  "Copy link" (+ "Copy code" for Codex) and no longer types into a client terminal. The raw PTY
+  stream carries no newline at the soft-wrap point — the wrapping seen in F8 was the client
+  terminal's rendering.
+  - _How it was established:_ `ZeropsAgentLogin.test.ts` (68, including real-home rows for the
+    Claude and Codex default and extra logins: cancel, success with signer and flag, CLI exit,
+    restart, no credential, credential landing 1 s late, a colleague's attempt),
+    `zeropsAgentLoginWalker.test.ts` (17) fixtured on the F8 ledger lines, `spi/driverHomes.test.ts`
+    (`codexShadowHome`), web card tests. Codex writes `auth.json` before its success line: measured
+    on Toby 2026-10-02 (`auth.json` 21:44:57.147, the server's save on success 21:44:57.174).
+    `CODEX_HOME` redirects `codex login`: local probe, codex-cli 0.159.2. `CLAUDE_CONFIG_DIR` keeps
+    `.credentials.json`: Claude Code docs, IAM "Credential management". Not live-run on a rig since
+    the scratch home landed (int 95d2af8a6f).
 - Not proven offline: Codex's exact success/error lines beyond `Logged in using <method>` / `Not
 logged in` (ported from the GUI walker), which stream Codex writes to (both are read), and the
   Claude menu text (the walker never matches it — it Enters on stall). The `ws.ts` feed handler
@@ -5868,6 +5883,8 @@ rebase` was painted green. `projectFlow.test.ts`.
   - _What it is:_ `grouped.others` — a change on nobody's Mate's branch — was indented under the
     Mates like theirs, distinguished only by a `· ada` the 256px width truncates away. It sits at
     the project's own left edge now. `SidebarZeropsTree.test.tsx`.
+  - _Stale 2026-10-02:_ `grouped.others` went with the Gitea pull-request rows; a change in HQ is
+    always a Mate's.
 - **Not done in this pass**
   - _What it is:_ "The actual PRs that prod has" and each branch's distance from production are not
     built. What a production is _missing_ is shown (`releaseContents`, already read, now listed in
@@ -7249,6 +7266,88 @@ read-only Gitea calls.
   `profileOverrides: {maxmemory-policy: …}` on every Valkey profile (hobby, staging, production).
   Medusa's job queue (BullMQ) warns on `allkeys-lru` and wants `noeviction`.
 
+## The HQ rebuild, as measured — 2026-10-01/02
+
+KRLS rigs and KRLS `Headquarters` `XpjD3GggSOmPrk2Xm7N8Kg`, unless named. Each row says what was done.
+
+- **A deploy with `readinessCheck` and `temporaryShutdown: false` hands over without one failed
+  request**; a version whose check never passes fails while the old one keeps serving. A Postgres
+  plus one runtime imports in 54–66 s. The hostname `core` is reserved: an import under it creates
+  nothing and leaves a project that cannot be deleted.
+  - _How it was established:_ probe projects created and deleted in KRLS, a 1 s poller on the
+    public address through each deploy.
+- **A BASIC_USER write to project env is read at once through an org READ_ONLY token's env read;**
+  project search trails it by up to about 1.6 s. A `mate-hq:` integration token is visible in the
+  member list to every reader.
+  - _How it was established:_ a write, then both reads polled with the two tokens.
+- **A project's own domain reaches an IPv4-only client through Zerops' shared IPv4**, with no 50 MB
+  body cap: `/health` 200 and a 120 MB body to HQ from a laptop without IPv6. Routing set before the
+  first deploy is refused with 400 "ServiceStack must supported http protocol"; the certificate
+  followed the deploy in about 10 s.
+  - _How it was established:_ T3c on KRLS `Headquarters`, curl from this Mac.
+- **A `local-storage` volume survives a deploy, and two containers serve it together for about
+  20 s.** The new container answered SSH at +40 s and took HQ's lead at +60 s; a marker written
+  before the deploy was read after it under a different host key. The old Core stops answering
+  about 45 s after a deploy's PUT, before the new version reads ACTIVE.
+  - _How it was established:_ marker, deploy, read; repeated in the restore drill's timings.
+- **An environment-scoped NO_ACCESS + BASIC_USER token deploys, enables the subdomain and imports
+  services** into its one project; an org READ_ONLY token cannot enable a subdomain.
+- **Stage deploys from HQ, twice** (Core `2d93cc977d`): deploying 3–10 s after the merge, live at
+  63–81 s, the app version named `main <sha7>`, the subdomain answering; everything deleted after.
+- **A Mate's delivery round trip through HQ** (Core `7e41c9e963`, zcp `5865657ce`): appdev #1
+  delivered, merged over the API and absorbed by the next delivery; #2 merged with the browser's
+  Merge button; #3 retitled within one session; the recipe proposal in `group` landed by Core.
+  `mate-rig-a - Gita` enrolled with HQ the same day.
+- **Backup sets** (Core `ddce9f140d`, then `ec1ae73186`): PGDG's `postgresql-client-18` 18.6
+  installs in the runtime prepare (about 82 s) against a Postgres 18.4 server; the five
+  `${backup_*}` references resolve inside a sensitive service env; the Object Storage at
+  `storage-prg1.zerops.io` answers SigV4 for region `us-east-1`. The first set (126 MB, 5
+  repositories, a 43.5 kB dump) was whole in the bucket and on the volume 36 s after the build
+  answered.
+- **A restore** (`restore <set> --replace`): 8.3 s; HQ down 2 min 50 s in all, about 80 s of it hand
+  steps; event log, refs and counts equal the set's manifest; the epoch went from 12 to 14. A set
+  from a Core with 17 migrations restored under one with 18, which applied the 18th at takeover.
+  HQ's database user does not own schema `public`: `DROP SCHEMA public` is refused with "must be
+  owner of schema public". A signed-in client re-entered through the door by itself; Gita's
+  credential, older than the set, kept working.
+- **An integration token's name takes 255 characters and colons;** 256 is refused with 400
+  `invalidUserInput`.
+  - _How it was established:_ NO_ACCESS tokens with no grants minted and deleted at each length.
+- **Swapping an environment's deploy key** (rehearsed with a stand-in broker variable): main's key
+  deleted by id, HQ's key handed over 0.6 s later, the variable untouched. HQ reads a deleted key as
+  held until it next hands it over, and then refuses the deploy.
+- **The sign-in hand-over returns only to the platform's registered callback.** From an origin that
+  is not `localhost` the request carries no port, so a client hosted on a `*.zerops.app` subdomain
+  cannot sign in: `app.zerops.io/authorize-app?app=zerops-code&state=…` sends the token to
+  `mate.zerops.io`. The Zerops API answers that origin with `access-control-allow-origin: *`.
+  - _How it was established:_ a static client hosted on `mate-rig-web` (deleted after), a browser
+    run to the platform's consent page.
+- **A door's throwaway token outlives a page that closes right after the door answers.** 18
+  `mate-door:*` tokens stood in KRLS, all minted by the owner's browser profiles: the client
+  deletes a door throwaway without awaiting it (`zeropsThrowaway.ts:161`), and the backstop sweep
+  runs once a day per browser.
+- **Main's release tags are signed by Gitea, not by the person.** Snap's `v0.1.0` reads
+  `tagger Gitea <gitea@fake.local>`; the person who released is in the broker's verdict status,
+  `approved: u-<login>`, as for all 94 verdicts in Mate s.r.o.
+  - _How it was established:_ the T13 export of Snap, read-only.
+- **An HQ born from the app** (T4b/T4c, KRLS, 2026-10-02): `Headquarters` reported `official: ok`;
+  a KRLS member with the Developer preset saw the product with no gate; an owner opening an
+  organization with no HQ saw it born. `mate-rig-a - Gita` linked to it live: online, its summary
+  arriving over the link (T6b).
+- **A birth in Mate s.r.o. hit Zerops' variable sync** (2026-10-03): the build-and-deploy right after
+  `HQ_ORG_TOKEN` was written, with the backup service's five references also syncing, was refused
+  with 400 `userDataSyncRunning` ("Service environment variable synchronization is already
+  running."). A Try again a few seconds later deployed, and the HQ answered `official: ok`,
+  `backup: ok`.
+- **Importing one application** (Snap into Mate s.r.o.'s new HQ, 2026-10-03): `import` finished and
+  verified about 2.5 s after it was queued, the environment `at its target`. An admin's open client
+  minted HQ's deploy key for that environment 1 s after the import ended, through its environment
+  reconcile, before anyone pressed anything.
+- **A Mate switched to HQ by a unit restart** (Nova and Kai, 2026-10-03): with zcp and the Mate
+  server replaced and only the unit restarted, each enrolled with the new HQ, showed online in its
+  application, and seeded `signed-in.json` with one key from its one `mate:signer:` tag. Its git
+  remote stayed on the old Gitea until a delivery or git-push.
+
 ## Run 4 as measured — 2026-10-02
 
 - **New project to production, timed** — mate 0.11.86, two windows on mate.zerops.io as the test
@@ -7292,6 +7391,113 @@ read-only Gitea calls.
 - **An idle window made 16 requests a minute** (per window, after the flows; run 3 measured 20 and 21).
 - **The build queue** — a new Mate's zcp build queued 27–46 s and ran 109–122 s. The service's
   address and user-data writes queued behind it for 128–156 s.
+
+## The HQ end-to-end on KRLS, as measured — 2026-10-03
+
+- **A deploy rewrites a service's `appVersionId` and `appVersionName` in place, at build start** —
+  on `mate-rig-e2e-c - stage`, service `app`, `POST /user-data/search` returned both as `SYSTEM`
+  rows created 04:49:13Z (the stage's import) with `lastUpdate` 05:13:05Z, the second build's start;
+  the row ids were unchanged. `appVersionId` equalled `activeAppVersion.id`, and `appVersionName`
+  read `main 6aeae99`, while `activeAppVersion` carried no `name`. Cyd's own `appstage` showed the
+  same pattern (created 23:04Z, updated 04:58Z). A production on its import's no-code version reads
+  source `NONE` with `appVersionName` `""`.
+- **KRLS's organization-wide reads stall for tens of seconds, intermittently** — 14 cold loads of
+  the local web client, as KRLS's owner, around 05:30Z. 12 showed a change's review 1.5–3.6 s after
+  navigation. In the other 2, `GET /client/{id}/project` took 10–17 s, `user/list` 18–35 s (one
+  answered 400), and `integration-token/list` 39–59 s before answering 400; the review showed at
+  55.0 s and 77.5 s. HQ answered no 503 in about 1,100 responses; the wait sat in the HQ door's
+  fresh member read, which the client cut at 20 s twice. A reopen inside the app took 3–28 ms.
+- **Token writes do not make the organization's token list slow** — five mint/delete pairs on KRLS
+  (mint about 30 ms, delete 47–118 ms, all 200): `GET integration-token/list` took about 1 s on the
+  first call, warm, after 5 s idle, right after each write and 5 s after, at 185 tokens. The 17 s
+  list read once on 2026-10-02 did not recur, and its cause is unknown. The list ignores `limit` and
+  `offset` and answers the whole set.
+- **Mate 0.11.0 cannot pass its door** — `localflow`'s container (Mate 0.11.0) failed every door
+  since 22:16Z at the member-list step: 308× "not in the expected shape" (it reads `items`; the
+  platform answers `clientUserList`) and 7× 400 `userNotFound`. Its own key read its project and
+  `user/info` fine.
+- **A NO_ACCESS member reads its projects only through search, and a search row names only its own
+  grant** — KRLS's Developer (org role NO_ACCESS): `GET /client/{id}/project` answered 403
+  `insufficientPermissions`; `POST /project/search` listed the two projects its grants name, each
+  row's `userRoles` holding only `{mine: true, roleCode}`; `GET /project/{id}` answered the whole
+  list (`[{mine: false, BASIC_USER}, {mine: true, OWNER}]`) for a project it holds, 403 for any
+  other.
+- **The organization's member list carries every integration token, with the token's own org
+  role** — at 12:07Z KRLS listed 192 integration tokens and `user/list` held 194 entries: 189
+  `ACTIVE/NO_ACCESS`, 2 `ADMIN`, 2 `READ_ONLY`, 1 `OWNER`. Exactly four tokens hold an org role,
+  each with no project grant: `mate-hq:…` (HQ's anchor) and `ttt` `ADMIN`, `mate-hq-org:…` and
+  `r` `READ_ONLY`; the four non-NO_ACCESS non-owner entries are theirs. A role does not tell a
+  person from a token. 63 tokens were named `zerops-zcp-zcp`. An earlier count the same day (181
+  entries, 179 tokens) took the five non-NO_ACCESS entries for people.
+- **An integration token's `/user/info` id is its own token id, and its member entry's `userId`**
+  — a `mate-probe-*` NO_ACCESS token minted on KRLS at 12:08Z: `GET /user/info` with it answered
+  200 with `id` equal to the id the mint returned; its one `clientUserList` row (KRLS, NO_ACCESS)
+  carried `userId` equal to that id; `user/list` held exactly one entry with that `userId`
+  (`ACTIVE/NO_ACCESS`); the token list's row has the same `id`. Deleted at once (200).
+- **The API's WebSocket admits only a person's session, never an integration token** — KRLS,
+  18:18–18:23Z, `POST /web-socket/login` with `Authorization: Bearer <token>`: a person's session
+  (email/password login) answered 200 `{webSocketToken}` and its subscriptions to process,
+  app-version and service-stack updates answered 200; `mate-probe-*` integration tokens with org
+  role READ_ONLY, with org role ADMIN, and NO_ACCESS with a project BASIC_USER grant each answered
+  401 `notAuthorized`, with an empty, `{token}` or `{accessToken}` body alike, while the same token
+  read `/user/info` (200). Without a bearer the endpoint answers 400 `invalidUserInputWithText`
+  "missing token". `web-socket/login` is not in the public OpenAPI. All tokens deleted at once.
+- **An org READ_ONLY token reads a service by id** — 17:23Z, a `mate-probe-*` org READ_ONLY token
+  with no grant: `GET /service-stack/{id}` of a rig Mate's zcp answered 200 (`ACTIVE`); a
+  non-existent id answered 400 `serviceStackNotFound`. Deleted at once.
+- **Zerops runs a service's builds one after another; the last one submitted ends `ACTIVE`** —
+  22:41–22:47Z, service `app` of `mate-rig-e2e-h - stage`: build-and-deploy of version A answered
+  200 (process `RUNNING`); B, submitted 3 s later, answered 200 and waited (`PENDING`,
+  `WAITING_TO_BUILD`); A finished and went `ACTIVE`, B started 32 ms later, finished, went `ACTIVE`,
+  and A became `BACKUP`. Nothing was cancelled by itself. `PUT /process/{id}/cancel` on a running
+  build answered 400 `processIsAlreadyRunning`; `PUT /app-version/{id}/cancel-build` answered 200.
+  A version only uploaded (never submitted) vanished once later upload-only versions were created on
+  the same service: submitting it answered 400 `appVersionNotFound`.
+- **`enableSubdomainAccess: true` in a service import does not open the subdomain, not even after
+  its first deploy** — 22:4xZ, a `probesub` service imported with the flag into the same project:
+  `READY_TO_DEPLOY` with `subdomainAccess: false`; after its one deploy finished and went `ACTIVE`,
+  still `false`. The service's address (`https://probesub-…prg1.zerops.app`) was listed by the
+  environment endpoint all along. Probe service deleted.
+- **A version Zerops accepted can still read `UPLOADING` for a moment** — same run: B read
+  `UPLOADING` right after its build-and-deploy answered 200, then `WAITING_TO_BUILD`; an upload-only
+  control stayed `UPLOADING` for 82 s with no process. One immediate `UPLOADING` read does not prove a
+  submission was lost.
+- **An uploaded app version that is never built stays `UPLOADING`** — 17:46–17:51Z, service `app`
+  of `mate-rig-e2e-h - stage`: `POST /service-stack/{id}/app-version` answered `UPLOADING`, and
+  so did `GET /app-version/{id}` before the upload, right after `PUT …/upload` (200), 60 s and
+  5 min later, with no build-and-deploy sent. `DELETE /app-version/{id}` answered 200
+  `{success}` (not a process); a read after it answered 400 `appVersionNotFound`.
+- **An org READ_ONLY token reads the token list, but not all of it** — a `mate-probe-*` token
+  with org role `READ_ONLY` and no grant, minted on KRLS at 12:19Z: `GET
+/client/{id}/integration-token/list` answered 200 with 180 tokens where the owner's read, moments
+  later, listed 193; `user/list` answered 200 with 195 entries. The 13 missing showed no role or
+  grant pattern: 8 `mate-door:…`, one `mate-hq-deploy:…` with a `BASIC_USER` grant, 4 NO_ACCESS
+  without grants. Deleted at once (200).
+- **Door throwaways outlive their door** — at 12:07Z KRLS listed 8 `mate-door:…` tokens,
+  `NO_ACCESS` with no grant, all naming KRLS's HQ project, all minted by one user between 08:34:47Z
+  and 08:35:08Z; none was deleted. A sampler polling every ~55 s saw KRLS's project list, member
+  list and token list time out at 25 s at 08:33:38Z and 08:34:33Z, and answer in 0.3–1.4 s at
+  08:35:28Z.
+- **A WebSocket through a project's shared IPv4 is cut 120 s after it opens, busy or not, with no
+  close frame; over the project's IPv6 it is not** — KRLS HQ's project is `mode: LIGHT`,
+  `publicIpV4Shared: true`, with its own `publicIpV6`. At 12:52Z, from a KRLS Mate container, two
+  structure sockets to `<publicZone>` held with every ping answered: the one Node resolved over IPv6
+  (`--dns-result-order=ipv6first`) was still open at 150 s; the one over IPv4 ended at 120.1 s with
+  `1006`. Earlier, a Node client held KRLS HQ's structure socket through the project's own domain
+  (`<publicZone>`, `*.prg1-zerops.zone`) for 5 min from 11:56Z, answering every ping: sockets 1
+  and 2 each ended at 120.02 s with `1006`, not clean, after 5 pings; a reconnect got a fresh
+  snapshot within 15 ms; socket 3, closed by the client at 59 s, ended `1000`. HQ's own log
+  (`zcli service log`) gave the same two sockets `http.span`s of 119 989 and 119 988 ms, just under
+  the client's, so the cut sits between them. Every Mate link (`/api/mate/link`) in HQ's log from
+  11:49Z to 12:01Z lasted 119 986–120 003 ms, each followed about 1 s later by the Mate's
+  link-ticket and a new link. A local Core held a socket 135 s at the same cadence. Pings every
+  20 s each way do not prevent the cut; this is not the 60 s idle cut. None of the 34 settings of
+  `GET /project/{id}/l7httpbalancer-config` is a connection lifetime; the public-access docs say a
+  shared IPv4 has "shorter connection timeouts", with no number.
+- **A production imported without code reads `source: NONE` only from the version list** — the
+  `activeAppVersion` embedded in `POST /service-stack/search` carries `base, created, id,
+lastUpdate, os, status` only; `/app-version/search` gives the same version `source: NONE`,
+  `name: null`.
 
 ## Run 5 as measured — 2026-10-03
 

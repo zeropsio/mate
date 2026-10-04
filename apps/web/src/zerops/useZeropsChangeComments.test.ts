@@ -1,4 +1,4 @@
-import type { GiteaIssueComment } from "@t3tools/client-runtime/zerops";
+import type { HqChangeComment } from "@t3tools/shared/hqChanges";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -9,28 +9,41 @@ import {
   type ZeropsChangeComments,
 } from "./useZeropsChangeComments";
 
-/** What Gitea answers each read of the conversation, in order — the last answer repeats. */
-const gitea = vi.hoisted(() => ({
+/** What HQ answers each read of the conversation, in order — the last answer repeats. */
+const hq = vi.hoisted(() => ({
   answers: [] as Array<ReadonlyArray<string> | "failed" | "never">,
   reads: 0,
+  posted: [] as Array<string>,
 }));
 
-function said(body: string, index: number): GiteaIssueComment {
-  return { id: index + 1, author: "ales", avatarUrl: undefined, body, at: undefined };
+function said(body: string, index: number): HqChangeComment {
+  return {
+    id: `c${String(index + 1)}`,
+    authorUserId: "u-ales",
+    authorMateProjectId: null,
+    body,
+    createdAt: "2026-10-02T09:00:00.000Z",
+  };
 }
 
-vi.mock("./accountGiteaSessions", () => ({
-  useGiteaReadable: () => true,
-  giteaClientFor: () => ({
-    listIssueComments: async () => {
-      const answer = gitea.answers[Math.min(gitea.reads, gitea.answers.length - 1)];
-      gitea.reads += 1;
-      if (answer === "failed") throw new Error("Gitea did not answer within 15 s.");
+/** The organization's official HQ, the same one on every render, as `useOfficialHq` keeps it. */
+const official = vi.hoisted(() => ({
+  address: "https://hq.example.test",
+  api: {
+    changeComments: async () => {
+      const answer = hq.answers[Math.min(hq.reads, hq.answers.length - 1)];
+      hq.reads += 1;
+      if (answer === "failed") throw new Error("HQ is not answering right now.");
       if (answer === "never" || answer === undefined) return new Promise(() => {});
       return answer.map(said);
     },
-  }),
+    commentOnChange: async (_link: unknown, body: string) => {
+      hq.posted.push(body);
+      return said(body, 99);
+    },
+  },
 }));
+vi.mock("./accountHq", () => ({ useOfficialHq: () => official }));
 
 function installTestDom(): void {
   const document = new TestNode("#document", null, 9);
@@ -47,12 +60,7 @@ function installTestDom(): void {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 }
 
-const REQUEST = {
-  giteaOrigin: "https://gitea.example.test",
-  owner: "snap",
-  repo: "appdev",
-  number: 2,
-} as const;
+const REQUEST = { appId: "g1", repo: "appdev", number: 2 } as const;
 
 async function mount(): Promise<{
   readonly seen: ReadonlyArray<ZeropsChangeComments["state"]>;
@@ -88,14 +96,15 @@ async function mount(): Promise<{
 
 describe("useZeropsChangeComments", () => {
   afterEach(() => {
-    gitea.answers = [];
-    gitea.reads = 0;
+    hq.answers = [];
+    hq.reads = 0;
+    hq.posted = [];
     forgetChangeComments();
     vi.unstubAllGlobals();
   });
 
   it("shows what was said at once when the change opens again, while it is read again", async () => {
-    gitea.answers = [["Looks good."], "never"];
+    hq.answers = [["Looks good."], "never"];
     const first = await mount();
     expect(first.latest().state).toEqual({ kind: "read", comments: [said("Looks good.", 0)] });
     await first.unmount();
@@ -108,13 +117,30 @@ describe("useZeropsChangeComments", () => {
   });
 
   it("reads the conversation again on Try again after it could not be read", async () => {
-    gitea.answers = ["failed", ["Looks good."]];
+    hq.answers = ["failed", ["Looks good."]];
     const probe = await mount();
     expect(probe.latest().state).toMatchObject({ kind: "failed" });
     await act(async () => {
       probe.latest().retry();
     });
     expect(probe.latest().state).toEqual({ kind: "read", comments: [said("Looks good.", 0)] });
+    await probe.unmount();
+  });
+
+  it("says it on the change as the person, and shows it at once", async () => {
+    hq.answers = [["Looks good."]];
+    const probe = await mount();
+    let refusal: string | null = "unsaid";
+    await act(async () => {
+      refusal = await probe.latest().say("Ship it.");
+    });
+    expect(refusal).toBeNull();
+    expect(hq.posted).toEqual(["Ship it."]);
+    expect(probe.latest().state).toEqual({
+      kind: "read",
+      comments: [said("Looks good.", 0), said("Ship it.", 99)],
+    });
+    expect(hq.reads).toBe(1);
     await probe.unmount();
   });
 });

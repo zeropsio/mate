@@ -2,62 +2,68 @@
  * Reads every project's flow once for the whole account, and holds the verbs
  * that move it (`projectFlowContext.ts`, D26).
  *
- * Two reads are joined here, each from the party that can prove it: the
- * account says which projects a group holds and which commit each service
- * of them runs (`useZeropsGroupDeploys`), Gitea says what is waiting to land
- * and what was released (`useZeropsGroupForge`). The declarations in the
- * group repo say which of those projects are environments and what feeds
- * them; the registry says which Gitea org a group is. Each half is kept per
- * group, and a group's flow is the same object until one of its own halves
- * changes, so one group answering never republishes another.
+ * Each part is read from the party that can prove it. HQ says which of a
+ * group's projects are its stage and production, and how each deploy of
+ * theirs went (`hqEnvironmentsAtom`), and what is waiting to land and what
+ * landed — its Mates' changes (`hqChangesAtom`) — both down the
+ * organization's stream; its recipe says which tiers a group can add and the
+ * repository each runtime builds from (`useZeropsAppRecipes`). The account
+ * says which projects a group holds and which version each service runs, as
+ * its store states it, and HQ says what was released (`useZeropsAppReleases`).
+ * Each group's flow is the same object until one of its own parts changes, so
+ * one group answering never republishes another.
  *
- * Signed in to Mate is signed in to Gitea (D21): the provider signs the tab
- * in by itself, and until that lands every flow is empty and the surfaces
- * say so where they stand. What each stop runs is the account's deployment
- * store's answer (`flow/deploymentStore.ts`) and needs no Gitea at all.
+ * A release is offered by HQ's rule (`useReleasePermission`) of each production
+ * runtime at its repository's `main` as HQ lists it, and made — or rolled
+ * back — in HQ, as the person. What each stop runs is the account's
+ * deployment store's answer (`flow/deploymentStore.ts`). A change is merged
+ * and closed in HQ, as the person, and comes back down HQ's stream.
  */
+import { useAtomValue } from "@effect/atom-react";
 import {
-  botDisplayName,
   deployedCommit,
   environmentRow,
+  flowChanges,
+  flowReleaseOf,
   flowVerbKey,
+  groupStopsOf,
   releaseRunBy,
   nameStopByRelease,
-  readZeropsGroupTags,
+  readZeropsMembership,
   releaseDeploys,
   releaseInFlight,
-  releaseMessage,
+  releaseCandidate,
   releaseOffer,
+  releaseReads,
   releaseRow,
-  releaseTagName,
-  rollbackTo,
+  statedActiveVersions,
+  statedVersionNames,
+  movedCommits,
+  productionRuns,
   summarizeEnvironmentServices,
-  GiteaApiError,
-  GROUP_REPOSITORY,
-  groupRunner,
+  type AppRecipe,
   type EnvironmentRow,
   type FlowPullRequest,
   type FlowRelease,
   type GroupEnvironmentRowInput,
+  type GroupStopProject,
+  type GroupStops,
   type FlowVerb,
-  type GroupRunner,
-  type ZeropsService,
+  type CompareReads,
+  type MovedCommits,
+  type ProductionRun,
+  type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
-import {
-  flowReleaseGate,
-  flowVerbInvalidations,
-  type Deployment,
-  type FlowHalf,
-} from "@t3tools/client-runtime/zerops/flow";
-import {
-  statedDeployKey,
-  ZeropsServiceId,
-  type ZeropsServiceDeployedVersion,
-} from "@t3tools/client-runtime/zerops/data";
+import { HQ_NOT_OPEN, hqRefusalWords, type HqApi } from "@t3tools/client-runtime/zerops/hq";
+import { type Deployment } from "@t3tools/client-runtime/zerops/flow";
+import { ZeropsProjectId, ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
-import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import type { ChangeLink, HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+import type { Release } from "@t3tools/shared/hqRelease";
 import {
   useCallback,
   useContext,
@@ -68,10 +74,10 @@ import {
   type ReactNode,
 } from "react";
 
+import { hqChangesAtom, hqEnvironmentsAtom, hqStructureAtom } from "../state/zerops";
+import { useDetailProjects } from "./accountEnvironments";
 import { useStopDeployments } from "./accountForge";
-import { useAccountGitea, useAccountGiteaServices, useAccountHoldsGitea } from "./giteaProject";
-import { giteaReach as reachOf } from "./giteaReach.logic";
-import { giteaClientFor, useGiteaSession } from "./accountGiteaSessions";
+import { accountHqApi, useAccountHq } from "./accountHq";
 import {
   ZeropsProjectFlowContext,
   type FlowVerbOutcome,
@@ -80,22 +86,13 @@ import {
 } from "./projectFlowContext";
 import { useNowMs } from "./useNowMs";
 import { useZeropsAtomSelections, ZeropsDataContext } from "./zeropsDataContext";
-import { useZeropsDeployedVersionReader } from "./useZeropsDeployedVersion";
-import {
-  useZeropsGroupDeploys,
-  type ZeropsDeployGroup,
-  type ZeropsGroupDeployState,
-  type ZeropsGroupDeploys,
-} from "./useZeropsGroupDeploys";
-import {
-  useForgeOrganizations,
-  useForgeReads,
-  useZeropsGroupForge,
-  type ZeropsGroupForgeState,
-  type ZeropsGroupForges,
-} from "./useZeropsGroupForge";
+import { useZeropsAppRecipes } from "./useZeropsAppRecipes";
+import { useZeropsAppReleases } from "./useZeropsAppReleases";
+import { useZeropsCompares, type ComparedCommits } from "./useZeropsCompares";
+import { useReleasePermission } from "./useChangeOffers";
 import { useZeropsRegistry } from "./useZeropsRegistry";
 import {
+  findInventoryProjectRef,
   HeldInventoryContext,
   inventoryProjectRefKey,
   projectAuthority,
@@ -105,152 +102,280 @@ import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
-const EMPTY_HEADS: ReadonlyMap<string, string> = new Map();
-const EMPTY_SLUGS: ReadonlyMap<string, string> = new Map();
-const EMPTY_ORGANIZATIONS: ReadonlyMap<string, boolean> = new Map();
-/** What a verb says when it is pressed while the flows stand and no Gitea token is held. */
-const SIGNING_IN_AGAIN = "Signing in to Gitea again. Try it again in a moment.";
-/** A merge Gitea refused because the pull request's head moved since the person was shown it. */
-export const MERGE_HEAD_MOVED = "This pull request changed since you opened it — review it again.";
+const NO_FAILURES: ReadonlyMap<string, string> = new Map();
 /** How long a verb whose call landed stays pending while the flow has not read its effect back. */
 export const HELD_VERB_MS = 30_000;
 /** What a second press of a verb that is still running says: the first one is the one that counts. */
 export const VERB_ALREADY_RUNNING = "It is already on its way.";
 
-const DONE: FlowVerbOutcome = { ok: true };
 const refused = (reason: string): FlowVerbOutcome => ({ ok: false, reason });
 
-/**
- * What a verb whose call landed waits for in its group's forge answer: any answer after the one
- * it landed against (a tag), or its pull request gone from the open ones (a merge).
- */
-type HeldEffect =
-  | { readonly kind: "answer" }
-  | { readonly kind: "closed"; readonly repository: string; readonly number: number };
+/** A change's verb, merge or close, which HQ answers. */
+type ChangeVerb = Extract<FlowVerb, { readonly kind: "merge" | "close" }>;
 
+/** What a merge refused for a head nobody was shown says: HQ's own words for it. */
+const HEAD_NOT_SHOWN = hqRefusalWords({ code: "conflict", reason: "head_moved" });
+/** What a verb says when its project's flow has not been read at all. */
+const NOT_READ_YET = "This project has not been read yet.";
+/** What a release says while the recipe has nothing on `main` to tag: HQ's own words for it. */
+const NO_GROUP_MAIN = hqRefusalWords({ code: "conflict", reason: "no_group_main" });
+
+/**
+ * A verb whose call landed, waiting until its effect is read: a release, for the application's
+ * releases to list it; a change merged or closed, for HQ's stream to no longer hold it open; a
+ * deploy asked again, for HQ's stream to bring the job that answers it.
+ */
 interface HeldVerb {
   readonly groupId: string;
-  readonly against: ZeropsGroupForgeState | undefined;
-  readonly effect: HeldEffect;
+  readonly against:
+    | { readonly kind: "release"; readonly tag: string }
+    | { readonly kind: "change"; readonly repository: string; readonly number: number }
+    | {
+        readonly kind: "deploy";
+        readonly projectId: string;
+        readonly service: string;
+        /** The service's newest job when it was asked: read once a newer one is there. */
+        readonly after: string;
+      };
   readonly sinceMs: number;
 }
 
-/** Whether the group's forge now shows what the held verb did, or can no longer say. */
-function effectRead(
-  held: HeldVerb,
-  forge: ZeropsGroupForgeState | undefined,
-  failed: boolean,
-): boolean {
-  if (failed) return true;
-  const { effect } = held;
-  if (effect.kind === "answer") return forge !== held.against;
-  return !(forge?.pullRequests ?? []).some(
-    (pull) => pull.repository === effect.repository && pull.number === effect.number,
+/** Whether the held verb's effect is read, or its application's releases can no longer say. */
+function effectRead(held: HeldVerb, failed: boolean, flow: ZeropsProjectFlow | undefined): boolean {
+  const { against } = held;
+  if (against.kind === "release")
+    return failed || (flow?.releases.some((entry) => entry.tag === against.tag) ?? false);
+  if (against.kind === "deploy") {
+    const latest = flow?.environmentInputs
+      .find((entry) => entry.projectId === against.projectId)
+      ?.services.find((service) => service.hostname === against.service)?.deploy?.latest;
+    return latest === undefined || latest.id !== against.after;
+  }
+  return !(
+    flow?.pullRequests.some(
+      (pull) => pull.repository === against.repository && pull.number === against.number,
+    ) ?? false
   );
 }
 
-function headMoved(cause: unknown): boolean {
-  return (
-    cause instanceof GiteaApiError &&
-    cause.status === 409 &&
-    cause.detail?.toLowerCase().includes("head out of date") === true
-  );
+/** One group's changes as its flow shows them: the open ones a push reached, and the landed. */
+export interface GroupChanges {
+  readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  readonly merged: ReadonlyArray<FlowPullRequest>;
 }
 
-/** What the platform pushed as a service's active deploy: when it was activated, and its name. */
+/** A group HQ holds no change of. */
+const NO_CHANGES: GroupChanges = { pullRequests: [], merged: [] };
+
 /**
- * What a service runs, as a group's read is keyed on it: the push's activation and name, and the
- * name the account's store states once it does — so a group read that had to fall back while the
- * store was slow reads again the moment the store answers.
+ * Each application's changes as rows, by the identity of its changes as HQ last sent them, so an
+ * application nothing came down for keeps its rows.
  */
-export function activeDeployOf(
-  service: ZeropsService | undefined,
-  stated?: Shown<ZeropsServiceDeployedVersion>,
-): string | undefined {
-  const version = service?.activeAppVersion;
-  if (version === null || version === undefined) return undefined;
-  return `${version.lastUpdate ?? ""} ${version.name ?? ""} ${statedDeployKey(stated)}`;
+const changeRows = new WeakMap<ReadonlyArray<HqChange>, Map<string, GroupChanges>>();
+
+/** Every application's changes as its group's flow shows them, at HQ's official address. */
+function groupChangesOf(
+  changes: ReadonlyMap<string, ReadonlyArray<HqChange>>,
+  hqAddress: string,
+): ReadonlyMap<string, GroupChanges> {
+  const byGroup = new Map<string, GroupChanges>();
+  for (const [appId, list] of changes) {
+    let byAddress = changeRows.get(list);
+    if (byAddress === undefined) {
+      byAddress = new Map();
+      changeRows.set(list, byAddress);
+    }
+    let rows = byAddress.get(hqAddress);
+    if (rows === undefined) {
+      rows = flowChanges({ changes: list, hqAddress });
+      byAddress.set(hqAddress, rows);
+    }
+    byGroup.set(appId, rows);
+  }
+  return byGroup;
 }
 
-/** Stands for a half a group has no answer for, as a key of {@link joinedFlows}. */
+/** What the flow says while HQ has never told it any change, and does not answer. */
+export const HQ_CHANGES_UNANSWERED = "HQ is not answering right now.";
+
+/** Each group's stops as last built, with the content they were built from. */
+const builtStops = new Map<string, { readonly key: string; readonly stops: GroupStops }>();
+
+/**
+ * A group's stops: the same object for as long as what they are built from reads the same, so one
+ * group's change never republishes another's flow.
+ */
+function groupStopsFor(groupId: string, input: Parameters<typeof groupStopsOf>[0]): GroupStops {
+  const { recipe } = input;
+  const key = JSON.stringify([
+    input.environments,
+    input.projects,
+    [...input.versions],
+    [...(input.activeVersions ?? [])],
+    recipe === undefined ? null : [recipe.tiers, [...recipe.repositories]],
+  ]);
+  const before = builtStops.get(groupId);
+  if (before?.key === key) return before.stops;
+  const stops = groupStopsOf(input);
+  builtStops.set(groupId, { key, stops });
+  return stops;
+}
+
+/** What a release lists while HQ's repositories or the recipe are not read. */
+const NOTHING_TO_LIST: ReadonlyMap<string, string> = new Map();
+
+/**
+ * What a release of a group would put live, the production services nothing is told of, and what
+ * each production service runs (`productionRuns`) — what a roll back compares from.
+ */
+interface ReleaseLive {
+  readonly moved: ComparedCommits;
+  readonly untold: ReadonlyArray<string>;
+  readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
+}
+
+/** What to ask HQ of a group's release, and what production runs, which it is asked from. */
+interface ReleasePlan extends CompareReads {
+  readonly running: ReadonlyMap<string, ProductionRun>;
+}
+
+/** A snapshot compares main against nothing only when HQ has confirmed no production. */
+export function snapshotReleasePlan(
+  stops: GroupStops | undefined,
+  recipe: Pick<AppRecipe, "productionRepositories">,
+  repos: ReadonlyArray<RepoListEntry>,
+): ReleasePlan | undefined {
+  if (stops === undefined || stops.declarations.some((entry) => entry.tier === "production"))
+    return undefined;
+  const { productionRepositories } = recipe;
+  const running = new Map<string, ProductionRun>(
+    [...productionRepositories.keys()].map((service) => [service, { kind: "nothing" }]),
+  );
+  return {
+    ...releaseReads({
+      productionRepositories,
+      candidate: releaseCandidate({ productionRepositories, repos }).candidate,
+      running,
+    }),
+    running,
+  };
+}
+
+/** What goes live while nothing has been asked of HQ: what production runs is not known yet. */
+const NOT_COMPARED: MovedCommits = { state: "reading" };
+const NOT_ASKED: ReleaseLive = { moved: NOT_COMPARED, untold: [], runs: undefined };
+
+/** What a flow's key says of what goes live: the commits each comparison moves, or its state. */
+function liveKey(live: MovedCommits): unknown {
+  if (live.state !== "known") return live;
+  return live.moved.map(({ repository, services, commits, total }) => [
+    repository,
+    services,
+    total,
+    commits.map(({ sha }) => sha),
+  ]);
+}
+
+/** Stands for a part a group has no answer for, as a key of {@link joinedFlows}. */
 const UNREAD_HALF = {};
 
 /**
- * Every group's flow, by the identity of its two halves: a group whose halves
- * did not change keeps its flow object.
+ * Every group's flow, by the identity of its parts — its stops, its releases, its changes: a group
+ * whose parts did not change keeps its flow object.
  */
-const joinedFlows = new WeakMap<object, WeakMap<object, Map<string, ZeropsProjectFlow>>>();
-
-/** Why each group's latest read of either half failed, while it keeps failing. */
-export interface FlowFailures {
-  readonly deploys: ReadonlyMap<string, string>;
-  readonly forge: ReadonlyMap<string, string>;
-}
+const joinedFlows = new WeakMap<
+  object,
+  WeakMap<object, WeakMap<object, Map<string, ZeropsProjectFlow>>>
+>();
 
 /**
- * Joins each group's two halves into its flow. A group is shown once either
- * half answered; the release is offered only once both have, and says why
- * while either half fails (`flow/release.ts`).
+ * Joins each group's parts into its flow. A group is shown once any part
+ * answered.
  */
 export function joinProjectFlows(input: {
-  readonly groups: ReadonlyArray<{ readonly groupId: string; readonly slug: string }>;
-  readonly deploys: ZeropsGroupDeploys;
-  readonly forges: ZeropsGroupForges;
-  readonly mayRelease: boolean;
+  readonly groups: ReadonlyArray<{ readonly groupId: string }>;
+  /** Each group's stops, by its id, while HQ has told its environments. */
+  readonly stops: ReadonlyMap<string, GroupStops>;
+  /** Each group's releases as HQ records them, newest first, by its id, once HQ answered. */
+  readonly releases: ReadonlyMap<string, ReadonlyArray<Release>>;
+  /** Each group's repositories with their `main`, read with its releases. */
+  readonly repos: ReadonlyMap<string, ReadonlyArray<RepoListEntry>>;
+  /** Each group's recipe on `main`: the repository each production runtime builds from. */
+  readonly recipes: ReadonlyMap<string, AppRecipe>;
+  /** HQ's rule for this person releasing each group, in its words; absent while it cannot be asked. */
+  readonly permissions: ReadonlyMap<string, ReleaseGate | undefined>;
+  /**
+   * What a release of each group would put live, as HQ compared it, and the production services
+   * whose commit cannot be told; absent while not asked.
+   */
+  readonly live: ReadonlyMap<string, ReleaseLive>;
+  /** Each group's changes, by its id; `null` while HQ has told nothing of them. */
+  readonly changes: ReadonlyMap<string, GroupChanges> | null;
+  /** Why HQ has told nothing of them, while it does not answer. */
+  readonly changesFailure: string | undefined;
   /** The clock a release in flight is bounded by (`releaseInFlight`). */
   readonly nowMs: number;
   /** Why the grant withholds a project, by project id, for each project it withholds alone. */
   readonly withheld: ReadonlyMap<string, string>;
-  readonly failures: FlowFailures;
 }): ReadonlyMap<string, ZeropsProjectFlow> {
   const flows = new Map<string, ZeropsProjectFlow>();
   for (const group of input.groups) {
-    const deployed = input.deploys.get(group.groupId);
-    const forge = input.forges.get(group.groupId);
-    if (deployed === undefined && forge === undefined) continue;
-    let byForge = joinedFlows.get(deployed ?? UNREAD_HALF);
-    if (byForge === undefined) {
-      byForge = new WeakMap();
-      joinedFlows.set(deployed ?? UNREAD_HALF, byForge);
+    const stops = input.stops.get(group.groupId);
+    const records = input.releases.get(group.groupId);
+    const changes =
+      input.changes === null ? undefined : (input.changes.get(group.groupId) ?? NO_CHANGES);
+    if (stops === undefined && records === undefined && changes === undefined) continue;
+    let byReleases = joinedFlows.get(stops ?? UNREAD_HALF);
+    if (byReleases === undefined) {
+      byReleases = new WeakMap();
+      joinedFlows.set(stops ?? UNREAD_HALF, byReleases);
     }
-    let byGroup = byForge.get(forge ?? UNREAD_HALF);
+    let byChanges = byReleases.get(records ?? UNREAD_HALF);
+    if (byChanges === undefined) {
+      byChanges = new WeakMap();
+      byReleases.set(records ?? UNREAD_HALF, byChanges);
+    }
+    let byGroup = byChanges.get(changes ?? UNREAD_HALF);
     if (byGroup === undefined) {
       byGroup = new Map();
-      byForge.set(forge ?? UNREAD_HALF, byGroup);
+      byChanges.set(changes ?? UNREAD_HALF, byGroup);
     }
-    const failures = {
-      deploys: input.failures.deploys.get(group.groupId),
-      forge: input.failures.forge.get(group.groupId),
-    };
     const withheld = new Map(
-      (deployed?.environments ?? []).flatMap(({ projectId }) => {
+      (stops?.environments ?? []).flatMap(({ projectId }) => {
         const notice = input.withheld.get(projectId);
         return notice === undefined ? [] : [[projectId, notice] as const];
       }),
     );
-    const released = forge !== undefined && "tags" in forge.released ? forge.released : undefined;
-    const { production, failed } = releaseDeploys(deployed?.environments ?? []);
+    const { production, failed } = releaseDeploys(stops?.environments ?? []);
     const inFlight = releaseInFlight({
-      newest: released?.newest,
+      newest: records?.[0] === undefined ? undefined : flowReleaseOf(records[0]),
       production,
       failed,
       nowMs: input.nowMs,
     });
+    const repos = input.repos.get(group.groupId);
+    const recipe = input.recipes.get(group.groupId);
+    const permission = input.permissions.get(group.groupId);
+    const live = input.live.get(group.groupId) ?? NOT_ASKED;
     const key = JSON.stringify([
       group.groupId,
-      group.slug,
-      input.mayRelease,
       inFlight ?? null,
-      failures.deploys ?? null,
-      failures.forge ?? null,
+      changes === undefined ? (input.changesFailure ?? null) : null,
       [...withheld],
+      repos ?? null,
+      recipe === undefined ? null : [...recipe.productionRepositories],
+      permission ?? null,
+      liveKey(live.moved),
+      live.untold,
+      live.runs === undefined ? null : [...live.runs],
     ]);
     let flow = byGroup.get(key);
     if (flow === undefined) {
       flow = projectFlow(
         group,
-        { deployed, forge, failures },
-        { mayRelease: input.mayRelease, inFlight },
+        { stops, records, changes, changesFailure: input.changesFailure },
+        { repos, recipe, permission, live },
+        inFlight,
         withheld,
       );
       byGroup.set(key, flow);
@@ -279,85 +404,101 @@ function stopRow(
   return tag === undefined ? row : nameStopByRelease(row, tag);
 }
 
-/** Where one half stands for the release: failing, answered, or not yet. */
-function half(answered: boolean, failure: string | undefined): FlowHalf {
-  if (failure !== undefined) return { failed: failure };
-  return answered ? "read" : "unread";
-}
-
 function projectFlow(
-  group: { readonly groupId: string; readonly slug: string },
+  group: { readonly groupId: string },
   halves: {
-    readonly deployed: ZeropsGroupDeployState | undefined;
-    readonly forge: ZeropsGroupForgeState | undefined;
-    readonly failures: { readonly deploys: string | undefined; readonly forge: string | undefined };
+    readonly stops: GroupStops | undefined;
+    /** Its releases as HQ records them, newest first; `undefined` until HQ answered. */
+    readonly records: ReadonlyArray<Release> | undefined;
+    readonly changes: GroupChanges | undefined;
+    readonly changesFailure: string | undefined;
   },
-  release: { readonly mayRelease: boolean; readonly inFlight: string | undefined },
+  /** What a release is offered from; each `undefined` until it is read or can be asked. */
+  offered: {
+    readonly repos: ReadonlyArray<RepoListEntry> | undefined;
+    readonly recipe: AppRecipe | undefined;
+    readonly permission: ReleaseGate | undefined;
+    readonly live: ReleaseLive;
+  },
+  inFlight: string | undefined,
   /** Why the grant withholds each of the group's projects it withholds alone. */
   withheld: ReadonlyMap<string, string>,
 ): ZeropsProjectFlow {
-  const { deployed, forge, failures } = halves;
-  const environmentInputs = deployed?.environments ?? [];
-  const released = forge !== undefined && "tags" in forge.released ? forge.released : undefined;
-  // Releases that did not answer say why, like a forge read that failed
-  // outright: tags kept from an earlier read are not what a release checks.
-  const forgeFailure = failures.forge ?? forge?.released.failure;
+  const { stops, records, changes } = halves;
+  const environmentInputs = stops?.environments ?? [];
   // A production the grant withholds shows nothing it runs (DESIGN §3.4), so
-  // nothing is measured against it: no release is offered, and none listed.
+  // nothing is measured against it, and no release is listed.
   const withheldProduction = environmentInputs.find(
     (entry) => entry.tier === "production" && withheld.has(entry.projectId),
   );
   const productionWithheld =
     withheldProduction === undefined ? undefined : withheld.get(withheldProduction.projectId);
   const sides = releaseDeploys(environmentInputs.filter((entry) => !withheld.has(entry.projectId)));
-  // What a release lists is what is merged (D28), whether or not the group
-  // has a stage: a stage is a place that runs `main` too, not a gate the
-  // tag waits behind, and one mid-deploy must not change what Release
-  // means. Holding production until a stage has the commit is said once,
-  // explicitly, as `requireOnStage`.
-  const releaseList = released?.releases ?? [];
-  const live = releaseRunBy(releaseList, sides.production);
+  const releaseList = (records ?? []).map(flowReleaseOf);
+  const liveTag = releaseRunBy(releaseList, sides.production);
   const releaseRows = releaseList.map((entry, index) =>
     releaseRow(entry, index, {
       production: sides.production,
       failed: sides.failed,
-      live: entry.tag === live,
+      live: entry.tag === liveTag,
+      newer: releaseList.slice(0, index),
     }),
   );
+  // Until HQ's releases, its repositories and the recipe are read, nothing is known to release:
+  // the gate says it is checking.
+  const { repos, recipe, permission, live } = offered;
+  const read =
+    records === undefined || repos === undefined || recipe === undefined
+      ? undefined
+      : releaseCandidate({ productionRepositories: recipe.productionRepositories, repos });
   const offer = releaseOffer({
-    mayRelease: release.mayRelease,
-    inFlight: release.inFlight,
-    candidate: deployed?.mainHeads ?? EMPTY_HEADS,
+    permission: read === undefined ? undefined : permission,
+    candidate: read === undefined ? NOTHING_TO_LIST : read.candidate,
     production: sides.production,
-    tags: released?.tags ?? [],
+    inFlight,
+    tags: releaseList.map(({ tag }) => tag),
+    live: live.moved,
   });
   return {
     groupId: group.groupId,
-    slug: group.slug,
-    declarations: deployed?.declarations ?? [],
-    declarationsRead: deployed !== undefined,
+    declarations: stops?.declarations ?? [],
+    declarationsRead: stops !== undefined,
     environments: environmentInputs.map((entry) => stopRow(entry, releaseList)),
     environmentInputs,
-    mainHeads: deployed?.mainHeads ?? EMPTY_HEADS,
-    missing: deployed?.missing ?? [],
-    pullRequests: forge?.pullRequests ?? [],
-    changesKnown: forge !== undefined,
-    changesFailure: forge === undefined ? failures.forge : undefined,
-    merged: forge?.merged ?? [],
+    missing: stops?.missing ?? [],
+    pullRequests: changes?.pullRequests ?? [],
+    changesKnown: changes !== undefined,
+    changesFailure: changes === undefined ? halves.changesFailure : undefined,
+    merged: changes?.merged ?? [],
     releases: releaseRows,
-    release: {
-      ...offer,
-      inFlight: release.inFlight,
-      target: deployed?.groupHead,
-      gate:
-        productionWithheld === undefined
-          ? flowReleaseGate(offer.gate, {
-              deploys: half(deployed !== undefined, failures.deploys),
-              forge: half(released !== undefined, forgeFailure),
-            })
-          : { allowed: false, reason: productionWithheld },
-      contents: productionWithheld === undefined ? (deployed?.releaseContents ?? []) : [],
-    },
+    releasesKnown: records !== undefined,
+    repos,
+    // A production the grant withholds is measured against nothing, and offers nothing.
+    release:
+      productionWithheld === undefined
+        ? {
+            ...offer,
+            comparisonFailure: live.moved.state === "failed" ? live.moved : undefined,
+            permission,
+            groupHead: read?.groupHead,
+            inFlight,
+            untold: live.untold,
+            runs: live.runs,
+            repositories: recipe?.productionRepositories,
+          }
+        : {
+            ...offer,
+            gate: { allowed: false, reason: productionWithheld },
+            permission,
+            groupHead: undefined,
+            comparison: [],
+            entries: [],
+            inFlight,
+            contents: [],
+            untold: [],
+            runs: undefined,
+            repositories: undefined,
+          },
   };
 }
 
@@ -366,25 +507,9 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const inventory = useZeropsInventory();
   const organization = session.activeOrganization;
   const clientId = organization?.id;
-  const accountGitea = useAccountGitea(clientId);
-  const giteaOrigin = accountGitea?.state.url;
-  const brokerOrigin = accountGitea?.state.brokerUrl;
   const signedInToMate = session.status === "signed-in";
 
-  const holdsGitea = useAccountHoldsGitea(clientId);
-  const giteaReach = reachOf({ holdsGitea, state: accountGitea?.state });
-  const registry = useZeropsRegistry(clientId);
-  const platform = useMemo(() => zeropsThrowawayPlatform(session.client), [session.client]);
-  const {
-    signedIn,
-    readable,
-    trouble: signInTrouble,
-  } = useGiteaSession({
-    giteaOrigin,
-    brokerOrigin,
-    clientId,
-    platform,
-  });
+  const registry = useZeropsRegistry();
 
   /**
    * Every group the registry knows, with the projects the account tags into
@@ -394,77 +519,97 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
    */
   const held = useContext(HeldInventoryContext);
   const data = useContext(ZeropsDataContext);
-  // What each group service runs, as the account's store states it, read live: a slow first
-  // statement re-keys its group once it lands (`activeDeployOf`).
-  const statedServices = useMemo(() => {
-    if (data === null || held === null) return [];
-    return registry.registry.groups.flatMap((entry) =>
-      held.projects
-        .filter((project) => readZeropsGroupTags(project.tagList ?? []).groupId === entry.groupId)
-        .flatMap((project) => {
-          const services = held.services.get(project.id);
-          const ref = inventory.projectRefs.get(project.id);
-          if (services?.status !== "resolved" || ref === undefined) return [];
-          return summarizeEnvironmentServices(services.services).deployable.map(
-            (service) =>
-              [
-                service.serviceId,
-                data.runtime.reads.deployedVersion({
-                  kind: "service",
-                  project: ref,
-                  serviceId: ZeropsServiceId.make(service.serviceId),
-                }),
-              ] as const,
-          );
-        }),
-    );
-  }, [data, held, inventory.projectRefs, registry.registry.groups]);
-  const stated = useZeropsAtomSelections(statedServices);
-  const groups = useMemo<ReadonlyArray<ZeropsDeployGroup>>(
+  const groupProjects = useMemo(
     () =>
-      registry.registry.groups.map((entry) => ({
-        groupId: entry.groupId,
-        slug: entry.slug,
-        projects: (held === null ? [] : held.projects)
-          .filter((project) => readZeropsGroupTags(project.tagList ?? []).groupId === entry.groupId)
-          .map((project) => {
-            const services = held?.services.get(project.id);
-            const tags = readZeropsGroupTags(project.tagList ?? []);
-            return {
-              projectId: project.id,
-              name: project.name,
-              ...(tags.role === undefined ? {} : { role: tags.role }),
-              ...(project.created === undefined ? {} : { createdAt: project.created }),
-              services:
-                services?.status === "resolved"
-                  ? summarizeEnvironmentServices(services.services).deployable.map((service) => {
-                      const pushed = services.services.find(
-                        (entry) => entry.id === service.serviceId,
-                      );
-                      return {
-                        ...service,
-                        activeDeploy: activeDeployOf(pushed, stated.get(service.serviceId)),
-                        activeVersionId: pushed?.activeAppVersion?.id ?? undefined,
-                      };
-                    })
-                  : [],
-            };
-          }),
-      })),
-    [held, registry.registry.groups, stated],
+      new Map(
+        registry.registry.groups.map((entry) => [
+          entry.groupId,
+          (held === null ? [] : held.projects)
+            .filter((project) => readZeropsMembership(project).groupId === entry.groupId)
+            .map((project): GroupStopProject => {
+              const services = held?.services.get(project.id);
+              const { role } = readZeropsMembership(project);
+              return {
+                projectId: project.id,
+                name: project.name,
+                ...(role === undefined ? {} : { role }),
+                services:
+                  services?.status === "resolved"
+                    ? summarizeEnvironmentServices(services.services).deployable.map(
+                        ({ serviceId, hostname }) => ({ serviceId, hostname }),
+                      )
+                    : [],
+              };
+            }),
+        ]),
+      ),
+    [held, registry.registry.groups],
   );
-  const forgeGroups = useMemo(
-    () => groups.map(({ groupId, slug }) => ({ groupId, slug })),
-    [groups],
+  // What each group service runs, as the account's store states it, read live.
+  const statedServices = useMemo(() => {
+    if (data === null) return [];
+    return [...groupProjects.values()].flat().flatMap((project) => {
+      // The inventory keys each ref by its project key, never by the bare id (F10).
+      const ref = findInventoryProjectRef(
+        { projectRefs: inventory.projectRefs },
+        project.projectId,
+      );
+      if (ref === null) return [];
+      return project.services.map(
+        (service) =>
+          [
+            service.serviceId,
+            data.runtime.reads.deployedVersion({
+              kind: "service",
+              project: ref,
+              serviceId: ZeropsServiceId.make(service.serviceId),
+            }),
+          ] as const,
+      );
+    });
+  }, [data, groupProjects, inventory.projectRefs]);
+  const stated = useZeropsAtomSelections(statedServices);
+  const flowGroups = useMemo(
+    () => registry.registry.groups.map(({ groupId }) => ({ groupId })),
+    [registry.registry.groups],
   );
 
-  /**
-   * What each project the account holds runs, from the account's deployment store
-   * (`flow/deploymentStore.ts`): the platform's own service listing and the builds running in the
-   * project. Every project is a stop wherever it is drawn — in a group by its tags, or in none —
-   * and none of this waits on Gitea or its registry. As with the inventory's own demand, a project
-   * refused to the account (G6) or not ACTIVE holds nothing open.
-   */
+  const hqStructure = useAtomValue(hqStructureAtom);
+  const hqChanges = useAtomValue(hqChangesAtom);
+  const recipes = useZeropsAppRecipes();
+
+  // Each group's stops, from HQ's environments and the account's half.
+  const heldEnvironments = useAtomValue(hqEnvironmentsAtom);
+  const groupStops = useMemo(() => {
+    const built = new Map<string, GroupStops>();
+    if (heldEnvironments === null) return built;
+    for (const [groupId, projects] of groupProjects) {
+      const environments = heldEnvironments.get(groupId);
+      if (environments === undefined) continue;
+      const statedHere = new Map(
+        projects.flatMap(({ services }) =>
+          services.flatMap(({ serviceId }) => {
+            const version = stated.get(serviceId);
+            return version === undefined ? [] : [[serviceId, version] as const];
+          }),
+        ),
+      );
+      built.set(
+        groupId,
+        groupStopsFor(groupId, {
+          environments,
+          projects,
+          versions: statedVersionNames(statedHere),
+          activeVersions: statedActiveVersions(statedHere),
+          recipe: recipes.get(groupId),
+        }),
+      );
+    }
+    return built;
+  }, [groupProjects, heldEnvironments, recipes, stated]);
+
+  const detailProjects = useDetailProjects();
+  /** Detail owns its demand; visible production/stage chips hold their own leases. Observe all refs. */
   const stops = useMemo(() => {
     const inactive = new Set(
       inventory.projects.filter(({ status }) => status !== "ACTIVE").map(({ id }) => id),
@@ -472,10 +617,12 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     return [...inventory.projectRefs.values()].flatMap((ref) => {
       const authority = inventory.authority.get(inventoryProjectRefKey(ref));
       const refused = authority?.kind === "withheld" && authority.reason === "access-denied";
-      return refused || inactive.has(ref.projectId) ? [] : [ref];
+      return refused || inactive.has(ref.projectId) || !detailProjects.has(ref.projectId)
+        ? []
+        : [ref];
     });
-  }, [inventory.authority, inventory.projectRefs, inventory.projects]);
-  const stopDeployments = useStopDeployments(stops);
+  }, [detailProjects, inventory.authority, inventory.projectRefs, inventory.projects]);
+  const stopDeployments = useStopDeployments([...inventory.projectRefs.values()], stops);
   // A project the grant withholds shows its stop withheld, at this read (DESIGN §4.2 G12), demanded
   // or not.
   const deployments = useMemo<ReadonlyMap<string, Shown<Deployment>>>(
@@ -499,47 +646,13 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   );
 
   const [trouble, setTrouble] = useState<string | null>(null);
-  // The token is back, so the verbs act again and the sentence saying they would not is gone.
-  const [troubleReadable, setTroubleReadable] = useState(readable);
-  if (troubleReadable !== readable) {
-    setTroubleReadable(readable);
-    if (readable && trouble === SIGNING_IN_AGAIN) setTrouble(null);
-  }
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
-  const readVersion = useZeropsDeployedVersionReader();
-  const enabled = signedInToMate && signedIn;
-  const reads = useForgeReads(giteaOrigin);
-  const organizations = useForgeOrganizations(reads);
-  const {
-    deploys,
-    failures: deployFailures,
-    invalidate: invalidateDeploys,
-  } = useZeropsGroupDeploys({
-    groups,
-    giteaOrigin,
-    readVersion,
-    enabled,
-    readable,
-    reads,
-  });
-  const {
-    forges,
-    failures: forgeFailures,
-    invalidate: invalidateForge,
-  } = useZeropsGroupForge({
-    giteaOrigin,
-    groups: forgeGroups,
-    enabled,
-    readable,
-    reads,
-  });
 
-  /**
-   * Whether this person may tag. The app's own gate — Gitea's tag protection
-   * is the one that decides, and a `403` from it says the same sentence
-   * (`release.ts`). The group's releasers are the org's admins.
-   */
-  const mayRelease = organization?.roleCode === "ADMIN" || organization?.roleCode === "OWNER";
+  const {
+    releases: releaseRecords,
+    repos: appRepos,
+    failures: releaseFailures,
+  } = useZeropsAppReleases();
 
   /**
    * Why the grant withholds each project it withholds alone; a lapse withholds every flow below
@@ -558,35 +671,152 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
 
   // A release in flight stops holding Release back once it is old enough (`releaseInFlight`).
   const nowMs = useNowMs();
-  const flows = useMemo<ReadonlyMap<string, ZeropsProjectFlow>>(
+  // A Mate's changes, down the organization's HQ stream, linked at its official address: the
+  // flows stand on them wherever HQ answers.
+  const accountHq = useAccountHq(clientId);
+  const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
+  const hqApi = useMemo(
     () =>
-      enabled
-        ? joinProjectFlows({
-            groups,
-            deploys,
-            forges,
-            mayRelease,
-            nowMs,
-            withheld,
-            failures: { deploys: deployFailures, forge: forgeFailures },
-          })
-        : EMPTY_FLOWS,
-    [deployFailures, deploys, enabled, forgeFailures, forges, groups, mayRelease, nowMs, withheld],
+      accountHq.hq.kind === "official" && clientId !== undefined
+        ? accountHqApi(session.client, clientId, accountHq.hq)
+        : null,
+    [accountHq.hq, clientId, session.client],
   );
-
-  // A project both of whose reads failed is joined into no flow: its page says why.
-  const groupFailures = useMemo(
+  const changes = useMemo(
+    () =>
+      hqChanges === null || hqAddress === undefined ? null : groupChangesOf(hqChanges, hqAddress),
+    [hqAddress, hqChanges],
+  );
+  const changesFailure =
+    hqStructure?.unavailableSince === null || hqStructure === null
+      ? undefined
+      : HQ_CHANGES_UNANSWERED;
+  // HQ's rule for this person releasing each group, in its words.
+  const releasePermissionOf = useReleasePermission();
+  const permissions = useMemo(
+    () => new Map(flowGroups.map(({ groupId }) => [groupId, releasePermissionOf(groupId)])),
+    [flowGroups, releasePermissionOf],
+  );
+  // What a release of each group would put live: what HQ compares from what production runs to each
+  // runtime's `main` (`releaseReads`) — asked only once the store has stated what each production
+  // service runs, as a version not read yet would read as running nothing.
+  const releasePlans = useMemo(() => {
+    const plans = new Map<string, ReleasePlan>();
+    for (const { groupId } of flowGroups) {
+      const recipe = recipes.get(groupId);
+      const repos = appRepos.get(groupId);
+      const records = releaseRecords.get(groupId);
+      const production = groupStops
+        .get(groupId)
+        ?.environments.find((entry) => entry.tier === "production");
+      if (recipe === undefined || repos === undefined || records === undefined) continue;
+      if (production === undefined) {
+        const snapshot = snapshotReleasePlan(groupStops.get(groupId), recipe, repos);
+        if (snapshot !== undefined) plans.set(groupId, snapshot);
+        continue;
+      }
+      const productionId = ZeropsProjectId.make(production.projectId);
+      if (withheld.has(productionId)) continue;
+      const listed = held?.services.get(productionId)?.status === "resolved";
+      const running = productionRuns({
+        services: listed
+          ? groupProjects.get(groupId)?.find(({ projectId }) => projectId === production.projectId)
+              ?.services
+          : undefined,
+        stated,
+        named: [
+          ...recipe.productionRepositories.keys(),
+          ...production.services.map(({ hostname }) => hostname),
+        ],
+        deploys: new Map(
+          production.services.flatMap(({ hostname, deploy }) =>
+            deploy === undefined ? [] : [[hostname, deploy] as const],
+          ),
+        ),
+        releases: records.map(flowReleaseOf),
+      });
+      if (running === undefined) continue;
+      const { productionRepositories } = recipe;
+      plans.set(groupId, {
+        ...releaseReads({
+          productionRepositories,
+          candidate: releaseCandidate({ productionRepositories, repos }).candidate,
+          running,
+        }),
+        running,
+      });
+    }
+    return plans;
+  }, [
+    appRepos,
+    flowGroups,
+    groupProjects,
+    groupStops,
+    held,
+    recipes,
+    releaseRecords,
+    stated,
+    withheld,
+  ]);
+  const compareAsks = useMemo(
+    () => new Map([...releasePlans].map(([groupId, plan]) => [groupId, plan.reads])),
+    [releasePlans],
+  );
+  const compares = useZeropsCompares(compareAsks);
+  const live = useMemo(
     () =>
       new Map(
-        groups.flatMap(({ groupId }) => {
-          const deploysFailed = deployFailures.get(groupId);
-          const forgeFailed = forgeFailures.get(groupId);
-          return deploysFailed === undefined || forgeFailed === undefined
-            ? []
-            : [[groupId, deploysFailed] as const];
+        [...releasePlans].map(([groupId, plan]) => {
+          const answered = compares.get(groupId);
+          return [
+            groupId,
+            {
+              moved:
+                answered === undefined
+                  ? NOT_COMPARED
+                  : {
+                      ...movedCommits({ reads: plan.reads, ...answered }),
+                      again: () => answered.again(plan.reads),
+                    },
+              untold: plan.untold,
+              runs: plan.running,
+            },
+          ];
         }),
       ),
-    [deployFailures, forgeFailures, groups],
+    [compares, releasePlans],
+  );
+  const flows = useMemo<ReadonlyMap<string, ZeropsProjectFlow>>(
+    () =>
+      signedInToMate
+        ? joinProjectFlows({
+            groups: flowGroups,
+            stops: groupStops,
+            releases: releaseRecords,
+            repos: appRepos,
+            recipes,
+            permissions,
+            live,
+            changes,
+            changesFailure,
+            nowMs,
+            withheld,
+          })
+        : EMPTY_FLOWS,
+    [
+      appRepos,
+      changes,
+      changesFailure,
+      flowGroups,
+      groupStops,
+      live,
+      nowMs,
+      permissions,
+      recipes,
+      releaseRecords,
+      signedInToMate,
+      withheld,
+    ],
   );
 
   // Time to the first pull request row, per group, for diagnostics.
@@ -597,22 +827,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     }
   }, [flows]);
 
-  const groupOfSlug = useMemo(
-    () => new Map(registry.registry.groups.map((entry) => [entry.slug, entry.groupId])),
-    [registry.registry.groups],
-  );
-
-  /** Re-reads what a settled verb changed, in its own group and nothing else (`flow/verbs.ts`). */
-  const reread = useCallback(
-    (verb: FlowVerb, groupId: string | undefined) => {
-      if (groupId === undefined) return;
-      const changed = flowVerbInvalidations(verb);
-      if (changed.forge !== null) invalidateForge(groupId, changed.forge);
-      if (changed.deploys !== null) invalidateDeploys(groupId, changed.deploys);
-    },
-    [invalidateDeploys, invalidateForge],
-  );
-
   /**
    * The verbs running now, by key. A second press before React draws the first as pending would
    * otherwise act twice — for a release, a second tag.
@@ -620,15 +834,11 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   const running = useRef(new Set<string>());
 
   /**
-   * Holds the verb's key in `pending` while it runs, then re-reads what it changed; how it went is
-   * `act`'s answer, and a verb already running answers that it is.
+   * Holds the verb's key in `pending` while it runs. Its effect arrives through HQ's stream;
+   * how it went is `act`'s answer, and a verb already running answers that it is.
    */
   const run = useCallback(
-    async (
-      verb: FlowVerb,
-      groupId: string | undefined,
-      act: () => Promise<FlowVerbOutcome>,
-    ): Promise<FlowVerbOutcome> => {
+    async (verb: FlowVerb, act: () => Promise<FlowVerbOutcome>): Promise<FlowVerbOutcome> => {
       const key = flowVerbKey(verb);
       if (running.current.has(key)) return refused(VERB_ALREADY_RUNNING);
       running.current.add(key);
@@ -642,37 +852,21 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
           next.delete(key);
           return next;
         });
-        reread(verb, groupId);
       }
     },
-    [reread],
+    [],
   );
 
   /**
-   * A verb whose call landed, by its key, with the group's forge answer it landed against and the
-   * effect it waits for. The verb stays pending until the forge shows that effect, the group's
-   * forge read fails, or {@link HELD_VERB_MS} passes: until then the flow still offers what was
-   * just done — the release it just tagged, the pull request it just merged. A settled entry is
+   * A verb whose call landed, by its key, with the effect it waits to read. The verb stays pending
+   * until that is read, the group's releases fail to read, or {@link HELD_VERB_MS} passes: until
+   * then the flow still offers what was just done — the release it just made. A settled entry is
    * dropped.
    */
   const [awaiting, setAwaiting] = useState<ReadonlyMap<string, HeldVerb>>(() => new Map());
-  /**
-   * The forge answers as drawn last. A verb is held when its call returns, against the answer
-   * current then — a pass that answered while the call ran did not read its effect either.
-   */
-  const latestForges = useRef(forges);
-  useEffect(() => {
-    latestForges.current = forges;
-  }, [forges]);
-  const hold = useCallback((verb: FlowVerb, groupId: string | undefined, effect: HeldEffect) => {
-    if (groupId === undefined) return;
+  const hold = useCallback((verb: FlowVerb, groupId: string, against: HeldVerb["against"]) => {
     setAwaiting((current) =>
-      new Map(current).set(flowVerbKey(verb), {
-        groupId,
-        against: latestForges.current.get(groupId),
-        effect,
-        sinceMs: Date.now(),
-      }),
+      new Map(current).set(flowVerbKey(verb), { groupId, against, sinceMs: Date.now() }),
     );
   }, []);
   const letGo = useCallback((key: string, entry: HeldVerb) => {
@@ -692,48 +886,10 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     };
   }, [awaiting, letGo]);
 
-  const slugs = useMemo(
-    () => new Map(registry.registry.groups.map((entry) => [entry.groupId, entry.slug])),
-    [registry.registry.groups],
-  );
-  // Each group's runner, from the Gitea project's services the inventory already holds, through a
-  // blink of its socket: a stage's first deploy waits on it, and its line says so (`stopComing`).
-  // Nothing is read for it.
-  const giteaServices = useAccountGiteaServices(clientId);
-  const runners = useMemo(() => {
-    const found = new Map<string, GroupRunner>();
-    for (const [groupId, slug] of slugs) {
-      const runner = groupRunner({ slug, services: giteaServices });
-      if (runner !== undefined) found.set(groupId, runner);
-    }
-    return found;
-  }, [giteaServices, slugs]);
   const mateNames = useMemo(
-    () =>
-      new Map(
-        inventory.projects.map((project) => [
-          project.id,
-          botDisplayName({
-            bot: readZeropsGroupTags(project.tagList ?? []).bot,
-            projectName: project.name,
-          }),
-        ]),
-      ),
+    () => new Map(inventory.projects.map((project) => [project.id, project.name])),
     [inventory.projects],
   );
-
-  /**
-   * A client to act as the person with, or `null` with the reason said where the verbs are: the
-   * flows stand through a failed reacquire while no token is held, and a verb pressed then
-   * would otherwise do nothing and say nothing. With no Gitea on the account there is nothing
-   * to sign in to again, and no verb to press.
-   */
-  const actingClient = useCallback(() => {
-    if (giteaOrigin === undefined) return null;
-    const client = giteaClientFor(giteaOrigin);
-    if (client === null) setTrouble(SIGNING_IN_AGAIN);
-    return client;
-  }, [giteaOrigin]);
 
   /** Says a refusal where the verbs are, and hands it back to the surface that pressed it. */
   const refuse = useCallback((reason: string): FlowVerbOutcome => {
@@ -741,170 +897,188 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     return refused(reason);
   }, []);
 
-  const mergePullRequest = useCallback(
-    async (
-      slug: string,
-      pull: Pick<FlowPullRequest, "repository" | "number" | "headSha">,
-    ): Promise<FlowVerbOutcome> => {
-      const client = actingClient();
-      if (client === null) return refused(SIGNING_IN_AGAIN);
-      // Only the head the person was shown is merged; with none read there is nothing to hold.
-      const head = pull.headSha;
-      if (head === undefined) return refuse(MERGE_HEAD_MOVED);
-      const verb: FlowVerb = {
-        kind: "merge",
-        slug,
-        repository: pull.repository,
-        number: pull.number,
-      };
-      const groupId = groupOfSlug.get(slug);
-      return run(verb, groupId, async () => {
+  /**
+   * A release made in HQ as the person, of exactly what its offer shows: its entries and chosen
+   * name (the next patch by default), tagging the recipe's `main` it was read with — HQ refuses
+   * one that moved since and checks the name against every release under its lock.
+   * Held until the application's releases list it; HQ's refusal is said in its words.
+   */
+  const release = useCallback(
+    async (groupId: string, tag?: string): Promise<FlowVerbOutcome> => {
+      if (hqApi === null) return refused(HQ_NOT_OPEN);
+      const offer = flows.get(groupId)?.release;
+      if (offer === undefined) return refused(NOT_READ_YET);
+      if (!offer.gate.allowed) return refused(offer.gate.reason);
+      const { groupHead } = offer;
+      if (groupHead === undefined) return refuse(NO_GROUP_MAIN);
+      const verb: FlowVerb = { kind: "release", groupId };
+      return run(verb, async () => {
         try {
-          await client.mergePullRequest(slug, pull.repository, pull.number, head);
+          const { made, deploys } = await hqApi.release(groupId, {
+            tag: tag ?? offer.suggestion,
+            groupHead,
+            entries: offer.entries.map(({ service, commit }) => ({ service, sha: commit })),
+          });
           setTrouble(null);
-          hold(verb, groupId, { kind: "closed", repository: pull.repository, number: pull.number });
-          return DONE;
+          hold(verb, groupId, { kind: "release", tag: made.tag });
+          return { ok: true, tag: made.tag, deploys };
         } catch (cause) {
-          return refuse(
-            headMoved(cause)
-              ? MERGE_HEAD_MOVED
-              : `Gitea would not merge it: ${zeropsErrorMessage(cause)}`,
-          );
+          return refuse(zeropsErrorMessage(cause));
         }
       });
     },
-    [actingClient, groupOfSlug, hold, refuse, run],
-  );
-
-  const createPullRequest = useCallback(
-    async (
-      slug: string,
-      input: {
-        readonly repository: string;
-        readonly head: string;
-        readonly base: string;
-        readonly title: string;
-      },
-    ) => {
-      const client = actingClient();
-      if (client === null) return;
-      await run(
-        { kind: "open", slug, repository: input.repository, head: input.head },
-        groupOfSlug.get(slug),
-        async () => {
-          try {
-            await client.createPullRequest(slug, input.repository, {
-              head: input.head,
-              base: input.base,
-              title: input.title,
-            });
-            setTrouble(null);
-            return DONE;
-          } catch (cause) {
-            return refuse(`Gitea would not open the pull request: ${zeropsErrorMessage(cause)}`);
-          }
-        },
-      );
-    },
-    [actingClient, groupOfSlug, refuse, run],
+    [flows, hold, hqApi, refuse, run],
   );
 
   /**
-   * A tag on a commit of the group repo's `main`, as the person; Gitea's tag protection is the
-   * real gate. Whether the tag was made, or why not.
+   * Production back to an earlier release, in HQ as the person: a new release of its entries,
+   * tagging the recipe's `main` as last read — HQ refuses one that moved since. Held until the
+   * application's releases list it; HQ's refusal is said in its words.
    */
-  const tagAs = useCallback(
-    async (
-      slug: string,
-      target: string | undefined,
-      tag: string,
-      message: string,
-    ): Promise<FlowVerbOutcome> => {
-      const client = actingClient();
-      if (client === null) return refused(SIGNING_IN_AGAIN);
-      if (target === undefined) return refuse("The group repository has no main to tag.");
-      try {
-        await client.createTag(slug, GROUP_REPOSITORY, { tag, target, message });
-        setTrouble(null);
-        return { ok: true, tag };
-      } catch (cause) {
-        return refuse(
-          cause instanceof Error && "status" in cause && cause.status === 403
-            ? "Only releasers can tag."
-            : "Gitea would not create the tag.",
-        );
-      }
-    },
-    [actingClient, refuse],
-  );
-
-  const release = useCallback(
-    async (groupId: string): Promise<FlowVerbOutcome> => {
-      const flow = flows.get(groupId);
-      if (flow === undefined) return refused("This project has not been read yet.");
-      // What the offer showed, not a second derivation of it: the two would
-      // differ for a project releasing what is merged (D28).
-      const entries = flow.release.entries;
-      if (entries.length === 0) return refused("Nothing is merged to release.");
-      const verb: FlowVerb = { kind: "release", groupId };
-      return run(verb, groupId, async () => {
-        // The `main` head the offer was computed from — never a head read at the press, which may
-        // hold what the person was not shown.
-        const made = await tagAs(
-          flow.slug,
-          flow.release.target,
-          releaseTagName(flow.release.suggestion.replace(/^v/u, "")),
-          releaseMessage(entries),
-        );
-        if (made.ok) hold(verb, groupId, { kind: "answer" });
-        return made;
-      });
-    },
-    [flows, hold, run, tagAs],
-  );
-
   const rollBack = useCallback(
     async (groupId: string, earlier: string): Promise<FlowVerbOutcome> => {
-      const flow = flows.get(groupId);
-      if (flow === undefined) return refused("This project has not been read yet.");
-      const client = actingClient();
-      if (client === null) return refused(SIGNING_IN_AGAIN);
+      if (hqApi === null) return refused(HQ_NOT_OPEN);
       const verb: FlowVerb = { kind: "roll-back", groupId, tag: earlier };
-      return run(verb, groupId, async () => {
-        const tags = await client.listTags(flow.slug, GROUP_REPOSITORY).catch(() => []);
-        const found = tags.find((entry) => entry.name === earlier);
-        const plan =
-          found === undefined
-            ? undefined
-            : rollbackTo({
-                tag: found.name,
-                message: found.message ?? "",
-                existingTags: tags.map((entry) => entry.name),
-              });
-        if (plan === undefined)
-          return refuse(`${earlier} does not list commits this build can read.`);
-        const { slug } = flow;
-        const head = await client.getBranch(slug, GROUP_REPOSITORY, "main").catch(() => undefined);
-        const made = await tagAs(slug, head?.commit?.id, plan.tag, plan.message);
-        if (made.ok) hold(verb, groupId, { kind: "answer" });
-        return made;
+      return run(verb, async () => {
+        const groupHead = appRepos
+          .get(groupId)
+          ?.find((repo) => repo.name === RECIPE_REPO)?.mainHead;
+        if (groupHead == null) return refuse(NO_GROUP_MAIN);
+        try {
+          const { made, deploys } = await hqApi.rollback(groupId, earlier, { groupHead });
+          setTrouble(null);
+          hold(verb, groupId, { kind: "release", tag: made.tag });
+          return { ok: true, tag: made.tag, deploys };
+        } catch (cause) {
+          return refuse(zeropsErrorMessage(cause));
+        }
       });
     },
-    [actingClient, flows, hold, refuse, run, tagAs],
+    [appRepos, hold, hqApi, refuse, run],
+  );
+
+  /**
+   * A change merged or closed in HQ, as the person: held until HQ's stream no longer holds it open,
+   * nothing read again; HQ's refusal is handed back in its words to the review that pressed it, and
+   * a merge's deploys as HQ answered them.
+   */
+  const changeVerb = useCallback(
+    async (
+      verb: ChangeVerb,
+      act: (api: HqApi, link: ChangeLink) => Promise<HqDeployAnswer | undefined>,
+    ): Promise<FlowVerbOutcome> => {
+      if (hqApi === null) return refused(HQ_NOT_OPEN);
+      const link = { appId: verb.groupId, repo: verb.repository, number: verb.number };
+      return run(verb, async () => {
+        let deploys: HqDeployAnswer | undefined;
+        try {
+          deploys = await act(hqApi, link);
+        } catch (cause) {
+          return refused(zeropsErrorMessage(cause));
+        }
+        hold(verb, verb.groupId, {
+          kind: "change",
+          repository: verb.repository,
+          number: verb.number,
+        });
+        return { ok: true, deploys };
+      });
+    },
+    [hold, hqApi, run],
+  );
+
+  const merge = useCallback(
+    (
+      groupId: string,
+      change: { readonly repository: string; readonly number: number },
+      expectedHead: string | undefined,
+    ): Promise<FlowVerbOutcome> => {
+      // Only the head whose change was shown: one nobody saw is never merged, and HQ is not asked.
+      if (expectedHead === undefined) return Promise.resolve(refused(HEAD_NOT_SHOWN));
+      return changeVerb({ kind: "merge", groupId, ...change }, async (api, link) => {
+        const { deploys } = await api.mergeChange(link, expectedHead);
+        return deploys;
+      });
+    },
+    [changeVerb],
+  );
+
+  const close = useCallback(
+    (
+      groupId: string,
+      change: { readonly repository: string; readonly number: number },
+    ): Promise<FlowVerbOutcome> =>
+      changeVerb({ kind: "close", groupId, ...change }, async (api, link) => {
+        await api.closeChange(link);
+        return undefined;
+      }),
+    [changeVerb],
+  );
+
+  const redeploy = useCallback(
+    (
+      groupId: string,
+      projectId: string,
+      deploy: { readonly service: string; readonly sha: string; readonly after: string },
+    ): Promise<FlowVerbOutcome> => {
+      if (hqApi === null) return Promise.resolve(refused(HQ_NOT_OPEN));
+      const environment = flows
+        .get(groupId)
+        ?.environmentInputs.find((entry) => entry.projectId === projectId)?.environment;
+      if (environment === undefined) return Promise.resolve(refused(NOT_READ_YET));
+      const verb: FlowVerb = { kind: "redeploy", groupId, projectId, service: deploy.service };
+      return run(verb, async () => {
+        let deploys: HqDeployAnswer;
+        try {
+          deploys = await hqApi.redeploy(groupId, environment, {
+            service: deploy.service,
+            sha: deploy.sha,
+          });
+        } catch (cause) {
+          return refused(zeropsErrorMessage(cause));
+        }
+        hold(verb, groupId, {
+          kind: "deploy",
+          projectId,
+          service: deploy.service,
+          after: deploy.after,
+        });
+        return { ok: true, deploys };
+      });
+    },
+    [flows, hold, hqApi, run],
+  );
+
+  const addService = useCallback(
+    (groupId: string, projectId: string, service: string): Promise<FlowVerbOutcome> => {
+      if (hqApi === null) return Promise.resolve(refused(HQ_NOT_OPEN));
+      const environment = flows
+        .get(groupId)
+        ?.environmentInputs.find((entry) => entry.projectId === projectId)?.environment;
+      if (environment === undefined) return Promise.resolve(refused(NOT_READ_YET));
+      const verb: FlowVerb = { kind: "add-service", groupId, projectId, service };
+      return run(verb, async () => {
+        try {
+          return { ok: true, deploys: await hqApi.addService(groupId, environment, service) };
+        } catch (cause) {
+          return refused(zeropsErrorMessage(cause));
+        }
+      });
+    },
+    [flows, hqApi, run],
   );
 
   // While the account's access lapses, the groups the registry names and what was read of them
   // are withheld with every project (§3.1); the reads themselves are kept for the next grant.
   const lapsed = inventory.account.kind === "withheld";
-  // A held verb waits for its effect in the group's forge answer, or for the re-read to fail: a
-  // forge half that fails says so where the verbs are (`flowReleaseGate`, `trouble`), so the wait
-  // has nothing left to hold.
+  // A held verb waits for its effect in the group's flow, or for its streamed release read to
+  // fail: the wait then has nothing left to hold.
   const settled = useMemo(
     () =>
       [...awaiting].filter(([, entry]) =>
-        effectRead(entry, forges.get(entry.groupId), forgeFailures.has(entry.groupId)),
+        effectRead(entry, releaseFailures.has(entry.groupId), flows.get(entry.groupId)),
       ),
-    [awaiting, forgeFailures, forges],
+    [awaiting, flows, releaseFailures],
   );
   useEffect(() => {
     if (settled.length === 0) return;
@@ -920,47 +1094,50 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   }, [awaiting, pending, settled]);
   const value = useMemo<ZeropsProjectFlowValue>(
     () => ({
-      giteaOrigin,
-      signedIn,
-      readable,
-      signInTrouble,
-      giteaReach,
-      groupsRead: !registry.loading,
-      groupFailures,
+      hqAddress,
+      readFailure:
+        changesFailure ??
+        (accountHq.status === "failed"
+          ? "The organization's HQ could not be read."
+          : accountHq.status === "ready" && accountHq.hq.kind !== "official"
+            ? "This organization has no HQ."
+            : lapsed
+              ? "Project access is being checked."
+              : undefined),
+      groupsRead: hqStructure?.current === true && !registry.loading,
+      knownGroups: new Set(registry.registry.groups.map(({ groupId }) => groupId)),
       flows: lapsed ? EMPTY_FLOWS : flows,
+      releaseFailures: lapsed ? NO_FAILURES : releaseFailures,
       deployments,
-      slugs: lapsed ? EMPTY_SLUGS : slugs,
-      runners,
-      organizations: lapsed ? EMPTY_ORGANIZATIONS : organizations,
       mateNames,
       pending: pendingOrHeld,
-      // Flows that stand with no token say why where the verbs are, ahead of what a verb said.
-      trouble: (signedIn ? signInTrouble : null) ?? trouble,
-      mergePullRequest,
-      createPullRequest,
+      trouble,
       release,
       rollBack,
+      merge,
+      close,
+      redeploy,
+      addService,
     }),
     [
-      createPullRequest,
+      addService,
+      close,
       deployments,
       flows,
-      giteaOrigin,
-      giteaReach,
-      groupFailures,
+      hqAddress,
       lapsed,
-      registry.loading,
+      registry,
+      changesFailure,
+      accountHq.hq.kind,
+      accountHq.status,
+      hqStructure,
       mateNames,
-      mergePullRequest,
-      organizations,
+      merge,
       pendingOrHeld,
-      readable,
+      redeploy,
       release,
+      releaseFailures,
       rollBack,
-      runners,
-      signInTrouble,
-      signedIn,
-      slugs,
       trouble,
     ],
   );

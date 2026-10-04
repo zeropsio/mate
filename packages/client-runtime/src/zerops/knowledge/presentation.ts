@@ -16,7 +16,7 @@ import type {
 } from "./known.ts";
 
 /** The system that answers for a region's fact, named in its failure copy. */
-export type KnowledgeSource = "zerops" | "gitea" | "mate";
+export type KnowledgeSource = "zerops" | "mate";
 
 export interface KnownSurface<T> {
   /** What the region reads, as the object of "Couldn't read …": "pull requests", "this project". */
@@ -32,6 +32,8 @@ export interface KnownSurface<T> {
 
 export interface PresentationContext {
   readonly nowMs: number;
+  /** The kept value's timestamp, formatted at the client edge when the surface shows it. */
+  readonly asOfTime?: string;
   /** The Mate's descriptor offers an update (MU-1). */
   readonly updateOffered: boolean;
 }
@@ -107,17 +109,16 @@ const say = (text: string, tone: KnownMessage["tone"], afterMs = 0): KnownMessag
 const WAITING_FOR: Record<Prerequisite, string> = {
   "zerops-session": "Signing in to Zerops…",
   "access-grant": "Checking your Zerops access…",
-  "gitea-session": "Signing in to Gitea…",
   "mate-session": "Waiting for this Mate to connect…",
   presence: "Looking for this Mate…",
   visible: "Paused while this tab is in the background.",
+  "data-slot": "Waiting for a data slot…",
   online: "Waiting for a connection…",
 };
 
 const SOURCE_NAME: Record<KnowledgeSource, { readonly subject: string; readonly object: string }> =
   {
     zerops: { subject: "Zerops", object: "Zerops" },
-    gitea: { subject: "Gitea", object: "Gitea" },
     mate: { subject: "This Mate", object: "this Mate" },
   };
 
@@ -187,11 +188,22 @@ export function knownPresentation<T>(
     case "unread":
       return shown.waitingFor === null
         ? checking(surface)
-        : { ...NOTHING, message: say(WAITING_FOR[shown.waitingFor], "quiet") };
+        : {
+            ...NOTHING,
+            region: shown.waitingFor === "data-slot" ? "message" : "placeholder",
+            message: say(WAITING_FOR[shown.waitingFor], "quiet"),
+          };
     case "reading":
       return checking(surface);
     case "failed":
-      return failed(shown.failure, surface, context);
+      return shown.failure.kind === "transport" && shown.retryAtMs !== null
+        ? {
+            ...NOTHING,
+            region: "message",
+            message: say("Reconnecting… Changes while disconnected may be missing.", "notice"),
+            affordance: RETRY_NOW,
+          }
+        : failed(shown.failure, surface, context);
     case "known":
       return knownValue(shown, surface, context);
     case "gone":
@@ -286,7 +298,19 @@ function staleMarker<T>(
 ): Pick<KnownPresentation, "message" | "affordance"> {
   switch (reason.kind) {
     case "source-recovering":
-      return { message: say("Reconnecting…", "notice"), affordance: RETRY_NOW };
+      return {
+        message: say(
+          reason.coverageGap
+            ? joined(
+                "Reconnecting…",
+                context.asOfTime === undefined ? null : `Last data as of ${context.asOfTime}.`,
+                "Changes while disconnected may be missing.",
+              )
+            : "Reconnecting…",
+          "notice",
+        ),
+        affordance: RETRY_NOW,
+      };
     case "revalidation-failed": {
       const unsupported = reason.failure.kind === "unsupported";
       return {

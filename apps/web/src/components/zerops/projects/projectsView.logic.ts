@@ -5,21 +5,24 @@
  * rows that need the person rise first within it (`risenFirst`), and nothing else reorders them.
  */
 
+import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
-  botDisplayName,
+  changesNotLive,
   deployWord,
-  environmentNameUnderGroup,
   firstDeployLine,
+  STAGE_SETTING_UP,
   firstDeployTone,
+  flowVerbKey,
+  flowVerbLabel,
   hasMate,
   pairPreviewRoute,
-  readZeropsGroupTags,
   releaseContentsSummary,
   releaseInFlightReason,
-  STAGE_SETTING_UP,
+  REVIEW_LABEL,
   type EnvironmentRow,
   type FlowPullRequest,
+  type Moved,
   type GroupEnvironmentTier,
   type GroupFlow,
   type GroupFlowComing,
@@ -28,7 +31,6 @@ import {
   type GroupFlowStopState,
   type GroupNextStepKind,
   type GroupRowTone,
-  type GroupRunner,
   type MissingEnvironmentRow,
   type PlatformService,
   type ReleaseGate,
@@ -37,7 +39,6 @@ import {
   type ZeropsGroup,
   type ZeropsGroupPendingMember,
   type ZeropsPublicRoute,
-  type ZeropsToolKind,
 } from "@t3tools/client-runtime/zerops";
 import {
   CHECKING_WHAT_RUNS,
@@ -48,13 +49,9 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { EnvironmentId } from "@t3tools/contracts";
-import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { activityOfNow, mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { creatableRoles } from "../ZeropsGroupTree.logic";
 import { COMING_UP_LINE, NOT_SET_UP_LINE, type ZeropsRowAction } from "../ZeropsProjectRow.logic";
-
-/** What a tool is called where there is no project to name yet — the add verb. */
-export const TOOL_LABEL: Record<ZeropsToolKind, string> = { gitea: "Gitea" };
 
 /** The page's URL: `/zerops?group=<groupId>` opens that project's row. */
 export interface ProjectsSearch {
@@ -69,12 +66,12 @@ export function parseProjectsSearch(raw: Record<string, unknown>): ProjectsSearc
 }
 
 /**
- * The steps somebody has something to do for: the strip gathers them, the
- * left menu dots them. A project without production owes nobody anything —
+ * The steps somebody has something to do for: their rows rise, the left menu
+ * dots them. A project without production owes nobody anything —
  * production is not required (the owner, 2026-09-28) — so adding one is the
  * page's offer, never a step that waits.
  */
-const STRIP_STEPS: ReadonlySet<GroupNextStepKind> = new Set([
+const AWAITING_STEPS: ReadonlySet<GroupNextStepKind> = new Set([
   "answer-mate",
   "fix-mate",
   "fix-deploy",
@@ -85,7 +82,7 @@ const STRIP_STEPS: ReadonlySet<GroupNextStepKind> = new Set([
 
 /** Whether a next step waits on somebody — never a first task (the Mate is the way in) or none. */
 export function nextStepAwaitsSomebody(kind: GroupNextStepKind): boolean {
-  return STRIP_STEPS.has(kind);
+  return AWAITING_STEPS.has(kind);
 }
 
 /**
@@ -109,7 +106,14 @@ export function nextStepTone(kind: GroupNextStepKind): ServiceStatusToneId {
   return NEXT_STEP_TONE[kind];
 }
 
-type ContainerState = "ready" | "coming-up" | "not-answering" | "stopped" | "no-mate" | "other";
+type ContainerState =
+  | "ready"
+  | "coming-up"
+  | "not-answering"
+  | "stopped"
+  | "not-in-hq"
+  | "no-mate"
+  | "other";
 
 /** A container's state, from the one verb its row offers (`deriveZeropsRowAction`). */
 function containerStateOf(kind: ZeropsRowAction["kind"]): ContainerState {
@@ -118,6 +122,8 @@ function containerStateOf(kind: ZeropsRowAction["kind"]): ContainerState {
       return "ready";
     case "pending":
       return "coming-up";
+    case "not-in-hq":
+      return "not-in-hq";
     case "retry-probe":
       return "not-answering";
     case "start":
@@ -137,6 +143,7 @@ const CONTAINER_STATE_WORD: ReadonlyArray<readonly [ContainerState, string]> = [
   ["coming-up", "coming up"],
   ["not-answering", "not answering"],
   ["stopped", "stopped"],
+  ["not-in-hq", "not in this HQ"],
   ["no-mate", "without a Mate"],
   ["other", "need a look"],
 ];
@@ -168,9 +175,55 @@ export function containersSummary(kinds: ReadonlyArray<ZeropsRowAction["kind"]>)
 }
 
 /**
- * Which of a project's steps wait on a read that is out, and so hold a skeleton rather than an
- * empty word. The pull requests and `main` are Gitea's changes half: "None yet" and "Nothing
- * merged" from a flow whose deploy half alone answered are claims the page then takes back —
+ * The projects the page lists, without the organization's HQ — the project its anchor names
+ * (`findOfficialHq`), which the Tools row stands for, and which is never a Mate to set up. A
+ * project is never left out by its name or its tag, and none at all while the anchor names no one
+ * HQ.
+ */
+export function withoutOfficialHq<T extends { readonly project: { readonly id: string } }>(
+  rows: ReadonlyArray<T>,
+  hq: OfficialHq,
+): ReadonlyArray<T> {
+  if (hq.kind !== "official") return rows;
+  return rows.filter((row) => row.project.id !== hq.projectId);
+}
+
+/** Foreign environments without a Mate do not belong among the page's other containers. */
+export function shownUngrouped<T extends ZeropsCandidate>(
+  rows: ReadonlyArray<{ readonly item: T; readonly action: ZeropsRowAction["kind"] }>,
+): ReadonlyArray<{ readonly item: T; readonly action: ZeropsRowAction["kind"] }> {
+  return rows.filter(({ item, action }) => hasMate(item) || action === "set-up-mate");
+}
+
+/**
+ * What a change's row offers: *Review*, the one door to merging it (R1) — and while its merge runs,
+ * or waits for HQ's stream to bring it merged, that it is merging. Its close says so in its review.
+ */
+export function changeRowVerb(
+  pending: ReadonlySet<string>,
+  groupId: string,
+  pull: Pick<FlowPullRequest, "repository" | "number">,
+): string {
+  const merge = flowVerbKey({
+    kind: "merge",
+    groupId,
+    repository: pull.repository,
+    number: pull.number,
+  });
+  return pending.has(merge) ? flowVerbLabel("merge", true) : REVIEW_LABEL;
+}
+
+/**
+ * Why a project's changes are not known: HQ never answered for them and none is held
+ * (`ZeropsProjectFlow.changesFailure`), or HQ's rule shows this person the project and not its
+ * changes (`read_change`, `useChangeOffers`).
+ */
+export type ChangesUnknown = "failed" | "unseen";
+
+/**
+ * Which of a project's reads are out, so its row's line holds a skeleton rather than a claim.
+ * Its changes are HQ's half: "nothing waits" from a flow whose deploy half alone answered is a
+ * claim the page then takes back —
  * 11–28 s on a reload, and for as long as a project's changes are being read again (the owner,
  * 2026-09-30).
  */
@@ -180,19 +233,41 @@ export function flowStepsAwaiting(input: {
   /** Its changes half answered (`ZeropsProjectFlow.changesKnown`). */
   readonly changesKnown: boolean;
   /**
-   * Its changes' read failed and nothing is held (`ZeropsProjectFlow.changesFailure`): no read
-   * is out for them, and the steps say so rather than wait forever.
+   * Its changes are not known and no read is out for them: its row says why rather than wait
+   * forever.
    */
-  readonly changesFailed?: boolean;
-  /** Its read is out: a Gitea session is held or coming, and it has an org to read. */
+  readonly changesUnknown?: ChangesUnknown | undefined;
+  /** Its read is out: an HQ is open, whose stream tells its changes. */
   readonly readOut: boolean;
 }): { readonly steps: boolean; readonly changes: boolean } {
-  const { read, changesKnown, readOut } = input;
-  const answered = read && (changesKnown || input.changesFailed === true);
+  const { read, changesKnown, changesUnknown, readOut } = input;
+  const answered =
+    changesUnknown === "unseen" || (read && (changesKnown || changesUnknown === "failed"));
   return { steps: readOut && !read, changes: readOut && !answered };
 }
 
-/** The newest code change that landed — what `main`'s step names. */
+/**
+ * Why a project's changes are not known, where they are not: HQ's rule first — what this person
+ * may not see is unseen however HQ answered — and nothing while its rule has not been asked.
+ */
+export function changesUnknownOf(input: {
+  /** What `useChangeOffers` offers of the project's changes; `undefined` while not asked. */
+  readonly offers: { readonly read: boolean } | undefined;
+  /** Why HQ never told its changes (`ZeropsProjectFlow.changesFailure`). */
+  readonly changesFailure: string | undefined;
+}): ChangesUnknown | undefined {
+  if (input.offers?.read === false) return "unseen";
+  return input.changesFailure === undefined ? undefined : "failed";
+}
+
+/** What a row says where its changes are not known. */
+const CHANGES_UNKNOWN_LINE: { readonly [U in ChangesUnknown]: string } = {
+  failed: "HQ didn’t answer",
+  // The refusal's own access (`changes_not_seen`), short enough for a step.
+  unseen: "Needs Basic user access",
+};
+
+/** The newest code change that landed — what a quiet row names. */
 export function lastMergedCode(
   merged: ReadonlyArray<FlowPullRequest>,
 ): FlowPullRequest | undefined {
@@ -243,7 +318,7 @@ export function stopLine(stop: GroupFlowStop): {
     return { word: STAGE_SETTING_UP, version: undefined, tone: "busy" };
   switch (stop.state) {
     case "checking":
-      return { word: CHECKING_WHAT_RUNS, version: undefined, tone };
+      return { word: stop.readLine ?? CHECKING_WHAT_RUNS, version: undefined, tone };
     case "empty": {
       // A stage that runs nothing says where its first deploy stands, where one was asked for.
       const first = firstDeployLine(stop.firstDeploy);
@@ -266,9 +341,12 @@ export function stopLine(stop: GroupFlowStop): {
 
 /** One Zerops project of a group, as the page already holds it. */
 export interface GroupMemberFacts {
+  readonly createdAt?: string | undefined;
+  readonly projectStatus?: string | undefined;
+  readonly services?: ReadonlyArray<PlatformService> | undefined;
   readonly projectId: string;
   readonly role: ZeropsEnvironmentRole | undefined;
-  /** Its name under the group's (`environmentNameUnderGroup`). */
+  /** Its name, as Zerops has its project (D3). */
   readonly name: string;
   /** Present where a Mate lives (`hasMate`). */
   readonly mate:
@@ -289,12 +367,6 @@ export interface GroupMemberFacts {
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
   /** The developer's services by hostname — the pair `pairPreviewRoute` looks for. */
   readonly hostnames: ReadonlyArray<string>;
-  /** When its project was made. */
-  readonly createdAt?: string | undefined;
-  /** Its project's status, as the platform lists it. */
-  readonly projectStatus?: string | undefined;
-  /** Its services as the platform lists them; `undefined` while unread. */
-  readonly services?: ReadonlyArray<PlatformService> | undefined;
 }
 
 /** A group member as the group tree carries it: a candidate, with what its container serves. */
@@ -307,10 +379,11 @@ export type GroupMemberCandidate = ZeropsCandidate & {
  * A group's members as `groupFlowInputOf` reads them, from the group tree's
  * environments — the projects page and the left menu hand it the same
  * candidates, so they cannot disagree about who is in a group or what a
- * Mate is doing. `activityOf` is the agent's activity (`agentActivity.ts`),
- * read only while its container is connected; `conversationsRead` is whether
- * its container's conversations have arrived, so that no activity is known to
- * mean nobody has spoken to it.
+ * Mate is doing. `activityOf` is the agent's activity (`agentActivity.ts`):
+ * HQ's word or its socket's, read only while it is of now — its container
+ * connected, or HQ holding it live — and never at rest; `conversationsRead` is
+ * whether its container's conversations have arrived, so that no activity is
+ * known to mean nobody has spoken to it.
  */
 export function groupMemberFactsOf<T extends GroupMemberCandidate>(
   environments: ReadonlyArray<{
@@ -323,16 +396,19 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
   viewer: string | undefined,
 ): ReadonlyArray<GroupMemberFacts> {
   return environments.map(({ item, role }) => {
-    const tags = readZeropsGroupTags(item.project.tagList);
-    const connected = item.group === "connected" && item.environmentId !== undefined;
-    const activity = activityOf(item);
+    const activity = activityOfNow(activityOf(item));
+    const connected =
+      (item.group === "connected" && item.environmentId !== undefined) || activity !== undefined;
     return {
+      createdAt: item.project.created,
+      projectStatus: item.project.status,
+      services: item.services?.statuses,
       projectId: item.project.id,
       role,
-      name: environmentNameUnderGroup(tags.label, item.project.name),
+      name: item.project.name,
       mate: hasMate(item)
         ? {
-            name: botDisplayName({ bot: tags.bot, projectName: item.project.name }),
+            name: item.project.name,
             // Waiting on an answer: its conversation's question. A change of its waiting for
             // review wears the same face (`mateFaceOf`) and is the flow's own step — *Review* —
             // never "waiting on an answer". Another's Mate waits on its owner, not the viewer.
@@ -350,9 +426,6 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
         : undefined,
       routes: item.routes ?? [],
       hostnames: item.services?.hostnames ?? [],
-      createdAt: item.project.created,
-      projectStatus: item.project.status,
-      services: item.services?.statuses,
     };
   });
 }
@@ -383,9 +456,10 @@ export interface GroupFlowReads {
     readonly suggestion: string;
     /** The release on its way; the menu, which is told only whether Release is offered, has none. */
     readonly inFlight?: string | undefined;
-    readonly contents: ReadonlyArray<{
-      readonly commits: ReadonlyArray<{ sha: string; subject: string }>;
-    }>;
+    /** What it would put live, per comparison HQ answered (`Moved`). */
+    readonly contents: ReadonlyArray<Moved>;
+    /** Production's services whose commit cannot be told. */
+    readonly untold: ReadonlyArray<string>;
   };
 }
 
@@ -399,6 +473,19 @@ const STOP_TIER: Partial<Record<ZeropsEnvironmentRole, GroupEnvironmentTier>> = 
   stage: "stage",
   prod: "production",
 };
+
+/** What `groupFlow` is told of a release: how many changes it would put live, and how sure. */
+function releaseInputOf(release: GroupFlowReads["release"]): GroupFlowInput["release"] {
+  const { total, atLeast } = releaseContentsSummary(release.contents);
+  return {
+    gate: release.gate,
+    suggestion: release.suggestion,
+    waiting: total,
+    waitingAtLeast: atLeast,
+    untold: release.untold,
+    inFlight: release.inFlight,
+  };
+}
 
 /**
  * `groupFlow`'s input, from what the page holds: the group tree's members and
@@ -418,8 +505,6 @@ export function groupFlowInputOf(input: {
   readonly productionAddable: boolean;
   /** The group's creations under way (the group tree's `pending`). */
   readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
-  /** The group's runner, as the account holds the Gitea project's services; `undefined` unread. */
-  readonly runner?: GroupRunner | undefined;
   /** The clock a stage's first deploy on its way is bounded by. */
   readonly nowMs?: number | undefined;
 }): GroupFlowInput {
@@ -451,32 +536,26 @@ export function groupFlowInputOf(input: {
       return [
         {
           projectId: member.projectId,
+          createdAt: member.createdAt,
+          projectStatus: member.projectStatus,
+          services: member.services,
           name: row?.name ?? member.name,
           tier,
           row,
           deployment: input.deployments?.get(member.projectId),
           route: member.routes[0]?.url,
-          createdAt: member.createdAt,
-          projectStatus: member.projectStatus,
-          services: member.services,
         },
       ];
     }),
     missing: flow?.missing ?? [],
     release:
       flow === undefined
-        ? { gate: FLOW_NOT_READ, suggestion: "", waiting: 0 }
-        : {
-            gate: flow.release.gate,
-            suggestion: flow.release.suggestion,
-            waiting: releaseContentsSummary(flow.release.contents).total,
-            inFlight: flow.release.inFlight,
-          },
+        ? { gate: FLOW_NOT_READ, suggestion: "", waiting: 0, waitingAtLeast: false, untold: [] }
+        : releaseInputOf(flow.release),
     mainHasCode: undefined,
     mainHead: undefined,
     productionAddable: input.productionAddable,
     pending: input.pending,
-    runner: input.runner,
     nowMs: input.nowMs,
   };
 }
@@ -509,16 +588,11 @@ export type ProjectRowLine =
   /** What a Mate is on (working), or was last on. */
   | { readonly kind: "mate"; readonly mate: string; readonly text: string; readonly at?: string }
   /** A change: open, or the last that landed. */
-  | {
-      readonly kind: "change";
-      readonly text: string;
-      readonly detail?: string;
-      readonly at?: string;
-    }
+  | { readonly kind: "change"; readonly text: string; readonly at?: string }
   | { readonly kind: "first-task"; readonly text: string }
   /** Its reads are out: the line holds its place and claims nothing. */
   | { readonly kind: "pending" }
-  /** Gitea never answered for its changes: nothing about them is known, and it says so. */
+  /** Its changes are not known (`ChangesUnknown`): nothing about them is claimed, and it says why. */
   | { readonly kind: "unread"; readonly text: string }
   | { readonly kind: "none" };
 
@@ -531,14 +605,24 @@ function newer(a: string | undefined, b: string | undefined): boolean {
   return Date.parse(a) > Date.parse(b);
 }
 
+/** A stage with a deploy on its way, as the row says it: its run, or its first deploy's word. */
+function stageUnderWay(stages: ReadonlyArray<GroupFlowStop>): string | undefined {
+  for (const stage of stages) {
+    if (stage.state === "deploying") return `Deploying ${stage.name}…`;
+    const line = stopLine(stage);
+    if (line.tone === "busy") return `${stage.name}: ${line.word}`;
+  }
+  return undefined;
+}
+
 export function projectRowLine(input: {
   readonly flow: GroupFlow;
   readonly lastMerged: FlowPullRequest | undefined;
   readonly activities: ReadonlyArray<RowMateActivity>;
   /** The project's reads answered (`flowStepsAwaiting`): its next step is known. */
   readonly settled: boolean;
-  /** Its changes' read failed and nothing is held (`ZeropsProjectFlow.changesFailure`). */
-  readonly changesFailed?: boolean;
+  /** Why its changes are not known, where they are not (`changesUnknownOf`). */
+  readonly changesUnknown?: ChangesUnknown | undefined;
 }): ProjectRowLine {
   const { flow, activities } = input;
   const step = flow.nextStep;
@@ -560,9 +644,11 @@ export function projectRowLine(input: {
   };
   if (MATE_STEPS.has(step.kind)) return needsYou();
   if (!input.settled) return { kind: "pending" };
-  // A failed deploy is the deploy half's to say; everything else waits on the changes Gitea kept.
-  if (input.changesFailed === true)
-    return step.kind === "fix-deploy" ? needsYou() : { kind: "unread", text: CHANGES_UNREAD_LINE };
+  // A failed deploy is the deploy half's to say; everything else waits on the changes HQ keeps.
+  if (input.changesUnknown !== undefined)
+    return step.kind === "fix-deploy"
+      ? needsYou()
+      : { kind: "unread", text: CHANGES_UNKNOWN_LINE[input.changesUnknown] };
   if (nextStepAwaitsSomebody(step.kind)) return needsYou();
 
   const { production } = flow;
@@ -570,21 +656,15 @@ export function projectRowLine(input: {
   if (production.kind === "releasing")
     return { kind: "under-way", text: releaseInFlightReason(production.tag) };
   if (production.kind === "deploying") return { kind: "under-way", text: "Deploying production…" };
-  const deployingStage = flow.stages.find((stage) => stage.state === "deploying");
-  if (deployingStage !== undefined)
-    return { kind: "under-way", text: `Deploying ${deployingStage.name}…` };
+  const stage = stageUnderWay(flow.stages);
+  if (stage !== undefined) return { kind: "under-way", text: stage };
 
   const working = activities.find((mate) => mate.working && mate.subject !== undefined);
   if (working?.subject !== undefined)
     return { kind: "mate", mate: working.name, text: working.subject };
 
   const open = flow.pullRequests[0]?.pull;
-  if (open !== undefined)
-    return {
-      kind: "change",
-      text: `#${String(open.number)} ${open.title}`,
-      ...(open.checkWord === undefined ? {} : { detail: open.checkWord }),
-    };
+  if (open !== undefined) return { kind: "change", text: `#${String(open.number)} ${open.title}` };
 
   const merged = input.lastMerged;
   const lastTalk = activities
@@ -628,14 +708,11 @@ export function productionMark(
   return { version, tone: STOP_TONE[production.stop.state] };
 }
 
-/** What a row's line says where Gitea never answered for its changes. */
-export const CHANGES_UNREAD_LINE = "Gitea didn’t answer";
-
 /**
  * Whether a row rises, and whether that is known — what the list may remember of it. A row that
  * needs the person rises. One whose answer is out (`pending`, `unread`), or whose Mates are not
- * all reachable (`matesKnown`: a Mate reconnecting may be asking), stays where it was last drawn
- * and is not remembered either way.
+ * all known (`matesKnown`: a Mate reconnecting may be asking), stays where it was last drawn and
+ * is not remembered either way.
  */
 export function rowRise(
   line: ProjectRowLine,
@@ -656,41 +733,49 @@ export function risenFirst<E>(
   return [...rows.filter(rises), ...rows.filter((row) => !rises(row))];
 }
 
-/** A Mate's candidate as a row reads its link: the join with the environment at its origin. */
-type RowMateCandidate = ZeropsCandidate & { readonly connection?: unknown };
-
 /**
- * The row's Mates' activity, read only while each one's link is up, as its card reads it: a kept
- * shell of a Mate gone quiet would say it works while its face sleeps.
+ * The row's Mates' activity, as each one's menu row reads it (`useMateRowActivity`): HQ's word or
+ * its socket's. A word at rest (`activityOfNow`) — HQ's last of a Mate it holds no live link of,
+ * a kept shell gone quiet — still names its last task, and never says it works while its face
+ * sleeps.
  */
-export function rowMateActivitiesOf(
-  mates: ReadonlyArray<{ readonly item: ZeropsCandidate; readonly name: string }>,
-  activityOf: (environmentId: EnvironmentId) => ZeropsAgentActivity | undefined,
+export function rowMateActivitiesOf<T>(
+  mates: ReadonlyArray<{ readonly item: T; readonly name: string }>,
+  activityOf: (item: T) => ZeropsAgentActivity | undefined,
 ): ReadonlyArray<RowMateActivity> {
   return mates.flatMap(({ item, name }) => {
-    if (item.group !== "connected" || item.environmentId === undefined) return [];
-    const activity = activityOf(item.environmentId);
+    const activity = activityOf(item);
     if (activity === undefined) return [];
+    const now = activityOfNow(activity) !== undefined;
     return [
-      { name, working: activity.kind === "working", subject: activity.subject, at: activity.at },
+      {
+        name,
+        working: now && activity.kind === "working",
+        subject: activity.subject,
+        at: activity.at,
+      },
     ];
   });
 }
 
+/** A Mate's candidate as a row reads its link: the join with the environment at its origin. */
+type RowMateCandidate = ZeropsCandidate & { readonly connection?: unknown };
+
 /**
- * Whether every Mate whose link this tab holds is up and its conversations read: one reconnecting
- * — a restart, an update, a blip — may be asking, so its row stays where it was drawn
- * (`rowRise`). A Mate this tab never linked has nothing to come back from.
+ * Whether every Mate of a row is known not to be asking: HQ holds it live (its word says), or the
+ * link this tab holds to it is up and its conversations read. One whose link is down and HQ does
+ * not hold live — a restart, an update, a blip — may be asking, so its row stays where it was
+ * drawn (`rowRise`). A Mate this tab never linked has nothing to come back from.
  */
-export function matesKnownOf(
-  mates: ReadonlyArray<RowMateCandidate>,
-  conversationsRead: (environmentId: EnvironmentId) => boolean,
+export function matesKnownOf<T extends RowMateCandidate>(
+  mates: ReadonlyArray<T>,
+  activityOf: (item: T) => ZeropsAgentActivity | undefined,
+  conversationsRead: (item: T) => boolean,
 ): boolean {
   return mates.every(
     (item) =>
+      activityOfNow(activityOf(item)) !== undefined ||
       item.connection === undefined ||
-      (item.group === "connected" &&
-        item.environmentId !== undefined &&
-        conversationsRead(item.environmentId)),
+      (item.group === "connected" && item.environmentId !== undefined && conversationsRead(item)),
   );
 }

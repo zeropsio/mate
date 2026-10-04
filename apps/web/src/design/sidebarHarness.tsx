@@ -45,25 +45,21 @@ import {
 import { createRoot } from "react-dom/client";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   assignCandidateMateTints,
-  botDisplayName,
   deployedVersion,
   mateShapeOf,
-  readZeropsGroupTags,
+  readZeropsMembership,
   type EnvironmentRow,
   type FlowPullRequest,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
-import {
-  deriveCrewView,
-  type CrewShellInput,
-} from "@t3tools/client-runtime/zerops/projections/crew";
-import { EnvironmentId, ProjectId, ThreadId, type CrewSnapshot } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
-import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
+import type { MateThreadKind } from "@t3tools/shared/mateLink";
 import { EllipsisIcon } from "lucide-react";
 
 import { onOpenCommandPalette } from "~/commandPaletteBus";
@@ -175,7 +171,7 @@ const COLLEAGUES_MATES: ReadonlySet<string> = new Set([
 function candidate(
   id: string,
   name: string,
-  tags: ReadonlyArray<string>,
+  hq: HqPlacement,
   options: {
     readonly connected?: boolean;
     readonly container?: boolean;
@@ -183,13 +179,24 @@ function candidate(
   } = {},
 ): ZeropsCandidate {
   const { connected = true, container = true, routes: theRoutes } = options;
-  // Every Mate here has its agent signed in (D6's tag) — by the viewer, or by a colleague where
-  // its owner is not the viewer; the plan set's Hollin holds the ones nobody has.
+  // Every Mate here has its agent signed in (D6), as HQ's overview of it names them — by the
+  // viewer, or by a colleague where its owner is not the viewer; the plan set's Hollin holds the
+  // ones nobody has.
   const signer = COLLEAGUES_MATES.has(id) ? "u-colleague" : "u-harness";
-  const tagList = tags.includes("mate") ? [...tags, `mate:signer:claude-code:${signer}`] : tags;
+  const signed: HqPlacement =
+    hq.kind !== "mate" || hq.mate === null
+      ? hq
+      : {
+          ...hq,
+          mate: {
+            ...hq.mate,
+            logins: { "claude-code": { signedInBy: signer, present: true, token: false } },
+          },
+        };
+  const tagList = hq.kind === "mate" ? ["mate"] : [];
   const base = {
     key: `${id}:zcp`,
-    project: { id, name, status: "ACTIVE", tagList },
+    project: { id, name, status: "ACTIVE", tagList, hq: signed },
     group: connected ? ("connected" as const) : ("ready" as const),
     // Where its conversation lives: what the jump box searches.
     ...(connected && container ? { environmentId: EnvironmentId.make(`env-${id}`) } : {}),
@@ -244,7 +251,11 @@ function activity(input: {
   };
 }
 
-const group = (id: string, name: string) => [`mate:g:${id}`, `mate:name:${name}`];
+/** A project of the harness — an application in its HQ — placing a Mate or a stop in it. */
+const group = (appId: string, appName: string) => ({
+  mate: (): HqPlacement => ({ appId, appName, kind: "mate", mate: { face: "" } }),
+  stop: (kind: "stage" | "production"): HqPlacement => ({ appId, appName, kind, mate: null }),
+});
 
 /** What a waiting Mate's thread says it waits on, as the jump box reads it. */
 const DECISIONS = new Map<string, MateDecision>([
@@ -290,27 +301,27 @@ const LONG = group("design-tokens", "Design system tokens and primitives");
 
 const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   // A busy, healthy project: three Mates, a change of each kind waiting.
-  candidate("links-enzo", "Links - enzo", ["mate", ...LINKS, "mate:role:dev", "mate:bot:Enzo"]),
-  candidate("links-theo", "Links - theo", ["mate", ...LINKS, "mate:role:dev", "mate:bot:Theo"]),
-  candidate("links-wren", "Links - wren", ["mate", ...LINKS, "mate:role:dev", "mate:bot:Wren"]),
-  candidate("links-stage", "Links - stage", [...LINKS, "mate:role:stage"], {
+  candidate("links-enzo", "Enzo", LINKS.mate()),
+  candidate("links-theo", "Theo", LINKS.mate()),
+  candidate("links-wren", "Wren", LINKS.mate()),
+  candidate("links-stage", "Links - stage", LINKS.stop("stage"), {
     container: false,
     routes: routes(["app", "links-stage.zerops.app"]),
   }),
-  candidate("links-prod", "Links - production", [...LINKS, "mate:role:prod"], {
+  candidate("links-prod", "Links - production", LINKS.stop("production"), {
     container: false,
     routes: routes(["app", "links.example.com"]),
   }),
 
   // The hostile one: a Mate buried in pull requests, a production ten routes
   // wide and twelve changes behind, a stage mid-deploy.
-  candidate("shop-mira", "Shop - mira", ["mate", ...SHOP, "mate:role:dev", "mate:bot:Mira"]),
-  candidate("shop-otto", "Shop - otto", ["mate", ...SHOP, "mate:role:dev", "mate:bot:Otto"]),
-  candidate("shop-stage", "Shop - stage", [...SHOP, "mate:role:stage"], {
+  candidate("shop-mira", "Mira", SHOP.mate()),
+  candidate("shop-otto", "Otto", SHOP.mate()),
+  candidate("shop-stage", "Shop - stage", SHOP.stop("stage"), {
     container: false,
     routes: routes(["app", "shop-stage.zerops.app"], ["api", "api-shop-stage.zerops.app"]),
   }),
-  candidate("shop-prod", "Shop - production", [...SHOP, "mate:role:prod"], {
+  candidate("shop-prod", "Shop - production", SHOP.stop("production"), {
     container: false,
     routes: routes(
       ["api", "api.shop.example.com"],
@@ -327,36 +338,31 @@ const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
   }),
 
   // A production somebody deployed by hand, and a stage that does not exist.
-  candidate("notes-iris", "Notes - iris", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Iris"]),
-  candidate("notes-kai", "Notes - kai", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Kai"]),
-  candidate("notes-lena", "Notes - lena", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Lena"]),
+  candidate("notes-iris", "Iris", NOTES.mate()),
+  candidate("notes-kai", "Kai", NOTES.mate()),
+  candidate("notes-lena", "Lena", NOTES.mate()),
   // Signed in, and nobody has asked either anything yet: one says so, one holds a draft.
-  candidate("notes-juno", "Notes - juno", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Juno"]),
-  candidate("notes-rhea", "Notes - rhea", ["mate", ...NOTES, "mate:role:dev", "mate:bot:Rhea"]),
-  candidate("notes-prod", "Notes - production", [...NOTES, "mate:role:prod"], {
+  candidate("notes-juno", "Juno", NOTES.mate()),
+  candidate("notes-rhea", "Rhea", NOTES.mate()),
+  candidate("notes-prod", "Notes - production", NOTES.stop("production"), {
     container: false,
     routes: routes(["app", "notes.example.com"], ["app", "www.notes.example.com"]),
   }),
 
   // The dead end: a production whose last deploy failed, running nothing.
-  candidate("todo-vera", "Todo - vera", ["mate", ...TODO, "mate:role:dev", "mate:bot:Vera"]),
-  candidate("todo-fen", "Todo - fen", ["mate", ...TODO, "mate:role:dev", "mate:bot:Fen"]),
+  candidate("todo-vera", "Vera", TODO.mate()),
+  candidate("todo-fen", "Fen", TODO.mate()),
   // A colleague's Mate asking its owner, beside Vera asking the viewer.
-  candidate("todo-nils", "Todo - nils", ["mate", ...TODO, "mate:role:dev", "mate:bot:Nils"]),
-  candidate("todo-stage", "Todo - stage", [...TODO, "mate:role:stage"], {
+  candidate("todo-nils", "Nils", TODO.mate()),
+  candidate("todo-stage", "Todo - stage", TODO.stop("stage"), {
     container: false,
     routes: routes(["app", "todo-stage.zerops.app"]),
   }),
-  candidate("todo-prod", "Todo - production", [...TODO, "mate:role:prod"], { container: false }),
+  candidate("todo-prod", "Todo - production", TODO.stop("production"), { container: false }),
 
   // A name longer than any width here, and a project that is only a Mate:
   // nothing has been set up for it to travel to yet.
-  candidate("tokens-ada", "Design system tokens and primitives - ada", [
-    "mate",
-    ...LONG,
-    "mate:role:dev",
-    "mate:bot:Ada",
-  ]),
+  candidate("tokens-ada", "Ada", LONG.mate()),
 ];
 
 const ACTIVITY = new Map<string, ZeropsAgentActivity>([
@@ -499,17 +505,16 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
   ],
 ]);
 
-function pull(input: Partial<FlowPullRequest> & { number: number }): FlowPullRequest {
+function pull(
+  input: Partial<FlowPullRequest> & { number: number; mateProjectId: string },
+): FlowPullRequest {
   return {
     repository: "appdev",
     title: "Change",
     kind: "code",
-    mateProjectId: undefined,
-    author: undefined,
     url: "https://gitea.example/links/appdev/pulls/1",
-    checks: "passing",
-    checkWord: "Passing",
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: "3f9c1b2",
@@ -521,8 +526,8 @@ function pull(input: Partial<FlowPullRequest> & { number: number }): FlowPullReq
 }
 
 /** A pull request whose branch has fallen behind `main` — Gitea refuses it. */
-const behindPull = (input: Partial<FlowPullRequest> & { number: number }) =>
-  pull({ mergeability: "conflicting", checks: "passing", checkWord: "Passing", ...input });
+const behindPull = (input: Partial<FlowPullRequest> & { number: number; mateProjectId: string }) =>
+  pull({ mergeability: "conflicting", ...input });
 
 function environment(
   input: Partial<Omit<EnvironmentRow, "version" | "versionRepository">> & {
@@ -545,14 +550,28 @@ function environment(
     versionRepository,
     line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone: "good",
+    deploys: [],
+    keyGap: false,
     ...rest,
   };
 }
 
 /** A made-up Gitea, so the version reads as the link it is in the product. */
-/** What a release would put live, as `releaseContents` carries it. */
+/** What a release would put live, as `releaseContents` carries it: one comparison of `appdev`. */
 const changes = (...subjects: ReadonlyArray<string>) => [
-  { commits: subjects.map((subject, index) => ({ sha: `c${index}`, subject })) },
+  {
+    repository: "appdev",
+    services: ["app"],
+    commits: subjects.map((subject, index) => ({
+      sha: `c${index}`,
+      subject,
+      authorName: "Juno",
+      at: "2026-10-02T10:00:00.000Z",
+      change: null,
+    })),
+    total: subjects.length,
+    truncated: false,
+  },
 ];
 
 const FLOWS = new Map<string, SidebarProjectFlow>([
@@ -564,8 +583,6 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           number: 4,
           title: "Add a search box above the list",
           mateProjectId: "links-enzo",
-          checks: "pending",
-          checkWord: "Checking",
           mergeability: "conflicting",
           merged: false,
           mergedAt: undefined,
@@ -581,13 +598,10 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           number: 5,
           title: "Cache the link previews",
           mateProjectId: "links-theo",
-          checks: "failing",
-          checkWord: "Failing",
           mergeability: "conflicting",
           merged: false,
           mergedAt: undefined,
         }),
-        pull({ number: 6, title: "Bump the linter", author: "ada", mateProjectId: undefined }),
       ],
       environments: new Map([
         ["links-stage", environment({ projectId: "links-stage", appVersionName: sha("3f9c1b2e") })],
@@ -624,8 +638,6 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           number: 42,
           title: "Two-step checkout: the payment step",
           mateProjectId: "shop-mira",
-          checks: "pending",
-          checkWord: "Checking",
           mergeability: "conflicting",
           merged: false,
           mergedAt: undefined,
@@ -639,8 +651,6 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           number: 39,
           title: "Tidy the order confirmation email template",
           mateProjectId: "shop-mira",
-          checks: "failing",
-          checkWord: "Failing",
           mergeability: "conflicting",
           merged: false,
           mergedAt: undefined,
@@ -661,8 +671,7 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
           repository: "group",
           kind: "recipe",
           title: "Give the stage a bigger database",
-          author: "ales",
-          mateProjectId: undefined,
+          mateProjectId: "shop-otto",
         }),
       ],
       environments: new Map([
@@ -874,12 +883,12 @@ const FOOT_LINES: Record<
 const FOOT_LINE = FOOT_LINES[new URLSearchParams(location.search).get("notice") ?? ""] ?? null;
 
 /**
- * A crew of four under a Mate — the lead first — built from the crew's own
- * fixture, named and tinted as the plan's menu draws them: each crewmate's
- * thread in the state given, and the board with its ready tasks.
+ * A crew of four under a Mate — the lead first — as its Mate's overview carries it to HQ, built
+ * from the crew's own fixture, named and tinted as the plan's menu draws them: each crewmate's
+ * chat in the kind given, and its ready tasks.
  */
 function harnessCrew(input: {
-  readonly states: Readonly<Record<string, ThreadStatusKind>>;
+  readonly states: Readonly<Record<string, MateThreadKind>>;
   readonly ready: ReadonlyArray<string>;
 }): SidebarCrewRead {
   const fixture = crewSnapshotFixture();
@@ -889,32 +898,29 @@ function harnessCrew(input: {
     frontend: ["Cy", "coral"],
     erik: ["Dee", "rose"],
   };
-  const snapshot: CrewSnapshot = {
-    ...fixture,
-    crewmates: fixture.crewmates.map((mate) => {
-      const [displayName, tint] = names[mate.handle] ?? [mate.displayName, mate.tint];
-      return { ...mate, displayName, tint };
-    }),
-    board: {
-      tasks: fixture.board.tasks.map((task) =>
-        input.ready.includes(task.id) ? { ...task, state: "ready" as const } : task,
-      ),
+  return {
+    status: "applied",
+    crew: {
+      crewmates: fixture.crewmates.map((mate) => {
+        const [displayName, tint] = names[mate.handle] ?? [mate.displayName, mate.tint];
+        return {
+          handle: mate.handle,
+          displayName,
+          tint,
+          lead: mate.kind === "lead",
+          threadId: mate.currentThreadId,
+          threadKind: input.states[mate.handle] ?? "idle",
+          loginKey: null,
+        };
+      }),
+      attention: [],
+      readyTasks: fixture.board.tasks
+        .filter((task) => input.ready.includes(task.id))
+        .map((task) => ({ id: task.id, owner: task.owner })),
+      personLands: true,
     },
-    attention: [],
+    logins: {},
   };
-  const shells: ReadonlyArray<CrewShellInput> = snapshot.crewmates.flatMap((mate) =>
-    mate.currentThreadId === null ? [] : [{ id: mate.currentThreadId, archivedAt: null }],
-  );
-  const view = deriveCrewView(snapshot, shells, (shell) => {
-    const handle = snapshot.crewmates.find((mate) => mate.currentThreadId === shell.id)?.handle;
-    const kind = (handle === undefined ? undefined : input.states[handle]) ?? "idle";
-    return {
-      status: { kind, toneId: "neutral" },
-      word: kind === "idle" ? null : kind,
-      working: kind === "working",
-    };
-  });
-  return { status: "applied", view, attention: snapshot.attention };
 }
 
 /**
@@ -922,9 +928,9 @@ function harnessCrew(input: {
  * Enzo with crew mode on and no crew yet, whose menu offers *Set up a crew*.
  */
 const CREWS = new Map<string, SidebarCrewRead>([
-  ["todo-fen", harnessCrew({ states: { backend: "working", erik: "done" }, ready: ["task-13"] })],
+  ["todo-fen", harnessCrew({ states: { backend: "working" }, ready: ["task-13"] })],
   ["shop-otto", harnessCrew({ states: { backend: "input", frontend: "working" }, ready: [] })],
-  ["links-enzo", { status: "none", view: null, attention: [] }],
+  ["links-enzo", { status: "none", crew: null, logins: {} }],
 ]);
 
 /** Which Mate the menu opened, and what else it was asked to do, for the audit browser. */
@@ -1143,10 +1149,7 @@ function SidebarFrame({
               toggleUnread: () => {},
               copyLink: () => {},
               rename: {
-                initialValue:
-                  item.project.tagList
-                    ?.find((tag) => tag.startsWith("mate:bot:"))
-                    ?.slice("mate:bot:".length) ?? item.project.name,
+                initialValue: item.project.name,
                 validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
                 commit: () => {},
               },
@@ -1373,10 +1376,7 @@ function ConversationPane({ open }: { readonly open: string }) {
   const candidate = FIXTURES.candidates.find((item) => item.project.id === open);
   const activity = FIXTURES.activity.get(open);
   const tint = TINTS.get(open) ?? "slate";
-  const name = botDisplayName({
-    bot: readZeropsGroupTags(candidate?.project.tagList).bot,
-    projectName: candidate?.project.name ?? open,
-  });
+  const name = candidate?.project.name ?? open;
   return (
     <main className="flex min-w-0 flex-1 flex-col">
       <WorkspacePageHeader className="relative bg-background" data-chat-header>
@@ -1403,7 +1403,7 @@ function ConversationPane({ open }: { readonly open: string }) {
             mate={{
               name,
               tint,
-              shape: mateShapeOf(candidate?.project.tagList, tint),
+              shape: mateShapeOf(candidate?.project, tint),
               face: activity?.face ?? "idle",
               open: true,
               threadId: activity?.threadId ?? null,
@@ -1537,9 +1537,7 @@ writeCollapsedProjects(
     fold === null
       ? FIXTURES.collapsed
       : fold === "all"
-        ? FIXTURES.candidates.flatMap(
-            (item) => readZeropsGroupTags(item.project.tagList).groupId ?? [],
-          )
+        ? FIXTURES.candidates.flatMap((item) => readZeropsMembership(item.project).groupId ?? [])
         : fold.split(","),
   ),
 );

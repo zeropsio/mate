@@ -69,6 +69,8 @@ import Migration0054 from "./Migrations/054_ProjectionThreadsCrew.ts";
 import Migration0055 from "./Migrations/055_Crew.ts";
 import Migration0056 from "./Migrations/056_ZeropsStandUp.ts";
 import Migration0057 from "./Migrations/057_ProjectionThreadActivityBudgetColumns.ts";
+import Migration0058 from "./Migrations/058_CrewOperations.ts";
+import Migration0059 from "./Migrations/059_ActivityBudgetColumnsWhereSkipped.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -140,6 +142,8 @@ export const migrationEntries = [
   [55, "Crew", Migration0055],
   [56, "ZeropsStandUp", Migration0056],
   [57, "ProjectionThreadActivityBudgetColumns", Migration0057],
+  [58, "CrewOperations", Migration0058],
+  [59, "ActivityBudgetColumnsWhereSkipped", Migration0059],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

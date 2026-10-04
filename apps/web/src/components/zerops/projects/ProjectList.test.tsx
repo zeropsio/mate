@@ -35,6 +35,16 @@ vi.mock("~/components/ui/tooltip", async () => {
   };
 });
 
+// A stop's one manual attempt reads the page's contexts; here it is the marker of a stop the row
+// holds — the demand that reads what the stop runs.
+vi.mock("../StopReadAgain", async () => {
+  const { createElement } = await import("react");
+  return {
+    StopReadAgain: ({ projectId }: { readonly projectId: string }) =>
+      createElement("i", { "data-test-again": projectId }),
+  };
+});
+
 import {
   born,
   brokenProduction,
@@ -44,6 +54,7 @@ import {
   item,
   MERGING,
   mount,
+  placed,
   PROD,
   PRODUCTION_STOP,
   pull,
@@ -64,13 +75,13 @@ const order = (html: string) =>
 
 /** A quiet group of its own id: one Mate who was spoken to, nothing waiting. */
 function quiet(groupId: string) {
-  return entry([item(`${groupId}-dev`, [`mate:g:${groupId}`, "mate:role:dev"])]);
+  return entry([item(`${groupId}-dev`, placed(groupId, groupId))]);
 }
 
 describe("a project's row", () => {
   it("says the one thing that needs the person as a sentence, with its title, and its verb at the end", () => {
     const row = section(render({ groups: [MERGING] }), 'data-zerops-group="aaa"');
-    expect(row).toContain("Pull request #1 waits for your merge");
+    expect(row).toContain(MERGING.flow.nextStep.text);
     expect(row).toContain(pull().title);
     expect(row).toContain('data-test-verb="merge"');
     expect(row.match(/data-test-verb=/gu)).toHaveLength(1);
@@ -138,13 +149,37 @@ describe("a project's row", () => {
     expect(row).toContain('data-test-verb="fix-mate"');
   });
 
-  it("says plainly that Gitea did not answer, offering nothing", () => {
-    const failed = { ...MERGING, changesFailed: true };
-    const row = section(render({ groups: [failed] }), 'data-zerops-group="aaa"');
-    expect(row).toContain("Gitea didn’t answer");
-    expect(row).not.toContain("waits for your merge");
-    expect(row).not.toContain("data-test-verb=");
-  });
+  it.each([
+    ["HQ did not answer for its changes", "failed", "HQ didn’t answer"],
+    ["HQ's rule withholds its changes from this person", "unseen", "Needs Basic user access"],
+  ] as const)(
+    "says plainly why its changes are not known, offering nothing: %s",
+    (_name, why, line) => {
+      const unknown = { ...MERGING, changesUnknown: why };
+      const row = section(render({ groups: [unknown] }), 'data-zerops-group="aaa"');
+      expect(row).toContain(line);
+      expect(row).not.toContain("waits for your merge");
+      expect(row).not.toContain("data-test-verb=");
+    },
+  );
+
+  it.each(["last Mate", "one of two Mates"])(
+    "keeps HQ's unfinished deletion in view after deleting the %s",
+    (which) => {
+      const html = render({
+        groups: [
+          {
+            ...FRESH,
+            flow: { ...FRESH.flow, mates: which === "last Mate" ? [] : FRESH.flow.mates },
+            mates: which === "last Mate" ? new Map() : FRESH.mates,
+            contents: { empty: false, deletingProjectIds: ["zed"] },
+          },
+        ],
+      });
+      expect(section(html, 'data-zerops-group="bbb"')).toContain("Deletion is still in progress.");
+      expect(html).not.toContain("No Mate yet");
+    },
+  );
 
   it("says what a working Mate is on", () => {
     const working = {
@@ -160,7 +195,7 @@ describe("a project's row", () => {
 describe("a row's Mates", () => {
   it("names two in full and counts the rest; each listed one opens its conversation", () => {
     const opened: Array<string> = [];
-    const KAI = item("kai-dev", ["mate:g:aaa", "mate:role:dev", "mate:name:sm-fixture"]);
+    const KAI = item("kai-dev", placed("aaa", "sm-fixture"));
     const group = entry([WREN, UMA, KAI], { pullRequests: [pull()] });
     const tree = mount(
       <ZeropsProjectsFlow<Item>
@@ -229,9 +264,45 @@ describe("production's version", () => {
     expect(row).toContain('aria-label="Production runs v0.1.9"');
   });
 
+  it("shows while the project's changes and releases are still being read", () => {
+    const reading = { ...running, awaiting: true, changesAwaiting: true };
+    const row = section(render({ groups: [reading] }), 'data-zerops-group="aaa"');
+    expect(row).toContain('data-zerops-row-line="pending"');
+    expect(row).toContain('aria-label="Production runs v0.1.9"');
+  });
+
   it("is nowhere without production", () => {
     const row = section(render({ groups: [MERGING] }), 'data-zerops-group="aaa"');
     expect(row).not.toContain('data-zerops-step="production"');
+  });
+});
+
+describe("a row's stops", () => {
+  it("holds each one's read, opened or not: production's and every stage's", () => {
+    const html = render({
+      groups: [entry([WREN, STAGE, PROD], { stops: [STAGE_STOP, PRODUCTION_STOP] })],
+    });
+    const row = section(html, 'data-zerops-group="aaa"');
+    expect(row).not.toContain('data-zerops-surface="group-detail"');
+    expect(row.match(/data-test-again="fixture-prod"/gu)).toHaveLength(1);
+    expect(row.match(/data-test-again="fixture-stage"/gu)).toHaveLength(1);
+  });
+
+  it("names a stop whose read failed, and what it says, beside its one attempt", () => {
+    const failed = {
+      ...STAGE_STOP,
+      deployment: {
+        state: "failed" as const,
+        failure: { kind: "transport" as const, detail: "Zerops did not answer" },
+        atMs: 1,
+        attempt: 1,
+        retryAtMs: null,
+      },
+    };
+    const html = render({ groups: [entry([WREN, STAGE], { stops: [failed] })] });
+    const stop = section(html, 'data-zerops-row-stop="fixture-stage"');
+    expect(stop).toMatch(/>stage · [^<]+</u);
+    expect(stop).toContain('data-test-again="fixture-stage"');
   });
 });
 

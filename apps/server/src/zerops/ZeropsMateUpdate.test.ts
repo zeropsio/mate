@@ -7,6 +7,8 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Stream from "effect/Stream";
 
 import { ZeropsCliFailed, ZeropsCliNotFound } from "./ZeropsCli.ts";
 import { make } from "./ZeropsMateUpdate.ts";
@@ -184,5 +186,29 @@ describe("ZeropsMateUpdate (MU-3: absent, never fabricated)", () => {
       });
       expect(yield* service.current).toEqual(result);
     }),
+  );
+});
+
+describe("ZeropsMateUpdate's update line, followed", () => {
+  // The Mate's link to HQ sends the line again whenever it moves (step A).
+  it.effect("publishes a changed update line to whoever follows it", () =>
+    Effect.gen(function* () {
+      let latest = "0.8.1";
+      const service = yield* make({
+        cli: stubCli(() => Effect.succeed({ ...STATUS_RESULT, latest })),
+        isZeropsEnvironment: true,
+        refreshInterval: Duration.hours(1),
+      });
+      const heard = yield* service.changes.pipe(
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      yield* Effect.yieldNow;
+      latest = "0.8.2";
+      yield* service.check;
+      const lines = yield* Fiber.join(heard);
+      expect(Array.from(lines).map((line) => line?.latest)).toEqual(["0.8.1", "0.8.2"]);
+    }).pipe(Effect.scoped),
   );
 });

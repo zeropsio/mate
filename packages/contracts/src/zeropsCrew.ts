@@ -375,11 +375,54 @@ export const CrewRun = Schema.Struct({
 });
 export type CrewRun = typeof CrewRun.Type;
 
+/** One owned attempt. A restart ends running attempts; only a person's press continues them. */
+export const CrewOperation = Schema.Struct({
+  id: Schema.String,
+  crew: Schema.String,
+  handle: CrewHandle,
+  taskId: Schema.NullOr(CrewTaskId),
+  kind: Schema.Literals(["dispatch", "checkpoint", "check", "landing", "rebuild"]),
+  stage: Schema.String,
+  confirmedStage: Schema.String,
+  status: Schema.Literals([
+    "running",
+    "succeeded",
+    "failed",
+    "interrupted",
+    "continued",
+    "discarded",
+  ]),
+  startedBy: Schema.String,
+  resumeState: CrewTaskState,
+  targets: Schema.Struct({
+    host: Schema.NullOr(Schema.String),
+    path: Schema.NullOr(Schema.String),
+    ref: Schema.NullOr(Schema.String),
+    threadId: Schema.NullOr(Schema.String),
+    commandId: Schema.NullOr(Schema.String),
+    attempt: Schema.Number,
+  }),
+  result: Schema.Unknown,
+  detail: Schema.NullOr(Schema.String),
+  startedAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+});
+export type CrewOperation = typeof CrewOperation.Type;
+
 /** One *Waiting on you* row (PRD §4.3 item 4, §5.5). */
 export const CrewAttention = Schema.Struct({
   /** Stable across snapshots while the row stands. */
   id: TrimmedNonEmptyString,
   kind: CrewAttentionKind,
+  operation: Schema.optional(CrewOperation),
+  copyAssignment: Schema.optional(
+    Schema.Struct({
+      threadId: ThreadId,
+      currentPath: Schema.NullOr(Schema.String),
+      crewPath: Schema.String,
+      source: Schema.Literal("crew-stint"),
+    }),
+  ),
   /** Whose row it is (the asker, the lander, the lead for a plan). */
   handle: Schema.NullOr(CrewHandle),
   taskId: Schema.NullOr(CrewTaskId),
@@ -464,6 +507,7 @@ export const CrewSnapshot = Schema.Struct({
   board: Schema.Struct({ tasks: Schema.Array(CrewTask) }),
   run: Schema.NullOr(CrewRun),
   attention: Schema.Array(CrewAttention),
+  operations: Schema.optional(Schema.Array(CrewOperation)),
   /** Where a writer's copy may live (the crewmate editor's *Service*); empty where crew mode is off. */
   devHosts: Schema.Array(CrewDevHost).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   /** Landed tasks whose change has not gone out with *Deliver* yet. */
@@ -524,6 +568,10 @@ const runRef = { runId: CrewRunId } as const;
  */
 export const CrewCommand = Schema.TaggedUnion({
   apply: {},
+  rebuildCopy: { ...handleRef },
+  operationContinue: { ...handleRef, operationId: Schema.String },
+  operationDiscard: { ...handleRef, operationId: Schema.String },
+  useCrewCopy: { ...handleRef, threadId: ThreadId, expectedPath: Schema.NullOr(Schema.String) },
   start: CrewRunOptions.fields,
   pause: runRef,
   /**
@@ -675,6 +723,10 @@ export function crewCommandReach(command: CrewCommand): CrewCommandReach {
       return { kind: "crew" };
     case "apply":
       return { kind: "home" };
+    case "rebuildCopy":
+    case "operationContinue":
+    case "operationDiscard":
+    case "useCrewCopy":
     case "message":
     case "answer":
     case "showOnDev":

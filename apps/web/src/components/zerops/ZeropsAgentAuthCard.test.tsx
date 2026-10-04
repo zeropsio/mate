@@ -570,8 +570,6 @@ describe("whose agent it is (D6)", () => {
     readonly credPresent: boolean;
     readonly authorizedBy?: { readonly subject: string };
     readonly viewerSubject?: string;
-    readonly recordFailed?: ReadonlySet<"claude-code">;
-    readonly onRetryRecord?: (agentId: string) => void;
   }) =>
     renderToStaticMarkup(
       <ZeropsAgentAuthCard
@@ -587,8 +585,6 @@ describe("whose agent it is (D6)", () => {
           }),
         ])}
         viewerSubject={input.viewerSubject}
-        recordFailed={input.recordFailed}
-        onRetryRecord={input.onRetryRecord}
         onSignIn={noop}
         onCancel={noop}
       />,
@@ -638,37 +634,6 @@ describe("whose agent it is (D6)", () => {
   it("never accuses a colleague when the viewer is unknown", () => {
     const html = card({ credPresent: true, authorizedBy: { subject: "user-b" } });
     expect(html).toContain('data-zerops-agent-ownership="unrecorded"');
-  });
-
-  it("a sign-in whose record failed says so and can be retried", () => {
-    const html = card({
-      credPresent: true,
-      authorizedBy: { subject: "user-a" },
-      viewerSubject: "user-a",
-      recordFailed: new Set(["claude-code"]),
-      onRetryRecord: noop,
-    });
-
-    expect(html).toContain('data-zerops-agent-ownership="record-failed"');
-    expect(html).toContain("Your sign-in could not be recorded.");
-    expect(html).toContain("text-warning");
-    expect(html).toContain("data-zerops-agent-retry-record");
-    expect(html).toContain(">Try again<");
-    // The failure outranks a same-subject recorded tag: this browser's own
-    // just-tried write is what happened here, whatever the tag says.
-    expect(html).not.toContain('data-zerops-agent-ownership="mine"');
-  });
-
-  it("returns to mine once the record is no longer failed", () => {
-    const html = card({
-      credPresent: true,
-      authorizedBy: { subject: "user-a" },
-      viewerSubject: "user-a",
-      recordFailed: new Set(),
-    });
-
-    expect(html).toContain('data-zerops-agent-ownership="mine"');
-    expect(html).not.toContain("Try again");
   });
 });
 
@@ -940,5 +905,39 @@ describe("logins", () => {
       />,
     );
     expect(card({ logins: [] })).toBe(before);
+  });
+});
+
+describe("ended auth outcomes", () => {
+  it("shows the reason and manual actions in the existing login rows", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsAgentAuthCard
+        onSignIn={noop}
+        onCancel={noop}
+        onRecheck={noop}
+        viewerSubject="operator"
+        snapshot={snapshot([
+          agent({
+            agentId: "codex",
+            state: "local-only",
+            credPresent: true,
+            verification: { status: "unknown", reason: "The login check timed out.", checkedAt: 1 },
+          }),
+          agent({
+            agentId: "claude-code",
+            state: "local-only",
+            credPresent: true,
+            providerAuth: "authenticated",
+            registration: { status: "failed", reason: "Could not write the flag." },
+          }),
+        ])}
+      />,
+    );
+    expect(html).toContain("Couldn&#x27;t verify");
+    expect(html).toContain("Check again");
+    expect(html).toContain("Register again");
+    expect(html).toContain("Last checked");
+    expect(html).toContain("The login check timed out.");
+    expect(html).toContain("Could not write the flag.");
   });
 });

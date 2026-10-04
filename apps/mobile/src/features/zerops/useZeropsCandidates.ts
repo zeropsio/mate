@@ -77,31 +77,30 @@ function organizationRefsOf(
       }));
 }
 
-export function useZeropsCandidates(): {
+export function useZeropsCandidates(openedProjectId: string | null = null): {
   /**
-   * Every organization's candidates as knowledge (DESIGN §3), each with its Mate's reachability:
+   * The active organization's candidates as knowledge (DESIGN §3), each with its Mate's reachability:
    * "no projects" is only ever read off a known, complete listing (`candidatePickerBody`).
    */
   readonly listing: Known<ReadonlyArray<MobileCandidate>>;
   /** When the listing's reads last changed: the moment its notice is worded at. */
   readonly readAtMs: number;
   readonly error: string | null;
-  /** Reads every organization's inventory again; retries the demand a failure refused. */
+  /** Makes a manual attempt for the active organization's held inventory demand. */
   readonly refresh: () => void;
 } {
-  const { status, organizations } = useZeropsSession();
+  const { status, activeOrganization } = useZeropsSession();
   const { binding, environments, error: runtimeError } = useZeropsData();
   const [reads, setReads] = useState<InventoryReads | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [demandAttempt, setDemandAttempt] = useState(0);
-  const organizationIdsKey = organizations.map((organization) => organization.id).join(",");
+  const organizationIdsKey = activeOrganization?.id ?? "";
   // What this view saw of each container's address, for as long as it lives: a young container
   // ACTIVE before its address landed is on its way, and its wait never begins again
   // (`AddressMemory`). Read and written only where the rows are derived, in the demand's publish.
   const addresses = useRef<AddressMemory>(NO_ADDRESS_MEMORY);
 
-  // The view's demand on the inventory: each organization's projects and each active project's
-  // services. It follows the account and its organizations only — never a connection's phase.
+  // Navigation holds only the selected organization; service detail follows the opened project.
   useEffect(() => {
     if (status !== "signed-in" || binding === null) {
       setReads(null);
@@ -121,8 +120,6 @@ export function useZeropsCandidates(): {
     let desiredInventory = new Map<string, ProjectRef>();
     let projectReads: ReadonlyArray<StampedRead<CollectionRead<ProjectRecord>>> = [];
     let serviceReads = new Map<string, StampedRead<CollectionRead<ServiceRecord>>>();
-    /** Disarms the publish due when the first address wait ends. */
-    let disarmWait: (() => void) | null = null;
 
     // Scope creation is asynchronous. Cleanup can win that race, so closing is
     // centralized and guarded before this hook starts any demand acquisition.
@@ -199,6 +196,7 @@ export function useZeropsCandidates(): {
         projectReads.flatMap(({ read }) =>
           read.value
             .filter(isActiveProject)
+            .filter((project) => project.record.ref.projectId === openedProjectId)
             .map((project) => [projectKeyOf(project.record.ref), project.record.ref] as const),
         ),
       );
@@ -228,13 +226,6 @@ export function useZeropsCandidates(): {
       );
       const learned = learnAddresses(addresses.current, listings);
       addresses.current = learned.memory;
-      // A wait ends on a clock, not on a read: the rows are derived again then.
-      disarmWait?.();
-      disarmWait = null;
-      if (learned.waitEnd !== null) {
-        const handle = setTimeout(publish, Math.max(0, learned.waitEnd - atMs));
-        disarmWait = () => clearTimeout(handle);
-      }
       setReads({ projects: projectReads, services: serviceReads, listings, atMs });
     }
 
@@ -273,14 +264,13 @@ export function useZeropsCandidates(): {
 
     return () => {
       cancelled = true;
-      disarmWait?.();
       unsubscribeAll();
       desiredInventory = new Map();
       for (const lease of inventoryLeases.values()) void Effect.runPromise(lease.release);
       inventoryLeases.clear();
       if (scope !== null) closeScope(scope);
     };
-  }, [binding, demandAttempt, organizationIdsKey, runtimeError, status]);
+  }, [binding, demandAttempt, organizationIdsKey, openedProjectId, runtimeError, status]);
 
   const organizationListings = reads?.listings ?? null;
 

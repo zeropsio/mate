@@ -31,6 +31,7 @@ export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
     case "enable-subdomain-access":
       return intent.service;
     case "update-project-tags":
+    case "rename-project":
     case "set-project-member-role":
     case "import-development-container":
     case "import-services":
@@ -38,10 +39,8 @@ export function commandTarget(intent: PlatformCommandIntent): CommandTarget {
     case "harden-mate":
       return intent.project;
     case "create-project":
-    case "create-project-with-mate":
     case "import-project":
-    case "create-tool-project":
-    case "list-integration-token-grants":
+    case "read-integration-token-grant":
     case "set-integration-token-projects":
     case "list-token-delegations":
     case "delete-token-delegation":

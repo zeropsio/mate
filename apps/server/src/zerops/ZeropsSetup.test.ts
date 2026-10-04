@@ -18,19 +18,21 @@ import {
 } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
+import { OrchestrationCommandInvariantError } from "../orchestration/Errors.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { runMigrations } from "../persistence/Migrations.ts";
 import * as NodeSqliteClient from "../persistence/NodeSqliteClient.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import type { HqStanding } from "./ZeropsHqLink.ts";
+import type { ProjectSigners } from "./ZeropsProjectSigners.ts";
 import {
   ZeropsSetup,
   ZeropsSetupReads,
@@ -82,6 +84,23 @@ const mainThread = (overrides: Partial<OrchestrationThreadShell> = {}): Orchestr
     ...overrides,
   }) as OrchestrationThreadShell;
 
+/**
+ * The Mate as its HQ sends it, `standupRequestedBy` naming who asked for its stand-up — from the
+ * write that made its record (audit B3) — and whether its project is closed off.
+ */
+const linked = (standupRequestedBy: string | null, closedOff = true): HqStanding => ({
+  kind: "linked",
+  mate: {
+    projectId: "project-mate",
+    name: "mate",
+    face: "coral:gem",
+    standupRequestedBy,
+    closedOff,
+    appId: null,
+    appName: null,
+    changes: [],
+  },
+});
 /** A provider instance as the picker sees it, the Zerops overlay applied. */
 const instance = (driver: string, status: ServerProvider["status"] = "ready"): ServerProvider => ({
   instanceId: ProviderInstanceId.make(driver),
@@ -104,14 +123,20 @@ const CLAUDE_SIGNED_IN = [instance("claudeAgent"), instance("codex", "error")];
 const NOTHING_TO_RUN = [instance("claudeAgent", "error"), instance("codex", "error")];
 const CURSOR_READY = [...NOTHING_TO_RUN, instance("cursor")];
 
-const ASKED = ["mate:face:coral:gem", "mate:standup:user-a"];
-const SIGNED = [...ASKED, "mate:signer:claude-code:user-a"];
+const ASKED = linked("user-a");
+const NOBODY_ASKED = linked(null);
+/** The asker signed Claude in here. */
+const SIGNED: ProjectSigners = { "claude-code": "user-a" };
 
 interface World {
-  readonly tags: Ref.Ref<ReadonlyArray<string> | undefined>;
+  /** Where the Mate stands with its HQ. */
+  readonly hq: Ref.Ref<HqStanding>;
+  /** Who this server saw sign each login in. */
+  readonly signers: Ref.Ref<ProjectSigners>;
+  readonly providers: Ref.Ref<ReadonlyArray<ServerProvider>>;
   readonly variables: Ref.Ref<ReadonlyArray<string>>;
-  /** How many times the project's tags were read from the platform. */
-  readonly tagReads: Ref.Ref<number>;
+  /** How many times where it stands with HQ was read. */
+  readonly hqReads: Ref.Ref<number>;
   readonly statusFile: Ref.Ref<unknown>;
   readonly threads: Ref.Ref<ReadonlyArray<OrchestrationThreadShell>>;
   readonly dispatched: Ref.Ref<ReadonlyArray<OrchestrationCommand>>;
@@ -119,36 +144,32 @@ interface World {
   readonly refusal: Ref.Ref<string | undefined>;
   /** A dispatch never comes back: the server dies before its stand-up goes out. */
   readonly dispatchHangs: Ref.Ref<boolean>;
-  /** How long one read of the tags takes. */
-  readonly tagsTake: Ref.Ref<Duration.Duration>;
-  /** The provider instances, as the picker sees them. */
-  readonly providers: Ref.Ref<ReadonlyArray<ServerProvider>>;
+  readonly dispatchFailure: Ref.Ref<boolean>;
 }
 
 const makeWorld = Effect.gen(function* () {
   return {
-    tags: yield* Ref.make<ReadonlyArray<string> | undefined>(ASKED),
+    hq: yield* Ref.make(ASKED),
+    providers: yield* Ref.make<ReadonlyArray<ServerProvider>>(CLAUDE_SIGNED_IN),
+    signers: yield* Ref.make<ProjectSigners>({}),
     // Made by the new press: it always sets the runtimes plan, even an empty one.
     variables: yield* Ref.make<ReadonlyArray<string>>(["PATH", "MATE_SETUP_RUNTIMES"]),
-    tagReads: yield* Ref.make(0),
+    hqReads: yield* Ref.make(0),
     statusFile: yield* Ref.make<unknown>(undefined),
     threads: yield* Ref.make<ReadonlyArray<OrchestrationThreadShell>>([mainThread()]),
     dispatched: yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]),
     admitted: yield* Ref.make<ReadonlyArray<TurnPrincipal>>([]),
     refusal: yield* Ref.make<string | undefined>(undefined),
     dispatchHangs: yield* Ref.make(false),
-    tagsTake: yield* Ref.make(Duration.zero),
-    providers: yield* Ref.make<ReadonlyArray<ServerProvider>>(CLAUDE_SIGNED_IN),
+    dispatchFailure: yield* Ref.make(false),
   } satisfies World;
 });
 
 const fakes = (world: World) =>
   Layer.mergeAll(
     Layer.succeed(ZeropsSetupReads, {
-      tags: Ref.update(world.tagReads, (count) => count + 1).pipe(
-        Effect.andThen(Effect.flatMap(Ref.get(world.tagsTake), Effect.sleep)),
-        Effect.andThen(Ref.get(world.tags)),
-      ),
+      hq: Ref.update(world.hqReads, (count) => count + 1).pipe(Effect.andThen(Ref.get(world.hq))),
+      signers: Ref.get(world.signers),
       serviceVariables: Ref.get(world.variables),
       statusFile: Ref.get(world.statusFile),
       providers: Ref.get(world.providers),
@@ -157,6 +178,11 @@ const fakes = (world: World) =>
       dispatch: (command) =>
         Effect.gen(function* () {
           if (yield* Ref.get(world.dispatchHangs)) return yield* Effect.never;
+          if (yield* Ref.get(world.dispatchFailure))
+            return yield* new OrchestrationCommandInvariantError({
+              commandType: command.type,
+              detail: "dispatch refused",
+            });
           // The engine takes a command id once, as its receipts do.
           const all = yield* Ref.get(world.dispatched);
           if (!all.some((held) => held.commandId === command.commandId)) {
@@ -197,10 +223,6 @@ const FAST: ZeropsSetupTimings = {
   poll: Duration.millis(10),
   slowPoll: Duration.millis(10),
   fastFor: Duration.minutes(30),
-  noneAfter: Duration.millis(0),
-  tagsTtl: Duration.millis(0),
-  tagsFailedTtl: Duration.millis(0),
-  claimMaxAge: Duration.minutes(2),
 };
 
 /** A server on `database`; a second one on the same file is the same Mate after a restart. */
@@ -264,7 +286,7 @@ describe("ZeropsSetup: the stand-up", () => {
         Effect.gen(function* () {
           yield* ticks;
           assert.deepStrictEqual(yield* turnsOf(world), []);
-          yield* Ref.set(world.tags, SIGNED);
+          yield* Ref.set(world.signers, SIGNED);
           const [turn] = yield* eventually(turnsOf(world), (turns) => turns.length > 0);
           yield* ticks;
           assert.strictEqual((yield* turnsOf(world)).length, 1);
@@ -280,8 +302,8 @@ describe("ZeropsSetup: the stand-up", () => {
           // On the agent the person signed in, not the conversation's other one.
           assert.strictEqual(turn!.modelSelection?.instanceId, "claudeAgent");
           assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
-            kind: "session",
-            subject: "zerops-user:user-a",
+            kind: "standup",
+            startedBy: "user-a",
           });
         }),
       );
@@ -292,7 +314,7 @@ describe("ZeropsSetup: the stand-up", () => {
     Effect.gen(function* () {
       const world = yield* makeWorld;
       const database = freshDatabase();
-      yield* Ref.set(world.tags, SIGNED);
+      yield* Ref.set(world.signers, SIGNED);
       yield* withServer(world, database, () =>
         eventually(turnsOf(world), (turns) => turns.length === 1),
       );
@@ -301,26 +323,77 @@ describe("ZeropsSetup: the stand-up", () => {
     }),
   );
 
-  it.live("a turn admission refuses goes out once admission lets it", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* Ref.set(world.tags, SIGNED);
-      yield* Ref.set(world.refusal, "not signed in yet");
-      yield* withServer(world, freshDatabase(), () =>
-        Effect.gen(function* () {
-          yield* ticks;
-          assert.deepStrictEqual(yield* turnsOf(world), []);
-          yield* Ref.set(world.refusal, undefined);
-          yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-        }),
-      );
-    }),
+  it.live(
+    "an admission failure stays visible across restart and only its asker can try again",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.signers, SIGNED);
+        yield* Ref.set(world.refusal, "not signed in yet");
+        const database = freshDatabase();
+        yield* withServer(world, database, (setup) =>
+          Effect.gen(function* () {
+            yield* setup.awaitStandUp;
+            assert.strictEqual(
+              (yield* setup.document).steps.find((step) => step.id === "standup")?.state,
+              "failed",
+            );
+            assert.strictEqual((yield* Ref.get(world.admitted)).length, 1);
+          }),
+        );
+        yield* Ref.set(world.refusal, undefined);
+        yield* withServer(world, database, (setup) =>
+          Effect.gen(function* () {
+            yield* setup.awaitStandUp;
+            assert.strictEqual((yield* Ref.get(world.admitted)).length, 1);
+            assert.isFalse(yield* setup.retry("someone-else"));
+            assert.isTrue(yield* setup.retry("user-a"));
+            assert.strictEqual((yield* turnsOf(world)).length, 1);
+            assert.isFalse(yield* setup.retry("user-a"));
+          }),
+        );
+      }),
+  );
+
+  it.live(
+    "a failed dispatch ends once, persists its failure and a failed manual attempt also ends",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.signers, SIGNED);
+        yield* Ref.set(world.dispatchFailure, true);
+        const database = freshDatabase();
+        yield* withServer(world, database, (setup) =>
+          Effect.gen(function* () {
+            yield* setup.awaitStandUp;
+            assert.strictEqual(
+              (yield* setup.document).steps.find((step) => step.id === "standup")?.state,
+              "failed",
+            );
+            assert.isTrue(yield* setup.retry("user-a"));
+            assert.strictEqual((yield* Ref.get(world.admitted)).length, 2);
+            assert.strictEqual(
+              (yield* setup.document).steps.find((step) => step.id === "standup")?.state,
+              "failed",
+            );
+          }),
+        );
+        yield* Ref.set(world.dispatchFailure, false);
+        yield* withServer(world, database, (setup) =>
+          Effect.gen(function* () {
+            yield* setup.awaitStandUp;
+            assert.strictEqual((yield* turnsOf(world)).length, 0);
+            assert.isTrue(yield* setup.retry("user-a"));
+            assert.strictEqual((yield* turnsOf(world)).length, 1);
+          }),
+        );
+      }),
   );
 
   it.live("a conversation already spoken in gets no stand-up", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
-      yield* Ref.set(world.tags, SIGNED);
+      yield* Ref.set(world.signers, SIGNED);
       yield* Ref.set(world.threads, [
         mainThread({ latestUserMessageAt: "2026-10-01T10:05:00.000Z" }),
       ]);
@@ -332,7 +405,7 @@ describe("ZeropsSetup: the stand-up", () => {
   it.live("with no conversation yet, it opens one and sends there", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
-      yield* Ref.set(world.tags, SIGNED);
+      yield* Ref.set(world.signers, SIGNED);
       yield* Ref.set(world.threads, []);
       yield* withServer(world, freshDatabase(), () =>
         eventually(turnsOf(world), (turns) => turns.length === 1),
@@ -365,8 +438,8 @@ describe("ZeropsSetup: the stand-up", () => {
             ["cursor", "cursor-model"],
           );
           assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
-            kind: "session",
-            subject: "zerops-user:user-a",
+            kind: "standup",
+            startedBy: "user-a",
           });
         }),
       );
@@ -376,7 +449,7 @@ describe("ZeropsSetup: the stand-up", () => {
   it.live("the asker's own sign-in comes before a ready Cursor", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
-      yield* Ref.set(world.tags, SIGNED);
+      yield* Ref.set(world.signers, SIGNED);
       yield* Ref.set(world.providers, [...CLAUDE_SIGNED_IN, instance("cursor")]);
       const [turn] = yield* withServer(world, freshDatabase(), () =>
         eventually(turnsOf(world), (turns) => turns.length > 0),
@@ -436,32 +509,32 @@ describe("ZeropsSetup: the stand-up", () => {
     }),
   );
 
-  /** Whether the tags are still being read: two reads apart, the count moved. */
+  /** Whether the Mate's record is still being read: two reads apart, the count moved. */
   const stillPolling = (world: World) =>
     Effect.gen(function* () {
-      const before = yield* Ref.get(world.tagReads);
+      const before = yield* Ref.get(world.hqReads);
       yield* ticks;
-      return (yield* Ref.get(world.tagReads)) > before;
+      return (yield* Ref.get(world.hqReads)) > before;
     });
 
   it.live("a Mate made before the new press never starts one, and never polls for it", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
       yield* Ref.set(world.variables, ["PATH"]);
-      yield* Ref.set(world.tags, SIGNED);
+      yield* Ref.set(world.signers, SIGNED);
       yield* withServer(world, freshDatabase(), () => ticks);
-      assert.deepStrictEqual([yield* turnsOf(world), yield* Ref.get(world.tagReads)], [[], 0]);
+      assert.deepStrictEqual([yield* turnsOf(world), yield* Ref.get(world.hqReads)], [[], 0]);
     }),
   );
 
   const settles: ReadonlyArray<[string, (world: World) => Effect.Effect<void>]> = [
-    ["once it started the stand-up", (world) => Ref.set(world.tags, SIGNED)],
-    ["when nobody asked for one", (world) => Ref.set(world.tags, ["mate:face:coral:gem"])],
+    ["once it started the stand-up", (world) => Ref.set(world.signers, SIGNED)],
+    ["when nobody asked for one", (world) => Ref.set(world.hq, NOBODY_ASKED)],
     [
       "when the conversation was already spoken in",
       (world) =>
         Effect.andThen(
-          Ref.set(world.tags, SIGNED),
+          Ref.set(world.signers, SIGNED),
           Ref.set(world.threads, [mainThread({ latestUserMessageAt: "2026-10-01T10:05:00.000Z" })]),
         ),
     ],
@@ -478,12 +551,57 @@ describe("ZeropsSetup: the stand-up", () => {
             assert.isFalse(yield* stillPolling(world));
           }),
         );
-        const reads = yield* Ref.get(world.tagReads);
+        const reads = yield* Ref.get(world.hqReads);
         yield* withServer(world, database, () => ticks);
-        assert.strictEqual(yield* Ref.get(world.tagReads), reads);
+        assert.strictEqual(yield* Ref.get(world.hqReads), reads);
       }),
     );
   }
+
+  // Audit B3: HQ's record of the Mate carries its ask from the write that made it, so a linked
+  // Mate naming nobody is one nobody asked for — settled at once, its project closed off or not.
+  const nobodyAsked: ReadonlyArray<[string, HqStanding]> = [
+    ["its project closed off", NOBODY_ASKED],
+    ["its project not closed off yet", linked(null, false)],
+  ];
+  for (const [name, hq] of nobodyAsked) {
+    it.live(`settles as none at once when nobody asked, ${name}`, () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.hq, hq);
+        yield* withServer(world, freshDatabase(), (setup) =>
+          Effect.gen(function* () {
+            yield* ticks;
+            assert.isFalse(yield* stillPolling(world));
+            const document = yield* setup.document;
+            assert.deepStrictEqual(
+              document.steps.find((step) => step.id === "standup"),
+              { id: "standup", state: "none", at: "" },
+            );
+          }),
+        );
+      }),
+    );
+  }
+
+  // Who asked comes from HQ: until the link brings the Mate, nobody is known to have asked —
+  // which is not "nobody asked", and never settles the stand-up as none.
+  it.live("waits for its HQ to say who asked, however long, and never settles meanwhile", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.hq, { kind: "not-linked" });
+      yield* Ref.set(world.signers, SIGNED);
+      yield* withServer(world, freshDatabase(), () =>
+        Effect.gen(function* () {
+          yield* ticks;
+          assert.deepStrictEqual(yield* turnsOf(world), []);
+          assert.isTrue(yield* stillPolling(world));
+          yield* Ref.set(world.hq, ASKED);
+          yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+        }),
+      );
+    }),
+  );
 
   it.live("polls while the stand-up is pending", () =>
     Effect.gen(function* () {
@@ -496,36 +614,17 @@ describe("ZeropsSetup: the stand-up", () => {
     }),
   );
 
-  it.live("with nothing on the Mate to run, it stops asking the platform until something is", () =>
+  it.live("a stood-up Mate's setup document says its sign-in and its stand-up", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
-      yield* Ref.set(world.providers, NOTHING_TO_RUN);
-      yield* withServer(world, freshDatabase(), () =>
-        Effect.gen(function* () {
-          yield* ticks;
-          assert.isFalse(yield* stillPolling(world));
-          // A sign-in lands: its agent is there to run, and the tags are read for its record.
-          yield* Ref.set(world.providers, CLAUDE_SIGNED_IN);
-          yield* Ref.set(world.tags, SIGNED);
-          yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-        }),
-      );
-    }),
-  );
-
-  it.live("a stood-up Mate's setup document reads no tags", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* Ref.set(world.tags, SIGNED);
+      yield* Ref.set(world.signers, SIGNED);
       const database = freshDatabase();
       yield* withServer(world, database, (setup) =>
         Effect.gen(function* () {
           const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
           // Its turn asked, as the engine records it.
           yield* turnRow(database, standUp!.threadId, standUp!.message.messageId, "pending");
-          const reads = yield* Ref.get(world.tagReads);
           const document = yield* setup.document;
-          assert.strictEqual(yield* Ref.get(world.tagReads), reads);
           assert.deepStrictEqual(
             document.steps
               .filter((step) => step.id === "signin" || step.id === "standup")
@@ -537,274 +636,11 @@ describe("ZeropsSetup: the stand-up", () => {
     }),
   );
 
-  it.live("a browser's stand-up after a settled none goes through: nothing ran", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* Ref.set(world.tags, ["mate:face:coral:gem"]);
-      yield* withServer(world, freshDatabase(), (setup) =>
-        Effect.gen(function* () {
-          yield* ticks;
-          assert.strictEqual(yield* setup.browserStandUp(browserSend(1)), "dispatch");
-        }),
-      );
-    }),
-  );
-
-  const browserSend = (attempt: number): OrchestrationCommand =>
-    ({
-      type: "thread.turn.start",
-      commandId: `mate-standup-thread-main-${attempt}`,
-      threadId: "thread-main",
-    }) as unknown as OrchestrationCommand;
-
-  it.live("a browser's stand-up while the server's ran is ignored; the same command passes", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* Ref.set(world.tags, SIGNED);
-      yield* withServer(world, freshDatabase(), (setup) =>
-        Effect.gen(function* () {
-          yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-          assert.deepStrictEqual(
-            [
-              yield* setup.browserStandUp(browserSend(2)),
-              yield* setup.browserStandUp(browserSend(1)),
-            ],
-            ["ignore", "dispatch"],
-          );
-        }),
-      );
-    }),
-  );
-
-  it.live("a browser's stand-up first is the one: the server starts none", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* withServer(world, freshDatabase(), (setup) =>
-        Effect.gen(function* () {
-          assert.strictEqual(yield* setup.browserStandUp(browserSend(1)), "claimed");
-          yield* setup.browserStandUpEnded(browserSend(1), "through");
-          assert.strictEqual(yield* setup.browserStandUp(browserSend(2)), "ignore");
-          yield* Ref.set(world.tags, SIGNED);
-          yield* ticks;
-          assert.deepStrictEqual(yield* turnsOf(world), []);
-        }),
-      );
-    }),
-  );
-
-  it.live("while a browser's stand-up is on its way the server waits, still looking", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* Ref.set(world.tags, SIGNED);
-      yield* Ref.set(world.refusal, "not yet");
-      yield* withServer(world, freshDatabase(), (setup) =>
-        Effect.gen(function* () {
-          assert.strictEqual(yield* setup.browserStandUp(browserSend(1)), "claimed");
-          // The send is on its way: the server would be admitted now, and starts none.
-          yield* Ref.set(world.refusal, undefined);
-          yield* ticks;
-          assert.deepStrictEqual(yield* turnsOf(world), []);
-          // The send did not go through: the server, still looking, starts its own.
-          yield* setup.browserStandUpEnded(browserSend(1), "failed");
-          yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-        }),
-      );
-    }),
-  );
-
-  it.live("a browser's failed send never withdraws the server's own stand-up", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      const database = freshDatabase();
-      yield* Ref.set(world.tags, SIGNED);
-      yield* withServer(world, database, (setup) =>
-        Effect.gen(function* () {
-          yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-          // The same command, as an old client sends it: it owns no claim.
-          assert.strictEqual(yield* setup.browserStandUp(browserSend(1)), "dispatch");
-          yield* setup.browserStandUpEnded(browserSend(1), "failed");
-        }),
-      );
-      yield* Ref.set(world.dispatched, []);
-      yield* withServer(world, database, () => ticks);
-      assert.deepStrictEqual(yield* turnsOf(world), []);
-    }),
-  );
-
-  it.live("on a Mate made before the new press a browser's stand-up claims nothing", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* Ref.set(world.variables, ["PATH"]);
-      yield* withServer(world, freshDatabase(), (setup) =>
-        Effect.gen(function* () {
-          assert.deepStrictEqual(
-            [
-              yield* setup.browserStandUp(browserSend(1), "user-a"),
-              yield* setup.browserStandUp(browserSend(2), "user-a"),
-            ],
-            ["dispatch", "dispatch"],
-          );
-        }),
-      );
-    }),
-  );
-
-  it.live("a claim no loop will take over is withdrawn after 2 minutes", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      // Unmarked at boot, so no loop runs; marked by the time a browser sends.
-      yield* Ref.set(world.variables, ["PATH"]);
-      yield* withServer(
-        world,
-        freshDatabase(),
-        (setup) =>
-          Effect.gen(function* () {
-            yield* ticks;
-            yield* Ref.set(world.variables, ["PATH", "MATE_SETUP_RUNTIMES"]);
-            assert.strictEqual(yield* setup.browserStandUp(browserSend(1), "user-a"), "claimed");
-            yield* setup.browserStandUpEnded(browserSend(1), "unknown");
-            yield* Effect.sleep(Duration.millis(80));
-            assert.strictEqual(yield* setup.browserStandUp(browserSend(2), "user-a"), "claimed");
-          }),
-        { ...FAST, claimMaxAge: Duration.millis(50) },
-      );
-    }),
-  );
-
-  it.live("a claim taken over with nobody to send it as settles, never stuck", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* Ref.set(world.tags, ["mate:face:coral:gem"]);
-      const database = freshDatabase();
-      yield* withServer(
-        world,
-        database,
-        (setup) =>
-          Effect.gen(function* () {
-            assert.strictEqual(yield* setup.browserStandUp(browserSend(2)), "claimed");
-            yield* setup.browserStandUpEnded(browserSend(2), "unknown");
-            yield* Effect.sleep(Duration.millis(200));
-          }),
-        { ...FAST, claimMaxAge: Duration.millis(50), noneAfter: Duration.minutes(5) },
-      );
-      assert.deepStrictEqual(yield* turnsOf(world), []);
-      assert.isFalse(yield* withServer(world, database, () => stillPolling(world)));
-    }),
-  );
-
-  it.live("a claim whose sender no longer holds the agent is sent as its asker who does", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      // user-b's browser sent it; user-a, who asked, has since signed the agent in.
-      yield* Ref.set(world.tags, ["mate:standup:user-a", "mate:signer:claude-code:user-a"]);
-      yield* withServer(
-        world,
-        freshDatabase(),
-        (setup) =>
-          Effect.gen(function* () {
-            assert.strictEqual(yield* setup.browserStandUp(browserSend(2), "user-b"), "claimed");
-            yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-            assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
-              kind: "session",
-              subject: "zerops-user:user-a",
-            });
-          }),
-        { ...FAST, claimMaxAge: Duration.millis(50), noneAfter: Duration.minutes(5) },
-      );
-    }),
-  );
-
-  it.live("a claim nobody who could send it holds the agent for settles, never stuck", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      // Someone else entirely signed the agent in.
-      yield* Ref.set(world.tags, ["mate:standup:user-a", "mate:signer:claude-code:user-c"]);
-      const database = freshDatabase();
-      yield* withServer(
-        world,
-        database,
-        (setup) =>
-          Effect.gen(function* () {
-            assert.strictEqual(yield* setup.browserStandUp(browserSend(2), "user-b"), "claimed");
-            yield* Effect.sleep(Duration.millis(300));
-          }),
-        { ...FAST, claimMaxAge: Duration.millis(50), noneAfter: Duration.minutes(5) },
-      );
-      assert.deepStrictEqual(yield* turnsOf(world), []);
-      assert.isFalse(yield* withServer(world, database, () => stillPolling(world)));
-    }),
-  );
-
-  it.live("a claim taken over is sent as the person whose browser sent it", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      // Signed in, but the tags name no asker any more.
-      yield* Ref.set(world.tags, ["mate:signer:claude-code:user-a"]);
-      yield* withServer(
-        world,
-        freshDatabase(),
-        (setup) =>
-          Effect.gen(function* () {
-            assert.strictEqual(yield* setup.browserStandUp(browserSend(2), "user-a"), "claimed");
-            yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-            assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
-              kind: "session",
-              subject: "zerops-user:user-a",
-            });
-          }),
-        { ...FAST, claimMaxAge: Duration.millis(50), noneAfter: Duration.minutes(5) },
-      );
-    }),
-  );
-
-  it.live("a browser's claim that never ended is the server's after 2 minutes, same ids", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* Ref.set(world.tags, SIGNED);
-      yield* withServer(
-        world,
-        freshDatabase(),
-        (setup) =>
-          Effect.gen(function* () {
-            assert.strictEqual(yield* setup.browserStandUp(browserSend(2)), "claimed");
-            // Its server restarted mid-send: the claim is never ended.
-            const [turn] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-            assert.deepStrictEqual(
-              [turn!.commandId, turn!.message.messageId],
-              ["mate-standup-thread-main-2", "mate-standup-thread-main-2"],
-            );
-            yield* ticks;
-            assert.strictEqual((yield* turnsOf(world)).length, 1);
-          }),
-        { ...FAST, claimMaxAge: Duration.millis(50) },
-      );
-    }),
-  );
-
-  it.live(
-    "a browser's send that may have gone out keeps its claim; one that failed withdraws it",
-    () =>
-      Effect.gen(function* () {
-        const world = yield* makeWorld;
-        yield* Ref.set(world.tags, SIGNED);
-        yield* withServer(world, freshDatabase(), (setup) =>
-          Effect.gen(function* () {
-            assert.strictEqual(yield* setup.browserStandUp(browserSend(2)), "claimed");
-            yield* setup.browserStandUpEnded(browserSend(2), "unknown");
-            yield* ticks;
-            assert.deepStrictEqual(yield* turnsOf(world), [], "an unknown end left the claim");
-            yield* setup.browserStandUpEnded(browserSend(2), "failed");
-            yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-          }),
-        );
-      }),
-  );
-
   it.live("a server that died between its claim and its send sends it once after a restart", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
       const database = freshDatabase();
-      yield* Ref.set(world.tags, SIGNED);
+      yield* Ref.set(world.signers, SIGNED);
       yield* Ref.set(world.dispatchHangs, true);
       yield* withServer(world, database, () => ticks);
       yield* Ref.set(world.dispatchHangs, false);
@@ -816,106 +652,131 @@ describe("ZeropsSetup: the stand-up", () => {
       assert.isFalse(yield* withServer(world, database, () => stillPolling(world)));
     }),
   );
-});
 
-describe("ZeropsSetup: what an unauthenticated caller can make it do", () => {
-  const LIVE: ZeropsSetupTimings = {
-    ...FAST,
-    tagsTtl: Duration.seconds(15),
-    tagsFailedTtl: Duration.seconds(30),
-  };
-  const flood = (setup: ZeropsSetup["Service"]) =>
-    Effect.all(
-      Array.from({ length: 20 }, () => setup.document),
-      { concurrency: "unbounded" },
-    );
-
-  it.live("a flood of setup reads asks the platform for the tags once", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* withServer(
-        world,
-        freshDatabase(),
-        (setup) => Effect.andThen(flood(setup), flood(setup)),
-        LIVE,
-      );
-      assert.strictEqual(yield* Ref.get(world.tagReads), 1);
-    }),
-  );
-
-  it.live("a request that gives up mid-read leaves the read to finish for the next", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* Ref.set(world.tagsTake, Duration.millis(200));
-      yield* withServer(
-        world,
-        freshDatabase(),
-        (setup) =>
-          Effect.gen(function* () {
-            // The poll's own first read is done, and its cache has gone stale.
-            yield* Effect.sleep(Duration.millis(400));
-            const before = yield* Ref.get(world.tagReads);
-            const first = yield* Effect.forkChild(setup.document);
-            yield* Effect.sleep(Duration.millis(50));
-            yield* Fiber.interrupt(first);
-            yield* setup.document;
-            yield* flood(setup);
-            assert.strictEqual((yield* Ref.get(world.tagReads)) - before, 1);
-          }),
-        { ...LIVE, poll: Duration.minutes(10), tagsTtl: Duration.millis(100) },
-      );
-    }),
-  );
-
-  it.live("a failed tag read is not tried again for 30 seconds", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* Ref.set(world.tags, undefined);
-      yield* withServer(
-        world,
-        freshDatabase(),
-        (setup) => Effect.andThen(flood(setup), Effect.andThen(ticks, flood(setup))),
-        LIVE,
-      );
-      assert.strictEqual(yield* Ref.get(world.tagReads), 1);
-    }),
-  );
-
+  // The asker changed while the claim waited: it goes out as whoever holds an agent now.
   it.live(
-    "a Mate made before the new press reads no tags for its setup, and says nothing of a sign-in",
+    "a resumed claim whose person no longer holds the agent is sent as its asker who does",
     () =>
       Effect.gen(function* () {
         const world = yield* makeWorld;
-        yield* Ref.set(world.variables, ["PATH"]);
-        yield* withServer(world, freshDatabase(), (setup) =>
-          Effect.gen(function* () {
-            yield* ticks;
-            const reads = yield* Ref.get(world.tagReads);
-            const documents = yield* flood(setup);
-            assert.strictEqual(yield* Ref.get(world.tagReads), reads);
-            assert.isFalse(documents[0]!.steps.some((step) => step.id === "signin"));
-          }),
+        const database = freshDatabase();
+        yield* Ref.set(world.hq, linked("user-b"));
+        yield* Ref.set(world.signers, { "claude-code": "user-b" });
+        yield* Ref.set(world.dispatchHangs, true);
+        yield* withServer(world, database, () => ticks);
+        yield* Ref.set(world.dispatchHangs, false);
+        yield* Ref.set(world.hq, ASKED);
+        yield* Ref.set(world.signers, SIGNED);
+        yield* withServer(world, database, () =>
+          eventually(turnsOf(world), (turns) => turns.length === 1),
         );
+        assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
+          kind: "standup",
+          startedBy: "user-a",
+        });
       }),
   );
 
-  it.live("a Mate whose stand-up nobody asked for reads its tags only until its sign-in", () =>
+  it.live("a resumed claim nobody who could send it holds the agent for settles, never stuck", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
-      yield* Ref.set(world.tags, ["mate:face:coral:gem"]);
+      const database = freshDatabase();
+      yield* Ref.set(world.signers, SIGNED);
+      yield* Ref.set(world.dispatchHangs, true);
+      yield* withServer(world, database, () => ticks);
+      yield* Ref.set(world.dispatchHangs, false);
+      // Someone else entirely holds the agent now.
+      yield* Ref.set(world.signers, { "claude-code": "user-c" });
+      yield* withServer(world, database, () => ticks);
+      assert.deepStrictEqual(yield* turnsOf(world), []);
+      assert.isFalse(yield* withServer(world, database, () => stillPolling(world)));
+    }),
+  );
+
+  // A stand-up a browser sent before the server stood every Mate up itself is one that ran: never
+  // sent again, its step what its own turn says — with no turn found and zcp silent, nothing; a
+  // claim not confirmed out, waiting.
+  const browserRecords = [
+    ["browser", undefined],
+    ["browser:claimed", "waiting"],
+  ] as const;
+  for (const [source, standup] of browserRecords) {
+    it.live(`a browser's record from before (${source}) is a stand-up that ran`, () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        const database = freshDatabase();
+        yield* Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO zerops_stand_ups
+            (project_id, thread_id, command_id, user_id, source, started_at)
+            VALUES ('project-mate', 'thread-main', 'mate-standup-thread-main-1', 'user-a',
+              ${source}, '2026-10-01T10:00:00.000Z')`;
+        }).pipe(
+          Effect.provide(
+            Layer.effectDiscard(runMigrations()).pipe(
+              Layer.provideMerge(NodeSqliteClient.layer({ filename: database })),
+              Layer.provide(NodeServices.layer),
+            ),
+          ),
+        );
+        yield* Ref.set(world.signers, SIGNED);
+        const document = yield* withServer(world, database, (setup) =>
+          Effect.andThen(ticks, setup.document),
+        );
+        assert.deepStrictEqual(yield* turnsOf(world), []);
+        assert.strictEqual(document.steps.find((step) => step.id === "standup")?.state, standup);
+        assert.isFalse(yield* withServer(world, database, () => stillPolling(world)));
+      }),
+    );
+  }
+});
+
+describe("ZeropsSetup: why a stand-up waits", () => {
+  const waits: ReadonlyArray<[string, HqStanding, Readonly<Record<string, string>>]> = [
+    [
+      "zcp found no official HQ",
+      { kind: "not-enrolled", outcome: Option.some({ state: "no_hq" }) },
+      { reason: "no_hq" },
+    ],
+    [
+      "HQ refused the enrollment",
+      { kind: "not-enrolled", outcome: Option.some({ state: "refused", code: "not_a_mate" }) },
+      { reason: "not_enrolled", code: "not_a_mate" },
+    ],
+    [
+      "zcp said nothing this build reads",
+      { kind: "not-enrolled", outcome: Option.none() },
+      { reason: "not_enrolled" },
+    ],
+    ["enrolled, HQ has not sent the Mate", { kind: "not-linked" }, { reason: "not_linked" }],
+    ["asked, the asker not signed in yet", ASKED, {}],
+  ];
+  for (const [name, hq, said] of waits) {
+    it.live(`${name}`, () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.hq, hq);
+        const step = yield* withServer(world, freshDatabase(), (setup) =>
+          Effect.map(setup.document, (document) =>
+            document.steps.find((entry) => entry.id === "standup"),
+          ),
+        );
+        assert.deepStrictEqual(step, { id: "standup", state: "waiting", at: "", ...said });
+      }),
+    );
+  }
+});
+
+describe("ZeropsSetup: what its setup document leaves out", () => {
+  it.live("a Mate made before the new press says nothing of a sign-in", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.variables, ["PATH"]);
       yield* withServer(world, freshDatabase(), (setup) =>
         Effect.gen(function* () {
           yield* ticks;
-          const signin = Effect.map(
-            setup.document,
-            (document) => document.steps.find((step) => step.id === "signin")?.state,
-          );
-          assert.strictEqual(yield* signin, "waiting");
-          yield* Ref.set(world.tags, ["mate:face:coral:gem", "mate:signer:codex:user-b"]);
-          assert.strictEqual(yield* signin, "done");
-          const reads = yield* Ref.get(world.tagReads);
-          yield* flood(setup);
-          assert.strictEqual(yield* Ref.get(world.tagReads), reads);
+          const document = yield* setup.document;
+          assert.isFalse(document.steps.some((step) => step.id === "signin"));
         }),
       );
     }),
@@ -929,6 +790,7 @@ describe("ZeropsSetup: the document", () => {
   it.live("follows the Mate from a bare container to a stood-up one", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
+      yield* Ref.set(world.hq, { kind: "not-enrolled", outcome: Option.none() });
       const database = freshDatabase();
       yield* withServer(world, database, (setup) =>
         Effect.gen(function* () {
@@ -942,19 +804,15 @@ describe("ZeropsSetup: the document", () => {
             "waiting",
             "waiting",
           ]);
-          yield* Ref.update(world.variables, (now) => [
-            ...now,
-            "GITEA_URL",
-            "GITEA_TOKEN",
-            "MATE_BROKER_URL",
-          ]);
+          // zcp enrolled the Mate, and HQ sent it with who asked for its stand-up.
+          yield* Ref.set(world.hq, ASKED);
           yield* Ref.set(world.statusFile, {
             version: 1,
             runtimes: { state: "importing", startedAt: "2026-10-01T10:01:00Z" },
             standup: { state: "idle" },
           });
           assert.deepStrictEqual(yield* states, ["done", "done", "running", "waiting", "waiting"]);
-          yield* Ref.set(world.tags, SIGNED);
+          yield* Ref.set(world.signers, SIGNED);
           const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
           yield* turnRow(database, standUp!.threadId, standUp!.message.messageId, "running");
           assert.deepStrictEqual(yield* states, ["done", "done", "running", "done", "running"]);
@@ -965,17 +823,22 @@ describe("ZeropsSetup: the document", () => {
           });
           assert.deepStrictEqual(yield* states, ["done", "done", "done", "done", "done"]);
           // A git step once done stays done: the setup is a record, not a live probe.
-          yield* Ref.set(world.variables, []);
+          yield* Ref.set(world.hq, { kind: "not-enrolled", outcome: Option.none() });
           assert.strictEqual(yield* stateOf(setup, "git"), "done");
         }),
       );
     }),
   );
+});
+
+describe("ZeropsSetup: a stand-up says only what ran", () => {
+  const stateOf = (setup: ZeropsSetup["Service"], id: string) =>
+    Effect.map(setup.document, (document) => document.steps.find((step) => step.id === id)?.state);
 
   it.live("a Mate on Cursor is signed in once Cursor is ready, nobody signed in", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
-      yield* Ref.set(world.tags, ["mate:face:coral:gem"]);
+      yield* Ref.set(world.hq, NOBODY_ASKED);
       yield* Ref.set(world.providers, NOTHING_TO_RUN);
       yield* withServer(world, freshDatabase(), (setup) =>
         Effect.gen(function* () {
@@ -991,7 +854,7 @@ describe("ZeropsSetup: the document", () => {
     Effect.gen(function* () {
       const world = yield* makeWorld;
       // Nobody asked a stand-up of it; its sign-in comes after the stand-up settled as none.
-      yield* Ref.set(world.tags, ["mate:face:coral:gem"]);
+      yield* Ref.set(world.hq, NOBODY_ASKED);
       yield* Ref.set(world.statusFile, { version: 1, runtimes: { state: "none" } });
       yield* withServer(world, freshDatabase(), (setup) =>
         Effect.gen(function* () {
@@ -999,7 +862,7 @@ describe("ZeropsSetup: the document", () => {
           assert.deepStrictEqual(yield* states, ["waiting", "none"]);
           yield* ticks;
           assert.deepStrictEqual(yield* states, ["waiting", "none"]);
-          yield* Ref.set(world.tags, ["mate:face:coral:gem", "mate:signer:claude-code:user-b"]);
+          yield* Ref.set(world.signers, { "claude-code": "user-b" });
           assert.deepStrictEqual(yield* states, ["done", "none"]);
           yield* ticks;
           assert.deepStrictEqual(yield* states, ["done", "none"]);
@@ -1011,7 +874,7 @@ describe("ZeropsSetup: the document", () => {
   it.live("a stand-up whose stage halves build on a second call runs until they return", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
-      yield* Ref.set(world.tags, SIGNED);
+      yield* Ref.set(world.signers, SIGNED);
       const half = (hostname: string, step: string, state: string) => ({ hostname, step, state });
       const database = freshDatabase();
       yield* withServer(world, database, (setup) =>
@@ -1096,7 +959,7 @@ describe("ZeropsSetup: the document", () => {
     it.live(`zcp done with the stage halves pending, ${name}`, () =>
       Effect.gen(function* () {
         const world = yield* makeWorld;
-        yield* Ref.set(world.tags, SIGNED);
+        yield* Ref.set(world.signers, SIGNED);
         const database = freshDatabase();
         yield* withServer(world, database, (setup) =>
           Effect.gen(function* () {
@@ -1109,24 +972,18 @@ describe("ZeropsSetup: the document", () => {
       }),
     );
   }
-});
 
-describe("ZeropsSetup: a stand-up claimed and not sent yet", () => {
-  it.live("reads waiting, never left out while its send is on its way", () =>
+  it.live("a stand-up claimed and not sent yet reads waiting, never left out", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
-      yield* Ref.set(world.tags, SIGNED);
+      yield* Ref.set(world.signers, SIGNED);
       // Its send never comes back: the claim stands, with no turn behind it yet.
       yield* Ref.set(world.dispatchHangs, true);
       yield* withServer(world, freshDatabase(), (setup) =>
         Effect.gen(function* () {
-          const standup = Effect.map(
-            setup.document,
-            (document) => document.steps.find((step) => step.id === "standup")?.state,
-          );
           yield* eventually(Ref.get(world.admitted), (admitted) => admitted.length > 0);
           yield* ticks;
-          assert.strictEqual(yield* standup, "waiting");
+          assert.strictEqual(yield* stateOf(setup, "standup"), "waiting");
         }),
       );
     }),
@@ -1144,6 +1001,43 @@ const turnRow = (database: string, threadId: string, messageId: string, state: s
         '2026-10-01T10:00:00.000Z', '[]')
     `;
   }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: database })), Effect.orDie);
+
+describe("ZeropsSetup: the git step reads the Mate's enrollment with HQ", () => {
+  const steps: ReadonlyArray<[string, HqStanding, Record<string, string>]> = [
+    ["enrolled and sent", ASKED, { state: "done" }],
+    ["enrolled, HQ has not sent the Mate", { kind: "not-linked" }, { state: "done" }],
+    [
+      "pending: zcp has said nothing",
+      { kind: "not-enrolled", outcome: Option.none() },
+      { state: "waiting" },
+    ],
+    [
+      "no official HQ",
+      { kind: "not-enrolled", outcome: Option.some({ state: "no_hq" }) },
+      { state: "failed", reason: "no_hq" },
+    ],
+    [
+      "HQ refused",
+      { kind: "not-enrolled", outcome: Option.some({ state: "refused", code: "not_a_mate" }) },
+      { state: "failed", reason: "refused", code: "not_a_mate" },
+    ],
+  ];
+  for (const [name, hq, said] of steps) {
+    it.live(name, () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.hq, hq);
+        yield* withServer(world, freshDatabase(), (setup) =>
+          Effect.gen(function* () {
+            const git = (yield* setup.document).steps.find((step) => step.id === "git");
+            const { id: _id, at: _at, ...rest } = git ?? { id: "", at: "" };
+            assert.deepStrictEqual(rest, said);
+          }),
+        );
+      }),
+    );
+  }
+});
 
 describe("standUpPollDelay", () => {
   const cases: ReadonlyArray<[string, Duration.Duration, Duration.Duration]> = [

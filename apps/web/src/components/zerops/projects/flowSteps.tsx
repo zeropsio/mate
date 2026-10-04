@@ -19,9 +19,6 @@ import { ZeropsMateCard } from "../ZeropsMateCard";
 import { comingMateLine } from "./projectsView.logic";
 import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
 
-export const QUIET_BUTTON_CLASS =
-  "inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent";
-
 /** Whether a node would draw anything — a slot may answer `null` for "nothing here". */
 export function drawn(node: ReactNode): boolean {
   return node !== null && node !== undefined && node !== false;

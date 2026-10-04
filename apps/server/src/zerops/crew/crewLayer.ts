@@ -1,3 +1,4 @@
+import { continueOperation, discardOperation, rebuildCopy } from "./crewContinue.ts";
 /**
  * crewLayer — crew mode as one layer (ARCHITECTURE §1 *Principle*, §2
  * *Activation*).
@@ -10,8 +11,8 @@
  * a crew is applied at boot or by Apply, for the engine's life.
  *
  * The live engine subscribes to the provider event bus when it is built (an
- * event before the subscription is invisible to it), waits for the server's
- * command readiness before its boot sweep, and keeps one snapshot hub: a
+ * event before the subscription is invisible to it), records restart interruptions
+ * before exposing commands, and keeps one snapshot hub: a
  * change to the crew tables or to the engine's memory rebuilds the snapshot
  * from SQLite, at most four times a second, `seq` rising across restarts.
  *
@@ -19,6 +20,7 @@
  */
 import {
   agentIdForDriverKind,
+  type CrewCommandError,
   type CrewCommand,
   type CrewCommandResult,
   type CrewLogin,
@@ -27,6 +29,7 @@ import {
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -38,9 +41,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import { ServerConfig } from "../../config.ts";
 import { ClaudeThreadExtensionRegistry } from "../../spi/claudeThreadProfile.ts";
 import { ProviderRuntimeEventBus } from "../../spi/ProviderRuntimeEventBus.ts";
-import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
-import { ZeropsAgentAuth } from "../ZeropsAgentAuth.ts";
 import { isZeropsEnvironment } from "../ZeropsEnvironment.ts";
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { guardCommand, guardFilesWrite } from "./crewAccess.ts";
@@ -59,11 +60,13 @@ import {
   startFresh,
   type Activate,
 } from "./crewApply.ts";
-import { boot } from "./crewBoot.ts";
+import { conversationCopies, useCrewCopy } from "./CrewStints.ts";
+import { boot, inspectBoot } from "./crewBoot.ts";
 import { grantClaim, moveClaim, releaseClaim, showOnDevNow } from "./crewClaims.ts";
 import * as CrewChecks from "./CrewChecks.ts";
 import {
   DEFAULT_CREW_LOGIN,
+  asRefusal,
   failureWords,
   isWorking,
   leadOf,
@@ -116,16 +119,8 @@ import {
 import { makeTurnHandler } from "./crewTurns.ts";
 import { restoreNotes } from "./crewNotes.ts";
 import { MIRRORED_TABLES } from "./crewState.ts";
-import { advanceAll, takeUpWaiting, retryRefused } from "./crewRunFlow.ts";
-import {
-  finishRun,
-  pressPause,
-  resumeRun,
-  runOnAfterRestart,
-  runView,
-  startRun,
-  stopRun,
-} from "./crewRuns.ts";
+import { advanceAll, takeUpWaiting } from "./crewRunFlow.ts";
+import { finishRun, pressPause, resumeRun, runView, startRun, stopRun } from "./crewRuns.ts";
 import * as CrewWorkspace from "./CrewWorkspace.ts";
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
@@ -191,6 +186,7 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
     }
     const applied = yield* core.applied;
     const nowMs = yield* Clock.currentTimeMillis;
+    const now = yield* core.now;
     const tasks = yield* store.assignments(CrewHome.CREW_ID);
     const midway = new Map<string, { readonly since: string; readonly why: string | null }>();
     for (const task of tasks) {
@@ -217,7 +213,7 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
         ? [wake.taskId]
         : [],
     );
-    return appliedSnapshot({
+    const snapshot = appliedSnapshot({
       memory,
       midway,
       reviewing,
@@ -248,6 +244,59 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
       ),
       runtime: runtimeOf(core.memory, yield* loginsOf(core, members)),
     });
+    const operations = (yield* store.operations(CrewHome.CREW_ID)).map((row) => ({
+      ...row,
+      result: row.kind === "landing" ? row.result : null,
+    }));
+    const unfinished = operations.filter((row) => {
+      const state = tasks.find((task) => task.assignment === row.taskId)?.state;
+      if (state === "discarded" || (state === "landed" && row.kind !== "landing")) return false;
+      if (row.status === "interrupted") return true;
+      return (
+        row.status === "failed" &&
+        !snapshot.attention.some((need) => row.taskId !== null && need.taskId === row.taskId)
+      );
+    });
+    const interrupted = unfinished.filter(
+      (row, index) =>
+        !unfinished
+          .slice(index + 1)
+          .some((later) => later.taskId === row.taskId && later.handle === row.handle),
+    );
+    return {
+      ...snapshot,
+      operations,
+      attention: [
+        ...snapshot.attention.filter(
+          (row) =>
+            !interrupted.some(
+              (operation) => operation.taskId !== null && row.taskId === operation.taskId,
+            ),
+        ),
+        ...interrupted.map((operation) => ({
+          id: `interrupted:${operation.id}`,
+          kind: "interrupted" as const,
+          handle: operation.handle,
+          taskId: operation.taskId,
+          text: operation.detail,
+          paths: [],
+          host: operation.targets.host,
+          at: operation.updatedAt,
+          operation,
+        })),
+        ...[...core.memory.missingLanes].map((handle) => ({
+          id: `copy-missing:${handle}`,
+          kind: "copy-missing" as const,
+          handle,
+          taskId: null,
+          text: null,
+          paths: [],
+          host: applied?.members.get(handle)?.host ?? null,
+          at: now,
+        })),
+        ...(applied === undefined ? [] : yield* conversationCopies(core, applied)),
+      ],
+    };
   });
 
 const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, activate: Activate) =>
@@ -257,6 +306,26 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
     switch (command._tag) {
       case "apply":
         yield* apply(core, principal, activate);
+        return done;
+      case "rebuildCopy":
+        yield* pressCrewmate(core, command.handle, rebuildCopy(core, principal, command.handle));
+        return done;
+      case "operationContinue":
+        yield* pressCrewmate(
+          core,
+          command.handle,
+          continueOperation(core, principal, command.handle, command.operationId),
+        );
+        return done;
+      case "operationDiscard":
+        yield* pressCrewmate(
+          core,
+          command.handle,
+          discardOperation(core, command.handle, command.operationId),
+        );
+        return done;
+      case "useCrewCopy":
+        yield* pressCrewmate(core, command.handle, useCrewCopy(core, command));
         return done;
       case "message":
         yield* pressCrewmate(core, command.handle, message(core, principal, command));
@@ -407,8 +476,6 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     const core = yield* makeCrewCore;
     yield* restoreNotes(core);
     const bus = yield* ProviderRuntimeEventBus;
-    const agentAuth = yield* ZeropsAgentAuth;
-    const readiness = yield* ServerCommandReadiness;
     const policies = yield* ThreadToolPolicyRegistry;
     const extensions = yield* ClaudeThreadExtensionRegistry;
     const scope = yield* Effect.scope;
@@ -445,50 +512,29 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
           ),
     );
 
-    // A queued task admission refused may start once a sign-in or a signer changes.
-    let watching = false;
-    const watchSignIns = Effect.suspend(() => {
-      if (watching) return Effect.void;
-      watching = true;
-      return Stream.merge(
-        Stream.map(core.logins.changes, () => undefined),
-        Stream.map(agentAuth.changes, () => undefined),
-      ).pipe(
-        Stream.runForEach(() =>
-          retryRefused(core).pipe(
-            Effect.catch((error) =>
-              Effect.sync(() => {
-                core.memory.lastError = failureWords(error);
-              }),
-            ),
-          ),
-        ),
-        Effect.forkIn(scope),
-        Effect.asVoid,
-      );
-    });
-    const activate: Activate = installPolicies.pipe(Effect.andThen(watchSignIns));
+    const activate: Activate = installPolicies;
 
     yield* core.reload;
     if ((yield* core.applied) !== undefined) yield* activate;
 
+    yield* boot(core);
     yield* bus.events.pipe(Stream.runForEach(makeTurnHandler(core)), Effect.forkIn(scope));
+    const inspected = yield* Deferred.make<void, CrewCommandError>();
     yield* Effect.flatMap(core.applied, (applied) =>
-      applied === undefined
-        ? Effect.void
-        : core.verify.pipe(
-            Effect.andThen(runOnAfterRestart(core)),
-            Effect.andThen(readiness.await),
-            Effect.andThen(boot(core)),
-          ),
-    ).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          core.memory.lastError = failureWords(error);
-        }),
+      Deferred.complete(
+        inspected,
+        applied === undefined
+          ? Effect.void
+          : asRefusal(core.verify.pipe(Effect.andThen(inspectBoot(core)))).pipe(
+              Effect.tapError((error) =>
+                Effect.gen(function* () {
+                  core.memory.lastError = failureWords(error);
+                  yield* core.changed;
+                }),
+              ),
+            ),
       ),
-      Effect.forkIn(scope),
-    );
+    ).pipe(Effect.forkIn(scope));
 
     yield* core.listDevHosts;
     let seq = yield* Clock.currentTimeMillis;
@@ -533,6 +579,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
         guardFilesWrite(core, files, principal).pipe(Effect.andThen(core.home.write(files.files))),
       command: (command, principal) =>
         guardCommand(core, command, principal).pipe(
+          Effect.andThen(Deferred.await(inspected)),
           Effect.andThen(run(core, command, principal, activate)),
         ),
     };

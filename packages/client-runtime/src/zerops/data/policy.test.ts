@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
+  commandDeadlineMs,
   DEFAULT_ZEROPS_DATA_POLICY,
   DEFAULT_ZEROPS_GRANT_POLICY,
   makeZeropsDataPolicy,
@@ -30,6 +31,17 @@ describe("Zerops data runtime policy", () => {
     expect(DEFAULT_ZEROPS_DATA_POLICY.pongDeadlineMs).toBe(8_000);
   });
 
+  // A Mate's container takes several requests — its project's services, the org's keys (17 s
+  // measured on a 193-key org, cold), a key, the import — and shared one request's 15 s, so every
+  // Set up Mate on KRLS stopped at its deadline (2026-10-02). Main gave its commands a minute.
+  it.each([
+    ["import-development-container", 60_000],
+    ["create-project", 15_000],
+    ["restart-service", 15_000],
+  ] as const)("gives %s %i ms", (kind, deadline) => {
+    expect(commandDeadlineMs(kind, DEFAULT_ZEROPS_DATA_POLICY)).toBe(deadline);
+  });
+
   it("bounds establishment and background receiver lifetime", () => {
     expect(DEFAULT_ZEROPS_DATA_POLICY.hiddenReceiverPauseAfterMs).toBe(60_000);
     expect(DEFAULT_ZEROPS_DATA_POLICY.establishmentDeadlineMs).toBe(60_000);
@@ -52,10 +64,7 @@ describe("Zerops data runtime policy", () => {
     expect(DEFAULT_ZEROPS_DATA_POLICY.retainedCommandAttemptsPerAccount).toBe(1_000);
   });
 
-  it.each([
-    ["recoveryConcurrency", 4],
-    ["registrationConcurrency", 6],
-  ] as const)(
+  it.each([["registrationConcurrency", 6]] as const)(
     "bounds %s at %i by default, overridable with any positive integer",
     (name, value) => {
       expect(DEFAULT_ZEROPS_DATA_POLICY[name]).toBe(value);
@@ -71,8 +80,8 @@ describe("Zerops data runtime policy", () => {
 
   it("accepts bounded overrides and rejects contradictory limits", () => {
     expect(makeZeropsDataPolicy({ hydrationConcurrency: 2 }).hydrationConcurrency).toBe(2);
-    expect(() => makeZeropsDataPolicy({ recoveryAttemptLimit: 0 })).toThrow(
-      "recoveryAttemptLimit must be a positive safe integer",
+    expect(() => makeZeropsDataPolicy({ hydrationConcurrency: 0 })).toThrow(
+      "hydrationConcurrency must be a positive safe integer",
     );
     expect(() =>
       makeZeropsDataPolicy({ ingressMaxBytesPerAccount: 10, ingressMaxFrameBytes: 11 }),
@@ -83,6 +92,16 @@ describe("Zerops data runtime policy", () => {
         registrationAttemptsPerReceiver: 4,
       }),
     ).toThrow("desiredInterestsPerReceiver cannot exceed registrationAttemptsPerReceiver");
+    expect(() =>
+      makeZeropsDataPolicy({
+        desiredInterestsPerReceiver: 1,
+        activeRegistrationsPerAccount: 8,
+        releasedRegistrationsPerReceiver: 4,
+        registrationAttemptsPerReceiver: 11,
+      }),
+    ).toThrow(
+      "activeRegistrationsPerAccount plus releasedRegistrationsPerReceiver cannot exceed registrationAttemptsPerReceiver",
+    );
   });
 });
 
@@ -121,29 +140,5 @@ describe("Zerops access grant policy", () => {
     expect(DEFAULT_ZEROPS_GRANT_POLICY.dormantAfterHiddenMs).toBe(60 * MINUTE);
     expect(DEFAULT_ZEROPS_GRANT_POLICY.wallJumpBackToleranceMs).toBe(60 * SECOND);
     expect(DEFAULT_ZEROPS_GRANT_POLICY.denialConfirmationDelayMs).toBe(5 * SECOND);
-    expect(DEFAULT_ZEROPS_GRANT_POLICY.initialRetryMs).toEqual(
-      [2, 4, 8, 15, 30, 60].map((s) => s * SECOND),
-    );
-    expect(DEFAULT_ZEROPS_GRANT_POLICY.renewalRetryMs).toEqual(
-      [10, 20, 40, 60].map((s) => s * SECOND),
-    );
-    expect(DEFAULT_ZEROPS_GRANT_POLICY.lapsedRetryMs).toEqual(
-      [2, 5, 15, 30, 60].map((s) => s * SECOND),
-    );
-    expect(DEFAULT_ZEROPS_GRANT_POLICY.projectRetryMs).toEqual(
-      [10, 20, 40, 60].map((s) => s * SECOND),
-    );
-    for (const ladder of [
-      DEFAULT_ZEROPS_GRANT_POLICY.initialRetryMs,
-      DEFAULT_ZEROPS_GRANT_POLICY.renewalRetryMs,
-      DEFAULT_ZEROPS_GRANT_POLICY.lapsedRetryMs,
-      DEFAULT_ZEROPS_GRANT_POLICY.projectRetryMs,
-    ]) {
-      expect(ladder.length).toBeGreaterThan(0);
-      for (const rung of ladder) {
-        expect(rung).toBeGreaterThan(0);
-        expect(rung).toBeLessThan(DEFAULT_ZEROPS_GRANT_POLICY.windowMs);
-      }
-    }
   });
 });

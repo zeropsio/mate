@@ -1,9 +1,11 @@
 /**
  * The projects page's list: a row per project, at most two lines, then the containers no
- * project holds as one folded group, and the account's tools at the quiet end.
+ * project holds as one folded group, and the organization's HQ at the quiet end.
  *
  * A row's first line is the project's name, its Mates by face and full name — two named, the
- * rest a count — and production's version where production runs one. Its second line is the one
+ * rest a count — what HQ still holds of it (`heldLine`), and production's version where
+ * production runs one; a stop whose read failed says so there, with its one attempt. Its second
+ * line is the one
  * thing that needs the person, as a full sentence with its single verb at the row's end, else
  * the latest meaningful fact (`projectRowLine`); nothing is said for nothing. A row opens into
  * the project's detail.
@@ -20,7 +22,9 @@ import { Button } from "../../ui/button";
 import { Skeleton } from "../../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { FlatCard, MicroLabel, StatusDot } from "../primitives";
+import { StopReadAgain } from "../StopReadAgain";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
+import { heldLine } from "./emptyApps.logic";
 import {
   ComingMateCard,
   drawn,
@@ -29,7 +33,6 @@ import {
   ComingMateFace,
   matesOf,
   mergesHere,
-  QUIET_BUTTON_CLASS,
   releaseVerbFor,
 } from "./flowSteps";
 import {
@@ -39,7 +42,7 @@ import {
   projectRowLine,
   risenFirst,
   rowRise,
-  TOOL_LABEL,
+  stopLine,
   type ProjectRowLine,
 } from "./projectsView.logic";
 import { lastRowRisen, useRememberRisenRows } from "./rowRiseMemory";
@@ -153,9 +156,6 @@ function RowLine({ line }: { readonly line: ProjectRowLine }) {
       return (
         <span className={shell} data-zerops-row-line={line.kind}>
           <span className="min-w-0 truncate text-muted-foreground">{line.text}</span>
-          {line.detail === undefined ? null : (
-            <span className="shrink-0 text-xs text-muted-foreground/80">{line.detail}</span>
-          )}
           <Age at={line.at} />
         </span>
       );
@@ -185,7 +185,7 @@ function ProductionMark({ flow }: { readonly flow: GroupFlow }) {
         render={
           <span
             aria-label={`Production runs ${mark.version}`}
-            className="ms-auto hidden shrink-0 text-xs text-muted-foreground @2xl/flow:flex"
+            className="hidden shrink-0 text-xs text-muted-foreground @2xl/flow:flex"
             data-zerops-step="production"
           />
         }
@@ -194,6 +194,39 @@ function ProductionMark({ flow }: { readonly flow: GroupFlow }) {
       </TooltipTrigger>
       <TooltipPopup>Production runs {mark.version}</TooltipPopup>
     </Tooltip>
+  );
+}
+
+/**
+ * The row's stops — its production, then its stages — at the first line's end: production's
+ * version, and a stop whose read failed by its name and what it says, beside its one attempt
+ * (`StopReadAgain`). Every stop is drawn here, row opened or not, so each holds the demand that
+ * reads what it runs: production's version and a failed deploy come from that read.
+ */
+function RowStops({ flow }: { readonly flow: GroupFlow }) {
+  const { production } = flow;
+  const stops = [
+    ...(production.kind === "absent" || production.kind === "creating" ? [] : [production.stop]),
+    ...flow.stages,
+  ];
+  return (
+    <span className="ms-auto flex min-w-0 items-center gap-x-3 text-xs text-muted-foreground">
+      {stops.map((stop) => (
+        <span
+          className="flex min-w-0 items-center gap-x-1.5 empty:hidden"
+          data-zerops-row-stop={stop.projectId}
+          key={stop.projectId}
+        >
+          {stop.readFailed === true ? (
+            <span className="min-w-0 truncate">
+              {stop.name} · {stopLine(stop).word}
+            </span>
+          ) : null}
+          <StopReadAgain projectId={stop.projectId} />
+        </span>
+      ))}
+      <ProductionMark flow={flow} />
+    </span>
   );
 }
 
@@ -295,10 +328,14 @@ function ProjectRow<T>({
               <GroupName className="text-sm" entry={entry} />
             </button>
             <RowMates entry={entry} props={props} />
-            {entry.line === undefined ? null : (
-              <span className="min-w-0 truncate text-xs text-muted-foreground">{entry.line}</span>
+            {[entry.line, heldLine(entry.flow.mates.length, entry.contents)].map((meta) =>
+              meta === undefined ? null : (
+                <span className="min-w-0 truncate text-xs text-muted-foreground" key={meta}>
+                  {meta}
+                </span>
+              ),
             )}
-            <ProductionMark flow={entry.flow} />
+            <RowStops flow={entry.flow} />
           </div>
           <div className="ps-5">
             <RowLine line={line} />
@@ -339,7 +376,7 @@ export function ProjectList<T>({
       lastMerged: entry.lastMerged,
       activities: entry.activities,
       settled: !entry.awaiting && !entry.changesAwaiting,
-      changesFailed: entry.changesFailed,
+      changesUnknown: entry.changesUnknown,
     });
     return { entry, line, ...rowRise(line, lastRowRisen(entry.group.groupId), entry.matesKnown) };
   });
@@ -485,34 +522,14 @@ export function OtherContainers<T>({
   );
 }
 
-/** The page's end, quietly: the account's tools. */
+/** The page's end, quietly: the organization's HQ. */
 export function QuietEnd<T>({ props }: { readonly props: ZeropsProjectsFlowProps<T> }) {
-  const offerGitea =
-    props.onCreateTool !== undefined && props.tools.every((tool) => tool.kind !== "gitea");
-  if (props.tools.length === 0 && !offerGitea) return null;
   return (
     <section data-zerops-surface="quiet-end">
       <ul className="flex flex-col px-3">
         <li className="flex min-h-10 items-center gap-x-4 py-1.5" data-zerops-tools="true">
           <MicroLabel className="text-muted-foreground">Tools</MicroLabel>
-          <span className="flex min-w-0 flex-wrap items-center gap-3 text-xs">
-            {props.tools.map(({ item, kind }) => (
-              <Fragment key={props.getKey(item)}>{props.renderTool(item, kind)}</Fragment>
-            ))}
-          </span>
-          <span className="ms-auto flex justify-end">
-            {offerGitea ? (
-              <button
-                className={QUIET_BUTTON_CLASS}
-                disabled={props.creating}
-                onClick={props.onCreateTool}
-                type="button"
-              >
-                <span aria-hidden="true">+</span>
-                <span>Add {TOOL_LABEL.gitea}</span>
-              </button>
-            ) : null}
-          </span>
+          <span className="flex min-w-0 flex-wrap items-center gap-3 text-xs">{props.hqTool}</span>
         </li>
       </ul>
     </section>

@@ -5,7 +5,6 @@
  */
 import type { ZeropsLocation, ZeropsOrganizationMember } from "../api.ts";
 import type { Shown } from "../knowledge/index.ts";
-import type { ZeropsIntegrationTokenGrantMetadata } from "./cells.ts";
 
 const NO_LOCATIONS: ReadonlyArray<ZeropsLocation> = [];
 
@@ -26,42 +25,6 @@ export function selectLocationChoice(shown: Shown<ReadonlyArray<ZeropsLocation>>
     case "gone":
     case "withheld":
       return { status: "loading", locations: NO_LOCATIONS };
-  }
-}
-
-/**
- * What the group-reach reconcile acts on: the tokens' grants once a read
- * answered them. A retained value is not acted on until its read again
- * confirms it; a revalidation that failed is a failed read.
- */
-export type TokenGrantsRead =
-  | { readonly status: "pending" }
-  | { readonly status: "failed" }
-  | {
-      readonly status: "known";
-      readonly grants: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
-    };
-
-export function selectTokenGrants(
-  shown: Shown<ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>>,
-): TokenGrantsRead {
-  switch (shown.state) {
-    case "known": {
-      const { freshness } = shown;
-      if (freshness.kind === "settled" || freshness.kind === "live") {
-        return { status: "known", grants: shown.value };
-      }
-      return freshness.kind === "stale" && freshness.reason.kind === "revalidation-failed"
-        ? { status: "failed" }
-        : { status: "pending" };
-    }
-    case "failed":
-      return { status: "failed" };
-    case "unread":
-    case "reading":
-    case "gone":
-    case "withheld":
-      return { status: "pending" };
   }
 }
 
@@ -87,15 +50,6 @@ export function selectMembers(shown: Shown<ReadonlyArray<ZeropsOrganizationMembe
   }
 }
 
-/** A service's variable names (never a value), once a read answered them. */
-export type VariableNamesRead =
-  | { readonly status: "pending" }
-  | { readonly status: "known"; readonly names: ReadonlyArray<string> };
-
-export function selectVariableNames(shown: Shown<ReadonlyArray<string>>): VariableNamesRead {
-  return shown.state === "known" ? { status: "known", names: shown.value } : { status: "pending" };
-}
-
 /**
  * A one-shot reader's answer: the value the read that settled the resource
  * succeeded with. A failure, a withholding and a value whose revalidation
@@ -103,3 +57,27 @@ export function selectVariableNames(shown: Shown<ReadonlyArray<string>>): Variab
  */
 export const settledValue = <T>(shown: Shown<T>): { readonly value: T } | null =>
   shown.state === "known" && shown.freshness.kind === "settled" ? { value: shown.value } : null;
+
+const NO_PUBLIC_ACCESS: import("../publicRoutes.ts").ZeropsPublicAccess = {
+  routes: [],
+  offers: [],
+};
+
+/** A failed recheck keeps its links, alongside the explicit failure and manual action. */
+export function selectPublicAccess(
+  shown: Shown<import("../publicRoutes.ts").ZeropsPublicAccess>,
+): import("../publicRoutes.ts").ZeropsPublicAccess & {
+  readonly state: "ready" | "reading" | "failed";
+} {
+  switch (shown.state) {
+    case "known":
+      return { ...shown.value, state: shown.freshness.kind === "stale" ? "failed" : "ready" };
+    case "failed":
+    case "gone":
+    case "withheld":
+      return { ...NO_PUBLIC_ACCESS, state: "failed" };
+    case "unread":
+    case "reading":
+      return { ...NO_PUBLIC_ACCESS, state: "reading" };
+  }
+}

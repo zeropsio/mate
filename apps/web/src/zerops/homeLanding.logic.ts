@@ -5,10 +5,9 @@
  * Mate it will land on (`homeGuess`), it guesses by it: that Mate's face, name and opening line,
  * with nothing that takes input; else the boot's one wait line. "No projects" is an answer: only once the read is whole. Pure.
  */
+import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@t3tools/contracts";
-
-import type { ZeropsOrganizationStatus } from "./ZeropsSessionProvider";
 
 export type HomeView =
   | { readonly kind: "opening"; readonly ref: ScopedThreadRef }
@@ -27,41 +26,17 @@ export function homeView(input: {
   readonly remembered: ScopedThreadRef | null;
   /** The account's projects and its Mates are read whole. */
   readonly projectsRead: boolean;
+  /** HQ has answered for this organization, or its absence/failure is known. */
+  readonly hqMatesRead: boolean;
 }): HomeView {
   if (input.startFailed) return { kind: "start-failed" };
-  if (input.landing === "none" && input.projectsRead) return { kind: "hero" };
+  if (input.landing === "none" && input.projectsRead && (input.targeted || input.hqMatesRead)) {
+    return { kind: "hero" };
+  }
   if (input.remembered !== null && !input.targeted) {
     return { kind: "opening", ref: input.remembered };
   }
   return { kind: "wait" };
-}
-
-/**
- * Which home `/` paints: the account's projects, the landing that moves on to a Mate, or the wait
- * between. A cold load counts no environment until the account's Mates register, so "nothing to
- * land on" is an answer only once the Mates are read whole (`useMatesSettled`), or once nothing
- * will list them until something happens — no organization chosen (the projects page asks for
- * one), the account's access unverified, the environment catalog unreadable (the projects page
- * says which). Until then it waits with its guess, and lands nowhere: with no usable environment,
- * a cached thread is a dead Mate's. Once painted, the projects page stays until a Mate is
- * counted. Pure.
- */
-export function homeDoor(input: {
-  /** The door counts no usable environment. */
-  readonly noEnvironments: boolean;
-  /** Every Mate this tab will register is registered or will not be. */
-  readonly matesSettled: boolean;
-  /** The projects page is what the home shows now. */
-  readonly projectsShown: boolean;
-  readonly organization: ZeropsOrganizationStatus;
-  /** The account's access failed to verify (`useZeropsInventory().error`). */
-  readonly accountTrouble: boolean;
-  readonly catalogFailed: boolean;
-}): "landing" | "wait" | "projects" {
-  if (!input.noEnvironments) return "landing";
-  const blocked =
-    input.organization === "needs-selection" || input.accountTrouble || input.catalogFailed;
-  return input.matesSettled || blocked || input.projectsShown ? "projects" : "wait";
 }
 
 /**
@@ -120,4 +95,24 @@ export function readHomeLanding(text: string | null): ScopedThreadRef | null {
   } catch {
     return null;
   }
+}
+
+/** The home opens the most recently active Mate HQ names, preferring an online one. */
+export function hqHomeMate(
+  mates: HqMates | null,
+  deleting: ReadonlySet<string> = new Set(),
+): string | undefined {
+  const rows = [...(mates ?? new Map())]
+    .filter(([projectId]) => !deleting.has(projectId))
+    .map(([projectId, mate]) => ({
+      projectId,
+      online: mate.presence.online,
+      at:
+        Date.parse(mate.main?.latestUserMessageAt ?? mate.main?.updatedAt ?? mate.presence.since) ||
+        0,
+    }));
+  const online = rows.filter((row) => row.online);
+  return (online.length > 0 ? online : rows).toSorted(
+    (a, b) => b.at - a.at || a.projectId.localeCompare(b.projectId),
+  )[0]?.projectId;
 }

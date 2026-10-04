@@ -60,9 +60,11 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
     render: () =>
       renderInDialog(
         <ZeropsAssignMateForm
-          members={[{ id: "u1", user: { fullName: "Ada" } }]}
+          error={null}
+          members={[{ id: "u1", status: "ACTIVE", user: { fullName: "Ada" } }]}
           onCancel={noop}
           onSubmit={noop}
+          pending={false}
           projectName="Acme Docs"
         />,
       ),
@@ -100,18 +102,16 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
     render: () =>
       renderInDialog(
         <ZeropsEnvironmentCreationForm
-          defaultBotName="Otto"
           defaultName="Acme Docs - stage"
           defaultTintFor={() => "violet"}
           defaultWithAgent
           groupName="Acme Docs"
           onCancel={noop}
           onCreate={noop}
-          proposeName={() => "Acme Docs - stage"}
           role="stage"
           takenBotNames={{ names: [], complete: true }}
           tier={undefined}
-          tierLoading={false}
+          recipe="absent"
           tierServices={[]}
         />,
       ),
@@ -121,18 +121,16 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
     render: () =>
       renderInDialog(
         <ZeropsEnvironmentCreationForm
-          defaultBotName="Otto"
-          defaultName="Acme Docs - Otto"
+          defaultName="Otto"
           defaultTintFor={() => "violet"}
           defaultWithAgent
           groupName="Acme Docs"
           onCancel={noop}
           onCreate={noop}
-          proposeName={() => "Acme Docs - Otto"}
           role="dev"
           takenBotNames={{ names: [], complete: true }}
           tier={undefined}
-          tierLoading={false}
+          recipe="absent"
           tierServices={[]}
         />,
       ),
@@ -144,11 +142,14 @@ const cases: ReadonlyArray<{ readonly name: string; readonly render: () => strin
         <ZeropsMoveToGroupForm
           currentGroupId={undefined}
           currentRole={undefined}
-          groups={[{ id: "g1", name: "Acme Docs" }]}
-          mintGroupId={() => "new-group"}
+          choices={{
+            apps: [{ id: "g1", name: "Acme Docs", roles: ["dev", "stage", "prod"] }],
+            newApp: ["dev", "stage", "prod"],
+            none: true,
+          }}
           onCancel={noop}
+          name="Fen"
           onSubmit={noop}
-          projectName="Acme Docs - stage"
         />,
       ),
   },

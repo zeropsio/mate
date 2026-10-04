@@ -330,7 +330,7 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     left), then what runs because of the run with its checks attached (K5). Not pills and not a log:
     a failure it came back from, a retry, and what its calls came to are the work's, behind "Show
     work" (K6, K9). Each row follows the real thing: a change merged leaves, and the worked line
-    says "merged as #2"; a service a later run deployed, started, stopped or removed, a pull request
+    says "merged as #2"; a service a later run deployed, started, stopped or removed, a change
     pushed to again or a page checked again is that run's row; a service the platform says stopped
     or failed since turns red with its fix; a row the person's next words answered leaves. A run
     that left nothing draws no band. The rows rise in once, 6 px over 320 ms and 40 ms apart, when
@@ -454,11 +454,11 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     pose, "Nova is waiting for your review of #2" in ink over the change's title muted (13/18 each),
     and _Review_, the composer's one blue button (30 px, radius 9), which opens the change's review
     (R1); nothing merges from here. 61 px tall. Offered by the old rule: this Mate's own code
-    change, not merged, that Gitea says merges, the newest — one that conflicts or is still being
-    checked waits on the Mate or on Gitea, not on the person, and gets no strip. It gives way while
-    a question or an approval waits and comes back once it is answered. It has no entrance: a reload
-    paints the strip this conversation last showed, and Gitea's answer confirms it, changes its
-    words or takes it away
+    change, not merged, that HQ says merges, the newest — one that conflicts or is still being
+    checked waits on the Mate or on HQ, not on the person, and gets no strip. It gives way while a
+    question or an approval waits and comes back once it is answered. It has no entrance: a reload
+    paints the strip this conversation last showed, and HQ's answer confirms it, changes its words
+    or takes it away
   - _States:_ review · unknown (the remembered strip, or nothing) · none · held (a question or an
     approval waits)
   - _Phrase source:_ client-runtime `mateNextStep.ts`; `ZeropsNextStepBanner.tsx`
@@ -539,20 +539,23 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     end, the title (16 px), a meta line ("(face) Nova · appdev → main · #2 · 1d", 13, tabular — the
     size stays in the Changes heading); the verdict first (R2), one 12 px-round box in its tone —
     green ready, amber attention, red failing, ink quiet, busy or done — saying whether it is safe
-    and why, its fix in blue beside it ("Ask Nova to resolve it"); its description — the pull
-    request's body as its author wrote it, in the chat's markdown, its pictures in it (one it cannot
-    read settles on one line with _Open on Gitea_) — else what the run that made it said, under
+    and why, its fix in blue beside it ("Ask Nova to resolve it"); its description — the
+    change's body as its author wrote it, in the chat's markdown, its pictures in it (one it cannot
+    read settles on one line with its words) — else what the run that made it said, under
     "What it does", with a link to that run where one names the change (R3); its files with a letter
     and +/− each, a file's diff opening in place (12/19 mono, hunk headers, one number column; 400
-    lines, then "Show all N lines" up to 2,000, past that a link to the rest on Gitea) (R4); its
-    checks by name, each with its words and _Open_; its conversation — one box that grows as it is
+    lines, then "Show all N lines" up to 2,000, past that a line saying the rest is too long to
+    show here) (R4); its conversation — one box that grows as it is
     typed in ("Comment, or tell Nova what to change…") with _Comment_ and _Ask Nova_, the ask only
     to the person's own Mate and both only with words, the dialog showing the newest three comments;
     its commits, one line each with its age and hash on the column's right edge, more than 7 folded
     to 5 with "Show all N"; and a foot on a 2 % fill saying what the one button does beside it
-    ("Squash-merges 1 commit into main. Production isn't touched until you release."), _Cancel_ or
+    ("Squash-merges 1 commit into main. Production isn't touched until you release."), a change's
+    _Close without merging…_ where HQ's rule offers it — the review then its one confirmation,
+    "Close #2 without merging?" in the verdict and _Keep it open_ beside the button — _Cancel_ or
     _Close_, and the button (34 px, radius 10): _Merge_, _Add to Fen's code_, _Release v0.1.57_,
-    _Roll back to v0.1.55_ (R5). After the press it stays and says what happened, then the next step
+    _Roll back to v0.1.55_ (R5), none where HQ's rule does not offer it, the foot saying what it
+    takes. After the press it stays and says what happened, then the next step
     — "Merged into main", "1 change now waits for production" with _Review release_, which hands
     over in place; a release's progress with its clock, then "Released" or the failure and its fix
     (R6). It grows from what was pressed (200 ms: scale .98, 6 px of lift, a fade) and closes in
@@ -564,11 +567,17 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     sliding in from the right in 220 ms as the release moves 30 % left and fades and the height
     eases; the first Esc steps back to the release where it was, the focus on the pressed row, the
     second closes, and ⌘↵ never reaches the release underneath (`ZeropsReleaseSteps.logic.ts`)
-  - _States:_ a change: ready · not checked · checks running or Gitea checking · checks failing ·
-    behind main (amber, still merges) · conflicts with main · its files still read · closed without
-    merging · merging · merged · refused; a release: ready · blocked · releasing · released ·
+  - _States:_ a change: ready · HQ checking · behind main (amber, still merges) · conflicts
+    with main · its files still read · not offered · merging · merged · refused · close asked ·
+    closing · close refused · closed without merging; a release: ready · blocked · releasing · released ·
     failed; a roll back: ready · rolling back · rolled back · refused; a crew task: ready · add what
     it has · conflict · check failed · in Fen's code
+  - A release offered to the person has a Version field after the verdict. It defaults to the
+    next patch; a typed version updates the title, consequence and release button together. A
+    root `VERSION` or `package.json` declaration from main is an optional suggestion, with its
+    source. Invalid or existing versions explain the problem at the field and disable Release.
+    The field leaves when the release starts; the reviewed changes and prior production version
+    are captured at the press. Harness: `release-version`, `release-version-invalid`.
   - _Phrase source:_ client-runtime `reviewVerdict.ts` (`changeReview`, `releaseReview`,
     `rollbackReview`, `crewTaskReview`)
   - _Lands:_ landed 2026-09-29 (pass 16)
@@ -596,7 +605,7 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     typed open the box in the palette's own chrome; signed in, it is the palette's root, and `>`
     hands over to the commands. Nothing typed: the menu's first six Mates — face, name, "project ·
     subject" — then its projects, the last of them _New project_ (D11). Typed: Mates by name,
-    projects and _New project_, changes ("#12 title", the checks dot), stops ("Shop production" and
+    projects and _New project_, changes ("#12 title"), stops ("Shop production" and
     what it runs, the dot its chip's menu gives it — only where its chip is drawn), in conversations
     (the task, the last words, then the server's search of whole histories), each group capped, the
     match in the search's bold. A Mate, or its words, opens its conversation; a project, a change or
@@ -667,16 +676,18 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     name, then each stop as a group — its row, opening the environment's page: a dot, the name, the
     version and the state in words ("Healthy", "Releasing v1.2.1", "Release failed", "Deployed 40
     min ago", "Deploy failed", "Down", "Stopped", "Setting up…"); a note of what went wrong, as far
-    as the platform and Gitea say; "Ask Nova to fix it" while it is in trouble, a stage's fix naming
-    the stage (S6); the public links, each led by the service it reaches (`app`, `api:3000` where
-    one service answers on several ports); among several stages, each its own _Open in Zerops_ —
-    then "N changes wait for production" with _Review_, the release's review, where there is a
-    production; a menu of one stop ends on _Open in Zerops_
+    as the platform and HQ's deploys and releases say; "Ask Nova to fix it"
+    while it is in trouble, a stage's fix naming the stage (S6); the public links, each led by the
+    service it reaches (`app`, `api:3000` where one service answers on several ports); among several
+    stages, each its own _Open in Zerops_ — then "N changes wait for production" with _Review_, the
+    release's review, where there is a production; a menu of one stop ends on _Open in Zerops_
   - _States:_ a chip: neutral (healthy, changes waiting, releasing or deploying, setting up, nothing
     released or deployed yet) · amber (the last release or deploy did not go through) · red (down) ·
     hollow (stopped on purpose) · unknown (the remembered chip, or what the platform alone says
-    while Gitea is read, or nothing) · none (no such tier); several stages wear the worst of them:
-    down, then a failed deploy, then one deploying
+    while HQ's releases are coming, or nothing) · unlit (production serves, but what a service
+    runs cannot be told: "Production v0.1.44, can't tell what api runs" where it would say healthy,
+    changes waiting or a release that did not go out) · none (no such tier); several
+    stages wear the worst of them: down, then a failed deploy, then one deploying
   - _Phrase source:_ `SidebarProductionChip.logic.ts` (`projectChips`, `productionChip`,
     `stageChip`, `chipFace`, `productionMenu`, `stageMenu`, `stopServing`)
   - _Lands:_ landed 2026-09-29 (pass 16); two chips, each its word alone, 2026-09-29 (pass 18)
@@ -687,7 +698,7 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     and nothing on its corner. The name's line: the owner's mark before the name (`MateOwnerMark`,
     16 px round — their picture, or their initial on a hue of their own read off their name; a plain
     disc where nobody can name them, so every name starts on one edge), the name 14/20, 600 while
-    something it finished is unread, and on the right edge an 8 px dot — amber needs you (only on the viewer's own Mate, the one whose signer tag names
+    something it finished is unread, and on the right edge an 8 px dot — amber needs you (only on the viewer's own Mate, the one whose signer, as HQ relays it, names
     them: `mateIsViewers`; another's waiting Mate rests, its question muted, its change keeping its
     _Review_), blue finished unseen, red stopped on an error; no word, and no `StatusDot` — with when it last did
     something, or the run's clock counting up (600, tabular, in the Mate's own hue after a 6 px dot of it
@@ -706,14 +717,15 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     held puts each row's number in its time slot, and ⌥1–9 opens that Mate; j and k move between
     rows, x arms a stop and a second x stops, e marks it read or unread. A Mate resting for more than a week, with nothing
     unread and not open, folds into its project's "3 quiet Mates". Its face and its words come from
-    one reading (`mateRowReading`): its conversation's while its socket is up or only reconnecting,
-    else this browser's memory, at rest — a line held for words still to come stays empty, never
-    dots under an asleep face. In its first minutes it says so in the projects page's words
+    one reading (`mateRowReading`): HQ's live overview of it, or its conversation's while its socket
+    is up or only reconnecting, else this browser's memory, at rest (step A, A4) — a line held for
+    words still to come stays empty, never dots under an asleep face. In its first minutes it says so in the projects page's words
     (`mateComing`), asleep in the face its person picked, the owner's seat empty, no menu, and a
     press opens its own view (`/mate/$projectId`)
   - _States:_ idle · working · needs you · finished, unread · stopped on an error (its face still) ·
-    paused (a usage limit: asleep) · asleep (not connected) · quiet (folded) · remembered (a reload,
-    until its socket opens: its lines as they stood, a reply to come held empty) · coming up
+    paused (a usage limit: asleep) · asleep (neither HQ nor a socket holds it live) · quiet (folded) ·
+    remembered (a reload, until HQ's view or its socket answers: its lines as they stood, a reply to
+    come held empty) · coming up
     ("Coming up. A few minutes.", "Almost there.", "Taking longer than usual.", or in red "Could not
     be created.") · deleting ("Deleting…" for its last line, asleep, no time, no dot, no menu; a
     press opens nothing)
@@ -722,15 +734,14 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
   - _Lands:_ landed 2026-09-27; rebuilt 2026-09-29 (pass 16); deleting 2026-09-29 (pass 18); coming
     up 2026-09-30 (pass 19)
 - **Change row** — web
-  - _Anatomy (fixed part):_ one of a Mate's open pull requests, 2 px under its row (M8): 28 px tall,
-    radius 10, 13/18 — the pull-request mark (14 px) in the faces' column, muted, red where its
-    checks fail and amber where it fell behind `main` (S3); `#N title` on the words' edge, the way
-    to the change's page (a person's own pull request names them after the title); _Review_ as a
-    blue word on the right edge, the one door to merging it (R1, D8). No _Merge_, no _Ask_ and no
-    check dot on the row: the verdict is the review's. Past three, a Mate's changes fold behind "N
-    pull requests"
-  - _States:_ open · checks failing (red mark) · behind main (amber mark) · remembered (a reload,
-    until Gitea answers: its title untinted, _Review_ already there)
+  - _Anatomy (fixed part):_ one of a Mate's open changes, 2 px under its row (M8): 28 px tall,
+    radius 10, 13/18 — the pull-request mark (14 px) in the faces' column, muted, and amber where it
+    fell behind `main` (S3); `#N title` on the words' edge, the way
+    to the change's page; _Review_ as a blue word on the right edge, the one door to merging it
+    (R1, D8). No _Merge_, no _Ask_ and no check dot on the row: the verdict is the review's. Past
+    three, a Mate's changes fold behind "N changes"
+  - _States:_ open · behind main (amber mark) · remembered (a reload,
+    until HQ answers: its title untinted, _Review_ already there)
   - _Phrase source:_ `SidebarMateRow.logic.ts` (`changeMarkTone`); client-runtime
     `sidebarChangeLabel`, `pullRequestsFolded`
   - _Lands:_ landed 2026-09-29 (pass 16)
@@ -840,38 +851,42 @@ T3 word → Zerops word. User-facing copy only (R4 guards the sinks); identifier
 comments keep whatever name the code has. Crew mode's rows put the word its design used on the
 left.
 
-| T3 says                                                                                 | mate says                                                                                             |
-| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| environment                                                                             | **project**                                                                                           |
-| provider                                                                                | **coding agent**                                                                                      |
-| pairing, pairing code                                                                   | **Sign in with Zerops**; the fallback: "Connect another device with a one-time link"                  |
-| Connections                                                                             | **Devices**                                                                                           |
-| worktree, Local checkout; a crewmate's worktree or lane                                 | gone — a crewmate's copy is "its own copy of Fen's code", in setup and under _Try its work_           |
-| T3 Connect, Tailscale, T3 Code                                                          | gone                                                                                                  |
-| Open in editor                                                                          | **Cloud IDE**                                                                                         |
-| the `zcp` service                                                                       | **Zerops Control Plane**, under Infrastructure                                                        |
-| commit & push                                                                           | zcp's pipeline, never the client's                                                                    |
-| "control plane" (self-description)                                                      | never — the product is Zerops Mate                                                                    |
-| stage half of a Mate's pair                                                             | **preview** — `appstage` beside `appdev`, runs a change before its pull request                       |
-| a crewmate's commit deployed to another service by `sha=` (the crew design's _preview_) | **Deploy to `<host>`** — never _preview_, which is only the stage half                                |
-| a group stage project                                                                   | **stage** — only that: optional, a side branch of `main`, never a gate                                |
-| agent (one of a crew)                                                                   | **crewmate** — mostly just its name and face; _agent_ stays the coding agent                          |
-| orchestrator                                                                            | **lead**                                                                                              |
-| intent (for the whole crew); the crew design's brief                                    | **goal** — _Change the goal_; its title heads the Crew tab                                            |
-| intent (for one crewmate), role                                                         | **job** — _role_ is the Zerops membership role                                                        |
-| assignment                                                                              | **task**                                                                                              |
-| tab (another conversation with the Mate)                                                | **chat** — "+ New chat"                                                                               |
-| merge (a crewmate's work into the Mate's tree); land, landed                            | **add to Fen's code** — the review's button; once in, **in Fen's code**; not a pull request's _Merge_ |
-| your tree (the Mate's working copy)                                                     | **Fen's code** — the Mate's name, never "your tree"                                                   |
-| deliver; landed, not delivered                                                          | **ship** — "Fen hasn't shipped these yet · Ask Fen to ship them"                                      |
-| run (the crew working within limits); pause, resume                                     | **working on its own** — _Let it work on its own…_, one _Stop_, _Keep going…_; no pause               |
-| budget                                                                                  | **what it may spend** — "up to $20"                                                                   |
-| Start fresh                                                                             | **Clear its conversation** — "It keeps its job and its work."                                         |
-| Discard                                                                                 | **Drop it**; a plan's **Drop the plan**                                                               |
-| Allow (a crewmate showing its work at the Mate's dev address)                           | **Let it**, beside _Not now_                                                                          |
-| Back to my tree                                                                         | **Back to Fen's**                                                                                     |
-| parked                                                                                  | **Stopped**                                                                                           |
-| writer, reader, lead (what a crewmate does)                                             | **Builds**, **Reviews**, **Plans**                                                                    |
+| T3 says                                                                                 | mate says                                                                                       |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| environment                                                                             | **project**                                                                                     |
+| HQ's application, the layer above Zerops projects (the code's _group_, _app_)           | **project** — "Move to project…", "New project", "No project"; never _group_, _application_     |
+| a Zerops project shown beside one (a Mate's, a stage's)                                 | **its name**, as its row in the left menu draws it; never _project_ in the same dialog          |
+| pull request, PR                                                                        | **change** — "Change #4 waits for your merge", "2 open changes"; HQ's word for a Mate's work    |
+| rebase (a change behind or in conflict with `main`)                                     | **merge `main` into it** — "Conflicts with main"; HQ takes a Mate's push only forward           |
+| provider                                                                                | **coding agent**                                                                                |
+| pairing, pairing code                                                                   | **Sign in with Zerops**; the fallback: "Connect another device with a one-time link"            |
+| Connections                                                                             | **Devices**                                                                                     |
+| worktree, Local checkout; a crewmate's worktree or lane                                 | gone — a crewmate's copy is "its own copy of Fen's code", in setup and under _Try its work_     |
+| T3 Connect, Tailscale, T3 Code                                                          | gone                                                                                            |
+| Open in editor                                                                          | **Cloud IDE**                                                                                   |
+| the `zcp` service                                                                       | **Zerops Control Plane**, under Infrastructure                                                  |
+| commit & push                                                                           | zcp's pipeline, never the client's                                                              |
+| "control plane" (self-description)                                                      | never — the product is Zerops Mate                                                              |
+| stage half of a Mate's pair                                                             | **preview** — `appstage` beside `appdev`, runs a change before it is merged                     |
+| a crewmate's commit deployed to another service by `sha=` (the crew design's _preview_) | **Deploy to `<host>`** — never _preview_, which is only the stage half                          |
+| a group stage project                                                                   | **stage** — only that: optional, a side branch of `main`, never a gate                          |
+| agent (one of a crew)                                                                   | **crewmate** — mostly just its name and face; _agent_ stays the coding agent                    |
+| orchestrator                                                                            | **lead**                                                                                        |
+| intent (for the whole crew); the crew design's brief                                    | **goal** — _Change the goal_; its title heads the Crew tab                                      |
+| intent (for one crewmate), role                                                         | **job** — _role_ is the Zerops membership role                                                  |
+| assignment                                                                              | **task**                                                                                        |
+| tab (another conversation with the Mate)                                                | **chat** — "+ New chat"                                                                         |
+| merge (a crewmate's work into the Mate's tree); land, landed                            | **add to Fen's code** — the review's button; once in, **in Fen's code**; not a change's _Merge_ |
+| your tree (the Mate's working copy)                                                     | **Fen's code** — the Mate's name, never "your tree"                                             |
+| deliver; landed, not delivered                                                          | **ship** — "Fen hasn't shipped these yet · Ask Fen to ship them"                                |
+| run (the crew working within limits); pause, resume                                     | **working on its own** — _Let it work on its own…_, one _Stop_, _Keep going…_; no pause         |
+| budget                                                                                  | **what it may spend** — "up to $20"                                                             |
+| Start fresh                                                                             | **Clear its conversation** — "It keeps its job and its work."                                   |
+| Discard                                                                                 | **Drop it**; a plan's **Drop the plan**                                                         |
+| Allow (a crewmate showing its work at the Mate's dev address)                           | **Let it**, beside _Not now_                                                                    |
+| Back to my tree                                                                         | **Back to Fen's**                                                                               |
+| parked                                                                                  | **Stopped**                                                                                     |
+| writer, reader, lead (what a crewmate does)                                             | **Builds**, **Reviews**, **Plans**                                                              |
 
 Tone: short declarative sentences, second person, "developer-first" as the one self-descriptor,
 no hype. Colour grammar: **blue acts, teal identifies** — `messageAction` (`#0077cc`) for

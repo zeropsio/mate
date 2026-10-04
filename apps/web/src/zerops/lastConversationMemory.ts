@@ -23,18 +23,34 @@ onAccountLifetimeClose(() => {
 });
 
 /** Where the home will land, as this browser remembers it (`homeGuess`). */
-export function rememberedHomeLanding(): ScopedThreadRef | null {
+export function rememberedHomeLanding(organizationId: string | undefined): ScopedThreadRef | null {
+  if (organizationId === undefined) return null;
   let text: string | null = null;
   try {
     text = accountLocalStorage.getItem(LAST_CONVERSATION_MEMORY_KEY);
   } catch {
     text = null;
   }
-  return homeGuess({
-    mates: rememberedMateIdentities(),
-    rows: menuMemory().rows,
-    lastOpen: readHomeLanding(text),
-  });
+  const view = menuMemory().mates[organizationId];
+  if (view === undefined) return null;
+  const mates = Object.fromEntries(
+    Object.entries(rememberedMateIdentities()).filter(
+      ([, mate]) => mate.projectId !== undefined && mate.projectId in view.mates,
+    ),
+  );
+  const rows = Object.fromEntries(
+    Object.entries(view.mates).flatMap(([projectId, mate]) =>
+      mate.main === null || mate.main === undefined
+        ? []
+        : [
+            [
+              projectId,
+              { at: mate.main.latestUserMessageAt ?? mate.main.updatedAt, threadId: mate.main.id },
+            ],
+          ],
+    ),
+  );
+  return homeGuess({ mates, rows, lastOpen: readHomeLanding(text) });
 }
 
 export function rememberLastConversation(ref: ScopedThreadRef): void {

@@ -182,53 +182,12 @@ describe("resolveZeropsAgentAvailability — client-only states", () => {
     ).toEqual({ kind: "needs-sign-in", signInKind: "not-authorized" });
   });
 
-  it("recordFailed never overrides an authorizedBy tag the server already reads (naming the viewer)", () => {
-    expect(
-      resolveZeropsAgentAvailability({
-        agent: known({
-          ...signedIn,
-          authorizedBy: { subject: JAN },
-        }),
-        viewerSubject: JAN,
-        recordFailed: true,
-      }),
-    ).toEqual({ kind: "ready" });
-  });
-
-  it("recordFailed never overrides an authorizedBy tag naming someone else", () => {
-    expect(
-      resolveZeropsAgentAvailability({
-        agent: known({
-          ...signedIn,
-          authorizedBy: { subject: EVA },
-        }),
-        viewerSubject: JAN,
-        recordFailed: true,
-      }),
-    ).toEqual({ kind: "someone-else", signerId: EVA });
-  });
-
-  it("recordFailed with nothing recorded at all is still unrecorded", () => {
-    expect(
-      resolveZeropsAgentAvailability({
-        agent: known({
-          ...signedIn,
-          authorizedBy: undefined,
-        }),
-        viewerSubject: JAN,
-        recordFailed: true,
-      }),
-    ).toEqual({ kind: "unrecorded" });
-  });
-
-  // Two signer records: nobody's until somebody signs it in again — the server refuses every
-  // turn on it, so it is never offered as runnable, and never named as somebody's.
-  it("a login recorded for two people is unsettled, not runnable", () => {
+  it("an agent nothing recorded a signer for is unrecorded, not runnable", () => {
     const availability = resolveZeropsAgentAvailability({
-      agent: known({ ...signedIn, authorizedBy: undefined, signerUnknown: true }),
+      agent: known({ ...signedIn, authorizedBy: undefined }),
       viewerSubject: JAN,
     });
-    expect(availability).toEqual({ kind: "unsettled" });
+    expect(availability).toEqual({ kind: "unrecorded" });
     expect(zeropsAgentAvailabilityIsRunnable(availability)).toBe(false);
   });
 
@@ -276,14 +235,8 @@ describe("resolveZeropsAgentAvailability — agent auth not known yet", () => {
     "unread agent auth never reads needs-sign-in: %s",
     (_name, agent) => {
       for (const viewerSubject of [JAN, undefined]) {
-        for (const recordFailed of [false, true]) {
-          const availability = resolveZeropsAgentAvailability({
-            agent,
-            viewerSubject,
-            recordFailed,
-          });
-          expect(availability).toEqual({ kind: "unknown", read: agent });
-        }
+        const availability = resolveZeropsAgentAvailability({ agent, viewerSubject });
+        expect(availability).toEqual({ kind: "unknown", read: agent });
       }
     },
   );
@@ -450,5 +403,31 @@ describe("zeropsLoginAuthReads", () => {
     expect(
       zeropsLoginAuthReads({ state: "reading", sinceMs: 0, attempt: 1 }, facts)("claudeAgent-work"),
     ).toBeUndefined();
+  });
+});
+
+describe("ended auth attempts in the picker", () => {
+  it("carries the recovery outcome without changing ownership or admission", () => {
+    const row = {
+      ...signedIn,
+      state: "local-only" as const,
+      providerAuth: "unknown" as const,
+      verification: {
+        status: "unknown" as const,
+        checkedAt: 1,
+        reason: "The login check timed out.",
+      },
+      authorizedBy: { subject: JAN },
+    };
+    const result = resolveZeropsAgentAvailability({ agent: known(row), viewerSubject: JAN });
+    expect(result).toEqual({
+      kind: "registering",
+      ended: { action: "check-again", reason: "The login check timed out." },
+    });
+    expect(zeropsAgentAvailabilityIsRunnable(result)).toBe(true);
+    expect(resolveZeropsAgentAvailability({ agent: known(row), viewerSubject: EVA })).toEqual({
+      kind: "someone-else",
+      signerId: JAN,
+    });
   });
 });

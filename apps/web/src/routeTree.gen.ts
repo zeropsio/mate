@@ -13,8 +13,7 @@ import { Route as ZeropsRouteImport } from './routes/zerops'
 import { Route as UsageRouteImport } from './routes/usage'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PairRouteImport } from './routes/pair'
-import { Route as GiteaSigninRouteImport } from './routes/gitea-signin'
-import { Route as GiteaRouteImport } from './routes/gitea'
+import { Route as GitRouteImport } from './routes/git'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as ZeropsNewRouteImport } from './routes/zerops_.new'
@@ -57,14 +56,9 @@ const PairRoute = PairRouteImport.update({
   path: '/pair',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GiteaSigninRoute = GiteaSigninRouteImport.update({
-  id: '/gitea-signin',
-  path: '/gitea-signin',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const GiteaRoute = GiteaRouteImport.update({
-  id: '/gitea',
-  path: '/gitea',
+const GitRoute = GitRouteImport.update({
+  id: '/git',
+  path: '/git',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -177,8 +171,7 @@ const ChatChangeGroupIdRepositoryNumberRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
-  '/gitea': typeof GiteaRoute
-  '/gitea-signin': typeof GiteaSigninRoute
+  '/git': typeof GitRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
@@ -204,8 +197,7 @@ export interface FileRoutesByFullPath {
   '/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRoutesByTo {
-  '/gitea': typeof GiteaRoute
-  '/gitea-signin': typeof GiteaSigninRoute
+  '/git': typeof GitRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
@@ -234,8 +226,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
-  '/gitea': typeof GiteaRoute
-  '/gitea-signin': typeof GiteaSigninRoute
+  '/git': typeof GitRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
@@ -265,8 +256,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/gitea'
-    | '/gitea-signin'
+    | '/git'
     | '/pair'
     | '/settings'
     | '/usage'
@@ -292,8 +282,7 @@ export interface FileRouteTypes {
     | '/change/$groupId/$repository/$number'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/gitea'
-    | '/gitea-signin'
+    | '/git'
     | '/pair'
     | '/settings'
     | '/usage'
@@ -321,8 +310,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_chat'
-    | '/gitea'
-    | '/gitea-signin'
+    | '/git'
     | '/pair'
     | '/settings'
     | '/usage'
@@ -351,8 +339,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
-  GiteaRoute: typeof GiteaRoute
-  GiteaSigninRoute: typeof GiteaSigninRoute
+  GitRoute: typeof GitRoute
   PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   UsageRoute: typeof UsageRoute
@@ -392,18 +379,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PairRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/gitea-signin': {
-      id: '/gitea-signin'
-      path: '/gitea-signin'
-      fullPath: '/gitea-signin'
-      preLoaderRoute: typeof GiteaSigninRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/gitea': {
-      id: '/gitea'
-      path: '/gitea'
-      fullPath: '/gitea'
-      preLoaderRoute: typeof GiteaRouteImport
+    '/git': {
+      id: '/git'
+      path: '/git'
+      fullPath: '/git'
+      preLoaderRoute: typeof GitRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_chat': {
@@ -611,8 +591,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
-  GiteaRoute: GiteaRoute,
-  GiteaSigninRoute: GiteaSigninRoute,
+  GitRoute: GitRoute,
   PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,
   UsageRoute: UsageRoute,

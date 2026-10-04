@@ -3,6 +3,7 @@ import * as NodeOS from "node:os";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
@@ -13,6 +14,7 @@ import {
   claudeEnvironment,
   claudeHomePath,
   codexHomeLayout,
+  codexShadowHome,
 } from "./driverHomes.ts";
 
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
@@ -99,6 +101,34 @@ it.layer(NodeServices.layer)("driverHomes", (it) => {
           expect(layout.effectiveHomePath).toBe(effectiveHomePath);
           expect(layout.effectiveHomePath).not.toBe(layout.sharedHomePath);
         }),
+    );
+  });
+
+  describe("codexShadowHome", () => {
+    it.effect("links the shared home's entries into the shadow and keeps auth.json its own", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const root = yield* fs.makeTempDirectoryScoped({ prefix: "driver-homes-codex-" });
+          const sharedHomePath = `${root}/.codex`;
+          const effectiveHomePath = `${root}/shadow`;
+          yield* fs.makeDirectory(sharedHomePath);
+          yield* fs.writeFileString(`${sharedHomePath}/config.toml`, "[mcp_servers.zcp]\n");
+          yield* fs.writeFileString(`${sharedHomePath}/auth.json`, "shared");
+
+          yield* codexShadowHome({
+            mode: "authOverlay",
+            sharedHomePath,
+            effectiveHomePath,
+            continuationKey: `codex:home:${sharedHomePath}`,
+          });
+
+          expect(yield* fs.readLink(`${effectiveHomePath}/config.toml`)).toBe(
+            `${sharedHomePath}/config.toml`,
+          );
+          expect(yield* fs.exists(`${effectiveHomePath}/auth.json`)).toBe(false);
+        }),
+      ),
     );
   });
 });

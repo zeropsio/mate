@@ -10,19 +10,13 @@ const OBSERVING: InterestState = {
   guarantee: "source-order-unverified",
   sinceReceiptOrdinal: 1 as never,
 };
-const RECOVERING: InterestState = {
-  status: "recovering",
+const FAILED: InterestState = {
+  status: "failed",
   identity,
   reason: "disconnect",
-  attempt: 1,
-  nextRetryAtMs: 0,
-  progress: {
-    requiredRegistrations: 1,
-    completedRegistrations: 0,
-    requiredReads: 1,
-    completedReads: 0,
-    crossedReceiptOrdinal: 1 as never,
-  },
+  attempts: 1,
+  retryable: true,
+  retryAtMs: null,
 };
 const PAUSED: InterestState = { status: "paused", identity, reason: "offline" };
 
@@ -69,7 +63,7 @@ describe("projectActivitySnapshotFromRead", () => {
 
   it.each([
     { name: "every required interest observing", required: [OBSERVING, OBSERVING], live: true },
-    { name: "one required interest recovering", required: [OBSERVING, RECOVERING], live: false },
+    { name: "one required interest failed", required: [OBSERVING, FAILED], live: false },
     { name: "the feed paused", required: [PAUSED], live: false },
     { name: "no required interest at all", required: [], live: false },
   ])("is live only while the feed observes: $name", ({ required, live }) => {

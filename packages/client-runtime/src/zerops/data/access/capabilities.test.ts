@@ -18,13 +18,7 @@ import { commandAdmissionError } from "../commands.ts";
 import type { AgentsCellRequest, ZeropsCellAdapter } from "../cells.ts";
 import { makeZeropsDataRuntime } from "../runtime.ts";
 import type { ProjectEffectiveAccess, ProjectRef, ZeropsDataAdapter } from "../types.ts";
-import {
-  forge,
-  grantCapabilities,
-  mate,
-  throwawayCleanup,
-  type CapabilityAsk,
-} from "./capabilities.ts";
+import { grantCapabilities, mate, throwawayCleanup, type CapabilityAsk } from "./capabilities.ts";
 import type { GrantCapability, GrantFailure, ProjectOutcome } from "./grant.ts";
 import {
   IDLE_GUARDS,
@@ -67,6 +61,7 @@ const inertAdapter: ZeropsDataAdapter = {
 
 /** Every service resource reads as one agent; nothing else is asked for. */
 const cellAdapter: ZeropsCellAdapter = {
+  readProjectPublicAccess: () => Effect.never,
   readOrganizationLocations: () => Effect.succeed([]),
   readServiceAuthorizedAgents: () => Effect.succeed(["codex"]),
   readServiceMateFlag: () => Effect.succeed({ enabled: "unknown" }),
@@ -480,6 +475,7 @@ describe("capabilities over the access grant", () => {
         // The platform answers again: the next round admits the grant, and the wait ends with it.
         const answered = yield* opened.await(write, 30 * SECOND);
         platform.roundFailure = null;
+        yield* opened.runtime.access.signal({ type: "USER_RETRY" });
         const startedAt = opened.clock.monoMs();
         while (answered.pollUnsafe() === undefined) yield* opened.pass(SECOND);
         yield* Fiber.join(answered);
@@ -573,7 +569,6 @@ describe("capabilities over the access grant", () => {
                   ],
                 };
               },
-              readAccessibleClientProjects: async () => ({ projects: [read], direct: false }),
               fetchProject: async () => read,
             },
             account,
@@ -632,20 +627,6 @@ describe("capabilities over the access grant", () => {
   });
 
   it.each([
-    ["signed-in", ALLOWED],
-    ["idle", { allowed: false, reason: "gitea-session", waitable: false }],
-    ["acquiring", { allowed: false, reason: "gitea-session", waitable: true }],
-    ["reacquiring", { allowed: false, reason: "gitea-session", waitable: true }],
-    ["pending", { allowed: false, reason: "gitea-session", waitable: true }],
-    ["unavailable", { allowed: false, reason: "gitea-session", waitable: false }],
-    ["waiting", { allowed: false, reason: "gitea-session", waitable: false }],
-    ["refused", { allowed: false, reason: "gitea-session", waitable: false }],
-    ["closed", refused("epoch-closed", false)],
-  ] as const)("forge(origin) with its Gitea session %s", (session, expected) => {
-    expect(forge(session)).toEqual(expected);
-  });
-
-  it.each([
     ["in the epoch that minted it", { sameEpoch: true, samePrincipal: true }, ALLOWED],
     ["by a sweep under the same principal", { sameEpoch: false, samePrincipal: true }, ALLOWED],
     [
@@ -681,6 +662,7 @@ describe("capabilities over the access grant", () => {
           // caller's to check.
           platform.roundFailure = null;
           platform.listed = [];
+          yield* opened.runtime.access.signal({ type: "USER_RETRY" });
           const granted = yield* opened.admitProjectWrite();
           while (granted.pollUnsafe() === undefined) yield* opened.pass(SECOND);
           yield* Fiber.join(granted);

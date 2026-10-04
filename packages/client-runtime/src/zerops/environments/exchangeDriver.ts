@@ -2,22 +2,28 @@
  * The exchange driver (DESIGN §4.4): one per account epoch, one environment machine per Mate
  * target, and the only place a door exchange starts.
  *
- * Restore, auto-connect, repair and the user's Connect are demand on it, never connectors of
- * their own: each publishes which targets it wants, and the machine for a target decides when
- * an exchange runs, reads its answer, backs off and waits for a named input.
+ * Repair and the leases — the route's, the Mate left last, an action, the user's Connect — are
+ * demand on it, never connectors of their own (krok-a-hub §3): each publishes which targets it
+ * wants, or holds one until it lets it go, and the machine for a target decides when an exchange
+ * runs, reads its answer, backs off and waits for a named input.
  *
  * - One serialized queue feeds `transitionEnvironment`; the ops it asks for run through the
  *   ports, and their answers come back as events carrying the op's attempt (§6.5).
  * - A credential is installed only when its answer left the machine `held` for that
  *   environment; a late or superseded answer is logged by the machine and dropped.
- * - A target the person asked for — the route's, or one whose Connect they pressed — starts the
- *   moment it can, past every budget. The rest, the background, start in priority order —
- *   remembered targets, then auto-connect — at most `EXCHANGE_CONCURRENCY` at once and at the
+ * - A target the person asked for — the route's, the one on screen, one an action of theirs
+ *   holds, or one whose Connect they pressed — starts the moment it can, past every budget. The
+ *   background — the Mate left last — starts at most `EXCHANGE_CONCURRENCY` at once and at the
  *   door's mint pace (`DOOR_MINT_PACE`, I12), which every exchange that may mint spends; every
  *   other wanted target waits `on: budget`. A target with a session kept from an earlier load
  *   mints nothing while its Mate still holds it, so it neither waits on the pace nor spends it.
  *   A mint the platform answers 429 holds the background a while.
  * - An exchange whose attempt ends without it (its deadline, a retirement) is aborted.
+ * - A Mate's backoff cap (`RETRY_CAP`) is kept across loads (`capped`): until it ends, the
+ *   background asks that Mate nothing, and one that fails again once it ends is capped again at
+ *   once — a load no longer starts its ladder over with five exchanges in its first minute.
+ * - While a press is in flight in this browser (`holdBackground`), the background starts no
+ *   exchange that mints: the press reads the token list every throwaway is written to.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
 
@@ -26,7 +32,9 @@ import type { IdentityExchangeReason } from "../diagnostics.ts";
 import { DOOR_MINT_PACE, makeMintPace } from "../doorThrowaway.ts";
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import {
+  CAPPED_RETRY_MS,
   initialEnvironment,
+  RETRY_CAP,
   transitionEnvironment,
   type ContainerVerdict,
   type DescriptorFacts,
@@ -39,12 +47,24 @@ import {
   type Presence,
 } from "./environmentMachine.ts";
 import { selectReachability, type Reachability } from "./reachability.ts";
+import { targetProject } from "./targets.ts";
 
 /** `projectId:serviceId` (AL-05). */
 export type TargetKey = string;
 
-/** What an emitter publishes the whole of: the route's target, remembered targets, auto-connect. */
-export type DemandReason = "route" | "record" | "auto-connect";
+/**
+ * What an emitter publishes the whole of: the route's target, the Mate on screen — its own view,
+ * its birth, asked for but capped as no route is — and the Mate left last (krok-a-hub §3, kept
+ * warm a while).
+ */
+export type DemandReason = "route" | "screen" | "recent";
+
+/**
+ * A lease one caller holds on one target until it lets it go: an action from outside the Mate's
+ * own view (a send, a Stop, a rename), or the user's Connect. Each counts: the target is wanted
+ * while any holds.
+ */
+export type LeaseKind = "action" | "user";
 
 /** Background exchanges in flight at once, counting asked-for ones (§4.4). */
 export const EXCHANGE_CONCURRENCY = 3;
@@ -125,6 +145,14 @@ export interface ExchangeDriverPorts<C> {
    * (`keptSessions.ts`): it starts past the mint pace and spends none of it.
    */
   readonly kept?: (key: TargetKey) => boolean;
+  /**
+   * Each target's backoff cap as loads keep it: until when, wall ms, the background asks its Mate
+   * nothing. Absent: every load starts each ladder over.
+   */
+  readonly capped?: {
+    readonly until: (key: TargetKey) => number | null;
+    readonly remember: (key: TargetKey, until: number | null) => void;
+  };
   /** The supervisor's `retryNow` for a link in backoff. */
   readonly retryLink: (environmentId: EnvironmentId) => void;
   /** The inventory re-reads this target's presence. */
@@ -151,14 +179,23 @@ export type ConnectOutcome =
 export interface ExchangeDriver {
   /** Every target the inventory or a record names, as they stand now. */
   readonly setTargets: (targets: ReadonlyArray<ExchangeTarget>) => void;
+  /** A project being deleted takes no demand, while its leases remain available on failure. */
+  readonly setDeleting: (projectId: string, deleting: boolean) => void;
   /** Replaces the whole set of targets one emitter wants. */
   readonly setDemand: (reason: DemandReason, keys: Iterable<TargetKey>) => void;
+  /** The target is wanted until the answer is called; calling it again does nothing. */
+  readonly hold: (key: TargetKey, kind: LeaseKind) => () => void;
   /**
-   * The user's Connect: the target is wanted from now on, and this is a user retry. Answers
-   * with the installed environment, or with the verdict the machine settled on instead.
+   * The user's Connect: a user retry of a target its caller holds (`hold`). Answers with the
+   * installed environment, or with the verdict the machine settled on instead.
    */
   readonly connect: (key: TargetKey, reason: IdentityExchangeReason) => Promise<ConnectOutcome>;
   readonly setAccount: (guards: AccountGuards) => void;
+  /**
+   * A press is in flight in this browser: the background starts no exchange that mints until it
+   * ends. The person's own and a kept session's still start.
+   */
+  readonly holdBackground: (held: boolean) => void;
   readonly setVisible: (visible: boolean) => void;
   /** §6.4's coalesced wake; a visible one fires pending retries now. */
   readonly wake: (visible: boolean) => void;
@@ -188,19 +225,32 @@ interface Entry {
   installing: number | null;
   /** The reason the user's last Connect gave; the target's exchanges carry it. */
   userReason: IdentityExchangeReason | null;
+  /** Until when its backoff cap holds, wall ms, as loads keep it (`capped`); null: none. */
+  capUntil: number | null;
+  /** It was capped in this load or an earlier one, and has not connected since. */
+  capped: boolean;
 }
 
-/** The demands in priority order (§4.4): the user's Connect ranks after the route's target. */
-const PRIORITY: ReadonlyArray<DemandReason | "user"> = ["route", "user", "record", "auto-connect"];
+/** The demands in priority order (§4.4): the user's Connect ranks after the route's and the screen's. */
+const PRIORITY: ReadonlyArray<DemandReason | LeaseKind> = [
+  "route",
+  "screen",
+  "user",
+  "action",
+  "recent",
+];
 
 /** The demands of the person's own asking: past every budget. */
-const ASKED_RANK = PRIORITY.indexOf("user");
+const ASKED_RANK = PRIORITY.indexOf("action");
 
 const EXCHANGE_REASON: Record<DemandReason, IdentityExchangeReason> = {
   route: "restore",
-  record: "restore",
-  "auto-connect": "auto-connect",
+  screen: "restore",
+  recent: "restore",
 };
+
+const isLease = (reason: DemandReason | LeaseKind): reason is LeaseKind =>
+  reason === "action" || reason === "user";
 
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
@@ -215,9 +265,13 @@ const inFlightAttempt = (machine: EnvironmentMachine): number | null => {
 export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDriver {
   const { clock } = ports;
   const entries = new Map<TargetKey, Entry>();
-  const demands = new Map<DemandReason | "user", ReadonlySet<TargetKey>>(
-    PRIORITY.map((reason) => [reason, new Set<TargetKey>()]),
-  );
+  const demands = new Map<DemandReason, ReadonlySet<TargetKey>>();
+  const deleting = new Set<string>();
+  /** How many holders each lease kind has on each target (`hold`). */
+  const holds = new Map<LeaseKind, Map<TargetKey, number>>([
+    ["action", new Map()],
+    ["user", new Map()],
+  ]);
   const listeners = new Set<() => void>();
   let published: ReadonlyMap<TargetKey, EnvironmentMachine> = new Map();
   const connects = new Map<TargetKey, Array<(outcome: ConnectOutcome) => void>>();
@@ -231,6 +285,8 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     grantVerifiedAtMs: null,
   };
   let visible = false;
+  /** A press is in flight in this browser (`holdBackground`). */
+  let holding = false;
   let disposed = false;
   const queue: Array<() => void> = [];
   let scheduled = false;
@@ -240,12 +296,15 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
   const entryFor = (key: TargetKey, record: EnvironmentId | null): Entry => {
     const existing = entries.get(key);
     if (existing !== undefined) return existing;
+    const capUntil = ports.capped?.until(key) ?? null;
     const created: Entry = {
       machine: initialEnvironment({ record }),
       cancelTimer: null,
       inFlight: new Map(),
       installing: null,
       userReason: null,
+      capUntil,
+      capped: capUntil !== null,
     };
     entries.set(key, created);
     return created;
@@ -259,8 +318,14 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     entry.inFlight.clear();
   };
 
-  const wantedBy = (key: TargetKey): ReadonlyArray<DemandReason | "user"> =>
-    PRIORITY.filter((reason) => demands.get(reason)?.has(key) === true);
+  const wantedBy = (key: TargetKey): ReadonlyArray<DemandReason | LeaseKind> =>
+    deleting.has(targetProject(key))
+      ? []
+      : PRIORITY.filter((reason) =>
+          isLease(reason)
+            ? (holds.get(reason)?.get(key) ?? 0) > 0
+            : demands.get(reason)?.has(key) === true,
+        );
 
   const reasonFor = (key: TargetKey, entry: Entry): IdentityExchangeReason => {
     const credential = entry.machine.credential;
@@ -274,7 +339,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     }
     const top = wantedBy(key)[0];
     if (top === undefined) return "restore";
-    return top === "user" ? (entry.userReason ?? "user") : EXCHANGE_REASON[top];
+    return isLease(top) ? (entry.userReason ?? "user") : EXCHANGE_REASON[top];
   };
 
   // ── Effects ────────────────────────────────────────────────────────────────────────────────
@@ -365,10 +430,35 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     }
   };
 
+  /**
+   * Keeps the target's cap as its machine moved: the cap its ladder reached, five minutes from a
+   * failure once it was capped, none once it holds a credential. The route's Mate is never capped.
+   */
+  const keepCap = (key: TargetKey, entry: Entry, before: EnvironmentMachine): void => {
+    if (ports.capped === undefined) return;
+    const { credential, failures, guards } = entry.machine;
+    let until = entry.capUntil;
+    if (credential.kind === "held") {
+      until = null;
+      entry.capped = false;
+    } else if (credential.kind === "backoff" && !guards.routeTarget && failures > before.failures) {
+      if (failures >= RETRY_CAP) {
+        until = credential.retryAt.wall;
+        entry.capped = true;
+      } else if (entry.capped) {
+        until = clock.now().wall + CAPPED_RETRY_MS;
+      }
+    }
+    if (until === entry.capUntil) return;
+    entry.capUntil = until;
+    ports.capped.remember(key, until);
+  };
+
   /** Feeds one event to one target's machine, publishes its state, then runs its effects. */
   const step = (key: TargetKey, event: EnvironmentEvent): void => {
     const entry = entries.get(key);
     if (entry === undefined) return;
+    const before = entry.machine;
     let { state, effects } = transitionEnvironment(entry.machine, event, context());
     // A slot is held only by the exchange it started: one that ended gives it back at once.
     if (state.credential.kind !== "exchanging" && state.guards.budget) {
@@ -381,6 +471,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       effects = [...effects, ...returned.effects];
     }
     entry.machine = state;
+    keepCap(key, entry, before);
     // An op whose attempt ended without its answer is abandoned.
     const current = inFlightAttempt(state);
     for (const [attempt, controller] of entry.inFlight) {
@@ -484,12 +575,15 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
    * budget back from every other one — so a slot is never held by a target that waits on
    * something else. An asked-for target is handed one whenever it would start; the background
    * starts nothing past the concurrency or the mint pace, counting the mint each descriptor
-   * probe in flight may still spend.
+   * probe in flight may still spend, nothing for a Mate whose cap holds, and nothing that mints
+   * while a press is in flight.
    */
   const allocate = (): void => {
     const now = clock.now();
     const ordered = [...entries.keys()].sort((left, right) => rank(left) - rank(right));
     let paceBound = false;
+    /** When the first cap holding a wanted target ends, wall ms. */
+    let capEnds: number | null = null;
     for (const key of ordered) {
       const entry = entries.get(key)!;
       const running = [...entries.values()].map((other) => other.machine);
@@ -497,9 +591,17 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       const owed = owedMints();
       const paced = pace.readyAt(now.mono, owed) <= now.mono;
       let budget = false;
+      const capHolds = !asked(key) && entry.capUntil !== null && entry.capUntil > now.wall;
+      if (capHolds && wantedBy(key).length > 0) {
+        capEnds = Math.min(capEnds ?? entry.capUntil!, entry.capUntil!);
+      }
+      const held = capHolds || (holding && !asked(key) && !kept(key));
       if (entry.machine.credential.kind === "exchanging") {
         budget = entry.machine.guards.budget;
-      } else if (asked(key) || (exchanging < EXCHANGE_CONCURRENCY && (paced || kept(key)))) {
+      } else if (
+        !held &&
+        (asked(key) || (exchanging < EXCHANGE_CONCURRENCY && (paced || kept(key))))
+      ) {
         const trial = transitionEnvironment(
           entry.machine,
           { type: "GUARDS", guards: guardsFor(key, true) },
@@ -514,12 +616,14 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     }
     cancelMintTimer?.();
     cancelMintTimer = null;
-    // A target held back by the pace gets its slot back when the pace has a mint for it.
-    if (paceBound) {
-      const owed = owedMints();
-      cancelMintTimer = clock.setTimer(pace.readyAt(now.mono, owed) - now.mono, () =>
-        enqueue(() => undefined),
-      );
+    // A target held back by the pace gets its slot back when the pace has a mint for it, and one
+    // held by its cap when the cap ends.
+    const waits = [
+      ...(paceBound ? [pace.readyAt(now.mono, owedMints()) - now.mono] : []),
+      ...(capEnds === null ? [] : [capEnds - now.wall]),
+    ];
+    if (waits.length > 0) {
+      cancelMintTimer = clock.setTimer(Math.min(...waits), () => enqueue(() => undefined));
     }
   };
 
@@ -527,6 +631,12 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
 
   const outcomeOf = (machine: EnvironmentMachine): ConnectOutcome | null => {
     const credential = machine.credential;
+    if (!machine.guards.want)
+      return {
+        _tag: "NotConnected",
+        reachability: selectReachability(machine, null),
+        descriptor: machine.descriptor,
+      };
     switch (credential.kind) {
       case "held":
         // A Connect answers once the registry took the credential.
@@ -616,11 +726,37 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
           }
         }
       }),
+    setDeleting: (projectId, accepted) =>
+      enqueue(() => {
+        if (accepted) deleting.add(projectId);
+        else deleting.delete(projectId);
+        // Apply before the next queued link event can request a descriptor on the old guards.
+        for (const [key, entry] of entries) {
+          if (targetProject(key) === projectId)
+            step(key, { type: "GUARDS", guards: guardsFor(key, entry.machine.guards.budget) });
+        }
+      }),
     setDemand: (reason, keys) =>
       enqueue(() => {
         // A key no target names yet is wanted once the inventory or a record names it.
         demands.set(reason, new Set(keys));
       }),
+    hold: (key, kind) => {
+      const held = holds.get(kind)!;
+      enqueue(() => {
+        held.set(key, (held.get(key) ?? 0) + 1);
+      });
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        enqueue(() => {
+          const count = (held.get(key) ?? 1) - 1;
+          if (count > 0) held.set(key, count);
+          else held.delete(key);
+        });
+      };
+    },
     connect: (key, reason) =>
       new Promise<ConnectOutcome>((resolve) => {
         if (disposed) {
@@ -630,14 +766,17 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
         enqueue(() => {
           const entry = entryFor(key, null);
           entry.userReason = reason;
-          demands.set("user", new Set([...demands.get("user")!, key]));
           connects.set(key, [...(connects.get(key) ?? []), resolve]);
-          step(key, { type: "USER_RETRY" });
+          if (!deleting.has(targetProject(key))) step(key, { type: "USER_RETRY" });
         });
       }),
     setAccount: (guards) =>
       enqueue(() => {
         account = guards;
+      }),
+    holdBackground: (held) =>
+      enqueue(() => {
+        holding = held;
       }),
     setVisible: (next) =>
       enqueue(() => {

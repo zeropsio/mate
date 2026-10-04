@@ -26,7 +26,7 @@ const VALUE = "platform-value-7f3a";
 const PULL_REQUESTS: KnownSurface<ReadonlyArray<string>> = {
   subject: "pull requests",
   entity: "repository",
-  source: "gitea",
+  source: "zerops",
   checking: null,
   negative: (value) => (value.length === 0 ? NEGATIVE : null),
 };
@@ -56,6 +56,16 @@ interface CopyRow {
 /** DESIGN §3.4, one row per line of the rendering table. */
 const RENDERING: ReadonlyArray<CopyRow> = [
   {
+    name: "queued admission: Waiting for a data slot, without pretending a read started",
+    shown: { state: "unread", waitingFor: "data-slot" },
+    expected: {
+      region: "message",
+      message: { text: "Waiting for a data slot…", afterMs: 0, tone: "quiet" },
+      affordance: null,
+      current: false,
+    },
+  },
+  {
     name: "unread: a placeholder, nothing for 400 ms, then Checking…",
     shown: { state: "unread", waitingFor: null },
     expected: {
@@ -75,15 +85,6 @@ const RENDERING: ReadonlyArray<CopyRow> = [
     },
   },
   {
-    name: "unread(waitingFor gitea-session): Signing in to Gitea…",
-    shown: { state: "unread", waitingFor: "gitea-session" },
-    expected: {
-      region: "placeholder",
-      message: { text: "Signing in to Gitea…", afterMs: 0, tone: "quiet" },
-      affordance: null,
-    },
-  },
-  {
     name: "unread(waitingFor mate-session): Waiting for this Mate to connect…",
     shown: { state: "unread", waitingFor: "mate-session" },
     expected: {
@@ -93,12 +94,32 @@ const RENDERING: ReadonlyArray<CopyRow> = [
     },
   },
   {
+    name: "a receiver reconnects visibly before its first baseline",
+    shown: {
+      state: "failed",
+      failure: { kind: "transport", detail: "socket closed" },
+      atMs: 1_000,
+      attempt: 1,
+      retryAtMs: 104_000,
+    },
+    expected: {
+      region: "message",
+      message: {
+        text: "Reconnecting… Changes while disconnected may be missing.",
+        afterMs: 0,
+        tone: "notice",
+      },
+      affordance: { kind: "retry-now", label: "Try now" },
+      current: false,
+    },
+  },
+  {
     name: "failed: a region message that names the cause, and Try again",
     shown: { state: "failed", failure: TIMEOUT, atMs: 1_000, attempt: 1, retryAtMs: 104_000 },
     expected: {
       region: "message",
       message: {
-        text: "Couldn't read pull requests. Gitea didn't answer.",
+        text: "Couldn't read pull requests. Zerops didn't answer.",
         afterMs: 0,
         tone: "alert",
       },
@@ -138,7 +159,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
       retryAtMs: 104_000,
     },
     expected: {
-      message: { text: "Couldn't read pull requests. Gitea said no.", afterMs: 0, tone: "alert" },
+      message: { text: "Couldn't read pull requests. Zerops said no.", afterMs: 0, tone: "alert" },
       affordance: { kind: "retry", label: "Try again" },
     },
   },
@@ -233,7 +254,7 @@ const RENDERING: ReadonlyArray<CopyRow> = [
     expected: {
       region: "value",
       message: {
-        text: "Not up to date. Gitea didn't answer. Trying again in 8 s.",
+        text: "Not up to date. Zerops didn't answer. Trying again in 8 s.",
         afterMs: 0,
         tone: "notice",
       },
@@ -253,6 +274,42 @@ const RENDERING: ReadonlyArray<CopyRow> = [
       message: { text: "Reconnecting…", afterMs: 0, tone: "notice" },
       affordance: { kind: "retry-now", label: "Try now" },
       current: false,
+    },
+  },
+  {
+    name: "receiver recovery shows the coverage gap beside the kept data",
+    shown: known(["#1"], {
+      kind: "stale",
+      reason: { kind: "source-recovering", retryAtMs: 104_000, coverageGap: true },
+      sinceMs: 95_000,
+    }),
+    context: { ...CONTEXT, asOfTime: "00:00:01" },
+    expected: {
+      region: "value",
+      message: {
+        text: "Reconnecting… Last data as of 00:00:01. Changes while disconnected may be missing.",
+        afterMs: 0,
+        tone: "notice",
+      },
+      affordance: { kind: "retry-now", label: "Try now" },
+      current: false,
+    },
+  },
+  {
+    name: "receiver recovery without a time label still names the coverage gap",
+    shown: known(["#1"], {
+      kind: "stale",
+      reason: { kind: "source-recovering", retryAtMs: 104_000, coverageGap: true },
+      sinceMs: 95_000,
+    }),
+    expected: {
+      message: {
+        text: "Reconnecting… Changes while disconnected may be missing.",
+        afterMs: 0,
+        tone: "notice",
+      },
+      current: false,
+      affordance: { kind: "retry-now", label: "Try now" },
     },
   },
   {
@@ -372,11 +429,11 @@ const PREREQUISITES: ReadonlyArray<Prerequisite | null> = [
   null,
   "zerops-session",
   "access-grant",
-  "gitea-session",
   "mate-session",
   "presence",
   "visible",
   "online",
+  "data-slot",
 ];
 const EVIDENCE: ReadonlyArray<AbsenceEvidence> = [
   "direct-not-found",
@@ -446,7 +503,7 @@ const everyShown: ReadonlyArray<Shown<ReadonlyArray<string>>> = [
   ),
 ];
 
-const SOURCES: ReadonlyArray<KnowledgeSource> = ["zerops", "gitea", "mate"];
+const SOURCES: ReadonlyArray<KnowledgeSource> = ["zerops", "mate"];
 const everySurface: ReadonlyArray<KnownSurface<ReadonlyArray<string>>> = SOURCES.flatMap(
   (source) => [
     { ...PULL_REQUESTS, source },
@@ -556,7 +613,7 @@ describe("knownPresentation over every Shown state (the vector)", () => {
       PULL_REQUESTS,
       CONTEXT,
     );
-    expect(noRetry.message?.text).toBe("Not up to date. Gitea didn't answer.");
+    expect(noRetry.message?.text).toBe("Not up to date. Zerops didn't answer.");
   });
 
   it("uses the glossary: never 'environment' in user-facing copy", () => {

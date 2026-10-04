@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { PROJECT_ALL_CLEAR, projectAttention } from "./projectAttention.ts";
+import { changesCountWords, PROJECT_ALL_CLEAR, projectAttention } from "./projectAttention.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
 
 function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
@@ -10,11 +10,9 @@ function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
     title: "Cache the link previews",
     kind: "code",
     mateProjectId: "p-theo",
-    author: "mate-p-theo",
     url: undefined,
-    checks: "passing",
-    checkWord: "Passing",
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: "abc",
@@ -30,6 +28,7 @@ const EMPTY = {
   failedStops: [],
   pullRequests: [],
   notLive: 0,
+  notLiveAtLeast: false,
   canRelease: false,
   mateNames: new Map([["p-theo", "Theo"]]),
 };
@@ -87,7 +86,7 @@ describe("projectAttention", () => {
       pullRequests: [pull({ mergeability: "conflicting" })],
     });
     expect(item?.verb).toBe("Ask Theo");
-    expect(item?.text).toBe("#4 needs a rebase");
+    expect(item?.text).toBe("#4 conflicts with main");
   });
 
   it("falls back to a nameless Mate rather than a blank verb", () => {
@@ -99,10 +98,10 @@ describe("projectAttention", () => {
     expect(item?.verb).toBe("Ask the Mate");
   });
 
-  it("leaves checks that are merely running alone: waiting is the correct move", () => {
+  it("leaves a change HQ is still checking alone: waiting is the correct move", () => {
     const items = projectAttention({
       ...EMPTY,
-      pullRequests: [pull({ mergeability: "conflicting", checks: "pending" })],
+      pullRequests: [pull({ mergeability: "checking" })],
     });
     expect(items).toEqual([]);
   });
@@ -113,10 +112,12 @@ describe("projectAttention", () => {
   });
 
   it.each([
-    [1, "1 change not live"],
-    [4, "4 changes not live"],
-  ])("counts %i as %s", (notLive, text) => {
-    const [item] = projectAttention({ ...EMPTY, notLive, canRelease: true });
+    [1, false, "1 change not live"],
+    [4, false, "4 changes not live"],
+    // HQ stopped counting: at least that many.
+    [10000, true, "10000+ changes not live"],
+  ])("counts %i (at least: %s) as %s", (notLive, notLiveAtLeast, text) => {
+    const [item] = projectAttention({ ...EMPTY, notLive, notLiveAtLeast, canRelease: true });
     expect(item?.text).toBe(text);
   });
 
@@ -136,5 +137,15 @@ describe("projectAttention", () => {
       // A release is the project's own verb and needs no target.
       undefined,
     ]);
+  });
+});
+
+describe("changesCountWords: how many, and at least how many where HQ stopped counting", () => {
+  it.each([
+    [1, false, "1 change"],
+    [12, false, "12 changes"],
+    [10000, true, "10000+ changes"],
+  ] as const)("%i (at least: %s) reads %s", (count, atLeast, words) => {
+    expect(changesCountWords(count, atLeast)).toBe(words);
   });
 });

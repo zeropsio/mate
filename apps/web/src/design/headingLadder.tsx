@@ -16,7 +16,7 @@ const group = (name: string): ZeropsGroup =>
   ({
     groupId: `g-${name}`,
     name,
-    nameSource: "store",
+    nameSource: "hq",
     environments: [],
     pending: [],
     production: undefined,
@@ -50,6 +50,7 @@ const input = (over: Partial<HeadingLineInput>): HeadingLineInput => ({
   production: undefined,
   stages: [],
   waiting: 0,
+  waitingAtLeast: false,
   allOnStage: false,
   ...over,
 });
@@ -160,7 +161,7 @@ const RUNGS: ReadonlyArray<Rung> = [
     }),
   },
   {
-    label: "14″ A stage's first deploy waits for the group's runner",
+    label: "14″ A stage's first deploy HQ has under way",
     name: "Brine",
     chips: [stageChip("creating")],
     line: input({
@@ -168,7 +169,7 @@ const RUNGS: ReadonlyArray<Rung> = [
         {
           projectId: "stage",
           name: "stage",
-          coming: { kind: "coming", step: "runner", why: "not-started" },
+          coming: coming("deploy-on-its-way"),
           serves: false,
         },
       ],

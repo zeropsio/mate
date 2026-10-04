@@ -20,8 +20,7 @@ import { ThreadArchiveBlockedError, useThreadActions } from "~/hooks/useThreadAc
 import { useThreadShells } from "~/state/entities";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useUiStateStore } from "~/uiStateStore";
-import { useCrew } from "~/zerops/crew/useCrew";
-import { menuMemory } from "~/zerops/menuMemory";
+import { useCrew, useMateCrew } from "~/zerops/crew/useCrew";
 import { useRegistrationRecord } from "~/zerops/registrationRecords";
 import { mateIdentityPose } from "~/zerops/mateIdentities";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -38,6 +37,7 @@ import {
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CrewmateMenu } from "../zerops/crew/CrewmateMenu";
+import { crewFaces } from "../zerops/crew/SidebarCrewLine.logic";
 import { MateFace } from "../zerops/primitives";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
 import {
@@ -689,8 +689,8 @@ export interface ConversationStripProps {
 
 /**
  * The line where a Mate lives: its chats read off the thread shells, its crew
- * off the crew's feed — or, until the feed answers, what this browser last
- * read of it (`menuMemory.ts`) — and its presses: opening a chat, closing one
+ * off the crew's feed — or, until the feed answers, the crew HQ holds of it
+ * (`useMateCrew`) — and its presses: opening a chat, closing one
  * of the Mate's, and a crewmate's menu. Nothing where no Mate lives.
  */
 export function ConversationStrip({
@@ -710,6 +710,8 @@ export function ConversationStrip({
   const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
   const { view } = useCrew(environmentId);
   const projectId = useRegistrationRecord(environmentId)?.projectRef?.projectId;
+  // Until its feed answers, the crew HQ holds of the Mate, at rest.
+  const held = useMateCrew(projectId ?? null).crew;
   const router = useRouter();
   const { archiveThread } = useThreadActions();
   const chats = useMemo(
@@ -720,7 +722,7 @@ export function ConversationStrip({
 
   const crew = lineCrew({
     view,
-    remembered: projectId === undefined ? undefined : menuMemory().crews[projectId],
+    remembered: held === null ? undefined : { faces: crewFaces(held, false) },
     crewChat,
     mateName: mate.name,
     connected: mate.connected,

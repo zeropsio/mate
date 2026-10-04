@@ -1,162 +1,305 @@
-import { releaseInFlightReason } from "@t3tools/client-runtime/zerops";
-import { CHECKING_RELEASE } from "@t3tools/client-runtime/zerops/flow";
+import {
+  RELEASE_CHECKING,
+  type AppRecipe,
+  type GroupEnvironmentRowInput,
+  type GroupStops,
+  type MovedCommits,
+  type ProductionRun,
+  type ReleaseGate,
+} from "@t3tools/client-runtime/zerops";
+import { jobInFlight, type HqJob } from "@t3tools/client-runtime/zerops/hq";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { Release } from "@t3tools/shared/hqRelease";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsGroupDeployState } from "./useZeropsGroupDeploys";
-import type { ZeropsGroupForgeState } from "./useZeropsGroupForge";
-import { joinProjectFlows } from "./ZeropsProjectFlowProvider";
+import { joinProjectFlows, snapshotReleasePlan } from "./ZeropsProjectFlowProvider";
 
 const GROUPS = [
   { groupId: "g1", slug: "harbor" },
   { groupId: "g2", slug: "links" },
 ];
 
-const deployState = (): ZeropsGroupDeployState => ({
-  declarations: [],
-  environments: [],
-  pullRequests: [],
+const stopsOf = (environments: ReadonlyArray<GroupEnvironmentRowInput> = []): GroupStops => ({
+  declarations: environments.map((entry) => ({
+    name: entry.environment,
+    tier: entry.tier,
+    project: entry.projectId,
+    sources: entry.sources,
+  })),
+  environments,
   missing: [],
-  mainHeadRepositories: new Map([["app", "appdev"]]),
-  mainHeads: new Map([["app", "3f9c1b2000000000000000000000000000000000"]]),
-  groupHead: undefined,
-  releaseContents: [],
 });
 
 const NOW = Date.parse("2026-09-24T10:05:00Z");
 const NOTHING_WITHHELD: ReadonlyMap<string, string> = new Map();
-const NO_FAILURES = { deploys: new Map<string, string>(), forge: new Map<string, string>() };
 
-const forgeState = (): ZeropsGroupForgeState => ({
-  repositories: [],
-  pullRequests: [],
-  merged: [],
-  released: { releases: [], tags: ["v0.1.0"] },
+/** A release HQ approved of `entries` (`{service: sha}`), made at `at`. */
+const approved = (tag: string, entries: Record<string, string>, at: string): Release => ({
+  tag,
+  sha: "9".repeat(40),
+  entries: Object.entries(entries).map(([service, sha]) => ({ service, sha })),
+  by: "u1",
+  at,
+  state: "approved",
+  reason: null,
+  rollbackOf: null,
 });
+const FIRST = approved("v0.1.0", { app: "1".repeat(40) }, "2026-09-24T09:00:00Z");
+
+/** HQ's job of a production deploy of `sha`, in `state` since `at`. */
+const record = (sha: string, state: HqJob["state"], at: string): HqJob => ({
+  id: "1",
+  kind: "deploy",
+  service: "app",
+  sha,
+  state,
+  cause: "release",
+  ref: "v0.1.1",
+  reason: null,
+  appVersionId: null,
+  processId: null,
+  requestedBy: null,
+  at,
+  endedAt: jobInFlight({ state }) ? null : at,
+  supersededBy: null,
+});
+
+function join(input: {
+  readonly stops?: ReadonlyMap<string, GroupStops>;
+  readonly releases?: ReadonlyMap<string, ReadonlyArray<Release>>;
+  readonly repos?: ReadonlyMap<string, ReadonlyArray<RepoListEntry>>;
+  readonly recipes?: ReadonlyMap<string, AppRecipe>;
+  readonly permissions?: ReadonlyMap<string, ReleaseGate | undefined>;
+  readonly live?: ReadonlyMap<
+    string,
+    {
+      readonly moved: MovedCommits;
+      readonly untold: ReadonlyArray<string>;
+      readonly runs: ReadonlyMap<string, ProductionRun> | undefined;
+    }
+  >;
+  readonly withheld?: ReadonlyMap<string, string>;
+}) {
+  return joinProjectFlows({
+    groups: GROUPS,
+    stops: input.stops ?? new Map(),
+    releases: input.releases ?? new Map(),
+    repos: input.repos ?? new Map(),
+    recipes: input.recipes ?? new Map(),
+    permissions: input.permissions ?? new Map(),
+    live: input.live ?? new Map(),
+    changes: null,
+    changesFailure: undefined,
+    nowMs: NOW,
+    withheld: input.withheld ?? NOTHING_WITHHELD,
+  });
+}
 
 describe("joinProjectFlows", () => {
   it("G2 resolving leaves G1's flow", () => {
-    const g1Deploys = deployState();
-    const g1Forge = forgeState();
-    const before = joinProjectFlows({
-      groups: GROUPS,
-      deploys: new Map([["g1", g1Deploys]]),
-      forges: new Map([["g1", g1Forge]]),
-      mayRelease: true,
-      nowMs: NOW,
-      withheld: NOTHING_WITHHELD,
-      failures: NO_FAILURES,
+    const g1Stops = stopsOf();
+    const g1Releases = [FIRST];
+    const before = join({
+      stops: new Map([["g1", g1Stops]]),
+      releases: new Map([["g1", g1Releases]]),
     });
-    const after = joinProjectFlows({
-      groups: GROUPS,
-      deploys: new Map([
-        ["g1", g1Deploys],
-        ["g2", deployState()],
+    const after = join({
+      stops: new Map([
+        ["g1", g1Stops],
+        ["g2", stopsOf()],
       ]),
-      forges: new Map([["g1", g1Forge]]),
-      mayRelease: true,
-      nowMs: NOW,
-      withheld: NOTHING_WITHHELD,
-      failures: NO_FAILURES,
+      releases: new Map([["g1", g1Releases]]),
     });
     expect(after.get("g2")).toBeDefined();
     expect(after.get("g1")).toBe(before.get("g1"));
   });
 
-  it("offers a release only once both halves are read", () => {
-    const deploys = new Map([["g1", deployState()]]);
-    const halfJoined = joinProjectFlows({
-      groups: GROUPS,
-      deploys,
-      forges: new Map(),
-      mayRelease: true,
-      nowMs: NOW,
-      withheld: NOTHING_WITHHELD,
-      failures: NO_FAILURES,
-    });
-    expect(halfJoined.get("g1")?.release.gate).toEqual({
-      allowed: false,
-      reason: CHECKING_RELEASE,
-    });
-    const joined = joinProjectFlows({
-      groups: GROUPS,
-      deploys,
-      forges: new Map([["g1", forgeState()]]),
-      mayRelease: true,
-      nowMs: NOW,
-      withheld: NOTHING_WITHHELD,
-      failures: NO_FAILURES,
-    });
-    expect(joined.get("g1")?.release.gate).toEqual({ allowed: true });
+  it("knows a group's environments once HQ has told them", () => {
+    const stage: GroupEnvironmentRowInput = {
+      projectId: "stage-1",
+      name: "harbor stage",
+      tier: "stage",
+      sources: ["main"],
+      environment: "stage",
+      keyHeld: true,
+      keyInvalid: false,
+      services: [],
+    };
+    expect(join({ releases: new Map([["g1", [FIRST]]]) }).get("g1")?.declarationsRead).toBe(false);
+    const flow = join({ stops: new Map([["g1", stopsOf([stage])]]) }).get("g1");
+    expect(flow?.declarationsRead).toBe(true);
+    expect(flow?.declarations.map(({ project }) => project)).toEqual(["stage-1"]);
+    expect(flow?.environments.map(({ name }) => name)).toEqual(["harbor stage"]);
   });
 
-  it("says why a release cannot be checked when a half keeps failing, rather than checking for ever", () => {
-    const failing = joinProjectFlows({
-      groups: GROUPS,
-      deploys: new Map(),
-      forges: new Map([["g1", forgeState()]]),
-      mayRelease: true,
-      nowMs: NOW,
-      withheld: NOTHING_WITHHELD,
-      failures: { ...NO_FAILURES, deploys: new Map([["g1", "Gitea did not answer"]]) },
-    });
-    expect(failing.get("g1")?.release.gate).toEqual({
-      allowed: false,
-      reason: "Can't check what can be released: Gitea did not answer.",
-    });
-    const tagsNeverRead = joinProjectFlows({
-      groups: GROUPS,
-      deploys: new Map([["g1", deployState()]]),
-      forges: new Map([["g1", { ...forgeState(), released: { failure: "Gitea did not answer" } }]]),
-      mayRelease: true,
-      nowMs: NOW,
-      withheld: NOTHING_WITHHELD,
-      failures: NO_FAILURES,
-    });
-    expect(tagsNeverRead.get("g1")?.release.gate).toEqual({
-      allowed: false,
-      reason: "Can't check what can be released: Gitea did not answer.",
-    });
-    // Tags kept from an earlier read are stale while the read fails: the
-    // suggestion they would give is not offered, and the releases still show.
-    const tagsStale = joinProjectFlows({
-      groups: GROUPS,
-      deploys: new Map([["g1", deployState()]]),
-      forges: new Map([
-        [
-          "g1",
-          {
-            ...forgeState(),
-            released: {
-              releases: [
-                {
-                  tag: "v0.1.0",
-                  verdict: "approved",
-                  detail: undefined,
-                  line: "",
-                  entries: [],
-                  taggedAt: undefined,
-                },
-              ],
-              tags: ["v0.1.0"],
-              failure: "Gitea did not answer",
+  it("knows a group's releases once HQ has answered them", () => {
+    expect(join({ stops: new Map([["g1", stopsOf()]]) }).get("g1")?.releasesKnown).toBe(false);
+    expect(join({ releases: new Map([["g1", []]]) }).get("g1")?.releasesKnown).toBe(true);
+  });
+
+  describe("the release offered", () => {
+    const MERGED = "2".repeat(40);
+    const GROUP_MAIN = "9".repeat(40);
+    const production: GroupEnvironmentRowInput = {
+      projectId: "prod-1",
+      name: "harbor production",
+      tier: "production",
+      sources: "release",
+      environment: "production",
+      keyHeld: true,
+      keyInvalid: false,
+      services: [{ hostname: "app", appVersionName: `v0.1.0 ${"1".repeat(7)}` }],
+    };
+    const repos: ReadonlyArray<RepoListEntry> = [
+      { name: "appdev", mainHead: MERGED, updatedAt: "2026-09-24T09:30:00Z" },
+      { name: "group", mainHead: GROUP_MAIN, updatedAt: "2026-09-24T09:30:00Z" },
+    ];
+    const recipe: AppRecipe = {
+      tiers: ["stage", "production"],
+      repositories: new Map([["app", "appdev"]]),
+      productionRepositories: new Map([["app", "appdev"]]),
+      declared: new Map([["production", ["app"]]]),
+    };
+    /** What HQ compared a release would put live: the one change on appdev. */
+    const COMPARED: MovedCommits = {
+      state: "known",
+      moved: [
+        {
+          repository: "appdev",
+          services: ["app"],
+          commits: [
+            {
+              sha: MERGED,
+              subject: "Quicker gallery",
+              authorName: "Juno",
+              at: "2026-09-24T09:30:00Z",
+              change: null,
             },
-          },
-        ],
-      ]),
-      mayRelease: true,
-      nowMs: NOW,
-      withheld: NOTHING_WITHHELD,
-      failures: NO_FAILURES,
+          ],
+          total: 1,
+          truncated: false,
+        },
+      ],
+    };
+    const offered = (over: {
+      readonly permission?: ReleaseGate | undefined;
+      readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
+      readonly live?: MovedCommits;
+      readonly untold?: ReadonlyArray<string>;
+      readonly runs?: ReadonlyMap<string, ProductionRun>;
+      readonly withheld?: ReadonlyMap<string, string>;
+    }) =>
+      join({
+        stops: new Map([["g1", stopsOf([production])]]),
+        releases: new Map([["g1", [FIRST]]]),
+        repos: over.repos === undefined ? new Map() : new Map([["g1", over.repos]]),
+        recipes: new Map([["g1", recipe]]),
+        permissions: new Map([["g1", over.permission]]),
+        live: new Map([
+          ["g1", { moved: over.live ?? COMPARED, untold: over.untold ?? [], runs: over.runs }],
+        ]),
+        withheld: over.withheld ?? NOTHING_WITHHELD,
+      }).get("g1")?.release;
+
+    it("lists each production runtime at its repository's main, to tag the recipe's main", () => {
+      const release = offered({ permission: { allowed: true }, repos });
+      expect(release?.gate).toEqual({ allowed: true });
+      expect(release?.entries).toEqual([{ service: "app", commit: MERGED }]);
+      expect(release?.groupHead).toBe(GROUP_MAIN);
+      expect(release?.suggestion).toBe("v0.1.1");
+      expect(release?.contents).toEqual(COMPARED.moved);
     });
-    expect(tagsStale.get("g1")?.release.gate).toEqual({
-      allowed: false,
-      reason: "Can't check what can be released: Gitea did not answer.",
+
+    it("says HQ's rule in its words to one it does not let release", () => {
+      const refusal = {
+        allowed: false,
+        reason: "You need at least Basic user access to this project's production to release it.",
+      } as const;
+      const release = offered({ permission: refusal, repos });
+      expect(release?.gate).toEqual(refusal);
+      expect(release?.permission).toEqual(refusal);
     });
-    expect(tagsStale.get("g1")?.releases.map((release) => release.tag)).toEqual(["v0.1.0"]);
+
+    it.each([
+      ["HQ's rule cannot be asked yet", { permission: undefined, repos }],
+      ["HQ's repositories are not read yet", { permission: { allowed: true }, repos: undefined }],
+      [
+        "HQ has not compared what goes live yet",
+        { permission: { allowed: true }, repos, live: { state: "reading" } },
+      ],
+    ] as const)("is checking while %s", (_case, over) => {
+      expect(offered(over)?.gate).toEqual({ allowed: false, reason: RELEASE_CHECKING });
+    });
+
+    it("names the production services whose commit cannot be told", () => {
+      expect(offered({ permission: { allowed: true }, repos, untold: ["app"] })?.untold).toEqual([
+        "app",
+      ]);
+    });
+
+    it("carries what production runs and the repositories it builds from: what a roll back compares from", () => {
+      const runs = new Map<string, ProductionRun>([
+        ["app", { kind: "commit", sha: "1".repeat(40) }],
+      ]);
+      const release = offered({ permission: { allowed: true }, repos, runs });
+      expect(release?.runs).toBe(runs);
+      expect(release?.repositories).toEqual(new Map([["app", "appdev"]]));
+    });
+
+    it("says why where HQ could not compare what goes live", () => {
+      const release = offered({
+        permission: { allowed: true },
+        repos,
+        live: { state: "failed", reason: "HQ has no such commit." },
+      });
+      expect(release?.gate).toEqual({
+        allowed: false,
+        reason: "Can't check what can be released: HQ has no such commit.",
+      });
+      expect(release?.contents).toEqual([]);
+    });
+
+    it("offers nothing against a production the grant withholds, and says why", () => {
+      const release = offered({
+        permission: { allowed: true },
+        repos,
+        withheld: new Map([["prod-1", "Checking your access to this project…"]]),
+      });
+      expect(release?.gate).toEqual({
+        allowed: false,
+        reason: "Checking your access to this project…",
+      });
+      expect(release?.entries).toEqual([]);
+      expect(release?.contents).toEqual([]);
+      expect(release?.runs).toBeUndefined();
+    });
+
+    it("draws a new flow once what production runs changes", () => {
+      const stops = new Map([["g1", stopsOf([production])]]);
+      const releases = new Map([["g1", [FIRST]]]);
+      const runsOf = (sha: string) =>
+        join({
+          stops,
+          releases,
+          live: new Map([
+            [
+              "g1",
+              {
+                moved: COMPARED,
+                untold: [],
+                runs: new Map<string, ProductionRun>([["app", { kind: "commit", sha }]]),
+              },
+            ],
+          ]),
+        }).get("g1")?.release.runs;
+      expect(runsOf("1".repeat(40))?.get("app")).toEqual({ kind: "commit", sha: "1".repeat(40) });
+      expect(runsOf("3".repeat(40))?.get("app")).toEqual({ kind: "commit", sha: "3".repeat(40) });
+    });
   });
 
-  // Beviro production (2026-09-25): medusa has run v0.1.9's commit since, nextstore moved with
-  // every release after it. The stop is the newest release both run, not its first service's tag.
+  // A production runs several releases at once when its services were released at different
+  // times: a release lists only the services whose `main` moved, so a service keeps running a
+  // release that is older than the newest. The stop is the newest release all its services run.
   it.each([
     {
       name: "a production running several releases is named by the newest one all its services run",
@@ -178,345 +321,80 @@ describe("joinProjectFlows", () => {
     },
   ])("$name", ({ tier, nextstore, label }) => {
     const MEDUSA = "a".repeat(40);
-    const release = (patch: number) => ({
-      tag: `v0.1.${String(patch)}`,
-      verdict: "approved" as const,
-      detail: undefined,
-      line: "",
-      entries: [
-        { service: "medusa", commit: MEDUSA },
-        { service: "nextstore", commit: String(patch - 8).repeat(40) },
-      ],
-      taggedAt: undefined,
-    });
-    const flow = joinProjectFlows({
-      groups: GROUPS,
-      deploys: new Map([
+    const release = (patch: number) =>
+      approved(
+        `v0.1.${String(patch)}`,
+        { medusa: MEDUSA, nextstore: String(patch - 8).repeat(40) },
+        `2026-09-2${String(patch - 9)}T09:00:00Z`,
+      );
+    const flow = join({
+      stops: new Map([
         [
           "g1",
-          {
-            ...deployState(),
-            environments: [
-              {
-                projectId: "env-1",
-                name: `beviro ${tier}`,
-                tier,
-                sources: tier === "production" ? ("release" as const) : ["main"],
-                environment: tier,
-                services: [
-                  { hostname: "medusa", appVersionName: `${MEDUSA} v0.1.9 broker` },
-                  { hostname: "nextstore", appVersionName: `${nextstore} v0.1.13 broker` },
-                ],
-              },
-            ],
-          },
-        ],
-      ]),
-      forges: new Map([
-        [
-          "g1",
-          {
-            ...forgeState(),
-            released: {
-              releases: [13, 12, 11, 10, 9].map(release),
-              tags: ["v0.1.9", "v0.1.10", "v0.1.11", "v0.1.12", "v0.1.13"],
+          stopsOf([
+            {
+              projectId: "env-1",
+              name: `beviro ${tier}`,
+              tier,
+              sources: tier === "production" ? "release" : ["main"],
+              environment: tier,
+              keyHeld: true,
+              keyInvalid: false,
+              services: [
+                { hostname: "medusa", appVersionName: `${MEDUSA} v0.1.9 broker` },
+                { hostname: "nextstore", appVersionName: `${nextstore} v0.1.13 broker` },
+              ],
             },
-          },
+          ]),
         ],
       ]),
-      mayRelease: true,
-      nowMs: NOW,
-      withheld: NOTHING_WITHHELD,
-      failures: NO_FAILURES,
+      releases: new Map([["g1", [13, 12, 11, 10, 9].map(release)]]),
     }).get("g1");
     expect(flow?.environments.map(({ version }) => version.label)).toEqual([label]);
     expect(flow?.environments[0]?.version.sha).toBe(MEDUSA);
   });
 
-  // DESIGN §3.4: a production the grant withholds shows nothing it runs, so nothing measured
-  // against what it runs either — neither what a release would carry nor the offer to make one.
+  // The release v0.1.1 lists MERGED; production still runs RUNNING, and HQ records how its newest
+  // deploy of the app went.
   const RUNNING = "1".repeat(40);
   const MERGED = "2".repeat(40);
-  const CHECKING = "Checking your access to this project…";
-  it.each([
-    ["a production shown", NOTHING_WITHHELD, { allowed: true }, ["Fix the cart"]],
-    [
-      "a production the grant withholds",
-      new Map([["prod-1", CHECKING]]),
-      { allowed: false, reason: CHECKING },
-      [],
-    ],
-    [
-      "a stage the grant withholds",
-      new Map([["stage-1", CHECKING]]),
-      { allowed: true },
-      ["Fix the cart"],
-    ],
-  ] as const)("releases against %s", (_case, withheld, gate, carried) => {
-    const stop = (projectId: string, tier: "production" | "stage") => ({
-      projectId,
-      name: `harbor ${tier}`,
-      tier,
-      sources: "release" as const,
-      environment: tier,
-      services: [{ hostname: "app", appVersionName: RUNNING }],
-    });
-    const flows = joinProjectFlows({
-      groups: GROUPS,
-      deploys: new Map([
+  const TAGGED_AT = "2026-09-24T10:00:00Z";
+  function flowWithProductionDeploy(latest: HqJob | undefined, productionRuns = RUNNING) {
+    return join({
+      stops: new Map([
         [
           "g1",
-          {
-            ...deployState(),
-            environments: [stop("stage-1", "stage"), stop("prod-1", "production")],
-            mainHeads: new Map([["app", MERGED]]),
-            releaseContents: [
-              { service: "app", commits: [{ sha: MERGED, subject: "Fix the cart" }] },
-            ],
-          },
-        ],
-      ]),
-      forges: new Map([["g1", forgeState()]]),
-      mayRelease: true,
-      nowMs: NOW,
-      withheld,
-      failures: NO_FAILURES,
-    });
-    const release = flows.get("g1")?.release;
-    expect(release?.gate).toEqual(gate);
-    expect(
-      release?.contents.flatMap(({ commits }) => commits.map(({ subject }) => subject)),
-    ).toEqual(carried);
-  });
-
-  it("Release is not offered while the newest release tag is pending and production does not run it yet", () => {
-    const production = (sha: string) => ({
-      projectId: "prod-1",
-      name: "harbor production",
-      tier: "production" as const,
-      sources: "release" as const,
-      environment: "production",
-      services: [{ hostname: "app", appVersionName: sha }],
-    });
-    const MERGED = "2".repeat(40);
-    const RUNNING = "1".repeat(40);
-    const join = (runs: string) =>
-      joinProjectFlows({
-        groups: GROUPS,
-        deploys: new Map([
-          [
-            "g1",
+          stopsOf([
             {
-              ...deployState(),
-              environments: [production(runs)],
-              mainHeads: new Map([["app", MERGED]]),
-            },
-          ],
-        ]),
-        forges: new Map([
-          [
-            "g1",
-            {
-              ...forgeState(),
-              released: {
-                releases: [
-                  {
-                    tag: "v0.1.1",
-                    verdict: "pending",
-                    detail: undefined,
-                    line: "",
-                    entries: [{ service: "app", commit: MERGED }],
-                    taggedAt: "2026-09-24T10:00:00Z",
-                  },
-                ],
-                tags: ["v0.1.0", "v0.1.1"],
-                newest: {
-                  tag: "v0.1.1",
-                  verdict: "pending",
-                  entries: [{ service: "app", commit: MERGED }],
-                  taggedAt: "2026-09-24T10:00:00Z",
-                },
-              },
-            },
-          ],
-        ]),
-        mayRelease: true,
-        nowMs: NOW,
-        withheld: NOTHING_WITHHELD,
-        failures: NO_FAILURES,
-      }).get("g1")?.release;
-    expect(join(RUNNING)?.gate).toEqual({
-      allowed: false,
-      reason: releaseInFlightReason("v0.1.1"),
-    });
-    expect(join(RUNNING)?.inFlight).toBe("v0.1.1");
-    expect(join(MERGED)?.inFlight).toBeUndefined();
-  });
-
-  it("after a failed production build with an unread version name, Release is offered again", () => {
-    const MERGED = "2".repeat(40);
-    // The platform names no version after a failed build: what production runs is not read.
-    const release = joinProjectFlows({
-      groups: GROUPS,
-      deploys: new Map([
-        [
-          "g1",
-          {
-            ...deployState(),
-            environments: [
-              {
-                projectId: "prod-1",
-                name: "harbor production",
-                tier: "production" as const,
-                sources: "release" as const,
-                environment: "production",
-                services: [{ hostname: "app" }],
-              },
-            ],
-            mainHeads: new Map([["app", MERGED]]),
-          },
-        ],
-      ]),
-      forges: new Map([
-        [
-          "g1",
-          {
-            ...forgeState(),
-            released: {
-              releases: [
+              projectId: "prod-1",
+              name: "harbor production",
+              tier: "production",
+              sources: "release",
+              environment: "production",
+              keyHeld: true,
+              keyInvalid: false,
+              services: [
                 {
-                  tag: "v0.1.1",
-                  verdict: "refused",
-                  detail: undefined,
-                  line: "",
-                  entries: [{ service: "app", commit: MERGED }],
-                  taggedAt: "2026-09-24T10:00:00Z",
+                  hostname: "app",
+                  appVersionName: productionRuns,
+                  ...(latest === undefined ? {} : { deploy: { latest, live: null } }),
                 },
               ],
-              tags: ["v0.1.0", "v0.1.1"],
-              newest: {
-                tag: "v0.1.1",
-                verdict: "refused",
-                entries: [{ service: "app", commit: MERGED }],
-                taggedAt: "2026-09-24T10:00:00Z",
-              },
             },
-          },
+          ]),
         ],
       ]),
-      mayRelease: true,
-      nowMs: NOW,
-      withheld: NOTHING_WITHHELD,
-      failures: NO_FAILURES,
-    }).get("g1")?.release;
-    expect(release?.inFlight).toBeUndefined();
-    expect(release?.gate).toEqual({ allowed: true });
-    expect(release?.suggestion).toBe("v0.1.2");
-  });
-
-  // The broker's production deploy of the commit v0.1.1 lists, read through the
-  // stage that runs it; production still runs the old commit. Newest first, as
-  // Gitea sends a commit's statuses.
-  function flowWithProductionStatuses(
-    production: ReadonlyArray<{
-      readonly state: "pending" | "success" | "failure";
-      readonly created_at?: string;
-    }>,
-    productionRuns: string = RUNNING,
-  ) {
-    return joinProjectFlows({
-      groups: GROUPS,
-      deploys: new Map([
-        [
-          "g1",
-          {
-            ...deployState(),
-            environments: [
-              {
-                projectId: "stage-1",
-                name: "harbor stage",
-                tier: "stage" as const,
-                sources: ["main"],
-                environment: "stage",
-                services: [
-                  {
-                    hostname: "app",
-                    appVersionName: MERGED,
-                    statuses: [
-                      { context: "mate/deploy/stage/app", state: "success" as const },
-                      ...production.map((status) => ({
-                        ...status,
-                        context: "mate/deploy/production/app",
-                      })),
-                    ],
-                  },
-                ],
-              },
-              {
-                projectId: "prod-1",
-                name: "harbor production",
-                tier: "production" as const,
-                sources: "release" as const,
-                environment: "production",
-                services: [{ hostname: "app", appVersionName: productionRuns }],
-              },
-            ],
-            mainHeads: new Map([["app", MERGED]]),
-          },
-        ],
-      ]),
-      forges: new Map([
-        [
-          "g1",
-          {
-            ...forgeState(),
-            released: {
-              releases: [
-                {
-                  tag: "v0.1.1",
-                  verdict: "approved",
-                  detail: undefined,
-                  line: "",
-                  entries: [{ service: "app", commit: MERGED }],
-                  taggedAt: "2026-09-24T10:00:00Z",
-                },
-                {
-                  tag: "v0.1.0",
-                  verdict: "approved",
-                  detail: undefined,
-                  line: "",
-                  entries: [{ service: "app", commit: RUNNING }],
-                  taggedAt: undefined,
-                },
-              ],
-              tags: ["v0.1.0", "v0.1.1"],
-              newest: {
-                tag: "v0.1.1",
-                verdict: "approved",
-                entries: [{ service: "app", commit: MERGED }],
-                taggedAt: "2026-09-24T10:00:00Z",
-              },
-            },
-          },
-        ],
-      ]),
-      mayRelease: true,
-      nowMs: NOW,
-      withheld: NOTHING_WITHHELD,
-      failures: NO_FAILURES,
+      releases: new Map([["g1", [approved("v0.1.1", { app: MERGED }, TAGGED_AT), FIRST]]]),
     }).get("g1");
   }
-  const releaseWithProductionStatuses = (
-    production: Parameters<typeof flowWithProductionStatuses>[0],
-  ) => flowWithProductionStatuses(production)?.release;
 
-  const rowsOf = (flow: ReturnType<typeof flowWithProductionStatuses>) =>
+  const rowsOf = (flow: ReturnType<typeof flowWithProductionDeploy>) =>
     flow?.releases.map(({ tag, standing, word, rollBack }) => ({ tag, standing, word, rollBack }));
 
   it.each([
     {
       name: "the release production runs reads Live; the newer one is not a state it was in yet",
-      statuses: [{ state: "pending" as const, created_at: "2026-09-24T10:01:00Z" }],
+      latest: record(MERGED, "building", "2026-09-24T10:01:00Z"),
       runs: RUNNING,
       rows: [
         { tag: "v0.1.1", standing: undefined, word: "Approved", rollBack: false },
@@ -525,7 +403,7 @@ describe("joinProjectFlows", () => {
     },
     {
       name: "the newest's production deploy failed after its tag: it reads Deploy failed",
-      statuses: [{ state: "failure" as const, created_at: "2026-09-24T10:01:00Z" }],
+      latest: record(MERGED, "failed", "2026-09-24T10:01:00Z"),
       runs: RUNNING,
       rows: [
         { tag: "v0.1.1", standing: "deploy-failed", word: "Deploy failed", rollBack: false },
@@ -534,52 +412,75 @@ describe("joinProjectFlows", () => {
     },
     {
       name: "production moved to the newest: it reads Live, the earlier one offers a roll-back",
-      statuses: [{ state: "success" as const, created_at: "2026-09-24T10:01:00Z" }],
+      latest: record(MERGED, "live", "2026-09-24T10:01:00Z"),
       runs: MERGED,
       rows: [
         { tag: "v0.1.1", standing: "live", word: "Live", rollBack: false },
         { tag: "v0.1.0", standing: undefined, word: "Approved", rollBack: true },
       ],
     },
-  ])("$name", ({ statuses, runs, rows }) => {
-    expect(rowsOf(flowWithProductionStatuses(statuses, runs))).toEqual(rows);
+  ])("$name", ({ latest, runs, rows }) => {
+    expect(rowsOf(flowWithProductionDeploy(latest, runs))).toEqual(rows);
   });
 
-  it("an approved tag whose production deploy failed is not in flight; Release is offered again", () => {
-    const release = releaseWithProductionStatuses([
-      { state: "failure", created_at: "2026-09-24T10:01:00Z" },
-    ]);
-    expect(release?.inFlight).toBeUndefined();
-    expect(release?.gate).toEqual({ allowed: true });
+  it("holds the newest release in flight until production runs it", () => {
+    expect(flowWithProductionDeploy(undefined, RUNNING)?.release.inFlight).toBe("v0.1.1");
+    expect(flowWithProductionDeploy(undefined, MERGED)?.release.inFlight).toBe(undefined);
   });
 
-  it("an old production failure does not end the hold of a retry release of the same commit", () => {
-    const release = releaseWithProductionStatuses([
-      { state: "pending", created_at: "2026-09-24T10:01:00Z" },
-      { state: "failure", created_at: "2026-09-24T09:00:00Z" },
-    ]);
-    expect(release?.inFlight).toBe("v0.1.1");
-  });
   it.each([
     {
       name: "a failure newer than the tag ends the hold",
-      created_at: "2026-09-24T10:01:00Z",
+      latest: record(MERGED, "failed", "2026-09-24T10:01:00Z"),
       inFlight: undefined,
     },
     {
       name: "a failure older than the tag does not end the hold",
-      created_at: "2026-09-24T09:59:00Z",
+      latest: record(MERGED, "failed", "2026-09-24T09:59:00Z"),
       inFlight: "v0.1.1",
     },
     {
-      name: "a failure whose time is not read does not end the hold",
-      created_at: undefined,
+      name: "HQ refusing it after the tag ends the hold",
+      latest: record(MERGED, "refused", "2026-09-24T10:01:00Z"),
+      inFlight: undefined,
+    },
+    {
+      name: "a job HQ waits to try again holds it",
+      latest: { ...record(MERGED, "queued", "2026-09-24T10:01:00Z"), attempt: 2 },
       inFlight: "v0.1.1",
     },
-  ])("$name", ({ created_at, inFlight }) => {
-    const release = releaseWithProductionStatuses([
-      { state: "failure", ...(created_at === undefined ? {} : { created_at }) },
-    ]);
-    expect(release?.inFlight).toBe(inFlight);
+    {
+      name: "a job HQ builds holds it",
+      latest: record(MERGED, "building", "2026-09-24T10:01:00Z"),
+      inFlight: "v0.1.1",
+    },
+  ])("$name", ({ latest, inFlight }) => {
+    expect(flowWithProductionDeploy(latest)?.release.inFlight).toBe(inFlight);
   });
+});
+
+it("plans a snapshot from main only once HQ confirms no production", () => {
+  const sha = "1".repeat(40);
+  const recipe = { productionRepositories: new Map([["app", "appdev"]]) };
+  const repos = [
+    { name: "group", mainHead: "9".repeat(40), updatedAt: "" },
+    { name: "appdev", mainHead: sha, updatedAt: "" },
+  ];
+  expect(snapshotReleasePlan(undefined, recipe, repos)).toBeUndefined();
+  expect(
+    snapshotReleasePlan(
+      {
+        ...stopsOf(),
+        declarations: [
+          { name: "prod", tier: "production", project: "p-prod", sources: ["release"] },
+        ],
+      },
+      recipe,
+      repos,
+    ),
+  ).toBeUndefined();
+  const plan = snapshotReleasePlan(stopsOf(), recipe, repos);
+  expect(plan?.running.get("app")).toEqual({ kind: "nothing" });
+  expect(plan?.untold).toEqual([]);
+  expect(plan?.reads).toHaveLength(1);
 });

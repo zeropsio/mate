@@ -178,6 +178,11 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  // The Mate's HQ enrollment, kept by zcp (ZeropsHqLink).
+  zeropsHqEnrollment: Config.String("T3CODE_ZEROPS_HQ_ENROLLMENT").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
   zeropsFixtures: Config.String("T3CODE_ZEROPS_FIXTURES").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -423,6 +428,7 @@ export const resolveServerConfig = (
             apiToken: env.zeropsApiToken,
             roleRecheckSeconds: env.zeropsRoleRecheckSeconds,
             sessionMaxAgeSeconds: env.zeropsSessionMaxAgeSeconds,
+            hqEnrollmentPath: env.zeropsHqEnrollment,
           })
         : undefined;
     if (

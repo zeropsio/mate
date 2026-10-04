@@ -17,6 +17,7 @@
  * Fixtures only: nothing here ships in the app bundle.
  */
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   deployedVersion,
   type EnvironmentRow,
@@ -33,21 +34,23 @@ const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).
 
 const sha = (seed: string) => seed.padEnd(40, "0").slice(0, 40);
 
-const group = (id: string, name: string) => [`mate:g:${id}`, `mate:name:${name}`];
+/** A project of the plan: its application in HQ. */
+const group = (appId: string, appName: string) => ({ appId, appName });
+type PlanGroup = ReturnType<typeof group>;
 
 function routes(...hosts: ReadonlyArray<string>): ReadonlyArray<ZeropsPublicRoute> {
   return hosts.map((host) => ({ service: "app", port: 80, host, url: `https://${host}` }));
 }
 
 /**
- * A Mate's container, connected, its agent signed in (D6's tag) — or, with
+ * A Mate's container, connected, its agent signed in (D6, as HQ's overview names) — or, with
  * `signer: null`, nobody signed in yet; `owner` is its project's `OWNER`
  * entry, and `connected: false` a Mate whose socket is not open yet.
  */
 function mate(
   id: string,
   bot: string,
-  groupTags: ReadonlyArray<string>,
+  app: PlanGroup,
   options: {
     readonly signer?: string | null;
     readonly owner?: string;
@@ -59,15 +62,22 @@ function mate(
     key: `${id}:zcp`,
     project: {
       id,
-      name: `${bot} - dev`,
+      name: bot,
       status: "ACTIVE",
-      tagList: [
-        "mate",
-        ...groupTags,
-        "mate:role:dev",
-        `mate:bot:${bot}`,
-        ...(signer === null ? [] : [`mate:signer:claude-code:${signer}`]),
-      ],
+      tagList: ["mate"],
+      hq: {
+        ...app,
+        kind: "mate",
+        mate: {
+          face: "",
+          // Who signed it in, as HQ's overview of its logins names them.
+          ...(signer === null
+            ? {}
+            : {
+                logins: { "claude-code": { signedInBy: signer, present: true, token: false } },
+              }),
+        },
+      } satisfies HqPlacement,
       ...(owner === undefined ? {} : { userRoles: [{ clientUserId: owner, roleCode: "OWNER" }] }),
     },
     group: connected ? "connected" : "ready",
@@ -80,7 +90,7 @@ function mate(
 function stop(
   id: string,
   role: "stage" | "prod",
-  groupTags: ReadonlyArray<string>,
+  app: PlanGroup,
   options: {
     readonly hosts: ReadonlyArray<string>;
     readonly status?: string;
@@ -95,7 +105,11 @@ function stop(
       id,
       name: options.name ?? (role === "prod" ? "production" : "stage"),
       status: "ACTIVE",
-      tagList: [...groupTags, `mate:role:${role}`],
+      hq: {
+        ...app,
+        kind: role === "prod" ? "production" : "stage",
+        mate: null,
+      } satisfies HqPlacement,
     },
     group: "unavailable",
     reason: "no Zerops Mate container in this project",
@@ -405,6 +419,8 @@ function row(
     versionRepository: "app",
     line: version.label === undefined ? source : `${source} · ${version.label}`,
     tone,
+    deploys: [],
+    keyGap: false,
   };
 }
 
@@ -415,11 +431,9 @@ function change(number: number, title: string, mateProjectId: string): FlowPullR
     title,
     kind: "code",
     mateProjectId,
-    author: undefined,
     url: undefined,
-    checks: "passing",
-    checkWord: "Passing",
     mergeability: "mergeable",
+    behind: false,
     merged: false,
     mergedAt: undefined,
     headSha: "3f9c1b2",
@@ -429,8 +443,21 @@ function change(number: number, title: string, mateProjectId: string): FlowPullR
   };
 }
 
+/** What a release would put live: one comparison of `appdev`. */
 const waiting = (...subjects: ReadonlyArray<string>) => [
-  { commits: subjects.map((subject, index) => ({ sha: `c${String(index)}`, subject })) },
+  {
+    repository: "appdev",
+    services: ["app"],
+    commits: subjects.map((subject, index) => ({
+      sha: `c${String(index)}`,
+      subject,
+      authorName: "Juno",
+      at: "2026-10-02T10:00:00.000Z",
+      change: null,
+    })),
+    total: subjects.length,
+    truncated: false,
+  },
 ];
 
 const flow = (input: Partial<SidebarProjectFlow>): SidebarProjectFlow => ({

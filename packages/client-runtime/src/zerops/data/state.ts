@@ -1,5 +1,6 @@
 import type { ZeropsDataPolicy } from "./policy.ts";
 import { commandTarget } from "./commands.ts";
+import { wantStaleVariables } from "./deployedVersion.ts";
 import {
   denyActivityScope,
   isTerminalProcess,
@@ -20,9 +21,11 @@ import {
 } from "./inventory.ts";
 import {
   activeVersionOf,
+  finishTableRowRead,
   makeInitialEntityTableState,
   reduceTableObservation,
   releaseTableLists,
+  retryAbsentTableRows,
   tableRowsWanted,
   forgetAbsentRows,
   wantTableRows,
@@ -66,7 +69,7 @@ import type {
   ZeropsCommandAttemptId,
   ZeropsRequestId,
 } from "./types.ts";
-import { organizationKeyOf, projectKeyOf, queryKeyOf } from "./types.ts";
+import { entityKeyOf, organizationKeyOf, projectKeyOf, queryKeyOf } from "./types.ts";
 
 interface ReadAccumulator {
   readonly applied: ReadonlyArray<ReadContribution>;
@@ -151,6 +154,12 @@ export type RuntimeControlInput =
       readonly ownership: SharedReadOwnership;
     }
   | { readonly kind: "shared-read-released"; readonly requestId: ZeropsRequestId }
+  | {
+      readonly kind: "metadata-retry-requested";
+      readonly organization: OrganizationRef;
+      readonly serviceIds: ReadonlyArray<string>;
+      readonly atMs: number;
+    }
   | { readonly kind: "inactive-queries-released"; readonly queryKeys: ReadonlyArray<QueryKey> };
 
 export type ZeropsDataModelInput = IngestionInput | RuntimeControlInput;
@@ -412,7 +421,7 @@ function reduceObservation(state: ZeropsDataState, admitted: AdmittedObservation
 }
 
 const interestProgress = (state: DesiredInterestState): InterestProgress => {
-  if (state.interest.status === "establishing" || state.interest.status === "recovering") {
+  if (state.interest.status === "establishing") {
     return state.interest.progress;
   }
   return {
@@ -425,12 +434,10 @@ const interestProgress = (state: DesiredInterestState): InterestProgress => {
 };
 
 /**
- * Whether a failure moves this interest into `recovering`. A paused interest leaves through
- * the foreground resume and a failed one through its own `retryAtMs`, each under a fresh
- * identity; a late failure under the paused or failed identity brings nothing new, and
- * `recovering` would give the interest no scheduled exit (I7).
+ * A late failure cannot restart a paused or already failed interest. Only foreground resume
+ * of healthy paused demand or a manual attempt gives those interests a fresh identity.
  */
-const recoversOnFailure = (interest: InterestState): boolean =>
+const acceptsFailure = (interest: InterestState): boolean =>
   interest.status !== "paused" && interest.status !== "failed";
 
 function advanceInterest(
@@ -443,18 +450,18 @@ function advanceInterest(
   const desired = state.interests.get(identity.key);
   if (desired === undefined || !sameInterestIdentity(desired.interest.identity, identity))
     return state;
+  if (!acceptsFailure(desired.interest)) return state;
   if (failedReason !== undefined) {
-    if (!recoversOnFailure(desired.interest)) return state;
     const interests = new Map(state.interests);
     interests.set(identity.key, {
       ...desired,
       interest: {
-        status: "recovering",
+        status: "failed",
         identity,
-        reason: kind === "registration" ? "registration" : "malformed",
-        attempt: desired.interest.status === "recovering" ? desired.interest.attempt + 1 : 1,
-        nextRetryAtMs: 0,
-        progress: interestProgress(desired),
+        reason: failedReason,
+        attempts: 1,
+        retryable: true,
+        retryAtMs: null,
       },
       wire:
         kind === "registration" && desired.wire.status !== "absent"
@@ -489,11 +496,9 @@ function advanceInterest(
             guarantee: "source-order-unverified",
             sinceReceiptOrdinal: receiptOrdinal,
           }
-        : desired.interest.status === "recovering"
+        : desired.interest.status === "establishing"
           ? { ...desired.interest, progress: nextProgress }
-          : desired.interest.status === "establishing"
-            ? { ...desired.interest, progress: nextProgress }
-            : desired.interest;
+          : desired.interest;
   const nextWire =
     kind === "registration" && desired.wire.status !== "absent"
       ? { ...desired.wire, status: "registered" as const }
@@ -519,10 +524,38 @@ function completeRead(
     suppressed: [],
     unresolvedRequiredFields: [],
   };
+  const target = ticket.target;
+  let table = state.table;
+  let incomplete = false;
+  if (
+    target.kind === "query" &&
+    (target.descriptor.kind === "active-versions-of-services" ||
+      target.descriptor.kind === "service-variables-of-services") &&
+    target.descriptor.ids !== undefined
+  ) {
+    const entity =
+      target.descriptor.kind === "active-versions-of-services" ? "app-version" : "user-data";
+    table = finishTableRowRead(
+      state.table,
+      entity,
+      target.descriptor.organization,
+      target.descriptor.ids,
+      ticket.receiptOrdinalAtStart,
+    );
+    incomplete = target.descriptor.ids.some((id) => {
+      const owed = table.wanted.get(`${entity}:${id}`);
+      return owed !== undefined && owed.since <= ticket.receiptOrdinalAtStart;
+    });
+  } else if (ticket.kind === "hydration" && target.kind !== "query") {
+    const key = entityKeyOf(target.ref);
+    incomplete = [...state.inventory.queries.values(), ...state.activity.queries.values()].some(
+      (query) => query.unresolvedMemberKeys.some((memberKey) => memberKey === key),
+    );
+  }
   const reads = new Map(state.reads);
   reads.set(
     ticket.requestId,
-    input.completion.kind === "read-succeeded"
+    input.completion.kind === "read-succeeded" && !incomplete
       ? {
           status: "succeeded",
           ticket,
@@ -535,7 +568,8 @@ function completeRead(
           status: "failed",
           ticket,
           completedAtReceiptOrdinal: input.stamp.receiptOrdinal,
-          failure: input.completion.failure,
+          failure:
+            input.completion.kind === "read-failed" ? input.completion.failure : "incomplete",
         },
   );
   let readAccumulators = state.readAccumulators;
@@ -544,7 +578,7 @@ function completeRead(
     retained.delete(ticket.requestId);
     readAccumulators = retained;
   }
-  let next: ZeropsDataState = { ...state, reads, readAccumulators };
+  let next: ZeropsDataState = { ...state, table, reads, readAccumulators };
   if (ticket.owner.kind === "interest") {
     next = advanceInterest(
       next,
@@ -994,6 +1028,15 @@ function applyControl(state: ZeropsDataState, input: RuntimeControlInput): Zerop
       ? next
       : cancelPendingReads(next, (ticket) => ticket.requestId === input.requestId);
   }
+  if (input.kind === "metadata-retry-requested") {
+    const table = retryAbsentTableRows(
+      state.table,
+      input.organization,
+      input.serviceIds,
+      input.atMs,
+    );
+    return table === state.table ? state : { ...state, table };
+  }
   if (input.kind === "inactive-queries-released") {
     return releaseInactiveQueries(state, input.queryKeys);
   }
@@ -1105,24 +1148,24 @@ function applyPendingRetention(state: ZeropsDataState): ZeropsDataState {
   if (overflowingMembershipQueries.size === 0) return next;
 
   let interests: Map<InterestKey, DesiredInterestState> | null = null;
-  const recover = (identity: InterestIdentity): void => {
+  const fail = (identity: InterestIdentity): void => {
     const desired = next.interests.get(identity.key);
     if (
       desired === undefined ||
       !sameInterestIdentity(desired.interest.identity, identity) ||
-      !recoversOnFailure(desired.interest)
+      !acceptsFailure(desired.interest)
     )
       return;
     interests ??= new Map(next.interests);
     interests.set(identity.key, {
       ...desired,
       interest: {
-        status: "recovering",
+        status: "failed",
         identity,
         reason: "overflow",
-        attempt: desired.interest.status === "recovering" ? desired.interest.attempt + 1 : 1,
-        nextRetryAtMs: 0,
-        progress: interestProgress(desired),
+        attempts: 1,
+        retryable: true,
+        retryAtMs: null,
       },
     });
   };
@@ -1130,11 +1173,11 @@ function applyPendingRetention(state: ZeropsDataState): ZeropsDataState {
     if (read.status !== "pending" || read.ticket.target.kind !== "query") continue;
     if (!overflowingMembershipQueries.has(queryKeyOf(read.ticket.target.descriptor))) continue;
     if (read.ticket.owner.kind === "interest") {
-      recover(read.ticket.owner.identity);
+      fail(read.ticket.owner.identity);
     } else {
       const ownership = next.sharedReads.get(read.ticket.requestId);
       if (ownership !== undefined) {
-        for (const dependent of ownership.dependents.values()) recover(dependent);
+        for (const dependent of ownership.dependents.values()) fail(dependent);
       }
     }
   }
@@ -1285,8 +1328,6 @@ function markRetentionViewsPartial(
     const affected =
       queryKeys.has(key) ||
       query.memberKeys.some((memberKey) => entityKeys.has(memberKey)) ||
-      (query.descriptor.kind === "services-of-organization" &&
-        serviceOrganizations.has(organizationKeyOf(query.descriptor.organization))) ||
       (query.descriptor.kind === "services-of-project" &&
         serviceOrganizations.has(organizationKeyOf(query.descriptor.project.organization)));
     if (!affected) continue;
@@ -1304,7 +1345,7 @@ function markRetentionViewsPartial(
       query.memberKeys.some((memberKey) => processKeys.has(memberKey)) ||
       (query.descriptor.kind === "process-history-window"
         ? processProjects.has(projectKeyOf(query.descriptor.project))
-        : processOrganizations.has(organizationKeyOf(query.descriptor.organization)));
+        : processOrganizations.has(organizationKeyOf(query.descriptor.project.organization)));
     if (!affected) continue;
     activityQueries ??= new Map(state.activity.queries);
     activityQueries.set(key, {
@@ -1538,9 +1579,18 @@ export function wantActiveVersions(
   receipt: number,
   nowMs: number,
 ): ZeropsDataState {
-  const missing = new Map<string, { organization: OrganizationRef; ids: string[] }>();
+  const missing: Array<{ organization: OrganizationRef; serviceId: string; id: string }> = [];
   const running = new Set<string>();
   for (const record of state.inventory.services.values()) {
+    if (
+      ![...state.interests.values()].some(
+        ({ descriptor, leases }) =>
+          leases > 0 &&
+          descriptor.kind === "project-versions" &&
+          descriptor.serviceIds.includes(record.ref.serviceId),
+      )
+    )
+      continue;
     const facet = record.deployment;
     if (facet.knowledge !== "observed") continue;
     const deploy = facet.fields.activeDeploy;
@@ -1548,18 +1598,15 @@ export function wantActiveVersions(
     const organization = record.ref.project.organization;
     running.add(`${organizationKeyOf(organization)}:${deploy.id}`);
     if (deploy.source !== null) continue;
-    const version = activeVersionOf(state.table, organization, deploy.id);
+    const version = activeVersionOf(state.table, organization, deploy.id, record.ref.serviceId);
     if (!version.known || version.row !== null) continue;
-    const key = organizationKeyOf(organization);
-    const batch = missing.get(key) ?? { organization, ids: [] };
-    batch.ids.push(deploy.id);
-    missing.set(key, batch);
+    missing.push({ organization, serviceId: record.ref.serviceId, id: deploy.id });
   }
   let table = forgetAbsentRows(state.table, "app-version", (organization, id) =>
     running.has(`${organizationKeyOf(organization)}:${id}`),
   );
-  for (const { organization, ids } of missing.values())
-    table = wantTableRows(table, "app-version", organization, ids, receipt, nowMs);
+  for (const { organization, serviceId, id } of missing)
+    table = wantTableRows(table, "app-version", organization, [id], receipt, nowMs, [serviceId]);
   return table === state.table ? state : { ...state, table };
 }
 
@@ -1578,7 +1625,8 @@ export function reduceZeropsDataState(
     input.kind === "read-started" ||
     input.kind === "shared-read-upserted" ||
     input.kind === "shared-read-released" ||
-    input.kind === "inactive-queries-released"
+    input.kind === "inactive-queries-released" ||
+    input.kind === "metadata-retry-requested"
   ) {
     const state = trimDiagnostics(applyControl(applyPendingRetention(initial), input), policy);
     return { state, followUps: [] };
@@ -1601,8 +1649,10 @@ export function reduceZeropsDataState(
   state = { ...state, lastReceiptOrdinal: stamp.receiptOrdinal };
   state = trimDiagnostics(state, policy);
   state = scheduleRetention(state, policy);
-  if (input.kind === "observation")
+  if (input.kind === "observation") {
     state = wantActiveVersions(state, stamp.receiptOrdinal, stamp.observedAtMs);
+    state = wantStaleVariables(state, stamp.receiptOrdinal, stamp.observedAtMs);
+  }
   const followUps: ZeropsDataFollowUp[] = [];
   for (const query of [...state.inventory.queries.values(), ...state.activity.queries.values()]) {
     if (query.unresolvedMemberKeys.length > 0) {

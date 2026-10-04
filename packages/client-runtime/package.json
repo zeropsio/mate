@@ -227,6 +227,10 @@
       "types": "./src/zerops/activity/standupReading.ts",
       "default": "./src/zerops/activity/standupReading.ts"
     },
+    "./zerops/hq": {
+      "types": "./src/zerops/hq/index.ts",
+      "default": "./src/zerops/hq/index.ts"
+    },
     "./zerops/activityResult": {
       "types": "./src/zerops/activityResult.ts",
       "default": "./src/zerops/activityResult.ts"
@@ -262,10 +266,6 @@
     "./zerops/timelineFollow": {
       "types": "./src/zerops/timelineFollow.ts",
       "default": "./src/zerops/timelineFollow.ts"
-    },
-    "./zerops/giteaSignIn": {
-      "types": "./src/zerops/giteaSignIn.ts",
-      "default": "./src/zerops/giteaSignIn.ts"
     },
     "./zerops/agentOwnership": {
       "types": "./src/zerops/agentOwnership.ts",
@@ -327,10 +327,6 @@
       "types": "./src/zerops/environments/index.ts",
       "default": "./src/zerops/environments/index.ts"
     },
-    "./zerops/forge": {
-      "types": "./src/zerops/forge/index.ts",
-      "default": "./src/zerops/forge/index.ts"
-    },
     "./zerops/cards/decode": {
       "types": "./src/zerops/cards/decode.ts",
       "default": "./src/zerops/cards/decode.ts"
@@ -382,10 +378,6 @@
     "./zerops/identityExchange": {
       "types": "./src/zerops/identityExchange.ts",
       "default": "./src/zerops/identityExchange.ts"
-    },
-    "./zerops/provisioning": {
-      "types": "./src/zerops/provisioning.ts",
-      "default": "./src/zerops/provisioning.ts"
     },
     "./zerops/quickActions": {
       "types": "./src/zerops/quickActions.ts",

@@ -19,9 +19,10 @@
  * ## The check, in order
  *
  * Each step's failure is a {@link ZeropsThrowawayRefusedError} naming the rule
- * it broke. The same six rules and the same order the org's broker applies
- * (`gitea-mate/docs/broker-api.md`, *Proving a person*), with the prefix
- * `mate-door:{projectId}:` where the broker uses `gitea-signin:{host}:`.
+ * it broke: six rules, in the order main's broker proved a person
+ * (`gitea-mate/docs/broker-api.md`, *Proving a person*), over the prefix
+ * `mate-door:{projectId}:`. HQ's door applies the same rules
+ * (`@t3tools/shared/zeropsDoor`).
  *
  * 0. `GET /project/{own}` **with the Mate's own key** — the org this project
  *    belongs to, and this project's `userRoles`. Read first because the org is
@@ -51,8 +52,8 @@
  * The caller is `createdByUser`. Their effective role on this project — their
  * `userRoles` override there, or their org role — goes through the shared role
  * function (`@t3tools/shared/zeropsRoles`), the same one the app's list and
- * the broker's Gitea mirror call, so a person is never told one thing by the
- * list and another by the door.
+ * HQ call, so a person is never told one thing by the list and another by the
+ * door.
  *
  * ## Refusing beats guessing
  *
@@ -63,20 +64,20 @@
  * @module ZeropsThrowawayIdentity
  */
 import {
-  effectiveProjectRole,
-  zeropsRoleAnswer,
-  ZEROPS_ACTIVE_MEMBER_STATUS,
-  type RoleMateVisibility,
-  type ZeropsOrgRole,
-} from "@t3tools/shared/zeropsRoles";
-import * as Duration from "effect/Duration";
+  readOrgMembers,
+  resolveDoorVisibility,
+  type ZeropsOrgMember,
+} from "@t3tools/shared/mateAccess";
+import { ZEROPS_ACTIVE_MEMBER_STATUS, type ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import type { HttpClientResponse } from "effect/unstable/http";
 
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsIdentityStatus } from "./ZeropsIdentityStatus.ts";
-import { requestWithMateKey, ZeropsMateKey } from "./ZeropsMateKey.ts";
+import { ZeropsMateKey } from "./ZeropsMateKey.ts";
+import { readMemberEntries, ZeropsOrgRead } from "./ZeropsOrgRead.ts";
+import { ZeropsProjectAccess } from "./ZeropsProjectAccess.ts";
 import {
   readJson,
   responseDateEpochMs,
@@ -93,23 +94,6 @@ export const DOOR_THROWAWAY_PREFIX = "mate-door";
 
 /** How far a throwaway's `created` may be from the API's own clock. */
 export const DOOR_THROWAWAY_MAX_AGE_MS = 5 * 60 * 1000;
-
-/**
- * How many times step 6's member-list read is attempted before this Mate
- * gives up on it, and how long it waits between attempts.
- *
- * Measured 2026-09-22 on a live Mate container, with the Mate's own valid
- * key: `GET /client/{org}/user/list` answered `200` seven times out of eight
- * and once `400 userNotFound` — a platform flake, not a verdict, since the
- * very next call was `200`. Before this retry, that flake turned into a 500
- * at the door for whoever's throwaway happened to land on it. `401`/`403`
- * are never worth a second attempt here — they already get their own
- * re-resolve-and-retry-once in {@link requestWithMateKey}.
- */
-export const DOOR_MEMBER_LIST_RETRY_ATTEMPTS = 3;
-
-/** The delay between member-list retries — short enough that a caller who is really waiting barely notices it. */
-export const DOOR_MEMBER_LIST_RETRY_DELAY = Duration.millis(300);
 
 /**
  * Which rule the presented credential broke.
@@ -186,24 +170,6 @@ const UserInfoResponse = Schema.Struct({
 const decodeProject = Schema.decodeUnknownEffect(ProjectResponse);
 const decodeUserInfo = Schema.decodeUnknownEffect(UserInfoResponse);
 
-/**
- * The org's member list. The platform pages it under `items`; a bare array is
- * accepted too, and anything else is unusable rather than empty — an empty
- * member list would refuse everyone, which reads as a lockout rather than as
- * the outage it is.
- */
-/**
- * The member list's rows. `GET /client/{id}/user/list` answers
- * `{ clientUserList: [...] }` — not the `items` the search endpoints use, and
- * not a bare array (measured 2026-09-16 on a real Mate: the door refused every
- * caller with "not in the expected shape" until this read the right key).
- */
-export function readMemberEntries(body: unknown): ReadonlyArray<unknown> | null {
-  if (typeof body !== "object" || body === null) return null;
-  const rows = (body as Record<string, unknown>)["clientUserList"];
-  return Array.isArray(rows) ? rows : null;
-}
-
 /** Flags a throwaway must not carry. Any truthy one refuses the token. */
 const TOKEN_FLAG_KEYS = [
   "canCreateProjects",
@@ -243,93 +209,12 @@ export function readIntegrationTokenRecord(body: unknown): IntegrationTokenRecor
   };
 }
 
-export interface ZeropsOrgMember {
-  /** The `clientUser` id — what a project's `userRoles` names. */
-  readonly clientUserId: string;
-  readonly userId: string;
-  readonly orgRole: string;
-  readonly status: string;
-  readonly canCreateProjects: boolean;
-}
-
-/** Every usable row of a member-list body, in the order the platform sent them. */
-export function readOrgMembers(entries: ReadonlyArray<unknown>): ReadonlyArray<ZeropsOrgMember> {
-  const members: Array<ZeropsOrgMember> = [];
-  for (const entry of entries) {
-    if (typeof entry !== "object" || entry === null) continue;
-    const record = entry as Record<string, unknown>;
-    const userId = record["userId"];
-    if (typeof userId !== "string" || userId.length === 0) continue;
-    members.push({
-      clientUserId: typeof record["id"] === "string" ? record["id"] : "",
-      userId,
-      orgRole: typeof record["roleCode"] === "string" ? record["roleCode"] : "",
-      status: typeof record["status"] === "string" ? record["status"] : "",
-      canCreateProjects: record["canCreateProjects"] === true,
-    });
-  }
-  return members;
-}
-
 /** Pulls the one member row a user id names out of a member-list body. */
 export function findOrgMember(
   entries: ReadonlyArray<unknown>,
   userId: string,
 ): ZeropsOrgMember | null {
   return readOrgMembers(entries).find((member) => member.userId === userId) ?? null;
-}
-
-const KNOWN_ROLES: ReadonlyArray<ZeropsOrgRole> = [
-  "NO_ACCESS",
-  "READ_ONLY",
-  "BASIC_USER",
-  "ADMIN",
-  "OWNER",
-];
-
-const asOrgRole = (value: string): ZeropsOrgRole | undefined =>
-  KNOWN_ROLES.find((role) => role === value);
-
-/**
- * The effective role and the visibility it earns, from the shared role
- * function. The registry handed in is this one project: the door decides about
- * itself and nothing else, and `zeropsRoleAnswer` answers for every Mate in
- * whatever registry it is given.
- */
-export function resolveDoorVisibility(input: {
-  readonly projectId: string;
-  readonly member: ZeropsOrgMember;
-  readonly override: string | undefined;
-}): { readonly role: ZeropsOrgRole; readonly visibility: RoleMateVisibility } {
-  // A role neither side recognises is not a role: it reads as `NO_ACCESS`, so
-  // an override the platform grew that this build has never heard of shuts the
-  // door rather than opening it.
-  const orgRole = asOrgRole(input.member.orgRole) ?? "NO_ACCESS";
-  const override =
-    input.override === undefined ? undefined : (asOrgRole(input.override) ?? "NO_ACCESS");
-  const roleInput = {
-    person: {
-      id: input.member.userId,
-      orgRole,
-      status: input.member.status,
-      canCreateProjects: input.member.canCreateProjects,
-    },
-    overrides: override === undefined ? {} : { [input.projectId]: override },
-    registry: {
-      groups: [
-        {
-          id: input.projectId,
-          slug: input.projectId,
-          projects: [{ id: input.projectId, kind: "mate" as const }],
-        },
-      ],
-    },
-  };
-  const answer = zeropsRoleAnswer(roleInput);
-  return {
-    role: effectiveProjectRole(roleInput, input.projectId),
-    visibility: answer.mates[input.projectId] ?? "hidden",
-  };
 }
 
 /**
@@ -345,22 +230,23 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
   const identityStatus = yield* ZeropsIdentityStatus;
 
   // 0. Our own project, with our own key: which org we belong to, and what
-  //    this project says about people. A `401`/`403` here re-resolves the
-  //    key once before giving up — the platform may have moved it since this
-  //    Mate started (spec-mate.md §2 root cause 4). This is also the read the
+  //    this project says about people — read once for the door, the watch and
+  //    the signers (`ZeropsOrgRead`). A `401`/`403` there re-resolves the key
+  //    once before giving up — the platform may have moved it since this Mate
+  //    started (spec-mate.md §2 root cause 4). This is also the read the
   //    descriptor's `identity` field reports (S4): whatever this call decides,
   //    `ZeropsIdentityStatus` learns it too.
-  const { response: projectResponse } = yield* requestWithMateKey(mateKey, (token) =>
-    zeropsGet({ url: `${apiBaseUrl}/project/${encodeURIComponent(projectId)}`, token }),
-  );
+  const orgRead = yield* ZeropsOrgRead;
+  const own = yield* orgRead.project({ apiBaseUrl, projectId });
   yield* identityStatus.record({
-    ok: projectResponse?.status === 200,
+    ok: own.kind === "answered" && own.status === 200,
     keySource: yield* mateKey.lastSource,
   });
-  if (projectResponse === undefined) {
+  if (own.kind === "no-key") {
     return yield* unavailable("This Mate has no Zerops key of its own to check a caller with.");
   }
-  switch (projectResponse.status) {
+  if (own.kind === "unreachable") return yield* unavailable(own.reason);
+  switch (own.status) {
     case 200:
       break;
     case 400:
@@ -368,11 +254,10 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
       return yield* new ZeropsProjectNotFoundError({});
     default:
       return yield* unavailable(
-        `The Zerops API answered ${String(projectResponse.status)} for this Mate's own project.`,
+        `The Zerops API answered ${String(own.status)} for this Mate's own project.`,
       );
   }
-  const project = yield* readJson(projectResponse).pipe(
-    Effect.flatMap((body) => decodeProject(body)),
+  const project = yield* decodeProject(own.body).pipe(
     Effect.catchTag("SchemaError", () =>
       Effect.fail(unavailable("This Mate's own project read carried no clientId.")),
     ),
@@ -446,31 +331,31 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
     return yield* refused("stale");
   }
 
-  // 6. Its creator, and whether the org still knows them. Retried up to
-  //    DOOR_MEMBER_LIST_RETRY_ATTEMPTS times when the platform's answer is
-  //    neither 200 nor 401/403 — a live flake must not read as "not a
-  //    member" (see DOOR_MEMBER_LIST_RETRY_ATTEMPTS).
+  // 6. Resolve its creator with one member-list read. A failed read stays
+  // unavailable; the caller or the next membership sample owns another read.
   if (record.createdByUser.length === 0) return yield* refused("not_member");
-  let memberResponse: HttpClientResponse.HttpClientResponse | undefined;
-  for (let attempt = 1; attempt <= DOOR_MEMBER_LIST_RETRY_ATTEMPTS; attempt++) {
-    const { response } = yield* requestWithMateKey(mateKey, (token) =>
-      zeropsGet({
-        url: `${apiBaseUrl}/client/${encodeURIComponent(project.clientId)}/user/list`,
-        token,
-      }),
-    );
-    memberResponse = response;
-    const status = response?.status;
-    const isFlake = status === undefined || (status !== 200 && status !== 401 && status !== 403);
-    if (!isFlake || attempt === DOOR_MEMBER_LIST_RETRY_ATTEMPTS) break;
-    yield* Effect.sleep(DOOR_MEMBER_LIST_RETRY_DELAY);
+  // HQ's relay while it holds (`ZeropsProjectAccess`, R6): a creator it opens for is let in,
+  // and the member list is not read. Whomever it lists or leaves out, the read below decides —
+  // its refusals tell a non-member from one this project hides or only lists.
+  const relayed = Option.getOrUndefined(yield* (yield* ZeropsProjectAccess).relay);
+  const opened = relayed?.members.find(
+    (entry) => entry.userId === record.createdByUser && entry.visibility === "open",
+  );
+  if (opened !== undefined) {
+    return {
+      userId: opened.userId,
+      clientId: project.clientId,
+      role: opened.role,
+    } satisfies ZeropsThrowawayCaller;
   }
-  if (memberResponse === undefined || memberResponse.status !== 200) {
+  const members = yield* orgRead.members({ apiBaseUrl, clientId: project.clientId });
+  if (members.kind === "unreachable") return yield* unavailable(members.reason);
+  if (members.kind !== "answered" || members.status !== 200) {
     return yield* unavailable(
-      `The Zerops API answered ${memberResponse === undefined ? "nothing" : String(memberResponse.status)} for this org's member list.`,
+      `The Zerops API answered ${members.kind === "answered" ? String(members.status) : "nothing"} for this org's member list.`,
     );
   }
-  const entries = readMemberEntries(yield* readJson(memberResponse));
+  const entries = readMemberEntries(members.body);
   if (entries === null) {
     return yield* unavailable("This org's member list was not in the expected shape.");
   }
@@ -486,8 +371,7 @@ export const verifyThrowawayCaller = Effect.fn("ZeropsThrowaway.verifyCaller")(f
     return yield* refused("not_member");
   }
 
-  // The role function decides, on the same inputs the app's list and the
-  // broker's mirror use.
+  // The role function decides, on the same inputs the app's list and HQ use.
   const override = project.userRoles?.find(
     (entry) => entry.clientUserId === member.clientUserId && member.clientUserId.length > 0,
   )?.roleCode;

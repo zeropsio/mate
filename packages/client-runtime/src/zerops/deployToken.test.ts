@@ -1,57 +1,35 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  deployTokenName,
-  deployTokenVariable,
-  environmentsWithoutDeployToken,
-  planDeployToken,
-} from "./deployToken.ts";
+import { deployTokenMint, deployTokenName, environmentKeyed } from "./deployToken.ts";
 
-describe("an environment's deploy token", () => {
-  it("names its variable the way the broker does", () => {
-    // The same vector as gitea-mate's `TestTokenVariable`: the two spell one
-    // name or the broker finds no key.
-    expect(deployTokenVariable("hadSu0iZ-uCG_Ic1hicN4Q")).toBe(
-      "MATE_DEPLOY_TOKEN_686164537530695A2D7543475F4963316869634E3451",
+describe("deployTokenName", () => {
+  // Main's own keys, `deploy-<project name>`, stay in the account's token list beside HQ's: never
+  // one name for both, nor two names alike but for case and spaces.
+  it("names the token HQ's, after the environment and its project, as the token list shows it", () => {
+    expect(deployTokenName(" heron-production ", "q3EjSXjUQjAQ1uilTtGxVg")).toBe(
+      "mate-hq-deploy:heron-production:q3EjSXjUQjAQ1uilTtGxVg",
     );
   });
+});
 
-  it("is called after the environment in the account's token list", () => {
-    expect(deployTokenName(" Todo - stage ")).toBe("deploy-Todo - stage");
-  });
-
-  it("is one project's key and nothing else's", () => {
-    expect(
-      planDeployToken({
-        projectId: "p-stage",
-        environmentName: "Todo - stage",
-        brokerVariables: [],
-      }),
-    ).toEqual({
-      kind: "mint",
-      name: "deploy-Todo - stage",
+describe("deployTokenMint", () => {
+  // One key per environment, reaching its own project and nothing else (main E03).
+  it("asks for no org role and Basic user on the environment's project alone", () => {
+    expect(deployTokenMint({ projectId: "p-stage", environmentName: "stage" })).toEqual({
+      name: "mate-hq-deploy:stage:p-stage",
       roleCode: "NO_ACCESS",
       projects: [{ projectId: "p-stage", roleCode: "BASIC_USER" }],
-      variable: deployTokenVariable("p-stage"),
     });
   });
+});
 
-  it("is minted once: a key the broker holds is left alone", () => {
-    expect(
-      planDeployToken({
-        projectId: "p-stage",
-        environmentName: "Todo - stage",
-        brokerVariables: ["MATE_ZEROPS_TOKEN", deployTokenVariable("p-stage")],
-      }),
-    ).toEqual({ kind: "held" });
-  });
-
-  it("lists the declared environments the broker holds no key for", () => {
-    expect(
-      environmentsWithoutDeployToken({
-        declaredProjects: ["p-stage", "p-prod"],
-        brokerVariables: [deployTokenVariable("p-prod"), "GITEA_URL"],
-      }),
-    ).toEqual(["p-stage"]);
+describe("environmentKeyed — whether HQ deploys an environment with a key that works", () => {
+  it.each([
+    ["a key held that works", { keyHeld: true, keyInvalid: false }, true],
+    ["no key", { keyHeld: false, keyInvalid: false }, false],
+    // HQ's check before a deploy found it gone, or reaching more than its project.
+    ["a key HQ found broken", { keyHeld: true, keyInvalid: true }, false],
+  ])("%s", (_case, environment, keyed) => {
+    expect(environmentKeyed(environment)).toBe(keyed);
   });
 });

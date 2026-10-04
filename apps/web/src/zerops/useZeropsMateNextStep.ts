@@ -2,7 +2,7 @@
  * What this Mate's conversation offers next, from the project's flow rather
  * than from what the agent said (the owner, 2026-09-23 — "extremely important
  * findings the whole UI should be built around"): this Mate's own change,
- * waiting for the person's review, where Gitea says it merges.
+ * waiting for the person's review, where HQ says it merges.
  *
  * It opens the review and nothing else (R1): the merge is the review's
  * button, so this reads the flow and never writes to it.
@@ -16,7 +16,7 @@
  */
 import {
   mateNextStep,
-  readZeropsGroupTags,
+  readZeropsMembership,
   type MateNextStep,
 } from "@t3tools/client-runtime/zerops";
 import type { ScopedThreadRef } from "@t3tools/contracts";
@@ -31,12 +31,12 @@ import { useZeropsMateDirectory } from "./useZeropsMates";
 
 export type ZeropsMateNextStep =
   /**
-   * Gitea has not answered for this Mate's project yet — nor, until it is
+   * HQ has not answered for this Mate's project yet — nor, until it is
    * known, whose project this conversation is: the strip the conversation
    * showed last stands in (`composerTopMemory.ts`).
    */
   | { readonly kind: "unknown" }
-  /** Gitea answered, and nothing of this Mate's waits on the person. */
+  /** HQ answered, and nothing of this Mate's waits on the person. */
   | { readonly kind: "none" }
   | {
       readonly kind: "review";
@@ -59,7 +59,7 @@ export function useZeropsMateNextStep(threadRef: ScopedThreadRef | null): Zerops
   const mates = useZeropsMateDirectory();
 
   const project = inventory.projects.find((entry) => entry.id === projectId);
-  const groupId = readZeropsGroupTags(project?.tagList ?? []).groupId;
+  const groupId = readZeropsMembership(project).groupId;
   const projectFlow = groupId === undefined ? undefined : flow?.flows.get(groupId);
 
   if (threadRef === null) return NOTHING;

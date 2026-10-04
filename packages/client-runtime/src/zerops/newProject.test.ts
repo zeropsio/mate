@@ -2,7 +2,6 @@ import type { TokenWriteHold } from "./groupReach.ts";
 import { describe, expect, it, vi } from "@effect/vitest";
 
 import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient } from "./api.ts";
-import { planEnvironmentCreation } from "./createEnvironment.ts";
 import {
   buildCreateProjectBody,
   buildDevelopmentContainerImportBody,
@@ -379,11 +378,11 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     clientId: "org-1",
     projectId: "project-9",
     projectName: "Acme Docs - Ada",
-    groupProjectIds: ["project-9", "project-stage"],
     setupRuntimesYaml: "services:\n  - hostname: appdev\n",
   };
 
-  it("mints the key with the Mate's reach and nothing more, then imports the container holding it", async () => {
+  // ADR 0003: a Mate's key holds its own project; it reads nothing of its application's others.
+  it("mints the key with its own project and nothing more, then imports the container holding it", async () => {
     const { client, requests } = platformClient({});
 
     const result = await client.importDevelopmentContainer(INPUT);
@@ -400,10 +399,7 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
       canCreateProjects: false,
       canViewFinances: false,
       canEditFinances: false,
-      projects: [
-        { projectId: "project-9", roleCode: "BASIC_USER" },
-        { projectId: "project-stage", roleCode: "READ_ONLY" },
-      ],
+      projects: [{ projectId: "project-9", roleCode: "BASIC_USER" }],
     });
     const body = importOf(requests);
     expect(body.createIntegrationToken).toBe(false);
@@ -450,7 +446,25 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     expect(writesOf(requests)).toEqual([]);
   });
 
-  it("reuses a key a stopped press minted: its reach set again, its value replaced, never a second key", async () => {
+  // One Mate per project (audit D2): a project holding several zcp services is no one Mate's, and
+  // none of them is picked as its container.
+  it("refuses a project holding several zcp services, naming them, and writes nothing", async () => {
+    const zcp = (id: string, name: string) => ({
+      id,
+      name,
+      serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+    });
+    const { client, requests } = platformClient({
+      services: [zcp("svc-1", "zcp"), zcp("svc-2", "zcp1")],
+    });
+
+    await expect(client.importDevelopmentContainer(INPUT)).rejects.toThrow(
+      "This project has more than one Zerops Control Plane (zcp, zcp1). A project holds one Mate: delete the others in Zerops, then try again.",
+    );
+    expect(writesOf(requests)).toEqual([]);
+  });
+
+  it("reuses a key a stopped press minted: its value replaced, never a second key", async () => {
     const { client, requests } = platformClient({
       tokens: [
         {
@@ -464,12 +478,41 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
 
     await client.importDevelopmentContainer(INPUT);
 
+    // Its own grant is already the Mate's: nothing is written to it but its new value.
     expect(writesOf(requests)).toEqual([
-      "PUT /client/org-1/integration-token/token-old",
       "PUT /client/org-1/integration-token/token-old/regenerate",
       "PUT /project/project-9/first-class-recipe/development-container",
     ]);
     expect(importOf(requests).serviceImportYaml).toContain(`ZCP_API_KEY: "${REGENERATED_KEY}"`);
+  });
+
+  it("lowers a reused key still ADMIN on its project, keeping every other grant it holds", async () => {
+    const { client, requests } = platformClient({
+      tokens: [
+        {
+          id: "token-old",
+          name: "zcp-Acme Docs - Ada",
+          roleCode: "NO_ACCESS",
+          projects: [
+            { projectId: "project-9", roleCode: "ADMIN" },
+            { projectId: "project-stage", roleCode: "READ_ONLY" },
+          ],
+        },
+      ],
+    });
+
+    await client.importDevelopmentContainer(INPUT);
+
+    const write = requests.find(
+      (request) =>
+        request.method === "PUT" && request.url === "/client/org-1/integration-token/token-old",
+    );
+    expect(JSON.parse(write?.body ?? "{}")).toMatchObject({
+      projects: [
+        { projectId: "project-9", roleCode: "BASIC_USER" },
+        { projectId: "project-stage", roleCode: "READ_ONLY" },
+      ],
+    });
   });
 
   // A zcp the platform is still creating holds the key already: regenerating it would cut the
@@ -500,7 +543,7 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
 
   // The write replaces the key's whole project list: it is planned from a read under the key's
   // lock, every token writer's (pass 28 review).
-  it("sets a reused key's reach from a read under its lock", async () => {
+  it("sets a reused key's own grant from a read under its lock", async () => {
     const held: Array<string> = [];
     const { client, requests } = platformClient({
       tokens: [
@@ -508,7 +551,7 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
           id: "token-old",
           name: "zcp-Acme Docs - Ada",
           roleCode: "NO_ACCESS",
-          projects: [{ projectId: "project-9", roleCode: "BASIC_USER" }],
+          projects: [{ projectId: "project-9", roleCode: "ADMIN" }],
         },
       ],
       holdToken: async (tokenId, run) => {
@@ -571,134 +614,5 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     });
     await client.importDevelopmentContainer(INPUT);
     expect(importOf(requests).serviceImportYaml).toContain("- hostname: zcp\n");
-  });
-});
-
-describe("ZeropsApiClient.createProjectWithZeropsMate", () => {
-  function recordingClient() {
-    const { client, requests } = platformClient({});
-    return {
-      client,
-      requests: {
-        get project() {
-          return requests[0];
-        },
-        get import() {
-          return requests.find((request) => request.url.includes("/first-class-recipe/"));
-        },
-        all: requests,
-      },
-    };
-  }
-
-  it("creates the project, then imports the container recipe into it", async () => {
-    const { client, requests } = recordingClient();
-
-    const result = await client.createProjectWithZeropsMate({ clientId: "org-1", name: "new" });
-
-    expect(result.project.id).toBe("project-9");
-    expect(result.serviceName).toBe("zcp");
-
-    expect(writesOf(requests.all)).toEqual([
-      "POST /client/org-1/project",
-      "POST /client/org-1/integration-token",
-      "PUT /project/project-9/first-class-recipe/development-container",
-    ]);
-
-    const importBody = JSON.parse(requests.import?.body ?? "{}");
-    expect(importBody.recipeSource).toBe("zeropsio/zcp");
-    expect(importBody.createIntegrationToken).toBe(false);
-    expect(importBody.serviceImportYaml).toContain(`ZCP_API_KEY: "${MINTED_KEY}"`);
-    expect(importBody.serviceImportYaml).toMatch(/VSCODE_PASSWORD: "[A-Za-z0-9]{16}"/);
-  });
-
-  it("generates the container password, sends it, and forgets it", async () => {
-    const { client, requests } = recordingClient();
-    const logged: string[] = [];
-    const spies = (["log", "info", "warn", "error", "debug"] as const).map((level) =>
-      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
-        logged.push(args.map(String).join(" "));
-      }),
-    );
-
-    try {
-      const result = await client.createProjectWithZeropsMate({ clientId: "org-1", name: "new" });
-
-      const password = /VSCODE_PASSWORD: "([A-Za-z0-9]{16})"/.exec(
-        JSON.parse(requests.import?.body ?? "{}").serviceImportYaml as string,
-      )?.[1];
-      expect(password).toBeTruthy();
-
-      // It exists only inside the one request that carries it.
-      expect(JSON.stringify(result)).not.toContain(password);
-      expect(logged.join("\n")).not.toContain(password);
-      expect(requests.project?.body ?? "").not.toContain(password);
-    } finally {
-      for (const spy of spies) spy.mockRestore();
-    }
-  });
-
-  /**
-   * The New project wizard's first Mate is born who its person made it — its name and its face —
-   * and asking, on their behalf, for the project's development to be stood up: the tags a Mate
-   * added with New Mate is born with.
-   */
-  const FACE = { tint: "coral", shape: "gem" } as const;
-  const GROUP = { groupId: "g-acme", role: "dev", label: "Acme Docs" } as const;
-  const birthTags = async (input: Record<string, unknown>) => {
-    const { client, requests } = recordingClient();
-    await client.createProjectWithZeropsMate({
-      clientId: "org-1",
-      name: "Acme Docs - Ada",
-      ...input,
-    });
-    return JSON.parse(requests.project?.body ?? "{}").tagList as ReadonlyArray<string>;
-  };
-
-  it.each([
-    {
-      case: "its name, its face and who asked for the stand-up",
-      input: { group: GROUP, botName: "Ada", face: FACE, standUpBy: "u-ada" },
-      has: ["mate", "mate:g:g-acme", "mate:bot:Ada", "mate:face:coral:gem", "mate:standup:u-ada"],
-      lacks: [],
-    },
-    {
-      case: "no face picked: none written, and its face is derived",
-      input: { group: GROUP, botName: "Ada", standUpBy: "u-ada" },
-      has: ["mate:bot:Ada", "mate:standup:u-ada"],
-      lacks: ["mate:face:"],
-    },
-    {
-      case: "nobody named as asking: no stand-up",
-      input: { group: GROUP, botName: "Ada", face: FACE },
-      has: ["mate:face:coral:gem"],
-      lacks: ["mate:standup:"],
-    },
-    {
-      case: "in no project: a Mate with nothing to stand up",
-      input: { botName: "Ada", face: FACE, standUpBy: "u-ada" },
-      has: ["mate", "mate:face:coral:gem"],
-      lacks: ["mate:standup:", "mate:g:"],
-    },
-  ])("tags the first Mate at birth with $case", async ({ input, has, lacks }) => {
-    const tags = await birthTags(input);
-    expect(tags).toEqual(expect.arrayContaining(has));
-    for (const prefix of lacks) expect(tags.some((tag) => tag.startsWith(prefix))).toBe(false);
-  });
-
-  it("tags it exactly as New Mate tags a Mate it adds", async () => {
-    const plan = planEnvironmentCreation({
-      clientId: "org-1",
-      groupId: GROUP.groupId,
-      groupName: GROUP.label,
-      role: "dev",
-      name: "Acme Docs - Ada",
-      botName: "Ada",
-      face: FACE,
-      standUpBy: "u-ada",
-    });
-    if (!plan.ok || plan.steps[0]?.kind !== "create-project") throw new Error("no birth tags");
-    const tags = await birthTags({ group: GROUP, botName: "Ada", face: FACE, standUpBy: "u-ada" });
-    expect([...tags].sort()).toEqual([...plan.steps[0].tagList].sort());
   });
 });

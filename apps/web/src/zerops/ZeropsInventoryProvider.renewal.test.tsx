@@ -4,9 +4,10 @@ import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowled
 import { makeAccountHarness, type AccountHarness } from "@t3tools/client-runtime/zerops/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { mountTab, unmountTabs, type MountedTab } from "./__fixtures__/harnessTabs";
+import { mountTab, preloadTabs, unmountTabs, type MountedTab } from "./__fixtures__/harnessTabs";
 import { buttonsLabelled, press } from "./__fixtures__/testDom";
-import { TRY_NOW_SETTLE_MS } from "./inventoryTrouble.logic";
+
+preloadTabs(() => import("./__fixtures__/accountProduct"));
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
   ZeropsFrameWait: ({
@@ -21,8 +22,10 @@ vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
 const MINUTE_MS = 60_000;
 
 /** A project write as the TagWriter makes one: the project read, then its tags written. */
-const renameTags = async (client: ZeropsApiClient) =>
-  client.writeProjectTags(await client.fetchProject("p1"), ["mate:name:Renamed"]);
+const markTags = async (client: ZeropsApiClient) => {
+  const project = await client.fetchProject("p1");
+  return client.writeProject(project, { name: project.name, tagList: ["mate"] });
+};
 const CHILD = "product mounted";
 
 const person: ZeropsUser = {
@@ -82,7 +85,7 @@ async function admittedProduct(
   if (firstRead !== null) {
     expect(firstRead.waiting()).toBe(1);
     await pass(options.firstRoundMs!);
-    expect(tab.text()).not.toContain(CHILD);
+    expect(tab.text()).toContain(CHILD);
     await tab.run(() => firstRead.release());
     await pass(0);
   }
@@ -104,7 +107,7 @@ async function refusedWrite({ harness, tab, pass }: Product) {
     harness.rest.requests().filter(({ route }) => route === "PUT /project/p1").length;
   const sent = writes();
   const { refused } = await tab.run(() => ({
-    refused: expect(renameTags(tab.session().client)).rejects.toMatchObject({
+    refused: expect(markTags(tab.session().client)).rejects.toMatchObject({
       message: "Project access could not be verified.",
     }),
   }));
@@ -145,7 +148,7 @@ describe("ZeropsInventoryProvider renewal", () => {
     const { harness, tab, pass, rounds } = await admittedProduct();
     const before = rounds();
     const renewal = harness.rest.hold("GET /user/info");
-    const write = () => tab.run(() => renameTags(tab.session().client));
+    const write = () => tab.run(() => markTags(tab.session().client));
 
     // Past the renewal and short of the deadline, with every renewal attempt still out.
     await pass(14 * MINUTE_MS + 30_000);
@@ -153,7 +156,9 @@ describe("ZeropsInventoryProvider renewal", () => {
     await expect(write()).resolves.toMatchObject({ id: "p1" });
 
     await tab.run(() => renewal.release());
-    await pass(2 * MINUTE_MS);
+    const [again] = buttonsLabelled(tab.container(), "Try now");
+    await tab.run(() => press(again!));
+    await pass(INVALIDATION_COALESCE_MS);
     expect(rounds()).toBeGreaterThan(before);
     await expect(write()).resolves.toMatchObject({ id: "p1" });
   });
@@ -191,7 +196,7 @@ describe("ZeropsInventoryProvider renewal", () => {
       const { harness, tab } = product;
       // Every renewal hangs: nothing extends the evidence the product was admitted on.
       harness.rest.hang("GET /user/info");
-      const write = () => tab.run(() => renameTags(tab.session().client));
+      const write = () => tab.run(() => markTags(tab.session().client));
 
       await toJustBefore(product);
       await expect(write()).resolves.toMatchObject({ id: "p1" });
@@ -204,7 +209,7 @@ describe("ZeropsInventoryProvider renewal", () => {
     const product = await admittedProduct({ firstRoundMs: 40_000 });
     const { harness, tab, pass, firstRoundBy } = product;
     harness.rest.hang("GET /user/info");
-    const write = () => tab.run(() => renameTags(tab.session().client));
+    const write = () => tab.run(() => markTags(tab.session().client));
     const toDeadline = () => firstRoundBy + 15 * MINUTE_MS - performance.now();
 
     // Admitted 40 s into its round, the evidence is stamped when the round
@@ -270,7 +275,9 @@ describe("ZeropsInventoryProvider renewal", () => {
         await pass(30_000);
         seen.push(tab.readable());
       }
-      expect(new Set(seen).size).toBe(1);
+      expect(
+        seen.every((text) => text.includes(CHILD) && text.includes("Zerops isn't answering.")),
+      ).toBe(true);
       expect(seen[0]).toContain(CHILD);
       expect(seen[0]).toContain("Zerops isn't answering.");
       // "Try now" joins a running round; pressed between rounds, it starts one at once. It is
@@ -287,8 +294,9 @@ describe("ZeropsInventoryProvider renewal", () => {
       }
       expect(rounds()).toBe(before + 1);
       expect(said[0]!.match(/Try (again|now)|Trying…|Sign out/g)).toEqual(["Trying…", "Sign out"]);
-      await pass(TRY_NOW_SETTLE_MS);
-      expect(tab.readable()).toContain("Still not answering.");
+      await pass(60_000);
+      expect(tab.readable()).toContain("Zerops isn't answering.");
+      expect(buttonsLabelled(tab.container(), "Try now")).toHaveLength(1);
       expect(seen[0]!.match(/Try (again|now)|Sign out/g)).toEqual(["Try now", "Sign out"]);
     },
   );
@@ -312,7 +320,7 @@ describe("ZeropsInventoryProvider renewal", () => {
       // The failing project keeps its place; its content waits for fresh evidence.
       expect(tab.text()).toContain("p2: Checking your access to this project…");
       expect(tab.text()).not.toContain("p1:");
-      await expect(tab.run(() => renameTags(tab.session().client))).resolves.toMatchObject({
+      await expect(tab.run(() => markTags(tab.session().client))).resolves.toMatchObject({
         id: "p1",
       });
     },

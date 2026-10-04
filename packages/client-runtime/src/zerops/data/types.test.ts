@@ -93,8 +93,8 @@ describe("Zerops platform data identities", () => {
 
   it("shares query identity across equivalent status-set orderings", () => {
     const base = {
-      kind: "running-processes-of-organization" as const,
-      organization: project().organization,
+      kind: "running-processes-of-project" as const,
+      project: project(),
       schemaVersion: 1 as const,
     };
     expect(queryKeyOf({ ...base, statuses: ["PENDING", "RUNNING"] })).toBe(
@@ -155,3 +155,20 @@ describe("Zerops platform data identities", () => {
     );
   });
 });
+
+it.each(["active-versions-of-services", "service-variables-of-services"] as const)(
+  "keeps %s queries separate for different opened services",
+  (kind) => {
+    const first =
+      kind === "active-versions-of-services"
+        ? { kind, organization: organization(), serviceIds: ["a"], schemaVersion: 1 as const }
+        : {
+            kind,
+            organization: organization(),
+            serviceIds: ["a"],
+            keys: ["ZEROPS_MATE_ENABLED"],
+            schemaVersion: 1 as const,
+          };
+    expect(queryKeyOf(first)).not.toBe(queryKeyOf({ ...first, serviceIds: ["b"] }));
+  },
+);

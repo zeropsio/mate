@@ -5,7 +5,14 @@ import { activeVersionsDescriptor } from "./entityTable.ts";
 import { decodeTableSearch } from "./tableProtocol.ts";
 import type { TableQueryDescriptor } from "./types.ts";
 
-const versions = activeVersionsDescriptor(organization);
+const versions = activeVersionsDescriptor(organization, [
+  "s-1",
+  "s-2",
+  "service",
+  "service-a",
+  "app",
+  "mate",
+]);
 const ticketFor = (descriptor: TableQueryDescriptor) =>
   directTicket({ kind: "query", descriptor } as never);
 

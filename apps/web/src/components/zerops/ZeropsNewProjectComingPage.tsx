@@ -4,8 +4,7 @@
  * only diff would be the progress"). It is the view Add a Mate lands on (`ZeropsMateComingPage`) —
  * the header line with the Mate's face and name, its face asleep a third of the way down, "Vera is
  * coming up on Acme CRM." — with the project's own steps before the Mate's in its progress
- * (`newProjectBirth.ts`): Git hosting where the account had none, then the project, under its
- * name. A step that stops says why here, with *Try again*, which resumes from it; one the platform
+ * (`newProjectBirth.ts`): HQ where the organization had none, then the project, under its name. A step that stops says why here, with *Try again*, which resumes from it; one the platform
  * may have made anyway, with the way to the projects, where it would be listed.
  *
  * The moment the platform takes the Mate's project, that Mate's own view takes the route in place
@@ -31,6 +30,7 @@ import {
   startAddOver,
   useNewProjectBirths,
 } from "~/zerops/newProjectBirth";
+import { useNewProjectBirthPorts } from "~/zerops/useNewProjectBirthPorts";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -56,6 +56,7 @@ const NOBODY = {
 
 export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: string }) {
   const navigate = useNavigate();
+  const birthPorts = useNewProjectBirthPorts();
   const { user } = useZeropsSession();
   // The person's own step wears their picture.
   const you = useMemo(() => personOf(user), [user]);
@@ -138,7 +139,9 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
               mate={mate}
               nowMs={nowMs}
               onTryAgain={() => {
-                retryNewProjectBirth(birthId);
+                if (birth !== undefined && birth.adds === undefined)
+                  retryNewProjectBirth(birthId, birthPorts(birth));
+                else retryNewProjectBirth(birthId);
               }}
               {...(ends === null
                 ? {}
@@ -177,7 +180,6 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
         // Landed on from the press: the dialog is gone, and the headline takes the focus.
         focusOnArrival
         mate={mate}
-        onRetry={() => undefined}
         phase={null}
         signIn={null}
         signInRequired={false}

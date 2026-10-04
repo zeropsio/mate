@@ -1114,7 +1114,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
       key: KEY,
       projectId: "project-larch",
       machines: new Map([[KEY, machine]]),
-      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
+      index: { serving: new Map(), reported: new Map() },
       records: [],
       registered: new Set(),
     });
@@ -1159,7 +1159,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
       coming: true,
     },
     {
-      step: "its probe found it ready, auto-connect making its link",
+      step: "its probe found it ready, its lease making its link",
       atMs: 166_900,
       service: zcp("ACTIVE", true),
       link: machineLink([WANTED, READY]),
@@ -1297,10 +1297,9 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
     expect(read).toBeUndefined();
   });
 
-  // Review, pass 34: a Mate auto-connect leaves unlinked — its close-off pending, past the
-  // ceiling — sits waiting for an exchange nobody asks for. Its probe found it up: it is not coming
-  // up, and its row offers what it offers (Finish setup) at once.
-  it("its probe found it up, auto-connect leaving it unlinked: no longer coming up", () => {
+  // Review, pass 34: a Mate no lease holds sits waiting for an exchange nobody asks for. Its probe
+  // found it up: it is not coming up, and its row offers what it offers (Finish setup) at once.
+  it("its probe found it up, no lease linking it: no longer coming up", () => {
     const unlinked = machineLink([READY]);
     expect(unlinked.reachability?.kind).toBe("connecting");
     const [, , , read] = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, link: unlinked }]);

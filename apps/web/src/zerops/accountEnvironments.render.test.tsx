@@ -5,7 +5,7 @@ import type {
   TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
 import { Profiler } from "react";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "./__fixtures__/testDom";
 
@@ -33,7 +33,7 @@ function publishingStage() {
     machines: () => machines,
     containers: () => containers,
     records: () => [],
-    index: () => ({ serving: new Map(), reported: new Map(), unanswered: [], failed: [] }),
+    index: () => ({ serving: new Map(), reported: new Map() }),
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => {
@@ -60,6 +60,12 @@ function publishingStage() {
     size: () => ({ machines: machines.size, containers: containers.size }),
   };
 }
+
+// The modules' first load is the file's setup, with its own time: under load it took most of the
+// test's 15 s (measured 2026-10-03), and the test timed out before its first commit.
+beforeAll(async () => {
+  await Promise.all([import("react-dom/client"), import("./accountEnvironments")]);
+}, 120_000);
 
 afterEach(() => {
   vi.unstubAllGlobals();

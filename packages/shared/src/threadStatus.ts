@@ -1,4 +1,8 @@
-import type { OrchestrationThreadShell } from "@t3tools/contracts";
+import type {
+  OrchestrationLatestTurn,
+  OrchestrationSession,
+  OrchestrationThreadShell,
+} from "@t3tools/contracts";
 import type { RelayAgentAwarenessPhase } from "@t3tools/contracts/relay";
 import type { MateMarkState } from "./brand.ts";
 import { isLatestTurnSettled } from "./orchestrationTiming.ts";
@@ -38,14 +42,27 @@ export type ThreadStatusInput = Pick<
   readonly wokeAt?: string | null;
 };
 
+/**
+ * What the resolver reads of a thread: a shell's turn and session hold more, a Mate's overview of
+ * its chat (`@t3tools/shared/mateLink`) no more than this.
+ */
+export type ThreadStatusFields = Omit<ThreadStatusInput, "latestTurn" | "session"> & {
+  readonly latestTurn: Pick<
+    OrchestrationLatestTurn,
+    "turnId" | "state" | "startedAt" | "completedAt"
+  > | null;
+  readonly session: Pick<OrchestrationSession, "status"> | null;
+};
+
 export interface ThreadStatus {
   readonly kind: ThreadStatusKind;
   readonly toneId: ThreadStatusToneId;
 }
 
-export function hasUnseenCompletion(
-  thread: Pick<ThreadStatusInput, "latestTurn" | "lastVisitedAt">,
-): boolean {
+export function hasUnseenCompletion(thread: {
+  readonly latestTurn: { readonly completedAt: string | null } | null;
+  readonly lastVisitedAt?: string | null | undefined;
+}): boolean {
   if (!thread.latestTurn?.completedAt) return false;
   const completedAt = Date.parse(thread.latestTurn.completedAt);
   if (Number.isNaN(completedAt) || !thread.lastVisitedAt) return false;
@@ -64,7 +81,8 @@ function hasUnseenWake(thread: Pick<ThreadStatusInput, "lastVisitedAt" | "wokeAt
   return Number.isNaN(lastVisitedAt) || wokeAt > lastVisitedAt;
 }
 
-function toneIdForKind(kind: ThreadStatusKind): ThreadStatusToneId {
+/** The tone a status kind is drawn in: the resolver's own, for a kind read without a thread. */
+export function toneIdForKind(kind: ThreadStatusKind): ThreadStatusToneId {
   switch (kind) {
     case "approval":
     case "woke":
@@ -90,7 +108,7 @@ function status(kind: ThreadStatusKind): ThreadStatus {
   return { kind, toneId: toneIdForKind(kind) };
 }
 
-export function resolveThreadStatus(thread: ThreadStatusInput): ThreadStatus {
+export function resolveThreadStatus(thread: ThreadStatusFields): ThreadStatus {
   if (thread.hasPendingApprovals) return status("approval");
   if (thread.hasPendingUserInput) return status("input");
   if (thread.session?.status === "running" || thread.latestTurn?.state === "running") {
@@ -112,6 +130,22 @@ export function resolveThreadStatus(thread: ThreadStatusInput): ThreadStatus {
   if (hasUnseenWake(thread)) return status("woke");
   if (hasUnseenCompletion(thread)) return status("done");
   return status("idle");
+}
+
+/**
+ * The kind a reader sees for a thread its Mate resolved without a visit (a digest,
+ * `@t3tools/shared/mateLink`): the resolver's own answer for this reader. Only `done` and `woke`
+ * depend on who looks, both come last, and a digest carries no wake — so an `idle` digest is
+ * `done` while its completion is newer than the reader's visit, and every other kind is final.
+ */
+export function viewerThreadKind(
+  digest: { readonly kind: ThreadStatusKind; readonly completedAt: string | null },
+  lastVisitedAt: string | null | undefined,
+): ThreadStatusKind {
+  if (digest.kind !== "idle") return digest.kind;
+  return hasUnseenCompletion({ latestTurn: { completedAt: digest.completedAt }, lastVisitedAt })
+    ? "done"
+    : "idle";
 }
 
 /**

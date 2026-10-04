@@ -1,13 +1,13 @@
 # Zerops live data architecture
 
-Status: **implemented client architecture**, 2026-09-08. The existing web and
+Status: **implemented client architecture**, 2026-10-04. The existing web and
 retained mobile Zerops data consumers use the central runtime. This remains an
 observational client model, not a claim that every upstream source guarantee is proven.
 
 Source baseline: Mate `2251deee8` (initial audit `5a571f3b0`), frontend-legacy
 `c88b8fefb`, zcp `08e7dbae`, zerops-docs `4899cf0b`. Independent Fable 5.1 and
 Astra reviews informed this decision. The [account contract](account-lifecycle.md)
-remains unchanged. [zcp spec §5.1](../../../../zcp/docs/spec-mate.md#51-the-service-map-is-a-client-projection-of-the-zerops-api)
+defines targeted admission. [zcp spec §5.1](../../../../zcp/docs/spec-mate.md#51-the-service-map-is-a-client-projection-of-the-zerops-api)
 adopts this architecture and records its implemented scope.
 See [the fixed consistency contract](platform-data-consistency.md) for implementable
 source precedence, bootstrap/recovery and adapter admission requirements.
@@ -33,7 +33,7 @@ A disconnected model is explicitly unsynchronized. A platform value whose push s
 is paused reaches a view as `known` with `paused` freshness and renders as paused,
 never as current ([the knowledge type](client-state-model.md#the-knowledge-type)).
 A value shown while it is read again, and an "as of" time, belong only to pull-only
-sources (the resource broker, Gitea) and to a T3 stream that resubscribes.
+sources (the resource broker, HQ's releases) and to a T3 stream that resubscribes.
 
 Compose the system in one account-scoped **`ZeropsDataRuntime`** inside
 `packages/client-runtime`: a composition root and public domain facade with small
@@ -94,17 +94,22 @@ reconciliation, topology watcher, activity poller and feature-owned build-log
 session have no parallel fallback owner.
 
 Mate server connections have a separate lifetime from the platform receiver: each
-registered environment owns its authenticated socket and initial shell snapshot.
+registered environment owns its authenticated socket and initial shell snapshot while a
+lease holds it — the route, the Mate on screen, the one left last, an action, a Connect —
+and is parked with none: its socket closed, its registration, kept session and cached data
+kept (step A, A9). What draws a Mate this tab has not opened reads HQ's overview of it.
 One [environment machine](client-state-model.md#mate-environment-one-per-target-key)
 per Mate target, in the account runtime's post-grant stage, decides when an identity
-exchange runs: restore, auto-connect and repair are the same driver, single flight per
-origin, retried on the shared backoff policy and bounded by the tab's exchange budget.
+exchange runs: restore, repair and the leases are demand on the same driver, single flight
+per origin, retried on the shared backoff policy and bounded by the tab's exchange budget.
 Existing registrations are reused, and a newly published catalog entry is retained
 while its verified target identity is being recorded; routes still wait for that
 identity. Container health comes from one probe store, one fact per origin, that every
 surface shares: it reads an origin on the cadence its container's level asks for while
 the container comes up, restarts or updates, and once more on a push, a connect failure
-or a wake; a tab hidden for a minute probes nothing. Account closure ends the machines
+or a wake; a tab hidden for a minute probes nothing. A Mate HQ holds online is not probed,
+and under an official HQ's current word a project it does not hold online is read only
+when something waits on it (step A, A10). Account closure ends the machines
 and the probes. These web connection and probe rules also
 apply to the retained desktop wrapper; mobile lists Mates through the same candidate
 selectors and container store and keeps its own connection entry flow.
@@ -297,12 +302,34 @@ scopes also have direct bootstrap/recovery anchors. The fixed consistency contra
 defines these distinct roles. Metric subscriptions are also native; logs remain a
 separately adapted stream.
 
-Start with organization-scoped ServiceStack and Process list/update interests
-shared by project views on an organization receiver. Project-list/access interests
-are additional: those four subscriptions alone do not cover the whole platform.
-Keep separate receivers across organizations until wider sharing is proven.
-Telemetry/detail demand is explicit. Large-organization partitioning can change
-behind the same interface after measurement; panels never choose transport scope.
+Navigation holds project list/update demand only for the active organization. HQ owns the menu's
+placement rows, applications, Mate presence and overview. It can paint its live structure or the
+account's menu memory before runtime admission or inventory completes. Restored structure reads
+**Last known · as of … · Updating…**, with presence unknown. Zerops enriches names/status by ID;
+only definite Zerops not-found evidence removes a held row. A zcp service outside HQ is not a
+primary Mate menu row; setup/discovery belongs to its separately opened project surface.
+
+The opened project holds service/process membership and updates filtered by both organization and
+project IDs. Its services bootstrap from one direct project service list. Version/variable list
+and update filters name only that project's service IDs. Query identities and table coverage
+include those IDs; releasing one project cannot erase another project's table rows or mark its
+unopened service answered. Absent metadata is a single attempt, re-read only for a causal source
+change or a person's manual action.
+
+Each active organization has one receiver: one socket login carries navigation and every drawn or
+opened project's subscriptions, each under its own subscription name. When demand shrinks, its
+registrations stop being routed and the socket stays; the platform has no unsubscribe, so a
+released subscription keeps sending until the socket closes. The socket closes with the
+organization's last demand, and is replaced once the subscriptions released on it reach
+`releasedRegistrationsPerReceiver`. A socket failure reconnects that one socket and re-registers
+everything it carried with fresh baselines. A failed sibling remains failed during rebuilding.
+Metrics and metric history are separate leases held only while the opened Mate panel and browser
+tab are visible. Panel **Try again** re-registers that project's held demand on the same socket,
+leaving navigation untouched; on a failed socket it replaces the socket for all it carried.
+
+Desktop source shares the web behavior. Retained mobile source selects an organization and a project
+before reading detail; its first **View project** press supplies that detail demand. Mobile has no
+metric consumer to lease. This fork releases only the hosted web client.
 
 Separate these concepts with small concrete states:
 
@@ -310,7 +337,7 @@ Separate these concepts with small concrete states:
 - Query coverage: complete scope, partial window, unresolved membership.
 - Transport health: connection state.
 - Domain/interest synchronization: establishing, observing under its declared
-  guarantee, recovering, paused or failed. One open socket cannot conceal a failed
+  guarantee, paused or failed. One open socket cannot conceal a failed
   subscription for a particular kind/query.
 - Access: independently verified scope and deadline. Data arrival cannot renew it.
 
@@ -335,22 +362,22 @@ and consumes native changes in local receipt order. These are local admission
 rules, not source chronology. See the consistency contract for the complete
 algorithm; implementers must not invent a different recovery policy per domain.
 
-Resnapshot on reconnect, detected loss, rejected input or explicit refresh.
+Resnapshot healthy paused demand on foreground return or a held scope on explicit refresh.
+Detected loss and rejected input produce a visible failed state with a manual action.
 A healthy receiver drives data through native frames without periodic REST
 traversals of the account. Heartbeats detect transport failure, not silent source
 omissions; those can remain until a new baseline or explicit refresh. Keep that
 limit in the observation guarantee. Overflow marks the affected interest
-unsynchronized before recovery; dropped frames plus a GET are not automatically
+unsynchronized before a manual recovery; dropped frames plus a GET are not automatically
 correct. Read-only domains without push have explicit on-demand semantics and do
 not advertise live synchronization.
 
-Account-wide candidate discovery acquires only project/service inventory. Process
-searches belong to visible topology or operation activity, and metrics/history
-remain separate demand. Establishment and recovery pair subscription baselines
-with one direct inventory/activity anchor for each demanded scope, so a stale search
-response cannot prevent refreshing previously authoritative fields. Removing a
-surface releases its demand. The independent
-account verification window remains unchanged.
+Active-organization navigation never creates detail leases for all listed projects. Service and
+process searches belong to an opened project or explicit action. Each demanded scope pairs
+subscription baselines with a direct anchor. Removing its surface releases demand. The access
+verifier shares an opened project's direct read and never uses navigation enumeration to renew
+access. Failed HQ streams, grant rounds, registrations, hydration and metadata reads stay failed
+until the visible manual action; no timer repairs them.
 
 Local account/transport/interest generations fence obsolete work. Revocation stops
 affected content and commands immediately; a sleeping tab cannot extend access
@@ -371,9 +398,9 @@ an env write replacing the complete environment set. Secrets and signed grants
 have restricted lifetimes. No generic platform-state persistence is proposed.
 
 Admission is per project, as the [account contract](account-lifecycle.md#access-verification)
-states from 0.6: the account is admitted when `user/info` and every organization
-list answer, and each project's content and writes rest on that project's own
-evidence and deadline. Transport changes must preserve that gate.
+admits the account from `user/info`; each demanded project's content and writes rest on its
+own direct-read evidence, role and deadline. HQ menu rows can paint before this gate, with
+admission-dependent actions withheld.
 
 ## Alternatives and engine choice
 

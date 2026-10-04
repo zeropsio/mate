@@ -1,8 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId } from "@t3tools/contracts";
+import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
-import * as Option from "effect/Option";
+import { toneIdForKind } from "@t3tools/shared/threadStatus";
 import {
   CircleAlertIcon,
   CircleCheckIcon,
@@ -12,8 +13,7 @@ import {
 import { useCallback, useEffect, useRef } from "react";
 
 import { getClientSettings, useClientSettings } from "../hooks/useSettings";
-import { useEnvironments } from "../state/environments";
-import { environmentShell } from "../state/shell";
+import { hqMatesViewAtom } from "../state/zerops";
 import { useMutedMates } from "../zerops/mutedMates";
 import {
   hasDesktopNotifications,
@@ -22,13 +22,23 @@ import {
   setNotificationBadge,
   unlockNotificationAudio,
 } from "../threadNotifications";
-import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
+import {
+  observedEnvironments,
+  watchMates,
+  type MatesBaseline,
+} from "./ThreadNotificationCoordinator.logic";
 import { toastManager } from "./ui/toast";
 import { threadStatusToneTextClass } from "./Sidebar.logic";
 import { cn } from "~/lib/utils";
 
+/**
+ * Notifications for every Mate the person may observe, from HQ's overview of it (step A): no
+ * socket to a Mate is needed for its chats to ring. The view HQ answers now is the baseline;
+ * while it is not current — HQ's stream ended or broke — nothing rings, and the next view is a
+ * baseline again, so nothing that happened meanwhile is replayed.
+ */
 export function ThreadNotificationCoordinator() {
-  const { environments } = useEnvironments();
+  const view = useAtomValue(hqMatesViewAtom);
   const mode = useClientSettings((settings) => settings.notificationMode);
   const inAppNotificationsEnabled = useClientSettings(
     (settings) => settings.inAppNotificationsEnabled,
@@ -42,16 +52,19 @@ export function ThreadNotificationCoordinator() {
     setNotificationBadge(pending.current.size);
   }, []);
 
+  // A pending notification closes once its Mate leaves HQ's view — as last known, so a stream
+  // that broke for a moment closes none.
+  const known = view?.mates ?? null;
   useEffect(() => {
-    const activeIds = new Set(environments.map(({ environmentId }) => environmentId));
+    const observed = observedEnvironments(known);
     const count = pending.current.size;
     for (const [tag, { environmentId, notification }] of pending.current) {
-      if (activeIds.has(environmentId)) continue;
+      if (observed.has(environmentId)) continue;
       notification.close();
       pending.current.delete(tag);
     }
     if (count !== pending.current.size) setNotificationBadge(pending.current.size);
-  }, [environments]);
+  }, [known]);
 
   useEffect(() => {
     const clear = () => {
@@ -82,23 +95,22 @@ export function ThreadNotificationCoordinator() {
 
   if (mode === "off" && !inAppNotificationsEnabled) return null;
 
-  return environments.map((environment) => (
-    <EnvironmentNotifications
-      key={environment.environmentId}
-      environmentId={environment.environmentId}
+  return (
+    <MatesNotifications
+      mates={view?.current === true ? view.mates : null}
       onNotification={onNotification}
     />
-  ));
+  );
 }
 
-function EnvironmentNotifications({
-  environmentId,
+function MatesNotifications({
+  mates,
   onNotification,
 }: {
-  environmentId: EnvironmentId;
+  /** HQ's view of the Mates now; none while it is not HQ's answer now. */
+  mates: HqMates | null;
   onNotification: (environmentId: EnvironmentId, notification: Notification) => void;
 }) {
-  const shell = useAtomValue(environmentShell.stateValueAtom(environmentId));
   const mode = useClientSettings((settings) => settings.notificationMode);
   const inAppNotificationsEnabled = useClientSettings(
     (settings) => settings.inAppNotificationsEnabled,
@@ -110,44 +122,15 @@ function EnvironmentNotifications({
   // A Mate is one environment, so muting it (the left menu's Mate menu) is
   // this environment ringing for nothing — while it is still watched, so an
   // unmute rings for what happens after and never for what it missed.
-  const muted = useMutedMates().muted.includes(environmentId);
-  const previous = useRef(
-    new Map<ThreadId, { attention: string | null; completion: number | null }>(),
-  );
+  const { muted } = useMutedMates();
+  const previous = useRef<MatesBaseline | null>(null);
 
   useEffect(() => {
-    if (shell.status !== "live" || Option.isNone(shell.snapshot)) {
-      previous.current.clear();
-      return;
-    }
-    const next = new Map<ThreadId, { attention: string | null; completion: number | null }>();
-    for (const thread of shell.snapshot.value.threads) {
-      const { kind: status, toneId } = resolveThreadStatus(thread);
-      const settled =
-        status !== "working" &&
-        status !== "connecting" &&
-        status !== "approval" &&
-        status !== "input";
-      const prior = previous.current.get(thread.id);
-      const attention =
-        status === "input" || status === "approval" || status === "failed"
-          ? `${thread.latestTurn?.turnId ?? ""}:${status}`
-          : null;
-      const completedAt = Date.parse(thread.latestTurn?.completedAt ?? "");
-      const completion =
-        settled && thread.latestTurn?.state === "completed" && Number.isFinite(completedAt)
-          ? completedAt
-          : (prior?.completion ?? null);
-      next.set(thread.id, { attention, completion });
-      // A crewmate's thread speaks through the crew, never as a thread alert.
-      if (!prior || thread.archivedAt !== null || thread.crew !== undefined) continue;
-      const kind =
-        attention && attention !== prior.attention
-          ? "input"
-          : completion !== null && (prior.completion === null || completion > prior.completion)
-            ? "completion"
-            : null;
-      if (!kind || muted) continue;
+    const { next, rings } = watchMates(previous.current, mates, Date.now());
+    previous.current = next;
+    for (const ring of rings) {
+      const { environmentId, threadId, kind, status } = ring;
+      if (muted.includes(environmentId)) continue;
       // The glyph and its colour are the sidebar row's for the same status.
       const NotificationIcon =
         kind === "completion"
@@ -174,12 +157,12 @@ function EnvironmentNotifications({
         inAppNotificationsEnabled &&
         document.visibilityState === "visible" &&
         document.hasFocus() &&
-        (activeEnvironmentId !== environmentId || activeThreadId !== thread.id)
+        (activeEnvironmentId !== environmentId || activeThreadId !== threadId)
       ) {
         const toastId = toastManager.add({
           type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
           title,
-          description: maskSecrets(thread.title),
+          description: maskSecrets(ring.title),
           data: {
             hideCopyButton: true,
             leadingIcon: (
@@ -187,7 +170,9 @@ function EnvironmentNotifications({
                 aria-hidden
                 className={cn(
                   "size-4",
-                  threadStatusToneTextClass(kind === "completion" ? "success" : toneId),
+                  threadStatusToneTextClass(
+                    kind === "completion" ? "success" : toneIdForKind(status),
+                  ),
                 )}
               />
             ),
@@ -198,7 +183,7 @@ function EnvironmentNotifications({
               toastManager.close(toastId);
               void navigate({
                 to: "/$environmentId/$threadId",
-                params: { environmentId, threadId: thread.id },
+                params: { environmentId, threadId },
               });
             },
           },
@@ -214,8 +199,8 @@ function EnvironmentNotifications({
         continue;
       try {
         const notification = new Notification(title, {
-          body: maskSecrets(thread.title),
-          tag: `${environmentId}:${thread.id}`,
+          body: maskSecrets(ring.title),
+          tag: `${environmentId}:${threadId}`,
           silent: true,
         });
         onNotification(environmentId, notification);
@@ -224,24 +209,22 @@ function EnvironmentNotifications({
           window.focus();
           void navigate({
             to: "/$environmentId/$threadId",
-            params: { environmentId, threadId: thread.id },
+            params: { environmentId, threadId },
           });
         });
       } catch {
         // Some browsers expose Notification but reject desktop presentation.
       }
     }
-    previous.current = next;
   }, [
     activeEnvironmentId,
     activeThreadId,
-    environmentId,
     inAppNotificationsEnabled,
+    mates,
     mode,
     muted,
     navigate,
     onNotification,
-    shell,
   ]);
 
   return null;

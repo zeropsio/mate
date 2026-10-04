@@ -1,4 +1,5 @@
 import { buildZeropsGroupTree, type ZeropsProject } from "@t3tools/client-runtime/zerops";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -8,13 +9,21 @@ import {
   groupNameIsPlaceholder,
 } from "./ZeropsGroupTree.logic";
 
-function item(name: string, tagList: ReadonlyArray<string>): { readonly project: ZeropsProject } {
-  return { project: { id: name, name, status: "ACTIVE", tagList } };
+/** A project HQ places in application `appId`, named `appName`, as `kind`. */
+function item(
+  name: string,
+  appId: string,
+  appName: string,
+  kind: HqPlacement["kind"],
+): { readonly project: ZeropsProject } {
+  return {
+    project: { id: name, name, status: "ACTIVE", hq: { appId, appName, kind, mate: null } },
+  };
 }
 
-const CRM_DEV = item("crm-dev", ["mate:g:aaa", "mate:role:dev", "mate:name:Beviro CRM"]);
-const CRM_STAGE = item("crm-stage", ["mate:g:aaa", "mate:role:stage"]);
-const CRM_PROD = item("crm-prod", ["mate:g:aaa", "mate:role:prod", "mate:name:Beviro CRM"]);
+const CRM_DEV = item("crm-dev", "aaa", "Beviro CRM", "mate");
+const CRM_STAGE = item("crm-stage", "aaa", "Beviro CRM", "stage");
+const CRM_PROD = item("crm-prod", "aaa", "Beviro CRM", "production");
 
 describe("environmentRoleLabel", () => {
   it.each([
@@ -47,12 +56,12 @@ describe("environmentRoleTag", () => {
 });
 
 describe("groupNameIsPlaceholder", () => {
-  it("is true for a group nothing has named", () => {
-    const [group] = buildZeropsGroupTree([item("x", ["mate:g:zzz"])], { order: "name" }).groups;
+  it("is true for a group HQ holds no name for", () => {
+    const [group] = buildZeropsGroupTree([item("x", "zzz", "", "mate")], { order: "name" }).groups;
     expect(groupNameIsPlaceholder(group!.group)).toBe(true);
   });
 
-  it("is false once a label tag names it", () => {
+  it("is false once HQ names it", () => {
     const [group] = buildZeropsGroupTree([CRM_DEV], { order: "name" }).groups;
     expect(groupNameIsPlaceholder(group!.group)).toBe(false);
   });

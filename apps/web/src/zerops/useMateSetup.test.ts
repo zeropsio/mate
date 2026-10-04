@@ -23,6 +23,23 @@ describe("mateSetupSettled", () => {
     { case: "the stand-up failed", setup: { runtimes: "none", standup: "failed" }, settled: true },
     { case: "no stand-up to run", setup: { runtimes: "none", standup: "none" }, settled: true },
     { case: "nothing said of a stand-up", setup: { runtimes: "done" }, settled: false },
+    {
+      // A New project's first Mate: no stand-up, its Git access still on its way.
+      case: "Git access on its way",
+      setup: { git: "waiting", runtimes: "none", standup: "none" },
+      settled: false,
+    },
+    {
+      // It heals once an admin sets HQ up, or its setup is finished: read on.
+      case: "Git access failed",
+      setup: { git: "failed", gitFailure: { reason: "no_hq" }, runtimes: "none", standup: "none" },
+      settled: false,
+    },
+    {
+      case: "Git access granted",
+      setup: { git: "done", runtimes: "none", standup: "none" },
+      settled: true,
+    },
   ])("$case: settled $settled", ({ setup, settled }) => {
     expect(mateSetupSettled({ at: "", ...setup })).toBe(settled);
   });

@@ -123,3 +123,15 @@ before its socket. The owner reports the slow opens as occasional, which fits a 
 always the route, or a path MTU that changes, as much as it fits a fault in the app.
 **How to answer** The next time an open is slow, read `ifconfig utun4` and `route -n get default`,
 and the load's `mateDiagnostics` spans. Then set the VPN's MTU to 1380 and open the same Mate again.
+
+---
+
+### Q-20 · Does main's broker deploy over HQ on an environment both can reach?
+
+**Blocks** knowing that Snap's production stays on HQ's release once HQ deploys it.
+**What is known** (2026-10-02, read in gitea-mate `07ed3a3`, not run) Every 5 min the broker's
+catch-up compares each environment's live sha with the newest approved release and queues the
+difference (`catchup.go:183`). Karel decided to delete main's `deploy-Snap - production` key when HQ
+takes its own, so the broker's next job for it must fail and stay failed.
+**How to answer** After HQ deploys a release other than `v0.1.0` to Snap production, read the
+broker's log for one failed job and production's live version over the following passes.

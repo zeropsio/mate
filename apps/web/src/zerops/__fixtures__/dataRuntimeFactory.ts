@@ -7,6 +7,7 @@
  */
 import {
   initialGrant,
+  makeInitialZeropsDataState,
   type AccessGrantView,
   type AccessState,
   type AccountScope,
@@ -55,6 +56,7 @@ export function makeFakeRuntimeFactory(
     };
     const runtime = {
       scope,
+      stateAtom: Atom.make(makeInitialZeropsDataState(scope)),
       access: {
         start: () => options.startGrant ?? Effect.void,
         signal: () => Effect.void,

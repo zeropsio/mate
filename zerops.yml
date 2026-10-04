@@ -21,9 +21,12 @@ zerops:
         - npm install -g --prefix "$HOME/.local" pnpm@11.10.0
         # `--filter @t3tools/web...` takes the web app and its workspace
         # dependencies only, leaving the desktop (Electron) and mobile (Expo)
-        # halves of the monorepo uninstalled.
-        - $HOME/.local/bin/pnpm install --frozen-lockfile --filter "@t3tools/web..."
+        # halves of the monorepo uninstalled; `@t3tools/hq...` adds HQ Core's.
+        - $HOME/.local/bin/pnpm install --frozen-lockfile --filter "@t3tools/web..." --filter "@t3tools/hq..."
         - $HOME/.local/bin/pnpm --filter @t3tools/web build
+        # HQ Core of the same commit, same-origin under hq-core/: what an
+        # organization's HQ birth deploys (apps/hq/scripts/pack-core.ts).
+        - node apps/hq/scripts/pack-core.ts apps/web/dist
         # msw's dev worker ships in apps/web/public and would otherwise be
         # served publicly. Nothing registers it; it still has no business on
         # a public origin.

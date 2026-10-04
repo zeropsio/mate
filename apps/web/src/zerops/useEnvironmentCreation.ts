@@ -2,15 +2,15 @@
  * Stands one environment up in a group — a Mate, a stage or a production — from whatever surface
  * asked for it: the New Mate dialog over any view (`ZeropsNewMateHost`), and the projects page's
  * own adds. The plan is `planEnvironmentCreation`, the press `matePress.ts`; this only gathers the
- * inputs — the group's agents and environments, the account's Gitea, who asked — and presses.
+ * inputs — the group's agents and environments, who asked — and presses.
  *
  * The press does every step that needs this person's rights before it returns: the project, a
- * Mate's key and container, its project closed off, and the group registration an owner or an
- * admin — or anyone adding a stage or a production — writes. A member's Mate waits for one of
- * them to *Finish setup*. The container does the rest whether this tab stays or not.
+ * Mate's key and container, its project closed off, and its registration in the organization's
+ * HQ, which decides who may write it. An organization with no HQ takes no environment (ADR 0001).
+ * The container does the rest whether this tab stays or not.
  */
 import {
-  canWriteRegistry,
+  formatMateFace,
   planEnvironmentCreation,
   recipeTierServices,
   unionAgents,
@@ -24,14 +24,16 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { ZeropsServiceId, type AgentsCellRequest } from "@t3tools/client-runtime/zerops/data";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { useCallback, useEffect, useRef } from "react";
 
 import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";
+import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
-import { useAccountGitea } from "./giteaProject";
-import { beginPress, pressPlatform, pressRegistration, pressViewer, runPress } from "./matePress";
-import { readZeropsCellOnce } from "./useZeropsDeployedVersion";
+import { beginPress, pressPlatform, pressRegistration, runPress } from "./matePress";
+import { readZeropsCellOnce } from "./readZeropsCell";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsData } from "./zeropsDataContext";
@@ -87,23 +89,52 @@ export function pressPlanned(steps: ReadonlyArray<EnvironmentCreationStep>): {
   };
 }
 
+/** Only a dev Mate with a recipe has development to stand up after sign-in. */
+function addedMateStandUp(
+  role: ZeropsEnvironmentRole,
+  choice: Pick<EnvironmentCreationChoice, "withAgent" | "recipe">,
+): boolean {
+  return role === "dev" && choice.withAgent && choice.recipe.kind === "tier";
+}
+
+/**
+ * The birth intent a Mate added to a group is pressed under (F6c): recorded at HQ before its
+ * project exists — its application, its face and, for a dev Mate, the person's ask for its
+ * stand-up — so a press cut off between the project and its attach is finished where and as it
+ * was asked for, in any browser, its attach recording the ask with the Mate (audit B3). Its name
+ * is its project's (D3). None for a stage or a production, or an environment with no agent: no
+ * Mate is born.
+ */
+export async function addedMateBirth(
+  hq: Pick<HqApi, "recordBirth">,
+  input: {
+    readonly groupId: string;
+    readonly role: ZeropsEnvironmentRole;
+    readonly choice: Pick<EnvironmentCreationChoice, "face" | "withAgent" | "recipe">;
+  },
+): Promise<string | undefined> {
+  const { choice } = input;
+  if ((input.role !== "dev" && input.role !== "devstage") || !choice.withAgent) return undefined;
+  const { id } = await hq.recordBirth({
+    appId: input.groupId,
+    // Empty where none was picked, as its attach records it: the Mate wears its name's tint.
+    face: choice.face === undefined ? "" : formatMateFace(choice.face),
+    standUp: addedMateStandUp(input.role, choice),
+  });
+  return id;
+}
+
 export function useEnvironmentCreation(): (
   request: EnvironmentCreationRequest,
 ) => Promise<EnvironmentCreationRun> {
-  const { activeOrganization, client, user } = useZeropsSession();
-  // Who asks for the stand-up of a Mate they add (`mate:standup:`).
-  const asker = user?.id;
+  const { activeOrganization, client } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
   const inventory = useZeropsInventory();
   const inventoryRef = useRef(inventory);
   useEffect(() => {
     inventoryRef.current = inventory;
   }, [inventory]);
-  const accountGitea = useAccountGitea(activeOrganization?.id);
-  const giteaProjectId = accountGitea?.projectId;
-  // Read exactly as the account's Gitea project states it: an account on a devel region or behind
-  // a custom domain is read, never guessed.
-  const giteaOrigin = accountGitea?.state.url;
+  const accountHq = useAccountHq(activeOrganization?.id);
 
   /**
    * The agents a group's existing environments are signed in with, so a Mate born into that group
@@ -142,30 +173,33 @@ export function useEnvironmentCreation(): (
   return useCallback(
     async (request: EnvironmentCreationRequest): Promise<EnvironmentCreationRun> => {
       if (activeOrganization === null) return { kind: "refused", reason: null };
+      const hq = officialHq(accountHq);
       const organization = activeOrganization;
       const isCurrent = captureAccountLifetime();
       const { group, role, choice } = request;
       const { name } = choice;
       const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
-      // A Mate's registration is an owner's or an admin's to write; a stage or a production's is
-      // anyone's who adds one. Without the account's Gitea there is no registry to write it in.
-      const registers =
-        giteaProjectId !== undefined && (tier !== null || canWriteRegistry(organization));
 
+      // A Mate's birth intent before its project: an HQ that cannot record it takes no project.
+      let intent: string | undefined;
+      try {
+        intent = await addedMateBirth(accountHqApi(client, organization.id, hq), {
+          groupId: group.groupId,
+          role,
+          choice,
+        });
+      } catch (cause) {
+        return { kind: "refused", reason: zeropsErrorMessage(cause) };
+      }
       const plan = planEnvironmentCreation({
         clientId: organization.id,
-        groupId: group.groupId,
-        // A group named by its id has no name to mirror.
-        ...(group.nameSource === "id" ? {} : { groupName: group.name }),
         role,
         name,
         agents: await readGroupAgents(request.environments),
         recipe: choice.recipe,
         withAgent: choice.withAgent,
-        register: registers,
-        ...(choice.botName === undefined ? {} : { botName: choice.botName }),
-        ...(asker ? { standUpBy: asker, madeBy: asker } : {}),
-        ...(choice.face === undefined ? {} : { face: choice.face }),
+        register: true,
+        ...(intent === undefined ? {} : { birth: intent }),
       });
       if (!isCurrent()) return { kind: "refused", reason: null };
       if (!plan.ok) return { kind: "refused", reason: plan.reason };
@@ -177,18 +211,23 @@ export function useEnvironmentCreation(): (
         organizationId: organization.id,
       };
       const platform = pressPlatform(inputs, {
-        groupProjectIds: request.environments.map(({ item }) => item.project.id),
-        viewer: pressViewer(user, organization),
-        register:
-          registers && giteaProjectId !== undefined
-            ? pressRegistration(inputs, {
-                giteaProjectId,
-                giteaOrigin: tier === null ? null : (giteaOrigin ?? null),
+        register: pressRegistration(
+          inputs,
+          tier === null
+            ? {
+                hq,
                 groupId: group.groupId,
-                kind: tier ?? "mate",
-                displayName: name,
-              })
-            : null,
+                kind: "mate",
+                mate: { face: choice.face },
+                // The person adding a dev Mate with its agent asks for its stand-up — with its
+                // birth intent, which its attach closes; the press's close-off marks it closed
+                // off, after its record (`planEnvironmentCreation`).
+                standUp: addedMateStandUp(role, choice),
+                ...(intent === undefined ? {} : { intent }),
+              }
+            : { hq, groupId: group.groupId, kind: tier },
+        ),
+        hq,
         // Reads the latest shared-model projection; no platform request.
         readObservedServices: async (projectId) => {
           const services = inventoryRef.current.services.get(projectId);
@@ -206,7 +245,7 @@ export function useEnvironmentCreation(): (
         isCurrent,
         // The project is drawn in its group from here, and the listing is read again at once so
         // the group catches up with it.
-        onProjectAccepted: (projectId) => {
+        onProjectAccepted: async (projectId) => {
           if (!isCurrent()) return;
           beginPress({
             projectId,
@@ -219,12 +258,13 @@ export function useEnvironmentCreation(): (
               groupName: group.name,
               kind: tier ?? "mate",
               displayName: name,
-              ...(tier === null && choice.botName !== undefined ? { botName: choice.botName } : {}),
               ...(choice.face === undefined ? {} : { face: choice.face }),
             },
           });
           invalidateZerops({ topic: "inventory", organization: organizationRef(organization.id) });
           request.onAccepted?.(projectId);
+          if (intent !== undefined)
+            await accountHqApi(client, organization.id, hq).bindBirth(intent, projectId);
         },
         onProgress: (progress) => {
           if (isCurrent()) request.onProgress?.(progress);
@@ -232,17 +272,6 @@ export function useEnvironmentCreation(): (
       });
       return { kind: "ran", outcome, withAgent };
     },
-    [
-      activeOrganization,
-      client,
-      giteaOrigin,
-      giteaProjectId,
-      organizationRef,
-      projectRef,
-      readGroupAgents,
-      runtime,
-      asker,
-      user,
-    ],
+    [accountHq, activeOrganization, client, organizationRef, projectRef, readGroupAgents, runtime],
   );
 }

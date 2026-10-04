@@ -3,9 +3,10 @@
  * knocking, for the descriptor to state (brief §4 S4).
  *
  * The door (`ZeropsThrowawayIdentity.verifyThrowawayCaller`) and the
- * membership watch (`ZeropsMembershipWatch.readProjectMembership`) both make
- * the same read — `GET /project/{own}` with the Mate's own key — and both
- * record here what it just answered. `/.well-known/t3/environment`
+ * membership watch (`ZeropsMembershipWatch.recordIdentity`) both ask
+ * the same read — `GET /project/{own}` with the Mate's own key, read once for
+ * them and the signers (`ZeropsOrgRead`) — and both record here what it
+ * answered, at most 30 s ago. `/.well-known/t3/environment`
  * (`ServerEnvironment.ts`) reads this Ref rather than making a read of its
  * own: the descriptor is a report of the last real attempt, never a probe in
  * its own right.

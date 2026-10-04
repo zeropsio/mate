@@ -52,9 +52,10 @@ function mate(bot: string): ZeropsCandidate {
     group: "ready",
     project: {
       id,
-      name: `Acme Docs - ${bot}`,
+      name: bot,
       status: "ACTIVE",
-      tagList: ["mate", "mate:g:acme", "mate:role:dev", `mate:bot:${bot}`],
+      tagList: ["mate"],
+      hq: { appId: "acme", appName: "Acme Docs", kind: "mate", mate: { face: "" } },
     },
     service: { id: "zcp", name: "zcp", status: "ACTIVE" },
   };
@@ -144,7 +145,7 @@ function Harness() {
           defaultTintFor={(name) => newMateTint(MATES, name)}
           locationError={null}
           locationId="prg1"
-          locationLoading={false}
+          loading={false}
           locations={LOCATIONS}
           onCancel={() => {}}
           onCreate={(choice) => {
@@ -159,13 +160,12 @@ function Harness() {
           }}
           onLocation={() => {}}
           onOpenChange={() => {}}
-          organizationName="Mate s.r.o."
+
           proposeAnotherName={(current) => ROLLS.find((name) => name !== current) ?? current}
           takenBotNames={{
             names: ["Fen", "Ada", "Nova"],
             complete: STATE !== "checking",
           }}
-          withGitHosting={params.get("git") === "none"}
         />
       )}
     </div>

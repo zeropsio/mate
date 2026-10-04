@@ -1,70 +1,31 @@
 /**
  * Naming a project, from wherever a project is drawn.
  *
- * A project's name is not stored once: it lives on every environment in it as
- * a `mate:name:` tag, so a rename is one write per member (`groups.ts`). That
- * loop lived inside the projects screen, which is why the project's own page
- * — the page whose whole subject is that project — had no way to rename it
- * (the owner, 2026-09-19: "why isn't there options to rename group?").
- *
- * It needs nothing the projects screen has and other surfaces do not: the
- * active organization and the runtime's command factory, both from context.
- * The trouble it reports is the caller's to show, because where a failed write
- * belongs depends on the surface — a page says it under its heading, a menu
- * under the row it came from.
+ * A project's name is its application's in HQ (ADR 0002): one record, renamed in one write, and
+ * every surface draws it from HQ's stream once HQ says so. The write settles when HQ answers and
+ * rejects with HQ's refusal, so the dialog that asked can wait for it and say why.
  */
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 
-import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
+import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
-export interface RenameGroup {
-  /** Writes `name` onto every environment of the group. */
-  readonly rename: (group: ZeropsGroup, name: string) => Promise<void>;
-  /** Whether a rename is in flight, so a second press cannot start another. */
-  readonly renaming: boolean;
-  /** Why the last one failed, in the platform's own words; `null` when none did. */
-  readonly trouble: string | null;
-}
+/** Renames the group's application in HQ. */
+export type RenameGroup = (group: ZeropsGroup, name: string) => Promise<void>;
 
 export function useRenameGroup(): RenameGroup {
-  const { activeOrganization } = useZeropsSession();
-  const { projectRef, runtime } = useZeropsData();
-  const [renaming, setRenaming] = useState(false);
-  const [trouble, setTrouble] = useState<string | null>(null);
+  const { activeOrganization, client } = useZeropsSession();
+  const accountHq = useAccountHq(activeOrganization?.id);
 
-  const rename = useCallback(
+  return useCallback(
     async (group: ZeropsGroup, name: string) => {
-      if (activeOrganization === null) return;
-      setTrouble(null);
-      setRenaming(true);
-      try {
-        // The name lives on every member; a rename is one write per member.
-        for (const environment of group.environments) {
-          await runZeropsCommand(
-            runtime.commands.updateProjectTags(
-              projectRef(activeOrganization.id, environment.project.id),
-              {
-                kind: "group-membership",
-                next: {
-                  groupId: group.groupId,
-                  ...(environment.role === undefined ? {} : { role: environment.role }),
-                  label: name,
-                },
-              },
-            ),
-          );
-        }
-      } catch (cause) {
-        setTrouble(zeropsErrorMessage(cause));
-      } finally {
-        setRenaming(false);
-      }
+      if (activeOrganization === null) throw new Error("No organization is open.");
+      await accountHqApi(client, activeOrganization.id, officialHq(accountHq)).renameApp(
+        group.groupId,
+        name,
+      );
     },
-    [activeOrganization, projectRef, runtime.commands],
+    [accountHq, activeOrganization, client],
   );
-
-  return { rename, renaming, trouble };
 }

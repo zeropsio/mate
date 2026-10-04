@@ -12,32 +12,49 @@ import {
   type ProjectCloneSnapshot,
   type ProjectId,
 } from "@t3tools/contracts";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useRemoveClonedProject } from "../hooks/useRemoveClonedProject";
 import { useEnvironments } from "../state/environments";
 import { useEnvironmentProjectClones } from "../state/projectClones";
 import { sourceControlEnvironment } from "../state/sourceControl";
-import { useAtomCommand } from "../state/use-atom-command";
 import { type DraftId, useComposerDraftStore } from "../composerDraftStore";
+import { useMateCommand, useMateHeld } from "../zerops/accountEnvironments";
 import { toastManager } from "./ui/toast";
 import { stackedThreadToast } from "./ui/toastHelpers";
 
 /**
- * One toast per clone in flight, on every environment. The palette that
- * started a clone closes right away, so this is where its progress lives:
- * the toast updates in place as git reports stages, then settles into a
- * success or failure state with the matching action.
+ * One toast per clone in flight, on every environment this browser keeps a
+ * link to — connected, or coming back from a drop, so a running clone's hold
+ * on its Mate outlasts the drop. A parked Mate is not woken to report one.
+ * The palette that started a clone closes right away, so this is where its
+ * progress lives: the toast updates in place as git reports stages, then
+ * settles into a success or failure state with the matching action.
  */
 export function ProjectCloneToastCoordinator() {
   const { environments } = useEnvironments();
-  return environments.map((environment) => (
-    <EnvironmentCloneToasts
-      key={environment.environmentId}
-      environmentId={environment.environmentId}
-    />
-  ));
+  // Kept across each environment's links: a Mate that parks and connects again finds the toasts
+  // its settled clones left up, and adds no second one.
+  const [shown] = useState(() => new Map<EnvironmentId, Map<ProjectId, TrackedToast>>());
+  // A Mate no longer registered takes its toasts with it.
+  useEffect(() => {
+    const registered = new Set(environments.map((environment) => environment.environmentId));
+    for (const [environmentId, toasts] of shown) {
+      if (registered.has(environmentId)) continue;
+      for (const tracked of toasts.values()) toastManager.close(tracked.toastId);
+      shown.delete(environmentId);
+    }
+  }, [environments, shown]);
+  return environments
+    .filter((environment) => environment.connection.phase !== "available")
+    .map((environment) => (
+      <EnvironmentCloneToasts
+        key={environment.environmentId}
+        environmentId={environment.environmentId}
+        shown={shown}
+      />
+    ));
 }
 
 interface TrackedToast {
@@ -51,14 +68,36 @@ function renderKey(clone: ProjectCloneSnapshot): string {
   return `${clone.phase}:${clone.stage}:${clone.percent ?? ""}:${clone.detail ?? ""}:${clone.error ?? ""}`;
 }
 
-function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentId }) {
+/** The toasts an environment's clones show, by project. */
+function toastsOf(
+  shown: Map<EnvironmentId, Map<ProjectId, TrackedToast>>,
+  environmentId: EnvironmentId,
+): Map<ProjectId, TrackedToast> {
+  let toasts = shown.get(environmentId);
+  if (toasts === undefined) {
+    toasts = new Map();
+    shown.set(environmentId, toasts);
+  }
+  return toasts;
+}
+
+function EnvironmentCloneToasts({
+  environmentId,
+  shown,
+}: {
+  environmentId: EnvironmentId;
+  shown: Map<EnvironmentId, Map<ProjectId, TrackedToast>>;
+}) {
   const clones = useEnvironmentProjectClones(environmentId);
+  // A clone running holds its Mate: parked, its toast would go with the socket mid-clone.
+  useMateHeld(clones.some((clone) => clone.phase === "running") ? environmentId : null);
   const handleNewThread = useNewThreadHandler();
   const { draftId: routeDraftId } = useParams({ strict: false });
-  const cancelClone = useAtomCommand(sourceControlEnvironment.cancelProjectClone, {
+  // A settled clone's toast outlives its Mate's link: its buttons hold the Mate they act on.
+  const cancelClone = useMateCommand(sourceControlEnvironment.cancelProjectClone, {
     reportFailure: false,
   });
-  const retryClone = useAtomCommand(sourceControlEnvironment.retryProjectClone, {
+  const retryClone = useMateCommand(sourceControlEnvironment.retryProjectClone, {
     reportFailure: false,
   });
   // The toast mirrors the server's clone state, so a request that never got
@@ -80,7 +119,7 @@ function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentI
     [],
   );
   const removeClonedProject = useRemoveClonedProject();
-  const toasts = useRef(new Map<ProjectId, TrackedToast>());
+  const toasts = useMemo(() => toastsOf(shown, environmentId), [shown, environmentId]);
 
   // Whether the user is already looking at this project's draft: the composer
   // banner shows the same progress and actions there, so the toast steps
@@ -106,14 +145,14 @@ function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentI
     for (const clone of clones) {
       seen.add(clone.projectId);
       const key = renderKey(clone);
-      const tracked = toasts.current.get(clone.projectId);
+      const tracked = toasts.get(clone.projectId);
       const name = projectCloneDisplayName(clone);
       // Handlers run later than this pass, so they look the toast up then.
       const closeToast = () => {
-        const current = toasts.current.get(clone.projectId);
+        const current = toasts.get(clone.projectId);
         if (!current) return;
         toastManager.close(current.toastId);
-        toasts.current.delete(clone.projectId);
+        toasts.delete(clone.projectId);
       };
       if (isViewingProjectDraft(clone.projectId)) {
         closeToast();
@@ -139,10 +178,10 @@ function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentI
         });
         if (tracked) {
           toastManager.update(tracked.toastId, options);
-          toasts.current.set(clone.projectId, { ...tracked, renderedKey: key, phase: "running" });
+          toasts.set(clone.projectId, { ...tracked, renderedKey: key, phase: "running" });
         } else {
           const toastId = toastManager.add(options);
-          toasts.current.set(clone.projectId, { toastId, renderedKey: key, phase: "running" });
+          toasts.set(clone.projectId, { toastId, renderedKey: key, phase: "running" });
         }
         continue;
       }
@@ -164,10 +203,10 @@ function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentI
         });
         if (tracked) {
           toastManager.update(tracked.toastId, options);
-          toasts.current.set(clone.projectId, { ...tracked, renderedKey: key, phase: "done" });
+          toasts.set(clone.projectId, { ...tracked, renderedKey: key, phase: "done" });
         } else {
           const toastId = toastManager.add(options);
-          toasts.current.set(clone.projectId, { toastId, renderedKey: key, phase: "done" });
+          toasts.set(clone.projectId, { toastId, renderedKey: key, phase: "done" });
         }
         continue;
       }
@@ -202,20 +241,20 @@ function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentI
       });
       if (tracked) {
         toastManager.update(tracked.toastId, options);
-        toasts.current.set(clone.projectId, { ...tracked, renderedKey: key, phase: clone.phase });
+        toasts.set(clone.projectId, { ...tracked, renderedKey: key, phase: clone.phase });
       } else {
         const toastId = toastManager.add(options);
-        toasts.current.set(clone.projectId, { toastId, renderedKey: key, phase: clone.phase });
+        toasts.set(clone.projectId, { toastId, renderedKey: key, phase: clone.phase });
       }
     }
 
     // A clone the server stopped tracking (done and expired, or its project
     // was removed) takes its toast with it, unless it already settled into a
     // timed success toast that dismisses itself.
-    for (const [projectId, tracked] of toasts.current) {
+    for (const [projectId, tracked] of toasts) {
       if (seen.has(projectId)) continue;
       if (tracked.phase !== "done") toastManager.close(tracked.toastId);
-      toasts.current.delete(projectId);
+      toasts.delete(projectId);
     }
   }, [
     cancelClone,
@@ -226,14 +265,20 @@ function EnvironmentCloneToasts({ environmentId }: { environmentId: EnvironmentI
     removeClonedProject,
     retryClone,
     runCloneAction,
+    toasts,
   ]);
 
+  // A running clone's toast goes with its link; a settled one stays up — its Mate parked once the
+  // clone let it go, and the toast's own time or its person closes it.
   useEffect(
     () => () => {
-      for (const tracked of toasts.current.values()) toastManager.close(tracked.toastId);
-      toasts.current.clear();
+      for (const [projectId, tracked] of toasts) {
+        if (tracked.phase !== "running") continue;
+        toastManager.close(tracked.toastId);
+        toasts.delete(projectId);
+      }
     },
-    [],
+    [toasts],
   );
 
   return null;

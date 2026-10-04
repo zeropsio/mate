@@ -126,30 +126,73 @@ export const currentOrFirstStint = (core: CrewCore, member: CrewMember) =>
     }),
   );
 
-/**
- * Points each writer's current conversation at its copy where its thread
- * says otherwise — a stint created while the Zerops policy dropped a
- * worktree from every new thread, or a copy the mount now reaches at
- * another path — with the thread's meta update.
- */
-export const repairWorktrees = (core: CrewCore, applied: AppliedCrew) =>
+/** A selected legacy path discrepancy; reading it never changes the conversation. */
+export const conversationCopies = (core: CrewCore, applied: AppliedCrew) =>
   Effect.gen(function* () {
+    const rows: Array<import("@t3tools/contracts").CrewAttention> = [];
     for (const handle of applied.members.keys()) {
-      const crewmate = memberOf(applied, handle);
+      const member = memberOf(applied, handle);
       const stint = currentStint(applied, handle);
-      const expected = crewmate === undefined ? null : worktreeOf(applied, crewmate);
-      if (stint === undefined || expected === null) continue;
-      const shell = yield* core.projection
-        .getThreadShellById(ThreadId.make(stint.threadId))
-        .pipe(Effect.orElseSucceed(() => Option.none()));
-      if (Option.isNone(shell) || shell.value.worktreePath === expected) continue;
-      yield* dispatch(core, {
-        type: "thread.meta.update",
-        commandId: CommandId.make(`crew:worktree:${stint.threadId}:${yield* core.now}`),
-        threadId: ThreadId.make(stint.threadId),
-        worktreePath: expected,
+      const crewPath = member === undefined ? null : worktreeOf(applied, member);
+      if (stint === undefined || crewPath === null) continue;
+      const shell = yield* core.projection.getThreadShellById(ThreadId.make(stint.threadId));
+      if (Option.isNone(shell) || shell.value.worktreePath === crewPath) continue;
+      rows.push({
+        id: `conversation-copy:${stint.threadId}`,
+        kind: "conversation-copy",
+        handle,
+        taskId: null,
+        text: null,
+        paths: [],
+        host: null,
+        at: stint.startedAt,
+        copyAssignment: {
+          threadId: ThreadId.make(stint.threadId),
+          currentPath: shell.value.worktreePath,
+          crewPath,
+          source: "crew-stint",
+        },
       });
     }
+    return rows;
+  });
+
+/** Only the current conversation and the path the person saw may change. */
+export const useCrewCopy = (
+  core: CrewCore,
+  input: {
+    readonly handle: string;
+    readonly threadId: string;
+    readonly expectedPath: string | null;
+  },
+) =>
+  Effect.gen(function* () {
+    const applied = yield* requireApplied(core);
+    const member = memberOf(applied, input.handle);
+    const stint = currentStint(applied, input.handle);
+    const crewPath = member === undefined ? null : worktreeOf(applied, member);
+    const shell = yield* asRefusal(
+      core.projection.getThreadShellById(ThreadId.make(input.threadId)),
+    );
+    if (
+      stint?.threadId !== input.threadId ||
+      crewPath === null ||
+      Option.isNone(shell) ||
+      shell.value.worktreePath !== input.expectedPath
+    ) {
+      return yield* refuse(
+        "wrong-state",
+        "The conversation changed. Open it again before choosing its copy.",
+      );
+    }
+    yield* dispatch(core, {
+      type: "thread.meta.update",
+      commandId: CommandId.make(`crew:copy:${yield* core.uuid}`),
+      threadId: ThreadId.make(input.threadId),
+      worktreePath: crewPath,
+      expectedWorktreePath: input.expectedPath,
+    });
+    yield* core.changed;
   });
 
 /**
