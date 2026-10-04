@@ -1770,6 +1770,86 @@ describe("ProviderRuntimeIngestion", () => {
     expect(reasoning[0]?.streaming).toBe(false);
   });
 
+  // A helper's own items (agentId) are its work, never the Mate's words or
+  // thoughts: a helper's call does not end the Mate's thought, and a helper's
+  // message or reasoning never becomes the Mate's.
+  it.each([
+    {
+      name: "a helper's call leaves the Mate's thought open",
+      item: { itemType: "command_execution" as const, status: "inProgress" as const, title: "ls" },
+      type: "item.started" as const,
+    },
+    {
+      name: "a helper's reasoning is not the Mate's thought",
+      item: { itemType: "reasoning" as const, status: "completed" as const, detail: "its own" },
+      type: "item.completed" as const,
+    },
+    {
+      name: "a helper's message is not the Mate's answer",
+      item: {
+        itemType: "assistant_message" as const,
+        status: "completed" as const,
+        detail: "its own words",
+      },
+      type: "item.completed" as const,
+    },
+  ])("$name", async ({ item, type }) => {
+    const harness = await createHarness();
+    const now = "2026-01-01T00:00:00.000Z";
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-mate-thinks"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-helper-items"),
+      payload: { streamKind: "reasoning_text", delta: "the Mate thinks" },
+    });
+    harness.emit({
+      type,
+      eventId: asEventId("evt-helper-item"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-helper-items"),
+      itemId: asItemId("item-helper"),
+      payload: { ...item, agentId: "helper-1" },
+    });
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-mate-thinks-on"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-helper-items"),
+      payload: { streamKind: "reasoning_text", delta: ", and on" },
+    });
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-mate-thought-ends"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-helper-items"),
+      payload: { itemType: "reasoning", status: "completed" },
+    });
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.messages.some(
+        (message: ProviderRuntimeTestMessage) => message.role === "reasoning" && !message.streaming,
+      ),
+    );
+    await harness.drain();
+    const messages = thread.messages;
+    expect(
+      messages
+        .filter((entry: ProviderRuntimeTestMessage) => entry.role === "reasoning")
+        .map((entry: ProviderRuntimeTestMessage) => entry.text),
+    ).toEqual(["the Mate thinks, and on"]);
+    expect(
+      messages.filter((entry: ProviderRuntimeTestMessage) => entry.role === "assistant"),
+    ).toEqual([]);
+  });
+
   it("uses assistant item completion detail when no assistant deltas were streamed", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";

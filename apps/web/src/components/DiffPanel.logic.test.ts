@@ -2,7 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { TurnId } from "@t3tools/contracts";
 
-import { resolveCheckpointDiffAvailability, resolveDiffSelection } from "./DiffPanel.logic";
+import {
+  diffScope,
+  resolveCheckpointDiffAvailability,
+  resolveDiffSelection,
+} from "./DiffPanel.logic";
 
 describe("resolveCheckpointDiffAvailability", () => {
   it("keeps a selected checkpoint diff available when the workspace cwd is not one Git repo", () => {
@@ -112,5 +116,39 @@ describe("resolveDiffSelection", () => {
     expected: ReturnType<typeof resolveDiffSelection>;
   }>)("$name", ({ input, expected }) => {
     expect(resolveDiffSelection(input)).toEqual(expected);
+  });
+});
+
+describe("diffScope", () => {
+  const latest = TurnId.make("turn-2");
+  const older = TurnId.make("turn-1");
+  const turn = (turnId: TurnId) => ({
+    kind: "turn" as const,
+    turnId,
+    filePath: null,
+    revealRequestId: 0,
+  });
+
+  /**
+   * The scope button names what the body shows: before a Mate's first turn
+   * it read "Branch changes" above "No changes yet", and the menu marked
+   * nothing.
+   */
+  it.each([
+    { name: "the working tree", shown: { kind: "unstaged" }, expected: "unstaged" },
+    { name: "the branch", shown: { kind: "branch", baseRef: null }, expected: "branch" },
+    { name: "the latest turn", shown: turn(latest), expected: "latest" },
+    { name: "an older turn", shown: turn(older), expected: "turn" },
+    {
+      name: "no turn yet, where only turns are shown",
+      shown: { kind: "no-turns" },
+      expected: "latest",
+    },
+  ] satisfies ReadonlyArray<{
+    name: string;
+    shown: ReturnType<typeof resolveDiffSelection>;
+    expected: ReturnType<typeof diffScope>;
+  }>)("$name reads $expected", ({ shown, expected }) => {
+    expect(diffScope({ shown, latestTurnId: latest })).toBe(expected);
   });
 });

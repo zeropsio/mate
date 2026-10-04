@@ -138,6 +138,14 @@ describe("a project's row", () => {
     expect(row).toContain('data-test-verb="fix-mate"');
   });
 
+  it("says plainly that Gitea did not answer, offering nothing", () => {
+    const failed = { ...MERGING, changesFailed: true };
+    const row = section(render({ groups: [failed] }), 'data-zerops-group="aaa"');
+    expect(row).toContain("Gitea didn’t answer");
+    expect(row).not.toContain("waits for your merge");
+    expect(row).not.toContain("data-test-verb=");
+  });
+
   it("says what a working Mate is on", () => {
     const working = {
       ...quiet("ddd"),
@@ -274,5 +282,59 @@ describe("an opened row", () => {
     expect(tree.root.findAllByProps({ "data-test-verb": "fix-deploy" })).toHaveLength(1);
     act(() => tree.root.findByProps({ "aria-expanded": false }).props.onClick());
     expect(tree.root.findAllByProps({ "data-test-release-verb": "true" })).toHaveLength(1);
+  });
+});
+
+describe("a row the page names (?group=)", () => {
+  /** A document whose rows record each time they are scrolled into view. */
+  function stubDocument() {
+    const scrolled: Array<string> = [];
+    const listeners = new Map<string, () => void>();
+    vi.stubGlobal("document", {
+      getElementById: (id: string) => ({ scrollIntoView: () => scrolled.push(id) }),
+    });
+    vi.stubGlobal("window", {
+      addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
+      removeEventListener: (type: string) => listeners.delete(type),
+    });
+    return { scrolled, interact: (type: string) => listeners.get(type)?.() };
+  }
+  const FOCUS = { ...FRESH, group: { ...FRESH.group, groupId: "fff" } };
+  // A group no other test drew, so the list's memory of risen rows holds nothing of it.
+  const regroup = (value: typeof FRESH) => ({
+    ...value,
+    group: { ...value.group, groupId: "ggg" },
+  });
+  const UNREAD = regroup(entry([WREN], { pullRequests: [pull()] }, false));
+  const READ = regroup(entry([WREN], { pullRequests: [pull()] }));
+
+  it("stays in view while rows above it rise as their reads answer", () => {
+    const { scrolled } = stubDocument();
+    const tree = mount(
+      <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[FOCUS, UNREAD]} />,
+    );
+    expect(scrolled).toEqual(["project-fff"]);
+    act(() =>
+      tree.update(
+        <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[FOCUS, READ]} />,
+      ),
+    );
+    expect(scrolled).toEqual(["project-fff", "project-fff"]);
+    vi.unstubAllGlobals();
+  });
+
+  it("lets the person's own scroll win", () => {
+    const { scrolled, interact } = stubDocument();
+    const tree = mount(
+      <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[FOCUS, UNREAD]} />,
+    );
+    interact("wheel");
+    act(() =>
+      tree.update(
+        <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[FOCUS, READ]} />,
+      ),
+    );
+    expect(scrolled).toEqual(["project-fff"]);
+    vi.unstubAllGlobals();
   });
 });

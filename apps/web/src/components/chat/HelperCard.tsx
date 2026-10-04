@@ -9,7 +9,6 @@
 import type { OrchestrationThreadActivity, ScopedThreadRef } from "@t3tools/contracts";
 import {
   emptyAgentPanelModel,
-  formatSubagentModelLabel,
   formatSubagentTokenCount,
   isActiveSubagentStatus,
   type RuntimeSubagent,
@@ -22,7 +21,13 @@ import { useKnownMate } from "~/zerops/useZeropsMates";
 import ChatMarkdown from "../ChatMarkdown";
 import { formatWorkDuration } from "./conversation.logic";
 import { ElapsedSince } from "./ConversationRows";
-import { helperCallsLeftOut, helperNowWords, helperRecord, helperSpan } from "./helpers.logic";
+import {
+  helperCallsLeftOut,
+  helperModelWords,
+  helperNowWords,
+  helperRecord,
+  helperSpan,
+} from "./helpers.logic";
 import { RunChat } from "./RunChat";
 import {
   TimelineRowActivityCtx,
@@ -80,7 +85,7 @@ export function HelperClock({ helper }: { readonly helper: RuntimeSubagent }) {
 /** What it ran on and what it cost: kept, but quiet. */
 export function helperCostWords(helper: RuntimeSubagent): string | null {
   const parts = [
-    formatSubagentModelLabel(helper.model, helper.effort),
+    helperModelWords(helper.model, helper.effort),
     helper.usage ? `${formatSubagentTokenCount(helper.usage.totalTokens)} tokens` : null,
     helper.usage?.toolUses !== undefined
       ? `${helper.usage.toolUses} ${helper.usage.toolUses === 1 ? "call" : "calls"}`
@@ -117,8 +122,9 @@ export function HelperCard({
       onRunShellCommand: undefined,
       onImageExpand: NOOP,
       onOpenTurnDiff: NOOP,
-      // It works for the Mate, in the Mate's colour; its row above names it.
-      speaker: { name: "Helper", tint: mate?.tint ?? "slate", shape: mate?.shape },
+      // It works under the Mate, in the Mate's colour, with no face of its
+      // own (`helper`); its row above names it.
+      speaker: { name: "Helper", tint: mate?.tint ?? "slate", shape: mate?.shape, helper: true },
       standUpAsk: null,
       livePauseId: null,
       usagePause: null,

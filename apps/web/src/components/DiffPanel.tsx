@@ -50,7 +50,11 @@ import { useClientSettings } from "../hooks/useSettings";
 import { formatShortTimestamp } from "../timestampFormat";
 import { DiffPanelLoadingState, DiffPanelShell, type DiffPanelMode } from "./DiffPanelShell";
 import { recallCheckoutIsRepo } from "./ChatView.logic";
-import { resolveCheckpointDiffAvailability, resolveDiffSelection } from "./DiffPanel.logic";
+import {
+  diffScope,
+  resolveCheckpointDiffAvailability,
+  resolveDiffSelection,
+} from "./DiffPanel.logic";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
 import { Button } from "./ui/button";
@@ -209,14 +213,22 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     selectedTurn &&
     (selectedTurn.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[selectedTurn.turnId]);
   const latestTurn = orderedTurnDiffSummaries[0];
+  // A stored turn that is gone shows the latest one, and is named so.
+  const scope = diffScope({
+    shown:
+      shownSelection.kind === "turn" && selectedTurn
+        ? { ...shownSelection, turnId: selectedTurn.turnId }
+        : shownSelection,
+    latestTurnId: latestTurn?.turnId,
+  });
   const selectedScopeLabel =
-    selectedTurnId === null
-      ? selectedGitScope === "unstaged"
-        ? "Working tree"
-        : "Branch changes"
-      : selectedTurn?.turnId === latestTurn?.turnId
-        ? "Latest turn"
-        : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
+    scope === "unstaged"
+      ? "Working tree"
+      : scope === "branch"
+        ? "Branch changes"
+        : scope === "latest"
+          ? "Latest turn"
+          : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
   const reviewSectionId = selectedTurn ? `turn:${selectedTurn.turnId}` : selectedGitScope;
   const collapseScopeKey = routeThreadRef
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}:${reviewSectionId}`
@@ -535,12 +547,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
   // turn as "latest", while the turn sub-menu keys every turn by id so the
   // latest turn is also marked there.
   const selectedTurnValue = selectedTurn ? `turn:${selectedTurn.turnId}` : "";
-  const selectedScopeValue =
-    selectedTurnId === null
-      ? selectedGitScope
-      : selectedTurn?.turnId === latestTurn?.turnId
-        ? "latest"
-        : selectedTurnValue;
+  const selectedScopeValue = scope === "turn" ? selectedTurnValue : scope;
   const selectScopeValue = (value: string) => {
     if (value === "unstaged" || value === "branch") {
       selectGitScope(value);
@@ -853,9 +860,14 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
   return (
     <DiffPanelShell mode={mode} header={headerRow}>
       {!activeThread ? (
-        <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
-          Select a thread to inspect turn diffs.
-        </div>
+        // A conversation on its way in loads; only no conversation at all asks for one.
+        routeThreadRef ? (
+          <DiffPanelLoadingState label="Loading conversation..." />
+        ) : (
+          <div className="flex flex-1 items-center justify-center px-5 text-center text-xs text-muted-foreground/70">
+            Select a thread to inspect turn diffs.
+          </div>
+        )
       ) : selectedTurn?.history && activeThread && selectedCheckpointRange ? (
         <CheckpointHistoryDiff
           history={selectedTurn.history}

@@ -384,8 +384,9 @@ export function dockHelpers(
       id: agent.id,
       title: helperTitle(agent),
       tone: state.tone,
-      // Working, it says what it does now (`helperNowWords`); settled, how it ended.
-      word: helperNowWords(agent) ?? state.word,
+      // Working, it says what it does now (`helperNowWords`); waiting on the
+      // person or settled, its state.
+      word: (agent.status === "waiting" ? null : helperNowWords(agent)) ?? state.word,
       // Its clock by its driver's own count where it keeps one (`helperSpan`).
       startedAt: spanStart(agent),
       endedAt: agent.completedAt,

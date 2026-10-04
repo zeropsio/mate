@@ -2184,11 +2184,24 @@ const make = Effect.gen(function* () {
         yield* appendBufferedProposedPlan(planId, proposedPlanDelta, now);
       }
 
+      // A helper's own item (agentId) is its work, never the Mate's: it ends
+      // none of the Mate's thoughts, and its words and reasoning are never the
+      // Mate's (its steps reach the thread as activities only).
+      const helperItem =
+        (event.type === "item.started" ||
+          event.type === "item.updated" ||
+          event.type === "item.completed") &&
+        event.payload.agentId !== undefined;
+
       // Tool work ends the thinking block that led to it. Without this a
       // provider that reuses one reasoning stream across a turn (Claude has no
       // per-block id) would append post-tool thinking to a block that already
       // sits above the tool row.
-      if (event.type === "item.started" && isToolLifecycleItemType(event.payload.itemType)) {
+      if (
+        !helperItem &&
+        event.type === "item.started" &&
+        isToolLifecycleItemType(event.payload.itemType)
+      ) {
         const toolTurnId = toTurnId(event.turnId);
         if (toolTurnId) {
           yield* finalizeActiveSegmentForTurn({
@@ -2204,7 +2217,11 @@ const make = Effect.gen(function* () {
         }
       }
 
-      if (event.type === "item.completed" && event.payload.itemType === "reasoning") {
+      if (
+        !helperItem &&
+        event.type === "item.completed" &&
+        event.payload.itemType === "reasoning"
+      ) {
         const turnId = toTurnId(event.turnId);
         if (turnId) {
           const activeReasoningMessageId = yield* getActiveAssistantMessageIdForTurn(
@@ -2281,7 +2298,9 @@ const make = Effect.gen(function* () {
       }
 
       const assistantCompletion =
-        event.type === "item.completed" && event.payload.itemType === "assistant_message"
+        !helperItem &&
+        event.type === "item.completed" &&
+        event.payload.itemType === "assistant_message"
           ? {
               messageId: MessageId.make(
                 `assistant:${event.itemId ?? event.turnId ?? event.eventId}`,

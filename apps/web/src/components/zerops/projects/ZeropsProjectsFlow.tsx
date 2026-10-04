@@ -30,8 +30,12 @@ import { type RowMateActivity } from "./projectsView.logic";
 export interface ProjectsFlowGroup<T> {
   readonly group: ZeropsGroup;
   readonly flow: GroupFlow;
-  /** Its Mates' activity, as the row's line reads it (`projectRowLine`). */
+  /** Its Mates' activity, while each is connected, as the row's line reads it (`projectRowLine`). */
   readonly activities: ReadonlyArray<RowMateActivity>;
+  /** Every Mate whose link this tab holds is up and read: none reconnecting may be asking. */
+  readonly matesKnown: boolean;
+  /** Its changes' read failed and nothing is held: the row says Gitea didn't answer. */
+  readonly changesFailed: boolean;
   /**
    * Unread, and its read is out: the steps it would fill hold a skeleton
    * rather than an empty word. False for a group nobody will read (no Gitea

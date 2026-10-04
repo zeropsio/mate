@@ -19,6 +19,12 @@ const svc = (
 
 const route = (service: string, url: string) => ({ service, url });
 
+const env = (
+  role: "stage" | "prod",
+  routes: ReadonlyArray<{ service: string; url: string }>,
+  projectId: string = role,
+) => ({ projectId, name: `${projectId} project`, role, routes });
+
 const brief = (input: MateAddressInput) =>
   mateAddresses(input).map(({ service, role, url }) => ({ service, role, url }));
 
@@ -105,14 +111,14 @@ describe("mateAddresses", () => {
       input: {
         services: [svc("appdev", ["https://appdev-1-3000.example.app"])],
         environments: [
-          { role: "prod", routes: [route("app", "https://shop.example.com")] },
-          { role: "stage", routes: [route("web", "https://web-2-80.example.app")] },
+          env("prod", [route("app", "https://shop.example.com")]),
+          env("stage", [route("web", "https://web-2-80.example.app")]),
         ],
       },
       expected: [
         { service: "appdev", role: "dev", url: "https://appdev-1-3000.example.app" },
-        { service: "web", role: "stage", url: "https://web-2-80.example.app" },
-        { service: "app", role: "production", url: "https://shop.example.com" },
+        { service: "web stage", role: "stage", url: "https://web-2-80.example.app" },
+        { service: "app production", role: "production", url: "https://shop.example.com" },
       ],
     },
     {
@@ -122,7 +128,7 @@ describe("mateAddresses", () => {
           svc("app", ["https://app-1-3000.example.app"]),
           svc("appstage", ["https://appstage-1-3000.example.app"]),
         ],
-        environments: [{ role: "prod", routes: [route("app", "https://shop.example.com")] }],
+        environments: [env("prod", [route("app", "https://shop.example.com")])],
       },
       expected: [
         { service: "app", role: "dev", url: "https://app-1-3000.example.app" },
@@ -131,10 +137,55 @@ describe("mateAddresses", () => {
       ],
     },
     {
+      name: "a site in another project keeps its key whether or not the Mate has one of its name",
+      input: {
+        services: [svc("matedev", ["https://matedev-1-3000.example.app"])],
+        environments: [env("stage", [route("app", "https://app-2-80.example.app")])],
+      },
+      expected: [
+        { service: "matedev", role: "dev", url: "https://matedev-1-3000.example.app" },
+        { service: "app stage", role: "stage", url: "https://app-2-80.example.app" },
+      ],
+    },
+    {
+      name: "two projects of one role name their sites by their project",
+      input: {
+        services: [svc("app", ["https://app-1-3000.example.app"])],
+        environments: [
+          env("stage", [route("app", "https://app-2-80.example.app")], "eu"),
+          env("stage", [route("app", "https://app-3-80.example.app")], "us"),
+        ],
+      },
+      expected: [
+        { service: "app eu project", role: "stage", url: "https://app-2-80.example.app" },
+        { service: "app us project", role: "stage", url: "https://app-3-80.example.app" },
+        { service: "app", role: undefined, url: "https://app-1-3000.example.app" },
+      ],
+    },
+    {
+      name: "a Mate in its production project reads its own sites as production",
+      input: { services: [svc("app", ["https://app-1-80.example.app"])], ownRole: "prod" },
+      expected: [{ service: "app", role: "production", url: "https://app-1-80.example.app" }],
+    },
+    {
+      name: "a Mate in a stage project reads its own unpaired sites as stage",
+      input: {
+        services: [
+          svc("api", ["https://api-1-80.example.app"]),
+          svc("webdev", ["https://webdev-1-3000.example.app"]),
+        ],
+        ownRole: "stage",
+      },
+      expected: [
+        { service: "webdev", role: "dev", url: "https://webdev-1-3000.example.app" },
+        { service: "api", role: "stage", url: "https://api-1-80.example.app" },
+      ],
+    },
+    {
       name: "one address is listed once, whoever names it",
       input: {
         services: [svc("app", ["https://app-1-3000.example.app"])],
-        environments: [{ role: "prod", routes: [route("app", "https://app-1-3000.example.app")] }],
+        environments: [env("prod", [route("app", "https://app-1-3000.example.app")])],
       },
       expected: [{ service: "app", role: undefined, url: "https://app-1-3000.example.app" }],
     },
@@ -155,7 +206,11 @@ describe("mateAddresses", () => {
 });
 
 describe("groupAddressEnvironments", () => {
-  const project = (id: string, tagList: ReadonlyArray<string>) => ({ id, tagList });
+  const project = (id: string, tagList: ReadonlyArray<string>) => ({
+    id,
+    name: `${id} project`,
+    tagList,
+  });
   const routes: Record<string, ReadonlyArray<{ service: string; url: string }>> = {
     mate: [route("appdev", "https://appdev-1-3000.example.app")],
     stage: [route("app", "https://app-2-80.example.app")],
@@ -173,20 +228,29 @@ describe("groupAddressEnvironments", () => {
         project("peer", ["mate:g:one", "mate:role:dev"]),
         project("other", ["mate:g:two", "mate:role:prod"]),
       ],
-      expected: [
-        { role: "stage", routes: routes.stage },
-        { role: "prod", routes: routes.prod },
-      ],
+      expected: {
+        ownRole: undefined,
+        environments: [
+          { projectId: "stage", name: "stage project", role: "stage", routes: routes.stage },
+          { projectId: "prod", name: "prod project", role: "prod", routes: routes.prod },
+        ],
+        pending: false,
+      },
+    },
+    {
+      name: "the Mate's own project's role, when it is a stage or a production",
+      projects: [project("mate", ["mate:g:one", "mate:role:prod"])],
+      expected: { ownRole: "prod", environments: [], pending: false },
     },
     {
       name: "nothing for a Mate in no group",
       projects: [project("mate", []), project("prod", ["mate:g:one", "mate:role:prod"])],
-      expected: [],
+      expected: { ownRole: undefined, environments: [], pending: false },
     },
     {
-      name: "nothing while the account does not hold the Mate's project",
+      name: "nothing known while the account does not hold the Mate's project",
       projects: [project("prod", ["mate:g:one", "mate:role:prod"])],
-      expected: [],
+      expected: { ownRole: undefined, environments: [], pending: true },
     },
   ])("$name", ({ projects, expected }) => {
     expect(
@@ -198,7 +262,7 @@ describe("groupAddressEnvironments", () => {
     ).toEqual(expected);
   });
 
-  it("leaves out a project whose services are not read yet", () => {
+  it("leaves out a project whose services are not read yet, and says it waits", () => {
     expect(
       groupAddressEnvironments({
         projectId: "mate",
@@ -208,6 +272,6 @@ describe("groupAddressEnvironments", () => {
         ],
         routesOf: () => undefined,
       }),
-    ).toEqual([]);
+    ).toEqual({ ownRole: undefined, environments: [], pending: true });
   });
 });

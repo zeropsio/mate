@@ -1392,6 +1392,19 @@ function agentIdForParentToolUse(
 }
 
 /**
+ * Who a helper's call belongs to: its helper's task, or — while the helper
+ * is not known by its task yet (its snapshot beat its task_started, or the
+ * task named no launch) — its launch, so it is never taken for the Mate's.
+ */
+function helperOfCall(
+  agents: Map<string, ClaudeTaskAgentState>,
+  parentToolUseId: string | null | undefined,
+): string | undefined {
+  if (parentToolUseId === null || parentToolUseId === undefined) return undefined;
+  return agentIdForParentToolUse(agents, parentToolUseId) ?? parentToolUseId;
+}
+
+/**
  * Linkage bundle repeated on every task.* payload for `taskId`. Reads the
  * remembered identity (from task_started) so progress/terminal rows are
  * self-describing even when the start row ages out of activity retention.
@@ -2839,7 +2852,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     for (const [index, tool] of context.inFlightTools.entries()) {
       // A helper still at work outlives the Mate's turn, and so do its calls:
       // the helper's own end closes them (`closeHelperCalls`).
-      if (tool.agentId && context.liveTaskIds.has(tool.agentId)) continue;
+      if (helperStillWorks(context, tool)) continue;
       yield* closeUnreturnedCall(context, tool, {
         status: status === "completed" ? "completed" : "failed",
         turnId: turnState.turnId,
@@ -3150,7 +3163,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       // spawning Task tool's id as parent_tool_use_id.
       const parentToolUseId =
         (message as { parent_tool_use_id?: string | null }).parent_tool_use_id ?? undefined;
-      const owningAgentId = agentIdForParentToolUse(context.taskAgents, parentToolUseId);
+      const owningAgentId = helperOfCall(context.taskAgents, parentToolUseId);
 
       const tool: ToolInFlight = {
         itemId,
@@ -3274,8 +3287,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     status: "completed" | "failed",
     rawPayload: unknown,
   ) {
+    const launch = context.taskAgents.get(taskId)?.toolUseId;
     for (const [index, tool] of context.inFlightTools.entries()) {
-      if (tool.agentId !== taskId) continue;
+      if (tool.agentId !== taskId && (launch === undefined || tool.parentToolUseId !== launch)) {
+        continue;
+      }
       yield* closeUnreturnedCall(context, tool, {
         status,
         turnId: context.turnState?.turnId,
@@ -3285,6 +3301,16 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       context.inFlightTools.delete(index);
     }
   });
+
+  /**
+   * A helper's call outlives the Mate's turn while its helper works — or
+   * while its helper is not known yet, which only a working helper can be.
+   */
+  const helperStillWorks = (context: ClaudeSessionContext, tool: ToolInFlight): boolean => {
+    if (tool.agentId === undefined) return false;
+    const owner = agentIdForParentToolUse(context.taskAgents, tool.parentToolUseId);
+    return owner === undefined || context.liveTaskIds.has(owner);
+  };
 
   /**
    * A helper's calls, from its snapshot: the SDK streams no events for a
@@ -3320,7 +3346,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ? (block.input as Record<string, unknown>)
           : {};
       const itemType = classifyToolItemType(block.name, toolInput);
-      const owningAgentId = agentIdForParentToolUse(context.taskAgents, parentToolUseId);
+      const owningAgentId = helperOfCall(context.taskAgents, parentToolUseId);
       const tool: ToolInFlight = {
         itemId,
         itemType,
@@ -3511,8 +3537,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         }
       }
 
+      // A helper's task list is its own (2.1.278 gives helpers no task tools):
+      // never the Mate's plan.
       if (
         !toolResult.isError &&
+        tool.agentId === undefined &&
         applyClaudeTaskToolResult(context.claudeTasks, tool, toolUseResult)
       ) {
         yield* emitClaudeTaskPlanUpdated(context, {
@@ -3954,7 +3983,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
               (tool) => tool.itemId === message.tool_use_id,
             )
           : undefined;
-        const owningAgentId = launchingTool?.agentId;
+        const owningAgentId =
+          launchingTool === undefined
+            ? undefined
+            : (helperOfCall(context.taskAgents, launchingTool.parentToolUseId) ??
+              launchingTool.agentId);
         // Model/effort: the Agent tool's input carries explicit overrides;
         // absent ones inherit the session's selection (SDK behavior).
         // Subagent assistant snapshots refine model with the authoritative API
@@ -4056,6 +4089,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           patch.status !== undefined ? CLAUDE_TASK_PATCH_STATUS[patch.status] : undefined;
         if (status === "completed" || status === "failed" || status === "cancelled") {
           context.liveTaskIds.delete(message.task_id);
+          yield* closeHelperCalls(
+            context,
+            message.task_id,
+            status === "completed" ? "completed" : "failed",
+            message,
+          );
         }
         const endedAt =
           typeof patch.end_time === "number" && Number.isFinite(patch.end_time)
@@ -4547,6 +4586,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       if (!context.liveTaskIds.delete(taskId)) {
         continue;
       }
+      yield* closeHelperCalls(context, taskId, "failed", { status: "stopped" });
       const stamp = yield* makeEventStamp();
       yield* offerRuntimeEvent({
         type: "task.completed",
@@ -4562,6 +4602,18 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         },
         providerRefs: nativeProviderRefs(context),
       });
+    }
+
+    // A helper never known by its task leaves its calls too: nothing runs them now.
+    for (const [index, tool] of context.inFlightTools.entries()) {
+      if (tool.agentId === undefined) continue;
+      yield* closeUnreturnedCall(context, tool, {
+        status: "failed",
+        turnId: context.turnState?.turnId,
+        rawMethod: "claude/stop",
+        rawPayload: { status: "stopped" },
+      });
+      context.inFlightTools.delete(index);
     }
 
     for (const [requestId, pending] of context.pendingApprovals) {
