@@ -304,10 +304,7 @@ still to come says so.
     A, A0–A8, A12). Who
     asked for a Mate's stand-up and its close-off are HQ's record; whose a login is, the server's
     `~/.mate/signed-in.json`. No `mate:signer:`, `mate:standup:` or `mate:closed-off` tag is
-    written; zcp seeds an absent record from HQ's saved signers, and the server carries any login
-    its record never named, whose credential was there at its first start after an update, over
-    from its `mate:signer:` tag or HQ's saved signer — open until both answer, three starts at
-    most (`zeropsSignerCarryOver.ts`)
+    written or read; zcp seeds an absent record from HQ's saved signers, once
   - _Built in:_ `c199e51eef`, `14369a03c6`, `71258784ef`, `d168c83f84`, `2b022c8341`; zcp
     `abd07e960`, `9f800923f`
   - _Proven by:_ `ZeropsHqLink.test.ts`, `zeropsHqOverview.test.ts`, `zeropsSignIns.test.ts`,

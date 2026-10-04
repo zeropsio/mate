@@ -8,7 +8,6 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
-import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 
@@ -31,7 +30,6 @@ import {
   type SignInStore,
 } from "./zeropsSignIns.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { makeCarriedSignIns } from "./zeropsSignerCarryOver.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
@@ -46,9 +44,6 @@ import {
 
 const JAN = "jan-user-id";
 const EVA = "eva-user-id";
-/** 0.12.3's record of a login's signer, on the Mate's project. */
-const signerTag = (key: string, userId: string) => `mate:signer:${key}:${userId}`;
-const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 describe("turnRefusal", () => {
   const signedIn = {
@@ -345,8 +340,8 @@ describe("the turn gate", () => {
 
       assert.isUndefined(yield* on("claude-code", JAN));
       assert.deepStrictEqual(yield* on("claude-code", EVA), { kind: "someone-else" });
-      // A login with nothing kept — signed in from a terminal, or copied in — runs for nobody
-      // until signed in here (one from before the record is carried in at start, below).
+      // D6 keeps no backward compatibility: a login with nothing kept — signed in before this
+      // record existed, from a terminal, or copied in — runs for nobody until signed in here.
       assert.deepStrictEqual(yield* on("codex", JAN), { kind: "unrecorded" });
     }).pipe(Effect.scoped),
   );
@@ -580,180 +575,6 @@ describe("the turn gate", () => {
 
         assert.isUndefined(yield* on(EVA));
         assert.deepStrictEqual(yield* on(JAN), { kind: "someone-else" });
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-    );
-
-    // A Mate updated from 0.12.3 or older: its record is what this server starts with, the old
-    // signers carried in once (`zeropsSignerCarryOver`) — the project's tags as the Mate reads
-    // them, and HQ's saved signers where its port removed the tags.
-    const updated = (input: {
-      readonly home: string;
-      readonly tags: ReadonlyArray<string>;
-      readonly saved?: Readonly<Record<string, string>>;
-      /** HQ fails: enrolled, and every read of it answers 500. */
-      readonly hqDown?: boolean;
-    }) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const enrollment = `${input.home}/.zcp/hq/enrollment.json`;
-        const enrolled = input.saved !== undefined || input.hqDown === true;
-        if (enrolled) {
-          yield* fs.makeDirectory(`${input.home}/.zcp/hq`, { recursive: true });
-          yield* fs.writeFileString(
-            enrollment,
-            encodeJson({ hq: "https://hq.example.test", credential: "mate-credential" }),
-          );
-        }
-        const routes = (url: string) =>
-          url.endsWith(`/project/${PROJECT_ID}`)
-            ? json({ id: PROJECT_ID, clientId: CLIENT_ID, tagList: input.tags })
-            : url === "https://hq.example.test/api/mate/self" && input.hqDown !== true
-              ? json({ projectId: PROJECT_ID, signers: input.saved ?? {} })
-              : json({ message: "down" }, 500);
-        return yield* makeCarriedSignIns(input.home).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              httpLayer(routes).layer,
-              ServerConfig.layer({
-                zerops: enrolled ? { ...environment, hqEnrollmentPath: enrollment } : environment,
-              } as ServerConfig.ServerConfig["Service"]),
-            ),
-          ),
-        );
-      });
-    const holdsCredential = (home: string) =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        yield* fs.makeDirectory(`${home}/.claude`, { recursive: true });
-        yield* fs.writeFileString(`${home}/.claude/.credentials.json`, "{}");
-      });
-    const tempHome = Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      return yield* fs.makeTempDirectoryScoped({ prefix: "mate-sign-ins-" });
-    });
-
-    // Restores 5bf76e265's rule: a login nobody kept a sign-in for goes by the signer its tag names.
-    it.effect("a credential nobody kept a sign-in for goes by its tag, as before", () =>
-      Effect.gen(function* () {
-        const home = yield* tempHome;
-        yield* holdsCredential(home);
-        const store = yield* updated({ home, tags: ["mate", signerTag("claude-code", JAN)] });
-        const { signers } = yield* gateOver(store);
-        const { manager } = terminal();
-        const logins = yield* makeAgentLogin({
-          terminalManager: manager,
-          zeropsAgentAuth: { recheckNow: () => Effect.void },
-          isZeropsEnvironment: true,
-          homes: yield* makeLoginHomes(home),
-          signIns: store,
-        });
-        const login = (yield* logins.latest)["claude-code"];
-
-        assert.strictEqual(login?.startedBy, JAN, "the login's row names its signer");
-        assert.isUndefined(
-          yield* signers.turnRefusal({
-            agentId: "claude-code",
-            agent: signedIn,
-            subject: JAN,
-            login,
-          }),
-        );
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-    );
-
-    it.effect("an old Mate updated: its signer runs the agent, nobody else does", () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const home = yield* tempHome;
-        yield* holdsCredential(home);
-        yield* updated({ home, tags: ["mate", signerTag("claude-code", JAN)] });
-
-        // The restart after the update's: the record is on disk, and nothing is read again.
-        const { signers } = yield* gateOver(yield* fileSignInStore(signInsPath(path, home)));
-        const on = (subject: string) =>
-          signers.turnRefusal({ agentId: "claude-code", agent: signedIn, subject });
-
-        assert.isUndefined(yield* on(JAN));
-        assert.deepStrictEqual(yield* on(EVA), { kind: "someone-else" });
-        assert.isTrue(yield* fs.exists(signInsPath(path, home)));
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-    );
-
-    it.effect("an old Mate whose tags HQ's port removed goes by HQ's saved signer", () =>
-      Effect.gen(function* () {
-        const home = yield* tempHome;
-        yield* holdsCredential(home);
-        const { signers } = yield* gateOver(
-          yield* updated({ home, tags: ["mate"], saved: { "claude-code": JAN } }),
-        );
-        const on = (subject: string) =>
-          signers.turnRefusal({ agentId: "claude-code", agent: signedIn, subject });
-
-        assert.isUndefined(yield* on(JAN));
-        assert.deepStrictEqual(yield* on(EVA), { kind: "someone-else" });
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-    );
-
-    // Covers only a credential made after the carry-over closed. One already here at the update,
-    // made on 0.12.3 after its tag's signer signed out, is carried as theirs: 0.12.3's own trust
-    // (`zeropsSignerCarryOver`).
-    // The update's start found no credential and closed; a terminal login put one there afterwards.
-    it.effect("a login whose credential turns up after the carry-over closed stays nobody's", () =>
-      Effect.gen(function* () {
-        const home = yield* tempHome;
-        const tags = ["mate", signerTag("claude-code", JAN)];
-        yield* updated({ home, tags });
-        yield* holdsCredential(home);
-
-        const { signers } = yield* gateOver(yield* updated({ home, tags }));
-
-        assert.deepStrictEqual(
-          yield* signers.turnRefusal({ agentId: "claude-code", agent: signedIn, subject: JAN }),
-          { kind: "unrecorded" },
-        );
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-    );
-
-    // HQ fails at the update's start, so the carry-over stays open; a terminal login turns up
-    // before the next start, and the tag still names Jan.
-    it.effect("a login whose credential turns up while HQ fails is never carried", () =>
-      Effect.gen(function* () {
-        const home = yield* tempHome;
-        const tags = ["mate", signerTag("claude-code", JAN)];
-        yield* updated({ home, tags, hqDown: true });
-        yield* holdsCredential(home);
-
-        const { signers } = yield* gateOver(yield* updated({ home, tags, hqDown: true }));
-
-        assert.deepStrictEqual(
-          yield* signers.turnRefusal({ agentId: "claude-code", agent: signedIn, subject: JAN }),
-          { kind: "unrecorded" },
-        );
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-    );
-
-    // Eva signed in here, and the tag still names Jan: the record wins, the tag is never read over it.
-    it.effect("a tag written over a sign-in admits nobody else after a restart", () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const home = yield* tempHome;
-        yield* holdsCredential(home);
-        yield* fs.makeDirectory(`${home}/.mate`, { recursive: true });
-        yield* fs.writeFileString(
-          signInsPath(path, home),
-          encodeJson({ "claude-code": { by: EVA, at: 1 } }),
-        );
-
-        const { signers } = yield* gateOver(
-          yield* updated({ home, tags: [signerTag("claude-code", JAN)] }),
-        );
-        const on = (subject: string) =>
-          signers.turnRefusal({ agentId: "claude-code", agent: signedIn, subject });
-
-        assert.deepStrictEqual(yield* on(JAN), { kind: "someone-else" });
-        assert.isUndefined(yield* on(EVA));
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
     );
   });

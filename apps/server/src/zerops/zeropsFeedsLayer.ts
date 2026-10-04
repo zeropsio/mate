@@ -42,7 +42,7 @@ import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import * as ZeropsSetupModule from "./ZeropsSetup.ts";
-import * as ZeropsSignerCarryOverModule from "./zeropsSignerCarryOver.ts";
+import * as ZeropsSignInsModule from "./zeropsSignIns.ts";
 import * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 import * as ZeropsStandUpRelayModule from "./ZeropsStandUpRelay.ts";
 import * as ZeropsTurnAdmissionModule from "./ZeropsTurnAdmission.ts";
@@ -209,9 +209,8 @@ const liveLayer = Layer.mergeAll(
   // under this tree and break the sharing the descriptor (S4) depends on.
   Layer.provideMerge(ZeropsMateKeyModule.layer),
   // Who signed each login in, as this server saw it: one store, written by the login walker
-  // and read by the gate, the feeds, the setup and the link to HQ — an old Mate's signers
-  // carried into it once, read with the same own-key reader.
-  Layer.provide(ZeropsSignerCarryOverModule.layer.pipe(Layer.provide(ZeropsMateKeyModule.layer))),
+  // and read by the gate, the feeds, the setup and the link to HQ.
+  Layer.provide(ZeropsSignInsModule.layer),
 );
 
 export const selectZeropsFeedsLayer = (selector: string | undefined) =>

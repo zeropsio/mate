@@ -3890,7 +3890,10 @@ no-cache`.
   - **Supersedes:** "failed reads stay failed until the visible manual action"
     (`platform-data-architecture.md`).
   - _Why:_ a laptop waking before its Wi-Fi, or a 429, left pages failed until a click.
-- **2026-10-04** — **An old Mate's signer is carried into its sign-in record once** (D6 unchanged).
+- **2026-10-04** — **Superseded 2026-10-05: nothing is carried over. A project's tags decide nothing
+  (ADR 0002), and HQ already holds the signers its tag port moved off the tags, which zcp seeds an
+  absent record from.** **An old Mate's signer is carried into its sign-in record once** (D6
+  unchanged).
   - At the first start of this build, a login held then, and never named in `~/.mate/signed-in.json`,
     is recorded for the one person its `mate:signer:` tag or HQ's saved signer names.
   - It closes once both sources answer, and at the latest on the third start. A credential that

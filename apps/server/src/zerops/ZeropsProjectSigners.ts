@@ -92,12 +92,11 @@ export type TurnRefusal =
  *   unaffected by D6: `flagToken` means the container was given an API key,
  *   and an API key belongs to the project;
  * - an agent whose recorded signer **is** this session's subject: yes;
- * - anything else — someone else's, or no record at all — no: a login with
- *   no recorded signer (a terminal login, a copied file) cannot run until
- *   somebody signs in through Mate, because "unrecorded" and "somebody
- *   else's" are the same thing to everyone but the person who knows. A login
- *   signed in before the record began has its signer carried in once, at the
- *   first start after the update (`zeropsSignerCarryOver`).
+ * - anything else — someone else's, or no record at all — no. D6 keeps no
+ *   backward compatibility here: a login with no recorded signer (an older
+ *   one, a terminal login, a copied file) cannot run until somebody signs in
+ *   through Mate, because "unrecorded" and "somebody else's" are the same
+ *   thing to everyone but the person who knows.
  */
 export function turnRefusal(input: {
   readonly agent: ZeropsAgentAuthFields & Pick<ZeropsAgentAuth, "flagToken">;

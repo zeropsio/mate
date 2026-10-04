@@ -9,21 +9,20 @@
  * One small document beside the logins' homes (`~/.mate/signed-in.json`), written atomically,
  * written with every sign-in that succeeds (a fresh one replaces it). When the credential goes,
  * its entry becomes display history and never authorizes a turn. It is read once, at start: while
- * the server runs, what it saw is the record, whatever the document says by then. A login with
- * nothing kept — signed in from a terminal, or copied in — is nobody's until somebody signs it in
- * here. One signed in before this record began is the exception, once: the first start after the
- * update carries its signer in from 0.12.3's project tag or HQ's saved signer
- * (`zeropsSignerCarryOver`).
+ * the server runs, what it saw is the record, whatever the document says by then. A login with nothing kept — a credential from before this
+ * record existed, or one signed in from a terminal — is nobody's until somebody signs it in here.
  *
  * @module zeropsSignIns
  */
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import * as NodeOS from "node:os";
 
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 
@@ -204,8 +203,16 @@ export const memorySignInStore = (initial: SignInRecords = {}) =>
 
 /**
  * The one store of a running server: the login walker writes it, and the gate, the logins' rows
- * and the Mate's overview read it. Provided by `zeropsSignerCarryOver.layer`.
+ * and the Mate's overview read it.
  */
 export class ZeropsSignIns extends Context.Service<ZeropsSignIns, SignInStore>()(
   "t3/zerops/zeropsSignIns",
 ) {}
+
+export const layer = Layer.effect(
+  ZeropsSignIns,
+  Effect.gen(function* () {
+    const path = yield* Path.Path;
+    return yield* fileSignInStore(signInsPath(path, NodeOS.homedir()));
+  }),
+);
