@@ -732,3 +732,157 @@ export function groupFlowInputOf(input: {
     nowMs: input.nowMs,
   };
 }
+
+/** A Mate's activity as a project's row reads it (`agentActivity.ts`). */
+export interface RowMateActivity {
+  readonly name: string;
+  /** It is on a turn now: its face says so, and its line says what on. */
+  readonly working: boolean;
+  /** What it is on, or was last on; absent before anybody spoke to it. */
+  readonly subject: string | undefined;
+  /** When it last did something. */
+  readonly at: string | undefined;
+}
+
+/**
+ * A project row's second line: the one thing that needs the person, as a full sentence (its verb
+ * at the row's end), else the latest meaningful fact — never a word for nothing.
+ */
+export type ProjectRowLine =
+  | {
+      readonly kind: "needs-you";
+      readonly text: string;
+      /** The change it names, by its title. */
+      readonly detail?: string;
+      readonly tone: ServiceStatusToneId;
+    }
+  /** A deploy or a release on its way. */
+  | { readonly kind: "under-way"; readonly text: string }
+  /** What a Mate is on (working), or was last on. */
+  | { readonly kind: "mate"; readonly mate: string; readonly text: string; readonly at?: string }
+  /** A change: open, or the last that landed. */
+  | {
+      readonly kind: "change";
+      readonly text: string;
+      readonly detail?: string;
+      readonly at?: string;
+    }
+  | { readonly kind: "first-task"; readonly text: string }
+  /** Its reads are out: the line holds its place and claims nothing. */
+  | { readonly kind: "pending" }
+  | { readonly kind: "none" };
+
+/** The steps a Mate's own state decides: known without the project's reads. */
+const MATE_STEPS: ReadonlySet<GroupNextStepKind> = new Set(["answer-mate", "fix-mate"]);
+
+function newer(a: string | undefined, b: string | undefined): boolean {
+  if (a === undefined) return false;
+  if (b === undefined) return true;
+  return Date.parse(a) > Date.parse(b);
+}
+
+export function projectRowLine(input: {
+  readonly flow: GroupFlow;
+  readonly lastMerged: FlowPullRequest | undefined;
+  readonly activities: ReadonlyArray<RowMateActivity>;
+  /** The project's reads answered (`flowStepsAwaiting`): its next step is known. */
+  readonly settled: boolean;
+}): ProjectRowLine {
+  const { flow, activities } = input;
+  const step = flow.nextStep;
+  const needsYou = (): ProjectRowLine => {
+    const target = step.target;
+    const pull =
+      target?.kind === "change"
+        ? flow.pullRequests.find(
+            (entry) =>
+              entry.pull.repository === target.repository && entry.pull.number === target.number,
+          )?.pull
+        : undefined;
+    return {
+      kind: "needs-you",
+      text: step.text,
+      ...(pull === undefined ? {} : { detail: pull.title }),
+      tone: nextStepTone(step.kind),
+    };
+  };
+  if (MATE_STEPS.has(step.kind)) return needsYou();
+  if (!input.settled) return { kind: "pending" };
+  if (nextStepAwaitsSomebody(step.kind)) return needsYou();
+
+  const { production } = flow;
+  if (production.kind === "creating") return { kind: "under-way", text: production.line };
+  if (production.kind === "releasing")
+    return { kind: "under-way", text: releaseInFlightReason(production.tag) };
+  if (production.kind === "deploying") return { kind: "under-way", text: "Deploying production…" };
+  const deployingStage = flow.stages.find((stage) => stage.state === "deploying");
+  if (deployingStage !== undefined)
+    return { kind: "under-way", text: `Deploying ${deployingStage.name}…` };
+
+  const working = activities.find((mate) => mate.working && mate.subject !== undefined);
+  if (working?.subject !== undefined)
+    return { kind: "mate", mate: working.name, text: working.subject };
+
+  const open = flow.pullRequests[0]?.pull;
+  if (open !== undefined)
+    return {
+      kind: "change",
+      text: `#${String(open.number)} ${open.title}`,
+      ...(open.checkWord === undefined ? {} : { detail: open.checkWord }),
+    };
+
+  const merged = input.lastMerged;
+  const lastTalk = activities
+    .filter((mate) => mate.subject !== undefined)
+    .reduce<RowMateActivity | undefined>(
+      (latest, mate) => (latest === undefined || newer(mate.at, latest.at) ? mate : latest),
+      undefined,
+    );
+  if (
+    lastTalk?.subject !== undefined &&
+    (merged === undefined || newer(lastTalk.at, merged.mergedAt))
+  )
+    return {
+      kind: "mate",
+      mate: lastTalk.name,
+      text: lastTalk.subject,
+      ...(lastTalk.at === undefined ? {} : { at: lastTalk.at }),
+    };
+  if (merged !== undefined)
+    return {
+      kind: "change",
+      text: `Merged #${String(merged.number)} ${merged.title}`,
+      ...(merged.mergedAt === undefined ? {} : { at: merged.mergedAt }),
+    };
+  if (step.kind === "first-task") return { kind: "first-task", text: step.text };
+  return { kind: "none" };
+}
+
+/**
+ * Production's version beside the project's name, where production exists and runs one: what it
+ * runs and the tone of its last deploy. Nothing at all without production — adding one is the
+ * row's menu's offer, never a word in the row.
+ */
+export function productionMark(
+  flow: GroupFlow,
+): { readonly version: string; readonly tone: ServiceStatusToneId } | undefined {
+  const { production } = flow;
+  if (production.kind === "absent" || production.kind === "creating") return undefined;
+  const version = production.stop.version?.label;
+  if (version === undefined) return undefined;
+  return { version, tone: STOP_TONE[production.stop.state] };
+}
+
+/** Whether a row rises: it needs the person, or — its answer still out — it was drawn risen. */
+export function rowRises(line: ProjectRowLine, remembered: boolean | undefined): boolean {
+  if (line.kind === "pending") return remembered === true;
+  return line.kind === "needs-you";
+}
+
+/** The rows that rise first, then the rest, each keeping the order it was given. */
+export function risenFirst<E>(
+  rows: ReadonlyArray<E>,
+  rises: (row: E) => boolean,
+): ReadonlyArray<E> {
+  return [...rows.filter(rises), ...rows.filter((row) => !rises(row))];
+}

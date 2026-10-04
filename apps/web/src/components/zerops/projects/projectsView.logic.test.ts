@@ -33,6 +33,10 @@ import {
   nextStepCell,
   nextStepTone,
   parseProjectsSearch,
+  productionMark,
+  projectRowLine,
+  risenFirst,
+  rowRises,
   stripColumns,
   talkSettled,
   type FoldedGroupInput,
@@ -973,5 +977,167 @@ describe("groupFlowInputOf", () => {
       pending,
     });
     expect(input.pending).toEqual(pending);
+  });
+});
+
+describe("projectRowLine — a project row's second line", () => {
+  const quiet = { lastMerged: undefined, activities: [], settled: true } as const;
+  const RUNE_WORKING = {
+    name: "Wren",
+    working: true,
+    subject: "Add a health check",
+    at: "2026-10-03T10:00:00Z",
+  };
+  const RUNE_IDLE = { ...RUNE_WORKING, working: false };
+  const MERGED = pull({
+    number: 4,
+    title: "Ship the archive page",
+    merged: true,
+    mergedAt: "2026-10-02T10:00:00Z",
+  });
+  it.each([
+    [
+      "a pull request waits: the sentence, with its title, and the verb",
+      { flow: FLOWS.merge },
+      {
+        kind: "needs-you",
+        text: "Pull request #1 waits for your merge",
+        detail: "Greet with a fuller line",
+        tone: "attention",
+      },
+    ],
+    [
+      "a Mate stopped on an error: said even before the reads answer",
+      { flow: FLOWS.stopped, settled: false },
+      { kind: "needs-you", text: "Wren stopped on an error", tone: "failed" },
+    ],
+    [
+      "a release waits",
+      { flow: FLOWS.release },
+      { kind: "needs-you", text: FLOWS.release.nextStep.text, tone: "busy" },
+    ],
+    [
+      "the reads are out: nothing is claimed yet",
+      { flow: FLOWS.merge, settled: false },
+      { kind: "pending" },
+    ],
+    [
+      "a Mate works: what it is on, its face says the rest",
+      { flow: FLOWS.none, activities: [RUNE_WORKING] },
+      { kind: "mate", mate: "Wren", text: "Add a health check" },
+    ],
+    [
+      "quiet: the change that landed last",
+      { flow: FLOWS.none, lastMerged: MERGED },
+      { kind: "change", text: "Merged #4 Ship the archive page", at: "2026-10-02T10:00:00Z" },
+    ],
+    [
+      "quiet: the Mate's last task when it is newer than the last merge",
+      { flow: FLOWS.none, lastMerged: MERGED, activities: [RUNE_IDLE] },
+      { kind: "mate", mate: "Wren", text: "Add a health check", at: "2026-10-03T10:00:00Z" },
+    ],
+    [
+      "a Mate nobody has spoken to: its first task",
+      { flow: FLOWS.firstTask },
+      { kind: "first-task", text: "Give Wren a first task" },
+    ],
+    ["nothing known: no line at all", { flow: FLOWS.none }, { kind: "none" }],
+    [
+      // Production is the person's to add from the menu: never a step that waits.
+      "production could be added: not a thing that needs you",
+      {
+        flow: flowOf({
+          merged: [MERGED],
+          productionAddable: true,
+          missing: [{ tier: "production" }],
+        }),
+        lastMerged: MERGED,
+      },
+      { kind: "change", text: "Merged #4 Ship the archive page", at: "2026-10-02T10:00:00Z" },
+    ],
+  ] as const)("%s", (_name, over, expected) => {
+    expect(projectRowLine({ ...quiet, ...over })).toEqual(expected);
+  });
+
+  it("a pull request open and not yet the person's: its title and where its checks stand", () => {
+    const flow = flowOf({
+      pullRequests: [
+        pull({
+          number: 9,
+          title: "Make the design system",
+          mergeability: "checking",
+          checkWord: "Running",
+        }),
+      ],
+    });
+    expect(projectRowLine({ ...quiet, flow })).toEqual({
+      kind: "change",
+      text: "#9 Make the design system",
+      detail: "Running",
+    });
+  });
+});
+
+describe("productionMark — production's version, only where production exists", () => {
+  it("no production: nothing at all", () => {
+    expect(productionMark(FLOWS.none)).toBeUndefined();
+  });
+  it("production runs a version: the version and its tone", () => {
+    const flow = {
+      ...FLOWS.none,
+      production: {
+        kind: "live",
+        line: "v0.1.59",
+        stop: {
+          projectId: "p-prod",
+          name: "production",
+          state: "deployed",
+          version: { label: "v0.1.59" },
+          source: "release",
+          route: undefined,
+        },
+      },
+    } as unknown as GroupFlow;
+    expect(productionMark(flow)).toEqual({ version: "v0.1.59", tone: "ok" });
+  });
+  it("production runs nothing yet: nothing to show", () => {
+    const flow = {
+      ...FLOWS.none,
+      production: {
+        kind: "empty",
+        line: "Nothing deployed",
+        stop: {
+          projectId: "p-prod",
+          name: "production",
+          state: "empty",
+          version: undefined,
+          source: "release",
+          route: undefined,
+        },
+      },
+    } as unknown as GroupFlow;
+    expect(productionMark(flow)).toBeUndefined();
+  });
+});
+
+describe("risenFirst — the rows that need the person rise, the custom order kept within", () => {
+  it.each([
+    ["none rise: the order as given", [false, false, false], ["a", "b", "c"]],
+    ["one rises", [false, true, false], ["b", "a", "c"]],
+    ["two rise: their own order kept", [false, true, true], ["b", "c", "a"]],
+  ] as const)("%s", (_name, rises, expected) => {
+    const rows = ["a", "b", "c"];
+    expect(risenFirst(rows, (row) => rises[rows.indexOf(row)] === true)).toEqual(expected);
+  });
+});
+
+describe("rowRises — a row whose answer is out stays where it was drawn", () => {
+  it.each([
+    ["needs you", { kind: "needs-you", text: "x", tone: "attention" }, undefined, true],
+    ["quiet", { kind: "none" }, true, false],
+    ["pending, last drawn risen", { kind: "pending" }, true, true],
+    ["pending, never drawn", { kind: "pending" }, undefined, false],
+  ] as const)("%s", (_name, line, remembered, expected) => {
+    expect(rowRises(line, remembered)).toBe(expected);
   });
 });
