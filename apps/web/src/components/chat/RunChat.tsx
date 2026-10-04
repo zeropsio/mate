@@ -2065,11 +2065,13 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
           </span>
           <span className={cn("shrink-0 text-muted-foreground tabular-nums", META)}>
             {word}
-            {" · "}
             {since !== null ? (
-              <ElapsedSince since={since} />
+              <>
+                {" · "}
+                <ElapsedSince since={since} />
+              </>
             ) : ranMs !== null && ranMs >= 1000 ? (
-              formatWorkDuration(ranMs)
+              ` · ${formatWorkDuration(ranMs)}`
             ) : null}
           </span>
         </span>

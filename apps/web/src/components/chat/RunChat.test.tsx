@@ -1,6 +1,9 @@
 import { EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
+import {
+  emptyAgentPanelModel,
+  type RuntimeSubagent,
+} from "@t3tools/client-runtime/state/subagentRuntime";
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -1276,56 +1279,60 @@ describe("RunChat, as the person uses it", () => {
 
   // A helper's row says what it came to, and opens its own card in the
   // helpers panel: its steps, its clock, its report whole.
+  /** A helper the panel knows: done, its report in one line. */
+  const helperAgent = (overrides: Partial<RuntimeSubagent> = {}): RuntimeSubagent => ({
+    id: "a1",
+    kind: "subagent" as const,
+    title: "Check the schema",
+    role: null,
+    model: null,
+    effort: null,
+    status: "completed" as const,
+    activationCount: 1,
+    usage: null,
+    progress: null,
+    lastToolName: null,
+    result: "Wrote three tests for the schema and its migrations",
+    error: null,
+    outputFile: null,
+    parentAgentId: null,
+    agentIndex: null,
+    phaseIndex: null,
+    phaseTitle: null,
+    attempt: null,
+    workflowName: null,
+    phases: [],
+    runHandles: null,
+    recentActivity: [],
+    prompt: null,
+    toolUseId: null,
+    spawnedBy: null,
+    liveCall: null,
+    firstSeenAt: at(1),
+    startedAt: at(1),
+    completedAt: at(2),
+    updatedAt: at(2),
+    ...overrides,
+  });
+  const helpersOf = (agent: RuntimeSubagent) => ({
+    ...emptyAgentPanelModel(),
+    directAgents: [agent],
+    hasAgents: true,
+  });
+  const helpersRow: RecordItem = {
+    kind: "helpers",
+    key: "helpers:h1",
+    at: at(1),
+    entry: {
+      ...command("h1", ""),
+      itemType: "collab_agent_tool_call",
+      agentSpawn: { workflowId: null, agentTaskIds: ["a1"] },
+    },
+  };
+
   it("opens a helper's own card in the helpers panel", () => {
-    const agent = {
-      ...emptyAgentPanelModel(),
-      directAgents: [
-        {
-          id: "a1",
-          kind: "subagent" as const,
-          title: "Check the schema",
-          role: null,
-          model: null,
-          effort: null,
-          status: "completed" as const,
-          activationCount: 1,
-          usage: null,
-          progress: null,
-          lastToolName: null,
-          result: "Wrote three tests for the schema and its migrations",
-          error: null,
-          outputFile: null,
-          parentAgentId: null,
-          agentIndex: null,
-          phaseIndex: null,
-          phaseTitle: null,
-          attempt: null,
-          workflowName: null,
-          phases: [],
-          runHandles: null,
-          recentActivity: [],
-          prompt: null,
-          toolUseId: null,
-          spawnedBy: null,
-          liveCall: null,
-          firstSeenAt: at(1),
-          startedAt: at(1),
-          completedAt: at(2),
-          updatedAt: at(2),
-        },
-      ],
-      hasAgents: true,
-    };
-    const helpers: RecordItem = {
-      kind: "helpers",
-      key: "helpers:h1",
-      at: at(1),
-      entry: {
-        ...command("h1", ""),
-        itemType: "collab_agent_tool_call",
-        agentSpawn: { workflowId: null, agentTaskIds: ["a1"] },
-      },
-    };
+    const agent = helpersOf(helperAgent());
+    const helpers = helpersRow;
     const onOpenAgents = vi.fn();
     const threadRef = {
       environmentId: EnvironmentId.make("environment-local"),
@@ -1362,6 +1369,41 @@ describe("RunChat, as the person uses it", () => {
     act(() => button(renderer, "Check the schema: Done. Open its work").props.onClick());
     expect(onOpenAgents).toHaveBeenCalledTimes(1);
     expect(seen.at(-1)).toBe("a1");
+  });
+
+  // Its state, and its time only where it has one: never a dot left hanging.
+  it.each([
+    {
+      name: "an idle child with no end",
+      agent: { status: "idle" as const, completedAt: null },
+      state: "Idle",
+    },
+    {
+      name: "a helper done within a second",
+      agent: { completedAt: "2026-09-25T10:00:01.300Z", startedAt: "2026-09-25T10:00:01.000Z" },
+      state: "Done",
+    },
+  ])("says $name's state alone", ({ agent, state }) => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(
+        <TimelineRowCtx value={{ ...SHARED, agentPanelModel: helpersOf(helperAgent(agent)) }}>
+          <TimelineRowActivityCtx value={ACTIVITY}>
+            <RunChat row={record([helpersRow])} />
+          </TimelineRowActivityCtx>
+        </TimelineRowCtx>,
+      );
+    });
+    act(() =>
+      button(renderer, "Started a helper").props.onClick({
+        currentTarget: { closest: () => null },
+      }),
+    );
+    const words = renderer.root
+      .findAll((node) => node.type === "span" && node.children[0] === state)
+      .map((node) => node.children.filter((child) => typeof child === "string").join(""));
+    expect(words.length).toBeGreaterThan(0);
+    for (const said of words) expect(said).toBe(state);
   });
 
   it("opens what a step printed under its words, in place, and closes it again", () => {
