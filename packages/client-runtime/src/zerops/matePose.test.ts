@@ -125,6 +125,11 @@ describe("mateArriving", () => {
   const signedOutOfOpenCode = withLogins({
     opencode: { signedInBy: null, lastSignedInBy: "u-eva", present: false, token: false },
   });
+  // Its agent runs without a sign-in, as the overview it sent HQ once up says (`runsWithoutSignIn`).
+  const readyAgent = (runsWithoutSignIn: boolean) => ({
+    hq: { ...signedOnce.hq, mate: { name: "Kai", face: "rose:seal", runsWithoutSignIn } },
+    created,
+  });
   const nobodyYet = withLogins({
     "claude-code": { signedInBy: null, lastSignedInBy: null, present: false, token: false },
   });
@@ -198,6 +203,24 @@ describe("mateArriving", () => {
     {
       name: "its logins told, nobody signed in yet, a minute old",
       candidate: { project: nobodyYet, group: "connected" },
+      atMs: born + 60_000,
+      arriving: true,
+    },
+    {
+      name: "its agent runs without a sign-in, its container up, a minute old",
+      candidate: { project: readyAgent(true), group: "ready" },
+      atMs: born + 60_000,
+      arriving: false,
+    },
+    {
+      name: "its agent runs without a sign-in, told by HQ before the listing has it up",
+      candidate: { project: readyAgent(true), group: "provisioning" },
+      atMs: born + 60_000,
+      arriving: false,
+    },
+    {
+      name: "its agent waits on a sign-in, its container up, a minute old",
+      candidate: { project: readyAgent(false), group: "connected" },
       atMs: born + 60_000,
       arriving: true,
     },
