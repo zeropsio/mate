@@ -37,14 +37,12 @@ import {
 } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
-import { useAtomValue } from "@effect/atom-react";
 import * as Effect from "effect/Effect";
 import { useCallback, useContext, useEffect, useMemo } from "react";
 import { create } from "zustand";
 
 import { appBasePath } from "~/basePath";
 import { randomUUID } from "~/lib/utils";
-import { hqStructureAtom } from "~/state/zerops";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
 import {
@@ -81,15 +79,6 @@ export interface AccountHq {
   readonly reread: () => void;
 }
 
-/**
- * How long HQ's structure stream may go unanswered before the member list is read again: once for
- * each outage, for an anchor an admin may have moved meanwhile.
- */
-export const HQ_OUTAGE_RECHECK_MS = 10 * 60_000;
-
-/** The outages the member list was read again for, by organization and when each began. */
-const rechecked = new Set<string>();
-
 /** The organization's HQ, as this browser keeps it, or else as its member list names it. */
 export function useAccountHq(clientId: string | undefined): AccountHq {
   const data = useContext(ZeropsDataContext);
@@ -113,23 +102,6 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     if (named.kind === "official") keepHqVerdict(owner, named);
     if (named.kind === "none") keepNoHqVerdict(owner, Date.now());
   }, [named, owner, settled]);
-  const structure = useAtomValue(hqStructureAtom);
-  const outageSince =
-    structure !== null && structure.organizationId === clientId ? structure.unavailableSince : null;
-  const keptHq = kept === undefined || keptNoHq(kept) ? undefined : kept;
-  useEffect(() => {
-    if (clientId === undefined || keptHq === undefined || outageSince === null) return;
-    const outage = `${clientId}@${String(outageSince)}`;
-    if (rechecked.has(outage)) return;
-    const timer = setTimeout(
-      () => {
-        rechecked.add(outage);
-        forgetHqVerdict(clientId, keptHq);
-      },
-      Math.max(0, outageSince + HQ_OUTAGE_RECHECK_MS - Date.now()),
-    );
-    return () => clearTimeout(timer);
-  }, [clientId, keptHq, outageSince]);
   const hq = useMemo<OfficialHq>(
     () =>
       kept === undefined
@@ -177,7 +149,7 @@ export function officialHq(accountHq: Pick<AccountHq, "hq">): HqEndpoint {
 /**
  * HQ's structure socket, as this browser opens it. Messages reach the shared client directly;
  * its pong is sent before liveness callbacks, with no timer or React scheduling in between.
- * The dedicated planned-close code is passed through so the client can open the next segment.
+ * Close codes pass through so the stream owner distinguishes rotation, going-away and refusal.
  */
 const openBrowserSocket: OpenHqSocket = (url, on) => {
   const socket = new WebSocket(url);

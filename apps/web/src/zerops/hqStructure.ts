@@ -12,11 +12,13 @@
  * - **HQ down:** the last known structure stands, and the view says since when HQ does not answer
  *   (SPEC §4); chat and terminal to the Mates do not go through HQ and keep working.
  * - Planned 100 s segments continue inside `streamStructure`; the live atoms remain current
- *   until the next snapshot. A stream that breaks, ends otherwise or stays silent shows a failure;
- *   a manual again starts a snapshot.
+ *   until the next snapshot. An unexpected end reconnects with visible backoff, preserving the
+ *   last data. Refusals wait for a manual again; at the backoff cap a failure stays visible while
+ *   attempts continue. A going-away (1001) gets one immediate attempt before backoff.
  */
 import { RegistryContext } from "@effect/atom-react";
 import {
+  HqError,
   applyChangesEvent,
   applyMatesEvent,
   applyPeopleEvent,
@@ -50,6 +52,8 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 export const HQ_STREAM_SILENCE_MS = 60_000;
 /** How often at most the Mates are remembered while they move: a reload's first paint needs no more. */
 const HQ_MATES_REMEMBER_MS = 10_000;
+const HQ_RECONNECT_FIRST_MS = 1_000;
+const HQ_RECONNECT_CAP_MS = 30_000;
 
 /** Explicit detail retries reuse the account's stream owner; they never write facts themselves. */
 const snapshotReaders = new Map<string, Set<() => void>>();
@@ -107,6 +111,8 @@ export async function driveHqStructure(input: {
     input.publishMates(matesView);
   };
 
+  let backoffMs = HQ_RECONNECT_FIRST_MS;
+  let firstReconnect = true;
   let attempt: AbortController | null = null;
   let requested = false;
   let again: (() => void) | null = null;
@@ -125,6 +131,16 @@ export async function driveHqStructure(input: {
   input.signal.addEventListener("abort", abort);
   try {
     while (!input.signal.aborted) {
+      if (requested) {
+        backoffMs = HQ_RECONNECT_FIRST_MS;
+        firstReconnect = true;
+        publish({
+          ...view,
+          current: false,
+          failure: null,
+          reconnecting: { delayMs: 0, capped: false },
+        });
+      }
       requested = false;
       const controller = new AbortController();
       attempt = controller;
@@ -145,8 +161,8 @@ export async function driveHqStructure(input: {
         rememberedAt = now;
         dirty = false;
       };
-      if (view.current || view.unavailableSince !== null)
-        publish({ ...view, current: false, unavailableSince: null, failure: null });
+      if (view.current) publish({ ...view, current: false });
+      let cause: unknown;
       let failure = "HQ's stream ended.";
       try {
         await input.api.streamStructure(
@@ -188,6 +204,8 @@ export async function driveHqStructure(input: {
               );
               if (streamed === null) return;
               const readAt = input.now();
+              backoffMs = HQ_RECONNECT_FIRST_MS;
+              firstReconnect = true;
               input.remember(streamed, readAt);
               publish({
                 ...view,
@@ -198,30 +216,53 @@ export async function driveHqStructure(input: {
                 current: true,
                 unavailableSince: null,
                 failure: null,
+                reconnecting: null,
               });
             },
           },
           controller.signal,
         );
-      } catch (cause) {
+      } catch (ended) {
+        cause = ended;
         failure = controller.signal.aborted
           ? "HQ's stream stopped answering."
-          : cause instanceof Error
-            ? cause.message
+          : ended instanceof Error
+            ? ended.message
             : "HQ could not be reached.";
       } finally {
         clearTimeout(silence);
+        controller.abort();
         rememberMates(true);
       }
       if (input.signal.aborted) return;
       if (!requested) {
         input.log(`HQ's structure stream stopped after ${String(input.now() - openedAt)} ms`);
-        publish({ ...view, current: false, unavailableSince: input.now(), failure });
-        publishMates({ ...matesView, current: false });
-        await new Promise<void>((resolve) => {
-          again = resolve;
+        const refused = cause instanceof HqError && cause.kind === "refused";
+        const immediate =
+          cause instanceof HqError && cause.code === "socket_1001" && firstReconnect;
+        firstReconnect = false;
+        const delayMs = immediate ? 0 : backoffMs;
+        const capped = !refused && delayMs === HQ_RECONNECT_CAP_MS;
+        publish({
+          ...view,
+          current: false,
+          unavailableSince: view.unavailableSince ?? input.now(),
+          failure: refused || capped ? failure : null,
+          reconnecting: refused ? null : { delayMs, capped },
         });
-        again = null;
+        publishMates({ ...matesView, current: false });
+        if (!refused && !immediate) backoffMs = Math.min(backoffMs * 2, HQ_RECONNECT_CAP_MS);
+        await new Promise<void>((resolve) => {
+          const timer = refused ? null : setTimeout(wake, delayMs);
+          function wake() {
+            if (timer !== null) clearTimeout(timer);
+            again = null;
+            resolve();
+          }
+          again = wake;
+          // Publishing can synchronously stop this owner or request another snapshot.
+          if (input.signal.aborted || requested) wake();
+        });
       }
     }
   } finally {
@@ -244,14 +285,20 @@ export function hqOutageLine(
   if (view === null || view.current) return null;
   const at = (ms: number) =>
     formatDayAwareTimestamp(new Date(ms).toISOString(), timestampFormat, nowMs);
+  if (view.reconnecting && !view.reconnecting.capped) {
+    return view.readAt === null || view.structure === null
+      ? "Reconnecting…"
+      : `Last known · as of ${at(view.readAt)} · Reconnecting…`;
+  }
   if (view.unavailableSince === null)
     return view.readAt === null || view.structure === null
       ? null
       : `Last known · as of ${at(view.readAt)} · Updating…`;
   const since = `${view.failure ? `${view.failure} ` : ""}HQ unavailable since ${at(view.unavailableSince)}.`;
+  const retry = view.reconnecting?.capped ? " Retrying every 30 seconds." : "";
   return view.readAt === null || view.structure === null
-    ? since
-    : `${since} Projects as of ${at(view.readAt)}.`;
+    ? `${since}${retry}`
+    : `${since} Projects as of ${at(view.readAt)}.${retry}`;
 }
 
 /**

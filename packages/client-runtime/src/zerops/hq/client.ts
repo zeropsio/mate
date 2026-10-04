@@ -212,11 +212,11 @@ export interface HqApi {
   /**
    * The structure as it changes (`stream.ts`), with the Mates the reader observes and the people
    * its view names (`mates.ts`), over a socket opened with a ticket for the session: every event
-   * to `onEvent`, every message — events and pings alike — to `onAlive`. Ends when HQ hands the
-   * reader to another Core, or ends the session (the next call enters the door again); fails when
-   * the socket breaks; runs until `signal` aborts. Only the planned segment close (4410) opens a
-   * fresh ticket and socket within this call, preserving its live view. A failed successor ends
-   * the call with a failure; there is no automatic retry.
+   * to `onEvent`, every message — events and pings alike — to `onAlive`. Fails when the socket
+   * breaks or Core goes away (1001); session expiry is a definitive refusal, and the next
+   * explicit call enters the door again. Runs until `signal` aborts. The planned segment close
+   * (4410) opens a fresh ticket and socket within this call, preserving its live view. Other
+   * failures reach the stream owner, which decides backoff and publishes connection state.
    */
   readonly streamStructure: (
     handlers: {
@@ -356,9 +356,9 @@ export type OpenHqSocket = (
 
 /** How HQ closes a structure socket (`apps/hq/src/stream.ts`). */
 const SOCKET_CLOSE = {
-  /** Another Core leads now, or this one is stopping: end this call. */
+  /** Another Core leads now, or this one is stopping: the owner reconnects immediately. */
   goingAway: 1001,
-  /** The session ended: enter the door again. */
+  /** The session ended: an explicit next call enters the door again. */
   sessionEnded: 4401,
 } as const;
 
@@ -760,7 +760,7 @@ export function makeHqApi(input: {
         const token = held === null ? null : await held;
         if (signal.aborted) return;
         const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}`;
-        const continueSegment = await new Promise<boolean>((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
           const socket = input.openSocket(url, {
             message: (data) => {
               let message: unknown;
@@ -784,13 +784,26 @@ export function makeHqApi(input: {
               if (signal.aborted) {
                 reject(signal.reason);
               } else if (code === HQ_STREAM_SEGMENT_CLOSE.code) {
-                resolve(true);
+                resolve();
               } else if (code === SOCKET_CLOSE.sessionEnded) {
                 // The next call enters the door again, the next socket with it.
                 if (token !== null) drop(held, token);
-                resolve(false);
+                reject(
+                  new HqError({
+                    kind: "refused",
+                    code: "session_required",
+                    status: 401,
+                    message: "HQ's session ended. Try again to enter its door.",
+                  }),
+                );
               } else if (code === SOCKET_CLOSE.goingAway) {
-                resolve(false);
+                reject(
+                  new HqError({
+                    kind: "unavailable",
+                    code: "socket_1001",
+                    message: "HQ is restarting or handing over its stream.",
+                  }),
+                );
               } else {
                 reject(
                   new HqError({
@@ -808,7 +821,6 @@ export function makeHqApi(input: {
           };
           signal.addEventListener("abort", stop, { once: true });
         });
-        if (!continueSegment) return;
       }
     },
     // An application has no name of HQ's to ask for before it is made: the one by this name is

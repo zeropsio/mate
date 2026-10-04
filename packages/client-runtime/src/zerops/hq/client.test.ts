@@ -588,7 +588,7 @@ describe("makeHqApi — the structure socket", () => {
       }),
     );
     socket.on.close(1001);
-    await stream.done;
+    await expect(stream.done).rejects.toMatchObject({ code: "socket_1001" });
 
     expect(socket.url).toBe("wss://hq-30db-8080.prg1.zerops.app/api/structure/ws?ticket=t-1");
     expect(stream.events).toEqual([
@@ -676,11 +676,11 @@ describe("makeHqApi — the structure socket", () => {
     };
     socket.on.message(JSON.stringify({ type: "ping" }));
     socket.on.close(1001);
-    await done;
+    await expect(done).rejects.toMatchObject({ code: "socket_1001" });
   });
 
   it.each<[string, number, "resolves" | "rejects"]>([
-    ["ends when another Core leads now, to be read again at once", 1001, "resolves"],
+    ["signals another Core leads now, to be read again at once", 1001, "rejects"],
     ["breaks when HQ could not read the view", 1011, "rejects"],
     ["breaks when the connection dropped", 1006, "rejects"],
     ["breaks when HQ heard no pong", 4408, "rejects"],
@@ -711,7 +711,11 @@ describe("makeHqApi — the structure socket", () => {
     });
     const first = streaming(api);
     (await sockets.next()).on.close(4401);
-    await expect(first.done).resolves.toBeUndefined();
+    await expect(first.done).rejects.toMatchObject({
+      kind: "refused",
+      code: "session_required",
+      status: 401,
+    });
     streaming(api);
     await sockets.next();
     expect(door.minted).toEqual(["door-1", "door-2"]);
@@ -743,7 +747,7 @@ describe("makeHqApi — the structure socket", () => {
     });
     const first = streaming(api);
     (await sockets.next()).on.close(4401);
-    await first.done;
+    await expect(first.done).rejects.toMatchObject({ kind: "refused", code: "session_required" });
     expect(kept).toBeNull();
 
     streaming(api);
