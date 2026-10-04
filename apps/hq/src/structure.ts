@@ -1419,7 +1419,9 @@ export const structureLayer = (options: {
                   id: app.id,
                   name: app.name,
                   contents: {
-                    empty: app.empty,
+                    // The app row and the project rows are separate reads: a project attached
+                    // between them is in `rows`, so the app is held whatever its row said.
+                    empty: app.empty && !rows.some((row) => row.app_id === app.id),
                     deletingProjectIds: rows
                       .filter(
                         (row) =>
