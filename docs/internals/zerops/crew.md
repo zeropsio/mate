@@ -429,18 +429,23 @@ changed since the row was read refuses the action. New stints record their copy 
 `crew_operation` owns dispatch, checkpoint, merge/check, landing and selected copy rebuilds.
 An identity, actor, exact thread command or copy/ref target, and pending stage are durable before
 that stage runs. Its receipt confirms the stage afterward; the handle remains running until the
-consumer has recorded the task outcome. A restart, a crash or a graceful shutdown alike (a shutdown leaves a handle in flight
-running, its stage confirmed), marks running handles interrupted and
+consumer has recorded the task outcome. A restart marks running handles interrupted — after a crash, or a graceful shutdown,
+which leaves a handle in flight running with its stage confirmed — and
 reads copy status and known landing trailers; a running run stays running, its clock counting
-again once its crew works. Once the server accepts commands, the engine carries each interrupted
-handle on from its last confirmed stage as its crewmate is free, as Continue would
-(`resumeAfterRestart` in `crewContinue.ts`): a died turn continues in its copy as the run's
-starter or the task's creator, a checkpoint commits, a check merges and checks again, a landing
-records an outcome its trailer already shows or lands again as the person who pressed Land.
-Only an ambiguous resume waits for a person: a rebuild a person chose, a conversation's own turn
-outside a run (the lead's in a running run is woken again on its spacing), a changed task, or a
-resume admission refuses, whose row says why. A writer's conversation that records no copy at all
-gets its crew copy back.
+again once its crew works. Once the server accepts commands, the engine first adopts what an
+interrupted handle finished on the service after the Mate stopped — a lane commit carrying its
+`Crew-Operation:` trailer, a dispatch's reset to your tree, a landing your branch took — as the
+copy's recorded tip, then carries each handle on as its crewmate is free, by the task's state, as
+Continue would (`resumeAfterRestart` in `crewContinue.ts`), never forcing a rework: a died turn
+continues in the attempt it stood in, as the run's starter or the task's creator; a turn-end save
+is redone with no new turn outside a run; a merging, checking or landing task merges and checks
+again, and a landing lands as the person who pressed Land or records an outcome its trailer
+already shows; a blocked report waits for its answer, and a ready or review task stays as it is.
+A run the person paused or stopped gets no turn: Resume carries its task on. Only an ambiguous
+resume waits for a person: a rebuild a person chose, a person's own turn in a conversation (the
+lead's wake in a running run is woken again on its spacing), a changed task, or a resume admission
+refuses, whose row says why. A copy save outside any task is redone, or dropped by Drop it. A
+writer's conversation that records no copy at all gets its crew copy back.
 
 Rows still interrupted offer Continue and, before landing, Drop it. Continue operates on the selected
 handle under the crewmate's lock, rejects a changed attempt or newer handle, and records a new

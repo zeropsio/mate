@@ -18,7 +18,8 @@ import {
   type CrewMember,
 } from "./crewCore.ts";
 import { CREW_ID } from "./CrewHome.ts";
-import { updateOperation, withOperation, operationStep } from "./crewOperations.ts";
+import type { CrewAssignmentRow } from "./CrewStore.ts";
+import { operationStep, sentBySession, updateOperation, withOperation } from "./crewOperations.ts";
 import { integrate, land, refreshLaneStats } from "./crewLanding.ts";
 import { commitAndPolice } from "./crewTurns.ts";
 import { continueTask, requireTask, saveTask, startTask, leadTurn } from "./crewTasks.ts";
@@ -106,28 +107,56 @@ export const adoptOwnWrites = (
     }
   });
 
-/** The selected work continues from its recorded stage: a person's press, or the engine's own after a restart. */
+/** Who presses Continue: a person, or the engine itself after a restart (`resumeAfterRestart`). */
+export type ContinuedBy = "person" | "engine";
+
+/** A task the check passed: its copy is the tree that lands, never committed again. */
+const CHECKED: ReadonlySet<string> = new Set(["ready", "review", "landing", "waiting-on-you"]);
+
+/**
+ * The selected work continues from its recorded stage, by the task's state —
+ * never a forced rework: a queued task starts; a working task's died turn
+ * continues in its attempt, and its turn-end commit is redone (a person's
+ * press then carries the task on; the engine's leaves that to a running run);
+ * a merging, checking or landing task merges and checks again, and a landing
+ * lands; a blocked report waits for its answer, and a checked task stays as
+ * it is.
+ */
 export const continueOperation = (
   core: CrewCore,
   principal: TurnPrincipal,
   handle: string,
   id: string,
+  by: ContinuedBy = "person",
 ) =>
   Effect.gen(function* () {
     const { operation, related, task, applied, member } = yield* selected(core, handle, id);
+    const settle = Effect.forEach(related, (row) =>
+      updateOperation(core, row.id, { status: "continued" }),
+    );
     if (operation.kind === "rebuild") {
       yield* rebuildCopy(core, principal, handle, true);
-      for (const row of related) yield* updateOperation(core, row.id, { status: "continued" });
+      yield* settle;
       return;
     }
-    if (task === undefined && operation.kind !== "dispatch")
-      return yield* refuse("wrong-state", "This work has no task to continue.");
-    // Keep the old ending visible until the next operation owns the selected effects.
     if (task === undefined) {
-      if (operation.kind !== "dispatch")
+      if (operation.kind === "dispatch") {
+        yield* leadTurn(core, member, principal, "Continue where you stopped.");
+      } else if (operation.kind === "checkpoint") {
+        // A copy saved outside any task: the save is all there is to redo.
+        yield* adoptOwnWrites(core, member, related);
+        yield* commitAndPolice(
+          core,
+          member,
+          undefined,
+          yield* asRefusal(core.store.assignments(CREW_ID)),
+        );
+      } else {
         return yield* refuse("wrong-state", "This work has no task to continue.");
-      yield* leadTurn(core, member, principal, "Continue where you stopped.");
-      for (const row of related) yield* updateOperation(core, row.id, { status: "continued" });
+      }
+      yield* settle;
+      yield* refreshLaneStats(core, member);
+      yield* core.changed;
       return;
     }
     let evidence = readLandedEvidenceOption(operation.result);
@@ -158,7 +187,7 @@ export const continueOperation = (
         landedCommit: evidence.value.commit,
         waiting: null,
       });
-      for (const row of related) yield* updateOperation(core, row.id, { status: "continued" });
+      yield* settle;
       yield* core.changed;
       return;
     }
@@ -170,66 +199,66 @@ export const continueOperation = (
         operation.targets.threadId !== null
       )
         core.memory.terminalReasons.set(operation.targets.threadId, ending.value.terminalReason);
-      if (task.state === "queued") {
-        if (Option.isSome(readDirtyDispatch(operation.result)))
-          yield* commitAndPolice(
-            core,
-            member,
-            task,
-            yield* asRefusal(core.store.assignments(CREW_ID)),
-          );
+    }
+    const resuming =
+      task.state === "parked" && operation.kind !== "dispatch"
+        ? yield* saveTask(core, { ...task, state: operation.resumeState, waiting: null })
+        : task;
+    const tasks = () => asRefusal(core.store.assignments(CREW_ID));
+    const save = (state: CrewAssignmentRow) =>
+      member.row.kind === "writer" && !CHECKED.has(state.state)
+        ? Effect.flatMap(tasks(), (all) => commitAndPolice(core, member, state, all))
+        : Effect.void;
+    switch (resuming.state) {
+      case "queued": {
+        if (Option.isSome(readDirtyDispatch(operation.result))) yield* save(resuming);
         const preserved = yield* requireTask(core, task.assignment);
         if (preserved.state === "queued")
           yield* startTask(core, applied, member, preserved, principal);
-      } else {
-        const next = yield* saveTask(core, { ...task, state: "rework", waiting: null });
-        yield* continueTask(
-          core,
-          applied,
-          member,
-          next,
-          principal,
-          "Continue where you stopped. Its edits remain in its copy.",
-        );
+        break;
       }
-    } else {
-      const resuming =
-        task.state === "parked"
-          ? yield* saveTask(core, { ...task, state: operation.resumeState, waiting: null })
-          : task;
-      if (member.row.kind === "writer")
-        yield* commitAndPolice(
-          core,
-          member,
-          resuming,
-          yield* asRefusal(core.store.assignments(CREW_ID)),
-        );
-      const preserved = yield* requireTask(core, task.assignment);
-      if (preserved.state === "parked") {
-        for (const row of related) yield* updateOperation(core, row.id, { status: "continued" });
-        return;
+      case "working":
+      case "rework": {
+        if (operation.kind !== "dispatch") yield* save(resuming);
+        const preserved = yield* requireTask(core, task.assignment);
+        // Its turn died, or a person asks it on: a turn in the attempt it stands in.
+        if (
+          ["working", "rework"].includes(preserved.state) &&
+          (operation.kind === "dispatch" || by === "person")
+        )
+          yield* continueTask(
+            core,
+            applied,
+            member,
+            preserved,
+            principal,
+            "Continue where you stopped. Your edits remain in your copy.",
+          );
+        break;
       }
-      if (operation.kind === "checkpoint" && task.state === "working") {
-        const next = yield* saveTask(core, { ...preserved, state: "rework", waiting: null });
-        yield* continueTask(
-          core,
-          applied,
-          member,
-          next,
-          principal,
-          "Continue where you stopped. Its saved work remains in its copy.",
-        );
-      } else if (operation.kind !== "checkpoint" || task.state === "merging") {
-        const merging = yield* saveTask(core, { ...preserved, state: "merging" });
+      case "merging":
+      case "checking":
+      case "landing": {
+        yield* save(resuming);
+        const preserved = yield* requireTask(core, task.assignment);
+        if (preserved.state === "parked") break;
+        const merging =
+          preserved.state === "merging"
+            ? preserved
+            : yield* saveTask(core, { ...preserved, state: "merging" });
         yield* integrate(core, merging.assignment, undefined, operation.stage === "setting-up");
         if (
-          operation.kind === "landing" &&
+          (operation.kind === "landing" || resuming.state === "landing") &&
           (yield* requireTask(core, task.assignment)).state === "ready"
         )
           yield* land(core, principal, task.assignment);
+        break;
       }
+      default:
+        // Blocked on its question, checked and waiting on review or Land, or settled: as it stands.
+        break;
     }
-    for (const row of related) yield* updateOperation(core, row.id, { status: "continued" });
+    yield* settle;
     yield* refreshLaneStats(core, member);
     yield* core.changed;
   });
@@ -237,11 +266,12 @@ export const continueOperation = (
 /**
  * The operations a restart interrupted, carried on by the engine from their
  * last confirmed stage once the crewmate is free (its turn's end advances it
- * again): each redoes its side effect or records the outcome its receipt
- * already holds, as Continue does — the task's turn as the one its dispatch
- * runs as (`dispatchPrincipal`), a landing as the person who pressed Land.
- * A rebuild a person chose and a conversation's own turn outside a run stay
- * theirs; a resume that is refused leaves its row with the words why.
+ * again), by the task's state as Continue does — the task's turn as the one
+ * its dispatch runs as (`dispatchPrincipal`), a landing as the person who
+ * pressed Land. A run the person paused or stopped stays as they left it: no
+ * turn goes out, and Resume carries the task on. A rebuild a person chose and
+ * a person's own turn in a conversation stay theirs; a resume that is refused
+ * leaves its row with the words why.
  */
 export const resumeAfterRestart = (core: CrewCore, handle: string) =>
   Effect.gen(function* () {
@@ -252,28 +282,37 @@ export const resumeAfterRestart = (core: CrewCore, handle: string) =>
     const rows = (yield* asRefusal(core.store.operations(CREW_ID))).filter(
       (row) => row.handle === handle && pending.has(row.id),
     );
+    const held = applied.run !== undefined && applied.run.state !== "running";
     // The newest first: Continue settles a task's older rows with it.
     for (const row of rows.toReversed()) {
       pending.delete(row.id);
       const found = yield* asRefusal(core.store.getOperation(row.id));
       if (Option.isNone(found) || found.value.status !== "interrupted") continue;
       if (row.kind === "rebuild") continue;
-      if (row.taskId === null) {
+      const tasks = yield* asRefusal(core.store.assignments(CREW_ID));
+      const task = tasks.find((candidate) => candidate.assignment === row.taskId);
+      if (row.kind === "dispatch") {
         const lead = applied.members.get(handle)?.kind === "lead";
         // The run wakes its lead again, its wakes spaced; a person's own turn is theirs.
-        if (lead && runningRun(applied) !== undefined)
+        if (task === undefined) {
+          if (lead && runningRun(applied) !== undefined && !sentBySession(row))
+            yield* updateOperation(core, row.id, { status: "continued" });
+          continue;
+        }
+        // A paused or stopped run sends no turn; Resume carries a working task on.
+        if (held && ["working", "rework"].includes(task.state)) {
           yield* updateOperation(core, row.id, { status: "continued" });
-        continue;
+          continue;
+        }
       }
-      const task = (yield* asRefusal(core.store.assignments(CREW_ID))).find(
-        (candidate) => candidate.assignment === row.taskId,
-      );
-      if (task === undefined) continue;
+      if (row.taskId !== null && task === undefined) continue;
       const principal: TurnPrincipal =
         row.kind === "landing" && row.startedBy !== ""
           ? { kind: "crew", startedBy: row.startedBy }
-          : dispatchPrincipal(applied, task);
-      const refused = yield* continueOperation(core, principal, handle, row.id).pipe(
+          : task === undefined
+            ? { kind: "crew", startedBy: row.startedBy }
+            : dispatchPrincipal(applied, task);
+      const refused = yield* continueOperation(core, principal, handle, row.id, "engine").pipe(
         Effect.as(undefined),
         Effect.catch((error) => Effect.succeed(failureWords(error))),
       );
@@ -292,13 +331,14 @@ export const resumeAfterRestart = (core: CrewCore, handle: string) =>
     }
   });
 
-/** Dropping an interrupted task cancels its records; its files remain exactly where they are. */
+/** Dropping an interrupted task, or a copy save outside any, cancels its records; its files remain exactly where they are. */
 export const discardOperation = (core: CrewCore, handle: string, id: string) =>
   Effect.gen(function* () {
     const { operation, related, task, member } = yield* selected(core, handle, id);
-    if (operation.kind === "landing" || task === undefined)
+    if (operation.kind === "landing" || (task === undefined && operation.kind === "dispatch"))
       return yield* refuse("wrong-state", "Inspect and continue this work before dropping it.");
-    yield* saveTask(core, { ...task, state: "discarded" });
+    // A copy save outside any task drops only its record; the files stay as they are.
+    if (task !== undefined) yield* saveTask(core, { ...task, state: "discarded" });
     for (const row of related) yield* updateOperation(core, row.id, { status: "discarded" });
     yield* refreshLaneStats(core, member);
     yield* core.changed;

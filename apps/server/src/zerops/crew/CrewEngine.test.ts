@@ -1226,10 +1226,18 @@ describe("CrewEngine", () => {
               turnsBefore,
             );
             yield* (yield* ServerCommandReadiness).complete;
+            yield* eventually(
+              Effect.map(
+                dispatchedOf(world, "thread.turn.start"),
+                (turns) => turns.length === turnsBefore + 1,
+              ),
+            );
+            // Its turn died: it carries on in the attempt it stood in, never a forced rework.
             const snapshot = yield* snapshotWhere(
               (current) =>
-                current.board.tasks[0]?.attempts === 2 &&
-                current.board.tasks[0]?.state === "working",
+                current.board.tasks[0]?.attempts === 1 &&
+                current.board.tasks[0]?.state === "working" &&
+                current.attention.length === 0,
             );
             assert.deepStrictEqual(
               [

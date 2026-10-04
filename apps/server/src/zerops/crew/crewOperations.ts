@@ -8,6 +8,12 @@ import { crewLane } from "./CrewDefinition.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
 
+const SESSION_OPERATION = "crew-operation:session:";
+
+/** Whether a person's own session sent the operation's turn. */
+export const sentBySession = (operation: Pick<CrewOperation, "id">): boolean =>
+  operation.id.startsWith(SESSION_OPERATION);
+
 /** A durable handle is written before any effect belonging to the attempt. */
 export const beginOperation = (
   core: CrewCore,
@@ -17,6 +23,8 @@ export const beginOperation = (
     readonly task?: CrewAssignmentRow | undefined;
     readonly startedBy?: string;
     readonly id?: string;
+    /** A turn a person's own session sent, not a run's or the engine's: named in its id. */
+    readonly bySession?: boolean;
   },
 ) =>
   Effect.gen(function* () {
@@ -28,7 +36,9 @@ export const beginOperation = (
         : applied?.repositories.get(member.host);
     const now = yield* core.now;
     const row: CrewOperation = {
-      id: input.id ?? `crew-operation:${yield* core.uuid}`,
+      id:
+        input.id ??
+        `${input.bySession === true ? SESSION_OPERATION : "crew-operation:"}${yield* core.uuid}`,
       crew: CREW_ID,
       handle: input.handle,
       taskId: input.task?.assignment ?? null,

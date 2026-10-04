@@ -728,6 +728,7 @@ export const leadTurn = (
       kind: "dispatch",
       handle: lead.row.handle,
       startedBy: principalUser(principal),
+      bySession: principal.kind === "session",
     });
     if (principal.kind === "session") yield* acknowledgeOperations(core, lead.row.handle);
     const stint = yield* operationStep(
