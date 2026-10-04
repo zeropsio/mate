@@ -252,6 +252,17 @@ describe("groupFlow", () => {
     });
   });
 
+  it.each(["mergeable", "conflicting"] as const)(
+    "keeps a recipe change in the shared flow and its %s next step",
+    (mergeability) => {
+      const recipe = pull({ repository: "group", kind: "recipe", number: 3, mergeability });
+      const flow = groupFlow({ ...SM_FIXTURE, pullRequests: [recipe] });
+      expect(flow.pullRequests.map(({ pull: change }) => change)).toEqual([recipe]);
+      expect(flow.nextStep.kind).toBe(mergeability === "mergeable" ? "merge" : "unblock");
+      expect(flow.nextStep.target).toEqual({ kind: "change", repository: "group", number: 3 });
+    },
+  );
+
   it("asks for the merge first, and adds production once it has landed (sm-fixture)", () => {
     const flow = groupFlow(SM_FIXTURE);
     expect(flow.nextStep).toEqual({
@@ -474,16 +485,16 @@ describe("groupFlow", () => {
       },
     },
     {
-      case: "a recipe change is not the flow's merge",
+      case: "a recipe change waits for review before a release",
       input: {
         ...FSADFDASFSA,
         pullRequests: [pull({ repository: "group", kind: "recipe", number: 6 })],
       },
       step: {
-        kind: "release",
-        text: "1 change not live",
-        verb: "Review release",
-        target: { kind: "release", tag: "v0.1.0" },
+        kind: "merge",
+        text: "Change #6 waits for your merge",
+        verb: "Review",
+        target: { kind: "change", repository: "group", number: 6 },
       },
     },
   ])("takes the worst step first: $case", ({ input, step }) => {

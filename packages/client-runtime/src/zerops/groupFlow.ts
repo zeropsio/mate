@@ -268,7 +268,7 @@ export interface GroupFlow {
   readonly groupId: string;
   /** The listed Mates, then the ones being created (`coming`). */
   readonly mates: ReadonlyArray<GroupFlowMate>;
-  /** The open code changes, newest first. */
+  /** Every open change, code and recipe, newest first. */
   readonly pullRequests: ReadonlyArray<GroupFlowPullRequest>;
   /** The open changes to the group repo's recipe, newest first — not a step of the flow. */
   readonly recipeChanges: ReadonlyArray<GroupFlowPullRequest>;
@@ -553,7 +553,7 @@ function fromAttention(kind: GroupNextStepKind, item: ProjectAttentionItem): Gro
 /** One project's flow, from what the surfaces already read for it. */
 export function groupFlow(input: GroupFlowInput): GroupFlow {
   const open = [...input.pullRequests].sort(byNewest);
-  const pullRequests = open.filter((pull) => pull.kind === "code").map(flowPullRequestOf);
+  const pullRequests = open.map(flowPullRequestOf);
   const recipeChanges = open.filter((pull) => pull.kind === "recipe").map(flowPullRequestOf);
   const landedCode = input.merged.some((pull) => pull.kind === "code");
   const main: GroupFlowMain = {

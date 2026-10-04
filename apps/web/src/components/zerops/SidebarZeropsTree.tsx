@@ -39,8 +39,8 @@
  * environment is in; the colours are `assignCandidateMateTints`, likewise
  * shared. Which pull requests are a Mate's to answer for, and what the
  * chips say, are read from `groupFlow` — the same derivation the projects
- * page draws from — so a recipe change never counts as a Mate's own work
- * here, and a chip never says what the page would not.
+ * page draws from, including recipe changes, so a chip never says what the
+ * page would not.
  *
  * Everything else about the account lives on the projects screen. This is
  * where you work; that is where you manage.
@@ -1039,7 +1039,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // The one derivation the projects page draws from too (`groupFlow.ts`),
     // fed through the page's own input (`groupFlowInputOf`) and gate
     // (`productionAddable`): read once here, so the pull requests this tree
-    // hangs under a Mate, the recipe changes it leaves out and the production
+    // hangs under a Mate and the production
     // chip can never disagree with what the page says about the same project.
     //
     // Read whether or not HQ is: what a stop runs, and whether it serves,
@@ -1328,9 +1328,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       line,
       openStop,
     });
-    // Code only — a recipe change is the group's document, left to the
-    // projects page, and is never one more thing a Mate's row here answers
-    // for.
     // The change rows: HQ's once it told them, and until then the ones this
     // browser remembers drawing, untinted — so a reload grows no row when the
     // answer comes (`menuMemory.ts`).

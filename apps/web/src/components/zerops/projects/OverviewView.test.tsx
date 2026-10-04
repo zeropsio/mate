@@ -67,6 +67,22 @@ import {
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
 
 describe("the Overview", () => {
+  it("shows the recipe conflict named by Next steps in the changes cell and count", () => {
+    const recipe = pull({
+      repository: "group",
+      kind: "recipe",
+      number: 3,
+      mergeability: "conflicting",
+    });
+    const html = render({ groups: [entry([WREN], { pullRequests: [recipe], mainHasCode: true })] });
+    const row = section(html, 'id="flow-row-aaa"');
+    expect(row).toContain("1 open change");
+    expect(row).toContain("#3");
+    expect(row).toContain(recipe.title);
+    expect(row).not.toContain("None open");
+    expect(html).toContain("#3 conflicts with main");
+  });
+
   it("lists the next steps across groups, and a step's words jump to its row", () => {
     const html = render({ groups: [MERGING, FRESH] });
     const strip = html.slice(

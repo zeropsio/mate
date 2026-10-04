@@ -1500,15 +1500,14 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain("Release");
   });
 
-  it("keeps a recipe change out of the Mate's own pull-request list — only code moves through the shared flow", () => {
-    // The `fsadfdasfsa`-class bug is two surfaces reading the pull requests
-    // two different ways; this tree now reads them the one way `groupFlow`
-    // does, which counts a recipe change as the group repo's, not a Mate's.
+  it("keeps the recipe change counted by the Overview under its Mate", () => {
     const html = withFlow(
       [CRM_DEV, CRM_STAGE],
-      flow({ pullRequests: [pull(4, { kind: "recipe" })] }),
+      flow({ pullRequests: [pull(4, { repository: "group", kind: "recipe" })] }),
     );
-    expect(html).not.toContain('data-zerops-surface="sidebar-pull-request"');
+    expect(html).toContain('data-zerops-change="group#4"');
+    expect(html).toContain("#4 Change 4");
+    expect(html).toContain('data-zerops-surface="sidebar-pull-request-review"');
   });
 
   // The heading's lone amber dot said "something here needs you" without
