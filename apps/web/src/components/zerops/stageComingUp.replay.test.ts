@@ -256,8 +256,9 @@ describe("a stage coming up, replayed on run 4's clock with HQ deploying it", ()
       hq: REFUSED,
       declared: true,
       keyless: true,
-      line: "Stage coming up · awaits a deploy key",
-      cell: "Awaiting a deploy key",
+      // Held for a key: its own fact on both, never coming up (restores 630d8f1bb's idea).
+      line: "Stage awaits a deploy key",
+      cell: "Stage awaits a deploy key",
     },
     {
       t: 1389,

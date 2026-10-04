@@ -396,7 +396,7 @@ describe("a stop's line", () => {
     ],
     [
       { state: "empty", version: undefined, firstDeploy: { kind: "held" } },
-      { word: "Awaiting a deploy key", version: undefined, tone: "off" },
+      { word: "Stage awaits a deploy key", version: undefined, tone: "off" },
     ],
   ] as const)("reads %j as %j", (over, expected) => {
     expect(stopLine(stop(over))).toEqual(expected);

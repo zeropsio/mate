@@ -149,7 +149,9 @@ export function releaseFollows(input: {
     newer === undefined
       ? undefined
       : { by: newer.tag, live: input.releases.find((entry) => entry.standing === "live")?.tag };
-  const stalled = releasing && superseded === undefined && releaseStalled(tagged, input.nowMs);
+  const pressedAt = input.press.kind === "done" ? input.press.at : undefined;
+  const stalled =
+    releasing && superseded === undefined && releaseStalled(tagged, pressedAt, input.nowMs);
   return {
     tag,
     tagged,
@@ -168,15 +170,19 @@ export function releaseFollows(input: {
 /**
  * Whether a tag on its way has waited out {@link RELEASE_IN_FLIGHT_MS} since HQ made it, with
  * neither a landing nor a failure — the cutoff `releaseInFlight` stops holding Release back at. A
- * release HQ has not listed yet has no age to measure.
+ * release HQ accepted from this review and never listed (its stream down, say) has no time of its
+ * own: it waits from the press (`pressedAt`), never for ever.
  */
-function releaseStalled(tagged: FlowReleaseRow | undefined, nowMs: number): boolean {
-  if (
-    tagged === undefined ||
-    tagged.snapshot === true ||
-    tagged.standing !== undefined ||
-    tagged.verdict === "refused"
-  )
+function releaseStalled(
+  tagged: FlowReleaseRow | undefined,
+  pressedAt: string | undefined,
+  nowMs: number,
+): boolean {
+  if (tagged === undefined) {
+    const since = pressedAt === undefined ? Number.NaN : Date.parse(pressedAt);
+    return !Number.isNaN(since) && nowMs - since >= RELEASE_IN_FLIGHT_MS;
+  }
+  if (tagged.snapshot === true || tagged.standing !== undefined || tagged.verdict === "refused")
     return false;
   return nowMs - Date.parse(tagged.taggedAt) >= RELEASE_IN_FLIGHT_MS;
 }
@@ -187,6 +193,8 @@ export function releaseOutcomeOf(input: {
   readonly releasing: boolean;
   /** Past the cutoff with no landing and no failure (`releaseFollows`). */
   readonly stalled?: boolean | undefined;
+  /** When this review pressed it (`ReviewPress`): the age of one HQ never listed. */
+  readonly pressedAt?: string | undefined;
   /** A newer release above it (`releaseFollows`). */
   readonly superseded?: { readonly by: string; readonly live: string | undefined } | undefined;
   readonly pressing: boolean;
@@ -213,7 +221,7 @@ export function releaseOutcomeOf(input: {
   }
   if (!input.releasing) return { kind: "offered" };
   if (input.superseded !== undefined) return { kind: "superseded", ...input.superseded };
-  if (input.stalled === true) return { kind: "stalled", at: tagged?.taggedAt };
+  if (input.stalled === true) return { kind: "stalled", at: tagged?.taggedAt ?? input.pressedAt };
   if (input.pressing && tagged === undefined) {
     return { kind: "releasing", progress: `Tagging main as ${input.tag}` };
   }
@@ -249,6 +257,7 @@ export function releaseStep(input: {
     releasing: follows.releasing,
     stalled: follows.stalled,
     superseded: follows.superseded,
+    pressedAt: press.kind === "done" ? press.at : undefined,
     pressing: press.kind === "running",
     tag: follows.tag,
     clockMs: input.clockMs,

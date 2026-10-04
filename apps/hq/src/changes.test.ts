@@ -944,14 +944,18 @@ describe("a Mate's changes in HQ", () => {
         const say = (session: string, body: string) =>
           call("POST", comments, { session, body: { body } });
 
-        const updatedAt = Effect.map(
+        const listed = Effect.map(
           call("GET", `/api/apps/${appId}/changes`, { session: owner }),
           (answer) =>
-            Date.parse(
-              (answer.body as { readonly changes: ReadonlyArray<{ updatedAt: string }> })
-                .changes[0]!.updatedAt,
-            ),
+            (
+              answer.body as {
+                readonly changes: ReadonlyArray<{ updatedAt: string; comments: number }>;
+              }
+            ).changes[0]!,
         );
+        const updatedAt = Effect.map(listed, (change) => Date.parse(change.updatedAt));
+        // A change carries how many comments it has: the room a review holds while it reads them.
+        assert.strictEqual((yield* listed).comments, 0);
         const before = yield* updatedAt;
         yield* Effect.sleep(Duration.millis(5));
         const said = yield* say(owner, "Looks good");
@@ -968,6 +972,7 @@ describe("a Mate's changes in HQ", () => {
           reason: "app_not_seen",
         });
         assert.strictEqual((yield* say(owner, "  ")).status, 400);
+        assert.strictEqual((yield* listed).comments, 2);
         const read = (yield* call("GET", comments, { session: reader })).body as {
           readonly comments: ReadonlyArray<{
             readonly authorUserId: string;

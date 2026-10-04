@@ -647,6 +647,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         }
         commentable={props.offers?.comment === true}
         comments={props.comments}
+        count={pull.commentCount}
         draftKey={`${pull.url ?? pull.repository}#${String(pull.number)}`}
         frame={props.frame ?? "dialog"}
         now={props.now}

@@ -124,6 +124,30 @@ describe("a change's conversation in its review", () => {
     expect(markup).not.toMatch(/<textarea[^>]*disabled=""/u);
   });
 
+  // The room is held from the first frame: nothing under it moves when what was said arrives.
+  it.each([
+    ["the page: one row per comment", "page", 2, 2, false],
+    ["the dialog: the newest three, and the fold's line", "dialog", 9, 3, true],
+    ["a change nobody commented on: none", "page", 0, 0, false],
+    ["a change HQ counted none of: none", "page", undefined, 0, false],
+  ] as const)(
+    "holds the room of the comments it has while they are read, on %s",
+    (_case, frame, count, rows, folded) => {
+      const markup = html({ comments: comments({ kind: "reading" }), count, frame, remarks: [] });
+      const held = markup.match(/<li aria-hidden="true"[^>]*>/gu) ?? [];
+      expect(held.filter((row) => !row.includes("data-fold")).length).toBe(rows);
+      expect(held.some((row) => row.includes("data-fold"))).toBe(folded);
+      expect(markup.includes('aria-busy="true"')).toBe(rows > 0);
+      expect(markup).not.toContain("Show 6 earlier");
+    },
+  );
+
+  it("holds no room once what was said is read", () => {
+    const markup = html({ count: 5 });
+    expect(markup).not.toContain('aria-busy="true"');
+    expect(markup.match(/data-zerops-surface="zerops-change-remark"/gu)?.length).toBe(2);
+  });
+
   it("says what could not be read, with Try again, and still takes words", () => {
     const markup = html({
       comments: comments({ kind: "failed", reason: "HQ is not answering right now." }),
