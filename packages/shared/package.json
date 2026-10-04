@@ -390,6 +390,10 @@
     "./liveBatch": {
       "types": "./src/liveBatch.ts",
       "import": "./src/liveBatch.ts"
+    },
+    "./mateFaces": {
+      "types": "./src/mateFaces.ts",
+      "import": "./src/mateFaces.ts"
     }
   },
   "scripts": {

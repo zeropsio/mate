@@ -32,11 +32,17 @@
  */
 
 import {
-  MATE_SHAPE_IDS,
-  MATE_TINT_IDS,
-  type MateShapeId,
-  type MateTintId,
-} from "@t3tools/shared/brand";
+  formatMateFace,
+  readMateFace,
+  type ZeropsMateFace,
+  type ZeropsMateFaceTag,
+} from "@t3tools/shared/mateFaces";
+export {
+  formatMateFace,
+  readMateFace,
+  type ZeropsMateFace,
+  type ZeropsMateFaceTag,
+} from "@t3tools/shared/mateFaces";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
 import type { ZeropsProject } from "./api.ts";
@@ -155,56 +161,6 @@ export function readZeropsMembership(
       placed?.mate === null || placed === undefined ? undefined : readMateFace(placed.mate.face),
     birth: birth === undefined || birth === "" ? undefined : birth,
   };
-}
-
-/** A Mate's face: the colour and the shape its person picked for it. */
-export interface ZeropsMateFace {
-  readonly tint: MateTintId;
-  readonly shape: MateShapeId;
-}
-
-/**
- * A face as HQ records it. A part this client does not know — a tint or a
- * shape a newer client added — is absent, and the face derived from the
- * Mate's name stands in for it (`mateTints.ts`).
- */
-export interface ZeropsMateFaceTag {
-  readonly tint: MateTintId | undefined;
-  readonly shape: MateShapeId | undefined;
-  /**
-   * The Mate wore its name's tint before this face was picked for it, and its
-   * name keeps its place among the names the tints are shared out over
-   * (`<tint>:<shape>:named`, `assignCandidateMateTints`): so picking
-   * it a face recoloured nobody else. Absent on a face picked at its birth.
-   */
-  readonly named?: true;
-}
-
-const TINT_VALUES: ReadonlySet<string> = new Set(MATE_TINT_IDS);
-const SHAPE_VALUES: ReadonlySet<string> = new Set(MATE_SHAPE_IDS);
-
-/** The part after the shape saying the Mate's name keeps its place (`ZeropsMateFaceTag.named`). */
-const NAMED_FACE_PART = "named";
-
-/** A face as HQ records it: `<tint>:<shape>`, `:named` after it where the name kept its place. */
-export function readMateFace(value: string): ZeropsMateFaceTag | undefined {
-  // Parts past these three are a newer client's; the ones this one knows still read.
-  const [tint, shape, named] = value.split(":");
-  const face = {
-    tint: tint !== undefined && TINT_VALUES.has(tint) ? (tint as MateTintId) : undefined,
-    shape: shape !== undefined && SHAPE_VALUES.has(shape) ? (shape as MateShapeId) : undefined,
-  };
-  if (face.tint === undefined && face.shape === undefined) return undefined;
-  return named === NAMED_FACE_PART ? { ...face, named: true } : face;
-}
-
-/** A face in the grammar HQ records it in (`readMateFace`). */
-export function formatMateFace(
-  face: ZeropsMateFace,
-  options: { readonly named?: boolean } = {},
-): string {
-  const value = `${face.tint}:${face.shape}`;
-  return options.named === true ? `${value}:${NAMED_FACE_PART}` : value;
 }
 
 /**
