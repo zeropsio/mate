@@ -588,14 +588,21 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     for (const id of projects) {
       const project = projectRefOf(id);
       if (drawnLeases.has(id) || project === undefined) continue;
-      drawnLeases.set(
-        id,
-        run(
-          Effect.scoped(
-            data.acquire({ kind: "project-inventory", project }).pipe(Effect.andThen(Effect.never)),
-          ).pipe(Effect.ignore),
+      // A refused lease is not held as taken: the page's next demand asks for it again.
+      let refused = false;
+      const fiber = run(
+        Effect.scoped(
+          data.acquire({ kind: "project-inventory", project }).pipe(Effect.andThen(Effect.never)),
+        ).pipe(
+          Effect.catch(() =>
+            Effect.sync(() => {
+              refused = true;
+              if (drawnLeases.get(id) === fiber) drawnLeases.delete(id);
+            }),
+          ),
         ),
       );
+      if (!refused) drawnLeases.set(id, fiber);
     }
     const keys = drawn.flatMap((environmentId) => targetOf(environmentId) ?? []);
     if (keys.length === drawnKeys.length && keys.every((key, at) => key === drawnKeys[at])) return;
