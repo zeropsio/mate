@@ -254,6 +254,29 @@ describe("a failure that lasts across its retries", () => {
     ]);
     expect(latch.get("o")?.reads).toEqual([{ organizationId: "o", projectId: "p" }]);
   });
+
+  it("an establishing read the failure was not is no trouble of its", () => {
+    expect(
+      run([
+        [{ organizationId: "o", projectId: "p", interest: failed(1_000) }],
+        [
+          { organizationId: "o", projectId: "p", interest: observing },
+          { organizationId: "o", projectId: "q", interest: establishing },
+        ],
+      ]),
+    ).toEqual([[["o", true]], []]);
+  });
+
+  it("names only the failing reads still demanded", () => {
+    let latch = troubleLatch(new Map(), [
+      { organizationId: "o", projectId: "p", interest: failed(1_000) } as never,
+      { organizationId: "o", projectId: "q", interest: failed(1_000) } as never,
+    ]);
+    latch = troubleLatch(latch, [
+      { organizationId: "o", projectId: "p", interest: establishing } as never,
+    ]);
+    expect(latch.get("o")?.reads).toEqual([{ organizationId: "o", projectId: "p" }]);
+  });
 });
 
 describe("Trying again… is said only of a retry that is coming", () => {

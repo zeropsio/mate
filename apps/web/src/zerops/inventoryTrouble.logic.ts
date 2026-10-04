@@ -70,7 +70,8 @@ export interface TroubleEntry {
 /**
  * Each organization whose demanded data failed and has not observed again since: a retry that
  * re-establishes is the same trouble, not a fresh start, so the line holding it never flickers at
- * an attempt's edge. It ends once every demanded read of the organization observes (or pauses).
+ * an attempt's edge. It ends once each failed read observes, pauses or is no longer demanded; a
+ * read it never failed starting meanwhile does not hold it.
  */
 export function troubleLatch(
   previous: ReadonlyMap<string, TroubleEntry>,
@@ -95,9 +96,17 @@ export function troubleLatch(
       });
       continue;
     }
+    // Only a failed read's own retry keeps its trouble: another read starting, or a project no
+    // longer demanded, is not it.
     const held = previous.get(organizationId);
-    if (held !== undefined && group.some(({ interest }) => interest?.status === "establishing"))
-      next.set(organizationId, held);
+    if (held === undefined) continue;
+    const retried = held.reads.filter((read) =>
+      group.some(
+        ({ projectId, interest }) =>
+          projectId === read.projectId && interest?.status === "establishing",
+      ),
+    );
+    if (retried.length > 0) next.set(organizationId, { ...held, reads: retried });
   }
   return next;
 }
