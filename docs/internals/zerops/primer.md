@@ -80,10 +80,9 @@ HQ's repositories of Todo, at /git/<appId>/<repo>.git
 An organization that ran the release keeps its Gitea project, the broker's token, the `deploy-*`
 tokens and each Mate's `GITEA_TOKEN` as they are. Nothing writes to them, and the client keeps a
 project tagged `mate:tool:gitea` out of the applications (`tools.ts`); retiring them is a decision
-of its own, later. The client neither reads nor writes the old Gitea and calls no broker: it only
-takes back the person's own `gitea-signin:` throwaways that main's client leaves in the organization
-(`zeropsThrowaway.ts:71`). A pair main's zcp wired to the old Gitea moves to HQ at its first
-delivery (§5, T13).
+of its own, later. The client neither reads nor writes the old Gitea, calls no broker and sweeps
+none of the `gitea-signin:` throwaways main's client minted. The migration ran (T13, T14) and its
+code is gone.
 
 ## 2. The parts and where they live
 
@@ -179,8 +178,7 @@ an admin updates it from the Tools row to the Core the client carries (`client-r
 - **a deploy credential in CI, a runner or a repository** — none
 - **the old Gitea's tokens** — the broker's, the `deploy-*` keys on its service, each Mate's
   `GITEA_TOKEN`: left where they are; zcp still masks `GITEA_TOKEN` and keeps it out of a recipe
-  (`isControlPlaneEnv`). The client mints no `gitea-signin` throwaway; main's client still does
-  until the switch
+  (`isControlPlaneEnv`). The client mints no `gitea-signin` throwaway and sweeps none
 
 ## 4. How a run goes
 
@@ -422,8 +420,8 @@ still to come says so.
   - _State:_ built — the client opens no Gitea session, calls no broker and has no Gitea client: the
     `/gitea-signin` page, the session store and machine, the broker call, the Gitea client and the
     projects page's read of the old Gitea's organizations are gone, and with them the group's Gitea
-    state. It mints no `gitea-signin:` throwaway; the start-up sweep still takes back the person's
-    own that main's client leaves (`zeropsThrowaway.ts:71`), until the switch. A Mate's key holds
+    state. It mints no `gitea-signin:` throwaway, and since the switch its start-up sweep takes
+    back only its own `mate-door:` ones (`zeropsThrowaway.ts`). A Mate's key holds
     no grant on its application's other projects (ADR 0003, see 0.2 below). The copy says _change_,
     never _pull request_, and a change in conflict asks its Mate to merge `main` in and deliver it
     again (`gitTab.ts`, `reviewVerdict.ts`), as HQ takes a Mate's push only forward. Kept by the
@@ -436,20 +434,14 @@ still to come says so.
     session: the flow names no sign-in to Gitea and no Gitea org"), `accountRuntime.test.ts` (the
     post-grant stage holds no forge), `zeropsThrowaway.test.ts`, `doorThrowaway.test.ts`
 - **T13** — The migration of an organization that ran the release
-  - _State:_ partial — Core's side is in: a bundle the `import` command queues is brought in item by
-    item, resumably, and verified — applications with their projects, Mates and environments,
-    repositories with their changes and comments (a comment may be a Mate's), pictures, releases.
-    One commit of Core's on each `group` makes the tiers build from HQ, and an environment whose
-    services do not run what is wanted is held until an admin's first key; no deploy token is
-    carried over. An organization migrates one application at a time, one import running at once.
-    In each Mate, a pair main's zcp wired to the old Gitea moves to HQ at its first delivery,
-    git-push or repository pass: the repository of the same name, `origin` moved there with the old
-    one kept as `zerops-original-origin`, the old host's credential helper gone, and the open pull
-    request continued as its change. The exporter from the old Gitea and the rehearsal are open (§7)
+  - _State:_ done and removed — read 2026-10-04 before the removal: Mate s.r.o.'s HQ
+    recorded 11 imports, all done; KRLS's recorded none; neither held an environment. The one-off code is
+    gone: the `import` command and job, `Deploys.hold` and `Deploys.baseline`, the change heads and
+    merges of `@t3tools/hq-git` that served it, and its tables (migration `0037`); in zcp, the move of a
+    pair off main's Gitea. The rollout cause `import` stays, as rollouts of it are recorded
   - _Built in:_ `1377934c18`, `1659ebf499`, `d3a5672413`, `617c9ff93e`; zcp `9f800923f`,
     `e7965d4d1`, `38c4695c6`
-  - _Proven by:_ `importJob.test.ts`, `importBundle.test.ts`, `importCli.test.ts`,
-    `importTiers.test.ts`, `deploys.test.ts`; zcp `internal/tools/hq_main_gitea_test.go`
+  - _Proven by:_ `migrations.test.ts` (none of its tables left)
 - **TB** — HQ's git backed up, and restored in step with Postgres
   - _State:_ live — on KRLS's `Headquarters`, 2026-10-02 (the ledger's _The HQ rebuild, as
     measured_): `/health` said `backup: ok` 36 s after the build answered, a whole set of five
@@ -463,9 +455,7 @@ still to come says so.
   - _Proven by:_ `backup.test.ts`, `bucketStore.test.ts`, `restore.test.ts`, `reconcile.test.ts`
 - **T14** — The switch
   - _State:_ **open** — the Mate server and zcp released, the client on mate.zerops.io, the live
-    migration, parity walked in the browser. After it the migration's code goes: `importBundle.ts`,
-    `importCli.ts`, `importJob.ts`, `importTiers.ts`, `Deploys.hold`, `Deploys.baseline`, the
-    `hq_import` tables
+    migration, parity walked in the browser. The live migration ran and its code is gone (T13)
 
 ### What carries over from the release
 
@@ -1057,13 +1047,9 @@ lands.
 
 1. **What main's client leaves behind.** It gave each Mate's key `READ_ONLY` on its application's
    other projects, and int's client did until `04d73b1557`: the client adds no such grant now and
-   takes none off, so each is removed by hand, Mate by Mate. It mints `gitea-signin:` throwaways in
-   the organizations it still serves until the switch; the start-up sweep takes the person's own
-   back (`zeropsThrowaway.ts:71`), and that recognition goes after T14.
-2. **The pairs main's zcp wired to the old Gitea.** zcp moves each to HQ at its first delivery,
-   git-push or repository pass, its open pull request continued as its change (zcp `38c4695c6`);
-   not yet run live — the migration of Snap in Mate s.r.o. is its first run. Its code goes once no
-   Mate has such a pair.
+   takes none off, so each is removed by hand, Mate by Mate.
+2. **The pairs main's zcp wired to the old Gitea.** zcp's move of such a pair to HQ (`38c4695c6`) is
+   removed from zcp; its release waits until no Mate is confirmed to still pair with the old Gitea.
 3. **An agent's reach past its own project** comes only through HQ (ADR 0003):
    `zerops_observe` lists permitted stage and production environments, then reads their status,
    active versions and bounded service logs. HQ checks current placement and the people who can
