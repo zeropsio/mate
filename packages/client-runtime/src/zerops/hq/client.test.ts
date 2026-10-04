@@ -1139,6 +1139,31 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     });
   });
 
+  // The Mate tier a new Mate starts from, read on demand where HQ's stream does not carry it — a
+  // Core from before it did (SPEC §3.2c).
+  it.each([
+    [
+      "a tier main holds",
+      { state: "present", importYaml: "services:\n  - hostname: db\n", mainHead: SHA },
+    ],
+    ["a tier main does not", { state: "absent" }],
+  ] as const)("reads %s, as the person", async (_case, tier) => {
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/recipe/mate" ? json(200, tier) : undefined,
+    );
+    await expect(hqApi.mateRecipe("app-1")).resolves.toEqual(tier);
+    expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
+  });
+
+  it("says a recipe too large to read in words of its own", async () => {
+    const { api: hqApi } = api(() => json(413, { code: "too_large", reason: "recipe_too_large" }));
+    await expect(hqApi.mateRecipe("app-1")).rejects.toMatchObject({
+      kind: "refused",
+      code: "too_large",
+      message: "This project's recipe is too large to read here.",
+    });
+  });
+
   // An application's releases (`@t3tools/shared/hqRelease`): read, made and rolled back as the person.
   const RELEASE = {
     tag: "v0.1.1",
