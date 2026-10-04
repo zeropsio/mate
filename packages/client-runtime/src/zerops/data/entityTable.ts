@@ -689,3 +689,29 @@ export function retryAbsentTableRows(
   }
   return changed ? { ...state, wanted } : state;
 }
+
+/** A specific-ID read ends with the rows still owed unavailable, preserving newer evidence. */
+export function finishTableRowRead(
+  state: EntityTableState,
+  entity: TableEntity,
+  organization: OrganizationRef,
+  ids: ReadonlyArray<string>,
+  startedAtReceipt: number,
+): EntityTableState {
+  const wanted = new Map(state.wanted);
+  let changed = false;
+  for (const id of ids) {
+    const key = wantedKey(entity, id);
+    const owed = wanted.get(key);
+    if (
+      owed === undefined ||
+      owed.since > startedAtReceipt ||
+      owed.absent > 0 ||
+      organizationKeyOf(owed.organization) !== organizationKeyOf(organization)
+    )
+      continue;
+    wanted.set(key, { ...owed, absent: 1, dueAtMs: Number.POSITIVE_INFINITY });
+    changed = true;
+  }
+  return changed ? { ...state, wanted } : state;
+}
