@@ -1178,6 +1178,110 @@ describe("ZeropsApiClient project reads", () => {
     );
   });
 
+  // ADR 0003: the key HQ holds for the Mate is the Mate's, whatever else it reaches; it is written
+  // down to its own project alone, foreign grants removed, even where its own grant is lowered.
+  it.each([
+    {
+      case: "ADMIN on its own project and a sibling's reader",
+      grants: [
+        { projectId: "project-1", roleCode: "ADMIN" },
+        { projectId: "project-stage", roleCode: "READ_ONLY" },
+      ],
+      written: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+    },
+    {
+      case: "already lowered, still reading a sibling",
+      grants: [
+        { projectId: "project-stage", roleCode: "READ_ONLY" },
+        { projectId: "project-1", roleCode: "BASIC_USER" },
+      ],
+      written: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+    },
+    {
+      case: "exactly its own project",
+      grants: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+      written: null,
+    },
+  ])(
+    "hardens the key its Mate named by id to its own project: $case",
+    async ({ grants, written }) => {
+      const token = {
+        id: "token-7",
+        name: "zerops-zcp-zcp",
+        roleCode: "NO_ACCESS",
+        projects: grants,
+      };
+      const stub = recordingFetch((request) => {
+        if (request.method === "GET" && request.url.endsWith("/integration-token/token-7"))
+          return jsonResponse(200, token);
+        if (request.url.includes("/delegation") && request.method === "GET")
+          return jsonResponse(200, { list: [] });
+        if (request.url.endsWith("/project/search"))
+          return jsonResponse(200, {
+            items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
+          });
+        if (request.url.includes("/service-stack"))
+          return jsonResponse(200, {
+            list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+          });
+        return jsonResponse(200, {});
+      });
+      const client = new ZeropsApiClient({ fetch: stub.fetch });
+      client.restoreSession(SESSION);
+
+      const result = await client.hardenMate("org-1", "project-1", undefined, undefined, "token-7");
+
+      const write = stub.requests.find(
+        (request) => request.method === "PUT" && request.url.endsWith("/integration-token/token-7"),
+      );
+      expect(result.tokenLowered).toBe(written !== null);
+      expect(write === undefined ? null : JSON.parse(write.body ?? "{}").projects).toEqual(written);
+    },
+  );
+
+  // A key found by its name is the Mate's only while it holds its own project alone: one widened
+  // between the organization's list and the read under its lock is left as it is, never narrowed.
+  it("leaves a key found by its name that reads another project by the time it is read", async () => {
+    const listed = {
+      id: "token-1",
+      name: "zcp-project-1",
+      roleCode: "NO_ACCESS",
+      projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
+    };
+    const read = {
+      ...listed,
+      projects: [...listed.projects, { projectId: "project-stage", roleCode: "READ_ONLY" }],
+    };
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/integration-token/list"))
+        return jsonResponse(200, { list: [listed] });
+      if (request.method === "GET" && request.url.endsWith("/integration-token/token-1"))
+        return jsonResponse(200, read);
+      if (request.url.includes("/delegation") && request.method === "GET")
+        return jsonResponse(200, { list: [{ id: "del-1", tokenId: "token-1" }] });
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
+        });
+      if (request.url.includes("/service-stack"))
+        return jsonResponse(200, {
+          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+        });
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const result = await client.hardenMate("org-1", "project-1");
+
+    expect(result).toMatchObject({ tokenLowered: false, delegationsDropped: 0 });
+    expect(
+      stub.requests.some(
+        (request) => request.url.includes("/integration-token/token-1") && request.method !== "GET",
+      ),
+    ).toBe(false);
+  });
+
   // Step A, A11: an admin adopting a Mate whose key an owner made may not write that key. The
   // adoption is not failed for it: the harden says so, and closes the project off all the same.
   it("says a key write it was refused, and still isolates the project", async () => {

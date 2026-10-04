@@ -1788,7 +1788,7 @@ export class ZeropsApiClient {
    * - a project that has its container already makes no write at all, and one holding several zcp
    *   services is refused, naming them: a project holds one Mate (audit D2);
    * - a key an earlier press minted, its container never imported, is reused
-   *   — its own grant set again where it is not `BASIC_USER` (`planMateKey`),
+   *   — set to its own project alone where it is still `ADMIN` (`planMateKey`),
    *   and its value regenerated, because the value is shown once and nothing
    *   kept it — never a second key beside it.
    *
@@ -1854,21 +1854,32 @@ export class ZeropsApiClient {
       ).token;
     } else {
       // The write replaces the key's whole project list: it is planned from the key as read
-      // under its lock, every token writer's, and lowers its org role to none.
+      // under its lock, every token writer's, and lowers its org role to none. Found by its name,
+      // a key that reaches another project by then is not the Mate's: it is neither narrowed nor
+      // handed to the container.
       await this.#holdToken(earlier.id, async () => {
         const current = (await this.listIntegrationTokens(input.clientId, signal)).find(
           (token) => token.id === earlier.id,
         );
         if (current === undefined) return;
         this.#assertGeneration(generation);
-        const lowered = planMateKey({ token: current, selfProjectId: input.projectId });
-        if (lowered === undefined) return;
+        const plan = planMateKey({
+          token: current,
+          selfProjectId: input.projectId,
+          foundBy: "name",
+        });
+        if (plan.kind === "not-its-key") {
+          throw new Error(
+            `The key ${current.name} reaches another project now, so it is not reused. Try again.`,
+          );
+        }
+        if (plan.kind === "held") return;
         await this.setIntegrationTokenProjects(
           {
             clientId: input.clientId,
             tokenId: current.id,
             name: current.name,
-            projects: lowered.projects,
+            projects: plan.projects,
           },
           signal,
           beforeWrite,
@@ -2282,9 +2293,11 @@ export class ZeropsApiClient {
    * The birth's hardening (spec-mate §3 B-1/B-2/B-3), whole: the token half
    * and the isolation half, together, for one Mate's own project.
    *
-   * The token half lowers the Mate's own grant to `BASIC_USER` and leaves
-   * every other grant as it is (`planMateKey`); a key the press minted holds nothing else. Every delegation the token carries is then dropped: the one-time mint the platform grants at
-   * creation, which nothing here needs (`groupReach.ts`, guide 0.4).
+   * The token half sets the Mate's key to its own project alone at `BASIC_USER` (`planMateKey`):
+   * the key HQ holds by id loses any other grant; a key found by its name is the Mate's only while
+   * it holds nothing else, and is left as it is otherwise. Every delegation the token carries is
+   * then dropped: the one-time mint the platform grants at creation, which nothing here needs
+   * (`groupReach.ts`, guide 0.4).
    *
    * Idempotent, and cheap to prove so: a token already at `BASIC_USER` with
    * no wider grant plans nothing, a token with no delegations lists an empty
@@ -2320,20 +2333,30 @@ export class ZeropsApiClient {
     let keyNotLowered: string | null = null;
     let delegationsDropped = 0;
 
+    const foundBy = keyTokenId === undefined ? "name" : "id";
     const keys =
       keyTokenId === undefined ? await this.#mateKeys(clientId, projectId, signal) : [keyTokenId];
     for (const tokenId of keys) {
       // A key this account may not write — an org admin's adoption of a Mate whose key an owner
       // made — is said and left as it is: the rest of the harden still runs.
       try {
-        await this.#hardenKey(clientId, projectId, tokenId, generation, signal, beforeWrite, {
-          lowered: () => {
-            tokenLowered = true;
+        await this.#hardenKey(
+          clientId,
+          projectId,
+          tokenId,
+          foundBy,
+          generation,
+          signal,
+          beforeWrite,
+          {
+            lowered: () => {
+              tokenLowered = true;
+            },
+            dropped: () => {
+              delegationsDropped += 1;
+            },
           },
-          dropped: () => {
-            delegationsDropped += 1;
-          },
-        });
+        );
       } catch (cause) {
         if (!(cause instanceof ZeropsApiError) || cause.kind !== "forbidden") throw cause;
         keyNotLowered ??= cause.message;
@@ -2378,11 +2401,15 @@ export class ZeropsApiClient {
     ];
   }
 
-  /** One key of a Mate lowered to its own project, and its delegations dropped. */
+  /**
+   * One key of a Mate set to its own project alone, and its delegations dropped; a key found by its
+   * name that is not the Mate's as read is left as it is, delegations and all.
+   */
   async #hardenKey(
     clientId: string,
     projectId: string,
     tokenId: string,
+    foundBy: "id" | "name",
     generation: number,
     signal: AbortSignal | undefined,
     beforeWrite: (() => Promise<void>) | undefined,
@@ -2391,26 +2418,21 @@ export class ZeropsApiClient {
     this.#assertGeneration(generation);
     // The write replaces the token's whole project list: it is planned from the token as read
     // by its id under its lock — one small answer, never the organization's whole list again.
-    // Only the Mate's own grant is lowered, every other kept as it is (`planMateKey`). A key
-    // already lowered is left alone.
-    const lowered = await this.#holdToken(tokenId, async () => {
+    const plan = await this.#holdToken(tokenId, async () => {
       const current = await this.readIntegrationToken(clientId, tokenId, signal);
-      if (current === undefined) return false;
+      if (current === undefined) return undefined;
       this.#assertGeneration(generation);
-      const projects = (current.projects ?? []).map((grant): ZeropsProjectGrant =>
-        grant.projectId === projectId && grant.roleCode !== MATE_SELF_PROJECT_ROLE
-          ? { ...grant, roleCode: MATE_SELF_PROJECT_ROLE }
-          : grant,
-      );
-      if (!projects.some((grant, index) => grant !== current.projects?.[index])) return false;
+      const planned = planMateKey({ token: current, selfProjectId: projectId, foundBy });
+      if (planned.kind !== "write") return planned;
       await this.setIntegrationTokenProjects(
-        { clientId, tokenId: current.id, name: current.name, projects },
+        { clientId, tokenId: current.id, name: current.name, projects: planned.projects },
         signal,
         beforeWrite,
       );
-      return true;
+      return planned;
     });
-    if (lowered) told.lowered();
+    if (plan?.kind === "not-its-key") return;
+    if (plan?.kind === "write") told.lowered();
 
     this.#assertGeneration(generation);
     const delegations = await this.listIntegrationTokenDelegations({ clientId, tokenId }, signal);

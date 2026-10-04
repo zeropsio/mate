@@ -14,8 +14,9 @@
  * project through HQ instead: zerops_observe reads permitted stage and
  * production status, active versions and logs. So this client adds no grant beside a
  * Mate's own: not at the key's mint, not at a birth, not on a screen's read.
- * A grant a key already holds is not taken away here; a separate step
- * removes it.
+ * A key known for the Mate's by the id HQ holds loses any other grant at its
+ * harden; a key found by its name alone is the Mate's only while it holds its
+ * own project and nothing else, and is never narrowed (`planMateKey`).
  *
  * What stays is the lowering (guide 0.2). The platform mints a container's
  * token with `ADMIN` on its project; a key this client mints holds
@@ -185,8 +186,9 @@ const PRESS_KEY_NAME_PREFIX = "zcp-";
 
 /**
  * The key a press reuses where no container holds one yet: the newest of the keys a press mints,
- * by the name it gives them, writing this project at a Mate's own role — whatever else an earlier
- * client let it reach, so a press never mints a second key beside one it made.
+ * by the name it gives them, holding this project alone at a Mate's own role — so a press never
+ * mints a second key beside one it made. A key an earlier client widened to other projects is not
+ * reused: it is not taken for the Mate's (`isMateKeyOf`), and a key of the press's own is minted.
  */
 export function newestMateKey(
   tokens: ReadonlyArray<ZeropsIntegrationToken>,
@@ -194,48 +196,54 @@ export function newestMateKey(
 ): ZeropsIntegrationToken | undefined {
   return newestFirst(
     tokens.filter(
-      (token) =>
-        token.name.startsWith(PRESS_KEY_NAME_PREFIX) &&
-        (token.projects ?? []).some(
-          (grant) => grant.projectId === projectId && MATE_SELF_GRANT_ROLES.has(grant.roleCode),
-        ),
+      (token) => token.name.startsWith(PRESS_KEY_NAME_PREFIX) && isMateKeyOf(token, projectId),
     ),
   )[0];
 }
 
-function sameGrants(
-  left: ReadonlyArray<ZeropsProjectGrant>,
-  right: ReadonlyArray<ZeropsProjectGrant>,
-): boolean {
-  const key = (grant: ZeropsProjectGrant) => `${grant.projectId}=${grant.roleCode}`;
-  const sorted = (grants: ReadonlyArray<ZeropsProjectGrant>) => grants.map(key).sort();
-  return sorted(left).join(";") === sorted(right).join(";");
-}
+/** What a harden or a reusing press does with one key of a Mate (`planMateKey`). */
+export type MateKeyPlan =
+  /** Write exactly `projects`: the Mate's own project at `MATE_SELF_PROJECT_ROLE`, nothing else. */
+  | {
+      readonly kind: "write";
+      readonly tokenId: string;
+      readonly projects: ReadonlyArray<ZeropsProjectGrant>;
+    }
+  /** It holds exactly its own project at the Mate's role already: nothing is written. */
+  | { readonly kind: "held" }
+  /** Found by its name, it is not the Mate's key as read: nothing is written to it. */
+  | { readonly kind: "not-its-key" };
 
 /**
- * The write that lowers a Mate's key, or `undefined` when it holds what it
- * should: `MATE_SELF_PROJECT_ROLE` on its own project — added where it has no
- * grant there — and every other grant it holds exactly as it is. A key the
- * platform minted with `ADMIN` is lowered in place, its string unchanged; a key
- * already lowered is not written.
+ * The write that sets a Mate's key to its own project alone (ADR 0003): `MATE_SELF_PROJECT_ROLE`
+ * there and no other grant. A key the platform minted with `ADMIN` is lowered in place, its string
+ * unchanged; a key that holds exactly that already is not written.
  *
- * Comparison is order-insensitive: the platform returns grants in its own
- * order.
+ * How the key was found decides whether it may be narrowed. One found by the id the Mate enrolled
+ * with HQ (`foundBy: "id"`) is the Mate's — HQ took it only while it named this project alone — so
+ * any other grant it holds is removed. One found by its name and grant (`foundBy: "name"`) is the
+ * Mate's only while it holds this project alone (`isMateKeyOf`): a deploy key or a person's token
+ * can carry such a name, so a key that reaches anything else is `not-its-key` and never narrowed.
  */
 export function planMateKey(input: {
   readonly token: ZeropsIntegrationToken;
   readonly selfProjectId: string;
-}): { readonly tokenId: string; readonly projects: ReadonlyArray<ZeropsProjectGrant> } | undefined {
-  const current = input.token.projects ?? [];
-  const own: ZeropsProjectGrant = {
-    projectId: input.selfProjectId,
-    roleCode: MATE_SELF_PROJECT_ROLE,
+  readonly foundBy: "id" | "name";
+}): MateKeyPlan {
+  if (input.foundBy === "name" && !isMateKeyOf(input.token, input.selfProjectId)) {
+    return { kind: "not-its-key" };
+  }
+  if (
+    (input.token.projects ?? []).length === 1 &&
+    selfRoleOf(input.token, input.selfProjectId) === MATE_SELF_PROJECT_ROLE
+  ) {
+    return { kind: "held" };
+  }
+  return {
+    kind: "write",
+    tokenId: input.token.id,
+    projects: [{ projectId: input.selfProjectId, roleCode: MATE_SELF_PROJECT_ROLE }],
   };
-  const wanted = current.some((grant) => grant.projectId === input.selfProjectId)
-    ? current.map((grant) => (grant.projectId === input.selfProjectId ? own : grant))
-    : [own, ...current];
-  if (sameGrants(current, wanted)) return undefined;
-  return { tokenId: input.token.id, projects: wanted };
 }
 
 /** The page's exclusive locks (`navigator.locks`): `hold` runs once the lock is this tab's. */
