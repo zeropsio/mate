@@ -585,9 +585,7 @@ backoff; a manual attempt does so at once.
 HQ supplies application load data with its first structure snapshot, and fresh values when each
 application's release revision moves. Recomputes reuse unchanged revisions. _Add Mate_ and the
 stage/production creation forms use those same recipe values, every tier from the snapshot; a recipe
-landing moves the revision and its tiers come down the stream. Where the snapshot has no Mate tier
-(a Core from before it, or one that could not read it), and while HQ's stream is down, the open New
-Mate dialog reads the Mate tier once on its own (`mateRecipeReads.ts`), in a shown tab only. An explicit recipe retry asks the
+landing moves the revision and its tiers come down the stream. An explicit recipe retry asks the
 stream owner for a fresh snapshot.
 
 **Polling is a backstop, and this is the complete list.**
@@ -600,7 +598,7 @@ stream owner for a fresh snapshot.
 | An application's releases and repositories        | None: values in HQ's snapshot and release-revision messages (`useZeropsAppReleases`)           | An official HQ is known             |
 | HQ's structure, environments and a Mate's changes | None: HQ's stream, reconnecting by itself 1 s → 30 s; a refusal waits for a manual again       | —                                   |
 | HQ's standing (the projects page's HQ card)       | None: stream's verdict, Core and parts; `/health` per failed attempt, once for an old Core     | The tab is visible                  |
-| A recipe's tiers on `main`                        | None: tiers in the snapshot and messages; Mate tier once per open dialog where they lack it    | Or HQ's stream is down; shown tab   |
+| A recipe's tiers on `main`                        | None: Mate, stage and production tiers in the same snapshot and messages                       | —                                   |
 | A comparison of two commits                       | None: asked once and held; one that failed is asked again a minute later (`useZeropsCompares`) | Still wanted                        |
 | Deployment name                                   | 30 s while a deploy of that service runs and the pushed name is unconfirmed                    | Demanded                            |
 | A Mate's setup (`/mate/setup.json`)               | 4 s while a step is still to happen (`useMateSetup`); a read due while hidden waits            | A view shows it, the tab is visible |

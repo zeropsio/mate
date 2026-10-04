@@ -41,7 +41,7 @@ const json = (body: unknown) =>
   new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 
 // The real HTTP adapter and stream driver, with requests counted at the transport boundary.
-async function load(count: number, details = false, read: typeof value = value) {
+async function load(count: number, details = false) {
   const requests: string[] = [];
   let message: ((data: string) => void) | undefined;
   let opened!: () => void;
@@ -108,7 +108,7 @@ async function load(count: number, details = false, read: typeof value = value) 
       mates: {},
       people: {},
       appReads: Object.fromEntries(
-        apps.map(({ id }) => [id, { revision: "1", value: read, failure: null }]),
+        apps.map(({ id }) => [id, { revision: "1", value, failure: null }]),
       ),
     }),
   );
@@ -189,21 +189,6 @@ describe("HQ application load", () => {
       });
       expect(h.seen().mate.tier).toEqual({ kind: "tier", tier: "mate", yaml: mate.importYaml });
       expect(h.requests).toEqual(["POST /api/stream-ticket"]);
-    } finally {
-      await h.close();
-    }
-  });
-
-  // Every HQ Core is deployed once, at its birth: one from before the stream carried the Mate
-  // tier is read for it on its own, once, while the dialog is open.
-  it("reads the Mate tier once on its own where an older Core's snapshot carries none", async () => {
-    const { mate: _mate, ...older } = value.recipes;
-    const h = await load(1, true, { ...value, recipes: older as typeof value.recipes });
-    try {
-      await vi.waitFor(() => expect(h.seen().mate.loading).toBe(false));
-      expect(h.requests).toEqual(["POST /api/stream-ticket", "GET /api/apps/app-0/recipe/mate"]);
-      expect(h.seen().mate.state).toBe("absent");
-      expect(h.seen().stage.state).toBe("present");
     } finally {
       await h.close();
     }
