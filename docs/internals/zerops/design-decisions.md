@@ -3606,3 +3606,19 @@ no-cache`.
   - _Why:_ the owner: "the 'working' card is still not quite there", "the background tasks and their
     finishing", "expansions … with the same content repeated". Run 9 counted 285 line changes in 35
     min, a median 0.92 s each, and Bodhi's "N background tasks finished" row reached 68.
+- **2026-10-04** — **A run card moves on one curve, and the conversation keeps its own end.**
+  - **One curve:** everything the card moves on its own (heights, the run scroll's glide, a line's
+    plop) takes 31% of what is left each frame. The speed is capped at 1.6 px/ms, and a late frame
+    moves no further than an on-time one.
+  - **Heights:** only the innermost box that changed eases its height.
+  - **Arrivals:** rows enter one after another, 150 ms apart and down to 60 ms with a backlog. History
+    drawn in above the reader enters at once.
+  - **The end:** the conversation keeps its own end, judged from the scrolls it hears (LegendList's
+    `maintainScrollAtEnd` is off), and leaves it only on a person's move up.
+  - **Settles and openings:** a settle is one motion at a time: enter, glide, then fold. What a person
+    opens glides into view above the composer.
+  - **Snapping:** out of sight and under reduced motion, everything snaps.
+  - _Why:_ the owner: "the agressive plop that's sometimes too much too fast to process, the
+    non-animated height expansions, the sometimes weirdly acting scroll processes". Run 9 measured
+    231 one-frame height changes and 83 unprovoked jumps; the desktop harness now shows 0 and 0–1.
+    At 390 px a card still bounces when a tall step arrives (its 60svh cap), the first follow-up.
