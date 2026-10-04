@@ -1377,3 +1377,26 @@ describe("stopFailedDeploy", () => {
     expect(stopFailedDeploy({ tier, rows, releases })).toEqual(expected);
   });
 });
+
+describe("serviceRows — durable deploy log handles", () => {
+  it.each(["building", "failed", "live"] as const)("keeps %s deploy inspectable", (state) => {
+    const latest = deployRecord(state, { id: "7", processId: "p7", appVersionId: "v7" });
+    const [row] = serviceRows({
+      environment: "stage",
+      services: [
+        {
+          hostname: "api",
+          repository: "api",
+          deploy: { latest, live: state === "live" ? latest : null },
+        },
+      ],
+      platform: { state: "unread", waitingFor: null },
+      mainHead: undefined,
+      routes: [],
+      offers: [],
+      nowMs: 0,
+      age: () => "now",
+    });
+    expect(row?.deployLog).toEqual({ jobId: "7", processId: "p7", appVersionId: "v7" });
+  });
+});

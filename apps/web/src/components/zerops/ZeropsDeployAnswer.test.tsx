@@ -3,6 +3,8 @@ import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
+import { ZeropsProjectFlowContext, type ZeropsProjectFlowValue } from "~/zerops/projectFlowContext";
+
 import { answeredDeploys, ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 
 const ANSWER: HqDeployAnswer = {
@@ -75,4 +77,34 @@ describe("answeredDeploys — a press's deploys, where HQ answered them", () => 
   ])("says nothing while %s", (_name, press) => {
     expect(answeredDeploys(press)).toBeUndefined();
   });
+});
+
+const job = { id: "3", kind: "deploy", processId: "p3", appVersionId: "v3" };
+const flow = {
+  flows: new Map([
+    [
+      "app",
+      {
+        environmentInputs: [
+          {
+            projectId: "prod-id",
+            environment: "renamed",
+            services: [{ deploy: { latest: job, live: null } }],
+          },
+        ],
+      },
+    ],
+  ]),
+} as unknown as ZeropsProjectFlowValue;
+
+it("offers the answered job's inspection through its HQ project id, even after a rename", () => {
+  const markup = renderToStaticMarkup(
+    <ZeropsProjectFlowContext.Provider value={flow}>
+      <ZeropsDeployAnswer
+        answer={{ ...ANSWER, jobs: [{ ...ANSWER.jobs[0]!, state: "building", processId: "p3" }] }}
+      />
+    </ZeropsProjectFlowContext.Provider>,
+  );
+  expect(markup).toContain("View deploy");
+  expect(markup).toContain('data-zerops-deploy-job="3"');
 });
