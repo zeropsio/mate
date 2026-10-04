@@ -4,7 +4,7 @@
  * the head read with the offer, whose message lists the commit each production service runs:
  * {@link releaseMessage}, read strictly by {@link parseReleaseMessage}. HQ judges a release before
  * it tags: a release it refuses is only an answer, never a tag nor a record; one it makes, Core tags
- * for the person `can`'s `release` allows (`zeropsPermissions.ts`), so every release Core records
+ * for the person `can`'s `release` allows (HQ's `permissions.ts`), so every release Core records
  * is approved. A refused record is either main's history, imported (T13), or one tag-record
  * recovery found refused (`apps/hq/src/reconcile.ts`); either stays refused for ever. Releases are
  * ordered by version everywhere ({@link compareReleaseTags}): a new one must be newer than every

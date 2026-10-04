@@ -5,7 +5,6 @@
     "groups": [
       {
         "id": "g-acme",
-        "slug": "acme",
         "projects": [
           {
             "id": "p-fen",
@@ -27,7 +26,6 @@
       },
       {
         "id": "g-beta",
-        "slug": "beta",
         "projects": [
           {
             "id": "p-bmate",

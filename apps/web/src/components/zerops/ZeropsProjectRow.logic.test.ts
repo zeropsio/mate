@@ -1,4 +1,6 @@
-import { newMateTint, offerAsker } from "@t3tools/client-runtime/zerops";
+import { newMateTint } from "@t3tools/client-runtime/zerops";
+import type { HqMateOfferStates } from "@t3tools/client-runtime/zerops/hq";
+import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
@@ -293,10 +295,8 @@ describe("deriveZeropsRowAction", () => {
     });
 
     it("is never offered to a tool, which has no container by design", () => {
-      const gitea = {
-        ...unplaced,
-        project: { ...unplaced.project, tagList: ["mate:tool:gitea"] },
-      };
+      // The Mate it is offered on above, HQ classifying it as a tool.
+      const gitea = { ...bare, project: { ...bare.project, hqTool: "gitea" as const } };
       expect(deriveZeropsRowAction(input(gitea, undefined))).toEqual({ kind: "none" });
     });
 
@@ -960,31 +960,32 @@ describe("releaseRowTone", () => {
   });
 });
 
-describe("mateRowCan — a row's verbs, where its Mate's door opens for this person", () => {
-  const PROJECTS = [{ id: "p1", userRoles: [{ clientUserId: "cu-ada", roleCode: "OWNER" }] }];
-  const asker = (roleCode: string) =>
-    offerAsker(
-      { userId: "u-ada", clientUserId: "cu-other", roleCode, canCreateProjects: false },
-      PROJECTS,
-    );
-  it.each([
-    ["a member", "BASIC_USER", true],
-    ["an org admin", "ADMIN", true],
-    ["a read-only member, whose row is listed", "READ_ONLY", false],
-    ["a member with no access", "NO_ACCESS", false],
-  ])("%s: %s", (_name, roleCode, opens) => {
-    expect(mateRowCan(asker(roleCode), "p1")).toEqual(opens ? ALL : NONE);
+describe("mateRowCan — a row's verbs, where HQ offers following its Mate", () => {
+  const held = (kind: HqOfferState["kind"]): HqMateOfferStates => {
+    const observe: HqOfferState =
+      kind === "refused"
+        ? { kind, reason: "not_mate_operator" }
+        : kind === "unavailable"
+          ? { kind, since: 1 }
+          : { kind };
+    return { held: true, observe, edit: observe, detach: observe, moveTo: undefined };
+  };
+  it.each<[string, HqMateOfferStates | undefined, boolean]>([
+    ["offered", held("allowed"), true],
+    ["while HQ does not answer: the door and Zerops decide", held("unavailable"), true],
+    ["refused: the door would refuse it too", held("refused"), false],
+    ["not said yet", held("unknown"), false],
+    ["before HQ's structure is known", undefined, false],
+    [
+      "a project HQ holds as no Mate: the door and Zerops decide",
+      { held: false, createRecord: { kind: "unknown" } },
+      true,
+    ],
+  ])("%s", (_name, offers, offered) => {
+    expect(mateRowCan(offers, false)).toEqual(offered ? ALL : NONE);
   });
 
-  it("offers a row's owner all of it through their grant on its project", () => {
-    const owner = offerAsker(
-      { userId: "u-ada", clientUserId: "cu-ada", roleCode: "NO_ACCESS", canCreateProjects: true },
-      PROJECTS,
-    );
-    expect(mateRowCan(owner, "p1").open).toBe(true);
-  });
-
-  it("offers nothing where the client knows no one: unknown is no", () => {
-    expect(mateRowCan(offerAsker(undefined, PROJECTS), "p1")).toEqual(NONE);
+  it("offers them all while HQ does not answer, before it ever said: an outage is no gate", () => {
+    expect(mateRowCan(undefined, true)).toEqual(ALL);
   });
 });

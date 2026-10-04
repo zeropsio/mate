@@ -21,7 +21,13 @@ import { type KeySecret, deployKeysLayer, keySecretOf, openToken } from "./deplo
 import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
 import { type OrgView, Roles, WriteConfirm } from "./roles.ts";
-import { JOBS_SHOWN, type MateRecord, Structure, structureLayer } from "./structure.ts";
+import {
+  JOBS_SHOWN,
+  type MateRecord,
+  Structure,
+  type StructureRead,
+  structureLayer,
+} from "./structure.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
 import { rolloutsLayer } from "./rollouts.ts";
@@ -199,7 +205,7 @@ const environmentsOf = (structure: Structure["Service"], appName: string) =>
     const app = read.apps.find((candidate) => candidate.name === appName);
     return Object.fromEntries(
       (app?.projects ?? []).map((project) => {
-        const environment = app?.environments.find(
+        const environment = (app === undefined ? [] : shown(app.environments)).find(
           (candidate) => candidate.projectId === project.projectId,
         );
         return [
@@ -216,6 +222,20 @@ const environmentsOf = (structure: Structure["Service"], appName: string) =>
       }),
     );
   });
+
+/** An application's environments as a reader of its changes reads them: never refused here. */
+const shown = (environments: StructureRead["apps"][number]["environments"]) => {
+  if ("refused" in environments) throw new Error(`environments refused: ${environments.refused}`);
+  return environments;
+};
+
+/** Applications as their records, without what they offer the reader (`offers.test.ts`). */
+const recordsOf = (apps: StructureRead["apps"]) =>
+  apps.map(({ can: _offers, environments, projects, ...app }) => ({
+    ...app,
+    projects: projects.map(({ can: _mate, moveTo: _choices, ...project }) => project),
+    environments: shown(environments).map(({ can: _offered, ...environment }) => environment),
+  }));
 
 /** The refusal's code, or the success. */
 const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A, E>) =>
@@ -268,6 +288,57 @@ describe("structure", () => {
                 ),
               ]),
               ["not_app_developer", "slot_taken", "not_project_admin", "ok"],
+            );
+          }),
+        ),
+    );
+
+    it.effect(
+      "offers each reader what the write decides: a release over the production they do not see",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const shop = yield* structure.createApp("owner", "Shop");
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { face: "face-1" },
+            });
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_PROD",
+              kind: "production",
+            });
+            // dev develops Shop through its Mate and sees nothing of its production: the release
+            // is refused for that production, never offered as "no production yet".
+            const read = yield* structure.read("dev");
+            const app = read.apps.find((candidate) => candidate.id === shop.id);
+            assert.deepStrictEqual(
+              app?.projects.map((project) => project.projectId),
+              ["P_MATE"],
+            );
+            assert.deepStrictEqual(
+              [app?.can.merge_change, app?.can.release, read.can.create_app],
+              [
+                { allow: true },
+                { allow: false, reason: "not_releaser" },
+                { allow: false, reason: "not_structure_writer" },
+              ],
+            );
+            assert.deepStrictEqual(
+              shown((yield* structure.read("owner")).apps[0]!.environments).map((environment) => [
+                environment.projectId,
+                environment.can,
+              ]),
+              [["P_PROD", { keep_deploy_token: { allow: true } }]],
+            );
+            // The org's writer is offered making an application, and makes one.
+            assert.deepStrictEqual((yield* structure.read("owner")).can.create_app, {
+              allow: true,
+            });
+            assert.strictEqual(
+              yield* reasonOf(structure.createApp("dev", "Mine")),
+              "not_structure_writer",
             );
           }),
         ),
@@ -615,7 +686,7 @@ describe("structure", () => {
               ]),
               ["invalid", "ok", "ok", "ok", "ok", "ok", "invalid"],
             );
-            assert.deepStrictEqual((yield* structure.read("owner")).apps, [
+            assert.deepStrictEqual(recordsOf((yield* structure.read("owner")).apps), [
               {
                 id: shop.id,
                 name: "Shop",
@@ -1533,7 +1604,7 @@ describe("structure", () => {
             // A key HQ's check before a deploy found no longer usable shows until a new one is kept.
             const keyInvalid = Effect.map(
               structure.read("owner"),
-              (read) => read.apps[0]?.environments[0]?.keyInvalid,
+              (read) => shown(read.apps[0]!.environments)[0]?.keyInvalid,
             );
             assert.strictEqual(yield* keyInvalid, false);
             yield* sql`UPDATE hq_deploy_token SET invalid_since = now()`;
@@ -1645,20 +1716,23 @@ describe("structure", () => {
             Effect.map(structure.read(userId), (structureRead) =>
               structureRead.apps.map((app) => ({
                 projects: app.projects.map((project) => project.projectId),
-                environments: app.environments.map(({ projectId, jobs }) => ({
-                  projectId,
-                  jobs: jobs.map((job) => [
-                    job.service,
-                    job.sha,
-                    job.state,
-                    job.cause,
-                    job.reason,
-                    job.processId,
-                    job.requestedBy,
-                    typeof job.at,
-                    job.endedAt === null ? null : typeof job.endedAt,
-                  ]),
-                })),
+                environments:
+                  "refused" in app.environments
+                    ? app.environments
+                    : app.environments.map(({ projectId, jobs }) => ({
+                        projectId,
+                        jobs: jobs.map((job) => [
+                          job.service,
+                          job.sha,
+                          job.state,
+                          job.cause,
+                          job.reason,
+                          job.processId,
+                          job.requestedBy,
+                          typeof job.at,
+                          job.endedAt === null ? null : typeof job.endedAt,
+                        ]),
+                      })),
               })),
             );
           const seen = [
@@ -1690,8 +1764,9 @@ describe("structure", () => {
           // dev develops Shop through P_MATE (Basic user there), and does not read its stage's
           // project; maker sees Shop only through a Read only grant on P_TEAM.
           assert.deepStrictEqual(yield* read("dev"), seen);
+          // Refused, and said so: never an empty list that reads as "no environments".
           assert.deepStrictEqual(yield* read("maker"), [
-            { projects: ["P_TEAM"], environments: [] },
+            { projects: ["P_TEAM"], environments: { refused: "changes_not_seen" } },
           ]);
           assert.deepStrictEqual(yield* read("nobody"), []);
         }),
@@ -1733,8 +1808,10 @@ describe("structure", () => {
             SELECT ${merge!.id}::bigint, 'deploy', 'P_STAGE', 'api', 'api', ${head}, 'refused',
               'Zerops did not answer', now()
             FROM generate_series(1, ${JOBS_SHOWN})`;
-          const [shown] = (yield* structure.read("dev")).apps.flatMap((app) => app.environments);
-          const jobs = shown?.jobs ?? [];
+          const [stage] = (yield* structure.read("dev")).apps.flatMap((app) =>
+            shown(app.environments),
+          );
+          const jobs = stage?.jobs ?? [];
           assert.strictEqual(jobs.length, JOBS_SHOWN + 1);
           assert.deepStrictEqual(
             [jobs[0], jobs.at(-1)].map((job) => [job?.service, job?.state, job?.cause, job?.ref]),
@@ -1798,7 +1875,7 @@ describe("structure", () => {
             WHERE id = ${jobId}::bigint`;
           const standing = Effect.map(structure.read("dev"), (read) =>
             read.apps
-              .flatMap((app) => app.environments)
+              .flatMap((app) => shown(app.environments))
               .map(({ projectId, release: rollout }) => [
                 projectId,
                 rollout === null
@@ -2206,7 +2283,9 @@ describe("structure", () => {
               ["forbidden", "project_not_found", "invalid", "invalid", "ok", "conflict", "ok"],
             );
             const ungrouped = (userId: string) =>
-              Effect.map(structure.read(userId), (read) => read.ungrouped);
+              Effect.map(structure.read(userId), (read) =>
+                read.ungrouped.map(({ can: _offers, moveTo: _choices, ...entry }) => entry),
+              );
             const listed = [
               {
                 projectId: "P_OWNED",
@@ -2315,7 +2394,7 @@ describe("structure", () => {
           assert.deepStrictEqual(yield* seen("dev"), ["Shop: P_MATE"]);
           assert.deepStrictEqual(yield* seen("nobody"), []);
           assert.deepStrictEqual(yield* seen("stranger"), []);
-          assert.deepStrictEqual((yield* structure.read("owner")).apps[0]?.projects[0], {
+          assert.deepStrictEqual(recordsOf((yield* structure.read("owner")).apps)[0]?.projects[0], {
             projectId: "P_MATE",
             name: "name of P_MATE",
             kind: "mate",

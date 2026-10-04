@@ -40,10 +40,6 @@ import {
   kindOfRole,
   rankZeropsCandidateForListing,
   readZeropsMembership,
-  heldOf,
-  mayOffer,
-  offerAsker,
-  canWriteRegistry,
   finishMateSetupScope,
   finishMateSetupVerb,
   resolveMateRegistration,
@@ -53,7 +49,7 @@ import {
 import { ZeropsServiceId } from "@t3tools/client-runtime/zerops/data";
 import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import { heldOf, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   mateIsViewers,
   resolveMateOwnerPerson,
@@ -65,6 +61,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { RestartMateConfirmation } from "./RestartMateConfirmation";
+import { useHqDown, useMateOffers, useOrgOffers } from "./useHqOffers";
 import { useComposerDraftStore } from "../composerDraftStore";
 import {
   deriveZeropsRestartAction,
@@ -139,7 +136,6 @@ import {
   useMatePresses,
 } from "./matePress";
 import { mateRestartPorts, restartMateContainer } from "./mateRestart";
-import { sessionOfferViewer } from "./offerViewer";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -228,6 +224,9 @@ interface RegistryState {
   readonly registry: Parameters<typeof resolveMateRegistration>[0]["registry"];
 }
 
+/** A verb of HQ's on a Mate: offered, held while HQ does not answer, or not drawn at all. */
+type HqVerb = "offered" | "held" | "no";
+
 export function useMateActions({ registry, serverVersions }: MateActionsInput): MateActions {
   const { activeOrganization, client, user } = useZeropsSession();
   const { organizationRef, projectRef, runtime } = useZeropsData();
@@ -291,55 +290,46 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           },
     [activeOrganization],
   );
+  /** What HQ offers of each project and of the organization: drawn here, decided by HQ. */
+  const mateOffersOf = useMateOffers();
+  const orgOffer = useOrgOffers();
+  const hqDown = useHqDown();
   /**
-   * Whom HQ's rule (`mayOffer`) is asked about: the person the session names, with their membership
-   * and every project listed as the facts the client holds. Nobody where the session names nobody,
-   * and nothing is then offered.
-   */
-  const asker = useMemo(
-    () =>
-      offerAsker(
-        sessionOfferViewer(user, activeOrganization),
-        candidates.map((candidate) => candidate.project),
-      ),
-    [activeOrganization, candidates, user],
-  );
-  /**
-   * Where a Mate may be moved, by HQ's rule: each application as the projects listed in it — HQ's
-   * own list of an application decides no differently over these facts, which hold no project the
-   * listing does not — a new one, or none.
+   * Where a Mate may be moved, as HQ offers it (`moveTo`, `detach`): each application listed, a
+   * new one, or none.
    */
   const moveChoicesFor = useCallback(
-    (candidate: ZeropsCandidatePresentation) =>
-      moveChoices({
-        asker,
-        projectId: candidate.project.id,
-        held: heldOf(candidate.project),
-        apps: groupTree.groups.map(({ group, environments }) => ({
-          id: group.groupId,
-          name: group.name,
-          projectIds: environments.map(({ item }) => item.project.id),
-        })),
-      }),
-    [asker, groupTree.groups],
+    (candidate: ZeropsCandidatePresentation) => {
+      const offers = mateOffersOf(candidate.project.id);
+      return moveChoices({
+        moveTo: offers?.held === true ? offers.moveTo : undefined,
+        detach: offers?.held === true && offers.detach.kind === "allowed",
+        apps: groupTree.groups.map(({ group }) => ({ id: group.groupId, name: group.name })),
+      });
+    },
+    [groupTree.groups, mateOffersOf],
   );
   /**
-   * HQ's verbs on a Mate, as HQ's rule offers them: its record, and its place among projects. None
-   * on a Mate HQ holds no record of — *Finish setup* is its verb.
+   * HQ's verbs on a Mate, as HQ offers them: its record, and its place among projects — each
+   * offered, held while HQ does not answer (drawn, and not pressable), or not drawn at all. None on
+   * a Mate HQ holds no record of — *Finish setup* is its verb.
    */
   const hqVerbsOf = useCallback(
-    (candidate: ZeropsCandidatePresentation) => {
-      const projectId = candidate.project.id;
-      const held = heldOf(candidate.project);
-      if (!isMateKind(held)) return { edit: false, move: false, leave: false };
+    (candidate: ZeropsCandidatePresentation): Record<"edit" | "move" | "leave", HqVerb> => {
+      const offers = mateOffersOf(candidate.project.id);
+      if (offers?.held !== true || !isMateKind(heldOf(candidate.project))) {
+        return { edit: "no", move: "no", leave: "no" };
+      }
+      if (offers.observe.kind === "unavailable")
+        return { edit: "held", move: "held", leave: "held" };
       return {
-        edit: mayOffer(asker, "edit_mate_record", { projectId, held }),
-        // Where to, and as what, is the dialog's to choose among what HQ's rule lets them.
-        move: movesAnywhere(moveChoicesFor(candidate)),
-        leave: mayOffer(asker, "detach", { projectId, held }),
+        edit: offers.edit.kind === "allowed" ? "offered" : "no",
+        // Where to, and as what, is the dialog's to choose among what HQ offers.
+        move: movesAnywhere(moveChoicesFor(candidate)) ? "offered" : "no",
+        leave: offers.detach.kind === "allowed" ? "offered" : "no",
       };
     },
-    [asker, moveChoicesFor],
+    [mateOffersOf, moveChoicesFor],
   );
   // The member list is read only once a hand-over's picker opens: a load reads none, and a Mate
   // about to be deleted says whose it is from HQ's people.
@@ -380,11 +370,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         candidate,
         health: undefined,
         waiting: false,
-        can: mateRowCan(asker, candidate.project.id),
+        can: mateRowCan(mateOffersOf(candidate.project.id), hqDown),
         ...(visibility === undefined ? {} : { visibility }),
       };
     },
-    [asker, viewer],
+    [hqDown, mateOffersOf, viewer],
   );
 
   const start = useCallback(
@@ -564,11 +554,13 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     (candidate: ZeropsCandidatePresentation) => hqKnown && heldOf(candidate.project) === "none",
     [hqKnown],
   );
-  /** Whether HQ's rule lets the viewer write the record of a Mate it holds none of. */
+  /** Whether HQ offers the viewer writing the record of a Mate it holds none of. */
   const mayCreateRecord = useCallback(
-    (candidate: ZeropsCandidatePresentation) =>
-      mayOffer(asker, "create_mate_record", { projectId: candidate.project.id, held: "none" }),
-    [asker],
+    (candidate: ZeropsCandidatePresentation) => {
+      const offers = mateOffersOf(candidate.project.id);
+      return offers?.held === false && offers.createRecord.kind === "allowed";
+    },
+    [mateOffersOf],
   );
   const finishSetupVerbFor = useCallback(
     (candidate: ZeropsCandidatePresentation, tags: ZeropsMembership): string | undefined => {
@@ -595,17 +587,17 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         pastGrace: mateProjectPastGrace(candidate.project, Date.now()),
         viewerIsAdder: mateAddedBy(candidate.project, user?.id),
         hasContainer: candidate.service !== undefined,
-        writer: canWriteRegistry(sessionOfferViewer(user, activeOrganization)),
+        writer: orgOffer("create_app").kind === "allowed",
         recordMissing: recordMissing(candidate),
         mayCreateRecord: mayCreateRecord(candidate),
       });
     },
     [
-      activeOrganization,
       births,
       groupTree.groups,
       interrupted,
       mayCreateRecord,
+      orgOffer,
       presses,
       recordMissing,
       registry.registry,
@@ -621,9 +613,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const press = readMatePress(projectId);
       const pressStopped = press?.state.kind === "failed";
       // An owner or an admin finishes all of it; the Mate's own adder, its close-off.
-      const whole =
-        finishMateSetupScope(canWriteRegistry(sessionOfferViewer(user, activeOrganization))) ===
-        "whole";
+      const whole = finishMateSetupScope(orgOffer("create_app").kind === "allowed") === "whole";
       // A Mate HQ holds no record of is adopted, and only then is its key lowered from ADMIN — by
       // the harden itself, which reads its key as it runs; never from a token list read on a load
       // (step A, A11).
@@ -697,10 +687,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       mayCreateRecord,
       organizationRef,
       projectRef,
+      orgOffer,
       recordMissing,
       refresh,
       runtime,
-      user,
       write,
     ],
   );
@@ -888,7 +878,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
 
   const changeFace = useCallback(
     (candidate: ZeropsCandidatePresentation): (() => void) | undefined => {
-      if (!changeFaceOffered({ candidate, mayEdit: hqVerbsOf(candidate).edit })) return undefined;
+      if (!changeFaceOffered({ candidate, mayEdit: hqVerbsOf(candidate).edit === "offered" })) {
+        return undefined;
+      }
       return () => {
         setPress(UNPRESSED);
         setDialog({ kind: "face", candidate });
@@ -952,9 +944,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               },
             ]
           : []),
-        ...(openFace === undefined
-          ? []
-          : [{ id: "face", label: CHANGE_FACE_VERB, onSelect: openFace }]),
+        ...(openFace !== undefined
+          ? [{ id: "face", label: CHANGE_FACE_VERB, onSelect: openFace }]
+          : hqVerbs.edit === "held" && changeFaceOffered({ candidate, mayEdit: true })
+            ? [{ id: "face", label: CHANGE_FACE_VERB, disabled: true, onSelect: () => {} }]
+            : []),
         ...(finishSetupLabel === undefined
           ? []
           : [
@@ -981,21 +975,22 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               },
             ]
           : []),
-        ...(hqVerbs.move
+        ...(hqVerbs.move !== "no"
           ? [
               {
                 id: "move",
                 label: tags.groupId === undefined ? "Move to a project" : "Change project or role",
+                disabled: hqVerbs.move === "held",
                 onSelect: () => setDialog({ kind: "move", candidate }),
               },
             ]
           : []),
-        ...(hqVerbs.leave && tags.groupId !== undefined
+        ...(hqVerbs.leave !== "no" && tags.groupId !== undefined
           ? [
               {
                 id: "leave",
                 label: "Leave the project",
-                disabled: busy,
+                disabled: busy || hqVerbs.leave === "held",
                 onSelect: () => move(candidate, { kind: "none" }),
               },
             ]

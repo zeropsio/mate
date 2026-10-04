@@ -244,8 +244,8 @@ export interface ChangeReviewInput {
    */
   readonly recipe?: RecipeReach | undefined;
   /**
-   * What HQ's rule offers the person (`changeOffers`): Merge and Close only where it does;
-   * `undefined` while the facts it asks are not held yet, and Merge waits for them.
+   * What HQ offers the person (`can`, `useChangeOffers`): Merge and Close only where it does;
+   * `undefined` while HQ has not said, and Merge waits for it.
    */
   readonly offered: { readonly merge: boolean; readonly close: boolean } | undefined;
   readonly press?: ReviewPress | undefined;
@@ -714,7 +714,7 @@ export interface ReleaseReviewInput {
   /** The version it tags — the suggestion, or the tag on its way. */
   readonly tag: string;
   readonly gate: ReleaseGate;
-  /** HQ's rule for this person, its refusal in words (`releasePermission`); `undefined` unasked. */
+  /** HQ's offer to this person, its refusal in words (`can`'s `release`); `undefined` unsaid. */
   readonly permission: ReleaseGate | undefined;
   /** How many changes go out. */
   readonly changes: number;
@@ -1021,8 +1021,8 @@ export interface RollbackReviewInput {
   readonly live: string | undefined;
   readonly services: ReadonlyArray<string>;
   /**
-   * HQ's rule for this person, its refusal in words (`releasePermission`): a rollback is a release.
-   * `undefined` while it cannot be asked, and HQ asks it again at the press.
+   * HQ's offer to this person, its refusal in words (`can`'s `release`): a rollback is a release.
+   * `undefined` while HQ has not said, and HQ asks it again at the press.
    */
   readonly permission: ReleaseGate | undefined;
   /** The press: tagging, refused, or the tag made. */

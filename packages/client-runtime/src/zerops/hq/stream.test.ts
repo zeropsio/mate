@@ -198,6 +198,21 @@ describe("structureEventOf", () => {
       },
     ],
     [
+      "an application whose environments HQ refused the reader has them refused, with why",
+      { type: "snapshot", apps: [{ ...ACME, environments: { refused: "changes_not_seen" } }] },
+      {
+        kind: "snapshot",
+        appReads: null,
+        structure: {
+          ungrouped: [],
+          apps: [{ ...ACME, environments: { refused: "changes_not_seen" } }],
+        },
+        changes: null,
+        mates: null,
+        people: null,
+      },
+    ],
+    [
       "a snapshot carries each application's birth intents, each read through its shape",
       {
         type: "snapshot",
@@ -354,6 +369,77 @@ describe("applyStructureEvent", () => {
       structure,
     );
     expect(applyStructureEvent(structure, { kind: "people", people: {} })).toBe(structure);
+  });
+
+  it("carries what the reader may do: the organization's, each application's and environment's", () => {
+    const refused = { allow: false, reason: "not_structure_writer" };
+    const snapshot = structureEventOf({
+      type: "snapshot",
+      can: { create_app: refused },
+      rolesAnsweredAt: "2026-10-04T10:00:00.000Z",
+      apps: [
+        { ...ACME, can: { release: { allow: true } }, environments: [{ ...STAGE, can: {} }] },
+        // A record this build cannot read is not known; the application beside it still is.
+        { ...BETA, can: "everything" },
+      ],
+    });
+    let structure = applyStructureEvent(null, snapshot!);
+    expect([
+      structure?.can,
+      structure?.rolesAnsweredAt,
+      structure?.apps.map((app) => app.can),
+      (structure?.apps[0]?.environments as ReadonlyArray<HqEnvironment> | undefined)?.[0]?.can,
+    ]).toEqual([
+      { create_app: refused },
+      "2026-10-04T10:00:00.000Z",
+      [{ release: { allow: true } }, undefined],
+      {},
+    ]);
+    // The organization's move with the view they are decided over, the applications as they were.
+    const org = structureEventOf({
+      type: "org",
+      can: { create_app: { allow: true } },
+      rolesAnsweredAt: "2026-10-04T10:00:30.000Z",
+    });
+    structure = applyStructureEvent(structure, org!);
+    expect([structure?.can, structure?.rolesAnsweredAt, structure?.apps.length]).toEqual([
+      { create_app: { allow: true } },
+      "2026-10-04T10:00:30.000Z",
+      2,
+    ]);
+    // A record this build cannot read leaves the organization's unknown.
+    structure = applyStructureEvent(structure, structureEventOf({ type: "org", can: 7 })!);
+    expect([structure?.can, structure?.rolesAnsweredAt]).toEqual([undefined, null]);
+  });
+
+  it("reads each Mate's offers and moves, and each project HQ holds nowhere, through their shapes", () => {
+    const can = { observe_mate: { allow: true } };
+    const snapshot = structureEventOf({
+      type: "snapshot",
+      unheld: { "p-free": { create_mate_record: { allow: true } }, "p-odd": "yes" },
+      ungrouped: [{ ...LONE, can, moveTo: { "app-1": ["mate"] } }],
+      // A move list this build cannot read is no move at all; the Mate beside it still is.
+      apps: [
+        {
+          ...ACME,
+          projects: [{ ...ACME.projects[0]!, can, moveTo: { "app-1": "mate" } }],
+        },
+      ],
+    });
+    const structure = applyStructureEvent(null, snapshot!);
+    expect([
+      structure?.unheld,
+      structure?.ungrouped[0]?.moveTo,
+      structure?.apps[0]?.projects[0]?.can,
+      structure?.apps[0]?.projects[0]?.moveTo,
+    ]).toEqual([
+      { "p-free": { create_mate_record: { allow: true } } },
+      { "app-1": ["mate"] },
+      can,
+      undefined,
+    ]);
+    const moved = structureEventOf({ type: "org", unheld: {} });
+    expect(applyStructureEvent(structure, moved!)?.unheld).toEqual({});
   });
 
   it("knows nothing from a change before its snapshot", () => {

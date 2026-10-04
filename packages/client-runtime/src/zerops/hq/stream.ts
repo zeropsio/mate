@@ -14,6 +14,11 @@
  * changed of one Mate, or `null` once the reader may no longer observe it; a `people` message, the
  * people map whole. Their fold is `mates.ts`.
  *
+ * The organization, each application and each environment carry what the reader may do with it
+ * (`can`, `@t3tools/shared/hqOffers`): an `org` message moves the organization's, with when Zerops
+ * answered the view its offers are decided over (`rolesAnsweredAt`); an application's and its
+ * environments' move with it.
+ *
  * Changes and Mates are read through the contract's own schemas: what this build cannot read is
  * none, and never takes the structure beside it down; a field it does not know is passed by.
  *
@@ -23,6 +28,7 @@
  */
 import { ChangesMessage, ChangesSnapshot, type HqChange } from "@t3tools/shared/hqChanges";
 import { AppReads, ReleaseRevisionMessage, type AppRead } from "@t3tools/shared/hqAppReads";
+import { HqMoveTo, HqOffers } from "@t3tools/shared/hqOffers";
 import {
   HqMatesMessage,
   HqPeople,
@@ -67,6 +73,12 @@ export type HqStructureEvent =
   | { readonly kind: "change"; readonly appId: string; readonly app: HqApp | null }
   | { readonly kind: "ungrouped"; readonly mates: HqUngrouped }
   | {
+      readonly kind: "org";
+      readonly can: HqOffers | undefined;
+      readonly unheld: Readonly<Record<string, HqOffers>> | undefined;
+      readonly rolesAnsweredAt: string | null;
+    }
+  | {
       readonly kind: "changes";
       readonly appId: string;
       /** `null` once the reader may no longer read them. */
@@ -93,6 +105,46 @@ const readReleaseRevisionMessage = Schema.decodeUnknownOption(ReleaseRevisionMes
 const readMateView = Schema.decodeUnknownOption(MateLiveView);
 const readPeople = Schema.decodeUnknownOption(HqPeople);
 const readMatesMessage = Schema.decodeUnknownOption(HqMatesMessage);
+const readOffers = Schema.decodeUnknownOption(HqOffers);
+const readMoveTo = Schema.decodeUnknownOption(HqMoveTo);
+
+/** A `can` record as HQ sent it; none where it sent none this build can read. */
+const offersOf = (value: unknown): HqOffers | undefined => Option.getOrUndefined(readOffers(value));
+
+/** A Mate's entry, its offers and moves read through their shapes: one unreadable is unknown. */
+function mateOffersOf<E extends { readonly can?: unknown; readonly moveTo?: unknown }>(
+  entry: E,
+): Omit<E, "can" | "moveTo"> & { readonly can?: HqOffers; readonly moveTo?: HqMoveTo } {
+  const { can: offered, moveTo: moves, ...rest } = entry;
+  const can = offersOf(offered);
+  const moveTo = Option.getOrUndefined(readMoveTo(moves));
+  return {
+    ...rest,
+    ...(can === undefined ? {} : { can }),
+    ...(moveTo === undefined ? {} : { moveTo }),
+  };
+}
+
+/** Each project HQ holds nowhere with its offers, each read on its own. */
+function unheldOf(value: unknown): Readonly<Record<string, HqOffers>> | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([projectId, offered]) => {
+      const can = offersOf(offered);
+      return can === undefined ? [] : [[projectId, can] as const];
+    }),
+  );
+}
+
+/** Environments HQ refused the reader, with its reason; none where HQ sent them. */
+function refusedOf(value: unknown): { readonly refused: string } | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const { refused } = value as { readonly refused?: unknown };
+  return typeof refused === "string" ? { refused } : undefined;
+}
+
+/** When Zerops answered the view HQ's offers are decided over; none where HQ named no time. */
+const answeredOf = (value: unknown): string | null => (typeof value === "string" ? value : null);
 
 const isApp = (value: unknown): value is HqApp =>
   typeof value === "object" &&
@@ -138,18 +190,23 @@ const isContents = (value: unknown): value is HqAppContents => {
  */
 function appOf(value: HqApp): HqApp {
   const {
+    can: offered,
     environments: sent,
     births: told,
     contents: held,
     ...app
   } = value as HqApp & {
+    readonly can?: unknown;
     readonly environments?: unknown;
     readonly births?: unknown;
     readonly contents?: unknown;
   };
-  const environments = sent === undefined ? undefined : environmentsOf(sent);
+  const environments = sent === undefined ? undefined : (refusedOf(sent) ?? environmentsOf(sent));
+  const can = offersOf(offered);
   return {
     ...app,
+    projects: app.projects.map(mateOffersOf),
+    ...(can === undefined ? {} : { can }),
     ...(environments === undefined ? {} : { environments }),
     ...(Array.isArray(told) ? { births: told.filter(isBirth) } : {}),
     ...(isContents(held) ? { contents: held } : {}),
@@ -167,31 +224,54 @@ function matesOf(sent: unknown): HqMates | null {
   return mates;
 }
 
+/**
+ * The structure as HQ answers it (`GET /api/structure`, a snapshot): each part read through its
+ * shape; none where its applications or its Mates in no application cannot be read.
+ */
+export function hqStructureOf(value: unknown): HqStructure | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const {
+    apps,
+    ungrouped = [],
+    can: offered,
+    unheld: told,
+    rolesAnsweredAt,
+  } = value as {
+    readonly apps?: unknown;
+    readonly ungrouped?: unknown;
+    readonly can?: unknown;
+    readonly unheld?: unknown;
+    readonly rolesAnsweredAt?: unknown;
+  };
+  // An HQ from before the Mates in no application names none of them.
+  if (!(Array.isArray(apps) && apps.every(isApp) && isUngrouped(ungrouped))) return undefined;
+  const can = offersOf(offered);
+  const unheld = unheldOf(told);
+  return {
+    ...(can === undefined ? {} : { can }),
+    ...(unheld === undefined ? {} : { unheld }),
+    ...(typeof rolesAnsweredAt === "string" ? { rolesAnsweredAt } : {}),
+    ungrouped: ungrouped.map(mateOffersOf),
+    apps: apps.map(appOf),
+  };
+}
+
 /** A message from the socket, parsed, as a structure event; nothing for one that is not. */
 export function structureEventOf(message: unknown): HqStructureEvent | undefined {
   if (typeof message !== "object" || message === null) return undefined;
   const { type } = message as { readonly type?: unknown };
   if (type === "snapshot") {
-    const {
-      apps,
-      ungrouped = [],
-      changes,
-      appReads,
-      mates,
-      people,
-    } = message as {
-      readonly apps?: unknown;
-      readonly ungrouped?: unknown;
+    const { changes, appReads, mates, people } = message as {
       readonly changes?: unknown;
       readonly appReads?: unknown;
       readonly mates?: unknown;
       readonly people?: unknown;
     };
-    // An HQ from before the Mates in no application names none of them.
-    if (!(Array.isArray(apps) && apps.every(isApp) && isUngrouped(ungrouped))) return undefined;
+    const structure = hqStructureOf(message);
+    if (structure === undefined) return undefined;
     return {
       kind: "snapshot",
-      structure: { ungrouped, apps: apps.map(appOf) },
+      structure,
       changes: Option.match(readSnapshotChanges(changes), {
         onNone: () => null,
         onSome: (byApp) => new Map(Object.entries(byApp)),
@@ -225,11 +305,24 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       onSome: ({ appId, read }) => ({ kind: "release-revision", appId, read }),
     });
   }
+  if (type === "org") {
+    const { can, unheld, rolesAnsweredAt } = message as {
+      readonly can?: unknown;
+      readonly unheld?: unknown;
+      readonly rolesAnsweredAt?: unknown;
+    };
+    return {
+      kind: "org",
+      can: offersOf(can),
+      unheld: unheldOf(unheld),
+      rolesAnsweredAt: answeredOf(rolesAnsweredAt),
+    };
+  }
   if (type === "change") {
     const { key, value } = message as { readonly key?: unknown; readonly value?: unknown };
     if (typeof key !== "string") return undefined;
     if (key === UNGROUPED_KEY) {
-      return isUngrouped(value) ? { kind: "ungrouped", mates: value } : undefined;
+      return isUngrouped(value) ? { kind: "ungrouped", mates: value.map(mateOffersOf) } : undefined;
     }
     if (value === null) return { kind: "change", appId: key, app: null };
     return isApp(value) ? { kind: "change", appId: key, app: appOf(value) } : undefined;
@@ -239,7 +332,8 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
 
 /**
  * The structure an event leaves: a snapshot replaces it; a change replaces its application in
- * place, adds it at the end, or takes it out, and the Mates in no application all at once. A change
+ * place, adds it at the end, or takes it out, and the Mates in no application all at once; the
+ * organization's offers replace its own. A change
  * before any snapshot leaves nothing known; changes and the Mates' messages leave it as it is.
  */
 export function applyStructureEvent(
@@ -249,6 +343,15 @@ export function applyStructureEvent(
   if (event.kind === "snapshot") return event.structure;
   if (structure === null) return null;
   if (event.kind === "ungrouped") return { ...structure, ungrouped: event.mates };
+  if (event.kind === "org") {
+    const { can: _before, unheld: _held, ...rest } = structure;
+    return {
+      ...rest,
+      ...(event.can === undefined ? {} : { can: event.can }),
+      ...(event.unheld === undefined ? {} : { unheld: event.unheld }),
+      rolesAnsweredAt: event.rolesAnsweredAt,
+    };
+  }
   if (event.kind !== "change") return structure;
   const { appId, app } = event;
   const others = structure.apps.filter((entry) => entry.id !== appId);

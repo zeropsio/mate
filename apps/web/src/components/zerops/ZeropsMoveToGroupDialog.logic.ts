@@ -3,22 +3,17 @@
  *
  * The answer is where HQ is asked to place the project: an application that exists, a new one
  * by its name (HQ makes it, and names its id), or none — which leaves the project ungrouped. Only
- * what HQ's rule lets this person place is drawn (`moveChoices`): a choice HQ would refuse is no
- * choice.
+ * what HQ offers this person is drawn (`moveChoices`, from HQ's `moveTo` and `detach`): a choice HQ
+ * would refuse is no choice.
  */
 
-import {
-  kindOfRole,
-  mayOffer,
-  type OfferAsker,
-  type ZeropsEnvironmentRole,
-} from "@t3tools/client-runtime/zerops";
+import { kindOfRole, type ZeropsEnvironmentRole } from "@t3tools/client-runtime/zerops";
+import type { HqMoveTo } from "@t3tools/shared/hqOffers";
 
-/** An application, as the person sees it: its name, and the projects listed in it. */
+/** An application, as the person sees it. */
 export interface MoveApp {
   readonly id: string;
   readonly name: string;
-  readonly projectIds: ReadonlyArray<string>;
 }
 
 /** An application the project may go into, as the roles it may take there. */
@@ -28,7 +23,7 @@ export interface MoveGroupChoice {
   readonly roles: ReadonlyArray<ZeropsEnvironmentRole>;
 }
 
-/** Where this person may place the project, as HQ's rule decides over the facts the client holds. */
+/** Where this person may place the project, as HQ offers it. */
 export interface MoveChoices {
   readonly apps: ReadonlyArray<MoveGroupChoice>;
   /** The roles it may take in a new application; none where they may not make one. */
@@ -41,27 +36,24 @@ const MOVE_ROLES: ReadonlyArray<ZeropsEnvironmentRole> = ["dev", "stage", "prod"
 
 /**
  * Each application with the roles the project may take there, a new one's where the person may
- * make it, and whether it may leave: `move`, `create_app` and `detach` asked of HQ's rule.
+ * make it, and whether it may leave — as HQ offers them: its `moveTo` (none while HQ has not said,
+ * or does not answer) and its `detach`.
  */
 export function moveChoices(input: {
-  readonly asker: OfferAsker | null;
-  readonly projectId: string;
-  /** What HQ holds the project as now (`heldOf`). */
-  readonly held: string;
+  readonly moveTo: HqMoveTo | undefined;
+  /** Whether HQ offers it leaving its application (`detach`). */
+  readonly detach: boolean;
   readonly apps: ReadonlyArray<MoveApp>;
 }): MoveChoices {
-  const { asker, projectId, held } = input;
-  const rolesInto = (appProjectIds: ReadonlyArray<string>) =>
-    MOVE_ROLES.filter((role) =>
-      mayOffer(asker, "move", { projectId, held, to: kindOfRole(role), appProjectIds }),
-    );
+  const rolesInto = (target: string) =>
+    MOVE_ROLES.filter((role) => input.moveTo?.[target]?.includes(kindOfRole(role)) === true);
   return {
     apps: input.apps.flatMap((app) => {
-      const roles = rolesInto(app.projectIds);
+      const roles = rolesInto(app.id);
       return roles.length === 0 ? [] : [{ id: app.id, name: app.name, roles }];
     }),
-    newApp: mayOffer(asker, "create_app", null) ? rolesInto([]) : [],
-    none: mayOffer(asker, "detach", { projectId, held }),
+    newApp: rolesInto("new"),
+    none: input.detach,
   };
 }
 

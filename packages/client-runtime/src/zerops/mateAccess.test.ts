@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  canCreateMates,
   handOverCandidates,
   mateMemberName,
   mateOnlyOwnerOpensIt,
@@ -299,22 +298,6 @@ describe("the verbs a Mate offers (guide 0.8)", () => {
       }),
     ).toEqual({ delete: false, rename: false, assign: false });
   });
-});
-
-describe("canCreateMates — the one Add Mate gate", () => {
-  for (const [name, input, allowed] of [
-    ["an org owner", { roleCode: "OWNER" }, true],
-    ["an org admin without the flag", { roleCode: "ADMIN" }, true],
-    ["a member with the flag", { roleCode: "NO_ACCESS", canCreateProjects: true }, true],
-    ["a read-only member with the flag", { roleCode: "READ_ONLY", canCreateProjects: true }, true],
-    ["a member without it", { roleCode: "BASIC_USER" }, false],
-    ["a read-only member without it", { roleCode: "READ_ONLY" }, false],
-    ["somebody who is not active", { roleCode: "OWNER", status: "INVITED" }, false],
-  ] as const) {
-    it(`${allowed ? "offers" : "withholds"} Add Mate from ${name}`, () => {
-      expect(canCreateMates(input)).toBe(allowed);
-    });
-  }
 });
 
 // The E2E run (F8): the list held 200 rows, nearly all integration tokens, and a token was its

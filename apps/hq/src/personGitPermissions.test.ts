@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { can, type Facts } from "./zeropsPermissions.ts";
+import { can, type Facts } from "./permissions.ts";
 
 const facts = (roleCode: string, grant: string | null, status = "ACTIVE"): Facts<"fresh"> => ({
   freshness: "fresh",

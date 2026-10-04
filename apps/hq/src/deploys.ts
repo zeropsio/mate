@@ -74,7 +74,8 @@ import {
 } from "@t3tools/shared/hqDeploys";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { fromYaml } from "@t3tools/shared/schemaYaml";
-import { REASONS, can } from "@t3tools/shared/zeropsPermissions";
+import { REASONS } from "@t3tools/shared/zeropsPermissions";
+import { can } from "./permissions.ts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";

@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  type Decision,
-  type Facts,
-  type Principal,
-  REASONS,
-  type Targets,
-  type Verb,
-  can,
-} from "./zeropsPermissions.ts";
+import { type Decision, REASONS } from "@t3tools/shared/zeropsPermissions";
+import { type Facts, type Principal, type Targets, type Verb, can } from "./permissions.ts";
 
 /**
  * The person `U` (member row `C-U`) and one target project `P`; beside it `P_SEEN` (U reads it

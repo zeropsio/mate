@@ -31,7 +31,6 @@ import {
   type ZeropsApiClient,
   type ZeropsMateFace,
   type ZeropsPlacedBirth,
-  heldOf,
   mateContainerOf,
   readMateFace,
   readZeropsMembership,
@@ -43,6 +42,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   attachToApp,
   birthIntentOf,
+  heldOf,
   type HqEndpoint,
   type HqPlacement,
   type HqStructure,
@@ -372,7 +372,7 @@ export function mateFinishRegistration(input: {
   readonly structure: HqStructure | null;
   readonly project: ZeropsCandidate["project"];
   readonly press: MatePress | undefined;
-  /** The viewer writes the registry: an owner or an admin (`canWriteRegistry`). */
+  /** HQ offers the viewer writing the registry (`create_app`): an owner or an admin. */
   readonly writer: boolean;
   /** HQ's rule lets the viewer write the record of a Mate it holds none of (`create_mate_record`). */
   readonly mayCreateRecord: boolean;

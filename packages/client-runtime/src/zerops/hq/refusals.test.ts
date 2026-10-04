@@ -1,9 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
 import { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
 import { RELEASE_REFUSALS } from "@t3tools/shared/hqRelease";
+import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import { REASONS } from "@t3tools/shared/zeropsPermissions";
 
-import { enrollmentRefusalWords, hqRefusalWords } from "./refusals.ts";
+import { enrollmentRefusalWords, hqOfferWords, hqRefusalWords } from "./refusals.ts";
 
 describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
   it.each([...REASONS])("says %s in words of its own, never the code", (reason) => {
@@ -145,5 +146,33 @@ describe("enrollmentRefusalWords — HQ's refusal of a Mate's enrollment", () =>
     [undefined, "HQ refused it. It tries again on its own."],
   ] as const)("%s", (code, words) => {
     expect(enrollmentRefusalWords(code)).toBe(words);
+  });
+});
+
+describe("hqOfferWords — what a control says beside a verb HQ does not offer", () => {
+  const at = (ms: number) => `@${String(ms)}`;
+  it.each<[string, HqOfferState, string | null, string | undefined]>([
+    ["nothing for an offered verb", { kind: "allowed" }, null, undefined],
+    [
+      "HQ's refusal, as of the roles it was decided over",
+      { kind: "refused", reason: "not_releaser" },
+      "1970-01-01T00:00:01.000Z",
+      "You need at least Basic user access to this project's production to release it. Zerops roles as of @1000.",
+    ],
+    [
+      "HQ's refusal alone where it named no time",
+      { kind: "refused", reason: "not_structure_writer" },
+      null,
+      "Only an owner or admin of the organization can do this.",
+    ],
+    ["that HQ has not said yet", { kind: "unknown" }, null, "HQ has not said yet."],
+    [
+      "since when HQ does not answer",
+      { kind: "unavailable", since: 2_000 },
+      null,
+      "HQ unavailable since @2000.",
+    ],
+  ])("%s", (_, state, rolesAnsweredAt, words) => {
+    expect(hqOfferWords(state, { at, rolesAnsweredAt })).toBe(words);
   });
 });

@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { offerAsker, type OfferViewer } from "@t3tools/client-runtime/zerops";
-
 import {
   initialMoveForm,
   moveChoices,
@@ -51,42 +49,25 @@ describe("resolveMoveMembership", () => {
   });
 });
 
-describe("moveChoices — only what HQ's rule lets this person place", () => {
-  const PROJECTS = [
-    { id: "p-made", userRoles: [{ clientUserId: "cu-ada", roleCode: "OWNER" }] },
-    { id: "p-stage", userRoles: [] },
-    { id: "p-hidden", userRoles: [] },
-  ];
+describe("moveChoices — only what HQ offers this person", () => {
   const APPS = [
-    { id: "acme", name: "Acme", projectIds: ["p-made", "p-stage"] },
-    { id: "beta", name: "Beta", projectIds: ["p-hidden"] },
+    { id: "acme", name: "Acme" },
+    { id: "beta", name: "Beta" },
   ];
-  const choicesFor = (viewer: OfferViewer | undefined) =>
-    moveChoices({
-      asker: offerAsker(viewer, PROJECTS),
-      projectId: "p-made",
-      held: "mate",
-      apps: APPS,
-    });
+  const ALL_KINDS = ["mate", "devstage", "stage", "production"];
 
-  it("lets the person who made the Mate, with no org access, keep it a dev in an application they see", () => {
+  it("draws the Mate's maker keeping it a dev in an application they see", () => {
     expect(
-      choicesFor({
-        userId: "u-ada",
-        clientUserId: "cu-ada",
-        roleCode: "NO_ACCESS",
-        canCreateProjects: true,
-      }),
+      moveChoices({ moveTo: { acme: ["mate", "devstage"] }, detach: true, apps: APPS }),
     ).toEqual({ apps: [{ id: "acme", name: "Acme", roles: ["dev"] }], newApp: [], none: true });
   });
 
-  it("lets an org owner place it anywhere, as anything, in a new application too", () => {
+  it("draws an org owner placing it anywhere, as anything, in a new application too", () => {
     expect(
-      choicesFor({
-        userId: "u-ada",
-        clientUserId: "cu-eva",
-        roleCode: "OWNER",
-        canCreateProjects: true,
+      moveChoices({
+        moveTo: { acme: ALL_KINDS, beta: ALL_KINDS, new: ALL_KINDS },
+        detach: true,
+        apps: APPS,
       }),
     ).toEqual({
       apps: [
@@ -98,8 +79,14 @@ describe("moveChoices — only what HQ's rule lets this person place", () => {
     });
   });
 
-  it("offers nothing to a person the client does not know", () => {
-    expect(choicesFor(undefined)).toEqual({ apps: [], newApp: [], none: false });
+  it("draws nothing while HQ has not said, and no kind this build does not know", () => {
+    expect([
+      moveChoices({ moveTo: undefined, detach: false, apps: APPS }),
+      moveChoices({ moveTo: { acme: ["preview"], gone: ["mate"] }, detach: false, apps: APPS }),
+    ]).toEqual([
+      { apps: [], newApp: [], none: false },
+      { apps: [], newApp: [], none: false },
+    ]);
   });
 });
 

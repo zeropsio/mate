@@ -1,6 +1,7 @@
 /**
  * Zerops roles, read the one way every rule here reads them, and the role function — what a person
- * may do with each Mate and whether they may create projects.
+ * may do with each Mate and whether they may create projects — with the two predicates over Zerops'
+ * own facts a client reads before or beside any HQ answer (`mayBearHq`, `mayCreateProjects`).
  *
  * Zerops roles are the only source of rights in Mate. A role or a status arrives as the platform's
  * string; it is normalised once, here (`asOrgRole`): a role this build does not know is
@@ -11,7 +12,8 @@
  * rows a person sees, whether *Add Mate* is offered) and a Mate's door (open, listed or hidden for
  * the project it runs in). `zeropsRoles.fixtures.json` holds the cases; it is the only copy since
  * the broker and its Go twin went (ADR 0004). What else a person may do — the structure, a Mate's
- * credential — is `can` in `zeropsPermissions.ts`, over the same normalisation.
+ * credential — is HQ's `can` (`apps/hq/src/permissions.ts`), over the same normalisation, and HQ
+ * streams its decisions to the client (`hqOffers.ts`).
  *
  * Pure: no clock, no network, no platform types.
  *
@@ -66,7 +68,6 @@ export interface RoleRegistryProject {
 
 export interface RoleRegistryGroup {
   readonly id: string;
-  readonly slug: string;
   readonly projects: ReadonlyArray<RoleRegistryProject>;
 }
 
@@ -121,11 +122,38 @@ export function effectiveProjectRole(input: RoleInput, projectId: string): Zerop
   return asOrgRole(input.overrides[projectId] ?? input.person.orgRole);
 }
 
+/** A membership as the session or the member list gives it; active unless it says otherwise. */
+export interface MembershipFacts {
+  readonly roleCode?: string | undefined;
+  readonly status?: ZeropsMemberStatus | undefined;
+  readonly canCreateProjects?: boolean | undefined;
+}
+
+const active = (member: MembershipFacts) =>
+  (member.status ?? ZEROPS_ACTIVE_MEMBER_STATUS) === ZEROPS_ACTIVE_MEMBER_STATUS;
+
+/**
+ * Whether a member bears the organization's HQ and looks after it — before HQ exists, so before it
+ * can answer anything: an active owner or admin, whom Zerops lets make and deploy its project.
+ */
+export const mayBearHq = (member: MembershipFacts | undefined): boolean =>
+  member !== undefined && active(member) && roleAtLeast(member.roleCode, "ADMIN");
+
+/**
+ * Zerops' own *can create projects*: an active owner or admin by their role, anyone else by the
+ * flag Zerops sets on their membership. The app's *Add Mate* gate.
+ */
+export const mayCreateProjects = (member: MembershipFacts): boolean =>
+  active(member) && (roleAtLeast(member.roleCode, "ADMIN") || member.canCreateProjects === true);
+
 /** What one person may do with each Mate, and whether they may create projects. */
 export function zeropsRoleAnswer(input: RoleInput): RoleAnswer {
   const active = input.person.status === ZEROPS_ACTIVE_MEMBER_STATUS;
-  const canCreate =
-    active && (roleAtLeast(input.person.orgRole, "ADMIN") || input.person.canCreateProjects);
+  const canCreate = mayCreateProjects({
+    roleCode: input.person.orgRole,
+    status: input.person.status,
+    canCreateProjects: input.person.canCreateProjects,
+  });
   const mates: Record<string, RoleMateVisibility> = {};
   for (const group of input.registry.groups) {
     for (const project of group.projects) {

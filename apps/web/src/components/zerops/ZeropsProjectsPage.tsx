@@ -142,15 +142,11 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsMembership,
-  canWriteRegistry,
-  mayOffer,
-  offerAsker,
   firstDeployLine,
   type FirstDeploy,
   matePoseOf,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
-import { sessionOfferViewer } from "~/zerops/offerViewer";
 
 import { MateFace, MicroLabel, StatusDot } from "./primitives";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
@@ -174,7 +170,8 @@ import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
-import { useChangeOffers } from "~/zerops/useChangeOffers";
+import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
+import { useHqDown, useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useFinishGroupEnvironment } from "~/zerops/useFinishGroupEnvironment";
@@ -960,16 +957,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         };
   const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
     viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
-  // Whom HQ's rule is asked about for each row's verbs (`mateRowCan`): nobody where the session
-  // names nobody, and nothing is then offered.
-  const asker = useMemo(
-    () =>
-      offerAsker(
-        sessionOfferViewer(user, activeOrganization),
-        candidates.map((candidate) => candidate.project),
-      ),
-    [activeOrganization, candidates, user],
-  );
+  // What HQ offers of each row's project (`mateRowCan`), and of the organization.
+  const mateOffersOf = useMateOffers();
+  const orgOffer = useOrgOffers();
+  const hqDown = useHqDown();
   // Whose a Mate this person may see and not open is, named from HQ's people: no member list read.
   const people = useAtomValue(hqPeopleAtom);
 
@@ -1025,7 +1016,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       firstBuildOverdue: firstBuildOverdue(candidate, nowMs),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
-      can: mateRowCan(asker, candidate.project.id),
+      can: mateRowCan(mateOffersOf(candidate.project.id), hqDown),
       ...(role === undefined ? {} : { role }),
       ...(visibility === undefined ? {} : { visibility }),
       ...(ownerName === undefined ? {} : { ownerName }),
@@ -1097,8 +1088,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           structure: hqStructure?.structure ?? null,
           project: candidate.project,
           press: held,
-          writer: canWriteRegistry(sessionOfferViewer(user, activeOrganization)),
-          mayCreateRecord: mayOffer(asker, "create_mate_record", { projectId, held: "none" }),
+          writer: orgOffer("create_app").kind === "allowed",
+          mayCreateRecord: (() => {
+            const offers = mateOffersOf(projectId);
+            return offers?.held === false && offers.createRecord.kind === "allowed";
+          })(),
           standUp: false,
           candidates,
         });
@@ -1142,7 +1136,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [
       accountHq,
       activeOrganization,
-      asker,
+      mateOffersOf,
       candidates,
       client,
       groupTree.groups,
@@ -1150,11 +1144,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       hqStructure,
       organizationRef,
       projectRef,
+      orgOffer,
       readGroupAgents,
       setConnectError,
       settingUpKey,
       runtime,
-      user,
     ],
   );
 
@@ -1639,9 +1633,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const groupDeploys = projectFlow.flows;
 
   /**
-   * The environment row of one Zerops project, when some group declares it.
-   * A project no `environments.yaml` names is not a group environment and
-   * keeps the row it always had.
+   * The environment row of one Zerops project, when HQ records it as one of an
+   * application's environments. A project HQ records as none is not a group
+   * environment and keeps the row it always had.
    */
   const declaredEnvironment = useCallback(
     (projectId: string) => {
@@ -1901,6 +1895,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // Only an application whose environments HQ has said says what it holds: one still unsaid would
   // read as holding nothing, and every environment in it as half-made.
   const heldEnvironments = useAtomValue(hqEnvironmentsAtom);
+  const mayKeepKey = useKeepDeployKeyOffer();
   const halfMade = useMemo(
     () =>
       heldEnvironments === null
@@ -1909,10 +1904,10 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             projects: candidates.map((candidate) => candidate.project),
             registry: registryState.registry,
             environments: heldEnvironments,
-            // A key is minted only by somebody HQ's rule lets keep it (`keep_deploy_token`).
-            mayKey: (projectId) => mayOffer(asker, "keep_deploy_token", { projectId }),
+            // A key is minted only by somebody HQ offers keeping it (`keep_deploy_token`).
+            mayKey: (projectId) => mayKeepKey(projectId) === true,
           }),
-    [asker, candidates, heldEnvironments, registryState.registry],
+    [candidates, heldEnvironments, mayKeepKey, registryState.registry],
   );
   const finishing = useFinishGroupEnvironment({ client, clientId: activeOrganization?.id, hq });
 
@@ -2348,7 +2343,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           // A project with nothing in it goes, at whoever writes the structure's word.
           ...(deleteOffered(
             group,
-            mayOffer(asker, "delete_app", null),
+            orgOffer("delete_app").kind === "allowed" ||
+              orgOffer("delete_app").kind === "unavailable",
             applicationContents(hqStructure, activeOrganization?.id, group.groupId),
           )
             ? [
@@ -2356,6 +2352,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                   id: "delete-group",
                   label: `Delete ${group.name}…`,
                   variant: "destructive" as const,
+                  // While HQ does not answer, its delete is drawn and not pressable.
+                  disabled: orgOffer("delete_app").kind === "unavailable",
                   onSelect: () => {
                     setRowDialog({ kind: "delete-group", group });
                   },
