@@ -46,7 +46,7 @@ export interface GitProcess {
   readonly done: Promise<void>;
 }
 
-/** Single private subprocess boundary: no inherited environment, even for import and config. */
+/** Single private subprocess boundary: no inherited environment, even for a restore and config. */
 export class GitRunner {
   private readonly active = new Set<GitProcess>();
   private closed = false;
