@@ -3586,6 +3586,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         lines={lines}
         keepRef={keepScrollRef}
         eases={slotted && !ctx.syncing}
+        opensAtStart={!above}
         {...(above ? { readingRef } : {})}
       />
     );
@@ -3860,6 +3861,7 @@ function RunScroll({
   keepRef,
   landing = null,
   eases = false,
+  opensAtStart = false,
 }: {
   readonly label: string;
   readonly lines: ReadonlyArray<ChatLine>;
@@ -3871,6 +3873,12 @@ function RunScroll({
   readonly landing?: ReadonlyMap<string, number> | null;
   /** Whether its room eases as lines join it, and it glides to its foot: a live run, watched. */
   readonly eases?: boolean;
+  /**
+   * Whether it opens at its first line: a settled run's work opened by "Show
+   * work" reads from the start; a live one, or one watched to its end, opens
+   * at its foot.
+   */
+  readonly opensAtStart?: boolean;
 }) {
   // Drawn once: from here on, what arrives arrives while the person watches.
   const shownRef = useRef(false);
@@ -3879,7 +3887,7 @@ function RunScroll({
   }, []);
   // Where the chat starts: its newest lines when it opens. What arrives after
   // only ever joins at the end, so the window grows and never slides.
-  const [from, setFrom] = useState(() => chatOpensAt(lines.length));
+  const [from, setFrom] = useState(() => (opensAtStart ? 0 : chatOpensAt(lines.length)));
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const easesRef = useRef(eases);
@@ -3917,8 +3925,8 @@ function RunScroll({
   // opened; where its top last stood tells their move from the page's. It
   // opens at its foot.
   const followRef = useRef<RunScrollFollow>({
-    follows: true,
-    stood: Number.POSITIVE_INFINITY,
+    follows: !opensAtStart,
+    stood: opensAtStart ? 0 : Number.POSITIVE_INFINITY,
     opened: NOTHING_OPENED,
     resumes: false,
     reach: null,
@@ -4056,11 +4064,12 @@ function RunScroll({
     keepFromFootRef.current = position.scrollHeight - position.scrollTop;
     setFrom(earlierShown(from).next);
   };
-  // It opens at its foot, before the first paint.
+  // It opens at its foot — or its start — before the first paint.
+  const opensAtStartRef = useRef(opensAtStart);
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (element === null) return;
-    follow.putAt(element, footTop(positionOf(element)));
+    follow.putAt(element, opensAtStartRef.current ? 0 : footTop(positionOf(element)));
     markEdges(element);
   }, [follow]);
   // Earlier lines drawn above the ones in view keep those where they stood;
