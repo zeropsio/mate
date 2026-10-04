@@ -161,7 +161,7 @@ const STATEMENT_PREAMBLE =
  * opens with dropped, its first line, its whitespace folded — never nothing.
  */
 export function commandShown(command: string): string {
-  let rest = command;
+  let rest = withoutScratch(command);
   for (let match = STATEMENT_PREAMBLE.exec(rest); match; match = STATEMENT_PREAMBLE.exec(rest)) {
     rest = rest.slice(match[0].length);
   }
@@ -172,12 +172,25 @@ export function commandShown(command: string): string {
 
 /** A command whole, as a bubble draws it: its preamble dropped, every line kept. */
 export function commandWhole(command: string): string {
-  let rest = command;
+  let rest = withoutScratch(command);
   for (let match = STATEMENT_PREAMBLE.exec(rest); match; match = STATEMENT_PREAMBLE.exec(rest)) {
     rest = rest.slice(match[0].length);
   }
   const whole = rest.trimEnd();
-  return whole.trim().length > 0 ? whole.trim() : command.trim();
+  return whole.trim().length > 0 ? whole.trim() : withoutScratch(command).trim();
+}
+
+/**
+ * Claude Code's own folder for a session — `/tmp/claude-<uid>/<project>/<session id>/`,
+ * where a background command's output lands — is no place the person knows:
+ * a command reading it says `…/tasks/b7k.output` (run 9: the live card read
+ * "cat /tmp/claude-2023/-var-www/3c6ba9e5-…").
+ */
+const SCRATCH_FOLDER =
+  /(?:\/private)?\/tmp\/claude-\d+\/[^/\s'"]+\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\//gu;
+
+function withoutScratch(command: string): string {
+  return command.replace(SCRATCH_FOLDER, "…/");
 }
 
 function isTask(entry: WorkLogEntry): boolean {

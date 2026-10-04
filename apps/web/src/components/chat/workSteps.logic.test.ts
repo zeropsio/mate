@@ -102,6 +102,15 @@ describe("commandShown", () => {
       'ssh appdev "cd /var/www && npx tsc --noEmit"',
       'ssh appdev "cd /var/www && npx tsc --noEmit"',
     ],
+    // The agent's own scratch folder is no place the person knows: its path goes.
+    [
+      "cat /tmp/claude-1000/-srv-app/0a1b2c3d-1111-4222-8333-444455556666/tasks/b7k.output",
+      "cat …/tasks/b7k.output",
+    ],
+    [
+      "tail -5 /private/tmp/claude-501/-Users-me-app/0a1b2c3d-1111-4222-8333-444455556666/scratchpad/log.txt",
+      "tail -5 …/scratchpad/log.txt",
+    ],
   ])("%j reads %j", (input, expected) => {
     expect(commandShown(input)).toBe(expected);
   });
@@ -116,6 +125,10 @@ describe("commandWhole", () => {
     ],
     ["export CI=1 && pnpm test  \n", "pnpm test"],
     ["cd app", "cd app"],
+    [
+      "cat /tmp/claude-1000/-srv-app/0a1b2c3d-1111-4222-8333-444455556666/tasks/b7k.output\nwc -l /tmp/claude-1000/-srv-app/0a1b2c3d-1111-4222-8333-444455556666/tasks/b7k.output",
+      "cat …/tasks/b7k.output\nwc -l …/tasks/b7k.output",
+    ],
   ])("%j reads %j, every line of it", (input, expected) => {
     expect(commandWhole(input)).toBe(expected);
   });
