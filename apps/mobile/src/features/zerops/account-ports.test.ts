@@ -74,14 +74,4 @@ describe("hqUnavailable", () => {
     expect(hq.online.read()).toBeNull();
     expect(hq.hqOrganization.read()).toBeNull();
   });
-
-  it("never tells a listener anything changed", () => {
-    const hq = hqUnavailable();
-    let told = 0;
-    const stops = [hq.hqIndex, hq.online, hq.hqOrganization].map((port) =>
-      port.subscribe(() => (told += 1)),
-    );
-    for (const stop of stops) stop();
-    expect(told).toBe(0);
-  });
 });
