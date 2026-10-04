@@ -94,11 +94,13 @@ function SidebarControl() {
   // and in the box every page header leaves for it
   // (`--workspace-titlebar-content-left`), as the right panel's toggle stands
   // at the other edge. The kit's 44 px touch target reaches toward the
-  // screen's edge rather than over the header's first control.
+  // screen's edge rather than over the header's first control. Fixed to the
+  // screen, it steps below the status bar as `#root` does, so it stays on the
+  // header's line in a home-screen install.
   if (placement === "top") {
     return (
       <div
-        className="fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 flex h-[var(--workspace-topbar-height)] items-center"
+        className="fixed left-[var(--workspace-controls-left)] top-[calc(var(--workspace-controls-top)+env(safe-area-inset-top,0px))] z-50 flex h-[var(--workspace-topbar-height)] items-center"
         data-sidebar-open-control=""
       >
         <SidebarTrigger
