@@ -49,6 +49,7 @@ export { deployLogTarget, inspectDeployLog, type DeployLogTarget } from "./deplo
 export { applyMatesEvent, applyPeopleEvent } from "./mates.ts";
 export {
   birthIntentOf,
+  menuRowsFromHq,
   placeListing,
   placeProject,
   placeProjects,

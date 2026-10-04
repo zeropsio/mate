@@ -199,8 +199,7 @@ export function useProjectDialog<T>(
 export interface AccountTrouble {
   readonly lapse: { readonly sentence: string; readonly retry: boolean } | null;
   readonly trouble: InventoryTroubleVoice | null;
-  /** The grant is lapsed, a trouble is spoken, or a read of the organization in view is pending. */
-  readonly unanswered: boolean;
+  readonly running: boolean;
   /** What isn't answering (`troubleSubject`); null when nothing is named. */
   readonly subject: string | null;
   readonly retry: () => void;

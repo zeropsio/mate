@@ -29,7 +29,7 @@ import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import type { AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import type { AccessGrantView } from "../data/access/grantDriver.ts";
 import type { AccessVerifier } from "../data/access/verifier.ts";
@@ -48,7 +48,7 @@ import { makeRegistrationRecords } from "../environments/records.ts";
 import { makeDeploymentStore, type DeploymentStore } from "../flow/deploymentStore.ts";
 import type { EnvelopeServices } from "../flow/envelopeInvalidations.ts";
 import { deploymentStorePorts, envelopeServices } from "./flow.ts";
-import { holdInventoryDemand, holdListedProjects } from "./inventoryDemand.ts";
+import { holdInventoryDemand, holdAccessDemand } from "./inventoryDemand.ts";
 import {
   makeEnvironmentWiring,
   type AccountEnvironmentPorts,
@@ -94,6 +94,7 @@ export interface PostGrantStage {
 }
 
 export interface AccountRuntime {
+  readonly selectOrganization: (organizationId: string | null) => void;
   readonly data: ManagedZeropsDataRuntime;
   /** The account's invalidation bus: every owner of pull-based facts hears it, every surface sends to it. */
   readonly invalidations: InvalidationBus;
@@ -122,6 +123,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
   ports: AccountRuntimePorts,
 ): Effect.fn.Return<AccountRuntime> {
   const { data, signals } = ports;
+  const activeOrganization = Atom.make<string | null>(null);
   const epoch = yield* Scope.make();
   /** The bus's own scope: it closes first, so nothing still coalescing reaches a subscriber. */
   const busScope = yield* Scope.make();
@@ -271,10 +273,10 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     );
     yield* data.access.listen(invalidations).pipe(Scope.provide(busScope));
     yield* data.listen(invalidations).pipe(Scope.provide(busScope));
-    yield* holdInventoryDemand({ data, atomRegistry: ports.atomRegistry }).pipe(
+    yield* holdInventoryDemand({ data, atomRegistry: ports.atomRegistry, activeOrganization }).pipe(
       Scope.provide(demandScope),
     );
-    yield* holdListedProjects({ data, atomRegistry: ports.atomRegistry }).pipe(
+    yield* holdAccessDemand({ data, atomRegistry: ports.atomRegistry }).pipe(
       Scope.provide(demandScope),
     );
     yield* Queue.take(heard).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));
@@ -298,6 +300,9 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
 
   return {
     data,
+    selectOrganization: (id) => {
+      if (!closed) ports.atomRegistry.set(activeOrganization, id);
+    },
     invalidations,
     postGrant: Deferred.await(postGrant),
     close: (reason) =>

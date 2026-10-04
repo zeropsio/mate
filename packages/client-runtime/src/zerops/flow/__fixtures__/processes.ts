@@ -87,8 +87,8 @@ export function processesRead(
   const coverage = options.coverage ?? COMPLETE;
   const owner = options.project ?? project();
   const descriptor = {
-    kind: "running-processes-of-organization" as const,
-    organization: owner.organization,
+    kind: "running-processes-of-project" as const,
+    project: owner,
     statuses: ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const,
     schemaVersion: 1 as const,
   };

@@ -110,8 +110,6 @@ const platformAdapter = (mates: ReadonlyArray<Mate>): ZeropsDataAdapter => {
     switch (query.kind) {
       case "projects-of-organization":
         return mates.map(({ project }) => project);
-      case "services-of-organization":
-        return mates.map(({ service }) => service);
       case "services-of-project":
         return mates
           .filter(({ projectId }) => projectId === query.project.projectId)
@@ -145,9 +143,12 @@ const platformAdapter = (mates: ReadonlyArray<Mate>): ZeropsDataAdapter => {
           const descriptor = ticket.target.descriptor as EntityQueryDescriptor;
           const rows = rowsOf(descriptor);
           return {
-            observations: decodeEntityQueryPages(descriptor, ticket, [
-              { rows, totalCount: rows.length },
-            ]).observations,
+            observations: decodeEntityQueryPages(
+              descriptor,
+              ticket,
+              [{ rows, totalCount: rows.length }],
+              "direct-read",
+            ).observations,
           };
         }
         const target = ticket.target;
@@ -490,7 +491,11 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
           const postGrant = yield* Effect.forkChild(built.postGrant);
@@ -564,7 +569,11 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           const demanded = () =>
             Effect.map(built.data.state, ({ interests }) =>
@@ -581,7 +590,7 @@ describe("the account runtime", () => {
           yield* Deferred.succeed(projectAnswered, undefined);
           yield* clock.advance(SECOND);
           yield* settle;
-          expect(yield* demanded()).toEqual(["organization-inventory", "project-inventory"]);
+          expect(yield* demanded()).toEqual(["organization-inventory"]);
 
           yield* built.close("logout");
           expect(yield* demanded()).toEqual([]);
@@ -611,7 +620,11 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
           const heard: Array<Invalidation> = [];
@@ -668,7 +681,11 @@ describe("the account runtime", () => {
             signals: page.signals,
             atomRegistry: registry,
             environments: inertEnvironments(clock),
-          });
+          }).pipe(
+            Effect.tap((runtime) =>
+              Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+            ),
+          );
         }).pipe(Effect.provideService(Clock.Clock, clock));
         yield* Effect.addFinalizer(() => built.close("application-close"));
         const renewNow = built.invalidations
@@ -750,7 +767,11 @@ describe("the account runtime", () => {
             signals: page.signals,
             atomRegistry: registry,
             environments: inertEnvironments(clock),
-          });
+          }).pipe(
+            Effect.tap((runtime) =>
+              Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+            ),
+          );
         }).pipe(Effect.provideService(Clock.Clock, clock));
         yield* Effect.addFinalizer(() => built.close("application-close"));
         const data = built.data;
@@ -763,9 +784,9 @@ describe("the account runtime", () => {
         yield* clock.advance(SECOND);
         yield* settle;
         yield* settle;
-        // The account holds both organizations' inventories and their projects'.
-        expect(yield* statuses()).toEqual(["observing", "observing", "observing", "observing"]);
-        expect(opened.toSorted()).toEqual(["org-1", "org-2"]);
+        // Only the selected organization holds inventory leases.
+        expect(yield* statuses()).toEqual(["observing"]);
+        expect(opened).toEqual(["org-1"]);
         const roundsBefore = rounds().length;
 
         yield* built.invalidations
@@ -777,8 +798,8 @@ describe("the account runtime", () => {
         yield* clock.advance(250);
         yield* settle;
 
-        expect(opened.slice(2)).toEqual(["org-1"]);
-        expect(yield* statuses()).toEqual(["observing", "observing", "observing", "observing"]);
+        expect(opened.slice(1)).toEqual(["org-1"]);
+        expect(yield* statuses()).toEqual(["observing"]);
         expect(rounds()).toHaveLength(roundsBefore);
       }),
     ),
@@ -844,13 +865,16 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
           yield* clock.advance(SECOND);
           yield* settle;
           yield* settle;
-          const registered = datastream.registrations().length;
           const service = {
             kind: "service" as const,
             project: {
@@ -861,6 +885,14 @@ describe("the account runtime", () => {
             serviceId: ZeropsServiceId.make("service-1"),
           };
 
+          yield* built.data.acquire({
+            kind: "project-variables",
+            project: service.project,
+            serviceIds: [service.serviceId],
+          });
+          yield* clock.advance(SECOND);
+          yield* settle;
+          const registered = datastream.registrations().length;
           for (let asked = 0; asked < 20; asked++) {
             const flag = yield* Effect.promise(() =>
               readServiceMateFlag(built.data, registry, service),
@@ -877,7 +909,7 @@ describe("the account runtime", () => {
                 ({ descriptor }) =>
                   descriptor.kind === "table-list" || descriptor.kind === "table-updates",
               ),
-          ).toHaveLength(4);
+          ).toHaveLength(2);
         }),
       ),
   );
@@ -957,7 +989,11 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
           // The account's variables never answer: the flag cannot be stated from them.
@@ -975,6 +1011,13 @@ describe("the account runtime", () => {
             serviceId: ZeropsServiceId.make("service-1"),
           };
 
+          yield* built.data.acquire({
+            kind: "project-variables",
+            project: service.project,
+            serviceIds: [service.serviceId],
+          });
+          yield* clock.advance(SECOND);
+          yield* settle;
           const flag = yield* Effect.promise(() =>
             readServiceMateFlag(built.data, registry, service, undefined, 50),
           );
@@ -986,7 +1029,7 @@ describe("the account runtime", () => {
   );
 
   it.effect(
-    "a project someone else creates is verified and its services read as the list names it, not at the next renewal",
+    "navigation discovers a new project without verifying access or reading its services",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -1033,7 +1076,11 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
           const data = built.data;
@@ -1060,8 +1107,8 @@ describe("the account runtime", () => {
           yield* clock.advance(SECOND);
           yield* settle;
           yield* settle;
-          expect(verifiedProjects()).toEqual(["project-1"]);
-          expect(yield* observing()).toBe(2);
+          expect(verifiedProjects()).toEqual([]);
+          expect(yield* observing()).toBe(1);
           const roundsBefore = rounds().length;
 
           const streamed = () =>
@@ -1069,9 +1116,7 @@ describe("the account runtime", () => {
               [...state.interests.values()]
                 .filter(({ interest }) => interest.status === "observing")
                 .map(({ descriptor }) => descriptor.kind)
-                .filter(
-                  (kind) => kind === "organization-versions" || kind === "organization-variables",
-                )
+                .filter((kind) => kind === "project-versions" || kind === "project-variables")
                 .toSorted(),
             );
           expect(yield* streamed()).toEqual([]);
@@ -1091,11 +1136,11 @@ describe("the account runtime", () => {
           yield* settle;
           yield* settle;
 
-          expect(verifiedProjects()).toEqual(["project-1", "project-2"]);
+          expect(verifiedProjects()).toEqual([]);
           // Its services are read: the organization's inventory and both projects'; and, with a
           // Mate there now, what its services run and their Mate flags are streamed.
-          expect(yield* observing()).toBe(5);
-          expect(yield* streamed()).toEqual(["organization-variables", "organization-versions"]);
+          expect(yield* observing()).toBe(1);
+          expect(yield* streamed()).toEqual([]);
           expect(rounds()).toHaveLength(roundsBefore);
           // Both projects' rows are read the same way: the new one is no less known than the old.
           const listed = listing();
@@ -1115,59 +1160,49 @@ describe("the account runtime", () => {
           yield* settle;
           yield* settle;
           expect(yield* streamed()).toEqual([]);
-          expect(yield* observing()).toBe(3);
+          expect(yield* observing()).toBe(1);
         }),
       ),
   );
 
-  it.effect(
-    "a visible wake after 30 s hidden retries the grant at once; a quick switch does not (§6.4)",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
-          const registry = AtomRegistry.make();
-          const page = yield* makePage(clock);
-          const grant = heldVerifier();
-          const built = yield* Effect.gen(function* () {
-            const data = yield* makeZeropsDataRuntime({
-              scope: scope(),
-              adapter: inertAdapter,
-              atomRegistry: registry,
-              makeOpaqueId: () => "opaque",
-            });
-            return yield* makeAccountRuntime({
-              data,
-              verifier: grant.verifier,
-              signals: page.signals,
-              atomRegistry: registry,
-              environments: inertEnvironments(clock),
-            });
-          }).pipe(Effect.provideService(Clock.Clock, clock));
-          yield* Effect.addFinalizer(() => built.close("application-close"));
-          yield* settle;
-          // Rounds fail up the session backoff until the next one waits 60 s.
-          for (const rung of [2, 4, 8, 15, 30]) {
-            yield* grant.answer({ kind: "server", status: 503 });
-            yield* clock.advance(rung * SECOND);
-            yield* settle;
-          }
-          yield* grant.answer({ kind: "server", status: 503 });
-          expect(grant.rounds()).toBe(6);
-
-          yield* page.emit({ type: "visibility", hidden: true });
-          yield* page.emit({ type: "visibility", hidden: false });
-          expect(grant.rounds()).toBe(6);
-
-          yield* page.emit({ type: "visibility", hidden: true });
-          yield* clock.advance(31 * SECOND);
-          yield* settle;
-          expect(grant.rounds()).toBe(6);
-          // Back before the backoff's 60 s: the wake alone starts the round.
-          yield* page.emit({ type: "visibility", hidden: false });
-          expect(grant.rounds()).toBe(7);
-        }),
-      ),
+  it.effect("a failed grant remains failed across wake until a manual again", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+        const registry = AtomRegistry.make();
+        const page = yield* makePage(clock);
+        const grant = heldVerifier();
+        const built = yield* Effect.gen(function* () {
+          const data = yield* makeZeropsDataRuntime({
+            scope: scope(),
+            adapter: inertAdapter,
+            atomRegistry: registry,
+            makeOpaqueId: () => "opaque",
+          });
+          return yield* makeAccountRuntime({
+            data,
+            verifier: grant.verifier,
+            signals: page.signals,
+            atomRegistry: registry,
+            environments: inertEnvironments(clock),
+          }).pipe(
+            Effect.tap((runtime) =>
+              Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+            ),
+          );
+        }).pipe(Effect.provideService(Clock.Clock, clock));
+        yield* Effect.addFinalizer(() => built.close("application-close"));
+        yield* settle;
+        yield* grant.answer({ kind: "server", status: 503 });
+        yield* clock.advance(60 * SECOND);
+        yield* page.emit({ type: "visibility", hidden: true });
+        yield* clock.advance(31 * SECOND);
+        yield* page.emit({ type: "visibility", hidden: false });
+        expect(grant.rounds()).toBe(1);
+        yield* built.data.access.signal({ type: "USER_RETRY" });
+        expect(grant.rounds()).toBe(2);
+      }),
+    ),
   );
 
   it.effect("an account runtime whose grant cannot start fails and leaves nothing running", () =>
@@ -1193,7 +1228,13 @@ describe("the account runtime", () => {
             signals: page.signals,
             atomRegistry: registry,
             environments: inertEnvironments(clock),
-          }).pipe(Effect.exit);
+          })
+            .pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            )
+            .pipe(Effect.exit);
         }).pipe(Effect.provideService(Clock.Clock, clock));
         yield* settle;
 
@@ -1252,7 +1293,11 @@ describe("the account runtime", () => {
               signals: page.signals,
               atomRegistry: registry,
               environments: inertEnvironments(clock),
-            });
+            }).pipe(
+              Effect.tap((runtime) =>
+                Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+              ),
+            );
           }).pipe(Effect.provideService(Clock.Clock, clock));
           yield* Effect.addFinalizer(() => built.close("application-close"));
           const data = built.data;
@@ -1277,6 +1322,7 @@ describe("the account runtime", () => {
               now: { wall: clock.wallMs(), mono: clock.monoMs() },
               policy,
             }).allowed;
+          yield* data.acquire({ kind: "project-inventory", project: project() });
           yield* pass(SECOND);
           expect(view().machine.phase.phase).toBe("granted");
           expect(yield* interest()).toBe("observing");
@@ -1342,7 +1388,11 @@ describe("the post-grant stage's Mate environments", () => {
         signals: page.signals,
         atomRegistry: registry,
         environments: { ...rig.ports, ...extra },
-      });
+      }).pipe(
+        Effect.tap((runtime) =>
+          Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
+        ),
+      );
     }).pipe(Effect.provideService(Clock.Clock, clock));
     yield* Effect.addFinalizer(() => built.close("application-close"));
     return { clock, page, grant, rig, built, registry };
@@ -1361,8 +1411,41 @@ describe("the post-grant stage's Mate environments", () => {
     yield* opened.clock.advance(SECOND);
     yield* settle;
     const stage = yield* opened.built.postGrant;
+    stage.environments.setActiveOrganization(organization.organizationId);
+    // These stage tests start with explicit, already loaded detail; cold demand is covered above.
+    for (const mate of mates)
+      yield* opened.built.data.acquire({
+        kind: "project-inventory",
+        project: project(mate.projectId),
+      });
+    yield* settle;
     return { ...opened, environments: stage.environments };
   });
+
+  it.effect.each(["org-other", null])(
+    "releases opened detail when active organization becomes %s",
+    (organizationId) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const opened = yield* openAccount([REMEMBERED_A]);
+          yield* opened.grant.answer();
+          const stage = yield* opened.built.postGrant;
+          stage.environments.setActiveOrganization(organization.organizationId);
+          stage.environments.setOnScreen(A_MATE.projectId);
+          yield* settle;
+          const detail = () =>
+            [...opened.registry.get(opened.built.data.stateAtom).interests.values()].filter(
+              ({ descriptor }) => "project" in descriptor,
+            );
+          expect(detail().some(({ descriptor }) => descriptor.kind === "project-inventory")).toBe(
+            true,
+          );
+          stage.environments.setActiveOrganization(organizationId);
+          yield* settle;
+          expect(detail()).toEqual([]);
+        }),
+      ),
+  );
 
   /**
    * A platform whose reads of the kinds named wait: `release` lets every one of them through, and
@@ -1566,7 +1649,6 @@ describe("the post-grant stage's Mate environments", () => {
             yield* built.data.acquire({
               kind: "project-topology",
               project: project(projectId),
-              includeCurrentMetrics: false,
             });
           }
           yield* settle;
@@ -1607,8 +1689,8 @@ describe("the post-grant stage's Mate environments", () => {
           expect(opens).toBe(before.opens);
           yield* clock.advance(1_000);
           yield* settle;
-          expect(opens).toBe(before.opens + 1);
-          expect(registrations).toBeGreaterThan(before.registrations);
+          expect(opens).toBe(before.opens);
+          expect(registrations).toBe(before.registrations);
         }),
       ),
   );
@@ -1959,7 +2041,7 @@ describe("the post-grant stage's Mate environments", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-organization"]);
+          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-project"]);
           const { rig, built, registry, environments } = yield* granted(
             [REMEMBERED_A],
             [A_MATE],
@@ -2069,9 +2151,8 @@ describe("the post-grant stage's Mate environments", () => {
         yield* clock.advance(10 * SECOND);
         yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
         expect(rig.probes.filter(({ input }) => input === down.origin)).toHaveLength(1);
-        expect(environments.index().unanswered).toEqual(
-          expect.arrayContaining([down.key, coming.key]),
-        );
+        expect(environments.index().reported.has(down.key)).toBe(false);
+        expect(environments.index().reported.has(coming.key)).toBe(false);
       }),
     ),
   );
@@ -2106,40 +2187,16 @@ describe("the post-grant stage's Mate environments", () => {
     ),
   );
 
-  it.effect(
-    "a route nothing names reads at once each unreachable Mate no poll reads, waits for the next poll of one coming up, and is answered once those reads fail too",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const [named, down, coming] = [mate("1"), mate("2"), mate("3")];
-          const { clock, rig, environments } = yield* granted([], [named, down, coming]);
-          const probed = () => rig.probes.length;
-          const unanswered = () => environments.index().unanswered;
-          yield* answerProbe(rig, named.origin, answering(ENV_B, named.projectId));
-          // Unreachable, it boots on a guess, which no poll reads; a Mate still coming up answers
-          // /healthz only, read every poll interval.
-          yield* answerProbe(rig, down.origin, { kind: "unreachable" });
-          yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
-          const beforeSweep = probed();
-
-          environments.setRoute(ENV_A);
-          yield* settle;
-          const sweptAtOnce = probed() - beforeSweep;
-          const beforeItsPoll = unanswered();
-          // The one coming up is read on its poll; the sweep's read of the other fails too.
-          yield* clock.advance(10 * SECOND);
-          yield* answerProbe(rig, coming.origin, { kind: "initializing", initAt: null });
-          yield* answerProbe(rig, down.origin, { kind: "unreachable" });
-
-          // The Mate coming up read again on the sweep's watch has still not answered.
-          expect({ sweptAtOnce, beforeItsPoll, polled: unanswered() }).toEqual({
-            sweptAtOnce: 1,
-            beforeItsPoll: [down.key, coming.key],
-            polled: [coming.key],
-          });
-          expect(environments.index().failed).toEqual([down.key, coming.key]);
-        }),
-      ),
+  it.effect("an unknown route does not sweep other projects for descriptors", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted([]);
+        environments.setRoute(EnvironmentId.make("unknown-environment"));
+        yield* settle;
+        expect(rig.probes.map(({ input }) => input)).not.toContain("unknown-environment");
+        expect(rig.exchanges).toEqual([]);
+      }),
+    ),
   );
 
   // E2E 2026-10-03: the first write after a fresh load failed while the background minted and
@@ -2446,7 +2503,7 @@ describe("the post-grant stage's Mate environments", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-organization"]);
+          const platform = heldQueries(platformAdapter([A_MATE]), ["services-of-project"]);
           const { rig, environments } = yield* granted([REMEMBERED_A], [A_MATE], platform.adapter);
           environments.setRoute(ENV_A);
           yield* settle;
@@ -2505,7 +2562,7 @@ describe("the post-grant stage's Mate environments", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { mates, route, environment, records } = routeScene();
-        const services = heldQueries(platformAdapter(mates), ["services-of-organization"]);
+        const services = heldQueries(platformAdapter(mates), ["services-of-project"]);
         const projects = heldQueries(services.adapter, ["projects-of-organization"]);
         const { rig, environments } = yield* granted(
           records.filter(({ environmentId }) => environmentId !== environment),
@@ -2514,7 +2571,7 @@ describe("the post-grant stage's Mate environments", () => {
         );
         environments.setRoute(environment);
         yield* settle;
-        expect(rig.probes).toEqual([]);
+        expect(rig.probes.map(({ input }) => input)).not.toContain("unknown-environment");
 
         // Another tab stores the route's record; its storage event has not reached this tab yet.
         rig.storeElsewhere(records, false);
@@ -2534,11 +2591,11 @@ describe("the post-grant stage's Mate environments", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { mates, route, environment, records } = routeScene();
-        const services = heldQueries(platformAdapter(mates), ["services-of-organization"]);
+        const services = heldQueries(platformAdapter(mates), ["services-of-project"]);
         const { rig, environments } = yield* granted([], mates, services.adapter);
         environments.setRoute(environment);
         yield* settle;
-        expect(rig.probes).toEqual([]);
+        expect(rig.probes.map(({ input }) => input)).not.toContain("unknown-environment");
 
         // The organization's projects are listed already; another tab remembers every Mate.
         rig.storeElsewhere(records, true);

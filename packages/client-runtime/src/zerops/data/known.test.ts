@@ -266,6 +266,21 @@ describe("inventory knowledge", () => {
       });
     });
 
+    it("uses the opened project's complete direct service read as absence evidence", () => {
+      const read = listing([
+        {
+          status: "observing",
+          identity: id,
+          guarantee: "source-order-unverified",
+          sinceReceiptOrdinal: stamp(1).receiptOrdinal,
+        },
+      ]);
+      if (read.query.status !== "observed") throw new Error("Fixture must be observed");
+      expect(
+        servicesCheckOrdinalOf({ ...read, query: { ...read.query, source: "direct-read" } }),
+      ).toBe(4);
+    });
+
     it.each([
       ["only its inventory observes: no lag-free read confirmed anything", ["inventory"], null],
       ["its own lag-free read observes: that read confirms", ["inventory", "check"], 7],
@@ -331,24 +346,6 @@ describe("inventory knowledge", () => {
         freshness: { kind: "revalidating", sinceMs: 40 },
       },
       {
-        name: "recovering: stale since its value was read, until its retry",
-        interests: [
-          {
-            status: "recovering",
-            identity: id,
-            reason: "disconnect",
-            attempt: 2,
-            nextRetryAtMs: 7_000,
-            progress,
-          },
-        ],
-        freshness: {
-          kind: "stale",
-          reason: { kind: "source-recovering", retryAtMs: 7_000 },
-          sinceMs: 40,
-        },
-      },
-      {
         name: "paused in the background: not current",
         interests: [{ status: "paused", identity: id, reason: "background" }],
         freshness: { kind: "paused", by: "background" },
@@ -394,7 +391,6 @@ describe("inventory knowledge", () => {
               key: interestKeyOf({
                 kind: "project-topology",
                 project: owner,
-                includeCurrentMetrics: false,
               }),
             },
             guarantee: "source-order-unverified",
@@ -425,20 +421,6 @@ describe("inventory knowledge", () => {
           { status: "establishing", identity: id, startedAtMs: 40, deadlineMs: 900, progress },
         ],
         known: { state: "reading", sinceMs: 40, attempt: 1 },
-      },
-      {
-        name: "recovering: reading, on its attempt",
-        interests: [
-          {
-            status: "recovering",
-            identity: id,
-            reason: "disconnect",
-            attempt: 2,
-            nextRetryAtMs: 7_000,
-            progress,
-          },
-        ],
-        known: { state: "reading", attempt: 2 },
       },
       {
         name: "paused in the background: waiting to be visible",
@@ -584,7 +566,6 @@ describe("inventory knowledge", () => {
         key: interestKeyOf({
           kind: "project-topology",
           project: owner,
-          includeCurrentMetrics: false,
         }),
       },
       reason: "topology refused",

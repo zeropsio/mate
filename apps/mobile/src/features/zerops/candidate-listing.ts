@@ -176,3 +176,8 @@ export function candidatePickerBody(
   if (held.rows.length > 0) return { kind: "rows", rows: held.rows, notice };
   return notice === null ? NONE : { kind: "notice", ...notice };
 }
+
+/** The first press opens project detail; connection actions keep their admission gate. */
+export function candidatePickerAction(action: string | null, opened: boolean): string | null {
+  return opened ? action : "View project";
+}

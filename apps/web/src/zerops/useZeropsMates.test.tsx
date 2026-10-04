@@ -116,8 +116,8 @@ function readRuntime(): ManagedZeropsDataRuntime {
     ),
   );
   const services = {
-    kind: "services-of-organization" as const,
-    organization: owner.organization,
+    kind: "services-of-project" as const,
+    project: owner,
     schemaVersion: 1 as const,
   };
   ingest(

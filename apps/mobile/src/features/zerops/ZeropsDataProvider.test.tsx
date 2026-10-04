@@ -55,6 +55,7 @@ const accounts = vi.hoisted(() => ({
     readonly ports: unknown;
     readonly closed: Array<string>;
     grant: (environments: unknown) => void;
+    readonly selectOrganization: ReturnType<typeof vi.fn>;
   }>,
 }));
 
@@ -68,13 +69,16 @@ vi.mock("@t3tools/client-runtime/zerops/account/runtime", async () => {
         const postGrant = new Promise((resolve) => {
           grant = (environments) => resolve({ environments });
         });
+        const selectOrganization = vi.fn();
         accounts.built.push({
           ports,
           closed,
+          selectOrganization,
           grant: (environments) => grant(environments),
         });
         return {
           data: ports.data,
+          selectOrganization,
           postGrant: Effect.promise(() => postGrant),
           close: (reason: string) =>
             Effect.sync(() => {
@@ -127,9 +131,11 @@ function render(
     runtimeFactory,
     accountPorts: async () => PORTS as never,
   });
-  const effect = effects[0];
-  expect(effect).toBeDefined();
-  return (effect?.() as () => void) ?? (() => undefined);
+  expect(effects).not.toHaveLength(0);
+  const cleanups = effects.map((effect) => effect());
+  return () => {
+    for (const cleanup of cleanups.reverse()) cleanup?.();
+  };
 }
 
 /** The provider's value, as a render now publishes it. */
@@ -181,7 +187,7 @@ describe("ZeropsDataProvider account lifecycle", () => {
     });
 
     // No Mate environment stands before the epoch's first grant; the grant builds them.
-    const environments = { machines: () => new Map() };
+    const environments = { machines: () => new Map(), setActiveOrganization: vi.fn() };
     built?.grant(environments);
     await settle();
     expect(rendered(account("account-a"), runtimeFactory).environments).toBe(environments);

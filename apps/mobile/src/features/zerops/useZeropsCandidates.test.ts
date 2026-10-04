@@ -24,7 +24,7 @@ const runtime = vi.hoisted(() => ({
     subscribe: vi.fn(),
   },
 }));
-const session = vi.hoisted(() => ({ status: "signed-in" }));
+const session = vi.hoisted(() => ({ status: "signed-in", activeId: "org-a" as string | null }));
 const reads = vi.hoisted(() => ({ services: null as unknown, project: null as unknown }));
 /** The account runtime's Mate environments, as the provider binds them after the first grant. */
 const stage = vi.hoisted(() => ({
@@ -88,7 +88,11 @@ vi.mock("react", async (importOriginal) => {
 });
 
 vi.mock("./ZeropsSessionProvider", () => ({
-  useZeropsSession: () => ({ status: session.status, organizations: ORGANIZATIONS }),
+  useZeropsSession: () => ({
+    status: session.status,
+    organizations: ORGANIZATIONS,
+    activeOrganization: session.activeId === null ? null : { id: session.activeId },
+  }),
 }));
 vi.mock("./ZeropsDataProvider", () => ({
   useZeropsData: () => ({
@@ -131,9 +135,11 @@ async function settle(): Promise<void> {
   for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
 
-function render(): ReturnType<typeof useZeropsCandidates> {
+function render(
+  openedProjectId: string | null = "project-a",
+): ReturnType<typeof useZeropsCandidates> {
   hooks.beginRender();
-  return useZeropsCandidates();
+  return useZeropsCandidates(openedProjectId);
 }
 
 const listenerOf = (atom: unknown): (() => void) | undefined =>
@@ -142,6 +148,24 @@ const listenerOf = (atom: unknown): (() => void) | undefined =>
     | undefined;
 
 describe("candidate inventory demand", () => {
+  it.each([null, "org-b"])("reads only the selected organization %s", async (id) => {
+    session.activeId = id;
+    render();
+    await settle();
+    const organizations = runtime.acquire.mock.calls.flatMap(([request]) =>
+      request.kind === "organization-inventory" ? [request.organization.organizationId] : [],
+    );
+    expect(organizations).toEqual(id === null ? [] : [id]);
+  });
+
+  it("keeps the project picker free of service detail until a project opens", async () => {
+    render(null);
+    await settle();
+    expect(
+      runtime.acquire.mock.calls.filter(([request]) => request.kind === "project-inventory"),
+    ).toEqual([]);
+  });
+
   beforeEach(() => {
     hooks.reset();
     runtime.acquire.mockReset();
@@ -150,6 +174,7 @@ describe("candidate inventory demand", () => {
     runtime.registry.subscribe.mockReset();
     scopes.reset();
     session.status = "signed-in";
+    session.activeId = "org-a";
     stage.machines = new Map();
 
     const account = {
@@ -459,9 +484,9 @@ describe("candidate inventory demand", () => {
       { case: "first seen: on its way", afterMs: 0, group: "provisioning" },
       { case: "a moment on: still on its way", afterMs: 5_000, group: "provisioning" },
       {
-        case: "its wait over: as the platform leaves it",
+        case: "elapsed time supplies no new platform fact",
         afterMs: ADDRESS_GRACE_MS,
-        group: "unavailable",
+        group: "provisioning",
       },
     ])("$case", async ({ afterMs, group }) => {
       render();

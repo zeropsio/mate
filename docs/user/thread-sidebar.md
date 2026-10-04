@@ -1,5 +1,15 @@
 # Organizing threads
 
+The Mate menu shows the applications and placements held by your organization's HQ immediately.
+Names and project state update from Zerops as they arrive. On a reload, saved rows can appear with
+**Last known · as of … · Updating…**; their remembered presence does not mean a Mate is online.
+Actions needing access stay unavailable while that access is checked.
+
+Switching organizations reads the selected organization's projects. Opening a project reads its
+containers and deployment details. Usage charts read while the Mate panel is visible. If a read
+fails, the menu or panel shows the failure and **Try again** or **Try now**. Use that action to
+make another attempt.
+
 Pin a thread from its context menu to keep it in the pinned section above your active work.
 `mod+shift+p` pins or unpins the thread you have open. Pinned threads are shown independently of
 their project, including when you connect to more than one environment.

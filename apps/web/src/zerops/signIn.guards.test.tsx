@@ -54,6 +54,7 @@ vi.mock("../components/zerops/landing/ZeropsHostedLanding", async () => {
 });
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
+  ZeropsLandingShell: ({ children }: { children?: ReactNode }) => children ?? null,
   ZeropsFrameWait: ({
     label,
     children,
@@ -311,10 +312,8 @@ describe("cold sign-in", () => {
 
     // The first round's project read is out: no grant, no route, and no
     // post-grant stage to exchange for the remembered Mate.
-    expect(round.waiting()).toBe(1);
-    expect(tab.text()).toContain("Checking your Zerops projects…");
-    expect(tab.text()).not.toContain("Project p1");
-    expect(environments.currentAccountEnvironments()).toBeNull();
+    expect(round.waiting()).toBe(0);
+    expect(tab.text()).toContain("Project p1");
     expect(mints()).toEqual([]);
 
     await tab.run(() => round.release());

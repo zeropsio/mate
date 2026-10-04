@@ -5,10 +5,8 @@ import { initialContainer, type ContainerMachine } from "./containerMachine.ts";
 import {
   indexDescriptors,
   resolveEnvironment,
-  sweepRead,
   type DescriptorIndex,
   type ResolvedEnvironment,
-  type SweepRead,
 } from "./descriptorIndex.ts";
 import { initialEnvironment, type EnvironmentMachine } from "./environmentMachine.ts";
 import type { ProbeReading } from "./probeStore.ts";
@@ -64,7 +62,6 @@ describe("indexDescriptors", () => {
     readonly machine: EnvironmentMachine;
     readonly container: ContainerMachine | undefined;
     /** When the sweep asked for `KEY` to be read again, if it did. */
-    readonly rereadMs?: number;
     readonly index: DescriptorIndex;
   }> = [
     {
@@ -74,134 +71,80 @@ describe("indexDescriptors", () => {
       index: {
         serving: new Map([[ENV_A, KEY]]),
         reported: new Map([[KEY, ENV_A]]),
-        unanswered: [],
-        failed: [],
       },
     },
     {
       name: "a descriptor stating another project answered, and serves nothing for this target",
       machine: present(KEY),
       container: read(ready(ENV_A, "project-2")),
-      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
+      index: { serving: new Map(), reported: new Map() },
     },
     {
       name: "a descriptor stating no project answered, and serves nothing for this target",
       machine: present(KEY),
       container: read(ready(ENV_A, null)),
-      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
+      index: { serving: new Map(), reported: new Map() },
     },
     {
       name: "an origin serving no Mate answered: it holds no environment",
       machine: present(KEY),
       container: read({ kind: "predates-mate" }),
-      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
+      index: { serving: new Map(), reported: new Map() },
     },
     {
       name: "an unread origin is on its way, not failed",
       machine: present(KEY),
       container: initialContainer(),
-      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [] },
+      index: { serving: new Map(), reported: new Map() },
     },
     {
       name: "a target the container store has not listed yet is unread",
       machine: present(KEY),
       container: undefined,
-      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [] },
+      index: { serving: new Map(), reported: new Map() },
     },
     {
       name: "a Mate still coming up has not answered: read again",
       machine: present(KEY),
       container: read({ kind: "initializing", initAt: null }),
-      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [KEY] },
+      index: { serving: new Map(), reported: new Map() },
     },
     {
       name: "a Mate still coming up when the sweep read it again has not answered",
       machine: present(KEY),
       container: read({ kind: "initializing", initAt: null }, 5),
-      rereadMs: 5,
-      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [KEY] },
+      index: { serving: new Map(), reported: new Map() },
     },
     {
       name: "an unreachable origin (a network or CORS failure) read once has not answered: read again",
       machine: present(KEY),
       container: read({ kind: "unreachable" }),
-      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [KEY] },
+      index: { serving: new Map(), reported: new Map() },
     },
     {
       name: "an unreachable origin whose reading left before the sweep's re-read has not answered",
       machine: present(KEY),
       container: read({ kind: "unreachable" }, 4),
-      rereadMs: 5,
-      index: { serving: new Map(), reported: new Map(), unanswered: [KEY], failed: [KEY] },
+      index: { serving: new Map(), reported: new Map() },
     },
     {
       name: "an unreachable origin the sweep read again, failing again, answered as failed",
       machine: present(KEY),
       container: read({ kind: "unreachable" }, 5),
-      rereadMs: 5,
-      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [KEY] },
+      index: { serving: new Map(), reported: new Map() },
     },
     {
       name: "a target that is not present is neither indexed nor waited for",
       machine: present(KEY, { presence: { kind: "transitioning", status: "RESTARTING" } }),
       container: read(ready(ENV_A)),
-      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
+      index: { serving: new Map(), reported: new Map() },
     },
   ];
 
   it.each(ROWS.map((row) => [row.name, row] as const))("%s", (_name, row) => {
     const containers = new Map(row.container === undefined ? [] : [[KEY, row.container]]);
-    const reread = new Map(row.rereadMs === undefined ? [] : [[KEY, at(row.rereadMs)]]);
 
-    expect(indexDescriptors(new Map([[KEY, row.machine]]), containers, reread)).toEqual(row.index);
-  });
-});
-
-describe("sweepRead", () => {
-  const ASKED = at(3_000);
-  const ROWS: ReadonlyArray<{
-    readonly name: string;
-    readonly container: ContainerMachine;
-    readonly read: SweepRead;
-  }> = [
-    {
-      name: "a Mate coming up is read on its poll, a poll interval after the failure the sweep saw",
-      container: {
-        ...read({ kind: "unreachable" }, 2_500),
-        state: { level: "booting", since: at(0), guessed: false },
-      },
-      read: { from: at(4_500), request: false },
-    },
-    {
-      name: "a Mate only failed reads say is coming up, which no poll reads, is read once more now",
-      container: {
-        ...read({ kind: "unreachable" }, 2_500),
-        state: { level: "booting", since: at(0), guessed: true },
-      },
-      read: { from: ASKED, request: true },
-    },
-    {
-      name: "a Mate past its boot budget is read on its overdue poll, never sooner",
-      container: {
-        ...read({ kind: "unreachable" }, 2_500),
-        state: { level: "booting", since: at(0), guessed: false },
-        overdue: true,
-      },
-      read: { from: at(4_500), request: false },
-    },
-    {
-      name: "a Mate no poll reads, its link up, is read once more now",
-      container: {
-        ...read({ kind: "unreachable" }, 2_500),
-        state: { level: "ready" },
-        connectedSince: at(1_000),
-      },
-      read: { from: ASKED, request: true },
-    },
-  ];
-
-  it.each(ROWS.map((row) => [row.name, row] as const))("%s", (_name, row) => {
-    expect(sweepRead(row.container, ASKED)).toEqual(row.read);
+    expect(indexDescriptors(new Map([[KEY, row.machine]]), containers)).toEqual(row.index);
   });
 });
 
@@ -209,8 +152,6 @@ describe("resolveEnvironment", () => {
   const index = (entries: ReadonlyArray<readonly [string, EnvironmentId]>): DescriptorIndex => ({
     serving: new Map(entries.map(([key, environmentId]) => [environmentId, key])),
     reported: new Map(entries),
-    unanswered: [],
-    failed: [],
   });
 
   const resolved = (

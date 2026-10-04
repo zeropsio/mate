@@ -224,6 +224,7 @@ export type MobileAccountPorts = Pick<AccountRuntimePorts, "verifier" | "signals
 export async function mobileAccountPorts(input: {
   readonly account: AccountScope;
   readonly client: ZeropsApiClient;
+  readonly readProject: import("@t3tools/client-runtime/zerops/data").ManagedZeropsDataRuntime["readProjectForAccess"];
   readonly onUser: (user: ZeropsUser) => void;
 }): Promise<MobileAccountPorts> {
   const { account, client } = input;
@@ -231,6 +232,7 @@ export async function mobileAccountPorts(input: {
   return {
     verifier: makeRestAccessVerifier({
       client,
+      readProject: input.readProject,
       account: account.account,
       concurrency: DEFAULT_ZEROPS_GRANT_POLICY.roundProjectConcurrency,
       onUser: input.onUser,

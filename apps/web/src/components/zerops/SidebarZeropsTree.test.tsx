@@ -471,8 +471,20 @@ describe("SidebarZeropsTree", () => {
     expect(html).toContain("Reading your projects…");
     expect(html).not.toContain("No environment has Mate yet");
     // Read and Mate-less: the empty state, as before.
-    expect(render([CRM_STAGE], { complete: true })).toContain("sidebar-environments-empty");
+    expect(render([candidate("unplaced", {}, "ready", false)], { complete: true })).toContain(
+      "sidebar-environments-empty",
+    );
   });
+
+  it.each([false, true])(
+    "paints HQ application placements with no Mate and inventory complete=%s",
+    (complete) => {
+      const html = render([CRM_STAGE], { complete });
+      expect(html).toContain("Beviro CRM");
+      expect(html).toContain('data-zerops-group="aaa"');
+      expect(html).not.toContain("sidebar-environments-empty");
+    },
+  );
 
   it("a failed listing names its cause once, with one Try again", () => {
     const html = render([], {
@@ -496,7 +508,7 @@ describe("SidebarZeropsTree", () => {
 
   it('never says "No environment has Mate yet" while a project\'s presence is unknown', () => {
     // The project is listed, but whether a container runs in it is not read yet.
-    const html = render([CRM_STAGE], {
+    const html = render([candidate("unplaced", {}, "ready", false)], {
       complete: false,
       notice: {
         region: "value",
@@ -561,13 +573,13 @@ describe("SidebarZeropsTree", () => {
     expect(new Set(tints).size).toBe(2);
   });
 
-  it("leaves out a project nobody lives in", () => {
+  it("keeps another HQ application even when it holds only a stage", () => {
     const html = render([
       CRM_DEV,
       candidate("other", { hq: inApp("bbb", "Other", "stage") }, "ready", false),
     ]);
     expect(html).toContain('data-zerops-group="aaa"');
-    expect(html).not.toContain('data-zerops-group="bbb"');
+    expect(html).toContain('data-zerops-group="bbb"');
   });
 
   it("keeps a Mate whose container is not reachable right now, asleep", () => {
@@ -604,7 +616,7 @@ describe("SidebarZeropsTree", () => {
   it.each([
     {
       name: "says Mate is missing, and offers to set one up, when the account has projects",
-      candidates: [CRM_STAGE],
+      candidates: [candidate("unplaced", {}, "ready", false)],
       shows: ["sidebar-environments-empty", "No environment has Mate yet", "Set up Mate"],
       hides: ["No Zerops projects yet", "New project"],
     },
@@ -621,7 +633,7 @@ describe("SidebarZeropsTree", () => {
   });
 
   it("left-aligns the empty state to the menu's own edge, like every other row", () => {
-    const html = render([CRM_STAGE]);
+    const html = render([candidate("unplaced", {}, "ready", false)]);
     const block = html.match(
       /<div class="([^"]*)" data-zerops-surface="sidebar-environments-empty"/u,
     );
@@ -1197,6 +1209,45 @@ describe("a Mate's face follows its work in the menu", () => {
     held(true, "org-elsewhere");
     expect(faceOf(drawn())).toBe("sleep");
   });
+
+  it.each([
+    { group: "unavailable", face: "sleep" },
+    { group: "ready", face: "idle" },
+  ] as const)(
+    "ignores remembered HQ presence for a $group Mate, keeping its $face face",
+    ({ group, face }) => {
+      const registry = AtomRegistry.make();
+      registry.set(zeropsSessionAtom, {
+        status: "signed-in",
+        organizationStatus: "selected",
+        activeOrganization: organization,
+      });
+      registry.set(hqMatesViewAtom, {
+        organizationId: organization.organizationId,
+        mates: new Map<string, MateLiveView>([
+          [
+            "crm-dev",
+            {
+              presence: { online: true, since: "2026-10-03T10:00:00.000Z", overview: "live" },
+            },
+          ],
+        ]),
+        current: false,
+      });
+      const html = renderToStaticMarkup(
+        <RegistryContext.Provider value={registry}>
+          <SidebarZeropsTree
+            candidates={[{ ...CRM_DEV, group }]}
+            complete
+            onBrowseProjects={() => {}}
+            onSelect={() => {}}
+          />
+        </RegistryContext.Provider>,
+      );
+      expect(faceOf(html)).toBe(face);
+      registry.dispose();
+    },
+  );
 
   // Board D1, 2026-09-30: a new Mate's first run is the stand-up its person's sign-in sent; the
   // row says what it is doing, under the face at work, instead of the command sent for them.

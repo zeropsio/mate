@@ -180,7 +180,6 @@ type SourceState =
   | { readonly kind: "observing" }
   | { readonly kind: "establishing"; readonly sinceMs: number }
   | { readonly kind: "paused"; readonly reason: "background" | "offline" | "no-leases" }
-  | { readonly kind: "recovering"; readonly retryAtMs: number; readonly attempt: number }
   | {
       readonly kind: "failed";
       readonly failure: FailureReason;
@@ -192,7 +191,6 @@ const SEVERITY: Record<SourceState["kind"], number> = {
   observing: 0,
   establishing: 1,
   paused: 2,
-  recovering: 3,
   failed: 4,
 };
 
@@ -204,8 +202,6 @@ function sourceOf(interest: InterestState): SourceState {
       return { kind: "establishing", sinceMs: interest.startedAtMs };
     case "paused":
       return { kind: "paused", reason: interest.reason };
-    case "recovering":
-      return { kind: "recovering", retryAtMs: interest.nextRetryAtMs, attempt: interest.attempt };
     case "failed":
       return {
         kind: "failed",
@@ -234,12 +230,6 @@ function freshnessOf(source: SourceState, nowMs: number): Freshness {
       return { kind: "revalidating", sinceMs: source.sinceMs };
     case "paused":
       return { kind: "paused", by: source.reason === "offline" ? "offline" : "background" };
-    case "recovering":
-      return {
-        kind: "stale",
-        reason: { kind: "source-recovering", retryAtMs: source.retryAtMs },
-        sinceMs: nowMs,
-      };
     case "failed":
       return {
         kind: "stale",
@@ -261,8 +251,6 @@ function notYetKnown<T>(source: SourceState, nowMs: number): Known<T> {
       return { state: "unread", waitingFor: null };
     case "establishing":
       return { state: "reading", sinceMs: source.sinceMs, attempt: 1 };
-    case "recovering":
-      return { state: "reading", sinceMs: source.retryAtMs, attempt: source.attempt };
     case "paused":
       return {
         state: "unread",

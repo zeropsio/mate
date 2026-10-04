@@ -29,7 +29,15 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Scheduler from "effect/Scheduler";
 import { type AtomRegistry } from "effect/unstable/reactivity";
-import { useContext, useEffect, useEffectEvent, useMemo, useState, type ReactNode } from "react";
+import {
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { ZeropsFrameWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { bindAccountEnvironments, useAccountEnvironments } from "./accountEnvironments";
@@ -178,9 +186,11 @@ function accountRefs(
  */
 export function ZeropsDataProvider({
   children,
+  pending,
   makeRuntime = defaultMakeZeropsDataRuntime,
 }: {
   readonly children: ReactNode;
+  readonly pending?: ReactNode;
   /** Test-only seam: substitutes the real adapter/runtime construction. */
   readonly makeRuntime?: MakeZeropsDataRuntime;
 }) {
@@ -190,6 +200,12 @@ export function ZeropsDataProvider({
     updateVerifiedMemberships(verified),
   );
   const registry = useContext(RegistryContext);
+  const activeId = useRef(activeOrganization?.id ?? null);
+  const accountOwner = useRef<AccountRuntime | null>(null);
+  useEffect(() => {
+    activeId.current = activeOrganization?.id ?? null;
+    accountOwner.current?.selectOrganization(activeId.current);
+  }, [activeOrganization?.id]);
   const accountId = status === "signed-in" ? (user?.id ?? null) : null;
   const [opened, setOpened] = useState<{
     readonly runtime: ManagedZeropsDataRuntime;
@@ -254,6 +270,7 @@ export function ZeropsDataProvider({
             data: created,
             verifier: makeRestAccessVerifier({
               client,
+              readProject: created.readProjectForAccess,
               account: scope.account,
               concurrency: DEFAULT_ZEROPS_GRANT_POLICY.roundProjectConcurrency,
               onUser: (verified) => verifiedMemberships(verified),
@@ -272,6 +289,8 @@ export function ZeropsDataProvider({
             removeLifetimeClose = onAccountLifetimeClose(() => {
               void shutdown(created, "logout");
             });
+            accountOwner.current = built;
+            built.selectOrganization(activeId.current);
             // Surfaces send their intents to this account's bus from the first mount.
             unbindInvalidations = bindAccountInvalidations(built.invalidations);
             setOpened({ runtime: created, signals });
@@ -304,6 +323,7 @@ export function ZeropsDataProvider({
 
     return () => {
       cancelled = true;
+      accountOwner.current = null;
       abort.abort();
       removeLifetimeClose();
       unbindInvalidations();
@@ -329,14 +349,19 @@ export function ZeropsDataProvider({
 
   const startupError = startupFailure?.accountId === accountId ? startupFailure.message : null;
   if (value === null)
-    return startupError === null ? (
-      <ZeropsFrameWait label="Starting Zerops data…" signedIn />
-    ) : (
-      <ZeropsDataStartupFailure
-        message={startupError}
-        retry={() => setStartupAttempt((attempt) => attempt + 1)}
-        signOut={() => void signOut()}
-      />
+    return (
+      <>
+        {pending}
+        {startupError === null ? (
+          <ZeropsFrameWait label="Starting Zerops data…" signedIn />
+        ) : (
+          <ZeropsDataStartupFailure
+            message={startupError}
+            retry={() => setStartupAttempt((attempt) => attempt + 1)}
+            signOut={() => void signOut()}
+          />
+        )}
+      </>
     );
   return <ZeropsDataContext value={value}>{children}</ZeropsDataContext>;
 }

@@ -1,14 +1,4 @@
-/**
- * The access grant's verification reads (DESIGN §4.2 G1), behind the `AccessVerifier` port the
- * grant's interpreter in the data runtime runs: `fetchUser`, then each organization's project
- * list. A project the lag-free direct list carries is judged from its row, which holds the
- * project's `userRoles` as its own read does; a project only the search names, or a carried one
- * the list omits, is read with `fetchProject`, a few at a time. Each answer reaches the grant as
- * its own event, so one project's failure is that project's alone.
- *
- * Verification reads are admission evidence only; platform records are published exclusively by
- * the data runtime.
- */
+/** Account membership and direct reads of demanded projects, one attempt per read. */
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
@@ -26,7 +16,6 @@ import { zeropsErrorMessage } from "../../errors.ts";
 import { resolveMateVisibility, type RoleMateVisibility } from "../../mateAccess.ts";
 import {
   ZeropsOrganizationId,
-  ZeropsProjectId,
   type AccountRef,
   type OrganizationRef,
   type ProjectRef,
@@ -41,12 +30,12 @@ export type AccessRoundEvent = Extract<
 
 export interface AccessRoundRequest {
   readonly round: number;
-  /** Projects the grant holds, read even when a listing omits them. */
+  /** Projects held by a route or explicit action. */
   readonly carried: ReadonlyArray<ProjectRef>;
   readonly report: (event: AccessRoundEvent) => Effect.Effect<void>;
 }
 
-/** `fetchUser` or an organization list failed: the round's own failure (G1). */
+/** `fetchUser` failed: the round's own failure (G1). */
 export interface AccessRoundFailure {
   readonly failure: GrantFailure;
   /** What went wrong, in the platform's words. */
@@ -61,10 +50,7 @@ export interface AccessVerifier {
   readonly verifyProject: (project: ProjectRef) => Effect.Effect<ProjectOutcome>;
 }
 
-export type AccessVerifierClient = Pick<
-  ZeropsApiClient,
-  "fetchUser" | "readAccessibleClientProjects" | "fetchProject"
->;
+export type AccessVerifierClient = Pick<ZeropsApiClient, "fetchUser" | "fetchProject">;
 
 // ── The per-project classifier ────────────────────────────────────────────────────────────────
 
@@ -180,8 +166,12 @@ const readProjectAccess = (
   client: Pick<AccessVerifierClient, "fetchProject">,
   project: ProjectRef,
   membership: ZeropsOrganization,
+  readProject?: RestAccessVerifierOptions["readProject"],
 ): Effect.Effect<ProjectOutcome> =>
-  readPlatform((signal) => client.fetchProject(project.projectId, signal)).pipe(
+  (readProject === undefined
+    ? readPlatform((signal) => client.fetchProject(project.projectId, signal))
+    : readProject(project).pipe(Effect.mapError((cause): ReadFailure => ({ cause })))
+  ).pipe(
     Effect.map((read) => projectOutcome(project, read, membership)),
     Effect.catch(({ cause }) =>
       Effect.succeed<ProjectOutcome>(
@@ -196,6 +186,8 @@ const readProjectAccess = (
 
 export interface RestAccessVerifierOptions {
   readonly client: AccessVerifierClient;
+  /** The direct read also ingests its answer into the runtime. */
+  readonly readProject?: (project: ProjectRef) => Effect.Effect<ZeropsProject, ZeropsApiError>;
   readonly account: AccountRef;
   /** `fetchProject` reads a round runs at once. */
   readonly concurrency: number;
@@ -221,17 +213,10 @@ export function makeRestAccessVerifier(options: RestAccessVerifierOptions): Acce
     account,
     organizationId: ZeropsOrganizationId.make(organizationId),
   });
-  const projectRef = (organizationId: string, projectId: string): ProjectRef => ({
-    kind: "project",
-    organization: organizationRef(organizationId),
-    projectId: ZeropsProjectId.make(projectId),
-  });
-
   return {
     verifyRound: ({ round, carried, report }) => {
       const span = mateDiagnostics.span("access-round", { round });
-      // The user read (unless the session's stands in), then each organization's listing and
-      // each project read.
+      // Identity and membership first, then only demanded projects.
       let reads = 0;
       return Effect.gen(function* () {
         const recent = options.recentUser?.() ?? null;
@@ -244,41 +229,13 @@ export function makeRestAccessVerifier(options: RestAccessVerifierOptions): Acce
         options.onUser(user);
         const organizations = zeropsClientsFromUser(user);
         memberships = organizations;
-        const listed = yield* Effect.forEach(
-          organizations,
-          (organization) => {
-            reads++;
-            return readPlatform((signal) =>
-              client.readAccessibleClientProjects(organization.id, { signal }),
-            ).pipe(Effect.map((read) => ({ organization, ...read })));
-          },
-          { concurrency: "unbounded" },
-        );
         const targets = new Map<
           string,
-          {
-            readonly ref: ProjectRef;
-            readonly membership: ZeropsOrganization;
-            /** The direct list's row, when it carries the project's overrides: no read needed. */
-            readonly row: ZeropsProject | null;
-          }
+          { readonly ref: ProjectRef; readonly membership: ZeropsOrganization }
         >();
-        for (const { organization, projects, direct } of listed) {
-          for (const project of projects) {
-            targets.set(project.id, {
-              ref: projectRef(organization.id, project.id),
-              membership: organization,
-              row: direct && Array.isArray(project.userRoles) ? project : null,
-            });
-          }
-          for (const ref of carried) {
-            if (
-              ref.organization.organizationId === organization.id &&
-              !targets.has(ref.projectId)
-            ) {
-              targets.set(ref.projectId, { ref, membership: organization, row: null });
-            }
-          }
+        for (const ref of carried) {
+          const membership = organizations.find(({ id }) => id === ref.organization.organizationId);
+          if (membership !== undefined) targets.set(ref.projectId, { ref, membership });
         }
         const queue = [...targets.values()];
         yield* report({
@@ -291,26 +248,17 @@ export function makeRestAccessVerifier(options: RestAccessVerifierOptions): Acce
           })),
           projects: queue.map(({ ref }) => ref),
         });
-        // A project the direct list carried with its overrides is judged from that row: the
-        // organization's one list stands for N project reads. Only the rest are read.
         yield* Effect.forEach(
           queue,
-          ({ ref, membership, row }) =>
-            row !== null
-              ? report({
-                  type: "ROUND_PROJECT",
-                  round,
-                  project: ref,
-                  outcome: projectOutcome(ref, row, membership),
-                })
-              : Effect.suspend(() => {
-                  reads++;
-                  return readProjectAccess(client, ref, membership);
-                }).pipe(
-                  Effect.flatMap((outcome) =>
-                    report({ type: "ROUND_PROJECT", round, project: ref, outcome }),
-                  ),
-                ),
+          ({ ref, membership }) =>
+            Effect.suspend(() => {
+              reads++;
+              return readProjectAccess(client, ref, membership, options.readProject);
+            }).pipe(
+              Effect.flatMap((outcome) =>
+                report({ type: "ROUND_PROJECT", round, project: ref, outcome }),
+              ),
+            ),
           { concurrency: options.concurrency, discard: true },
         );
       }).pipe(
@@ -330,7 +278,7 @@ export function makeRestAccessVerifier(options: RestAccessVerifierOptions): Acce
             kind: "failed",
             failure: { kind: "malformed", detail: "No round has read this organization." },
           })
-        : readProjectAccess(client, project, membership);
+        : readProjectAccess(client, project, membership, options.readProject);
     },
   };
 }

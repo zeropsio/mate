@@ -68,7 +68,7 @@ type ProjectQuery = Extract<
 >;
 type ServiceQuery = Extract<
   QueryBaselineObservation["ticket"]["target"]["descriptor"],
-  { readonly kind: "services-of-organization" | "services-of-project" }
+  { readonly kind: "services-of-project" }
 >;
 export type InventoryQueryState = QueryState<ProjectQuery> | QueryState<ServiceQuery>;
 
@@ -620,11 +620,7 @@ function reduceQueryBaseline(
   observation: QueryBaselineObservation,
 ): InventoryReduction {
   const descriptor = observation.ticket.target.descriptor;
-  if (
-    descriptor.kind !== "projects-of-organization" &&
-    descriptor.kind !== "services-of-organization" &&
-    descriptor.kind !== "services-of-project"
-  ) {
+  if (descriptor.kind !== "projects-of-organization" && descriptor.kind !== "services-of-project") {
     return { state, outcome: noOutcome() };
   }
   const key = queryKeyOf(descriptor);
@@ -724,11 +720,7 @@ function reduceMembership(
   observation: QueryMembershipObservation,
 ): InventoryReduction {
   const descriptor = observation.registration.descriptor.query;
-  if (
-    descriptor.kind !== "projects-of-organization" &&
-    descriptor.kind !== "services-of-organization" &&
-    descriptor.kind !== "services-of-project"
-  ) {
+  if (descriptor.kind !== "projects-of-organization" && descriptor.kind !== "services-of-project") {
     return { state, outcome: noOutcome() };
   }
   const key = queryKeyOf(descriptor);

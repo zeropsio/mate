@@ -57,12 +57,10 @@ import {
 } from "./inventoryContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import {
-  INVENTORY_TROUBLE_HOLD_MS,
   inventoryTroubleVoice,
   organizationKnowledge,
   troubleSubject,
 } from "./inventoryTrouble.logic";
-import { useHeldFor } from "./useHeldFor";
 import {
   stabilizeZeropsAtom,
   useZeropsAtomSelections,
@@ -107,38 +105,10 @@ function demandedInterest(
       );
 }
 
-/**
- * How long past an interest's own published deadline/retry time a render is
- * given before a stall reads as one. The reducer briefly emits `recovering`
- * with a placeholder `nextRetryAtMs: 0` before the runtime's own backoff
- * calculation stamps a real value (registration/malformed failure, membership
- * overflow — `state.ts`); without this margin that placeholder, and the
- * ordinary gap between a backoff timer waking and the re-upsert to
- * `establishing`, would flip the screen to an error mid-recovery. The
- * runtime's own max backoff (`recoveryBackoffMaxMs`) is the right order of
- * magnitude: anything shorter risks the same false positive on a normal
- * retry cycle.
- */
+/** A render can report an overdue attempt, without scheduling recovery or a second request. */
 const STALL_GRACE_MS = 30_000;
 
-/**
- * Whether a demanded interest has stopped making progress toward `observing`
- * for long enough that a spinner is no longer honest — the "Try again"
- * affordance belongs here instead (H5).
- *
- * `establishing`/`recovering`/`paused` are ordinary, expected states while a
- * connection comes up or a transport hiccup is retried, so they alone are
- * never "stuck" — only once the interest's own published deadline or retry
- * time has already passed by more than `STALL_GRACE_MS` is a subsequent
- * state change (establishing that never advanced, a scheduled retry that
- * never fired) reasonably read as a stall. A `nextRetryAtMs`/`deadlineMs` of
- * `0` means the runtime has not stamped a real value yet, so it is never
- * treated as already-elapsed. A hidden document is never "stuck" either: the
- * runtime pauses recovery in the background on purpose (`pauseForBackground`),
- * so `recovering`/`establishing` there just means "waiting to come back",
- * not a failure. No timer is started to notice a stall: it is re-evaluated
- * on whatever re-render the runtime's own publications already cause.
- */
+/** A failed or overdue required interest has a visible manual action; background waits do not. */
 export function isInterestBlocked(
   interest: InterestState | undefined,
   nowMs: number,
@@ -150,8 +120,6 @@ export function isInterestBlocked(
       return true;
     case "establishing":
       return interest.deadlineMs > 0 && nowMs >= interest.deadlineMs + STALL_GRACE_MS;
-    case "recovering":
-      return interest.nextRetryAtMs > 0 && nowMs >= interest.nextRetryAtMs + STALL_GRACE_MS;
     case "observing":
     case "paused":
       return false;
@@ -232,7 +200,13 @@ const AUTHORIZED: ScopeAuthority = { kind: "authorized" };
  * project and for the whole account while it lapses (§3.1, G12); a lapse is
  * the app's one banner, never a cover over the product.
  */
-export function ZeropsInventoryProvider({ children }: { readonly children: ReactNode }) {
+export function ZeropsInventoryProvider({
+  children,
+  pending,
+}: {
+  readonly children: ReactNode;
+  readonly pending?: ReactNode;
+}) {
   const { activeOrganization, organizationStatus, organizations, signOut, status } =
     useZeropsSession();
   const { runtime, organizationRef } = useZeropsData();
@@ -255,11 +229,13 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
 
   const organizationDescriptors = useMemo(
     () =>
-      organizations.map((organization): OrganizationInventoryDescriptor => ({
-        kind: "organization-inventory",
-        organization: organizationRef(organization.id),
-      })),
-    [organizationRef, organizations],
+      (activeOrganization === null ? [] : [activeOrganization]).map(
+        (organization): OrganizationInventoryDescriptor => ({
+          kind: "organization-inventory",
+          organization: organizationRef(organization.id),
+        }),
+      ),
+    [organizationRef, activeOrganization],
   );
 
   const evidence = heldEvidence(grant.machine);
@@ -276,10 +252,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   );
   const accessReadEntries = useMemo(() => [["access", runtime.reads.access] as const], [runtime]);
   const access = useZeropsAtomSelections(accessReadEntries).get("access");
-  const knownProjectRefs = useMemo(
-    () => inventoryProjectRefs(evidenceProjectRefs(evidence), access),
-    [access, evidence],
-  );
   const denied = useMemo(() => pendingDenials(evidence), [evidence]);
   /** The account's authority, as the grant last published it (G12). */
   const account = grant.machine.published.account ?? AUTHORIZED;
@@ -313,6 +285,20 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       ),
     [organizationDescriptors, runtime],
   );
+  const organizationReads = useZeropsAtomSelections(organizationReadEntries);
+  const knownProjectRefs = useMemo(() => {
+    const refs = new Map(
+      inventoryProjectRefs(evidenceProjectRefs(evidence), access)
+        .filter((ref) => ref.organization.organizationId === activeOrganization?.id)
+        .map((ref) => [inventoryProjectRefKey(ref), ref]),
+    );
+    for (const read of organizationReads.values())
+      for (const entry of read.value) {
+        const ref = entry.knowledge === "observed" ? entry.record.ref : entry.ref;
+        if (!lost.has(ref.projectId)) refs.set(inventoryProjectRefKey(ref), ref);
+      }
+    return [...refs.values()];
+  }, [access, evidence, organizationReads, activeOrganization?.id, lost]);
   const projectReadEntries = useMemo(
     () =>
       knownProjectRefs.map(
@@ -326,7 +312,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       ),
     [knownProjectRefs, runtime],
   );
-  const organizationReads = useZeropsAtomSelections(organizationReadEntries);
   const projectReads = useZeropsAtomSelections(projectReadEntries);
   const projectDescriptors = useMemo(
     () =>
@@ -420,7 +405,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
         continue;
       }
       if (serviceRead.query.status !== "observed") {
-        incomplete();
+        if (serviceRead.observation.required.length > 0) incomplete();
         const outcome = resolvedOrCarried(dto.id, { status: "failed" });
         services.set(dto.id, outcome);
         carryableOutcomes.set(dto.id, outcome);
@@ -474,6 +459,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     /** The organizations some of whose demanded reads are not observing yet: not answered. */
     const pending = new Set<string>();
     for (const { organization, projectId, interest } of demanded) {
+      if (interest === undefined) continue;
       if (interest?.status !== "observing" && interest?.status !== "paused")
         pending.add(organization.organizationId);
       if (isInterestBlocked(interest, Date.now(), documentHidden)) {
@@ -489,6 +475,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
       blockedOrganizations: [...blocked.values()],
       blockedReads,
       pendingOrganizations: pending,
+      reading: demanded.some(({ interest }) => interest?.status === "establishing"),
     };
   }, [
     denied,
@@ -541,20 +528,20 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   // chosen yet. It never covers or freezes the product; it speaks only once it has lasted
   // (`inventoryTroubleVoice`).
   const known = organizationKnowledge({
-    grantFailed: phase.phase === "unverified-failed",
+    grantFailed:
+      phase.phase === "unverified-failed" ||
+      (phase.phase === "granted" && phase.renewal.status === "failed"),
     blocked: projected.blockedOrganizations.map(({ organizationId }) => organizationId),
     // No evidence yet reads nothing at all.
     unread: evidence === null ? organizations.map(({ id }) => id) : projected.unreadOrganizations,
     active: activeOrganization?.id ?? null,
   });
   const trouble = known.trouble;
-  const troubleHeld = useHeldFor(ready && trouble !== null, INVENTORY_TROUBLE_HOLD_MS);
   const voice = inventoryTroubleVoice({
     mounted: ready,
     lapsed: lapse !== null,
     sessionEnded: status !== "signed-in",
     trouble,
-    troubledForMs: troubleHeld ? INVENTORY_TROUBLE_HOLD_MS : 0,
   });
   const shownError = voice?.sentence ?? null;
   const retry = () => {
@@ -577,13 +564,6 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
   // The account speaks from one place, the menu's foot: its lapse, which withholds every region
   // meanwhile, or its inventory's lasting trouble — never over the product. This publishes the
   // facts and the actions; the line (`useAccountVoice`) owns what Try now says while it runs.
-  // Answered is the grant held and every read of the organization in view observing again.
-  const unanswered =
-    lapse !== null ||
-    voice !== null ||
-    [...projected.pendingOrganizations].some(
-      (organizationId) => activeOrganization === null || organizationId === activeOrganization.id,
-    );
   // What isn't answering, named under the line's sentence (`troubleSubject`).
   const inView = activeOrganization ?? null;
   const subject =
@@ -617,12 +597,16 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     (): AccountTrouble => ({
       lapse: lapseSentence === null ? null : { sentence: lapseSentence, retry: lapseRetry },
       trouble: voice,
-      unanswered,
+      running:
+        projected.reading ||
+        phase.phase === "verifying" ||
+        ((phase.phase === "granted" || phase.phase === "lapsed") &&
+          phase.renewal.status === "running"),
       subject,
       retry: retryNow,
       signOut: signOutNow,
     }),
-    [lapseRetry, lapseSentence, retryNow, signOutNow, subject, unanswered, voice],
+    [lapseRetry, lapseSentence, retryNow, signOutNow, subject, voice, projected.reading, phase],
   );
 
   // Each project where the organization's HQ places it (ADR 0002), as last known, with its own
@@ -665,11 +649,8 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
     authority,
     account,
     lost,
-    // A read failing or stalled is not known, spoken of yet or not: the 20 s silence decides only
-    // when the account's line speaks, never what the data says (a Mate link settled "not found",
-    // "no projects" painted and taken back). Scoped to the organization in view
-    // (`organizationKnowledge`): another organization's trouble changes nothing its consumers see.
-    isLoading: known.loading,
+    // Only the active organization's held reads affect its loading and failure notices.
+    isLoading: known.loading || projected.pendingOrganizations.has(activeOrganization?.id ?? ""),
     error: shownError,
   });
   useEffect(() => {
@@ -692,6 +673,7 @@ export function ZeropsInventoryProvider({ children }: { readonly children: React
 
   return (
     <>
+      {!ready ? pending : null}
       {!ready ? (
         error !== null ? (
           <ZeropsFrameWait label="Could not load your Zerops projects." signedIn>

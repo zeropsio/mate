@@ -12,6 +12,7 @@ import * as Stream from "effect/Stream";
 
 import {
   decodeEntityDirectResponse,
+  decodeEntityQueryResponse,
   decodeRegistrationResponse,
 } from "../data/platformProtocol.ts";
 import type {
@@ -96,9 +97,9 @@ export function makeFakeDatastream(
             const modelled =
               query.kind === "projects-of-organization"
                 ? platform.projectsOf(query.organization.organizationId)
-                : query.kind === "service-variables-of-organization"
+                : query.kind === "service-variables-of-services"
                   ? (tables.variables?.(query.organization.organizationId) ?? [])
-                  : query.kind === "active-versions-of-organization"
+                  : query.kind === "active-versions-of-services"
                     ? (tables.versions?.(query.organization.organizationId) ?? [])
                     : null;
             // A search this platform models answers with its total, so its list is complete; one
@@ -113,6 +114,18 @@ export function makeFakeDatastream(
         );
       },
       read: (ticket) => {
+        if (
+          ticket.target.kind === "query" &&
+          ticket.target.descriptor.kind === "services-of-project"
+        )
+          return Effect.succeed(
+            decodeEntityQueryResponse(
+              ticket.target.descriptor,
+              ticket,
+              { list: [], total: 0 },
+              "direct-read",
+            ),
+          );
         if (ticket.target.kind !== "project") return Effect.succeed({ observations: [] });
         const { ref } = ticket.target;
         const project = platform.project(ref.projectId);

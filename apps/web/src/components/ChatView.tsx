@@ -8131,6 +8131,7 @@ export default function ChatView(props: ChatViewProps) {
             case "zerops":
               return (
                 <ZeropsPanel
+                  visible={rightPanelOpen}
                   agentAuthCard={zeropsChrome.agentAuthCard}
                   agentAuthUnknown={zeropsChrome.agentAuthUnknown}
                   agentAuthSnapshot={zeropsAgentAuth.snapshot}

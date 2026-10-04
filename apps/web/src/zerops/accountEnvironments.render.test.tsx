@@ -33,7 +33,7 @@ function publishingStage() {
     machines: () => machines,
     containers: () => containers,
     records: () => [],
-    index: () => ({ serving: new Map(), reported: new Map(), unanswered: [], failed: [] }),
+    index: () => ({ serving: new Map(), reported: new Map() }),
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => {

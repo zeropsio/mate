@@ -204,7 +204,9 @@ describe("ZeropsInventoryProvider lapse", () => {
     expect(tab.text()).toContain("locations: withheld");
 
     renewals();
-    await pass(2 * MINUTE_MS);
+    const [again] = buttonsLabelled(tab.container(), "Try now");
+    await tab.run(() => press(again!));
+    await pass(INVALIDATION_COALESCE_MS);
 
     expect(mounts()).toBe(1);
     expect(source.reads()).toBe(2);
@@ -320,6 +322,7 @@ describe("ZeropsInventoryProvider lapse", () => {
 
     // The renewal meets the 403 and closes p1; a confirming read at least 5 s later proves it.
     await pass(14 * MINUTE_MS);
+    await pass(5_000);
 
     expect(tab.readable()).not.toContain(MESSAGES);
     expect(tab.readable()).not.toContain(DRAFT);

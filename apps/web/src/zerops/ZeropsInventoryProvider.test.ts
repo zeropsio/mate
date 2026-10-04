@@ -123,47 +123,14 @@ describe("isInterestBlocked", () => {
     expect(isInterestBlocked(state, 10_000 + GRACE_MS, false)).toBe(true);
   });
 
-  it("stays unblocked while recovering before its own published retry time plus grace (H5)", () => {
-    const state: InterestState = {
-      status: "recovering",
-      identity,
-      reason: "disconnect",
-      attempt: 2,
-      nextRetryAtMs: 8_000,
-      progress,
-    };
-    expect(isInterestBlocked(state, 8_000, false)).toBe(false);
-    expect(isInterestBlocked(state, 8_000 + GRACE_MS - 1, false)).toBe(false);
-    // Past the runtime's own published retry time by the full grace margin
-    // with no state change since: read as a stall, using only the
-    // already-published field — no new timer.
-    expect(isInterestBlocked(state, 8_000 + GRACE_MS, false)).toBe(true);
-  });
-
-  it("never treats a placeholder `nextRetryAtMs: 0` as already elapsed", () => {
-    // The reducer emits this before the runtime's own backoff calculation
-    // stamps a real retry time (registration/malformed failure, membership
-    // overflow) — a render in that gap must not flip to the error UI.
-    const state: InterestState = {
-      status: "recovering",
-      identity,
-      reason: "malformed",
-      attempt: 1,
-      nextRetryAtMs: 0,
-      progress,
-    };
-    expect(isInterestBlocked(state, 0, false)).toBe(false);
-    expect(isInterestBlocked(state, Date.now(), false)).toBe(false);
-  });
-
   it("is never blocked while the document is hidden, however long an interest has been stuck", () => {
     const state: InterestState = {
-      status: "recovering",
+      status: "failed",
       identity,
       reason: "disconnect",
-      attempt: 2,
-      nextRetryAtMs: 8_000,
-      progress,
+      attempts: 1,
+      retryable: true,
+      retryAtMs: null,
     };
     expect(isInterestBlocked(state, 8_000 + GRACE_MS + 1_000_000, true)).toBe(false);
   });

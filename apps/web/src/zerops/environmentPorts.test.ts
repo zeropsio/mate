@@ -352,6 +352,8 @@ describe("hqIndexPort: HQ's index of the Mates the reader observes", () => {
   it("names the project whose Mate HQ says serves an environment, and tells of a change", () => {
     const registry = AtomRegistry.make();
     registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
       activeOrganization: { organizationId: "org-acme" },
     } as never);
     const index = hqIndexPort(registry);

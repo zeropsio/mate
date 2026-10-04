@@ -22,6 +22,8 @@ export interface ZeropsSessionValue {
   readonly client: ZeropsApiClient;
   readonly status: ZeropsSessionStatus;
   readonly user: ZeropsUser | null;
+  readonly activeOrganization: ZeropsOrganization | null;
+  readonly selectOrganization: (id: string) => void;
   readonly organizations: ReadonlyArray<ZeropsOrganization>;
   readonly restoreError: Error | null;
   readonly retryRestore: () => void;
@@ -36,6 +38,7 @@ const ZeropsSessionContext = createContext<ZeropsSessionValue | null>(null);
 
 export function ZeropsSessionProvider({ children }: { readonly children: ReactNode }) {
   const [status, setStatus] = useState<ZeropsSessionStatus>("loading");
+  const [selectedOrganizationId, selectOrganization] = useState<string | null>(null);
   const [user, setUser] = useState<ZeropsUser | null>(null);
   const [restoreError, setRestoreError] = useState<Error | null>(null);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
@@ -48,6 +51,7 @@ export function ZeropsSessionProvider({ children }: { readonly children: ReactNo
           if (session === null) {
             setStatus("signed-out");
             setUser(null);
+            selectOrganization(null);
             setNewRecoveryToken(null);
             return clearZeropsSession(mobileZeropsStorage);
           }
@@ -100,12 +104,18 @@ export function ZeropsSessionProvider({ children }: { readonly children: ReactNo
     };
   }, [client, restoreAttempt]);
 
+  const organizations = useMemo(() => (user ? zeropsClientsFromUser(user) : []), [user]);
+  const activeOrganization =
+    organizations.find(({ id }) => id === selectedOrganizationId) ??
+    (organizations.length === 1 ? organizations[0]! : null);
   const value = useMemo<ZeropsSessionValue>(
     () => ({
       client,
       status,
       user,
-      organizations: user ? zeropsClientsFromUser(user) : [],
+      organizations,
+      activeOrganization,
+      selectOrganization,
       restoreError,
       retryRestore: () => {
         setRestoreError(null);
@@ -142,12 +152,13 @@ export function ZeropsSessionProvider({ children }: { readonly children: ReactNo
         }
       },
     }),
-    [client, newRecoveryToken, restoreError, status, user],
+    [client, newRecoveryToken, restoreError, status, user, organizations, activeOrganization],
   );
 
   return (
     <ZeropsSessionContext value={value}>
       <ZeropsDataProvider
+        activeOrganizationId={activeOrganization?.id ?? null}
         account={
           status === "signed-in" && user !== null
             ? { client, userId: user.id, onUser: setUser }

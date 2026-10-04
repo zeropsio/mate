@@ -7,7 +7,6 @@ import type {
   ServiceDeployInfo,
   ServiceRecord,
 } from "../data/types.ts";
-import { ReceiptOrdinal } from "../data/types.ts";
 import { serviceRecordToZeropsService } from "../data/dto.ts";
 import { deployWord } from "../groupDeploys.ts";
 import { groupFlow } from "../groupFlow.ts";
@@ -463,7 +462,7 @@ describe("a service's deployment", () => {
     });
   });
 
-  it("marks a value the paused or recovering source no longer vouches for", () => {
+  it("marks a value the paused or failed source no longer vouches for", () => {
     const paused = serviceDeployment(
       servicesRead([record("s1", "app", deployed(null))], {
         interest: { status: "paused", identity: identity(), reason: "background" },
@@ -473,27 +472,21 @@ describe("a service's deployment", () => {
       state: "known",
       freshness: { kind: "paused", by: "background" },
     });
-    const recovering = serviceDeployment(
+    const failed = serviceDeployment(
       servicesRead([record("s1", "app", deployed(null))], {
         interest: {
-          status: "recovering",
+          status: "failed",
           identity: identity(),
           reason: "disconnect",
-          attempt: 2,
-          nextRetryAtMs: NOW,
-          progress: {
-            requiredRegistrations: 1,
-            completedRegistrations: 0,
-            requiredReads: 1,
-            completedReads: 0,
-            crossedReceiptOrdinal: ReceiptOrdinal.make(1),
-          },
+          attempts: 1,
+          retryable: true,
+          retryAtMs: null,
         },
       }),
     );
-    expect(recovering).toMatchObject({
+    expect(failed).toMatchObject({
       state: "known",
-      freshness: { kind: "stale", reason: { kind: "source-recovering", retryAtMs: NOW } },
+      freshness: { kind: "stale", reason: { kind: "revalidation-failed", retryAtMs: null } },
     });
   });
 

@@ -119,8 +119,8 @@ describe("central Zerops data bindings", () => {
       schemaVersion: 1 as const,
     };
     const serviceQueryDescriptor = {
-      kind: "services-of-organization" as const,
-      organization: project.organization,
+      kind: "services-of-project" as const,
+      project: project,
       schemaVersion: 1 as const,
     };
     const initial = makeInitialZeropsDataState({ account, epoch: AccountEpoch.make(1) });

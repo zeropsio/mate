@@ -4,8 +4,7 @@
  * route and the links into it agree on which environments are worth opening. An environment no
  * machine names is looked up in the descriptor index, then in HQ's index of the Mates the reader
  * observes (`hqProjectAtom`, A9). The route's environment is the runtime's too: it exchanges the
- * route's target first, and sweeps the descriptors of every present Mate that has not answered
- * while nothing names it.
+ * route's target first. Cached descriptors do not start discovery reads of other projects.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -53,55 +52,6 @@ const NO_PROJECT = Atom.make<string | null>(null).pipe(Atom.withLabel("route-gat
 
 export type Machines = ReadonlyMap<TargetKey, EnvironmentMachine>;
 
-/**
- * A credential still on its way: not yet judged, exchanging, answered but not yet installed,
- * waiting for a slot or the grant, or on a presence not read yet (unknown, or only remembered from
- * its record, A16). A target whose presence was read and is not there, that waits on its
- * container, or backs off has no end discovery could wait for.
- */
-function onItsWay(machine: EnvironmentMachine): boolean {
-  const credential = machine.credential;
-  switch (credential.kind) {
-    case "none":
-    case "exchanging":
-      return true;
-    case "waiting":
-      return (
-        credential.on === "budget" ||
-        credential.on === "access" ||
-        (credential.on === "presence" &&
-          (machine.presence.kind === "unknown" || machine.presence.kind === "remembered"))
-      );
-    case "held":
-      return !credential.installed;
-    case "backoff":
-    case "refused":
-    case "retired":
-      return false;
-  }
-}
-
-/**
- * Whether a target could still name an environment no machine names yet (§4.8 RG2, before the
- * descriptor sweep): a remembered target the driver has not taken in or whose credential is on
- * its way, or any exchange still running.
- */
-export function discoveryPending(
-  machines: Machines,
-  remembered: ReadonlyArray<TargetKey>,
-): boolean {
-  return (
-    remembered.some((key) => {
-      const machine = machines.get(key);
-      return machine === undefined || onItsWay(machine);
-    }) ||
-    [...machines.values()].some(
-      ({ credential }) =>
-        credential.kind === "exchanging" || (credential.kind === "held" && !credential.installed),
-    )
-  );
-}
-
 export type RouteOrganization = "chosen" | "choosing" | "not-chosen";
 
 /**
@@ -120,14 +70,12 @@ export function hqNamedTarget(
 }
 
 /**
- * The gate's target for the route's environment. Discovery reads every organization's Mates, so
- * it runs whether an organization is chosen or not: the picker is offered only once it settled
- * without naming the environment, never while it could still name it.
+ * The gate joins HQ, cached descriptor and installed credentials by id. An unknown route waits
+ * for active-organization navigation, then offers a definite unavailable state or org picker.
  */
 export function routeTarget(input: {
   readonly machines: Machines;
   readonly index: DescriptorIndex;
-  readonly remembered: ReadonlyArray<TargetKey>;
   readonly environmentId: EnvironmentId;
   /** The listed Mate HQ names for the environment (`hqNamedTarget`), where no machine does. */
   readonly hqNamed?: { readonly machine: EnvironmentMachine } | undefined;
@@ -153,11 +101,7 @@ export function routeTarget(input: {
       content: input.content,
     };
   }
-  const discovering =
-    input.organization === "choosing" ||
-    !input.inventoryKnown ||
-    discoveryPending(input.machines, input.remembered) ||
-    input.index.unanswered.length > 0;
+  const discovering = input.organization === "choosing" || !input.inventoryKnown;
   if (discovering) return { kind: "unresolved", discovery: "pending" };
   return {
     kind: "unresolved",
@@ -220,7 +164,6 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   const { environments } = useEnvironments();
   const inventory = useContext(InventoryContext);
   const { organizationStatus } = useZeropsSession();
-  const records = useRegistrationRecords();
   const content = useAtomValue(
     environmentId === null ? NO_SHELL : environmentShell.stateValueAtom(environmentId),
   ).status;
@@ -234,7 +177,6 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
       : routeTarget({
           machines,
           index,
-          remembered: records.map((record) => record.targetKey),
           environmentId,
           hqNamed,
           inventoryKnown:

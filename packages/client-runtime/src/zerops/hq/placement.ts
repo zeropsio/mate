@@ -13,6 +13,9 @@
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
+import type { CandidateRow } from "../projections/candidates.ts";
+import type { ZeropsProject } from "../api.ts";
+
 import type { Known } from "../knowledge/known.ts";
 import type { HqMate, HqStructure } from "./client.ts";
 
@@ -142,4 +145,44 @@ export function birthIntentOf(
     if (birth !== undefined) return { appId: app.id, face: birth.face };
   }
   return undefined;
+}
+
+/** HQ's row membership, enriched with platform facts by project id. */
+export function menuRowsFromHq(input: {
+  readonly organizationId: string;
+  readonly structure: HqStructure;
+  readonly projects: ReadonlyArray<ZeropsProject>;
+  readonly candidates: ReadonlyArray<CandidateRow>;
+  readonly gone: ReadonlySet<string>;
+}): ReadonlyArray<CandidateRow> {
+  const placements = placementsOf(input.structure);
+  const projects = new Map(input.projects.map((project) => [project.id, project]));
+  const candidates = new Map<string, CandidateRow>();
+  for (const row of input.candidates) {
+    if (!candidates.has(row.project.id) || row.group === "connected")
+      candidates.set(row.project.id, row);
+  }
+  const names = new Map([
+    ...input.structure.apps.flatMap((app) =>
+      app.projects.map((project) => [project.projectId, project.name] as const),
+    ),
+    ...input.structure.ungrouped.map((project) => [project.projectId, project.name] as const),
+  ]);
+  return [...placements].flatMap(([id, placement]): ReadonlyArray<CandidateRow> => {
+    if (input.gone.has(id)) return [];
+    const row = candidates.get(id);
+    const project = projects.get(id) ??
+      row?.project ?? {
+        id,
+        name: names.get(id) ?? id,
+        status: "UNKNOWN",
+        clientId: input.organizationId,
+      };
+    return [
+      {
+        ...(row ?? { key: id, group: "unavailable", presence: "unknown" }),
+        project: { ...project, hq: placement },
+      },
+    ];
+  });
 }

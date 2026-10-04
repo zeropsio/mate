@@ -2,8 +2,8 @@
 
 The hosted client has one account boundary, outside the router and connection runtime. Only the
 Zerops callback can run before verification. A saved credential is not verification: Mate checks
-`user/info`, then reads current organizations, projects, effective project roles and services before
-mounting the product. Registration and second factors belong to the Zerops account application.
+`user/info` before mounting the product. HQ menu memory can paint earlier. Navigation reads only
+the selected organization; project roles and services are demanded when a project opens. Registration and second factors belong to the Zerops account application.
 
 ## Ownership and authority
 
@@ -72,34 +72,32 @@ operations check the original session generation before subsequent writes.
 The rules in this section hold from slice 0.6 of the
 [client state model](client-state-model.md#status-by-phase).
 
-Access is verified by REST alone. A round reads `user/info`, every organization's project list and
-each listed project, four projects at a time. Inventory completeness, interest liveness and receiver
-state are not inputs, and from 2.3 a round re-reads no inventory. At most one round runs at a time;
-its deadline is 30 s plus 15 s for every four projects.
+Access is verified by REST alone. A round reads `user/info` (or reuses its recent answer), then
+only projects demanded by a route or explicit action through `GET /project/{id}`, four at a time.
+It never enumerates organization project lists. Navigation and inventory completeness are not
+admission evidence. The runtime shares the direct project result with access classification,
+including `userRoles`, and ingests its platform observations before completing the read. An
+unavailable observation from a 403/404 retains that denial kind; it is not a transport failure.
+At most one round runs; its deadline is 30 s plus 15 s for every four demanded projects.
 
-Evidence is stamped when the round's first request is sent, on both the wall clock and the monotonic
-clock. Authority ends 15 minutes after its stamp on whichever clock reaches that first. A wall clock
-set back by more than 60 s counts as a lapse and starts a round at once. A round whose result
-arrives after its own deadline, as in a tab frozen mid-round, is discarded and a new round starts.
-The deadline is checked whenever a write or an action is admitted and on every wake, hidden or
-visible.
+Evidence is stamped when the round's first request is sent, on both wall and monotonic clocks.
+Authority ends 15 minutes after its stamp on whichever clock reaches that first. A wall clock
+set back by more than 60 s counts as a lapse. A result arriving after its own deadline is discarded
+and shown as failed. Every write/action admission and wake checks the absolute deadline.
 
-Admission is per project. The account is admitted when `user/info` and every organization list
-answer; only their failure fails a round. Each project's authority rests on its own evidence stamp.
-A project whose read fails transiently keeps its older evidence until that evidence's own deadline;
-after it, the project's content is withheld and its writes are closed until a per-project retry
-(10, 20, 40, 60 s) succeeds. The account stays admitted and other projects are untouched. A 403 or
-404 on a project's read closes that project's writes at once, even mid-round; its content is
-withheld, and removed only after a direct read of the same project at least 5 s later confirms the
-answer. A lowered role in an admitted round applies at once.
+The account is admitted by `user/info`; each opened project's content and writes require its own
+role and evidence stamp. READ_ONLY can be verified without mutation authority; NO_ACCESS cannot
+admit project content. A transient project failure keeps older evidence until its own deadline,
+then withholds content and closes writes until a manual attempt succeeds. A 403/404 closes writes
+immediately and withholds content. One direct read of the same demanded project at least 5 s later
+confirms the denial before removal. Failure of that confirmation requires a manual attempt.
+A lowered role applies as soon as a round admits it. HQ navigation grants no mutation authority.
 
-Renewal is due at the stamp plus 15 minutes minus a lead of at least 3 minutes, widened to 60 s plus
-the epoch's 95th-percentile round duration plus 30 s when rounds are slower. A renewal never closes
-a write the held evidence still covers: writes stay open until the old deadline. A failed renewal
-retries at 10, 20, 40 and 60 s within that deadline. While lapsed, a visible tab starts a round at
-once on wake, then retries at 2, 5, 15, 30 and 60 s. A tab hidden for 60 minutes stops renewing; its
-grant lapses at the deadline, and its next wake starts a round before anything else that needs
-access.
+Healthy renewal is due before expiry, with a lead of at least 3 minutes, widened for slower rounds.
+A running renewal leaves writes open until the old evidence expires. A failed initial round or
+renewal stays failed: ticks, online and visible wake do not retry it. The person uses **Try now**.
+A tab hidden for 60 minutes stops healthy renewal; its grant still expires on time. Returning from
+that pause can start a healthy renewal, but cannot clear an existing failure.
 
 ## Server door and compatibility
 

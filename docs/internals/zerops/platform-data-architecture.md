@@ -1,13 +1,13 @@
 # Zerops live data architecture
 
-Status: **implemented client architecture**, 2026-09-08. The existing web and
+Status: **implemented client architecture**, 2026-10-04. The existing web and
 retained mobile Zerops data consumers use the central runtime. This remains an
 observational client model, not a claim that every upstream source guarantee is proven.
 
 Source baseline: Mate `2251deee8` (initial audit `5a571f3b0`), frontend-legacy
 `c88b8fefb`, zcp `08e7dbae`, zerops-docs `4899cf0b`. Independent Fable 5.1 and
 Astra reviews informed this decision. The [account contract](account-lifecycle.md)
-remains unchanged. [zcp spec §5.1](../../../../zcp/docs/spec-mate.md#51-the-service-map-is-a-client-projection-of-the-zerops-api)
+defines targeted admission. [zcp spec §5.1](../../../../zcp/docs/spec-mate.md#51-the-service-map-is-a-client-projection-of-the-zerops-api)
 adopts this architecture and records its implemented scope.
 See [the fixed consistency contract](platform-data-consistency.md) for implementable
 source precedence, bootstrap/recovery and adapter admission requirements.
@@ -302,12 +302,29 @@ scopes also have direct bootstrap/recovery anchors. The fixed consistency contra
 defines these distinct roles. Metric subscriptions are also native; logs remain a
 separately adapted stream.
 
-Start with organization-scoped ServiceStack and Process list/update interests
-shared by project views on an organization receiver. Project-list/access interests
-are additional: those four subscriptions alone do not cover the whole platform.
-Keep separate receivers across organizations until wider sharing is proven.
-Telemetry/detail demand is explicit. Large-organization partitioning can change
-behind the same interface after measurement; panels never choose transport scope.
+Navigation holds project list/update demand only for the active organization. HQ owns the menu's
+placement rows, applications, Mate presence and overview. It can paint its live structure or the
+account's menu memory before runtime admission or inventory completes. Restored structure reads
+**Last known · as of … · Updating…**, with presence unknown. Zerops enriches names/status by ID;
+only definite Zerops not-found evidence removes a held row. A zcp service outside HQ is not a
+primary Mate menu row; setup/discovery belongs to its separately opened project surface.
+
+The opened project holds service/process membership and updates filtered by both organization and
+project IDs. Its services bootstrap from one direct project service list. Version/variable list
+and update filters name only that project's service IDs. Query identities and table coverage
+include those IDs; releasing one project cannot erase another project's table rows or mark its
+unopened service answered. Absent metadata is a single attempt, re-read only for a causal source
+change or a person's manual action.
+
+Each active organization has a navigation receiver and each opened project has a detail receiver.
+When demand shrinks, close/rebuild the detail lane to stop released registrations on the wire;
+retain the navigation lane. A failed sibling remains failed during rebuilding. Metrics and metric
+history are separate leases held only while the opened Mate panel and browser tab are visible.
+Panel **Try again** targets that project's held demand, leaving navigation untouched.
+
+Desktop source shares the web behavior. Retained mobile source selects an organization and a project
+before reading detail; its first **View project** press supplies that detail demand. Mobile has no
+metric consumer to lease. This fork releases only the hosted web client.
 
 Separate these concepts with small concrete states:
 
@@ -315,7 +332,7 @@ Separate these concepts with small concrete states:
 - Query coverage: complete scope, partial window, unresolved membership.
 - Transport health: connection state.
 - Domain/interest synchronization: establishing, observing under its declared
-  guarantee, recovering, paused or failed. One open socket cannot conceal a failed
+  guarantee, paused or failed. One open socket cannot conceal a failed
   subscription for a particular kind/query.
 - Access: independently verified scope and deadline. Data arrival cannot renew it.
 
@@ -340,22 +357,22 @@ and consumes native changes in local receipt order. These are local admission
 rules, not source chronology. See the consistency contract for the complete
 algorithm; implementers must not invent a different recovery policy per domain.
 
-Resnapshot on reconnect, detected loss, rejected input or explicit refresh.
+Resnapshot healthy paused demand on foreground return or a held scope on explicit refresh.
+Detected loss and rejected input produce a visible failed state with a manual action.
 A healthy receiver drives data through native frames without periodic REST
 traversals of the account. Heartbeats detect transport failure, not silent source
 omissions; those can remain until a new baseline or explicit refresh. Keep that
 limit in the observation guarantee. Overflow marks the affected interest
-unsynchronized before recovery; dropped frames plus a GET are not automatically
+unsynchronized before a manual recovery; dropped frames plus a GET are not automatically
 correct. Read-only domains without push have explicit on-demand semantics and do
 not advertise live synchronization.
 
-Account-wide candidate discovery acquires only project/service inventory. Process
-searches belong to visible topology or operation activity, and metrics/history
-remain separate demand. Establishment and recovery pair subscription baselines
-with one direct inventory/activity anchor for each demanded scope, so a stale search
-response cannot prevent refreshing previously authoritative fields. Removing a
-surface releases its demand. The independent
-account verification window remains unchanged.
+Active-organization navigation never creates detail leases for all listed projects. Service and
+process searches belong to an opened project or explicit action. Each demanded scope pairs
+subscription baselines with a direct anchor. Removing its surface releases demand. The access
+verifier shares an opened project's direct read and never uses navigation enumeration to renew
+access. Failed HQ streams, grant rounds, registrations, hydration and metadata reads stay failed
+until the visible manual action; no timer repairs them.
 
 Local account/transport/interest generations fence obsolete work. Revocation stops
 affected content and commands immediately; a sleeping tab cannot extend access
@@ -376,9 +393,9 @@ an env write replacing the complete environment set. Secrets and signed grants
 have restricted lifetimes. No generic platform-state persistence is proposed.
 
 Admission is per project, as the [account contract](account-lifecycle.md#access-verification)
-states from 0.6: the account is admitted when `user/info` and every organization
-list answer, and each project's content and writes rest on that project's own
-evidence and deadline. Transport changes must preserve that gate.
+admits the account from `user/info`; each demanded project's content and writes rest on its
+own direct-read evidence, role and deadline. HQ menu rows can paint before this gate, with
+admission-dependent actions withheld.
 
 ## Alternatives and engine choice
 

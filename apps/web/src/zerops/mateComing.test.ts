@@ -1114,7 +1114,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
       key: KEY,
       projectId: "project-larch",
       machines: new Map([[KEY, machine]]),
-      index: { serving: new Map(), reported: new Map(), unanswered: [], failed: [] },
+      index: { serving: new Map(), reported: new Map() },
       records: [],
       registered: new Set(),
     });

@@ -385,29 +385,27 @@ export type FacetPatch<Fields> = Readonly<Partial<Fields>>;
 type IndexedQueryForTarget<Target extends EntityReadTarget> = Target["kind"] extends "project"
   ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
   : Target["kind"] extends "service"
-    ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-organization" }>
+    ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
     : Extract<
         EntityQueryDescriptor,
-        { readonly kind: "running-processes-of-organization" | "process-history-window" }
+        { readonly kind: "running-processes-of-project" | "process-history-window" }
       >;
 
 type DirectCollectionQueryForTarget<Target extends EntityReadTarget> =
   Target["kind"] extends "project"
     ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
     : Target["kind"] extends "service"
-      ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-organization" }>
+      ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
       : Target["kind"] extends "process"
         ? Extract<
             EntityQueryDescriptor,
-            { readonly kind: "running-processes-of-organization" | "process-history-window" }
+            { readonly kind: "running-processes-of-project" | "process-history-window" }
           >
         : never;
 
 type EntityUpdateRegistrationForTarget<Target extends EntityReadTarget> = RegistrationRequest & {
-  readonly descriptor: {
-    readonly kind: "entity-updates";
+  readonly descriptor: Extract<RegistrationDescriptor, { readonly kind: "entity-updates" }> & {
     readonly entity: Target["kind"];
-    readonly organization: OrganizationRef;
   };
 };
 
@@ -552,15 +550,6 @@ export type QueryDescriptor =
     }
   | {
       /**
-       * Every service of the organization, in one search and one subscription: a project's
-       * services are its slice of these (`selectServicesOf`), never a search of their own.
-       */
-      readonly kind: "services-of-organization";
-      readonly organization: OrganizationRef;
-      readonly schemaVersion: 1;
-    }
-  | {
-      /**
        * One project's services, read directly and lag-free (`GET /project/{id}/service-stack`),
        * never subscribed: only the confirming read an absence asks for (§9 C19).
        */
@@ -570,8 +559,8 @@ export type QueryDescriptor =
     }
   | {
       /** The organization's running processes, read and subscribed once for every project. */
-      readonly kind: "running-processes-of-organization";
-      readonly organization: OrganizationRef;
+      readonly kind: "running-processes-of-project";
+      readonly project: ProjectRef;
       /** Wire filters admit only known status strings. Unknown values are observation data. */
       readonly statuses: ReadonlyArray<RunningProcessStatus>;
       readonly schemaVersion: 1;
@@ -601,8 +590,9 @@ export type QueryDescriptor =
        * Every version the organization's services run now (`POST /app-version/search`, status
        * `ACTIVE`): what each runs and from where, which a service's own row does not say (A14).
        */
-      readonly kind: "active-versions-of-organization";
+      readonly kind: "active-versions-of-services";
       readonly organization: OrganizationRef;
+      readonly serviceIds: ReadonlyArray<string>;
       /** Only these versions: a read by id of rows the list's frames named (`entityTable.ts`). */
       readonly ids?: ReadonlyArray<string>;
       readonly schemaVersion: 1;
@@ -612,8 +602,9 @@ export type QueryDescriptor =
        * The organization's service variables of these keys (`POST /user-data/search`, `key in`):
        * the Mate flag and the deploy a service last started, for every service in one search.
        */
-      readonly kind: "service-variables-of-organization";
+      readonly kind: "service-variables-of-services";
       readonly organization: OrganizationRef;
+      readonly serviceIds: ReadonlyArray<string>;
       readonly keys: ReadonlyArray<string>;
       /** Only these variables: a read by id of rows the list's frames named (`entityTable.ts`). */
       readonly ids?: ReadonlyArray<string>;
@@ -623,23 +614,23 @@ export type QueryDescriptor =
 /** The searches whose rows the entity table holds as the platform sends them (`entityTable.ts`). */
 export type TableQueryDescriptor = Extract<
   QueryDescriptor,
-  { readonly kind: "active-versions-of-organization" | "service-variables-of-organization" }
+  { readonly kind: "active-versions-of-services" | "service-variables-of-services" }
 >;
 
 /** The platform entities the entity table holds, by their search's path. */
 export type TableEntity = "app-version" | "user-data";
 
 export const tableEntityOf = (descriptor: TableQueryDescriptor): TableEntity =>
-  descriptor.kind === "active-versions-of-organization" ? "app-version" : "user-data";
+  descriptor.kind === "active-versions-of-services" ? "app-version" : "user-data";
 
 export type EntityQueryDescriptor = Extract<
   QueryDescriptor,
   {
     readonly kind:
       | "projects-of-organization"
-      | "services-of-organization"
       | "services-of-project"
-      | "running-processes-of-organization"
+      | "services-of-project"
+      | "running-processes-of-project"
       | "process-history-window";
   }
 >;
@@ -647,7 +638,7 @@ export type EntityQueryDescriptor = Extract<
 export type QueryMemberRef<Descriptor extends EntityQueryDescriptor> =
   Descriptor["kind"] extends "projects-of-organization"
     ? ProjectRef
-    : Descriptor["kind"] extends "services-of-organization" | "services-of-project"
+    : Descriptor["kind"] extends "services-of-project" | "services-of-project"
       ? ServiceRef
       : ProcessRef;
 
@@ -673,19 +664,11 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
           String(descriptor.schemaVersion),
         ]),
       );
-    case "services-of-organization":
+    case "running-processes-of-project":
       return QueryKey.make(
         scopedKey([
           descriptor.kind,
-          organizationKeyOf(descriptor.organization),
-          String(descriptor.schemaVersion),
-        ]),
-      );
-    case "running-processes-of-organization":
-      return QueryKey.make(
-        scopedKey([
-          descriptor.kind,
-          organizationKeyOf(descriptor.organization),
+          projectKeyOf(descriptor.project),
           canonicalStringSet(descriptor.statuses),
           String(descriptor.schemaVersion),
         ]),
@@ -721,20 +704,22 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
           String(descriptor.schemaVersion),
         ]),
       );
-    case "active-versions-of-organization":
+    case "active-versions-of-services":
       return QueryKey.make(
         scopedKey([
           descriptor.kind,
           organizationKeyOf(descriptor.organization),
+          canonicalStringSet(descriptor.serviceIds),
           descriptor.ids === undefined ? "" : canonicalStringSet(descriptor.ids),
           String(descriptor.schemaVersion),
         ]),
       );
-    case "service-variables-of-organization":
+    case "service-variables-of-services":
       return QueryKey.make(
         scopedKey([
           descriptor.kind,
           organizationKeyOf(descriptor.organization),
+          canonicalStringSet(descriptor.serviceIds),
           canonicalStringSet(descriptor.keys),
           descriptor.ids === undefined ? "" : canonicalStringSet(descriptor.ids),
           String(descriptor.schemaVersion),
@@ -1281,10 +1266,10 @@ export type CollectionQueryForRecord<Record extends ZeropsEntityRecord> =
   Record extends ProjectRecord
     ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
     : Record extends ServiceRecord
-      ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-organization" }>
+      ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
       : Extract<
           EntityQueryDescriptor,
-          { readonly kind: "running-processes-of-organization" | "process-history-window" }
+          { readonly kind: "running-processes-of-project" | "process-history-window" }
         >;
 
 export interface RetainedMembershipOperation<Member extends EntityRef = EntityRef> {
@@ -1374,14 +1359,6 @@ export type InterestState =
       readonly identity: InterestIdentity;
       readonly guarantee: "source-order-unverified";
       readonly sinceReceiptOrdinal: ReceiptOrdinal;
-    }
-  | {
-      readonly status: "recovering";
-      readonly identity: InterestIdentity;
-      readonly reason: "disconnect" | "registration" | "malformed" | "overflow" | "foreground";
-      readonly attempt: number;
-      readonly nextRetryAtMs: number;
-      readonly progress: InterestProgress;
     }
   | {
       readonly status: "paused";
@@ -1606,17 +1583,23 @@ export type CommandAttemptState =
 export type RuntimeInterestDescriptor =
   | { readonly kind: "organization-inventory"; readonly organization: OrganizationRef }
   /** What the organization's services run: its active versions, listed and streamed (A14). */
-  | { readonly kind: "organization-versions"; readonly organization: OrganizationRef }
+  | {
+      readonly kind: "project-versions";
+      readonly project: ProjectRef;
+      readonly serviceIds: ReadonlyArray<string>;
+    }
   /**
    * The organization's service variables the app reads (`SERVICE_VARIABLE_KEYS`): the Mate flag
    * and the deploy a service last started, listed and streamed.
    */
-  | { readonly kind: "organization-variables"; readonly organization: OrganizationRef }
+  | {
+      readonly kind: "project-variables";
+      readonly project: ProjectRef;
+      readonly serviceIds: ReadonlyArray<string>;
+    }
   | {
       readonly kind: "project-topology";
       readonly project: ProjectRef;
-      /** Compatibility request bit; runtimes expose metrics as a separate optional interest. */
-      readonly includeCurrentMetrics: boolean;
     }
   | { readonly kind: "project-inventory"; readonly project: ProjectRef }
   /**
@@ -1643,7 +1626,13 @@ export type RuntimeInterestDescriptor =
 export type RegistrationDescriptor =
   | {
       readonly kind: "entity-updates";
-      readonly entity: "project" | "service" | "process";
+      readonly entity: "project";
+      readonly organization: OrganizationRef;
+    }
+  | {
+      readonly kind: "entity-updates";
+      readonly entity: "service" | "process";
+      readonly project: ProjectRef;
       readonly organization: OrganizationRef;
     }
   | { readonly kind: "query-membership"; readonly query: EntityQueryDescriptor }
@@ -1657,11 +1646,12 @@ export type RegistrationDescriptor =
     }
   /** A table list's membership stream (`listStream`): the ids its search admits, as they change. */
   | { readonly kind: "table-list"; readonly query: TableQueryDescriptor }
-  /** A table entity's update stream (`updateStream`): every changed row of the organization. */
+  /** A table entity's update stream (`updateStream`) restricted to its service IDs. */
   | {
       readonly kind: "table-updates";
       readonly entity: TableEntity;
       readonly organization: OrganizationRef;
+      readonly serviceIds: ReadonlyArray<string>;
     };
 
 export interface RequestContext {
@@ -1810,6 +1800,8 @@ export interface RegistrationReceipt {
 export type PlatformReadRequest = ReadTicket;
 
 export interface PlatformReadResult {
+  /** Direct project answer, retained for access classification of this same read. */
+  readonly project?: ZeropsProject;
   readonly observations: ReadonlyArray<PlatformObservation>;
 }
 
@@ -2140,8 +2132,7 @@ export interface CollectionRead<Record extends ZeropsEntityRecord> {
   readonly query: QueryState<CollectionQueryForRecord<Record>>;
   readonly observation: ViewObservation;
   /**
-   * The project this read is the slice of, when it is one project's services or processes: the
-   * query behind it is the organization's.
+   * The project this collection read belongs to, for service and process scopes.
    */
   readonly project?: ProjectRef;
 }
@@ -2365,25 +2356,8 @@ export interface ZeropsDataRuntime {
     never,
     Scope.Scope
   >;
-  /**
-   * Re-reads an organization's inventory. Every interest held on the
-   * organization is re-established on a fresh receiver, so each baseline is
-   * read again, while what the reads already hold stays readable until the
-   * new baseline replaces it. No lease is released: a released lease drops
-   * what it read, and a screen that re-took its leases painted "Reading…"
-   * over the list it had a moment ago. An organization nobody holds is left
-   * alone, and so is a paused interest — the return to the foreground
-   * re-reads it.
-   *
-   * `retry` is a person's Try now: the organization's subscriptions that are
-   * not observing — stalled, recovering or failed — start over at once on the
-   * socket that is open, which it does not replace, and the ones observing
-   * keep their registrations.
-   */
-  readonly refresh: (
-    organization: OrganizationRef,
-    options?: { readonly retry?: boolean },
-  ) => Effect.Effect<void>;
+  /** An explicit attempt re-establishes held demand in this org or project, retaining its values. */
+  readonly refresh: (scope: OrganizationRef | ProjectRef) => Effect.Effect<void>;
   /** Re-reads one project and its services, sharing an outstanding check per project. */
   readonly refreshPresence: (project: ProjectRef) => Effect.Effect<void>;
   /**

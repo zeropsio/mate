@@ -16,8 +16,6 @@ export interface ZeropsDataPolicy {
   readonly ingressPublicationBatchEvents: number;
   readonly readConcurrency: number;
   readonly hydrationConcurrency: number;
-  /** The interests one recovery round re-establishes at once; the rest wait for a slot. */
-  readonly recoveryConcurrency: number;
   /**
    * Registration requests in flight at once across the account, the organization inventory's
    * admitted first; a registration's deadline starts when it is sent, not while it waits.
@@ -28,10 +26,6 @@ export interface ZeropsDataPolicy {
   readonly retainedCompletedReadsPerAccount: number;
   readonly queuedCommandRequestsPerAccount: number;
   readonly retainedCommandAttemptsPerAccount: number;
-  readonly hydrationRetryLimit: number;
-  readonly recoveryAttemptLimit: number;
-  readonly recoveryBackoffStartMs: number;
-  readonly recoveryBackoffMaxMs: number;
   readonly retainedProjectsPerAccount: number;
   readonly retainedServicesPerAccount: number;
   readonly retainedTerminalProcessesPerProject: number;
@@ -67,13 +61,13 @@ export interface ZeropsDataPolicy {
  * tune these values without changing public observation semantics.
  *
  * Every one of these budgets is a capacity, never a silent-loss trigger:
- * reducers must expose the state transition ("partial", "recovering", or
- * "failed") before any policy-driven discard. The eviction rule per kind of
+ * reducers must expose the state transition ("partial" or "failed")
+ * before any policy-driven discard. The eviction rule per kind of
  * state — an inactive query is removed immediately after its last lease, a
  * completed read evicts its oldest diagnostic first, a terminal command
  * attempt evicts its oldest unreferenced attempt, pending work is never
  * evicted (new admission is rejected at capacity instead), and live data
- * marks the affected view partial or recovering before any loss.
+ * marks the affected view partial or failed before any loss.
  */
 export const DEFAULT_ZEROPS_DATA_POLICY: ZeropsDataPolicy = Object.freeze({
   httpDeadlineMs: 15_000,
@@ -90,17 +84,12 @@ export const DEFAULT_ZEROPS_DATA_POLICY: ZeropsDataPolicy = Object.freeze({
   ingressMaxFrameBytes: 1 * 1_024 * 1_024,
   readConcurrency: 8,
   hydrationConcurrency: 4,
-  recoveryConcurrency: 4,
   registrationConcurrency: 6,
   queuedReadRequestsPerAccount: 1_024,
   activeSharedReadsPerAccount: 256,
   retainedCompletedReadsPerAccount: 2_048,
   queuedCommandRequestsPerAccount: 128,
   retainedCommandAttemptsPerAccount: 1_000,
-  hydrationRetryLimit: 3,
-  recoveryAttemptLimit: 5,
-  recoveryBackoffStartMs: 1_000,
-  recoveryBackoffMaxMs: 30_000,
   retainedProjectsPerAccount: 10_000,
   retainedServicesPerAccount: 50_000,
   retainedTerminalProcessesPerProject: 500,
@@ -157,9 +146,6 @@ export function makeZeropsDataPolicy(overrides: Partial<ZeropsDataPolicy> = {}):
   if (policy.ingressMaxFrameBytes > policy.ingressMaxBytesPerAccount) {
     throw new RangeError("ingressMaxFrameBytes cannot exceed ingressMaxBytesPerAccount.");
   }
-  if (policy.recoveryBackoffStartMs > policy.recoveryBackoffMaxMs) {
-    throw new RangeError("recoveryBackoffStartMs cannot exceed recoveryBackoffMaxMs.");
-  }
   if (policy.desiredInterestsPerReceiver > policy.registrationAttemptsPerReceiver) {
     throw new RangeError(
       "desiredInterestsPerReceiver cannot exceed registrationAttemptsPerReceiver.",
@@ -170,8 +156,8 @@ export function makeZeropsDataPolicy(overrides: Partial<ZeropsDataPolicy> = {}):
 
 /**
  * The access grant's clocks (DESIGN §4.2, D5). Evidence authorizes for `windowMs` from the
- * instant its round started, on both the wall and the monotonic clock; every ladder below is
- * a schedule of waits in milliseconds whose last rung repeats.
+ * instant its round started, on both the wall and the monotonic clock. A failed read waits
+ * for an explicit manual attempt.
  */
 export interface ZeropsGrantPolicy {
   /** How long evidence authorizes after its round started (account-lifecycle 15 min window). */
@@ -180,8 +166,8 @@ export interface ZeropsGrantPolicy {
   readonly renewalLeadFloorMs: number;
   /** A hidden tab's timer may fire this late: Chrome aligns throttled timers to 1-min buckets. */
   readonly hiddenTimerAlignmentMs: number;
-  /** Room for one retry of a failed renewal before the deadline. */
-  readonly renewalRetryAllowanceMs: number;
+  /** Room to show a failed renewal before the deadline. */
+  readonly renewalSafetyMarginMs: number;
   /** How many admitted round durations feed the p95 of the renewal lead. */
   readonly roundDurationSamples: number;
   /** A tab hidden this long stops renewing; its grant lapses at its deadline (D5). */
@@ -195,14 +181,6 @@ export interface ZeropsGrantPolicy {
   readonly wallJumpBackToleranceMs: number;
   /** A 403/404 removes content only after a direct read at least this much later agrees (G6). */
   readonly denialConfirmationDelayMs: number;
-  /** Before the first grant: the session backoff (§4.0 rungs). */
-  readonly initialRetryMs: ReadonlyArray<number>;
-  /** A failed renewal while the held evidence is still valid, bounded by its deadline. */
-  readonly renewalRetryMs: ReadonlyArray<number>;
-  /** Lapsed: the wake's own round runs at once, later failures wait these rungs (G9). */
-  readonly lapsedRetryMs: ReadonlyArray<number>;
-  /** One project whose read failed transiently, while the account stays granted (G1). */
-  readonly projectRetryMs: ReadonlyArray<number>;
   /**
    * The epoch's first mount waits this long after its round started or ended before its wait
    * offers a way off (G10): a round that never answers, or data that never arrives.
@@ -212,14 +190,11 @@ export interface ZeropsGrantPolicy {
 
 const SECOND_MS = 1_000;
 const MINUTE_MS = 60 * SECOND_MS;
-const seconds = (...values: ReadonlyArray<number>): ReadonlyArray<number> =>
-  Object.freeze(values.map((value) => value * SECOND_MS));
-
 export const DEFAULT_ZEROPS_GRANT_POLICY: ZeropsGrantPolicy = Object.freeze({
   windowMs: 15 * MINUTE_MS,
   renewalLeadFloorMs: 3 * MINUTE_MS,
   hiddenTimerAlignmentMs: 60 * SECOND_MS,
-  renewalRetryAllowanceMs: 30 * SECOND_MS,
+  renewalSafetyMarginMs: 30 * SECOND_MS,
   roundDurationSamples: 20,
   dormantAfterHiddenMs: 60 * MINUTE_MS,
   roundDeadlineBaseMs: 30 * SECOND_MS,
@@ -227,18 +202,14 @@ export const DEFAULT_ZEROPS_GRANT_POLICY: ZeropsGrantPolicy = Object.freeze({
   roundProjectConcurrency: 4,
   wallJumpBackToleranceMs: 60 * SECOND_MS,
   denialConfirmationDelayMs: 5 * SECOND_MS,
-  initialRetryMs: seconds(2, 4, 8, 15, 30, 60),
-  renewalRetryMs: seconds(10, 20, 40, 60),
-  lapsedRetryMs: seconds(2, 5, 15, 30, 60),
-  projectRetryMs: seconds(10, 20, 40, 60),
   firstMountPatienceMs: 20 * SECOND_MS,
 });
 
-/** G13: `max(floor, timer alignment + p95 round + one retry)`. */
+/** G13: `max(floor, timer alignment + p95 round + safety margin)`. */
 export const renewalLeadMs = (policy: ZeropsGrantPolicy, p95RoundMs: number): number =>
   Math.max(
     policy.renewalLeadFloorMs,
-    policy.hiddenTimerAlignmentMs + p95RoundMs + policy.renewalRetryAllowanceMs,
+    policy.hiddenTimerAlignmentMs + p95RoundMs + policy.renewalSafetyMarginMs,
   );
 
 /** G7: `30 s + 15 s × ⌈N / 4⌉` for a round over N projects. */

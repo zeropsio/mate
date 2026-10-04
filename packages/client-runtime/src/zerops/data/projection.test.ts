@@ -27,8 +27,8 @@ describe("Zerops data projections", () => {
     const owner = project();
     const ref = service("unresolved", owner);
     const descriptor = {
-      kind: "services-of-organization" as const,
-      organization: owner.organization,
+      kind: "services-of-project" as const,
+      project: owner,
       schemaVersion: 1 as const,
     };
     const ticket = queryTicket(descriptor, id);
@@ -94,13 +94,13 @@ describe("Zerops data projections", () => {
     ).toEqual([ref]);
   });
 
-  it("gives each project its slice of the organization's services read, one with none an observed empty one", () => {
+  it("leaves unopened projects unresolved when one project has a service baseline", () => {
     const id = identity();
     const [one, two, empty] = [project("one"), project("two"), project("empty")];
     const members = [service("one-api", one), service("one-db", one), service("two-api", two)];
     const descriptor = {
-      kind: "services-of-organization" as const,
-      organization: one.organization,
+      kind: "services-of-project" as const,
+      project: one,
       schemaVersion: 1 as const,
     };
     let state = reduce(makeInitialZeropsDataState(scope()), {
@@ -140,8 +140,8 @@ describe("Zerops data projections", () => {
 
     expect([one, two, empty].map(slice)).toEqual([
       { status: "observed", services: ["one-api", "one-db"] },
-      { status: "observed", services: ["two-api"] },
-      { status: "observed", services: [] },
+      { status: "unresolved", services: ["two-api"] },
+      { status: "unresolved", services: [] },
     ]);
   });
 
