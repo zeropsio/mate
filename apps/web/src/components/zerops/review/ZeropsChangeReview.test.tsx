@@ -194,6 +194,15 @@ const textOf = (html: string) =>
     .replace(/\s+/gu, " ")
     .trim();
 
+describe("ChangeReviewView: a change's conversation", () => {
+  it("holds the room of the comments HQ counted while it reads them", () => {
+    const markup = render(merged({ commentCount: 2 }), [], {
+      comments: { state: { kind: "reading" }, say: async () => null, saying: false, retry: noop },
+    });
+    expect(markup.match(/<li aria-hidden="true"/gu)?.length).toBe(2);
+  });
+});
+
 describe("ChangeReviewView: a change after its merge", () => {
   it("says the merge's deploy state once in the dialog's Where section", () => {
     const markup = render(merged(), [], {

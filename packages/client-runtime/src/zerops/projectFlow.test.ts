@@ -112,8 +112,16 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
         updatedAt: "2026-10-02T09:30:00.000Z",
         headBranch: `mate/${VERA}/3`,
         description: undefined,
+        commentCount: 0,
       },
     ]);
+  });
+
+  it.each([
+    ["as HQ counted them", 3, 3],
+    ["none, from an HQ that counts none", null, undefined],
+  ] as const)("carries how many comments were said on it: %s", (_case, comments, count) => {
+    expect(flow([change({ comments })]).pullRequests[0]?.commentCount).toBe(count);
   });
 
   it.each([

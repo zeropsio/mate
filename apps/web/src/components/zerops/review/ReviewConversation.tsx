@@ -10,8 +10,8 @@
  * The box is one quiet line that grows as it is written in (`field-sizing: content`); ⌘↵ in it
  * comments, never merges.
  * What was typed is kept for the change while the tab is open, so closing the review loses
- * nothing. A conversation that cannot be read says so, with *Try again*, and the box still takes
- * words. Only people comment on a change (SPEC §3.2a): each remark wears its speaker's initial.
+ * nothing. While the conversation is read it holds the room of the comments the change has; one
+ * that cannot be read says so, with *Try again*, and the box still takes words. Only people comment on a change (SPEC §3.2a): each remark wears its speaker's initial.
  */
 import {
   changeAskLabel,
@@ -49,6 +49,7 @@ export function ReviewConversation({
   draftKey,
   comments,
   remarks,
+  count,
   asker,
   commentable,
   now,
@@ -59,6 +60,8 @@ export function ReviewConversation({
   readonly draftKey: string;
   readonly comments: ZeropsChangeComments;
   readonly remarks: ReadonlyArray<ChangeRemark>;
+  /** How many comments the change has, as HQ counts them: the room its conversation holds. */
+  readonly count?: number | undefined;
   /** The person's own Mate that wrote the change: the one Ask hands the words to. */
   readonly asker: Asker | undefined;
   /**
@@ -76,15 +79,17 @@ export function ReviewConversation({
       aside={state.kind === "read" ? changeConversationCount(remarks) : undefined}
       title="Conversation"
     >
-      {state.kind === "failed" ? (
+      {state.kind === "reading" ? (
+        <RemarksSkeleton count={count ?? 0} frame={frame} />
+      ) : state.kind === "failed" ? (
         <ReviewFailed
           onRetry={comments.retry}
           reason={state.reason}
           what="The conversation couldn't be read."
         />
-      ) : state.kind === "read" ? (
+      ) : (
         <Remarks frame={frame} now={now} remarks={remarks} />
-      ) : null}
+      )}
       {commentable ? (
         <SayBox asker={asker} comments={comments} draftKey={draftKey} onAsk={onAsk} />
       ) : null}
@@ -128,6 +133,30 @@ function Remarks({
             <span className="rv-remark-at">{historyAge(remark.at, now)}</span>
           </span>
           <p className="rv-remark-body">{remark.body}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** The room of the comments being read: one line each, the dialog's newest three. */
+function RemarksSkeleton({
+  count,
+  frame,
+}: {
+  readonly count: number;
+  readonly frame: ReviewFrame;
+}) {
+  if (count === 0) return null;
+  const { hidden } = remarkFold({ frame, total: count, all: false });
+  return (
+    <ol aria-busy="true" className="rv-remarks">
+      {hidden === 0 ? null : <li aria-hidden="true" className="rv-remark-skeleton" data-fold="" />}
+      {Array.from({ length: count - hidden }, (_, index) => (
+        <li aria-hidden="true" className="rv-remark-skeleton" key={index}>
+          <span />
+          <span />
+          <span />
         </li>
       ))}
     </ol>
