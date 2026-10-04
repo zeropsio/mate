@@ -27,13 +27,20 @@ import { isServiceBrowserUrl } from "./serviceBrowserPolicy";
 export type MateAddressRole = "dev" | "stage" | "production";
 
 export interface MateAddress {
-  /** The tab's key and its title: the service's hostname, unique in the list. */
+  /**
+   * The tab's key and its title, unique in the list and stable: a service of
+   * the Mate's own project by its hostname, one of another project by its
+   * hostname and its role — or its project's name where two projects share
+   * the role. A hostname holds no space, so the two never meet.
+   */
   readonly service: string;
   readonly role: MateAddressRole | undefined;
   readonly url: string;
   /** The address without its scheme — what a row shows and what a person copies. */
   readonly host: string;
 }
+
+type GroupRole = "stage" | "prod";
 
 export interface MateAddressInput {
   /** The Mate's own project's services, in topology order. */
@@ -42,9 +49,13 @@ export interface MateAddressInput {
     readonly group: ZeropsTopologyGroup;
     readonly routes: ReadonlyArray<{ readonly url: string }>;
   }>;
+  /** The Mate's own project's role tag, where it is a stage or a production. */
+  readonly ownRole?: GroupRole | undefined;
   /** The Mate's group's stage and production projects the account holds, with their routes. */
   readonly environments?: ReadonlyArray<{
-    readonly role: "stage" | "prod";
+    readonly projectId: string;
+    readonly name: string;
+    readonly role: GroupRole;
     readonly routes: ReadonlyArray<{ readonly service: string; readonly url: string }>;
   }>;
 }
@@ -55,6 +66,8 @@ const ROLE_ORDER: ReadonlyArray<MateAddressRole | undefined> = [
   "production",
   undefined,
 ];
+
+const ADDRESS_ROLE: Record<GroupRole, MateAddressRole> = { stage: "stage", prod: "production" };
 
 /** A `{name}dev` runtime is the dev before its stage exists, as every Mate's starts. */
 const isDevHostname = (hostname: string) => hostname.length > 3 && hostname.endsWith("dev");
@@ -75,11 +88,9 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
 
   const addresses: Array<MateAddress> = [];
   const seenUrls = new Set<string>();
-  const add = (service: string, role: MateAddressRole | undefined, url: string) => {
+  const add = (key: string, role: MateAddressRole | undefined, url: string) => {
     if (!isServiceBrowserUrl(url) || seenUrls.has(url)) return;
     seenUrls.add(url);
-    const taken = new Set(addresses.map((address) => address.service));
-    const key = taken.has(service) && role !== undefined ? `${service} ${role}` : service;
     addresses.push({ service: key, role, url, host: hostOf(url) });
   };
 
@@ -90,48 +101,78 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
       ? "stage"
       : devs.has(service.hostname) || isDevHostname(service.hostname)
         ? "dev"
-        : undefined;
+        : input.ownRole === undefined
+          ? undefined
+          : ADDRESS_ROLE[input.ownRole];
     add(service.hostname, role, route.url);
   }
-  for (const role of ["stage", "prod"] as const) {
-    for (const environment of input.environments ?? []) {
-      if (environment.role !== role) continue;
+  const environments = input.environments ?? [];
+  for (const groupRole of ["stage", "prod"] as const) {
+    const ofRole = environments.filter((environment) => environment.role === groupRole);
+    for (const environment of ofRole) {
       const firstByService = new Map<string, string>();
       for (const entry of environment.routes) {
         if (!firstByService.has(entry.service) && isServiceBrowserUrl(entry.url))
           firstByService.set(entry.service, entry.url);
       }
-      for (const [service, url] of firstByService)
-        add(service, role === "prod" ? "production" : "stage", url);
+      const role = ADDRESS_ROLE[groupRole];
+      const suffix = ofRole.length === 1 ? role : environment.name;
+      for (const [service, url] of firstByService) add(`${service} ${suffix}`, role, url);
     }
   }
-  return addresses.toSorted(
+  // Two projects of one role and one name stay apart by the order the account lists them.
+  const counts = new Map<string, number>();
+  const unique = addresses.map((address) => {
+    const seen = counts.get(address.service) ?? 0;
+    counts.set(address.service, seen + 1);
+    return seen === 0 ? address : { ...address, service: `${address.service} ${seen + 1}` };
+  });
+  return unique.toSorted(
     (left, right) => ROLE_ORDER.indexOf(left.role) - ROLE_ORDER.indexOf(right.role),
   );
 }
 
 /**
- * The Mate's group's stage and production projects, with their routes, as the
- * account holds them: a project whose services are not read yet is left out
- * until they are, and another Mate's dev is that Mate's, never this one's.
+ * What the account holds of the Mate's group for its addresses: the Mate's own
+ * project's role, and the group's stage and production projects with their
+ * routes. A project whose services are not read yet is left out until they
+ * are, and `pending` says so — as it does while the Mate's own project is not
+ * held. Another Mate's dev is that Mate's, never this one's.
  */
 export function groupAddressEnvironments<
-  P extends { readonly id: string; readonly tagList?: ReadonlyArray<string> | undefined },
+  P extends {
+    readonly id: string;
+    readonly name: string;
+    readonly tagList?: ReadonlyArray<string> | undefined;
+  },
 >(input: {
   readonly projectId: string;
   readonly projects: ReadonlyArray<P>;
   readonly routesOf: (
     project: P,
   ) => ReadonlyArray<{ readonly service: string; readonly url: string }> | undefined;
-}): NonNullable<MateAddressInput["environments"]> {
+}): {
+  readonly ownRole: GroupRole | undefined;
+  readonly environments: NonNullable<MateAddressInput["environments"]>;
+  readonly pending: boolean;
+} {
   const own = input.projects.find((project) => project.id === input.projectId);
-  const groupId = own === undefined ? undefined : readZeropsGroupTags(own.tagList).groupId;
-  if (groupId === undefined) return [];
-  return input.projects.flatMap((project) => {
+  if (own === undefined) return { ownRole: undefined, environments: [], pending: true };
+  const ownTags = readZeropsGroupTags(own.tagList);
+  const ownRole = ownTags.role === "stage" || ownTags.role === "prod" ? ownTags.role : undefined;
+  if (ownTags.groupId === undefined) return { ownRole, environments: [], pending: false };
+  let pending = false;
+  const environments = input.projects.flatMap((project) => {
     if (project.id === input.projectId) return [];
     const tags = readZeropsGroupTags(project.tagList);
-    if (tags.groupId !== groupId || (tags.role !== "stage" && tags.role !== "prod")) return [];
+    if (tags.groupId !== ownTags.groupId || (tags.role !== "stage" && tags.role !== "prod"))
+      return [];
     const routes = input.routesOf(project);
-    return routes === undefined ? [] : [{ role: tags.role, routes }];
+    if (routes === undefined) {
+      pending = true;
+      return [];
+    }
+    return [{ projectId: project.id, name: project.name, role: tags.role, routes }];
   });
+  return { ownRole, environments, pending };
 }

@@ -14,15 +14,21 @@ import { useEnvironmentProjectRef, useEnvironmentTopology } from "./useZeropsFee
 
 const NO_ADDRESSES: ReadonlyArray<MateAddress> = [];
 
-export function useMateAddresses(environmentId: EnvironmentId | null): ReadonlyArray<MateAddress> {
+export interface MateAddressesRead {
+  readonly addresses: ReadonlyArray<MateAddress>;
+  /** False while the topology, or a group project the account is still reading, is unread. */
+  readonly known: boolean;
+}
+
+export function useMateAddresses(environmentId: EnvironmentId | null): MateAddressesRead {
   const topology = useEnvironmentTopology(environmentId).view;
   const project = useEnvironmentProjectRef(environmentId);
   const inventory = useContext(InventoryContext);
   return useMemo(() => {
-    if (topology === undefined) return NO_ADDRESSES;
-    const environments =
+    if (topology === undefined) return { addresses: NO_ADDRESSES, known: false };
+    const group =
       project === null || inventory === null
-        ? []
+        ? undefined
         : groupAddressEnvironments({
             projectId: project.projectId,
             projects: inventory.projects,
@@ -33,7 +39,15 @@ export function useMateAddresses(environmentId: EnvironmentId | null): ReadonlyA
                 : undefined;
             },
           });
-    const addresses = mateAddresses({ services: topology.services, environments });
-    return addresses.length === 0 ? NO_ADDRESSES : addresses;
+    const addresses = mateAddresses({
+      services: topology.services,
+      ownRole: group?.ownRole,
+      environments: group?.environments ?? [],
+    });
+    return {
+      addresses: addresses.length === 0 ? NO_ADDRESSES : addresses,
+      // An unread project reads as failed once the account's read settles: then it is known absent.
+      known: group === undefined || !group.pending || inventory?.isLoading !== true,
+    };
   }, [topology, project, inventory]);
 }

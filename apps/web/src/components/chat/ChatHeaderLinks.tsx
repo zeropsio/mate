@@ -27,7 +27,7 @@ export function ChatHeaderLinks({
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
 }) {
-  const addresses = useMateAddresses(environmentId);
+  const { addresses } = useMateAddresses(environmentId);
   if (addresses.length === 0) return null;
   const threadRef = scopeThreadRef(environmentId, threadId);
   return (

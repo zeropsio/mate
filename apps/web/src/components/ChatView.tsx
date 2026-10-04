@@ -3837,7 +3837,7 @@ export default function ChatView(props: ChatViewProps) {
     },
     [activeThreadRef],
   );
-  const mateAddressList = useMateAddresses(activeThreadEnvironmentId);
+  const mateAddresses = useMateAddresses(activeThreadEnvironmentId);
   // Browser opens its own view and nothing else: each public address opens
   // as its own tab only when a person picks it (the header's links, the view's list).
   const addBrowserSurface = useCallback(() => {
@@ -8895,7 +8895,7 @@ export default function ChatView(props: ChatViewProps) {
             surfaces={rightPanelState.surfaces}
             activeSurfaceId={activeRightPanelSurface?.id ?? null}
             services={zeropsTopology?.services}
-            addresses={mateAddressList}
+            addresses={mateAddresses.addresses}
           />
         </RightPanelTabs>
       ) : null}
@@ -8929,7 +8929,7 @@ export default function ChatView(props: ChatViewProps) {
               surfaces={rightPanelState.surfaces}
               activeSurfaceId={activeRightPanelSurface?.id ?? null}
               services={zeropsTopology?.services}
-              addresses={mateAddressList}
+              addresses={mateAddresses.addresses}
             />
           </RightPanelTabs>
         </RightPanelSheet>
