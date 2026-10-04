@@ -9,6 +9,7 @@ import {
   type HqApi,
   type OpenHqSocket,
 } from "./client.ts";
+import { ZEROPS_UNANSWERED } from "./refusals.ts";
 
 /** No socket is opened by a call that is no structure stream. */
 const NO_SOCKET: OpenHqSocket = () => {
@@ -400,6 +401,13 @@ describe("makeHqApi", () => {
       "a standby is unavailable",
       json(503, { code: "not_active" }),
       { kind: "unavailable", code: "not_active" },
+    ],
+    // The owner, 2026-10-05: a write HQ refused because Zerops did not answer its roles wrote
+    // nothing — it is no write that may have landed, and says to try again.
+    [
+      "a write whose roles Zerops left unanswered is refused, not uncertain",
+      json(503, { code: "zerops_unanswered" }),
+      { kind: "unavailable", code: "zerops_unanswered", message: ZEROPS_UNANSWERED },
     ],
     // A read with no answer is HQ not answering (`a connection that drops`); a write may have landed.
     [

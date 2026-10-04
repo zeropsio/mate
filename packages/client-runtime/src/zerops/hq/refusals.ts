@@ -158,6 +158,12 @@ export function enrollmentRefusalWords(code: string | undefined): string {
 /** Where zcp found no official HQ in the organization: an admin sets one up. */
 export const NO_HQ_WORDS = "This organization has no HQ yet. Ask an admin to set it up.";
 
+/**
+ * What a write HQ refused says when Zerops did not answer the roles it is decided over
+ * (`503 zerops_unanswered`): nothing was done, and pressing again may go through.
+ */
+export const ZEROPS_UNANSWERED = "Zerops is not answering, so HQ did nothing. Try again.";
+
 /** What anything asked of the organization's HQ says where its official HQ is not open here. */
 export const HQ_NOT_OPEN = "This organization's HQ is not open here.";
 
