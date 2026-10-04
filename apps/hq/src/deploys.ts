@@ -942,30 +942,60 @@ export const deploysLayer = (
             );
 
       /**
-       * After HQ's own verified deploy: an HTTP service's subdomain, which never fails the deploy
-       * (B17).
+       * After HQ's own verified deploy: an HTTP service's subdomain, its process followed to its
+       * end on the job's cadence — none where it came on or was on already, else why it did not, in
+       * HQ's words. It never fails the deploy (B17); the live job says it.
        */
-      const openSubdomain = (service: ZeropsService, token: Redacted.Redacted) =>
-        service.http && !service.subdomainAccess
-          ? deploy
+      const openSubdomain = (job: Job, service: ZeropsService, token: Redacted.Redacted) =>
+        !service.http || service.subdomainAccess
+          ? Effect.succeed(undefined)
+          : deploy
               .enableSubdomainAccess(service.id)(token)
               .pipe(
-                Effect.catch((error) =>
-                  Effect.logWarning("subdomain access not turned on", {
-                    service: service.name,
-                    error,
-                  }),
+                Effect.flatMap(({ processId }) =>
+                  onCadence(
+                    job,
+                    () =>
+                      deploy
+                        .process(processId)(token)
+                        .pipe(
+                          Effect.map((process) =>
+                            process.status === "FINISHED"
+                              ? ({ state: "on" } as const)
+                              : process.status === "FAILED" || process.status === "CANCELED"
+                                ? ({
+                                    state: "refused",
+                                    reason: process.failure ?? "Zerops gave no reason",
+                                  } as const)
+                                : undefined,
+                          ),
+                          // What cannot be read now says nothing of it: it is read again.
+                          Effect.catch((error) =>
+                            Effect.as(
+                              Effect.logWarning("a subdomain's process not read", {
+                                service: service.name,
+                                error,
+                              }),
+                              undefined,
+                            ),
+                          ),
+                        ),
+                    "HQ stopped following it",
+                  ),
                 ),
-                Effect.asVoid,
-              )
-          : Effect.void;
+                Effect.map((ended) => (ended.state === "on" ? undefined : ended.reason)),
+                Effect.catch((error) => Effect.succeed(zeropsEnd(job.env_name, error).reason)),
+                Effect.map((why) =>
+                  why === undefined ? undefined : `its subdomain was not turned on: ${why}`,
+                ),
+              );
 
       /**
        * HQ's own deploy of `job`, live: its subdomain turned on where it was intended — its service
        * created for HQ to deploy (`hq_subdomain_intent`: its project's attach said so, or HQ's
        * recipe delta imported it), and this its first deploy HQ sees live (audit R1, D6) — and its
-       * service's intent spent. A project's own row stays, for each of its services is first
-       * deployed once. Never fails the deploy.
+       * service's intent spent. None where it came on or was not intended, else why it did not.
+       * Never fails the deploy.
        */
       const openIfIntended = (job: Job, service: ZeropsService, token: Redacted.Redacted) =>
         Effect.gen(function* () {
@@ -978,14 +1008,18 @@ export const deploysLayer = (
                 WHERE project_id = ${job.project_id} AND service = ${job.service}
                   AND state = 'live' AND sha <> ${job.sha}
               )`;
-          if (intended.length === 0) return;
-          yield* openSubdomain(service, token);
+          if (intended.length === 0) return undefined;
+          const why = yield* openSubdomain(job, service, token);
           yield* leader.write(sql`
             DELETE FROM hq_subdomain_intent
             WHERE project_id = ${job.project_id} AND service = ${job.service}`);
+          return why;
         }).pipe(
           Effect.catch((error) =>
-            Effect.logWarning("subdomain intent not read", { service: service.name, error }),
+            Effect.as(
+              Effect.logWarning("subdomain intent not read", { service: service.name, error }),
+              undefined,
+            ),
           ),
         );
 
@@ -1490,8 +1524,12 @@ export const deploysLayer = (
             job.app_version_id,
             job.process_id,
           );
-          if (followed.state === "live") yield* openIfIntended(job, followed.service, key.token);
-          yield* end(job, followed.state === "live" ? { state: "live" } : followed);
+          if (followed.state !== "live") return yield* end(job, followed);
+          const subdomain = yield* openIfIntended(job, followed.service, key.token);
+          yield* end(
+            job,
+            subdomain === undefined ? { state: "live" } : { state: "live", reason: subdomain },
+          );
         });
 
       /** The leading Core's scope, where each environment's worker runs; none while it leads not. */

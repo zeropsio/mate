@@ -22,6 +22,7 @@ import { type FactsFor, type Targets, type Verb, can } from "./permissions.ts";
 import type { MateChanges } from "@t3tools/shared/hqChanges";
 import type { HqOffersOf } from "@t3tools/shared/hqOffers";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import type { MateState } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
@@ -216,6 +217,8 @@ export interface EnvironmentView {
    * rollout and its jobs whatever {@link JOBS_SHOWN} lists; none before a release, and for a stage.
    */
   readonly release: ReleaseRollout | null;
+  /** Whether the rollout its attach asked for has ended; none where HQ did not bring it up. */
+  readonly birth: EnvironmentBirth | null;
 }
 
 /** How many of an environment's newest jobs its view carries. */
@@ -1409,6 +1412,30 @@ export const structureLayer = (options: {
                     leftOut: row.left_out,
                   };
             };
+            // Each environment's birth: the newest rollout its attach asked for, ended once its jobs
+            // there ended, and every job of a commit it left out as under way there.
+            const born = yield* sql<{ readonly project_id: string; readonly ended: boolean }>`
+              WITH born AS (
+                SELECT DISTINCT ON (r.project_id) r.id, r.project_id, r.planned_at, r.left_out
+                FROM hq_rollout r WHERE r.cause = 'env_added' AND r.project_id IS NOT NULL
+                ORDER BY r.project_id, r.id DESC
+              )
+              SELECT b.project_id,
+                     b.planned_at IS NOT NULL
+                     AND NOT EXISTS (
+                       SELECT 1 FROM hq_deploy_job j
+                       WHERE j.rollout_id = b.id AND j.project_id = b.project_id
+                         AND j.ended_at IS NULL)
+                     AND NOT EXISTS (
+                       SELECT 1
+                       FROM jsonb_to_recordset(b.left_out) AS l(project_id text, job text)
+                       JOIN hq_deploy_job j ON j.id = l.job::bigint
+                       WHERE l.project_id = b.project_id AND j.ended_at IS NULL) AS ended
+              FROM born b`;
+            const birthOf = (projectId: string): EnvironmentBirth | null => {
+              const row = born.find((birth) => birth.project_id === projectId);
+              return row === undefined ? null : { ended: row.ended };
+            };
             const environmentView = (row: (typeof environments)[number]): EnvironmentView => ({
               projectId: row.project_id,
               tier: row.tier,
@@ -1436,6 +1463,7 @@ export const structureLayer = (options: {
                   supersededBy: job.superseded_by,
                 })),
               release: releaseOf(row.project_id),
+              birth: birthOf(row.project_id),
             });
             const names = new Map(view.projects.map((project) => [project.id, project.name]));
             const projects = new Map(view.projects.map((project) => [project.id, project]));
