@@ -484,6 +484,11 @@ export const PRESS_HOLD_MS = 60_000;
 export interface PressView {
   /** How long its hold runs on from the read that said it, ms; 0 where it ran out. */
   readonly heldForMs: number;
+  /**
+   * When its hold runs out on HQ's own clock (ISO 8601): what a renewal moves, so a stream says it
+   * again only then. A reader measures by `heldForMs`, never by its own clock against this.
+   */
+  readonly until: string;
   /** The Zerops process of the container import its press asked for, once Zerops answered it. */
   readonly importProcessId?: string;
 }
@@ -492,11 +497,13 @@ export interface PressView {
 interface PressRow {
   readonly project_id: string;
   readonly held_for_ms: number;
+  readonly until: string;
   readonly import_process_id: string | null;
 }
 
 const pressView = (row: PressRow): PressView => ({
   heldForMs: row.held_for_ms,
+  until: row.until,
   ...(row.import_process_id === null ? {} : { importProcessId: row.import_process_id }),
 });
 
@@ -888,7 +895,8 @@ export const structureLayer = (options: {
                     THEN hq_mate_press.import_process_id END)
               WHERE hq_mate_press.owner = EXCLUDED.owner OR hq_mate_press.until <= now()
               RETURNING project_id, import_process_id,
-                GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms`);
+                GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms,
+                to_char(until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS until`);
             const held = rows[0];
             if (held === undefined) return yield* refuse("conflict", "press_held");
             yield* changed;
@@ -1383,7 +1391,8 @@ export const structureLayer = (options: {
               ORDER BY m.seq`;
             const presses = yield* sql<PressRow>`
               SELECT project_id, import_process_id,
-                GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms
+                GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms,
+                to_char(until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS until
               FROM hq_mate_press ORDER BY project_id`;
             const tools = yield* sql<{ readonly projectId: string; readonly kind: "gitea" }>`
               SELECT project_id AS "projectId", kind FROM hq_tool ORDER BY project_id`;

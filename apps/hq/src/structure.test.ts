@@ -1187,10 +1187,8 @@ describe("structure", () => {
           assert.isUndefined(yield* pressOf("nobody"));
           // A hold that ran out — its tab closed — reads none left, and another press takes it over.
           yield* sql`UPDATE hq_mate_press SET until = now() - interval '1 second'`;
-          assert.deepStrictEqual(yield* pressOf("owner"), {
-            heldForMs: 0,
-            importProcessId: "imp-1",
-          });
+          const ranOut = yield* pressOf("owner");
+          assert.deepStrictEqual([ranOut?.heldForMs, ranOut?.importProcessId], [0, "imp-1"]);
           yield* structure.holdPress("maker", "P_OWN", { owner: "press-b" });
           assert.isUndefined((yield* pressOf("owner"))?.importProcessId);
           // Only the press holding it lets it go.

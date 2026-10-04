@@ -23,6 +23,9 @@
  *   project they read that HQ holds nowhere, whenever either moves;
  * - `{ type: "roles", rolesAnsweredAt }` — when Zerops answered the org view the caller's offers
  *   are decided over, with every view it answers (the snapshot carries it from the start);
+ * - `{ type: "presses", presses }` — each Mate's press a browser holds, by project, for every
+ *   project the caller reads (`Structure.holdPress`), whenever one is taken, renewed, given its
+ *   import or let go: how long its hold runs on from this message, and its import;
  * - `{ type: "mate", projectId, value }` — what changed of one Mate the caller observes: its
  *   presence, or any section of its overview, each whole; `value: null` once they no longer may;
  * - `{ type: "people", people }` — the people the view names, whenever they differ: its Mates'
@@ -109,6 +112,7 @@ export type StructureMessage =
       readonly unheld: StructureRead["unheld"];
     }
   | { readonly type: "roles"; readonly rolesAnsweredAt: string | null }
+  | { readonly type: "presses"; readonly presses: StructureRead["presses"] }
   | HqMatesMessage;
 
 /** The key of the Mates in no application; an application's key is its id, never this. */
@@ -196,6 +200,8 @@ interface Sent {
   readonly org: string;
   /** When Zerops answered the view their offers are decided over (ISO 8601); none yet. */
   readonly rolesAnsweredAt: string | null;
+  /** Each press's hold as its renewals move it, encoded: never how long it runs on, which ticks. */
+  readonly presses: string;
   readonly structure: ReadonlyMap<string, string>;
   readonly changes: ReadonlyMap<string, string>;
   /** Each readable application's release revision, encoded. */
@@ -361,6 +367,14 @@ export const structureMessages = <R>(
         const now: Sent = {
           org: toJson({ can: view.can, unheld: view.unheld }),
           rolesAnsweredAt,
+          presses: toJson(
+            Object.fromEntries(
+              Object.entries(view.presses).map(([projectId, { until, importProcessId }]) => [
+                projectId,
+                { until, importProcessId },
+              ]),
+            ),
+          ),
           structure: new Map([
             [UNGROUPED, toJson(view.ungrouped)],
             ...view.apps.map((app): [string, string] => [app.id, toJson(app)]),
@@ -424,6 +438,9 @@ export const structureMessages = <R>(
           ...(now.rolesAnsweredAt === before.rolesAnsweredAt
             ? []
             : [{ type: "roles" as const, rolesAnsweredAt }]),
+          ...(now.presses === before.presses
+            ? []
+            : [{ type: "presses" as const, presses: view.presses }]),
           ...[...new Set([...before.mates.keys(), ...mates.keys()])].flatMap((projectId) => {
             const message = mateMessage(
               projectId,
