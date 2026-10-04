@@ -1,4 +1,5 @@
 import type { CrewOperation } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -129,6 +130,9 @@ export const withOperation = <A, E, R>(
       Effect.onExit((exit) =>
         Effect.gen(function* () {
           if (exit._tag === "Success") return;
+          // The engine is shutting down (a Mate update, SIGTERM): the row stays running, its stage
+          // confirmed, and the next boot marks it interrupted and carries it on (`crewBoot`).
+          if (Cause.hasInterruptsOnly(exit.cause)) return;
           const current = Option.getOrThrow(
             yield* asRefusal(core.store.getOperation(operation.id)),
           );

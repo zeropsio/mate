@@ -429,7 +429,8 @@ changed since the row was read refuses the action. New stints record their copy 
 `crew_operation` owns dispatch, checkpoint, merge/check, landing and selected copy rebuilds.
 An identity, actor, exact thread command or copy/ref target, and pending stage are durable before
 that stage runs. Its receipt confirms the stage afterward; the handle remains running until the
-consumer has recorded the task outcome. A fatal restart marks running handles interrupted and
+consumer has recorded the task outcome. A restart, a crash or a graceful shutdown alike (a shutdown leaves a handle in flight
+running, its stage confirmed), marks running handles interrupted and
 reads copy status and known landing trailers; a running run stays running, its clock counting
 again once its crew works. Once the server accepts commands, the engine carries each interrupted
 handle on from its last confirmed stage as its crewmate is free, as Continue would

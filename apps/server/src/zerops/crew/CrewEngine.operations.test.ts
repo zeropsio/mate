@@ -593,3 +593,47 @@ it.live("Continue explicitly preserves dirty edits that held a new dispatch", ()
     }),
   ),
 );
+
+it.live("a graceful shutdown during a check leaves it for the next boot to carry on", () => {
+  let operationId = "";
+  return withCrewEngines([
+    (world) =>
+      Effect.gen(function* () {
+        const marker = NodePath.join(world.workspace, "first-check");
+        writeCrewHome(world.workspace);
+        const home = NodePath.join(world.workspace, ".mate/crew/main/crew.yaml");
+        const config = NodeFS.readFileSync(home, "utf8").replace(
+          "test -f ok.txt",
+          () => `"if [ ! -f ${marker} ]; then touch ${marker}; sleep 30; fi; test -f ok.txt"`,
+        );
+        writeCrewHome(world.workspace, { "crew.yaml": config });
+        yield* command({ _tag: "apply" });
+        yield* snapshotWhere((frame) => frame.crewmates[0]?.lane?.state === "ready");
+        const thread = yield* firstTurn(world, () =>
+          write(NodePath.join(world.root, ".crew/backend"), "ok.txt", "ok\n"),
+        );
+        yield* reportDone(thread);
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* eventually(Effect.sync(() => NodeFS.existsSync(marker)));
+        const store = yield* CrewStore;
+        operationId = (yield* store.operations(CREW_ID)).find((row) => row.kind === "check")!.id;
+        // The phase ends here: the engine's scope closes with the check still sleeping.
+      }),
+    (world) =>
+      Effect.gen(function* () {
+        yield* (yield* ServerCommandReadiness).complete;
+        yield* snapshotWhere(
+          (frame) =>
+            frame.board.tasks[0]?.state === "ready" &&
+            !frame.operations?.some((row) => row.id === operationId),
+        );
+        const operation = yield* (yield* CrewStore).getOperation(operationId);
+        assert.strictEqual(operation._tag === "Some" ? operation.value.status : null, "continued");
+        assert.strictEqual(
+          (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
+            .length,
+          1,
+        );
+      }),
+  ]);
+});
