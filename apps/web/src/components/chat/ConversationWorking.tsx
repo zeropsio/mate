@@ -62,6 +62,7 @@ import { showHelper } from "./helperFocus";
 import { standupBar } from "./standupBar.logic";
 import { OperationDetail, PlanSteps, useHoldReading } from "./RunChat";
 import { drawerEase, stepHeight, type CarriedRow } from "./stepHeight";
+import { useEasedRoom } from "./runRoom";
 
 // ---------------------------------------------------------------------------
 // Arriving live
@@ -850,8 +851,11 @@ export function ConversationAfterWork({
   const watching =
     (dock?.helpers ?? null) === null &&
     (running.length > 0 ? running.every((task) => task.watch) : state === "monitoring");
+  // As what runs comes and goes, its height eases (`useEasedRoom`).
+  const roomRef = useEasedRoom<HTMLElement>(true);
   return (
     <section
+      ref={roomRef}
       aria-label={`${speaker.name} at work in the background`}
       className="run-tray run-tray-whole @container/panel animate-panel-in text-card-foreground motion-reduce:animate-none"
       data-conversation-after-work={state}
