@@ -1147,7 +1147,7 @@ const WsZeropsGitProbeRemoteRpc = Rpc.make(WS_METHODS.zeropsGitProbeRemote, {
   error: Schema.Union([ZeropsGitRemoteProbeError, EnvironmentAuthorizationError]),
 });
 
-/** The console child process's own lifecycle — idle/starting/ready/unavailable/unsupported — so the panel can show a spawn/degrade state without polling. */
+/** The console child process's own lifecycle — idle/starting/ready/unavailable — so the panel can show a spawn/degrade state without polling. */
 const WsSubscribeZeropsDataConsoleRpc = Rpc.make(WS_METHODS.subscribeZeropsDataConsole, {
   payload: Schema.Struct({}),
   success: ZeropsDataConsoleSessionEvent,

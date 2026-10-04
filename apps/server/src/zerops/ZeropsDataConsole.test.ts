@@ -17,7 +17,7 @@ import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 
 import {
-  classifyStartupFailure,
+  startupFailureReason,
   isLoopbackReadyUrl,
   make,
   makeRealSpawn,
@@ -242,41 +242,23 @@ describe("ZeropsDataConsole", () => {
     }
   });
 
-  describe("classifyStartupFailure", () => {
-    it("classifies an unknown studio subcommand as unsupported", () => {
-      expect(classifyStartupFailure("unknown studio subcommand: console\n\n")).toEqual({
-        status: "unsupported",
+  describe("startupFailureReason", () => {
+    for (const [stderr, reason] of [
+      ["unknown studio subcommand: console\n\n", "unknown studio subcommand: console"],
+      [
+        "listen tcp 127.0.0.1:0: bind: permission denied",
+        "listen tcp 127.0.0.1:0: bind: permission denied",
+      ],
+      ["open /var/www/.zcp/state.json: no such file", "open <path>: no such file"],
+      ["", undefined],
+    ] as const) {
+      it(`reads ${JSON.stringify(stderr)} as ${String(reason)}`, () => {
+        expect(startupFailureReason(stderr)).toBe(reason);
       });
-    });
-
-    it("classifies a bare unknown subcommand as unsupported", () => {
-      expect(classifyStartupFailure("unknown subcommand: console")).toEqual({
-        status: "unsupported",
-      });
-    });
-
-    it("classifies any other stderr as unavailable with a sanitized reason", () => {
-      expect(classifyStartupFailure("listen tcp 127.0.0.1:0: bind: permission denied")).toEqual({
-        status: "unavailable",
-        reason: "listen tcp 127.0.0.1:0: bind: permission denied",
-      });
-    });
-
-    it("redacts filesystem paths in the reason", () => {
-      expect(classifyStartupFailure("open /var/www/.zcp/state.json: no such file")).toEqual({
-        status: "unavailable",
-        reason: "open <path>: no such file",
-      });
-    });
+    }
 
     it("caps the reason at 120 characters", () => {
-      const failure = classifyStartupFailure("x".repeat(200));
-      expect(failure.status).toBe("unavailable");
-      expect(failure.reason?.length).toBe(120);
-    });
-
-    it("has no reason when stderr was empty", () => {
-      expect(classifyStartupFailure("")).toEqual({ status: "unavailable" });
+      expect(startupFailureReason("x".repeat(200))?.length).toBe(120);
     });
   });
 
@@ -439,25 +421,25 @@ describe("ZeropsDataConsole", () => {
     );
 
     it.effect(
-      "degrades to session_unsupported when the child reports an unknown subcommand, without respawning",
+      "a child that knows no console verb is unavailable, and the next call spawns again",
       () =>
         Effect.gen(function* () {
           const spawner = makeManualSpawner();
-          const result = yield* withService({ spawn: spawner.spawn }, (service) =>
+          const first = yield* withService({ spawn: spawner.spawn }, (service) =>
             Effect.gen(function* () {
               const fiber = yield* Effect.forkChild(service.call({ kind: "services" }));
               yield* TestClock.adjust(Duration.millis(0));
               spawner.processes[0]?.emitStderr("unknown studio subcommand: console\n");
               spawner.processes[0]?.emitExit(1);
-              const first = yield* Fiber.join(fiber).pipe(Effect.exit);
-              const secondFiber = yield* Effect.forkChild(service.call({ kind: "services" }));
-              const second = yield* Fiber.join(secondFiber).pipe(Effect.exit);
-              return { first, second };
+              const error = yield* Fiber.join(fiber).pipe(Effect.flip);
+              yield* Effect.forkChild(service.call({ kind: "services" }));
+              yield* TestClock.adjust(Duration.millis(0));
+              return error;
             }),
           );
-          expect(result.first._tag).toBe("Failure");
-          expect(result.second._tag).toBe("Failure");
-          expect(spawner.processes.length).toBe(1);
+          expect(first.code).toBe("session_unavailable");
+          expect(first.message).toBe("unknown studio subcommand: console");
+          expect(spawner.processes.length).toBe(2);
         }),
     );
 

@@ -73,11 +73,9 @@ describe("useZeropsDataMentions", () => {
     expect(catalogState.load).toHaveBeenCalledTimes(1);
   });
 
-  it("offers nothing and loads nothing when Data is unsupported or unavailable", () => {
-    for (const status of ["unsupported", "unavailable"]) {
-      feedState.session = { status };
-      expect(call("db")).toEqual([]);
-    }
+  it("offers nothing and loads nothing when Data is unavailable", () => {
+    feedState.session = { status: "unavailable" };
+    expect(call("db")).toEqual([]);
 
     expect(catalogState.load).not.toHaveBeenCalled();
   });
