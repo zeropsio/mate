@@ -255,6 +255,11 @@ function TimelineLoadEarlierHeader({
   );
 }
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
+/** The keys that scroll a list: pressed, a reveal in flight gives way. */
+const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+function reducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 /** How long after a person's click what they opened is brought into view, while it eases open. */
 const REVEAL_FOR_MS = 700;
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
@@ -983,7 +988,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       });
       const dt = last === 0 ? 1000 / 60 : now - last;
       last = now;
-      if (by > 0.5) viewport.scrollTop += approach(0, by, dt, FOLLOW_TAU_MS);
+      if (by <= 0.5) return;
+      // Under reduced motion it stands there at once.
+      if (reducedMotion()) {
+        viewport.scrollTop += by;
+        stop();
+        return;
+      }
+      viewport.scrollTop += approach(0, by, dt, FOLLOW_TAU_MS);
     };
     const onClick = (event: globalThis.MouseEvent) => {
       const button =
@@ -996,14 +1008,25 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       last = 0;
       if (frame === 0) frame = requestAnimationFrame(step);
     };
+    // Any scroll of the person's ends it: a wheel, a touch, the keys, the scrollbar.
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (SCROLL_KEYS.has(event.key)) stop();
+    };
+    const onPointerDown = (event: globalThis.PointerEvent) => {
+      if (event.target === listRef.current?.getScrollableNode()) stop();
+    };
     wrapper.addEventListener("click", onClick, { capture: true });
     wrapper.addEventListener("wheel", stop, { passive: true });
     wrapper.addEventListener("touchmove", stop, { passive: true });
+    wrapper.addEventListener("pointerdown", onPointerDown, { passive: true });
+    wrapper.ownerDocument.addEventListener("keydown", onKey);
     return () => {
       stop();
       wrapper.removeEventListener("click", onClick, { capture: true });
       wrapper.removeEventListener("wheel", stop);
       wrapper.removeEventListener("touchmove", stop);
+      wrapper.removeEventListener("pointerdown", onPointerDown);
+      wrapper.ownerDocument.removeEventListener("keydown", onKey);
     };
   }, [listRef, timelineViewportElement]);
 
