@@ -166,13 +166,13 @@ import {
   selectThreadRightPanelState,
   type RightPanelSurface,
   useRightPanelStore,
-  serviceBrowserTabs,
 } from "../rightPanelStore";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { RightPanelTabs } from "./RightPanelTabs";
 import { AgentsPanel } from "./AgentsPanel";
 import { ServiceBrowserPanels } from "./ServiceBrowserPanel";
-import { ZeropsBrowserPanel } from "./zerops/ZeropsBrowserPanel";
+import { ZeropsBrowserSurface } from "./zerops/ZeropsBrowserSurface";
+import { useMateAddresses } from "../zerops/useMateAddresses";
 import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
 import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
@@ -3793,12 +3793,14 @@ export default function ChatView(props: ChatViewProps) {
     },
     [environmentId, navigate],
   );
+  // The launcher's availability decides who may open Diff; a workspace that
+  // is no repository reads the working tree as its latest turn (`resolveDiffSelection`).
   const addDiffSurface = useCallback(() => {
-    if (!activeThreadRef || !isServerThread || !isGitRepo) return;
+    if (!activeThreadRef || !isServerThread) return;
     useDiffPanelStore.getState().selectGitScope(activeThreadRef, "unstaged");
     useRightPanelStore.getState().open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
-  }, [activeThreadRef, isGitRepo, isServerThread, onDiffPanelOpen]);
+  }, [activeThreadRef, isServerThread, onDiffPanelOpen]);
   const addFilesSurface = useCallback(() => {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().open(activeThreadRef, "files");
@@ -3835,22 +3837,13 @@ export default function ChatView(props: ChatViewProps) {
     },
     [activeThreadRef],
   );
-  // Browser opens on what the project actually serves: a tab per service with
-  // a public route, first one focused. Only a project with nothing public
-  // falls back to the empty surface.
+  const mateAddressList = useMateAddresses(activeThreadEnvironmentId);
+  // Browser opens its own view and nothing else: each public address opens
+  // as its own tab only when a person picks it (the header's links, the view's list).
   const addBrowserSurface = useCallback(() => {
     if (!activeThreadRef) return;
-    const tabs = serviceBrowserTabs(zeropsTopology?.services ?? []);
-    if (tabs.length === 0) {
-      useRightPanelStore.getState().open(activeThreadRef, "browser");
-      return;
-    }
-    for (const tab of tabs) {
-      useRightPanelStore.getState().openService(activeThreadRef, tab.service, tab.url);
-    }
-    const first = tabs[0];
-    if (first) useRightPanelStore.getState().openService(activeThreadRef, first.service, first.url);
-  }, [activeThreadRef, zeropsTopology]);
+    useRightPanelStore.getState().open(activeThreadRef, "browser");
+  }, [activeThreadRef]);
   // D6: the one place a successful sign-in's signer is recorded, whichever
   // door it went through (the panel's card, the band's dialog, the empty
   // conversation); every row reads how it went by environment.
@@ -8184,7 +8177,7 @@ export default function ChatView(props: ChatViewProps) {
               );
             case "browser":
               return "url" in activeRightPanelSurface ? null : (
-                <ZeropsBrowserPanel threadRef={zeropsChrome.threadRef} />
+                <ZeropsBrowserSurface threadRef={zeropsChrome.threadRef} />
               );
             case "data":
               // Every open Data tab stays mounted, the inactive ones hidden:
@@ -8902,6 +8895,7 @@ export default function ChatView(props: ChatViewProps) {
             surfaces={rightPanelState.surfaces}
             activeSurfaceId={activeRightPanelSurface?.id ?? null}
             services={zeropsTopology?.services}
+            addresses={mateAddressList}
           />
         </RightPanelTabs>
       ) : null}
@@ -8935,6 +8929,7 @@ export default function ChatView(props: ChatViewProps) {
               surfaces={rightPanelState.surfaces}
               activeSurfaceId={activeRightPanelSurface?.id ?? null}
               services={zeropsTopology?.services}
+              addresses={mateAddressList}
             />
           </RightPanelTabs>
         </RightPanelSheet>

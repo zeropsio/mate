@@ -82,13 +82,15 @@ export const RIGHT_PANEL_KIND_META = {
       shortcut: "D",
       unavailableHint: "Available for Git repositories.",
     },
+    // A Mate's workspace is no repository of its own, but each turn keeps a
+    // diff of the services' checkouts below it (`resolveDiffSelection`).
     availability: (input) =>
       !input.serverThread
         ? "unavailable"
-        : input.gitRepo === null
-          ? "unknown"
-          : input.gitRepo
-            ? "available"
+        : input.gitRepo === true || input.zeropsPanel === "available"
+          ? "available"
+          : input.gitRepo === null || input.zeropsPanel === "unknown"
+            ? "unknown"
             : "unavailable",
   },
   agents: {

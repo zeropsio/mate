@@ -10,7 +10,6 @@ import {
   selectSelectedRightPanelSurface,
   selectThreadRightPanelState,
   useRightPanelStore,
-  serviceBrowserTabs,
 } from "./rightPanelStore";
 import {
   accountStorageKey,
@@ -878,51 +877,67 @@ describe("service browser tabs", () => {
   });
 });
 
-describe("serviceBrowserTabs", () => {
-  const svc = (hostname: string, urls: ReadonlyArray<string>, group = "runtimes") => ({
-    hostname,
-    group,
-    routes: urls.map((url) => ({ url })),
+describe("browser tabs a person opened", () => {
+  const panel = (surfaces: ReadonlyArray<{ id: string }>, activeSurfaceId: string) => ({
+    byThreadKey: { "env-1:thread-A": { isOpen: true, activeSurfaceId, surfaces } },
   });
+  const appdev = {
+    id: "service:appdev",
+    kind: "browser",
+    service: "appdev",
+    url: "https://appdev-1-3000.example.app",
+  };
+  const appstage = {
+    id: "service:appstage",
+    kind: "browser",
+    service: "appstage",
+    url: "https://appstage-1-3000.example.app",
+  };
+  const browser = { id: "browser", kind: "browser" };
+  const files = { id: "files", kind: "files" };
 
   /**
-   * Picking "Browser" opened one empty singleton panel: the view existed but
-   * nothing was in it, and the services that DO answer on a public URL were
-   * reachable only by finding a link to click. The owner: "there are no tabs
-   * per service with public link".
+   * Picking Browser used to open a tab for every public address by itself
+   * (the owner: "the browser automatically opens all tabs, imo it shouldnt").
+   * A tab nobody can tell was asked for goes once, with the store version
+   * that stopped opening them.
    */
-  it("gives one tab per service that answers publicly, in topology order", () => {
-    expect(
-      serviceBrowserTabs([
-        svc("appdev", ["https://appdev-1-3000.zerops.app"]),
-        svc("db", []),
-        svc("appstage", ["https://appstage-1-3000.zerops.app"]),
-      ]),
-    ).toEqual([
-      { service: "appdev", url: "https://appdev-1-3000.zerops.app" },
-      { service: "appstage", url: "https://appstage-1-3000.zerops.app" },
-    ]);
+  it.each([
+    {
+      name: "drops the address tabs a store before v21 holds, keeping the rest",
+      persisted: panel([files, appdev, browser, appstage], "service:appstage"),
+      version: 20,
+      expected: { isOpen: true, activeSurfaceId: "files", surfaces: [files, browser] },
+    },
+    {
+      name: "closes a panel that held nothing else",
+      persisted: panel([appdev, appstage], "service:appdev"),
+      version: 20,
+      expected: { isOpen: false, activeSurfaceId: null, surfaces: [] },
+    },
+    {
+      name: "keeps the address tabs of the current version",
+      persisted: panel([files, appdev], "service:appdev"),
+      version: 21,
+      expected: { isOpen: true, activeSurfaceId: "service:appdev", surfaces: [files, appdev] },
+    },
+  ])("$name", ({ persisted, version, expected }) => {
+    expect(migratePersistedRightPanelState(persisted, version).byThreadKey).toStrictEqual({
+      "env-1:thread-A": expected,
+    });
   });
 
-  it("takes a service's first route, not one tab per port", () => {
+  it("opens each address as its own tab beside the Browser view, only when asked", () => {
+    const store = useRightPanelStore.getState();
+    store.open(refA, "browser");
     expect(
-      serviceBrowserTabs([
-        svc("app", ["https://app-1-3000.zerops.app", "https://app-1-8080.zerops.app"]),
-      ]),
-    ).toEqual([{ service: "app", url: "https://app-1-3000.zerops.app" }]);
-  });
-
-  it("drops anything that is not a browsable url", () => {
-    expect(serviceBrowserTabs([svc("worker", ["ftp://nope"]), svc("db", [])])).toEqual([]);
-  });
-
-  /** The control plane serves Mate itself; browsing it from inside Mate is noise. */
-  it("leaves the control plane out", () => {
-    expect(
-      serviceBrowserTabs([
-        svc("app", ["https://app-1-3000.zerops.app"]),
-        svc("zcp", ["https://zcp-1-8080.zerops.app"], "infrastructure"),
-      ]),
-    ).toEqual([{ service: "app", url: "https://app-1-3000.zerops.app" }]);
+      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
+    ).toEqual([browser]);
+    store.openService(refA, "appdev", appdev.url);
+    store.openService(refA, "appstage", appstage.url);
+    store.openService(refA, "appdev", appdev.url);
+    const state = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA);
+    expect(state.surfaces).toEqual([browser, appdev, appstage]);
+    expect(state.activeSurfaceId).toBe("service:appdev");
   });
 });

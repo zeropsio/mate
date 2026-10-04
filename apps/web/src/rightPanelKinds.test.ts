@@ -219,6 +219,28 @@ describe("right panel kinds", () => {
     },
   );
 
+  /**
+   * A Mate's workspace (`/var/www`) is no Git repository of its own, so Diff
+   * read "Available for Git repositories." on every Mate — yet each turn saves
+   * a diff of the services' checkouts below it (the owner: "the diff tab
+   * hasn't been working / doing anything for ages").
+   */
+  it.each([
+    { gitRepo: false, zeropsPanel: "available", serverThread: true, diff: "available" },
+    { gitRepo: false, zeropsPanel: "unknown", serverThread: true, diff: "unknown" },
+    { gitRepo: null, zeropsPanel: "unavailable", serverThread: true, diff: "unknown" },
+    { gitRepo: false, zeropsPanel: "unavailable", serverThread: true, diff: "unavailable" },
+    { gitRepo: false, zeropsPanel: "available", serverThread: false, diff: "unavailable" },
+  ] as const)(
+    "Diff with Git $gitRepo and the Zerops panel $zeropsPanel (server thread $serverThread): $diff",
+    ({ gitRepo, zeropsPanel, serverThread, diff }) => {
+      expect(
+        resolveRightPanelAvailability({ ...AVAILABLE_INPUT, gitRepo, zeropsPanel, serverThread })
+          .diff,
+      ).toBe(diff);
+    },
+  );
+
   it("names every retired persisted kind in one migration list", () => {
     expect(DROPPED_RIGHT_PANEL_KINDS).toEqual(["plan", "pull-request", "preview"]);
   });

@@ -60,19 +60,21 @@ fi
 if [ "$mode" = resolve ]; then printf 'absent\n'; return; fi
 if git show-ref --verify --quiet "$ref"; then fail 'existing checkpoint ref is not a commit'; fi
 dependency_pattern='(^|/)(node_modules|\.venv|venv|__pycache__|\.next|\.nuxt|\.svelte-kit|\.turbo|\.cache)/'
+# Dependencies leave every list before it counts against the budget: on a tree
+# without a .gitignore their names alone pass it.
 bounded_list() {
-  (set +e; "$@"; printf '%s\n' "$?" > "$scratch/status") | head -c "$((max_names + 1))" > "$scratch/part"
+  (set +e; "$@"; printf '%s\n' "$?" > "$scratch/status") | { grep -zvE "$dependency_pattern" || true; } | head -c "$((max_names + 1))" > "$scratch/part"
   [ "$(wc -c < "$scratch/part")" -le "$max_names" ] || fail 'candidate path byte limit exceeded'
   [ "$(cat "$scratch/status")" = 0 ] || fail 'candidate enumeration failed'
 }
-bounded_list git ls-files -z --cached --others --exclude-standard
+# Untracked dependency directories are not walked at all.
+bounded_list git ls-files -z --cached --others --exclude-standard --exclude=node_modules/ --exclude=.venv/ --exclude=venv/ --exclude=__pycache__/ --exclude=.next/ --exclude=.nuxt/ --exclude=.svelte-kit/ --exclude=.turbo/ --exclude=.cache/
 cat "$scratch/part" > "$scratch/all"
 if git rev-parse --verify --quiet HEAD >/dev/null; then
   bounded_list git ls-tree -r -z --name-only HEAD
   cat "$scratch/part" >> "$scratch/all"
 fi
-sort -zu "$scratch/all" > "$scratch/paths.all"
-grep -zvE "$dependency_pattern" "$scratch/paths.all" > "$scratch/paths" || [ $? -eq 1 ] || fail 'candidate filtering failed'
+sort -zu "$scratch/all" > "$scratch/paths"
 [ "$(wc -c < "$scratch/paths")" -le "$max_names" ] || fail 'candidate path byte limit exceeded'
 [ "$(tr -cd '\000' < "$scratch/paths" | wc -c)" -le "$max_paths" ] || fail 'candidate file limit exceeded'
 if [ -n "$baseline" ]; then
