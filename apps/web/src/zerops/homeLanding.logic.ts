@@ -11,6 +11,8 @@ import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 
+import type { ZeropsOrganizationStatus } from "./ZeropsSessionProvider";
+
 export type HomeView =
   | { readonly kind: "opening"; readonly ref: ScopedThreadRef }
   | { readonly kind: "wait" }
@@ -33,9 +35,21 @@ export function homeView(input: {
   readonly hqMatesRead: boolean;
   /** The organization in view; null while none is chosen. */
   readonly organizationId: string | null;
+  readonly organization: ZeropsOrganizationStatus;
+  /** The account's access failed to verify (`useZeropsInventory().error`). */
+  readonly accountTrouble: boolean;
+  readonly catalogFailed: boolean;
 }): HomeView {
   if (input.startFailed) return { kind: "start-failed" };
-  if (input.landing === "none" && input.projectsRead && (input.targeted || input.hqMatesRead)) {
+  // Nothing lists the Mates until something happens — an organization chosen, the account's
+  // access verified, the catalog read — so the read never ends whole: the projects page says what.
+  const blocked =
+    input.organization === "needs-selection" || input.accountTrouble || input.catalogFailed;
+  if (
+    input.landing === "none" &&
+    (input.projectsRead || blocked) &&
+    (input.targeted || input.hqMatesRead)
+  ) {
     return { kind: "projects", organizationId: input.organizationId };
   }
   if (input.remembered !== null && !input.targeted) {

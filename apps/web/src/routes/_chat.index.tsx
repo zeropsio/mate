@@ -4,6 +4,7 @@ import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
+import { AsyncResult } from "effect/unstable/reactivity";
 import { RotateCcwIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -16,6 +17,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/
 import { SidebarInset } from "../components/ui/sidebar";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useProjects, useThreadShells } from "../state/entities";
+import { environmentCatalog } from "../connection/catalog";
 import { useEnvironments } from "../state/environments";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell, environmentsWithSnapshotAtom } from "../state/shell";
@@ -23,6 +25,7 @@ import { buildThreadRouteParams } from "../threadRoutes";
 import { mateDeleting, useDeletingMates } from "../zerops/deletingMates";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useOpenMate } from "../zerops/useOpenMate";
+import { useZeropsInventory } from "../zerops/inventoryContext";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { hqMatesAtom } from "../state/zerops";
 import { homeTarget, homeView, hqHomeMate } from "../zerops/homeLanding.logic";
@@ -92,7 +95,9 @@ function IndexDraftLanding() {
   const { settled: hqMatesRead } = useHqMatesRead();
   const hqMates = useAtomValue(hqMatesAtom);
   const openMate = useOpenMate();
-  const { activeOrganization } = useZeropsSession();
+  const { activeOrganization, organizationStatus } = useZeropsSession();
+  const inventory = useZeropsInventory();
+  const catalogFailed = AsyncResult.isFailure(useAtomValue(environmentCatalog.catalogAtom));
   const deleting = useDeletingMates();
   const { listing } = useZeropsCandidates();
   const unavailable = useMemo(
@@ -231,6 +236,9 @@ function IndexDraftLanding() {
     remembered,
     hqMatesRead,
     organizationId: activeOrganization?.id ?? null,
+    organization: organizationStatus,
+    accountTrouble: inventory.error !== null,
+    catalogFailed,
     // A negative answer needs both the platform/registration read and HQ's unopened Mates.
     projectsRead: matesSettled,
   });

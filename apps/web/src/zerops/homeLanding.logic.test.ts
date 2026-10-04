@@ -23,6 +23,9 @@ describe("homeView: the home never stands blank while it waits", () => {
     projectsRead: false,
     hqMatesRead: true,
     organizationId: "org-moss",
+    organization: "selected",
+    accountTrouble: false,
+    catalogFailed: false,
   } as const;
   const projects = { kind: "projects", organizationId: "org-moss" } as const;
   it.each([
@@ -71,6 +74,38 @@ describe("homeView: the home never stands blank while it waits", () => {
       "platform and catalog settled, HQ unread: keep the remembered opening",
       { landing: "none", projectsRead: true, hqMatesRead: false, remembered: ref },
       { kind: "opening", ref },
+    ],
+    // Restores f3c9cba48: the Mates are never listed until something happens, and the projects
+    // page says what — the home never waits on a read that will not come.
+    [
+      "no organization chosen: the projects page, which asks for one",
+      { landing: "none", organization: "needs-selection", organizationId: null, remembered: ref },
+      { kind: "projects", organizationId: null },
+    ],
+    [
+      "the organizations still loading: it waits",
+      { landing: "none", organization: "loading", organizationId: null },
+      { kind: "wait" },
+    ],
+    [
+      "the account's access failed: the projects page, which says so",
+      { landing: "none", accountTrouble: true },
+      projects,
+    ],
+    [
+      "the environment catalog failed, HQ names no Mate: the projects page and its Try again",
+      { landing: "none", catalogFailed: true },
+      projects,
+    ],
+    [
+      "the environment catalog failed, HQ not read yet: it waits for HQ's Mate",
+      { landing: "none", catalogFailed: true, hqMatesRead: false },
+      { kind: "wait" },
+    ],
+    [
+      "the environment catalog failed, HQ names a Mate: on its way there",
+      { landing: "going", catalogFailed: true },
+      { kind: "wait" },
     ],
     [
       "the draft would not start",
