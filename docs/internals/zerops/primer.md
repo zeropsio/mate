@@ -122,8 +122,8 @@ delivery (§5, T13).
     repository in HQ per dev pair; the delivery as the Mate's change; the recipe proposed as a
     change of `group`, and the stand-up from its AI Agent tier; `zcp hq git-credential`, which
     answers git with the Mate credential for HQ alone. It installs the Mate server from the latest
-    release's `stable.json`, with no pin, and seeds a migrated Mate's sign-in record from its signer
-    tags once
+    release's `stable.json`, with no pin, and seeds an absent sign-in record from HQ's saved
+    signers once (v9.191.0)
 - **The old Gitea** — `../gitea-mate` (`zeropsio/gitea-mate`) and the Gitea project of each
   organization that ran the release: kept as it is, written by nothing new (§1)
 
@@ -303,8 +303,9 @@ still to come says so.
     A, A0–A8, A12). Who
     asked for a Mate's stand-up and its close-off are HQ's record; whose a login is, the server's
     `~/.mate/signed-in.json`. No `mate:signer:`, `mate:standup:` or `mate:closed-off` tag is
-    written; a Mate migrated from the release gets its sign-in record seeded from its signer tags by
-    zcp, once
+    written; zcp seeds an absent record from HQ's saved signers, and the server's first start
+    after an update carries any login its record never named over from its `mate:signer:` tag or
+    HQ's saved signer, once, for its credential there (`zeropsSignerCarryOver.ts`)
   - _Built in:_ `c199e51eef`, `14369a03c6`, `71258784ef`, `d168c83f84`, `2b022c8341`; zcp
     `abd07e960`, `9f800923f`
   - _Proven by:_ `ZeropsHqLink.test.ts`, `zeropsHqOverview.test.ts`, `zeropsSignIns.test.ts`,
