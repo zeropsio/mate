@@ -286,8 +286,8 @@ describe("a Mate's birth intent on its project", () => {
     const [step] = plan.steps;
     expect(
       step?.kind === "create-project" || step?.kind === "import-project" ? step.tagList : [],
-    ).toEqual(["mate:birth:b-1", "mate"]);
-    if (step?.kind === "import-project") expect(step.yaml).toContain("    - mate:birth:b-1\n");
+    ).toEqual(["mate"]);
+    if (step?.kind === "import-project") expect(step.yaml).not.toContain("mate:birth:");
   });
 });
 

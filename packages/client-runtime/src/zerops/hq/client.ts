@@ -88,6 +88,9 @@ export interface HqMateSetUp extends HqNewMate {
  * reader may observe it (`hqMates.ts`) — its agents' logins.
  */
 export interface HqMate extends HqMateRecord {
+  readonly birthId?: string | null;
+  readonly nameSource?: string;
+  readonly signers?: Readonly<Record<string, string>>;
   /**
    * Who made it — whoever set its record up: a Mate recorded before HQ kept it is null; an older
    * HQ says nothing.
@@ -113,6 +116,7 @@ export interface HqAppContents {
 
 /** What `GET /api/structure` answers: the applications as the reader sees them in Zerops. */
 export interface HqStructure {
+  readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
   /** The Mates HQ holds in no application: their project's name in Zerops, and their record. */
   readonly ungrouped: ReadonlyArray<{
     readonly projectId: string;
@@ -162,9 +166,10 @@ export interface HqAttach {
 
 /**
  * A Mate's birth intent at HQ: where it goes and with which face, recorded before its Zerops project
- * exists — which is created tagged with its id (`mate:birth:<id>`) — until its attach closes it.
+ * exists, then bound by project id, until its attach closes it.
  */
 export interface HqBirth {
+  readonly projectId?: string | null;
   readonly id: string;
   /** Its face as its attach records it: empty where it wears its name's tint. */
   readonly face: string;
@@ -262,6 +267,7 @@ export interface HqApi {
    * the attach that closes it records the caller as its stand-up's asker where `standUp` says so.
    */
   readonly recordBirth: (birth: { readonly appId: string } & HqNewMate) => Promise<HqBirth>;
+  readonly bindBirth: (birthId: string, projectId: string) => Promise<void>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
   /**
    * An environment's deploy token, minted by the person's own client, kept by HQ (`PUT
@@ -829,6 +835,13 @@ export function makeHqApi(input: {
       json<HqBirth>(
         await authorized("/api/births", { method: "POST", body: JSON.stringify(birth) }, true),
       ),
+    bindBirth: async (birthId, projectId) => {
+      await authorized(
+        `/api/births/${encodeURIComponent(birthId)}/project`,
+        { method: "PUT", body: JSON.stringify({ projectId }) },
+        true,
+      );
+    },
     createApp: (name) =>
       confirmed(
         async () =>

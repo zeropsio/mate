@@ -176,6 +176,7 @@ export interface ZeropsProject {
    * or places no such project.
    */
   readonly hq?: HqPlacement;
+  readonly hqTool?: "gitea";
   /** Round-tripped by every project write, which must not blank it. */
   readonly description?: string;
   /**
@@ -212,7 +213,7 @@ function projectWriteBody(input: {
   return {
     name: input.name,
     description: input.description ?? "",
-    tagList: input.tagList,
+    tagList: input.tagList.includes("mate") ? ["mate"] : [],
     publicIpV4Shared: input.publicIpV4Shared ?? false,
     maxCreditLimit: input.maxCreditLimit ?? null,
   };
@@ -1693,7 +1694,7 @@ export class ZeropsApiClient {
           buildCreateProjectBody({
             clientId: input.clientId,
             name: input.name,
-            tagList: input.tagList,
+            tagList: input.tagList.includes("mate") ? ["mate"] : [],
             ...(input.location ? { location: input.location } : {}),
           }),
         ),

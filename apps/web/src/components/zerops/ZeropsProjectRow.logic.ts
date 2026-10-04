@@ -296,7 +296,7 @@ function isConnectionInFlight(candidate: ZeropsRowCandidate): boolean {
 }
 
 export function isZeropsToolCandidate(candidate: ZeropsCandidate): boolean {
-  return readZeropsToolKind(candidate.project.tagList) !== undefined;
+  return readZeropsToolKind(candidate.project) !== undefined;
 }
 
 /**

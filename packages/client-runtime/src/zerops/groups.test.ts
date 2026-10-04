@@ -121,7 +121,7 @@ describe("readZeropsMembership", () => {
     {
       name: "reads the birth intent a Mate's project was created under, by its id",
       input: { tagList: ["mate", "mate:birth:b-1"] },
-      expected: { mate: true, birth: "b-1" },
+      expected: { mate: true },
     },
     {
       name: "takes a birth tag naming no intent for none",
@@ -164,12 +164,8 @@ describe("kindOfRole — what HQ calls a project placed for a role", () => {
 });
 
 describe("withZeropsMateTag", () => {
-  it("declares the Mate once, after every other tag", () => {
-    expect(withZeropsMateTag(["billing:team-a", "mate:standup:u-ada"])).toEqual([
-      "billing:team-a",
-      "mate:standup:u-ada",
-      "mate",
-    ]);
+  it("declares the Mate with its only allowed tag", () => {
+    expect(withZeropsMateTag(["billing:team-a", "mate:standup:u-ada"])).toEqual(["mate"]);
     expect(withZeropsMateTag(undefined)).toEqual(["mate"]);
   });
 
@@ -627,8 +623,8 @@ describe("deriveZeropsGroups — creations under way", () => {
     };
     const listed = project("Renamed", {
       id: "real",
-      tagList: ["mate", "mate:birth:intent-1"],
-      hq: placed("aaa"),
+      tagList: ["mate"],
+      hq: placed("aaa", "mate", { mate: { face: "", birthId: "intent-1" } }),
     });
     const tree = deriveZeropsGroups([listed], { order: "name", births: [pending] });
     expect(tree.groups[0]?.pending).toEqual([]);

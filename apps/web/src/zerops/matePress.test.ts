@@ -51,6 +51,7 @@ vi.mock("./accountHq", () => ({
     recordClosedOff: async () => {
       hq.calls?.push("mark");
     },
+    bindBirth: async () => undefined,
     attachProject: async (
       appId: string,
       attach: {
@@ -872,7 +873,7 @@ describe("finishMateSetup — the harden path", () => {
             id: "app-g",
             name: "mate-rig-e2e-g",
             projects: [],
-            births: [{ id: "b-gus", face: "rose:seal" }],
+            births: [{ id: "b-gus", face: "rose:seal", projectId: "gus-project" }],
           },
         ],
       },
@@ -880,7 +881,7 @@ describe("finishMateSetup — the harden path", () => {
         id: "gus-project",
         name: "mate-rig-e2e-g - Gus",
         status: "ACTIVE",
-        tagList: ["mate:birth:b-gus", "mate"],
+        tagList: ["mate"],
       } as never,
       press: undefined,
       writer: false,
@@ -1417,7 +1418,7 @@ describe("mateFinishRegistration — what Finish setup and Set up Mate register"
         id: "app-g",
         name: "mate-rig-e2e-g",
         projects: [],
-        births: [{ id: "b-gus", face: "rose:seal" }],
+        births: [{ id: "b-gus", face: "rose:seal", projectId: "gus-project" }],
       },
     ],
   };
@@ -1426,7 +1427,7 @@ describe("mateFinishRegistration — what Finish setup and Set up Mate register"
     id: "gus-project",
     name: "mate-rig-e2e-g - Gus",
     status: "ACTIVE",
-    tagList: ["mate:birth:b-gus", "mate"],
+    tagList: ["mate"],
   } as const;
   const BASE = {
     hqKnown: true,

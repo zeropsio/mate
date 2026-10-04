@@ -1381,7 +1381,8 @@ describe("an Add's HQ intent in its creation progress", () => {
         step: {
           kind: "create-project",
           name: "Ida",
-          tagList: ["mate", "mate:birth:hq-birth"],
+          tagList: ["mate"],
+          birth: "hq-birth",
           location: undefined,
         },
         state: "running",

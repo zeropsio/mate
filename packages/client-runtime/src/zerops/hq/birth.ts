@@ -18,13 +18,6 @@ import {
 } from "./birthJournal.ts";
 
 export const HQ_PROJECT_NAME = "Headquarters";
-/**
- * Marks HQ's project for the Zerops GUI, and for a birth to see one underway: the official HQ is
- * the one its anchor names, never a tag.
- */
-export const HQ_PROJECT_TAG = "mate:hq";
-/** One birth's own tag on the project it imports: what finds that project, and nothing else. */
-const hqBirthTag = (birthId: string): string => `mate:hq-birth:${birthId}`;
 /** A project on its way out, or out: nothing a birth counts. */
 const GONE_PROJECT_STATUSES: ReadonlySet<string> = new Set(["DELETING", "DELETED"]);
 const HQ_SERVICE = "hq";
@@ -72,10 +65,10 @@ export interface HqBirthRecord {
   /** The step to run next; `done` once HQ answered as the official one. */
   readonly step: HqBirthStep | "done";
   /**
-   * The birth's own tag (`hqBirthTag`), kept before its import is sent: from then on the import
-   * is never sent again, and the project is found by it. Null before.
+   * The bootstrap import's id, kept before its import is sent: from then on the import
+   * is never sent again, and its seeded journal records it. Null before.
    */
-  readonly importTag: string | null;
+  readonly importId: string | null;
   readonly projectId: string | null;
   /** The `hq` service. */
   readonly serviceId: string | null;
@@ -104,7 +97,7 @@ export interface HqBirthRecord {
 
 export const HQ_BIRTH_START: HqBirthRecord = {
   step: "project",
-  importTag: null,
+  importId: null,
   projectId: null,
   serviceId: null,
   address: null,
@@ -170,7 +163,7 @@ export interface HqBirthDeps {
   readonly health: (address: string) => Promise<HqHealth>;
   readonly sleep: (ms: number) => Promise<void>;
   readonly now: () => number;
-  /** A new birth's id, for its tag. */
+  /** A new bootstrap import or claim id. */
   readonly newBirthId: () => string;
   /** Draws HQ's key (`HQ_KEY_SECRET`): the platform's cryptographic randomness. */
   readonly randomBytes: RandomBytes;
@@ -207,8 +200,8 @@ const refusedOutright = (cause: unknown): boolean =>
  * months of monthly, at five times today's data (vysledky/hq-backup.md §4).
  */
 export function hqImportYaml(input: {
-  /** The birth's own tag (`hqBirthTag`). */
-  readonly birthTag: string;
+  /** The bootstrap import's id. */
+  readonly birthId: string;
   /** The client origins HQ's API answers (`HQ_CLIENT_ORIGINS`). */
   readonly origins: ReadonlyArray<string>;
   /** The Zerops REST API Core reads with (`HQ_ZEROPS_API`). */
@@ -217,11 +210,8 @@ export function hqImportYaml(input: {
   return [
     "project:",
     `  name: ${HQ_PROJECT_NAME}`,
-    "  tags:",
-    `    - ${JSON.stringify(HQ_PROJECT_TAG)}`,
-    `    - ${JSON.stringify(input.birthTag)}`,
     "  envVariables:",
-    `    ${HQ_BIRTH_RECORD_KEY}: ${JSON.stringify(birthSnapshot({ ...HQ_BIRTH_START, step: "services", importTag: input.birthTag }))}`,
+    `    ${HQ_BIRTH_RECORD_KEY}: ${JSON.stringify(birthSnapshot({ ...HQ_BIRTH_START, step: "services", importId: input.birthId }))}`,
     "services:",
     "  - hostname: db",
     "    type: postgresql:single@18",
@@ -310,59 +300,44 @@ export async function runHqBirth(input: {
   try {
     await assertNoOtherHq(record.projectId);
     if (record.projectId === null) {
-      const projects = (await platform.listClientProjects(clientId)).filter(
-        (project) =>
-          !GONE_PROJECT_STATUSES.has(project.status) &&
-          (project.tagList ?? []).includes(HQ_PROJECT_TAG),
-      );
-      if (projects.length > 1 && record.importTag !== null)
-        throw new ImportUnanswered(IMPORT_UNANSWERED);
-      if (projects.length > 1)
+      // HQ cannot keep records before it exists. The bootstrap journal is seeded by the
+      // import and read by project id; its official identity comes only from the org anchor.
+      const underway = [] as Array<{ project: { id: string }; record: HqBirthRecord }>;
+      for (const project of await platform.listClientProjects(clientId)) {
+        if (GONE_PROJECT_STATUSES.has(project.status)) continue;
+        const shared = readBirthRecord(await platform.readProjectBirthEnv(project.id));
+        if (shared !== undefined && shared.step !== "done")
+          underway.push({ project, record: shared });
+        else if (shared === undefined) {
+          const services = await platform.listProjectServices(project.id);
+          if (HQ_SERVICES.every((name) => services.some((service) => service.name === name))) {
+            if (record.importId !== null) throw new ImportUnanswered(IMPORT_UNANSWERED);
+            throw new BirthStopped(
+              "Headquarters has no readable setup record. Ask an organization admin to inspect its project env in Zerops.",
+            );
+          }
+        }
+      }
+      if (underway.length > 1)
         throw new BirthStopped(
           "More than one HQ project is being set up. Ask an organization admin to inspect Headquarters in Zerops.",
         );
-      const underway = projects[0];
-      if (underway !== undefined) {
-        if (record.importTag !== null && !(underway.tagList ?? []).includes(record.importTag))
+      const found = underway[0];
+      if (found !== undefined) {
+        if (record.importId !== null && found.record.importId !== record.importId)
           throw new ImportUnanswered(IMPORT_UNANSWERED);
-        let shared = readBirthRecord(await platform.readProjectBirthEnv(underway.id));
-        // The direct project listing can precede its import's env entries. Read for a bounded
-        // window; an absent seed is never permission to import over this project.
-        if (
-          shared === undefined &&
-          (underway.tagList ?? []).some((tag) => tag.startsWith("mate:hq-birth:"))
-        ) {
-          try {
-            shared = await waitFor(
-              Math.min(waits.servicesCapMs, 90_000),
-              "Reading HQ's setup record",
-              async () => readBirthRecord(await platform.readProjectBirthEnv(underway.id)),
-            );
-          } catch (cause) {
-            if (!(cause instanceof BirthStopped)) throw cause;
-          }
-        }
-        if (
-          shared === undefined ||
-          shared.importTag === null ||
-          !(underway.tagList ?? []).includes(shared.importTag)
-        ) {
-          throw new BirthStopped(
-            "Headquarters has no readable setup record. Ask an organization admin to inspect its project env in Zerops.",
-          );
-        }
-        record = { ...shared, projectId: underway.id };
+        record = { ...found.record, projectId: found.project.id };
         input.moved(record);
-      } else if (record.importTag !== null) {
+      } else if (record.importId !== null) {
         throw new ImportUnanswered(IMPORT_UNANSWERED);
       } else {
-        const tag = hqBirthTag(deps.newBirthId());
-        await advance({ importTag: tag });
+        const tag = deps.newBirthId();
+        await advance({ importId: tag });
         // The project does not yet exist: its first record is embedded in this import itself.
         try {
           const imported = await platform.importProject(
             clientId,
-            hqImportYaml({ birthTag: tag, origins: input.origins, zeropsApi: input.zeropsApi }),
+            hqImportYaml({ birthId: tag, origins: input.origins, zeropsApi: input.zeropsApi }),
           );
           if (imported.serviceStacks !== undefined) {
             importHandles = {
@@ -379,15 +354,18 @@ export async function runHqBirth(input: {
           await advance({ step: "services", projectId: imported.projectId, ...importHandles });
         } catch (cause) {
           if (refusedOutright(cause)) {
-            await advance({ importTag: null });
+            await advance({ importId: null });
             throw cause;
           }
-          const found = (await platform.listClientProjects(clientId)).filter(
-            (project) =>
-              !GONE_PROJECT_STATUSES.has(project.status) && (project.tagList ?? []).includes(tag),
-          );
+          // Follow the import's journal once; a missing answer never permits another import.
+          const found = [] as Array<string>;
+          for (const project of await platform.listClientProjects(clientId)) {
+            if (GONE_PROJECT_STATUSES.has(project.status)) continue;
+            const seed = readBirthRecord(await platform.readProjectBirthEnv(project.id));
+            if (seed?.importId === tag) found.push(project.id);
+          }
           if (found.length !== 1) throw new ImportUnanswered(IMPORT_UNANSWERED);
-          await advance({ step: "services", projectId: found[0]!.id });
+          await advance({ step: "services", projectId: found[0]! });
         }
       }
     }

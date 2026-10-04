@@ -476,13 +476,14 @@ describe("removeFailedZeropsProject", () => {
 });
 
 describe("hasNoZeropsProject", () => {
-  const candidate = (tagList: ReadonlyArray<string>, appId?: string) =>
+  const candidate = (tagList: ReadonlyArray<string>, appId?: string, tool?: "gitea") =>
     ({
       project: {
         id: [...tagList, appId ?? ""].join("|"),
         name: "p",
         status: "ACTIVE",
         tagList,
+        ...(tool === undefined ? {} : { hqTool: tool }),
         ...(appId === undefined ? {} : { hq: { appId, appName: "P", kind: "mate", mate: null } }),
       },
     }) as never;
@@ -503,7 +504,7 @@ describe("hasNoZeropsProject", () => {
     ["a project in a group", [candidate([], "aaa")], false],
     ["a project in no group", [candidate([])], false],
     // A tool is not a project: an account holding only Gitea has not started.
-    ["only a tool", [candidate(["mate:tool:gitea"])], true],
+    ["only a tool", [candidate([], undefined, "gitea")], true],
   ] as const)("says an account with %s has no project: %s", (_case, candidates, expected) => {
     expect(hasNoZeropsProject({ listing: listing(candidates) })).toBe(expected);
   });

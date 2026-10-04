@@ -190,7 +190,7 @@ export interface RunEnvironmentCreationInput {
     readonly serviceName?: string;
   };
   /** The platform took the project: everything after this step acts on it. */
-  readonly onProjectAccepted?: (projectId: string) => void;
+  readonly onProjectAccepted?: (projectId: string) => void | Promise<void>;
 }
 
 /**
@@ -263,9 +263,9 @@ export async function runEnvironmentCreation(
     if (confirmed === undefined) throw new Error("The project's isolation could not be read.");
     if (!readsClosed(confirmed)) throw new Error("The project does not read as closed off yet.");
   };
-  const accept = (id: string) => {
+  const accept = async (id: string) => {
     projectId = id;
-    input.onProjectAccepted?.(id);
+    await input.onProjectAccepted?.(id);
   };
   report();
 
@@ -292,7 +292,7 @@ export async function runEnvironmentCreation(
           // Named before the wait: a creation the platform then fails has
           // still made a project, and the outcome must say which one.
           projectName = step.name;
-          accept(project.id);
+          await accept(project.id);
           await awaitProjectCreated({
             clientId: input.clientId,
             projectId: project.id,
@@ -314,7 +314,7 @@ export async function runEnvironmentCreation(
             yaml: step.yaml,
           });
           projectName = step.name;
-          accept(imported.projectId);
+          await accept(imported.projectId);
           break;
         }
         case "import-container": {

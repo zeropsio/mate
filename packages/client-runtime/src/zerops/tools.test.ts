@@ -10,17 +10,14 @@ const GITEA_PROJECT: ZeropsProject = {
   status: "ACTIVE",
   publicZone: "s7cg2lbb37ebf9fao4ts4408bp0.prg1-zerops.zone",
   zeropsSubdomainHost: "926",
-  tagList: ["mate:tool:gitea"],
+  tagList: [],
+  hqTool: "gitea",
 };
 
-describe("tool tags", () => {
-  it.each([
-    { name: "reads a known kind", tagList: ["mate:tool:gitea"], expected: "gitea" },
-    { name: "ignores an unknown kind", tagList: ["mate:tool:jenkins"], expected: undefined },
-    { name: "ignores a Mate's project", tagList: ["mate"], expected: undefined },
-    { name: "ignores no tags at all", tagList: undefined, expected: undefined },
-  ])("$name", ({ tagList, expected }) => {
-    expect(readZeropsToolKind(tagList)).toBe(expected);
+describe("HQ tool records", () => {
+  it("reads the HQ kind and ignores a legacy tool tag", () => {
+    expect(readZeropsToolKind({ hqTool: "gitea" })).toBe("gitea");
+    expect(readZeropsToolKind({ tagList: ["mate:tool:gitea"] })).toBeUndefined();
   });
 });
 
@@ -40,8 +37,7 @@ describe("partitionZeropsToolProjects", () => {
       id: "c",
       name: "confused",
       status: "ACTIVE",
-      tagList: ["mate:tool:gitea"],
-      hq: { appId: "aaa", appName: "Acme", kind: "mate", mate: null },
+      hqTool: "gitea",
     };
 
     const { tools, rest } = partitionZeropsToolProjects([confused]);

@@ -397,13 +397,15 @@ export function mateFinishRegistration(input: {
       standUp: false,
     };
   }
-  const { birth } = readZeropsMembership(input.project);
-  const intent = birth === undefined ? undefined : birthIntentOf(input.structure, birth);
-  if (birth !== undefined && intent !== undefined) {
+  const app = input.structure?.apps.find((entry) =>
+    entry.births?.some((birth) => birth.projectId === input.project.id),
+  );
+  const intent = app?.births?.find((birth) => birth.projectId === input.project.id);
+  if (app !== undefined && intent !== undefined) {
     const face = readMateFace(intent.face);
     return {
       hq: input.hq,
-      groupId: intent.appId,
+      groupId: app.id,
       kind: "mate",
       mate: {
         face:
@@ -412,7 +414,32 @@ export function mateFinishRegistration(input: {
             : { tint: face.tint, shape: face.shape },
       },
       standUp: false,
-      intent: birth,
+      intent: intent.id,
+    };
+  }
+  const creation = input.press?.progress?.find(
+    (entry) => entry.step.kind === "create-project" || entry.step.kind === "import-project",
+  );
+  const localId =
+    creation !== undefined &&
+    (creation.step.kind === "create-project" || creation.step.kind === "import-project")
+      ? creation.step.birth
+      : undefined;
+  const localIntent = localId === undefined ? undefined : birthIntentOf(input.structure, localId);
+  if (localId !== undefined && localIntent !== undefined) {
+    const face = readMateFace(localIntent.face);
+    return {
+      hq: input.hq,
+      groupId: localIntent.appId,
+      kind: "mate",
+      mate: {
+        face:
+          face?.tint === undefined || face.shape === undefined
+            ? undefined
+            : { tint: face.tint, shape: face.shape },
+      },
+      standUp: false,
+      intent: localId,
     };
   }
   const placed = matePressPlacement(input.press);
@@ -671,6 +698,7 @@ export function pressRegistration(
       return;
     }
     if (registration.kind === "mate") {
+      if (registration.intent !== undefined) await hq.bindBirth(registration.intent, projectId);
       await attachToApp(hq, registration.groupId, {
         projectId,
         kind: "mate",
@@ -796,7 +824,7 @@ export async function runPress(input: {
     readonly projectName: string;
     readonly serviceName?: string;
   };
-  readonly onProjectAccepted?: (projectId: string, projectName: string) => void;
+  readonly onProjectAccepted?: (projectId: string, projectName: string) => void | Promise<void>;
   readonly onProgress?: Parameters<typeof runEnvironmentCreation>[0]["onProgress"];
   /** This browser's locks; the page's own where omitted. */
   readonly locks?: LockManagerLike | undefined;
@@ -864,12 +892,12 @@ async function pressRun(
       describeError: zeropsErrorMessage,
       sleep: input.sleep ?? sleep,
       ...(input.resume === undefined ? {} : { resume: input.resume }),
-      onProjectAccepted: (projectId) => {
+      onProjectAccepted: async (projectId) => {
         accepted = projectId;
         if (input.heldLock !== true) {
           void withExclusiveLock(input.locks, matePressLockName(projectId), () => end);
         }
-        input.onProjectAccepted?.(projectId, projectName);
+        await input.onProjectAccepted?.(projectId, projectName);
       },
       onProgress: (progress) => {
         if (accepted !== undefined && input.isCurrent()) {

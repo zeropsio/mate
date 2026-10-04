@@ -1,16 +1,4 @@
-/**
- * What a write to a project's `tagList` means (DESIGN §2.B B2, §6.5): a patch, applied by the
- * TagWriter to a list it has just read, never a list a caller computed from an older copy.
- *
- * `PUT /project/{id}` replaces the list wholesale, so a caller that sent the list it held would
- * delete every tag written since it read. A patch says only what it changes; every other tag —
- * a person's own, another writer's, one this client cannot parse — is carried through.
- *
- * Each patch is idempotent: applied to a list it already holds, it changes nothing. That is how
- * the writer tells a write that landed from one another writer replaced.
- *
- * Pure: no I/O, no clock.
- */
+/** The only project tag this product declares is `mate`; all metadata is held by HQ. */
 import { withZeropsMateTag } from "../groups.ts";
 
 /** Declares the Mate: the `mate` marker, for the Zerops GUI and this client alike. */

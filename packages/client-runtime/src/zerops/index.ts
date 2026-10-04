@@ -93,7 +93,6 @@ export {
   readMateFace,
   readZeropsMembership,
   ZEROPS_BOT_NAME_MAX_LENGTH,
-  mateBirthTag,
   withZeropsMateTag,
   type BirthPlacement,
   type DeriveZeropsGroupsOptions,

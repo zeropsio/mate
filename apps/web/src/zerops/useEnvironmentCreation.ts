@@ -245,7 +245,7 @@ export function useEnvironmentCreation(): (
         isCurrent,
         // The project is drawn in its group from here, and the listing is read again at once so
         // the group catches up with it.
-        onProjectAccepted: (projectId) => {
+        onProjectAccepted: async (projectId) => {
           if (!isCurrent()) return;
           beginPress({
             projectId,
@@ -263,6 +263,8 @@ export function useEnvironmentCreation(): (
           });
           invalidateZerops({ topic: "inventory", organization: organizationRef(organization.id) });
           request.onAccepted?.(projectId);
+          if (intent !== undefined)
+            await accountHqApi(client, organization.id, hq).bindBirth(intent, projectId);
         },
         onProgress: (progress) => {
           if (isCurrent()) request.onProgress?.(progress);
