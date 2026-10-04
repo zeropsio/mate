@@ -2,7 +2,8 @@
  * A Mate's setup, read off its own `/mate/setup.json` (`mateSetup.ts`) while its view shows it
  * coming up: the same answer in any browser, and whether a browser watches or not. Read every few
  * seconds while there is something left to happen, and no more once its Git access, its runtimes
- * and its stand-up have settled.
+ * and its stand-up have settled. Nothing is read while the tab is hidden: a read that falls due
+ * then waits for its return (527bbf7f7's rule).
  *
  * `undefined` while nothing readable came back — not asked yet, on its way up, or an older Mate
  * whose server has no such route: the caller then reads the container's health, as it always
@@ -38,6 +39,8 @@ interface SetupObservation {
   setup: MateSetup | undefined;
   controller: AbortController | undefined;
   timer: ReturnType<typeof setTimeout> | undefined;
+  /** Stops waiting for the tab's return, while a read that fell due waits for it. */
+  unwait: (() => void) | undefined;
   inFlight: boolean;
   dirty: boolean;
 }
@@ -51,6 +54,7 @@ function observation(origin: string): SetupObservation {
       setup: undefined,
       controller: undefined,
       timer: undefined,
+      unwait: undefined,
       inFlight: false,
       dirty: false,
     };
@@ -80,9 +84,31 @@ async function ask(held: SetupObservation): Promise<void> {
   ) {
     held.timer = setTimeout(() => {
       held.timer = undefined;
-      void ask(held);
+      whenShown(held);
     }, MATE_SETUP_POLL_MS);
   }
+}
+
+const tabHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
+
+/** Reads now while the tab is shown, else once it is shown again. */
+function whenShown(held: SetupObservation): void {
+  if (!tabHidden()) {
+    void ask(held);
+    return;
+  }
+  const shown = () => {
+    if (tabHidden()) return;
+    unwait(held);
+    void ask(held);
+  };
+  document.addEventListener("visibilitychange", shown);
+  held.unwait = () => document.removeEventListener("visibilitychange", shown);
+}
+
+function unwait(held: SetupObservation): void {
+  held.unwait?.();
+  held.unwait = undefined;
 }
 
 /** Re-read after an explicit action. Never clears the last answer. */
@@ -91,6 +117,7 @@ export function refreshMateSetup(origin: string): void {
   if (held === undefined) return;
   if (held.timer !== undefined) clearTimeout(held.timer);
   held.timer = undefined;
+  unwait(held);
   if (held.inFlight) held.dirty = true;
   else void ask(held);
 }
@@ -102,6 +129,7 @@ function stop(held: SetupObservation): void {
   held.dirty = false;
   if (held.timer !== undefined) clearTimeout(held.timer);
   held.timer = undefined;
+  unwait(held);
 }
 
 export function useMateSetup(origin: string | undefined): MateSetup | undefined {

@@ -591,6 +591,7 @@ stream owner for a fresh snapshot.
 | A recipe's tiers on `main`                        | None: Mate, stage and production tiers in the same snapshot and messages                       | —                                   |
 | A comparison of two commits                       | None: asked once and held; one that failed is asked again a minute later (`useZeropsCompares`) | Still wanted                        |
 | Deployment name                                   | 30 s while a deploy of that service runs and the pushed name is unconfirmed                    | Demanded                            |
+| A Mate's setup (`/mate/setup.json`)               | 4 s while a step is still to happen (`useMateSetup`); a read due while hidden waits            | A view shows it, the tab is visible |
 | Container probe                                   | The container machine's cadence                                                                | Its state requires it               |
 | Throwaway sweep                                   | Once for durable debt past the door window; failed sweeps require explicit again               | The projects screen is open         |
 
