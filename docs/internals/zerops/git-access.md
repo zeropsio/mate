@@ -59,3 +59,18 @@ policy permits topic branches; it refuses `main`, tags, the entire `mate` namesp
 refs. Existing branch deletion and non-fast-forward protections still apply, even for owners.
 Each Git command ends in Git's response, with a per-ref refusal for protected refs. A pushed topic
 branch can be selected after a manual source read; no background refresh or retry is added.
+
+## Change link publication
+
+zcp opens a change through HQ, which returns its committed identity, then pushes its branch before
+publishing the conversation link. Smart HTTP waits for HQ's ordered event receipt to record the
+pushed head before returning success. A recording failure fails the request; Git's applied refs
+stay in place for Core's existing reconciliation. Local Git operations keep nonblocking event
+delivery so a recorder can call back into the Git layer. No client-provided link outcome can
+replace the reader's current access check.
+
+A conversation link or review reads a change missing from the flow once. The result appears at
+once: read, not found (including an open change without a pushed head), refused or unavailable.
+Only not found and unavailable offer **Read again**. A refusal, including 403, has no recovery
+button. Web and desktop share this reader. Mobile has no counterpart to these standalone
+conversation link and change-review surfaces; its shared project flow remains stream-driven.

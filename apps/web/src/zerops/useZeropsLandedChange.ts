@@ -8,14 +8,14 @@
  * than the link itself (the owner, 2026-09-19).
  *
  * So the one change asked for is read from HQ, and only that one: no listing, no poll — one read
- * on open, asked again a few times while HQ does not find it or does not answer. A change the flow
- * already has never gets here. Nothing is read until the organization's official HQ is known.
+ * on open, with each answer published at once. Only Read again asks another time. A change the
+ * flow already has never gets here. Nothing is read until the organization's official HQ is known.
  */
 import { flowChange, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { HqError, type HqApi } from "@t3tools/client-runtime/zerops/hq";
 import type { ChangeLink } from "@t3tools/shared/hqChanges";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useOfficialHq } from "./accountHq";
 
@@ -24,13 +24,10 @@ export type ZeropsLandedChangeState =
   | { readonly kind: "reading" }
   | { readonly kind: "read"; readonly pull: FlowPullRequest }
   | { readonly kind: "gone" }
-  | { readonly kind: "failed"; readonly reason: string };
-
-/** How long after each read that did not find the change it is read again. */
-export const LANDED_CHANGE_RETRY_MS: ReadonlyArray<number> = [2_000, 5_000, 10_000];
+  | { readonly kind: "refused" | "unavailable"; readonly reason: string };
 
 /**
- * One read of the change as the person: HQ's 404 is a change not there, any other no a failure.
+ * One read of the change as the person: HQ's 404 is a change not there; a refusal ends it.
  * An open change no push reached is drawn nowhere (SPEC §3.2a), here neither.
  */
 async function readChange(
@@ -43,52 +40,69 @@ async function readChange(
     if (change.state === "open" && change.head === null) return { kind: "gone" };
     return { kind: "read", pull: flowChange(change, hq.address) };
   } catch (cause) {
-    return cause instanceof HqError && cause.kind === "refused" && cause.status === 404
-      ? { kind: "gone" }
-      : { kind: "failed", reason: zeropsErrorMessage(cause) };
+    if (cause instanceof HqError && cause.kind === "refused") {
+      return cause.status === 404
+        ? { kind: "gone" }
+        : { kind: "refused", reason: zeropsErrorMessage(cause) };
+    }
+    return { kind: "unavailable", reason: zeropsErrorMessage(cause) };
   }
 }
 
-export function useZeropsLandedChange(link: ChangeLink | null): ZeropsLandedChangeState {
+export function useZeropsLandedChange(link: ChangeLink | null): ZeropsLandedChangeState & {
+  readonly readAgain?: () => void;
+} {
   // Keyed on it, so a link drawn before the anchor is resolved is read once it is.
   const hq = useOfficialHq();
   const appId = link?.appId;
   const repo = link?.repo;
   const number = link?.number;
-  const [state, setState] = useState<ZeropsLandedChangeState>({ kind: "idle" });
+  const [attempt, setAttempt] = useState(0);
+  const readAgain = useCallback(() => {
+    setAttempt((current) => current + 1);
+  }, []);
+
+  const key =
+    hq === null || link === null
+      ? null
+      : `${hq.address}|${link.appId}/${link.repo}#${String(link.number)}`;
+  const initial = (): ZeropsLandedChangeState =>
+    key === null ? { kind: "idle" } : { kind: "reading" };
+  const [held, setHeld] = useState({ key, hq, attempt, state: initial() });
+  let state = held.state;
+  if (held.key !== key || held.hq !== hq || held.attempt !== attempt) {
+    state = initial();
+    setHeld({ key, hq, attempt, state });
+  }
+  const reading = state.kind === "reading";
 
   useEffect(() => {
-    if (hq === null || appId === undefined || repo === undefined || number === undefined) {
-      setState({ kind: "idle" });
+    if (
+      !reading ||
+      hq === null ||
+      key === null ||
+      appId === undefined ||
+      repo === undefined ||
+      number === undefined
+    )
       return;
-    }
     const asked = { appId, repo, number };
     const stop = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let wake: () => void = () => undefined;
-    setState({ kind: "reading" });
-    void (async () => {
-      let answer = await readChange(hq, asked, stop.signal);
-      // A change is linked the moment it is opened, so a first "not there" or a read that
-      // failed is asked again a few times before it stands: a message is frozen once
-      // written, and nothing else would ever read its link again.
-      for (const delayMs of LANDED_CHANGE_RETRY_MS) {
-        if (stop.signal.aborted || answer.kind === "read") break;
-        await new Promise<void>((resolve) => {
-          wake = resolve;
-          timer = setTimeout(resolve, delayMs);
-        });
-        if (stop.signal.aborted) return;
-        answer = await readChange(hq, asked, stop.signal);
-      }
-      if (!stop.signal.aborted) setState(answer);
-    })();
+    void readChange(hq, asked, stop.signal).then((answer) => {
+      if (stop.signal.aborted) return;
+      setHeld((current) =>
+        current.key === key && current.hq === hq && current.attempt === attempt
+          ? { ...current, state: answer }
+          : current,
+      );
+    });
     return () => {
       stop.abort();
-      clearTimeout(timer);
-      wake();
     };
-  }, [appId, hq, number, repo]);
+  }, [appId, attempt, hq, key, number, reading, repo]);
 
-  return state;
+  return {
+    ...state,
+    ...(state.kind === "gone" || state.kind === "unavailable" ? { readAgain } : {}),
+  };
 }

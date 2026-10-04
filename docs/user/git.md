@@ -33,3 +33,9 @@ requests, even while the password has not expired.
 HQ controls `main`, release tags and `mate/…` change branches. Direct pushes cannot change those
 refs, delete branches or replace branch history. Use the project's change and release workflows
 for `main` and production.
+
+## Read a shared change
+
+A change link reads once and shows the result. If the change is missing or HQ is unavailable,
+choose **Read again** to make another attempt. If HQ refuses access, the page shows the refusal
+and offers no **Read again**.

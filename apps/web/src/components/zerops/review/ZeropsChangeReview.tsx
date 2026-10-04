@@ -160,6 +160,16 @@ export function ZeropsChangeReview({
         kindLabel={reviewKindLine(KIND)}
         onClose={onClose}
         onOpenPage={onOpenPage}
+        primary={
+          landed.readAgain === undefined
+            ? undefined
+            : {
+                label: "Read again",
+                onPress: landed.readAgain,
+                enabled: true,
+                safe: true,
+              }
+        }
         title={`#${String(target.number)}`}
         titleId={titleId}
         verdict={changeReadVerdict({

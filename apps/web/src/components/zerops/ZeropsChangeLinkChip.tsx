@@ -12,8 +12,7 @@
  * knew — and the change beside it says where things actually stand.
  *
  * It renders its children unchanged for every address it cannot claim: another
- * HQ, an organization whose official HQ is not known yet, a change this account
- * cannot read, a session with no flow. A chip is only ever an improvement on a
+ * HQ, an organization whose official HQ is not known yet, a session with no flow. A chip is only ever an improvement on a
  * link it is certain about.
  *
  * A change at the official HQ is drawn from its address at once — its
@@ -28,6 +27,7 @@ import { createContext, useContext, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { AppLinkContext } from "../ServiceBrowserLink";
+import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useZeropsProjectFlowOptional } from "../../zerops/projectFlowContext";
 import { useZeropsLandedChange } from "../../zerops/useZeropsLandedChange";
@@ -82,11 +82,36 @@ export function ZeropsChangeLinkChip({
   // Drawn from the url while HQ is still answering: the repository and the
   // number are in the address, so the chip does not have to arrive as a
   // full-width url that turns into a chip a moment later. Only the word waits.
-  // `gone` and `failed` are answers, not waits: a change this account cannot
-  // read stays the link it was.
+  // Missing, refused and unavailable are answers, shown beside the original link.
   const reading =
     pull === undefined && link !== null && (landed.kind === "idle" || landed.kind === "reading");
-  if (pull === undefined && !reading) return children;
+  if (pull === undefined && !reading) {
+    if (landed.kind === "gone" || landed.kind === "refused" || landed.kind === "unavailable") {
+      return (
+        <span className="inline-flex flex-wrap items-baseline gap-1">
+          {children}
+          {landed.kind === "gone" ? (
+            <span className="text-sm text-muted-foreground">
+              {`${link?.repo ?? ""} has no change #${String(link?.number ?? 0)}`}
+            </span>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger render={<span className="text-sm text-muted-foreground" />}>
+                This change could not be read
+              </TooltipTrigger>
+              <TooltipPopup>{landed.reason}</TooltipPopup>
+            </Tooltip>
+          )}
+          {landed.readAgain === undefined ? null : (
+            <Button variant="link" size="xs" onClick={landed.readAgain}>
+              Read again
+            </Button>
+          )}
+        </span>
+      );
+    }
+    return children;
+  }
 
   const line = pull?.line ?? `${link?.repo ?? ""} #${String(link?.number ?? 0)}`;
   // The state is a glyph of one size, never a word of its own width: a change
