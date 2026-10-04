@@ -4871,3 +4871,41 @@ it.effect("retains a malformed registration failure for later dependents", () =>
     }),
   ),
 );
+
+it.effect("the establishment deadline closes a registration still awaiting its answer", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const harness = makeAdapterHarness();
+      const sent = yield* Deferred.make<void>();
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter: {
+          ...harness.adapter,
+          register: () => Deferred.succeed(sent, undefined).pipe(Effect.andThen(Effect.never)),
+        },
+        policy: makeZeropsDataPolicy({ establishmentDeadlineMs: 100 }),
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+      });
+      const states = yield* Queue.unbounded<ZeropsDataState>();
+      const stop = registry.subscribe(runtime.stateAtom, (state) =>
+        Queue.offerUnsafe(states, state),
+      );
+      const lease = yield* runtime.acquire(topologyDescriptor);
+      yield* Deferred.await(sent);
+      yield* TestClock.adjust("100 millis");
+      yield* waitForState(
+        states,
+        (state) => state.interests.get(lease.interest)?.interest.status === "failed",
+      );
+      expect(harness.counts().closes).toBe(1);
+      yield* TestClock.adjust("1 minute");
+      expect(harness.counts().opens).toBe(1);
+      expect(harness.counts().closes).toBe(1);
+      yield* runtime.shutdown("application-close");
+      stop();
+      registry.dispose();
+    }),
+  ),
+);

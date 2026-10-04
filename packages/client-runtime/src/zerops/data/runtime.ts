@@ -702,6 +702,7 @@ interface RuntimeRegistration {
   readonly dependents: Map<InterestKey, InterestIdentity>;
   status: "registering" | "registered" | "failed";
   streamFailure: AdapterError | null;
+  awaitingAnswer: boolean;
 }
 
 interface RuntimeReceiver {
@@ -2058,6 +2059,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           dependents: new Map([[identity.key, identity]]),
           status: "registering",
           streamFailure: null,
+          awaitingAnswer: false,
         };
         receiver.registrationAttempts += 1;
         receiver.registrations.set(key, registration);
@@ -2213,10 +2215,14 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             const result = yield* registrationPermits
               .withPermit(registrationPriority(receiver.organization, registration.key))(
                 context(policy.registrationDeadlineMs, (requestContext) =>
-                  options.adapter.register(handle, registration.request, requestContext),
+                  Effect.suspend(() => {
+                    registration.awaitingAnswer = true;
+                    return options.adapter.register(handle, registration.request, requestContext);
+                  }),
                 ),
               )
               .pipe(Effect.result);
+            registration.awaitingAnswer = false;
             const outcome: PhysicalRegistrationOutcome = Result.isFailure(result)
               ? { kind: "failed", error: result.failure }
               : { kind: "succeeded", receipt: result.success };
@@ -2268,6 +2274,13 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
                     kind: "failed",
                     error: REGISTRATION_ABANDONED,
                   }),
+                ),
+                Effect.andThen(
+                  Effect.suspend(() =>
+                    registration.awaitingAnswer
+                      ? failReceiver(receiver, REGISTRATION_ABANDONED.message)
+                      : Effect.void,
+                  ),
                 ),
                 Effect.asVoid,
               ),
