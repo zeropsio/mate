@@ -1,3 +1,4 @@
+import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId } from "@t3tools/contracts";
@@ -19,7 +20,7 @@ const PEOPLE: HqPeople = {
   "user-jan": { name: "Jan Novak", clientUserId: "member-jan" },
   "user-eva": { name: "Eva Dvorak", clientUserId: "member-eva" },
 };
-// HQ keeps no picture: an owner wears their initials.
+// HQ keeps no picture: an owner the member list has none for wears their initials.
 const JAN_OWNER = { id: "user-jan", name: "Jan Novak", initials: "JN", avatarUrl: null };
 const EVA_OWNER = { id: "user-eva", name: "Eva Dvorak", initials: "ED", avatarUrl: null };
 
@@ -72,6 +73,7 @@ describe("usageEnvironmentIdentities", () => {
     readonly name: string;
     readonly candidates: ReadonlyArray<ZeropsCandidate>;
     readonly people?: HqPeople;
+    readonly members?: ReadonlyArray<ZeropsOrganizationMember>;
     readonly viewerUserId?: string | null;
     readonly registeredOrigins?: ReadonlyMap<string, EnvironmentId>;
     readonly expected: ReadonlyArray<readonly [EnvironmentId, UsageEnvironmentIdentity]>;
@@ -118,6 +120,54 @@ describe("usageEnvironmentIdentities", () => {
             mateName: "Lena",
             projectName: "Imperial Titan",
             owner: { ...JAN_OWNER, isViewer: false },
+          },
+        ],
+        [
+          OTTO,
+          {
+            mateName: "Otto",
+            projectName: "Imperial Titan",
+            owner: { ...EVA_OWNER, isViewer: true },
+          },
+        ],
+      ],
+    },
+    {
+      name: "an owner wears their platform picture, one without a picture their initials",
+      candidates: [
+        candidate({
+          id: "titan-dev",
+          tags: ["mate"],
+          name: "Lena",
+          hq: titan(),
+          environmentId: LENA,
+          ownerMemberId: "member-jan",
+        }),
+        candidate({
+          id: "titan-otto",
+          tags: ["mate"],
+          name: "Otto",
+          hq: titan(),
+          environmentId: OTTO,
+          ownerMemberId: "member-eva",
+        }),
+      ],
+      people: PEOPLE,
+      members: [
+        {
+          id: "member-jan",
+          user: { id: "user-jan", avatar: { smallAvatarUrl: "https://img.example.test/jan.jpg" } },
+        },
+        { id: "member-eva", user: { id: "user-eva", avatar: null } },
+      ],
+      viewerUserId: "user-eva",
+      expected: [
+        [
+          LENA,
+          {
+            mateName: "Lena",
+            projectName: "Imperial Titan",
+            owner: { ...JAN_OWNER, avatarUrl: "https://img.example.test/jan.jpg", isViewer: false },
           },
         ],
         [
@@ -238,6 +288,7 @@ describe("usageEnvironmentIdentities", () => {
         candidates: entry.candidates,
         registeredOrigins: entry.registeredOrigins ?? NO_ORIGINS,
         people: entry.people ?? null,
+        members: entry.members ?? [],
         viewerUserId: entry.viewerUserId ?? null,
       });
       expect([...identities]).toEqual(entry.expected);
