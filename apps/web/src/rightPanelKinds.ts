@@ -121,7 +121,7 @@ export const RIGHT_PANEL_KIND_META = {
   data: {
     launcher: {
       label: "Data",
-      description: "Browse the project's managed data services.",
+      description: "Browse databases and storage.",
       // D/A/T are already Diff/Agents/Terminal; V stands in for "view".
       shortcut: "V",
       unavailableHint: "Available in a Zerops project.",
@@ -131,7 +131,7 @@ export const RIGHT_PANEL_KIND_META = {
   git: {
     launcher: {
       label: "Git",
-      description: "Follow this Mate's branches and where they go.",
+      description: "Follow branches and where they go.",
       shortcut: "G",
       unavailableHint: "Available in a Zerops project.",
     },
@@ -140,7 +140,7 @@ export const RIGHT_PANEL_KIND_META = {
   crew: {
     launcher: {
       label: "Crew",
-      description: "Set up this Mate's crew and follow its tasks.",
+      description: "Set up a crew and follow its tasks.",
       shortcut: "C",
       unavailableHint: "Available in a Zerops project with crew mode on.",
     },
@@ -153,7 +153,7 @@ export const RIGHT_PANEL_KIND_META = {
   mcp: {
     launcher: {
       label: "MCP",
-      description: "Add and check the tools your agents can call.",
+      description: "Add and check your agents' tools.",
       shortcut: "M",
       unavailableHint: "Available from a conversation.",
     },
