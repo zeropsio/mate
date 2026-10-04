@@ -3,7 +3,7 @@
  * organization (`/api/structure/ws`) — the whole structure, then its changes — published
  * to `hqStructureAtom`, from which every surface places its projects (`hqPlacementsAtom`). The
  * same stream carries each application's Mates' changes (SPEC §3.2a, `hqChangesAtom`) and where
- * its releases, repository heads and stage/production recipes (`appReads`), and the
+ * its releases, repository heads and recipe tiers (`appReads`), and the
  * Mates the reader may observe with the people its view names (`hqMatesAtom`, `hqPeopleAtom`) —
  * in atoms of their own, since a Mate at work moves them twice a second and the structure never.
  *

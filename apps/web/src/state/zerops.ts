@@ -120,7 +120,7 @@ export interface HqStructureView {
    */
   readonly changes: HqChanges | null;
   /**
-   * HQ-owned releases, repository heads and stage/production recipes for each readable app.
+   * HQ-owned releases, repository heads and recipe tiers (Mate, stage, production) by app.
    * Null until the stream's first snapshot; never remembered across loads.
    */
   readonly appReads: HqAppReads | null;

@@ -55,7 +55,6 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
 import {
-  landedRecipeProposal,
   creationRecipe,
   newMateDoor,
   newMateDoorMates,
@@ -142,11 +141,6 @@ function NewMateDialog({
     appId: groupId,
     tier: "mate",
     enabled: true,
-    // A proposal of the recipe landing while the dialog is open puts it on `main`: read again.
-    revision:
-      groupFlow?.changesKnown === true
-        ? String(landedRecipeProposal(groupFlow.merged) ?? "")
-        : undefined,
   });
   // Who sets the project up and writes its recipe: its Mates, listed and coming.
   const mates = useMemo(

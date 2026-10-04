@@ -468,17 +468,6 @@ export function newMateRecipeChange(input: {
   return { number: first.number, mate: input.mateName(first.mateProjectId) };
 }
 
-/** The proposal of the recipe that landed last, by its number: another landing may put one on `main`. */
-export function landedRecipeProposal(merged: ReadonlyArray<FlowPullRequest>): number | undefined {
-  let newest: number | undefined;
-  for (const pull of merged) {
-    if (isRecipeProposal(pull) && (newest === undefined || pull.number > newest)) {
-      newest = pull.number;
-    }
-  }
-  return newest;
-}
-
 /** Where *Review the change* goes: the recipe's change in its recipe repository, on its own page. */
 export function recipeChangeView(
   groupId: string,

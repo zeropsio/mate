@@ -27,7 +27,16 @@ const stage = {
   mainHead: "a".repeat(40),
   importYaml: "services:\n  - hostname: app\n    type: nodejs@22\n",
 };
-const value = { releases: [], repos: [], recipes: { stage, production: { state: "absent" } } };
+const mate = {
+  state: "present",
+  mainHead: "a".repeat(40),
+  importYaml: "services:\n  - hostname: appdev\n    type: nodejs@22\n",
+};
+const value = {
+  releases: [],
+  repos: [],
+  recipes: { mate, stage, production: { state: "absent" } },
+};
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 
@@ -106,6 +115,7 @@ async function load(count: number, details = false) {
   const renders: Array<{
     releases: ReturnType<typeof useZeropsAppReleases>;
     recipes: ReturnType<typeof useZeropsAppRecipes>;
+    mate: ReturnType<typeof useZeropsGroupRecipe>;
     stage: ReturnType<typeof useZeropsGroupRecipe>;
     production: ReturnType<typeof useZeropsGroupRecipe>;
   }> = [];
@@ -113,6 +123,7 @@ async function load(count: number, details = false) {
     renders.push({
       releases: useZeropsAppReleases(),
       recipes: useZeropsAppRecipes(),
+      mate: useZeropsGroupRecipe({ appId: "app-0", tier: "mate", enabled: details }),
       stage: useZeropsGroupRecipe({ appId: "app-0", tier: "stage", enabled: details }),
       production: useZeropsGroupRecipe({ appId: "app-0", tier: "production", enabled: details }),
     });
@@ -163,6 +174,40 @@ describe("HQ application load", () => {
       expect(h.seen().stage.state).toBe("present");
       expect(h.seen().stage.tier?.yaml).toBe(stage.importYaml);
       expect(h.seen().production.state).toBe("absent");
+    } finally {
+      await h.close();
+    }
+  });
+
+  it("opens a new Mate from the Mate tier already in the snapshot, with no read of its own", async () => {
+    const h = await load(1, true);
+    try {
+      expect(h.seen().mate).toMatchObject({
+        state: "present",
+        loading: false,
+        services: ["appdev"],
+      });
+      expect(h.seen().mate.tier).toEqual({ kind: "tier", tier: "mate", yaml: mate.importYaml });
+      expect(h.requests).toEqual(["POST /api/stream-ticket"]);
+    } finally {
+      await h.close();
+    }
+  });
+
+  it("a recipe landing moves the Mate tier with no read of its own", async () => {
+    const h = await load(1, true);
+    try {
+      await h.send({
+        type: "release-revision",
+        appId: "app-0",
+        read: {
+          revision: "2",
+          value: { ...value, recipes: { ...value.recipes, mate: { state: "absent" } } },
+          failure: null,
+        },
+      });
+      expect(h.seen().mate).toMatchObject({ state: "absent", loading: false });
+      expect(h.requests).toEqual(["POST /api/stream-ticket"]);
     } finally {
       await h.close();
     }
