@@ -131,7 +131,7 @@ describe("transitionZeropsSession", () => {
       "verifies again at once when the tab comes online, in the background",
       unavailableAt(60_000),
       { type: "WAKE", trigger: "online" },
-      { ...verifying(), retry: true },
+      { status: "verifying", session: stored, backoff: INITIAL_BACKOFF, retry: true },
       [{ kind: "cancel-schedule" }, { kind: "verify", session: stored }],
     ],
     [
