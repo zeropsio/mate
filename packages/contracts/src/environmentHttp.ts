@@ -72,7 +72,6 @@ export const EnvironmentOperationForbiddenReason = Schema.Literals([
   // list and not to open (D5). Never the generic permission error — the app
   // turns this one into "Jan's Mate — only Jan opens it".
   "zerops_read_only",
-  "origin_not_allowed",
   "browser_session_unsupported",
   // D6: the command would start a turn on an agent this session may not run
   // — not signed in, or signed in by somebody else.

@@ -38,7 +38,6 @@ const NOW = 1_800_000_000_000;
 const environment = resolveZeropsEnvironment({
   projectId: PROJECT_ID,
   apiHost: undefined,
-  allowedOrigins: [],
   apiToken: MATE_KEY,
 })!;
 
@@ -445,7 +444,6 @@ describe("the re-check loop", () => {
   const clamped = resolveZeropsEnvironment({
     projectId: PROJECT_ID,
     apiHost: undefined,
-    allowedOrigins: [],
     apiToken: MATE_KEY,
     roleRecheckSeconds: 3_600,
   })!;

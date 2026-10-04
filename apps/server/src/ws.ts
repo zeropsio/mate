@@ -172,12 +172,7 @@ import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as SessionStore from "./auth/SessionStore.ts";
 import { awaitSessionEnd } from "./auth/sessionLifetime.ts";
-import {
-  failEnvironmentCredentialRejected,
-  failEnvironmentInternal,
-  failEnvironmentOperationForbidden,
-} from "./auth/http.ts";
-import { makeZeropsOriginAllowlist } from "./zerops/origin.ts";
+import { failEnvironmentCredentialRejected, failEnvironmentInternal } from "./auth/http.ts";
 import { runExecCommand } from "./zerops/ExecService.ts";
 import * as ProcessRunner from "./processRunner.ts";
 import * as RelayClient from "@t3tools/shared/relayClient";
@@ -2924,23 +2919,6 @@ export const websocketRpcRouteLayer = HttpRouter.add(
   "/ws",
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
-    const serverConfig = yield* ServerConfig.ServerConfig;
-    // Inside a Zerops project this socket is published on the public
-    // internet, so a page on any origin could otherwise open it with a
-    // stolen ticket. The origin is refused before any credential is read,
-    // so a foreign page learns nothing about whether it had one.
-    if (serverConfig.zerops !== undefined) {
-      const { allowsUpgrade } = makeZeropsOriginAllowlist(serverConfig.zerops);
-      if (
-        !allowsUpgrade({
-          origin: request.headers.origin,
-          host: request.headers.host,
-          forwardedHost: request.headers["x-forwarded-host"],
-        })
-      ) {
-        return yield* failEnvironmentOperationForbidden("origin_not_allowed");
-      }
-    }
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
     const sessions = yield* SessionStore.SessionStore;
     const analytics = yield* AnalyticsService.AnalyticsService;
@@ -3021,7 +2999,6 @@ export const websocketRpcRouteLayer = HttpRouter.add(
   }).pipe(
     Effect.catchTags({
       EnvironmentAuthInvalidError: HttpServerRespondable.toResponse,
-      EnvironmentOperationForbiddenError: HttpServerRespondable.toResponse,
       EnvironmentInternalError: HttpServerRespondable.toResponse,
     }),
   ),

@@ -295,7 +295,6 @@ it.effect("resolveAutoBootstrapWelcomeTargets preserves typed UUID generation fa
 const zeropsEnvironment = resolveZeropsEnvironment({
   projectId: "nTV3oMB2SS634ImDJnQckg",
   apiHost: undefined,
-  allowedOrigins: [],
 });
 
 const bootstrapSnapshotQuery = (
