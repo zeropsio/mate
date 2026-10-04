@@ -300,6 +300,11 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
         return () => void down.splice(down.indexOf(environmentId), 1);
       },
     },
+    // HQ's word, current: it names no environment's project, holds no Mate online and speaks for
+    // no organization. A test that needs another word says it.
+    hqIndex: { projectOf: () => null, subscribe: () => () => undefined },
+    online: { read: () => new Set(), subscribe: () => () => undefined },
+    hqOrganization: { read: () => null, subscribe: () => () => undefined },
   };
   return {
     ports,
