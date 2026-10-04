@@ -45,7 +45,11 @@ import {
 import { createRoot } from "react-dom/client";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import {
+  menuRowsFromHq,
+  type HqPlacement,
+  type HqStructure,
+} from "@t3tools/client-runtime/zerops/hq";
 import {
   assignCandidateMateTints,
   deployedVersion,
@@ -106,17 +110,13 @@ import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import {
-  menuRowsOf,
-  rememberedMenuCandidates,
-  rememberMenuCandidates,
-} from "~/zerops/menuSkeleton";
-import {
   menuMemory,
   rememberedChangeOf,
   rememberedChanges,
   rememberMenu,
   withChanges,
   withChips,
+  withStructure,
 } from "~/zerops/menuMemory";
 import { shownInScope, useMateScope } from "~/zerops/mateScope";
 import { isMacPlatform } from "~/lib/utils";
@@ -956,10 +956,11 @@ const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme" };
 const CONTROLS = new URLSearchParams(location.search).get("inset");
 
 /**
- * `?reload=1500`: a reload, as the app's menu goes through it — the listing being read for that
- * many ms, then known; until then the tree this browser remembered (`menuSkeleton.ts`), written
- * once the listing is known, so the second load paints it. Each row's top at the first frame and
- * once the listing landed are on `window.__menuReload`, for the audit browser.
+ * `?reload=1500`: a reload, as the app's menu goes through it (`useZeropsMenu.tsx`) — HQ's
+ * structure and the listing being read for that many ms, then answered; until then the rows of
+ * the structure this browser remembered HQ answering (`menuMemory.ts`), written once it answered,
+ * so the second load paints them. Each row's top at the first frame and once HQ answered are on
+ * `window.__menuReload`, for the audit browser.
  */
 const RELOAD_MS = (() => {
   const reload = new URLSearchParams(location.search).get("reload");
@@ -1008,7 +1009,33 @@ function rememberReloadDrawn(drawn: SidebarDrawn): void {
   );
 }
 
-/** The listing as the app's menu reads it on a reload (`?reload=`), and what the tree draws of it. */
+/** The organization's structure as its HQ answers it: each fixture project where it places it. */
+function structureOf(candidates: ReadonlyArray<ZeropsCandidate>): HqStructure {
+  const apps = new Map<string, HqStructure["apps"][number]["projects"][number][]>();
+  const names = new Map<string, string>();
+  const ungrouped: Array<HqStructure["ungrouped"][number]> = [];
+  for (const { project } of candidates) {
+    const { hq } = project;
+    if (hq === undefined) continue;
+    if (hq.appId === null) {
+      ungrouped.push({ projectId: project.id, name: project.name, mate: hq.mate });
+      continue;
+    }
+    names.set(hq.appId, hq.appName);
+    apps.set(hq.appId, [
+      ...(apps.get(hq.appId) ?? []),
+      { projectId: project.id, name: project.name, kind: hq.kind, mate: hq.mate },
+    ]);
+  }
+  return {
+    ungrouped,
+    apps: [...apps].map(([id, projects]) => ({ id, name: names.get(id) ?? id, projects })),
+  };
+}
+
+const NOTHING_GONE: ReadonlySet<string> = new Set();
+
+/** The menu's rows as the app's menu reads them on a reload (`?reload=`): HQ's, enriched. */
 function useReloadedRows(candidates: ReadonlyArray<ZeropsCandidate>) {
   const [landed, setLanded] = useState(RELOAD_MS === null);
   useEffect(() => {
@@ -1016,33 +1043,39 @@ function useReloadedRows(candidates: ReadonlyArray<ZeropsCandidate>) {
     const timer = setTimeout(() => setLanded(true), RELOAD_MS);
     return () => clearTimeout(timer);
   }, []);
+  const answered = useMemo(() => structureOf(candidates), [candidates]);
+  // The listing as read: each row's container known.
+  const listed = useMemo(
+    () => candidates.map((candidate) => ({ ...candidate, presence: "known" as const })),
+    [candidates],
+  );
   const menu = useMemo(() => {
-    const rows = candidates.map((candidate) => ({ ...candidate, presence: "known" as const }));
-    const listing = (
-      landed
-        ? {
-            state: "known",
-            value: rows,
-            coverage: "complete",
-            asOf: { atMs: 0 },
-            freshness: { kind: "live" },
-          }
-        : { state: "reading", sinceMs: 0, attempt: 1 }
-    ) as Parameters<typeof menuRowsOf<(typeof rows)[number]>>[0]["listing"];
-    return menuRowsOf({
-      listing,
-      held: { rows: landed ? rows : [], complete: landed },
-      remembered: rememberedMenuCandidates(ORGANIZATION.id),
-      current: true,
-      graceOver: false,
-      whole: false,
-    });
-  }, [candidates, landed]);
+    const remembered = menuMemory().structures[ORGANIZATION.id];
+    const structure = landed
+      ? answered
+      : remembered === undefined
+        ? undefined
+        : { ungrouped: remembered.ungrouped, apps: remembered.apps };
+    return {
+      rows:
+        structure === undefined
+          ? []
+          : menuRowsFromHq({
+              organizationId: ORGANIZATION.id,
+              structure,
+              projects: [],
+              candidates: landed ? listed : [],
+              gone: NOTHING_GONE,
+            }),
+      complete: landed,
+      fromMemory: !landed && structure !== undefined,
+    };
+  }, [answered, landed, listed]);
   useEffect(() => {
-    if (RELOAD_MS !== null && menu.toRemember !== null) {
-      rememberMenuCandidates(ORGANIZATION.id, menu.toRemember);
+    if (RELOAD_MS !== null && landed) {
+      rememberMenu((memory) => withStructure(memory, ORGANIZATION.id, answered, Date.now()));
     }
-  }, [menu]);
+  }, [answered, landed]);
   useLayoutEffect(() => {
     if (RELOAD_MS === null) return;
     if (menuReload.first === undefined) {
@@ -1131,7 +1164,7 @@ function SidebarFrame({
               ? {}
               : {
                   remembered: RELOAD_REMEMBERED,
-                  onDrawn: reloaded.fromMemory ? undefined : rememberReloadDrawn,
+                  onDrawn: reloaded.complete ? rememberReloadDrawn : undefined,
                 })}
             getActivity={coming?.activity ?? activityOfCandidate}
             getConversationsRead={(item) => item.group === "connected"}
