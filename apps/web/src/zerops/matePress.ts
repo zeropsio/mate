@@ -561,6 +561,18 @@ export function finishSetupRunning(press: MatePress | undefined): boolean {
 }
 
 /**
+ * Whether a Mate says the close-off gate holds it (`mateComing`'s `closeOffOpen`): its project is
+ * known not closed off, and no Finish setup runs on it in this tab — whose own words say that.
+ */
+export function closeOffOpenOf(
+  holds: ReadonlyMap<string, "open" | "unsure">,
+  projectId: string,
+  press: MatePress | undefined,
+): boolean {
+  return holds.get(projectId) === "open" && !finishSetupRunning(press);
+}
+
+/**
  * *Finish setup* as its Mate's row says it, on every screen — its own view draws the steps only
  * while its container is missing: running, through for the moment its record stays
  * (`FINISHED_SHOWN_MS`), or stopped, when its menu offers it again. Undefined for any other press,

@@ -18,6 +18,7 @@ import {
   FINISHED_SHOWN_MS,
   PRESSED_ELSEWHERE,
   connectedPresses,
+  closeOffOpenOf,
   finishSetupRowLine,
   finishSetupRunning,
   birthPresses,
@@ -642,6 +643,46 @@ describe("a Finish setup that stopped", () => {
       forgetPress("p-stop");
     }
     expect(finishSetupRunning(undefined)).toBe(false);
+  });
+});
+
+describe("closeOffOpenOf — a Mate the close-off gate holds, as its row and page say it", () => {
+  const holds = new Map([
+    ["p-open", "open"],
+    ["p-unsure", "unsure"],
+  ] as const);
+  const press = (state: MatePressState): MatePress => ({
+    projectId: "p-open",
+    organizationId: "org-acme",
+    startedAt: 0,
+    placement: null,
+    container: false,
+    finishing: true,
+    state,
+  });
+  it.each([
+    { case: "known not closed off", projectId: "p-open", press: undefined, want: true },
+    {
+      case: "held quietly while nothing is known",
+      projectId: "p-unsure",
+      press: undefined,
+      want: false,
+    },
+    { case: "not held", projectId: "p-other", press: undefined, want: false },
+    {
+      case: "its Finish setup running here says that instead",
+      projectId: "p-open",
+      press: press({ kind: "pressing" }),
+      want: false,
+    },
+    {
+      case: "its Finish setup stopped here: held again, said",
+      projectId: "p-open",
+      press: press({ kind: "failed", step: "close-off", reason: "No.", retry: null }),
+      want: true,
+    },
+  ])("$case: $want", ({ projectId, press, want }) => {
+    expect(closeOffOpenOf(holds, projectId, press)).toBe(want);
   });
 });
 

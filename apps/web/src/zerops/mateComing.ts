@@ -58,8 +58,9 @@ export type MateComingVerb =
   /** A press stopped at a step safe to ask again: it resumes there, on the same project. */
   | "try-again"
   /**
-   * A press that stopped before its container, in any browser: an owner or an admin finishes it
-   * (*Finish setup*), the same steps the press makes.
+   * A press that stopped before its container or its close-off, in any browser: an owner or an
+   * admin — or, for its close-off, whoever added it — finishes it (*Finish setup*), the same steps
+   * the press makes.
    */
   | "finish-setup"
   /** The platform may have taken it anyway: the projects page lists it if it did. */
@@ -77,6 +78,8 @@ export type MateComing =
       readonly kind: "failed";
       /** Why it did not come, as its row says it. */
       readonly line: string;
+      /** Its line for a viewer who may not finish it (`halfMadeFor`), where it has its own. */
+      readonly ownerLine?: string;
       readonly verb: MateComingVerb;
     };
 
@@ -124,6 +127,12 @@ export interface MateComingInput {
   readonly firstBuild?: FirstBuildState | undefined;
   /** Its link still waits for its first answer (`arrivalAwaitsAnswer`). */
   readonly answerAwaited?: boolean | undefined;
+  /**
+   * The close-off gate holds it (`closeOffGate`'s `open`): its container carries the press's marker
+   * and HQ says its project is not closed off, so nobody is let in. Left out while a Finish setup
+   * runs on it in this tab.
+   */
+  readonly closeOffOpen?: boolean | undefined;
 }
 
 /** Whether `at` is within `graceMs` of now; an unknown time or now counts as young. */
@@ -142,13 +151,21 @@ export const HALF_MADE_LINE = "Its setup stopped before its container. Finish se
 export const HALF_MADE_OWNER_LINE =
   "Its setup stopped before its container; an owner or admin can finish it.";
 
+/** A Mate held because its project is not closed off (`closeOffOpen`): *Finish setup* closes it. */
+export const NOT_CLOSED_OFF_LINE =
+  "Its setup stopped before its project was closed off, so nobody is let in. Finish setup closes it off.";
+
+/** The same Mate, for a viewer who may not finish it: who can. */
+export const NOT_CLOSED_OFF_OWNER_LINE =
+  "Its setup stopped before its project was closed off, so nobody is let in; whoever added it, an owner or an admin can finish it.";
+
 /**
  * A half-made Mate as its viewer may act on it: the line names Finish setup only where the
  * viewer has it, and says who can where they do not.
  */
 export function halfMadeFor(coming: MateComing, canFinish: boolean): MateComing {
   if (coming.kind !== "failed" || coming.verb !== "finish-setup" || canFinish) return coming;
-  return { ...coming, line: HALF_MADE_OWNER_LINE };
+  return { ...coming, line: coming.ownerLine ?? HALF_MADE_OWNER_LINE };
 }
 
 /** A reason, as a sentence: capitalised, and ended; empty where it says nothing. */
@@ -199,6 +216,23 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
       line: why.length === 0 ? NOT_SET_UP_LINE : `${NOT_SET_UP_LINE} ${why}`,
       verb: "remove",
     };
+  }
+  // Held because its project is not closed off: said, with Finish setup — while its container is
+  // a moment old a press elsewhere may still be closing it off, and it is coming. A press of this
+  // tab's bringing its container says that instead.
+  if (input.closeOffOpen === true && press?.container !== true) {
+    return youngAt(
+      candidate?.service?.created ?? candidate?.project?.created,
+      input.nowMs,
+      MATE_CONTAINER_GRACE_MS,
+    )
+      ? { kind: "coming", line: COMING_UP_LINE }
+      : {
+          kind: "failed",
+          line: NOT_CLOSED_OFF_LINE,
+          ownerLine: NOT_CLOSED_OFF_OWNER_LINE,
+          verb: "finish-setup",
+        };
   }
   // A container that failed, stopped or is restarting shows that, whatever this tab pressed.
   if (containerDown(candidate?.service?.status)) return undefined;
