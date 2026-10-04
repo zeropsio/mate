@@ -18,7 +18,7 @@
  */
 import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
 import { enrollmentRefusalWords, NO_HQ_WORDS } from "@t3tools/client-runtime/zerops/hq";
-import type { MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
+import { standUpFailureWords, type MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
 import {
@@ -359,7 +359,9 @@ export function arrivalSteps(
     /** The tier's runtimes, imported once the project is closed off (`birthRuntimesFacts`). */
     readonly runtimes?: { readonly runtimes: ReadonlyArray<BirthService> };
     /** What the Mate's own setup says (`/mate/setup.json`); absent before it answers, or ever. */
-    readonly setup?: Pick<MateSetup, "git" | "gitFailure" | "signin" | "standup"> | undefined;
+    readonly setup?:
+      | Pick<MateSetup, "git" | "gitFailure" | "signin" | "standup" | "standupFailure">
+      | undefined;
     /** The steps this tab runs for it, while it holds them. */
     readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
     /**
@@ -481,6 +483,10 @@ export function arrivalSteps(
       id: "standup",
       label: `${mate.name} stands up development`,
       state: STANDUP_STATES[setup.standup],
+      ...optional(
+        "why",
+        setup.standup === "failed" ? standUpFailureWords(setup.standupFailure) : undefined,
+      ),
     });
   }
   return steps;
