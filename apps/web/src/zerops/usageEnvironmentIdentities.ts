@@ -5,10 +5,15 @@
  *
  * Every name is the one the left menu draws: the Mate by its project's name, the
  * project by the group header `buildZeropsGroupTree` derives, the owner by
- * `resolveMateOwnerPerson` over HQ's people — no member list read. An
- * environment no Mate lives in is left out.
+ * `resolveMateOwnerPerson` over HQ's people, wearing the platform's picture off
+ * the member list (`zeropsMateOwnerOf`). An environment no Mate lives in is
+ * left out.
  */
-import { buildZeropsGroupTree, hasMate } from "@t3tools/client-runtime/zerops";
+import {
+  buildZeropsGroupTree,
+  hasMate,
+  type ZeropsOrganizationMember,
+} from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
@@ -61,8 +66,9 @@ function groupNamesByProject(
 function usageOwner(
   person: MateOwnerPerson | undefined,
   viewerUserId: string | null,
+  members: ReadonlyArray<ZeropsOrganizationMember>,
 ): UsageEnvironmentOwner | null {
-  const badge = zeropsMateOwnerOf(person, viewerUserId);
+  const badge = zeropsMateOwnerOf(person, viewerUserId, members);
   return person === undefined || badge === undefined ? null : { id: person.userId, ...badge };
 }
 
@@ -71,6 +77,8 @@ export function usageEnvironmentIdentities(input: {
   readonly registeredOrigins: ReadonlyMap<string, EnvironmentId>;
   /** The people HQ names for the view (`hqPeopleAtom`); null while it names none. */
   readonly people: HqPeople | null;
+  /** The organization's members, for each owner's picture; empty until read. */
+  readonly members: ReadonlyArray<ZeropsOrganizationMember>;
   /** The signed-in Zerops user's id; null when nobody is. */
   readonly viewerUserId: string | null;
 }): UsageEnvironmentIdentities {
@@ -86,6 +94,7 @@ export function usageEnvironmentIdentities(input: {
       owner: usageOwner(
         resolveMateOwnerPerson({ project: candidate.project, people: input.people }),
         input.viewerUserId,
+        input.members,
       ),
     });
   }
