@@ -9,6 +9,7 @@
 import type { HqDeployAnswer, HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 
 import { shortCommit } from "../release.ts";
+import type { HqJob } from "./environments.ts";
 import { deployLogTarget, type DeployLogTarget } from "./deployLog.ts";
 
 /** One job of the answer, said. */
@@ -103,5 +104,30 @@ export function deployAnswerSaid(answer: HqDeployAnswer): DeployAnswerSaid {
   return {
     environments: [...environments].map(([environment, jobs]) => ({ environment, jobs })),
     note: answer.note?.trim() || undefined,
+  };
+}
+
+/**
+ * The answer as HQ's stream has it since: each job it names, found by id among the streamed ones,
+ * stands where HQ says it stands now. The answer is the request's one snapshot; HQ's jobs are the
+ * truth, and a job the stream does not carry keeps what it was answered.
+ */
+export function deployAnswerFollowing(
+  answer: HqDeployAnswer,
+  streamed: ReadonlyMap<string, Pick<HqJob, "state" | "reason" | "processId">>,
+): HqDeployAnswer {
+  return {
+    ...answer,
+    jobs: answer.jobs.map((outcome) => {
+      const job = outcome.job === null ? undefined : streamed.get(outcome.job);
+      return job === undefined
+        ? outcome
+        : {
+            ...outcome,
+            state: job.state,
+            reason: job.reason,
+            processId: job.processId ?? outcome.processId,
+          };
+    }),
   };
 }

@@ -3,11 +3,11 @@ import type { ReviewPress } from "@t3tools/client-runtime/zerops";
 import { deployAnswerSaid } from "@t3tools/client-runtime/zerops/hq";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { Fragment } from "react";
-import { useDeployAnswerLogs } from "~/zerops/activity/useDeployAnswerLogs";
+import { useDeployAnswerFollowing } from "~/zerops/activity/useDeployAnswerFollowing";
 import { ZeropsDeployLog } from "./ZeropsDeployLog";
 
 export function ZeropsDeployAnswer({
-  answer,
+  answer: asked,
   rows,
   showEnvironment,
 }: {
@@ -15,7 +15,7 @@ export function ZeropsDeployAnswer({
   readonly showEnvironment?: boolean | undefined;
   readonly rows?: ReadonlyArray<{ readonly service: string; readonly line: string }> | undefined;
 }) {
-  const logs = useDeployAnswerLogs(answer);
+  const { answer, logs } = useDeployAnswerFollowing(asked);
   const said = answer === undefined ? undefined : deployAnswerSaid(answer);
   const environments = said?.environments ?? [];
   const services = new Set(environments.flatMap(({ jobs }) => jobs.map(({ service }) => service)));

@@ -683,12 +683,19 @@ function RollbackData({
   // The release the roll back made — HQ's answer, not the flow's guess — which the review follows
   // through HQ's record of it and production's deploy, as a release's.
   const [made, setMade] = useState<string | undefined>(undefined);
+  // What the review offered when it was pressed: HQ's flow moves under the request (production's
+  // baseline, the next version), and the review keeps saying what was approved.
+  const [asked, setAsked] = useState<{ runs: typeof flow.release.runs; tag: string } | undefined>(
+    undefined,
+  );
+  const suggestion = asked?.tag ?? flow.release.suggestion;
+  const runs = asked === undefined ? flow.release.runs : asked.runs;
   const follows = releaseFollows({
     made,
     held: undefined,
     press,
     inFlight: undefined,
-    suggestion: flow.release.suggestion,
+    suggestion,
     releases: flow.releases,
     nowMs: now,
   });
@@ -702,7 +709,7 @@ function RollbackData({
     stalled: done && follows.stalled,
     superseded: done ? follows.superseded : undefined,
     pressing: false,
-    tag: made ?? flow.release.suggestion,
+    tag: made ?? suggestion,
     clockMs,
   });
   // What production ran as it was offered, held from the press: once it lands, production runs
@@ -712,7 +719,7 @@ function RollbackData({
   const keep = holdReleaseFacts({ held, current, press, outcome });
   if (keep !== held) setHeld(keep);
   const earlier = flow.releases.find((entry) => entry.tag === tag);
-  const { runs, repositories } = flow.release;
+  const { repositories } = flow.release;
   const lists = useRollbackLists(flow.groupId, earlier?.entries, runs, repositories);
   const listOf = (moved: ComparedCommits): RollbackList =>
     moved.state !== "known"
@@ -734,6 +741,7 @@ function RollbackData({
   });
   const rollBack = async () => {
     if (flowValue === null) return;
+    setAsked({ runs: flow.release.runs, tag: flow.release.suggestion });
     setPress({ kind: "running" });
     const answer = await flowValue.rollBack(flow.groupId, tag);
     setPress(
@@ -742,6 +750,7 @@ function RollbackData({
         : { kind: "refused", reason: answer.reason },
     );
     if (answer.ok) setMade(answer.tag);
+    else setAsked(undefined);
   };
   return (
     <RollbackReviewView
@@ -754,7 +763,7 @@ function RollbackData({
       // back now.
       permission={flow.release.permission}
       name={name}
-      nextTag={made ?? flow.release.suggestion}
+      nextTag={made ?? suggestion}
       now={now}
       onClose={onClose}
       onFix={(problem) => {
