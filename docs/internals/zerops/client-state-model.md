@@ -628,8 +628,7 @@ or HQ no longer takes is forgotten. The cross-tab channels are closed:
 
 ```
 knowledge/     known.ts (Known, Shown, Cell, read, advance), presentation.ts (knownPresentation),
-               invalidation.ts (union + bus), signals.ts (PlatformSignals), clock.ts (DeadlineClock),
-               retryPolicy.ts
+               invalidation.ts (union + bus), signals.ts (PlatformSignals), clock.ts (DeadlineClock)
 store/         kit.ts — makeStore({initial, transition, interpret, atoms}): serialized queue,
                effect interpreter, per-key publication through `read`
 account/       session.ts (machine + owner record), accountRuntime.ts (composition root per epoch:
