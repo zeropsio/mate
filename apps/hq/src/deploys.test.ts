@@ -7,6 +7,7 @@ import * as NodeZlib from "node:zlib";
 import * as PgClient from "@effect/sql-pg/PgClient";
 import { assert, describe, it } from "@effect/vitest";
 import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -1826,6 +1827,72 @@ describe("deploys", () => {
           assert.lengthOf(versions(world), 2);
         }),
       ),
+    );
+
+    // Review #3 on B9: a job a Core left submitting before HQ recorded its uploads holds no upload
+    // record — that says nothing of its upload. Its version tells: one that went on is followed as
+    // uploaded; one still waiting for its archive gets the window from its submission it had then.
+    it.effect.each<{
+      readonly name: string;
+      /** When its build shows, ms after the takeover; never where undefined. */
+      readonly seenAfter?: number;
+      readonly ends: readonly [string, string | null];
+    }>([
+      {
+        name: "its build shows a moment later: followed to live",
+        seenAfter: 100,
+        ends: ["live", null],
+      },
+      {
+        name: "it still waits for its archive past the window: refused",
+        ends: ["refused", "Zerops did not take the deploy's submission"],
+      },
+    ])(
+      "a submission left from before HQ recorded uploads, at takeover: $name",
+      ({ seenAfter, ends }) =>
+        withDeploys(({ appId, world, tiers, commit, deploys, until, takeover }) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("live"));
+            const web = world.services.find((service) => service.name === "web")!;
+            const now = yield* Clock.currentTimeMillis;
+            world.appVersions.set("V-legacy", {
+              id: "V-legacy",
+              serviceId: web.id,
+              name: "legacy",
+              status: "UPLOADING",
+              archive: new Uint8Array([1]),
+              zeropsYaml: ZEROPS_YAML,
+              setup: "web",
+              ...(seenAfter === undefined ? {} : { buildSeenAtMs: now + seenAfter }),
+            });
+            if (seenAfter !== undefined) {
+              world.jobs.set("process-legacy", {
+                status: "RUNNING",
+                failure: null,
+                appVersionId: "V-legacy",
+              });
+            }
+            yield* takeover(
+              Effect.gen(function* () {
+                const [rollout] = yield* sql<{ readonly id: string }>`
+                INSERT INTO hq_rollout (app_id, cause, project_id, by, planned_at)
+                VALUES (${appId}::uuid, 'run_again', 'P_STAGE', 'dev', now())
+                RETURNING id::text AS id`;
+                yield* sql`
+                INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, service_id, repo,
+                  sha, ord, state, submitted_at, app_version_id, upload_recorded)
+                VALUES (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'web', ${web.id}, 'web',
+                  ${sha}, 0, 'submitting', now(), 'V-legacy', false)`;
+              }).pipe(Effect.orDie),
+            );
+            yield* until((rows) => rows.length === 2 && rows[1]?.state !== "submitting");
+            const legacy = (yield* deploys)[1];
+            assert.deepStrictEqual([legacy?.state, legacy?.reason ?? null], [...ends]);
+          }),
+        ),
     );
 
     // F17, main #162: a commit whose zerops.yaml does not carry the tier's setup — none at all, under

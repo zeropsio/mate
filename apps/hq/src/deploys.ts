@@ -269,6 +269,8 @@ interface Job {
   readonly submitted_ms: number | null;
   /** How long after its submission began HQ's upload of its archive answered, ms; none before. */
   readonly uploaded_after_ms: number | null;
+  /** Whether `uploaded_after_ms` is HQ's record: not on a job made before HQ recorded uploads. */
+  readonly upload_recorded: boolean;
 }
 
 type DeployJob = Job & { readonly service: string; readonly repo: string; readonly sha: string };
@@ -379,7 +381,8 @@ const JOB_COLUMNS = `
   e.app_id::text AS app_id, e.name AS env_name, e.tier, j.service, j.service_id, j.repo, j.sha,
   j.label, j.services, j.processes, j.state, j.app_version_id, j.process_id, r.cause, r.by,
   (EXTRACT(EPOCH FROM (now() - j.submitted_at)) * 1000)::float8 AS submitted_ms,
-  (EXTRACT(EPOCH FROM (j.uploaded_at - j.submitted_at)) * 1000)::float8 AS uploaded_after_ms`;
+  (EXTRACT(EPOCH FROM (j.uploaded_at - j.submitted_at)) * 1000)::float8 AS uploaded_after_ms,
+  j.upload_recorded`;
 const JOB_FROM = `
   hq_deploy_job j JOIN hq_environment e ON e.project_id = j.project_id
   JOIN hq_rollout r ON r.id = j.rollout_id`;
@@ -1094,12 +1097,22 @@ export const deploysLayer = (
           /**
            * Where it stands by its version's own status. One still waiting for its archive whose
            * upload HQ never heard answer was never asked to build; one HQ uploaded is given
-           * `untakenAfter` from the upload to show its build taken.
+           * `untakenAfter` from the upload to show its build taken; one made before HQ recorded
+           * uploads, `untakenAfter` from its submission.
            */
           const byVersion = (age: number) =>
             Effect.gen(function* () {
               const { status } = yield* deploy.appVersion(versionId)(token);
               if (status === "UPLOADING") {
+                // Made before HQ recorded uploads: the window from its submission, as then.
+                if (!job.upload_recorded) {
+                  return age < untakenAfter
+                    ? undefined
+                    : ({
+                        state: "refused",
+                        reason: "Zerops did not take the deploy's submission",
+                      } as const);
+                }
                 if (job.uploaded_after_ms === null) {
                   return {
                     state: "refused",
