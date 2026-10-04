@@ -187,10 +187,11 @@ export interface AccountEnvironmentPorts {
   /**
    * The projects whose Mate HQ holds online now: each proves its container up without a probe
    * (`ContainerStore.setOnline`). Null while HQ's word is not current: a Mate first listed
-   * meanwhile waits for it, a bounded while.
+   * meanwhile waits for it, a bounded while. `"absent"` where no HQ will answer at all: every
+   * container is read at once, as the listing says.
    */
   readonly online: {
-    readonly read: () => ReadonlySet<string> | null;
+    readonly read: () => ReadonlySet<string> | null | "absent";
     readonly subscribe: (listener: () => void) => () => void;
   };
   /**

@@ -52,7 +52,7 @@ import { environmentCatalog } from "../../connection/catalog";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { uuidv4 } from "../../lib/uuid";
 import { appAtomRegistry } from "../../state/atom-registry";
-import { hqUnavailable, loadAccountRecords, memoryIntents } from "./account-ports";
+import { hqAbsent, loadAccountRecords, memoryIntents } from "./account-ports";
 import { mateDescriptors } from "./mate-descriptors";
 import { openMateRoute } from "./open-mate";
 import { mobilePlatformSignals } from "./platform-signals";
@@ -297,7 +297,7 @@ export async function mobileAccountPorts(input: {
       catalog: catalogPort,
       // The Mate whose screen is open as the stage starts: its target is wanted first.
       route: openMateRoute,
-      ...hqUnavailable(),
+      ...hqAbsent(),
     },
   };
 }
