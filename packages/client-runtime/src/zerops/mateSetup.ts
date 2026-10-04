@@ -53,6 +53,8 @@ export interface MateSetup {
   readonly gitFailure?: MateSetupGitFailure;
   readonly runtimes?: MateSetupRuntimesState;
   readonly signin?: "waiting" | "done";
+  /** The ask never went out; only this failure offers the server's manual retry. */
+  readonly standupFailure?: "send_failed";
   readonly standup?: "none" | "waiting" | "running" | "done" | "failed";
 }
 
@@ -79,6 +81,12 @@ export function parseMateSetup(body: unknown): MateSetup | undefined {
     const { id, state } = step as { id?: unknown; state?: unknown };
     if (!isStepId(id) || typeof state !== "string" || !STATES[id].has(state)) continue;
     read[id] = state;
+    if (
+      id === "standup" &&
+      state === "failed" &&
+      (step as { reason?: unknown }).reason === "send_failed"
+    )
+      read["standupFailure"] = "send_failed";
     if (id === "git" && state === "failed") {
       const failure = gitFailureOf(step as { reason?: unknown; code?: unknown });
       if (failure !== undefined) read["gitFailure"] = failure;

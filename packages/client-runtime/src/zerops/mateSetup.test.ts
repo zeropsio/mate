@@ -125,3 +125,9 @@ describe("readMateSetup", () => {
     expect((await readMateSetup(ORIGIN, fetchImpl)).kind).toBe(kind);
   });
 });
+
+it("keeps a failed stand-up send distinct from an agent turn that failed", () => {
+  expect(
+    parseMateSetup(document([{ id: "standup", state: "failed", at: "", reason: "send_failed" }])),
+  ).toMatchObject({ standup: "failed", standupFailure: "send_failed" });
+});

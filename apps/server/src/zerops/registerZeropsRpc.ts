@@ -22,6 +22,7 @@ import * as Stream from "effect/Stream";
 import type * as Rpc from "effect/unstable/rpc/Rpc";
 import type * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 
+import type { ZeropsSetup } from "./ZeropsSetup.ts";
 import type { ZeropsCli } from "./ZeropsCli.ts";
 import type { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
@@ -34,6 +35,7 @@ import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import type * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 
 type ZeropsRpcTag =
+  | typeof WS_METHODS.zeropsStandUpRetry
   | typeof WS_METHODS.zeropsLifecycleGet
   | typeof WS_METHODS.zeropsAgentLoginStart
   | typeof WS_METHODS.zeropsAgentLoginCancel
@@ -65,6 +67,7 @@ export type ZeropsRpcHandlers = {
 };
 
 export interface RegisterZeropsRpcDeps {
+  readonly zeropsSetup?: ZeropsSetup["Service"] | undefined;
   readonly zeropsLifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"];
   readonly zeropsAgentAuth: ZeropsAgentAuth.ZeropsAgentAuth["Service"];
   readonly zeropsAgentLogin: ZeropsAgentLoginModule.ZeropsAgentLogin["Service"];
@@ -212,6 +215,12 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
   } = deps;
 
   return {
+    [WS_METHODS.zeropsStandUpRetry]: () =>
+      observeRpcEffect(
+        WS_METHODS.zeropsStandUpRetry,
+        deps.zeropsSetup?.retry(subject) ?? Effect.succeed(false),
+        { "rpc.aggregate": "zerops" },
+      ),
     [WS_METHODS.zeropsLifecycleGet]: (input) =>
       observeRpcEffect(WS_METHODS.zeropsLifecycleGet, zeropsLifecycle.get(input.threadId), {
         "rpc.aggregate": "zerops",

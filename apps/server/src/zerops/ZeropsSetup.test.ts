@@ -24,6 +24,7 @@ import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
+import { OrchestrationCommandInvariantError } from "../orchestration/Errors.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { runMigrations } from "../persistence/Migrations.ts";
@@ -143,6 +144,7 @@ interface World {
   readonly refusal: Ref.Ref<string | undefined>;
   /** A dispatch never comes back: the server dies before its stand-up goes out. */
   readonly dispatchHangs: Ref.Ref<boolean>;
+  readonly dispatchFailure: Ref.Ref<boolean>;
 }
 
 const makeWorld = Effect.gen(function* () {
@@ -159,6 +161,7 @@ const makeWorld = Effect.gen(function* () {
     admitted: yield* Ref.make<ReadonlyArray<TurnPrincipal>>([]),
     refusal: yield* Ref.make<string | undefined>(undefined),
     dispatchHangs: yield* Ref.make(false),
+    dispatchFailure: yield* Ref.make(false),
   } satisfies World;
 });
 
@@ -175,6 +178,11 @@ const fakes = (world: World) =>
       dispatch: (command) =>
         Effect.gen(function* () {
           if (yield* Ref.get(world.dispatchHangs)) return yield* Effect.never;
+          if (yield* Ref.get(world.dispatchFailure))
+            return yield* new OrchestrationCommandInvariantError({
+              commandType: command.type,
+              detail: "dispatch refused",
+            });
           // The engine takes a command id once, as its receipts do.
           const all = yield* Ref.get(world.dispatched);
           if (!all.some((held) => held.commandId === command.commandId)) {
@@ -315,20 +323,71 @@ describe("ZeropsSetup: the stand-up", () => {
     }),
   );
 
-  it.live("a turn admission refuses goes out once admission lets it", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* Ref.set(world.signers, SIGNED);
-      yield* Ref.set(world.refusal, "not signed in yet");
-      yield* withServer(world, freshDatabase(), () =>
-        Effect.gen(function* () {
-          yield* ticks;
-          assert.deepStrictEqual(yield* turnsOf(world), []);
-          yield* Ref.set(world.refusal, undefined);
-          yield* eventually(turnsOf(world), (turns) => turns.length === 1);
-        }),
-      );
-    }),
+  it.live(
+    "an admission failure stays visible across restart and only its asker can try again",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.signers, SIGNED);
+        yield* Ref.set(world.refusal, "not signed in yet");
+        const database = freshDatabase();
+        yield* withServer(world, database, (setup) =>
+          Effect.gen(function* () {
+            yield* setup.awaitStandUp;
+            assert.strictEqual(
+              (yield* setup.document).steps.find((step) => step.id === "standup")?.state,
+              "failed",
+            );
+            assert.strictEqual((yield* Ref.get(world.admitted)).length, 1);
+          }),
+        );
+        yield* Ref.set(world.refusal, undefined);
+        yield* withServer(world, database, (setup) =>
+          Effect.gen(function* () {
+            yield* setup.awaitStandUp;
+            assert.strictEqual((yield* Ref.get(world.admitted)).length, 1);
+            assert.isFalse(yield* setup.retry("someone-else"));
+            assert.isTrue(yield* setup.retry("user-a"));
+            assert.strictEqual((yield* turnsOf(world)).length, 1);
+            assert.isFalse(yield* setup.retry("user-a"));
+          }),
+        );
+      }),
+  );
+
+  it.live(
+    "a failed dispatch ends once, persists its failure and a failed manual attempt also ends",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.signers, SIGNED);
+        yield* Ref.set(world.dispatchFailure, true);
+        const database = freshDatabase();
+        yield* withServer(world, database, (setup) =>
+          Effect.gen(function* () {
+            yield* setup.awaitStandUp;
+            assert.strictEqual(
+              (yield* setup.document).steps.find((step) => step.id === "standup")?.state,
+              "failed",
+            );
+            assert.isTrue(yield* setup.retry("user-a"));
+            assert.strictEqual((yield* Ref.get(world.admitted)).length, 2);
+            assert.strictEqual(
+              (yield* setup.document).steps.find((step) => step.id === "standup")?.state,
+              "failed",
+            );
+          }),
+        );
+        yield* Ref.set(world.dispatchFailure, false);
+        yield* withServer(world, database, (setup) =>
+          Effect.gen(function* () {
+            yield* setup.awaitStandUp;
+            assert.strictEqual((yield* turnsOf(world)).length, 0);
+            assert.isTrue(yield* setup.retry("user-a"));
+            assert.strictEqual((yield* turnsOf(world)).length, 1);
+          }),
+        );
+      }),
   );
 
   it.live("a conversation already spoken in gets no stand-up", () =>

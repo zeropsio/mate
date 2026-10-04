@@ -23,6 +23,10 @@ const feedState = vi.hoisted(() => ({
   providers: [] as ReadonlyArray<OtherAgentFields>,
 }));
 
+vi.mock("../../zerops/useMateStandUp", () => ({
+  useMateStandUp: () => ({ sendFailed: false, retrying: false, retry: async () => undefined }),
+}));
+
 vi.mock("../../zerops/useZeropsFeeds", () => ({
   useZeropsAgentAuth: () => feedState.agentAuth,
 }));
@@ -464,4 +468,20 @@ describe("MateEmptyStateView — a Mate coming up", () => {
     expect(stage(html)).toMatchObject({ headline: "Fen", sentence: "", face: "sleep" });
     expect(html).toContain("data-opening");
   });
+});
+
+it("a failed stand-up send says what failed and offers a manual Try again", () => {
+  const html = renderToStaticMarkup(
+    <MateEmptyStateView
+      mate={MATE}
+      phase="standing-up"
+      signIn={null}
+      signInRequired={false}
+      unknown={null}
+      standUpFailure={{ retrying: false, retry: () => undefined }}
+    />,
+  );
+  expect(html).toContain("The message to Fen didn&#x27;t go through.");
+  expect(html).toContain("Try again");
+  expect(html).not.toContain("Fen is standing up development");
 });

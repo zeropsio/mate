@@ -89,6 +89,14 @@ export function pressPlanned(steps: ReadonlyArray<EnvironmentCreationStep>): {
   };
 }
 
+/** Only a dev Mate with a recipe has development to stand up after sign-in. */
+function addedMateStandUp(
+  role: ZeropsEnvironmentRole,
+  choice: Pick<EnvironmentCreationChoice, "withAgent" | "recipe">,
+): boolean {
+  return role === "dev" && choice.withAgent && choice.recipe.kind === "tier";
+}
+
 /**
  * The birth intent a Mate added to a group is pressed under (F6c): recorded at HQ before its
  * project exists — its application, its face and, for a dev Mate, the person's ask for its
@@ -102,7 +110,7 @@ export async function addedMateBirth(
   input: {
     readonly groupId: string;
     readonly role: ZeropsEnvironmentRole;
-    readonly choice: Pick<EnvironmentCreationChoice, "face" | "withAgent">;
+    readonly choice: Pick<EnvironmentCreationChoice, "face" | "withAgent" | "recipe">;
   },
 ): Promise<string | undefined> {
   const { choice } = input;
@@ -111,7 +119,7 @@ export async function addedMateBirth(
     appId: input.groupId,
     // Empty where none was picked, as its attach records it: the Mate wears its name's tint.
     face: choice.face === undefined ? "" : formatMateFace(choice.face),
-    standUp: input.role === "dev",
+    standUp: addedMateStandUp(input.role, choice),
   });
   return id;
 }
@@ -214,7 +222,7 @@ export function useEnvironmentCreation(): (
                 // The person adding a dev Mate with its agent asks for its stand-up — with its
                 // birth intent, which its attach closes; the press's close-off marks it closed
                 // off, after its record (`planEnvironmentCreation`).
-                standUp: role === "dev" && withAgent,
+                standUp: addedMateStandUp(role, choice),
                 ...(intent === undefined ? {} : { intent }),
               }
             : { hq, groupId: group.groupId, kind: tier },

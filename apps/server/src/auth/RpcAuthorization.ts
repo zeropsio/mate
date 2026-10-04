@@ -96,6 +96,7 @@ export const RPC_REQUIRED_SCOPES = {
   // Every Zerops feed method is a READ. Mutating the project stays the
   // agent's job through MCP, never a client RPC.
   [WS_METHODS.zeropsLifecycleGet]: AuthOrchestrationReadScope,
+  [WS_METHODS.zeropsStandUpRetry]: AuthOrchestrationOperateScope,
   [WS_METHODS.subscribeZeropsLifecycle]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeZeropsAgentAuth]: AuthOrchestrationReadScope,
   // A login session runs a real command in a real terminal on the user's

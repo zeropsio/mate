@@ -743,6 +743,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
           focusOnArrival={made !== undefined}
           mate={{ ...(shown === undefined ? named : mate), connected: stageAwake }}
           phase={handingArrival ? empty.phase : phaseAhead}
+          standUpFailure={empty.standUpFailure}
           signIn={handingArrival ? empty.signIn : null}
           runtimes={empty.runtimes}
           signInRequired={empty.signInRequired}

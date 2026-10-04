@@ -223,7 +223,7 @@ export interface SetupStep {
    * Why a waiting stand-up waits, where the server knows ({@link StandUpWait}); why the Git
    * access failed ({@link GitAccess}).
    */
-  readonly reason?: StandUpWait["reason"] | "refused";
+  readonly reason?: StandUpWait["reason"] | "refused" | "send_failed";
   /** HQ's refusal code, with `not_enrolled` or `refused`. */
   readonly code?: string;
 }
@@ -279,6 +279,8 @@ export interface SetupFacts {
         readonly ran: boolean;
         /** Claimed, its send not confirmed out yet: its turn may not exist yet. */
         readonly claimed?: boolean;
+        /** Dispatch/admission failed before its ask went out. */
+        readonly failed?: boolean;
       }
     | undefined;
   /**
@@ -335,6 +337,8 @@ const zcpStandUpState = (facts: SetupFacts): Exclude<StandUpState, "idle"> | und
 
 const standUpStep = (facts: SetupFacts): SetupStep | null => {
   const standup = facts.status?.standup;
+  if (facts.record?.failed === true)
+    return { id: "standup", state: "failed", at: facts.record.startedAt, reason: "send_failed" };
   const zcpState = zcpStandUpState(facts);
   // Settled as never due: nothing ran here, so nothing is done — unless zcp ran one.
   if (facts.record !== undefined && !facts.record.ran) {

@@ -30,6 +30,7 @@ import {
   startAddOver,
   useNewProjectBirths,
 } from "~/zerops/newProjectBirth";
+import { useNewProjectBirthPorts } from "~/zerops/useNewProjectBirthPorts";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -55,6 +56,7 @@ const NOBODY = {
 
 export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: string }) {
   const navigate = useNavigate();
+  const birthPorts = useNewProjectBirthPorts();
   const { user } = useZeropsSession();
   // The person's own step wears their picture.
   const you = useMemo(() => personOf(user), [user]);
@@ -137,7 +139,9 @@ export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: stri
               mate={mate}
               nowMs={nowMs}
               onTryAgain={() => {
-                retryNewProjectBirth(birthId);
+                if (birth !== undefined && birth.adds === undefined)
+                  retryNewProjectBirth(birthId, birthPorts(birth));
+                else retryNewProjectBirth(birthId);
               }}
               {...(ends === null
                 ? {}

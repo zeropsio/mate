@@ -9,15 +9,31 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
   // project and its attach is finished where and as it was asked for, in any browser. Audit B3:
   // with the person's stand-up ask — a dev Mate's — which its attach records with the Mate.
   it.each([
-    { case: "a dev Mate, asking its stand-up", role: "dev" as const, standUp: true },
-    { case: "a devstage Mate, asking none", role: "devstage" as const, standUp: false },
-  ])("records $case, in its application under its face", async ({ role, standUp }) => {
+    {
+      case: "a dev Mate, asking its stand-up",
+      role: "dev" as const,
+      recipe: { kind: "tier" as const, tier: "mate" as const, yaml: "services: []" },
+      standUp: true,
+    },
+    {
+      case: "a devstage Mate, asking none",
+      role: "devstage" as const,
+      recipe: { kind: "tier" as const, tier: "mate" as const, yaml: "services: []" },
+      standUp: false,
+    },
+    {
+      case: "the first dev Mate without a recipe, awaiting its first task",
+      role: "dev" as const,
+      recipe: { kind: "none" as const },
+      standUp: false,
+    },
+  ])("records $case, in its application under its face", async ({ role, recipe, standUp }) => {
     const api = hq();
     expect(
       await addedMateBirth(api, {
         groupId: "app-g",
         role,
-        choice: { withAgent: true, face: { tint: "rose", shape: "seal" } },
+        choice: { withAgent: true, recipe, face: { tint: "rose", shape: "seal" } },
       }),
     ).toBe("b-gus");
     // D3: its name is its project's, never HQ's.
@@ -34,7 +50,7 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
       await addedMateBirth(api, {
         groupId: "app-g",
         role,
-        choice: { withAgent },
+        choice: { withAgent, recipe: { kind: "none" } },
       }),
     ).toBeUndefined();
     expect(api.recordBirth).not.toHaveBeenCalled();

@@ -259,3 +259,19 @@ describe("mateStandUpPhase", () => {
     expect(mateStandUpPhase({ ...ASKED, ...input })).toBe(expected);
   });
 });
+
+describe("a failed stand-up no longer holds a person in an empty conversation", () => {
+  it.each(["empty", "unknown"] as const)(
+    "releases the composer with the conversation %s",
+    (conversation) => {
+      expect(
+        mateStandUpHoldsComposer({
+          marker: { by: "u-ada" },
+          viewer: "u-ada",
+          conversation,
+          failed: true,
+        }),
+      ).toBe(false);
+    },
+  );
+});

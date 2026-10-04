@@ -45,6 +45,8 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
+import * as Semaphore from "effect/Semaphore";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -116,6 +118,10 @@ export class ZeropsSetup extends Context.Service<
     readonly document: Effect.Effect<SetupDocument>;
     /** zcp's status file, as this build reads it. */
     readonly status: Effect.Effect<ZcpStatus | undefined>;
+    /** Receipt: the initial wait ended as sent, failed, skipped or not asked. */
+    readonly awaitStandUp: Effect.Effect<void>;
+    /** One manual attempt, only for the recorded asker after a failed send. */
+    readonly retry: (subject: string) => Effect.Effect<boolean>;
   }
 >()("t3/zerops/ZeropsSetup") {}
 
@@ -214,6 +220,7 @@ const RAN: ReadonlySet<string> = new Set([
 ]);
 /** The sources after which nothing is left to do. */
 const TERMINAL: ReadonlySet<string> = new Set([
+  "server:failed",
   "server",
   "browser",
   "browser:claimed",
@@ -237,6 +244,8 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     const startedAt = yield* nowIso;
     const gitAt = yield* Ref.make<string | undefined>(undefined);
     const signinAt = yield* Ref.make<string | undefined>(undefined);
+    const settled = yield* Deferred.make<void>();
+    const attempts = yield* Semaphore.make(1);
 
     /* ---------------------------------------------------------- the record */
 
@@ -268,14 +277,11 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         Effect.catch(() => Effect.succeed(false)),
       );
 
-    /** Withdraws this server's claim on its way: never any other record. */
-    const withdraw = (commandId: string) =>
-      sql`DELETE FROM zerops_stand_ups
+    /** A send that failed is final until its asker explicitly tries again. */
+    const fail = (commandId: string) =>
+      sql`UPDATE zerops_stand_ups SET source = 'server:failed'
         WHERE project_id = ${projectId} AND command_id = ${commandId}
-          AND source = 'server:claimed'`.pipe(
-        Effect.asVoid,
-        Effect.catch(() => Effect.void),
-      );
+          AND source = 'server:claimed'`.pipe(Effect.asVoid);
 
     /** A claim resumed that nobody can be sent as: settled, as nobody asked. */
     const settleTaken = (commandId: string) =>
@@ -375,7 +381,12 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         record:
           record === undefined
             ? undefined
-            : { startedAt: record.startedAt, ran, claimed: record.source.endsWith(":claimed") },
+            : {
+                startedAt: record.startedAt,
+                ran,
+                claimed: record.source.endsWith(":claimed"),
+                failed: record.source === "server:failed",
+              },
         // HQ's record carries its ask from the write that made it (audit B3), and names nobody:
         // a Mate with no stand-up to run.
         nobodyAsked: hq?.kind === "linked" && hq.mate.standupRequestedBy === null,
@@ -512,15 +523,6 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         // For the person who asked, with no session of theirs behind it: admitted while this
         // project opens for them, on an agent they signed in (D6, X3).
         const principal: TurnPrincipal = { kind: "standup", startedBy: decision.userId };
-        const admitted = yield* admission.admit({ command: turn, principal }).pipe(
-          Effect.as(true),
-          Effect.catch((error) =>
-            Effect.logInfo("zerops setup: the stand-up waits on admission", {
-              reason: error.message,
-            }).pipe(Effect.as(false)),
-          ),
-        );
-        if (!admitted) return false;
         if (resuming === undefined) {
           const claimed = yield* claim({
             threadId,
@@ -529,9 +531,17 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
             source: "server:claimed",
             startedAt: now,
           });
-          // A browser claimed it meanwhile: look again, until its send ends.
           if (!claimed) return false;
         }
+        const admitted = yield* admission.admit({ command: turn, principal }).pipe(
+          Effect.as(true),
+          Effect.catch((error) =>
+            Effect.logInfo("zerops setup: the stand-up was refused", {
+              reason: error.message,
+            }).pipe(Effect.andThen(fail(ids.commandId)), Effect.as(false)),
+          ),
+        );
+        if (!admitted) return true;
         const sent = yield* Effect.gen(function* () {
           if (main === undefined) {
             yield* orchestration.dispatch({
@@ -554,30 +564,42 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           Effect.as(true),
           Effect.catch((error) =>
             Effect.logWarning("zerops setup: the stand-up did not go out", { error }).pipe(
-              Effect.andThen(withdraw(ids.commandId)),
+              Effect.andThen(fail(ids.commandId)),
               Effect.as(false),
             ),
           ),
         );
-        if (!sent) return false;
+        if (!sent) return true;
         yield* confirm(ids.commandId);
         yield* Effect.logInfo("zerops setup: the stand-up went out", { threadId });
         return true;
       }).pipe(
-        Effect.catch(() => Effect.succeed(false)),
-        Effect.catchDefect(() => Effect.succeed(false)),
+        Effect.catchCause(() =>
+          Effect.gen(function* () {
+            const held = yield* recordOf;
+            if (held?.source !== "server:claimed") return false;
+            yield* fail(held.commandId);
+            return true;
+          }),
+        ),
       );
 
     /** Until the stand-up is settled: fast while the Mate is new, slower after. */
     const wait = Effect.gen(function* () {
       const variables = yield* reads.serviceVariables;
       // A Mate the new press did not make has no stand-up of the server's, and never polls.
-      if (variables === undefined || !hasSetupMarker(variables)) return;
+      if (variables === undefined || !hasSetupMarker(variables)) {
+        yield* Deferred.succeed(settled, undefined);
+        return;
+      }
       yield* readiness.await;
       const since = yield* Clock.currentTimeMillis;
       while (true) {
         const upMs = (yield* Clock.currentTimeMillis) - since;
-        if (yield* tick()) return;
+        if (yield* attempts.withPermit(tick())) {
+          yield* Deferred.succeed(settled, undefined);
+          return;
+        }
         yield* Effect.sleep(standUpPollDelay(upMs, timings));
       }
     });
@@ -586,7 +608,26 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       yield* Effect.forkScoped(wait);
     }
 
-    return ZeropsSetup.of({ document, status });
+    const retry = (subject: string) =>
+      attempts
+        .withPermit(
+          Effect.gen(function* () {
+            const held = yield* recordOf;
+            if (held?.source !== "server:failed" || held.userId !== subject) return false;
+            const id = `mate-standup-${held.threadId}-${yield* crypto.randomUUIDv4}`;
+            const changed = yield* sql`UPDATE zerops_stand_ups
+        SET source = 'server:claimed', command_id = ${id}, started_at = ${yield* nowIso}
+        WHERE project_id = ${projectId} AND command_id = ${held.commandId} AND source = 'server:failed'
+        RETURNING project_id`;
+            if (changed.length === 0) return false;
+            // One attempt now. If prerequisites have disappeared, end visibly rather than leave a claim.
+            if (!(yield* tick())) yield* fail(id);
+            return true;
+          }),
+        )
+        .pipe(Effect.catch(() => Effect.succeed(false)));
+
+    return ZeropsSetup.of({ document, status, retry, awaitStandUp: Deferred.await(settled) });
   });
 
 /**
