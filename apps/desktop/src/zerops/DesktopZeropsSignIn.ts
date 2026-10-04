@@ -5,7 +5,7 @@
  * of them) and waits on a loopback callback for the credential to come back.
  *
  * Never log, span-annotate, or error-payload the delivered fragment or
- * anything parsed out of it — it carries the personal access token.
+ * anything parsed out of it — it carries a bearer token.
  */
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -80,7 +80,10 @@ export const make = (startCallbackServer: StartZeropsCallbackServer = startZerop
       });
 
       const authorizeUrl = buildZeropsAuthorizeUrl({
-        state: input.state,
+        nonce: input.state,
+        origin: `http://localhost:${server.port}`,
+        path: "",
+        // TRANSITION: the app.zerops.io still live finds this server by port.
         loopbackPort: server.port,
         ...(input.intent === undefined ? {} : { intent: input.intent }),
       });

@@ -2039,11 +2039,11 @@ describe("a project write's admission", () => {
   });
 });
 
-describe("ZeropsApiClient.adoptPersonalToken", () => {
-  // The hand-over from app.zerops.io delivers a personal access token, which is
-  // already a bearer — there is nothing to exchange. What there is to do is
-  // prove it works before storing it, so a dead token never becomes a
-  // signed-in-looking UI.
+describe("ZeropsApiClient.adoptSession", () => {
+  // A hand-over delivers a bearer with no refresh token — the access token of
+  // the user's app.zerops.io session (or, in the transition, a personal token).
+  // Nothing is exchanged; it is proven before it is stored, so a dead token
+  // never becomes a signed-in-looking UI.
   it("proves the token before storing it, and stores exactly it", async () => {
     const stored: Array<ZeropsSession | null> = [];
     const stub = recordingFetch(() => jsonResponse(200, { id: "user-9", email: "a@b.c" }));
@@ -2054,39 +2054,50 @@ describe("ZeropsApiClient.adoptPersonalToken", () => {
       },
     });
 
-    const session = await client.adoptPersonalToken("pt-abc");
+    const session = await client.adoptSession({ accessToken: "at-abc" });
 
-    // One call, and it carried the token as the bearer.
     expect(stub.requests).toHaveLength(1);
     expect(stub.requests[0]?.url).toBe(`${DEFAULT_ZEROPS_API_BASE}/api/rest/public/user/info`);
-    expect(stub.requests[0]?.authorization).toBe("Bearer pt-abc");
-    expect(session.accessToken).toBe("pt-abc");
-    // No refresh token: a personal token does not have one, and the 401 path
-    // must clear the session rather than try to refresh it.
-    expect(session.refreshToken).toBeUndefined();
+    expect(stub.requests[0]?.authorization).toBe("Bearer at-abc");
+    expect(session).toEqual({ accessToken: "at-abc" });
     expect(stored).toEqual([session]);
   });
 
-  it("stores nothing when the token is refused", async () => {
-    const stored: Array<ZeropsSession | null> = [];
+  it("keeps a full session's refresh token, so a dev-injected login renews itself", async () => {
+    const stub = recordingFetch(() => jsonResponse(200, { id: "user-9", email: "a@b.c" }));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+
+    const session = await client.adoptSession({ accessToken: "at-1", refreshToken: "rt-1" });
+
+    expect(session).toEqual({ accessToken: "at-1", refreshToken: "rt-1" });
+    expect(client.session).toEqual(session);
+  });
+
+  // A refused hand-over is not the end of a held session: nothing was held.
+  // Announcing one would read as "the platform refused this login" and send
+  // the tab straight back for another hand-over — a loop.
+  it("stores nothing and announces no session end when the token is refused", async () => {
+    const changes: Array<ZeropsSession | null> = [];
     const stub = recordingFetch(() => jsonResponse(401, { error: { code: "notAuthorized" } }));
     const client = new ZeropsApiClient({
       fetch: stub.fetch,
       onSessionChange: (session) => {
-        stored.push(session);
+        changes.push(session);
       },
     });
 
-    await expect(client.adoptPersonalToken("dead")).rejects.toBeInstanceOf(ZeropsApiError);
+    await expect(client.adoptSession({ accessToken: "dead" })).rejects.toBeInstanceOf(
+      ZeropsApiError,
+    );
     expect(client.session).toBeNull();
-    expect(stored.filter((s) => s !== null)).toEqual([]);
+    expect(changes).toEqual([]);
   });
 
   it("will not spend a request on an empty hand-over", async () => {
     const stub = recordingFetch(() => jsonResponse(200, {}));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
 
-    await expect(client.adoptPersonalToken("  ")).rejects.toBeInstanceOf(ZeropsApiError);
+    await expect(client.adoptSession({ accessToken: "  " })).rejects.toBeInstanceOf(ZeropsApiError);
     expect(stub.requests).toHaveLength(0);
   });
 });

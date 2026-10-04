@@ -940,32 +940,34 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Adopts a personal access token handed over by `app.zerops.io` — the client
-   * end of the sign-in hand-over (`zerops/handover.ts`).
+   * Adopts a session minted elsewhere: the bearer the sign-in hand-over
+   * delivers (`zerops/handover.ts`), with no refresh token, or — dev builds
+   * only — a full `/auth/login` session an agent injects.
    *
-   * A personal token is already a bearer, so there is nothing to exchange. What
-   * matters is that it is **proven before it is stored**: a dead or revoked
-   * token that reached storage would render a signed-in-looking UI that fails
-   * on its first real call. So it is held in memory, spent on one read, and
-   * only persisted once that read comes back.
-   *
-   * It carries no refresh token, which is correct rather than a gap: on a 401
-   * the request path clears the session instead of trying to refresh, which is
-   * exactly what should happen to a token the user revoked.
+   * It is **proven before it is stored**: a dead token that reached storage
+   * would render a signed-in-looking UI that fails on its first real call. So
+   * it is held in memory, spent on one read, and only persisted once that read
+   * comes back. Without a refresh token, a later 401 clears the session
+   * instead of trying to refresh it.
    */
-  async adoptPersonalToken(token: string): Promise<ZeropsSession> {
-    const accessToken = token.trim();
+  async adoptSession(input: {
+    readonly accessToken: string;
+    readonly refreshToken?: string;
+  }): Promise<ZeropsSession> {
+    const accessToken = input.accessToken.trim();
     if (!accessToken) {
       throw new ZeropsApiError(
         "That Zerops sign-in carried no credential. Start again.",
         "invalid-input",
       );
     }
-    const session: ZeropsSession = { accessToken };
+    const refreshToken = input.refreshToken?.trim();
+    const session: ZeropsSession = refreshToken ? { accessToken, refreshToken } : { accessToken };
     const generation = this.#nextGeneration();
     this.#session = session;
     try {
-      await this.fetchUser();
+      // A refusal here is not a held session ending, so it must not announce one.
+      await this.#readUser(null, { retryAfterRefresh: false, clearSessionOnUnauthorized: false });
     } catch (cause) {
       if (generation === this.#generation) this.#session = null;
       throw cause;
@@ -1097,9 +1099,13 @@ export class ZeropsApiClient {
     for (const listener of this.#tokenListeners) listener(clientId);
   }
 
-  async fetchUser(signal?: AbortSignal): Promise<ZeropsUser> {
+  fetchUser(signal?: AbortSignal): Promise<ZeropsUser> {
+    return this.#readUser(signal ?? null, {});
+  }
+
+  async #readUser(signal: AbortSignal | null, options: RequestOptions): Promise<ZeropsUser> {
     const generation = this.#generation;
-    const user = await this.#request<ZeropsUser>("/user/info", { signal: signal ?? null });
+    const user = await this.#request<ZeropsUser>("/user/info", { signal }, options);
     // @effect-diagnostics-next-line globalDate:off -- dated on the wall clock its readers' Clock reads.
     this.#verified = { user, atMs: Date.now(), generation };
     return user;

@@ -70,7 +70,7 @@ function testLayer(input: {
 }
 
 describe("DesktopZeropsSignIn", () => {
-  it.effect("opens the authorize url with the loopback port from the callback server", () => {
+  it.effect("opens the authorize url naming the callback server's loopback origin", () => {
     const fake = fakeCallbackServer();
     const openedUrls: string[] = [];
 
@@ -85,6 +85,10 @@ describe("DesktopZeropsSignIn", () => {
       const url = new URL(openedUrls[0]!);
       assert.equal(url.hostname, "app.zerops.io");
       assert.equal(url.searchParams.get("app"), "zerops-code");
+      assert.equal(url.searchParams.get("origin"), "http://localhost:4242");
+      assert.equal(url.searchParams.get("path"), "");
+      assert.equal(url.searchParams.get("nonce"), "nonce-1");
+      // TRANSITION: the app.zerops.io still live reads `state` and `port`.
       assert.equal(url.searchParams.get("state"), "nonce-1");
       assert.equal(url.searchParams.get("port"), "4242");
       assert.isNull(url.searchParams.get("intent"));

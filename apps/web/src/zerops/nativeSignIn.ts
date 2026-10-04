@@ -37,7 +37,6 @@ export interface ZeropsNativeSignInDeps {
   readonly zeropsSignIn: NonNullable<DesktopBridge["zeropsSignIn"]>;
   readonly adoptHandover: (input: {
     readonly token: string;
-    readonly clientId: string | null;
     readonly zcpClaimed: boolean;
   }) => Promise<void>;
   /**
@@ -111,7 +110,6 @@ export async function runZeropsNativeSignIn(
   try {
     await deps.adoptHandover({
       token: outcome.token,
-      clientId: outcome.clientId,
       zcpClaimed: outcome.zcpClaimed,
     });
   } catch (cause) {
