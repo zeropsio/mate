@@ -13,7 +13,9 @@
  * - A 403/404 closes that project's writes at once; its content is removed only after a direct
  *   confirming read at least the confirmation delay later (G6).
  * - A failed round or read retries on its ladder (policy) while the tab is visible: at once on a
- *   visible wake, `online` or a person's retry; nothing retries while the tab is hidden.
+ *   visible wake, `online` or a person's retry; nothing retries while the tab is hidden. A
+ *   malformed answer is definitive, as a cell's decode is: only a person's retry asks again
+ *   (2026-10-05).
  * - Effects are data. The interpreter runs `run` ops and feeds their answers back as events,
  *   arms one timer per `schedule` that delivers `TICK`, and forwards the rest to the runtime.
  */
@@ -46,7 +48,11 @@ export type GrantFailure =
   | { readonly kind: "transport"; readonly detail: string }
   | { readonly kind: "throttled"; readonly retryAfterMs: number | null }
   | { readonly kind: "server"; readonly status: number }
+  /** Definitive: asking the same again gets the same answer, so only a person asks again. */
   | { readonly kind: "malformed"; readonly detail: string };
+
+/** A failure no wait repairs (`malformed`): it waits for a person's retry, never a rung. */
+const definitive = (failure: GrantFailure | null): boolean => failure?.kind === "malformed";
 
 export type DenialEvidence = "direct-forbidden" | "direct-not-found";
 
@@ -72,8 +78,11 @@ export interface ProjectEvidence {
 export interface UnverifiedProject {
   readonly project: ProjectRef;
   readonly failure: GrantFailure | null;
-  /** When its next read is due: at once when first demanded, on the project rungs after a failure. */
-  readonly dueAt: Instant;
+  /**
+   * When its next read is due: at once when first demanded, on the project rungs after a failure;
+   * null after a definitive one, until a person's retry.
+   */
+  readonly dueAt: Instant | null;
   /** Failed reads so far; picks the rung of the next wait. */
   readonly attempt: number;
 }
@@ -85,7 +94,8 @@ export interface ClosedProject {
   readonly confirmation:
     | {
         readonly status: "due";
-        readonly at: Instant;
+        /** Null after a definitive failure, until a person's retry. */
+        readonly at: Instant | null;
         /** The last confirming read's failure, shown while it waits its rung. */
         readonly failure: GrantFailure | null;
         readonly attempt: number;
@@ -139,8 +149,11 @@ export type Renewal =
   | {
       readonly status: "failed";
       readonly failure: GrantFailure;
-      /** Granted: bounded by the held deadline, where the lapse starts its own round. */
-      readonly retryAt: Instant;
+      /**
+       * Granted: bounded by the held deadline, where the lapse starts its own round. Null after a
+       * definitive failure, until a person's retry.
+       */
+      readonly retryAt: Instant | null;
       readonly attempt: number;
     }
   /** Hidden longer than the policy: no round until a visible wake (D5). */
@@ -152,7 +165,8 @@ export type GrantState =
   | {
       readonly phase: "unverified-failed";
       readonly failure: GrantFailure;
-      readonly retryAt: Instant;
+      /** Null after a definitive failure, until a person's retry. */
+      readonly retryAt: Instant | null;
       readonly attempt: number;
     }
   /**
@@ -371,6 +385,17 @@ const waitOf = (ctx: GrantContext, ladder: ReadonlyArray<number>, attempt: numbe
   const ms = rung(ladder, attempt);
   return ctx.random === undefined ? ms : Math.round(ms * (1 - RETRY_JITTER * ctx.random()));
 };
+
+/** When a read that failed with `failure` is due again on `ladder`: never, for a definitive one. */
+const retryAtOf = (
+  ctx: GrantContext,
+  failure: GrantFailure,
+  ladder: ReadonlyArray<number>,
+  attempt: number,
+): Instant | null => (definitive(failure) ? null : after(ctx.now, waitOf(ctx, ladder, attempt)));
+
+/** Whether a wait that may have none has come due. */
+const due = (at: Instant | null, now: Instant): boolean => at !== null && reached(at, now);
 
 /** Failed reads retry only in a visible tab; the visible wake restarts them. */
 const retrying = (machine: GrantMachine): boolean =>
@@ -596,33 +621,37 @@ const failRound = (
 ): GrantMachine => {
   const attempt = round.failures + 1;
   const phase = machine.phase;
-  /** When the next round goes out after `ms`: at once when a person asked during this one. */
-  const retryAfter = (ms: number): Instant =>
-    round.askedAgain === true ? ctx.now : after(ctx.now, ms);
+  /**
+   * When the next round goes out on `ladder`: at once when a person asked during this one, never
+   * by itself after a definitive failure.
+   */
+  const retryAfter = (ladder: ReadonlyArray<number>): Instant | null =>
+    round.askedAgain === true ? ctx.now : retryAtOf(ctx, failure, ladder, attempt);
   if (phase.phase === "verifying") {
     return {
       ...machine,
       phase: {
         phase: "unverified-failed",
         failure,
-        retryAt: retryAfter(waitOf(ctx, ctx.policy.initialRetryMs, attempt)),
+        retryAt: retryAfter(ctx.policy.initialRetryMs),
         attempt,
       },
     };
   }
   if (phase.phase === "granted") {
     // Bounded by the held deadline, where the lapse starts its own round (§4.2 timers).
-    const retryAt = sooner(
-      retryAfter(waitOf(ctx, ctx.policy.renewalRetryMs, attempt)),
-      after(phase.evidence.account.startedAt, ctx.policy.windowMs),
-    );
+    const retry = retryAfter(ctx.policy.renewalRetryMs);
+    const retryAt =
+      retry === null
+        ? null
+        : sooner(retry, after(phase.evidence.account.startedAt, ctx.policy.windowMs));
     return {
       ...machine,
       phase: { ...phase, renewal: { status: "failed", failure, retryAt, attempt }, failure },
     };
   }
   if (phase.phase !== "lapsed") return machine;
-  const retryAt = retryAfter(waitOf(ctx, ctx.policy.lapsedRetryMs, attempt));
+  const retryAt = retryAfter(ctx.policy.lapsedRetryMs);
   return {
     ...machine,
     phase: { ...phase, renewal: { status: "failed", failure, retryAt, attempt }, failure },
@@ -754,7 +783,7 @@ const completeRound = (
         unverified.set(id, {
           project: target,
           failure: outcome.failure,
-          dueAt: after(ctx.now, waitOf(ctx, ctx.policy.projectRetryMs, 1)),
+          dueAt: retryAtOf(ctx, outcome.failure, ctx.policy.projectRetryMs, 1),
           attempt: 1,
         });
         break;
@@ -869,7 +898,7 @@ const projectResult = (
         ...closed,
         confirmation: {
           status: "due",
-          at: after(ctx.now, waitOf(ctx, ctx.policy.projectRetryMs, tries)),
+          at: retryAtOf(ctx, outcome.failure, ctx.policy.projectRetryMs, tries),
           failure: outcome.failure,
           attempt: tries,
         },
@@ -886,7 +915,7 @@ const projectResult = (
     unverified.set(id, {
       ...entry,
       failure: outcome.failure,
-      dueAt: after(ctx.now, waitOf(ctx, ctx.policy.projectRetryMs, entry.attempt + 1)),
+      dueAt: retryAtOf(ctx, outcome.failure, ctx.policy.projectRetryMs, entry.attempt + 1),
       attempt: entry.attempt + 1,
     });
     return withEvidence(machine, { ...held, unverified });
@@ -906,30 +935,44 @@ const projectResult = (
   return withEvidence(machine, { ...held, projects, unverified, closedProjects });
 };
 
-/** A visible wake, `online` or a user retry: every wait restarts from its first rung, now. */
-const wake = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantMachine => {
+/**
+ * A visible wake, `online` or a person's retry: every wait restarts from its first rung, now — one
+ * a definitive failure ended only on a person's retry (`person`).
+ */
+const wake = (
+  machine: GrantMachine,
+  ctx: GrantContext,
+  out: Effects,
+  person: boolean,
+): GrantMachine => {
   const phase = machine.phase;
   if (phase.phase === "unverified-failed") {
+    if (!person && definitive(phase.failure)) return machine;
     return machine.signals.online ? startVerifying(machine, 0, ctx, out) : machine;
   }
   if (phase.phase !== "granted" && phase.phase !== "lapsed") return machine;
   // A waiting renewal is due now; a granted idle one keeps its schedule (renew if due).
-  const renewal = phase.renewal.status;
+  const renewal = phase.renewal;
   const next =
-    renewal === "failed" ||
-    renewal === "dormant" ||
-    (phase.phase === "lapsed" && renewal === "idle")
+    (renewal.status === "failed" && (person || !definitive(renewal.failure))) ||
+    renewal.status === "dormant" ||
+    (phase.phase === "lapsed" && renewal.status === "idle")
       ? withRenewal(machine, { status: "idle", dueAt: ctx.now })
       : machine;
   const held = heldEvidence(next)!;
   const unverified = new Map(
-    [...held.unverified].map(([id, entry]) => [id, { ...entry, dueAt: ctx.now, attempt: 0 }]),
+    [...held.unverified].map(([id, entry]) => [
+      id,
+      !person && definitive(entry.failure) ? entry : { ...entry, dueAt: ctx.now, attempt: 0 },
+    ]),
   );
   // A confirmation retrying after a failure restarts now; a first one keeps its G6 delay.
   const closedProjects = new Map(
     [...held.closedProjects].map(([id, entry]): [ZeropsProjectId, ClosedProject] => [
       id,
-      entry.confirmation.status === "due" && entry.confirmation.attempt > 0
+      entry.confirmation.status === "due" &&
+      entry.confirmation.attempt > 0 &&
+      (person || !definitive(entry.confirmation.failure))
         ? {
             ...entry,
             confirmation: {
@@ -985,10 +1028,10 @@ const apply = (
         : next;
     }
     case "WAKE":
-      return event.visible ? wake(machine, ctx, out) : machine;
+      return event.visible ? wake(machine, ctx, out, false) : machine;
     case "ONLINE": {
       const online = { ...machine, signals: { ...machine.signals, online: true } };
-      return online.signals.hiddenSince === null ? wake(online, ctx, out) : online;
+      return online.signals.hiddenSince === null ? wake(online, ctx, out, false) : online;
     }
     case "OFFLINE":
       return { ...machine, signals: { ...machine.signals, online: false } };
@@ -996,7 +1039,7 @@ const apply = (
       // A retry during a round joins it (G7); should that round fail, the person's ask is not
       // spent on it: the next round goes out at once instead of on the ladder.
       const round = grantRoundInFlight(machine);
-      if (round === null) return wake(machine, ctx, out);
+      if (round === null) return wake(machine, ctx, out, true);
       return round.askedAgain === true
         ? machine
         : withRound(machine, { ...round, askedAgain: true });
@@ -1204,13 +1247,13 @@ const settle = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantMa
   }
 
   const phase = next.phase;
-  if (phase.phase === "unverified-failed" && retrying(next) && reached(phase.retryAt, ctx.now)) {
+  if (phase.phase === "unverified-failed" && retrying(next) && due(phase.retryAt, ctx.now)) {
     next = startVerifying(next, phase.attempt, ctx, out);
   } else if (phase.phase === "granted" || phase.phase === "lapsed") {
     const renewal = phase.renewal;
     if (renewal.status === "idle" && reached(renewal.dueAt, ctx.now))
       next = startRenewal(next, 0, ctx, out);
-    else if (renewal.status === "failed" && retrying(next) && reached(renewal.retryAt, ctx.now))
+    else if (renewal.status === "failed" && retrying(next) && due(renewal.retryAt, ctx.now))
       next = startRenewal(next, renewal.attempt, ctx, out);
   }
 
@@ -1240,7 +1283,7 @@ const startProjectReads = (
         machine.demandedProjects.some((project) => project.projectId === id) &&
         !machine.projectAttempts.has(id) &&
         (entry.attempt === 0 || retrying(machine)) &&
-        reached(entry.dueAt, ctx.now)
+        due(entry.dueAt, ctx.now)
       ) {
         reads.push({ kind: "verify", project: entry.project });
       }
@@ -1251,7 +1294,7 @@ const startProjectReads = (
       entry.confirmation.status === "due" &&
       (entry.confirmation.attempt === 0 || retrying(machine)) &&
       !machine.projectAttempts.has(id) &&
-      reached(entry.confirmation.at, ctx.now)
+      due(entry.confirmation.at, ctx.now)
     ) {
       reads.push({ kind: "confirm", project: entry.project });
     }
@@ -1300,7 +1343,8 @@ const publish = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantM
       ? null
       : {
           failure: phase.failure,
-          retryAtMs: phase.renewal.status === "failed" ? phase.renewal.retryAt.wall : null,
+          retryAtMs:
+            phase.renewal.status === "failed" ? (phase.renewal.retryAt?.wall ?? null) : null,
         };
   const account = lapsed ? withheld("access-lapsed", lapseCause) : AUTHORIZED;
 
@@ -1336,7 +1380,7 @@ const publish = (machine: GrantMachine, ctx: GrantContext, out: Effects): GrantM
                   "access-unverified",
                   entry === undefined || entry.failure === null
                     ? null
-                    : { failure: entry.failure, retryAtMs: entry.dueAt.wall },
+                    : { failure: entry.failure, retryAtMs: entry.dueAt?.wall ?? null },
                 );
     projects.set(id, { project, authority });
     if (!sameAuthority(before, authority)) {
@@ -1360,11 +1404,13 @@ const reschedule = (machine: GrantMachine, ctx: GrantContext, out: Effects): Gra
     candidates.push(projectAttemptDeadline(attempt, ctx.policy));
   }
 
-  if (phase.phase === "unverified-failed" && retrying(machine)) candidates.push(phase.retryAt);
+  if (phase.phase === "unverified-failed" && retrying(machine) && phase.retryAt !== null)
+    candidates.push(phase.retryAt);
   if (phase.phase === "granted" || phase.phase === "lapsed") {
     const renewal = phase.renewal;
     if (online && renewal.status === "idle") candidates.push(renewal.dueAt);
-    if (retrying(machine) && renewal.status === "failed") candidates.push(renewal.retryAt);
+    if (retrying(machine) && renewal.status === "failed" && renewal.retryAt !== null)
+      candidates.push(renewal.retryAt);
   }
   if (phase.phase === "granted") {
     const evidence = phase.evidence;
@@ -1378,7 +1424,8 @@ const reschedule = (machine: GrantMachine, ctx: GrantContext, out: Effects): Gra
           machine.demandedProjects.some((project) => project.projectId === id) &&
           (entry.attempt === 0 || retrying(machine)) &&
           round === null &&
-          !machine.projectAttempts.has(id)
+          !machine.projectAttempts.has(id) &&
+          entry.dueAt !== null
         ) {
           candidates.push(entry.dueAt);
         }
@@ -1387,7 +1434,8 @@ const reschedule = (machine: GrantMachine, ctx: GrantContext, out: Effects): Gra
         if (
           entry.confirmation.status === "due" &&
           (entry.confirmation.attempt === 0 || retrying(machine)) &&
-          !machine.projectAttempts.has(id)
+          !machine.projectAttempts.has(id) &&
+          entry.confirmation.at !== null
         ) {
           candidates.push(entry.confirmation.at);
         }

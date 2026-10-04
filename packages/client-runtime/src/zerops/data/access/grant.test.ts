@@ -329,6 +329,67 @@ describe("a failed first read recovers by itself", () => {
   });
 });
 
+// A malformed answer is definitive, as a cell's decode is (2026-10-05: a definitive refusal ends
+// the recovery, visibly, with a manual again): no rung, no visible wake and no `online` reads it
+// again; only a person's again does.
+describe("a malformed answer waits for a person's again", () => {
+  const MALFORMED: GrantFailure = { kind: "malformed", detail: "an unknown shape" };
+  const quiet = (sim: GrantSim) => {
+    sim.elapse(10 * MINUTE);
+    sim.send({ type: "TICK" });
+    sim.send({ type: "ONLINE" });
+    sim.send({ type: "WAKE", visible: true });
+  };
+
+  it("ends a first read's retries", () => {
+    const sim = new GrantSim();
+    sim.send({ type: "START" });
+    sim.send({ type: "ROUND_FAILED", round: sim.round(), failure: MALFORMED });
+    expect(sim.state.phase).toMatchObject({ phase: "unverified-failed", retryAt: null });
+    expect(sim.state.timer).toBeNull();
+    const before = sim.runs.length;
+    quiet(sim);
+    expect(sim.runs).toHaveLength(before);
+    sim.send({ type: "USER_RETRY" });
+    expect(sim.runs).toHaveLength(before + 1);
+  });
+
+  it("ends a renewal's retries before the held deadline, and says no retry is coming", () => {
+    const sim = grantedSim();
+    sim.elapse(12 * MINUTE - 2 * SECOND);
+    sim.send({ type: "TICK" });
+    sim.send({ type: "ROUND_FAILED", round: sim.round(), failure: MALFORMED });
+    expect(sim.state.phase).toMatchObject({
+      phase: "granted",
+      renewal: { status: "failed", retryAt: null },
+    });
+    const before = sim.runs.length;
+    sim.elapse(MINUTE);
+    sim.send({ type: "TICK" });
+    sim.send({ type: "WAKE", visible: true });
+    expect(sim.runs).toHaveLength(before);
+    sim.send({ type: "USER_RETRY" });
+    expect(sim.runs).toHaveLength(before + 1);
+  });
+
+  it("ends one project's reads while the account stays granted", () => {
+    const sim = grantedSim();
+    sim.send({ type: "PROJECTS_DEMANDED", projects: [A, B, projectRef("project-c")] });
+    const read = sim.lastRun("verify-project");
+    sim.send({
+      type: "PROJECT_RESULT",
+      attempt: read.attempt,
+      project: projectRef("project-c"),
+      outcome: { kind: "failed", failure: MALFORMED },
+    });
+    const before = sim.runs.length;
+    quiet(sim);
+    expect(sim.runs.slice(before).map(({ op }) => op.kind)).not.toContain("verify-project");
+    sim.send({ type: "USER_RETRY" });
+    expect(sim.runs.slice(before).map(({ op }) => op.kind)).toContain("verify-project");
+  });
+});
+
 describe("access grant reducer", () => {
   it("admits the first round and restores the account and each verified project (G12)", () => {
     const sim = new GrantSim();
