@@ -1,7 +1,7 @@
 /**
  * The Git page's list (SPEC §5.3): each application by its name, its repositories and the changes
  * open on them — each change with the word and colour its row wears everywhere, opening its own
- * page — and no way out to a web git browser until there is one.
+ * page — and each repository opens its source within Mate.
  */
 import { gitOverview, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -64,9 +64,15 @@ describe("ZeropsGitOverview", () => {
     expect(html).not.toMatch(/>pr<|\bPR\b|pull request/iu);
   });
 
-  // SPEC §5.3: no web git browser until zitweb, so a repository's name goes nowhere.
-  it("names a repository without a link out", () => {
-    expect(render({ kind: "read", apps: APPS, failure: null })).not.toContain("<a ");
+  it("opens each repository's source from Git, with its application id and the hosted base path", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsGitOverview
+        state={{ kind: "read", apps: APPS, failure: null }}
+        repositoryHref={(appId, repo) => `/mate/git?${new URLSearchParams({ appId, repo })}`}
+      />,
+    );
+    expect(html).toContain('href="/mate/git?appId=a-todo&amp;repo=appdev"');
+    expect(html).toContain('href="/mate/git?appId=a-todo&amp;repo=group"');
   });
 
   it("gives each change its state and its own page", () => {

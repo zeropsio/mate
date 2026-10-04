@@ -68,4 +68,11 @@ describe("repository source owner", () => {
     await attempt;
     expect(store.snapshot(target).state).toBe("unread");
   });
+  it("withholds cached source synchronously when the current grant is denied or unread", async () => {
+    const store = makeRepositoryStore({ read: async () => source, now: () => 1 });
+    await store.load(target);
+    expect(store.snapshot(target, false).state).toBe("withheld");
+    expect(store.snapshot(target, "unread").state).toBe("unread");
+    expect(store.snapshot(target, true)).toMatchObject({ state: "known", value: source });
+  });
 });

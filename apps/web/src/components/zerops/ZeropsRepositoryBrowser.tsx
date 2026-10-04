@@ -72,18 +72,20 @@ export function ZeropsRepositorySource({
 
 export function ZeropsRepositoryBrowser({
   appId,
+  allowed,
   repo,
   query,
   onNavigate,
   onBack,
 }: {
   readonly appId: string;
+  readonly allowed: boolean | undefined;
   readonly repo: string;
   readonly query: RepositoryQuery;
   readonly onNavigate: (query: RepositoryQuery) => void;
   readonly onBack: () => void;
 }) {
-  const { source, again } = useRepositorySource({ appId, repo, query });
+  const { source, again } = useRepositorySource({ appId, repo, query }, allowed);
   const heading = (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-base font-semibold text-foreground">{repo}</h2>

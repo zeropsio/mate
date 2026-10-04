@@ -15,7 +15,8 @@ The client-runtime repository store holds source facts per account/HQ and full t
 using `Known` cells. Concurrent demand is shared. Reads have one attempt and manual recovery, with
 no refresh timer. Up to 32 unleased facts are retained; mounted facts are never evicted. Account
 close aborts reads and discards their results and cached content. A permission refusal withholds
-previously retained content.
+previously retained content. The current client grant also withholds cached source synchronously;
+unread grants expose no cached source. Git links use application ids and the hosted base path.
 
 Web owns the source UI and its address at `/git`. Desktop uses the same web UI. Mobile retains no
 account Git page in this fork; the source API and platform-free store are shared for its future

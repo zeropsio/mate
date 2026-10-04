@@ -11,7 +11,7 @@
  * releases (`useZeropsAppReleases`), and the changes open on them, down its stream. A change's title opens the change's own page, with
  * the same word and the same colour its row wears on the projects screen and in the left menu (the
  * owner, 2026-09-19: "all pages are unified in how they look work feel have ux and abilities"). A
- * repository's name opens nothing: there is no web git browser to open it in until zitweb.
+ * repository's name opens its source in HQ, at a branch or commit and path.
  *
  * Structural: what it says is `gitPageState`'s, the grouping, the order and every line
  * `gitOverview`'s (R5). `ZeropsGitPage` composes the account around the view; `ZeropsGitOverview`
@@ -21,6 +21,7 @@ import { changeKindTag, changeState, gitRepositoryLine } from "@t3tools/client-r
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useMemo } from "react";
 
+import { appBasePath } from "~/basePath";
 import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
 import { StatusDot } from "./primitives";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
@@ -45,8 +46,12 @@ function ReadTrouble({ failure }: { readonly failure: string | null }) {
 export function ZeropsGitOverview({
   state,
   onOpenChange,
+  repositoryHref,
+  onOpenRepository,
 }: {
   readonly state: GitPageState;
+  readonly repositoryHref?: (appId: string, repo: string) => string;
+  readonly onOpenRepository?: (appId: string, repo: string) => void;
   /** Opens a change's own page. */
   readonly onOpenChange?: (appId: string, repository: string, number: number) => void;
 }) {
@@ -80,9 +85,31 @@ export function ZeropsGitOverview({
                   key={repository.name}
                 >
                   <div className="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-0.5 py-1.5 sm:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_auto] sm:py-0">
-                    <span className="min-w-0 truncate text-sm text-foreground">
-                      {repository.name}
-                    </span>
+                    {repositoryHref === undefined ? (
+                      <span className="min-w-0 truncate text-sm text-foreground">
+                        {repository.name}
+                      </span>
+                    ) : (
+                      <a
+                        className="min-w-0 truncate rounded-sm text-sm text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                        href={repositoryHref(app.appId, repository.name)}
+                        onClick={(event) => {
+                          if (
+                            onOpenRepository === undefined ||
+                            event.button !== 0 ||
+                            event.ctrlKey ||
+                            event.metaKey ||
+                            event.altKey ||
+                            event.shiftKey
+                          )
+                            return;
+                          event.preventDefault();
+                          onOpenRepository(app.appId, repository.name);
+                        }}
+                      >
+                        {repository.name}
+                      </a>
+                    )}
                     <span className="col-span-2 min-w-0 truncate text-xs text-muted-foreground sm:col-span-1">
                       {gitRepositoryLine(repository.changes.length)}
                     </span>
@@ -177,11 +204,14 @@ export function ZeropsGitPage() {
     >
       <div className="flex min-w-0 flex-col gap-0.5" data-zerops-surface="git-header">
         <h1 className="text-xl font-medium text-foreground">Git</h1>
-        <p className="text-sm text-muted-foreground">Every change open across your projects.</p>
+        <p className="text-sm text-muted-foreground">
+          Repositories and changes across your projects.
+        </p>
       </div>
       {search.appId !== undefined && search.repo !== undefined ? (
         <ZeropsRepositoryBrowser
           key={`${activeOrganization?.id}:${search.appId}:${search.repo}`}
+          allowed={offersOf(search.appId)?.read}
           appId={search.appId}
           repo={search.repo}
           query={{
@@ -201,6 +231,12 @@ export function ZeropsGitPage() {
         />
       ) : (
         <ZeropsGitOverview
+          repositoryHref={(appId, repo) =>
+            `${appBasePath()}/git?${new URLSearchParams({ appId, repo })}`
+          }
+          onOpenRepository={(appId, repo) => {
+            void navigate({ to: "/git", search: { appId, repo } });
+          }}
           onOpenChange={(appId, repository, number) => {
             void navigate({
               to: "/change/$groupId/$repository/$number",

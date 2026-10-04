@@ -22,6 +22,12 @@ export function makeRepositoryStore(input: {
     readonly abort: AbortController;
     readonly listeners: Set<() => void>;
   }
+  const unread: Shown<RepositorySource> = { state: "unread", waitingFor: "access-grant" };
+  const withheld: Shown<RepositorySource> = {
+    state: "withheld",
+    reason: "access-denied",
+    cause: null,
+  };
   const entries = new Map<string, Entry>();
   let ordinal = 0;
   let closed = false;
@@ -122,7 +128,8 @@ export function makeRepositoryStore(input: {
     return pending;
   };
   return {
-    snapshot: (target: RepositoryTarget) => entryFor(target).shown,
+    snapshot: (target: RepositoryTarget, access: boolean | "unread" = true) =>
+      access === "unread" ? unread : access ? entryFor(target).shown : withheld,
     subscribe: (target: RepositoryTarget, listener: () => void) => {
       const entry = entryFor(target);
       entry.listeners.add(listener);

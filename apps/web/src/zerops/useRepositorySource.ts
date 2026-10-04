@@ -24,7 +24,7 @@ function storeFor(api: HqApi) {
   }
   return store;
 }
-export function useRepositorySource(input: RepositoryTarget) {
+export function useRepositorySource(input: RepositoryTarget, allowed: boolean | undefined) {
   const hq = useOfficialHq();
   const store = hq === null ? null : storeFor(hq.api);
   const {
@@ -41,14 +41,17 @@ export function useRepositorySource(input: RepositoryTarget) {
     (listener: () => void) => store?.subscribe(target, listener) ?? (() => undefined),
     [store, target],
   );
-  const source = useSyncExternalStore(subscribe, () => store?.snapshot(target) ?? UNREAD);
+  const source = useSyncExternalStore(
+    subscribe,
+    () => store?.snapshot(target, allowed ?? "unread") ?? UNREAD,
+  );
   useEffect(() => {
-    if (store !== null) void store.load(target);
-  }, [store, target]);
+    if (store !== null && allowed === true) void store.load(target);
+  }, [store, target, allowed]);
   return {
     source,
     again: () => {
-      if (store !== null) void store.again(target);
+      if (store !== null && allowed === true) void store.again(target);
     },
   };
 }
