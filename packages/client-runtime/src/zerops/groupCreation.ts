@@ -74,19 +74,16 @@ export function onlyTheseCanAddAProject(admins: ReadonlyArray<MateOwnerCandidate
 }
 
 /**
- * Whether the registry knows about a Mate yet (guide 4.2).
+ * Whether HQ holds a Mate in one of its applications yet (guide 4.2).
  *
- * A member with *can create projects* may make a Mate, and may not write the
- * registry — so their new Mate exists and runs, and HQ holds it in no
- * application until an owner or admin adds it. That is a real state with a real
- * consequence (HQ gives a repository only to a Mate it holds in an
- * application), and the row says it rather than showing a Mate that looks
- * finished and cannot deliver.
- *
- * An owner's own creation writes the entry in the same breath, so this is
- * `registered` before the row is ever painted.
+ * A press registers the Mate it makes, and a refused registration stops it, so
+ * no Mate is left out of its application on purpose: one HQ holds in none
+ * (`unplaced`) is a press cut short before its registration — a closed tab —
+ * or a Mate made before HQ. That is a real state with a real consequence (HQ
+ * gives a repository only to a Mate it holds in an application), and the row
+ * says it rather than showing a Mate that looks finished and cannot deliver.
  */
-export type MateRegistration = "registered" | "awaiting-owner";
+export type MateRegistration = "registered" | "unplaced";
 
 export function resolveMateRegistration(input: {
   readonly registry: ZeropsRegistry;
@@ -95,17 +92,16 @@ export function resolveMateRegistration(input: {
   const registered = input.registry.groups.some((group) =>
     group.projects.some((project) => project.projectId === input.projectId),
   );
-  return registered ? "registered" : "awaiting-owner";
+  return registered ? "registered" : "unplaced";
 }
 
 /**
  * *Finish setup*, on a half-made Mate's ⋯ menu (pass 28): the press's own steps run again on a
  * Mate whose press did not finish — its container imported with its key where it has none, its
- * project closed off, its registration written. A member with *can create projects* makes a Mate
- * and cannot write the registry, so their Mate runs in no application until somebody who can
- * finishes it; a press a closed tab cut short leaves the same. That somebody is an org owner or
- * admin, in any browser. A Mate HQ holds no record of has its record written, and its birth with it, by
- * whoever HQ's rule lets create the record.
+ * project closed off, its registration written. A press cut short before its registration — a
+ * closed tab — or a Mate made before HQ runs in no application until somebody who may write the
+ * registry finishes it: an org owner or admin, in any browser. A Mate HQ holds no record of has its
+ * record written, and its birth with it, by whoever HQ offers writing that record.
  *
  * `undefined` for everybody else, and for a Mate already whole: a disabled entry on a row a person
  * can do nothing about is noise.
@@ -149,9 +145,7 @@ export function finishMateSetupVerb(input: {
     const halfMade =
       input.pressStopped ||
       (input.pastGrace &&
-        (input.registration === "awaiting-owner" ||
-          input.containerMissing ||
-          input.closedOffMissing));
+        (input.registration === "unplaced" || input.containerMissing || input.closedOffMissing));
     return halfMade ? FINISH_MATE_SETUP_VERB : undefined;
   }
   // The Mate's own adder may close it off — nothing more: its registration and a container to

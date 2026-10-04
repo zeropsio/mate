@@ -295,10 +295,8 @@ describe("deriveZeropsRowAction", () => {
     });
 
     it("is never offered to a tool, which has no container by design", () => {
-      const gitea = {
-        ...unplaced,
-        project: { ...unplaced.project, tagList: ["mate:tool:gitea"] },
-      };
+      // The Mate it is offered on above, HQ classifying it as a tool.
+      const gitea = { ...bare, project: { ...bare.project, hqTool: "gitea" as const } };
       expect(deriveZeropsRowAction(input(gitea, undefined))).toEqual({ kind: "none" });
     });
 

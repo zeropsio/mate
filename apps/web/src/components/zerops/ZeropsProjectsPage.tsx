@@ -1633,9 +1633,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const groupDeploys = projectFlow.flows;
 
   /**
-   * The environment row of one Zerops project, when some group declares it.
-   * A project no `environments.yaml` names is not a group environment and
-   * keeps the row it always had.
+   * The environment row of one Zerops project, when HQ records it as one of an
+   * application's environments. A project HQ records as none is not a group
+   * environment and keeps the row it always had.
    */
   const declaredEnvironment = useCallback(
     (projectId: string) => {

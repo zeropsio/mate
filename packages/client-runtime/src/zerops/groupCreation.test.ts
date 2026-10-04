@@ -79,7 +79,7 @@ describe("resolveMateRegistration", () => {
   });
 
   it("waits for an owner for a Mate a member created", () => {
-    expect(resolveMateRegistration({ registry: ACME, projectId: "p-new" })).toBe("awaiting-owner");
+    expect(resolveMateRegistration({ registry: ACME, projectId: "p-new" })).toBe("unplaced");
   });
 });
 
@@ -98,13 +98,13 @@ describe("finishMateSetupVerb", () => {
   it.each([
     {
       name: "an owner, on a Mate nobody has registered",
-      input: { ...HALF_MADE, registration: "awaiting-owner" },
+      input: { ...HALF_MADE, registration: "unplaced" },
       writer: true,
       expected: "Finish setup",
     },
     {
       name: "an admin, who may write the registry too",
-      input: { ...HALF_MADE, registration: "awaiting-owner" },
+      input: { ...HALF_MADE, registration: "unplaced" },
       writer: true,
       expected: "Finish setup",
     },
@@ -130,7 +130,7 @@ describe("finishMateSetupVerb", () => {
     // unregistered, or not closed off, for those seconds, and finishing it then would race it.
     {
       name: "nobody, on a Mate made a moment ago that nobody has registered yet",
-      input: { ...HALF_MADE, registration: "awaiting-owner", pastGrace: false },
+      input: { ...HALF_MADE, registration: "unplaced", pastGrace: false },
       writer: true,
       expected: undefined,
     },
@@ -169,13 +169,13 @@ describe("finishMateSetupVerb", () => {
     },
     {
       name: "the member who added it, on a Mate nobody has registered: that is an owner's",
-      input: { ...HALF_MADE, registration: "awaiting-owner", viewerIsAdder: true },
+      input: { ...HALF_MADE, registration: "unplaced", viewerIsAdder: true },
       writer: false,
       expected: undefined,
     },
     {
       name: "the member who made it, and cannot finish it",
-      input: { ...HALF_MADE, registration: "awaiting-owner" },
+      input: { ...HALF_MADE, registration: "unplaced" },
       writer: false,
       expected: undefined,
     },
@@ -221,7 +221,7 @@ describe("finishMateSetupVerb", () => {
     },
     {
       name: "somebody whose role has not been read yet",
-      input: { ...HALF_MADE, registration: "awaiting-owner" },
+      input: { ...HALF_MADE, registration: "unplaced" },
       writer: false,
       expected: undefined,
     },
