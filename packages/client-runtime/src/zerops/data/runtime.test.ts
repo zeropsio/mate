@@ -1494,15 +1494,16 @@ describe("makeZeropsDataRuntime", () => {
           const historyLease = yield* runtime
             .acquire(history.descriptor)
             .pipe(Scope.provide(leaseScope));
-          // It fails alone, with its own retry time.
-          const settled = yield* waitForState(states, (state) => {
-            const history = state.interests.get(historyLease.interest)?.interest;
-            return history?.status === "failed" && history.retryAtMs !== null;
-          });
+          // It fails alone; refused (403), it waits for a person or a grant, not a timer.
+          const settled = yield* waitForState(
+            states,
+            (state) => state.interests.get(historyLease.interest)?.interest.status === "failed",
+          );
           expect(settled.interests.get(historyLease.interest)?.required).toBe(false);
           expect(settled.interests.get(historyLease.interest)?.interest).toMatchObject({
             status: "failed",
-            retryAtMs: expect.any(Number),
+            retryable: false,
+            retryAtMs: null,
           });
           expect(settled.interests.get(topology.interest)?.interest).toMatchObject({
             status: "observing",
@@ -5174,68 +5175,82 @@ describe("incomplete data says so, with its retry", () => {
     );
   }
 
-  it.effect(
-    "a later dependent shares a refused registration's answer; Reconnect sends it again",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const registry = AtomRegistry.make();
-          const harness = makeAdapterHarness();
-          let attempts = 0;
-          const runtime = yield* makeZeropsDataRuntime({
-            scope: runtimeScope,
-            adapter: {
-              ...harness.adapter,
-              register: (receiver, request, context) => {
-                if (
-                  request.descriptor.kind !== "query-membership" ||
-                  request.descriptor.query.kind !== "running-processes-of-project"
-                )
-                  return harness.adapter.register(receiver, request, context);
-                attempts += 1;
-                return Effect.fail({
-                  _tag: "ZeropsDataAdapterError",
-                  kind: "registration",
-                  message: "subscription refused",
-                  status: 403,
-                  retryable: true,
-                  accountRevocationEvidence: false,
-                } satisfies AdapterError);
-              },
+  it.effect("retains a refused shared registration until Reconnect", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const harness = makeAdapterHarness();
+        let attempts = 0;
+        const runtime = yield* makeZeropsDataRuntime({
+          scope: runtimeScope,
+          adapter: {
+            ...harness.adapter,
+            register: (receiver, request, context) => {
+              if (
+                request.descriptor.kind !== "query-membership" ||
+                request.descriptor.query.kind !== "running-processes-of-project"
+              )
+                return harness.adapter.register(receiver, request, context);
+              attempts += 1;
+              return Effect.fail({
+                _tag: "ZeropsDataAdapterError",
+                kind: "registration",
+                message: "subscription refused",
+                status: 403,
+                retryable: true,
+                accountRevocationEvidence: false,
+              } satisfies AdapterError);
             },
-            atomRegistry: registry,
-            makeOpaqueId: makeIdFactory(),
-          });
-          const states = yield* Queue.unbounded<ZeropsDataState>();
-          const stop = registry.subscribe(runtime.stateAtom, (state) =>
-            Queue.offerUnsafe(states, state),
-          );
-          const first = yield* runtime.acquire({
-            kind: "project-activity",
-            project: topologyDescriptor.project,
-          });
-          yield* waitForState(
-            states,
-            (state) => state.interests.get(first.interest)?.interest.status === "failed",
-          );
-          const second = yield* runtime.acquire(topologyDescriptor);
-          yield* waitForState(
-            states,
-            (state) => state.interests.get(second.interest)?.interest.status === "failed",
-          );
-          expect(attempts).toBe(1);
-          yield* runtime.refresh(topologyDescriptor.project);
-          yield* waitForState(
-            states,
-            (state) =>
-              attempts === 2 && state.interests.get(second.interest)?.interest.status === "failed",
-          );
-          expect(attempts).toBe(2);
-          yield* runtime.shutdown("application-close");
-          stop();
-          registry.dispose();
-        }),
-      ),
+          },
+          atomRegistry: registry,
+          makeOpaqueId: makeIdFactory(),
+        });
+        const states = yield* Queue.unbounded<ZeropsDataState>();
+        const stop = registry.subscribe(runtime.stateAtom, (state) =>
+          Queue.offerUnsafe(states, state),
+        );
+        const first = yield* runtime.acquire({
+          kind: "project-activity",
+          project: topologyDescriptor.project,
+        });
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(first.interest)?.interest.status === "failed",
+        );
+        const second = yield* runtime.acquire(topologyDescriptor);
+        yield* waitForState(
+          states,
+          (state) => state.interests.get(second.interest)?.interest.status === "failed",
+        );
+        // A refusal is permanent: no timer sends it again, however long its lease holds.
+        yield* TestClock.adjust("2 minutes");
+        expect((yield* runtime.state).interests.get(second.interest)?.interest).toMatchObject({
+          status: "failed",
+          retryable: false,
+          retryAtMs: null,
+        });
+        expect(attempts).toBe(1);
+        // A grant that changes for the project is the other thing that may lift a refusal.
+        yield* runtime.observeAccess({
+          kind: "project-access-established",
+          accountEpoch: runtimeScope.epoch,
+          project: topologyDescriptor.project,
+        });
+        yield* waitForState(states, () => attempts === 2);
+        yield* TestClock.adjust("2 minutes");
+        expect(attempts).toBe(2);
+        yield* runtime.refresh(topologyDescriptor.project);
+        yield* waitForState(
+          states,
+          (state) =>
+            attempts === 3 && state.interests.get(second.interest)?.interest.status === "failed",
+        );
+        expect(attempts).toBe(3);
+        yield* runtime.shutdown("application-close");
+        stop();
+        registry.dispose();
+      }),
+    ),
   );
 
   it.effect("a receiver stream that ends without a close frame ends visibly", () =>
@@ -5938,8 +5953,9 @@ describe("an interest that fails alone recovers alone", () => {
   const refused: AdapterError = {
     _tag: "ZeropsDataAdapterError",
     kind: "registration",
-    message: "subscription refused",
-    status: 403,
+    // A refusal that may pass: the platform's conflict, not its 403/404 (or a 5xx, its socket's).
+    message: "subscription conflict",
+    status: 409,
     retryable: true,
     accountRevocationEvidence: false,
   };
@@ -5996,7 +6012,7 @@ describe("an interest that fails alone recovers alone", () => {
     });
 
   it.effect(
-    "retries a refused interest on its backoff, past its attempt limit on the cap, and a success resets the budget (B4)",
+    "retries an unavailable interest on its backoff, past its attempt limit on the cap (B4)",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -6019,8 +6035,8 @@ describe("an interest that fails alone recovers alone", () => {
             yield* TestClock.adjust("100 millis");
             yield* settle;
           }
-          // 100, then 200 ms; past the limit of two, the 1 s cap, then a fresh budget's 100 ms.
-          expect(rig.attemptsAt).toEqual([0, 100, 300, 1_300, 1_400]);
+          // 100, then 200 ms; past the limit of two, the 1 s cap, and it stays there.
+          expect(rig.attemptsAt).toEqual([0, 100, 300, 1_300, 2_300]);
           yield* waitForState(
             rig.states,
             (state) => state.interests.get(lease.interest)?.interest.status === "observing",
@@ -6035,7 +6051,7 @@ describe("an interest that fails alone recovers alone", () => {
   );
 
   it.effect(
-    "a fresh lease retries a failed interest at once, and its waiting retry sends nothing more",
+    "a fresh lease waits for the failed interest's scheduled retry, sending nothing sooner",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -6050,19 +6066,74 @@ describe("an interest that fails alone recovers alone", () => {
             return interest?.status === "failed" && interest.retryAtMs !== null;
           });
           yield* rig.runtime.acquire(descriptor);
+          yield* settle;
+          expect(rig.attemptsAt).toEqual([0]);
+          yield* TestClock.adjust("100 millis");
           yield* waitForState(
             rig.states,
             (state) => state.interests.get(first.interest)?.interest.status === "observing",
           );
-          expect(rig.attemptsAt).toEqual([0, 0]);
-          yield* TestClock.adjust("1 second");
-          yield* settle;
-          expect(rig.attemptsAt).toHaveLength(2);
+          expect(rig.attemptsAt).toEqual([0, 100]);
           yield* rig.runtime.shutdown("application-close");
           rig.stop();
           rig.registry.dispose();
         }),
       ),
+  );
+
+  it.effect(
+    "a retry sends again only the failed subscription, never the healthy ones beside it",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const rig = yield* refusing(4);
+          const lease = yield* rig.runtime.acquire({
+            kind: "project-activity",
+            project: topologyDescriptor.project,
+          });
+          yield* settle;
+          const sentBefore = rig.harness.counts().registrations;
+          for (let step = 0; step < 40; step++) {
+            yield* TestClock.adjust("100 millis");
+            yield* settle;
+          }
+          yield* waitForState(
+            rig.states,
+            (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+          );
+          // Four retries of the one failed subscription; the process feed beside it went once.
+          expect(rig.attemptsAt).toHaveLength(5);
+          expect(rig.harness.counts().registrations).toBe(sentBefore);
+          expect(rig.harness.counts().opens).toBe(1);
+          yield* rig.runtime.shutdown("application-close");
+          rig.stop();
+          rig.registry.dispose();
+        }),
+      ),
+  );
+
+  it.effect("retries that churn past the released-subscription bound replace the socket", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const rig = yield* refusing(3, { policy: { releasedRegistrationsPerReceiver: 2 } });
+        const lease = yield* rig.runtime.acquire({
+          kind: "project-activity",
+          project: topologyDescriptor.project,
+        });
+        for (let step = 0; step < 40; step++) {
+          yield* TestClock.adjust("100 millis");
+          yield* settle;
+        }
+        yield* waitForState(
+          rig.states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+        );
+        expect(rig.harness.counts().opens).toBe(2);
+        yield* rig.runtime.shutdown("application-close");
+        rig.stop();
+        rig.registry.dispose();
+      }),
+    ),
   );
 
   it.effect(

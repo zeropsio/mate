@@ -118,7 +118,9 @@ Terminal records remain available to retained history/operation views.
    publish a failed attempt immediately. A registration refusal fails only its dependents; a
    socket failure, malformed frame or uncertain ownership fails the receiver's demand. Optional metrics can fail without
    withholding service topology. An interest that failed alone re-establishes alone on its own
-   backoff, its siblings observing on; a failed receiver reconnects on its own. A visible manual
+   backoff, staying at the cap once its budget is spent, its siblings observing on; a refusal or
+   an overflow waits for a manual attempt or a grant change. A failed receiver reconnects on its
+   own. A new lease joins the failure and its scheduled retry; it starts nothing sooner. A visible manual
    **again** re-establishes the held scope with new identities and baselines at once.
 9. Bound establishment/token/open/greeting/read deadlines. The first failed attempt has a
    visible cause and manual action. Foreground return re-establishes healthy paused demand and
@@ -179,8 +181,10 @@ Registration requests share one account-wide concurrency bound. The organization
 inventory's own registrations, its project feed and project list, are admitted
 ahead of waiting project registrations; a registration's deadline starts when it
 is sent, not while it waits for its turn. A registration the platform refused
-with an HTTP error status took no effect; it registers again on the same receiver on its
-own backoff, or at a manual attempt. A required interest's registration without an answer, or with an
+with an HTTP error status took no effect. A refusal (400/401/403/404/410) registers again only
+at a manual attempt or when the project's grant changes; any other registers again on the same
+receiver on its own backoff, sending only the failed subscription, and a socket whose released
+subscriptions reach the bound is replaced. A required interest's registration without an answer, or with an
 answer that could not be read, may have left a subscription nobody owns, so its
 receiver fails and reconnects. A subscription nobody owns names no registration the
 adapter holds: should a refused or optional registration have taken effect after
