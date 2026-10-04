@@ -4937,3 +4937,41 @@ it.effect("the establishment deadline closes a registration still awaiting its a
     }),
   ),
 );
+
+it("access demand leaves the one direct read to the grant verifier", () => {
+  expect(planZeropsInterest({ kind: "project-access", project: project("p") })).toEqual({
+    registrations: [],
+    directReads: [],
+  });
+  expect(interestKeyOf({ kind: "project-access", project: project("p") })).toContain(
+    "project-access",
+  );
+});
+
+it.effect(
+  "access-only leases own no platform socket or second read and close with the review",
+  () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const harness = makeAdapterHarness();
+      const runtime = yield* makeZeropsDataRuntime({
+        scope: runtimeScope,
+        adapter: harness.adapter,
+        atomRegistry: registry,
+        makeOpaqueId: makeIdFactory(),
+      });
+      const scope = yield* Scope.make();
+      const lease = yield* runtime
+        .acquire({ kind: "project-access", project: project("p") })
+        .pipe(Scope.provide(scope));
+      yield* Effect.yieldNow;
+      expect(harness.counts()).toEqual({ opens: 0, registrations: 0, reads: 0, closes: 0 });
+      expect((yield* runtime.state).interests.get(lease.interest)?.interest.status).toBe(
+        "observing",
+      );
+      yield* Scope.close(scope, Exit.void);
+      expect((yield* runtime.state).interests.get(lease.interest)?.leases ?? 0).toBe(0);
+      yield* runtime.shutdown("logout");
+      registry.dispose();
+    }),
+);

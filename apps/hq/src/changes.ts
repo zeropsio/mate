@@ -520,15 +520,27 @@ export const changesLayer: Layer.Layer<
       userId: string,
       appId: string,
       verb: "read_change" | "comment_change" | "merge_change" | "close_change" | "push_repo",
+      repo?: string,
     ) => {
       const check = Effect.gen(function* () {
-        const projects = yield* sql<{ readonly project_id: string }>`
-          SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
+        const projects = yield* sql<{ readonly project_id: string; readonly kind: string }>`
+          SELECT project_id, kind FROM hq_app_project WHERE app_id::text = ${appId}`;
         const projectIds = projects.map((row) => row.project_id);
         const decision =
           verb === "read_change"
             ? readsChanges(userId, projectIds, yield* roles.view)
-            : can({ kind: "person", userId }, verb, { projectIds }, yield* roles.forWrite);
+            : verb === "merge_change" && repo === RECIPE_REPO
+              ? can(
+                  { kind: "person", userId },
+                  "release",
+                  {
+                    projectIds,
+                    productionProjectId:
+                      projects.find((project) => project.kind === "production")?.project_id ?? null,
+                  },
+                  yield* roles.forWrite,
+                )
+              : can({ kind: "person", userId }, verb, { projectIds }, yield* roles.forWrite);
         if (!decision.allow) {
           yield* Effect.logInfo("change refused", { userId, verb, appId, reason: decision.reason });
           return yield* refuse("forbidden", decision.reason);
@@ -1302,7 +1314,7 @@ export const changesLayer: Layer.Layer<
         }),
       mergeChange: (userId, appId, repo, number, expectedHead) =>
         Effect.gen(function* () {
-          yield* personApp(userId, appId, "merge_change");
+          yield* personApp(userId, appId, "merge_change", repo);
           const change = yield* changeIn(appId, repo, number);
           return yield* land(change, expectedHead, { userId }, asItIs);
         }),

@@ -25,6 +25,7 @@ import {
   type Targets,
   type Verb,
 } from "@t3tools/shared/zeropsPermissions";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zeropsRoles";
 
 import type { HqPlacement } from "./hq/placement.ts";
@@ -100,6 +101,7 @@ export function changeOffers(
   asker: OfferAsker | null,
   placements: ReadonlyMap<string, HqPlacement>,
   appId: string,
+  repository?: string,
 ): {
   readonly read: boolean;
   readonly comment: boolean;
@@ -113,10 +115,31 @@ export function changeOffers(
   return {
     read: mayOffer(asker, "read_change", { projectIds }),
     comment: mayOffer(asker, "comment_change", { projectIds }),
-    merge: mayOffer(asker, "merge_change", { projectIds }),
+    merge: changeMergePermission(asker, placements, appId, repository)?.allowed === true,
     close: mayOffer(asker, "close_change", { projectIds }),
     redeploy: mayOffer(asker, "redeploy", { projectIds }),
   };
+}
+
+/** A recipe merge changes environment structure, so it needs the release verb's rights. */
+export function changeMergePermission(
+  asker: OfferAsker | null,
+  placements: ReadonlyMap<string, HqPlacement>,
+  appId: string,
+  repository?: string,
+): { readonly allowed: true } | { readonly allowed: false; readonly reason: Reason } | undefined {
+  if (repository === RECIPE_REPO) return releasePermission(asker, placements, appId);
+  if (asker === null) return undefined;
+  const projectIds = [...placements]
+    .filter(([, placed]) => placed.appId === appId)
+    .map(([id]) => id);
+  const decision = can(
+    asker.principal,
+    "merge_change",
+    { projectIds },
+    asker.facts as unknown as FactsFor<"merge_change">,
+  );
+  return decision.allow ? { allowed: true } : { allowed: false, reason: decision.reason };
 }
 
 /**

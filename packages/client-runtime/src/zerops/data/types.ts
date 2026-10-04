@@ -1607,6 +1607,8 @@ export type RuntimeInterestDescriptor =
    * platform answers for before its lists do: read on its own, lag-free.
    */
   | { readonly kind: "project-record"; readonly project: ProjectRef }
+  /** A visible permission decision demands its access facts; the grant owns the sole read. */
+  | { readonly kind: "project-access"; readonly project: ProjectRef }
   /** A project's services read on their own, lag-free, to confirm one is gone (§9 C19). */
   | { readonly kind: "project-services-check"; readonly project: ProjectRef }
   | { readonly kind: "project-current-metrics"; readonly project: ProjectRef }

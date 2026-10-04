@@ -7,11 +7,13 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   changeOffers,
+  changeMergePermission,
   mayOffer,
   offerAsker,
   releasePermission,
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import { useCallback, useContext, useMemo } from "react";
 
@@ -22,16 +24,28 @@ import { useZeropsSessionOptional } from "./sessionContext";
 
 export type ZeropsChangeOffers = ReturnType<typeof changeOffers> & {
   readonly reason?: string;
+  readonly again?: (() => void) | undefined;
 };
 
 /**
  * An application's offers by its id; `undefined` while HQ has not said where it places the
- * projects. Missing project grants refuse visibly; held facts authorize while services load.
+ * projects. Listed identities retain the organization role; held grants authorize while services load.
  */
-export type ZeropsChangeOffersOf = (appId: string) => ZeropsChangeOffers | undefined;
+export type ZeropsChangeOffersOf = (
+  appId: string,
+  repository?: string,
+) => ZeropsChangeOffers | undefined;
 
 /** Who asks, by the session's membership and the projects the inventory lists; `undefined` before. */
-function useOfferAsker() {
+type OfferProject = {
+  readonly id: string;
+  readonly userRoles?:
+    | ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>
+    | undefined;
+};
+const NO_PROJECTS: ReadonlyArray<OfferProject> = [];
+
+function useOfferAsker(verified: ReadonlyArray<OfferProject> = NO_PROJECTS) {
   const session = useZeropsSessionOptional();
   const inventory = useContext(InventoryContext);
   const user = session?.user;
@@ -42,35 +56,36 @@ function useOfferAsker() {
     () =>
       projects === undefined
         ? undefined
-        : offerAsker(
-            sessionOfferViewer(user, organization),
-            projects.filter((project) => project.userRoles !== undefined),
-          ),
-    [organization, projects, user],
+        : offerAsker(sessionOfferViewer(user, organization), [
+            ...new Map([...projects, ...verified].map((project) => [project.id, project])).values(),
+          ]),
+    [organization, projects, user, verified],
   );
 }
 
-export function useChangeOffers(): ZeropsChangeOffersOf {
+export function useChangeOffers(
+  verified: ReadonlyArray<OfferProject> = NO_PROJECTS,
+): ZeropsChangeOffersOf {
   const placements = useAtomValue(hqPlacementsAtom);
-  const asker = useOfferAsker();
-  const inventory = useContext(InventoryContext);
+  const asker = useOfferAsker(verified);
   return useCallback(
-    (appId) => {
+    (appId, repository) => {
       if (asker === undefined || placements === null) return undefined;
-      const offers = changeOffers(asker, placements, appId);
-      // Held facts authorize each verb independently; missing project grants explain refusals.
-      const projectFactsKnown = [...placements].every(
-        ([projectId, placed]) =>
-          placed.appId !== appId ||
-          inventory?.projects.some(
-            (project) => project.id === projectId && project.userRoles !== undefined,
-          ),
-      );
-      return !projectFactsKnown && Object.values(offers).some((offered) => !offered)
-        ? { ...offers, reason: "Project access has not been verified." }
+      const offers = changeOffers(asker, placements, appId, repository);
+      const decision = changeMergePermission(asker, placements, appId, repository);
+      return decision?.allowed === false
+        ? {
+            ...offers,
+            reason:
+              repository === RECIPE_REPO && decision.reason === "no_production"
+                ? "An organization owner or admin can merge this recipe change before production exists."
+                : repository === RECIPE_REPO && decision.reason === "not_releaser"
+                  ? "You need at least Basic user access to production to merge this recipe change."
+                  : hqRefusalWords({ code: "forbidden", reason: decision.reason }),
+          }
         : offers;
     },
-    [asker, inventory?.projects, placements],
+    [asker, placements],
   );
 }
 

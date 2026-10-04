@@ -527,6 +527,7 @@ export {
 } from "./gitOverview.ts";
 export {
   changeOffers,
+  changeMergePermission,
   heldOf,
   mayOffer,
   offerAsker,

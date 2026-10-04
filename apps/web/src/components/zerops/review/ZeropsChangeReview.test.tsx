@@ -94,7 +94,7 @@ const offers = vi.hoisted(() => {
   const held = { current: { read: true, comment: true, merge: true, close: true, redeploy: true } };
   return { held, of: () => held.current };
 });
-vi.mock("~/zerops/useChangeOffers", () => ({ useChangeOffers: () => offers.of }));
+vi.mock("~/zerops/useChangeReviewOffers", () => ({ useChangeReviewOffers: () => offers.of() }));
 
 const NOW = Date.parse("2026-09-30T10:00:00Z");
 const noop = () => undefined;
@@ -327,6 +327,24 @@ describe("ChangeReviewView: an open change", () => {
     expect(footOf(html)).not.toContain("Squash-merges");
     expect(footOf(html)).not.toContain('data-zerops-primary-action="Merge"');
     expect(footOf(html)).toContain(">Close without merging…</button>");
+  });
+
+  it("failed project access ends with its reason and a manual Again", () => {
+    const again = vi.fn();
+    const html = render(open, files, {
+      offers: {
+        read: true,
+        comment: true,
+        merge: false,
+        close: true,
+        redeploy: false,
+        reason: "Project access could not be verified: Zerops did not answer.",
+        again,
+      },
+    });
+    expect(textOf(html)).toContain("Project access could not be verified: Zerops did not answer.");
+    expect(footOf(html)).toContain(">Again</button>");
+    expect(footOf(html)).not.toContain('data-zerops-primary-action="Merge"');
   });
 
   it("that merges cleanly offers Merge, safe to press, and Close without merging beside it", () => {

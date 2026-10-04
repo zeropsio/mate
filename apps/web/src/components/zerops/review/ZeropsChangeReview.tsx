@@ -46,7 +46,8 @@ import {
 } from "~/zerops/projectFlowContext";
 import type { ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
-import { useChangeOffers, type ZeropsChangeOffers } from "~/zerops/useChangeOffers";
+import { type ZeropsChangeOffers } from "~/zerops/useChangeOffers";
+import { useChangeReviewOffers } from "~/zerops/useChangeReviewOffers";
 import {
   mergedMain,
   useZeropsChangeDetail,
@@ -114,6 +115,7 @@ export function ZeropsChangeReview({
   /** Opens another review in this one's place — the release, once this merged. */
   readonly onReplace: (target: ReviewTarget) => void;
 }) {
+  const reviewOffers = useChangeReviewOffers(target.groupId, target.repository);
   const router = useRouter();
   const flowValue = useZeropsProjectFlowOptional();
   // The dialog's way to the same review at the change's own address.
@@ -186,6 +188,7 @@ export function ZeropsChangeReview({
   }
   return (
     <ChangeReviewData
+      reviewOffers={reviewOffers}
       flow={flow}
       flowValue={flowValue}
       frame={frame}
@@ -201,6 +204,7 @@ export function ZeropsChangeReview({
 }
 
 function ChangeReviewData({
+  reviewOffers,
   flow,
   flowValue,
   frame,
@@ -212,6 +216,7 @@ function ChangeReviewData({
   onClose,
   onReplace,
 }: {
+  readonly reviewOffers: ZeropsChangeOffers | undefined;
   /** The project's flow; `undefined` while it waits its turn to be read. */
   readonly flow: ZeropsProjectFlow | undefined;
   /** The account's flow, which holds this one. */
@@ -231,7 +236,6 @@ function ChangeReviewData({
   const askMateToFix = useAskMateToFix();
   const mates = useZeropsReviewMates(target.groupId);
   const pictures = useHqPictureSource();
-  const changeOffersOf = useChangeOffers();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   const [closing, setClosing] = useState<ReviewClose>({ kind: "idle" });
   const change = { repository: pull.repository, number: pull.number };
@@ -325,7 +329,7 @@ function ChangeReviewData({
       now={now}
       comments={comments}
       remarks={remarks}
-      offers={changeOffersOf(target.groupId)}
+      offers={reviewOffers}
       press={press}
       closing={closing}
       onMerge={() => {
@@ -571,24 +575,26 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       onOpenPage={props.onOpenPage}
       onClose={props.onClose}
       primary={
-        primary === undefined
-          ? undefined
-          : {
-              ...primary,
-              busy: press.kind === "running" || closing.kind === "running",
-              label:
-                press.kind === "running"
-                  ? "Merging"
-                  : closing.kind === "running"
-                    ? "Closing"
-                    : primary.label,
-              icon: next ? "tag" : undefined,
-              onPress: () => {
-                if (asked) props.onClosing("press");
-                else if (next) props.onReviewRelease();
-                else props.onMerge();
-              },
-            }
+        !over && !asked && props.offers?.again !== undefined
+          ? { label: "Again", enabled: true, safe: false, onPress: props.offers.again }
+          : primary === undefined
+            ? undefined
+            : {
+                ...primary,
+                busy: press.kind === "running" || closing.kind === "running",
+                label:
+                  press.kind === "running"
+                    ? "Merging"
+                    : closing.kind === "running"
+                      ? "Closing"
+                      : primary.label,
+                icon: next ? "tag" : undefined,
+                onPress: () => {
+                  if (asked) props.onClosing("press");
+                  else if (next) props.onReviewRelease();
+                  else props.onMerge();
+                },
+              }
       }
       secondary={
         secondary === undefined

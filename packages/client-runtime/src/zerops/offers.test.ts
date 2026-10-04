@@ -234,3 +234,46 @@ describe("heldOf — what HQ holds a project as, from where it places it", () =>
     expect(heldOf(project)).toBe(held);
   });
 });
+
+describe("recipe merge rights", () => {
+  it.each([
+    ["OWNER", false, [], true],
+    ["ADMIN", false, [], true],
+    [
+      "NO_ACCESS",
+      false,
+      [{ id: "p-dev", userRoles: [{ clientUserId: "cu-ada", roleCode: "BASIC_USER" }] }],
+      false,
+    ],
+    [
+      "NO_ACCESS",
+      true,
+      [{ id: "p-dev", userRoles: [{ clientUserId: "cu-ada", roleCode: "BASIC_USER" }] }],
+      false,
+    ],
+    [
+      "NO_ACCESS",
+      true,
+      [{ id: "p-prod", userRoles: [{ clientUserId: "cu-ada", roleCode: "BASIC_USER" }] }],
+      true,
+    ],
+  ] as const)(
+    "%s with production %s gets recipe offer %s",
+    (roleCode, production, grants, merge) => {
+      const placements = new Map<string, HqPlacement>([
+        ["p-dev", { appId: "app", appName: "App", kind: "mate", mate: null }],
+        ...(production
+          ? [["p-prod", { appId: "app", appName: "App", kind: "production", mate: null }] as const]
+          : []),
+      ]);
+      const asker = offerAsker({ ...ADA, roleCode }, [
+        ...grants,
+        { id: "p-dev" },
+        ...(production ? [{ id: "p-prod" }] : []),
+      ]);
+      expect(changeOffers(asker, placements, "app", "group").merge).toBe(merge);
+      if (roleCode === "NO_ACCESS" && grants[0]?.id === "p-dev")
+        expect(changeOffers(asker, placements, "app", "appdev").merge).toBe(true);
+    },
+  );
+});

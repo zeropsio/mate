@@ -19,6 +19,12 @@ from the next change's commit list.
 An existing empty change says “Nothing to merge” in its review and offers only **Close without
 merging**, where your access permits it. It offers no Merge action.
 
+Code changes require Basic user access on at least one of the application's Zerops projects.
+Recipe changes require Basic user access on production, or organization Owner/Admin access before
+production exists. Your organization role also applies to listed projects without a separate grant.
+The open review checks project access once. A failed check explains the failure and offers **Again**;
+a refused check explains the access required.
+
 After a merge or release, **View deploy** on a job opens its build and deploy pipeline. The same
 control is available beside a service on its stage or production page, including failed and
 completed deploys. **Build log** under the build step opens the log in a dialog. **Hide deploy**

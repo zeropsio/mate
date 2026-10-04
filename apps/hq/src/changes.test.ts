@@ -898,6 +898,23 @@ describe("a Mate's changes in HQ", () => {
           reason: "changes_not_seen",
         });
         yield* granted("BASIC_USER", 200);
+        // Code write on one project cannot merge a recipe before production exists.
+        assert.deepStrictEqual(
+          (yield* call("POST", `/api/apps/${appId}/changes/group/99/merge`, {
+            session: dev,
+            body: { expectedHead: "0".repeat(40) },
+          })).body,
+          { code: "forbidden", reason: "no_production" },
+        );
+        // An Owner can merge a recipe before production; access passed, the change is absent.
+        assert.deepStrictEqual(
+          (yield* call("POST", `/api/apps/${appId}/changes/group/99/merge`, {
+            session: owner,
+            body: { expectedHead: "0".repeat(40) },
+          })).body,
+          { code: "change_not_found", reason: "change_not_found" },
+        );
+
         assert.deepStrictEqual(
           (yield* call("GET", `/api/apps/${appId}/changes/appdev/9`, { session: owner })).body,
           { code: "change_not_found", reason: "change_not_found" },

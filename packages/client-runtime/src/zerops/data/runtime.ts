@@ -174,6 +174,7 @@ function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestK
       );
     case "project-inventory":
     case "project-record":
+    case "project-access":
     case "project-services-check":
     case "project-current-metrics":
       return InterestKeySchema.make(
@@ -507,6 +508,7 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
       directReads: [{ kind: "query", descriptor: projects }],
     };
   }
+  if (descriptor.kind === "project-access") return { registrations: [], directReads: [] };
   const project = descriptor.project;
   const activity = [entityUpdate("process"), membership(running)];
   if (descriptor.kind === "project-inventory" || descriptor.kind === "project-topology") {
@@ -1444,21 +1446,30 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         leases: runtimeInterest.leases.size,
         required: runtimeInterest.required,
         registrationAttemptsOnReceiver: 0,
-        interest: {
-          status: "establishing",
-          identity,
-          startedAtMs: now,
-          deadlineMs: now + policy.establishmentDeadlineMs,
-          progress: {
-            requiredRegistrations: plan.registrations.length,
-            completedRegistrations: 0,
-            requiredReads:
-              plan.directReads.length +
-              plan.registrations.filter((registration) => registration.baseline !== null).length,
-            completedReads: 0,
-            crossedReceiptOrdinal: ReceiptOrdinal.make(receiptOrdinal),
-          },
-        },
+        interest:
+          runtimeInterest.descriptor.kind === "project-access"
+            ? {
+                status: "observing",
+                identity,
+                guarantee: "source-order-unverified",
+                sinceReceiptOrdinal: ReceiptOrdinal.make(receiptOrdinal),
+              }
+            : {
+                status: "establishing",
+                identity,
+                startedAtMs: now,
+                deadlineMs: now + policy.establishmentDeadlineMs,
+                progress: {
+                  requiredRegistrations: plan.registrations.length,
+                  completedRegistrations: 0,
+                  requiredReads:
+                    plan.directReads.length +
+                    plan.registrations.filter((registration) => registration.baseline !== null)
+                      .length,
+                  completedReads: 0,
+                  crossedReceiptOrdinal: ReceiptOrdinal.make(receiptOrdinal),
+                },
+              },
         wire: { status: "absent" },
       };
     });
@@ -2142,6 +2153,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   const establish = (runtimeInterest: RuntimeInterest): Effect.Effect<EstablishmentOutcome> =>
     Effect.gen(function* () {
       if (yield* Ref.get(closed)) return establishmentDone;
+      if (runtimeInterest.descriptor.kind === "project-access") return establishmentDone;
       const receiver = receiverFor(runtimeInterest.descriptor);
       if (runtimeInterest.identity.receiver !== receiver.identity) {
         yield* updateInterestIdentity(runtimeInterest, receiver).pipe(
