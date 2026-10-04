@@ -65,6 +65,8 @@ export const Release = Schema.Struct({
   state: Schema.Literals(["approved", "refused"]),
   reason: Schema.NullOr(Schema.String),
   rollbackOf: Schema.NullOr(ReleaseTag),
+  /** Saved before production existed; the press requested no deployment. */
+  snapshot: Schema.optionalKey(Schema.Boolean),
 });
 export type Release = typeof Release.Type;
 
@@ -106,6 +108,7 @@ export type RollbackRequest = typeof RollbackRequest.Type;
  */
 export const RELEASE_REFUSALS = [
   "group_moved",
+  "production_moved",
   "no_group_main",
   "tag_taken",
   "tag_not_newer",

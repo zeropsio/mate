@@ -1,4 +1,5 @@
 import { Observation } from "./observation.ts";
+import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttachments";
 /**
  * HQ's API: JSON over HTTP, for the client origins only (CORS, `HQ_CLIENT_ORIGINS`).
  *
@@ -47,7 +48,7 @@ import { Observation } from "./observation.ts";
  * - A Mate's changes (`changes.ts`, the wire in `@t3tools/shared/hqChanges`): `POST /api/mate/repos`
  *   `{ name }` → the repository; `POST /api/mate/changes` `{ repo, title }` → `{ change, created }`;
  *   `PATCH /api/mate/changes/:repo/:n` `{ title?, body? }` → the change; `POST
- *   /api/mate/changes/:repo/:n/attachments`, a PNG of at most 20 MiB → `{ id, path }`; and git
+ *   /api/mate/changes/:repo/:n/attachments`, a raster picture of at most 20 MiB → `{ id, path }`; and git
  *   itself at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the Mate's credential
  *   (`gitHost.ts`).
  * - A person's side of the changes: `GET /api/apps/:appId/repos` → `{ repos }`, its repositories;
@@ -91,10 +92,10 @@ import * as HttpServerRequest from "effect/unstable/http/HttpServerRequest";
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse";
 
 import {
-  ATTACHMENT_CONTENT_TYPE,
   ATTACHMENT_MAX_BYTES,
   ChangeNumber,
   CompareQuery,
+  ChangeDetailQuery,
   EditChangeRequest,
   EnsureRepoRequest,
   MergeChangeRequest,
@@ -449,6 +450,7 @@ const mate = Effect.flatMap(HttpServerRequest.HttpServerRequest, (request) =>
 /** A repository as a path names it, `:repo`, and a comparison as its query asks it. */
 const decodeRepoName = Schema.decodeUnknownEffect(RepoName);
 const decodeCompareQuery = Schema.decodeUnknownEffect(CompareQuery);
+const decodeChangeDetailQuery = Schema.decodeUnknownEffect(ChangeDetailQuery);
 
 /** A recipe's tier as a path names it, `:tier`: `mate`, `stage` or `production`. */
 const decodeRecipeTier = Schema.decodeUnknownEffect(RecipeTier);
@@ -490,22 +492,26 @@ const decodeChangeAddress = Schema.decodeUnknownEffect(
 );
 
 /**
- * A picture as a Mate sends it: the body itself, `Content-Type: image/png`, at most 20 MiB — a
+ * A picture as a Mate sends it: the body itself, a supported raster Content-Type, at most 20 MiB — a
  * declared length above it refused before a byte is read.
  */
-const pngBody = Effect.gen(function* () {
+const pictureBody = Effect.gen(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest;
   if (Number(request.headers["content-length"] ?? 0) > ATTACHMENT_MAX_BYTES) {
     return yield* new TooLarge();
   }
-  if (request.headers["content-type"]?.split(";")[0]?.trim() !== ATTACHMENT_CONTENT_TYPE) {
-    return yield* new ChangeRefused({ code: "invalid", reason: "not_png" });
+  const declaredType = request.headers["content-type"]?.split(";")[0]?.trim();
+  if (!RASTER_CONTENT_TYPES.some((type) => type === declaredType)) {
+    return yield* new ChangeRefused({ code: "invalid", reason: "not_raster" });
   }
   const body = yield* request.arrayBuffer.pipe(
     Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(ATTACHMENT_MAX_BYTES)),
   );
   if (body.byteLength > ATTACHMENT_MAX_BYTES) return yield* new TooLarge();
-  return new Uint8Array(body);
+  const content = new Uint8Array(body);
+  if (rasterContentType(content) !== declaredType)
+    return yield* new ChangeRefused({ code: "invalid", reason: "not_raster" });
+  return content;
 });
 
 /** The credential git presents for the user `mate`: `Authorization: Basic base64(mate:<credential>)`. */
@@ -590,7 +596,13 @@ const routes = (
         Effect.gen(function* () {
           const { userId } = yield* principal;
           const { appId, repo, number } = yield* appChangePath;
-          return json(yield* (yield* Changes).changeDetail(userId, appId, repo, number), 200);
+          const search = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://hq")
+            .searchParams;
+          const query = yield* decodeChangeDetailQuery(Object.fromEntries(search));
+          return json(
+            yield* (yield* Changes).changeDetail(userId, appId, repo, number, query),
+            200,
+          );
         }),
       ),
     ),
@@ -675,10 +687,10 @@ const routes = (
           const { userId } = yield* principal;
           const { appId, repo, number } = yield* appChangePath;
           const id = (yield* HttpRouter.params)["id"] ?? "";
-          const png = yield* (yield* Changes).attachment(userId, appId, repo, number, id);
+          const picture = yield* (yield* Changes).attachment(userId, appId, repo, number, id);
           // A picture is kept once and never changes; nosniff keeps it a picture.
-          return HttpServerResponse.uint8Array(png, {
-            contentType: ATTACHMENT_CONTENT_TYPE,
+          return HttpServerResponse.uint8Array(picture.content, {
+            contentType: picture.contentType,
             headers: {
               "cache-control": "private, max-age=31536000, immutable",
               "x-content-type-options": "nosniff",
@@ -777,12 +789,12 @@ const routes = (
       "/api/mate/changes/:repo/:n/attachments",
       handle(
         Effect.gen(function* () {
-          const png = yield* pngBody;
+          const content = yield* pictureBody;
           return yield* outliving(
             Effect.gen(function* () {
               const { projectId } = yield* mate;
               const { repo, number } = yield* changePath;
-              return json(yield* (yield* Changes).attach(projectId, repo, number, png), 200);
+              return json(yield* (yield* Changes).attach(projectId, repo, number, content), 200);
             }),
           );
         }),
@@ -1165,6 +1177,7 @@ const routes = (
               const { userId } = yield* principal;
               const appId = (yield* HttpRouter.params)["appId"] ?? "";
               const release = yield* (yield* Releases).release(userId, appId, request);
+              if (release.snapshot === true) return json(release, 201);
               const deploys = yield* deploysOf({
                 cause: "release",
                 appId,
@@ -1194,6 +1207,7 @@ const routes = (
                 params["tag"] ?? "",
                 request,
               );
+              if (release.snapshot === true) return json(release, 201);
               const deploys = yield* deploysOf({
                 cause: "release",
                 appId,

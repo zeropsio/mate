@@ -61,7 +61,10 @@ vi.mock("~/zerops/accountHq", () => ({ useOfficialHq: () => hq }));
 vi.mock("@tanstack/react-router", () => ({ useRouter: () => ({ navigate: async () => {} }) }));
 /** What HQ's detail of the change answers. */
 const detail = vi.hoisted(() => ({ readout: { kind: "reading" } as unknown }));
-vi.mock("~/zerops/useZeropsChangeDetail", () => ({
+vi.mock("~/zerops/useZeropsChangeDetail", async () => ({
+  ...(await vi.importActual<typeof import("~/zerops/useZeropsChangeDetail")>(
+    "~/zerops/useZeropsChangeDetail",
+  )),
   useZeropsChangeDetail: () => ({ readout: detail.readout, retry: () => undefined }),
 }));
 vi.mock("~/zerops/useZeropsChangeComments", () => ({

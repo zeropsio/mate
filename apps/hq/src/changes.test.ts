@@ -31,6 +31,18 @@ import { tempPostgresLayer } from "../test/harness/tempPostgres.ts";
 /** A PNG's signature and a little more: what HQ checks a picture by. */
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
 
+const ascii = (text: string) => [...text].map((char) => char.charCodeAt(0));
+const RASTERS = [
+  ["image/png", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
+  ["image/jpeg", new Uint8Array([0xff, 0xd8, 0xff, 0xe0])],
+  ["image/gif", new Uint8Array(ascii("GIF89a"))],
+  ["image/webp", new Uint8Array([...ascii("RIFF"), 4, 0, 0, 0, ...ascii("WEBP")])],
+  [
+    "image/avif",
+    new Uint8Array([0, 0, 0, 24, ...ascii("ftypavif"), 0, 0, 0, 0, ...ascii("mif1avif")]),
+  ],
+] as const;
+
 describe("a Mate's changes in HQ", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect(
@@ -508,6 +520,16 @@ describe("a Mate's changes in HQ", () => {
             [404, { code: "change_not_found", reason: "unknown_change" }],
           );
 
+          for (const [type, bytes] of RASTERS) {
+            const uploaded = yield* attach(bytes, type);
+            assert.strictEqual(uploaded.status, 200, type);
+            const path = (uploaded.body as { path: string }).path;
+            const picture = yield* call("GET", path, { session: owner });
+            assert.deepStrictEqual(
+              [picture.status, picture.headers.get("content-type"), [...picture.bytes]],
+              [200, type, [...bytes]],
+            );
+          }
           const kept = yield* attach(PNG);
           assert.strictEqual(kept.status, 200);
           const { id, path } = kept.body as { readonly id: string; readonly path: string };
@@ -518,7 +540,7 @@ describe("a Mate's changes in HQ", () => {
           ] as const) {
             assert.deepStrictEqual((yield* attach(bytes, contentType)).body, {
               code: "invalid",
-              reason: "not_png",
+              reason: "not_raster",
             });
           }
           const tooLarge = yield* attach(new Uint8Array(20 * 1024 * 1024 + 1));
@@ -807,6 +829,15 @@ describe("a Mate's changes in HQ", () => {
         const detail = yield* call("GET", `/api/apps/${appId}/changes/appdev/1`, {
           session: owner,
         });
+        for (const [query, reason] of [
+          [`expectedHead=${first}&expectedMain=${main}`, "head_moved"],
+          [`expectedHead=${second}&expectedMain=${first}`, "main_moved"],
+        ]) {
+          const stale = yield* call("GET", `/api/apps/${appId}/changes/appdev/1?${query}`, {
+            session: owner,
+          });
+          assert.deepStrictEqual([stale.status, stale.body], [409, { code: "conflict", reason }]);
+        }
         assert.strictEqual(detail.status, 200);
         const review = detail.body as Record<string, unknown> & {
           readonly files: ReadonlyArray<Record<string, unknown>>;
@@ -938,6 +969,26 @@ describe("a Mate's changes in HQ", () => {
         assert.strictEqual((yield* say(owner, "\u0001".repeat(20_000))).status, 200);
         assert.strictEqual((yield* say(owner, "a\u0000b")).status, 400);
 
+        for (const [type, bytes] of RASTERS) {
+          const uploaded = yield* call("POST", "/api/mate/changes/appdev/1/attachments", {
+            headers: { ...auth, "content-type": type },
+            body: bytes,
+          });
+          const path = (uploaded.body as { path: string }).path;
+          const picture = yield* call("GET", path, { session: reader });
+          assert.deepStrictEqual(
+            [
+              picture.status,
+              picture.headers.get("content-type"),
+              picture.headers.get("x-content-type-options"),
+              [...picture.bytes],
+            ],
+            [200, type, "nosniff", [...bytes]],
+          );
+          assert.include(picture.headers.get("cache-control") ?? "", "private");
+          assert.strictEqual((yield* call("GET", path)).status, 401);
+          assert.strictEqual((yield* call("GET", path, { session: dev })).status, 403);
+        }
         const kept = (yield* call("POST", "/api/mate/changes/appdev/1/attachments", {
           headers: { ...auth, "content-type": "image/png" },
           body: PNG,

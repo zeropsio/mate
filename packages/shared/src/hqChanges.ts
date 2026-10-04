@@ -11,7 +11,7 @@
  * - `POST /api/mate/repos` {@link EnsureRepoRequest} → {@link HqRepo};
  * - `POST /api/mate/changes` {@link OpenChangeRequest} → {@link OpenChangeResponse};
  * - `PATCH /api/mate/changes/:repo/:n` {@link EditChangeRequest} → {@link HqChange};
- * - `POST /api/mate/changes/:repo/:n/attachments`, a PNG → {@link AttachmentResponse};
+ * - `POST /api/mate/changes/:repo/:n/attachments`, a raster picture → {@link AttachmentResponse};
  * - `GET /api/mate/self` → its state (`mateLink.ts` `MateState`), {@link MateChanges} included;
  * - git over HTTPS at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the credential
  *   as the password. A Mate fetches its application's repositories and pushes only to the branch of
@@ -29,7 +29,7 @@
  *   {@link HqChangeComment};
  * - `POST /api/apps/:appId/changes/:repo/:n/merge` {@link MergeChangeRequest} and `POST …/close`,
  *   by whoever develops the application → the change, merged or closed;
- * - `GET` {@link attachmentPath} → the picture, `image/png`;
+ * - `GET` {@link attachmentPath} → the picture with its detected raster Content-Type;
  * - the structure socket carries changes too: {@link ChangesSnapshot}, {@link ChangesMessage};
  *   and its load data (`hqAppReads.ts`);
  * - a change's address, {@link changeUrl}, is HQ's: `GET /changes/<appId>/<repo>/<n>` redirects
@@ -209,9 +209,8 @@ export const EditChangeRequest = Schema.Struct({
 
 /**
  * `POST /api/mate/changes/:repo/:n/attachments`: a picture for the open change's description, sent
- * as the body itself — `Content-Type: image/png`, at most {@link ATTACHMENT_MAX_BYTES}.
+ * as the body itself with its raster Content-Type (PNG, JPEG, GIF, WebP or AVIF), at most {@link ATTACHMENT_MAX_BYTES}.
  */
-export const ATTACHMENT_CONTENT_TYPE = "image/png";
 export const ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
 
 /**
@@ -353,6 +352,12 @@ export type CompareResponse = typeof CompareResponse.Type;
  * the change's merge base with it (behind when they differ), its mergeability, its files with their
  * patches, and its commits, newest first. Reads are bounded; a `…Truncated` flag says one was cut.
  */
+export const ChangeDetailQuery = Schema.Struct({
+  expectedHead: Schema.optionalKey(Sha),
+  expectedMain: Schema.optionalKey(Sha),
+});
+export type ChangeDetailQuery = typeof ChangeDetailQuery.Type;
+
 export const ChangeDetailResponse = Schema.Struct({
   change: HqChange,
   mainHead: Schema.NullOr(Sha),

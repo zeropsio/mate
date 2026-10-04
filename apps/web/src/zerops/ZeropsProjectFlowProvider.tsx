@@ -238,6 +238,28 @@ interface ReleasePlan extends CompareReads {
   readonly running: ReadonlyMap<string, ProductionRun>;
 }
 
+/** A snapshot compares main against nothing only when HQ has confirmed no production. */
+export function snapshotReleasePlan(
+  stops: GroupStops | undefined,
+  recipe: Pick<AppRecipe, "productionRepositories">,
+  repos: ReadonlyArray<RepoListEntry>,
+): ReleasePlan | undefined {
+  if (stops === undefined || stops.declarations.some((entry) => entry.tier === "production"))
+    return undefined;
+  const { productionRepositories } = recipe;
+  const running = new Map<string, ProductionRun>(
+    [...productionRepositories.keys()].map((service) => [service, { kind: "nothing" }]),
+  );
+  return {
+    ...releaseReads({
+      productionRepositories,
+      candidate: releaseCandidate({ productionRepositories, repos }).candidate,
+      running,
+    }),
+    running,
+  };
+}
+
 /** What goes live while nothing has been asked of HQ: what production runs is not known yet. */
 const NOT_COMPARED: MovedCommits = { state: "reading" };
 const NOT_ASKED: ReleaseLive = { moved: NOT_COMPARED, untold: [], runs: undefined };
@@ -689,7 +711,11 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
         .get(groupId)
         ?.environments.find((entry) => entry.tier === "production");
       if (recipe === undefined || repos === undefined || records === undefined) continue;
-      if (production === undefined) continue;
+      if (production === undefined) {
+        const snapshot = snapshotReleasePlan(groupStops.get(groupId), recipe, repos);
+        if (snapshot !== undefined) plans.set(groupId, snapshot);
+        continue;
+      }
       const productionId = ZeropsProjectId.make(production.projectId);
       if (withheld.has(productionId)) continue;
       const listed = held?.services.get(productionId)?.status === "resolved";

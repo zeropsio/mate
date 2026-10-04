@@ -70,6 +70,7 @@ const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } =
  * newer release, is helped by reviewing it again. A refusal left out does not compile.
  */
 const RELEASE_WORDS: { readonly [R in ReleaseRefusal]: string } = {
+  production_moved: "Production changed since the review. Open the review again.",
   group_moved: "Main moved since you opened this. Review it again.",
   no_group_main: "The project's recipe has nothing on main to tag yet.",
   tag_taken: "A release of this name was made meanwhile. Review it again.",

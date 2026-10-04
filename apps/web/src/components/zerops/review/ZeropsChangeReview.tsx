@@ -47,7 +47,11 @@ import {
 import type { ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useChangeOffers, type ZeropsChangeOffers } from "~/zerops/useChangeOffers";
-import { useZeropsChangeDetail, type ReadoutPart } from "~/zerops/useZeropsChangeDetail";
+import {
+  mergedMain,
+  useZeropsChangeDetail,
+  type ReadoutPart,
+} from "~/zerops/useZeropsChangeDetail";
 import {
   useZeropsChangeComments,
   type ZeropsChangeComments,
@@ -245,8 +249,10 @@ function ChangeReviewData({
   const detail = useZeropsChangeDetail({
     link: { appId: target.groupId, repo: pull.repository, number: pull.number },
     head: pull.headSha,
-    // `main` moves only by HQ's merge, which lands a change: the newest one's commit says where.
-    main: flow?.merged[0]?.mergeCommitSha,
+    // The base belongs to this repository, even when another repository merged more recently.
+    main:
+      flow?.repos?.find((repo) => repo.name === pull.repository)?.mainHead ??
+      mergedMain(pull.repository, flow?.merged),
   });
   const run = useZeropsChangeRun({
     mateProjectId: pull.mateProjectId,

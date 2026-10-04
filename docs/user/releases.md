@@ -17,3 +17,5 @@ while showing the deployment's progress. **Replaces v…** names the release who
 ran. **Replaces what production runs** means those commits matched no recorded release, for example
 after a direct deployment or a partial deployment. A rollback is a new release of earlier code,
 so its own release name is shown when its commits match production.
+
+Before production exists, an organization owner or admin can save a release snapshot from main. HQ records the version and commits without requesting a deployment; the review ends with **Saved**. Once production exists, its deploy permissions govern releases.

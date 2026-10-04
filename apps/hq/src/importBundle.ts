@@ -1,3 +1,4 @@
+import { rasterContentType } from "@t3tools/shared/hqAttachments";
 // @effect-diagnostics nodeBuiltinImport:off -- a bundle is files on the volume, read and hashed as they lie.
 /**
  * The frozen bundle the migration from main imports (T13, `importJob.ts`): what one account's Gitea
@@ -271,15 +272,13 @@ export const readBundle = (dir: string) =>
     } satisfies Bundle;
   });
 
-const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-
-/** A picture HQ keeps as a Mate would send it: a PNG of at most {@link ATTACHMENT_MAX_BYTES}. */
+/** A picture kept through the same bounded raster validation as a Mate's upload. */
 export const pictureProblem = (bytes: Uint8Array): string | undefined =>
   bytes.byteLength > ATTACHMENT_MAX_BYTES
     ? "is larger than a picture HQ keeps"
-    : PNG.every((byte, i) => bytes[i] === byte)
-      ? undefined
-      : "is no PNG";
+    : rasterContentType(bytes) === undefined
+      ? "is no supported raster"
+      : undefined;
 
 const walk = async (dir: string, prefix = ""): Promise<ReadonlyArray<string>> => {
   const found: Array<string> = [];

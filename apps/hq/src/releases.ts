@@ -98,11 +98,12 @@ interface ReleaseRow {
   readonly state: "approved" | "refused";
   readonly reason: string | null;
   readonly rollback_of: string | null;
+  readonly snapshot: boolean;
 }
 
 const RELEASE_COLUMNS = `tag, sha, entries, released_by,
   to_char(released_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS released_at,
-  state, reason, rollback_of`;
+  state, reason, rollback_of, snapshot`;
 
 const releaseOf = (row: ReleaseRow): Release => ({
   tag: row.tag,
@@ -113,6 +114,7 @@ const releaseOf = (row: ReleaseRow): Release => ({
   state: row.state,
   reason: row.reason,
   rollbackOf: row.rollback_of,
+  ...(row.snapshot ? { snapshot: true } : {}),
 });
 
 const refuse = (code: ReleaseRefused["code"], reason: ReleaseRefused["reason"]) =>
@@ -173,6 +175,7 @@ export const releasesLayer: Layer.Layer<
               projects.find((row) => row.kind === "production")?.project_id ?? null,
           };
           yield* allowed(userId, appId, can(person(userId), "release", target, facts));
+          return target.productionProjectId;
         }),
       );
 
@@ -197,6 +200,7 @@ export const releasesLayer: Layer.Layer<
         readonly entries: ReadonlyArray<ReleaseEntry>;
         readonly by: string;
         readonly rollbackOf: string | null;
+        readonly productionProjectId: string | null;
       },
     ): Made =>
       Effect.gen(function* () {
@@ -209,6 +213,13 @@ export const releasesLayer: Layer.Layer<
               SELECT 1 FROM hq_repo WHERE app_id::text = ${appId} AND name = ${RECIPE_REPO}
               FOR UPDATE`;
             if (repos.length === 0) return yield* refuse("conflict", "no_group_main");
+            const [production] = yield* sql<{ readonly project_id: string }>`
+              SELECT project_id FROM hq_app_project
+              WHERE app_id::text = ${appId} AND kind = 'production'`;
+            if ((production?.project_id ?? null) !== wanted.productionProjectId) {
+              return yield* refuse("conflict", "production_moved");
+            }
+            const snapshot = wanted.productionProjectId === null;
             const tags = (yield* releasesOf(appId)).map((release) => release.tag);
             const tag = wanted.tag ?? nextPatch(tags);
             if (tags.includes(tag)) return yield* refuse("conflict", "tag_taken");
@@ -252,14 +263,14 @@ export const releasesLayer: Layer.Layer<
             if (tagged.kind === "conflict") return yield* refuse("conflict", "tag_taken");
             const [row] = yield* sql<ReleaseRow>`
               INSERT INTO hq_release
-                (app_id, tag, sha, entries, released_by, state, rollback_of)
+                (app_id, tag, sha, entries, released_by, state, rollback_of, snapshot)
               VALUES (${appId}::uuid, ${tag}, ${wanted.groupHead},
                 ${encodeEntries(wanted.entries)}::jsonb, ${wanted.by}, 'approved',
-                ${wanted.rollbackOf})
+                ${wanted.rollbackOf}, ${snapshot})
               RETURNING ${sql.literal(RELEASE_COLUMNS)}`;
             // Production deploys it: each commit it lists, even over its build's own failure there
             // (main C15, B37) — the releaser asks it.
-            yield* addRollout(sql, { cause: "release", appId, tag, by: wanted.by });
+            if (!snapshot) yield* addRollout(sql, { cause: "release", appId, tag, by: wanted.by });
             yield* appendEvent(sql, {
               kind: "released",
               appId,
@@ -271,7 +282,7 @@ export const releasesLayer: Layer.Layer<
           }),
         );
         yield* SubscriptionRef.update(ticks, (n) => n + 1);
-        yield* rollouts.wake;
+        if (made.snapshot !== true) yield* rollouts.wake;
         return made;
       });
 
@@ -288,9 +299,9 @@ export const releasesLayer: Layer.Layer<
           return (yield* releasesOf(appId)).slice(0, RELEASES_SHOWN);
         }),
       release: (userId, appId, request) =>
-        Effect.andThen(
-          releaser(userId, appId),
+        Effect.flatMap(releaser(userId, appId), (productionProjectId) =>
           make(appId, {
+            productionProjectId,
             tag: request.tag,
             groupHead: request.groupHead,
             entries: request.entries,
@@ -300,7 +311,7 @@ export const releasesLayer: Layer.Layer<
         ),
       rollback: (userId, appId, tag, request) =>
         Effect.gen(function* () {
-          yield* releaser(userId, appId);
+          const productionProjectId = yield* releaser(userId, appId);
           const [earlier] = yield* sql<ReleaseRow>`
             SELECT ${sql.literal(RELEASE_COLUMNS)} FROM hq_release
             WHERE app_id::text = ${appId} AND tag = ${tag}`;
@@ -308,6 +319,7 @@ export const releasesLayer: Layer.Layer<
           if (earlier.state !== "approved")
             return yield* refuse("conflict", "release_not_approved");
           return yield* make(appId, {
+            productionProjectId,
             tag: null,
             groupHead: request.groupHead,
             entries: earlier.entries,

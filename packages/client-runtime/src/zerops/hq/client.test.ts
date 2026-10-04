@@ -975,6 +975,15 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
   });
 
+  it("asks HQ for the head and main displayed in the review", async () => {
+    const { hq, api: hqApi } = api(() => json(200, DETAIL));
+    const snapshot = { expectedHead: "a".repeat(40), expectedMain: "b".repeat(40) };
+    await hqApi.change(LINK, undefined, snapshot);
+    expect(hq.seen.at(-1)?.search).toBe(
+      `?expectedHead=${snapshot.expectedHead}&expectedMain=${snapshot.expectedMain}`,
+    );
+  });
+
   it("refuses an answer this version of Mate cannot read, rather than drawing half of it", async () => {
     const { api: hqApi } = api(() => json(200, { ...DETAIL, mergeability: { kind: "maybe" } }));
     await expect(hqApi.change(LINK)).rejects.toMatchObject({
@@ -1374,21 +1383,24 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     });
   });
 
-  it("fetches a change's picture with the session, as the picture it is", async () => {
-    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
-    const { hq, api: hqApi } = api((seen) =>
-      seen.path === "/api/apps/app-1/changes/app/3/attachments/shot1"
-        ? new Response(png, { status: 200, headers: { "content-type": "image/png" } })
-        : undefined,
-    );
-    const picture = await hqApi.changeAttachment({ ...LINK, id: "shot1" });
-    expect(new Uint8Array(await picture.arrayBuffer())).toEqual(png);
-    expect(picture.type).toBe("image/png");
-    expect(hq.seen.at(-1)).toMatchObject({
-      authorization: "Bearer session-1",
-      accept: "image/png",
-    });
-  });
+  it.each(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"])(
+    "fetches a private %s picture with the session and its MIME type",
+    async (contentType) => {
+      const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+      const { hq, api: hqApi } = api((seen) =>
+        seen.path === "/api/apps/app-1/changes/app/3/attachments/shot1"
+          ? new Response(png, { status: 200, headers: { "content-type": contentType } })
+          : undefined,
+      );
+      const picture = await hqApi.changeAttachment({ ...LINK, id: "shot1" });
+      expect(new Uint8Array(await picture.arrayBuffer())).toEqual(png);
+      expect(picture.type).toBe(contentType);
+      expect(hq.seen.at(-1)).toMatchObject({
+        authorization: "Bearer session-1",
+        accept: "image/png, image/jpeg, image/gif, image/webp, image/avif",
+      });
+    },
+  );
 });
 
 describe("makeHqApi — a write HQ may have made", () => {

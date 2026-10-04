@@ -12,10 +12,13 @@
  *
  * @module changes
  */
+import { rasterContentType, type RasterContentType } from "@t3tools/shared/hqAttachments";
 import type { GitError, HqGit, Repo } from "@t3tools/hq-git";
 import {
   type AttachmentResponse,
+  ATTACHMENT_MAX_BYTES,
   type ChangeDetailResponse,
+  type ChangeDetailQuery,
   type ChangesSnapshot,
   COMPARE_COMMITS_MAX,
   type CompareQuery,
@@ -84,7 +87,7 @@ export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRe
     "change_not_found",
     "attachment_not_found",
     "commit_not_found",
-    "not_png",
+    "not_raster",
     "recipe_too_large",
   ]),
 }) {}
@@ -173,12 +176,12 @@ export class Changes extends Context.Service<
      * name, and there its latest changes per repository, newest first.
      */
     readonly mateChanges: (projectId: string) => Effect.Effect<MateChanges, SqlError>;
-    /** A picture for the Mate's open change: a PNG, kept for its description to show. */
+    /** A picture for the Mate's open change: a raster, kept for its description to show. */
     readonly attach: (
       projectId: string,
       repo: string,
       number: number,
-      png: Uint8Array,
+      content: Uint8Array,
     ) => Effect.Effect<AttachmentResponse, MateError>;
     /**
      * An application's changes as a person reads them: its open ones and its latest
@@ -210,6 +213,7 @@ export class Changes extends Context.Service<
       appId: string,
       repo: string,
       number: number,
+      query?: ChangeDetailQuery,
     ) => Effect.Effect<ChangeDetailResponse, ReadError | NotLeader | GitError>;
     /** What people said about a change, oldest first. */
     readonly listComments: (
@@ -255,14 +259,17 @@ export class Changes extends Context.Service<
      * (`releaseRevisions`): what the structure socket carries, beside each application's changes.
      */
     readonly releaseRevisions: Effect.Effect<ReadonlyMap<string, string>, SqlError>;
-    /** A picture of a change, its PNG's bytes. */
+    /** A private picture's stored bytes and their detected raster type. */
     readonly attachment: (
       userId: string,
       appId: string,
       repo: string,
       number: number,
       id: string,
-    ) => Effect.Effect<Uint8Array, ReadError>;
+    ) => Effect.Effect<
+      { readonly content: Uint8Array; readonly contentType: RasterContentType },
+      ReadError
+    >;
   }
 >()("@t3tools/hq/changes") {}
 
@@ -294,11 +301,6 @@ const squashOnMain = (git: HqGit, repo: Repo, mateId: string, number: number) =>
 
 /** What a try of a landing squashes onto — `main` as it read it — or why it stops short (`stop`). */
 type Aim<A> = { readonly main: string } | { readonly stop: A };
-
-/** The bytes every PNG begins with. */
-const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-
-const isPng = (bytes: Uint8Array) => PNG_SIGNATURE.every((byte, i) => bytes[i] === byte);
 
 const instant = (column: string) =>
   `to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ${column}`;
@@ -984,16 +986,19 @@ export const changesLayer: Layer.Layer<
             ),
           );
         }),
-      attach: (projectId, repo, number, png) =>
+      attach: (projectId, repo, number, content) =>
         Effect.gen(function* () {
-          if (!isPng(png)) return yield* refuse("invalid", "not_png");
+          if (content.byteLength > ATTACHMENT_MAX_BYTES)
+            return yield* refuse("too_large", "not_raster");
+          if (rasterContentType(content) === undefined)
+            return yield* refuse("invalid", "not_raster");
           const appId = yield* mateChange(projectId, repo, number);
           const id = yield* leader.write(
             Effect.gen(function* () {
               yield* openChangeLocked(appId, repo, number);
               const [row] = yield* sql<{ readonly id: string }>`
                 INSERT INTO hq_change_attachment (app_id, repo, number, content)
-                VALUES (${appId}::uuid, ${repo}, ${number}, ${png})
+                VALUES (${appId}::uuid, ${repo}, ${number}, ${content})
                 RETURNING id::text AS id`;
               return row!.id;
             }),
@@ -1102,7 +1107,7 @@ export const changesLayer: Layer.Layer<
             total: between.total,
           };
         }),
-      changeDetail: (userId, appId, repo, number) =>
+      changeDetail: (userId, appId, repo, number, query = {}) =>
         Effect.gen(function* () {
           yield* personApp(userId, appId, "read_change");
           const change = yield* changeIn(appId, repo, number);
@@ -1110,9 +1115,18 @@ export const changesLayer: Layer.Layer<
           // As the change's record names it, never as the path spelled it.
           const at = { appId: change.appId, id: change.repo };
           const mate = change.mateProjectId;
+          const mainHead = yield* mainOf(git, at);
+          if (query.expectedHead !== undefined && query.expectedHead !== change.head) {
+            return yield* refuse("conflict", "head_moved");
+          }
+          if (query.expectedMain !== undefined && query.expectedMain !== mainHead) {
+            return yield* refuse("conflict", "main_moved");
+          }
+          const snapshot = { head: change.head, main: mainHead };
           const diff = yield* git.changeDiff(at, mate, number, {
             maxFiles: 300,
             maxBytesPerFile: 256 * 1024,
+            snapshot,
           });
           // A squash lands content without its original commits. The preceding landing of this
           // Mate is the change's own base, independent of a later merge-base with main.
@@ -1124,11 +1138,11 @@ export const changesLayer: Layer.Layer<
             ORDER BY number DESC LIMIT 1`;
           const log = yield* git.changeLog(at, mate, number, {
             limit: 100,
+            snapshot,
             ...(previous?.landed_head == null ? {} : { base: previous.landed_head }),
           });
-          const mainHead = yield* mainOf(git, at);
-          const mergeBase = yield* git.mergeBase(at, mate, number);
-          const mergeability = yield* git.mergeability(at, mate, number);
+          const mergeBase = yield* git.mergeBase(at, mate, number, snapshot);
+          const mergeability = yield* git.mergeability(at, mate, number, snapshot);
           // Read in full, the change is judged: its record keeps what was just read.
           const judged = {
             mergeability: mergeability.kind === "no_change" ? "unknown" : mergeability.kind,
@@ -1141,7 +1155,9 @@ export const changesLayer: Layer.Layer<
                 UPDATE hq_change
                 SET mergeability = ${judged.mergeability}, behind = ${judged.behind}
                 WHERE app_id = ${change.appId}::uuid AND repo = ${change.repo}
-                  AND number = ${number}`),
+                  AND number = ${number} AND head IS NOT DISTINCT FROM ${change.head}
+                  AND EXISTS (SELECT 1 FROM hq_repo WHERE app_id = ${change.appId}::uuid
+                    AND name = ${change.repo} AND main_head IS NOT DISTINCT FROM ${mainHead})`),
             );
           }
           return {
@@ -1226,7 +1242,10 @@ export const changesLayer: Layer.Layer<
               AND number = ${number}`;
           if (row === undefined)
             return yield* refuse("attachment_not_found", "attachment_not_found");
-          return row.content;
+          const contentType = rasterContentType(row.content);
+          if (contentType === undefined)
+            return yield* refuse("attachment_not_found", "attachment_not_found");
+          return { content: row.content, contentType };
         }),
     });
   }),

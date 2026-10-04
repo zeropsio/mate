@@ -967,6 +967,27 @@ describe("reads, tags, archive and ports", () => {
       ).toEqual({ items: [], truncated: false });
     }),
   );
+  it.live("reads one captured head and main after both refs move", () =>
+    fixture(async (git, dir) => {
+      const main = await write(git, { base: "original\n" }, null);
+      const head = await branch(git, dir, main, { first: "reviewed\n" });
+      const snapshot = { head, main };
+      await branch(git, dir, head, { later: "unreviewed\n" });
+      await write(git, { base: "moved\n" }, main);
+      const diff = await value(
+        git.changeDiff(repo, "alice", 1, {
+          maxFiles: 10,
+          maxBytesPerFile: 10000,
+          snapshot,
+        }),
+      );
+      expect(diff.items.map((file) => file.path)).toEqual(["first"]);
+      const log = await value(git.changeLog(repo, "alice", 1, { limit: 100, snapshot }));
+      expect(log.items.map((commit) => commit.sha)).toEqual([head]);
+      expect(await value(git.mergeBase(repo, "alice", 1, snapshot))).toBe(main);
+      expect(await value(git.mergeability(repo, "alice", 1, snapshot))).toEqual({ kind: "clean" });
+    }),
+  );
   it.live("stops reading a change diff at a total byte ceiling across files", () =>
     fixture(async (git, dir) => {
       const main = await write(git, { base: "base" }, null);

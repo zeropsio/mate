@@ -238,6 +238,7 @@ describe("hqRelease", () => {
   it("refuses a release by HQ's own reading, never by a message's", () => {
     expect(RELEASE_REFUSALS).toEqual([
       "group_moved",
+      "production_moved",
       "no_group_main",
       "tag_taken",
       "tag_not_newer",

@@ -61,6 +61,12 @@ function render(over: Partial<ReleaseReviewViewProps>): string {
 }
 
 describe("ReleaseReviewView", () => {
+  it("offers to save a snapshot, with no production deployment promised", () => {
+    const markup = render({ snapshot: true, where: [] });
+    expect(markup).toContain("Save v0.1.57");
+    expect(markup).toContain("There is no production to deploy to.");
+  });
+
   it("says what production runs on a service cannot be told, under what goes out", () => {
     const markup = render({ untold: ["web"] });
     expect(markup).toContain("What goes out");

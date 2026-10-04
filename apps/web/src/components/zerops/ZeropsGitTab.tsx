@@ -39,6 +39,7 @@ import { useCallback, useMemo, useState, type MouseEvent } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
 
+import { mergedMain } from "../../zerops/useZeropsChangeDetail";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { checkoutPathFor, useZeropsGitRemoteProbes } from "../../zerops/useZeropsGitRemoteProbe";
 import { useVcsPullAction } from "../../state/sourceControlActions";
@@ -305,8 +306,8 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
                 ? undefined
                 : { number: block.pullRequestNumber, head: block.pullRequestHead }
             }
-            // `main` moves only by HQ's merge, which lands a change: the newest one's commit.
-            main={props.changes?.merged[0]?.mergeCommitSha}
+            // Each repository has its own main, independent of the application's other merges.
+            main={mergedMain(block.repository, props.changes?.merged)}
             repository={block.repository}
           />
         )}
