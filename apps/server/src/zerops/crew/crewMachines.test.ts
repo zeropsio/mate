@@ -314,6 +314,34 @@ describe("taskTransition", () => {
       { type: "land-now" },
       moved("merging", c({ reworks: 1 })),
     ],
+    [
+      "an infrastructure ending re-queues once",
+      "working",
+      c({ rotations: 1 }),
+      { type: "infrastructure-ending" },
+      moved("queued", c({ attempt: 2, requeues: 1 })),
+    ],
+    [
+      "a second infrastructure ending parks",
+      "working",
+      c({ requeues: 1 }),
+      { type: "infrastructure-ending" },
+      moved("parked", c({ requeues: 1 }), "infrastructure"),
+    ],
+    [
+      "a rotation ending continues in a new stint",
+      "working",
+      c({ rotations: 1 }),
+      { type: "rotation-ending" },
+      moved("working", c({ rotations: 2 })),
+    ],
+    [
+      "a third rotation in an attempt parks",
+      "working",
+      c({ rotations: 2 }),
+      { type: "rotation-ending" },
+      moved("parked", c({ rotations: 2 }), "rotations"),
+    ],
     ["a clean merge checks", "merging", c(), { type: "merge-clean" }, moved("checking")],
     [
       "a conflict is a counted rework",
@@ -501,9 +529,9 @@ describe("taskTransition", () => {
     [
       "Try again queues a stopped task for its next attempt, its counts reset",
       "parked",
-      c({ attempt: 2, reworks: 3, remerges: 2, rotations: 2 }),
+      c({ attempt: 2, reworks: 3, remerges: 2, requeues: 1, rotations: 2 }),
       { type: "retry" },
-      moved("queued", c({ attempt: 3, reworks: 0, remerges: 0, rotations: 0 })),
+      moved("queued", c({ attempt: 3, reworks: 0, remerges: 0, requeues: 1, rotations: 0 })),
     ],
     ...(
       [
@@ -561,6 +589,8 @@ describe("taskTransition", () => {
       { type: "report-blocked" },
       { type: "report-done" },
       { type: "land-now" },
+      { type: "infrastructure-ending" },
+      { type: "rotation-ending" },
       { type: "merge-clean" },
       { type: "merge-conflict" },
       { type: "merge-empty-base" },

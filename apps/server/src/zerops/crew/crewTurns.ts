@@ -55,7 +55,7 @@ import {
 } from "./crewRuns.ts";
 import { rotate, rotateBetweenTurns } from "./CrewStints.ts";
 import type { CrewAssignmentRow, CrewStintRow } from "./CrewStore.ts";
-import { continueAfterSave, openTaskOf, parkTask } from "./crewTasks.ts";
+import { continueAfterSave, openTaskOf, parkTask, requeueTask, stepTask } from "./crewTasks.ts";
 import { attemptEndingOf, turnEndingOf } from "./crewMachines.ts";
 import { settleLeadWake } from "./crewLead.ts";
 import { flushState } from "./crewState.ts";
@@ -215,26 +215,14 @@ const turnEnded = (
         operation.status === "running" &&
         operation.targets.threadId === stint.threadId
       ) {
-        if (
-          turnEndingOf(event.payload.terminalReason) === "infrastructure" ||
-          turnEndingOf(event.payload.terminalReason) === "rotation"
-        )
-          yield* updateOperation(core, operation.id, {
-            status: "interrupted",
-            result: event.payload,
-            detail:
-              event.payload.errorMessage ??
-              (turnEndingOf(event.payload.terminalReason) === "rotation"
-                ? "Its conversation grew too long. Continue in a fresh conversation."
-                : "Its turn stopped before the work finished."),
-          });
-        else
-          yield* finishOperation(
-            core,
-            operation.id,
-            event.payload,
-            event.payload.state === "failed",
-          );
+        // A broken-off turn or an overflow is an ending the engine takes on itself (`endedHow`).
+        yield* finishOperation(
+          core,
+          operation.id,
+          event.payload,
+          event.payload.state === "failed" &&
+            !["infrastructure", "rotation"].includes(turnEndingOf(event.payload.terminalReason)),
+        );
       }
     }
     const { memory } = core;
@@ -257,15 +245,6 @@ const turnEnded = (
     const cost = yield* turnCost(core, stint.threadId, event);
     if (open !== undefined) yield* recordCost(core, open, cost);
     yield* recordRunSpend(core, cost);
-    const interrupted = ["infrastructure", "rotation"].includes(
-      turnEndingOf(event.payload.terminalReason),
-    );
-    if (interrupted) {
-      yield* endedHow(core, member, stint, event);
-      yield* refreshLaneStats(core, member);
-      yield* core.changed;
-      return;
-    }
     if (memory.sessionRestart.delete(stint.threadId)) {
       // The run's budget changed during this turn: the next resumes under the new cap.
       yield* asRefusal(
@@ -277,10 +256,7 @@ const turnEnded = (
         }),
       );
     }
-    if (
-      member.row.kind === "writer" &&
-      turnEndingOf(event.payload.terminalReason) !== "infrastructure"
-    ) {
+    if (member.row.kind === "writer") {
       yield* commitAndPolice(
         core,
         member,
@@ -327,8 +303,9 @@ const turnEnded = (
 
 /**
  * What the turn's ending means for the open task (CONCEPT §5 *Endings*): an
- * overflowed context or a broken-off turn waits for a person's Continue;
- * a turn the run's budget stopped carries on when the run goes on.
+ * overflowed context takes the task on in a new conversation (at most twice
+ * an attempt, then it stops), a broken-off turn queues it again once, and a
+ * turn the run's budget stopped carries on when the run goes on.
  */
 const endedHow = (
   core: CrewCore,
@@ -347,31 +324,35 @@ const endedHow = (
     const task = openTaskOf(yield* asRefusal(core.store.assignments(CREW_ID)), member.row.handle);
     // A save's rotation at this turn's end has already moved the task on.
     if (
-      task === undefined ||
+      task?.state !== "working" ||
       currentStint(applied, member.row.handle)?.threadId !== stint.threadId
     ) {
       return;
     }
-    if (ending === "infrastructure" || ending === "rotation") {
-      const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
-      const attempt = attempts.find((row) => row.attempt === task.attempt);
-      if (attempt !== undefined)
-        yield* asRefusal(
-          core.store.putAttempt({
-            ...attempt,
-            ending: "interrupted",
-            endingDetail: `Its turn ended: ${event.payload.terminalReason}`,
-            endedAt: yield* core.now,
-          }),
-        );
-      yield* refreshLaneStats(core, member);
+    if (ending === "infrastructure") {
+      yield* requeueTask(core, task, `its turn ended: ${event.payload.terminalReason}`);
+      return;
+    }
+    const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
+    const attempt = attempts.find((row) => row.attempt === task.attempt);
+    const moved = yield* stepTask(core, task, { type: "rotation-ending" }, undefined, {
+      rotations: attempt?.rotations ?? 0,
+    });
+    if (moved.state !== "working") return;
+    if (attempt !== undefined) {
+      yield* asRefusal(core.store.putAttempt({ ...attempt, rotations: attempt.rotations + 1 }));
+    }
+    core.memory.terminalReasons.delete(stint.threadId);
+    const opened = yield* rotateBetweenTurns(core, applied, member, "context-overflow");
+    if (runningRun(applied) !== undefined) {
+      core.memory.carryOn.set(opened.threadId, opened.reason ?? "");
     }
   });
 
 /**
  * A turn that left its task `working`, with no turn of the crewmate's
  * running now, ends the task's attempt: how, in words, and when. A
- * recorded interruption stands; a person's next turn opens an attempt again.
+ * re-queue's or a restart's ending stands; the attempt's next turn opens it again.
  */
 const endAttempt = (
   core: CrewCore,
@@ -385,7 +366,12 @@ const endAttempt = (
     if (task?.state !== "working") return;
     const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
     const attempt = attempts.find((row) => row.attempt === task.attempt);
-    if (attempt === undefined || attempt.ending === "interrupted") return;
+    if (
+      attempt === undefined ||
+      attempt.ending === "infrastructure" ||
+      attempt.ending === "interrupted"
+    )
+      return;
     const { ending, detail } = attemptEndingOf({
       state: event.payload.state,
       terminalReason: event.payload.terminalReason,

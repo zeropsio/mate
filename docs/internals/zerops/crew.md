@@ -451,7 +451,11 @@ write parked. A copy missing at boot or after a self-deploy comes back from its 
 (`CrewWorkspace.recover`) only where its branch, every recorded landing's trailer and its saved
 tip remain, so no work is lost; otherwise the loss is named, the host stays frozen, and the copy
 offers Rebuild crew copy, a selected rebuild that refuses a missing or changed saved branch and
-never resets an existing directory. Infrastructure and context failures likewise wait for Continue.
+never resets an existing directory. A turn the provider broke off (`api_error`, `model_error`,
+`turn_setup_failed`) saves its work in the turn's WIP commit and queues its task again once, the
+second time it stops; an overflowed context (`prompt_too_long`, `rapid_refill_breaker`) saves its
+work and rotates at once into a fresh conversation, which a running run carries the task on in, at
+most twice an attempt (`crewTurns.endedHow`).
 Checks run once; a killed or timed-out command is a visible ending. A failed operation holds the
 crewmate's queue until a person acts; a check that ran and failed is not one — its verdict sends
 the task back as rework, which a running run hands to its crewmate at once. Desktop uses these same web controls; mobile currently has

@@ -11,7 +11,7 @@ import { operationHolds } from "./crewOperations.ts";
  *   passes*; with *I land everything* it waits for the person's **Land**;
  * - a turn that ended without a report gets one nudge per attempt, and a
  *   task carries on in a turn the run's own pause stopped, when the run goes
- *   on, with interrupted work held for a person; a run that starts or
+ *   on, and in the new conversation after an overflow; a run that starts or
  *   resumes carries on every task standing `working` with no turn running;
  * - with *The crew may show work on dev*, a crewmate's request to show its
  *   copy is allowed as soon as its turn ends.

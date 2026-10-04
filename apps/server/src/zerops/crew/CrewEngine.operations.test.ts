@@ -28,25 +28,26 @@ import {
 import { write, git } from "./testing/crewGitFixture.ts";
 
 describe("owned crew operations", () => {
-  it.live("a refused Try again leaves the interrupted operation waiting for Continue", () =>
+  it.live("a broken-off turn's operation records its ending and holds nothing", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* applied(world);
         const thread = yield* firstTurn(world, () => undefined);
-        yield* world.publish(
-          spiEvent("turn.completed", thread, { state: "failed", terminalReason: "api_error" }),
-        );
         const store = yield* CrewStore;
         const operation = (yield* store.operations(CREW_ID)).find(
           (row) => row.kind === "dispatch",
         )!;
-        assert.strictEqual(operation.status, "interrupted");
+        yield* world.publish(
+          spiEvent("turn.completed", thread, { state: "failed", terminalReason: "api_error" }),
+        );
+        const again = yield* snapshotWhere((frame) => frame.board.tasks[0]?.attempts === 2);
+        const ended = yield* store.getOperation(operation.id);
+        assert.strictEqual(ended._tag === "Some" ? ended.value.status : null, "succeeded");
+        assert.isFalse(again.attention.some((need) => need.kind === "interrupted"));
         const refusal = yield* Effect.flip(
           command({ _tag: "taskRetry", taskId: operation.taskId! }),
         );
         assert.strictEqual(refusal.reason, "wrong-state");
-        const after = yield* store.getOperation(operation.id);
-        assert.strictEqual(after._tag === "Some" ? after.value.status : null, "interrupted");
       }),
     ),
   );
