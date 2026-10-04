@@ -108,7 +108,7 @@ import { Leader, type NotLeader } from "./leader.ts";
 import { type TierService, deltaImport, deployedByHq, tierServices } from "./recipeDeltas.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
 import { Releases } from "./releases.ts";
-import { Roles, confirmingRefusal } from "./roles.ts";
+import { Roles, decidedFresh } from "./roles.ts";
 import { type RolloutCause, Rollouts, rolloutOf } from "./rollouts.ts";
 import { tierRuntimes } from "./tierRuntimes.ts";
 import { versionName } from "./versionNames.ts";
@@ -1734,8 +1734,9 @@ export const deploysLayer = (
             id === undefined ? Effect.succeed(NO_DEPLOYS) : run(id),
           ),
         changes: SubscriptionRef.changes(ticks),
+        // A deploy cannot be taken back: each is asked over roles read for it alone.
         redeploy: (userId, appId, name, service, sha) =>
-          confirmingRefusal(
+          decidedFresh(
             Effect.gen(function* () {
               const log = { userId, appId, name, service };
               const environment = yield* personsEnvironment(userId, appId, name, log);
@@ -1795,7 +1796,7 @@ export const deploysLayer = (
             }),
           ),
         addService: (userId, appId, name, service) =>
-          confirmingRefusal(
+          decidedFresh(
             Effect.gen(function* () {
               const log = { userId, appId, name, service };
               const environment = yield* personsEnvironment(userId, appId, name, log);

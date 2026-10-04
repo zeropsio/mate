@@ -51,7 +51,7 @@ import * as Schema from "effect/Schema";
 
 import { type FetchImplementation } from "../api.ts";
 import type { HqEnvironment } from "./environments.ts";
-import { hqRefusalWords } from "./refusals.ts";
+import { hqRefusalWords, ZEROPS_UNANSWERED } from "./refusals.ts";
 import { hqStructureOf, structureEventOf, type HqStructureEvent } from "./stream.ts";
 
 /** An organization's HQ: its project, and the address its anchor names. */
@@ -429,6 +429,9 @@ function said(text: string): { readonly code?: unknown; readonly reason?: unknow
   }
 }
 
+/** HQ's code for a write refused because Zerops did not answer its roles: nothing was written. */
+const WROTE_NOTHING_ZEROPS = "zerops_unanswered";
+
 async function errorOf(response: Response): Promise<HqError> {
   const body = said(await response.text());
   const code = typeof body.code === "string" ? body.code : `http_${response.status}`;
@@ -437,7 +440,7 @@ async function errorOf(response: Response): Promise<HqError> {
       kind: "unavailable",
       code,
       status: response.status,
-      message: "HQ is not answering right now.",
+      message: code === WROTE_NOTHING_ZEROPS ? ZEROPS_UNANSWERED : "HQ is not answering right now.",
     });
   }
   const reason = typeof body.reason === "string" ? body.reason : undefined;
@@ -452,12 +455,18 @@ async function errorOf(response: Response): Promise<HqError> {
 
 /**
  * HQ's answer as the call's outcome. A write HQ failed on its way (`5xx`) may have landed — but
- * for a Core that does not lead (`not_active`), which writes nothing.
+ * for a Core that does not lead (`not_active`), and one refused because Zerops did not answer its
+ * roles (`zerops_unanswered`): neither writes anything.
  */
 async function answered(response: Response, write: boolean): Promise<Response> {
   if (response.ok) return response;
   const error = await errorOf(response);
-  if (write && response.status >= 500 && error.code !== "not_active") {
+  if (
+    write &&
+    response.status >= 500 &&
+    error.code !== "not_active" &&
+    error.code !== WROTE_NOTHING_ZEROPS
+  ) {
     throw uncertain();
   }
   throw error;

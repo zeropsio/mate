@@ -52,7 +52,7 @@ import { Leader, type NotLeader } from "./leader.ts";
 import { appTarget, releaseTarget } from "./offers.ts";
 import { RecipeTiers, type RecipeTierUnreadable } from "./recipeTiers.ts";
 import { Rollouts, addRollout } from "./rollouts.ts";
-import { Roles, confirmingRefusal } from "./roles.ts";
+import { Roles, decidedFresh } from "./roles.ts";
 import { tierRuntimes } from "./tierRuntimes.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -164,9 +164,12 @@ export const releasesLayer: Layer.Layer<
         return projects;
       });
 
-    /** Whether the person may release the application, over the org as a write is decided. */
+    /**
+     * Whether the person may release the application: a release cannot be taken back, so over
+     * roles read for it alone (`decidedFresh`).
+     */
     const releaser = (userId: string, appId: string) =>
-      confirmingRefusal(
+      decidedFresh(
         Effect.gen(function* () {
           const facts = yield* roles.forWrite;
           const target = releaseTarget(yield* seenApp(userId, appId, facts));

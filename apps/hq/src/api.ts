@@ -71,7 +71,8 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  * Every call but the doors carries `Authorization: Bearer <session>`, of a session issued for this
  * HQ's org. Only the leading HQ answers: a standby or an HQ that is not the official one answers
  * `503 not_active` with `Retry-After`, as does a Zerops that cannot be read (`zerops_unavailable`) —
- * a deploy runs two Cores side by side for a while, and zcp tries again. A refusal answers one
+ * a deploy runs two Cores side by side for a while, and zcp tries again. A write whose roles Zerops
+ * left unanswered answers `503 zerops_unanswered`: refused before it wrote anything. A refusal answers one
  * code, and for the structure and a Mate's changes a reason code beside it (`zeropsPermissions.ts`'s
  * or their own) — the words for a person are the client's; a
  * refusal at the person's door says nothing of which rule the token broke. Bodies are bounded (8
@@ -124,7 +125,7 @@ import { Leader, NotLeader, RETRY_AFTER } from "./leader.ts";
 import { MateCredentials, MateRefused } from "./mateCredentials.ts";
 import { DOOR_LIMIT, DoorRateLimit, PERSON_ADDRESS_LIMIT, TooManyRequests } from "./rateLimit.ts";
 import { Writes } from "./writes.ts";
-import { Roles } from "./roles.ts";
+import { ROLES_UNANSWERED, Roles } from "./roles.ts";
 import type { RolloutCause } from "./rollouts.ts";
 import { PersonGitCredentials, type GitHolder } from "./personGitCredentials.ts";
 import { Sessions } from "./sessions.ts";
@@ -358,7 +359,12 @@ export const failure = (error: {
     case "ZeropsRefused":
       return Effect.as(
         Effect.logWarning("zerops read failed", error),
-        unavailable("zerops_unavailable"),
+        // A write whose roles Zerops left unanswered wrote nothing: refused, never uncertain.
+        unavailable(
+          "operation" in error && error.operation === ROLES_UNANSWERED
+            ? "zerops_unanswered"
+            : "zerops_unavailable",
+        ),
       );
     case "TooLarge":
       return Effect.succeed(json({ code: "too_large" }, 413));

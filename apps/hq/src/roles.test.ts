@@ -10,8 +10,21 @@ import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 
 import { emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
-import { type OrgView, Roles, WriteConfirm, confirmingRefusal, rolesLayer } from "./roles.ts";
-import { ZeropsApi, type ZeropsMember, type ZeropsProject } from "./zerops/api.ts";
+import {
+  type OrgView,
+  ROLES_UNANSWERED,
+  Roles,
+  WriteConfirm,
+  confirmingRefusal,
+  decidedFresh,
+  rolesLayer,
+} from "./roles.ts";
+import {
+  ZeropsApi,
+  type ZeropsMember,
+  type ZeropsProject,
+  ZeropsUnavailable,
+} from "./zerops/api.ts";
 
 /** The view a write being confirmed is decided over: read now (`confirmingRefusal`'s second pass). */
 const readNow = (roles: Roles["Service"]) =>
@@ -423,6 +436,93 @@ describe("a write's view of the org", () => {
         assert.strictEqual((yield* confirmingRefusal(roles.forWrite)).freshness, "recent");
         assert.strictEqual(orgReads(world), 1);
       }),
+  );
+});
+
+// The owner, 2026-10-05: a write that cannot be taken back — a merge, a release, a deletion, a move
+// out of an application, a deploy — is decided over roles Zerops answers for it, never over a view
+// kept from before; while Zerops does not answer, it is refused, and nothing is written. One that
+// can be undone keeps the last good view for five minutes.
+describe("an irreversible write reads its roles fresh", () => {
+  type Zerops = "answers" | "slow" | "stalls" | "down";
+  const made = () => {
+    const world = emptyWorld();
+    world.tokens.set("t", {
+      id: "T",
+      name: "mate-hq-org:HQ",
+      orgId: "ORG",
+      roleCode: "READ_ONLY",
+      canCreateProjects: false,
+      canViewFinances: false,
+      canEditFinances: false,
+      projects: [],
+      createdMs: 0,
+      createdByUser: "owner",
+    });
+    world.members.set("ORG", [member("owner", "OWNER")]);
+    world.projects.push(project("HQ"));
+    const api = fakeZeropsApi(world);
+    const zerops = { now: "answers" as Zerops };
+    const roles = Effect.map(
+      Layer.build(
+        rolesLayer({ hqProjectId: "HQ", credential: Option.some(Redacted.make("t")) }).pipe(
+          Layer.provide(
+            Layer.succeed(ZeropsApi, {
+              ...api,
+              members: (orgId) => (credential) => {
+                const answer = api.members(orgId)(credential);
+                switch (zerops.now) {
+                  case "answers":
+                    return answer;
+                  case "slow":
+                    return Effect.delay(answer, "20 seconds");
+                  case "stalls":
+                    return Effect.delay(answer, "40 seconds");
+                  case "down":
+                    return Effect.fail(
+                      new ZeropsUnavailable({ operation: "members", message: "down" }),
+                    );
+                }
+              },
+            }),
+          ),
+        ),
+      ),
+      (context) => Context.get(context, Roles),
+    );
+    return { zerops, roles };
+  };
+
+  it.effect.each([
+    ["can be undone", confirmingRefusal, "answers", "recent"],
+    ["can be undone", confirmingRefusal, "slow", "recent"],
+    ["can be undone", confirmingRefusal, "down", "recent"],
+    ["cannot be undone", decidedFresh, "answers", "fresh"],
+    ["cannot be undone", decidedFresh, "slow", "fresh"],
+    ["cannot be undone", decidedFresh, "stalls", ROLES_UNANSWERED],
+    ["cannot be undone", decidedFresh, "down", ROLES_UNANSWERED],
+  ] as const)("a write that %s, while Zerops %s: decided over %s", ([, decided, now, expected]) =>
+    Effect.gen(function* () {
+      const { zerops, roles: build } = made();
+      const roles = yield* build;
+      // A good view, read past its 30 s: every write reads again.
+      yield* roles.recent;
+      yield* TestClock.adjust("31 seconds");
+      zerops.now = now;
+      const writing = yield* Effect.forkChild(
+        decided(Effect.map(roles.forWrite, (facts) => facts.freshness)),
+      );
+      yield* TestClock.adjust("41 seconds");
+      const answer = yield* Effect.result(Fiber.join(writing));
+      assert.strictEqual(
+        answer._tag === "Success"
+          ? answer.success
+          : answer.failure._tag === "ZeropsUnavailable"
+            ? answer.failure.operation
+            : answer.failure._tag,
+        expected,
+      );
+    }),
   );
 });
 

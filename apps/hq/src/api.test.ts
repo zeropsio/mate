@@ -734,6 +734,47 @@ describe("HQ API", () => {
         }),
     );
 
+    // The owner, 2026-10-05: a write that cannot be taken back is never decided over the last good
+    // view; while Zerops does not answer it is refused, said so, and nothing is written.
+    it.effect(
+      "refuses a write that cannot be undone while Zerops does not answer, one that can goes on",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const session = yield* sessionFor(call, "door-owner");
+          const appId = (
+            (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
+              readonly id: string;
+            }
+          ).id;
+          fake.members.set("ORG", []);
+          yield* Effect.sleep(Duration.millis(400));
+          const renamed = yield* call("PATCH", `/api/apps/${appId}`, {
+            session,
+            body: { name: "Store" },
+          });
+          const deleted = yield* call("DELETE", `/api/apps/${appId}`, { session });
+          assert.deepStrictEqual(
+            [
+              [renamed.status, (renamed.body as { readonly name?: string }).name],
+              [deleted.status, (deleted.body as { readonly code?: string }).code],
+            ],
+            [
+              [200, "Store"],
+              [503, "zerops_unanswered"],
+            ],
+          );
+          const read = yield* call("GET", "/api/structure", { session });
+          assert.deepStrictEqual(
+            (read.body as { readonly apps: ReadonlyArray<{ readonly id: string }> }).apps.map(
+              (app) => app.id,
+            ),
+            [appId],
+          );
+        }),
+    );
+
     it.effect("opens one session per throwaway: its replay is refused", () =>
       Effect.gen(function* () {
         const { call } = yield* startCore(true);
