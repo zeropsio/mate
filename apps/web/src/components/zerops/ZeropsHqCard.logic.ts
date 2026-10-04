@@ -243,7 +243,10 @@ function updateNote(input: HqCardInput): string | null {
   return null;
 }
 
-/** HQ's state in one dot and word: `troubles` an admin's, so nobody else reads one as degraded. */
+/**
+ * HQ's state in one dot and word: an admin's weighs `troubles`; anybody else's says whether HQ
+ * serves, and never reads as degraded.
+ */
 function headline(input: HqCardInput, troubles: ReadonlyArray<string>): HqCardView["state"] {
   const { standing } = input;
   // A rolling deploy: HQ serves on its Core until the new one answers.
@@ -266,6 +269,8 @@ function headline(input: HqCardInput, troubles: ReadonlyArray<string>): HqCardVi
     case "unchecked":
       return { kind: "degraded", tone: "attention", word: "Can't check Zerops right now" };
     case "healthy":
+      // Whoever sees none of HQ's parts is told only that it serves: "Healthy" claims more.
+      if (!input.admin) return { kind: "healthy", tone: "ok", word: "Running" };
       return troubles.length === 0
         ? { kind: "healthy", tone: "ok", word: "Healthy" }
         : { kind: "degraded", tone: "attention", word: "Needs attention" };

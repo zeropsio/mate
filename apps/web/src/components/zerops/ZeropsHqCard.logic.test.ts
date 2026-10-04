@@ -59,7 +59,7 @@ describe("hqCardView — the headline", () => {
         admin: false,
         standing: { kind: "healthy", build: RUNS, parts: { db: "down", quarantined: [] } },
       },
-      { kind: "healthy", tone: "ok", word: "Healthy" },
+      { kind: "healthy", tone: "ok", word: "Running" },
     ],
     [
       "an update this tab runs",

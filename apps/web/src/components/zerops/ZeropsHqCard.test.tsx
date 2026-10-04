@@ -155,7 +155,8 @@ describe("ZeropsHqCardView — who reads what", () => {
       structure: LINKS,
       online: 1,
     });
-    expect(html).toContain("Healthy");
+    expect(html).toContain("Running");
+    expect(html).not.toContain("Healthy");
     expect(html).toContain("1 project · 1 Mate · 1 online");
     expect(html).not.toContain("data-hq-trouble");
     expect(html).not.toContain("aria-expanded");
