@@ -368,7 +368,11 @@ export const ZeropsAuthRegistration = Schema.Struct({
   status: Schema.Literals(["pending", "accepted", "registered", "failed"]),
   reason: Schema.optional(Schema.String),
   process: Schema.optional(
-    Schema.Struct({ id: Schema.String, status: Schema.optional(Schema.String) }),
+    Schema.Struct({
+      id: Schema.String,
+      status: Schema.optional(Schema.String),
+      reason: Schema.optional(Schema.String),
+    }),
   ),
 });
 export type ZeropsAuthRegistration = typeof ZeropsAuthRegistration.Type;

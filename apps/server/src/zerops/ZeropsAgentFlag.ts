@@ -128,7 +128,11 @@ export class ZeropsAgentFlagError extends Schema.TaggedError<ZeropsAgentFlagErro
   {
     reason: Schema.String,
     process: Schema.optional(
-      Schema.Struct({ id: Schema.String, status: Schema.optional(Schema.String) }),
+      Schema.Struct({
+        id: Schema.String,
+        status: Schema.optional(Schema.String),
+        reason: Schema.optional(Schema.String),
+      }),
     ),
   },
 ) {
@@ -140,6 +144,7 @@ export class ZeropsAgentFlagError extends Schema.TaggedError<ZeropsAgentFlagErro
 export interface RegistrationProcess {
   readonly id: string;
   readonly status?: string;
+  readonly reason?: string;
 }
 
 export interface MarkSignedInResult {
@@ -198,6 +203,21 @@ const readServiceEnv = Effect.fn("ZeropsAgentFlag.readEnv")(function* (input: {
   return readServiceEnvRows(body);
 });
 
+/** Platform process messages are user-facing; cap them and remove control characters. */
+const registrationProcessReason = (body: unknown): string | undefined => {
+  if (typeof body !== "object" || body === null || !("error" in body)) return undefined;
+  const error = body.error;
+  if (
+    typeof error !== "object" ||
+    error === null ||
+    !("message" in error) ||
+    typeof error.message !== "string"
+  )
+    return undefined;
+  const message = error.message.replace(/\p{C}/gu, " ").trim().slice(0, 500);
+  return message.length === 0 ? undefined : message;
+};
+
 const createUserDataRow = Effect.fn("ZeropsAgentFlag.createRow")(function* (input: {
   readonly apiBaseUrl: string;
   readonly serviceId: string;
@@ -233,9 +253,11 @@ const createUserDataRow = Effect.fn("ZeropsAgentFlag.createRow")(function* (inpu
       reason: "Zerops did not return a registration process.",
     });
   }
+  const reason = registrationProcessReason(body);
   return {
     id: body.id,
     ...("status" in body && typeof body.status === "string" ? { status: body.status } : {}),
+    ...(reason === undefined ? {} : { reason }),
   };
 });
 
@@ -271,9 +293,10 @@ const followRegistration = (
       if (process.status === "FAILED" || process.status === "CANCELED") {
         return yield* new ZeropsAgentFlagError({
           reason:
-            process.status === "FAILED"
+            process.reason ??
+            (process.status === "FAILED"
               ? "Zerops registration failed."
-              : "Zerops registration was canceled.",
+              : "Zerops registration was canceled."),
           process,
         });
       }
@@ -313,7 +336,8 @@ const followRegistration = (
           process,
         });
       }
-      process = { id: accepted.id, status };
+      const reason = registrationProcessReason(body);
+      process = { id: accepted.id, status, ...(reason === undefined ? {} : { reason }) };
       if (status !== "FINISHED" && status !== "FAILED" && status !== "CANCELED")
         yield* Effect.sleep("1 second");
     }

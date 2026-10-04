@@ -260,7 +260,12 @@ describe("markSignedIn", () => {
     "follows the accepted handle and exposes a failed process without another write",
     () => {
       const { layer, seen } = httpLayer((request) => {
-        if (request.url.includes("/process/")) return json({ id: "process-1", status: "FAILED" });
+        if (request.url.includes("/process/"))
+          return json({
+            id: "process-1",
+            status: "FAILED",
+            error: { message: "Registration permission denied." },
+          });
         if (request.method === "GET") return json({ items: [] });
         return json({ id: "process-1", status: "RUNNING" });
       });
@@ -269,8 +274,12 @@ describe("markSignedIn", () => {
       ).pipe(
         Effect.tap((error) =>
           Effect.sync(() => {
-            assert.strictEqual(error.reason, "Zerops registration failed.");
-            assert.deepStrictEqual(error.process, { id: "process-1", status: "FAILED" });
+            assert.strictEqual(error.reason, "Registration permission denied.");
+            assert.deepStrictEqual(error.process, {
+              id: "process-1",
+              status: "FAILED",
+              reason: "Registration permission denied.",
+            });
             assert.strictEqual(seen.filter((request) => request.method === "POST").length, 1);
           }),
         ),
