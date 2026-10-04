@@ -47,7 +47,11 @@ import {
   SYNTHETIC_CLAUDE_STANDARD_MODEL,
   SYNTHETIC_CLAUDE_THINKING_MODEL,
 } from "../ClaudeModelCatalog.testFixtures.ts";
-import { ProviderAdapterProcessError, ProviderAdapterValidationError } from "../Errors.ts";
+import {
+  type ProviderAdapterError,
+  ProviderAdapterProcessError,
+  ProviderAdapterValidationError,
+} from "../Errors.ts";
 import type { ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import type { ClaudeScopedLimitNames } from "./claudeUsageLimits.ts";
 import { makeClaudeAdapter, type ClaudeAdapterLiveOptions } from "./ClaudeAdapter.ts";
@@ -5110,6 +5114,116 @@ describe("ClaudeAdapterLive", () => {
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
     );
+  });
+
+  // How a stream ended, and what the person is told: a crash says why and
+  // fails the turn (its reason the thread's last error); our own failure to
+  // read the stream is ours, never Claude Code's; a crash whose stderr says
+  // "aborted" is no Stop; and only this stream's stderr is read.
+  describe("a stream's end", () => {
+    const SESSION = "sdk-session-stream-end";
+    const resultOf = (uuid: string) =>
+      ({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        session_id: SESSION,
+        uuid,
+      }) as unknown as SDKMessage;
+    const cases: ReadonlyArray<{
+      readonly name: string;
+      readonly run: (
+        harness: ReturnType<typeof makeHarness>,
+        adapter: ClaudeAdapterShape,
+      ) => Effect.Effect<void, ProviderAdapterError>;
+      readonly words: string;
+    }> = [
+      {
+        name: "a crash mid-turn fails the turn with its reason",
+        run: (harness) =>
+          Effect.sync(() => {
+            harness.getLastCreateQueryInput()?.options.stderr?.("Error: socket hang up\n");
+            harness.query.finish();
+          }),
+        words: "The Claude API stopped answering. Send a message to pick up where it left off.",
+      },
+      {
+        name: "our own failure to read its output is ours",
+        run: (harness) =>
+          Effect.sync(() => {
+            harness.query.emit({
+              type: "assistant",
+              parent_tool_use_id: "toolu_x",
+              message: null,
+              uuid: "broken-snapshot",
+              session_id: SESSION,
+            } as unknown as SDKMessage);
+          }),
+        words: "Mate failed to read Claude's output. Send a message to pick up where it left off.",
+      },
+      {
+        name: "a crash whose stderr says aborted is no Stop",
+        run: (harness) =>
+          Effect.sync(() => {
+            harness.query.fail(
+              Object.assign(
+                new Error("Claude Code process exited with code 1. stderr: Request was aborted."),
+                { exitCode: 1 },
+              ),
+            );
+          }),
+        words: "Claude Code exited (code 1). Send a message to pick up where it left off.",
+      },
+      {
+        name: "an earlier turn's stderr is not this one's",
+        run: (harness, adapter) =>
+          Effect.gen(function* () {
+            harness.getLastCreateQueryInput()?.options.stderr?.("API Error: 529 overloaded\n");
+            harness.query.emit(resultOf("result-first"));
+            for (let tick = 0; tick < 5; tick += 1) yield* Effect.yieldNow;
+            yield* adapter.sendTurn({ threadId: THREAD_ID, input: "again", attachments: [] });
+            harness.query.fail(new Error("stream closed"));
+          }),
+        words: "Claude Code stopped unexpectedly. Send a message to pick up where it left off.",
+      },
+    ];
+    for (const { name, run, words } of cases) {
+      it.effect(name, () => {
+        const harness = makeHarness();
+        return Effect.gen(function* () {
+          const adapter = yield* ClaudeAdapter;
+          const runtimeEvents: Array<ProviderRuntimeEvent> = [];
+          const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
+            Effect.sync(() => {
+              runtimeEvents.push(event);
+            }),
+          ).pipe(Effect.forkChild);
+          yield* adapter.startSession({
+            threadId: THREAD_ID,
+            provider: ProviderDriverKind.make("claudeAgent"),
+            runtimeMode: "full-access",
+          });
+          yield* adapter.sendTurn({ threadId: THREAD_ID, input: "hello", attachments: [] });
+          yield* run(harness, adapter);
+          for (let tick = 0; tick < 10; tick += 1) yield* Effect.yieldNow;
+          runtimeEventsFiber.interruptUnsafe();
+          const errors = runtimeEvents.flatMap((event) =>
+            event.type === "runtime.error" ? [event.payload.message] : [],
+          );
+          assert.deepEqual(errors, [words]);
+          const ends = runtimeEvents.flatMap((event) =>
+            event.type === "turn.completed"
+              ? [[event.payload.state, event.payload.errorMessage ?? null]]
+              : [],
+          );
+          assert.deepEqual(ends.at(-1), ["failed", words]);
+        }).pipe(
+          Effect.provideService(Random.Random, makeDeterministicRandomService()),
+          Effect.provide(harness.layer),
+        );
+      });
+    }
   });
 
   // The Mate idle, its helpers at work, and the stream dies: the person is

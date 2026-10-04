@@ -574,13 +574,26 @@ function getEffectiveClaudeAgentEffort(
   return normalized ? (normalized as ClaudeSdkEffort) : null;
 }
 
+/**
+ * The SDK's own words for an interruption, whole: never a phrase found inside
+ * a longer message, which can carry the CLI's stderr ("… exited with code 1.
+ * stderr: Request was aborted.") and is a crash.
+ */
+const CLAUDE_INTERRUPTION_MESSAGES: ReadonlySet<string> = new Set([
+  "all fibers interrupted without error",
+  "request was aborted",
+  "interrupted by user",
+  "claude code process aborted by user",
+  "operation aborted",
+]);
+
 function isClaudeInterruptedMessage(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes("all fibers interrupted without error") ||
-    normalized.includes("request was aborted") ||
-    normalized.includes("interrupted by user")
-  );
+  const normalized = message
+    .trim()
+    .toLowerCase()
+    .replace(/^error: /u, "")
+    .replace(/\.$/u, "");
+  return CLAUDE_INTERRUPTION_MESSAGES.has(normalized);
 }
 
 function isClaudeInterruptedCause(cause: Cause.Cause<ProviderAdapterProcessError>): boolean {
@@ -4512,18 +4525,24 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   /** Why the stream died, read off its error and the CLI's stderr, logged whole and scrubbed. */
   const logStreamFailure = Effect.fn("logStreamFailure")(function* (
     context: ClaudeSessionContext,
-    error: unknown,
-    detail: string | undefined,
+    input: { readonly error: unknown; readonly detail: string; readonly defect: boolean },
   ) {
-    const failure = describeClaudeStreamFailure({ error, stderr: context.stderrTail.text() });
+    const failure = describeClaudeStreamFailure({
+      error: input.error,
+      stderr: context.stderrTail.text(),
+      defect: input.defect,
+    });
+    // Only what says what crashed reaches the log (`crashLines`), never the
+    // CLI's stderr as it came.
     yield* Effect.logError("claude.stream.failed", {
       threadId: context.session.threadId,
-      detail,
+      detail: input.detail,
       reason: failure.reason,
       error: failure.log.error,
       exitCode: failure.log.exitCode,
       signal: failure.log.signal,
-      stderr: failure.log.stderr,
+      crashLines: failure.log.crashLines,
+      ...(failure.log.stack === null ? {} : { stack: failure.log.stack }),
       liveTasks: context.liveTaskIds.size,
       turnActive: context.turnState !== undefined,
     });
@@ -4567,37 +4586,41 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       return;
     }
 
-    if (Exit.isFailure(exit)) {
-      if (isClaudeInterruptedCause(exit.cause)) {
-        if (context.turnState) {
-          yield* completeTurn(context, "interrupted", "Claude runtime interrupted.");
-        }
-      } else {
-        const failures = exit.cause.reasons.flatMap((reason) =>
-          Cause.isFailReason(reason) ? [reason.error] : [],
-        );
-        const first = failures[0];
-        // The CLI's stream died: why, in plain words for the person, and the
-        // cause with the CLI's stderr for the log. Our own failure to handle
-        // an event keeps its words.
-        const message =
-          first === undefined || first.detail === STREAM_FAILED_DETAIL
-            ? (yield* logStreamFailure(context, first?.cause, first?.detail)).words
-            : first.detail;
-        yield* emitRuntimeError(context, message, {
-          failureCount: failures.length,
-          failureTags: failures.map((failure) => failure._tag),
-        });
-        yield* completeTurn(context, "failed", message);
+    if (Exit.isFailure(exit) && isClaudeInterruptedCause(exit.cause)) {
+      if (context.turnState) {
+        yield* completeTurn(context, "interrupted", "Claude runtime interrupted.");
       }
     } else {
-      // The CLI ended its stream by itself: nothing stopped it from here.
-      const failure = yield* logStreamFailure(context, undefined, "Claude runtime stream ended.");
+      // The stream ended without a stop from here: Claude Code's stream died
+      // (its error), or it ended by itself (none), or our own reading of it
+      // failed (a defect, or a failure to handle an event) — that one is ours.
+      const failures = Exit.isFailure(exit)
+        ? exit.cause.reasons.flatMap((reason) => (Cause.isFailReason(reason) ? [reason.error] : []))
+        : [];
+      const defects = Exit.isFailure(exit)
+        ? exit.cause.reasons.flatMap((reason) => (Cause.isDieReason(reason) ? [reason.defect] : []))
+        : [];
+      const first = failures[0];
+      const ours =
+        defects.length > 0 || (first !== undefined && first.detail !== STREAM_FAILED_DETAIL);
+      const failure = yield* logStreamFailure(context, {
+        error: defects[0] ?? first?.cause,
+        detail: first?.detail ?? (Exit.isFailure(exit) ? "defect" : "Claude runtime stream ended."),
+        defect: ours,
+      });
+      // The person is told why, and the turn fails with it: its reason stands
+      // as the thread's last error. With no turn, its helpers stop with it
+      // (`stopSessionInternal`) and the person is told all the same; a stream
+      // that ended by itself with nothing at work is only logged.
+      const told =
+        Exit.isFailure(exit) || context.turnState !== undefined || context.liveTaskIds.size > 0;
+      if (told)
+        yield* emitRuntimeError(context, failure.words, {
+          failureCount: failures.length + defects.length,
+          failureTags: [...failures.map((failure) => failure._tag), ...defects.map(() => "Defect")],
+        });
       if (context.turnState) {
-        yield* completeTurn(context, "interrupted", failure.words);
-      } else if (context.liveTaskIds.size > 0) {
-        // Its helpers stop with it (`stopSessionInternal`): the person is told why.
-        yield* emitRuntimeError(context, failure.words);
+        yield* completeTurn(context, "failed", failure.words);
       }
     }
 
@@ -5514,6 +5537,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
   const sendTurn: ClaudeAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
     const context = yield* requireSession(input.threadId);
+    // What the CLI wrote before this turn is no cause of how this one ends.
+    context.stderrTail.reset();
     const modelCatalog = yield* modelCatalogEffect;
     const selectedModel = yield* claudeTurnModelSelection(
       threadRegistries,
