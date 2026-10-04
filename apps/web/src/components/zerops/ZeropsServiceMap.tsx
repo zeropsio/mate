@@ -167,15 +167,14 @@ function ServiceHeader({
         </span>
         {portLabel === undefined && aside === undefined ? null : (
           <div
-            className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm leading-snug"
+            className="mt-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2 text-xs leading-snug text-muted-foreground"
             data-zerops-service-ports
           >
+            {/* One size for the port and what it is: they are one fact's two halves. */}
             {portLabel === undefined ? null : (
-              <span className="min-w-0 text-muted-foreground">{portLabel}</span>
+              <span className="min-w-0 tabular-nums">{portLabel}</span>
             )}
-            {aside === undefined ? null : (
-              <span className="text-xs text-muted-foreground">{aside}</span>
-            )}
+            {aside === undefined ? null : <span>{aside}</span>}
           </div>
         )}
       </div>
