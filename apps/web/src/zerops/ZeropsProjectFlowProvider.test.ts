@@ -405,7 +405,7 @@ describe("joinProjectFlows", () => {
       ],
     },
     {
-      name: "the newest's production deploy failed after its tag: it reads Deploy failed",
+      name: "the production deploy the newest release's rollout asked for failed: it reads Deploy failed",
       latest: record(MERGED, "failed", "2026-09-24T10:01:00Z"),
       runs: RUNNING,
       rows: [

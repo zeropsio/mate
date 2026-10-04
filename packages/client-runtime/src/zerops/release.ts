@@ -46,6 +46,7 @@ import {
   type ReleaseRollout,
 } from "@t3tools/shared/hqRelease";
 
+import type { ReleaseDeployFailure } from "./groupDeploys.ts";
 import type { Moved, MovedCommits } from "./releaseCompare.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
 import { sameCommit } from "./versionName.ts";
@@ -405,51 +406,25 @@ export function nameStopByRelease(row: EnvironmentRow, tag: string): Environment
 }
 
 /**
- * The key `failed` (`ReleaseDeploys.failed`) holds a service's failure of `commit` under: the
- * version name spelled the commit whole or short, and either is the same commit.
- */
-function failedKeyOf(
-  failed: ReadonlyMap<string, string>,
-  service: string,
-  commit: string,
-): string | undefined {
-  const exact = `${service}@${commit}`;
-  if (failed.has(exact)) return exact;
-  for (const key of failed.keys()) {
-    const at = key.lastIndexOf("@");
-    if (key.slice(0, at) === service && sameCommit(key.slice(at + 1), commit)) return key;
-  }
-  return undefined;
-}
-
-/**
- * The commit the release lists, and production does not run, that failed its production deploy
- * after the release was made; `undefined` for none. A failure posted before it belongs to an
- * earlier release of the same commit, and one a newer release listing the commit was made before
- * belongs to that one: HQ deploys production to the newest release alone.
+ * The commit the release lists, and production does not run, whose production deploy failed as
+ * that release's (`ReleaseDeployFailure`: its rollout's job, or one it left a service out for);
+ * `undefined` for none. Another release's failure of the same commit is that release's.
  */
 function deployFailed(
   release: FlowRelease,
-  newer: ReadonlyArray<FlowRelease>,
   production: ReadonlyMap<string, string>,
-  failed: ReadonlyMap<string, string>,
+  failed: ReadonlyArray<ReleaseDeployFailure>,
 ): ReleaseEntry | undefined {
-  const madeBy = (listing: FlowRelease, entry: ReleaseEntry, failedMs: number) =>
-    Date.parse(listing.taggedAt) <= failedMs &&
-    listing.entries.some(
-      (listed) => listed.service === entry.service && sameCommit(listed.commit, entry.commit),
-    );
-  return release.entries.find((entry) => {
-    if (sameCommit(production.get(entry.service), entry.commit)) return false;
-    const key = failedKeyOf(failed, entry.service, entry.commit);
-    const failedAt = key === undefined ? undefined : failed.get(key);
-    if (failedAt === undefined) return false;
-    const failedMs = Date.parse(failedAt);
-    return (
-      madeBy(release, entry, failedMs) &&
-      !newer.some((listing) => listing.verdict !== "refused" && madeBy(listing, entry, failedMs))
-    );
-  });
+  return release.entries.find(
+    (entry) =>
+      !sameCommit(production.get(entry.service), entry.commit) &&
+      failed.some(
+        (failure) =>
+          failure.tag === release.tag &&
+          failure.service === entry.service &&
+          (sameCommit(failure.sha, entry.commit) || sameCommit(entry.commit, failure.sha)),
+      ),
+  );
 }
 
 /**
@@ -468,11 +443,9 @@ export function releaseRow(
   deploys: {
     /** `{service: sha}` production runs, whole or short (`deployedCommit`). */
     readonly production: ReadonlyMap<string, string>;
-    /** `{service}@{sha}` → when its production deploy failed (`ReleaseDeploys.failed`). */
-    readonly failed: ReadonlyMap<string, string>;
+    /** The production deploys that failed, each as a release's (`ReleaseDeploys.failed`). */
+    readonly failed: ReadonlyArray<ReleaseDeployFailure>;
     readonly live: boolean;
-    /** The releases newer than this one, newest first: a failure is the newest's to list it. */
-    readonly newer: ReadonlyArray<FlowRelease>;
   },
 ): FlowReleaseRow {
   const line =
@@ -489,7 +462,7 @@ export function releaseRow(
   const failedEntry =
     release.verdict === "refused"
       ? undefined
-      : deployFailed(release, deploys.newer, deploys.production, deploys.failed);
+      : deployFailed(release, deploys.production, deploys.failed);
   if (failedEntry !== undefined)
     return {
       ...release,
