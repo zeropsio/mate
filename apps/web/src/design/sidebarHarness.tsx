@@ -63,6 +63,7 @@ import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environ
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
+import { changeUrl } from "@t3tools/shared/hqChanges";
 import type { MateThreadKind } from "@t3tools/shared/mateLink";
 import { EllipsisIcon } from "lucide-react";
 
@@ -132,6 +133,7 @@ import type { ZeropsSessionValue } from "~/zerops/ZeropsSessionProvider";
 import type { AppRouter } from "~/router";
 
 import "../index.css";
+import { HARNESS_HQ } from "./reviewHarnessPictures";
 import { COMING_PHASES, comingMenu, type ComingPhase } from "./comingMenuFixtures";
 import {
   PLAN_ACTIVE,
@@ -508,11 +510,14 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
 function pull(
   input: Partial<FlowPullRequest> & { number: number; mateProjectId: string },
 ): FlowPullRequest {
+  const repository = input.repository ?? "appdev";
+  // Its application, which a Mate's id here begins with.
+  const appId = input.mateProjectId.split("-")[0] ?? input.mateProjectId;
   return {
-    repository: "appdev",
+    repository,
     title: "Change",
     kind: "code",
-    url: "https://gitea.example/links/appdev/pulls/1",
+    url: changeUrl(HARNESS_HQ, appId, repository, input.number),
     mergeability: "mergeable",
     behind: false,
     merged: false,
@@ -525,7 +530,7 @@ function pull(
   };
 }
 
-/** A pull request whose branch has fallen behind `main` — Gitea refuses it. */
+/** A change whose branch has fallen behind `main` and conflicts with it: HQ will not merge it. */
 const behindPull = (input: Partial<FlowPullRequest> & { number: number; mateProjectId: string }) =>
   pull({ mergeability: "conflicting", ...input });
 
@@ -556,7 +561,6 @@ function environment(
   };
 }
 
-/** A made-up Gitea, so the version reads as the link it is in the product. */
 /** What a release would put live, as `releaseContents` carries it: one comparison of `appdev`. */
 const changes = (...subjects: ReadonlyArray<string>) => [
   {
