@@ -104,6 +104,38 @@ describe("CrewEngine endings", () => {
       ),
   );
 
+  it.live("Try again gives a task its one re-queue after a broken-off turn back", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () => undefined);
+        yield* endsWith(world, thread, "api_error");
+        yield* snapshotWhere((current) => current.board.tasks[0]?.attempts === 2);
+        yield* world.publish(spiEvent("turn.started", thread, {}));
+        yield* endsWith(world, thread, "model_error");
+        const parked = yield* snapshotWhere(
+          (current) => current.board.tasks[0]?.state === "parked",
+        );
+        yield* command({ _tag: "taskRetry", taskId: parked.board.tasks[0]!.id });
+        const retried = yield* snapshotWhere(
+          (current) =>
+            current.board.tasks[0]?.state === "working" && current.board.tasks[0]?.attempts === 3,
+        );
+        const current = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.threadId;
+        yield* world.publish(spiEvent("turn.started", current, {}));
+        yield* endsWith(world, current, "api_error");
+        const again = yield* snapshotWhere(
+          (frame) =>
+            frame.board.tasks[0]?.state === "working" && frame.board.tasks[0]?.attempts === 4,
+        );
+        assert.deepStrictEqual(
+          [retried.board.tasks[0]!.attempts, again.board.tasks[0]!.state],
+          [3, "working"],
+        );
+      }),
+    ),
+  );
+
   it.live("in a run, a new conversation after an overflow carries the task on at once", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {

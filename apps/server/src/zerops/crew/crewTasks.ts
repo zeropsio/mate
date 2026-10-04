@@ -37,6 +37,7 @@ import type {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { refreshLaneStats } from "./crewLanding.ts";
@@ -387,6 +388,13 @@ const optionalReason = (reason: string | undefined) =>
 const optionalApply = (apply: ReturnType<CrewCore["memory"]["applyChoices"]["get"]>) =>
   apply === undefined ? {} : { apply };
 
+/** The crew log's record of a Try again: the attempt it started, from which re-queues count again. */
+const RETRIED_LOG = "retried";
+const decodeRetried = Schema.decodeUnknownOption(
+  Schema.Struct({ task: Schema.String, attempt: Schema.Number }),
+);
+const readRetried = (payload: unknown) => Option.getOrUndefined(decodeRetried(payload));
+
 /**
  * An infrastructure ending (the provider or the session setup failed): the attempt ends with `detail`, and the task
  * queues again once — the second time it stops (ARCHITECTURE §4 *Assignment*).
@@ -405,7 +413,14 @@ export const requeueTask = (core: CrewCore, task: CrewAssignmentRow, detail: str
         }),
       );
     }
-    const requeues = attempts.filter((row) => row.ending === "infrastructure").length;
+    // A Try again starts a fresh budget: only the attempts since the last one count.
+    const retried = (yield* asRefusal(core.store.logOf(CREW_ID, [RETRIED_LOG])))
+      .map((entry) => readRetried(entry.payload))
+      .filter((entry) => entry?.task === task.assignment)
+      .reduce((latest, entry) => Math.max(latest, entry?.attempt ?? 0), 0);
+    const requeues = attempts.filter(
+      (row) => row.attempt >= retried && row.ending === "infrastructure",
+    ).length;
     return yield* stepTask(core, task, { type: "infrastructure-ending" }, undefined, { requeues });
   });
 
@@ -1036,6 +1051,16 @@ export const retryTask = (core: CrewCore, principal: TurnPrincipal, taskId: stri
       row.state === "queued"
         ? row
         : yield* stepTask(core, row, { type: "retry" }, (next) => ({ ...next, waiting: null }));
+    if (queued !== row)
+      yield* asRefusal(
+        core.store.appendLog({
+          crew: CREW_ID,
+          run: null,
+          at: yield* core.now,
+          kind: RETRIED_LOG,
+          payload: { task: queued.assignment, attempt: queued.attempt },
+        }),
+      );
     yield* pump(core, row.member, { taskId: queued.assignment, principal });
   });
 

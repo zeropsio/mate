@@ -561,6 +561,7 @@ export const taskTransition = (task: CrewTask, event: TaskEvent): TaskStep => {
             attempt: counters.attempt + 1,
             reworks: 0,
             remerges: 0,
+            requeues: 0,
             rotations: 0,
           })
         : illegal;

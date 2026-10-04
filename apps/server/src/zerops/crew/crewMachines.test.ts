@@ -545,7 +545,7 @@ describe("taskTransition", () => {
       "parked",
       c({ attempt: 2, reworks: 3, remerges: 2, requeues: 1, rotations: 2 }),
       { type: "retry" },
-      moved("queued", c({ attempt: 3, reworks: 0, remerges: 0, requeues: 1, rotations: 0 })),
+      moved("queued", c({ attempt: 3, reworks: 0, remerges: 0, requeues: 0, rotations: 0 })),
     ],
     ...(
       [
