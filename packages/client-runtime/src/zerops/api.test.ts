@@ -1052,17 +1052,25 @@ describe("ZeropsApiClient project reads", () => {
       grants: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
       written: null,
     },
-    // Until the harden finds the key by the id its Mate enrolled with HQ, a key that reaches
-    // another project too is not taken for the Mate's (step A, A11).
+    // ADR 0003's fallout: a Mate's key an earlier client widened to its group with READ_ONLY on
+    // siblings is found by Finish setup's harden alone, and reaches only its own project after.
     {
-      case: "a key widened to the group, left as it is",
+      case: "a key widened to the group: its siblings taken off",
       grants: [
         { projectId: "project-1", roleCode: "ADMIN" },
         { projectId: "project-stage", roleCode: "READ_ONLY" },
       ],
+      written: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+    },
+    {
+      case: "a key that writes another project too, left as it is",
+      grants: [
+        { projectId: "project-1", roleCode: "ADMIN" },
+        { projectId: "project-stage", roleCode: "ADMIN" },
+      ],
       written: null,
     },
-  ])("hardening lowers only the Mate's own grant: $case", async ({ grants, written }) => {
+  ])("hardening leaves the Mate's key on its own project: $case", async ({ grants, written }) => {
     const token = { id: "token-1", name: "zcp-project-1", roleCode: "NO_ACCESS", projects: grants };
     const stub = recordingFetch((request) => {
       if (request.url.endsWith("/integration-token/list"))
