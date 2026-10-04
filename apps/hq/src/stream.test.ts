@@ -85,6 +85,7 @@ const STRUCTURE: StructureRead = {
         madeBy: "owner",
         standupRequestedBy: "dev",
         closedOff: false,
+        keyWider: false,
       },
     },
   ],

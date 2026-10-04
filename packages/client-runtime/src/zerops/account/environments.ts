@@ -69,6 +69,7 @@ import {
   closeOffGate,
   ZCP_YOUNG_MS,
   zcpYoung,
+  type CloseOffHold,
   type CloseOffWord,
 } from "../environments/closeOff.ts";
 import { candidateListingsAtom, type OrganizationListing } from "../environments/listings.ts";
@@ -226,10 +227,17 @@ export interface AccountEnvironmentPorts {
     readonly read: () => CloseOffWord | null;
     readonly subscribe: (listener: () => void) => () => void;
   };
+  /**
+   * The projects this browser knows are not closed off yet — a press here that runs, or stopped
+   * before its close-off: where HQ says nothing, only these are held (`closeOffGate`).
+   */
+  readonly closeOffPending?: {
+    readonly read: () => ReadonlySet<string>;
+    readonly subscribe: (listener: () => void) => () => void;
+  };
 }
 
-/** Why a Mate is held for its close-off: known not closed off, or not known yet (`closeOffGate`). */
-export type CloseOffHold = "open" | "unsure";
+export type { CloseOffHold };
 
 // ── What surfaces read and ask ───────────────────────────────────────────────────────────────
 
@@ -858,12 +866,14 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
   /**
    * The close-off gate over every listed Mate (`closeOffGate`): the held ones take no lease's
-   * demand (`ExchangeDriver.setCloseOffHeld`). A young container held while nothing is known is
-   * read again once it ages past a press's hands.
+   * demand (`ExchangeDriver.setCloseOffHeld`). A young container held while the stream cannot say
+   * its marker is read again once it ages past a press's hands.
    */
   const updateCloseOff = () => {
-    if (stores === null || closed || ports.closeOff === undefined) return;
-    const word = ports.closeOff.read();
+    if (stores === null || closed) return;
+    if (ports.closeOff === undefined && ports.closeOffPending === undefined) return;
+    const word = ports.closeOff?.read() ?? null;
+    const pending = ports.closeOffPending?.read() ?? new Set<string>();
     const nowMs = ports.clock.now().wall;
     const followed = new Set<string>();
     const holds = new Map<string, CloseOffHold>();
@@ -872,7 +882,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       if (row.service === undefined) continue;
       const project = projectRefOf(row.project.id);
       if (project === undefined) continue;
-      const closedOff = closedOffOf(word, project.organization.organizationId, row.project.id);
+      const closedOff = closedOffOf(
+        word,
+        project.organization.organizationId,
+        row.project.id,
+        row.project.tagList,
+      );
       if (closedOff === true) continue;
       const serviceId = row.service.id;
       followed.add(serviceId);
@@ -901,10 +916,15 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         entry = held;
       }
       const young = zcpYoung(row.service.created, nowMs);
-      const gate = closeOffGate({ marker: entry.marker, closedOff, young });
+      const gate = closeOffGate({
+        marker: entry.marker,
+        closedOff,
+        young,
+        pendingHere: pending.has(row.project.id),
+      });
       if (gate === "connect") continue;
       if (holds.get(row.project.id) !== "open") holds.set(row.project.id, gate);
-      if (gate === "unsure" && young) {
+      if (gate === "checking" && entry.marker === "unknown" && young) {
         const at = Date.parse(row.service.created ?? "") + ZCP_YOUNG_MS;
         ages = ages === null ? at : Math.min(ages, at);
       }
@@ -1043,6 +1063,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       ports.online?.subscribe(updateOnline) ?? (() => undefined),
       ports.hqOrganization?.subscribe(updateOnline) ?? (() => undefined),
       ports.closeOff?.subscribe(updateCloseOff) ?? (() => undefined),
+      ports.closeOffPending?.subscribe(updateCloseOff) ?? (() => undefined),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;

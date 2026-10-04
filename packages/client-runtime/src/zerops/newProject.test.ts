@@ -486,6 +486,30 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     expect(importOf(requests).serviceImportYaml).toContain(`ZCP_API_KEY: "${REGENERATED_KEY}"`);
   });
 
+  // Security review 7: a `zcp-` key that holds more than READ_ONLY elsewhere is no Mate's key to
+  // reuse: it is left as it is, and the press mints a new one.
+  it("mints a new key beside one that may write another project, never stripping it", async () => {
+    const { client, requests } = platformClient({
+      tokens: [
+        {
+          id: "token-old",
+          name: "zcp-Acme Docs - Ada",
+          roleCode: "NO_ACCESS",
+          projects: [
+            { projectId: "project-9", roleCode: "BASIC_USER" },
+            { projectId: "project-prod", roleCode: "BASIC_USER" },
+          ],
+        },
+      ],
+    });
+
+    await client.importDevelopmentContainer(INPUT);
+
+    const writes = writesOf(requests);
+    expect(writes).toContain("POST /client/org-1/integration-token");
+    expect(writes.some((write) => write.includes("token-old"))).toBe(false);
+  });
+
   // ADR 0003: a key the press reuses reaches its own project alone after the write.
   it("lowers a reused key still ADMIN on its project, taking off the siblings it reads", async () => {
     const { client, requests } = platformClient({

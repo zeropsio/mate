@@ -60,7 +60,7 @@ const project = (id: string, userRoles: ZeropsProject["userRoles"] = []): Zerops
 type Org = Omit<OrgView, "freshness">;
 
 /** A Mate's birth before anything marked it. */
-const UNBORN = { standupRequestedBy: null, closedOff: false } as const;
+const UNBORN = { standupRequestedBy: null, closedOff: false, keyWider: false } as const;
 
 const VIEW: Org = {
   orgId: "ORG",
@@ -854,6 +854,7 @@ describe("structure", () => {
                 madeBy: null,
                 standupRequestedBy: null,
                 closedOff: true,
+                keyWider: false,
               });
               assert.deepStrictEqual(yield* mateOf("P_OWN"), {
                 name: "name of P_OWN",
@@ -894,6 +895,7 @@ describe("structure", () => {
             madeBy: "owner",
             standupRequestedBy: "owner",
             closedOff: false,
+            keyWider: false,
           });
 
           const told = yield* Stream.runHead(Stream.drop(structure.changes, 1)).pipe(
@@ -909,6 +911,7 @@ describe("structure", () => {
             madeBy: "owner",
             standupRequestedBy: "owner",
             closedOff: true,
+            keyWider: false,
           });
         }),
       ),
@@ -927,7 +930,7 @@ describe("structure", () => {
               structure.read("reader"),
               (read) => read.ungrouped[0]?.mate.keyWider,
             );
-            assert.isUndefined(yield* keyWider);
+            assert.isFalse(yield* keyWider);
 
             const told = yield* Stream.runHead(Stream.drop(structure.changes, 1)).pipe(
               Effect.forkChild,

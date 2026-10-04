@@ -100,7 +100,8 @@ export function makeProjectTagWriter(options: {
         const { signal, beforeWrite } = writeOptions;
         const project = await source.fetchProject(projectId, signal);
         if (project.name === name) return { kind: "unchanged", project };
-        // Every tag the fresh read holds goes back as it is: a rename writes no tag.
+        // Every tag the fresh read — under the lock, just before the PUT — holds goes back as it
+        // is: a rename writes no tag.
         await source.writeProject(
           project,
           { name, tagList: project.tagList ?? [] },
@@ -109,6 +110,9 @@ export function makeProjectTagWriter(options: {
         );
         const confirmed = await source.fetchProject(projectId, signal);
         if (confirmed.name !== name) throw replacedTooOften("name");
+        // Another record written over ours may have dropped the Mate's marker: said, never kept.
+        const marked = (tags: ReadonlyArray<string> | undefined) => tags?.includes("mate") === true;
+        if (marked(project.tagList) && !marked(confirmed.tagList)) throw replacedTooOften("tags");
         return { kind: "written", project: confirmed };
       }),
   };

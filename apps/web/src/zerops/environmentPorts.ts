@@ -76,7 +76,7 @@ import {
 } from "./keptSessions";
 import { mateDescriptors } from "./mateDescriptors";
 import { makeDoorCaps } from "./doorCaps";
-import { pressesInFlight } from "./matePress";
+import { closeOffPendingProjects, pressesInFlight } from "./matePress";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
@@ -585,7 +585,9 @@ export function webEnvironmentPorts(input: {
     // A Mate HQ holds online is up: its container is never probed.
     online: onlinePort(registry),
     hqOrganization: hqOrganizationPort(registry),
-    // Nobody is let into a Mate before its project is closed off.
+    // Nobody is let into a Mate before its project is closed off: HQ's word, and where HQ says
+    // nothing, what this browser's own presses know.
     closeOff: closeOffPort(registry),
+    closeOffPending: closeOffPendingProjects,
   };
 }

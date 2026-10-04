@@ -260,9 +260,10 @@ export interface MateView {
   readonly closedOff: boolean;
   /**
    * The key it last named reads other projects too (`MateCredentials.keyWider`, ADR 0003's
-   * fallout): it needs Finish setup, whose harden takes those grants off. Absent where it does not.
+   * fallout): it needs Finish setup, whose harden takes those grants off. Always said, so a client
+   * tells a Core that keeps no such word — older than this field — by its absence.
    */
-  readonly keyWider?: true;
+  readonly keyWider: boolean;
 }
 
 export interface StructureRead {
@@ -1307,7 +1308,8 @@ export const structureLayer = (options: {
                      CASE WHEN m.project_id IS NULL THEN NULL ELSE jsonb_build_object(
                        'face', m.face, 'madeBy', m.made_by,
                        'standupRequestedBy', m.standup_requested_by,
-                       'closedOff', m.closed_off_at IS NOT NULL) || CASE WHEN m.key_wider_token_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('keyWider', true) END || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END || CASE WHEN m.name_source IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('nameSource', m.name_source) END END AS mate
+                       'closedOff', m.closed_off_at IS NOT NULL,
+                       'keyWider', m.key_wider_token_id IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END || CASE WHEN m.name_source IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('nameSource', m.name_source) END END AS mate
               FROM hq_app_project p LEFT JOIN hq_mate m USING (project_id)
               ORDER BY p.seq`;
             const alone = yield* sql<{
@@ -1317,7 +1319,8 @@ export const structureLayer = (options: {
               SELECT m.project_id, jsonb_build_object(
                        'face', m.face, 'madeBy', m.made_by,
                        'standupRequestedBy', m.standup_requested_by,
-                       'closedOff', m.closed_off_at IS NOT NULL) || CASE WHEN m.key_wider_token_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('keyWider', true) END || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END || CASE WHEN m.name_source IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('nameSource', m.name_source) END AS mate
+                       'closedOff', m.closed_off_at IS NOT NULL,
+                       'keyWider', m.key_wider_token_id IS NOT NULL) || CASE WHEN m.birth_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('birthId', m.birth_id::text) END || CASE WHEN m.signers = '{}'::jsonb THEN '{}'::jsonb ELSE jsonb_build_object('signers', m.signers) END || CASE WHEN m.name_source IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('nameSource', m.name_source) END AS mate
               FROM hq_mate m
               WHERE NOT EXISTS (SELECT 1 FROM hq_app_project p WHERE p.project_id = m.project_id)
               ORDER BY m.seq`;

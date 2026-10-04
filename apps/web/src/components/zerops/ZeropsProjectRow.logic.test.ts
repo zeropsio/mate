@@ -19,6 +19,8 @@ import {
   mateSetupOffered,
   releaseRowTone,
   zeropsReasonSentence,
+  hqRecordedProjects,
+  type PlainProjectEvidence,
   type ZeropsRowCandidate,
   type ZeropsRowInput,
 } from "./ZeropsProjectRow.logic";
@@ -275,24 +277,87 @@ describe("deriveZeropsRowAction", () => {
     // its Mate's record at HQ once HQ's structure is known (`setUpPlainProject`).
     const plain = (name: string, tagList: ReadonlyArray<string>): ZeropsRowCandidate => ({
       ...bare,
-      project: { ...bare.project, name, tagList: [...tagList] },
+      project: { ...bare.project, name, tagList: [...tagList], created: "2026-01-10T10:00:00Z" },
     });
     const PLAIN = { ...ALL, setUpPlainProject: true };
+    /** Nothing at HQ of it, and made before the organization's HQ was. */
+    const EVIDENCE: PlainProjectEvidence = {
+      hqRecords: new Set(),
+      hqAnchors: new Set(["hq-1"]),
+      hqBornAt: "2026-09-01T10:00:00Z",
+      local: new Set(),
+    };
+    const offered = (
+      candidate: ZeropsRowCandidate,
+      can: ZeropsRowInput["can"] = PLAIN,
+      plainEvidence: PlainProjectEvidence | "none" = EVIDENCE,
+    ) =>
+      deriveZeropsRowAction({
+        ...input(candidate, undefined, can),
+        ...(plainEvidence === "none" ? {} : { plainEvidence }),
+      }).kind;
 
     it.each([
       ["shop", []],
       ["central-prometheus", ["billing:team-a"]],
     ])("is offered on an existing plain project (%s)", (name, tagList) => {
-      expect(deriveZeropsRowAction(input(plain(name, tagList), undefined, PLAIN))).toEqual({
-        kind: "set-up-mate",
-        label: "Set up Mate",
-      });
+      expect(offered(plain(name, tagList))).toBe("set-up-mate");
     });
 
     it("is not offered on a plain project to whoever may not write its Mate's record", () => {
-      expect(deriveZeropsRowAction(input(plain("shop", []), undefined, ALL))).toEqual({
-        kind: "none",
-      });
+      expect(offered(plain("shop", []), ALL)).toBe("none");
+    });
+
+    // Security review 1 and 11: plain needs positive evidence. A stage or production 0.13 made
+    // carries no tag and attaches to HQ only later, so a project HQ holds any record of, one made
+    // since the organization's HQ, one this tab is making, the HQ itself — or one nothing can tell
+    // apart, its HQ not known — is never offered it.
+    const shop = plain("shop", []);
+    it.each([
+      { case: "HQ holds a record of it", evidence: { ...EVIDENCE, hqRecords: new Set(["bare"]) } },
+      {
+        case: "an HQ anchor names it, official or not",
+        evidence: { ...EVIDENCE, hqAnchors: new Set(["bare"]) },
+      },
+      {
+        case: "made since the organization's HQ",
+        evidence: { ...EVIDENCE, hqBornAt: "2026-01-01T00:00:00Z" },
+      },
+      { case: "the organization's HQ not known", evidence: { ...EVIDENCE, hqBornAt: undefined } },
+      { case: "this tab is making it", evidence: { ...EVIDENCE, local: new Set(["bare"]) } },
+      { case: "no evidence read at all", evidence: "none" as const },
+    ])("is not offered where $case", ({ evidence }) => {
+      expect(offered(shop, PLAIN, evidence)).toBe("none");
+    });
+
+    it("is not offered on a project named as the HQ is", () => {
+      expect(offered(plain("Headquarters", []))).toBe("none");
+    });
+
+    it("is not offered on a project of no known age", () => {
+      const ageless = { ...shop, project: { ...shop.project, created: undefined } } as never;
+      expect(offered(ageless)).toBe("none");
+    });
+
+    it("gathers every project HQ's structure holds any record of", () => {
+      expect(
+        [
+          ...hqRecordedProjects({
+            tools: [{ projectId: "p-tool", kind: "gitea" }],
+            ungrouped: [{ projectId: "p-lone", name: "", mate: { face: "" } }],
+            apps: [
+              {
+                id: "app",
+                name: "shop",
+                projects: [{ projectId: "p-placed", name: "", kind: "stage", mate: null }],
+                contents: { empty: false, deletingProjectIds: ["p-going"] },
+                environments: [{ projectId: "p-env" }],
+                births: [{ id: "b", face: "", projectId: "p-born" }],
+              },
+            ],
+          } as never),
+        ].sort(),
+      ).toEqual(["p-born", "p-env", "p-going", "p-lone", "p-placed", "p-tool"]);
     });
 
     it.each([
@@ -301,9 +366,7 @@ describe("deriveZeropsRowAction", () => {
       ["Imperial Titan - production", ["mate:g:foreign", "mate:role:prod"]],
       ["Headquarters", ["mate:hq"]],
     ])("does not offer to convert an environment an earlier group tagged (%s)", (name, tagList) => {
-      expect(deriveZeropsRowAction(input(plain(name, tagList), undefined, PLAIN))).toEqual({
-        kind: "none",
-      });
+      expect(offered(plain(name, tagList))).toBe("none");
     });
 
     it("does not offer it on a project HQ places as another application's environment", () => {
@@ -314,7 +377,7 @@ describe("deriveZeropsRowAction", () => {
           hq: { appId: "app-1", appName: "shop", kind: "stage", mate: null },
         },
       } as ZeropsRowCandidate;
-      expect(deriveZeropsRowAction(input(placed, undefined, PLAIN))).toEqual({ kind: "none" });
+      expect(offered(placed)).toBe("none");
     });
 
     it("is never offered to a tool, which has no container by design", () => {

@@ -28,6 +28,8 @@ import {
   type MateComingInput,
   HALF_MADE_LINE,
   HALF_MADE_OWNER_LINE,
+  AWAITING_HQ_LINE,
+  CHECKING_SETUP_LINE,
   NOT_CLOSED_OFF_LINE,
   NOT_CLOSED_OFF_OWNER_LINE,
   halfMadeFor,
@@ -141,7 +143,7 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
           group: "ready",
           service: { status: "ACTIVE", created: new Date(NOW - 3 * 60_000).toISOString() },
         },
-        closeOffOpen: true,
+        closeOffHold: "open",
         nowMs: NOW,
       },
       expected: {
@@ -159,7 +161,7 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
           group: "ready",
           service: { status: "ACTIVE", created: new Date(NOW - 30_000).toISOString() },
         },
-        closeOffOpen: true,
+        closeOffHold: "open",
         nowMs: NOW,
       },
       expected: { kind: "coming", line: COMING_UP_LINE },
@@ -172,7 +174,7 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
           group: "ready",
           service: { status: "ACTIVE", created: new Date(NOW - 3 * 60_000).toISOString() },
         },
-        closeOffOpen: true,
+        closeOffHold: "open",
         nowMs: NOW,
       },
       expected: {
@@ -181,6 +183,27 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
         ownerLine: NOT_CLOSED_OFF_OWNER_LINE,
         verb: "finish-setup",
       },
+    },
+    // Security review 4: every hold says why — never a Mate silently not opening.
+    {
+      case: "a Mate held while its container's marker is read",
+      input: {
+        press: undefined,
+        candidate: { group: "ready", service: { status: "ACTIVE" } },
+        closeOffHold: "checking",
+        nowMs: NOW,
+      },
+      expected: { kind: "coming", line: CHECKING_SETUP_LINE },
+    },
+    {
+      case: "a Mate held until HQ confirms its setup finished",
+      input: {
+        press: undefined,
+        candidate: { group: "ready", service: { status: "ACTIVE" } },
+        closeOffHold: "awaiting-hq",
+        nowMs: NOW,
+      },
+      expected: { kind: "coming", line: AWAITING_HQ_LINE },
     },
     {
       case: "a Mate this tab made, its press over, before the listing holds it",

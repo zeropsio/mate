@@ -18,7 +18,9 @@ import {
   FINISHED_SHOWN_MS,
   PRESSED_ELSEWHERE,
   connectedPresses,
+  closeOffHoldOf,
   closeOffOpenOf,
+  closeOffPendingOf,
   finishSetupRowLine,
   finishSetupRunning,
   birthPresses,
@@ -652,7 +654,7 @@ describe("a Finish setup that stopped", () => {
 describe("closeOffOpenOf — a Mate the close-off gate holds, as its row and page say it", () => {
   const holds = new Map([
     ["p-open", "open"],
-    ["p-unsure", "unsure"],
+    ["p-unsure", "checking"],
   ] as const);
   const press = (state: MatePressState): MatePress => ({
     projectId: "p-open",
@@ -686,6 +688,84 @@ describe("closeOffOpenOf — a Mate the close-off gate holds, as its row and pag
     },
   ])("$case: $want", ({ projectId, press, want }) => {
     expect(closeOffOpenOf(holds, projectId, press)).toBe(want);
+  });
+});
+
+// Security review 4: where HQ says nothing, only this browser's own knowledge that a project's
+// close-off has not happened holds its Mate — a press here that runs or stopped before it.
+describe("closeOffPendingOf — the projects this browser knows are not closed off yet", () => {
+  const CLOSE_OFF: EnvironmentCreationStep = { kind: "close-off" };
+  const IMPORT: EnvironmentCreationStep = { kind: "import-container", agents: [] };
+  const press = (
+    projectId: string,
+    state: MatePressState,
+    progress: ReadonlyArray<EnvironmentCreationStepProgress> | undefined,
+    container = true,
+  ): MatePress => ({
+    projectId,
+    organizationId: "org-acme",
+    startedAt: 0,
+    placement: null,
+    container,
+    state,
+    ...(progress === undefined ? {} : { progress }),
+  });
+  const STOPPED: MatePressState = { kind: "failed", step: "close-off", reason: "No.", retry: null };
+  it.each([
+    {
+      case: "stopped before its close-off",
+      press: press("p", STOPPED, [
+        { step: IMPORT, state: "done" },
+        { step: CLOSE_OFF, state: "failed" },
+      ]),
+      want: ["p"],
+    },
+    {
+      case: "running, its close-off ahead",
+      press: press("p", { kind: "pressing" }, [
+        { step: IMPORT, state: "running" },
+        { step: CLOSE_OFF, state: "queued" },
+      ]),
+      want: ["p"],
+    },
+    {
+      case: "bringing a container, its steps not said yet",
+      press: press("p", { kind: "pressing" }, undefined),
+      want: ["p"],
+    },
+    {
+      case: "closed off, then stopped after",
+      press: press("p", STOPPED, [{ step: CLOSE_OFF, state: "done" }]),
+      want: [],
+    },
+    {
+      case: "through",
+      press: press("p", { kind: "pressed" }, [{ step: CLOSE_OFF, state: "done" }]),
+      want: [],
+    },
+    {
+      case: "a stage's press, which closes nothing off",
+      press: press("p", { kind: "pressing" }, undefined, false),
+      want: [],
+    },
+  ])("$case", ({ press, want }) => {
+    expect([...closeOffPendingOf([press])]).toEqual(want);
+  });
+});
+
+describe("closeOffHoldOf — a hold, as the Mate's own view says it", () => {
+  const holds = new Map([
+    ["p-open", "open"],
+    ["p-checking", "checking"],
+    ["p-hq", "awaiting-hq"],
+  ] as const);
+  it.each([
+    { projectId: "p-open", want: "open" },
+    { projectId: "p-checking", want: "checking" },
+    { projectId: "p-hq", want: "awaiting-hq" },
+    { projectId: "p-none", want: undefined },
+  ])("$projectId: $want", ({ projectId, want }) => {
+    expect(closeOffHoldOf(holds, projectId, undefined)).toBe(want);
   });
 });
 
@@ -1256,6 +1336,24 @@ describe("finishMateSetup — the harden path", () => {
     forgetPress("p-old");
   });
 
+  // Security review 8: a stopped press this tab keeps resumes where it stopped, and its Finish
+  // setup still hardens first — the kept plan never skips the key's lowering.
+  it("hardens before it resumes a stopped press this tab keeps", async () => {
+    begin();
+    const calls: Array<string> = [];
+    settlePress(
+      "p-old",
+      { kind: "failed", step: "close-off", reason: "No.", retry: null },
+      async () => {
+        calls.push("resume");
+        return { ok: true, projectId: "p-old" } as never;
+      },
+    );
+    expect(await finish(() => true, calls)).toMatchObject({ ok: true });
+    expect(calls).toEqual(["harden", "resume"]);
+    forgetPress("p-old");
+  });
+
   // Key by id (audit K3): an adopted Mate's key is hardened by the id the Mate named to HQ, where
   // it named one; matched on the token list only where it did not.
   it("hardens an adopted Mate's key by the id HQ names", async () => {
@@ -1510,7 +1608,8 @@ describe("finishMateSetup — the harden path", () => {
         sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true, serviceName: "zcp" });
-    expect(calls).toEqual(["register", "container", "failed mark", "mark"]);
+    // Its harden runs first: a kept plan never skips the key's lowering (security review 8).
+    expect(calls).toEqual(["register", "container", "failed mark", "harden", "mark"]);
     forgetPress("p-old");
   });
 

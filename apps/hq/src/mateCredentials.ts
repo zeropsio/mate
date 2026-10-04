@@ -26,6 +26,7 @@
  */
 import * as NodeCrypto from "node:crypto";
 
+import { mateKeyReach } from "@t3tools/shared/mateKeyReach";
 import { can } from "@t3tools/shared/zeropsPermissions";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -217,11 +218,10 @@ export const mateCredentialsLayer = (options: {
           }),
         );
       /**
-       * What `keyTokenId` reaches, read by its id with HQ's own credential: `own` where its one
-       * grant is the project `projectId` — the Mate's key, never a deploy key, a person's token,
-       * nor another Mate's key; `wider` where it holds that project and reads others, nothing
-       * more — a Mate's key an earlier client widened, never taken for its key; `none` otherwise.
-       * A token Zerops refuses to show HQ, whatever its reason, is none.
+       * What `keyTokenId` reaches (`mateKeyReach`), read by its id with HQ's own credential: `own`,
+       * the Mate's key — never a deploy key, a person's token, nor another Mate's key; `wider`, a
+       * Mate's key an earlier client widened, never taken for its key; `none` otherwise. A token
+       * Zerops refuses to show HQ, whatever its reason, is none.
        */
       const keyReach = (projectId: string, keyTokenId: string) =>
         Effect.gen(function* () {
@@ -229,14 +229,8 @@ export const mateCredentialsLayer = (options: {
           const credential = yield* own;
           const grants = api.tokenProjects(orgId, keyTokenId);
           return yield* grants(credential).pipe(
-            Effect.map((projects): "own" | "wider" | "none" => {
-              if (projects.length === 1 && projects[0]?.projectId === projectId) return "own";
-              const holdsOwn = projects.some((grant) => grant.projectId === projectId);
-              const readsOthers = projects.every(
-                (grant) => grant.projectId === projectId || grant.roleCode === "READ_ONLY",
-              );
-              return holdsOwn && readsOthers && projects.length > 1 ? "wider" : "none";
-            }),
+            // The one definition the client's harden shares, so the two never loop.
+            Effect.map((projects) => mateKeyReach(projects, projectId)),
             Effect.catchTag("ZeropsRefused", () => Effect.succeed("none" as const)),
           );
         });
@@ -444,17 +438,17 @@ export const mateCredentialsLayer = (options: {
                 SELECT key_wider_token_id AS key FROM hq_mate WHERE project_id = ${projectId}`;
               const wider = row?.key ?? null;
               if (wider === null) return false;
+              // Only a positive reading of it narrow clears the word: a key now writing
+              // elsewhere, gone, or refused keeps it, and Zerops not answering fails the call.
               const reach = yield* keyReach(projectId, wider);
-              if (reach === "wider") return false;
+              if (reach !== "own") return false;
               return yield* leader.write(
                 Effect.gen(function* () {
                   // Its own key now: kept as the Mate's where its live credential names none.
-                  if (reach === "own") {
-                    yield* sql`
-                      UPDATE hq_mate_credential SET key_token_id = ${wider}
-                      WHERE project_id = ${projectId} AND revoked_at IS NULL
-                        AND key_token_id IS NULL`;
-                  }
+                  yield* sql`
+                    UPDATE hq_mate_credential SET key_token_id = ${wider}
+                    WHERE project_id = ${projectId} AND revoked_at IS NULL
+                      AND key_token_id IS NULL`;
                   const cleared = yield* sql`
                     UPDATE hq_mate SET key_wider_token_id = NULL
                     WHERE project_id = ${projectId} AND key_wider_token_id = ${wider}

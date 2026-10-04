@@ -175,10 +175,19 @@ describe("planMateKey", () => {
       projects: [{ projectId: DEV, roleCode: "BASIC_USER" }],
       written: null,
     },
+    // Security review 7: only a Mate's key is ever written (`mateKeyReach`).
     {
-      case: "a key with no grant on its own project is given one, and nothing else",
+      case: "a key with no grant on its own project is left as it is",
       projects: [{ projectId: STAGE, roleCode: "READ_ONLY" }],
-      written: [{ projectId: DEV, roleCode: "BASIC_USER" }],
+      written: null,
+    },
+    {
+      case: "a key that may write a sibling is left as it is",
+      projects: [
+        { projectId: DEV, roleCode: "ADMIN" },
+        { projectId: PROD, roleCode: "BASIC_USER" },
+      ],
+      written: null,
     },
   ] as const)("$case", ({ projects, written }) => {
     const token: ZeropsIntegrationToken = { ...MATE_TOKEN, projects };
@@ -353,5 +362,35 @@ describe("findHeldMateKey — the key a Mate's container holds", () => {
         "p-1",
       )?.id,
     ).toBe("k-new");
+  });
+
+  // Security review 7: a press reuses only a key that is its Mate's (`mateKeyReach`): its own
+  // project alone, or READ_ONLY siblings its reuse takes off. A `zcp-` key that holds more
+  // elsewhere is never reused — and so never stripped: the press mints a new one.
+  it.each([
+    {
+      case: "READ_ONLY on a sibling: reused",
+      grants: [{ projectId: "prod", roleCode: "READ_ONLY" as const }],
+      want: "k-1",
+    },
+    {
+      case: "a sibling it may write: never reused",
+      grants: [{ projectId: "prod", roleCode: "BASIC_USER" as const }],
+      want: undefined,
+    },
+    {
+      case: "a sibling it administers: never reused",
+      grants: [{ projectId: "prod", roleCode: "ADMIN" as const }],
+      want: undefined,
+    },
+  ])("$case", ({ grants, want }) => {
+    const widened = {
+      ...key("k-1", "2026-10-01T09:00:00Z"),
+      name: "zcp-shop",
+    };
+    expect(
+      newestMateKey([{ ...widened, projects: [...(widened.projects ?? []), ...grants] }], "p-1")
+        ?.id,
+    ).toBe(want);
   });
 });

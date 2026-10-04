@@ -180,6 +180,7 @@ describe("HQ API", () => {
                       madeBy: "owner",
                       standupRequestedBy: null,
                       closedOff: false,
+                      keyWider: false,
                     },
                   },
                 ],
@@ -897,6 +898,7 @@ describe("HQ API", () => {
                     madeBy: "owner",
                     standupRequestedBy: null,
                     closedOff: false,
+                    keyWider: false,
                   },
                 },
               ],
@@ -1119,6 +1121,7 @@ describe("HQ API", () => {
             madeBy: "owner",
             standupRequestedBy: null,
             closedOff: false,
+            keyWider: false,
           };
           const lone = [{ projectId: "P_MATE", name: "P_MATE", mate: adaView }];
 
