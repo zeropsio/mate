@@ -108,6 +108,51 @@ const observationOf = (state: ZeropsDataState, project?: ProjectRef): ViewObserv
   access: state.access,
 });
 
+type RuntimeListing = "services" | "processes";
+const runtimeViews = new WeakMap<
+  Interests,
+  Map<ProjectKey, Record<RuntimeListing, InterestsOfView>>
+>();
+
+/**
+ * Runtime listings depend on their service/process streams alone. Metadata, history and metrics
+ * can fail independently after a deploy; their failure must not stale a current runtime answer.
+ */
+function runtimeObservationOf(
+  state: ZeropsDataState,
+  project: ProjectRef,
+  listing: RuntimeListing,
+): ViewObservation {
+  let views = runtimeViews.get(state.interests);
+  if (views === undefined) {
+    views = new Map();
+    runtimeViews.set(state.interests, views);
+  }
+  const key = projectKeyOf(project);
+  let view = views.get(key);
+  if (view === undefined) {
+    const index = interestIndexOf(state.interests);
+    const services: InterestState[] = [];
+    const optionalServices: InterestState[] = [];
+    const processes: InterestState[] = [];
+    const optionalProcesses: InterestState[] = [];
+    for (const position of index.positions.get(key) ?? []) {
+      const desired = index.interests[position]!;
+      const kind = desired.descriptor.kind;
+      if (kind === "project-topology" || kind === "project-inventory")
+        (desired.required ? services : optionalServices).push(desired.interest);
+      if (kind === "project-topology" || kind === "project-activity")
+        (desired.required ? processes : optionalProcesses).push(desired.interest);
+    }
+    view = {
+      services: { required: services, optional: optionalServices },
+      processes: { required: processes, optional: optionalProcesses },
+    };
+    views.set(key, view);
+  }
+  return { ...view[listing], access: state.access };
+}
+
 const projectKnowledge = (
   record: ProjectRecord | undefined,
   ref: ProjectRef,
@@ -315,7 +360,7 @@ export function selectServicesOf(
       return ref?.kind === "service" ? [{ knowledge: "unresolved" as const, ref }] : [];
     }),
     query,
-    observation: observationOf(state, project),
+    observation: runtimeObservationOf(state, project, "services"),
     project,
   };
 }
@@ -374,7 +419,7 @@ export function selectRunningProcessesOf(
   return {
     value: running.map((record) => processKnowledge(record, record.ref)),
     query,
-    observation: observationOf(state, project),
+    observation: runtimeObservationOf(state, project, "processes"),
     project,
   };
 }
