@@ -1808,6 +1808,10 @@ export const makeCodexSessionRuntime = (
               payload: {
                 ...childIdentity,
                 item: notification.params.item,
+                // The child's call as its own step: which end of it, and the
+                // notification whole, so the adapter maps it as the parent's.
+                lifecycle: notification.method === "item/started" ? "started" : "completed",
+                notification: notification.params,
               },
             });
             return true;

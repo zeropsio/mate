@@ -204,6 +204,9 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
 function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
   // -1 means no highlight: it only appears on hover or arrow use.
   const [highlight, setHighlight] = useState(-1);
+  // Only an arrow key scrolls the lit card into view: a hovered one is
+  // already where the pointer is.
+  const arrowMovedRef = useRef(false);
 
   const availableActions = props.actions.filter((action) => action.available);
   const highlightIndex =
@@ -237,11 +240,13 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
     if (availableActions.length === 0) return;
     if (event.key === "ArrowDown" || event.key === "ArrowRight") {
       event.preventDefault();
+      arrowMovedRef.current = true;
       setHighlight((highlightIndex + 1) % availableActions.length);
       return;
     }
     if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
       event.preventDefault();
+      arrowMovedRef.current = true;
       setHighlight(
         highlightIndex === -1
           ? availableActions.length - 1
@@ -262,33 +267,51 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
 
   // Stable identity so React only runs this callback ref on mount/unmount;
   // an inline arrow would re-attach and re-focus on every render.
+  const launcherRef = useRef<HTMLDivElement | null>(null);
   const focusOnMount = useCallback((node: HTMLDivElement | null) => {
+    launcherRef.current = node;
     node?.focus();
   }, []);
+
+  // A one-column launcher outgrows a narrow panel and scrolls: the lit card
+  // comes into view, or Enter would open a card the person can't see.
+  useEffect(() => {
+    if (highlightIndex === -1 || !arrowMovedRef.current) return;
+    arrowMovedRef.current = false;
+    launcherRef.current
+      ?.querySelector("[data-surface-launcher-highlighted]")
+      ?.scrollIntoView({ block: "nearest" });
+  }, [highlightIndex]);
 
   const isHighlighted = (action: SurfaceAction) =>
     highlightIndex !== -1 && availableActions[highlightIndex] === action;
 
-  const actionIcon = (action: SurfaceAction, iconClassName = "size-4") => {
+  // The card's head row: icon, name, the live count beside the name (never on
+  // the icon, where it would cover both), and the key chip on the row's own
+  // centre line so every card's chip sits on one rhythm.
+  const cardHead = (action: SurfaceAction) => {
     const Icon = action.icon;
     return (
-      <span className="relative inline-flex shrink-0">
-        <Icon className={iconClassName} />
+      <span className="flex w-full min-w-0 items-center gap-2">
+        <Icon className="size-4 shrink-0" />
+        <span className="truncate font-medium text-sm">{action.label}</span>
         {action.badgeCount > 0 ? (
           <span
             aria-hidden
-            className="absolute -top-1.5 -right-2 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-info px-1 text-3xs font-semibold tabular-nums text-white"
+            className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-primary px-1 text-3xs font-semibold tabular-nums text-primary-foreground"
           >
             {action.badgeCount}
           </span>
         ) : null}
+        <Kbd className="ms-auto shrink-0">{action.shortcut}</Kbd>
       </span>
     );
   };
 
   const cardShellClass =
-    "rounded-lg border border-border/80 bg-card dark:border-transparent dark:shadow-none dark:inset-ring-1 dark:inset-ring-white/5";
+    "flex w-full min-w-0 flex-col items-start gap-1 rounded-lg border border-border/80 bg-card p-3 text-left @[22rem]:p-3.5 dark:border-transparent dark:shadow-none dark:inset-ring-1 dark:inset-ring-white/5";
   const highlightedCardClass = "bg-accent/60 dark:inset-ring-white/20";
+  const cardTextClass = "text-muted-foreground text-xs leading-relaxed";
 
   return (
     <div
@@ -298,63 +321,50 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
       aria-label="Open a surface"
       data-surface-launcher-keys={availableActions.map((action) => action.shortcut).join("")}
       className={cn(
-        "flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6 pt-6 outline-none",
+        "flex min-h-0 flex-1 overflow-y-auto px-4 pt-4 outline-none @container",
         // The panel topbar sits above this container; matching bottom padding
         // keeps the cards centered against the full panel, not the leftover.
         "pb-[calc(var(--workspace-topbar-height)+--spacing(6))]",
       )}
     >
-      <div className="relative w-full max-w-lg">
-        <div className="absolute inset-x-0 bottom-full mb-5 text-center">
+      {/* m-auto, not justify-center: a launcher taller than the panel scrolls
+          from its title instead of losing the top under the tab bar. */}
+      <div className="m-auto w-full max-w-lg">
+        <div className="mb-4 text-center">
           <h3 className="font-medium text-foreground text-sm">Open a surface</h3>
           <p className="mt-1 text-muted-foreground text-xs">
             Choose what to show in the right panel.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2 @[24rem]:grid-cols-2">
           {props.actions.map((action) =>
             action.available ? (
               <button
                 key={action.label}
                 type="button"
                 onClick={action.onClick}
-                onMouseEnter={() => setHighlight(availableActions.indexOf(action))}
+                // Move, not enter: a list the arrow keys scroll slides cards under a
+                // resting pointer, and an enter would take the highlight back.
+                onMouseMove={() => setHighlight(availableActions.indexOf(action))}
                 onMouseLeave={() =>
                   setHighlight((current) =>
                     current === availableActions.indexOf(action) ? -1 : current,
                   )
                 }
+                data-surface-launcher-highlighted={isHighlighted(action) ? "" : undefined}
                 className={cn(
-                  "relative flex w-full cursor-pointer flex-col items-start p-4 text-left transition hover:border-border hover:bg-accent/60",
+                  "cursor-pointer transition hover:border-border hover:bg-accent/60",
                   cardShellClass,
                   isHighlighted(action) && highlightedCardClass,
                 )}
               >
-                <Kbd className="absolute top-3 right-3">{action.shortcut}</Kbd>
-                <span className="flex items-center gap-2 pe-8">
-                  {actionIcon(action)}
-                  <span className="font-medium text-sm">{action.label}</span>
-                </span>
-                <span className="mt-1.5 text-muted-foreground text-xs leading-relaxed">
-                  {action.description}
-                </span>
+                {cardHead(action)}
+                <span className={cardTextClass}>{action.description}</span>
               </button>
             ) : (
-              <div
-                key={action.label}
-                className={cn(
-                  "relative flex w-full flex-col items-start p-4 opacity-40",
-                  cardShellClass,
-                )}
-              >
-                <Kbd className="absolute top-3 right-3">{action.shortcut}</Kbd>
-                <span className="flex items-center gap-2 pe-8">
-                  {actionIcon(action)}
-                  <span className="font-medium text-sm">{action.label}</span>
-                </span>
-                <span className="mt-1.5 text-muted-foreground text-xs leading-relaxed">
-                  {action.unavailableHint}
-                </span>
+              <div key={action.label} className={cn("opacity-40", cardShellClass)}>
+                {cardHead(action)}
+                <span className={cardTextClass}>{action.unavailableHint}</span>
               </div>
             ),
           )}

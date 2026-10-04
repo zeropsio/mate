@@ -194,6 +194,13 @@ function truncateDetail(value: string, limit = 180): string {
   return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
 }
 
+/**
+ * A helper's words kept whole — the prompt it was given and the report it
+ * gave back — up to a bound no reader needs past (a runaway report must not
+ * bloat every snapshot).
+ */
+const HELPER_WORDS_LIMIT = 16_000;
+
 function normalizeProposedPlanMarkdown(planMarkdown: string | undefined): string | undefined {
   const trimmed = planMarkdown?.trim();
   if (!trimmed) {
@@ -699,6 +706,9 @@ export function runtimeEventToActivities(
             ...(event.payload.description
               ? { detail: truncateDetail(event.payload.description) }
               : {}),
+            ...(event.payload.prompt
+              ? { prompt: truncateDetail(event.payload.prompt, HELPER_WORDS_LIMIT) }
+              : {}),
             ...taskLinkageActivityFields(event.payload as Record<string, unknown>),
           },
           turnId: toTurnId(event.turnId) ?? null,
@@ -850,6 +860,7 @@ export function runtimeEventToActivities(
     }
 
     case "task.completed": {
+      const linkage = taskLinkageActivityFields(event.payload as Record<string, unknown>);
       return [
         {
           id: event.eventId,
@@ -874,8 +885,12 @@ export function runtimeEventToActivities(
                   detail: truncateDetail(event.payload.summary),
                 }
               : {}),
+            // A helper's summary is its whole report: kept beside the one-line cut.
+            ...(event.payload.summary && linkage.agentKind === "agent"
+              ? { result: truncateDetail(event.payload.summary, HELPER_WORDS_LIMIT) }
+              : {}),
             ...(event.payload.usage !== undefined ? { usage: event.payload.usage } : {}),
-            ...taskLinkageActivityFields(event.payload as Record<string, unknown>),
+            ...linkage,
           },
           turnId: toTurnId(event.turnId) ?? null,
           ...maybeSequence,

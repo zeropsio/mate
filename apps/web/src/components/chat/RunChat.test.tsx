@@ -1,4 +1,5 @@
-import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
+import { EnvironmentId, MessageId, ThreadId, TurnId } from "@t3tools/contracts";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -11,6 +12,7 @@ import type { WorkLogEntry } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
 import { foldsLikeAMessage, RunChat } from "./RunChat";
+import { useHelperFocus } from "./helperFocus";
 import { SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
 import {
@@ -1272,12 +1274,9 @@ describe("RunChat, as the person uses it", () => {
     expect(rising(renderer)).toBe(0);
   });
 
-  // A helper's one-line report opens only when the card's width cuts it, as
-  // measured on the page (A7, E17).
-  it.each([
-    { name: "cut at the card's width", scrollWidth: 480, opens: true },
-    { name: "whole on its line", scrollWidth: 120, opens: false },
-  ])("opens a helper's one-line report only when it is $name", ({ scrollWidth, opens }) => {
+  // A helper's row says what it came to, and opens its own card in the
+  // helpers panel: its steps, its clock, its report whole.
+  it("opens a helper's own card in the helpers panel", () => {
     const agent = {
       ...emptyAgentPanelModel(),
       directAgents: [
@@ -1305,6 +1304,10 @@ describe("RunChat, as the person uses it", () => {
           phases: [],
           runHandles: null,
           recentActivity: [],
+          prompt: null,
+          toolUseId: null,
+          spawnedBy: null,
+          liveCall: null,
           firstSeenAt: at(1),
           startedAt: at(1),
           completedAt: at(2),
@@ -1323,21 +1326,25 @@ describe("RunChat, as the person uses it", () => {
         agentSpawn: { workflowId: null, agentTaskIds: ["a1"] },
       },
     };
+    const onOpenAgents = vi.fn();
+    const threadRef = {
+      environmentId: EnvironmentId.make("environment-local"),
+      threadId: ThreadId.make("thread-1"),
+    };
+    const seen: Array<string | null> = [];
+    function Focus() {
+      seen.push(useHelperFocus(scopedThreadKey(threadRef))?.helperId ?? null);
+      return null;
+    }
     let renderer!: ReactTestRenderer;
     act(() => {
       renderer = mounted(
-        <TimelineRowCtx value={{ ...SHARED, agentPanelModel: agent }}>
+        <TimelineRowCtx value={{ ...SHARED, agentPanelModel: agent, threadRef, onOpenAgents }}>
           <TimelineRowActivityCtx value={ACTIVITY}>
             <RunChat row={record([helpers])} />
+            <Focus />
           </TimelineRowActivityCtx>
         </TimelineRowCtx>,
-        {
-          // The preview's line, as the page lays it out.
-          createNodeMock: (element) =>
-            element.type === "span"
-              ? { scrollWidth, clientWidth: 200, scrollHeight: 20, clientHeight: 20 }
-              : null,
-        },
       );
     });
     act(() =>
@@ -1345,15 +1352,16 @@ describe("RunChat, as the person uses it", () => {
         currentTarget: { closest: () => null },
       }),
     );
-    // The helper's own line: a button where it opens onto its report.
-    const title = renderer.root.find(
-      (node) => node.type === "span" && node.children.includes("Check the schema"),
-    );
-    let holder = title.parent;
-    while (holder !== null && holder.type !== "button" && holder.type !== "li") {
-      holder = holder.parent;
-    }
-    expect(holder?.type === "button").toBe(opens);
+    expect(
+      renderer.root.findAll(
+        (node) =>
+          typeof node.children[0] === "string" &&
+          node.children[0] === "Wrote three tests for the schema and its migrations",
+      ).length,
+    ).toBeGreaterThan(0);
+    act(() => button(renderer, "Check the schema: Done. Open its work").props.onClick());
+    expect(onOpenAgents).toHaveBeenCalledTimes(1);
+    expect(seen.at(-1)).toBe("a1");
   });
 
   it("opens what a step printed under its words, in place, and closes it again", () => {
