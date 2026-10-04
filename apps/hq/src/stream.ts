@@ -232,7 +232,9 @@ export const structureMessages = <R>(
           ...named,
           ...[...mates.values()].flatMap((entry) =>
             Object.values(entry.overview?.logins ?? {}).flatMap((login) =>
-              login.signedInBy === null ? [] : [login.signedInBy],
+              [login.signedInBy, login.lastSignedInBy].filter(
+                (id): id is string => typeof id === "string" && id.length > 0,
+              ),
             ),
           ),
         ]);

@@ -45,6 +45,8 @@ export interface MateOverviewInput {
   readonly threads: ReadonlyArray<OrchestrationThreadShell>;
   /** The agent-auth snapshot the client reads, combined (`combineAgentAuth`). */
   readonly auth: ZeropsAgentAuthSnapshot;
+  /** Display history from the server, separate from current credential authority. */
+  readonly lastSigners?: Readonly<Record<string, string>>;
   /** The crew engine's snapshot; none before its first. */
   readonly crew: CrewSnapshot | undefined;
 }
@@ -282,13 +284,19 @@ const LOGIN_PRESENT: Readonly<Record<ZeropsLoginState, boolean>> = {
  * Whose each login is and what its lock reads, by the key its signer goes by: the agents' own
  * rows first, then every other login, {@link MATE_LOGINS_MAX} at most.
  */
-function loginsOf(auth: ZeropsAgentAuthSnapshot): OverviewLogins {
+function loginsOf(
+  auth: ZeropsAgentAuthSnapshot,
+  lastSigners?: Readonly<Record<string, string>>,
+): OverviewLogins {
   const agents = auth.agents.map(
     (agent) =>
       [
         agent.agentId,
         {
           signedInBy: agent.authorizedBy?.subject ?? null,
+          ...(lastSigners === undefined
+            ? {}
+            : { lastSignedInBy: lastSigners[agent.agentId] ?? null }),
           present: agent.credPresent,
           token: agent.flagToken,
         },
@@ -302,6 +310,7 @@ function loginsOf(auth: ZeropsAgentAuthSnapshot): OverviewLogins {
           login.id,
           {
             signedInBy: login.signedInBy ?? null,
+            ...(lastSigners === undefined ? {} : { lastSignedInBy: lastSigners[login.id] ?? null }),
             present: LOGIN_PRESENT[login.state],
             token: login.token,
           },
@@ -340,7 +349,7 @@ export function mateOverviewOf(
       identity: input.identity,
       main: primary === undefined ? null : mainOf(primary),
       threads: threadsOf(input.threads),
-      logins: loginsOf(input.auth),
+      logins: loginsOf(input.auth, input.lastSigners),
       crew: crewOf(input.crew, input.threads),
     },
     maxBytes,

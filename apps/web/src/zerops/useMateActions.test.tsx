@@ -77,10 +77,20 @@ const mock = vi.hoisted(() => ({
   invalidated: [] as Array<unknown>,
   /** The tokens the account deleted, by id. */
   deletedTokens: [] as Array<string>,
+  deleteTokenFailure: false,
+  mateKeyFailure: false,
+  deleteProject: vi.fn(),
+  keyReads: 0,
   /** The id of the key a Mate named to HQ; none where it named none. */
   mateKey: null as string | null,
   /** The delete dialog as the hook mounts it. */
-  deleteDialog: { current: null as { readonly onConfirm: () => void } | null },
+  deleteDialog: {
+    current: null as {
+      readonly onConfirm: () => void;
+      readonly error: string | null;
+      readonly cleanup?: boolean;
+    } | null,
+  },
   /** The kinds of the account's cells the hook asked for. */
   asked: [] as Array<string>,
   /** The organization's token list, as the platform would answer it were it read. */
@@ -137,6 +147,7 @@ vi.mock("./ZeropsSessionProvider", () => ({
     client: {
       deleteIntegrationToken: async ({ tokenId }: { readonly tokenId: string }) => {
         mock.deletedTokens.push(tokenId);
+        if (mock.deleteTokenFailure) throw new Error("Key retirement refused");
       },
     },
     user: mock.user,
@@ -151,7 +162,7 @@ vi.mock("./zeropsDataContext", () => ({
       commands: {
         setProjectMemberRole: mock.setProjectMemberRole,
         renameProject: mock.renameProject,
-        deleteProject: async () => ({ value: undefined }),
+        deleteProject: mock.deleteProject,
       },
       reads: { setupMarker: () => null },
       cells: {
@@ -209,7 +220,14 @@ vi.mock("./accountHq", async (original) => ({
     admins: [],
     reread: mock.reread,
   }),
-  accountHqApi: () => ({ updateMate: mock.updateMate, mateKey: async () => mock.mateKey }),
+  accountHqApi: () => ({
+    updateMate: mock.updateMate,
+    mateKey: async () => {
+      mock.keyReads++;
+      if (mock.mateKeyFailure) throw new Error("HQ is unavailable");
+      return mock.mateKey;
+    },
+  }),
 }));
 vi.mock("./projectOrderPreference", () => ({ useProjectOrderOptions: () => ({ order: "name" }) }));
 // The press's steps, not run here: what *Finish setup* hands them is the case.
@@ -219,7 +237,7 @@ vi.mock("./matePress", async (original) => ({
   finishMateSetup: mock.finishMateSetup,
 }));
 vi.mock("../components/zerops/ZeropsDeleteMateDialog", () => ({
-  ZeropsDeleteMateDialog: (props: { readonly onConfirm: () => void }) => {
+  ZeropsDeleteMateDialog: (props: NonNullable<typeof mock.deleteDialog.current>) => {
     mock.deleteDialog.current = props;
     return null;
   },
@@ -305,6 +323,10 @@ beforeEach(() => {
   mock.asked = [];
   mock.tokens = [];
   mock.deletedTokens = [];
+  mock.deleteTokenFailure = false;
+  mock.mateKeyFailure = false;
+  mock.keyReads = 0;
+  mock.deleteProject.mockReset().mockResolvedValue({ value: undefined });
   mock.membersEnabled = [];
   mock.membersStatus = "ready";
   mock.reread.mockReset();
@@ -1280,4 +1302,47 @@ it("uses only live HQ readings for an unopened Mate's confirmation", () => {
     });
     expect(mock.restartDialog.current?.body).toBe(expected);
   }
+});
+
+describe("useMateActions — deletion failures finish visibly", () => {
+  const confirm = async () => {
+    await act(async () => {
+      mock.deleteDialog.current!.onConfirm();
+    });
+  };
+  const openDelete = () => {
+    mount();
+    act(() => {
+      verbs(FEN)
+        .find((verb) => verb.id === "delete")!
+        .onSelect();
+    });
+  };
+
+  it("a failed key lookup refuses deletion and can be tried manually", async () => {
+    mock.mateKeyFailure = true;
+    openDelete();
+    await confirm();
+    expect(mock.deleteProject).not.toHaveBeenCalled();
+    expect(mock.deleteDialog.current?.error).toContain("HQ is unavailable");
+    mock.mateKeyFailure = false;
+    await confirm();
+    expect(mock.deleteProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains the key after project deletion and retries only its retirement", async () => {
+    mock.mateKey = "tok-fen";
+    mock.deleteTokenFailure = true;
+    openDelete();
+    await confirm();
+    expect(mock.deleteDialog.current?.cleanup).toBe(true);
+    expect(mock.deleteDialog.current?.error).toContain("Key retirement refused");
+    expect(mock.deleteProject).toHaveBeenCalledTimes(1);
+    expect(mock.deletedTokens).toEqual(["tok-fen"]);
+    mock.deleteTokenFailure = false;
+    await confirm();
+    expect(mock.keyReads).toBe(1);
+    expect(mock.deleteProject).toHaveBeenCalledTimes(1);
+    expect(mock.deletedTokens).toEqual(["tok-fen", "tok-fen"]);
+  });
 });

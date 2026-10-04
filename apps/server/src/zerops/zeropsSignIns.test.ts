@@ -45,8 +45,7 @@ it.layer(NodeServices.layer)("zeropsSignIns", (it) => {
   );
 
   // A record that could not be written must not leave the one before it standing: after a
-  // restart that one would be trusted. Nothing kept is nobody's instead — and while this server
-  // runs, it goes by the sign-in it saw.
+  // restart that one would be trusted. Nothing kept is nobody's instead, in memory as on disk.
   it.effect("a save that fails leaves no signer behind for that login", () =>
     Effect.gen(function* () {
       let disk: string | undefined = encodeJson({
@@ -74,12 +73,10 @@ it.layer(NodeServices.layer)("zeropsSignIns", (it) => {
           remove: Effect.succeed(false),
         }).pipe(Effect.flatMap((fresh) => fresh.load));
 
-      yield* store.save("claude-code", { by: "u-eva", at: 2 });
+      const failure = yield* store.save("claude-code", { by: "u-eva", at: 2 }).pipe(Effect.flip);
+      assert.equal(failure._tag, "SignInSaveError");
       assert.deepStrictEqual(yield* reread(), { codex: { by: "u-ada", at: 1 } });
-      assert.deepStrictEqual(yield* store.load, {
-        "claude-code": { by: "u-eva", at: 2 },
-        codex: { by: "u-ada", at: 1 },
-      });
+      assert.deepStrictEqual(yield* store.load, { codex: { by: "u-ada", at: 1 } });
     }),
   );
 
@@ -97,6 +94,29 @@ it.layer(NodeServices.layer)("zeropsSignIns", (it) => {
       yield* fs.writeFileString(file, encodeJson({ "claude-code": { by: "u-jan", at: 2 } }));
 
       assert.deepStrictEqual(yield* store.load, { "claude-code": { by: "u-eva", at: 1 } });
+    }).pipe(Effect.scoped),
+  );
+});
+
+it.layer(NodeServices.layer)("last signer", (it) => {
+  it.effect("logout retains the last signer across restart without credential authority", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "mate-last-signer-" });
+      const file = signInsPath(path, home);
+      const store = yield* fileSignInStore(file);
+      yield* store.save("claude-code", { by: "u-eva", at: 1 });
+      yield* store.clear("claude-code");
+      assert.deepStrictEqual(yield* store.load, {});
+      assert.isDefined(store.lastSigners);
+      assert.deepStrictEqual(yield* store.lastSigners, { "claude-code": "u-eva" });
+      const restarted = yield* fileSignInStore(file);
+      assert.deepStrictEqual(yield* restarted.load, {});
+      assert.deepStrictEqual(yield* restarted.lastSigners, { "claude-code": "u-eva" });
+      yield* restarted.save("claude-code", { by: "u-jan", at: 2 });
+      assert.deepStrictEqual(yield* restarted.load, { "claude-code": { by: "u-jan", at: 2 } });
+      assert.deepStrictEqual(yield* restarted.lastSigners, { "claude-code": "u-jan" });
     }).pipe(Effect.scoped),
   );
 });

@@ -7,9 +7,9 @@
  * whose it is has to as well.
  *
  * One small document beside the logins' homes (`~/.mate/signed-in.json`), written atomically,
- * written with every sign-in that succeeds (a fresh one replaces it) and cleared when the login's
- * credential goes. It is read once, at start: while the server runs, what it saw is the record,
- * whatever the document says by then. A login with nothing kept — a credential from before this
+ * written with every sign-in that succeeds (a fresh one replaces it). When the credential goes,
+ * its entry becomes display history and never authorizes a turn. It is read once, at start: while
+ * the server runs, what it saw is the record, whatever the document says by then. A login with nothing kept — a credential from before this
  * record existed, or one signed in from a terminal — is nobody's until somebody signs it in here.
  *
  * @module zeropsSignIns
@@ -30,14 +30,24 @@ import { writeFileStringAtomically } from "../atomicWrite.ts";
 export interface SignInRecord {
   readonly by: string;
   readonly at: number;
+  /** Display history only after logout; never credential authority. */
+  readonly credentialCleared?: true;
 }
 
 export type SignInRecords = Readonly<Record<string, SignInRecord>>;
 
+export class SignInSaveError extends Schema.TaggedError<SignInSaveError>()("SignInSaveError", {
+  key: Schema.String,
+}) {
+  readonly detail = "Your sign-in could not be recorded. Try signing in again.";
+}
+
 export interface SignInStore {
-  /** Every login's kept sign-in, by signer key. */
+  /** Current credential authority, by signer key; excludes logout history. */
   readonly load: Effect.Effect<SignInRecords>;
-  readonly save: (key: string, record: SignInRecord) => Effect.Effect<void>;
+  /** The last recorded signer, including logins whose credentials are gone. */
+  readonly lastSigners: Effect.Effect<Readonly<Record<string, string>>>;
+  readonly save: (key: string, record: SignInRecord) => Effect.Effect<void, SignInSaveError>;
   readonly clear: (key: string) => Effect.Effect<void>;
 }
 
@@ -62,15 +72,25 @@ export const toRecords = (parsed: unknown): SignInRecords => {
   const out: Record<string, SignInRecord> = {};
   for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
     if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
-    const { by, at } = value as { readonly by?: unknown; readonly at?: unknown };
+    const { by, at, credentialCleared } = value as {
+      readonly by?: unknown;
+      readonly at?: unknown;
+      readonly credentialCleared?: unknown;
+    };
     if (typeof by !== "string" || by.length === 0 || by.length > MAX_USER_ID_LENGTH) continue;
     if (typeof at !== "number" || !Number.isSafeInteger(at) || at < 0 || at > MAX_EPOCH_MS) {
       continue;
     }
-    out[key] = { by, at };
+    out[key] = { by, at, ...(credentialCleared === true ? { credentialCleared: true } : {}) };
   }
   return out;
 };
+
+/** Current authority excludes display history left by a credential that went. */
+const activeRecords = (records: SignInRecords): SignInRecords =>
+  Object.fromEntries(Object.entries(records).filter(([, record]) => !record.credentialCleared));
+const lastSignersOf = (records: SignInRecords): Readonly<Record<string, string>> =>
+  Object.fromEntries(Object.entries(records).map(([key, record]) => [key, record.by]));
 
 /** How the store reaches its document: read it (absent when there is none), write it, remove it. */
 export interface SignInDocument {
@@ -85,7 +105,7 @@ export interface SignInDocument {
  * The store over one document, read once: a read that fails is nothing kept. A save that cannot
  * be written never leaves the sign-in before it standing on disk — after a restart that one would
  * be trusted: the login's entry goes instead, and failing that, the whole document. This server
- * goes by the sign-in it saw either way.
+ * refuses to authorize a login whose new signer could not be kept.
  */
 export const makeSignInStore = (document: SignInDocument) =>
   Effect.gen(function* () {
@@ -110,19 +130,25 @@ export const makeSignInStore = (document: SignInDocument) =>
         yield* Effect.logWarning("zerops sign-ins: could not let go of a sign-in", { key });
       });
     return {
-      load: Ref.get(records),
+      load: Ref.get(records).pipe(Effect.map(activeRecords)),
+      lastSigners: Ref.get(records).pipe(Effect.map(lastSignersOf)),
       save: (key, record) =>
         Effect.gen(function* () {
           const current = yield* Ref.updateAndGet(records, (held) => ({ ...held, [key]: record }));
           if (yield* document.write(encodeJson(current))) return;
-          yield* Effect.logWarning("zerops sign-ins: could not keep who signed in", { key });
+          yield* Ref.set(records, without(current, key));
           yield* forget(current, key);
+          return yield* new SignInSaveError({ key });
         }).pipe(lock.withPermits(1)),
       clear: (key) =>
         Effect.gen(function* () {
           const current = yield* Ref.get(records);
-          if (current[key] === undefined) return;
-          yield* Ref.set(records, without(current, key));
+          const record = current[key];
+          if (record === undefined || record.credentialCleared) return;
+          const next = { ...current, [key]: { ...record, credentialCleared: true as const } };
+          yield* Ref.set(records, next);
+          if (yield* document.write(encodeJson(next))) return;
+          // If history cannot be written, the former credential's authority must still go.
           yield* forget(current, key);
         }).pipe(lock.withPermits(1)),
     } satisfies SignInStore;
@@ -159,12 +185,18 @@ export const memorySignInStore = (initial: SignInRecords = {}) =>
   Effect.gen(function* () {
     const records = yield* Ref.make(initial);
     return {
-      load: Ref.get(records),
+      load: Ref.get(records).pipe(Effect.map(activeRecords)),
+      lastSigners: Ref.get(records).pipe(Effect.map(lastSignersOf)),
       save: (key, record) => Ref.update(records, (current) => ({ ...current, [key]: record })),
       clear: (key) =>
         Ref.update(records, (current) => {
-          const { [key]: _gone, ...rest } = current;
-          return rest;
+          const record = current[key];
+          return record === undefined
+            ? current
+            : {
+                ...current,
+                [key]: { ...record, credentialCleared: true as const },
+              };
         }),
     } satisfies SignInStore;
   });

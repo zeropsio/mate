@@ -185,3 +185,14 @@ describe("ZeropsDeleteMateDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });
+
+it("a deleted Mate offers manual key retirement without asking to delete it again", () => {
+  const onConfirm = vi.fn();
+  const tree = mount(form({ cleanup: true, onConfirm, error: "Key retirement refused" }));
+  expect(tree.root.findAll((node) => node.type === "input")).toHaveLength(0);
+  expect(button(tree, "submit").props.disabled).toBe(false);
+  expect(renderToStaticMarkup(form({ cleanup: true }))).toContain("Try again");
+  expect(renderToStaticMarkup(form({ cleanup: true }))).toContain("Quinn was deleted");
+  enter(tree);
+  expect(onConfirm).toHaveBeenCalledTimes(1);
+});

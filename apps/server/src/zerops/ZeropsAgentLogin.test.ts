@@ -25,7 +25,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import type { TerminalManager } from "../terminal/Manager.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
-import { memorySignInStore, type SignInRecords } from "./zeropsSignIns.ts";
+import { makeSignInStore, memorySignInStore, type SignInRecords } from "./zeropsSignIns.ts";
 import type { ZeropsAgentLoginByAgent, ZeropsAgentLoginOptions } from "./ZeropsAgentLogin.ts";
 import { makeLoginHomes, type LoginHomes, type LoginHomesOptions } from "./zeropsLoginHomes.ts";
 import { mateLoginEnvironment } from "./ZeropsLogins.ts";
@@ -1635,3 +1635,46 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
     }
   },
 );
+
+for (const agentId of ["claude-code", "codex"] as const) {
+  it.effect(
+    `${agentId}: a signer write failure is visible and a fresh manual sign-in recovers`,
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const terminal = yield* makeFakeTerminalManager();
+          const auth = yield* makeFakeAuth();
+          let writable = false;
+          const store = yield* makeSignInStore({
+            read: Effect.succeed(undefined),
+            write: () => Effect.sync(() => writable),
+            remove: Effect.succeed(true),
+          });
+          const feed = yield* makeFeed({
+            terminalManager: terminal.service,
+            zeropsAgentAuth: auth,
+            isZeropsEnvironment: true,
+            signIns: store,
+          });
+          const succeed = Effect.gen(function* () {
+            yield* feed.start(agentId, "thread-1", "user-eva");
+            yield* terminal.emit(
+              "thread-1",
+              ZeropsAgentLoginModule.loginTerminalId(agentId),
+              agentId === "claude-code"
+                ? "Login successful. Press Enter to continue…\n"
+                : CODEX_SUCCESS,
+            );
+          });
+          yield* succeed;
+          assert.equal((yield* feed.latest)[agentId]?.phase, "failed");
+          assert.match((yield* feed.latest)[agentId]?.message ?? "", /could not be recorded/);
+          assert.deepEqual(yield* store.load, {});
+          writable = true;
+          yield* succeed;
+          assert.equal((yield* feed.latest)[agentId]?.phase, "succeeded");
+          assert.equal((yield* store.load)[agentId]?.by, "user-eva");
+        }),
+      ),
+  );
+}

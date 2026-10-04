@@ -332,30 +332,31 @@ export function mateIsViewers(
 const MATE_OWNER_SIGNER_KEYS: ReadonlyArray<string> = ["claude-code", "codex"];
 
 /**
- * What HQ's overview of the Mate says of its agents' own logins: whether anybody signed one in,
- * and who — Claude Code's person first.
+ * What HQ says of the agents' own logins: a current signer, else the last recorded signer for
+ * display. Claude Code comes first; history never says the login is signed in.
  */
 function mateOwnerSigner(project: Pick<MateAccessProject, "hq">): {
   readonly signedIn: boolean;
   readonly signer: string | undefined;
 } {
   const logins = project.hq?.mate?.logins ?? {};
-  const signer = MATE_OWNER_SIGNER_KEYS.map((key) => logins[key]?.signedInBy).find(
+  const activeSigner = MATE_OWNER_SIGNER_KEYS.map((key) => logins[key]?.signedInBy).find(
     (userId): userId is string => typeof userId === "string" && userId.length > 0,
   );
-  return { signedIn: signer !== undefined, signer };
+  const signer = MATE_OWNER_SIGNER_KEYS.map(
+    (key) => logins[key]?.signedInBy ?? logins[key]?.lastSignedInBy,
+  ).find((userId): userId is string => typeof userId === "string" && userId.length > 0);
+  return { signedIn: activeSigner !== undefined, signer };
 }
 
-/** The signer, else a ready agent's maker, as HQ's record and overview name them. */
+/** The current or last signer, else a ready agent's maker, as HQ names them. */
 function matePerson(project: Pick<MateAccessProject, "hq">) {
   const { signedIn, signer } = mateOwnerSigner(project);
   const mate = project.hq?.mate;
   const runsWithoutSignIn = mate?.runsWithoutSignIn === true;
-  const person = signedIn
-    ? signer
-    : runsWithoutSignIn
-      ? (mate?.madeBy ?? mate?.standupRequestedBy ?? undefined)
-      : undefined;
+  const person =
+    signer ??
+    (runsWithoutSignIn ? (mate?.madeBy ?? mate?.standupRequestedBy ?? undefined) : undefined);
   return { signedIn, signer, person, runsWithoutSignIn };
 }
 

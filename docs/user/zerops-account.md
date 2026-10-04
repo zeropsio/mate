@@ -54,3 +54,15 @@ A Mate added from a recipe starts development after its asker signs an agent in.
 recipe waits for you to say what to build. If the stand-up message fails to send, Mate says so and
 offers **Try again** and gives you the composer back so you can type instead. It never sends another
 attempt automatically.
+
+If a provider sign-in says it could not be recorded, that attempt did not finish. Press **Try again**
+to sign in again after the server can write its record. The login cannot start personal turns until
+its signer is recorded.
+
+Deleting a Mate also retires the Zerops key its container used. If HQ cannot identify that key,
+the dialog shows the failure before deleting the project. If key retirement fails after the project
+is deleted, the dialog says the Mate was deleted and keeps **Try again** for retiring that key only.
+
+Signing out of a provider keeps the Mate's owner badge. It remembers the last person who signed
+that provider in; the badge does not mean its provider account is still signed in. A later successful
+sign-in updates that record.

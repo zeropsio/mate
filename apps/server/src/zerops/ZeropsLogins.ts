@@ -681,6 +681,13 @@ export const make = (options: ZeropsLoginsOptions) =>
               : Clock.currentTimeMillis.pipe(
                   Effect.flatMap((at) => signIns.save(id, { by: zeropsUserIdOf(subject), at })),
                   Effect.andThen(publish),
+                  Effect.mapError(
+                    (error) =>
+                      new ZeropsAgentLoginError({
+                        reason: "signer-write-failed",
+                        detail: error.detail,
+                      }),
+                  ),
                 ),
           ),
         );

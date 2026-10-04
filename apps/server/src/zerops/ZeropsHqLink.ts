@@ -70,6 +70,7 @@ import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSna
 import type { ProjectionRepositoryError } from "../persistence/Errors.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
+import { ZeropsSignIns } from "./zeropsSignIns.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
 import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
@@ -416,6 +417,7 @@ const OutcomeFile = Schema.fromJsonString(
 
 /** Where a Mate's overview is read from: the services the link's layer finds, by what it reads. */
 export interface OverviewSources {
+  readonly lastSigners?: Effect.Effect<Readonly<Record<string, string>>>;
   readonly environmentId: OverviewIdentity["environmentId"];
   readonly serverVersion: string;
   readonly providers?: {
@@ -477,6 +479,7 @@ export const mateOverviewFeed = (
         },
         threads: yield* sources.threads,
         auth: combineAgentAuth(snapshot, extras, logins),
+        ...(sources.lastSigners === undefined ? {} : { lastSigners: yield* sources.lastSigners }),
         crew: yield* Ref.get(crew),
       });
     }).pipe(Effect.option);
@@ -537,6 +540,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         crew,
         agentAuth: yield* ZeropsAgentAuth,
         agentLogin: yield* ZeropsAgentLogin,
+        lastSigners: (yield* ZeropsSignIns).lastSigners,
         logins: yield* ZeropsLogins,
         update: yield* ZeropsMateUpdate,
         domainEvents: engine.streamDomainEvents,

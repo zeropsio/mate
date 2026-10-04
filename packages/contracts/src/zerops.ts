@@ -574,6 +574,8 @@ export const ZeropsAgentLoginErrorReason = Schema.Literals([
   "unavailable",
   /** No login of this agent is waiting for a code right now. */
   "not-awaiting-code",
+  /** The server could not persist who signed this login in. */
+  "signer-write-failed",
   /**
    * `zerops.agentLogin.signOut` refused a token-authorized agent: a project
    * API key belongs to the project, not to a person, so there is nobody's
