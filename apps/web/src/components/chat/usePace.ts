@@ -22,10 +22,13 @@ export function usePace({
   /** Everything enters at once: the run is over, or the thread catches up. */
   readonly flush: boolean;
 }): ReadonlySet<string> {
+  // A tab out of sight, nobody watches: what arrives is simply there.
+  const hidden = useOutOfSight();
+  const flushing = flush || hidden;
   const [pace, setPace] = useState<Pace>(() => paceStart(keys));
   const paceRef = useRef(pace);
   const offer = useEffectEvent(() => {
-    const next = paceOffer(paceRef.current, { keys, at: Date.now(), landing, flush });
+    const next = paceOffer(paceRef.current, { keys, at: Date.now(), landing, flush: flushing });
     if (next === paceRef.current) return;
     paceRef.current = next;
     setPace(next);
@@ -49,9 +52,24 @@ export function usePace({
     arm();
     return () => clearTimeout(timer);
   }, [due]);
-  if (flush) return NOTHING_LANDS;
+  if (flushing) return NOTHING_LANDS;
   // A line landing from the slot is drawn in the draw it lands in: its plop
   // starts from where it stood.
   const holds = paceHolds(pace, keys);
   return landing.size === 0 ? holds : new Set([...holds].filter((key) => !landing.has(key)));
+}
+
+/** Whether the page is out of sight (a tab in the background). */
+function useOutOfSight(): boolean {
+  const read = () => typeof document !== "undefined" && document.visibilityState === "hidden";
+  const [hidden, setHidden] = useState(read);
+  useEffect(() => {
+    if (typeof document === "undefined" || typeof document.addEventListener !== "function") {
+      return;
+    }
+    const heard = () => setHidden(read());
+    document.addEventListener("visibilitychange", heard);
+    return () => document.removeEventListener("visibilitychange", heard);
+  }, []);
+  return hidden;
 }

@@ -185,7 +185,7 @@ export function easeRooms({
   /** What `box` holds changed: it eases from what it showed to its new height. */
   const heard = (box: Box) => {
     const height = natural(box);
-    if (!eases() || prefersReducedMotion()) {
+    if (!eases() || prefersReducedMotion() || outOfSight()) {
       if (box.shown !== null) release(box);
       else box.rested = height;
       return;
@@ -295,6 +295,11 @@ function depthOf(element: Element): number {
   let depth = 0;
   for (let node = element.parentElement; node !== null; node = node.parentElement) depth += 1;
   return depth;
+}
+
+/** A tab out of sight: nobody watches a box ease. */
+function outOfSight(): boolean {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
 }
 
 function prefersReducedMotion(): boolean {
