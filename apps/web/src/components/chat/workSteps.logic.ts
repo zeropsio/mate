@@ -13,6 +13,7 @@
  */
 import type { WorkLogEntry } from "../../session-logic";
 import { lookedAt, namedToolCall, toolCallWords } from "./conversation.logic";
+import { jobLost, type LiveJobs } from "./liveJobs.logic";
 
 export type StepKind = "command" | "look" | "read" | "edit" | "search" | "web" | "tool";
 
@@ -103,12 +104,8 @@ export interface TrackedCommands {
   readonly trackers: ReadonlySet<string>;
   /** Each background task's words, by its id: a read of its output names it. */
   readonly jobTitles: ReadonlyMap<string, string>;
-  /**
-   * Nothing lives in the background any more — the session that ran the
-   * jobs is gone (a restart, the session ended): one that never reported
-   * never will.
-   */
-  readonly backgroundGone?: boolean;
+  /** The jobs the server holds live (`liveJobs.logic`): one it does not, unreported, never will. */
+  readonly liveJobs?: LiveJobs | null;
 }
 
 export const NO_TRACKED_COMMANDS: TrackedCommands = {
@@ -269,6 +266,12 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
   const byCommand = new Map<string, TrackedCommand>();
   const trackers = new Set<string>();
   const jobTitles = new Map<string, string>();
+  // A job still running has no task in the log yet: its command names it.
+  for (const command of commands) {
+    const words = command.callInput?.description?.trim();
+    if (command.sentToBackground !== undefined && words)
+      jobTitles.set(command.sentToBackground, words);
+  }
   for (const task of entries) {
     if (!isTask(task)) continue;
     const words = (task.toolTitle ?? task.label).trim();
@@ -361,7 +364,10 @@ export function backgroundJobOf(
     title,
     state:
       task === undefined || !ended
-        ? tracked.backgroundGone === true && !live
+        ? jobLost(
+            { id: command.sentToBackground ?? task?.taskId, ofLiveTurn: live },
+            tracked.liveJobs ?? null,
+          )
           ? "lost"
           : "running"
         : failed
@@ -369,8 +375,16 @@ export function backgroundJobOf(
           : "done",
     startedAt: command.startedAt ?? command.createdAt,
     endedAt: task !== undefined && ended ? new Date(endOf(task)).toISOString() : null,
-    report: task !== undefined && ended ? taskReportWords(task.detail, title) : null,
+    report: task !== undefined && ended ? taskReportWords(taskSaid(task), title) : null,
   };
+}
+
+/**
+ * What a task said as it ended: its detail, else its label where the work
+ * log put Claude Code's own word there (`Background command "…" failed …`).
+ */
+export function taskSaid(task: WorkLogEntry): string | undefined {
+  return task.detail ?? (/^Background command\b/u.test(task.label) ? task.label : undefined);
 }
 
 /**

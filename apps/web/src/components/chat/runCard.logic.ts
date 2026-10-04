@@ -567,12 +567,34 @@ export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
       return stepNowWords(item.step);
     case "operation":
       return operationNowWords(item.operation);
+    case "strip": {
+      // The check it runs now, else its newest: "Checking /status in the browser".
+      const check =
+        item.strip.checks.findLast((candidate) => candidate.phase === "running") ??
+        item.strip.checks.at(-1);
+      return check === undefined ? "Checking in the browser" : operationNowWords(check);
+    }
     case "question":
       return nowLineWords({ kind: "waiting", on: "answer" });
+    case "person":
+      return "Your message reached it";
     case "note":
       return "Writing";
-    default:
+    case "thought":
       return "Thinking";
+    case "helpers":
+      return "Starting helpers";
+    case "task":
+      return `${item.entry.toolTitle ?? item.entry.label} reported back`;
+    case "plan":
+      return "Updating its plan";
+    case "incident":
+      return `${item.incident.hostname} needs attention`;
+    case "event":
+    case "crew-seam":
+    case "error":
+    case "call":
+      return "Working";
   }
 }
 

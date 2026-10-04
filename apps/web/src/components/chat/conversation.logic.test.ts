@@ -725,21 +725,29 @@ describe("deriveConversationStructure", () => {
       words: false,
       live: false,
     },
-  ])(
+    // A plan it proposed ends its turn by design: nothing more is coming.
+    {
+      name: "ended on a plan it proposed",
+      now: Date.parse(at(59)) + 500,
+      words: "plan",
+      live: false,
+    },
+  ] as const)(
     "keeps a turn the server just settled live until its words land: $name",
     ({ now, words, live }) => {
       const entries = [
         user("m0", 0),
         tool("w1", "t1", 1),
         reasoning("r1", "t1", 2),
-        ...(words ? [assistant("a1", "t1", 58, "Done.")] : []),
+        ...(words === true ? [assistant("a1", "t1", 58, "Done.")] : []),
+        ...(words === "plan" ? [plan("p1", "t1", 58)] : []),
       ];
       const [first] = structure(entries, {
         latest: { id: "t1", state: "completed", completed: true },
         nowMs: now,
       }).turns;
       expect(first!.live).toBe(live);
-      expect(first!.interrupted).toBe(!live && !words);
+      expect(first!.interrupted).toBe(!live && words === false);
     },
   );
 

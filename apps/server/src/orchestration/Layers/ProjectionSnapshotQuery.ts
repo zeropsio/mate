@@ -1631,15 +1631,16 @@ scoped_activities AS MATERIALIZED (
       pageActivityIdsSql(
         threadId,
         [
-          sql`COALESCE(sequence, -1) >= COALESCE(
+          // By time: a row's sequence is often unset.
+          sql`created_at >= COALESCE(
           (
-            SELECT sequence
+            SELECT created_at
             FROM projection_thread_activities
             WHERE thread_id = ${threadId}
-            ORDER BY sequence DESC, created_at DESC, activity_id DESC
+            ORDER BY created_at DESC
             LIMIT 1 OFFSET ${THREAD_DETAIL_UNPAGED_SCAN_LIMIT - 1}
           ),
-          -1
+          ''
         )`,
         ],
         THREAD_DETAIL_ACTIVITY_LIMIT,
@@ -2848,6 +2849,9 @@ pending_approval_requests AS (
                       backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
                         row.threadId,
                       ),
+                      backgroundTaskIds: threadBackgroundLiveness.getThreadLiveTaskIds(
+                        row.threadId,
+                      ),
                       planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
                       ...liveStepField(row.threadId, sessionByThread.get(row.threadId) ?? null),
                       usagePause: mapUsagePause(row),
@@ -3018,6 +3022,7 @@ pending_approval_requests AS (
                 backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
                   row.threadId,
                 ),
+                backgroundTaskIds: threadBackgroundLiveness.getThreadLiveTaskIds(row.threadId),
                 planProgress: threadPlanProgress.getThreadPlanProgress(row.threadId),
                 usagePause: mapUsagePause(row),
                 ...(row.crew === null ? {} : { crew: row.crew }),
@@ -3337,6 +3342,7 @@ pending_approval_requests AS (
         backgroundLiveness: threadBackgroundLiveness.getThreadBackgroundLiveness(
           threadRow.value.threadId,
         ),
+        backgroundTaskIds: threadBackgroundLiveness.getThreadLiveTaskIds(threadRow.value.threadId),
         planProgress: threadPlanProgress.getThreadPlanProgress(threadRow.value.threadId),
         ...liveStepField(threadRow.value.threadId, session),
         usagePause: mapUsagePause(threadRow.value),

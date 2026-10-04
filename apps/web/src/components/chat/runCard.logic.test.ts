@@ -1131,6 +1131,18 @@ describe("slotWords", () => {
       filler: { kind: "writing" },
       words: "Thinking",
     },
+    {
+      // Review of pass 39: a check in the browser was heard as "Thinking".
+      name: "a check in the browser",
+      item: {
+        kind: "strip",
+        key: "strip:b1",
+        at: "",
+        strip: { key: "strip:b1", checks: [browser], views: 1, failures: 0, live: true },
+      },
+      filler: { kind: "thinking" },
+      words: "Checking /status in the browser",
+    },
   ] as const)("$name", ({ item, filler, words }) => {
     expect(slotWords(item as RecordItem | null, filler)).toBe(words);
   });
