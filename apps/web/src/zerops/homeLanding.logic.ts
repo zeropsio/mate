@@ -26,9 +26,13 @@ export function homeView(input: {
   readonly remembered: ScopedThreadRef | null;
   /** The account's projects and its Mates are read whole. */
   readonly projectsRead: boolean;
+  /** HQ has answered for this organization, or its absence/failure is known. */
+  readonly hqMatesRead: boolean;
 }): HomeView {
   if (input.startFailed) return { kind: "start-failed" };
-  if (input.landing === "none" && input.projectsRead) return { kind: "hero" };
+  if (input.landing === "none" && input.projectsRead && (input.targeted || input.hqMatesRead)) {
+    return { kind: "hero" };
+  }
   if (input.remembered !== null && !input.targeted) {
     return { kind: "opening", ref: input.remembered };
   }

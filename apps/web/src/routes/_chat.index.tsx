@@ -32,6 +32,7 @@ import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { hqMatesAtom } from "../state/zerops";
 import { hqHomeMate, homeView } from "../zerops/homeLanding.logic";
 import { rememberedHomeLanding } from "../zerops/lastConversationMemory";
+import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { useMatesSettled } from "../zerops/useMatesSettled";
 import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "../zerops/waitLine.logic";
 import { countDoorEnvironments, resolveDoor } from "./-door";
@@ -92,6 +93,7 @@ function IndexDraftLanding() {
   const threads = useThreadShells();
   const { environments } = useEnvironments();
   const matesSettled = useMatesSettled();
+  const { settled: hqMatesRead } = useHqMatesRead();
   const hqMates = useAtomValue(hqMatesAtom);
   const openMate = useOpenMate();
   const { activeOrganization } = useZeropsSession();
@@ -163,7 +165,7 @@ function IndexDraftLanding() {
     // HQ names unopened Mates too; opening only the chosen route holds its lease (A9).
     const projectId = hqHomeMate(hqMates?.mates ?? null, unavailable);
     if (projectId !== undefined) return { kind: "mate", projectId };
-    if (hqMates === null && !matesSettled) return null;
+    if (!hqMatesRead) return null;
 
     // A socket on its first attempt is about to tell us something; a live
     // one whose shell has not arrived yet is about to hand us its projects.
@@ -188,7 +190,7 @@ function IndexDraftLanding() {
   }, [
     bootstrapped,
     hqMates,
-    matesSettled,
+    hqMatesRead,
     unavailable,
     environments,
     projects,
@@ -237,13 +239,8 @@ function IndexDraftLanding() {
     startFailed: startState.failed,
     targeted: targetEnvironmentId !== null,
     remembered,
-    // "You have no projects" is an answer, and it must not be given before the account has been
-    // read. Measured on a fresh account, 2026-09-19: a second after the wizard made a project and
-    // its Mate came up, this painted "What should we work on? Add a project to start your first
-    // thread." and then replaced itself with the draft — telling somebody to add the project they
-    // had just added. Nothing here is taken back: the projects and the Mates' listing will tell
-    // no more, and every Mate this tab registers is registered (`useMatesSettled`) — a listing
-    // left partial by withheld or failing parts settles, so the hero stays reachable.
+    hqMatesRead,
+    // A negative answer needs both the platform/registration read and HQ's unopened Mates.
     projectsRead: matesSettled,
   });
   switch (view.kind) {
