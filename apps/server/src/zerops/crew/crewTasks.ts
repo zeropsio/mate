@@ -464,6 +464,8 @@ export const sendTurn = (
     yield* updateOperation(core, owned.id, {
       targets: { ...owned.targets, threadId: stint.threadId, commandId: command.commandId },
       confirmedStage: admittedCommand === undefined ? "attempt-recorded" : "admitted",
+      // The turn's words, kept until its dispatch is confirmed: a restart before that sends them.
+      result: { turn: text },
     });
     if (admittedCommand === undefined)
       yield* operationStep(

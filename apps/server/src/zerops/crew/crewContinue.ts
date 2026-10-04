@@ -21,7 +21,8 @@ import { CREW_ID } from "./CrewHome.ts";
 import { CHECKED_STATES } from "./crewMachines.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
 import { operationStep, sentBySession, updateOperation, withOperation } from "./crewOperations.ts";
-import { integrate, land, refreshLaneStats } from "./crewLanding.ts";
+import { integrate, land, refreshLaneStats, reworkCard } from "./crewLanding.ts";
+import { readTaskWait } from "./crewTaskData.ts";
 import { commitAndPolice } from "./crewTurns.ts";
 import { continueTask, requireTask, saveTask, startTask, leadTurn } from "./crewTasks.ts";
 
@@ -107,6 +108,26 @@ export const adoptOwnWrites = (
       if (outcome._tag === "adopted") return;
     }
   });
+
+const readPendingTurn = Schema.decodeUnknownOption(Schema.Struct({ turn: Schema.String }));
+
+/**
+ * The words a resumed turn carries, by the stage its dispatch confirmed: a
+ * turn that never reached its agent (a task card, a person's message) goes as
+ * it was; a rework hand-off cut off before its card sends that card; a turn
+ * the agent had begun is asked to continue.
+ */
+const resumedTurn = (operation: CrewOperation, member: CrewMember, task: CrewAssignmentRow) => {
+  const pending =
+    operation.kind === "dispatch" && operation.confirmedStage !== "dispatched"
+      ? Option.getOrUndefined(readPendingTurn(operation.result))?.turn
+      : undefined;
+  if (pending !== undefined) return pending;
+  const on = readTaskWait(task.waiting)?.on;
+  if (task.state === "rework" && (on === "conflict" || on === "check-failed" || on === "review"))
+    return reworkCard(member, task, on);
+  return "Continue where you stopped. Your edits remain in your copy.";
+};
 
 /** Who presses Continue: a person, or the engine itself after a restart (`resumeAfterRestart`). */
 export type ContinuedBy = "person" | "engine";
@@ -230,7 +251,7 @@ export const continueOperation = (
             member,
             preserved,
             principal,
-            "Continue where you stopped. Your edits remain in your copy.",
+            resumedTurn(operation, member, preserved),
           );
         break;
       }

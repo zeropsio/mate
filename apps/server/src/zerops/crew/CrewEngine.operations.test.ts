@@ -3,6 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeSqlite from "node:sqlite";
 import { assert, describe, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
@@ -16,6 +17,7 @@ import {
   applied,
   command,
   commandWhenFree,
+  dispatchedOf,
   firstTurn,
   latest,
   reportDone,
@@ -1126,6 +1128,90 @@ it.live("untracked files never stop a checked task, nor get committed or landed"
           ],
           ["landed", false, "?? build.log"],
         );
+      }),
+  ]),
+);
+
+it.live("a task card a restart cut off before it went out is sent, not a Continue", () =>
+  withCrewEngines([
+    (world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const reached = yield* Deferred.make<void>();
+        yield* Ref.set(
+          world.beforeDispatch,
+          Deferred.succeed(reached, undefined).pipe(Effect.andThen(Effect.never)),
+        );
+        yield* command({
+          _tag: "message",
+          handle: "backend",
+          text: "Change a.txt",
+          attachments: [],
+        }).pipe(Effect.forkChild);
+        yield* Deferred.await(reached);
+        // The phase ends here: the engine shuts down before the card reached its agent.
+      }),
+    (world) =>
+      Effect.gen(function* () {
+        yield* Ref.set(world.beforeDispatch, Effect.void);
+        yield* (yield* ServerCommandReadiness).complete;
+        yield* eventually(
+          Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) => turns.length === 1),
+        );
+        const [turn] = yield* dispatchedOf(world, "thread.turn.start");
+        assert.include(turn!.message.text, "Change a.txt");
+        assert.notInclude(turn!.message.text, "Continue where you stopped");
+      }),
+  ]),
+);
+
+it.live("a fix hand-off a restart cut off before its card is sent with its card", () =>
+  withCrewEngines([
+    (world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () =>
+          write(NodePath.join(world.root, ".crew/backend"), "work.txt", "no ok.txt\n"),
+        );
+        yield* reportDone(thread);
+        yield* world.publish(spiEvent("turn.completed", thread, { state: "completed" }));
+        yield* snapshotWhere((frame) => frame.board.tasks[0]?.state === "rework");
+        const store = yield* CrewStore;
+        const [task] = yield* store.assignments(CREW_ID);
+        // Ask to fix began its dispatch; the restart came before the task moved or the card went.
+        yield* store.putOperation({
+          id: "cut-fix",
+          crew: CREW_ID,
+          handle: "backend",
+          taskId: task!.assignment,
+          kind: "dispatch",
+          stage: "admitting",
+          confirmedStage: "prepared",
+          status: "running",
+          startedBy: "user-karel",
+          resumeState: "rework",
+          targets: {
+            host: "appdev",
+            path: NodePath.join(world.root, ".crew/backend"),
+            ref: "refs/heads/crew/backend",
+            threadId: null,
+            commandId: null,
+            attempt: task!.attempt,
+          },
+          result: null,
+          detail: null,
+          startedAt: "2026-10-03T10:00:00.000Z",
+          updatedAt: "2026-10-03T10:00:00.000Z",
+        });
+      }),
+    (world) =>
+      Effect.gen(function* () {
+        yield* (yield* ServerCommandReadiness).complete;
+        yield* eventually(
+          Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) => turns.length === 2),
+        );
+        const fix = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
+        assert.include(fix.message.text, "fix the check");
       }),
   ]),
 );
