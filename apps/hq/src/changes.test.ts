@@ -1170,7 +1170,11 @@ describe("a Mate's changes in HQ", () => {
               .changes,
             [own(head, "Add a login page")],
           );
-          assert.deepStrictEqual(yield* devSocket.quiet("1 millis"), []);
+          // Nothing of the owner's changes; the organization's offers move with every view HQ reads.
+          assert.deepStrictEqual(
+            (yield* devSocket.quiet("1 millis")).filter((message) => message.type !== "org"),
+            [],
+          );
         }),
     );
 

@@ -21,7 +21,13 @@ import { type KeySecret, deployKeysLayer, keySecretOf, openToken } from "./deplo
 import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
 import { type OrgView, Roles, WriteConfirm } from "./roles.ts";
-import { JOBS_SHOWN, type MateRecord, Structure, structureLayer } from "./structure.ts";
+import {
+  JOBS_SHOWN,
+  type MateRecord,
+  Structure,
+  type StructureRead,
+  structureLayer,
+} from "./structure.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
 import { rolloutsLayer } from "./rollouts.ts";
@@ -217,6 +223,13 @@ const environmentsOf = (structure: Structure["Service"], appName: string) =>
     );
   });
 
+/** Applications as their records, without what they offer the reader (`offers.test.ts`). */
+const recordsOf = (apps: StructureRead["apps"]) =>
+  apps.map(({ can: _offers, environments, ...app }) => ({
+    ...app,
+    environments: environments.map(({ can: _offered, ...environment }) => environment),
+  }));
+
 /** The refusal's code, or the success. */
 const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A, E>) =>
   effect.pipe(
@@ -268,6 +281,57 @@ describe("structure", () => {
                 ),
               ]),
               ["not_app_developer", "slot_taken", "not_project_admin", "ok"],
+            );
+          }),
+        ),
+    );
+
+    it.effect(
+      "offers each reader what the write decides: a release over the production they do not see",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const shop = yield* structure.createApp("owner", "Shop");
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { face: "face-1" },
+            });
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_PROD",
+              kind: "production",
+            });
+            // dev develops Shop through its Mate and sees nothing of its production: the release
+            // is refused for that production, never offered as "no production yet".
+            const read = yield* structure.read("dev");
+            const app = read.apps.find((candidate) => candidate.id === shop.id);
+            assert.deepStrictEqual(
+              app?.projects.map((project) => project.projectId),
+              ["P_MATE"],
+            );
+            assert.deepStrictEqual(
+              [app?.can.merge_change, app?.can.release, read.can.create_app],
+              [
+                { allow: true },
+                { allow: false, reason: "not_releaser" },
+                { allow: false, reason: "not_structure_writer" },
+              ],
+            );
+            assert.deepStrictEqual(
+              (yield* structure.read("owner")).apps[0]?.environments.map((environment) => [
+                environment.projectId,
+                environment.can,
+              ]),
+              [["P_PROD", { keep_deploy_token: { allow: true } }]],
+            );
+            // The org's writer is offered making an application, and makes one.
+            assert.deepStrictEqual((yield* structure.read("owner")).can.create_app, {
+              allow: true,
+            });
+            assert.strictEqual(
+              yield* reasonOf(structure.createApp("dev", "Mine")),
+              "not_structure_writer",
             );
           }),
         ),
@@ -615,7 +679,7 @@ describe("structure", () => {
               ]),
               ["invalid", "ok", "ok", "ok", "ok", "ok", "invalid"],
             );
-            assert.deepStrictEqual((yield* structure.read("owner")).apps, [
+            assert.deepStrictEqual(recordsOf((yield* structure.read("owner")).apps), [
               {
                 id: shop.id,
                 name: "Shop",

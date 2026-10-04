@@ -26,6 +26,7 @@ import {
   can,
 } from "@t3tools/shared/zeropsPermissions";
 import type { MateChanges } from "@t3tools/shared/hqChanges";
+import type { HqOffersOf } from "@t3tools/shared/hqOffers";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import type { MateState } from "@t3tools/shared/mateLink";
@@ -54,6 +55,14 @@ import { reachesOnly } from "./deployTokens.ts";
 import { heldOf, lockProject } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { MateOverviews } from "./mateOverviews.ts";
+import {
+  type AppVerb,
+  type OrgVerb,
+  appOffers,
+  appTarget,
+  environmentOffers,
+  orgOffers,
+} from "./offers.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { Rollouts, addRollout } from "./rollouts.ts";
 import { ZeropsApi, type ZeropsError } from "./zerops/api.ts";
@@ -248,6 +257,8 @@ export interface MateView {
 }
 
 export interface StructureRead {
+  /** What the reader may do with the organization's applications (`offers.ts`). */
+  readonly can: HqOffersOf<OrgVerb>;
   readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
   /** The Mates in no application: their project's name in Zerops and their record. */
   readonly ungrouped: ReadonlyArray<{
@@ -270,12 +281,16 @@ export interface StructureRead {
       readonly kind: string;
       readonly mate: MateView | null;
     }>;
+    /** What the reader may do with it: its changes, its deploys, its release (`offers.ts`). */
+    readonly can: HqOffersOf<AppVerb>;
     /**
      * Its stage and production, in the order they were declared, with their deploys: to whoever
      * reads its changes (`read_change`), as main's commit statuses and `environments.yaml` went to
      * whoever read its repositories; none to one who only sees the application.
      */
-    readonly environments: ReadonlyArray<EnvironmentView>;
+    readonly environments: ReadonlyArray<
+      EnvironmentView & { readonly can: HqOffersOf<"keep_deploy_token"> }
+    >;
     /** The Mates on their way into it whose attach has not landed yet, oldest first. */
     readonly births: ReadonlyArray<BirthIntent>;
   }>;
@@ -712,12 +727,7 @@ export const structureLayer = (options: {
             // the application.
             const appProjects = yield* sql<{ readonly project_id: string }>`
               SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
-            yield* allowed(
-              userId,
-              "read_app",
-              { projectIds: appProjects.map((row) => row.project_id) },
-              view,
-            );
+            yield* allowed(userId, "read_app", appTarget(appProjects), view);
             const named = yield* sql<{ readonly project_id: string }>`
               SELECT project_id FROM hq_environment
               WHERE app_id::text = ${appId} AND name = ${name}`;
@@ -1411,6 +1421,7 @@ export const structureLayer = (options: {
               can(person, "read_project", { projectId }, view).allow;
             const visible = rows.filter((row) => reads(row.project_id));
             return {
+              can: orgOffers(userId, view),
               ...(tools.length === 0
                 ? {}
                 : { tools: tools.filter((tool) => reads(tool.projectId)) }),
@@ -1422,51 +1433,52 @@ export const structureLayer = (options: {
                   mate: row.mate,
                 })),
               apps: apps
-                .map((app) => ({
-                  id: app.id,
-                  name: app.name,
-                  contents: {
-                    // The app row and the project rows are separate reads: a project attached
-                    // between them is in `rows`, so the app is held whatever its row said.
-                    empty: app.empty && !rows.some((row) => row.app_id === app.id),
-                    deletingProjectIds: rows
-                      .filter(
-                        (row) =>
-                          row.app_id === app.id &&
-                          (projects.get(row.project_id) === undefined ||
-                            projects.get(row.project_id)?.status === "DELETING" ||
-                            projects.get(row.project_id)?.status === "DELETED"),
-                      )
-                      .map((row) => row.project_id),
-                  },
-                  projects: visible
-                    .filter((row) => row.app_id === app.id)
-                    .map((row) => ({
-                      projectId: row.project_id,
-                      name: names.get(row.project_id) ?? "",
-                      kind: row.kind,
-                      mate: row.mate,
-                    })),
-                  environments: can(
-                    person,
-                    "read_change",
-                    {
-                      projectIds: rows
-                        .filter((row) => row.app_id === app.id)
+                .map((app) => {
+                  const held = rows.filter((row) => row.app_id === app.id);
+                  const can = appOffers(userId, held, view);
+                  return {
+                    id: app.id,
+                    name: app.name,
+                    can,
+                    contents: {
+                      // The app row and the project rows are separate reads: a project attached
+                      // between them is in `rows`, so the app is held whatever its row said.
+                      empty: app.empty && !rows.some((row) => row.app_id === app.id),
+                      deletingProjectIds: rows
+                        .filter(
+                          (row) =>
+                            row.app_id === app.id &&
+                            (projects.get(row.project_id) === undefined ||
+                              projects.get(row.project_id)?.status === "DELETING" ||
+                              projects.get(row.project_id)?.status === "DELETED"),
+                        )
                         .map((row) => row.project_id),
                     },
-                    view,
-                  ).allow
-                    ? environments.filter((row) => row.app_id === app.id).map(environmentView)
-                    : [],
-                  births: births
-                    .filter((row) => row.app_id === app.id)
-                    .map(({ id, face, projectId }) => ({
-                      id,
-                      face,
-                      ...(projectId == null ? {} : { projectId }),
-                    })),
-                }))
+                    projects: visible
+                      .filter((row) => row.app_id === app.id)
+                      .map((row) => ({
+                        projectId: row.project_id,
+                        name: names.get(row.project_id) ?? "",
+                        kind: row.kind,
+                        mate: row.mate,
+                      })),
+                    environments: can.read_change.allow
+                      ? environments
+                          .filter((row) => row.app_id === app.id)
+                          .map((row) => ({
+                            ...environmentView(row),
+                            can: environmentOffers(userId, row.project_id, view),
+                          }))
+                      : [],
+                    births: births
+                      .filter((row) => row.app_id === app.id)
+                      .map(({ id, face, projectId }) => ({
+                        id,
+                        face,
+                        ...(projectId == null ? {} : { projectId }),
+                      })),
+                  };
+                })
                 .filter(
                   (app) =>
                     can(

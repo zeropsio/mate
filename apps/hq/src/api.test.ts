@@ -100,6 +100,38 @@ describe("HQ's failures", () => {
   );
 });
 
+const ALLOW = { allow: true } as const;
+const refusedFor = (reason: string) => ({ allow: false, reason }) as const;
+/** Each of `verbs` decided as `decision`. */
+const each = (verbs: ReadonlyArray<string>, decision: object) =>
+  Object.fromEntries(verbs.map((verb) => [verb, decision]));
+const ORG_VERBS = ["create_app", "rename_app", "delete_app"];
+/** What an org owner may do with the organization, and with each application. */
+const ORG_ALLOWED = each(ORG_VERBS, ALLOW);
+const ORG_REFUSED = each(ORG_VERBS, refusedFor("not_structure_writer"));
+const APP_ALLOWED = each(
+  ["read_change", "comment_change", "merge_change", "close_change", "redeploy", "release"],
+  ALLOW,
+);
+/** What an org owner may do with an application that holds no project: nobody develops it. */
+const OWNER_EMPTY_APP = {
+  ...APP_ALLOWED,
+  merge_change: refusedFor("not_app_developer"),
+  redeploy: refusedFor("not_app_developer"),
+};
+/**
+ * A snapshot without when Zerops answered the view its offers are decided over: a time, or none
+ * before HQ's first view lands (its `org` message follows).
+ */
+const timeless = (snapshot: unknown) => {
+  const { rolesAnsweredAt, ...rest } = snapshot as Record<string, unknown>;
+  assert.isTrue(rolesAnsweredAt === null || typeof rolesAnsweredAt === "string");
+  return rest;
+};
+/** What a socket sent but the organization's offers, which move with every view HQ reads. */
+const besidesOrg = (messages: ReadonlyArray<{ readonly type: string }>) =>
+  messages.filter((message) => message.type !== "org");
+
 describe("HQ API", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect("explicit deletion completion checks one project and publishes empty contents", () =>
@@ -159,11 +191,13 @@ describe("HQ API", () => {
           });
           assert.strictEqual(attached.status, 201);
           assert.deepStrictEqual((yield* call("GET", "/api/structure", { session })).body, {
+            can: ORG_ALLOWED,
             ungrouped: [],
             apps: [
               {
                 id: appId,
                 name: "Shop",
+                can: APP_ALLOWED,
                 contents: { empty: false, deletingProjectIds: [] },
                 projects: [
                   {
@@ -346,6 +380,7 @@ describe("HQ API", () => {
                 name: "live",
                 sources: ["release"],
                 order: 1,
+                can: { keep_deploy_token: ALLOW },
                 keyHeld: false,
                 keyInvalid: false,
                 jobs: [],
@@ -450,6 +485,7 @@ describe("HQ API", () => {
               name: "stage",
               sources: ["main"],
               order: 1,
+              can: { keep_deploy_token: ALLOW },
               keyHeld: true,
               keyInvalid: false,
               jobs: [],
@@ -504,6 +540,7 @@ describe("HQ API", () => {
                 name: "stage",
                 sources: ["main"],
                 order: 1,
+                can: { keep_deploy_token: refusedFor("not_project_admin") },
                 keyHeld: false,
                 keyInvalid: false,
                 jobs: [],
@@ -620,6 +657,7 @@ describe("HQ API", () => {
             [403, { code: "forbidden", reason: "not_structure_writer" }],
           );
           assert.deepStrictEqual((yield* call("GET", "/api/structure", { session: dev })).body, {
+            can: ORG_REFUSED,
             ungrouped: [],
             apps: [],
           });
@@ -857,7 +895,7 @@ describe("HQ API", () => {
           );
           // What `GET /api/structure` answers, and beside it the changes of what the caller reads,
           // the Mates they observe and the people the view names.
-          assert.deepStrictEqual(yield* owner.next("snapshot"), {
+          assert.deepStrictEqual(timeless(yield* owner.next("snapshot")), {
             ...((yield* call("GET", "/api/structure", { session })).body as object),
             changes: {},
             appReads: {},
@@ -874,6 +912,7 @@ describe("HQ API", () => {
             value: {
               id: appId,
               name: "Shop",
+              can: OWNER_EMPTY_APP,
               contents: { empty: true, deletingProjectIds: [] },
               projects: [],
               environments: [],
@@ -899,6 +938,7 @@ describe("HQ API", () => {
             value: {
               id: appId,
               name: "Shop",
+              can: APP_ALLOWED,
               contents: { empty: false, deletingProjectIds: [] },
               projects: [
                 {
@@ -944,6 +984,7 @@ describe("HQ API", () => {
             value: {
               id: appId,
               name: "Shop",
+              can: OWNER_EMPTY_APP,
               contents: { empty: true, deletingProjectIds: [] },
               projects: [],
               environments: [],
@@ -955,7 +996,7 @@ describe("HQ API", () => {
           // Three pings answered: still open.
           yield* Effect.sleep(Duration.millis(1100));
           assert.isAtLeast(owner.pings.seen, 3);
-          assert.deepStrictEqual(yield* owner.quiet("1 millis"), []);
+          assert.deepStrictEqual(besidesOrg(yield* owner.quiet("1 millis")), []);
           yield* owner.close;
         }),
     );
@@ -1115,7 +1156,8 @@ describe("HQ API", () => {
           const owner = yield* socket(
             `/api/structure/ws?ticket=${yield* ticketFor(call, session)}`,
           );
-          assert.deepStrictEqual(yield* owner.next("snapshot"), {
+          assert.deepStrictEqual(timeless(yield* owner.next("snapshot")), {
+            can: ORG_ALLOWED,
             ungrouped: [],
             apps: [],
             changes: {},
@@ -1162,6 +1204,7 @@ describe("HQ API", () => {
             value: {
               id: appId,
               name: "Store",
+              can: OWNER_EMPTY_APP,
               contents: { empty: true, deletingProjectIds: [] },
               projects: [],
               environments: [],
@@ -1186,6 +1229,7 @@ describe("HQ API", () => {
                 value: {
                   id: appId,
                   name: "Store",
+                  can: APP_ALLOWED,
                   contents: { empty: false, deletingProjectIds: [] },
                   projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "mate", mate: adaView }],
                   environments: [],
@@ -1211,6 +1255,7 @@ describe("HQ API", () => {
                 value: {
                   id: appId,
                   name: "Store",
+                  can: OWNER_EMPTY_APP,
                   contents: { empty: true, deletingProjectIds: [] },
                   projects: [],
                   environments: [],
@@ -1230,7 +1275,8 @@ describe("HQ API", () => {
         const owner = yield* sessionFor(call, "door-owner");
         const dev = yield* sessionFor(call, "door-dev");
         const devSocket = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, dev)}`);
-        assert.deepStrictEqual(yield* devSocket.next("snapshot"), {
+        assert.deepStrictEqual(timeless(yield* devSocket.next("snapshot")), {
+          can: ORG_REFUSED,
           ungrouped: [],
           apps: [],
           changes: {},
@@ -1247,7 +1293,7 @@ describe("HQ API", () => {
           session: owner,
           body: { projectId: "P_MATE", kind: "stage" },
         });
-        assert.deepStrictEqual(yield* devSocket.quiet("700 millis"), []);
+        assert.deepStrictEqual(besidesOrg(yield* devSocket.quiet("700 millis")), []);
 
         // Zerops grants dev the project: the open socket shows the application within its recheck.
         const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
@@ -1259,6 +1305,8 @@ describe("HQ API", () => {
           value: {
             id: appId,
             name: "Shop",
+            // A developer of it, before it has a production to release.
+            can: { ...APP_ALLOWED, release: refusedFor("no_production") },
             contents: { empty: false, deletingProjectIds: [] },
             projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "stage", mate: null }],
             environments: [
@@ -1268,6 +1316,7 @@ describe("HQ API", () => {
                 name: "p-mate",
                 sources: ["main"],
                 order: 1,
+                can: { keep_deploy_token: refusedFor("not_project_admin") },
                 keyHeld: false,
                 keyInvalid: false,
                 jobs: [],
@@ -1326,12 +1375,22 @@ describe("HQ API", () => {
             })).body,
           },
         });
-        assert.deepStrictEqual(snapshot, {
+        assert.deepStrictEqual(timeless(snapshot), {
+          can: ORG_REFUSED,
           ungrouped: [],
           apps: [
             {
               id: appId,
               name: "Shop",
+              // An org reader reads and comments; nobody develops it.
+              can: {
+                read_change: ALLOW,
+                comment_change: ALLOW,
+                merge_change: refusedFor("not_app_developer"),
+                close_change: refusedFor("not_app_developer"),
+                redeploy: refusedFor("not_app_developer"),
+                release: refusedFor("no_production"),
+              },
               contents: { empty: true, deletingProjectIds: [] },
               projects: [],
               environments: [],
@@ -1391,7 +1450,8 @@ describe("HQ API", () => {
           const session = yield* sessionFor(call, "door-owner");
           const ticket = yield* ticketFor(call, session);
           const opened = yield* socket(`/api/structure/ws?ticket=${ticket}`);
-          assert.deepStrictEqual(yield* opened.next("snapshot"), {
+          assert.deepStrictEqual(timeless(yield* opened.next("snapshot")), {
+            can: ORG_ALLOWED,
             ungrouped: [],
             apps: [],
             changes: {},

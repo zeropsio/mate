@@ -66,6 +66,7 @@ import { GitHost, type PushedChange, mainOf } from "./gitHost.ts";
 import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { madeRepo } from "./reconcile.ts";
+import { appTarget } from "./offers.ts";
 import { Roles, confirmingRefusal } from "./roles.ts";
 import { addRollout } from "./rollouts.ts";
 import { squashesOnMain } from "./squashes.ts";
@@ -524,11 +525,11 @@ export const changesLayer: Layer.Layer<
       const check = Effect.gen(function* () {
         const projects = yield* sql<{ readonly project_id: string }>`
           SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
-        const projectIds = projects.map((row) => row.project_id);
+        const target = appTarget(projects);
         const decision =
           verb === "read_change"
-            ? readsChanges(userId, projectIds, yield* roles.view)
-            : can({ kind: "person", userId }, verb, { projectIds }, yield* roles.forWrite);
+            ? readsChanges(userId, target.projectIds, yield* roles.view)
+            : can({ kind: "person", userId }, verb, target, yield* roles.forWrite);
         if (!decision.allow) {
           yield* Effect.logInfo("change refused", { userId, verb, appId, reason: decision.reason });
           return yield* refuse("forbidden", decision.reason);

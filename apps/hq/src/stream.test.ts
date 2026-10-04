@@ -33,7 +33,7 @@ import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
 import { Releases } from "./releases.ts";
-import { type OrgView, Roles } from "./roles.ts";
+import { type OrgSeen, type OrgView, Roles } from "./roles.ts";
 import { Structure, type StructureRead } from "./structure.ts";
 import { liveSocketsLayer, serveStructureSocket, structureMessages } from "./stream.ts";
 import type { ZeropsMember } from "./zerops/api.ts";
@@ -71,8 +71,16 @@ const org = (userRoles: OrgView["projects"][number]["userRoles"] = []): OrgView<
   ],
 });
 
+/** What the owner may do with the organization. */
+const OWNER_CAN: StructureRead["can"] = {
+  create_app: { allow: true },
+  rename_app: { allow: true },
+  delete_app: { allow: true },
+};
+
 /** One Mate in no application, made by the owner. */
 const STRUCTURE: StructureRead = {
+  can: OWNER_CAN,
   ungrouped: [
     {
       projectId: "P_MATE",
@@ -126,6 +134,10 @@ const streamFor = (
     );
     const appReadCalls: string[] = [];
     const view = yield* Ref.make(org([{ clientUserId: "C-dev", roleCode: "BASIC_USER" }]));
+    /** The org view as Zerops answers it (`Roles.views`); none until a test answers one. */
+    const seen = yield* SubscriptionRef.make<OrgSeen | undefined>(undefined);
+    /** What the read offers the reader of the organization. */
+    const orgCan = yield* Ref.make(OWNER_CAN);
     const overviews = yield* makeMateOverviews(memoryStore().store);
     yield* before(overviews);
     const services = Layer.mergeAll(
@@ -133,9 +145,9 @@ const streamFor = (
         Structure,
         Structure.of({
           read: () =>
-            Effect.as(
+            Effect.andThen(
               Ref.update(reads, (n) => n + 1),
-              STRUCTURE,
+              Effect.map(Ref.get(orgCan), (can) => ({ ...STRUCTURE, can })),
             ),
           changes: SubscriptionRef.changes(version),
         } as unknown as Structure["Service"]),
@@ -173,7 +185,15 @@ const streamFor = (
         Deploys,
         Deploys.of({ changes: Stream.never } as unknown as Deploys["Service"]),
       ),
-      Layer.succeed(Roles, Roles.of({ view: Ref.get(view) } as unknown as Roles["Service"])),
+      Layer.succeed(
+        Roles,
+        Roles.of({
+          view: Ref.get(view),
+          views: SubscriptionRef.changes(seen).pipe(
+            Stream.filter((answer) => answer !== undefined),
+          ),
+        } as unknown as Roles["Service"]),
+      ),
       Layer.succeed(MateOverviews, overviews),
     );
     const sent: Array<{ readonly type: string } & Record<string, unknown>> = [];
@@ -185,10 +205,48 @@ const streamFor = (
     );
     yield* Effect.repeat(Effect.yieldNow, { times: 50 });
     yield* TestClock.adjust("1 millis");
-    return { sent, reads, version, view, overviews, revisions, released, appReads, appReadCalls };
+    return {
+      sent,
+      reads,
+      version,
+      view,
+      seen,
+      orgCan,
+      overviews,
+      revisions,
+      released,
+      appReads,
+      appReadCalls,
+    };
   });
 
 describe("the structure stream", () => {
+  it.effect("a view Zerops answers moves the organization's offers at once, with its time", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner");
+        assert.deepStrictEqual(
+          [h.sent[0]?.["can"], h.sent[0]?.["rolesAnsweredAt"]],
+          [OWNER_CAN, null],
+        );
+        const demoted = {
+          create_app: { allow: false, reason: "not_structure_writer" },
+          rename_app: { allow: false, reason: "not_structure_writer" },
+          delete_app: { allow: false, reason: "not_structure_writer" },
+        } as const;
+        yield* Ref.set(h.orgCan, demoted);
+        yield* SubscriptionRef.set(h.seen, {
+          view: yield* Ref.get(h.view),
+          answered: Date.parse("2026-10-04T10:00:00.000Z"),
+        });
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        assert.deepStrictEqual(h.sent.slice(1), [
+          { type: "org", can: demoted, rolesAnsweredAt: "2026-10-04T10:00:00.000Z" },
+        ]);
+      }),
+    ),
+  );
+
   it.effect("carries the four load reads for readable apps, and re-reads only the moved app", () =>
     Effect.scoped(
       Effect.gen(function* () {

@@ -99,6 +99,10 @@
       "types": "./src/hqChanges.ts",
       "import": "./src/hqChanges.ts"
     },
+    "./hqOffers": {
+      "types": "./src/hqOffers.ts",
+      "import": "./src/hqOffers.ts"
+    },
     "./hqAppReads": {
       "types": "./src/hqAppReads.ts",
       "import": "./src/hqAppReads.ts"
