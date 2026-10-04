@@ -227,6 +227,8 @@ describe("ZeropsStandUpRelay: a call first seen running", () => {
   );
 });
 
+const DEAD_AT = "2026-10-01T10:00:01Z";
+
 describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
   it.live("stops following it once its process is gone, and leaves the card's last state", () =>
     Effect.gen(function* () {
@@ -234,27 +236,7 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
       const status = yield* Ref.make<ZcpStatus | undefined>(section());
       const gone = yield* Ref.make(false);
       const appended = yield* Ref.make(0);
-      const layer = relayLayer.pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            Layer.succeed(ProviderRuntimeEventBus, {
-              version: PROVIDER_RUNTIME_SPI_VERSION,
-              events: Stream.fromQueue(events),
-              enrichmentFailures: Stream.empty,
-            }),
-            Layer.mock(ZeropsSetup)({
-              status: Ref.get(status),
-              standUpGone: () => Ref.get(gone),
-            }),
-            Layer.mock(OrchestrationEngineService)({
-              dispatch: () =>
-                Ref.update(appended, (count) => count + 1).pipe(Effect.as({ sequence: 1 })),
-              streamDomainEvents: Stream.never,
-            }),
-            NodeServices.layer,
-          ),
-        ),
-      );
+      const layer = deadLayer(events, status, gone, appended);
       yield* Effect.gen(function* () {
         yield* Queue.offer(events, standUpEvent("item.started", CALL_AT));
         yield* Effect.sleep(Duration.millis(200));
@@ -273,7 +255,59 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
       }).pipe(Effect.provide(layer), Effect.scoped);
     }),
   );
+
+  it.live("a retry is followed while the dead one's section is still in the file", () =>
+    Effect.gen(function* () {
+      const events = yield* Queue.unbounded<SpiEvent>();
+      // The previous call's section, its process gone, until the retry's zcp call writes its own.
+      const status = yield* Ref.make<ZcpStatus | undefined>(
+        section({ startedAt: "2026-10-01T09:40:00Z" }),
+      );
+      const gone = yield* Ref.make(true);
+      const appended = yield* Ref.make(0);
+      const layer = deadLayer(events, status, gone, appended, "2026-10-01T09:40:00Z");
+      yield* Effect.gen(function* () {
+        yield* Queue.offer(events, standUpEvent("item.started", CALL_AT));
+        yield* Effect.sleep(Duration.millis(200));
+        assert.strictEqual(yield* Ref.get(appended), 0, "the dead section is not this call's");
+        yield* Ref.set(status, section());
+        yield* Effect.sleep(Duration.millis(2_500));
+        assert.strictEqual(yield* Ref.get(appended), 1, "the retry's own section reaches its card");
+      }).pipe(Effect.provide(layer), Effect.scoped);
+    }),
+  );
 });
+
+/** The relay over a file whose stand-up at `deadAt` lost its process while `gone` holds. */
+const deadLayer = (
+  events: Queue.Queue<SpiEvent>,
+  status: Ref.Ref<ZcpStatus | undefined>,
+  gone: Ref.Ref<boolean>,
+  appended: Ref.Ref<number>,
+  deadAt = DEAD_AT,
+) =>
+  relayLayer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.succeed(ProviderRuntimeEventBus, {
+          version: PROVIDER_RUNTIME_SPI_VERSION,
+          events: Stream.fromQueue(events),
+          enrichmentFailures: Stream.empty,
+        }),
+        Layer.mock(ZeropsSetup)({
+          status: Ref.get(status),
+          standUpGone: (read) =>
+            Effect.map(Ref.get(gone), (dead) => dead && read?.standup?.startedAt === deadAt),
+        }),
+        Layer.mock(OrchestrationEngineService)({
+          dispatch: () =>
+            Ref.update(appended, (count) => count + 1).pipe(Effect.as({ sequence: 1 })),
+          streamDomainEvents: Stream.never,
+        }),
+        NodeServices.layer,
+      ),
+    ),
+  );
 
 describe("ZeropsStandUpRelay: only the newest call of a live thread", () => {
   const world = Effect.gen(function* () {

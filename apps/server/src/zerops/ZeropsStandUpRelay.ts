@@ -169,6 +169,8 @@ export const make = Effect.gen(function* () {
   /**
    * Writes the call's progress when it changed since the last write; whether
    * the stand-up's MCP process is provably gone, which leaves the last write.
+   * Only this call's section is judged: until zcp writes it, the file holds
+   * the previous call's, whose process may be gone without this one's being.
    */
   const relayOnce = (
     event: SpiEvent,
@@ -176,9 +178,9 @@ export const make = Effect.gen(function* () {
   ) =>
     Effect.gen(function* () {
       const status = yield* setup.status;
-      if (yield* setup.standUpGone(status)) return true;
       const progress = standUpProgressOf(status, call.startedAt);
       if (progress === undefined) return false;
+      if (yield* setup.standUpGone(status)) return true;
       const written = progressKey(progress);
       if (written === call.last) return false;
       const at = DateTime.formatIso(yield* DateTime.now);
