@@ -1167,7 +1167,8 @@ function applyPendingRetention(state: ZeropsDataState): ZeropsDataState {
         identity,
         reason: "overflow",
         attempts: 1,
-        retryable: true,
+        // Updates were lost past the budget: a person's again reads a fresh baseline.
+        retryable: false,
         retryAtMs: null,
       },
     });

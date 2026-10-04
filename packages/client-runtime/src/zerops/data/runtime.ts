@@ -2162,8 +2162,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
   /**
    * A failed hydration is read again on the recovery backoff, not at once: a refusal that lasts a
    * moment (a service the platform lists before it serves it) would spend the budget in a few
-   * milliseconds. A spent budget waits out the backoff's cap and starts over, so an entity is
-   * never left unresolved for good while an interest holds it. A 429 waits at least its
+   * milliseconds. A spent budget stays at the backoff's cap, so an entity is never left
+   * unresolved for good while an interest holds it, and never read faster than the cap again. A 429 waits at least its
    * Retry-After; a refusal waits for a grant change. Nothing reads while the tab is hidden: the
    * visible wake reads it at once (`resumeFromBackground`).
    */
@@ -2205,7 +2205,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             // A reset, an attempt it let start, or a hidden tab owns the entity's next read now.
             if (hydrationAttempts.get(key) !== record || Ref.getUnsafe(closed)) return Effect.void;
             if (Ref.getUnsafe(currentVisibility) === "hidden") return Effect.void;
-            if (spent) record.count = 0;
             record.retryAtMs = 0;
             return scheduleHydration(query);
           }),
@@ -3014,9 +3013,12 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     return scheduleInterestRetries.pipe(forkOwned, Effect.asVoid);
   });
 
-  /** The held interests on `receiver` whose own retry waits, and when the earliest comes due. */
+  /**
+   * The held interests of the organization's socket whose own retry waits: by its key, so a retry
+   * waiting when the socket is replaced comes due on the new one.
+   */
   const retriesOn = (
-    receiver: RuntimeReceiver,
+    key: string,
   ): ReadonlyArray<{
     readonly interest: RuntimeInterest;
     readonly dueAtMs: number;
@@ -3027,7 +3029,7 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
       return retry !== undefined &&
         runtimeInterest.leases.size > 0 &&
         runtimeInterest.identity === retry.identity &&
-        runtimeInterest.identity.receiver === receiver.identity
+        receiverKeyOf(runtimeInterest.descriptor) === key
         ? [{ interest: runtimeInterest, dueAtMs: retry.dueAtMs, spent: retry.spent }]
         : [];
     });
@@ -3048,14 +3050,18 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     Effect.gen(function* () {
       while (true) {
         cycle.wake = Deferred.makeUnsafe<void>();
-        const receiver = receivers.get(key);
+        const pending = retriesOn(key);
+        // A socket replaced with only waiting retries on it is opened by the retry itself.
+        const receiver =
+          receivers.get(key) ??
+          (pending.length > 0 ? receiverFor(pending[0]!.interest.descriptor) : undefined);
         const waiting =
           receiver === undefined ||
           receiver.failed ||
           Ref.getUnsafe(closed) ||
           Ref.getUnsafe(currentVisibility) === "hidden"
             ? []
-            : retriesOn(receiver);
+            : pending;
         if (receiver === undefined || waiting.length === 0) {
           // Ends in the same step its entry goes: a retry stamped next starts a cycle of its own.
           if (recoveryCycles.get(key) === cycle) recoveryCycles.delete(key);
@@ -3074,11 +3080,11 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
               (yield* Ref.get(currentVisibility)) === "hidden" ||
               receivers.get(key) !== receiver ||
               receiver.failed ||
-              receiver.handle === null
+              receiver.openFailure !== null
             )
               return [];
             const now = yield* Clock.currentTimeMillis;
-            const ready = retriesOn(receiver).filter((retry) => retry.dueAtMs <= now);
+            const ready = retriesOn(key).filter((retry) => retry.dueAtMs <= now);
             for (const { interest } of ready) {
               interestRetries.delete(interest.key);
               yield* releaseFailedRegistrations(receiver, interest.key);
@@ -3253,7 +3259,13 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         { discard: true },
       );
       yield* Effect.forEach(
-        [...receivers.values()].filter((receiver) => retriesOn(receiver).length > 0),
+        [
+          ...new Set(
+            [...interests.values()]
+              .filter((interest) => interestRetries.has(interest.key))
+              .map((interest) => receiverFor(interest.descriptor)),
+          ),
+        ],
         requestRecovery,
         { discard: true },
       );
@@ -3449,6 +3461,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         yield* applyControl({ kind: "interest-upserted", interest: desired });
         yield* establishInterest(remaining).pipe(forkOwned);
       }
+      // A retry that was waiting on the stale socket comes due on the new one.
+      if (retriesOn(receiver.key).length > 0)
+        yield* requestRecovery(receiverFor(retriesOn(receiver.key)[0]!.interest.descriptor));
     });
 
   const presenceChecks = new Map<string, Fiber.Fiber<void>>();

@@ -4690,6 +4690,13 @@ describe("incomplete data says so, with its retry", () => {
         yield* TestClock.adjust("1 millis");
         yield* settle;
         expect(processReads).toBe(observed + 2);
+        // Spent, it stays at the cap: no fast rung follows.
+        yield* TestClock.adjust("999 millis");
+        yield* settle;
+        expect(processReads).toBe(observed + 2);
+        yield* TestClock.adjust("1 millis");
+        yield* settle;
+        expect(processReads).toBe(observed + 3);
 
         unsubscribe();
         yield* runtime.shutdown("application-close");
@@ -4715,9 +4722,10 @@ describe("incomplete data says so, with its retry", () => {
       reads: { atFirst: 1, afterAMinute: 1, afterGrant: 2 },
     },
     {
-      name: "a 5xx backs off and is read again, as before",
+      // 1 s, 2 s, then the 10 s cap for good: a spent budget never falls back to fast rungs.
+      name: "a 5xx backs off and is read again, staying at the cap",
       error: { kind: "server", status: 503 },
-      reads: { atFirst: 1, afterAMinute: 12, afterGrant: 12 },
+      reads: { atFirst: 1, afterAMinute: 8, afterGrant: 8 },
     },
   ] as const)("a failed entity read: $name", ({ error, reads }) =>
     Effect.gen(function* () {
@@ -6185,6 +6193,41 @@ describe("an interest that fails alone recovers alone", () => {
           rig.registry.dispose();
         }),
       ),
+  );
+
+  it.effect("a retry waiting when its socket is replaced comes due on the new one", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const rig = yield* refusing(1, { policy: { releasedRegistrationsPerReceiver: 1 } });
+        const lease = yield* rig.runtime.acquire({
+          kind: "project-activity",
+          project: topologyDescriptor.project,
+        });
+        yield* waitForState(rig.states, (state) => {
+          const interest = state.interests.get(lease.interest)?.interest;
+          return interest?.status === "failed" && interest.retryAtMs !== null;
+        });
+        // Another project's demand comes and goes: its released subscriptions replace the socket.
+        const passing = yield* Scope.make();
+        yield* rig.runtime
+          .acquire({ kind: "project-inventory", project: project("project-b") })
+          .pipe(Scope.provide(passing));
+        yield* settle;
+        yield* Scope.close(passing, Exit.void);
+        yield* settle;
+        expect(rig.harness.counts().closes).toBe(1);
+        yield* TestClock.adjust("100 millis");
+        yield* waitForState(
+          rig.states,
+          (state) => state.interests.get(lease.interest)?.interest.status === "observing",
+        );
+        expect(rig.attemptsAt).toEqual([0, 100]);
+        expect(rig.harness.counts().opens).toBe(2);
+        yield* rig.runtime.shutdown("application-close");
+        rig.stop();
+        rig.registry.dispose();
+      }),
+    ),
   );
 
   it.effect("retries that churn past the released-subscription bound replace the socket", () =>
