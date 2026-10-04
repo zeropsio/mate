@@ -130,7 +130,7 @@ export interface ZeropsProjectsFlowProps<T> {
    * release, so the cell never shows the same verb twice.
    */
   readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
-  /** The group's releases, the release gate's reason and its recipe changes, as `<li>`s; `null` for none. */
+  /** The group's releases and the release gate's reason, as `<li>`s; `null` for none. */
   readonly renderGroupRows: (group: ZeropsGroup) => ReactNode;
   readonly renderGroupMenu: (group: ZeropsGroup) => ReactNode;
   /** Re-probes the containers not answering. */

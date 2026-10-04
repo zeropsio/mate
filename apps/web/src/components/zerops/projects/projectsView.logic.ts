@@ -153,7 +153,7 @@ export function groupPlacement(entry: FoldedGroupInput): GroupPlacement {
     flow.nextStep.kind === "first-task" &&
     flow.stages.length === 0 &&
     flow.production.kind === "absent" &&
-    flow.recipeChanges.length === 0;
+    flow.pullRequests.length === 0;
   return onlyAMate ? "tile" : "row";
 }
 
@@ -223,7 +223,7 @@ export function nextStepTone(kind: GroupNextStepKind): ServiceStatusToneId {
   return NEXT_STEP_TONE[kind];
 }
 
-type ContainerState = "ready" | "coming-up" | "not-answering" | "stopped" | "other";
+type ContainerState = "ready" | "coming-up" | "not-answering" | "stopped" | "not-in-hq" | "other";
 
 /** A container's state, from the one verb its row offers (`deriveZeropsRowAction`). */
 function containerStateOf(kind: ZeropsRowAction["kind"]): ContainerState {
@@ -232,6 +232,8 @@ function containerStateOf(kind: ZeropsRowAction["kind"]): ContainerState {
       return "ready";
     case "pending":
       return "coming-up";
+    case "not-in-hq":
+      return "not-in-hq";
     case "retry-probe":
       return "not-answering";
     case "start":
@@ -250,6 +252,7 @@ const CONTAINER_STATE_WORD: ReadonlyArray<readonly [ContainerState, string]> = [
   ["coming-up", "coming up"],
   ["not-answering", "not answering"],
   ["stopped", "stopped"],
+  ["not-in-hq", "not in this HQ"],
   ["other", "need a look"],
 ];
 
@@ -291,6 +294,13 @@ export function withoutOfficialHq<T extends { readonly project: { readonly id: s
 ): ReadonlyArray<T> {
   if (hq.kind !== "official") return rows;
   return rows.filter((row) => row.project.id !== hq.projectId);
+}
+
+/** Foreign environments without a Mate do not belong in the Overview's container or setup list. */
+export function shownUngrouped<T extends ZeropsCandidate>(
+  rows: ReadonlyArray<{ readonly item: T; readonly action: ZeropsRowAction["kind"] }>,
+): ReadonlyArray<{ readonly item: T; readonly action: ZeropsRowAction["kind"] }> {
+  return rows.filter(({ item, action }) => hasMate(item) || action === "set-up-mate");
 }
 
 /**

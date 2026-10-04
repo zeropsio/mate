@@ -204,6 +204,7 @@ import {
   productionAddable,
   talkSettled,
   withoutOfficialHq,
+  shownUngrouped,
   type ProjectsSearch,
 } from "./projects/projectsView.logic";
 import { deleteOffered, emptyApplications, groupIsEmpty } from "./projects/emptyApps.logic";
@@ -214,6 +215,7 @@ import {
   connectFailureLine,
   deriveZeropsRowAction,
   setUpMateVerb,
+  mateOutsideHq,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
   groupAddsOffered,
@@ -1032,6 +1034,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     const waiting = candidate.group !== "connected" && waitedOn(candidate);
     const mateFlag = candidateMateFlags.get(candidate.key);
     return {
+      outsideHq:
+        hasMate(candidate) &&
+        mateOutsideHq(
+          candidate.project,
+          hqKnown,
+          waiting || presses.some((press) => press.projectId === candidate.project.id),
+        ),
       candidate,
       health: candidateHealth.get(candidate.key),
       // A first build past its grace is still on its way, taking longer.
@@ -1340,6 +1349,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     live: ZeropsAgentActivity | undefined,
     busy: boolean,
   ): React.ReactNode => {
+    if (action.kind === "not-in-hq") return presentation.detail;
     if (candidate.group === "connected" || live !== undefined) {
       return live?.subject === undefined ? null : (
         <span className="min-w-0 truncate" data-zerops-surface="mate-subject">
@@ -2371,21 +2381,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 
   /**
    * The rows of a project that are not one of its four steps: why *Release*
-   * is not offered, what it would carry, the releases (each with the way back
-   * to it) and the changes waiting on its recipe. `null` where it has none.
+   * is not offered, what it would carry and the releases (each with the way back
+   * to it). `null` where it has none.
    */
   const renderGroupRows = (group: ZeropsGroup): React.ReactNode => {
     const gate = releaseGateLine(group);
     const contents = releaseContentLines(group);
     const releases = groupDeploys.get(group.groupId)?.releases ?? [];
-    // The recipe changes waiting on somebody: last, under the environments
-    // they would change.
-    const recipes = (groupDeploys.get(group.groupId)?.pullRequests ?? [])
-      .filter((pull) => pull.kind === "recipe")
-      .map((pull) => pullRequestRowOf(group, pull, { withMerge: true, compact: false }));
-    if (gate === null && contents === null && releases.length === 0 && recipes.length === 0) {
-      return null;
-    }
+    if (gate === null && contents === null && releases.length === 0) return null;
     return (
       <>
         {gate}
@@ -2398,7 +2401,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           pending={projectFlow.pending}
           releases={releases}
         />
-        {recipes}
       </>
     );
   };
@@ -2582,10 +2584,12 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // The page's one line of trouble: a refusal of something done here — a
   // merge or a release the project flow refused included — one at a time.
   const trouble = toolError ?? route.trouble ?? projectFlow.trouble;
-  const ungroupedRows = withoutOfficialHq(groupTree.ungrouped, accountHq.hq).map((candidate) => ({
-    item: candidate,
-    action: deriveZeropsRowAction(rowInput(candidate)).kind,
-  }));
+  const ungroupedRows = shownUngrouped(
+    withoutOfficialHq(groupTree.ungrouped, accountHq.hq).map((candidate) => ({
+      item: candidate,
+      action: deriveZeropsRowAction(rowInput(candidate)).kind,
+    })),
+  );
 
   return (
     // The page's end clears the app's fixed "Open main sidebar" control, so

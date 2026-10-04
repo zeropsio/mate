@@ -39,8 +39,8 @@
  * environment is in; the colours are `assignCandidateMateTints`, likewise
  * shared. Which pull requests are a Mate's to answer for, and what the
  * chips say, are read from `groupFlow` — the same derivation the projects
- * page draws from — so a recipe change never counts as a Mate's own work
- * here, and a chip never says what the page would not.
+ * page draws from, including recipe changes, so a chip never says what the
+ * page would not.
  *
  * Everything else about the account lives on the projects screen. This is
  * where you work; that is where you manage.
@@ -129,7 +129,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { useOpenReview } from "~/zerops/review";
 import { useSentAsks } from "~/zerops/sentAsk";
-import { hqMatesAtom } from "~/state/zerops";
+import { hqMatesAtom, hqPlacementsAtom, hqStructureAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -616,6 +616,16 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   shown,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
+  const structureView = useAtomValue(hqStructureAtom);
+  const placements = useAtomValue(hqPlacementsAtom);
+  const appsWithWork =
+    placements === null || structureView === null || structureView.structure === null
+      ? []
+      : structureView.structure.apps.filter(
+          (app) =>
+            (getFlow?.(app.id)?.pullRequests.length ?? remembered?.changes(app.id)?.length ?? 0) >
+            0,
+        );
   const emptyReason = candidates.some((candidate) => candidate.project.hq !== undefined)
     ? undefined
     : mateEnvironmentsEmptyReason(candidates);
@@ -838,7 +848,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   drawnForMemory.current = NOTHING_DRAWN;
 
   // A Mate being created is one to draw, whatever the listing holds yet.
-  const nothing = births.some((birth) => birth.placement.kind === "mate") ? undefined : emptyReason;
+  const nothing =
+    appsWithWork.length > 0 || births.some((birth) => birth.placement.kind === "mate")
+      ? undefined
+      : emptyReason;
 
   // Nothing to draw, and the listing may not say "none" yet: its notice, at
   // the menu's own left edge, never an empty state it has not earned.
@@ -896,6 +909,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     ...mates,
   ];
   const view = buildZeropsGroupTree(everyEnvironment, {
+    apps: appsWithWork,
     rank: rankZeropsCandidateForListing,
     order: projectOrder.order,
     ...(projectOrder.customOrder === undefined ? {} : { customOrder: projectOrder.customOrder }),
@@ -986,7 +1000,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       // A hidden Mate's changes are drawn nowhere, so they are found nowhere.
       for (const { item } of mateEntries) {
         const mateProjectId = item.project.id;
-        for (const pull of grouped.get(mateProjectId) ?? []) {
+        for (const pull of grouped.byMate.get(mateProjectId) ?? []) {
           jumpChanges.push({
             key: changeRowKey(pull),
             groupId: id,
@@ -998,6 +1012,20 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             whose: names.get(mateProjectId),
           });
         }
+      }
+    }
+    if (input.changesDrawn) {
+      for (const pull of grouped.others) {
+        jumpChanges.push({
+          key: changeRowKey(pull),
+          groupId: id,
+          repository: pull.repository,
+          number: pull.number,
+          projectName: groupName,
+          label: sidebarChangeLabel(pull, grouped.others),
+          mateProjectId: pull.mateProjectId,
+          whose: pull.mateProjectId,
+        });
       }
     }
     jumpStops.push(...input.stops);
@@ -1039,7 +1067,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     // The one derivation the projects page draws from too (`groupFlow.ts`),
     // fed through the page's own input (`groupFlowInputOf`) and gate
     // (`productionAddable`): read once here, so the pull requests this tree
-    // hangs under a Mate, the recipe changes it leaves out and the production
+    // hangs under a Mate and the production
     // chip can never disagree with what the page says about the same project.
     //
     // Read whether or not HQ is: what a stop runs, and whether it serves,
@@ -1328,9 +1356,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       line,
       openStop,
     });
-    // Code only — a recipe change is the group's document, left to the
-    // projects page, and is never one more thing a Mate's row here answers
-    // for.
     // The change rows: HQ's once it told them, and until then the ones this
     // browser remembers drawing, untinted — so a reload grows no row when the
     // answer comes (`menuMemory.ts`).
@@ -1430,7 +1455,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           };
         }
         const { item } = slot;
-        const pulls = grouped.get(item.project.id) ?? [];
+        const pulls = grouped.byMate.get(item.project.id) ?? [];
         const listKey = `${id}:${item.project.id}`;
         const appUrl = projectFlow.mates.find(
           (mate) => mate.projectId === item.project.id,
@@ -1487,6 +1512,22 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         };
       },
     );
+    const otherChanges =
+      grouped.others.length === 0 || changeRows === undefined ? null : (
+        <ul className="flex flex-col" data-zerops-surface="sidebar-other-pull-requests">
+          {grouped.others.map((pull) => (
+            <PullRequestRow
+              among={grouped.others}
+              groupId={id}
+              key={changeRowKey(pull)}
+              onOpenChange={changeRows.onOpenChange}
+              pull={pull}
+              remembered={changeRows.remembered === true}
+              whose={pull.mateProjectId}
+            />
+          ))}
+        </ul>
+      );
     return (
       <>
         {header}
@@ -1503,6 +1544,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
               {block.node}
             </div>
           ))}
+          {otherChanges === null ? null : <div className="mt-2.5">{otherChanges}</div>}
         </SidebarProjectFold>
       </>
     );
@@ -2414,6 +2456,8 @@ function MateUnit({
   );
 }
 
+import { mateOutsideHq, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
+
 function MateRow<T extends RosterCandidate>({
   candidate,
   tint,
@@ -2476,6 +2520,13 @@ function MateRow<T extends RosterCandidate>({
   // *Finish setup* running on it, from whichever screen it was pressed (`finishSetupRowLine`):
   // its own view draws the steps only while its container is missing, so its row says so.
   const press = useMatePress(candidate.project.id);
+  const structure = useAtomValue(hqStructureAtom);
+  const placements = useAtomValue(hqPlacementsAtom);
+  const outsideHq = mateOutsideHq(
+    candidate.project,
+    placements !== null && structure?.current === true,
+    coming !== undefined || press !== undefined,
+  );
   const finishing = deleting || coming !== undefined ? undefined : finishSetupRowLine(press);
   // What the row says in its state (`mateRowView`, M7): the face, the right of
   // the name, what was asked and the third line — the face and the words from
@@ -2502,7 +2553,7 @@ function MateRow<T extends RosterCandidate>({
         : read;
   // Nothing on its menu is about a Mate still being made, or one going: it
   // offers none — until its setup stopped, when *Finish setup* is on it.
-  const actions = mateRowOffersMenu({ deleting, coming }) ? offered : undefined;
+  const actions = !outsideHq && mateRowOffersMenu({ deleting, coming }) ? offered : undefined;
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
   const records = mateOwnerRecords(candidate.project);
@@ -2522,13 +2573,13 @@ function MateRow<T extends RosterCandidate>({
   // The sign-in line stands where nothing else is said of a Mate that is up: to the person who
   // added it, that it waits on them — with the amber dot of what needs them.
   const signIn =
-    deleting || finishing !== undefined || view.coming !== undefined || containerless
+    outsideHq || deleting || finishing !== undefined || view.coming !== undefined || containerless
       ? undefined
       : seated.signInLine;
   const dot = view.dot ?? (signIn !== undefined && seated.waitsOnViewer ? "attention" : undefined);
   // What its face's corner wears (`ownerBadge`), and whether its face is paler: not the viewer's.
   const badge =
-    containerless && seated.seat.kind === "nobody"
+    outsideHq || (containerless && seated.seat.kind === "nobody")
       ? null
       : ownerBadge(seated.seat, owner?.isViewer === true);
   const notYours = mateNotYours({
@@ -2701,7 +2752,7 @@ function MateRow<T extends RosterCandidate>({
         // the menu's edge and every word at 56 (the list starts at 9). It
         // paints nothing of its own: its unit is lit, under the pointer or
         // by the list's one band, which slides to it (`SidebarSelectedBand`).
-        aria-disabled={deleting || undefined}
+        aria-disabled={deleting || outsideHq || undefined}
         className="menu-row grid w-full min-w-0 cursor-pointer grid-cols-[28px_minmax(0,1fr)] items-start gap-x-3 py-2.5 ps-1.75 pe-2 text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:cursor-default"
         data-zerops-surface="sidebar-mate"
         // Resting on it, focusing or touching it warms its conversation, so
@@ -2712,7 +2763,7 @@ function MateRow<T extends RosterCandidate>({
             longPress.current.fired = false;
             return;
           }
-          if (deleting) return;
+          if (deleting || outsideHq) return;
           onSelect(candidate);
         }}
         onKeyDown={(event) => {
@@ -2837,12 +2888,18 @@ function MateRow<T extends RosterCandidate>({
             </span>
           </span>
           {view.coming !== undefined ? <MateComingLine line={mateBornLine(view.coming)} /> : null}
-          {askLine === undefined ? null : askLine.kind === "sign-in" ? (
+          {outsideHq ? (
+            <span className="truncate text-line leading-4.5 text-muted-foreground">
+              {NOT_IN_HQ_LINE}
+            </span>
+          ) : askLine === undefined ? null : askLine.kind === "sign-in" ? (
             <MateSignInLine waitsOnViewer={askLine.waitsOnViewer} words={askLine.text} />
           ) : (
             <MateAskLine line={askLine} rises={askChanged} />
           )}
-          {view.reply === undefined ? null : <MateReply known={known} reply={view.reply} />}
+          {outsideHq || view.reply === undefined ? null : (
+            <MateReply known={known} reply={view.reply} />
+          )}
           {deleting ? <MateDeletingLine /> : null}
           {finishing === undefined ? null : <MateFinishingLine words={finishing} />}
         </span>
@@ -3537,7 +3594,9 @@ function PullRequestRow({
   groupId,
   onOpenChange,
   remembered = false,
+  whose,
 }: {
+  readonly whose?: string;
   readonly pull: FlowPullRequest;
   /** The rows drawn with it: where its opener's span repositories, each names its own. */
   readonly among: ReadonlyArray<FlowPullRequest>;
@@ -3548,7 +3607,8 @@ function PullRequestRow({
   readonly remembered?: boolean;
 }) {
   const openReview = useOpenReview();
-  const label = sidebarChangeLabel(pull, among);
+  const name = sidebarChangeLabel(pull, among);
+  const label = whose === undefined ? name : `${name} · ${whose}`;
   const tone = changeMarkTone(pull, remembered);
   return (
     <li

@@ -265,15 +265,16 @@ describe("the pull requests of each Mate", () => {
     const older = row({ number: 3, line: "appdev #3", updatedAt: "2026-09-17T12:00:00Z" });
     const grouped = pullRequestsByMate([older, fen, vera, veraRecipe], [VERA, FEN]);
     // #4 and #6 moved at the same moment; the higher number is the newer one.
-    expect(grouped.get(VERA)?.map((entry) => entry.number)).toEqual([6, 4, 3]);
-    expect(grouped.get(FEN)?.map((entry) => entry.number)).toEqual([5]);
+    expect(grouped.byMate.get(VERA)?.map((entry) => entry.number)).toEqual([6, 4, 3]);
+    expect(grouped.byMate.get(FEN)?.map((entry) => entry.number)).toEqual([5]);
   });
 
-  // Only Mates open changes (SPEC §5.4): one whose Mate the caller does not list has no row.
-  it("lists nothing of a Mate the caller does not know", () => {
+  // HQ retains a change after its Mate disappears from the listing.
+  it("keeps the changes of a Mate the caller no longer lists", () => {
     const grouped = pullRequestsByMate([vera], [FEN]);
-    expect(grouped.get(FEN)).toEqual([]);
-    expect(grouped.has(VERA)).toBe(false);
+    expect(grouped.byMate.get(FEN)).toEqual([]);
+    expect(grouped.byMate.has(VERA)).toBe(false);
+    expect(grouped.others).toEqual([vera]);
   });
 
   it("folds a Mate's pull requests only once there are more than three", () => {

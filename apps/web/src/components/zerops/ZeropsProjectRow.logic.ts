@@ -21,6 +21,7 @@ import {
   newMateTint,
   type OfferAsker,
   readZeropsToolKind,
+  readZeropsMembership,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
   type FlowReleaseRow,
@@ -46,7 +47,20 @@ export type ZeropsRowCandidate = ZeropsCandidate & {
   readonly presence?: CandidatePresence;
 };
 
+/** HQ's current absence is a fact; a local birth still owns its progress. */
+export function mateOutsideHq(
+  project: ZeropsCandidate["project"],
+  known: boolean,
+  birthing: boolean,
+): boolean {
+  return known && project.hq === undefined && !birthing;
+}
+
+export const NOT_IN_HQ_LINE = "Not in this HQ";
+
 export interface ZeropsRowInput {
+  /** A current HQ structure places no record here, and no local birth is in progress. */
+  readonly outsideHq?: boolean;
   readonly candidate: ZeropsRowCandidate;
   /** Absent = the health probe has not answered yet. */
   readonly health: ZeropsContainerHealth | undefined;
@@ -135,6 +149,7 @@ export type ZeropsRowAction =
   | { readonly kind: "retry-probe"; readonly label: "Try again" }
   /** The container is on its way, the probe or the socket still busy: no verb yet. */
   | { readonly kind: "pending" }
+  | { readonly kind: "not-in-hq" }
   | { readonly kind: "none" };
 
 /**
@@ -332,6 +347,9 @@ function isStopped(candidate: ZeropsRowCandidate): boolean {
 
 export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPresentation {
   const { candidate, health, runningProcessKind } = input;
+  if (input.outsideHq) {
+    return { status: { label: NOT_IN_HQ_LINE, tone: "off" }, detail: NOT_IN_HQ_LINE };
+  }
 
   // Whose Mate it is outranks whatever its container is doing. A person who
   // cannot open it is not waiting for it to start, and telling them it is
@@ -518,7 +536,9 @@ export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowActio
 }
 
 export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
-  const { candidate, health, can, role } = input;
+  const { candidate, health, can } = input;
+  const role = input.role ?? readZeropsMembership(candidate.project).role;
+  if (input.outsideHq) return { kind: "not-in-hq" };
   if (isZeropsToolCandidate(candidate)) return { kind: "none" };
   // A verb the door would refuse is not offered (D5). The row says why in
   // place of it.
@@ -536,7 +556,14 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
       if (candidate.creationFailed !== undefined) {
         return can.remove ? { kind: "remove", label: "Remove" } : { kind: "none" };
       }
-      if (candidate.missingContainer === true && can.setUpMate && mateSetupOffered(role)) {
+      // Missing HQ membership cannot establish that an existing environment is a dev box.
+      // Only an explicit dev role or a declared Mate justifies setting up a container here.
+      if (
+        candidate.missingContainer === true &&
+        can.setUpMate &&
+        mateSetupOffered(role) &&
+        (role === "dev" || role === "devstage" || hasMate(candidate))
+      ) {
         return { kind: "set-up-mate", label: "Set up Mate" };
       }
       if (transitionalStatus(candidate) !== undefined) return { kind: "none" };

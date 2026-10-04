@@ -14,6 +14,7 @@ import {
   deriveZeropsRowPresentation,
   environmentSummaryLine,
   mateIsUp,
+  mateOutsideHq,
   mateRowCan,
   mateSetupOffered,
   releaseRowTone,
@@ -54,6 +55,28 @@ function input(
 ): ZeropsRowInput {
   return { candidate, health, can };
 }
+
+describe("a container outside this HQ", () => {
+  it.each([
+    [true, false, true],
+    [false, false, false],
+    [true, true, false],
+  ])("requires a current HQ and no local birth (%s, %s)", (known, birthing, outside) => {
+    expect(mateOutsideHq(READY.project, known, birthing)).toBe(outside);
+  });
+
+  it.each([undefined, "initializing", "ready"] as const)(
+    "has a settled state and no verb, whatever its probe says (%s)",
+    (health) => {
+      const row = { ...input(READY, health), outsideHq: true };
+      expect(deriveZeropsRowAction(row)).toEqual({ kind: "not-in-hq" });
+      expect(deriveZeropsRowPresentation(row)).toEqual({
+        status: { label: "Not in this HQ", tone: "off" },
+        detail: "Not in this HQ",
+      });
+    },
+  );
+});
 
 describe("a Mate the platform restarts", () => {
   const restarting = (status: string): ZeropsRowCandidate => ({
@@ -234,17 +257,27 @@ describe("deriveZeropsRowAction", () => {
   describe("Set up Mate", () => {
     const bare: ZeropsRowCandidate = {
       key: "bare",
-      project: { id: "bare", name: "bare", status: "ACTIVE", tagList: [] },
+      project: { id: "bare", name: "bare", status: "ACTIVE", tagList: ["mate"] },
       group: "unavailable",
       reason: "no Zerops Mate container in this project",
       missingContainer: true,
     };
 
-    it("is offered on a project that merely has no container", () => {
+    it("is offered on a declared Mate that has lost its container", () => {
       expect(deriveZeropsRowAction(input(bare, undefined))).toEqual({
         kind: "set-up-mate",
         label: "Set up Mate",
       });
+    });
+
+    it.each([
+      ["central-prometheus", []],
+      ["Beviro - production", ["mate:g:foreign", "mate:role:prod"]],
+      ["ZIT - stage", ["mate:g:foreign", "mate:role:stage"]],
+      ["Imperial Titan - production", ["mate:g:foreign", "mate:role:prod"]],
+    ])("does not offer to convert an unrecorded environment (%s)", (name, tagList) => {
+      const foreign = { ...bare, project: { ...bare.project, name, tagList } };
+      expect(deriveZeropsRowAction(input(foreign, undefined))).toEqual({ kind: "none" });
     });
 
     it("is never offered to a tool, which has no container by design", () => {
@@ -478,7 +511,7 @@ describe("deriveZeropsRowPresentation", () => {
       input(
         {
           key: "bare",
-          project: { id: "bare", name: "bare", status: "ACTIVE", tagList: [] },
+          project: { id: "bare", name: "bare", status: "ACTIVE", tagList: ["mate"] },
           group: "unavailable",
           reason: "no Zerops Mate container in this project",
           missingContainer: true,
