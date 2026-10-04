@@ -10,7 +10,8 @@
  *   kinds the move rule lets it take there; none listed is nowhere.
  * - **Four states a control draws** (`hqOffer`): allowed, refused with HQ's reason (its words are
  *   `hq/refusals.ts`'), unknown — nothing streamed yet, the thing absent, the verb unanswered — and
- *   unavailable since HQ stopped answering. Nothing compares a time to now.
+ *   unavailable since HQ stopped answering. A re-read in flight keeps the last record. Nothing
+ *   compares a time to now.
  *
  * Pure.
  *
@@ -53,18 +54,17 @@ export type HqOfferState =
 const readDecision = Schema.decodeUnknownOption(HqDecision);
 
 /**
- * One verb's state, from the `can` record HQ last streamed and whether HQ answers now: while it
- * does not, every HQ-enforced verb is unavailable since then, whatever it said before.
+ * One verb's state, from the `can` record HQ last streamed and whether HQ answers now: once it
+ * stopped answering, every HQ-enforced verb is unavailable since then, whatever it said before;
+ * while it is only being read again, what it said last stands.
  */
 export function hqOffer(
   can: HqOffers | undefined,
   verb: string,
   hq: { readonly current: boolean; readonly unavailableSince: number | null },
 ): HqOfferState {
-  if (!hq.current) {
-    return hq.unavailableSince === null
-      ? { kind: "unknown" }
-      : { kind: "unavailable", since: hq.unavailableSince };
+  if (!hq.current && hq.unavailableSince !== null) {
+    return { kind: "unavailable", since: hq.unavailableSince };
   }
   return Option.match(readDecision(can?.[verb]), {
     onNone: (): HqOfferState => ({ kind: "unknown" }),

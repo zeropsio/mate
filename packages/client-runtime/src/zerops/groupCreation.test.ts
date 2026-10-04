@@ -230,6 +230,36 @@ describe("finishMateSetupVerb", () => {
   });
 });
 
+// The web review, 2026-10-05: an admin who is also the Mate's adder, while HQ has not said whether
+// they write the registry, was offered the close-off alone and its registration skipped unsaid.
+describe("finishMateSetupVerb while HQ has not said who writes the registry", () => {
+  const HALF_MADE = {
+    registration: "registered" as MateRegistration,
+    containerMissing: false,
+    pressStopped: false,
+    closedOffMissing: false,
+    pastGrace: true,
+    viewerIsAdder: false,
+    hasContainer: true,
+    recordMissing: false,
+    mayCreateRecord: false,
+  };
+  it.each([
+    [
+      "a half-made Mate, whatever the viewer added",
+      { ...HALF_MADE, pressStopped: true, viewerIsAdder: true },
+      undefined,
+    ],
+    [
+      "a Mate HQ holds no record of, whose record HQ offers",
+      { ...HALF_MADE, recordMissing: true, mayCreateRecord: true },
+      "Finish setup",
+    ],
+  ] as const)("waits for HQ on %s", (_, input, expected) => {
+    expect(finishMateSetupVerb({ ...input, writer: undefined })).toBe(expected);
+  });
+});
+
 describe("finishMateSetupScope", () => {
   it.each([
     { writer: true, want: "whole" },

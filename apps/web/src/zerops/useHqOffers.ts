@@ -43,12 +43,6 @@ export function useHqOffers() {
   }, [organizationId, timestampFormat, view]);
 }
 
-/** Whether HQ does not answer now — its outage recorded — whether or not it ever said anything. */
-export function useHqDown(): boolean {
-  const { hq } = useHqOffers();
-  return !hq.current && hq.unavailableSince !== null;
-}
-
 /**
  * What HQ offers the reader of a project, by its id (`hqMateOffers`): of a Mate, following it,
  * its record, leaving its application and where it may go; of a project HQ holds nowhere, writing

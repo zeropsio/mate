@@ -22,15 +22,15 @@ const VERBS: { readonly [V in ChangeVerb]: string } = {
 };
 
 /**
- * An application's change verbs: whether each is offered, in words why one is not, and whether
- * none is because HQ does not answer.
+ * An application's change verbs: whether each is offered, in words why one is not — HQ's refusal,
+ * that it has not said, or since when it does not answer — and whether HQ refused reading them.
  */
 export type ZeropsChangeOffers = { readonly [V in ChangeVerb]: boolean } & {
   readonly why: { readonly [V in ChangeVerb]?: string };
-  readonly unavailable: boolean;
+  readonly readRefused: boolean;
 };
 
-/** An application's offers by its id; `undefined` while HQ has not said them. */
+/** An application's offers by its id; `undefined` for one HQ's structure does not hold, or before it. */
 export type ZeropsChangeOffersOf = (appId: string) => ZeropsChangeOffers | undefined;
 
 export function useChangeOffers(): ZeropsChangeOffersOf {
@@ -42,7 +42,6 @@ export function useChangeOffers(): ZeropsChangeOffersOf {
       const states = Object.fromEntries(
         Object.entries(VERBS).map(([verb, hqVerb]) => [verb, state(app.can, hqVerb)]),
       ) as { readonly [V in ChangeVerb]: HqOfferState };
-      if (Object.values(states).every((offer) => offer.kind === "unknown")) return undefined;
       const why: { [V in ChangeVerb]?: string } = {};
       for (const verb of Object.keys(VERBS) as ReadonlyArray<ChangeVerb>) {
         const reason = words(states[verb]);
@@ -55,7 +54,7 @@ export function useChangeOffers(): ZeropsChangeOffersOf {
         close: states.close.kind === "allowed",
         redeploy: states.redeploy.kind === "allowed",
         why,
-        unavailable: states.read.kind === "unavailable",
+        readRefused: states.read.kind === "refused",
       };
     },
     [state, structure, words],
@@ -83,16 +82,17 @@ export function useKeepDeployKeyOffer(): (projectId: string) => boolean | undefi
 }
 
 /**
- * Whether HQ offers the person releasing an application's production, its refusal — or since when
- * HQ does not answer — in words, by the application's id; `undefined` while HQ has not said.
+ * Whether HQ offers the person releasing an application's production, its refusal — that it has
+ * not said, or since when it does not answer — in words, by the application's id; `undefined` for
+ * one HQ's structure does not hold, or before it.
  */
 export function useReleasePermission(): (appId: string) => ReleaseGate | undefined {
   const { structure, state, words } = useHqOffers();
   return useCallback(
     (appId) => {
       const app = structure?.apps.find((candidate) => candidate.id === appId);
-      const offer = state(app?.can, "release");
-      if (offer.kind === "unknown") return undefined;
+      if (app === undefined) return undefined;
+      const offer = state(app.can, "release");
       return offer.kind === "allowed"
         ? { allowed: true }
         : { allowed: false, reason: words(offer) ?? "" };

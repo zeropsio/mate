@@ -56,12 +56,13 @@ import {
   resolveMateVerbs,
   resolveMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
+import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import { isMateKind } from "@t3tools/shared/zeropsRoles";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { RestartMateConfirmation } from "./RestartMateConfirmation";
-import { useHqDown, useMateOffers, useOrgOffers } from "./useHqOffers";
+import { useMateOffers, useOrgOffers } from "./useHqOffers";
 import { useComposerDraftStore } from "../composerDraftStore";
 import {
   deriveZeropsRestartAction,
@@ -224,8 +225,12 @@ interface RegistryState {
   readonly registry: Parameters<typeof resolveMateRegistration>[0]["registry"];
 }
 
-/** A verb of HQ's on a Mate: offered, held while HQ does not answer, or not drawn at all. */
+/** A verb of HQ's on a Mate: offered, held while HQ has not said or does not answer, or not drawn. */
 type HqVerb = "offered" | "held" | "no";
+
+/** Whether HQ offers writing the registry; `undefined` while it has not said, or does not answer. */
+const writes = (createApp: HqOfferState): boolean | undefined =>
+  createApp.kind === "allowed" ? true : createApp.kind === "refused" ? false : undefined;
 
 export function useMateActions({ registry, serverVersions }: MateActionsInput): MateActions {
   const { activeOrganization, client, user } = useZeropsSession();
@@ -293,7 +298,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /** What HQ offers of each project and of the organization: drawn here, decided by HQ. */
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
-  const hqDown = useHqDown();
   /**
    * Where a Mate may be moved, as HQ offers it (`moveTo`, `detach`): each application listed, a
    * new one, or none.
@@ -311,8 +315,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
   /**
    * HQ's verbs on a Mate, as HQ offers them: its record, and its place among projects — each
-   * offered, held while HQ does not answer (drawn, and not pressable), or not drawn at all. None on
-   * a Mate HQ holds no record of — *Finish setup* is its verb.
+   * offered; held while HQ has not said or does not answer (drawn, and not pressable); not drawn
+   * where HQ refuses it. None on a Mate HQ holds no record of — *Finish setup* is its verb.
    */
   const hqVerbsOf = useCallback(
     (candidate: ZeropsCandidatePresentation): Record<"edit" | "move" | "leave", HqVerb> => {
@@ -320,13 +324,19 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       if (offers?.held !== true || !isMateKind(heldOf(candidate.project))) {
         return { edit: "no", move: "no", leave: "no" };
       }
-      if (offers.observe.kind === "unavailable")
-        return { edit: "held", move: "held", leave: "held" };
+      const verb = (state: HqOfferState): HqVerb =>
+        state.kind === "allowed" ? "offered" : state.kind === "refused" ? "no" : "held";
       return {
-        edit: offers.edit.kind === "allowed" ? "offered" : "no",
-        // Where to, and as what, is the dialog's to choose among what HQ offers.
-        move: movesAnywhere(moveChoicesFor(candidate)) ? "offered" : "no",
-        leave: offers.detach.kind === "allowed" ? "offered" : "no",
+        edit: verb(offers.edit),
+        // Where to, and as what, is the dialog's to choose among what HQ offers; with no list of
+        // its moves, HQ has not said.
+        move:
+          offers.moveTo === undefined
+            ? "held"
+            : movesAnywhere(moveChoicesFor(candidate))
+              ? "offered"
+              : "no",
+        leave: verb(offers.detach),
       };
     },
     [mateOffersOf, moveChoicesFor],
@@ -370,11 +380,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         candidate,
         health: undefined,
         waiting: false,
-        can: mateRowCan(mateOffersOf(candidate.project.id), hqDown),
+        can: mateRowCan(mateOffersOf(candidate.project.id)),
         ...(visibility === undefined ? {} : { visibility }),
       };
     },
-    [hqDown, mateOffersOf, viewer],
+    [mateOffersOf, viewer],
   );
 
   const start = useCallback(
@@ -587,7 +597,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         pastGrace: mateProjectPastGrace(candidate.project, Date.now()),
         viewerIsAdder: mateAddedBy(candidate.project, user?.id),
         hasContainer: candidate.service !== undefined,
-        writer: orgOffer("create_app").kind === "allowed",
+        writer: writes(orgOffer("create_app")),
         recordMissing: recordMissing(candidate),
         mayCreateRecord: mayCreateRecord(candidate),
       });

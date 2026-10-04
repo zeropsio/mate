@@ -46,11 +46,12 @@ describe("hqOffer", () => {
       { kind: "unavailable", since: 1_000 },
     ],
     [
-      "a stale record before HQ says it is gone",
+      // The web review, 2026-10-05: a re-read in flight keeps what HQ said last, never flickers.
+      "the last record while HQ is read again, before any outage",
       { release: { allow: true } },
       "release",
       { current: false, unavailableSince: null },
-      { kind: "unknown" },
+      { kind: "allowed" },
     ],
   ])("%s", (_, can, verb, hq, expected) => {
     expect(hqOffer(can as Record<string, unknown> | undefined, verb, hq)).toEqual(expected);

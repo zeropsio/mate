@@ -127,8 +127,11 @@ export function finishMateSetupVerb(input: {
   readonly viewerIsAdder: boolean;
   /** Its project has its container: without one there is nothing for a close-off to finish. */
   readonly hasContainer: boolean;
-  /** HQ offers the viewer writing the registry (`create_app`). */
-  readonly writer: boolean;
+  /**
+   * HQ offers the viewer writing the registry (`create_app`); `undefined` while HQ has not said,
+   * or does not answer: then what the viewer finishes is not known, and nothing is offered.
+   */
+  readonly writer: boolean | undefined;
   /**
    * HQ, its structure known, holds no record of this Mate: the record's write failed mid-way, or
    * it sits in no application with none — and its birth with it.
@@ -141,6 +144,7 @@ export function finishMateSetupVerb(input: {
   if (input.recordMissing && input.mayCreateRecord && (input.pressStopped || input.pastGrace)) {
     return FINISH_MATE_SETUP_VERB;
   }
+  if (input.writer === undefined) return undefined;
   if (input.writer) {
     const halfMade =
       input.pressStopped ||

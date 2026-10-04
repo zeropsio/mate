@@ -14,7 +14,8 @@ export function ZeropsProjectRenameMenu({
   readonly group: ZeropsGroup;
   readonly actions?: ReadonlyArray<ZeropsMenuEntry>;
 }) {
-  // HQ offers renaming it (`rename_app`); while HQ does not answer, drawn and not pressable.
+  // HQ offers renaming it (`rename_app`); while HQ has not said or does not answer, drawn and not
+  // pressable; where HQ refuses it, not drawn.
   const rename = useOrgOffers()("rename_app").kind;
   const mayRename = rename === "allowed";
   const [renaming, setRenaming] = useState(false);
@@ -22,7 +23,7 @@ export function ZeropsProjectRenameMenu({
     <>
       <ZeropsProjectMenu
         actions={[
-          ...(mayRename || rename === "unavailable"
+          ...(rename !== "refused"
             ? [
                 {
                   id: "rename-group",
