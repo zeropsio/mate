@@ -121,6 +121,7 @@ import {
   type LiveSlot as LiveSlotState,
 } from "./liveSlot.logic";
 import { useLiveSlot } from "./useLiveSlot";
+import { backgroundItemWord, type BackgroundLineModel } from "./backgroundLine.logic";
 import { useRunEffortWords } from "./runResultFacts";
 import { drawerEase, LIST_LAYS_OUT_FRAMES, stepHeight } from "./stepHeight";
 import { StatusBar } from "./StatusBar";
@@ -266,11 +267,18 @@ const STILL_RUNNING = "Running";
 /** What a call that never returned says once its run settled, where its time would be. */
 const NO_RESULT = "No result";
 
+/**
+ * What a command sent to the background says where its time would be, while
+ * its job runs on past the turn: where it runs, never a clock nobody ticks.
+ */
+const IN_THE_BACKGROUND = "In the background";
+
 /** How long a step took; one still running says so, one that never returned says that. */
 function stepTime(step: WorkStep): ReactNode {
   if (step.noResult === "closed") return NO_RESULT;
   if (step.noResult === "stale") return null;
   if (step.state === "running") return STILL_RUNNING;
+  if (step.background?.state === "running") return IN_THE_BACKGROUND;
   if (!TIMED.has(step.kind) || step.endedAt === null) return null;
   const ms = Date.parse(step.endedAt) - Date.parse(step.startedAt);
   return Number.isFinite(ms) && ms >= 1000 ? formatWorkDuration(ms) : null;
@@ -4299,27 +4307,17 @@ function positionOf(scroll: HTMLElement): RunScrollPosition {
 // ---------------------------------------------------------------------------
 
 /**
- * Background work that finished after its turn, or that woke the run under
- * it: one quiet line saying what finished and where — a helper, a task, or
- * how many — and what each reported, opened under it.
+ * Background work as one quiet line (`backgroundLine.logic`): what a turn
+ * sent to the background, on its own card, or what woke the run under it —
+ * what runs, what finished, what failed — and, opened, each task once, a
+ * failure first, with what it reported; never the line's own words again.
  */
-export function BackgroundLine({
-  words,
-  where,
-  failed,
-  entries,
-}: {
-  readonly words: string;
-  readonly where: string;
-  readonly failed: boolean;
-  readonly entries: ReadonlyArray<WorkLogEntry>;
-}) {
+export function BackgroundLine({ line }: { readonly line: BackgroundLineModel }) {
   const hold = useHoldReading();
   const [open, setOpen] = useState(false);
-  const lastByTask = new Map<string, WorkLogEntry>();
-  for (const entry of entries) lastByTask.set(entry.taskId ?? entry.id, entry);
-  const reported = [...lastByTask.values()].filter((entry) => entry.detail?.trim());
-  const line = (
+  const { words, where, failed, items, single: lone } = line;
+  const opens = items.length > 0;
+  const head = (
     <span className="flex min-w-0 items-center text-line">
       {/* The page's mark column: its dot where an event's icon stands, its
           words on the edge the answer's list items start on. */}
@@ -4341,8 +4339,10 @@ export function BackgroundLine({
       >
         {words}
       </span>
-      <span className="ms-2.5 shrink-0 text-line text-muted-foreground">{where}</span>
-      {reported.length > 0 ? (
+      {where === null ? null : (
+        <span className="ms-2.5 shrink-0 text-line text-muted-foreground">{where}</span>
+      )}
+      {opens ? (
         <ChevronDownIcon
           aria-hidden="true"
           className="ms-2.5 size-3 shrink-0 text-muted-foreground/70 opacity-0 transition-[opacity,rotate] duration-150 group-hover/disclose:opacity-100 group-aria-expanded/disclose:rotate-180 group-aria-expanded/disclose:opacity-100"
@@ -4350,12 +4350,13 @@ export function BackgroundLine({
       ) : null}
     </span>
   );
+  const said = where === null ? words : `${words}, ${where}`;
   return (
     <div className="grid min-w-0 gap-2" data-background-line>
-      {reported.length > 0 ? (
+      {opens ? (
         <button
           aria-expanded={open}
-          aria-label={`${words}, ${where}. ${open ? "Hide" : "Show"} what it reported`}
+          aria-label={`${said}. ${open ? "Hide" : "Show"} ${lone ? "what it reported" : "each one"}`}
           className="group/disclose -mx-1.5 flex min-h-7 w-[calc(100%+0.75rem)] cursor-pointer items-center rounded-md px-1.5 text-start transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-inset"
           onClick={() => {
             hold(!open);
@@ -4363,25 +4364,32 @@ export function BackgroundLine({
           }}
           type="button"
         >
-          {line}
+          {head}
         </button>
       ) : (
-        <div className="flex min-h-7 items-center">{line}</div>
+        <div className="flex min-h-7 items-center">{head}</div>
       )}
       {open ? (
         <ul
           className="grid min-w-0 animate-detail-in gap-3 ps-5 motion-reduce:animate-none"
           data-chat-detail
         >
-          {reported.map((entry) => (
-            <li key={entry.id} className="grid min-w-0 gap-1">
-              <span className="text-line text-foreground/85">
-                {taskTitle(entry)}
-                <span className="text-muted-foreground">
-                  {workEntryDisplayIndicatesToolFailure(entry) ? " · failed" : " · finished"}
+          {items.map((item) => (
+            <li key={item.key} className="grid min-w-0 gap-1">
+              {/* One task's line says its title and state: only its report opens. */}
+              {lone ? null : (
+                <span className="text-line text-foreground/85">
+                  {item.title}
+                  <span
+                    className={
+                      item.state === "failed" ? "text-status-failed-text" : "text-muted-foreground"
+                    }
+                  >
+                    {` · ${backgroundItemWord(item)}`}
+                  </span>
                 </span>
-              </span>
-              <TaskReport entry={entry} />
+              )}
+              {item.report === null ? null : <OutputBlock mono={item.mono} text={item.report} />}
             </li>
           ))}
         </ul>

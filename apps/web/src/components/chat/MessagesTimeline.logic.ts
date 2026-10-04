@@ -60,7 +60,9 @@ import {
 import {
   foldSteps,
   stepOf,
+  backgroundJobOf,
   trackCommands,
+  type BackgroundJob,
   type TrackedCommands,
   type WorkStep,
 } from "./workSteps.logic";
@@ -592,6 +594,11 @@ type MessagesTimelineRowBody =
       helpers: boolean;
       /** The latest task's, in the words it was given. */
       title: string | null;
+      /**
+       * The commands a settled turn sent to the background, on its own card
+       * (`jobs:` rows): each job as it stands now, running or reported.
+       */
+      jobs?: ReadonlyArray<BackgroundJob>;
     }
   | {
       /** Something stopped the Mate: an error it could not work past. */
@@ -2010,7 +2017,9 @@ export function deriveMessagesTimelineRows(input: {
         isTaskActivityKind(candidate.entry.sourceActivityKind)) &&
       candidate.entry.questionAnswer === undefined &&
       candidate.entry.sourceActivityKind !== "context-compaction" &&
-      candidate.entry.crewSeam === undefined
+      candidate.entry.crewSeam === undefined &&
+      // A command's own task is told on its command's card (`jobs:`), never loose.
+      !tracked.trackers.has(candidate.entry.id)
     );
   };
   /** When a background task or a helper finished: a helper's row takes each report as it comes. */
@@ -2060,6 +2069,13 @@ export function deriveMessagesTimelineRows(input: {
     helperQueue.shift();
     return next;
   };
+  /** When the run before `turn` ended: what finished since is what may have woken it. */
+  const previousEndMs = (turn: ConversationTurn): number => {
+    const previous = structure.turns[structure.turns.indexOf(turn) - 1];
+    return previous === undefined
+      ? -Infinity
+      : Date.parse(previous.stretches.at(-1)?.endedAt ?? "");
+  };
   /**
    * What woke a run nobody wrote to start: the helpers and background tasks
    * that finished after the run before it ended and before it began, for a
@@ -2071,15 +2087,15 @@ export function deriveMessagesTimelineRows(input: {
    */
   const wokeBy = (turn: ConversationTurn): WorkLogEntry[] => {
     const untilMs = Date.parse(turn.stretches[0]?.startedAt ?? "");
-    const previous = structure.turns[structure.turns.indexOf(turn) - 1];
-    const fromMs =
-      previous === undefined ? -Infinity : Date.parse(previous.stretches.at(-1)?.endedAt ?? "");
+    const fromMs = previousEndMs(turn);
     if (!Number.isFinite(untilMs) || Number.isNaN(fromMs)) return [];
     return entries
       .flatMap((entry, index) =>
         entry.kind === "work" &&
         entry.entry.sourceActivityKind === "task.completed" &&
         !structure.looseIndexes.has(index) &&
+        // A command's own task is told on its command's card.
+        !tracked.trackers.has(entry.entry.id) &&
         (entry.entry.agentSpawn?.agentTaskIds.length ?? 1) <= 1 &&
         finishedAt(entry.entry) > fromMs &&
         finishedAt(entry.entry) <= untilMs
@@ -2313,6 +2329,30 @@ export function deriveMessagesTimelineRows(input: {
           outcome: result,
         });
       }
+      // What it sent to the background, on its own card: one line, the jobs
+      // as they stand now — running past the turn, or reported since.
+      if (!turn.live) {
+        const jobs = turn.stretches.flatMap((stretch) =>
+          stretch.entries.flatMap((candidate) => {
+            if (candidate.kind !== "work") return [];
+            const job = backgroundJobOf(candidate.entry, tracked);
+            return job === null ? [] : [job];
+          }),
+        );
+        if (jobs.length > 0) {
+          rows.push({
+            kind: "background",
+            id: `jobs:${first.key}`,
+            createdAt: last.endedAt ?? last.startedAt,
+            entries: [],
+            tasks: jobs.length,
+            failed: jobs.filter((job) => job.state === "failed").length,
+            helpers: false,
+            title: jobs.at(-1)?.title ?? null,
+            jobs,
+          });
+        }
+      }
       // A line with nothing under it is no card: one quiet line, not an
       // empty box.
       if (rows.length > cardStart + (chatted ? 0 : 1)) {
@@ -2375,6 +2415,13 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
     if (structure.looseIndexes.has(index)) {
+      // A command's own task, reporting after its turn: its card tells it (`jobs:`).
+      if (
+        (entry.kind === "work" || entry.kind === "generic-call") &&
+        tracked.trackers.has(entry.entry.id)
+      ) {
+        continue;
+      }
       seamBefore(entry.createdAt, entry.id);
       if (isUserMessageEntry(entry)) rows.push(personRow(entry, index, false));
       else if (entry.kind === "message" && entry.message.role === "assistant") {

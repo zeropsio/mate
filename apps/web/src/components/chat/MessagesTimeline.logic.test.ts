@@ -1480,6 +1480,108 @@ describe("deriveMessagesTimelineRows", () => {
     expect(list.some((row) => row.id.startsWith("woke:"))).toBe(false);
   });
 
+  // Run 9: commands sent to the background reported after their turn ended,
+  // as a loose line whose count fell from 5 to 4 as the run they woke began,
+  // and again above that run. A job is its own turn's: told once, on its
+  // card, its count only rising.
+  describe("a command sent to the background", () => {
+    const launch = (id: string, title: string, minute: number) =>
+      tool(id, "t1", minute, {
+        label: "Command run",
+        command: `./${id}.sh`,
+        callInput: { description: title },
+        updatedAt: at(minute, 1),
+      });
+    const started = (id: string, title: string, minute: number) =>
+      tool(`${id}-started`, "t1", minute, {
+        label: title,
+        toolTitle: title,
+        taskId: `job-${id}`,
+        taskToolUseId: `call-${id}`,
+        command: undefined as never,
+        sourceActivityKind: "task.started",
+        toolLifecycleStatus: "inProgress",
+        tone: "info",
+      });
+    const reported = (id: string, title: string, minute: number, failed = false) =>
+      background(`${id}-done`, minute, {
+        label: title,
+        toolTitle: title,
+        taskId: `job-${id}`,
+        taskToolUseId: `call-${id}`,
+        command: undefined as never,
+        tone: failed ? "error" : "info",
+        detail: `Background command "${title}" ${failed ? "failed with exit code 3" : "completed (exit code 0)"}`,
+      });
+    const turnOne = [
+      user("m0", 0),
+      launch("soak", "Run the soak test", 1),
+      started("soak", "Run the soak test", 1),
+      launch("fails", "Run the failing job", 1),
+      started("fails", "Run the failing job", 1),
+      assistant("a1", "t1", 2, "Both are running."),
+    ];
+
+    const jobsOf = (list: MessagesTimelineRow[]) => {
+      const line = list.find((row) => row.id === "jobs:msg:m0");
+      return line?.kind === "background"
+        ? (line.jobs ?? []).map((job) => [job.title, job.state, job.report])
+        : null;
+    };
+
+    it.each([
+      {
+        name: "both still running",
+        later: [] as TimelineEntry[],
+        settled: "t1",
+        jobs: [
+          ["Run the soak test", "running", null],
+          ["Run the failing job", "running", null],
+        ],
+      },
+      {
+        name: "one failed after the turn, waking a run of its own",
+        later: [
+          reported("fails", "Run the failing job", 3, true),
+          assistant("a2", "t2", 4, "The failing job failed."),
+        ],
+        settled: "t2",
+        jobs: [
+          ["Run the soak test", "running", null],
+          ["Run the failing job", "failed", "Exit code 3"],
+        ],
+      },
+      {
+        name: "both reported",
+        later: [
+          reported("fails", "Run the failing job", 3, true),
+          assistant("a2", "t2", 4, "The failing job failed."),
+          reported("soak", "Run the soak test", 6),
+          assistant("a3", "t3", 7, "The soak passed."),
+        ],
+        settled: "t3",
+        jobs: [
+          ["Run the soak test", "done", null],
+          ["Run the failing job", "failed", "Exit code 3"],
+        ],
+      },
+    ])("tells its job on its own card, once: $name", ({ later, settled, jobs }) => {
+      const list = framed({ entries: [...turnOne, ...later], settled });
+      expect(jobsOf(list)).toEqual(jobs);
+      // On the card of the turn that sent them, under its record.
+      const line = list.findIndex((row) => row.id === "jobs:msg:m0");
+      const cardEnd = list.findIndex((row) => row.kind === "card-end");
+      expect(line).toBeGreaterThan(list.findIndex((row) => row.id === "record:msg:m0"));
+      expect(line).toBeLessThan(cardEnd);
+      // Nowhere else: no loose line, no line over the run it woke.
+      expect(
+        list.filter(
+          (row) => (row.kind === "background" && row.id !== "jobs:msg:m0") || row.kind === "work",
+        ),
+      ).toEqual([]);
+    });
+  });
+
   it("says which of the helpers one launch started woke each run, in the order they finished", () => {
     const launch = tool("l1", "t1", 2, {
       label: "List routes",

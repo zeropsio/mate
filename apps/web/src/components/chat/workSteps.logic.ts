@@ -64,6 +64,26 @@ export interface WorkStep {
    * "closed" once the run settled without it: "No result".
    */
   readonly noResult?: "stale" | "closed";
+  /** A command sent to the background: the job its call started, as it stands now. */
+  readonly background?: BackgroundJob;
+}
+
+/**
+ * A command the Mate sent to the background: its call returned while the
+ * task it started ran on, and the task reports in later — after the turn,
+ * often. The job stands on its command's own line, so it is told once.
+ */
+export interface BackgroundJob {
+  /** The command entry's id. */
+  readonly key: string;
+  /** What it was asked to do: the task's words, else the command's own. */
+  readonly title: string;
+  readonly state: "running" | "done" | "failed";
+  readonly startedAt: string;
+  /** When its task ended; null while it runs. */
+  readonly endedAt: string | null;
+  /** What it reported past its own title — "Exit code 3" — or null. */
+  readonly report: string | null;
 }
 
 /**
@@ -262,6 +282,68 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
     );
   }
   return { byCommand, trackers };
+}
+
+/**
+ * The job a command sent to the background, or null: a command its task
+ * tracked whose call returned while the task ran on — not one that waited on
+ * its task to the end (a long command Claude Code tracks).
+ */
+export function backgroundJobOf(
+  command: WorkLogEntry,
+  tracked: TrackedCommands,
+): BackgroundJob | null {
+  const track = tracked.byCommand.get(command.id);
+  if (track === undefined || command.toolLifecycleStatus === "inProgress") return null;
+  const { task } = track;
+  const ended = task.sourceActivityKind === "task.completed";
+  if (ended && endOf(task) - endOf(command) <= TRACK_TOLERANCE_MS) return null;
+  if (!ended && task.toolLifecycleStatus !== "inProgress") return null;
+  const title = (
+    track.description ??
+    command.callInput?.description ??
+    task.toolTitle ??
+    task.label
+  ).trim();
+  const failed =
+    ended &&
+    (task.tone === "error" ||
+      task.toolLifecycleStatus === "failed" ||
+      /\bfailed\b/iu.test(task.detail ?? ""));
+  return {
+    key: command.id,
+    title,
+    state: !ended ? "running" : failed ? "failed" : "done",
+    startedAt: command.startedAt ?? command.createdAt,
+    endedAt: ended ? new Date(endOf(task)).toISOString() : null,
+    report: ended ? taskReportWords(task.detail, title) : null,
+  };
+}
+
+/**
+ * What a task reported, past what its line already says: Claude Code says
+ * `Background command "Run the soak test" failed with exit code 3`, whose
+ * title and verdict the line has — "Exit code 3" is all it adds.
+ */
+export function taskReportWords(detail: string | undefined, title: string): string | null {
+  const whole = (detail ?? "").trim();
+  if (whole.length === 0) return null;
+  const quoted = /^Background command\s+"[^"]*"\s*/u.exec(whole);
+  const rest =
+    quoted !== null
+      ? whole.slice(quoted[0].length)
+      : title.length > 0 && whole.startsWith(title)
+        ? whole.slice(title.length).trim()
+        : null;
+  // A report in words of its own (a helper's, a watch's): all of it.
+  if (rest === null) return whole;
+  const code = /exit code (\d+)/iu.exec(rest)?.[1];
+  if (/^(?:completed|finished|succeeded)\b/iu.test(rest)) {
+    return code === undefined || code === "0" ? null : `Exit code ${code}`;
+  }
+  if (/^(?:was\s+)?(?:stopped|killed)\b/iu.test(rest)) return "Stopped";
+  const said = rest.replace(/^failed\b\s*(?:with\s+)?/iu, "").trim();
+  return said.length === 0 ? null : said.charAt(0).toUpperCase() + said.slice(1);
 }
 
 function basename(path: string): string {
@@ -541,13 +623,14 @@ export function stepOf(
 ): WorkStep {
   const kind = stepKind(entry);
   const track = tracked.byCommand.get(entry.id);
+  const job = kind === "command" ? backgroundJobOf(entry, tracked) : null;
   const taskRuns = track !== undefined && live && track.task.toolLifecycleStatus === "inProgress";
-  const state = taskRuns ? "running" : stepState(entry, live);
+  const state = job?.state === "failed" ? "failed" : taskRuns ? "running" : stepState(entry, live);
   const running = state === "running";
   // The run is over and the call never returned: it has no end to time.
   const unreturned = !running && state !== "failed" && entry.toolLifecycleStatus === "inProgress";
   const ended =
-    running || unreturned
+    running || unreturned || job?.state === "running"
       ? null
       : new Date(Math.max(endOf(entry), track === undefined ? 0 : endOf(track.task))).toISOString();
   // The command as it was written, out of the shell the runtime ran it in.
@@ -571,6 +654,7 @@ export function stepOf(
     entries: [entry],
     images: look === null ? [] : [look],
     ...(unreturned ? { noResult: "closed" as const } : {}),
+    ...(job === null ? {} : { background: job }),
   };
 }
 

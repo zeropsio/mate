@@ -176,6 +176,7 @@ import { ConversationAfterWork, ConversationWorking, dockDraws } from "./Convers
 import { useEndingsHeld } from "./useEndingsHeld";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
+import { backgroundLineOf, jobItems, taskItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { handedOverRecently } from "../../zerops/mateHandOver";
 import type { CarriedRow } from "./stepHeight";
@@ -2198,27 +2199,27 @@ function RecordTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "record"
 }
 
 /**
- * Background work that finished after its turn, or that woke the run under
- * it: one quiet line saying what finished — a helper, a task, or how many —
- * and the latest in its own words; what each reported opens under it.
+ * Background work as one quiet line (`backgroundLine.logic`): what a settled
+ * turn sent to the background, on its own card (`jobs:`), work that finished
+ * outside any turn, or what woke the run under it.
  */
 function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "background" }> }) {
-  const lastLabel = row.title ? row.title.charAt(0).toUpperCase() + row.title.slice(1) : null;
-  const { failed } = row;
-  const finished =
-    row.tasks === 1
-      ? lastLabel !== null
-        ? `${lastLabel} ${failed > 0 ? "failed" : "finished"}`
-        : `${row.helpers ? "A helper" : "A background task"} ${failed > 0 ? "failed" : "finished"}`
-      : `${row.tasks} ${row.helpers ? "helpers" : "background tasks"} finished${failed > 0 ? `, ${failed} failed` : ""}`;
-  return (
-    <BackgroundLine
-      entries={row.entries}
-      failed={failed > 0}
-      where={row.helpers ? "helper" : "in the background"}
-      words={finished}
-    />
-  );
+  const items =
+    row.jobs !== undefined
+      ? jobItems(row.jobs)
+      : row.entries.length > 0
+        ? taskItems(row.entries)
+        : // A helper the panel says finished, with no report of its own here.
+          [
+            {
+              key: row.id,
+              title: row.title ?? (row.helpers ? "A helper" : "A background task"),
+              state: row.failed > 0 ? ("failed" as const) : ("done" as const),
+              report: null,
+              mono: false,
+            },
+          ];
+  return <BackgroundLine line={backgroundLineOf(items, row.helpers)} />;
 }
 
 function EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }> }) {

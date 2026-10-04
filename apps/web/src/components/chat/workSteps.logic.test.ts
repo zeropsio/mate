@@ -2,10 +2,12 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { WorkLogEntry } from "../../session-logic";
 import {
+  backgroundJobOf,
   commandShown,
   commandWhole,
   foldSteps,
   stepOf,
+  taskReportWords,
   trackCommands,
   unwrapShell,
 } from "./workSteps.logic";
@@ -426,6 +428,123 @@ describe("stepOf", () => {
       toolLifecycleStatus: "inProgress",
     });
     expect(stepOf(run, trackCommands([run, tracker])).state).toBe("running");
+  });
+});
+
+/**
+ * A command the Mate sent to the background: its call returned at once, and
+ * the task it started reports in later — after the turn, often (run 9: a
+ * four-minute soak, `npm outdated`, a job that fails after 20 s).
+ */
+describe("backgroundJobOf", () => {
+  // The call returns as the job starts; the task runs on.
+  const launch = command("1", "./soak.sh", {
+    callInput: { description: "Run the soak test" },
+    startedAt: "2026-09-27T08:00:00.000Z",
+    updatedAt: "2026-09-27T08:00:01.000Z",
+  });
+  const started = task("t1", "Run the soak test", {
+    taskToolUseId: "toolu_1",
+    sourceActivityKind: "task.started",
+    toolLifecycleStatus: "inProgress",
+    createdAt: "2026-09-27T08:00:01.000Z",
+  });
+  const finished = (extra: Partial<WorkLogEntry>) =>
+    task("t2", "Run the soak test", {
+      taskToolUseId: "toolu_1",
+      createdAt: "2026-09-27T08:04:01.000Z",
+      ...extra,
+    });
+
+  it.each<{
+    readonly name: string;
+    readonly tasks: ReadonlyArray<WorkLogEntry>;
+    readonly job: Record<string, unknown> | null;
+    readonly step: Record<string, unknown>;
+  }>([
+    {
+      name: "running on after the turn: no end, and no time but where it runs",
+      tasks: [started],
+      job: { title: "Run the soak test", state: "running", endedAt: null, report: null },
+      step: { state: "done", endedAt: null },
+    },
+    {
+      name: "finished: its whole span, nothing to report past its title",
+      tasks: [
+        started,
+        finished({
+          detail: 'Background command "Run the soak test" completed (exit code 0)',
+        }),
+      ],
+      job: {
+        state: "done",
+        endedAt: "2026-09-27T08:04:01.000Z",
+        report: null,
+      },
+      step: { state: "done", endedAt: "2026-09-27T08:04:01.000Z" },
+    },
+    {
+      name: "failed: the step fails, and says how without its title again",
+      tasks: [
+        started,
+        finished({
+          tone: "error",
+          toolLifecycleStatus: "failed",
+          detail: 'Background command "Run the soak test" failed with exit code 3',
+        }),
+      ],
+      job: { state: "failed", report: "Exit code 3" },
+      step: { state: "failed" },
+    },
+  ])("$name", ({ tasks, job, step }) => {
+    const tracked = trackCommands([launch, ...tasks]);
+    const found = backgroundJobOf(launch, tracked);
+    if (job === null) expect(found).toBeNull();
+    else expect(found).toMatchObject(job);
+    expect(stepOf(launch, tracked, false)).toMatchObject(step);
+  });
+
+  it("is no job when the command waited on its task: a long command Claude Code tracks", () => {
+    const run = command("1", "npm test", { updatedAt: "2026-09-27T08:00:40.000Z" });
+    const tracker = task("t1", "Run the tests", {
+      taskToolUseId: "toolu_1",
+      createdAt: "2026-09-27T08:00:40.000Z",
+    });
+    expect(backgroundJobOf(run, trackCommands([run, tracker]))).toBeNull();
+  });
+
+  it("is no job while its call has not returned", () => {
+    const run = command("1", "./soak.sh", { toolLifecycleStatus: "inProgress" });
+    expect(backgroundJobOf(run, trackCommands([run, started]))).toBeNull();
+  });
+
+  it("opens onto what it reported, never the notice that it went to the background", () => {
+    const run = command("1", "./soak.sh", {
+      callInput: { description: "Run the soak test" },
+      updatedAt: "2026-09-27T08:00:01.000Z",
+      detail: "Command running in background with ID: b1. Output is being written to: /tmp/x",
+    });
+    const failed = finished({
+      tone: "error",
+      toolLifecycleStatus: "failed",
+      detail: 'Background command "Run the soak test" failed with exit code 3',
+    });
+    expect(stepOf(run, trackCommands([run, started, failed]), false).background).toMatchObject({
+      report: "Exit code 3",
+    });
+  });
+});
+
+describe("taskReportWords", () => {
+  it.each([
+    ['Background command "Soak" failed with exit code 3', "Exit code 3"],
+    ['Background command "Soak" completed (exit code 0)', null],
+    ['Background command "Soak" was stopped', "Stopped"],
+    ["Soak failed with exit code 144", "Exit code 144"],
+    ["Found 3 broken links on /about", "Found 3 broken links on /about"],
+    ["", null],
+  ])("%j adds %j to its line", (detail, expected) => {
+    expect(taskReportWords(detail, "Soak")).toBe(expected);
   });
 });
 
