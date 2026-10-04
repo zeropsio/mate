@@ -15,6 +15,7 @@
  * Structural only — what a row says is `projectFlow.ts`'s and
  * `groupHistory.ts`'s (rule R5).
  */
+import { StopReadAgain } from "./StopReadAgain";
 import {
   cannotTellWhatRuns,
   assignCandidateMateTints,
@@ -73,7 +74,6 @@ import {
   stopTone,
   stopVerdict,
   stopView,
-  runningVersion,
   type Deployment,
   type RunAgain,
   type StopServiceRow,
@@ -1013,85 +1013,88 @@ export function ZeropsStopDetailPage({
   });
 
   return (
-    <ZeropsStopPane
-      carried={carried}
-      crumbs={crumbs}
-      deployed={deployed}
-      enablingServiceId={route.enablingServiceId}
-      history={history}
+    <>
+      <StopReadAgain projectId={projectId} />
+      <ZeropsStopPane
+        carried={carried}
+        crumbs={crumbs}
+        deployed={deployed}
+        enablingServiceId={route.enablingServiceId}
+        history={history}
 
-      groupId={groupId}
-      names={names}
-      onEnableRoute={(serviceId) => {
-        void route.enable(projectId, serviceId);
-      }}
-      onOpenCarriedChange={openCarried}
-      onOpenChange={openChange}
-      onRollBack={(tag, from) => {
-        openReview({ kind: "rollback", groupId, tag }, { from });
-      }}
-      pending={flowValue.pending}
-      release={release}
-      releases={production ? flow.releases : NO_RELEASES}
-      repo={repo}
-      routeTrouble={route.trouble}
-      routes={routes}
-      deployAgain={
-        mayRunAgain
-          ? {
-              running: (service) =>
-                flowValue.pending.has(
-                  flowVerbKey({ kind: "redeploy", groupId, projectId, service }),
+        groupId={groupId}
+        names={names}
+        onEnableRoute={(serviceId) => {
+          void route.enable(projectId, serviceId);
+        }}
+        onOpenCarriedChange={openCarried}
+        onOpenChange={openChange}
+        onRollBack={(tag, from) => {
+          openReview({ kind: "rollback", groupId, tag }, { from });
+        }}
+        pending={flowValue.pending}
+        release={release}
+        releases={production ? flow.releases : NO_RELEASES}
+        repo={repo}
+        routeTrouble={route.trouble}
+        routes={routes}
+        deployAgain={
+          mayRunAgain
+            ? {
+                running: (service) =>
+                  flowValue.pending.has(
+                    flowVerbKey({ kind: "redeploy", groupId, projectId, service }),
+                  ),
+                onDeployAgain: (again) => said(flowValue.redeploy(groupId, projectId, again)),
+              }
+            : undefined
+        }
+        addService={
+          mayRunAgain
+            ? {
+                running: (service) =>
+                  flowValue.pending.has(
+                    flowVerbKey({ kind: "add-service", groupId, projectId, service }),
+                  ),
+                onAdd: (service) => said(flowValue.addService(groupId, projectId, service)),
+              }
+            : undefined
+        }
+        notInZerops={
+          declared === undefined || withheld !== null
+            ? undefined
+            : notInZerops({ recipeServices: declared.recipeServices, platform })
+        }
+        deployAnswer={deployAnswer}
+        runAgain={
+          redeploy === undefined || !mayRunAgain
+            ? undefined
+            : {
+                running: flowValue.pending.has(
+                  flowVerbKey({ kind: "redeploy", groupId, projectId, service: redeploy.service }),
                 ),
-              onDeployAgain: (again) => said(flowValue.redeploy(groupId, projectId, again)),
-            }
-          : undefined
-      }
-      addService={
-        mayRunAgain
-          ? {
-              running: (service) =>
-                flowValue.pending.has(
-                  flowVerbKey({ kind: "add-service", groupId, projectId, service }),
-                ),
-              onAdd: (service) => said(flowValue.addService(groupId, projectId, service)),
-            }
-          : undefined
-      }
-      notInZerops={
-        declared === undefined || withheld !== null
-          ? undefined
-          : notInZerops({ recipeServices: declared.recipeServices, platform })
-      }
-      deployAnswer={deployAnswer}
-      runAgain={
-        redeploy === undefined || !mayRunAgain
-          ? undefined
-          : {
-              running: flowValue.pending.has(
-                flowVerbKey({ kind: "redeploy", groupId, projectId, service: redeploy.service }),
-              ),
-              refused: runAgainRefused,
-              onRunAgain: () => said(flowValue.redeploy(groupId, projectId, redeploy)),
-            }
-      }
-      services={services}
-      stop={stop}
-      tags={tags}
-      trouble={flowValue.trouble}
-      verdict={verdict}
-      view={view}
-      untold={production ? flow.release.untold : NO_UNTOLD}
-      waiting={
-        production
-          ? {
-              commits: releaseContentsCommits(flow.release.contents),
-              total: notLive.count,
-              atLeast: notLive.atLeast,
-            }
-          : NOTHING_WAITING
-      }
-    />
+                refused: runAgainRefused,
+                onRunAgain: () => said(flowValue.redeploy(groupId, projectId, redeploy)),
+              }
+        }
+        services={services}
+        stop={stop}
+        tags={tags}
+        trouble={flowValue.trouble}
+        verdict={verdict}
+        view={view}
+        untold={production ? flow.release.untold : NO_UNTOLD}
+        waiting={
+          production
+            ? {
+                commits: releaseContentsCommits(flow.release.contents),
+                total: notLive.count,
+                atLeast: notLive.atLeast,
+              }
+            : NOTHING_WAITING
+        }
+      />
+    </>
   );
 }
 
@@ -2182,23 +2185,9 @@ function MateLine({
   );
 }
 
-/** A stop's version column while nothing has said what runs there yet. */
-const STOP_LINE_CHECKING = "Checking";
-
-/**
- * A stop's version column: what runs there, named by the rule its page names it with
- * (`runningVersion`); "none" only once the platform's complete answer says nothing runs, and
- * "Checking" until something answers. A version not read yet was "none" here while the page said
- * it was checking (F13, 2026-10-03).
- */
+/** A stop's version column shares its page's runtime answer, including a failure or wait. */
 function stopLineVersion(deployment: Shown<Deployment> | undefined, row: EnvironmentRow): string {
-  if (deployment?.state === "known") {
-    const { value } = deployment;
-    if (value.kind === "running") return runningVersion(value.version, row)?.label ?? "none";
-    if (value.kind === "deploying") return value.version.label ?? row.version.label ?? "none";
-    if (deployment.coverage === "complete") return row.version.label ?? "none";
-  }
-  return row.version.label ?? STOP_LINE_CHECKING;
+  return stopView({ deployment: deployment ?? UNREAD_DEPLOYMENT, row, nowMs: 0 }).line;
 }
 
 function StopLine({
@@ -2270,6 +2259,7 @@ function StopLine({
         )}
         <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
       </button>
+      <StopReadAgain projectId={environment.projectId} />
     </li>
   );
 }

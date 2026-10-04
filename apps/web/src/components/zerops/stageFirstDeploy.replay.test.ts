@@ -99,7 +99,6 @@ function firstBuild() {
       return () => undefined;
     },
     nowMs: () => clock.ms,
-    random: () => 0.5,
     setTimer: () => () => undefined,
   });
   store.demand(stage);

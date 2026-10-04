@@ -11,6 +11,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildingOf,
   chipFace,
+  chipDot,
   deployedAgo,
   draftParts,
   drawnChip,
@@ -285,7 +286,14 @@ describe("productionChip — production's chip: the word, its tone, its state in
       given: { serving: { kind: "unknown" } as const },
     },
   ])("is unknown while $name", ({ given }) => {
-    expect(productionChip(input(given))).toEqual({ kind: "unknown" });
+    expect(productionChip(input(given))).toEqual(
+      given.production === undefined
+        ? { kind: "unknown" }
+        : {
+            kind: "chip",
+            chip: { label: "prod", state: "unverified", readLine: "Checking what runs here…" },
+          },
+    );
   });
 
   // HQ may keep not answering the releases. The platform alone still says
@@ -317,7 +325,7 @@ describe("productionChip — production's chip: the word, its tone, its state in
       expect(drawnChip(view, undefined)).toEqual(partial);
       expect(
         drawnChip(view, { label: "prod", state: "waiting", version: "v0.1.44", waiting: 2 }),
-      ).toEqual({ label: "prod", state: "waiting", version: "v0.1.44", waiting: 2 });
+      ).toEqual(partial);
       expect(rememberedChipAfter(view)).toBeUndefined();
     },
   );
@@ -615,7 +623,9 @@ describe("stageChip — one chip for the project's stage or stages", () => {
       stages: [staged("stage"), staged("qa", { state: "checking", version: undefined })],
     },
   ])("is unknown while $name", ({ stages }) => {
-    expect(read(stages)).toEqual({ kind: "unknown" });
+    if (stages.every(({ stop }) => stop.state !== "checking"))
+      expect(read(stages)).toEqual({ kind: "unknown" });
+    else expect(chip(read(stages))?.state).toBe("unverified");
   });
 
   it("says a stage down at once, even while another is unread", () => {
@@ -649,7 +659,11 @@ describe("drawnChip and rememberedChipAfter — a reload paints what it last dre
   const NOW: ProductionChip = { label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 };
   it.each([
     { view: { kind: "chip", chip: NOW } as const, drawn: NOW, remember: NOW },
-    { view: { kind: "unknown" } as const, drawn: REMEMBERED, remember: undefined },
+    {
+      view: { kind: "unknown" } as const,
+      drawn: { label: "prod", state: "unverified", readLine: "Checking what runs here…" },
+      remember: undefined,
+    },
     { view: { kind: "none" } as const, drawn: undefined, remember: null },
   ])("$view.kind: draws and remembers", ({ view, drawn, remember }) => {
     expect(drawnChip(view, REMEMBERED)).toEqual(drawn);
@@ -1269,7 +1283,13 @@ describe("stageMenu — each stage, as production's menu says production", () =>
         stop: stage({ projectId: "shop-stage", state: "checking", version: undefined }),
         chip: undefined,
       }),
-      row: { dot: "off", word: "Checking…", tone: "muted", note: undefined, fix: undefined },
+      row: {
+        dot: "off",
+        word: "Checking what runs here…",
+        tone: "muted",
+        note: undefined,
+        fix: undefined,
+      },
     },
   ] as const)("says a stage $name", ({ stage: shown, row }) => {
     expect(menu({ stages: [shown] }).stops[0]).toMatchObject(row);
@@ -1480,4 +1500,12 @@ describe("buildingOf — a deploy running on a stop: what served before it, what
   ])("$name", ({ deployment, building }) => {
     expect(buildingOf(deployment as Parameters<typeof buildingOf>[0])).toEqual(building);
   });
+});
+
+it("an unread production overrides a remembered healthy chip with the shared read line", () => {
+  const view = productionChip(input({ production: checking() }));
+  const remembered = { label: "prod", state: "ok", version: "v0.1.0" } as const;
+  const drawn = drawnChip(view, remembered)!;
+  expect(chipFace(drawn).words).toBe("Production, Checking what runs here…");
+  expect(chipDot(drawn)).toBe("off");
 });

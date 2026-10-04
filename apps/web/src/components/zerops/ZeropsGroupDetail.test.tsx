@@ -177,7 +177,7 @@ describe("ZeropsGroupPane", () => {
     expect(markup).toContain("production");
     expect(markup).toContain(CHECKING);
     expect(markup).not.toContain("Harbor live");
-    expect(markup.match(/3f9c1b2/g)).toHaveLength(1);
+    expect(markup).not.toContain("3f9c1b2");
     expect(markup.match(/<button/g)?.length).toBe(render().match(/<button/g)!.length - 1);
   });
 
@@ -225,14 +225,26 @@ describe("ZeropsGroupPane", () => {
       /<span class="truncate text-end font-mono[^"]*">([^<]*)<\/span>/u.exec(markup)?.[1];
 
     it.each([
-      { name: "checking while nothing has answered", deployment: undefined, expected: "Checking" },
-      { name: "checking while what runs is read", deployment: UNREAD, expected: "Checking" },
+      {
+        name: "checking while nothing has answered",
+        deployment: undefined,
+        expected: "Checking what runs here…",
+      },
+      {
+        name: "checking while what runs is read",
+        deployment: UNREAD,
+        expected: "Checking what runs here…",
+      },
       {
         name: "the version the platform names before the row does",
         deployment: running("main 6aeae99"),
         expected: "6aeae99",
       },
-      { name: "none once the platform says nothing runs", deployment: NONE, expected: "none" },
+      {
+        name: "none once the platform says nothing runs",
+        deployment: NONE,
+        expected: "Nothing deployed yet",
+      },
     ])("$name", ({ deployment, expected }) => {
       const markup = render(
         undefined,
@@ -497,7 +509,18 @@ function renderStop(input: StopCase): string {
     keyInvalid: input.keyInvalid ?? false,
   };
   const stop = environmentRow(declared);
-  const view = stopView({ deployment: input.deployment ?? UNREAD, row: stop, nowMs: NOW });
+  const deployment: Shown<Deployment> =
+    input.deployment ??
+    (input.services.length === 0
+      ? UNREAD
+      : {
+          state: "known",
+          value: { kind: "running", activatedAt: null, version: stop.version },
+          asOf: { ordinal: 1, atMs: NOW },
+          coverage: "complete",
+          freshness: { kind: "live" },
+        });
+  const view = stopView({ deployment, row: stop, nowMs: NOW });
   const rows = serviceRows({
     environment: name,
     services: input.services,

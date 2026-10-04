@@ -84,6 +84,17 @@ describe("the Overview", () => {
       expect(html).not.toContain("No Mate yet");
     },
   );
+  it("shows production and stage runtime while HQ changes and releases are pending", () => {
+    const value = {
+      ...entry([WREN, STAGE, PROD], { stops: [STAGE_STOP, PRODUCTION_STOP] }),
+      awaiting: true,
+      changesAwaiting: true,
+    };
+    const html = render({ groups: [value] });
+    expect(html).toContain('data-zerops-surface="flow-stage"');
+    expect(html).toContain("Checking what runs here…");
+    expect(html).not.toMatch(/data-zerops-step="production"[^>]*data-zerops-step-pending/u);
+  });
 
   it("shows the recipe conflict named by Next steps in the changes cell and count", () => {
     const recipe = pull({
@@ -681,7 +692,7 @@ describe("production and stages in flight on the Overview", () => {
     expect(cell).toContain(">v0.2.0<");
   });
 
-  it("keeps a release on its way on line 1, where a narrow row still reads it", () => {
+  it("does not replace unread runtime with HQ release progress", () => {
     const releasing = entry([WREN, PROD], {
       stops: [PRODUCTION_STOP],
       release: {
@@ -694,8 +705,8 @@ describe("production and stages in flight on the Overview", () => {
       },
     });
     const cell = production(render({ groups: [releasing] }));
-    expect(lineOne(cell)).toContain("Releasing v0.1.0…");
-    expect(cell).toMatch(/hidden @2xl\/flow:block">Checking what runs here…</u);
+    expect(lineOne(cell)).toContain("Checking what runs here…");
+    expect(cell).not.toContain("Releasing v0.1.0…");
   });
 
   it("draws a stage being created under main as setting up, busy", () => {

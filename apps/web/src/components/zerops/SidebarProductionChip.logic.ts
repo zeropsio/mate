@@ -182,12 +182,14 @@ export type ChipState =
   | "down"
   | "stopped"
   | "creating"
-  | "empty";
+  | "empty"
+  | "unverified";
 
 /** What a chip says: its stops, their state and the facts that state names. */
 export interface ProductionChip {
   readonly label: ChipLabel;
   readonly state: ChipState;
+  readonly readLine?: string;
   /** What serves now: a release's tag, a hand-made name, a stage's branch. */
   readonly version?: string;
   /** What is on its way, while releasing — and while down or stopped, where one is. */
@@ -242,6 +244,7 @@ function chipOf(
   label: ChipLabel,
   state: ChipState,
   facts: {
+    readonly readLine?: string;
     readonly version?: string | undefined;
     readonly next?: string | undefined;
     readonly waiting?: number | undefined;
@@ -252,6 +255,7 @@ function chipOf(
   return chipView({
     label,
     state,
+    ...(facts.readLine === undefined ? {} : { readLine: facts.readLine }),
     ...(facts.version === undefined ? {} : { version: facts.version }),
     ...(facts.next === undefined ? {} : { next: facts.next }),
     ...(facts.waiting === undefined ? {} : { waiting: facts.waiting }),
@@ -304,7 +308,9 @@ export function productionChip(input: {
       waitingAtLeast,
     });
   }
-  if (production.kind === "checking" || serving.kind === "unknown") return UNKNOWN;
+  if (production.kind === "checking")
+    return chipOf("prod", "unverified", { readLine: production.line });
+  if (serving.kind === "unknown") return UNKNOWN;
   if (input.releases.kind === "waiting") {
     return untilReleases(productionChip({ ...input, releases: { kind: "absent" } }));
   }
@@ -374,7 +380,9 @@ export function stageStopChip(input: {
   const version = stageVersion(stop);
   if (serving.kind === "down") return chipOf("stage", "down", { version });
   if (serving.kind === "stopped") return chipOf("stage", "stopped", { version });
-  if (stop.state === "checking" || serving.kind === "unknown") return UNKNOWN;
+  if (stop.state === "checking")
+    return chipOf("stage", "unverified", { readLine: stop.readLine ?? "Checking what runs here…" });
+  if (serving.kind === "unknown") return UNKNOWN;
   if (input.releases.kind === "waiting") {
     return untilReleases(stageStopChip({ ...input, releases: { kind: "absent" } }));
   }
@@ -401,15 +409,17 @@ function severalStages(
   const states = stages.map(({ chip }) => chip.state);
   const state: ChipState = states.includes("down")
     ? "down"
-    : states.includes("failed")
-      ? "failed"
-      : states.includes("releasing")
-        ? "releasing"
-        : states.every((each) => each === "stopped")
-          ? "stopped"
-          : states.every((each) => each === "empty")
-            ? "empty"
-            : "ok";
+    : states.includes("unverified")
+      ? "unverified"
+      : states.includes("failed")
+        ? "failed"
+        : states.includes("releasing")
+          ? "releasing"
+          : states.every((each) => each === "stopped")
+            ? "stopped"
+            : states.every((each) => each === "empty")
+              ? "empty"
+              : "ok";
   return {
     label: "stage",
     state,
@@ -490,7 +500,12 @@ export function drawnChip(
   remembered: ProductionChip | undefined,
 ): ProductionChip | undefined {
   if (view.kind === "chip") return view.chip;
-  return view.kind === "unknown" ? (remembered ?? view.partial) : undefined;
+  if (view.kind !== "unknown") return undefined;
+  if (view.partial !== undefined) return view.partial;
+  const held = remembered;
+  return held === undefined
+    ? undefined
+    : { label: held.label, state: "unverified", readLine: "Checking what runs here…" };
 }
 
 /**
@@ -498,7 +513,7 @@ export function drawnChip(
  * one that no longer is, and `undefined` — nothing learned — while unknown.
  */
 export function rememberedChipAfter(view: ChipView): ProductionChip | null | undefined {
-  if (view.kind === "chip") return view.chip;
+  if (view.kind === "chip") return view.chip.state === "unverified" ? undefined : view.chip;
   return view.kind === "none" ? null : undefined;
 }
 
@@ -523,6 +538,7 @@ export interface ChipFace {
 }
 
 const TONE: Record<ChipState, ChipTone> = {
+  unverified: "neutral",
   ok: "neutral",
   waiting: "neutral",
   releasing: "neutral",
@@ -547,6 +563,8 @@ function alongside(chip: ProductionChip): string | undefined {
 /** One of several stages, in words: "qa is down", "qa's last deploy failed". */
 function stagePhrase({ name, state }: { readonly name: string; readonly state: ChipState }) {
   switch (state) {
+    case "unverified":
+      return `${name}: runtime not verified`;
     case "ok":
     case "waiting":
       return `${name} is healthy`;
@@ -581,6 +599,8 @@ function chipWords(chip: ProductionChip): string {
   const named = (rest: string) =>
     chip.version === undefined ? `${tier}, ${rest}` : `${tier} ${chip.version}, ${rest}`;
   switch (chip.state) {
+    case "unverified":
+      return named(chip.readLine ?? "runtime not verified");
     case "ok":
       return named(healthyWord(chip));
     // What waits is the release's, said once on the heading's line: the place is healthy.
@@ -659,6 +679,7 @@ export interface ChipMenuModel {
 }
 
 const MAIN_DOT: Record<ChipState, ChipDot> = {
+  unverified: "off",
   ok: "ok",
   waiting: "ok",
   releasing: "spinner",
@@ -677,6 +698,7 @@ export function chipDot(chip: ProductionChip): ChipDot {
 }
 
 const MENU_TONE: Record<ChipState, ChipMenuStop["tone"]> = {
+  unverified: "muted",
   ok: "muted",
   waiting: "muted",
   releasing: "muted",
@@ -689,6 +711,8 @@ const MENU_TONE: Record<ChipState, ChipMenuStop["tone"]> = {
 
 function mainWord(chip: ProductionChip): string {
   switch (chip.state) {
+    case "unverified":
+      return chip.readLine ?? "Runtime not verified";
     case "ok":
     case "waiting":
       return chip.untold === undefined ? "Healthy" : cannotTellWhatRuns(chip.untold);
@@ -733,7 +757,7 @@ function stopWord(stop: GroupFlowStop, deployedAt: string | undefined, nowMs: nu
       // A first deploy asked for says where it stands, as the stage's cell does.
       return firstDeployLine(stop.firstDeploy) ?? "Not deployed yet";
     case "checking":
-      return "Checking…";
+      return stop.readLine ?? "Checking what runs here…";
   }
 }
 

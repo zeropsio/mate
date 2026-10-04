@@ -13,6 +13,7 @@
  *
  * What it says is `SidebarProductionChip.logic.ts`'s; this draws it.
  */
+import { StopReadAgain } from "./StopReadAgain";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
@@ -260,6 +261,7 @@ function StopGroup({
           {row}
         </button>
       )}
+      {stop.projectId === undefined ? null : <StopReadAgain projectId={stop.projectId} />}
       {stop.note === undefined ? null : (
         <p className="zerops-envpop-note" data-zerops-surface="sidebar-production-note">
           {stop.note}

@@ -1,0 +1,27 @@
+# Runtime deployment demand
+
+HQ relates each production and stage to a Zerops project by id. The account inventory preserves
+those refs even before the organization's search lists the projects. A ref is an identity, not a
+service read or evidence that anything runs.
+
+The shared deployment store's visible-stop demand holds `project-topology`: one initial
+service-stack read, the service membership and updates, and running-process membership and updates.
+It cannot depend on navigation holding a separate service lease. The account's access demand admits
+the project; its opened-service demand follows active versions and variables for those service ids.
+Only the sidebar's production/stage stops and mounted detail surfaces demand runtime; unrelated
+navigation projects consume no detail receiver. HQ flow reads cannot hide a stop's runtime answer.
+Undemanded refs do not hold Refresh in a loading state. The last view releasing a stop ends its demand. There is no polling or automatic capacity retry.
+
+Overview, Projects, the app flow, production/stage detail and the sidebar read the same
+`Shown<Deployment>`. HQ release history may name an observed running version, but cannot replace an
+unread or failed runtime answer. A failed recheck is visible even when an older answer is held.
+Again renews the visible demand and asks the data runtime for one manual project refresh. A sidebar
+chip whose runtime is unverified cannot inherit a remembered healthy label.
+
+Desktop uses the same web surfaces. Mobile does not currently render these group-flow or stop-detail
+surfaces; the shared runtime's demand and failure behavior applies to its consumers too. No wire
+contract changes are needed.
+
+Regression coverage lives in `account/flow.test.ts`, `flow/deploymentStore.test.ts`,
+`flow/deployment.test.ts`, `groupFlow.test.ts` in client-runtime, and the web inventory lifecycle,
+sidebar chip and `StopReadAgain` tests.

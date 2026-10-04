@@ -522,6 +522,7 @@ describe("ZeropsProjectFlowProvider", () => {
     const demanded = new Set<string>();
     const unbind = bindAccountFlow({
       deployments: {
+        again: () => undefined,
         demand: (project: ProjectRef) => {
           demanded.add(project.projectId);
           return () => demanded.delete(project.projectId);

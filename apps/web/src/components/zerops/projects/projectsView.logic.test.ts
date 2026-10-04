@@ -112,7 +112,13 @@ const PRODUCTION = {
   name: "production",
   tier: "production" as const,
   row: undefined,
-  deployment: undefined,
+  deployment: {
+    state: "known" as const,
+    value: { kind: "none" as const },
+    asOf: { ordinal: 1, atMs: 0 },
+    coverage: "complete" as const,
+    freshness: { kind: "live" as const },
+  },
   route: undefined,
 };
 
@@ -393,6 +399,20 @@ describe("where a group's next step sits", () => {
       stops: [
         {
           ...PRODUCTION,
+          deployment: {
+            ...PRODUCTION.deployment,
+            value: {
+              kind: "running",
+              activatedAt: null,
+              version: {
+                name: undefined,
+                commit: "e014b0e",
+                sha: undefined,
+                taggedBy: undefined,
+                label: "e014b0e",
+              },
+            },
+          },
           projectId: `p-${tier}`,
           name: tier,
           tier,
@@ -753,7 +773,7 @@ describe("production's cell", () => {
   it("names the release that would go, not how much it carries: main's line already counts it", () => {
     expect(productionCell(FLOWS.release)).toEqual({
       empty: false,
-      line: "Checking what runs here…",
+      line: "Nothing deployed yet",
       detail: "v0.1.0 ready",
       tone: "busy",
     });
@@ -782,7 +802,7 @@ describe("production's cell", () => {
           inFlight: "v0.1.0",
         },
       }),
-      want: { line: "Releasing v0.1.0…", detail: "Checking what runs here…" },
+      want: { line: "Releasing v0.1.0…", detail: "Nothing deployed yet" },
     },
     {
       name: "a production being created, setting up",

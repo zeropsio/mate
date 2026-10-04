@@ -42,6 +42,7 @@ const ChangeSchema = Schema.Struct({
 const ChipStateSchema = Schema.Literals([
   "ok",
   "waiting",
+  "unverified",
   "releasing",
   "failed",
   "down",
@@ -54,6 +55,7 @@ const ChipStateSchema = Schema.Literals([
 const ChipSchema = Schema.Struct({
   label: Schema.Literals(["prod", "stage"]),
   state: ChipStateSchema,
+  readLine: Schema.optionalKey(Schema.String),
   version: Schema.optionalKey(Schema.String),
   next: Schema.optionalKey(Schema.String),
   waiting: Schema.optionalKey(Schema.Number),

@@ -20,6 +20,7 @@ import {
   type InterestState,
   type OrganizationRef,
   type ProjectRef,
+  ZeropsProjectId,
   type RuntimeInterestDescriptor,
   type ScopeAuthority,
   type ViewObservation,
@@ -41,6 +42,7 @@ import {
 import { ZeropsFrameWait } from "../components/zerops/landing/ZeropsLandingShell";
 import {
   hqPlacementsAtom,
+  hqEnvironmentsAtom,
   zeropsDataRuntimeAtom,
   zeropsInventoryAtom,
   zeropsSessionAtom,
@@ -209,7 +211,7 @@ export function ZeropsInventoryProvider({
 }) {
   const { activeOrganization, organizationStatus, organizations, signOut, status } =
     useZeropsSession();
-  const { runtime, organizationRef } = useZeropsData();
+  const { runtime, organizationRef, projectRef } = useZeropsData();
   const registry = useContext(RegistryContext);
   useEffect(() => {
     registry.set(zeropsDataRuntimeAtom, runtime);
@@ -286,6 +288,7 @@ export function ZeropsInventoryProvider({
     [organizationDescriptors, runtime],
   );
   const organizationReads = useZeropsAtomSelections(organizationReadEntries);
+  const hqEnvironments = useAtomValue(hqEnvironmentsAtom);
   const knownProjectRefs = useMemo(() => {
     const refs = new Map(
       inventoryProjectRefs(evidenceProjectRefs(evidence), access)
@@ -297,8 +300,19 @@ export function ZeropsInventoryProvider({
         const ref = entry.knowledge === "observed" ? entry.record.ref : entry.ref;
         if (!lost.has(ref.projectId)) refs.set(inventoryProjectRefKey(ref), ref);
       }
+    // HQ supplies relations by project id, including projects absent from the search listing.
+    // Naming their refs does not read them: a visible stop's deployment demand owns the read.
+    if (activeOrganization !== null && hqEnvironments !== null) {
+      for (const environments of hqEnvironments.values()) {
+        for (const { projectId } of environments) {
+          if (lost.has(ZeropsProjectId.make(projectId))) continue;
+          const ref = projectRef(activeOrganization.id, projectId);
+          refs.set(inventoryProjectRefKey(ref), ref);
+        }
+      }
+    }
     return [...refs.values()];
-  }, [access, evidence, organizationReads, activeOrganization?.id, lost]);
+  }, [access, evidence, organizationReads, activeOrganization, lost, hqEnvironments, projectRef]);
   const projectReadEntries = useMemo(
     () =>
       knownProjectRefs.map(
@@ -374,7 +388,16 @@ export function ZeropsInventoryProvider({
       projectRefs.set(key, ref);
       // A project withheld until its denial is confirmed holds nothing open (G6).
       const incomplete = () => {
-        if (denied.has(key)) return;
+        const required = serviceReads.get(key)?.observation.required;
+        if (denied.has(key) || required === undefined) return;
+        const inventoryKey = interestKeyOf({ kind: "project-inventory", project: ref });
+        const topologyKey = interestKeyOf({ kind: "project-topology", project: ref });
+        if (
+          !required.some(
+            ({ identity }) => identity.key === inventoryKey || identity.key === topologyKey,
+          )
+        )
+          return;
         unread.add(ref.organization.organizationId);
       };
       const project = projectReads.get(key)?.value;

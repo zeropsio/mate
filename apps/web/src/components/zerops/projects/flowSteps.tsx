@@ -28,6 +28,7 @@ import { Skeleton } from "../../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { MateFace, StatusDot } from "../primitives";
 import { STOP_LINK_CLASS, type ZeropsStopLink } from "../ZeropsEnvironmentRow";
+import { StopReadAgain } from "../StopReadAgain";
 import { ZeropsMateCard } from "../ZeropsMateCard";
 import {
   comingMateLine,
@@ -417,6 +418,7 @@ export function StageLines({
             {words}
           </StopLink>
         )}
+        <StopReadAgain projectId={projectId} />
         {drawn(menu) ? <span className="ms-auto flex shrink-0">{menu}</span> : null}
       </span>
     );
@@ -563,6 +565,10 @@ export function ProductionStep<T>({
       verbs={(
         [
           ["verb", verb],
+          [
+            "again",
+            "stop" in production ? <StopReadAgain projectId={production.stop.projectId} /> : null,
+          ],
           ["release", releaseVerb],
           ["menu", menuSlot],
         ] as const

@@ -16,6 +16,7 @@ import {
   mergesHere,
   PendingStep,
   ProductionStep,
+  StageLines,
   releaseVerbFor,
   STEP_CELL_CLASS,
   VerbSlot,
@@ -249,7 +250,16 @@ export function ProjectCard<T>({
           placement="@2xl/flow:mt-2 @5xl/flow:col-start-5 @5xl/flow:mt-0"
         >
           {entry.changesAwaiting ? (
-            <PendingStep density="box" step="main" />
+            <>
+              <PendingStep density="box" step="main" />
+              <StageLines
+                groupId={flow.groupId}
+                stages={flow.stages}
+                creating={flow.creatingStages}
+                density="box"
+                menuFor={stopMenu}
+              />
+            </>
           ) : (
             <MainStep
               density="box"
@@ -265,7 +275,7 @@ export function ProjectCard<T>({
           name="production"
           placement="@2xl/flow:mt-2 @5xl/flow:col-start-7 @5xl/flow:mt-0"
         >
-          {entry.awaiting ? (
+          {entry.awaiting && production.kind === "absent" ? (
             <PendingStep density="box" step="production" />
           ) : (
             <ProductionStep
