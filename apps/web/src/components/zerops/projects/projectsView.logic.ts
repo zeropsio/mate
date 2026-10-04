@@ -48,6 +48,7 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { creatableRoles } from "../ZeropsGroupTree.logic";
 import { COMING_UP_LINE, NOT_SET_UP_LINE, type ZeropsRowAction } from "../ZeropsProjectRow.logic";
@@ -517,6 +518,8 @@ export type ProjectRowLine =
   | { readonly kind: "first-task"; readonly text: string }
   /** Its reads are out: the line holds its place and claims nothing. */
   | { readonly kind: "pending" }
+  /** Gitea never answered for its changes: nothing about them is known, and it says so. */
+  | { readonly kind: "unread"; readonly text: string }
   | { readonly kind: "none" };
 
 /** The steps a Mate's own state decides: known without the project's reads. */
@@ -534,6 +537,8 @@ export function projectRowLine(input: {
   readonly activities: ReadonlyArray<RowMateActivity>;
   /** The project's reads answered (`flowStepsAwaiting`): its next step is known. */
   readonly settled: boolean;
+  /** Its changes' read failed and nothing is held (`ZeropsProjectFlow.changesFailure`). */
+  readonly changesFailed?: boolean;
 }): ProjectRowLine {
   const { flow, activities } = input;
   const step = flow.nextStep;
@@ -555,6 +560,9 @@ export function projectRowLine(input: {
   };
   if (MATE_STEPS.has(step.kind)) return needsYou();
   if (!input.settled) return { kind: "pending" };
+  // A failed deploy is the deploy half's to say; everything else waits on the changes Gitea kept.
+  if (input.changesFailed === true)
+    return step.kind === "fix-deploy" ? needsYou() : { kind: "unread", text: CHANGES_UNREAD_LINE };
   if (nextStepAwaitsSomebody(step.kind)) return needsYou();
 
   const { production } = flow;
@@ -620,10 +628,24 @@ export function productionMark(
   return { version, tone: STOP_TONE[production.stop.state] };
 }
 
-/** Whether a row rises: it needs the person, or — its answer still out — it was drawn risen. */
-export function rowRises(line: ProjectRowLine, remembered: boolean | undefined): boolean {
-  if (line.kind === "pending") return remembered === true;
-  return line.kind === "needs-you";
+/** What a row's line says where Gitea never answered for its changes. */
+export const CHANGES_UNREAD_LINE = "Gitea didn’t answer";
+
+/**
+ * Whether a row rises, and whether that is known — what the list may remember of it. A row that
+ * needs the person rises. One whose answer is out (`pending`, `unread`), or whose Mates are not
+ * all reachable (`matesKnown`: a Mate reconnecting may be asking), stays where it was last drawn
+ * and is not remembered either way.
+ */
+export function rowRise(
+  line: ProjectRowLine,
+  remembered: boolean | undefined,
+  matesKnown: boolean,
+): { readonly rises: boolean; readonly known: boolean } {
+  if (line.kind === "needs-you") return { rises: true, known: true };
+  if (line.kind === "pending" || line.kind === "unread" || !matesKnown)
+    return { rises: remembered === true, known: false };
+  return { rises: false, known: true };
 }
 
 /** The rows that rise first, then the rest, each keeping the order it was given. */
@@ -632,4 +654,43 @@ export function risenFirst<E>(
   rises: (row: E) => boolean,
 ): ReadonlyArray<E> {
   return [...rows.filter(rises), ...rows.filter((row) => !rises(row))];
+}
+
+/** A Mate's candidate as a row reads its link: the join with the environment at its origin. */
+type RowMateCandidate = ZeropsCandidate & { readonly connection?: unknown };
+
+/**
+ * The row's Mates' activity, read only while each one's link is up, as its card reads it: a kept
+ * shell of a Mate gone quiet would say it works while its face sleeps.
+ */
+export function rowMateActivitiesOf(
+  mates: ReadonlyArray<{ readonly item: ZeropsCandidate; readonly name: string }>,
+  activityOf: (environmentId: EnvironmentId) => ZeropsAgentActivity | undefined,
+): ReadonlyArray<RowMateActivity> {
+  return mates.flatMap(({ item, name }) => {
+    if (item.group !== "connected" || item.environmentId === undefined) return [];
+    const activity = activityOf(item.environmentId);
+    if (activity === undefined) return [];
+    return [
+      { name, working: activity.kind === "working", subject: activity.subject, at: activity.at },
+    ];
+  });
+}
+
+/**
+ * Whether every Mate whose link this tab holds is up and its conversations read: one reconnecting
+ * — a restart, an update, a blip — may be asking, so its row stays where it was drawn
+ * (`rowRise`). A Mate this tab never linked has nothing to come back from.
+ */
+export function matesKnownOf(
+  mates: ReadonlyArray<RowMateCandidate>,
+  conversationsRead: (environmentId: EnvironmentId) => boolean,
+): boolean {
+  return mates.every(
+    (item) =>
+      item.connection === undefined ||
+      (item.group === "connected" &&
+        item.environmentId !== undefined &&
+        conversationsRead(item.environmentId)),
+  );
 }
