@@ -276,11 +276,11 @@ export function resolveMateOwnerPerson(input: {
     }
     return undefined;
   }
-  const { signer } = mateOwnerSigner(input.project);
-  const named = signer === undefined ? undefined : input.people?.[signer];
-  return signer === undefined || named === undefined
+  const { person } = matePerson(input.project);
+  const named = person === undefined ? undefined : input.people?.[person];
+  return person === undefined || named === undefined
     ? undefined
-    : { userId: signer, name: named.name };
+    : { userId: person, name: named.name };
 }
 
 /**
@@ -296,14 +296,18 @@ export function resolveMateOwnerPerson(input: {
  * its agent in makes it theirs. A viewer HQ sends no overview to sees no signer.
  */
 export function mateOwnerRecords(project: Pick<MateAccessProject, "hq" | "userRoles">): {
-  readonly named: boolean;
+  readonly named: boolean | undefined;
   readonly signedIn: boolean;
   /** The Zerops user id who signed its agent in, where somebody did. */
   readonly signer: string | undefined;
+  /** The Zerops user id HQ makes it the Mate of (`matePerson`): its signer, or its maker. */
+  readonly person: string | undefined;
+  /** It runs on an agent Mate signs nobody in to (its overview): it waits on no sign-in. */
+  readonly runsWithoutSignIn: boolean;
 } {
-  const { signedIn, signer } = mateOwnerSigner(project);
-  const owned = project.userRoles?.some((entry) => entry.roleCode === "OWNER") === true;
-  return { named: owned || signedIn, signedIn, signer };
+  const records = matePerson(project);
+  const owned = project.userRoles?.some((entry) => entry.roleCode === "OWNER");
+  return { named: records.signedIn || records.person !== undefined || owned, ...records };
 }
 
 /**
@@ -317,8 +321,8 @@ export function mateIsViewers(
   project: Pick<MateAccessProject, "hq">,
   viewer: string | undefined,
 ): boolean {
-  const { signer } = mateOwnerSigner(project);
-  return signer !== undefined && viewer !== undefined && viewer.length > 0 && signer === viewer;
+  const { person } = matePerson(project);
+  return person !== undefined && viewer !== undefined && viewer.length > 0 && person === viewer;
 }
 
 /**
@@ -340,6 +344,19 @@ function mateOwnerSigner(project: Pick<MateAccessProject, "hq">): {
     (userId): userId is string => typeof userId === "string" && userId.length > 0,
   );
   return { signedIn: signer !== undefined, signer };
+}
+
+/** The signer, else a ready agent's maker, as HQ's record and overview name them. */
+function matePerson(project: Pick<MateAccessProject, "hq">) {
+  const { signedIn, signer } = mateOwnerSigner(project);
+  const mate = project.hq?.mate;
+  const runsWithoutSignIn = mate?.runsWithoutSignIn === true;
+  const person = signedIn
+    ? signer
+    : runsWithoutSignIn
+      ? (mate?.madeBy ?? mate?.standupRequestedBy ?? undefined)
+      : undefined;
+  return { signedIn, signer, person, runsWithoutSignIn };
 }
 
 /** A member row is an integration token when its address is the token's own (`token-<id>@zerops.io`). */

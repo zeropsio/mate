@@ -1,3 +1,4 @@
+import type { OtherAgentFields } from "@t3tools/client-runtime/zerops/agentLogin";
 import {
   EnvironmentId,
   ThreadId,
@@ -10,6 +11,17 @@ import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology
 import { describe, expect, it } from "vite-plus/test";
 
 import { resolveZeropsChatChrome } from "./chatChrome.ts";
+
+/** A provider instance as the server sends it: signed in, models listed, unless said otherwise. */
+const agentInstance = (driver: string, status = "ready"): OtherAgentFields =>
+  ({
+    driver,
+    enabled: true,
+    installed: true,
+    status,
+    auth: { status: status === "ready" ? "authenticated" : "unauthenticated" },
+    models: [{ slug: "m" }],
+  }) as unknown as OtherAgentFields;
 
 const THREAD_REF: ScopedThreadRef = {
   environmentId: EnvironmentId.make("environment-1"),
@@ -88,6 +100,7 @@ const known = (snapshot: ZeropsAgentAuthSnapshot): ZeropsAgentAuthView => ({
 const AUTH_STATES: ReadonlyArray<{
   readonly label: string;
   readonly value: ZeropsAgentAuthView;
+  readonly providers?: ReadonlyArray<OtherAgentFields>;
   readonly signInRequired: boolean;
 }> = [
   // Not a Mate without agents: the agents' region says it is checking.
@@ -109,6 +122,13 @@ const AUTH_STATES: ReadonlyArray<{
     signInRequired: false,
   },
   { label: "when no agent is authorized", value: known(ATTENTION), signInRequired: true },
+  // Mate signs people in to Claude Code and Codex only: another agent it can run is enough.
+  {
+    label: "when no agent is authorized and Cursor is ready",
+    value: known(ATTENTION),
+    providers: [agentInstance("cursor")],
+    signInRequired: false,
+  },
   {
     label: "when the feed itself is unavailable",
     value: known(UNAVAILABLE),
@@ -124,6 +144,7 @@ const CASES = THREADS.flatMap((thread) =>
       input: {
         topology: topologyState.value,
         agentAuth: authState.value,
+        providers: authState.providers,
       },
       expected:
         thread.value === null

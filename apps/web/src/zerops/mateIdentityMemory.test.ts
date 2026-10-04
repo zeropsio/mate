@@ -1,7 +1,13 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { readIdentityMemory, withMateIdentities, writeIdentityMemory } from "./mateIdentityMemory";
+import {
+  mateDirectoryWhole,
+  mateOfProject,
+  readIdentityMemory,
+  withMateIdentities,
+  writeIdentityMemory,
+} from "./mateIdentityMemory";
 import type { ZeropsMateIdentity } from "./mateIdentities";
 
 const GITA = EnvironmentId.make("env-gita");
@@ -74,5 +80,92 @@ describe("the Mate identity memory", () => {
     { case: "not JSON", text: "{", names: [] },
   ])("reads $case", ({ text, names }) => {
     expect(Object.values(readIdentityMemory(text)).map((mate) => mate.name)).toEqual(names);
+  });
+
+  // A Mate's own page has only its project, and paints its name and its pose from the first frame.
+  it("remembers its project and whether its container was running", () => {
+    const awake = { ...identity("Gita"), projectId: "p-gita", running: true };
+    const stored = withMateIdentities({}, new Map([[GITA, awake]]));
+    expect(stored[GITA]).toMatchObject({ projectId: "p-gita", running: true, connected: false });
+    expect(readIdentityMemory(writeIdentityMemory(stored))[GITA]).toMatchObject({
+      projectId: "p-gita",
+      running: true,
+    });
+    // Its container stopping since is remembered too.
+    const stopped = withMateIdentities(stored, new Map([[GITA, { ...awake, running: false }]]));
+    expect(stopped[GITA]?.running).toBe(false);
+  });
+
+  // A Mate still arriving opens wearing the pose its menu row wears, not idle until the listing.
+  it.each([
+    { case: "until when it is arriving", arrivingUntil: 1_700_000_000_000 },
+    { case: "nothing once it has arrived", arrivingUntil: undefined },
+  ])("remembers $case", ({ arrivingUntil }) => {
+    const arriving = {
+      ...identity("Gita"),
+      ...(arrivingUntil === undefined ? {} : { arrivingUntil }),
+    };
+    const stored = withMateIdentities({}, new Map([[GITA, arriving]]));
+    expect(stored[GITA]?.arrivingUntil).toBe(arrivingUntil);
+    expect(readIdentityMemory(writeIdentityMemory(stored))[GITA]?.arrivingUntil).toBe(
+      arrivingUntil,
+    );
+    // Its arrival ending is remembered too.
+    if (arrivingUntil === undefined) return;
+    const arrived = withMateIdentities(stored, new Map([[GITA, identity("Gita")]]));
+    expect(arrived[GITA]?.arrivingUntil).toBeUndefined();
+  });
+
+  it.each([
+    { case: "the Mate in its project", projectId: "p-pia", found: [PIA, "Pia"] },
+    { case: "nothing for a project it never knew", projectId: "p-other", found: undefined },
+  ])("finds $case", ({ projectId, found }) => {
+    const memory = withMateIdentities(
+      {},
+      new Map([
+        [GITA, { ...identity("Gita"), projectId: "p-gita" }],
+        [PIA, { ...identity("Pia"), projectId: "p-pia" }],
+      ]),
+    );
+    const mate = mateOfProject(memory, projectId);
+    expect(mate === undefined ? undefined : [mate.environmentId, mate.mate.name]).toEqual(found);
+  });
+});
+
+// A Mate the directory lacks is forgotten only once the listing is whole for the person looking:
+// a member with NO_ACCESS on one project never reads a complete listing, and still forgets a Mate
+// deleted since — the home's guess and a Mate's page by its project read this memory.
+describe("mateDirectoryWhole: when a Mate the directory lacks has left", () => {
+  it.each([
+    {
+      case: "complete, every environment registered",
+      complete: true,
+      whole: false,
+      ready: true,
+      left: true,
+    },
+    {
+      case: "whole for the person, not complete",
+      complete: false,
+      whole: true,
+      ready: true,
+      left: true,
+    },
+    { case: "neither", complete: false, whole: false, ready: true, left: false },
+    {
+      case: "whole, environments still registering",
+      complete: true,
+      whole: true,
+      ready: false,
+      left: false,
+    },
+  ])("$case: $left", ({ complete, whole, ready, left }) => {
+    expect(
+      mateDirectoryWhole({
+        listingComplete: complete,
+        wholeForPerson: whole,
+        environmentsReady: ready,
+      }),
+    ).toBe(left);
   });
 });

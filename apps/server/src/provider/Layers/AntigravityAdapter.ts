@@ -82,6 +82,13 @@ import {
   sanitizeAntigravityToolPayload,
   selectAntigravityPermissionOptionId,
 } from "../acp/AntigravityProtocol.ts";
+import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
+import {
+  acpTerminalReason,
+  acpThreadSetup,
+  acpTurnProfile,
+  readAcpThreadPolicies,
+} from "../../spi/acpThreadProfile.ts";
 import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
 import type { EventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
@@ -309,6 +316,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig;
+  const threadPolicies = yield* readAcpThreadPolicies;
   const ownerScope = yield* Effect.scope;
   const makeNativeLoggers = yield* makeAcpNativeLoggerFactory();
   const sessions = new Map<ThreadId, SessionContext>();
@@ -779,6 +787,19 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
         const stopOwned = Effect.suspend(() =>
           context ? stopContext(context).pipe(Effect.ignore) : Scope.close(sessionScope, Exit.void),
         );
+        const threadRef = { threadId: input.threadId, instanceId: options.instanceId, cwd };
+        // A crewmate's thread: its tools served for this session, its gate in the person's place.
+        const profileSetup = yield* acpThreadSetup(threadPolicies, threadRef).pipe(
+          Effect.provideService(Scope.Scope, sessionScope),
+        );
+        // A crewmate asks before every call, whatever mode its thread names.
+        const runtimeMode = profiledRuntimeMode(profileSetup !== undefined, input.runtimeMode);
+        const startModel = (yield* acpTurnProfile(
+          threadPolicies,
+          threadRef,
+          input.modelSelection,
+          undefined,
+        )).modelSelection?.model;
 
         return yield* options
           .withProcess(
@@ -795,8 +816,8 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
                 ...(Option.isSome(cursor) ? { resumeSessionId: cursor.value.sessionId } : {}),
                 // No `apps/server/src/mcp/**` here (deleted zone) — the in-app
                 // preview-browser MCP server it would wire in does not exist
-                // in this fork; no other driver wires it either.
-                mcpServers: [],
+                // in this fork; a crewmate's own tools are the one server.
+                mcpServers: profileSetup?.mcpServers ?? [],
                 ...makeNativeLoggers({
                   nativeEventLogger: options.nativeEventLogger,
                   provider: PROVIDER,
@@ -815,28 +836,30 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
                 writeClientTextFile({ fileSystem, path, allowedRoots, request }),
               );
               yield* runtime.handleRequestPermission((request) =>
-                context
-                  ? handlePermission(context, request).pipe(
-                      Effect.mapError((cause) =>
-                        EffectAcpErrors.AcpRequestError.internalError(
-                          "Could not process an Antigravity permission request.",
-                          undefined,
-                          { cause },
+                profileSetup
+                  ? profileSetup.decidePermission(request)
+                  : context
+                    ? handlePermission(context, request).pipe(
+                        Effect.mapError((cause) =>
+                          EffectAcpErrors.AcpRequestError.internalError(
+                            "Could not process an Antigravity permission request.",
+                            undefined,
+                            { cause },
+                          ),
                         ),
-                      ),
-                    )
-                  : Effect.succeed({
-                      outcome: { outcome: "cancelled" },
-                    } satisfies NativePermissionResponse),
+                      )
+                    : Effect.succeed({
+                        outcome: { outcome: "cancelled" },
+                      } satisfies NativePermissionResponse),
               );
               const started = yield* runtime.start();
               const model = yield* applyAntigravityAcpModelSelection({
                 runtime,
-                model: input.modelSelection?.model,
+                model: startModel,
                 defaultModel: yield* options.defaultModel ?? Effect.undefined,
                 mapError: (cause) => cause,
               });
-              yield* runtime.setMode(antigravityPermissionMode(input.runtimeMode));
+              yield* runtime.setMode(antigravityPermissionMode(runtimeMode));
               yield* options.onSessionStarted?.(started, cwd) ?? Effect.void;
               const createdAt = yield* nowIso;
               const session: ProviderSession = {
@@ -845,7 +868,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
                 threadId: input.threadId,
                 cwd,
                 status: "ready",
-                runtimeMode: input.runtimeMode,
+                runtimeMode,
                 ...(model ? { model } : {}),
                 resumeCursor: { schemaVersion: 1, sessionId: started.sessionId },
                 createdAt,
@@ -1019,7 +1042,13 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
       const launch = yield* context.promptLock.withPermit(
         Effect.gen(function* () {
           yield* requireSession(input.threadId);
-          const requestedModel = input.modelSelection?.model ?? context.session.model;
+          const turnProfile = yield* acpTurnProfile(
+            threadPolicies,
+            { threadId: input.threadId, instanceId: options.instanceId },
+            input.modelSelection,
+            undefined,
+          );
+          const requestedModel = turnProfile.modelSelection?.model ?? context.session.model;
           const configOptions = yield* context.runtime.getConfigOptions;
           const model = resolveAntigravityModel({
             configOptions,
@@ -1076,6 +1105,9 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
                     type: "text",
                     text: buildRuntimeInstructions({ harness: "Antigravity", model }),
                   },
+                  ...(turnProfile.instructions
+                    ? [{ type: "text" as const, text: turnProfile.instructions }]
+                    : []),
                 ],
               },
               { dispatched },
@@ -1109,6 +1141,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
         finishTurn(launch.turn, {
           state: result.stopReason === "cancelled" ? "cancelled" : "completed",
           stopReason: result.stopReason,
+          ...acpTerminalReason(result.stopReason),
         }),
       );
       return {
@@ -1258,6 +1291,8 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
 
   return {
     provider: PROVIDER,
+    // No `threadProfile` until seen live: whether Antigravity asks before an MCP tool zcp's
+    // config gives it is unknown, and a crewmate must never run a Zerops call ungated.
     capabilities: { sessionModelSwitch: "in-session", supportsConversationRollback: false },
     compaction: { type: "slash-command", command: "/compact" },
     startSession,

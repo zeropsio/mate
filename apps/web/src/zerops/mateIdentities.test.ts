@@ -7,7 +7,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   knownMate,
+  mateOpeningAwake,
   mateQuestion,
+  mateStageAwake,
   withEnvironmentsOutsideZerops,
   zeropsMateAt,
   zeropsMateDecisions,
@@ -294,5 +296,79 @@ describe("mateQuestion", () => {
 
   it("asks without a project for a Mate in none", () => {
     expect(mateQuestion({ name: "Nova", project: undefined })).toBe("What should Nova do?");
+  });
+});
+
+// A Mate's opening wears the face its container's state gives it (the owner, 2026-10-03: the face
+// stood asleep on every open and woke as the conversation came, though nothing had slept).
+describe("whether a Mate's opening wears it awake", () => {
+  it.each<{
+    readonly case: string;
+    readonly mate: Pick<ZeropsMateIdentity, "connected" | "running">;
+    readonly awake: boolean;
+  }>([
+    { case: "its container connected", mate: { connected: true, running: true }, awake: true },
+    {
+      case: "its container running, its socket not up yet",
+      mate: { connected: false, running: true },
+      awake: true,
+    },
+    { case: "its container not running", mate: { connected: false, running: false }, awake: false },
+    { case: "nothing known of its container", mate: { connected: false }, awake: false },
+  ])("$case", ({ mate, awake }) => {
+    expect(mateOpeningAwake(mate)).toBe(awake);
+  });
+
+  it.each<{
+    readonly case: string;
+    readonly group: ZeropsCandidate["group"];
+    readonly running: boolean;
+  }>([
+    { case: "connected", group: "connected", running: true },
+    { case: "ready, its socket not up", group: "ready", running: true },
+    { case: "stopped", group: "unavailable", running: false },
+  ])("carries its project, and its container running when $case", ({ group, running }) => {
+    const mate = zeropsMateIdentities([{ ...FEN_DEV, group }]).get(FEN);
+    expect(mate).toMatchObject({ projectId: "acme-docs-dev", running });
+  });
+});
+
+// A Mate's own page wears it as its opening does: awake while its container runs and the page
+// only waits; asleep where the page speaks of its link, and as its arrival says while it arrives.
+describe("whether a Mate's own page wears it awake", () => {
+  const RUNNING = { connected: false, running: true } as const;
+  const STOPPED = { connected: false, running: false } as const;
+  it.each<{
+    readonly case: string;
+    readonly input: Parameters<typeof mateStageAwake>[0];
+    readonly awake: boolean;
+  }>([
+    {
+      case: "linked",
+      input: { linked: true, arriving: false, speaks: false, mate: STOPPED },
+      awake: true,
+    },
+    {
+      case: "its container running, the page only waiting",
+      input: { linked: false, arriving: false, speaks: false, mate: RUNNING },
+      awake: true,
+    },
+    {
+      case: "its container stopped",
+      input: { linked: false, arriving: false, speaks: false, mate: STOPPED },
+      awake: false,
+    },
+    {
+      case: "the page speaking of its link",
+      input: { linked: false, arriving: false, speaks: true, mate: RUNNING },
+      awake: false,
+    },
+    {
+      case: "a new Mate arriving, whose board says its face",
+      input: { linked: false, arriving: true, speaks: false, mate: RUNNING },
+      awake: false,
+    },
+  ])("$case", ({ input, awake }) => {
+    expect(mateStageAwake(input)).toBe(awake);
   });
 });

@@ -31,6 +31,11 @@ import {
   parseSessionUpdateEvent,
   type AcpToolCallState,
 } from "../acp/AcpRuntimeModel.ts";
+import {
+  makeInstallSlot,
+  type ThreadToolPolicy,
+  ThreadToolPolicyRegistry,
+} from "../../spi/threadToolPolicy.ts";
 import { makeAntigravityAdapter, type AntigravityAdapterOptions } from "./AntigravityAdapter.ts";
 
 const instanceId = ProviderInstanceId.make("antigravity-test");
@@ -485,6 +490,84 @@ it.layer(layer)("AntigravityAdapter", (it) => {
         item: { aggregatedOutput: "after\n", exitCode: 0 },
       });
     }),
+  );
+
+  it.effect(
+    "runs a crewmate's thread by its profile: its tools, its gate, its context, its model",
+    () =>
+      Effect.gen(function* () {
+        const decided: Array<unknown> = [];
+        const policies = yield* makeInstallSlot<ThreadToolPolicy>();
+        yield* policies.install({
+          profileFor: (thread) =>
+            Effect.succeed(
+              thread.threadId === threadId
+                ? {
+                    sessionContext: "You are @backend on the crew.",
+                    contextWindow: 100_000,
+                    model: nativeAlternative,
+                    decideTool: (call) =>
+                      Effect.sync(() => {
+                        decided.push(call.toolName);
+                        return { kind: "deny" as const, reason: "Not in your lane." };
+                      }),
+                    tools: [
+                      {
+                        name: "crew_report",
+                        description: "Report.",
+                        inputSchema: { type: "object" },
+                        run: () => Effect.succeed({ text: "ok", isError: false }),
+                      },
+                    ],
+                  }
+                : undefined,
+            ),
+        });
+        const h = yield* makeHarness().pipe(
+          Effect.provideService(ThreadToolPolicyRegistry, policies),
+        );
+        yield* h.adapter.startSession({
+          threadId,
+          cwd: process.cwd(),
+          runtimeMode: "approval-required",
+        });
+        const answer = yield* h.invokePermission({
+          sessionId: nativeSessionId,
+          toolCall: {
+            toolCallId: "write-1",
+            kind: "edit",
+            title: "Write probe.txt",
+            locations: [{ path: "probe.txt" }],
+          },
+          options: [
+            { optionId: "native:allow", name: "Allow", kind: "allow_once" },
+            { optionId: "native:deny", name: "Deny", kind: "reject_once" },
+          ],
+        });
+        const sending = yield* h.adapter
+          .sendTurn({ threadId, input: "Start" })
+          .pipe(Effect.forkChild);
+        const prompt = yield* h.nextPrompt;
+        yield* Deferred.succeed(prompt.result, { stopReason: "end_turn" });
+        yield* Fiber.join(sending);
+        expect({
+          servers: h.launches[0]?.mcpServers?.map((server) => server.name),
+          answer,
+          decided,
+          parked: h.seen.some((event) => event.type === "request.opened"),
+          context: prompt.content.some(
+            (part) => part.type === "text" && part.text === "You are @backend on the crew.",
+          ),
+          model: h.calls.includes(`model:${nativeAlternative}`),
+        }).toEqual({
+          servers: ["crew"],
+          answer: { outcome: { outcome: "selected", optionId: "native:deny" } },
+          decided: ["Edit"],
+          parked: false,
+          context: true,
+          model: true,
+        });
+      }),
   );
 
   it.effect("does not auto-approve a remaining native request in full access", () =>

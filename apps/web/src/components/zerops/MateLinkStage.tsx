@@ -1,10 +1,10 @@
 /**
  * A Mate's page while its conversation cannot show yet (a reload before the catalog names its
  * thread, the route's link being made, the Mate down): its header — the face and the name — from
- * the first frame, as its conversation will draw it. Opening, the page under it is quiet, with one
- * line where the messages will land past its beat; where the link has words of its own (a
- * restart, a reconnect, a container that is not running) the Mate's face stands asleep over its
- * name with them, on one axis (`stageSpeaks`).
+ * the first frame, as its conversation will draw it, awake where its container runs. Opening, the
+ * page under it is quiet, with one line where the messages will land past its beat; where the link
+ * has words of its own (a restart, a reconnect, a container that is not running) the Mate's face
+ * stands asleep over its name with them, on one axis (`stageSpeaks`).
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ReactNode } from "react";
@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 import { environmentCatalog } from "~/connection/catalog";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
-import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
+import { mateOpeningAwake, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { stageSpeaks } from "~/zerops/mateOpeningStage";
 import { useMateVoice } from "~/zerops/mateVoiceContext";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
@@ -111,7 +111,9 @@ function MateLinkStageOf({
           </>
         }
         composer={composer}
-        mate={mate}
+        // Opening, it wears the pose its container has — awake where the listing has it running,
+        // as it was last known before that is read — not asleep for this page's own wait.
+        mate={{ ...known, connected: mateOpeningAwake(known) }}
       />
     );
   }
@@ -175,6 +177,22 @@ function MateOpeningPage({
  * typed into, the conversation's own draft, which its composer reads as it takes over — and the
  * one opening line past its beat, or the link's own words where it has any.
  */
+/**
+ * The home's guess at where it lands — the Mate whose conversation was open last — while it works
+ * it out (`homeView`): the face, the name and the opening line, with nothing that takes input, the
+ * composer's place held empty; a wrong guess loses nothing typed, and gives way without motion.
+ */
+export function HomeOpeningView({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  return (
+    <MateLinkStage
+      composer={null}
+      environmentId={environmentId}
+      projectId={null}
+      voice={SILENT_STAGE}
+    />
+  );
+}
+
 export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const voice = useMateVoice();
   return (

@@ -9,7 +9,7 @@ import { useEffect, useId, useRef, type CSSProperties } from "react";
 
 import { cn } from "~/lib/utils";
 import "./MateMark.css";
-import { registerLiveMark, type LiveMarkParts } from "./mateMarkRuntime";
+import { MARK_BREATH_DEPTH, registerLiveMark, type LiveMarkParts } from "./mateMarkRuntime";
 
 /**
  * Brand presence only. It deliberately does not imply that a provider is
@@ -77,6 +77,7 @@ export function MateMark({
       aria-hidden="true"
       className={cn("mate-mark", className)}
       data-mate-mark={playful ? "live" : "still"}
+      data-mate-mark-state={playful ? state : undefined}
       data-mate-mark-tint={tint}
       style={
         tint === undefined
@@ -140,7 +141,9 @@ export function MateMark({
             <path
               className={tint === undefined ? undefined : TINT_CLASS[tint]}
               d={MATE_MARK_LIVE.band.left}
+              data-mate-mark-band="left"
               fill={MATE_MARK.color}
+              style={SWELL_LEFT}
               ref={(node) => {
                 parts.current.bandLeft = node;
               }}
@@ -148,7 +151,9 @@ export function MateMark({
             <path
               className={tint === undefined ? undefined : TINT_CLASS[tint]}
               d={MATE_MARK_LIVE.band.right}
+              data-mate-mark-band="right"
               fill={MATE_MARK.color}
+              style={SWELL_RIGHT}
               ref={(node) => {
                 parts.current.bandRight = node;
               }}
@@ -253,6 +258,15 @@ export function MateMark({
     </svg>
   );
 }
+
+/**
+ * Where each half of the band stands at the top of a waking Mate's swell: a fifth of the way out,
+ * along its 30° track. The stylesheet's `mate-mark-swell` carries it there and back.
+ */
+const SWELL_X = MARK_BREATH_DEPTH * MATE_MARK_LIVE.band.travel * MATE_MARK_LIVE.band.cos30;
+const SWELL_Y = MARK_BREATH_DEPTH * MATE_MARK_LIVE.band.travel * MATE_MARK_LIVE.band.sin30;
+const SWELL_LEFT = { "--mate-mark-swell": `${-SWELL_X}px ${SWELL_Y}px` } as CSSProperties;
+const SWELL_RIGHT = { "--mate-mark-swell": `${SWELL_X}px ${-SWELL_Y}px` } as CSSProperties;
 
 /** Enough layers that the extruded wall reads as solid at the 5° cap. */
 const EXTRUSION_LAYERS = 12;

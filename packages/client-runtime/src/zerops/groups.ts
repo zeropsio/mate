@@ -450,6 +450,17 @@ function heldBackByCreations(
 }
 
 /**
+ * An application's name from HQ's placement on the held projects, for a surface whose listing
+ * cannot name it yet: failed, lapsed, or every project withheld. No project labels are parsed.
+ */
+export function heldGroupLabel(
+  projects: ReadonlyArray<{ readonly hq?: HqPlacement | undefined }>,
+  groupId: string,
+): string | undefined {
+  return projects.find((project) => project.hq?.appId === groupId)?.hq?.appName ?? undefined;
+}
+
+/**
  * The left menu's whole data model: projects in, a group tree out. Pure, and
  * total — a project HQ does not place is ungrouped rather than an error.
  */

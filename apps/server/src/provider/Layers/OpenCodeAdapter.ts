@@ -28,7 +28,14 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import type { OpencodeClient, Part, PermissionRequest, QuestionRequest } from "@opencode-ai/sdk/v2";
+import type {
+  McpLocalConfig,
+  McpRemoteConfig,
+  OpencodeClient,
+  Part,
+  PermissionRequest,
+  QuestionRequest,
+} from "@opencode-ai/sdk/v2";
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
@@ -43,6 +50,14 @@ import {
   ProviderAdapterValidationError,
 } from "../Errors.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
+import { profiledRuntimeMode } from "../../spi/threadToolPolicy.ts";
+import {
+  type OpenCodeThreadSetup,
+  type OpenCodeToolInput,
+  openCodeThreadSetup,
+  openCodeTurnProfile,
+  readOpenCodeThreadPolicies,
+} from "../../spi/openCodeThreadProfile.ts";
 import { type OpenCodeAdapterShape } from "../Services/OpenCodeAdapter.ts";
 import {
   buildOpenCodePermissionRules,
@@ -58,6 +73,7 @@ import {
   toOpenCodeQuestionAnswers,
   type OpenCodeServerConnection,
 } from "../opencodeRuntime.ts";
+import { openCodeMcpControl, type OpenCodeMcpClient } from "../../spi/mcpControl.ts";
 import * as Option from "effect/Option";
 
 const PROVIDER = ProviderDriverKind.make("opencode");
@@ -333,8 +349,24 @@ type OpenCodeTextPartState = Pick<OpenCodeTextPart, "id" | "messageID" | "type" 
   completed: boolean;
 };
 
+/** The MCP calls of a session's OpenCode server, for the MCP tab. */
+const openCodeMcpClient = (client: OpencodeClient): OpenCodeMcpClient => ({
+  status: () => client.mcp.status().then((result) => result.data),
+  connect: (name) => client.mcp.connect({ name }),
+  disconnect: (name) => client.mcp.disconnect({ name }),
+  // The entry is the one the MCP tab wrote into opencode.json, so it is OpenCode's own shape.
+  add: (name, config) =>
+    client.mcp.add({ name, config: config as unknown as McpLocalConfig | McpRemoteConfig }),
+});
+
 interface OpenCodeSessionContext {
   session: ProviderSession;
+  /** A crewmate's thread: its gate answers every ask in the person's place. */
+  readonly threadSetup: OpenCodeThreadSetup | undefined;
+  /** Each tool call's input as its part streamed it, for the gate to judge its ask by. */
+  readonly toolInputByCallId: Map<string, OpenCodeToolInput>;
+  /** Each assistant message's cost as last reported: the session's total is their sum. */
+  readonly costByMessageId: Map<string, number>;
   readonly client: OpencodeClient;
   readonly server: OpenCodeServerConnection;
   readonly directory: string;
@@ -870,6 +902,7 @@ export function makeOpenCodeAdapter(
     const boundInstanceId = options?.instanceId ?? ProviderInstanceId.make("opencode");
     const serverConfig = yield* ServerConfig;
     const openCodeRuntime = yield* OpenCodeRuntime;
+    const threadPolicies = yield* readOpenCodeThreadPolicies;
     const crypto = yield* Crypto.Crypto;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -1085,6 +1118,15 @@ export function makeOpenCodeAdapter(
         type: "turn.completed",
         payload: {
           state: "completed",
+          // The session's total so far, as Claude reports its own.
+          ...(context.costByMessageId.size > 0
+            ? {
+                totalCostUsd: [...context.costByMessageId.values()].reduce(
+                  (total, cost) => total + cost,
+                  0,
+                ),
+              }
+            : {}),
         },
       });
     });
@@ -1706,6 +1748,26 @@ export function makeOpenCodeAdapter(
       }
     });
 
+    // A crewmate's ask, answered by its gate and never parked for a person.
+    const replyFromThreadGate = Effect.fn("replyFromThreadGate")(function* (
+      context: OpenCodeSessionContext,
+      threadSetup: OpenCodeThreadSetup,
+      request: PermissionRequest,
+    ) {
+      const call = request.tool ? context.toolInputByCallId.get(request.tool.callID) : undefined;
+      const decided = yield* threadSetup.decidePermission(request, call);
+      yield* runOpenCodeSdk("permission.reply", (signal) =>
+        context.client.permission.reply(
+          {
+            requestID: request.id,
+            reply: decided.reply,
+            ...(decided.message === undefined ? {} : { message: decided.message }),
+          },
+          { signal },
+        ),
+      ).pipe(Effect.timeout("10 seconds"), Effect.ignore);
+    });
+
     const emitPendingOpenCodeRequest = Effect.fn("emitPendingOpenCodeRequest")(function* (
       context: OpenCodeSessionContext,
       event: OpenCodeAskedRequestEvent,
@@ -1721,6 +1783,15 @@ export function makeOpenCodeAdapter(
       if (event.type === "permission.asked") {
         const request = event.properties;
         if (context.pendingPermissions.has(request.id)) {
+          return;
+        }
+        const threadSetup = context.threadSetup;
+        if (threadSetup) {
+          context.resolvedRequestIds.add(request.id);
+          context.autoRepliedRequestIds.add(request.id);
+          yield* replyFromThreadGate(context, threadSetup, request).pipe(
+            Effect.forkIn(context.sessionScope),
+          );
           return;
         }
         if (context.session.runtimeMode === "full-access") {
@@ -2248,6 +2319,12 @@ export function makeOpenCodeAdapter(
             }
           }
           context.messageRoleById.set(event.properties.info.id, event.properties.info.role);
+          if (
+            event.properties.info.role === "assistant" &&
+            typeof event.properties.info.cost === "number"
+          ) {
+            context.costByMessageId.set(event.properties.info.id, event.properties.info.cost);
+          }
           if (event.properties.info.role === "user") {
             context.textPartsByMessageId.delete(event.properties.info.id);
           }
@@ -2334,6 +2411,12 @@ export function makeOpenCodeAdapter(
           }
 
           if (part.type === "tool") {
+            if (context.threadSetup) {
+              context.toolInputByCallId.set(part.callID, {
+                tool: part.tool,
+                input: part.state.input,
+              });
+            }
             const itemType = toToolLifecycleItemType(part.tool);
             const title =
               part.state.status === "running" || part.state.status === "completed"
@@ -2349,6 +2432,8 @@ export function makeOpenCodeAdapter(
                   : { status: "inProgress" as const }),
               ...(title ? { title } : {}),
               ...(detail ? { detail } : {}),
+              // The calls of one assistant message are one batch (liveBatch).
+              ...(part.state.status === "pending" ? { responseId: part.messageID } : {}),
               data: {
                 tool: part.tool,
                 state: part.state,
@@ -2700,6 +2785,15 @@ export function makeOpenCodeAdapter(
               // The runtime binds the server's lifetime to the Scope.Scope
               // we provide below — closing `sessionScope` kills the child
               // process automatically. No manual `server.close()` needed.
+              // A crewmate's thread: its tools served for this session, its gate in the person's place.
+              const threadSetup = yield* openCodeThreadSetup(threadPolicies, {
+                threadId: input.threadId,
+                instanceId: boundInstanceId,
+                cwd: directory,
+              });
+              const permissionRules = threadSetup
+                ? [...threadSetup.permission]
+                : buildOpenCodePermissionRules(input.runtimeMode);
               const server = yield* openCodeRuntime.connectToOpenCodeServer({
                 binaryPath,
                 directory,
@@ -2712,6 +2806,12 @@ export function makeOpenCodeAdapter(
                 directory,
                 ...(server.serverPassword ? { serverPassword: server.serverPassword } : {}),
               });
+              const crewMcp = threadSetup?.mcp;
+              if (crewMcp) {
+                yield* runOpenCodeSdk("mcp.add", () =>
+                  client.mcp.add({ name: crewMcp.name, config: crewMcp.config }),
+                );
+              }
               // Resume: re-adopt the session named by the durable cursor —
               // OpenCode scopes history by session id. The probe recovers only
               // a confirmed not-found (start fresh); transport/auth/server
@@ -2744,7 +2844,7 @@ export function makeOpenCodeAdapter(
                   yield* runOpenCodeSdk("session.update", () =>
                     client.session.update({
                       sessionID: reusable.id,
-                      permission: buildOpenCodePermissionRules(input.runtimeMode),
+                      permission: permissionRules,
                     }),
                   );
                   return { openCodeSession: reusable, created: false };
@@ -2771,7 +2871,7 @@ export function makeOpenCodeAdapter(
                   yield* runOpenCodeSdk("session.update", () =>
                     client.session.update({
                       sessionID: forked.id,
-                      permission: buildOpenCodePermissionRules(input.runtimeMode),
+                      permission: permissionRules,
                     }),
                   );
                   return { openCodeSession: forked, created: true };
@@ -2785,7 +2885,7 @@ export function makeOpenCodeAdapter(
                 const createdSession = yield* runOpenCodeSdk("session.create", () =>
                   client.session.create({
                     ...(input.title ? { title: input.title } : {}),
-                    permission: buildOpenCodePermissionRules(input.runtimeMode),
+                    permission: permissionRules,
                   }),
                 );
                 if (!createdSession.data) {
@@ -2798,6 +2898,7 @@ export function makeOpenCodeAdapter(
               });
 
               return {
+                threadSetup,
                 sessionScope,
                 server,
                 client,
@@ -2818,7 +2919,8 @@ export function makeOpenCodeAdapter(
           provider: PROVIDER,
           providerInstanceId: boundInstanceId,
           status: "connecting",
-          runtimeMode: input.runtimeMode,
+          // A crewmate asks before every call, whatever mode its thread names.
+          runtimeMode: profiledRuntimeMode(started.threadSetup !== undefined, input.runtimeMode),
           cwd: directory,
           ...(input.modelSelection ? { model: input.modelSelection.model } : {}),
           threadId: input.threadId,
@@ -2835,6 +2937,8 @@ export function makeOpenCodeAdapter(
 
         const context: OpenCodeSessionContext = {
           session,
+          threadSetup: started.threadSetup,
+          toolInputByCallId: new Map(),
           client: started.client,
           server: started.server,
           directory,
@@ -2848,6 +2952,7 @@ export function makeOpenCodeAdapter(
           pendingQuestions: new Map(),
           textPartsByMessageId: new Map(),
           messageRoleById: new Map(),
+          costByMessageId: new Map(),
           activeTurnId: undefined,
           activeAgent: undefined,
           activeVariant: undefined,
@@ -2865,6 +2970,12 @@ export function makeOpenCodeAdapter(
           stopped: yield* Ref.make(false),
           sessionScope: started.sessionScope,
         };
+        if (resumeSessionId !== undefined) {
+          // A resumed or forked session's total carries what it ran before, as
+          // Claude's does across its resumes; a crew run counts a turn's spend
+          // as what the total rose by.
+          yield* seedSessionCost(context);
+        }
         const raceWinner = sessions.get(input.threadId);
         if (raceWinner) {
           // Another start published first. A newly created remote session
@@ -2922,14 +3033,42 @@ export function makeOpenCodeAdapter(
       },
     );
 
+    /** Each earlier assistant message's cost, read once when a session is resumed. */
+    const seedSessionCost = (context: OpenCodeSessionContext) =>
+      runOpenCodeSdk("session.messages", () =>
+        context.client.session.messages({ sessionID: context.openCodeSessionId }),
+      ).pipe(
+        Effect.timeout("10 seconds"),
+        Effect.map((response) => {
+          for (const entry of response.data ?? []) {
+            const info = entry.info;
+            if (info.role === "assistant" && typeof info.cost === "number") {
+              context.costByMessageId.set(info.id, info.cost);
+            }
+          }
+        }),
+        Effect.ignore,
+      );
+
+    /** A session as the MCP tab's hook sees it: sessions on one server share its connections. */
+    const openCodeMcpSession = (context: OpenCodeSessionContext) => ({
+      runtime: openCodeMcpClient(context.client),
+      profiled: context.threadSetup !== undefined,
+      shareKey: context.server,
+    });
+
     const sendTurn: OpenCodeAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
       const context = yield* ensureSessionContext(sessions, input.threadId);
       yield* awaitOpenCodeContextReady(context);
-      const modelSelection =
+      const turnProfile = yield* openCodeTurnProfile(
+        threadPolicies,
+        { threadId: input.threadId, instanceId: boundInstanceId },
         input.modelSelection ??
-        (context.session.model
-          ? { instanceId: boundInstanceId, model: context.session.model }
-          : undefined);
+          (context.session.model
+            ? { instanceId: boundInstanceId, model: context.session.model }
+            : undefined),
+      );
+      const modelSelection = turnProfile.modelSelection;
       if (modelSelection !== undefined && modelSelection.instanceId !== boundInstanceId) {
         return yield* new ProviderAdapterValidationError({
           provider: PROVIDER,
@@ -3107,10 +3246,15 @@ export function makeOpenCodeAdapter(
                     ...(context.activeAgent ? { agent: context.activeAgent } : {}),
                     ...(context.activeVariant ? { variant: context.activeVariant } : {}),
                     // OpenCode appends this after its own agent/provider prompts.
-                    system: buildRuntimeInstructions({
-                      harness: "OpenCode",
-                      model: `${parsedModel.providerID}/${parsedModel.modelID}`,
-                    }),
+                    system: [
+                      buildRuntimeInstructions({
+                        harness: "OpenCode",
+                        model: `${parsedModel.providerID}/${parsedModel.modelID}`,
+                      }),
+                      turnProfile.instructions,
+                    ]
+                      .filter(Boolean)
+                      .join("\n\n"),
                     parts: [...(text ? [{ type: "text" as const, text }] : []), ...fileParts],
                   },
                   { signal },
@@ -3788,7 +3932,9 @@ export function makeOpenCodeAdapter(
           yield* runOpenCodeSdk("session.update", () =>
             context.client.session.update({
               sessionID: forkedSessionId,
-              permission: buildOpenCodePermissionRules(context.session.runtimeMode),
+              permission: context.threadSetup
+                ? [...context.threadSetup.permission]
+                : buildOpenCodePermissionRules(context.session.runtimeMode),
             }),
           ).pipe(Effect.mapError(toRequestError));
           yield* clearPendingOpenCodeRequests(context, { type: "session.fork" });
@@ -3846,6 +3992,8 @@ export function makeOpenCodeAdapter(
       provider: PROVIDER,
       capabilities: {
         sessionModelSwitch: "in-session",
+        // spi/openCodeThreadProfile.ts: every tool asks and the gate answers.
+        threadProfile: { tools: true, reportsSpend: true },
       },
       startSession,
       sendTurn,
@@ -3859,6 +4007,13 @@ export function makeOpenCodeAdapter(
       readThread,
       rollbackThread,
       stopAll,
+      mcp: openCodeMcpControl({
+        get: (threadId) => {
+          const context = sessions.get(threadId);
+          return context === undefined ? undefined : openCodeMcpSession(context);
+        },
+        all: () => [...sessions.values()].map(openCodeMcpSession),
+      }),
       get streamEvents() {
         return Stream.fromQueue(runtimeEvents);
       },

@@ -54,6 +54,7 @@ export type RightPanelSurface =
   | { id: "git"; kind: "git" }
   /** The crew's one home: its setup, or its section above its board. */
   | { id: "crew"; kind: "crew" }
+  | { id: "mcp"; kind: "mcp" }
   /**
    * One change, drawn where the reader already is.
    *
@@ -85,7 +86,8 @@ const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v17 keys data surfaces by service (`data:<hostname>`), the singleton being the service picker.
 // v18 drops v13's Zerops default record: the panel opens only when the person opens it.
 // v19 adds the "crew" surface kind (the crew's board).
-const RIGHT_PANEL_STORAGE_VERSION = 19;
+// v20 adds the "mcp" surface kind (the Mate's MCP servers).
+const RIGHT_PANEL_STORAGE_VERSION = 20;
 
 /** Legacy shared review-workspace panel keys are discarded during migration. */
 const isPullRequestsPanelKey = (threadKey: string) => threadKey.endsWith(":pull-requests-panel");
@@ -156,6 +158,8 @@ const singletonSurface = (
       return { id: "git", kind };
     case "crew":
       return { id: "crew", kind };
+    case "mcp":
+      return { id: "mcp", kind };
   }
 };
 

@@ -233,6 +233,46 @@ describe("opens — a control is drawn only when it opens onto something not on 
     ]);
   });
 
+  // An ACP agent's detail is what its call names, not what it returned; a
+  // read's line is the whole of it, whatever the driver handed back.
+  it.each([
+    {
+      name: "an ACP read, its detail the file it read",
+      entry: {
+        label: "Read file",
+        itemType: "dynamic_tool_call",
+        toolName: "read",
+        detail: "/app/src/app.ts",
+        callInput: { filePath: "/app/src/app.ts" },
+      },
+    },
+    {
+      name: "an ACP search, its detail the pattern",
+      entry: {
+        label: "Searched files",
+        itemType: "web_search",
+        toolName: "search",
+        detail: "TODO",
+        callInput: { pattern: "TODO" },
+      },
+    },
+    {
+      name: "an OpenCode read, its detail the file's text",
+      entry: {
+        label: "src/app.ts",
+        itemType: "dynamic_tool_call",
+        toolName: "read",
+        detail: "<file>\n00001| export {}\n</file>",
+        callInput: { filePath: "/app/src/app.ts" },
+      },
+    },
+  ] satisfies ReadonlyArray<{ name: string; entry: Partial<WorkLogEntry> }>)(
+    "opens onto nothing its line says: $name",
+    ({ entry }) => {
+      expect(stepOutput(step(entry))).toEqual([]);
+    },
+  );
+
   // A read of the web names its host and path; an address that says more —
   // its query, its fragment — opens onto the whole of it.
   it.each([

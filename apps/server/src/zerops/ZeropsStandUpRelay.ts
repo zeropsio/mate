@@ -208,12 +208,20 @@ export const make = Effect.gen(function* () {
       while (!(yield* relayOnce(event, call))) yield* Effect.sleep(STAND_UP_RELAY_INTERVAL);
     }).pipe(Effect.timeout(STAND_UP_RELAY_LIMIT), Effect.ignore);
 
+  /** Each thread's call that last ended: a late update of it is no new call. */
+  const ended = new Map<string, string>();
+
   const handle = (event: SpiEvent) =>
     Effect.gen(function* () {
       if (!isStandUpCall(event)) return;
       const followed = following.get(event.threadId);
       const same = followed?.callId === event.itemId;
-      if (event.type === "item.started" && !same) {
+      // A call starts at its start — or, from an ACP agent, which sends none,
+      // at its first update.
+      const begins =
+        event.type === "item.started" ||
+        (event.type === "item.updated" && ended.get(event.threadId) !== event.itemId);
+      if (begins && !same) {
         yield* unfollow(event.threadId);
         const call: {
           readonly callId: string;
@@ -226,6 +234,7 @@ export const make = Effect.gen(function* () {
         return;
       }
       if (event.type === "item.completed" && followed !== undefined && same) {
+        ended.set(event.threadId, event.itemId!);
         yield* unfollow(event.threadId);
         // The call's end: what the file says of it last, once more.
         yield* relayOnce(event, followed);
@@ -235,7 +244,11 @@ export const make = Effect.gen(function* () {
   yield* Effect.forkScoped(Stream.runForEach(bus.events, handle));
   yield* Effect.forkScoped(
     Stream.runForEach(orchestration.streamDomainEvents, (event) =>
-      event.type === "thread.deleted" ? unfollow(event.payload.threadId) : Effect.void,
+      event.type === "thread.deleted"
+        ? Effect.sync(() => ended.delete(event.payload.threadId)).pipe(
+            Effect.andThen(unfollow(event.payload.threadId)),
+          )
+        : Effect.void,
     ),
   );
 });

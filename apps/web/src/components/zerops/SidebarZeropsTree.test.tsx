@@ -340,9 +340,9 @@ describe("SidebarZeropsTree", () => {
     // The Mate is the heaviest thing in its project, so its face is the
     // card's size, not the 20px a name in a row of text gets.
     expect(html).toContain('data-mate-face-size="md"');
-    // The state is the face's: a Mate whose socket is down sleeps, and no
-    // word says "Ready" or "Idle" beside it.
-    expect(html).toContain('data-mate-face-state="sleep"');
+    // The state is the face's: a Mate whose container runs is awake though
+    // its socket is not open here yet, and no word says "Ready" or "Idle".
+    expect(html).toContain('data-mate-face-state="idle"');
     expect(html).not.toContain(">Ready<");
     expect(html).not.toContain(">Idle<");
     // The menu's own row — the surface every thread row has, lit on hover —
@@ -1137,10 +1137,10 @@ describe("a Mate's face follows its work in the menu", () => {
       dots: true,
     },
     {
-      case: "HQ's last word at rest, its socket not open yet",
+      case: "a running Mate with HQ's last word at rest, its socket not open yet",
       group: "ready",
       activity: restingActivity(working),
-      face: "sleep",
+      face: "idle",
       dots: false,
     },
   ] as const)("$case: the face and the line agree", ({ group, activity, face, dots }) => {
@@ -1181,7 +1181,7 @@ describe("a Mate's face follows its work in the menu", () => {
       renderToStaticMarkup(
         <RegistryContext.Provider value={registry}>
           <SidebarZeropsTree
-            candidates={[CRM_DEV]}
+            candidates={[{ ...CRM_DEV, group: "unavailable" }]}
             complete
             onBrowseProjects={() => {}}
             onSelect={() => {}}
@@ -2587,18 +2587,19 @@ describe("the Mate's card", () => {
     expect(html).toContain(`data-mate-face-state="${face}"`);
   });
 
-  it("is asleep for a container nobody has connected to", () => {
+  // Its container runs (`candidateContainerRuns`): this browser's socket not open is its own wait.
+  it("is awake for a running container nobody has connected to", () => {
     const html = render([NAMED]);
-    expect(html).toContain('data-mate-face-state="sleep"');
+    expect(html).toContain('data-mate-face-state="idle"');
     expect(html).not.toContain(">Ready<");
   });
 
-  it("stays asleep while a registered environment's socket comes up — the face wakes with the socket", () => {
+  it("stays awake while a registered environment's socket comes up — it wears its running container", () => {
     const connecting: ZeropsCandidate & {
       readonly connection: { phase: "connecting"; error: null; traceId: null };
     } = { ...NAMED, connection: { phase: "connecting", error: null, traceId: null } };
     const html = render([connecting]);
-    expect(html).toContain('data-mate-face-state="sleep"');
+    expect(html).toContain('data-mate-face-state="idle"');
     expect(html).not.toContain(">Connecting<");
   });
 });
@@ -3944,7 +3945,7 @@ describe("a reload paints what the menu last drew (menuMemory)", () => {
     });
     expect(html).toContain("Add a /status page");
     expect(html).toContain("The page reads the build number.");
-    expect(html).toContain('data-mate-face-state="sleep"');
+    expect(html).toContain('data-mate-face-state="idle"');
     expect(html).not.toContain('data-zerops-surface="sidebar-mate-stop"');
   });
 

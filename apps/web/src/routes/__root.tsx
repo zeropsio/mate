@@ -1,5 +1,9 @@
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
-import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedProjectKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
   MATE_VOICE_QUIET_MS,
@@ -64,6 +68,7 @@ import { shellEnvironment } from "../state/shell";
 import { useAtomValue } from "@effect/atom-react";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
+import { candidateListingWholeAtom } from "../state/zerops";
 import {
   primaryServerConfigAtom,
   primaryServerConfigEventAtom,
@@ -91,7 +96,12 @@ import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useHeldPast } from "~/zerops/useHeldPast";
 import { useNowMs } from "~/zerops/useNowMs";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { rememberedMateIdentity, rememberMateIdentities } from "~/zerops/mateIdentityMemory";
+import { rememberLastConversation } from "~/zerops/lastConversationMemory";
+import {
+  mateDirectoryWhole,
+  rememberedMateIdentity,
+  rememberMateIdentities,
+} from "~/zerops/mateIdentityMemory";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
@@ -177,10 +187,15 @@ function SignedInRootRouteView() {
   const routeMate = useZeropsMate(routeEnvironment ?? NO_ENVIRONMENT);
   // Who lives where, remembered for the next reload's first frame (`mateIdentityMemory`).
   const mateDirectory = useZeropsMateDirectory();
-  // Whole only once the listing is complete and every environment is registered: a Mate the
-  // directory then lacks has left, and is forgotten.
+  // Whole once the listing is complete, or whole for the person looking, and every environment
+  // is registered: a Mate the directory then lacks has left, and is forgotten.
   const { listing: mateListing } = useZeropsCandidates();
-  const directoryWhole = heldCandidates(mateListing).complete && environmentsReady;
+  const listingWholeForPerson = useAtomValue(candidateListingWholeAtom);
+  const directoryWhole = mateDirectoryWhole({
+    listingComplete: heldCandidates(mateListing).complete,
+    wholeForPerson: listingWholeForPerson,
+    environmentsReady,
+  });
   useEffect(() => {
     rememberMateIdentities(mateDirectory, { complete: directoryWhole });
   }, [directoryWhole, mateDirectory]);
@@ -228,6 +243,13 @@ function SignedInRootRouteView() {
     environmentId: routeEnvironmentId ?? undefined,
     threadId: pathname.split("/").filter((part) => part.length > 0)[1],
   });
+  // The conversation open last, on whichever route: the home's next cold load guesses by it.
+  const openEnvironmentId = routeThreadRef?.environmentId ?? null;
+  const openThreadId = routeThreadRef?.threadId ?? null;
+  useEffect(() => {
+    if (openEnvironmentId === null || openThreadId === null) return;
+    rememberLastConversation(scopeThreadRef(openEnvironmentId, openThreadId));
+  }, [openEnvironmentId, openThreadId]);
   useEffect(() => {
     mateDiagnostics.record({
       kind: "route-gate",

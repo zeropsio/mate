@@ -50,6 +50,31 @@ describe("the composer standing in", () => {
     expect(document.activeElement).toBe(field);
   });
 
+  // Where the person put the focus meanwhile — the jump box's field, the menu's search, an open
+  // dialog — it stays; a row they clicked to get here gives it up, as the conversation's would.
+  it.each([
+    { case: "a field the person types into", holder: "input", taken: false },
+    { case: "a menu row they clicked", holder: "button", taken: true },
+  ])("arriving while $case holds the focus: taken $taken", async ({ holder, taken }) => {
+    const elsewhere = document.createElement(holder);
+    document.body.append(elsewhere);
+    elsewhere.focus();
+    const field = await show();
+    expect(document.activeElement).toBe(taken ? field : elsewhere);
+  });
+
+  it("leaves the focus in an open dialog", async () => {
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    const choice = document.createElement("button");
+    dialog.append(choice);
+    document.body.append(dialog);
+    choice.focus();
+    await show();
+    expect(document.activeElement).toBe(choice);
+  });
+
   it("takes a key typed with nothing to type into, the caret after it", async () => {
     const field = await show();
     field.blur();

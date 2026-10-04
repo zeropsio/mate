@@ -10,6 +10,7 @@ import {
   applyFirstBuildGiveUp,
   firstBuildOverdue,
   applyProjectCreationVerdict,
+  candidateContainerRuns,
   deriveZeropsCandidates,
   groupZeropsCandidates,
   zeropsMateBaseUrl,
@@ -127,6 +128,19 @@ describe("a project's creation verdict", () => {
       NO_CONNECTIONS,
     );
     expect(applyProjectCreationVerdict(stopped!, FAILED)).toBe(stopped);
+  });
+});
+
+describe("candidateContainerRuns", () => {
+  // A face wears its container: a socket this browser has not opened yet is the browser's wait,
+  // not the Mate's sleep.
+  it.each([
+    ["connected", true],
+    ["ready", true],
+    ["provisioning", false],
+    ["unavailable", false],
+  ] as const)("a %s candidate's container runs: %s", (group, runs) => {
+    expect(candidateContainerRuns({ group })).toBe(runs);
   });
 });
 

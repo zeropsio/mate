@@ -45,8 +45,11 @@ import {
   DEFAULT_CREW_LOGIN,
   failureWords,
   principalUser,
+  appliedLogins,
+  noSpendWords,
   refuse,
   requireApplied,
+  silentSpender,
   type AppliedCrew,
   type CrewCore,
 } from "./crewCore.ts";
@@ -314,6 +317,11 @@ export const ensureRunTick = (core: CrewCore) =>
 export const startRun = (core: CrewCore, principal: TurnPrincipal, options: CrewRunOptions) =>
   Effect.gen(function* () {
     const applied = yield* requireApplied(core);
+    yield* requireSpendReported(
+      core,
+      applied,
+      options.budgetUsd === "unlimited" ? null : options.budgetUsd,
+    );
     yield* moved(applied.run, {
       type: "start",
       admitted: true,
@@ -340,6 +348,16 @@ export const startRun = (core: CrewCore, principal: TurnPrincipal, options: Crew
     core.memory.lastWakeAt = null;
     yield* ensureRunTick(core);
     yield* restartSessions(core, (yield* core.applied) ?? applied);
+  });
+
+/** A dollar budget is kept only when every crewmate's agent reports what it spends. */
+const requireSpendReported = (core: CrewCore, applied: AppliedCrew, budgetUsd: number | null) =>
+  Effect.gen(function* () {
+    if (budgetUsd === null) return;
+    const silent = yield* silentSpender(core, appliedLogins(applied));
+    if (silent !== undefined) {
+      return yield* refuse("wrong-state", `${noSpendWords(silent)}: choose No limit.`);
+    }
   });
 
 /** Pauses the running run: the person's press, a limit, or a refused dispatch. */
@@ -403,6 +421,7 @@ export const resumeRun = (
         : { stopAtUsagePercent: input.stopAtUsagePercent }),
     };
     const budgetUsd = options.budgetUsd === "unlimited" ? null : options.budgetUsd;
+    yield* requireSpendReported(core, applied, budgetUsd);
     const refusal = resumeRefusal({
       budgetUsd,
       spentUsd: run.spentUsd,

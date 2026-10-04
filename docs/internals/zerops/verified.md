@@ -7594,3 +7594,25 @@ command not found`).
 - **Gitea answers a browser origin's listings with the count readable** — `/api/v1/repos/search` and
   `/api/v1/user/repos` on the account's Gitea (1.27.2) answer `Access-Control-Allow-Origin: *` and
   `Access-Control-Expose-Headers: Link, X-Total-Count`.
+
+## Every agent and the MCP tab — measured 2026-10-03 (pass 38)
+
+- **Claude Code's built-in slash commands answer headless** — each built-in run as the SDK runs it
+  (Claude Code 2.1.278, `claude -p --output-format stream-json`, and stream-json input) answered with
+  an assistant message of model `<synthetic>` and no model call: `/mcp` ("2 MCP server(s): 2
+  connected…"), `/context`, `/config` (its `key=value` usage), `/model`, `/effort`, `/usage`,
+  `/compact` and the rest; `/clear` answered nothing, `/doctor` and `/debug` ran the model. None used
+  `local_command_output`.
+- **A pending note made `/mcp` prose** — on Drew (Larder, 0.11.89) `/mcp` sent after a landing ran a
+  19 s model turn that recited the `<zerops-update>` notes; the same `/mcp` with nothing pending got
+  "1 MCP server(s): 1 connected…" from the CLI. Cause: `withAgentNotes` put the block in front of the
+  command (fixed in 0.11.89).
+- **OpenCode keeps a session's rules over its config** — a supervised OpenCode session asked before
+  `zerops_zerops_discover` although `opencode.json` allowed `zerops_*`; permission rules apply in key
+  order, last match wins; `OPENCODE_CONFIG_CONTENT="{}"` merges over the global file rather than
+  replacing it; a local MCP server inherits OpenCode's environment (opencode 1.18.34, isolated HOME).
+- **Cursor keeps a disabled MCP server per project** — `~/.cursor/projects/<path-with-dashes>/
+mcp-disabled.json`, a JSON array of names (`cursor-agent mcp disable`, isolated HOME).
+- **`cursor-agent` against a fake HOME raises macOS keychain dialogs** — any `cursor-agent` run with a
+  HOME other than the person's ("Keychain Not Found … cursor-user"), including zcp's own container
+  tests when `cursor-agent` is on PATH.

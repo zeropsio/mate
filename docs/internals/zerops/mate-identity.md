@@ -24,11 +24,15 @@ and sleeps — band back in, eyes shut — after 45 s of no input anywhere.
 This supersedes the first integration's rule that no idle loop or timer runs.
 It was a deliberate constraint then and is deliberately lifted now: the live
 mark is the identity, and the still form exists for every place that should not
-pay for it. The cost is bounded rather than absent — `mateMarkRuntime.ts` runs
-one `requestAnimationFrame` and one pointer listener for every live mark on the
-page, starts them with the first and stops them with the last, drops off-screen
-marks to 4 Hz, and writes attributes directly so a 60 Hz animation never
-re-renders a component. A page with only still marks schedules no frame at all.
+pay for it. A face at rest costs nothing — `mateMarkRuntime.ts` runs one
+`requestAnimationFrame` loop and one pointer listener for every live mark on the
+page, and runs frames only while some mark moves (its eyes after the pointer,
+the band, a blink, a glance, a smile), stopping once every mark has landed; one
+timer wakes it for what is scheduled (the next blink or glance, falling asleep).
+Off-screen marks do no work and take their pose at once on return. It writes
+attributes directly, and only those whose value changed, so an animation never
+re-renders a component. The idle bob and a waking mark's band swell are the
+stylesheet's (`MateMark.css`), not frames of script.
 
 Reduced motion holds the live mark open, still and forward: no band, no gaze,
 no tilt, no blink.

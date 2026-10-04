@@ -13,6 +13,7 @@ import {
   withZeropsMateTag,
   ZEROPS_GROUP_ID_LENGTH,
   type ZeropsPlacedBirth,
+  heldGroupLabel,
 } from "./groups.ts";
 import type { HqMate } from "./hq/client.ts";
 import type { HqPlacement } from "./hq/placement.ts";
@@ -945,5 +946,18 @@ describe("deriveZeropsGroups — the viewer's own order", () => {
   it("keeps the ungrouped projects newest first — only groups are arranged by hand", () => {
     const result = deriveZeropsGroups(PROJECTS, { order: "custom", customOrder: ["aaa"] });
     expect(result.ungrouped.map((entry) => entry.id)).toEqual(["loose-new", "loose-old"]);
+  });
+});
+
+describe("heldGroupLabel: HQ's name off the projects the account holds", () => {
+  const placed = (appId: string, appName: string) => ({
+    hq: { appId, appName, kind: "mate" as const, mate: { face: "" } },
+  });
+  it.each([
+    ["HQ's name", [placed("grpA1", "Orchard")], "Orchard"],
+    ["another application's member", [placed("grpB2", "Harbor")], undefined],
+    ["no project held", [], undefined],
+  ] as const)("%s", (_case, projects, label) => {
+    expect(heldGroupLabel(projects, "grpA1")).toBe(label);
   });
 });

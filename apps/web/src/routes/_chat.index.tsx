@@ -1,4 +1,5 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId, type ProjectId, type ScopedThreadRef } from "@t3tools/contracts";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -7,8 +8,9 @@ import { PlusIcon, RotateCcwIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { openCommandPalette } from "../commandPaletteBus";
+import { HomeOpeningView } from "../components/zerops/MateLinkStage";
+import { PageWaitLine } from "../components/zerops/WaitLine";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
-import { useZeropsInventory } from "../zerops/ZeropsInventoryProvider";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
@@ -23,10 +25,20 @@ import { useEnvironments } from "../state/environments";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell, environmentsWithSnapshotAtom } from "../state/shell";
 import { buildThreadRouteParams } from "../threadRoutes";
+import { mateDeleting, useDeletingMates } from "../zerops/deletingMates";
+import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
+import { useOpenMate } from "../zerops/useOpenMate";
+import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
+import { hqMatesAtom } from "../state/zerops";
+import { hqHomeMate, homeView } from "../zerops/homeLanding.logic";
+import { rememberedHomeLanding } from "../zerops/lastConversationMemory";
+import { useMatesSettled } from "../zerops/useMatesSettled";
+import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "../zerops/waitLine.logic";
 import { countDoorEnvironments, resolveDoor } from "./-door";
 
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
+  const { status } = useZeropsSession();
   const { environments } = useEnvironments();
 
   const door = resolveDoor(authGateState, {
@@ -34,7 +46,7 @@ function ChatIndexRouteView() {
     environmentCount: countDoorEnvironments(environments),
   });
 
-  if (door.surface === "zerops-onboarding") {
+  if (door.surface === "zerops-onboarding" && status !== "signed-in") {
     // Upstream's empty state is kept whole and handed to the landing, which
     // offers it as the manual fallback.
     return <ZeropsHostedLanding />;
@@ -51,15 +63,15 @@ function ChatIndexRouteView() {
  * all until its shell has arrived — never some other environment's project
  * because that one happened to be cached first.
  *
- * Without one, the most recently active project wins, but only among
- * environments whose socket is up: a registration whose container is gone
- * keeps its cached projects, and those must not claim the landing.
+ * Without one, HQ names the most recently active Mate, preferring an online one. Opening it
+ * holds just its route lease. Local environments fall back to their connected projects.
  *
  * Either way the landing is the environment's main chat when it has one
  * (`resolvePrimaryConversation`), else a draft in the project: a Mate's other
  * chats are opened from its conversation strip, never by landing.
  */
 type IndexLanding =
+  | { readonly kind: "mate"; readonly projectId: string }
   | {
       readonly kind: "thread";
       readonly ref: ScopedThreadRef;
@@ -77,9 +89,26 @@ type IndexLanding =
  */
 function IndexDraftLanding() {
   const projects = useProjects();
-  const inventory = useZeropsInventory();
   const threads = useThreadShells();
   const { environments } = useEnvironments();
+  const matesSettled = useMatesSettled();
+  const hqMates = useAtomValue(hqMatesAtom);
+  const openMate = useOpenMate();
+  const { activeOrganization } = useZeropsSession();
+  const deleting = useDeletingMates();
+  const { listing } = useZeropsCandidates();
+  const unavailable = useMemo(
+    () =>
+      new Set([
+        ...deleting,
+        ...heldCandidates(listing)
+          .rows.filter((row) => mateDeleting(row.project, deleting))
+          .map((row) => row.project.id),
+      ]),
+    [deleting, listing],
+  );
+  // Read once, as the page opens: what it waits with never changes under the eye.
+  const [remembered] = useState(() => rememberedHomeLanding(activeOrganization?.id));
   const bootstrapped = useAllEnvironmentShellsBootstrapped();
   const handleNewThread = useNewThreadHandler();
   const navigate = useNavigate();
@@ -131,6 +160,11 @@ function IndexDraftLanding() {
       );
     }
 
+    // HQ names unopened Mates too; opening only the chosen route holds its lease (A9).
+    const projectId = hqHomeMate(hqMates?.mates ?? null, unavailable);
+    if (projectId !== undefined) return { kind: "mate", projectId };
+    if (hqMates === null && !matesSettled) return null;
+
     // A socket on its first attempt is about to tell us something; a live
     // one whose shell has not arrived yet is about to hand us its projects.
     // Either is worth a moment. A registration stuck reconnecting is not.
@@ -153,6 +187,9 @@ function IndexDraftLanding() {
     return landingIn(sortScopedProjectsForSidebar(projects, threads, "updated_at")[0]);
   }, [
     bootstrapped,
+    hqMates,
+    matesSettled,
+    unavailable,
     environments,
     projects,
     targetBootstrapped,
@@ -166,12 +203,18 @@ function IndexDraftLanding() {
     void startState.retryRequest;
     if (landing === null || landing.kind === "none") return;
     const key =
-      landing.kind === "thread"
-        ? `thread:${landing.ref.environmentId}:${landing.ref.threadId}`
-        : `draft:${landing.project.environmentId}:${landing.project.id}`;
+      landing.kind === "mate"
+        ? `mate:${landing.projectId}`
+        : landing.kind === "thread"
+          ? `thread:${landing.ref.environmentId}:${landing.ref.threadId}`
+          : `draft:${landing.project.environmentId}:${landing.project.id}`;
     if (startedForKeyRef.current === key) return;
     startedForKeyRef.current = key;
 
+    if (landing.kind === "mate") {
+      openMate({ projectId: landing.projectId });
+      return;
+    }
     if (landing.kind === "thread") {
       void navigate({
         to: "/$environmentId/$threadId",
@@ -187,32 +230,47 @@ function IndexDraftLanding() {
       startedForKeyRef.current = null;
       setStartState((state) => ({ ...state, failed: true }));
     });
-  }, [handleNewThread, landing, navigate, startState.retryRequest]);
+  }, [handleNewThread, landing, navigate, openMate, startState.retryRequest]);
 
-  if (landing === null) {
-    return null;
+  const view = homeView({
+    landing: landing === null ? "unknown" : landing.kind === "none" ? "none" : "going",
+    startFailed: startState.failed,
+    targeted: targetEnvironmentId !== null,
+    remembered,
+    // "You have no projects" is an answer, and it must not be given before the account has been
+    // read. Measured on a fresh account, 2026-09-19: a second after the wizard made a project and
+    // its Mate came up, this painted "What should we work on? Add a project to start your first
+    // thread." and then replaced itself with the draft — telling somebody to add the project they
+    // had just added. Nothing here is taken back: the projects and the Mates' listing will tell
+    // no more, and every Mate this tab registers is registered (`useMatesSettled`) — a listing
+    // left partial by withheld or failing parts settles, so the hero stays reachable.
+    projectsRead: matesSettled,
+  });
+  switch (view.kind) {
+    case "start-failed":
+      return (
+        <DraftStartError
+          onRetry={() => {
+            setStartState((state) => ({
+              failed: false,
+              retryRequest: state.retryRequest + 1,
+            }));
+          }}
+        />
+      );
+    case "hero":
+      return <NoProjectsHero />;
+    // While it works out where to land, and on its way there: its guess, never blank — nothing
+    // in it takes input, so a wrong guess gives way, without motion, losing nothing typed.
+    case "opening":
+      return <HomeOpeningView environmentId={view.ref.environmentId} />;
+    case "wait":
+      return (
+        <SidebarInset className="h-svh min-h-0 overflow-hidden md:h-dvh">
+          <PageWaitLine delayMs={BOOT_WAIT_LINE_MS} from="mount" text={READING_PROJECTS_LINE} />
+        </SidebarInset>
+      );
   }
-  if (landing.kind !== "none") {
-    return startState.failed ? (
-      <DraftStartError
-        onRetry={() => {
-          setStartState((state) => ({
-            failed: false,
-            retryRequest: state.retryRequest + 1,
-          }));
-        }}
-      />
-    ) : null;
-  }
-  // "You have no projects" is an answer, and it must not be given before the
-  // account has been read. Measured on a fresh account, 2026-09-19: a second
-  // after the wizard made a project and its Mate came up, this painted
-  // "What should we work on? Add a project to start your first thread." and
-  // then replaced itself with the draft — telling somebody to add the project
-  // they had just added. Nothing here is taken back any more: while the read
-  // is out this waits, exactly as it already waits on `landing === null`.
-  if (inventory.isLoading) return null;
-  return <NoProjectsHero />;
 }
 
 function DraftStartError({ onRetry }: { readonly onRetry: () => void }) {

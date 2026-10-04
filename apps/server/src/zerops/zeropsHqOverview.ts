@@ -223,8 +223,10 @@ const personLands = (run: CrewSnapshot["run"]): boolean =>
  * The key a login's signer goes by (`zeropsLoginIds.ts`): the agent id for an agent's own login,
  * the login's id for any other.
  */
-const loginKeyOf = (login: { readonly id: string; readonly agent: string }): string =>
-  extraLoginAgent(login.id) === undefined ? login.agent : login.id;
+const loginKeyOf = (login: {
+  readonly id: string;
+  readonly agent?: string | undefined;
+}): string | null => (extraLoginAgent(login.id) === undefined ? (login.agent ?? null) : login.id);
 
 /**
  * The crew as the Mate's menu and its line read it: its status — crew mode off until the engine is

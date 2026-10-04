@@ -106,6 +106,7 @@ import { useDiffPanelStore } from "../diffPanelStore";
 import {
   collapseExpandedComposerCursor,
   type ComposerSubmissionIntent,
+  isStandaloneMcpCommand,
   parseStandaloneComposerSlashCommand,
 } from "../composer-logic";
 import {
@@ -176,6 +177,7 @@ import { ZeropsDataPanel } from "./zerops/ZeropsDataPanel";
 import { ZeropsChangeDetailPage } from "./zerops/ZeropsGroupDetail";
 import { ZeropsGitSurface } from "./zerops/ZeropsGitSurface";
 import { CrewPanel } from "./zerops/crew/CrewPanel";
+import { McpPanel } from "./mcp/McpPanel";
 import { useCrew } from "../zerops/crew/useCrew";
 import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
@@ -188,6 +190,8 @@ import { useKnownMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
+import { ComposerRoomHeld } from "./chat/ComposerStandIn";
+import { rememberedWriter, rememberWriter } from "../zerops/writerMemory";
 import { CrewLeadPlan } from "./zerops/crew/CrewLeadPlan";
 import { type CrewTimeline } from "./zerops/crew/CrewTaskCard";
 import { crewCardOrigin } from "./zerops/crew/CrewTaskCard.logic";
@@ -219,6 +223,11 @@ import {
   resolveAgentOwnership,
 } from "@t3tools/client-runtime/zerops/agentOwnership";
 import { resolveSpentLogin, spentLoginStatusStale } from "@t3tools/client-runtime/zerops/logins";
+import {
+  conversationFooter,
+  rememberableWriter,
+  resolveConversationWriter,
+} from "@t3tools/client-runtime/zerops/conversationWriter";
 import {
   nextTimelineFollow,
   type TimelineScrollDirection,
@@ -455,6 +464,8 @@ import {
   resolveComposerProviderSelection,
   resolveDraftHeroState,
   resolveZeropsConversationReadOnly,
+  zeropsReadOnlyFooter,
+  composerOpenFocus,
   conversationContentPending,
   localThreadErrorStanding,
   queuedSendOutcome,
@@ -3799,6 +3810,10 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "crew");
   }, [activeThreadRef]);
+  const addMcpSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "mcp");
+  }, [activeThreadRef]);
   const openDataSurface = useCallback(
     (service: string) => {
       if (!activeThreadRef) return;
@@ -3825,6 +3840,7 @@ export default function ChatView(props: ChatViewProps) {
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
+    providers: providerStatuses,
   });
   // The Mate's crew: the board's tab exists only while its status says a crew
   // is, or could be, set up; its view gives the strip its crew group and a
@@ -3868,6 +3884,33 @@ export default function ChatView(props: ChatViewProps) {
       }),
     [zeropsAgentOwnership, zeropsOwnedAgent],
   );
+  // Who writes here, unknown until the sign-in, the conversation's instance and the viewer are
+  // read: meanwhile the footer paints what this browser last knew of this Mate, else holds the
+  // composer's room — never a composer it may take back (`conversationFooter`).
+  const zeropsWriter = resolveConversationWriter({
+    feed: zeropsAgentAuthRead,
+    instanceId: activeProviderInstanceId ?? activeThread?.modelSelection.instanceId,
+    providers: providerStatuses,
+    viewerSubject: zeropsViewerSubject,
+    ownership: zeropsAgentOwnership,
+  });
+  // Remembered by the conversation: another chat of the same Mate runs on its own login.
+  const zeropsFooter = conversationFooter(zeropsWriter, rememberedWriter(routeThreadRef));
+  // Someone else's strip; painted from memory it offers no sign-in and names no owner until read.
+  const zeropsReadOnlyStrip = zeropsReadOnlyFooter({
+    footer: zeropsFooter,
+    readOnly: zeropsReadOnly,
+  });
+  const zeropsShownReadOnly = zeropsReadOnlyStrip?.readOnly ?? null;
+  // The draft the held room lays out, so the composer that takes its place is its height.
+  const zeropsHeldDraft = useComposerDraftStore((store) =>
+    zeropsFooter === "held" ? (store.getComposerDraft(composerDraftTarget)?.prompt ?? "") : "",
+  );
+  const zeropsWriterKind = zeropsWriter.kind;
+  const zeropsKnownWriter = rememberableWriter(zeropsWriter, zeropsAgentAuthRead);
+  useEffect(() => {
+    if (zeropsKnownWriter !== undefined) rememberWriter(routeThreadRef, zeropsKnownWriter);
+  }, [routeThreadRef, zeropsKnownWriter]);
   // On a started thread the selection stays locked to the agent the session
   // began with even when it is not runnable (the picker offers sign-in
   // there); Send is disabled with that agent's own reason instead — see
@@ -3883,12 +3926,14 @@ export default function ChatView(props: ChatViewProps) {
     threadRef: isServerThread && threadSyncPhase === null ? activeThreadRef : null,
     messageCount: activeThread?.messages.length ?? 0,
   });
-  // A Mate's empty conversation with no agent signed in is its arrival's sign-in: nothing typed
-  // there could be acted on, so the composer waits with the stand-up's.
+  // A Mate's empty conversation with no agent to run is its arrival's sign-in: nothing typed
+  // there could be acted on, so the composer waits with the stand-up's. An agent outside the
+  // sign-in (Cursor, OpenCode…) that is ready is one to run.
   const zeropsArrivalHoldsComposer = mateArrivalHoldsComposer({
     standUpHolds: mateStandUp.holdsComposer,
     signInRequired:
-      zeropsAgentAuth.snapshot !== null && zeropsAgentSignInRequired(zeropsAgentAuth.snapshot),
+      zeropsAgentAuth.snapshot !== null &&
+      zeropsAgentSignInRequired(zeropsAgentAuth.snapshot, providerStatuses),
     empty: isServerThread && (activeThread?.messages.length ?? 0) === 0,
   });
   const activeProjectDisplayName = zeropsChrome.projectName ?? activeProject?.title;
@@ -4623,9 +4668,21 @@ export default function ChatView(props: ChatViewProps) {
     setIsRevertingCheckpoint(false);
   }, [activeThread?.id]);
 
+  // The conversation whose open found no composer (its room held, or a strip): its focus waits.
+  const openFocusOwedRef = useRef<string | null>(null);
+  const composerShown = zeropsFooter === "composer";
   useEffect(() => {
     if (!activeThread?.id || terminalUiState.terminalOpen) return;
+    if (!composerShown) {
+      openFocusOwedRef.current = routeThreadKey;
+      return;
+    }
     const frame = window.requestAnimationFrame(() => {
+      const late = openFocusOwedRef.current === routeThreadKey;
+      openFocusOwedRef.current = null;
+      const active = document.activeElement;
+      const focusElsewhere = active !== null && active !== document.body;
+      if (!composerOpenFocus({ composerShown, late, focusElsewhere })) return;
       // Handed over from its Mate's own view, what was typed there is the
       // draft: the caret stays where the person left it.
       const caret = takeHandedOverCaret(routeThreadKey, Date.now());
@@ -4635,7 +4692,14 @@ export default function ChatView(props: ChatViewProps) {
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [activeThread?.id, composerRef, focusComposer, routeThreadKey, terminalUiState.terminalOpen]);
+  }, [
+    activeThread?.id,
+    composerRef,
+    composerShown,
+    focusComposer,
+    routeThreadKey,
+    terminalUiState.terminalOpen,
+  ]);
 
   // Tabbing back into the app lands focus wherever it last was, often the right panel or the
   // body. Put it in the composer unless something that takes typing already holds it. The
@@ -5250,6 +5314,8 @@ export default function ChatView(props: ChatViewProps) {
   }, [gitStatusQuery.data?.hasWorkingTreeChanges, handleSwitchCheckoutToThread]);
   const agentOwnershipBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
     if (zeropsOwnedAgent === undefined) return null;
+    // Said only on a known answer: "nobody can run it" is not what loading looks like.
+    if (zeropsWriterKind === "unknown") return null;
     // A token-authorized agent is nobody's personal login: an API key belongs
     // to the project, so nothing is said about it.
     if (zeropsOwnedAgent.flagToken) return null;
@@ -5268,7 +5334,13 @@ export default function ChatView(props: ChatViewProps) {
         </Button>
       ),
     } satisfies ComposerBannerStackItem;
-  }, [openAgentAuthDialog, zeropsAgentOwnership, zeropsOwnedAgent, zeropsReadOnly]);
+  }, [
+    openAgentAuthDialog,
+    zeropsAgentOwnership,
+    zeropsWriterKind,
+    zeropsOwnedAgent,
+    zeropsReadOnly,
+  ]);
 
   /**
    * The composer's top: this Mate's change waiting for the person's review,
@@ -5516,7 +5588,7 @@ export default function ChatView(props: ChatViewProps) {
     // Someone else's conversation is read, not run: every other banner offers
     // a step on this Mate (add production, release, stop, compact, restore),
     // so only the viewer's own connection is said.
-    if (zeropsReadOnly !== null) return systemComposerBannerItems;
+    if (zeropsShownReadOnly !== null) return systemComposerBannerItems;
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
     const urgentSystemItems = [
@@ -5525,16 +5597,27 @@ export default function ChatView(props: ChatViewProps) {
       ...(agentOwnershipBannerItem === null ? [] : [agentOwnershipBannerItem]),
       ...systemComposerBannerItems.filter(isUrgentSystemItem),
     ];
-    const alsoWorkingItems = alsoWorkingBannerItem === null ? [] : [alsoWorkingBannerItem];
+    // What belongs to the conversation — another of its chats at work, its compaction, its waking
+    // or parking, its branch — waits until the conversation shows, not over its opening line.
+    const conversationShown = !threadDetailLoading;
+    const alsoWorkingItems =
+      !conversationShown || alsoWorkingBannerItem === null ? [] : [alsoWorkingBannerItem];
     const calmSystemItems = systemComposerBannerItems.filter((item) => !isUrgentSystemItem(item));
     const resumeCompactionItems =
-      resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
-    const wokeThreadItems = wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
-    const parkedThreadItems = parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
+      !conversationShown || resumeCompactionBannerItem === null ? [] : [resumeCompactionBannerItem];
+    const wokeThreadItems =
+      !conversationShown || wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
+    const parkedThreadItems =
+      !conversationShown || parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
     // The user asked for this one, so it leads the notice tier instead of trailing it.
     const usageLimitsItems = usageLimitsBanner === null ? [] : [usageLimitsBanner];
     const projectCloneItems = projectCloneBannerItem === null ? [] : [projectCloneBannerItem];
-    if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
+    if (
+      !conversationShown ||
+      !localCheckoutBranchMismatch ||
+      !showBranchMismatchBanner ||
+      !activeBranchMismatchKey
+    ) {
       return [
         ...urgentSystemItems,
         ...usageLimitsItems,
@@ -5614,8 +5697,9 @@ export default function ChatView(props: ChatViewProps) {
     showBranchMismatchBanner,
     systemComposerBannerItems,
     usageLimitsBanner,
+    threadDetailLoading,
     wokeThreadBannerItem,
-    zeropsReadOnly,
+    zeropsShownReadOnly,
   ]);
   useEffect(() => {
     setPendingServerThreadEnvMode(null);
@@ -6271,6 +6355,18 @@ export default function ChatView(props: ChatViewProps) {
         setComposerDraftPrompt(composerDraftTarget, "");
         composerRef.current?.resetCursorState();
       }
+      return;
+    }
+    // /mcp alone is Mate's own: it opens the MCP tab, and the agent never sees it.
+    if (
+      !queuedMessage &&
+      !composerHasNonPromptContent &&
+      isStandaloneMcpCommand(promptRef.current)
+    ) {
+      addMcpSurface();
+      promptRef.current = "";
+      setComposerDraftPrompt(composerDraftTarget, "");
+      composerRef.current?.resetCursorState();
       return;
     }
     if (
@@ -7983,6 +8079,9 @@ export default function ChatView(props: ChatViewProps) {
       case "crew":
         addCrewSurface();
         return;
+      case "mcp":
+        addMcpSurface();
+        return;
     }
     kind satisfies never;
   };
@@ -8081,6 +8180,16 @@ export default function ChatView(props: ChatViewProps) {
                   key={activeThreadRef.environmentId}
                   onSignIn={zeropsSignInDialog.openFor}
                   threadRef={activeThreadRef}
+                />
+              );
+            case "mcp":
+              // Each dot is the conversation's own agent's state; a draft has no session to ask.
+              return (
+                <McpPanel
+                  driver={selectedProvider}
+                  environmentId={activeThreadRef.environmentId}
+                  key={`${activeThreadRef.environmentId}|${activeThreadRef.threadId}`}
+                  threadId={isServerThread ? activeThreadRef.threadId : undefined}
                 />
               );
             case "change":
@@ -8444,24 +8553,35 @@ export default function ChatView(props: ChatViewProps) {
                     }
                   >
                     <div
+                      data-room-held={zeropsFooter === "held" ? "" : undefined}
                       data-slot="composer-shell"
                       className={cn(
                         "chat-composer-glass-shell relative mx-auto w-full max-w-3xl",
                         externalComposerDrawerAttached && "chat-composer-glass-shell-attached",
                         showComposerContextStrip &&
-                          zeropsReadOnly === null &&
+                          zeropsFooter === "composer" &&
                           "chat-composer-glass-shell-with-context",
                       )}
                     >
                       <div className="chat-composer-glass-host relative z-10 w-full">
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
-                          {zeropsReadOnly !== null ? (
+                          {zeropsShownReadOnly !== null ? (
                             <ZeropsReadOnlyConversationFooter
-                              readOnly={zeropsReadOnly}
-                              pendingApprovals={pendingApprovals}
-                              pendingUserInputs={pendingUserInputs}
-                              onSignIn={openAgentAuthDialog}
+                              readOnly={zeropsShownReadOnly}
+                              pendingApprovals={
+                                zeropsReadOnlyStrip?.answered === true ? pendingApprovals : []
+                              }
+                              pendingUserInputs={
+                                zeropsReadOnlyStrip?.answered === true ? pendingUserInputs : []
+                              }
+                              onSignIn={
+                                zeropsReadOnlyStrip?.answered === true
+                                  ? openAgentAuthDialog
+                                  : undefined
+                              }
                             />
+                          ) : zeropsFooter === "held" ? (
+                            <ComposerRoomHeld draft={zeropsHeldDraft} />
                           ) : (
                             <ChatComposer
                               composerRef={composerRef}
@@ -8491,7 +8611,7 @@ export default function ChatView(props: ChatViewProps) {
                               }
                               idlePlaceholder={crewComposerPlaceholder ?? composerPlaceholders.idle}
                               mentionCrewmates={crewMentions}
-                              top={composerTop}
+                              top={threadDetailLoading ? null : composerTop}
                               {...(crewRunsOnLabel === null || activeCrewmate === null
                                 ? {}
                                 : {
@@ -8525,6 +8645,7 @@ export default function ChatView(props: ChatViewProps) {
                                   ? openUsageLimits
                                   : undefined
                               }
+                              onMcpCommand={addMcpSurface}
                               externalDrawerAttached={externalComposerDrawerAttached}
                               environmentUnavailable={activeEnvironmentUnavailable}
                               activePendingApproval={activePendingApproval}
@@ -8586,7 +8707,6 @@ export default function ChatView(props: ChatViewProps) {
                               toggleInteractionMode={toggleInteractionMode}
                               handleRuntimeModeChange={handleRuntimeModeChange}
                               handleInteractionModeChange={handleInteractionModeChange}
-                              focusComposer={focusComposer}
                               scheduleComposerFocus={scheduleComposerFocus}
                               setThreadError={setThreadError}
                             />
@@ -8598,7 +8718,7 @@ export default function ChatView(props: ChatViewProps) {
                           data-terminal-open={terminalUiState.terminalOpen ? "true" : undefined}
                           className="relative z-0"
                         >
-                          {showComposerContextStrip && zeropsReadOnly === null && (
+                          {showComposerContextStrip && zeropsFooter === "composer" && (
                             <div className="pointer-events-auto">
                               <BranchToolbar
                                 ref={branchToolbarRef}

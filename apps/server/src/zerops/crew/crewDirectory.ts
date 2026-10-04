@@ -25,6 +25,7 @@ import * as Option from "effect/Option";
 
 import { crewLane } from "./CrewDefinition.ts";
 import {
+  DEFAULT_CREW_LOGIN,
   asRefusal,
   currentStint,
   laterPrincipal,
@@ -134,14 +135,21 @@ const gateFor = (
   };
 };
 
-/** The seam's `memberFor`: one lookup in memory, never a read of the tables. */
+/**
+ * The seam's `memberFor`: lookups in memory, never a read of the tables. The
+ * crewmate's agent is read when its session asks, so one that was not live
+ * when the engine booted gets its crew tools once it is.
+ */
 export const memberFor = (core: CrewCore) => (threadId: string) =>
-  Effect.map(core.applied, (applied): Option.Option<CrewThreadMember> => {
+  Effect.gen(function* (): Effect.fn.Return<Option.Option<CrewThreadMember>> {
+    const applied = yield* core.applied;
     if (applied === undefined) return Option.none();
     const stint = applied.stints.find((row) => row.threadId === threadId);
     const member = stint === undefined ? undefined : memberOf(applied, stint.member);
     if (stint === undefined || member === undefined) return Option.none();
     const { row, spec } = member;
+    const agent = yield* core.agentOf(row.login ?? DEFAULT_CREW_LOGIN);
+    const hostsCrewTools = agent?.threadProfile?.tools === true;
     const current =
       stint.retiredAt === null && currentStint(applied, row.handle)?.threadId === threadId;
     const shaped = current ? gateFor(core, applied, member, stint) : undefined;
@@ -164,9 +172,9 @@ export const memberFor = (core: CrewCore) => (threadId: string) =>
         briefVersion: applied.briefVersion,
         job: spec.job,
         jobVersion: row.jobVersion,
-        // Phase C: a crewmate that hosts the crew tools keeps memory with crew_memory.
-        memory: applied.agents.get(row.handle) !== "codex",
-        crewTools: applied.agents.get(row.handle) !== "codex",
+        // A crewmate whose agent serves the crew tools keeps memory with crew_memory.
+        memory: hostsCrewTools,
+        crewTools: hostsCrewTools,
       },
       contextWindow: spec.context ?? CREW_CONTEXT_DEFAULT,
       // What the running run has left; a run with No limit sets none (PRD Δ16).

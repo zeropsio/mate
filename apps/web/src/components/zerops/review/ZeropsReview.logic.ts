@@ -487,6 +487,8 @@ export function changeReadVerdict(input: {
     | { readonly kind: "failed"; readonly reason: string };
   /** Whether there is an account's flow to read it through at all. */
   readonly provided: boolean;
+  readonly failure?: string | undefined;
+  readonly projectKnown?: boolean | undefined;
 }): ReviewVerdict {
   const which = `${input.repository} #${String(input.number)}`;
   const verdict = (
@@ -502,5 +504,9 @@ export function changeReadVerdict(input: {
   if (read.kind === "failed")
     return verdict("attention", "This change could not be read", read.reason);
   if (!input.provided) return verdict("quiet", "Nothing here reads this change");
+  if (input.failure !== undefined)
+    return verdict("attention", "This change could not be read", input.failure);
+  if (input.projectKnown === false)
+    return verdict("attention", "This change's project isn't known here");
   return verdict("quiet", "Waiting for the organization's HQ");
 }

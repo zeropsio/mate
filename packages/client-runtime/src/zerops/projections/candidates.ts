@@ -195,6 +195,34 @@ export function candidatesComplete(listing: Shown<ReadonlyArray<CandidateRow>>):
 }
 
 /**
+ * Whether a listing will tell no more for now (unknown is not empty, but it ends): complete, or
+ * settled as failed, gone or withheld, or partial with nothing more being read of it — what it
+ * lacks is withheld — or past its patience (`STILL_READING_PATIENCE_MS`), its missing parts failing
+ * and retried on their own backoff. A surface waiting on "every Mate" stops waiting here.
+ */
+export function listingSettled(
+  listing: Shown<ReadonlyArray<CandidateRow>>,
+  input: {
+    /** The inventory is still reading something of the organization in view. */
+    readonly loading: boolean;
+    /** The listing has been partial for less than `STILL_READING_PATIENCE_MS`. */
+    readonly patient: boolean;
+  },
+): boolean {
+  switch (listing.state) {
+    case "unread":
+    case "reading":
+      return false;
+    case "failed":
+    case "gone":
+    case "withheld":
+      return true;
+    case "known":
+      return candidatesComplete(listing) || !input.loading || !input.patient;
+  }
+}
+
+/**
  * The listing's items the account's grant admits. Dropping one leaves the listing partial: the
  * organization holds a project this list does not show, so no surface may read "none" off it (M5).
  */

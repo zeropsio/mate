@@ -18,7 +18,9 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { SidebarInset } from "~/components/ui/sidebar";
 import { PageWaitLine } from "~/components/zerops/WaitLine";
-import { MateOpeningView } from "~/components/zerops/MateLinkStage";
+import { HomeOpeningView, MateOpeningView } from "~/components/zerops/MateLinkStage";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { rememberedHomeLanding } from "~/zerops/lastConversationMemory";
 import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
 import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
 import { resolveDoor } from "./-door";
@@ -131,7 +133,17 @@ function ChatRouteLayout() {
 }
 
 function ChatRoutePending() {
+  const { activeOrganization } = useZeropsSession();
   const pathname = useLocation({ select: (location) => location.pathname });
+  // The home with no environment handed over waits as the home itself will (`homeView`): its
+  // guess, the Mate it will land on as remembered, with nothing that takes input.
+  const homeLanding = useLocation({
+    select: (location) =>
+      location.pathname === "/" && !("environmentId" in location.search)
+        ? rememberedHomeLanding(activeOrganization?.id)
+        : null,
+  });
+  if (homeLanding !== null) return <HomeOpeningView environmentId={homeLanding.environmentId} />;
   const routed = environmentIdFromPathname(pathname);
   const threadId = pathname.split("/").filter((part) => part.length > 0)[1];
   const threadRef =

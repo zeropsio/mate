@@ -8,11 +8,13 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   OrchestrationDispatchCommandError,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
   type OrchestrationCommand,
   type OrchestrationProject,
   type OrchestrationThreadShell,
+  type ServerProvider,
 } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -98,6 +100,28 @@ const linked = (standupRequestedBy: string | null, closedOff = true): HqStanding
     changes: [],
   },
 });
+/** A provider instance as the picker sees it, the Zerops overlay applied. */
+const instance = (driver: string, status: ServerProvider["status"] = "ready"): ServerProvider => ({
+  instanceId: ProviderInstanceId.make(driver),
+  driver: ProviderDriverKind.make(driver),
+  displayName: driver,
+  enabled: true,
+  installed: true,
+  version: "1.0.0",
+  status,
+  auth: { status: status === "ready" ? "authenticated" : "unauthenticated" },
+  checkedAt: "2026-10-01T10:00:00.000Z",
+  models: [{ slug: `${driver}-model`, name: "Model", isCustom: false, capabilities: null }],
+  slashCommands: [],
+  skills: [],
+});
+
+/** Somebody signed Claude Code in: the agent the stand-up waits on is there to run. */
+const CLAUDE_SIGNED_IN = [instance("claudeAgent"), instance("codex", "error")];
+/** Nobody signed anything in, and nothing else is set up: nothing on this Mate can run. */
+const NOTHING_TO_RUN = [instance("claudeAgent", "error"), instance("codex", "error")];
+const CURSOR_READY = [...NOTHING_TO_RUN, instance("cursor")];
+
 const ASKED = linked("user-a");
 const NOBODY_ASKED = linked(null);
 /** The asker signed Claude in here. */
@@ -108,6 +132,7 @@ interface World {
   readonly hq: Ref.Ref<HqStanding>;
   /** Who this server saw sign each login in. */
   readonly signers: Ref.Ref<ProjectSigners>;
+  readonly providers: Ref.Ref<ReadonlyArray<ServerProvider>>;
   readonly variables: Ref.Ref<ReadonlyArray<string>>;
   /** How many times where it stands with HQ was read. */
   readonly hqReads: Ref.Ref<number>;
@@ -123,6 +148,7 @@ interface World {
 const makeWorld = Effect.gen(function* () {
   return {
     hq: yield* Ref.make(ASKED),
+    providers: yield* Ref.make<ReadonlyArray<ServerProvider>>(CLAUDE_SIGNED_IN),
     signers: yield* Ref.make<ProjectSigners>({}),
     // Made by the new press: it always sets the runtimes plan, even an empty one.
     variables: yield* Ref.make<ReadonlyArray<string>>(["PATH", "MATE_SETUP_RUNTIMES"]),
@@ -143,6 +169,7 @@ const fakes = (world: World) =>
       signers: Ref.get(world.signers),
       serviceVariables: Ref.get(world.variables),
       statusFile: Ref.get(world.statusFile),
+      providers: Ref.get(world.providers),
     }),
     Layer.mock(OrchestrationEngineService)({
       dispatch: (command) =>
@@ -330,6 +357,96 @@ describe("ZeropsSetup: the stand-up", () => {
         turn?.type === "thread.turn.start" && turn.threadId,
         create?.type === "thread.create" && create.threadId,
       );
+    }),
+  );
+
+  // Mate signs people in to Claude Code and Codex only; a Mate that runs on another agent stands
+  // up all the same, as its asker, once that agent is ready.
+  it.live("with nobody signed in, it stands up on a ready Cursor, as its asker, once", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.providers, NOTHING_TO_RUN);
+      yield* withServer(world, freshDatabase(), () =>
+        Effect.gen(function* () {
+          yield* ticks;
+          assert.deepStrictEqual(yield* turnsOf(world), []);
+          yield* Ref.set(world.providers, CURSOR_READY);
+          const [turn] = yield* eventually(turnsOf(world), (turns) => turns.length > 0);
+          yield* ticks;
+          assert.strictEqual((yield* turnsOf(world)).length, 1);
+          assert.deepStrictEqual(
+            [turn!.modelSelection?.instanceId, turn!.modelSelection?.model],
+            ["cursor", "cursor-model"],
+          );
+          assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
+            kind: "standup",
+            startedBy: "user-a",
+          });
+        }),
+      );
+    }),
+  );
+
+  it.live("the asker's own sign-in comes before a ready Cursor", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.signers, SIGNED);
+      yield* Ref.set(world.providers, [...CLAUDE_SIGNED_IN, instance("cursor")]);
+      const [turn] = yield* withServer(world, freshDatabase(), () =>
+        eventually(turnsOf(world), (turns) => turns.length > 0),
+      );
+      assert.strictEqual(turn!.modelSelection?.instanceId, "claudeAgent");
+    }),
+  );
+
+  it.live("keeps the conversation's own model when it is already on that Cursor", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.providers, CURSOR_READY);
+      yield* Ref.set(world.threads, [
+        mainThread({
+          modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "composer-2" },
+        }),
+      ]);
+      const [turn] = yield* withServer(world, freshDatabase(), () =>
+        eventually(turnsOf(world), (turns) => turns.length > 0),
+      );
+      assert.deepStrictEqual(
+        [turn!.modelSelection?.instanceId, turn!.modelSelection?.model],
+        ["cursor", "composer-2"],
+      );
+    }),
+  );
+
+  it.live("keeps the conversation on its own ready instance over the registry's first", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.providers, [...CURSOR_READY, instance("opencode")]);
+      yield* Ref.set(world.threads, [
+        mainThread({
+          modelSelection: { instanceId: ProviderInstanceId.make("opencode"), model: "big-pickle" },
+        }),
+      ]);
+      const [turn] = yield* withServer(world, freshDatabase(), () =>
+        eventually(turnsOf(world), (turns) => turns.length > 0),
+      );
+      assert.deepStrictEqual(
+        [turn!.modelSelection?.instanceId, turn!.modelSelection?.model],
+        ["opencode", "big-pickle"],
+      );
+    }),
+  );
+
+  // Grok and Cursor can say ready with a sign-in they could not read: that is no agent to run.
+  it.live("never stands up on a Cursor whose sign-in it could not read", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.providers, [
+        ...NOTHING_TO_RUN,
+        { ...instance("cursor"), auth: { status: "unknown" } },
+      ]);
+      yield* withServer(world, freshDatabase(), () => ticks);
+      assert.deepStrictEqual(yield* turnsOf(world), []);
     }),
   );
 
@@ -658,6 +775,21 @@ describe("ZeropsSetup: the document", () => {
 describe("ZeropsSetup: a stand-up says only what ran", () => {
   const stateOf = (setup: ZeropsSetup["Service"], id: string) =>
     Effect.map(setup.document, (document) => document.steps.find((step) => step.id === id)?.state);
+
+  it.live("a Mate on Cursor is signed in once Cursor is ready, nobody signed in", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.hq, NOBODY_ASKED);
+      yield* Ref.set(world.providers, NOTHING_TO_RUN);
+      yield* withServer(world, freshDatabase(), (setup) =>
+        Effect.gen(function* () {
+          assert.strictEqual(yield* stateOf(setup, "signin"), "waiting");
+          yield* Ref.set(world.providers, CURSOR_READY);
+          assert.strictEqual(yield* stateOf(setup, "signin"), "done");
+        }),
+      );
+    }),
+  );
 
   it.live("a New project's first Mate: no stand-up is ever done, and its sign-in stays", () =>
     Effect.gen(function* () {

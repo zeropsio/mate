@@ -528,6 +528,12 @@ function makeToolCallState(
         fallbackSummary: title ?? "Tool",
       })
     : undefined;
+  // The agent's own title, kept across updates that send none (a later
+  // update's presentation says "Tool"): an MCP call is named by it
+  // (`spi/toolCall.ts`), its native kind or not.
+  if (title !== undefined) {
+    data.title = title;
+  }
   const status = normalizeToolCallStatus(input.status, options?.fallbackStatus);
   return {
     toolCallId,
