@@ -133,29 +133,5 @@ describe("Zerops access grant policy", () => {
     expect(DEFAULT_ZEROPS_GRANT_POLICY.dormantAfterHiddenMs).toBe(60 * MINUTE);
     expect(DEFAULT_ZEROPS_GRANT_POLICY.wallJumpBackToleranceMs).toBe(60 * SECOND);
     expect(DEFAULT_ZEROPS_GRANT_POLICY.denialConfirmationDelayMs).toBe(5 * SECOND);
-    expect(DEFAULT_ZEROPS_GRANT_POLICY.initialRetryMs).toEqual(
-      [2, 4, 8, 15, 30, 60].map((s) => s * SECOND),
-    );
-    expect(DEFAULT_ZEROPS_GRANT_POLICY.renewalRetryMs).toEqual(
-      [10, 20, 40, 60].map((s) => s * SECOND),
-    );
-    expect(DEFAULT_ZEROPS_GRANT_POLICY.lapsedRetryMs).toEqual(
-      [2, 5, 15, 30, 60].map((s) => s * SECOND),
-    );
-    expect(DEFAULT_ZEROPS_GRANT_POLICY.projectRetryMs).toEqual(
-      [10, 20, 40, 60].map((s) => s * SECOND),
-    );
-    for (const ladder of [
-      DEFAULT_ZEROPS_GRANT_POLICY.initialRetryMs,
-      DEFAULT_ZEROPS_GRANT_POLICY.renewalRetryMs,
-      DEFAULT_ZEROPS_GRANT_POLICY.lapsedRetryMs,
-      DEFAULT_ZEROPS_GRANT_POLICY.projectRetryMs,
-    ]) {
-      expect(ladder.length).toBeGreaterThan(0);
-      for (const rung of ladder) {
-        expect(rung).toBeGreaterThan(0);
-        expect(rung).toBeLessThan(DEFAULT_ZEROPS_GRANT_POLICY.windowMs);
-      }
-    }
   });
 });

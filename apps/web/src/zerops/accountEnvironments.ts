@@ -135,8 +135,6 @@ const NO_CONTAINERS: ReadonlyMap<TargetKey, ContainerMachine> = new Map();
 const NO_INDEX: DescriptorIndex = {
   serving: new Map(),
   reported: new Map(),
-  unanswered: [],
-  failed: [],
 };
 const machinesOf = (environments: AccountEnvironments) => environments.machines();
 const containersOf = (environments: AccountEnvironments) => environments.containers();

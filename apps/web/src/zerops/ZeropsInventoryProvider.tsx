@@ -284,13 +284,6 @@ export function ZeropsInventoryProvider({
   );
   const accessReadEntries = useMemo(() => [["access", runtime.reads.access] as const], [runtime]);
   const access = useZeropsAtomSelections(accessReadEntries).get("access");
-  const knownProjectRefs = useMemo(
-    () =>
-      inventoryProjectRefs(evidenceProjectRefs(evidence), access).filter(
-        (ref) => ref.organization.organizationId === activeOrganization?.id,
-      ),
-    [access, evidence, activeOrganization?.id],
-  );
   const denied = useMemo(() => pendingDenials(evidence), [evidence]);
   /** The account's authority, as the grant last published it (G12). */
   const account = grant.machine.published.account ?? AUTHORIZED;
@@ -324,6 +317,20 @@ export function ZeropsInventoryProvider({
       ),
     [organizationDescriptors, runtime],
   );
+  const organizationReads = useZeropsAtomSelections(organizationReadEntries);
+  const knownProjectRefs = useMemo(() => {
+    const refs = new Map(
+      inventoryProjectRefs(evidenceProjectRefs(evidence), access)
+        .filter((ref) => ref.organization.organizationId === activeOrganization?.id)
+        .map((ref) => [inventoryProjectRefKey(ref), ref]),
+    );
+    for (const read of organizationReads.values())
+      for (const entry of read.value) {
+        const ref = entry.knowledge === "observed" ? entry.record.ref : entry.ref;
+        if (!lost.has(ref.projectId)) refs.set(inventoryProjectRefKey(ref), ref);
+      }
+    return [...refs.values()];
+  }, [access, evidence, organizationReads, activeOrganization?.id, lost]);
   const projectReadEntries = useMemo(
     () =>
       knownProjectRefs.map(
@@ -337,7 +344,6 @@ export function ZeropsInventoryProvider({
       ),
     [knownProjectRefs, runtime],
   );
-  const organizationReads = useZeropsAtomSelections(organizationReadEntries);
   const projectReads = useZeropsAtomSelections(projectReadEntries);
   const projectDescriptors = useMemo(
     () =>
@@ -431,7 +437,7 @@ export function ZeropsInventoryProvider({
         continue;
       }
       if (serviceRead.query.status !== "observed") {
-        incomplete();
+        if (serviceRead.observation.required.length > 0) incomplete();
         const outcome = resolvedOrCarried(dto.id, { status: "failed" });
         services.set(dto.id, outcome);
         carryableOutcomes.set(dto.id, outcome);
@@ -485,6 +491,7 @@ export function ZeropsInventoryProvider({
     /** The organizations some of whose demanded reads are not observing yet: not answered. */
     const pending = new Set<string>();
     for (const { organization, projectId, interest } of demanded) {
+      if (interest === undefined) continue;
       if (interest?.status !== "observing" && interest?.status !== "paused")
         pending.add(organization.organizationId);
       if (isInterestBlocked(interest, Date.now(), documentHidden)) {
@@ -676,11 +683,8 @@ export function ZeropsInventoryProvider({
     authority,
     account,
     lost,
-    // A read failing or stalled is not known, spoken of yet or not: the 20 s silence decides only
-    // when the account's line speaks, never what the data says (a Mate link settled "not found",
-    // "no projects" painted and taken back). Scoped to the organization in view
-    // (`organizationKnowledge`): another organization's trouble changes nothing its consumers see.
-    isLoading: known.loading,
+    // Only the active organization's held reads affect its loading and failure notices.
+    isLoading: known.loading || projected.pendingOrganizations.has(activeOrganization?.id ?? ""),
     error: shownError,
   });
   useEffect(() => {

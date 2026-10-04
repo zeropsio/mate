@@ -17,7 +17,6 @@ import {
   routeGatePhrase,
   selectReachability,
   selectRouteGate,
-  sweepRead,
   type ContainerMachine,
   type ContainerStore,
   type ContainerVerdict,
@@ -69,7 +68,6 @@ const shell = vi.hoisted(() => ({
   /** Every route the gate handed the account runtime, in order. */
   routes: [] as Array<string | null>,
   /** When the account runtime's sweep asked for each target it reads again. */
-  reread: new Map() as ReadonlyMap<string, { readonly wall: number; readonly mono: number }>,
 }));
 
 vi.mock("../state/environments", () => ({
@@ -96,7 +94,6 @@ function shellStage(): AccountEnvironments {
   let indexed: {
     readonly machines: ReadonlyMap<string, EnvironmentMachine>;
     readonly containers: ReadonlyMap<string, ContainerMachine>;
-    readonly reread: typeof shell.reread;
     readonly index: DescriptorIndex;
   } | null = null;
   return {
@@ -104,21 +101,12 @@ function shellStage(): AccountEnvironments {
     containers: () => containers().machines(),
     records: () => shell.records as unknown as ReadonlyArray<RegistrationRecord>,
     index: () => {
-      const [machines, readings, reread] = [
-        driver().machines(),
-        containers().machines(),
-        shell.reread,
-      ];
-      if (
-        indexed?.machines !== machines ||
-        indexed.containers !== readings ||
-        indexed.reread !== reread
-      ) {
+      const [machines, readings] = [driver().machines(), containers().machines()];
+      if (indexed?.machines !== machines || indexed.containers !== readings) {
         indexed = {
           machines,
           containers: readings,
-          reread,
-          index: indexDescriptors(machines, readings, reread),
+          index: indexDescriptors(machines, readings),
         };
       }
       return indexed.index;
@@ -194,7 +182,6 @@ beforeEach(() => {
   shell.environments = [];
   shell.records = [];
   shell.routes = [];
-  shell.reread = new Map();
   shell.organization = "selected";
   shell.driver = publishing(new Map());
   shell.containers = descriptorRig([]).containers;
@@ -696,9 +683,23 @@ describe("useRouteGateInputs", () => {
     /** What the probes last read at each target's origin, sent at 0. */
     readonly readings?: ReadonlyMap<string, ProbeReading>;
     /** The targets the sweep asked to read again, at 0. */
-    readonly reread?: ReadonlyArray<string>;
     readonly gate: RouteGate;
   }> = [
+    {
+      name: "an unopened project's exchange does not delay an unknown route",
+      machines: other({
+        kind: "exchanging",
+        attempt: 1,
+        deadline: { wall: 1, mono: 1 },
+        reconnect: false,
+      }),
+      gate: { kind: "unavailable", reachability: null },
+    },
+    {
+      name: "an unopened project's unread descriptor does not delay an unknown route",
+      machines: other({ kind: "none", reconnect: false }),
+      gate: { kind: "unavailable", reachability: null },
+    },
     {
       name: "an exchange is running for another Mate",
       machines: other({
@@ -707,18 +708,18 @@ describe("useRouteGateInputs", () => {
         deadline: { wall: 1, mono: 1 },
         reconnect: false,
       }),
-      gate: { kind: "wait", reachability: null },
+      gate: { kind: "unavailable", reachability: null },
     },
     {
       name: "another Mate's credential is answered and its install is on its way",
       machines: other({ ...HELD, environmentId: ENV_B, installed: false }),
-      gate: { kind: "wait", reachability: null },
+      gate: { kind: "unavailable", reachability: null },
     },
     {
       name: "a remembered target the driver has not taken in yet",
       machines: new Map(),
       records: [{ targetKey: OTHER, environmentId: ENV_B }],
-      gate: { kind: "wait", reachability: null },
+      gate: { kind: "unavailable", reachability: null },
     },
     {
       name: "the inventory is still loading",
@@ -735,7 +736,7 @@ describe("useRouteGateInputs", () => {
         reconnect: false,
       }),
       records: [{ targetKey: OTHER, environmentId: ENV_B }],
-      gate: { kind: "wait", reachability: null },
+      gate: { kind: "unavailable", reachability: null },
     },
     {
       name: "a present Mate's descriptor read failed once (a network or CORS failure)",
@@ -747,7 +748,7 @@ describe("useRouteGateInputs", () => {
       }),
       records: [{ targetKey: OTHER, environmentId: ENV_B }],
       readings: new Map([[OTHER, { kind: "unreachable" }]]),
-      gate: { kind: "wait", reachability: null },
+      gate: { kind: "unavailable", reachability: null },
     },
     {
       name: "the only present Mate's descriptor failed the sweep's read too",
@@ -759,15 +760,13 @@ describe("useRouteGateInputs", () => {
       }),
       records: [{ targetKey: OTHER, environmentId: ENV_B }],
       readings: new Map([[OTHER, { kind: "unreachable" }]]),
-      reread: [OTHER],
       gate: { kind: "unavailable", reachability: null },
     },
     {
       name: "a present Mate is still coming up when the sweep reads it",
       machines: other({ kind: "none", reconnect: false }),
       readings: new Map([[OTHER, { kind: "initializing", initAt: null }]]),
-      reread: [OTHER],
-      gate: { kind: "wait", reachability: null },
+      gate: { kind: "unavailable", reachability: null },
     },
     {
       name: "every exchange has settled and every present descriptor named another",
@@ -801,7 +800,7 @@ describe("useRouteGateInputs", () => {
         ],
       ]),
       records: [{ targetKey: OTHER, environmentId: ENV_B }],
-      gate: { kind: "wait", reachability: null },
+      gate: { kind: "unavailable", reachability: null },
     },
     {
       name: "the only present Mate serves no Mate at all",
@@ -825,7 +824,6 @@ describe("useRouteGateInputs", () => {
       shell.driver = publishing(row.machines);
       shell.containers = reading(row.readings ?? new Map());
       shell.records = [...(row.records ?? [])];
-      shell.reread = new Map((row.reread ?? []).map((key) => [key, { wall: 0, mono: 0 }]));
 
       expect(await gateOnRoute(row.inventory ?? inventory("ACTIVE"))).toEqual(row.gate);
     },
@@ -875,7 +873,7 @@ describe("useRouteGateInputs", () => {
   });
 });
 
-// ── The descriptor index and its sweep (§4.8 resolveTarget) ──────────────────────────────────
+// ── Cached descriptor identity joins (§4.8 resolveTarget) ──────────────────────────────────
 
 /** A Mate a present candidate serves: its target, its origin and its project. */
 const mate = (index: number) => ({
@@ -987,21 +985,7 @@ function descriptorRig(
       probe.resolve(reading);
       await settle();
     },
-    /**
-     * Reads these targets again the way the account runtime's sweep does for a route nothing
-     * names (`sweepRead`): it records when each read counts from, and asks only for a target no
-     * poll reads.
-     */
-    sweep: async (keys: ReadonlyArray<string>) => {
-      const asked = clock.now();
-      const reads = keys.map((key) => [key, sweepRead(containers.machine(key), asked)] as const);
-      shell.reread = new Map([
-        ...shell.reread,
-        ...reads.map(([key, read]) => [key, read.from] as const),
-      ]);
-      for (const [key, read] of reads) if (read.request) containers.request(key);
-      await settle();
-    },
+
     /** Time passes: every timer that comes due fires, in order. */
     advance: async (ms: number) => {
       nowMs += ms;
@@ -1052,7 +1036,11 @@ describe("the descriptor index", () => {
     const rig = descriptorRig([one]);
     shell.driver = rig.driver;
     shell.containers = rig.containers;
-    atoms.set(zeropsSessionAtom, { activeOrganization: { organizationId: "org-acme" } } as never);
+    atoms.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: { organizationId: "org-acme" },
+    } as never);
     atoms.set(hqMatesViewAtom, {
       organizationId: "org-acme",
       mates: new Map([
@@ -1070,14 +1058,17 @@ describe("the descriptor index", () => {
     rig.containers.dispose();
   });
 
-  it("deep link resolves through the descriptor on a device with no record", async () => {
+  it("a cached descriptor resolves a deep link with no HQ or registration record", async () => {
     const one = mate(1);
     const rig = descriptorRig([one]);
     shell.driver = rig.driver;
     shell.containers = rig.containers;
     await settle();
     const routed = routeTo(ENV_A);
-    expect(selectRouteGate(routed.read().target)).toEqual({ kind: "wait", reachability: null });
+    expect(selectRouteGate(routed.read().target)).toEqual({
+      kind: "unavailable",
+      reachability: null,
+    });
     // The route is the account runtime's demand: it exchanges the route's target first.
     expect(shell.routes).toEqual([ENV_A]);
 
@@ -1090,86 +1081,7 @@ describe("the descriptor index", () => {
     rig.containers.dispose();
   });
 
-  it("route Mate is the 9th of 12 → resolves, never RG3 early", async () => {
-    const mates = Array.from({ length: 12 }, (_, index) => mate(index + 1));
-    const rig = descriptorRig(mates);
-    shell.driver = rig.driver;
-    shell.containers = rig.containers;
-    await settle();
-    function Probe() {
-      const inputs = useRouteGateInputs(ENV_A);
-      return JSON.stringify({ gate: selectRouteGate(inputs.target), projectId: inputs.projectId });
-    }
-    act(() =>
-      root.render(
-        <InventoryContext value={inventory("ACTIVE")}>
-          <Probe />
-        </InventoryContext>,
-      ),
-    );
-    const look = () =>
-      JSON.parse(container.textContent) as { gate: RouteGate; projectId: string | null };
-    const seen: Array<{ answered: number; gate: RouteGate["kind"]; projectId: string | null }> = [];
-
-    // Every present Mate's descriptor answers in turn, the pool's four at a time.
-    for (const [position, each] of mates.entries()) {
-      await rig.answer(
-        each.origin,
-        answering(
-          position === 8 ? ENV_A : EnvironmentId.make(`env-${position + 1}`),
-          each.projectId,
-        ),
-      );
-      seen.push({ answered: position + 1, gate: look().gate.kind, projectId: look().projectId });
-    }
-
-    expect(rig.probed).toEqual(mates.map(({ origin }) => origin));
-    expect(seen.filter(({ answered }) => answered < 9).map(({ gate }) => gate)).toEqual(
-      Array.from({ length: 8 }, () => "wait"),
-    );
-    expect(seen.filter(({ answered }) => answered >= 9).map(({ projectId }) => projectId)).toEqual(
-      Array.from({ length: 4 }, () => "project-9"),
-    );
-    expect(seen.map(({ gate }) => gate)).not.toContain("unavailable");
-    rig.driver.dispose();
-    rig.containers.dispose();
-  });
-
-  it("a made-up envId reaches RG3 once every present candidate answered or failed", async () => {
-    const [named, dead, alsoDead] = [mate(1), mate(2), mate(3)];
-    const rig = descriptorRig([named, dead, alsoDead]);
-    shell.driver = rig.driver;
-    shell.containers = rig.containers;
-    await settle();
-    const routed = routeTo(EnvironmentId.make("env-made-up"));
-    const gates: Array<RouteGate["kind"]> = [];
-    const look = () => gates.push(selectRouteGate(routed.read().target).kind);
-
-    await rig.answer(named.origin, answering(ENV_B, named.projectId));
-    // Two dead origins: their descriptor reads fail on CORS. A boot only failed reads suggest is
-    // polled by nothing: the sweep reads each once more, at once.
-    await rig.fail(dead.origin);
-    await rig.fail(alsoDead.origin);
-    look();
-    await rig.advance(1_000);
-    const beforeSweep = rig.probed.length;
-    await rig.sweep([dead.key, alsoDead.key]);
-    expect(rig.probed.slice(beforeSweep)).toEqual([dead.origin, alsoDead.origin]);
-    look();
-    await rig.fail(dead.origin);
-    look();
-    await rig.fail(alsoDead.origin);
-
-    expect(gates).toEqual(["wait", "wait", "wait"]);
-    expect(selectRouteGate(routed.read().target)).toEqual({
-      kind: "unavailable",
-      reachability: null,
-    });
-    rig.driver.dispose();
-    rig.containers.dispose();
-  });
-
-  it("a deep link with no organization chosen waits for discovery before offering the picker", async () => {
+  it("an unknown deep link offers the organization picker without waiting for other projects", async () => {
     const one = mate(1);
     const rig = descriptorRig([one]);
     shell.driver = rig.driver;
@@ -1182,12 +1094,12 @@ describe("the descriptor index", () => {
       made: selectRouteGate(routeTo(made).read().target),
     };
 
-    // Discovery reads every organization's Mates: the route's descriptor names it.
+    // A descriptor already read for an explicit demand may subsequently name the route.
     await rig.answer(one.origin, answering(ENV_A, one.projectId));
 
     expect(before).toEqual({
-      real: { kind: "wait", reachability: null },
-      made: { kind: "wait", reachability: null },
+      real: { kind: "choose-organization" },
+      made: { kind: "choose-organization" },
     });
     expect(routeTo(ENV_A).read().target?.kind).toBe("resolved");
     // Settled without naming it: choosing an organization is what is left to offer (A5).

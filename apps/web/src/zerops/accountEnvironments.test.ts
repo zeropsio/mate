@@ -350,7 +350,11 @@ describe("useMateCommand: a Mate's command, sent with its action lease", () => {
     const stage = connecting(sent.log);
     const unbind = bindAccountEnvironments(stage.environments as unknown as AccountEnvironments);
     const atoms = AtomRegistry.make();
-    atoms.set(zeropsSessionAtom, { activeOrganization: { organizationId: "org-acme" } } as never);
+    atoms.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: { organizationId: "org-acme" },
+    } as never);
     atoms.set(hqMatesViewAtom, {
       organizationId: "org-acme",
       mates: new Map([

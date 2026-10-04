@@ -48,7 +48,7 @@ import { makeRegistrationRecords } from "../environments/records.ts";
 import { makeDeploymentStore, type DeploymentStore } from "../flow/deploymentStore.ts";
 import type { EnvelopeServices } from "../flow/envelopeInvalidations.ts";
 import { deploymentStorePorts, envelopeServices } from "./flow.ts";
-import { holdInventoryDemand, holdListedProjects } from "./inventoryDemand.ts";
+import { holdInventoryDemand, holdAccessDemand } from "./inventoryDemand.ts";
 import {
   makeEnvironmentWiring,
   type AccountEnvironmentPorts,
@@ -276,7 +276,7 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
     yield* holdInventoryDemand({ data, atomRegistry: ports.atomRegistry, activeOrganization }).pipe(
       Scope.provide(demandScope),
     );
-    yield* holdListedProjects({ data, atomRegistry: ports.atomRegistry, activeOrganization }).pipe(
+    yield* holdAccessDemand({ data, atomRegistry: ports.atomRegistry }).pipe(
       Scope.provide(demandScope),
     );
     yield* Queue.take(heard).pipe(Effect.flatMap(hear), Effect.forever, Effect.forkIn(epoch));

@@ -126,6 +126,7 @@ class GrantSim {
   /** Answers the round in flight: the account part, then each project. */
   answerRound(outcomes: ReadonlyArray<readonly [ProjectRef, ProjectOutcome | null]>): void {
     const round = this.round();
+    this.send({ type: "PROJECTS_DEMANDED", projects: outcomes.map(([project]) => project) });
     this.send({
       type: "ROUND_ACCOUNT",
       round,
@@ -162,6 +163,7 @@ const accountPartMs = (roundMs: number): number => Math.min(roundMs, SECOND);
 /** A tab granted `listed` by a round that started at T0 and took `roundMs`. */
 const grantedSim = (roundMs = 2 * SECOND, listed: ReadonlyArray<ProjectRef> = [A, B]): GrantSim => {
   const sim = new GrantSim();
+  sim.send({ type: "PROJECTS_DEMANDED", projects: listed });
   sim.send({ type: "START" });
   const round = sim.round();
   sim.elapse(accountPartMs(roundMs));
@@ -268,6 +270,34 @@ const expiredObservations = (effects: ReadonlyArray<GrantEffect>) =>
     (effect) => effect.kind === "observe" && effect.observation.kind === "access-expired",
   );
 
+describe("manual access recovery", () => {
+  it.each(["tick", "online", "wake"])(
+    "a failed first read stays failed on %s until manual again",
+    (signal) => {
+      const sim = new GrantSim();
+      sim.send({ type: "START" });
+      sim.send({
+        type: "ROUND_FAILED",
+        round: sim.round(),
+        failure: { kind: "server", status: 503 },
+      });
+      const before = sim.runs.length;
+      sim.elapse(MINUTE);
+      sim.send(
+        signal === "online"
+          ? { type: "ONLINE" }
+          : signal === "wake"
+            ? { type: "WAKE", visible: true }
+            : { type: "TICK" },
+      );
+      expect(sim.runs).toHaveLength(before);
+      expect(sim.state.phase.phase).toBe("unverified-failed");
+      sim.send({ type: "USER_RETRY" });
+      expect(sim.runs).toHaveLength(before + 1);
+    },
+  );
+});
+
 describe("access grant reducer", () => {
   it("admits the first round and restores the account and each verified project (G12)", () => {
     const sim = new GrantSim();
@@ -320,7 +350,7 @@ describe("access grant reducer", () => {
       expect(tab.write(A)).toEqual({ allowed: true });
     });
     sim.send({ type: "VISIBILITY", hidden: false });
-    sim.send({ type: "WAKE", visible: true });
+    sim.send({ type: "USER_RETRY" });
     expect(sim.state.phase.phase).toBe("granted");
     expect(sim.write(A)).toEqual({ allowed: true });
     expect(expiredObservations(sim.effectsSince(0))).toEqual([]);
@@ -357,7 +387,7 @@ describe("access grant reducer", () => {
     const sim = grantedSim();
     sim.elapse(30 * MINUTE);
     const before = sim.effects.length;
-    sim.send({ type: "WAKE", visible: true });
+    sim.send({ type: "USER_RETRY" });
     const effects = sim.effectsSince(before);
     expect(sim.state.phase.phase).toBe("lapsed");
     expect(expiredObservations(effects)).toHaveLength(1);
@@ -395,7 +425,7 @@ describe("access grant reducer", () => {
     ["the first round", 0],
     ["a renewal round", 12 * MINUTE],
   ])(
-    "discards %s that a frozen tab completes after its evidence expired, and starts another (G3)",
+    "discards %s that a frozen tab completes after its evidence expired, until manual retry (G3)",
     (_label, startAfterMs) => {
       const sim = startAfterMs === 0 ? new GrantSim() : grantedSim();
       if (startAfterMs === 0) sim.send({ type: "START" });
@@ -412,6 +442,8 @@ describe("access grant reducer", () => {
       sim.send({ type: "ROUND_PROJECT", round: late, project: B, outcome: verified(B) });
       expect(sim.write(A).allowed).toBe(false);
       expect(sim.state.phase.phase).not.toBe("granted");
+      expect(grantRoundInFlight(sim.state)).toBeNull();
+      sim.send({ type: "USER_RETRY" });
       expect(sim.round()).not.toBe(late);
       expect(grantRoundInFlight(sim.state)?.startedAt).toEqual(sim.now);
       expect(sim.effectsSince(0)).toContainEqual({
@@ -576,9 +608,7 @@ describe("access grant reducer", () => {
     const projectRetries = sim.effects
       .filter((entry) => entry.effect.kind === "run" && entry.effect.op.kind === "verify-project")
       .map((entry) => entry.at.mono);
-    const gaps = projectRetries.slice(1, 4).map((at, index) => at - projectRetries[index]!);
-    // The 20, 40, 60 s rungs, each counted from the failed answer one second after its start.
-    expect(gaps).toEqual([21 * SECOND, 41 * SECOND, 61 * SECOND]);
+    expect(projectRetries).toEqual([]);
   });
 
   it.each([
@@ -589,7 +619,7 @@ describe("access grant reducer", () => {
     (_label, confirmation, reopened) => {
       const sim = grantedSim();
       sim.elapse(30 * MINUTE);
-      sim.send({ type: "WAKE", visible: true });
+      sim.send({ type: "USER_RETRY" });
       sim.elapse(2 * SECOND);
       const before = sim.effects.length;
       sim.answerRound([
@@ -672,7 +702,7 @@ describe("access grant reducer", () => {
     expect(sim.write(listed[1]!)).toEqual({ allowed: true });
   });
 
-  it("fails a round whose account part misses the deadline and retries by the session backoff", () => {
+  it("fails a round whose account part misses the deadline until a manual retry", () => {
     const sim = new GrantSim();
     sim.send({ type: "START" });
     sim.elapse(30 * SECOND);
@@ -680,101 +710,24 @@ describe("access grant reducer", () => {
     expect(sim.state.phase).toEqual({
       phase: "unverified-failed",
       failure: { kind: "timeout", afterMs: 30 * SECOND },
-      retryAt: { wall: sim.now.wall + 2 * SECOND, mono: sim.now.mono + 2 * SECOND },
+      retryAt: null,
       attempt: 1,
     });
     sim.elapse(2 * SECOND);
-    sim.send({ type: "TICK" });
+    sim.send({ type: "USER_RETRY" });
     sim.send({
       type: "ROUND_FAILED",
       round: sim.round(),
       failure: { kind: "server", status: 502 },
     });
-    expect(sim.state.phase).toMatchObject({ phase: "unverified-failed", attempt: 2 });
+    expect(sim.state.phase).toMatchObject({ phase: "unverified-failed", attempt: 1 });
     sim.send({ type: "USER_RETRY" });
     expect(sim.state.phase.phase).toBe("verifying");
   });
 
-  it("never closes writes during a failing renewal before the held deadline, and retries at 10, 20, 40, 60 s bounded by it (G4, T-L3)", () => {
-    const sim = grantedSim();
-    sim.elapse(12 * MINUTE - 2 * SECOND);
-    sim.send({ type: "TICK" });
-    const retryStarts: Array<number> = [];
-    for (let failures = 0; failures < 5; failures++) {
-      retryStarts.push(grantRoundInFlight(sim.state)!.startedAt.mono - T0.mono);
-      sim.send({
-        type: "ROUND_FAILED",
-        round: sim.round(),
-        failure: { kind: "server", status: 503 },
-      });
-      expect(sim.write(A)).toEqual({ allowed: true });
-      const timer = sim.state.timer!;
-      sim.elapse(timer.mono - sim.now.mono);
-      sim.send({ type: "TICK" });
-    }
-    retryStarts.push(grantRoundInFlight(sim.state)!.startedAt.mono - T0.mono);
-    // The fifth retry was due at 15:10; it was bounded to the deadline, where the grant lapsed
-    // and the lapse started a round at once.
-    expect(retryStarts).toEqual(
-      [0, 10, 30, 70, 130, 180].map((seconds) => 12 * MINUTE + seconds * SECOND),
-    );
-    expect(sim.state.phase.phase).toBe("lapsed");
-    expect(sim.write(A)).toEqual({ allowed: false, reason: "access-lapsed", waitable: true });
-    const lapsedAt = sim.effects.length;
-    sim.send({
-      type: "ROUND_FAILED",
-      round: sim.round(),
-      failure: { kind: "server", status: 503 },
-    });
-    expect(sim.effectsSince(lapsedAt)).toContainEqual({
-      kind: "withhold",
-      scope: { kind: "account" },
-      reason: "access-lapsed",
-      cause: {
-        failure: { kind: "server", status: 503 },
-        retryAtMs: sim.now.wall + 2 * SECOND,
-      },
-    });
-    sim.elapse(MINUTE);
-    sim.send({ type: "WAKE", visible: true });
-    sim.elapse(SECOND);
-    sim.answerRound([
-      [A, verified(A)],
-      [B, verified(B)],
-    ]);
-    expect(sim.write(A)).toEqual({ allowed: true });
-  });
-
-  it("retries a lapsed grant at 2, 5, 15, 30, 60 s and at once on a visible wake (G9)", () => {
-    const sim = grantedSim();
-    sim.elapse(20 * MINUTE);
-    sim.send({ type: "TICK" });
-    const starts: Array<number> = [];
-    for (let failures = 0; failures < 6; failures++) {
-      starts.push(sim.now.mono);
-      sim.send({
-        type: "ROUND_FAILED",
-        round: sim.round(),
-        failure: { kind: "transport", detail: "reset" },
-      });
-      sim.elapse(sim.state.timer!.mono - sim.now.mono);
-      sim.send({ type: "TICK" });
-    }
-    expect(starts.slice(1).map((at, index) => at - starts[index]!)).toEqual(
-      [2, 5, 15, 30, 60].map((seconds) => seconds * SECOND),
-    );
-    sim.send({
-      type: "ROUND_FAILED",
-      round: sim.round(),
-      failure: { kind: "transport", detail: "reset" },
-    });
-    sim.elapse(10 * SECOND);
-    sim.send({ type: "WAKE", visible: true });
-    expect(grantRoundInFlight(sim.state)?.startedAt).toEqual(sim.now);
-  });
-
   const unavailable: GrantFailure = { kind: "server", status: 503 };
-  /** A lapse whose first round failed, one second into its backoff. */
+
+  /** A lapse whose first round failed. */
   const failedLapse = (): GrantSim => {
     const sim = grantedSim();
     sim.elapse(20 * MINUTE);
@@ -789,10 +742,10 @@ describe("access grant reducer", () => {
     readonly cause: GrantWithholdingCause;
   }>([
     {
-      name: "a visible wake starts a round after the lapse's failure",
+      name: "a manual retry starts a round after the lapse's failure",
       lapse: () => {
         const sim = failedLapse();
-        sim.send({ type: "WAKE", visible: true });
+        sim.send({ type: "USER_RETRY" });
         return sim;
       },
       cause: { failure: unavailable, retryAtMs: null },
@@ -807,13 +760,14 @@ describe("access grant reducer", () => {
       cause: { failure: unavailable, retryAtMs: null },
     },
     {
-      name: "the network's return starts a round after the lapse's failure",
+      name: "a manual retry after coming online starts a round",
       lapse: () => {
         const sim = failedLapse();
         sim.send({ type: "OFFLINE" });
         sim.elapse(10 * SECOND);
         sim.send({ type: "TICK" });
         sim.send({ type: "ONLINE" });
+        sim.send({ type: "USER_RETRY" });
         return sim;
       },
       cause: { failure: unavailable, retryAtMs: null },
@@ -826,7 +780,7 @@ describe("access grant reducer", () => {
         sim.send({ type: "TICK" });
         sim.send({ type: "ROUND_FAILED", round: sim.round(), failure: unavailable });
         sim.elapse(3 * MINUTE - 10 * SECOND);
-        sim.send({ type: "WAKE", visible: true });
+        sim.send({ type: "USER_RETRY" });
         sim.elapse(10 * SECOND);
         sim.send({ type: "TICK" });
         return sim;
@@ -841,7 +795,7 @@ describe("access grant reducer", () => {
         sim.send({ type: "TICK" });
         sim.send({ type: "ROUND_FAILED", round: sim.round(), failure: unavailable });
         sim.elapse(10 * SECOND);
-        sim.send({ type: "TICK" });
+        sim.send({ type: "USER_RETRY" });
         sim.answerRound([
           [A, verified(A)],
           [B, verified(B)],
@@ -875,7 +829,7 @@ describe("access grant reducer", () => {
     )!.at.mono;
     expect(dormantSince - T0.mono).toBeLessThan(60 * MINUTE + 1 * MINUTE);
     sim.send({ type: "VISIBILITY", hidden: false });
-    sim.send({ type: "WAKE", visible: true });
+    sim.send({ type: "USER_RETRY" });
     expect(grantRoundInFlight(sim.state)?.startedAt).toEqual(sim.now);
   });
 
@@ -960,10 +914,10 @@ describe("access grant reducer", () => {
     },
   );
 
-  describe("a project the organization's list names and no evidence holds (a Mate someone else added)", () => {
+  describe("a project a visible consumer demands and no evidence holds", () => {
     const C = projectRef("project-c");
     const listed = (projects: ReadonlyArray<ProjectRef>): GrantEvent => ({
-      type: "PROJECTS_LISTED",
+      type: "PROJECTS_DEMANDED",
       projects,
     });
     const verifyRuns = (sim: GrantSim, project: ProjectRef) =>
@@ -1012,7 +966,8 @@ describe("access grant reducer", () => {
       sim.elapse(MINUTE);
       const state = sim.state;
       expect(sim.send(listed(projects))).toEqual([]);
-      expect(sim.state).toEqual(state);
+      expect(sim.state.phase).toEqual(state.phase);
+      expect(sim.state.demandedProjects).toEqual(projects);
     });
 
     it("is read once however often the list names it while its read is out", () => {
@@ -1022,31 +977,6 @@ describe("access grant reducer", () => {
       sim.elapse(SECOND);
       sim.send(listed([C]));
       expect(verifyRuns(sim, C)).toHaveLength(1);
-    });
-
-    it("is read again on the project rungs while its read fails, never given up", () => {
-      const sim = grantedSim();
-      const failingC: Responder = (run) =>
-        run.op.kind === "verify-project" && run.op.project.projectId === C.projectId
-          ? [
-              {
-                afterMs: SECOND,
-                event: {
-                  type: "PROJECT_RESULT",
-                  attempt: run.attempt,
-                  project: C,
-                  outcome: failed,
-                },
-              },
-            ]
-          : healthyPlatform(2 * SECOND)(run);
-      sim.send(listed([A, B, C]));
-      play(sim, 5 * MINUTE, failingC);
-      const starts = verifyRuns(sim, C).map(({ at }) => at.mono);
-      const gaps = starts.slice(1).map((at, index) => at - starts[index]!);
-      // Each rung counted from the failed answer a second after its start; the last one repeats.
-      expect(gaps.slice(0, 5)).toEqual([11, 21, 41, 61, 61].map((s) => s * SECOND));
-      expect(sim.read(C).allowed).toBe(false);
     });
 
     it("listed while a renewal round runs that did not target it, is read when that round ends", () => {
@@ -1061,38 +991,6 @@ describe("access grant reducer", () => {
       expect(grantRoundInFlight(sim.state)).toBeNull();
       expect(verifyRuns(sim, C)).toHaveLength(1);
     });
-
-    it.each([
-      ["verified by its own read", verified(C)],
-      ["whose first read failed", failed],
-    ] as const)(
-      "%s, is kept by a renewal round whose lagging search leaves it out",
-      (_label, outcome) => {
-        const sim = grantedSim();
-        sim.elapse(MINUTE);
-        sim.send(listed([A, B, C]));
-        sim.elapse(300);
-        sim.send({
-          type: "PROJECT_RESULT",
-          attempt: sim.lastRun("verify-project").attempt,
-          project: C,
-          outcome,
-        });
-        const allowed = sim.read(C).allowed;
-        play(sim, 12 * MINUTE + 10 * SECOND, () => []);
-        const round = sim.round();
-        // The search index lags: the round lists A and B, and nothing positively lacks C.
-        sim.send({ type: "ROUND_ACCOUNT", round, organizations, projects: [A, B] });
-        sim.send({ type: "ROUND_PROJECT", round, project: A, outcome: verified(A) });
-        sim.send({ type: "ROUND_PROJECT", round, project: B, outcome: verified(B) });
-        expect(grantRoundInFlight(sim.state)).toBeNull();
-        const evidence = sim.state.phase.phase === "granted" ? sim.state.phase.evidence : null;
-        expect(
-          evidence?.projects.has(C.projectId) === true || evidence?.unverified.has(C.projectId),
-        ).toBe(true);
-        expect(sim.read(C).allowed).toBe(allowed);
-      },
-    );
 
     it("is not read before the account's first grant: that round reads the list itself", () => {
       const sim = new GrantSim();
@@ -1223,7 +1121,7 @@ describe("access grant invariants over enumerated event sequences", () => {
       { now, event: { type: "USER_RETRY" } },
       { now, event: { type: "GRANTS_WRITTEN" } },
       // Someone else creates C: the organization's live list names it before any round does.
-      { now, event: { type: "PROJECTS_LISTED", projects: PROJECTS } },
+      { now, event: { type: "PROJECTS_DEMANDED", projects: PROJECTS } },
     ];
     if (state.phase.phase === "unverified") steps.push({ now, event: { type: "START" } });
     const round = grantRoundInFlight(state);
@@ -1467,16 +1365,14 @@ describe("access grant invariants over enumerated event sequences", () => {
         invariant(timerAhead, `I7 ${state.phase.phase} has a timer`);
         break;
       case "unverified-failed":
-        invariant(timerAhead || !online, "I7 unverified-failed retries");
+        invariant(state.timer === null || timerAhead, "I7 failed grant waits for manual retry");
         break;
       case "lapsed": {
         const renewal = state.phase.renewal;
         const exit =
           renewal.status === "running"
             ? timerAhead
-            : renewal.status === "dormant" ||
-              !online ||
-              (renewal.status === "backoff" && timerAhead);
+            : renewal.status === "dormant" || !online || renewal.status === "failed";
         invariant(exit, "I7 lapsed has an exit");
         break;
       }
@@ -1502,8 +1398,8 @@ describe("access grant invariants over enumerated event sequences", () => {
         [A, verified(A)],
         [B, failed],
       ]);
-      retrying.elapse(policy.projectRetryMs[0]!);
-      retrying.send({ type: "TICK" });
+      retrying.elapse(0);
+      retrying.send({ type: "USER_RETRY" });
       expect(retrying.state.projectAttempts.has(B.projectId)).toBe(true);
       roots.push({ state: retrying.state, now: retrying.now });
       const report = explore({
@@ -1529,3 +1425,30 @@ describe("access grant invariants over enumerated event sequences", () => {
     },
   );
 });
+
+it.each([false, true])(
+  "NO_ACCESS withholds a demanded project with round complete=%s",
+  (complete) => {
+    const sim = grantedSim();
+    sim.elapse(12 * MINUTE);
+    sim.send({ type: "TICK" });
+    const round = sim.round();
+    sim.send({ type: "ROUND_ACCOUNT", round, organizations, projects: [A, B] });
+    sim.send({
+      type: "ROUND_PROJECT",
+      round,
+      project: A,
+      outcome: {
+        kind: "verified",
+        access: { project: A, role: "NO_ACCESS", mutationsAllowed: false },
+      },
+    });
+    if (complete) sim.send({ type: "ROUND_PROJECT", round, project: B, outcome: verified(B) });
+    expect(sim.read(A)).toEqual({ allowed: false, reason: "role-denies", waitable: false });
+    expect(sim.state.published.projects.get(A.projectId)?.authority).toMatchObject({
+      kind: "withheld",
+      reason: "access-denied",
+    });
+    expect(sim.read(B)).toEqual({ allowed: true });
+  },
+);

@@ -474,6 +474,7 @@ describe("capabilities over the access grant", () => {
         // The platform answers again: the next round admits the grant, and the wait ends with it.
         const answered = yield* opened.await(write, 30 * SECOND);
         platform.roundFailure = null;
+        yield* opened.runtime.access.signal({ type: "USER_RETRY" });
         const startedAt = opened.clock.monoMs();
         while (answered.pollUnsafe() === undefined) yield* opened.pass(SECOND);
         yield* Fiber.join(answered);
@@ -567,7 +568,6 @@ describe("capabilities over the access grant", () => {
                   ],
                 };
               },
-              readAccessibleClientProjects: async () => ({ projects: [read], direct: false }),
               fetchProject: async () => read,
             },
             account,
@@ -661,6 +661,7 @@ describe("capabilities over the access grant", () => {
           // caller's to check.
           platform.roundFailure = null;
           platform.listed = [];
+          yield* opened.runtime.access.signal({ type: "USER_RETRY" });
           const granted = yield* opened.admitProjectWrite();
           while (granted.pollUnsafe() === undefined) yield* opened.pass(SECOND);
           yield* Fiber.join(granted);

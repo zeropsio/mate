@@ -14,7 +14,7 @@
  *   re-read from the account's bus.
  * - A Mate is connected while it holds a lease (krok-a-hub §3): the route's and the screen's, the
  *   one left last for `RECENT_MS`, an action's, a Connect's. The route's target is found through
- *   its record or the descriptor index, which a route nothing names sweeps once (§4.8). A
+ *   its record or the descriptor index or HQ. An unresolved route never probes other projects. A
  *   remembered Mate with no lease is parked: its registration, kept session and cached data stay,
  *   its socket closes.
  * - A registration nothing remembers — and that no install is writing — is released.
@@ -32,7 +32,6 @@ import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import { normalizeOrigin } from "../candidates.ts";
 import { identityMint } from "../data/access/capabilities.ts";
-import type { Instant } from "../data/access/grant.ts";
 import type { AccessGrantView } from "../data/access/grantDriver.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
 import {
@@ -59,7 +58,6 @@ import {
 import {
   indexDescriptors,
   resolveEnvironment,
-  sweepRead,
   type DescriptorIndex,
 } from "../environments/descriptorIndex.ts";
 import { candidateListingsAtom, type OrganizationListing } from "../environments/listings.ts";
@@ -363,11 +361,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const installing = new Map<string, number>();
   /** The origin each target's latest exchange ran at. */
   const exchangedAt = new Map<TargetKey, string>();
-  /** The route a sweep read targets for, and when each target's read counts from (`sweepRead`). */
-  let swept: {
-    readonly route: EnvironmentId | null;
-    readonly keys: ReadonlyMap<TargetKey, Instant>;
-  } = { route: null, keys: new Map() };
   /**
    * The confirming read of each project an absence waits on (§9 C19): held until no absence in
    * the project waits, read again whenever one asks for it again.
@@ -392,6 +385,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     { readonly lease: Fiber.Fiber<void>; readonly stop: () => void }
   >();
   const listeners = new Set<() => void>();
+  const detailLeases = new Map<string, Fiber.Fiber<void>>();
 
   const rowOf = (key: TargetKey) => rows.find((row) => row.key === key);
   /** The target's project as a listing names it, whether or not its services are read. */
@@ -409,11 +403,16 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     );
   const projectRefOf = (projectId: string): ProjectRef | undefined => {
     const listed = listingOf(projectId);
-    return listed === undefined
+    const organizationId =
+      listed?.organizationId ??
+      stores?.records.list().find((record) => record.projectRef?.projectId === projectId)
+        ?.projectRef?.orgId ??
+      activeOrganization;
+    return organizationId === null || organizationId === undefined
       ? undefined
       : {
           kind: "project",
-          organization: organizationRef(listed.organizationId),
+          organization: organizationRef(organizationId),
           projectId: ZeropsProjectId.make(projectId),
         };
   };
@@ -688,17 +687,48 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     if (left !== undefined) keepRecent(left);
   };
 
-  /**
-   * The route's target, wanted first: the one its record remembers, else the one the descriptor
-   * index finds, else the one HQ's index names; and the on-screen project's. While neither index
-   * names the route's environment, each present target read without an answer is read once more,
-   * once per route (§4.8's sweep, `sweepRead`): on its poll when one reads it, a poll interval
-   * after the failure the sweep saw, else at once. An unreachable one that fails that read too has
-   * answered for the index.
-   */
+  /** Hold detail only for the route, the project on screen, or an explicit action. */
   const updateRoute = () => {
     if (stores === null || closed) return;
-    if (swept.route !== route) swept = { route, keys: new Map() };
+    const routedProject =
+      route === null
+        ? null
+        : (stores.records.list().find((record) => record.environmentId === route)?.projectRef
+            ?.projectId ??
+          ports.hqIndex?.projectOf(route) ??
+          null);
+    const actionProjects = [...actions].map(
+      ({ environmentId }) =>
+        stores!.records.list().find((record) => record.environmentId === environmentId)?.projectRef
+          ?.projectId ??
+        ports.hqIndex?.projectOf(environmentId) ??
+        null,
+    );
+    const wanted = new Set(
+      [onScreen, routedProject, ...actionProjects].filter(
+        (id): id is string =>
+          id !== null && projectRefOf(id)?.organization.organizationId === activeOrganization,
+      ),
+    );
+    for (const [id, fiber] of detailLeases) {
+      if (wanted.has(id)) continue;
+      detailLeases.delete(id);
+      run(Fiber.interrupt(fiber));
+    }
+    for (const id of wanted) {
+      if (detailLeases.has(id)) continue;
+      const project = projectRefOf(id);
+      if (project === undefined || project.organization.organizationId !== activeOrganization)
+        continue;
+      detailLeases.set(
+        id,
+        run(
+          Effect.scoped(
+            data.acquire({ kind: "project-inventory", project }).pipe(Effect.andThen(Effect.never)),
+          ).pipe(Effect.ignore),
+        ),
+      );
+    }
     const shown = rows.flatMap((row) => (row.project.id === onScreen ? [row.key] : []));
     if (route === null) {
       routeKey = null;
@@ -716,17 +746,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       undefined;
     routeKey = key ?? null;
     holdViewed(key === undefined ? [] : [key], shown);
-    if (resolved !== undefined || hinted !== null) return;
-    const unswept = index.failed.filter((failed) => !swept.keys.has(failed));
-    if (unswept.length === 0) return;
-    const { containers } = stores;
-    const asked = ports.clock.now();
-    const reads = unswept.map((key) => [key, sweepRead(containers.machine(key), asked)] as const);
-    swept = {
-      route,
-      keys: new Map([...swept.keys, ...reads.map(([key, read]) => [key, read.from] as const)]),
-    };
-    for (const [key, read] of reads) if (read.request) containers.request(key);
   };
 
   /**
@@ -739,6 +758,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     for (const [key, machine] of stores.containers.machines()) {
       if (machine.state.level !== "booting") continue;
       const projectId = targetProject(key);
+      if (!detailLeases.has(projectId)) continue;
       const ref = projectRefOf(projectId);
       if (ref !== undefined) booting.set(projectId, ref);
     }
@@ -779,23 +799,16 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   let indexed: {
     readonly machines: ReadonlyMap<TargetKey, EnvironmentMachine>;
     readonly containers: ReadonlyMap<TargetKey, ContainerMachine>;
-    readonly reread: ReadonlyMap<TargetKey, Instant>;
     readonly index: DescriptorIndex;
   } | null = null;
   const indexOf = (): DescriptorIndex => {
     const machines = stores!.driver.machines();
     const containers = stores!.containers.machines();
-    const reread = swept.keys;
-    if (
-      indexed?.machines !== machines ||
-      indexed.containers !== containers ||
-      indexed.reread !== reread
-    ) {
+    if (indexed?.machines !== machines || indexed.containers !== containers) {
       indexed = {
         machines,
         containers,
-        reread,
-        index: indexDescriptors(machines, containers, reread),
+        index: indexDescriptors(machines, containers),
       };
     }
     return indexed.index;
@@ -954,8 +967,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         const action: ActionLease = { environmentId, key: null, letGo: null };
         actions.add(action);
         updateActions();
+        updateRoute();
         return () => {
           if (actions.delete(action)) action.letGo?.();
+          updateRoute();
         };
       },
       intend: (key, intent) => {
@@ -972,6 +987,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       },
       setActiveOrganization: (organizationId) => {
         activeOrganization = organizationId;
+        updateRoute();
       },
       setOnScreen: (projectId) => {
         if (onScreen === projectId) return;
@@ -1024,6 +1040,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         actions.clear();
         for (const release of checks.values()) release();
         checks.clear();
+        for (const fiber of detailLeases.values()) run(Fiber.interrupt(fiber));
+        detailLeases.clear();
         driver.dispose();
         containers.dispose();
         preferRoute();
