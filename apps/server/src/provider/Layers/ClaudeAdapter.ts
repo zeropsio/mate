@@ -3537,8 +3537,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         }
       }
 
+      // A helper's task list is its own (2.1.278 gives helpers no task tools):
+      // never the Mate's plan.
       if (
         !toolResult.isError &&
+        tool.agentId === undefined &&
         applyClaudeTaskToolResult(context.claudeTasks, tool, toolUseResult)
       ) {
         yield* emitClaudeTaskPlanUpdated(context, {

@@ -2686,6 +2686,24 @@ describe("ClaudeAdapterLive", () => {
         },
       },
       {
+        name: "a helper's own task list is never the Mate's plan",
+        messages: [
+          launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent"),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-task", name: "TaskCreate", input: { subject: "Read the schema" } },
+          ]),
+          {
+            ...(returned("toolu_agent_a", "tool-task", "Task #1 created") as object),
+            tool_use_result: { task: { id: "1", subject: "Read the schema" } },
+          } as unknown as SDKMessage,
+          turnEnd,
+        ],
+        check: (events) => {
+          assert.equal(events.filter((event) => event.type === "turn.plan.updated").length, 0);
+        },
+      },
+      {
         name: "a helper's end by a status patch closes its calls",
         messages: [
           launch("toolu_agent_a", { description: "Check the schema", prompt: PROMPT }),
