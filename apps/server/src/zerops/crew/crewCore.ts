@@ -52,6 +52,7 @@ import { ProviderInstances } from "../../spi/providerInstances.ts";
 import { ZeropsLogins } from "../ZeropsLogins.ts";
 import { ZeropsRestartRead } from "../ZeropsRestartRead.ts";
 import { deployStateOf, type DeployState } from "./crewDeployState.ts";
+import { withPermitWithin } from "./crewLockWait.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../ZeropsRepositorySource.ts";
 import {
   principalUserId,
@@ -606,6 +607,11 @@ export const makeCrewCore = Effect.gen(function* () {
      * `crewmate`'s lock taken only when free: `None`, and `effect` not run,
      * while its turn end, a merge in its copy or another press holds it.
      */
+    /** `crewmate`'s lock waited for at most `wait`; the work it then runs is never cut off. */
+    crewmateWithin:
+      (handle: string, wait: Duration.Input) =>
+      <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        withPermitWithin(lockOf(handle), wait)(effect),
     crewmateIfFree:
       (handle: string) =>
       <A, E, R>(effect: Effect.Effect<A, E, R>) =>
