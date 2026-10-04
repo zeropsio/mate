@@ -66,7 +66,6 @@ import {
   keptSessions,
 } from "./keptSessions";
 import { mateDescriptors } from "./mateDescriptors";
-import { makeDoorCaps } from "./doorCaps";
 import { pressesInFlight } from "./matePress";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
@@ -123,9 +122,6 @@ const unparkCommand = createRuntimeCommand(connectionAtomRuntime, {
 });
 
 const quiet = { reportFailure: false } as const;
-
-/** Each Mate's backoff cap, kept across loads under the account's storage (`doorCaps.ts`). */
-const doorCaps = makeDoorCaps(accountLocalStorage, () => Date.now());
 
 const servedApp = () => ({ origin: window.location.origin, basePath: appBasePath() });
 
@@ -513,7 +509,6 @@ export function webEnvironmentPorts(input: {
       // A kept session its Mate gave no word on mints next time: that exchange waits on the pace.
       kept: presentsKept,
       // A Mate's backoff cap outlives the load that reached it.
-      capped: doorCaps,
       readDescriptor: async (origin, signal) =>
         descriptorFacts(
           await mateDescriptors.descriptor(zeropsMateBaseUrl(origin, servedApp()), signal),

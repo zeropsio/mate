@@ -226,7 +226,6 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
   const ports: AccountEnvironmentPorts = {
     clock: {
       now: () => ({ wall: clock.wallMs(), mono: clock.monoMs() }),
-      random: () => 0.5,
       setTimer: () => () => undefined,
     },
     door: {

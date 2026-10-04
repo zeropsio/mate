@@ -2,7 +2,6 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  CAPPED_RETRY_MS,
   identityRestartOffered,
   initialEnvironment,
   transitionEnvironment,
@@ -34,7 +33,6 @@ const GUARDS: EnvironmentGuards = {
 
 const at = (ms: number): EnvironmentContext => ({
   now: { wall: ms, mono: ms },
-  random: () => 0.5,
 });
 
 const descriptor = (overrides: Partial<DescriptorFacts> = {}): DescriptorFacts => ({
@@ -94,6 +92,75 @@ const connected = (): EnvironmentMachine => {
 };
 
 describe("environment machine (DESIGN §4.4)", () => {
+  it("keeps a failed attempt terminal through lease, access, wake and container changes", () => {
+    const start = drive(initialEnvironment({ record: null }), [
+      { type: "GUARDS", guards: GUARDS },
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ]);
+    const failed = drive(start.machine, [
+      {
+        type: "EXCHANGE_FAILED",
+        attempt: lastExchange(start.machine),
+        failure: { class: "retryable", cause: { kind: "network" } },
+        descriptor: null,
+      },
+    ]);
+    expect(failed.machine.credential).toMatchObject({ kind: "failed", last: { kind: "network" } });
+    expect(failed.machine.timer).toBeNull();
+    const events: ReadonlyArray<EnvironmentEvent> = [
+      { type: "TICK" },
+      { type: "WAKE", visible: true },
+      { type: "ONLINE" },
+      { type: "GUARDS", guards: { ...GUARDS, want: false } },
+      { type: "GUARDS", guards: GUARDS },
+      { type: "ROLE_CHANGED" },
+      { type: "CONTAINER", container: { level: "booting", overdue: false } },
+      { type: "CONTAINER", container: { level: "ready" } },
+      { type: "PRESENCE", presence: { kind: "transitioning", status: "RESTARTING" } },
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ];
+    let machine = failed.machine;
+    for (const event of events) {
+      const next = drive(machine, [event]);
+      expect(next.machine.credential.kind).toBe("failed");
+      expect(next.effects.filter((effect) => effect.kind === "run")).toEqual([]);
+      machine = next.machine;
+    }
+    const again = drive(machine, [{ type: "USER_RETRY" }]);
+    expect(
+      again.effects.filter((effect) => effect.kind === "run" && effect.op.kind === "exchange"),
+    ).toHaveLength(1);
+  });
+
+  it("a new published endpoint originates one attempt after failure", () => {
+    const start = drive(initialEnvironment({ record: null }), [
+      { type: "GUARDS", guards: GUARDS },
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
+    ]);
+    const failed = drive(start.machine, [
+      {
+        type: "EXCHANGE_FAILED",
+        attempt: lastExchange(start.machine),
+        failure: { class: "retryable", cause: { kind: "network" } },
+        descriptor: null,
+      },
+    ]);
+    const moved = drive(failed.machine, [
+      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN + "/new" } },
+    ]);
+    expect(moved.machine.credential.kind).toBe("exchanging");
+    const ended = drive(moved.machine, [
+      {
+        type: "EXCHANGE_FAILED",
+        attempt: lastExchange(moved.machine),
+        failure: { class: "retryable", cause: { kind: "network" } },
+        descriptor: null,
+      },
+    ]);
+    expect(ended.machine.credential.kind).toBe("failed");
+    expect(drive(ended.machine, [{ type: "TICK" }]).machine.credential.kind).toBe("failed");
+  });
+
   it("blocked(configuration) on a redeployed Mate re-reads the descriptor and records the replacement", () => {
     const blocked = drive(connected(), [
       { type: "LINK", link: { phase: "blocked", reason: "configuration" } },
@@ -138,196 +205,45 @@ describe("environment machine (DESIGN §4.4)", () => {
     });
   });
 
-  it("a configuration block the descriptor does not explain stops minting after three rounds", () => {
-    /** Blocked(configuration), the re-read shows the same environment, the re-exchange lands. */
-    const blockRereadAndRotate = (machine: EnvironmentMachine): Run => {
-      const blocked = drive(machine, [
-        { type: "LINK", link: { phase: "blocked", reason: "configuration" } },
+  it.each(["authentication", "permission", "read-only"] as const)(
+    "a %s block ends visibly without another exchange",
+    (reason) => {
+      const blocked = drive(connected(), [{ type: "LINK", link: { phase: "blocked", reason } }]);
+      expect(blocked.machine.credential).toMatchObject(
+        reason === "authentication"
+          ? { kind: "failed", stage: "exchange", last: { kind: "rejected" } }
+          : { kind: "refused", reason: { kind: "role" } },
+      );
+      expect(
+        blocked.effects.filter((effect) => effect.kind === "run" && effect.op.kind === "exchange"),
+      ).toEqual([]);
+      const repeated = drive(blocked.machine, [
+        { type: "LINK", link: { phase: "blocked", reason } },
       ]);
-      const read = blocked.effects.find(
-        (effect): effect is Extract<EnvironmentEffect, { kind: "run" }> =>
-          effect.kind === "run" && effect.op.kind === "read-descriptor",
-      );
-      if (read === undefined) throw new Error("no descriptor re-read");
-      return drive(
-        blocked.machine,
-        [
-          {
-            type: "DESCRIPTOR_READ",
-            attempt: read.attempt,
-            result: { ok: true, descriptor: descriptor() },
-          },
-        ],
-        blocked.nowMs,
-      );
-    };
-    const rotate = (run: Run): EnvironmentMachine =>
-      drive(
-        run.machine,
-        [
-          {
-            type: "EXCHANGE_SUCCEEDED",
-            attempt: lastExchange(run.machine),
-            environmentId: ENV_A,
-            descriptor: null,
-          },
-        ],
-        run.nowMs,
-      ).machine;
+      expect(repeated.machine.credential).toEqual(blocked.machine.credential);
+    },
+  );
 
-    const first = blockRereadAndRotate(connected());
-    expect(first.machine.credential.kind).toBe("exchanging");
-    const second = blockRereadAndRotate(rotate(first));
-    expect(second.machine.credential.kind).toBe("exchanging");
-    const third = blockRereadAndRotate(rotate(second));
-    expect(third.machine.credential).toEqual({
+  it("a configuration block with the same descriptor refuses once without minting", () => {
+    const blocked = drive(connected(), [
+      { type: "LINK", link: { phase: "blocked", reason: "configuration" } },
+    ]);
+    const read = blocked.effects.find(
+      (effect) => effect.kind === "run" && effect.op.kind === "read-descriptor",
+    );
+    if (read?.kind !== "run") throw new Error("no descriptor read");
+    const ended = drive(blocked.machine, [
+      {
+        type: "DESCRIPTOR_READ",
+        attempt: read.attempt,
+        result: { ok: true, descriptor: descriptor() },
+      },
+    ]);
+    expect(ended.machine.credential).toEqual({
       kind: "refused",
       reason: { kind: "configuration" },
     });
-    expect(third.effects).toContainEqual({
-      kind: "log",
-      diagnostic: { kind: "configuration-loop", blocks: 3 },
-    });
-    expect(selectReachability(third.machine, ENV_A)).toEqual({ kind: "refused-configuration" });
-
-    // Nothing but an input change leaves it: time passes and wakes arrive, and no exchange starts.
-    const waited = drive(third.machine, [
-      { type: "TICK" },
-      { type: "WAKE", visible: true },
-      { type: "ONLINE" },
-    ]);
-    expect(waited.machine.credential.kind).toBe("refused");
-    const retried = drive(waited.machine, [{ type: "USER_RETRY" }]);
-    expect(retried.machine.credential.kind).toBe("exchanging");
-  });
-
-  it("a connect between configuration blocks starts the count over", () => {
-    let machine = connected();
-    for (let round = 0; round < 5; round += 1) {
-      const blocked = drive(machine, [
-        { type: "LINK", link: { phase: "blocked", reason: "configuration" } },
-      ]);
-      const read = blocked.effects.find(
-        (effect): effect is Extract<EnvironmentEffect, { kind: "run" }> =>
-          effect.kind === "run" && effect.op.kind === "read-descriptor",
-      );
-      if (read === undefined) throw new Error("no descriptor re-read");
-      const reread = drive(blocked.machine, [
-        {
-          type: "DESCRIPTOR_READ",
-          attempt: read.attempt,
-          result: { ok: true, descriptor: descriptor() },
-        },
-      ]).machine;
-      machine = drive(reread, [
-        {
-          type: "EXCHANGE_SUCCEEDED",
-          attempt: lastExchange(reread),
-          environmentId: ENV_A,
-          descriptor: null,
-        },
-        { type: "LINK", link: { phase: "connecting" } },
-        { type: "LINK", link: { phase: "connected" } },
-      ]).machine;
-      expect(machine.credential.kind).toBe("held");
-    }
-  });
-
-  it("after a role change, the first permission block re-exchanges once before refusing the role", () => {
-    const blockAndRotate = (machine: EnvironmentMachine): EnvironmentMachine => {
-      const blocked = drive(machine, [
-        { type: "LINK", link: { phase: "blocked", reason: "permission" } },
-      ]).machine;
-      expect(blocked.credential).toMatchObject({ kind: "exchanging", reconnect: true });
-      return drive(blocked, [
-        {
-          type: "EXCHANGE_SUCCEEDED",
-          attempt: lastExchange(blocked),
-          environmentId: ENV_A,
-          descriptor: null,
-        },
-      ]).machine;
-    };
-    const refused = drive(blockAndRotate(connected()), [
-      { type: "LINK", link: { phase: "blocked", reason: "permission" } },
-    ]).machine;
-    expect(refused.credential).toEqual({ kind: "refused", reason: { kind: "role" } });
-
-    const raised = drive(refused, [{ type: "ROLE_CHANGED" }]).machine;
-    const rotated = drive(raised, [
-      {
-        type: "EXCHANGE_SUCCEEDED",
-        attempt: lastExchange(raised),
-        environmentId: ENV_A,
-        descriptor: null,
-      },
-    ]).machine;
-    // The server re-checks roles on a timer: its first verdict on the raised role may be stale.
-    expect(blockAndRotate(rotated).credential.kind).toBe("held");
-  });
-
-  it.each([
-    { name: "any other target's next retry is five minutes out", routeTarget: false, capped: true },
-    { name: "the route's target stays on the ladder", routeTarget: true, capped: false },
-  ])("after five consecutive automatic failures, $name", ({ routeTarget, capped }) => {
-    let run = drive(initialEnvironment({ record: ENV_A }), [
-      { type: "GUARDS", guards: { ...GUARDS, routeTarget } },
-      { type: "CONTAINER", container: { level: "ready" } },
-      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
-    ]);
-    const retryDelays: Array<number> = [];
-    for (let failure = 1; failure <= 5; failure += 1) {
-      run = drive(
-        run.machine,
-        [
-          {
-            type: "EXCHANGE_FAILED",
-            attempt: lastExchange(run.machine),
-            failure: { class: "retryable", cause: { kind: "network" } },
-            descriptor: null,
-          },
-        ],
-        run.nowMs,
-      );
-      const credential = run.machine.credential;
-      if (credential.kind !== "backoff") throw new Error("no backoff");
-      retryDelays.push(credential.retryAt.wall - run.nowMs);
-      run = drive(run.machine, [{ type: "TICK" }], run.nowMs);
-    }
-    expect(retryDelays.slice(0, 4).every((delay) => delay < CAPPED_RETRY_MS)).toBe(true);
-    if (capped) expect(retryDelays[4]).toBe(CAPPED_RETRY_MS);
-    // The fifth rung, 30 s within its jitter: the route is read again in half a minute at most.
-    else expect(retryDelays[4]).toBeLessThanOrEqual(36_000);
-  });
-
-  it("a Mate on the five-minute cap that becomes the route is exchanged at once", () => {
-    const other = { ...GUARDS, routeTarget: false };
-    let run = drive(initialEnvironment({ record: ENV_A }), [
-      { type: "GUARDS", guards: other },
-      { type: "CONTAINER", container: { level: "ready" } },
-      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
-    ]);
-    for (let failure = 1; failure <= 5; failure += 1) {
-      run = drive(
-        run.machine,
-        [
-          {
-            type: "EXCHANGE_FAILED",
-            attempt: lastExchange(run.machine),
-            failure: { class: "retryable", cause: { kind: "network" } },
-            descriptor: null,
-          },
-        ],
-        run.nowMs,
-      );
-      if (failure < 5) run = drive(run.machine, [{ type: "TICK" }], run.nowMs);
-    }
-    const capped = run.machine.credential;
-    if (capped.kind !== "backoff") throw new Error("no backoff");
-    expect(capped.retryAt.wall - run.nowMs).toBe(CAPPED_RETRY_MS);
-
-    const opened = drive(run.machine, [{ type: "GUARDS", guards: GUARDS }], run.nowMs);
-    expect(opened.machine.credential.kind).toBe("exchanging");
+    expect(ended.effects.filter((effect) => effect.kind === "run")).toEqual([]);
   });
 
   it("an exchange that answers after the user removed the Mate is logged stale and never held", () => {
@@ -347,7 +263,7 @@ describe("environment machine (DESIGN §4.4)", () => {
     ]);
   });
 
-  it("a credential this tab could not install backs off and is exchanged again", () => {
+  it("a failed install ends until Connect again", () => {
     const exchanging = drive(initialEnvironment({ record: null }), [
       { type: "GUARDS", guards: GUARDS },
       { type: "CONTAINER", container: { level: "ready" } },
@@ -368,47 +284,18 @@ describe("environment machine (DESIGN §4.4)", () => {
     ).toMatchObject({ kind: "held", environmentId: ENV_A });
 
     const failed = drive(held, [{ type: "INSTALL_FAILED", environmentId: ENV_A }]);
-    expect(failed.machine.credential).toMatchObject({ kind: "backoff", last: { kind: "install" } });
-    expect(failed.machine.failures).toBe(1);
+    expect(failed.machine.credential).toMatchObject({ kind: "failed", last: { kind: "install" } });
+    expect(failed.machine.failuresSinceConnect).toBe(1);
     expect(selectReachability(failed.machine, null)).toMatchObject({
-      kind: "retrying",
+      kind: "failed",
       last: { kind: "install" },
     });
 
-    const retried = drive(failed.machine, [{ type: "TICK" }], failed.nowMs);
+    const retried = drive(failed.machine, [{ type: "USER_RETRY" }], failed.nowMs);
     expect(retried.machine.credential.kind).toBe("exchanging");
   });
 
-  it("a credential that keeps failing to install climbs the ladder to the cap", () => {
-    let run = drive(initialEnvironment({ record: null }), [
-      { type: "GUARDS", guards: { ...GUARDS, routeTarget: false } },
-      { type: "CONTAINER", container: { level: "ready" } },
-      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
-    ]);
-    const retryDelays: Array<number> = [];
-    for (let failure = 1; failure <= 5; failure += 1) {
-      run = drive(
-        run.machine,
-        [
-          {
-            type: "EXCHANGE_SUCCEEDED",
-            attempt: lastExchange(run.machine),
-            environmentId: ENV_A,
-            descriptor: null,
-          },
-          { type: "INSTALL_FAILED", environmentId: ENV_A },
-        ],
-        run.nowMs,
-      );
-      const credential = run.machine.credential;
-      if (credential.kind !== "backoff") throw new Error("no backoff");
-      retryDelays.push(credential.retryAt.wall - run.nowMs);
-      run = drive(run.machine, [{ type: "TICK" }], run.nowMs);
-    }
-    expect(retryDelays).toEqual([2_000, 4_000, 8_000, 15_000, CAPPED_RETRY_MS]);
-  });
-
-  it("counts the failures since its link last connected, through a Try now, until it connects", () => {
+  it("counts the failures since its link last connected, through Connect again, until it connects", () => {
     const fail = (machine: EnvironmentMachine, nowMs: number) =>
       drive(
         machine,
@@ -430,12 +317,12 @@ describe("environment machine (DESIGN §4.4)", () => {
     expect(started.machine.failuresSinceConnect).toBe(0);
     const once = fail(started.machine, started.nowMs);
     expect(once.machine.failuresSinceConnect).toBe(1);
-    // Try now starts the ladder over; what failed since the link connected still stands.
+    // Connect again starts one attempt; the earlier failures still stand.
     const retried = drive(once.machine, [{ type: "USER_RETRY" }], once.nowMs);
     expect(retried.machine.failuresSinceConnect).toBe(1);
     const twice = fail(retried.machine, retried.nowMs);
     expect(twice.machine.failuresSinceConnect).toBe(2);
-    const again = drive(twice.machine, [{ type: "TICK" }], twice.nowMs);
+    const again = drive(twice.machine, [{ type: "USER_RETRY" }], twice.nowMs);
     const held = drive(
       again.machine,
       [
@@ -475,7 +362,7 @@ describe("environment machine (DESIGN §4.4)", () => {
         ],
         nowMs,
       );
-      return drive(failed.machine, [{ type: "TICK" }], failed.nowMs);
+      return drive(failed.machine, [{ type: "USER_RETRY" }], failed.nowMs);
     };
     const started = drive(initialEnvironment({ record: null }), [
       { type: "GUARDS", guards: GUARDS },
@@ -507,104 +394,6 @@ describe("environment machine (DESIGN §4.4)", () => {
     expect(seen([booting, { level: "ready" }, booting])).toBe(true);
   });
 
-  it("the ladder starts over once the registry took the credential", () => {
-    const started = drive(initialEnvironment({ record: null }), [
-      { type: "GUARDS", guards: GUARDS },
-      { type: "CONTAINER", container: { level: "ready" } },
-      { type: "PRESENCE", presence: { kind: "present", origin: ORIGIN } },
-    ]);
-    const failed = drive(
-      started.machine,
-      [
-        {
-          type: "EXCHANGE_FAILED",
-          attempt: lastExchange(started.machine),
-          failure: { class: "retryable", cause: { kind: "network" } },
-          descriptor: null,
-        },
-        { type: "TICK" },
-      ],
-      started.nowMs,
-    );
-    const held = drive(
-      failed.machine,
-      [
-        {
-          type: "EXCHANGE_SUCCEEDED",
-          attempt: lastExchange(failed.machine),
-          environmentId: ENV_A,
-          descriptor: null,
-        },
-      ],
-      failed.nowMs,
-    ).machine;
-    expect(held).toMatchObject({ credential: { kind: "held", installed: false }, failures: 1 });
-
-    // An answer for a credential this machine no longer holds changes nothing.
-    expect(drive(held, [{ type: "INSTALLED", environmentId: ENV_B }]).machine).toBe(held);
-
-    const installed = drive(held, [{ type: "INSTALLED", environmentId: ENV_A }]).machine;
-    expect(installed).toMatchObject({
-      credential: { kind: "held", environmentId: ENV_A, installed: true },
-      failures: 0,
-      ladder: { rung: 0 },
-    });
-  });
-
-  it("counts one auth rejection per rotated credential and backs off on the third within two minutes", () => {
-    /** The link rejects the held credential; the re-exchange succeeds and installs a new one. */
-    const rejectAndRotate = (machine: EnvironmentMachine, nowMs: number): Run => {
-      const rejected = drive(
-        machine,
-        [
-          { type: "LINK", link: { phase: "blocked", reason: "authentication" } },
-          // The supervisor re-attempts with the stored credential on any signal: the same
-          // credential is rejected again while the new one is being exchanged. Not counted.
-          { type: "LINK", link: { phase: "blocked", reason: "authentication" } },
-        ],
-        nowMs,
-      );
-      expect(rejected.machine.credential).toMatchObject({ kind: "exchanging", reconnect: true });
-      return drive(
-        rejected.machine,
-        [
-          {
-            type: "EXCHANGE_SUCCEEDED",
-            attempt: lastExchange(rejected.machine),
-            environmentId: ENV_A,
-            descriptor: null,
-          },
-        ],
-        rejected.nowMs,
-      );
-    };
-    const first = rejectAndRotate(connected(), 200_000);
-    const second = rejectAndRotate(first.machine, first.nowMs);
-    const third = drive(
-      second.machine,
-      [{ type: "LINK", link: { phase: "blocked", reason: "authentication" } }],
-      second.nowMs,
-    );
-    expect(third.machine.credential).toMatchObject({
-      kind: "backoff",
-      last: { kind: "rejected" },
-      reconnect: true,
-    });
-    expect(third.effects).toContainEqual({
-      kind: "log",
-      diagnostic: { kind: "auth-loop", rejections: 3 },
-    });
-
-    // Rejections older than two minutes no longer count.
-    const later = rejectAndRotate(second.machine, second.nowMs + 120_000);
-    expect(later.machine.credential.kind).toBe("held");
-  });
-
-  /**
-   * Restart is offered for identity `failed` only when two consecutive descriptor reads report
-   * `failed` with an advancing `identityCheckedAt` AND this tab's grant is granted and fresh over
-   * the same period: Zerops answered us after the Mate's key first failed.
-   */
   describe("the Restart-for-identity rule", () => {
     const FIRST = "2026-09-23T10:00:00.000Z";
     const SECOND = "2026-09-23T10:00:20.000Z";
@@ -631,7 +420,7 @@ describe("environment machine (DESIGN §4.4)", () => {
             descriptor: failedAt(FIRST),
           },
           { type: "GUARDS", guards: { ...GUARDS, ...input.grantBetween } },
-          { type: "TICK" },
+          { type: "USER_RETRY" },
         ],
         start.nowMs,
       );
@@ -680,7 +469,7 @@ describe("environment machine (DESIGN §4.4)", () => {
           second: row.second,
           grantBetween: row.grantBetween(104_000),
         });
-        expect(machine.credential.kind).toBe("backoff");
+        expect(machine.credential.kind).toBe("failed");
         expect(identityRestartOffered(machine)).toBe(row.offered);
       });
     }

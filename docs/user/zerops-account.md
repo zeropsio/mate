@@ -14,6 +14,11 @@ HQ calls stop with a visible failure when HQ cannot answer. Press **Try again** 
 If HQ's live connection drops, Mate keeps the last known projects visible and stops until
 you press **Try again** in the menu; Mate chats remain available.
 
+Connecting to a Mate makes one attempt. If reading its connection details, signing in, or setting
+up the connection fails, Mate keeps the reason visible. Press **Connect again** to make one new
+attempt. A new published address or a redeployed Mate can start one attempt for that new target;
+waking the tab or restoring the network does not repeat a failed sign-in.
+
 Opening a Mate reads its project before connecting. If that read cannot start, Mate shows the
 reason and **Again**. Press **Again** to make one new attempt.
 

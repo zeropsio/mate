@@ -35,7 +35,6 @@ function manualClock(): ExchangeClock & {
   const timers = new Map<number, { readonly at: number; readonly fire: () => void }>();
   return {
     now: () => ({ wall: mono + wallOffset, mono }),
-    random: () => 0.5,
     setTimer: (delayMs, fire) => {
       const id = nextId;
       nextId += 1;
@@ -410,7 +409,7 @@ describe("container store (DESIGN §4.5)", () => {
     store.dispose();
   });
 
-  it("the route's Mate coming back after its exchanges failed is exchanged within seconds", async () => {
+  it("container recovery leaves a failed Connect ended until Connect again", async () => {
     const setup = rig();
     const { clock, store } = setup;
     setup.answer = { kind: "unreachable" };
@@ -458,16 +457,20 @@ describe("container store (DESIGN §4.5)", () => {
     ]);
     driver.setDemand("route", [KEY]);
 
-    // Down for a minute: its exchanges fail and climb the ladder.
+    // Down for a minute: its one exchange fails.
     await clock.advance(60_000);
     expect(driver.machine(KEY)?.credential.kind).not.toBe("held");
     const failed = exchanges.length;
 
-    // It comes back: the next read of its container finds it, and it is exchanged at once.
+    // Container recovery does not reopen the failed exchange.
     down = false;
     setup.answer = ready("0.11.40");
     await clock.advance(3_000);
-    expect(exchanges.length).toBeGreaterThan(failed);
+    expect(exchanges).toHaveLength(failed);
+    expect(driver.machine(KEY)?.credential.kind).toBe("failed");
+    driver.retry(KEY);
+    await clock.advance(0);
+    expect(exchanges).toHaveLength(failed + 1);
     expect(driver.machine(KEY)?.credential.kind).toBe("held");
     unbind();
     driver.dispose();

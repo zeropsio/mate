@@ -179,8 +179,8 @@ describe("connectResult: the user's Connect as the projects page reads it", () =
       outcome: {
         _tag: "NotConnected",
         reachability: {
-          kind: "retrying",
-          retryAtMs: Date.now() + 4_000,
+          kind: "failed",
+          stage: "exchange",
           last: { kind: "server", status: 500 },
           restart: false,
         },

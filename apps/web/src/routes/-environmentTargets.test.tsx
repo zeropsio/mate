@@ -225,7 +225,6 @@ function exchangeDriver(): ExchangeDriver {
   return makeExchangeDriver<unknown>({
     clock: {
       now: () => ({ wall: nowMs, mono: nowMs }),
-      random: () => 0.5,
       setTimer: () => () => undefined,
     },
     exchange: async () => ({
@@ -465,11 +464,11 @@ const VERDICTS: ReadonlyArray<readonly [Reachability["kind"], EnvironmentMachine
     machine({ credential: { kind: "waiting", on: "zerops", reconnect: false } }),
   ],
   [
-    "retrying",
+    "failed",
     machine({
       credential: {
-        kind: "backoff",
-        retryAt: { wall: 5_000, mono: 5_000 },
+        kind: "failed",
+        stage: "exchange",
         last: { kind: "network" },
         reconnect: false,
       },
@@ -733,8 +732,8 @@ describe("useRouteGateInputs", () => {
     {
       name: "a present Mate's descriptor has not been read",
       machines: other({
-        kind: "backoff",
-        retryAt: { wall: 5_000, mono: 5_000 },
+        kind: "failed",
+        stage: "exchange",
         last: { kind: "network" },
         reconnect: false,
       }),
@@ -744,8 +743,8 @@ describe("useRouteGateInputs", () => {
     {
       name: "a present Mate's descriptor read failed once (a network or CORS failure)",
       machines: other({
-        kind: "backoff",
-        retryAt: { wall: 5_000, mono: 5_000 },
+        kind: "failed",
+        stage: "exchange",
         last: { kind: "network" },
         reconnect: false,
       }),
@@ -756,8 +755,8 @@ describe("useRouteGateInputs", () => {
     {
       name: "the only present Mate's descriptor failed the sweep's read too",
       machines: other({
-        kind: "backoff",
-        retryAt: { wall: 5_000, mono: 5_000 },
+        kind: "failed",
+        stage: "exchange",
         last: { kind: "network" },
         reconnect: false,
       }),
@@ -774,8 +773,8 @@ describe("useRouteGateInputs", () => {
     {
       name: "every exchange has settled and every present descriptor named another",
       machines: other({
-        kind: "backoff",
-        retryAt: { wall: 5_000, mono: 5_000 },
+        kind: "failed",
+        stage: "exchange",
         last: { kind: "network" },
         reconnect: false,
       }),

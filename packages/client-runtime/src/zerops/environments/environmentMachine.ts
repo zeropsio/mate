@@ -19,14 +19,6 @@ import type { EnvironmentId, ExecutionEnvironmentUpdate } from "@t3tools/contrac
 import type { ConnectionBlockedReason } from "../../connection/model.ts";
 import type { GrantCapability, Instant } from "../data/access/grant.ts";
 import type { AbsenceEvidence } from "../knowledge/known.ts";
-import {
-  backoffOn,
-  INITIAL_BACKOFF,
-  scheduleRetry,
-  type Backoff,
-  type RetryTrigger,
-} from "../knowledge/retryPolicy.ts";
-
 // ── Region P: presence ────────────────────────────────────────────────────────────────────────
 
 /**
@@ -110,7 +102,7 @@ export type Link =
 /** What a wanted exchange waits for before it may start. */
 export type WaitingOn = "presence" | "container" | "access" | "zerops" | "visible" | "budget";
 
-/** A failure the machine retries on its own (§4.4 failure classes). */
+/** A failed Connect attempt; only a new action or target identity may start another. */
 export type ExchangeCause =
   | { readonly kind: "network" }
   | { readonly kind: "timeout" }
@@ -126,7 +118,12 @@ export type ExchangeCause =
   /** The Mate kept refusing freshly exchanged credentials. */
   | { readonly kind: "rejected" }
   /** The exchanged credential could not be registered or rotated in this tab. */
-  | { readonly kind: "install" };
+  | { readonly kind: "install" }
+  | { readonly kind: "project-mismatch" }
+  | {
+      readonly kind: "access";
+      readonly reason: Extract<GrantCapability, { allowed: false }>["reason"];
+    };
 
 /** A "no" that retrying does not change; it waits for the user or an input change. */
 export type RefusalReason =
@@ -168,8 +165,8 @@ export type Credential =
       readonly reconnect: boolean;
     }
   | {
-      readonly kind: "backoff";
-      readonly retryAt: Instant;
+      readonly kind: "failed";
+      readonly stage: "admission" | "descriptor" | "exchange" | "installation";
       readonly last: ExchangeCause;
       readonly reconnect: boolean;
     }
@@ -177,7 +174,7 @@ export type Credential =
   | {
       readonly kind: "held";
       readonly environmentId: EnvironmentId;
-      /** The registry took it; until then the ladder it was exchanged on still counts. */
+      /** The registry took the accepted credential; until then Connect is still in flight. */
       readonly installed: boolean;
       /**
        * The link's block was published for the credential this one replaced. Installing this one
@@ -253,15 +250,9 @@ export interface EnvironmentMachine {
   readonly descriptor: DescriptorFacts | null;
   /** Environment ids a redeploy replaced, each mapped to the newest one that replaced it. */
   readonly superseded: ReadonlyMap<EnvironmentId, EnvironmentId>;
-  /** Where the next automatic retry sits on the backoff ladder. */
-  readonly ladder: Backoff;
-  /** Consecutive automatic failures; from the cap on, retries slow to the capped interval. */
-  readonly failures: number;
-  /**
-   * Failures since its link last connected, whatever started the ladder over (a Try now, a
-   * registry taking the credential): only a connect clears it. A new Mate's arrival holds its
-   * board only through the first of them (`arrivalHoldsThrough`).
-   */
+  /** Last published endpoint, kept through temporary absence and lifecycle changes. */
+  readonly targetOrigin: string | null;
+  /** Failures since the link last connected, including manual Connect attempts. */
   readonly failuresSinceConnect: number;
   /**
    * Of those, the ones its server answered — with an error, a refusal of its credential, a
@@ -275,18 +266,6 @@ export interface EnvironmentMachine {
    * Kept through a boot that follows, so a Mate that answered never reads as arriving again.
    */
   readonly readySeen: boolean;
-  /**
-   * Monotonic times of the auth rejections counted in the loop window. Every published
-   * `blocked(authentication)` belongs to the stored credential, so one counts per credential held.
-   */
-  readonly authRejections: ReadonlyArray<number>;
-  /** The link was blocked on permission once and one exchange was spent on it. */
-  readonly permissionRetried: boolean;
-  /**
-   * Configuration blocks in a row the descriptor did not explain (the same environment), each
-   * answered by a re-exchange; a connect or an input change starts the count over.
-   */
-  readonly configurationBlocks: number;
   /** A descriptor read reported identity `ok` since Zerops last started failing for the grant. */
   readonly identityAnswered: boolean;
   /** Consecutive descriptor reads reporting identity `failed`, each with a newer check. */
@@ -339,7 +318,7 @@ export type EnvironmentEvent =
   | { readonly type: "INSTALL_FAILED"; readonly environmentId: EnvironmentId }
   | { readonly type: "ROLE_CHANGED" }
   | { readonly type: "TICK" }
-  /** §6.4's coalesced wake: a visible one resets the ladder and retries now. */
+  /** Visibility wake; completed attempts stay completed. */
   | { readonly type: "WAKE"; readonly visible: boolean }
   | { readonly type: "ONLINE" }
   | { readonly type: "USER_RETRY" }
@@ -360,10 +339,7 @@ export type EnvironmentOp =
   /** `catalog.remove`, the door's logout and the record's deletion; drafts keep their keys. */
   | { readonly kind: "retire"; readonly environmentId: EnvironmentId | null };
 
-export type EnvironmentDiagnostic =
-  | { readonly kind: "stale-result"; readonly attempt: number }
-  | { readonly kind: "auth-loop"; readonly rejections: number }
-  | { readonly kind: "configuration-loop"; readonly blocks: number };
+export type EnvironmentDiagnostic = { readonly kind: "stale-result"; readonly attempt: number };
 
 export const ENVIRONMENT_TIMER_KEY = "environment";
 
@@ -380,25 +356,12 @@ export type EnvironmentEffect =
 
 export interface EnvironmentContext {
   readonly now: Instant;
-  /** The jitter source for the backoff ladder. */
-  readonly random: () => number;
 }
 
 /** From the moment the capability is allowed: descriptor, mint, door and token exchange (§4.4). */
 export const EXCHANGE_DEADLINE_MS = 20_000;
 /** One descriptor probe (§4.5's pool deadline). */
 export const DESCRIPTOR_DEADLINE_MS = 8_000;
-/** After this many consecutive automatic failures, retries slow to `CAPPED_RETRY_MS`. */
-export const RETRY_CAP = 5;
-export const CAPPED_RETRY_MS = 5 * 60_000;
-/** This many auth rejections inside `AUTH_LOOP_WINDOW_MS` back off instead of re-exchanging. */
-export const AUTH_LOOP_REJECTIONS = 3;
-export const AUTH_LOOP_WINDOW_MS = 2 * 60_000;
-/** This many unexplained configuration blocks in a row refuse instead of re-exchanging. */
-export const CONFIGURATION_LOOP_BLOCKS = 3;
-/** Identity `failed` backs off from the 15 s rung (§4.4). */
-const IDENTITY_FAILED_RUNG = 3;
-
 const NO_IDENTITY_FAILURES: EnvironmentMachine["identityFailures"] = {
   reads: 0,
   lastCheckedAt: null,
@@ -417,14 +380,10 @@ export const initialEnvironment = (input: {
   record: input.record,
   descriptor: null,
   superseded: new Map(),
-  ladder: INITIAL_BACKOFF,
-  failures: 0,
+  targetOrigin: null,
   failuresSinceConnect: 0,
   errorsSinceConnect: 0,
   readySeen: false,
-  authRejections: [],
-  permissionRetried: false,
-  configurationBlocks: 0,
   identityAnswered: false,
   identityFailures: NO_IDENTITY_FAILURES,
   nextAttempt: 1,
@@ -490,7 +449,7 @@ const reconnecting = (credential: Credential): boolean =>
   (credential.kind === "none" ||
     credential.kind === "waiting" ||
     credential.kind === "exchanging" ||
-    credential.kind === "backoff") &&
+    credential.kind === "failed") &&
   credential.reconnect;
 
 /** Moves an idle or waiting credential to where its guards put it now. */
@@ -534,28 +493,11 @@ const evaluate = (
   }
 };
 
-/** A backoff the trigger releases returns to `none`, which the guards judge next. */
-const release = (machine: EnvironmentMachine, trigger: RetryTrigger): EnvironmentMachine => {
-  const ladder = backoffOn(machine.ladder, trigger);
-  const credential = machine.credential;
-  return credential.kind === "backoff"
-    ? { ...machine, ladder, credential: { kind: "none", reconnect: credential.reconnect } }
-    : { ...machine, ladder };
-};
-
-/**
- * A user retry or an input change: the ladder, the cap and the permission retry start over, a
- * refusal re-evaluates.
- */
-const inputChanged = (
-  machine: EnvironmentMachine,
-  trigger: "user-retry" | "input-change",
-): EnvironmentMachine => {
-  const reset = { ...machine, failures: 0, permissionRetried: false, configurationBlocks: 0 };
-  return machine.credential.kind === "refused"
-    ? { ...reset, ladder: INITIAL_BACKOFF, credential: { kind: "none", reconnect: false } }
-    : release(reset, trigger);
-};
+/** Only a person's action or a new target identity reopens a completed attempt. */
+const inputChanged = (machine: EnvironmentMachine): EnvironmentMachine =>
+  machine.credential.kind === "refused" || machine.credential.kind === "failed"
+    ? { ...machine, credential: { kind: "none", reconnect: reconnecting(machine.credential) } }
+    : machine;
 
 // ── Failures ──────────────────────────────────────────────────────────────────────────────────
 
@@ -566,31 +508,17 @@ export const NOT_ANSWERING_CAUSES: ReadonlySet<ExchangeCause["kind"]> = new Set(
   "descriptor-unreachable",
 ]);
 
-const backoff = (
+const failed = (
   machine: EnvironmentMachine,
   cause: ExchangeCause,
   reconnect: boolean,
-  ctx: EnvironmentContext,
-): EnvironmentMachine => {
-  const failures = machine.failures + 1;
-  const from: Backoff =
-    cause.kind === "identity-failed"
-      ? { rung: Math.max(machine.ladder.rung, IDENTITY_FAILED_RUNG) }
-      : machine.ladder;
-  const next = scheduleRetry(from, ctx.now.wall, ctx.random);
-  // The cap spares a Mate nobody is looking at; the route's own stays on the ladder, which its
-  // container coming back also cuts short (`bindContainerStore`).
-  const capped = failures >= RETRY_CAP && !machine.guards.routeTarget;
-  const delayMs = capped ? CAPPED_RETRY_MS : next.retryAtMs - ctx.now.wall;
-  return {
-    ...machine,
-    failures,
-    failuresSinceConnect: machine.failuresSinceConnect + 1,
-    errorsSinceConnect: machine.errorsSinceConnect + (NOT_ANSWERING_CAUSES.has(cause.kind) ? 0 : 1),
-    ladder: next.backoff,
-    credential: { kind: "backoff", retryAt: after(ctx.now, delayMs), last: cause, reconnect },
-  };
-};
+  stage: Extract<Credential, { kind: "failed" }>["stage"] = "exchange",
+): EnvironmentMachine => ({
+  ...machine,
+  failuresSinceConnect: machine.failuresSinceConnect + 1,
+  errorsSinceConnect: machine.errorsSinceConnect + (NOT_ANSWERING_CAUSES.has(cause.kind) ? 0 : 1),
+  credential: { kind: "failed", stage, last: cause, reconnect },
+});
 
 const refuse = (
   machine: EnvironmentMachine,
@@ -610,7 +538,7 @@ const refuse = (
 
 // ── Descriptor ────────────────────────────────────────────────────────────────────────────────
 
-/** A change that re-opens a refusal or a backoff: a new environment or a new server version. */
+/** A new target revision that may originate one attempt: a new environment or a new server version. */
 const descriptorMoved = (before: DescriptorFacts | null, after: DescriptorFacts): boolean =>
   before !== null &&
   (before.environmentId !== after.environmentId || before.serverVersion !== after.serverVersion);
@@ -691,7 +619,7 @@ const probed = (
   out: Effects,
 ): EnvironmentMachine => {
   if (!result.ok) {
-    return backoff(machine, { kind: "descriptor-unreachable" }, credential.reconnect, ctx);
+    return failed(machine, { kind: "descriptor-unreachable" }, credential.reconnect, "descriptor");
   }
   const next = ingestDescriptor(machine, result.descriptor, ctx);
   const verdict = gate(next);
@@ -719,34 +647,15 @@ const onBlocked = (
   // A block while nothing is held belongs to the credential already being replaced.
   if (credential.kind !== "held" || credential.rereading !== null) return machine;
   switch (reason) {
-    case "authentication": {
-      const authRejections = [
-        ...machine.authRejections.filter((at) => ctx.now.mono - at < AUTH_LOOP_WINDOW_MS),
-        ctx.now.mono,
-      ];
-      const next = { ...machine, authRejections };
-      if (authRejections.length >= AUTH_LOOP_REJECTIONS) {
-        out.push({
-          kind: "log",
-          diagnostic: { kind: "auth-loop", rejections: authRejections.length },
-        });
-        return backoff(next, { kind: "rejected" }, next.linkLostAt !== null, ctx);
-      }
-      // A reconnect only once a link was lost; a first link blocked is still a first connect.
-      return { ...next, credential: { kind: "none", reconnect: next.linkLostAt !== null } };
-    }
+    case "authentication":
+      return failed(machine, { kind: "rejected" }, machine.linkLostAt !== null);
     case "configuration":
     case "unsupported":
       // `judgeDescriptorBlock` answers these, now or once their facts can be read.
       return machine;
     case "permission":
     case "read-only":
-      if (machine.permissionRetried) return refuse(machine, { kind: "role" }, out);
-      return {
-        ...machine,
-        permissionRetried: true,
-        credential: { kind: "none", reconnect: machine.linkLostAt !== null },
-      };
+      return refuse(machine, { kind: "role" }, out);
   }
 };
 
@@ -811,17 +720,13 @@ const onLink = (
       link: { phase: "connected", since: ctx.now },
       linkLostAt: null,
       credential,
-      permissionRetried: false,
-      configurationBlocks: 0,
     };
     // A live socket proves the container is up: a wait on it ends.
     return next.credential.kind === "held"
       ? {
           ...next,
-          failures: 0,
           failuresSinceConnect: 0,
           errorsSinceConnect: 0,
-          ladder: INITIAL_BACKOFF,
         }
       : next;
   }
@@ -847,20 +752,25 @@ const onLink = (
 const sameJson = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
-/** An in-flight op whose deadline passed failed; a due backoff goes back through the guards. */
+/** An in-flight op whose deadline passed ends visibly. */
 const settle = (machine: EnvironmentMachine, ctx: EnvironmentContext): EnvironmentMachine => {
   const credential = machine.credential;
   switch (credential.kind) {
     case "exchanging":
       return reached(credential.deadline, ctx.now)
-        ? backoff(machine, { kind: "timeout" }, credential.reconnect, ctx)
+        ? failed(
+            machine,
+            { kind: "timeout" },
+            credential.reconnect,
+            machine.probing?.attempt === credential.attempt ? "descriptor" : "exchange",
+          )
         : machine;
     case "held":
       return credential.rereading !== null && reached(credential.rereading.deadline, ctx.now)
-        ? backoff(machine, { kind: "descriptor-unreachable" }, true, ctx)
+        ? failed(machine, { kind: "descriptor-unreachable" }, true, "descriptor")
         : machine;
-    case "backoff":
-      return reached(credential.retryAt, ctx.now) ? release(machine, "retry-at-reached") : machine;
+    case "failed":
+      return machine;
     case "none":
     case "waiting":
     case "refused":
@@ -890,20 +800,6 @@ const apply = (
         identityAnswered:
           event.guards.zeropsFailing && !before.zeropsFailing ? false : machine.identityAnswered,
       };
-      const mintMoved = !sameJson(before.identityMint, event.guards.identityMint);
-      if (credential.kind === "refused" && credential.reason.kind === "access" && mintMoved) {
-        return inputChanged(next, "input-change");
-      }
-      // A Mate the cap put five minutes out that becomes the route is tried now: the cap spares
-      // only the Mates nobody is looking at.
-      if (
-        event.guards.routeTarget &&
-        !before.routeTarget &&
-        credential.kind === "backoff" &&
-        machine.failures >= RETRY_CAP
-      ) {
-        return release(next, "prerequisite-arrived");
-      }
       return next;
     }
     case "PRESENCE": {
@@ -911,7 +807,13 @@ const apply = (
       if (event.presence.kind === "gone") {
         return retire({ ...machine, presence: event.presence }, event.presence.evidence, out);
       }
-      const next: EnvironmentMachine = { ...machine, presence: event.presence };
+      const origin = originOf(event.presence);
+      const moved = origin !== null && origin !== machine.targetOrigin;
+      const next: EnvironmentMachine = {
+        ...machine,
+        presence: event.presence,
+        targetOrigin: origin ?? machine.targetOrigin,
+      };
       // A probe of the origin the presence moved from says nothing of the Mate: its answer is not
       // waited for, and the guards judge the new presence now.
       if (
@@ -919,34 +821,35 @@ const apply = (
         machine.probing?.attempt === credential.attempt &&
         originOf(event.presence) !== machine.probing.origin
       ) {
-        return inputChanged(
-          { ...next, credential: { kind: "none", reconnect: credential.reconnect } },
-          "input-change",
-        );
+        return { ...next, credential: { kind: "none", reconnect: credential.reconnect } };
       }
-      return inputChanged(next, "input-change");
+      return moved ? inputChanged(next) : next;
     }
     case "CONTAINER": {
       if (sameJson(machine.container, event.container)) return machine;
       const next: EnvironmentMachine = { ...machine, container: event.container };
-      if (event.container.level !== "ready") return next;
-      // Container ready kicks a link in backoff.
-      if (credential.kind === "held" && machine.link.phase === "backoff") {
+      // A reported restart/update ending may reopen the installed link once. It never mints.
+      if (
+        event.container.level === "ready" &&
+        (machine.container.level === "restarting" || machine.container.level === "updating") &&
+        credential.kind === "held" &&
+        machine.link.phase === "backoff"
+      ) {
         out.push({
           kind: "run",
-          attempt: next.nextAttempt,
+          attempt: machine.nextAttempt,
           op: { kind: "retry-link", environmentId: credential.environmentId },
         });
-        return { ...next, nextAttempt: next.nextAttempt + 1 };
+        return { ...next, nextAttempt: machine.nextAttempt + 1 };
       }
-      return release(next, "prerequisite-arrived");
+      return next;
     }
     case "LINK":
       return onLink(machine, event.link, ctx, out);
     case "DESCRIPTOR": {
       const moved = descriptorMoved(machine.descriptor, event.descriptor);
       const next = ingestDescriptor(machine, event.descriptor, ctx);
-      return moved ? inputChanged(next, "input-change") : next;
+      return moved ? inputChanged(next) : next;
     }
     case "DESCRIPTOR_READ": {
       if (
@@ -960,7 +863,7 @@ const apply = (
         return stale(machine, event.attempt, out);
       }
       if (!event.result.ok) {
-        return backoff(machine, { kind: "descriptor-unreachable" }, true, ctx);
+        return failed(machine, { kind: "descriptor-unreachable" }, true, "descriptor");
       }
       const read = event.result.descriptor;
       const next = ingestDescriptor(machine, read, ctx);
@@ -973,21 +876,7 @@ const apply = (
       }
       if (credential.rereading.block === "unsupported")
         return refuse(next, { kind: "version" }, out);
-      // The same environment behind a configuration block: another exchange may clear it, but a
-      // block that keeps coming back only spends throwaways.
-      const configurationBlocks = next.configurationBlocks + 1;
-      if (configurationBlocks >= CONFIGURATION_LOOP_BLOCKS) {
-        out.push({
-          kind: "log",
-          diagnostic: { kind: "configuration-loop", blocks: configurationBlocks },
-        });
-        return refuse({ ...next, configurationBlocks }, { kind: "configuration" }, out);
-      }
-      return {
-        ...next,
-        configurationBlocks,
-        credential: { kind: "none", reconnect: next.linkLostAt !== null },
-      };
+      return refuse(next, { kind: "configuration" }, out);
     }
     case "EXCHANGE_SUCCEEDED": {
       if (credential.kind !== "exchanging" || credential.attempt !== event.attempt) {
@@ -1019,11 +908,19 @@ const apply = (
       const next =
         event.descriptor === null ? machine : ingestDescriptor(machine, event.descriptor, ctx);
       if (event.failure.class === "retryable") {
-        return backoff(next, event.failure.cause, credential.reconnect, ctx);
+        return failed(
+          next,
+          event.failure.cause,
+          credential.reconnect,
+          event.failure.cause.kind === "descriptor-unreachable" ||
+            event.failure.cause.kind === "identity-failed"
+            ? "descriptor"
+            : "exchange",
+        );
       }
-      // A version is refused on the descriptor it was judged on; without one it is read again.
+      // A version refusal without descriptor evidence ends as a descriptor failure.
       if (event.failure.reason.kind === "version" && next.descriptor === null) {
-        return backoff(next, { kind: "descriptor-unreachable" }, credential.reconnect, ctx);
+        return failed(next, { kind: "descriptor-unreachable" }, credential.reconnect, "descriptor");
       }
       return refuse(next, event.failure.reason, out);
     }
@@ -1037,8 +934,6 @@ const apply = (
       }
       return {
         ...machine,
-        failures: 0,
-        ladder: INITIAL_BACKOFF,
         credential: { ...credential, installed: true },
       };
     case "INSTALL_FAILED":
@@ -1050,15 +945,15 @@ const apply = (
         return machine;
       }
       // A link already published means an earlier credential was installed: this was a reconnect.
-      return backoff(machine, { kind: "install" }, machine.link.phase !== "idle", ctx);
+      return failed(machine, { kind: "install" }, machine.link.phase !== "idle", "installation");
     case "ROLE_CHANGED":
-      return inputChanged(machine, "input-change");
+      return machine;
     case "TICK":
       return machine;
     case "WAKE":
-      return event.visible ? release(machine, "visible-wake") : machine;
+      return machine;
     case "ONLINE":
-      return release(machine, "online");
+      return machine;
     case "USER_RETRY": {
       if (credential.kind === "held" && machine.link.phase !== "connected") {
         out.push({
@@ -1068,7 +963,7 @@ const apply = (
         });
         return { ...machine, nextAttempt: machine.nextAttempt + 1 };
       }
-      return inputChanged(machine, "user-retry");
+      return inputChanged(machine);
     }
     case "USER_REMOVE":
       return retire(machine, "removed-by-user", out);
@@ -1096,13 +991,13 @@ const retire = (
   };
 };
 
-/** The one instant the machine waits on: a deadline in flight or a backoff's retry. */
+/** The one instant the machine waits on: an in-flight deadline. */
 const dueAt = (credential: Credential): Instant | null => {
   switch (credential.kind) {
     case "exchanging":
       return credential.deadline;
-    case "backoff":
-      return credential.retryAt;
+    case "failed":
+      return null;
     case "held":
       return credential.rereading?.deadline ?? null;
     case "none":
