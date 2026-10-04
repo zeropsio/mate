@@ -175,6 +175,16 @@ describe("releasePermission — who may release an application's production (SPE
     expect(releasePermission(asker, placed(production), "app-1")).toEqual(expected);
   });
 
+  it("offers an org admin a snapshot before production exists", () => {
+    expect(
+      releasePermission(
+        offerAsker({ ...ADA, roleCode: "ADMIN" }, grants({ "p-dev": "READ_ONLY" })),
+        placed(false),
+        "app-1",
+      ),
+    ).toEqual({ allowed: true });
+  });
+
   it("decides nothing for a person the client does not know", () => {
     expect(releasePermission(null, placed(true), "app-1")).toBeUndefined();
   });

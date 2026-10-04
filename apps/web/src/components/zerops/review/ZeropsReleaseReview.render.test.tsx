@@ -55,7 +55,7 @@ function row(tag: string, commit: string, live = true): FlowReleaseRow {
 function flow(): ZeropsProjectFlow {
   return {
     groupId: "xyz",
-    declarations: [],
+    declarations: [{ name: "prod", tier: "production", project: "p-prod", sources: ["release"] }],
     declarationsRead: true,
     environments: [],
     environmentInputs: [],

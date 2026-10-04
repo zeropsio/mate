@@ -830,3 +830,20 @@ describe("a production whose version names spell short shas", () => {
     expect(row.standing).toBe("deploy-failed");
   });
 });
+
+it("a snapshot never waits for a production deployment", () => {
+  expect(
+    releaseInFlight({
+      newest: {
+        tag: "v0.1.0",
+        verdict: "approved",
+        entries: [{ service: "api", commit: API }],
+        taggedAt: "2026-09-29T10:00:00Z",
+        snapshot: true,
+      },
+      production: new Map(),
+      failed: new Map(),
+      nowMs: Date.parse("2026-09-29T10:00:01Z"),
+    }),
+  ).toBeUndefined();
+});

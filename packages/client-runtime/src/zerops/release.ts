@@ -21,7 +21,8 @@
  *
  * ## Who may
  *
- * HQ's rule (SPEC §3.3a): Basic user or above on the application's production. The client asks it
+ * HQ's rule (SPEC §3.3a): Basic user or above on production, or an organization owner/admin
+ * saving a snapshot before production exists. The client asks it
  * over what it holds only to offer the button (`releasePermission`); HQ asks it again at the
  * press, and a refusal that arrives anyway is shown in HQ's words.
  *
@@ -257,6 +258,7 @@ export type ReleaseVerdict = Release["state"];
 
 /** The newest release, for {@link releaseInFlight}. */
 export interface ReleaseAttempt {
+  readonly snapshot?: boolean;
   readonly tag: string;
   readonly verdict: ReleaseVerdict;
   /** What it lists. */
@@ -288,7 +290,8 @@ export function releaseInFlight(input: {
   readonly nowMs: number;
 }): string | undefined {
   const { newest } = input;
-  if (newest === undefined || newest.verdict === "refused") return undefined;
+  if (newest === undefined || newest.verdict === "refused" || newest.snapshot === true)
+    return undefined;
   const taggedMs = Date.parse(newest.taggedAt);
   if (input.nowMs - taggedMs >= RELEASE_IN_FLIGHT_MS) return undefined;
   const failedAfterTag = newest.entries.some((entry) => {
@@ -318,11 +321,13 @@ export function flowReleaseOf(release: Release): FlowRelease {
     line: entries.map((entry) => `${entry.service} ${shortCommit(entry.commit)}`).join(" · "),
     entries,
     taggedAt: release.at,
+    ...(release.snapshot === true ? { snapshot: true } : {}),
   };
 }
 
 /** One release of the application, as HQ judged it. */
 export interface FlowRelease {
+  readonly snapshot?: boolean;
   readonly tag: string;
   readonly verdict: ReleaseVerdict;
   /** Why HQ refused it, when it did. */
@@ -501,7 +506,10 @@ export function releaseRow(
     failedEntry: undefined,
     line,
     standing: undefined,
-    word: releaseWord(release.verdict),
+    word:
+      release.snapshot === true && release.verdict === "approved"
+        ? "Saved"
+        : releaseWord(release.verdict),
     rollBack: index > 0 && release.verdict === "approved" && !runsAll(release, deploys.production),
   };
 }

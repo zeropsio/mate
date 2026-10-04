@@ -1177,6 +1177,7 @@ const routes = (
               const { userId } = yield* principal;
               const appId = (yield* HttpRouter.params)["appId"] ?? "";
               const release = yield* (yield* Releases).release(userId, appId, request);
+              if (release.snapshot === true) return json(release, 201);
               const deploys = yield* deploysOf({
                 cause: "release",
                 appId,
@@ -1206,6 +1207,7 @@ const routes = (
                 params["tag"] ?? "",
                 request,
               );
+              if (release.snapshot === true) return json(release, 201);
               const deploys = yield* deploysOf({
                 cause: "release",
                 appId,

@@ -121,8 +121,7 @@ export function changeOffers(
 
 /**
  * Whether the person may release the application's production (SPEC §3.3a), and HQ's reason where
- * not: Basic user or above on it. That it has none is told only to whoever reads its changes, as HQ
- * tells it. `undefined` for a person the client does not know: nothing is decided for them.
+ * not: Basic user or above on it; before it exists, an org owner/admin may save a snapshot. `undefined` for a person the client does not know: nothing is decided for them.
  */
 export function releasePermission(
   asker: OfferAsker | null,

@@ -12,7 +12,7 @@ import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { Release } from "@t3tools/shared/hqRelease";
 import { describe, expect, it } from "vite-plus/test";
 
-import { joinProjectFlows } from "./ZeropsProjectFlowProvider";
+import { joinProjectFlows, snapshotReleasePlan } from "./ZeropsProjectFlowProvider";
 
 const GROUPS = [
   { groupId: "g1", slug: "harbor" },
@@ -457,4 +457,30 @@ describe("joinProjectFlows", () => {
   ])("$name", ({ latest, inFlight }) => {
     expect(flowWithProductionDeploy(latest)?.release.inFlight).toBe(inFlight);
   });
+});
+
+it("plans a snapshot from main only once HQ confirms no production", () => {
+  const sha = "1".repeat(40);
+  const recipe = { productionRepositories: new Map([["app", "appdev"]]) };
+  const repos = [
+    { name: "group", mainHead: "9".repeat(40), updatedAt: "" },
+    { name: "appdev", mainHead: sha, updatedAt: "" },
+  ];
+  expect(snapshotReleasePlan(undefined, recipe, repos)).toBeUndefined();
+  expect(
+    snapshotReleasePlan(
+      {
+        ...stopsOf(),
+        declarations: [
+          { name: "prod", tier: "production", project: "p-prod", sources: ["release"] },
+        ],
+      },
+      recipe,
+      repos,
+    ),
+  ).toBeUndefined();
+  const plan = snapshotReleasePlan(stopsOf(), recipe, repos);
+  expect(plan?.running.get("app")).toEqual({ kind: "nothing" });
+  expect(plan?.untold).toEqual([]);
+  expect(plan?.reads).toHaveLength(1);
 });
