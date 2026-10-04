@@ -1,5 +1,6 @@
 import {
   makeGitCredentialStore,
+  selectGitCredentials,
   type HqApi,
   type GitCredentialSnapshot,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -48,7 +49,7 @@ export function useGitCredentials(appId: string) {
     return () => store?.forgetPassword();
   }, [store]);
   return {
-    state,
+    state: selectGitCredentials(state),
     address: hq?.address,
     onIssue: () => {
       setCopied(null);

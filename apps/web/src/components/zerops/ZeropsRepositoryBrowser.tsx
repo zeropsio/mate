@@ -98,35 +98,21 @@ export function ZeropsRepositoryBrowser({
     </div>
   );
   if (source.state !== "known") {
-    const words =
-      source.state === "withheld"
-        ? "You no longer have access to this repository."
-        : source.state === "failed" && source.failure.kind === "refused"
-          ? source.failure.words
-          : source.state === "reading"
-            ? "Reading…"
-            : "Waiting for HQ…";
     return (
       <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
         {heading}
-        <p
-          className="text-sm text-muted-foreground"
-          role={source.state === "failed" || source.state === "withheld" ? "alert" : "status"}
-        >
-          {words}
+        <p className="text-sm text-muted-foreground" role={source.alert ? "alert" : "status"}>
+          {source.words}
         </p>
         <div>
-          <Button variant="ghost" size="sm" disabled={source.state === "reading"} onClick={again}>
+          <Button variant="ghost" size="sm" disabled={source.busy} onClick={again}>
             Read again
           </Button>
         </div>
       </section>
     );
   }
-  const value = source.value;
-  const busy = source.freshness.kind === "revalidating";
-  const failed =
-    source.freshness.kind === "stale" && source.freshness.reason.kind === "revalidation-failed";
+  const { source: value, busy, failed } = source;
   return (
     <section className="flex min-w-0 flex-col gap-4" data-zerops-surface="repository-browser">
       {heading}

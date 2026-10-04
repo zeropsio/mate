@@ -11,6 +11,32 @@ export interface RepositoryTarget {
 export const repositoryKey = ({ appId, repo, query }: RepositoryTarget) =>
   JSON.stringify([appId, repo, query.rev ?? null, query.path, query.kind]);
 
+/** Repository content and read affordances for clients, with access withheld before rendering. */
+export function selectRepositorySource(shown: Shown<RepositorySource>) {
+  if (shown.state === "known") {
+    return {
+      state: shown.state,
+      source: shown.value,
+      busy: shown.freshness.kind === "revalidating",
+      failed:
+        shown.freshness.kind === "stale" && shown.freshness.reason.kind === "revalidation-failed",
+    };
+  }
+  return {
+    state: shown.state,
+    words:
+      shown.state === "withheld"
+        ? "You no longer have access to this repository."
+        : shown.state === "failed" && shown.failure.kind === "refused"
+          ? shown.failure.words
+          : shown.state === "reading"
+            ? "Reading…"
+            : "Waiting for HQ…",
+    alert: shown.state === "failed" || shown.state === "withheld",
+    busy: shown.state === "reading",
+  };
+}
+
 export function makeRepositoryStore(input: {
   readonly read: (target: RepositoryTarget, signal: AbortSignal) => Promise<RepositorySource>;
   readonly now: () => number;
