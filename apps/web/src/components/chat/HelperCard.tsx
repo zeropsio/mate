@@ -20,7 +20,9 @@ import { useCallback, useMemo, useState } from "react";
 import { cn } from "~/lib/utils";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import ChatMarkdown from "../ChatMarkdown";
-import { helperCallsLeftOut, helperNowWords, helperRecord } from "./helpers.logic";
+import { formatWorkDuration } from "./conversation.logic";
+import { ElapsedSince } from "./ConversationRows";
+import { helperCallsLeftOut, helperNowWords, helperRecord, helperSpan } from "./helpers.logic";
 import { RunChat } from "./RunChat";
 import {
   TimelineRowActivityCtx,
@@ -66,6 +68,13 @@ function HelperTask({ prompt }: { readonly prompt: string }) {
       ) : null}
     </section>
   );
+}
+
+/** Its clock: counting while it works, how long it ran once it ended. */
+export function HelperClock({ helper }: { readonly helper: RuntimeSubagent }) {
+  const { since, ranMs } = helperSpan(helper);
+  if (since !== null) return <ElapsedSince since={since} />;
+  return ranMs === null ? null : <span className="tabular-nums">{formatWorkDuration(ranMs)}</span>;
 }
 
 /** What it ran on and what it cost: kept, but quiet. */

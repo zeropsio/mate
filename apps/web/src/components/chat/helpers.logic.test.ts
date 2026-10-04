@@ -8,6 +8,7 @@ import {
   helperNowWords,
   helperRecord,
   helperReportLine,
+  helperSpan,
   helperStepActivities,
 } from "./helpers.logic";
 
@@ -259,4 +260,35 @@ describe("helperCallsLeftOut", () => {
   it("a driver that forwards no calls leaves none out", () => {
     expect(helperCallsLeftOut(helper({ usage: usage(30) }), [])).toBe(0);
   });
+});
+
+describe("helperSpan", () => {
+  const usage = (durationMs: number) => ({ totalTokens: 1, durationMs });
+  it.each([
+    {
+      name: "settled: by its driver's count when its rows say less",
+      subject: helper({
+        status: "completed",
+        startedAt: at(30),
+        completedAt: at(54),
+        usage: usage(3_499_000),
+      }),
+      span: { since: null, ranMs: 3_499_000 },
+    },
+    {
+      name: "settled: by its rows when no count is kept",
+      subject: helper({ status: "completed", startedAt: at(0), completedAt: at(9) }),
+      span: { since: null, ranMs: 9000 },
+    },
+    {
+      name: "live: from the earlier of its start and its count",
+      subject: helper({ startedAt: at(50), updatedAt: at(59), usage: usage(40_000) }),
+      span: { since: at(19), ranMs: null },
+    },
+    {
+      name: "live: from its start when its count says less",
+      subject: helper({ startedAt: at(10), updatedAt: at(59), usage: usage(1_000) }),
+      span: { since: at(10), ranMs: null },
+    },
+  ])("$name", ({ subject, span }) => expect(helperSpan(subject)).toEqual(span));
 });

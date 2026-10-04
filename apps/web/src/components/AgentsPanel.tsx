@@ -40,7 +40,7 @@ import {
 
 import { cn } from "~/lib/utils";
 import { MateMark } from "~/components/MateMark";
-import { HelperCard, helperCostWords } from "~/components/chat/HelperCard";
+import { HelperCard, HelperClock, helperCostWords } from "~/components/chat/HelperCard";
 import { useHelperFocus } from "~/components/chat/helperFocus";
 import { helperMap, helperNowWords, helperReportLine } from "~/components/chat/helpers.logic";
 import { useKnownMate } from "~/zerops/useZeropsMates";
@@ -96,39 +96,6 @@ function elapsedBetween(startedAt: string, endIso: string | null): string {
     return "";
   }
   return formatElapsedSeconds((end - start) / 1000);
-}
-
-/**
- * Elapsed time for the current activation. Live agents self-tick via DOM
- * writes (zero React commits per tick); settled agents freeze at completedAt.
- */
-function AgentElapsed({ agent }: { agent: RuntimeSubagent }) {
-  const textRef = useRef<HTMLSpanElement>(null);
-  const live = agent.status === "running" || agent.status === "waiting";
-  const startedAt = agent.startedAt;
-
-  useEffect(() => {
-    if (!live || !startedAt) {
-      return;
-    }
-    const update = () => {
-      if (textRef.current) {
-        textRef.current.textContent = elapsedBetween(startedAt, null);
-      }
-    };
-    update();
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
-  }, [live, startedAt]);
-
-  if (!startedAt) {
-    return null;
-  }
-  return (
-    <span ref={textRef} className="tabular-nums">
-      {elapsedBetween(startedAt, live ? null : agent.completedAt)}
-    </span>
-  );
 }
 
 /** Its state at a glance, where its name starts: no word says it again. */
@@ -226,7 +193,7 @@ function HelperRow({ agent, depth = 0 }: { agent: RuntimeSubagent; depth?: numbe
         </span>
         <span className="helper-row-name">{agent.title}</span>
         <span className="helper-row-clock">
-          <AgentElapsed agent={agent} />
+          <HelperClock helper={agent} />
         </span>
         {line !== null ? (
           <span

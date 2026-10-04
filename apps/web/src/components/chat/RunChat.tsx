@@ -140,7 +140,7 @@ import {
 import { opensOnto, stepOutput } from "./opens.logic";
 import { showHelper } from "./helperFocus";
 import { ElapsedSince } from "./ConversationRows";
-import { helperNowWords, helperReportLine } from "./helpers.logic";
+import { helperNowWords, helperReportLine, helperSpan } from "./helpers.logic";
 import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
@@ -2041,9 +2041,7 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
   const ctx = use(TimelineRowCtx);
   const active = isActiveSubagentStatus(agent.status);
   const word = AGENT_STATUS_WORD[agent.status];
-  const startedAt = agent.startedAt ?? agent.firstSeenAt;
-  const durationMs =
-    agent.completedAt === null ? null : Date.parse(agent.completedAt) - Date.parse(startedAt);
+  const { since, ranMs } = helperSpan(agent);
   const line = active ? helperNowWords(agent) : helperReportLine(agent);
   return (
     <li className="grid min-w-0">
@@ -2068,10 +2066,10 @@ function HelperRow({ agent }: { readonly agent: RuntimeSubagent }) {
           <span className={cn("shrink-0 text-muted-foreground tabular-nums", META)}>
             {word}
             {" · "}
-            {active ? (
-              <ElapsedSince since={startedAt} />
-            ) : durationMs !== null && durationMs >= 1000 ? (
-              formatWorkDuration(durationMs)
+            {since !== null ? (
+              <ElapsedSince since={since} />
+            ) : ranMs !== null && ranMs >= 1000 ? (
+              formatWorkDuration(ranMs)
             ) : null}
           </span>
         </span>

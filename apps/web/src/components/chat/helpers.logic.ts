@@ -221,3 +221,27 @@ export function helperCallsLeftOut(
   const made = helper.usage?.toolUses ?? 0;
   return drawn === 0 ? 0 : Math.max(0, made - drawn);
 }
+
+/**
+ * How long it has worked, by its driver's own count where it keeps one
+ * (`usage.durationMs`): a row's start can be lost to the snapshot's window,
+ * or stamped late, and its clock read seconds for an hour's work. Live, the
+ * moment it started; settled, how long it ran.
+ */
+export function helperSpan(helper: RuntimeSubagent): {
+  readonly since: string | null;
+  readonly ranMs: number | null;
+} {
+  const counted = helper.usage?.durationMs;
+  const startedAt = helper.startedAt ?? helper.firstSeenAt;
+  if (isActiveSubagentStatus(helper.status)) {
+    const byCount = counted === undefined ? null : Date.parse(helper.updatedAt) - counted;
+    const byRow = Date.parse(startedAt);
+    const since = byCount !== null && byCount < byRow ? byCount : byRow;
+    return { since: Number.isFinite(since) ? new Date(since).toISOString() : null, ranMs: null };
+  }
+  const byRows =
+    helper.completedAt === null ? null : Date.parse(helper.completedAt) - Date.parse(startedAt);
+  const ranMs = Math.max(counted ?? 0, byRows ?? 0);
+  return { since: null, ranMs: ranMs > 0 ? ranMs : null };
+}
