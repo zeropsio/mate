@@ -8,7 +8,7 @@ The shared deployment store's visible-stop demand holds `project-topology`: one 
 service-stack read, the service membership and updates, and running-process membership and updates.
 It cannot depend on navigation holding a separate service lease. The account's access demand admits
 the project; its opened-service demand follows active versions and variables for those service ids.
-Only the sidebar's production/stage stops and mounted detail surfaces demand runtime; unrelated
+Visible production/stage chips and active detail scopes demand runtime; unrelated
 navigation projects consume no detail receiver. Each mounted sidebar chip also holds its named ids,
 including a remembered project the listing omits; account access publishes its ref before metadata
 arrives. A confirmed gone project leaves the inventory. HQ flow reads cannot hide a stop's runtime answer. App and stop detail pages show runtime from known
@@ -18,7 +18,7 @@ Undemanded refs do not hold Refresh in a loading state. The last view releasing 
 Overview, Projects, the app flow, production/stage detail and the sidebar read the same
 `Shown<Deployment>`. HQ release history may name an observed running version, but cannot replace an
 unread or failed runtime answer. A failed recheck is visible even when an older answer is held.
-Again renews the visible demand and asks the data runtime for one manual project refresh. A sidebar
+Again renews access when refused, renews the visible demand and asks the data runtime for one manual project refresh. A sidebar
 chip whose runtime is unverified cannot inherit a remembered healthy label.
 
 Desktop uses the same web surfaces. Mobile does not currently render these group-flow or stop-detail

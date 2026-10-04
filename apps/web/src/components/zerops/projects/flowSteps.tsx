@@ -567,7 +567,9 @@ export function ProductionStep<T>({
           ["verb", verb],
           [
             "again",
-            "stop" in production ? <StopReadAgain projectId={production.stop.projectId} /> : null,
+            "stop" in production ? (
+              <StopReadAgain key="again" projectId={production.stop.projectId} />
+            ) : null,
           ],
           ["release", releaseVerb],
           ["menu", menuSlot],

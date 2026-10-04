@@ -643,8 +643,8 @@ export function ZeropsRuntimeStops({
           const words = (
             <>
               <span className="text-sm font-medium">{stop.name}</span>
-              <ZeropsRoleTag role={stop.tier === "production" ? "prod" : "stage"} />
-              <StatusDot label={view.line} sentence tone={STOP_DOT_TONE[view.tone]} />
+              <ZeropsRoleTag label={stop.tier === "production" ? "prod" : "stage"} />
+              <StatusDot label={view.line} sentence tone={STOP_DOT_TONE[view.tone] ?? "off"} />
             </>
           );
           return (
@@ -2327,6 +2327,7 @@ function StopLine({
       <li className="flex min-w-0 items-baseline gap-3 px-2 py-2">
         <span className="shrink-0 text-sm font-medium text-foreground">{environment.tier}</span>
         <span className="truncate text-xs text-muted-foreground">{notice}</span>
+        <StopReadAgain projectId={environment.projectId} />
       </li>
     );
   }

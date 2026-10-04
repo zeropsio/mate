@@ -22,8 +22,11 @@ export function StopReadAgain({ projectId }: { readonly projectId: string }) {
     nowMs: 0,
     updateOffered: false,
   });
-  const action = presentation.affordance?.kind;
-  if (action !== "retry" && action !== "retry-now" && action !== "renew-access") return null;
+  const action = presentation.affordance?.kind ?? presentation.banner?.affordance?.kind;
+  const renewAccess =
+    action === "renew-access" ||
+    (deployment.state === "withheld" && deployment.reason === "access-denied");
+  if (action !== "retry" && action !== "retry-now" && !renewAccess) return null;
   const project = findInventoryProjectRef(inventory, projectId);
   if (project === null) return null;
   return (
@@ -34,7 +37,7 @@ export function StopReadAgain({ projectId }: { readonly projectId: string }) {
       onClick={() => {
         if (running) return;
         setRunning(true);
-        if (action === "renew-access") invalidateZerops({ topic: "access", change: "renew-now" });
+        if (renewAccess) invalidateZerops({ topic: "access", change: "renew-now" });
         againStopDeployment(project);
         void Effect.runPromise(data.runtime.refresh(project)).finally(() => setRunning(false));
       }}
