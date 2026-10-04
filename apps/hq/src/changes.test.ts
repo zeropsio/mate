@@ -179,6 +179,8 @@ describe("a Mate's changes in HQ", () => {
             // Nothing pushed: nothing to judge yet.
             mergeability: "unknown",
             behind: false,
+            // Nothing said on it yet.
+            comments: 0,
           });
           // Its open change again, as it is: the title asked for now opens nothing.
           assert.deepStrictEqual((yield* open("Add a login page")).body, {
