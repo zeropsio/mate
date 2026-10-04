@@ -30,8 +30,7 @@ import {
   HALF_MADE_OWNER_LINE,
   AWAITING_HQ_LINE,
   CHECKING_SETUP_LINE,
-  NOT_CLOSED_OFF_LINE,
-  NOT_CLOSED_OFF_OWNER_LINE,
+  CLOSING_OFF_LINE,
   halfMadeFor,
   firstBuildState,
   listingLacksCreation,
@@ -39,7 +38,6 @@ import {
   type MateComingPage,
 } from "./mateComing";
 import type { MateLink, Reachability } from "@t3tools/client-runtime/zerops/environments";
-import { COMING_UP_LINE } from "../components/zerops/ZeropsProjectRow.logic";
 import {
   NO_ADDRESS_MEMORY,
   addressClockOf,
@@ -132,58 +130,22 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       },
       expected: { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" },
     },
-    // The close-off gate (restores 0.12.3's closeOffGate): a Mate held because its project is not
-    // closed off says so, and offers Finish setup — while a press could still be closing it off,
-    // it is coming.
-    {
-      case: "a Mate held for its close-off, minutes on: says why, with Finish setup",
+    // The close-off gate (restores 0.12.3's closeOffGate): a Mate held because HQ says its project
+    // is not closed off is closing off until HQ says it is — never failed on a clock (2026-10-05).
+    // Finish setup stays in its menu (`finishMateSetupVerb`).
+    ...[30_000, 3 * 60_000, 3 * 60 * 60_000].map((age) => ({
+      case: `a Mate held for its close-off, its container ${age / 60_000} min old: closing off`,
       input: {
         press: undefined,
         candidate: {
-          group: "ready",
-          service: { status: "ACTIVE", created: new Date(NOW - 3 * 60_000).toISOString() },
+          group: "ready" as const,
+          service: { status: "ACTIVE", created: new Date(NOW - age).toISOString() },
         },
-        closeOffHold: "open",
+        closeOffHold: "open" as const,
         nowMs: NOW,
       },
-      expected: {
-        kind: "failed",
-        line: NOT_CLOSED_OFF_LINE,
-        ownerLine: NOT_CLOSED_OFF_OWNER_LINE,
-        verb: "finish-setup",
-      },
-    },
-    {
-      case: "a Mate held for its close-off whose container is a moment old: coming",
-      input: {
-        press: undefined,
-        candidate: {
-          group: "ready",
-          service: { status: "ACTIVE", created: new Date(NOW - 30_000).toISOString() },
-        },
-        closeOffHold: "open",
-        nowMs: NOW,
-      },
-      expected: { kind: "coming", line: COMING_UP_LINE },
-    },
-    {
-      case: "a Mate held for its close-off whose Finish setup stopped here: Finish setup again",
-      input: {
-        press: { startedAt: 0, container: false },
-        candidate: {
-          group: "ready",
-          service: { status: "ACTIVE", created: new Date(NOW - 3 * 60_000).toISOString() },
-        },
-        closeOffHold: "open",
-        nowMs: NOW,
-      },
-      expected: {
-        kind: "failed",
-        line: NOT_CLOSED_OFF_LINE,
-        ownerLine: NOT_CLOSED_OFF_OWNER_LINE,
-        verb: "finish-setup",
-      },
-    },
+      expected: { kind: "coming" as const, line: CLOSING_OFF_LINE },
+    })),
     // Security review 4: every hold says why — never a Mate silently not opening.
     {
       case: "a Mate held while its container's marker is read",
@@ -685,17 +647,6 @@ describe("halfMadeFor — a half-made Mate as its viewer may act on it", () => {
     { case: "a viewer who may not", canFinish: false, want: HALF_MADE_OWNER_LINE },
   ])("$case", ({ canFinish, want }) => {
     expect(halfMadeFor(HALF, canFinish)).toMatchObject({ line: want });
-  });
-
-  it("one held for its close-off says who can finish it", () => {
-    const held = {
-      kind: "failed",
-      line: NOT_CLOSED_OFF_LINE,
-      ownerLine: NOT_CLOSED_OFF_OWNER_LINE,
-      verb: "finish-setup",
-    } as const;
-    expect(halfMadeFor(held, true)).toMatchObject({ line: NOT_CLOSED_OFF_LINE });
-    expect(halfMadeFor(held, false)).toMatchObject({ line: NOT_CLOSED_OFF_OWNER_LINE });
   });
 
   it("leaves any other state alone", () => {

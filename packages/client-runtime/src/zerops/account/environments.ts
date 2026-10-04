@@ -67,8 +67,6 @@ import {
 import {
   closedOffOf,
   closeOffGate,
-  ZCP_YOUNG_MS,
-  zcpYoung,
   type CloseOffHold,
   type CloseOffWord,
 } from "../environments/closeOff.ts";
@@ -452,8 +450,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     { marker: boolean | "unknown" | "unread"; readonly stop: () => void }
   >();
   let closeOffHolds: ReadonlyMap<string, CloseOffHold> = new Map();
-  /** Disarms the timer that reads the holds again once the youngest held container ages. */
-  let closeOffAging: (() => void) | null = null;
 
   const rowOf = (key: TargetKey) => rows.find((row) => row.key === key);
   /** The target's project as a listing names it, whether or not its services are read. */
@@ -929,28 +925,20 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
   /**
    * The close-off gate over every listed Mate (`closeOffGate`): the held ones take no lease's
-   * demand (`ExchangeDriver.setCloseOffHeld`). A young container held while the stream cannot say
-   * its marker is read again once it ages past a press's hands.
+   * demand (`ExchangeDriver.setCloseOffHeld`).
    */
   const updateCloseOff = () => {
     if (stores === null || closed) return;
     if (ports.closeOff === undefined && ports.closeOffPending === undefined) return;
     const word = ports.closeOff?.read() ?? null;
     const pending = ports.closeOffPending?.read() ?? new Set<string>();
-    const nowMs = ports.clock.now().wall;
     const followed = new Set<string>();
     const holds = new Map<string, CloseOffHold>();
-    let ages: number | null = null;
     for (const row of rows) {
       if (row.service === undefined) continue;
       const project = projectRefOf(row.project.id);
       if (project === undefined) continue;
-      const closedOff = closedOffOf(
-        word,
-        project.organization.organizationId,
-        row.project.id,
-        row.project.tagList,
-      );
+      const closedOff = closedOffOf(word, project.organization.organizationId, row.project.id);
       if (closedOff === true) continue;
       const serviceId = row.service.id;
       followed.add(serviceId);
@@ -978,28 +966,19 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         markers.set(serviceId, held);
         entry = held;
       }
-      const young = zcpYoung(row.service.created, nowMs);
       const gate = closeOffGate({
         marker: entry.marker,
         closedOff,
-        young,
         pendingHere: pending.has(row.project.id),
       });
       if (gate === "connect") continue;
       if (holds.get(row.project.id) !== "open") holds.set(row.project.id, gate);
-      if (gate === "checking" && entry.marker === "unknown" && young) {
-        const at = Date.parse(row.service.created ?? "") + ZCP_YOUNG_MS;
-        ages = ages === null ? at : Math.min(ages, at);
-      }
     }
     for (const [serviceId, entry] of markers) {
       if (followed.has(serviceId)) continue;
       entry.stop();
       markers.delete(serviceId);
     }
-    closeOffAging?.();
-    closeOffAging =
-      ages === null ? null : ports.clock.setTimer(Math.max(0, ages - nowMs), updateCloseOff);
     const moved =
       holds.size !== closeOffHolds.size ||
       [...holds].some(([projectId, hold]) => closeOffHolds.get(projectId) !== hold);
@@ -1277,8 +1256,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         activity.clear();
         for (const entry of markers.values()) entry.stop();
         markers.clear();
-        closeOffAging?.();
-        closeOffAging = null;
         recent?.disarm();
         actions.clear();
         for (const release of checks.values()) release();

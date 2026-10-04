@@ -2035,8 +2035,8 @@ describe("the post-grant stage's Mate environments", () => {
       ),
     );
 
-    // Security review 6: 0.12.3's close-off tag on the project is its close-off.
-    it.effect("lets in a Mate whose project carries 0.12's close-off tag", () =>
+    // HQ's word alone says closed off (ADR 0002): 0.12.3's close-off tag on the project is no word.
+    it.effect("holds a Mate HQ says is not closed off, whatever tag its project carries", () =>
       Effect.scoped(
         Effect.gen(function* () {
           const tagged = {
@@ -2052,8 +2052,8 @@ describe("the post-grant stage's Mate environments", () => {
           );
           environments.setOnScreen(tagged.projectId);
           yield* settle;
-          expect(environments.closeOffHolds().size).toBe(0);
-          expect(exchangesOf(rig)).toBe(1);
+          expect(environments.closeOffHolds().get(tagged.projectId)).toBe("open");
+          expect(exchangesOf(rig)).toBe(0);
         }),
       ),
     );

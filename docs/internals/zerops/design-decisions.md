@@ -3837,9 +3837,11 @@ no-cache`.
   project is closed off.**
   - On a Mate with its container, "Setup stopped" stands for 10 s. It never hides a connected Mate's
     sign-in line, amber dot or last message, and is still never retried on its own.
-  - A Mate whose project HQ says is not closed off takes no lease and no Connect, even on screen. Past
-    a 2-minute grace it says why and offers Finish setup. A young container (under 2 h) waits quietly
-    while HQ's word is unknown.
+  - A Mate whose project HQ says is not closed off takes no lease and no Connect, even on screen,
+    whatever its container's age. It reads "Closing off its project…" until HQ says it is closed
+    off, with Finish setup in its menu. HQ's streamed word alone says closed off: no project tag,
+    no clock (2026-10-05). While HQ says nothing, only this browser's own knowledge that its
+    close-off has not happened holds it.
   - _Why:_ the stop hid a working Mate's state until reload, and leases had dropped 0.12.3's
     close-off gate, so an unisolated project could be used.
 - **2026-10-04** — **Set up Mate is offered on an existing plain project, and a Mate's project keeps
