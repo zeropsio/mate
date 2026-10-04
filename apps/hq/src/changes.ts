@@ -343,6 +343,10 @@ const CHANGE_COLUMNS = [
   instant("updated_at"),
   "mergeability",
   "behind",
+  // Every read of a change is of `hq_change` by that name, its writes' `RETURNING` included.
+  `(SELECT count(*)::int FROM hq_change_comment c
+    WHERE c.app_id = hq_change.app_id AND c.repo = hq_change.repo
+      AND c.number = hq_change.number) AS comments`,
 ].join(", ");
 
 interface ChangeRow {
@@ -362,6 +366,7 @@ interface ChangeRow {
   readonly updated_at: string;
   readonly mergeability: HqChange["mergeability"];
   readonly behind: boolean;
+  readonly comments: number;
 }
 
 const COMMENT_COLUMNS = [
@@ -405,6 +410,7 @@ const changeOf = (row: ChangeRow): HqChange => ({
   updatedAt: row.updated_at,
   mergeability: row.mergeability,
   behind: row.behind,
+  comments: row.comments,
 });
 
 export const changesLayer: Layer.Layer<

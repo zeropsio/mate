@@ -33,6 +33,7 @@ import {
 const HQ = "https://hqzone.prg1-zerops.zone";
 const APP = "0b7c4c1e-9f1d-4a43-8f43-6d2b8a1c2e10";
 const decodeComments = Schema.decodeUnknownSync(CommentListResponse);
+const decodeChange = Schema.decodeUnknownSync(HqChange);
 
 describe("hqChanges — the change link", () => {
   it("names a change at HQ's address, reads it back, and routes it in the client", () => {
@@ -153,6 +154,9 @@ describe("hqChanges — the wire", () => {
     ["a mergeability this build does not know", { mergeability: "maybe" }, "Failure"],
     ["a change with no time of its last move", { updatedAt: undefined }, "Failure"],
     ["a repository no git layer takes", { repo: "a/b" }, "Failure"],
+    ["a change with its comments counted", { comments: 3 }, "Success"],
+    ["a count of comments below none", { comments: -1 }, "Failure"],
+    ["a fractional count of comments", { comments: 1.5 }, "Failure"],
   ])("a change: %s", (_name, patch, expected) => {
     expect(read(HqChange, change(patch))).toBe(expected);
   });
@@ -364,6 +368,10 @@ describe("hqChanges — the wire", () => {
     ],
   ])("a person's read: %s", (_name, schema, value, expected) => {
     expect(read(schema as Schema.Codec<unknown, unknown>, value)).toBe(expected);
+  });
+
+  it("reads a change from an HQ that counted no comments as uncounted", () => {
+    expect(decodeChange(change()).comments).toBeNull();
   });
 
   it("reads a comment from an HQ that kept only people's as a person's", () => {

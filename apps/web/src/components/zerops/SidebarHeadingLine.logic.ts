@@ -153,7 +153,11 @@ export function headingLine(
       tone: "ink",
       spinner: false,
       release: false,
-      verb: undefined,
+      // Held for a key: its page mints one, or names who may.
+      verb:
+        stage.coming.step === "awaiting-key"
+          ? { kind: "details", projectId: stage.projectId }
+          : undefined,
     };
   }
   if (landing !== undefined) {

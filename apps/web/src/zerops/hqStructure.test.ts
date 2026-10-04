@@ -684,6 +684,7 @@ describe("driveHqStructure", () => {
       updatedAt: "2026-10-02T09:00:00.000Z",
       mergeability: "clean",
       behind: false,
+      comments: 0,
     };
     const merged: HqChange = { ...change, state: "merged", mergedAt: "2026-10-02T10:00:00.000Z" };
     const api = streamingApi([

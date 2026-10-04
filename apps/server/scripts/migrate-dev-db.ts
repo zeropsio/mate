@@ -333,9 +333,13 @@ const pruneSnapshot = Effect.fn("pruneDevDbSnapshot")(function* (input: RunMigra
   };
 });
 
+/** Slots whose other name a later migration heals: dev builds ran the crew
+ * operations table as their 57, and 58 and 59 add what upstream's 57 skipped. */
+const HEALED_SLOTS: ReadonlyMap<number, string> = new Map([[57, "CrewOperations"]]);
+
 /** Compare this checkout's migration registry against what the cloned
  * database recorded: same slot under a different name means the migration
- * was skipped, not applied. */
+ * was skipped, not applied — unless a later migration heals that slot. */
 const verifyMigrationSlots = Effect.fn("verifyMigrationSlots")(function* () {
   const sql = yield* SqlClient.SqlClient;
   const applied = yield* sql<{ migration_id: number; name: string }>`
@@ -343,7 +347,11 @@ const verifyMigrationSlots = Effect.fn("verifyMigrationSlots")(function* () {
   const appliedById = new Map(applied.map((row) => [Number(row.migration_id), row.name]));
   for (const [slot, codeName] of migrationManifest) {
     const appliedName = appliedById.get(slot);
-    if (appliedName !== undefined && appliedName !== codeName) {
+    if (
+      appliedName !== undefined &&
+      appliedName !== codeName &&
+      HEALED_SLOTS.get(slot) !== appliedName
+    ) {
       return yield* new MigrateDevDbSlotCollisionError({ slot, codeName, appliedName });
     }
   }

@@ -145,6 +145,13 @@ export const HqChange = Schema.Struct({
   mergeability: MergeabilityKind,
   /** Whether `main` has moved past the change's merge base, judged with `mergeability`. */
   behind: Schema.Boolean,
+  /**
+   * How many comments were said on it: the room its review's conversation holds while it reads
+   * them. Added after the rest: an older HQ's change counts none.
+   */
+  comments: Schema.NullOr(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))).pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(null)),
+  ),
 });
 export type HqChange = typeof HqChange.Type;
 

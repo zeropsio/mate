@@ -1,10 +1,16 @@
-import { hqHomeMate } from "./homeLanding.logic";
 import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { homeGuess, homeView, readHomeLanding, writeHomeLanding } from "./homeLanding.logic";
+import {
+  homeGuess,
+  homeTarget,
+  homeView,
+  hqHomeMate,
+  readHomeLanding,
+  writeHomeLanding,
+} from "./homeLanding.logic";
 
 const ref = scopeThreadRef(EnvironmentId.make("env-quill"), ThreadId.make("thread-ivy"));
 
@@ -16,7 +22,13 @@ describe("homeView: the home never stands blank while it waits", () => {
     remembered: null,
     projectsRead: false,
     hqMatesRead: true,
+    organizationId: "org-moss",
+    organization: "selected",
+    accountTrouble: false,
+    catalogFailed: false,
+    projectsShown: null,
   } as const;
+  const projects = { kind: "projects", organizationId: "org-moss" } as const;
   it.each([
     ["landing unknown, nothing remembered: the wait line", {}, { kind: "wait" }],
     [
@@ -42,10 +54,17 @@ describe("homeView: the home never stands blank while it waits", () => {
       { landing: "none", remembered: ref },
       { kind: "opening", ref },
     ],
+    // An empty organization lands on the projects page, where New project works: upstream's
+    // "Add project" hero opened a folder picker with no environment in it.
     [
-      "no landing, the projects read whole: the hero",
+      "no landing, the projects read whole: the projects page",
       { landing: "none", projectsRead: true, remembered: ref },
-      { kind: "hero" },
+      projects,
+    ],
+    [
+      "a connect's environment holds no project: the projects page",
+      { landing: "none", projectsRead: true, targeted: true, hqMatesRead: false },
+      projects,
     ],
     [
       "platform and catalog settled, HQ unread: keep waiting",
@@ -56,6 +75,85 @@ describe("homeView: the home never stands blank while it waits", () => {
       "platform and catalog settled, HQ unread: keep the remembered opening",
       { landing: "none", projectsRead: true, hqMatesRead: false, remembered: ref },
       { kind: "opening", ref },
+    ],
+    // Restores f3c9cba48: the Mates are never listed until something happens, and the projects
+    // page says what — the home never waits on a read that will not come.
+    [
+      "no organization chosen: the projects page, which asks for one",
+      { landing: "none", organization: "needs-selection", organizationId: null, remembered: ref },
+      { kind: "projects", organizationId: null },
+    ],
+    [
+      "the organizations still loading: it waits",
+      { landing: "none", organization: "loading", organizationId: null },
+      { kind: "wait" },
+    ],
+    [
+      "the account's access failed: the projects page, which says so",
+      { landing: "none", accountTrouble: true },
+      projects,
+    ],
+    [
+      "the environment catalog failed, HQ names no Mate: the projects page and its Try again",
+      { landing: "none", catalogFailed: true },
+      projects,
+    ],
+    [
+      "the environment catalog failed, HQ not read yet: it waits for HQ's Mate",
+      { landing: "none", catalogFailed: true, hqMatesRead: false },
+      { kind: "wait" },
+    ],
+    [
+      "the environment catalog failed, HQ names a Mate: on its way there",
+      { landing: "going", catalogFailed: true },
+      { kind: "wait" },
+    ],
+    // Restores f3c9cba48: once painted, the projects page is torn down only by somebody here — a
+    // registration on its way, HQ read again or a colleague's new Mate never take it back.
+    [
+      "the projects page shown, the read unsettled again: it stays",
+      { landing: "none", projectsShown: { organizationId: "org-moss" }, remembered: ref },
+      projects,
+    ],
+    [
+      "the projects page shown, the landing unknown again: it stays",
+      { landing: "unknown", projectsShown: { organizationId: "org-moss" }, remembered: ref },
+      projects,
+    ],
+    [
+      "the projects page shown, HQ names a Mate nobody here opened: it stays",
+      { landing: "going", projectsShown: { organizationId: "org-moss" } },
+      projects,
+    ],
+    [
+      "the projects page shown, a connect hands over its environment: the landing",
+      { landing: "going", targeted: true, projectsShown: { organizationId: "org-moss" } },
+      { kind: "wait" },
+    ],
+    [
+      "another organization chosen, still reading: the page stays as it was",
+      { landing: "unknown", projectsShown: { organizationId: "org-fern" } },
+      { kind: "projects", organizationId: "org-fern" },
+    ],
+    [
+      "another organization chosen, its HQ names a Mate: on its way there",
+      { landing: "going", projectsShown: { organizationId: "org-fern" }, remembered: ref },
+      { kind: "wait" },
+    ],
+    [
+      "another organization chosen, nowhere to land: the page is that organization's",
+      { landing: "none", projectsRead: true, projectsShown: { organizationId: "org-fern" } },
+      projects,
+    ],
+    [
+      "the projects page shown, the draft would not start",
+      {
+        landing: "going",
+        targeted: true,
+        startFailed: true,
+        projectsShown: { organizationId: "org-moss" },
+      },
+      { kind: "start-failed" },
     ],
     [
       "the draft would not start",
@@ -193,5 +291,74 @@ describe("the home from HQ, before any Mate socket opens", () => {
   it("earns no destination before HQ knows any Mate", () => {
     expect(hqHomeMate(null)).toBeUndefined();
     expect(hqHomeMate(new Map())).toBeUndefined();
+  });
+});
+
+describe("homeTarget: where the home lands, and never on a Mate that is gone", () => {
+  const quill = EnvironmentId.make("env-quill");
+  const fern = EnvironmentId.make("env-fern");
+  const base = {
+    target: null,
+    hqMate: undefined,
+    hqMatesRead: true,
+    environments: [],
+  } as const;
+  it.each([
+    [
+      "a connect names an environment whose shell has not arrived: unknown",
+      { target: { environmentId: quill, bootstrapped: false }, hqMate: "proj-ivy" },
+      null,
+    ],
+    [
+      "a connect names an environment, its shell here: that one, before HQ's",
+      { target: { environmentId: quill, bootstrapped: true }, hqMate: "proj-ivy" },
+      { kind: "environment", environmentId: quill },
+    ],
+    [
+      "HQ names a Mate: that Mate",
+      { hqMate: "proj-ivy", hqMatesRead: false },
+      { kind: "mate", projectId: "proj-ivy" },
+    ],
+    ["HQ not read yet, naming none: unknown", { hqMatesRead: false }, null],
+    [
+      "a socket on its first attempt: unknown",
+      { environments: [{ environmentId: quill, phase: "connecting", snapshot: false }] },
+      null,
+    ],
+    [
+      "a live socket whose shell has not arrived: unknown",
+      { environments: [{ environmentId: quill, phase: "connected", snapshot: false }] },
+      null,
+    ],
+    [
+      "live sockets: among them only",
+      {
+        environments: [
+          { environmentId: quill, phase: "connected", snapshot: true },
+          { environmentId: fern, phase: "error", snapshot: true },
+        ],
+      },
+      { kind: "among", environmentIds: [quill] },
+    ],
+    // Restores f3c9cba48's rule: a registration that does not answer keeps its cached projects,
+    // and with HQ down naming none of them, its old conversation is a Mate that may be gone.
+    [
+      "HQ down, a dead registration still cached: nowhere",
+      {
+        environments: [
+          { environmentId: quill, phase: "error", snapshot: true },
+          { environmentId: fern, phase: "reconnecting", snapshot: true },
+        ],
+      },
+      { kind: "none" },
+    ],
+    [
+      "a registration held but not opened: nowhere, HQ names the Mates",
+      { environments: [{ environmentId: quill, phase: "available", snapshot: true }] },
+      { kind: "none" },
+    ],
+    ["no environment at all: nowhere", {}, { kind: "none" }],
+  ] as const)("%s", (_case, over, target) => {
+    expect(homeTarget({ ...base, ...over })).toEqual(target);
   });
 });

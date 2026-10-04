@@ -7068,7 +7068,8 @@ a.message-file:focus-visible {
   padding: 0;
   list-style: none;
 }
-.rv-remark {
+.rv-remark,
+.rv-remark-skeleton {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
   column-gap: 10px;
@@ -7108,6 +7109,33 @@ a.message-file:focus-visible {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* A comment on its way holds a one-line comment's room: its mark, its name, its line. */
+.rv-remark-skeleton {
+  height: 44px;
+}
+.rv-remark-skeleton[data-fold] {
+  height: 24px;
+}
+.rv-remark-skeleton span {
+  height: 10px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+.rv-remark-skeleton span:first-child {
+  grid-row: 1 / span 2;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+}
+.rv-remark-skeleton span:nth-child(2) {
+  width: 96px;
+  margin: 5px 0;
+}
+.rv-remark-skeleton span:nth-child(3) {
+  width: 64%;
+  margin: 6px 0;
+}
+
 /* The one box: a quiet line that grows as it is written in, its two verbs at its end. */
 .rv-say {
   display: flex;

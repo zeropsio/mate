@@ -34,6 +34,7 @@ const CHANGE: HqChange = {
   updatedAt: "2026-10-02T09:00:00.000Z",
   mergeability: "clean",
   behind: false,
+  comments: 0,
 };
 
 const refusal = (status: number, code: string, message: string) =>

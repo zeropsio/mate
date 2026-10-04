@@ -247,6 +247,18 @@ describe("stopVerdict", () => {
       expected: { tone: "failed", text: "First deploy failed.", detail: undefined, verb: null },
     },
     {
+      // Only for one HQ's rule lets keep the key (or not known yet): one it does not is told who
+      // mints it, by the key's own verdict above.
+      name: "a stage HQ holds for a deploy key says so, and where it is finished",
+      input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "held" } },
+      expected: {
+        tone: "off",
+        text: "Stage awaits a deploy key.",
+        detail: "Finish setting it up from its project's menu on the Projects page.",
+        verb: null,
+      },
+    },
+    {
       name: "a stage whose first deploy is on its way says so",
       input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "on-its-way" } },
       expected: { tone: "busy", text: "First deploy on its way.", detail: undefined, verb: null },
