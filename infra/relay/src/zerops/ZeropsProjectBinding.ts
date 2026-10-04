@@ -18,25 +18,23 @@
  *    relay's caller supplied a project id the platform does not know.
  * 2. `GET /project/{projectId}/service-stack` with the caller's token — is
  *    `endpointOrigin` the public origin of a subdomain-enabled service in
- *    that project? Reconstructs each candidate service's subdomain URL the
- *    way `zcp`'s `BuildSubdomainURL` does (`internal/ops/discover.go`):
- *    `https://{serviceHostname}-{prefix}.{domain}` for its port-80 route,
- *    `https://{serviceHostname}-{prefix}-{port}.{domain}` for every other
- *    `httpSupport` port. `GetProject`'s `zeropsSubdomainHost` is
- *    occasionally a bare prefix with no domain suffix for some projects
- *    (zcp's own comment on this, live-verified 2026-06: e.g. "8a" rather
- *    than "8a.prg1.zerops.app") — such a project can never match by this
- *    reconstruction alone. That is a known, accepted limitation of this
- *    check, not a bug in the comparison; `zcp` itself resolves the
- *    authoritative URL by reading the service's own `zeropsSubdomain` env
- *    var instead, which needs a service-scoped credential this endpoint
- *    does not have.
+ *    that project? Each candidate's origin is rebuilt from the project's
+ *    bare `zeropsSubdomainHost` prefix and the region its `publicZone`
+ *    carries (`docs/internals/zerops/verified.md`, measured):
+ *    `https://{serviceHostname}-{prefix}.{region}.zerops.app` for a port-80
+ *    route, `https://{serviceHostname}-{prefix}-{port}.{region}.zerops.app`
+ *    for every other HTTP port — the same address the clients build
+ *    (`@t3tools/client-runtime/zerops/containerAddress`).
  *
  * @module zerops/ZeropsProjectBinding
  */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/unstable/http";
+import {
+  buildZeropsContainerUrl,
+  zeropsRegionFromPublicZone,
+} from "@t3tools/client-runtime/zerops/containerAddress";
 
 export class ZeropsNotAMemberError extends Schema.TaggedError<ZeropsNotAMemberError>()(
   "ZeropsNotAMemberError",
@@ -69,7 +67,8 @@ export type ZeropsProjectBindingError =
 
 const ProjectResponse = Schema.Struct({
   clientId: Schema.optional(Schema.String),
-  zeropsSubdomainHost: Schema.optional(Schema.String),
+  zeropsSubdomainHost: Schema.optional(Schema.NullOr(Schema.String)),
+  publicZone: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
 const ServiceStackResponse = Schema.Struct({
@@ -82,7 +81,7 @@ const ServiceStackResponse = Schema.Struct({
           Schema.Array(
             Schema.Struct({
               port: Schema.optional(Schema.Number),
-              httpSupport: Schema.optional(Schema.Boolean),
+              scheme: Schema.optional(Schema.String),
             }),
           ),
         ),
@@ -110,29 +109,16 @@ const zeropsGet = Effect.fn("ZeropsProjectBinding.get")(function* (input: {
     );
 });
 
-/**
- * `https://{hostname}-{prefix}.{domain}` (port 80), or
- * `https://{hostname}-{prefix}-{port}.{domain}` for any other port. Returns
- * `undefined` when `subdomainHost` carries no domain suffix (a bare prefix
- * — see the module doc's known limitation).
- */
-function buildSubdomainUrl(
+/** A service port's public origin: no port segment on 80, the port's own everywhere else. */
+function subdomainOrigin(
   hostname: string,
   subdomainHost: string,
+  region: string,
   port: number,
-): string | undefined {
-  const dot = subdomainHost.indexOf(".");
-  if (dot < 0) {
-    return undefined;
-  }
-  const prefix = subdomainHost.slice(0, dot);
-  const domain = subdomainHost.slice(dot + 1);
-  if (domain.length === 0) {
-    return undefined;
-  }
+): string {
   return port === 80
-    ? `https://${hostname}-${prefix}.${domain}`
-    : `https://${hostname}-${prefix}-${port}.${domain}`;
+    ? `https://${hostname}-${subdomainHost}.${region}.zerops.app`
+    : buildZeropsContainerUrl(hostname, subdomainHost, port, region);
 }
 
 function originHost(url: string): string | undefined {
@@ -203,21 +189,22 @@ export const verify = Effect.fn("ZeropsProjectBinding.verify")(function* (input:
   );
 
   const subdomainHost = project.zeropsSubdomainHost;
+  const region = project.publicZone ? zeropsRegionFromPublicZone(project.publicZone) : null;
   const bound =
-    subdomainHost !== undefined &&
-    (services.list ?? []).some((service) => {
-      if (service.subdomainAccess !== true || service.name === undefined) {
-        return false;
-      }
-      const ports = service.ports?.filter(
-        (port) => port.httpSupport === true && port.port !== undefined,
-      );
-      const candidatePorts = ports && ports.length > 0 ? ports.map((port) => port.port!) : [80];
-      return candidatePorts.some((port) => {
-        const candidate = buildSubdomainUrl(service.name!, subdomainHost, port);
-        return candidate !== undefined && originHost(candidate) === endpointHost;
-      });
-    });
+    subdomainHost &&
+    region !== null &&
+    (services.list ?? []).some(
+      (service) =>
+        service.subdomainAccess === true &&
+        service.name !== undefined &&
+        (service.ports ?? []).some(
+          (port) =>
+            (port.scheme === "http" || port.scheme === "https") &&
+            port.port !== undefined &&
+            originHost(subdomainOrigin(service.name!, subdomainHost, region, port.port)) ===
+              endpointHost,
+        ),
+    );
   if (!bound) {
     return yield* new ZeropsEndpointNotBoundError({});
   }

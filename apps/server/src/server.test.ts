@@ -1845,11 +1845,10 @@ const assertBrowserApiCorsPreflightHeaders = (
 };
 const crossOriginClientOrigin = "http://remote-client.test:3773";
 
-const zeropsTestEnvironment = (allowedOrigins: ReadonlyArray<string> = [], publicOrigin?: string) =>
+const zeropsTestEnvironment = (publicOrigin?: string) =>
   resolveZeropsEnvironment({
     projectId: "nTV3oMB2SS634ImDJnQckg",
     apiHost: undefined,
-    allowedOrigins,
     publicOrigin,
   });
 
@@ -1861,7 +1860,7 @@ const zeropsTestEnvironment = (allowedOrigins: ReadonlyArray<string> = [], publi
  * door issues no cookie sessions, so it authenticates with a bearer token.
  */
 const zeropsLinkProofEnvironment = () =>
-  zeropsTestEnvironment([], "https://zcp-26a7-8080.prg1.zerops.app");
+  zeropsTestEnvironment("https://zcp-26a7-8080.prg1.zerops.app");
 
 const getWsServerUrl = (
   pathname = "",
@@ -4579,7 +4578,12 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("stops answering a foreign origin with a wildcard inside a Zerops project", () =>
+  // Inside a Zerops project the server is published on the public internet, and
+  // it still answers every origin: the door is bearer/DPoP or a short-lived ticket,
+  // never a cookie, so a foreign page holds nothing a browser would attach.
+  const ARBITRARY_ORIGIN = "https://mate.dev-team.example.org";
+
+  it.effect("answers a preflight from any origin without credentials inside a Zerops project", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
 
@@ -4587,109 +4591,83 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const response = yield* fetchEffect(sessionUrl, {
         method: "OPTIONS",
         headers: {
-          origin: "https://evil.example",
+          origin: ARBITRARY_ORIGIN,
           "access-control-request-method": "GET",
-          "access-control-request-headers": "content-type",
+          "access-control-request-headers": "authorization",
         },
       });
 
-      // No wildcard, no echo: the browser has nothing to accept.
-      assert.equal(response.headers["access-control-allow-origin"], undefined);
-      assert.equal(response.headers["access-control-allow-credentials"], undefined);
-      // Effect rc.115 marks a refused origin `Vary: Origin` too, so a cache keeps the refusal
-      // apart from an allowed origin's answer; it grants nothing.
-      assert.equal(response.headers.vary, "Origin");
+      assert.equal(response.status, 204);
+      assertBrowserApiCorsPreflightHeaders(response.headers);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("allows localhost, configured and Zerops-issued origins without credentials", () =>
+  it.effect("serves a bearer call from any origin inside a Zerops project", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest({
-        config: { zerops: zeropsTestEnvironment(["https://console.example.com"]) },
-      });
+      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
+      const session = yield* issueFixtureSession();
 
       const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
-      for (const origin of [
-        "http://localhost:5733",
-        "https://console.example.com",
-        "https://zcp-2338-8080.prg1.zerops.app",
-        "https://app.zerops.io",
-      ]) {
-        const response = yield* fetchEffect(sessionUrl, {
-          method: "OPTIONS",
-          headers: {
-            origin,
-            "access-control-request-method": "GET",
-            "access-control-request-headers": "content-type",
-          },
-        });
-        assert.equal(response.status, 204);
-        assertBrowserApiCorsPreflightHeaders(response.headers, { origin });
-        assert.equal(response.headers.vary, "Origin");
-      }
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-  );
-
-  it.effect("refuses a websocket upgrade from a foreign origin, before authenticating", () =>
-    Effect.gen(function* () {
-      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
-
-      const wsUrl = yield* getHttpServerUrl("/ws");
-      const response = yield* fetchEffect(wsUrl, {
-        headers: { origin: "https://evil.example" },
+      const response = yield* fetchEffect(sessionUrl, {
+        headers: { origin: ARBITRARY_ORIGIN, authorization: `Bearer ${session.token}` },
       });
-      const body = yield* responseJsonEffect<{
-        readonly code?: string;
-        readonly reason?: string;
-      }>(response);
+      const body = yield* responseJsonEffect<{ readonly authenticated: boolean }>(response);
 
-      // 403, not 401: the origin is refused before any credential is read, so
-      // a foreign page learns nothing about whether it had one.
-      assert.equal(response.status, 403);
-      assert.equal(body.code, "operation_forbidden");
-      assert.equal(body.reason, "origin_not_allowed");
+      assert.equal(response.status, 200);
+      assertBrowserApiCorsResponseHeaders(response.headers);
+      assert.isTrue(body.authenticated);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("allows a websocket upgrade from a sibling Zerops origin", () =>
+  it.effect("refuses a call without a bearer from any origin inside a Zerops project", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
 
-      const wsUrl = yield* getHttpServerUrl("/ws");
-      const response = yield* fetchEffect(wsUrl, {
-        headers: { origin: "https://zcp-2338-8080.prg1.zerops.app" },
+      const ticketUrl = yield* getHttpServerUrl("/api/auth/websocket-ticket");
+      const response = yield* fetchEffect(ticketUrl, {
+        method: "POST",
+        headers: { origin: ARBITRARY_ORIGIN },
       });
       const body = yield* responseJsonEffect<{ readonly reason?: string }>(response);
 
-      // 401, not 403: the origin passed and the request reached authentication.
       assert.equal(response.status, 401);
       assert.equal(body.reason, "missing_credential");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("lets a credential-less upgrade past the origin check to fail on auth", () =>
+  it.effect("opens the websocket from any origin with a valid ticket inside a Zerops project", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
+      const session = yield* issueFixtureSession();
+      const ticketResponse = yield* HttpClient.post("/api/auth/websocket-ticket", {
+        headers: { authorization: `Bearer ${session.token}` },
+      });
+      const { ticket } = (yield* ticketResponse.json) as { readonly ticket: string };
+      const wsUrl = `${yield* getWsServerUrl("/ws", { authenticated: false })}?wsTicket=${encodeURIComponent(ticket)}`;
+
+      const socket = yield* Effect.acquireRelease(
+        Effect.callback<NodeSocket.NodeWS.WebSocket, Error>((resume) => {
+          const opened = new NodeSocket.NodeWS.WebSocket(wsUrl, { origin: ARBITRARY_ORIGIN });
+          opened.on("open", () => resume(Effect.succeed(opened)));
+          opened.on("error", (error) => resume(Effect.fail(error)));
+        }),
+        (opened) => Effect.sync(() => opened.close()),
+      );
+
+      assert.equal(socket.readyState, NodeSocket.NodeWS.WebSocket.OPEN);
+    }).pipe(Effect.scoped, Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("refuses a websocket from any origin without a ticket inside a Zerops project", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
 
       const wsUrl = yield* getHttpServerUrl("/ws");
-      const response = yield* fetchEffect(wsUrl, {});
-
-      // No Origin: not a browser, so nothing to forge. It fails on the
-      // credential instead, exactly as it does upstream.
-      assert.equal(response.status, 401);
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
-  );
-
-  it.effect("leaves the websocket upgrade alone outside a Zerops project", () =>
-    Effect.gen(function* () {
-      yield* buildAppUnderTest();
-
-      const wsUrl = yield* getHttpServerUrl("/ws");
-      const response = yield* fetchEffect(wsUrl, {
-        headers: { origin: "https://evil.example" },
-      });
+      const response = yield* fetchEffect(wsUrl, { headers: { origin: ARBITRARY_ORIGIN } });
+      const body = yield* responseJsonEffect<{ readonly reason?: string }>(response);
 
       assert.equal(response.status, 401);
+      assert.equal(body.reason, "missing_credential");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

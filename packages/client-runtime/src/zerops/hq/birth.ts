@@ -211,8 +211,6 @@ const refusedOutright = (cause: unknown): boolean =>
 export function hqImportYaml(input: {
   /** The bootstrap import's id. */
   readonly birthId: string;
-  /** The client origins HQ's API answers (`HQ_CLIENT_ORIGINS`). */
-  readonly origins: ReadonlyArray<string>;
   /** The Zerops REST API Core reads with (`HQ_ZEROPS_API`). */
   readonly zeropsApi: string;
 }): string {
@@ -239,7 +237,6 @@ export function hqImportYaml(input: {
     "    verticalAutoscaling:",
     "      minRam: 0.5",
     "    envSecrets:",
-    `      HQ_CLIENT_ORIGINS: ${JSON.stringify([...new Set(input.origins)].join(","))}`,
     `      HQ_ZEROPS_API: ${JSON.stringify(input.zeropsApi)}`,
     // The bucket's own variables, by reference: Core's backup reads them (apps/hq bucketStore.ts).
     "      HQ_BACKUP_URL: ${backup_apiUrl}",
@@ -256,7 +253,6 @@ export async function runHqBirth(input: {
   /** Explicit manual action; a fresh browser never retries a recorded failure. */
   readonly again?: boolean;
   readonly clientId: string;
-  readonly origins: ReadonlyArray<string>;
   readonly zeropsApi: string;
   readonly deps: HqBirthDeps;
   /** Told of each step's result, so an *Again* resumes from it. */
@@ -346,7 +342,7 @@ export async function runHqBirth(input: {
         try {
           const imported = await platform.importProject(
             clientId,
-            hqImportYaml({ birthId: tag, origins: input.origins, zeropsApi: input.zeropsApi }),
+            hqImportYaml({ birthId: tag, zeropsApi: input.zeropsApi }),
           );
           if (imported.serviceStacks !== undefined) {
             importHandles = {

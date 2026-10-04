@@ -26,6 +26,8 @@
  *   it, which HQ's grace serves through (`@t3tools/shared/hqStream` `HqOfficialVerdict`), and
  *   `null` before this Core's first check finished — a Core starts at `unknown`, which is no
  *   verdict;
+ * - `{ type: "parts", parts }` — how this Core's parts stand, as `/health` reports them
+ *   (`health.ts` `healthParts`), whenever that changes; the snapshot carries them too;
  * - `{ type: "ping" }` every 20 s, so the Zerops L7 (which cuts an idle connection at 60 s) never
  *   sees one; the client answers `{ type: "pong" }`. Any message counts: a client silent through
  *   three pings is closed (4408).
@@ -73,6 +75,7 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
 import { type MateOverviewEntry, MateOverviews } from "./mateOverviews.ts";
+import { healthParts } from "./health.ts";
 import { Official } from "./official.ts";
 import { Recomputes } from "./recomputes.ts";
 import { Releases } from "./releases.ts";
@@ -99,13 +102,21 @@ export type StructureMessage =
       readonly appReads: AppReads;
       readonly official: HqOfficialVerdict | null;
       readonly build?: string;
+      readonly parts: StreamParts;
     } & StructureRead &
       HqMatesSnapshot)
   | { readonly type: "official"; readonly official: HqOfficialVerdict | null }
+  | { readonly type: "parts"; readonly parts: StreamParts }
   | ChangesMessage
   | ReleaseRevisionMessage
   | { readonly type: "change"; readonly key: string; readonly value: unknown }
   | HqMatesMessage;
+
+/**
+ * How this Core's parts stand, as `/health` reports them (`health.ts` `healthParts`): its database
+ * answers while the stream computes a view at all.
+ */
+type StreamParts = { readonly db: "up" } & Omit<Effect.Success<typeof healthParts>, "git">;
 
 /** The key of the Mates in no application; an application's key is its id, never this. */
 const UNGROUPED = "ungrouped";
@@ -196,6 +207,8 @@ interface Sent {
   readonly people: string;
   /** Whether this HQ is the official one, as its last check of Zerops said; none before one. */
   readonly official: HqOfficialVerdict | null;
+  /** How this Core's parts stand, encoded. */
+  readonly parts: string;
 }
 
 /**
@@ -213,7 +226,15 @@ export const structureMessages = <R>(
 ): Stream.Stream<
   Outgoing,
   SqlError | ZeropsError,
-  Structure | Changes | Releases | Deploys | MateOverviews | Roles | Official | R
+  | Structure
+  | Changes
+  | Releases
+  | Deploys
+  | MateOverviews
+  | Roles
+  | Official
+  | Effect.Services<typeof healthParts>
+  | R
 > =>
   Stream.unwrap(
     Effect.gen(function* () {
@@ -224,6 +245,9 @@ export const structureMessages = <R>(
       const overviews = yield* MateOverviews;
       const roles = yield* Roles;
       const officialHq = yield* Official;
+      const partsNow = healthParts.pipe(
+        Effect.provideContext(yield* Effect.context<Effect.Services<typeof healthParts>>()),
+      );
       const person = { kind: "person", userId } as const;
       const one = yield* Semaphore.make(1);
       const sent = yield* Ref.make<Sent | undefined>(undefined);
@@ -342,6 +366,8 @@ export const structureMessages = <R>(
             }),
           );
         }
+        const { git: _git, ...health } = yield* partsNow;
+        const parts: StreamParts = { db: "up", ...health };
         const facts = yield* roles.view;
         const listed = matesIn(view);
         const observable = new Set(
@@ -380,6 +406,7 @@ export const structureMessages = <R>(
           mates: new Map([...mates].map(([projectId, entry]) => [projectId, encodedParts(entry)])),
           people: toJson(people),
           official: (yield* officialHq.checked) ? (yield* officialHq.status).official : null,
+          parts: toJson(parts),
         };
         yield* Ref.set(sent, now);
         if (before === undefined) {
@@ -395,6 +422,7 @@ export const structureMessages = <R>(
               people,
               official: now.official,
               ...(build === undefined ? {} : { build }),
+              parts,
             },
           ];
         }
@@ -402,6 +430,7 @@ export const structureMessages = <R>(
           ...(now.official === before.official
             ? []
             : [{ type: "official" as const, official: now.official }]),
+          ...(now.parts === before.parts ? [] : [{ type: "parts" as const, parts }]),
           ...differing(before.changes, now.changes).map((appId): Outgoing => ({
             type: "changes",
             appId,

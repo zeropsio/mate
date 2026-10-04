@@ -271,6 +271,22 @@ describe("structureEventOf", () => {
     expect(
       structureEventOf({ type: "snapshot", apps: [ACME], official: "ok", build: "b1" }),
     ).toMatchObject({ kind: "snapshot", official: "ok", build: "b1" });
+    // How its parts stand, as its health reports them: what this build cannot read is absent.
+    expect(
+      structureEventOf({
+        type: "snapshot",
+        apps: [ACME],
+        parts: { db: "up", backup: { state: "pending" }, keys: "ok", loop: 3 },
+      }),
+    ).toMatchObject({
+      kind: "snapshot",
+      parts: { db: "up", quarantined: [], backup: { state: "pending" }, keys: "ok" },
+    });
+    expect(structureEventOf({ type: "parts", parts: { db: "up", keys: "no_secret" } })).toEqual({
+      kind: "parts",
+      parts: { db: "up", quarantined: [], keys: "no_secret" },
+    });
+    expect(structureEventOf({ type: "parts", parts: "fine" })).toBeUndefined();
     // Before the Core's first check: no verdict, which is not a Core that never says one.
     expect(structureEventOf({ type: "snapshot", apps: [ACME], official: null })).toMatchObject({
       kind: "snapshot",

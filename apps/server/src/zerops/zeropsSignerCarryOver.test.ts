@@ -320,7 +320,6 @@ describe("liveCarryOverSources", () => {
         ...resolveZeropsEnvironment({
           projectId: PROJECT,
           apiHost: undefined,
-          allowedOrigins: [],
           apiToken: "mate-key",
         })!,
         hqEnrollmentPath: enrollment,
@@ -393,7 +392,6 @@ describe("liveCarryOverSources on the container", () => {
   const environment = resolveZeropsEnvironment({
     projectId: "project-fixture",
     apiHost: undefined,
-    allowedOrigins: [],
     apiToken: "mate-key",
   })!;
   const sourcesIn = (home: string) =>

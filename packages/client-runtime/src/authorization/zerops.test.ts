@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import { EnvironmentOperationForbiddenError } from "@t3tools/contracts";
+import { mapRemoteEnvironmentError } from "../connection/errors.ts";
 import { remoteHttpClientLayer } from "../rpc/http.ts";
 import { presentZeropsThrowaway } from "./zerops.ts";
 
@@ -124,6 +125,38 @@ describe("presentZeropsThrowaway", () => {
       );
 
       expect(isForbidden(error)).toBe(true);
+    }),
+  );
+
+  // An older server names refusals this client no longer knows (0.13.x Mates
+  // say `origin_not_allowed`). The status still says what happened, so the
+  // refusal reads as the generic permission failure, never a broken server.
+  it.effect("reads a refusal reason it does not know as the generic permission failure", () =>
+    Effect.gen(function* () {
+      const fetch = recordedFetch(
+        Response.json(
+          {
+            _tag: "EnvironmentOperationForbiddenError",
+            code: "operation_forbidden",
+            reason: "origin_not_allowed",
+            traceId: "trace-1",
+          },
+          { status: 403 },
+        ),
+      );
+
+      const error = yield* Effect.flip(
+        presentZeropsThrowaway({
+          httpBaseUrl: "https://remote.example.com",
+          doorToken: DOOR_TOKEN,
+        }).pipe(provideRemoteHttp(fetch.fetchFn)),
+      );
+
+      expect(mapRemoteEnvironmentError(error)).toMatchObject({
+        _tag: "ConnectionBlockedError",
+        reason: "permission",
+        detail: "The environment credential does not grant the required access.",
+      });
     }),
   );
 });

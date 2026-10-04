@@ -5,6 +5,7 @@ import {
   EnvironmentScopeRequiredError,
 } from "@t3tools/contracts";
 
+import { RemoteEnvironmentAuthUndeclaredStatusError } from "../rpc/http.ts";
 import { mapRemoteEnvironmentError } from "./errors.ts";
 
 const forbidden = (reason: EnvironmentOperationForbiddenError["reason"]) =>
@@ -60,7 +61,6 @@ describe("mapRemoteEnvironmentError", () => {
   for (const reason of [
     "zerops_project_membership_required",
     "zerops_throwaway_required",
-    "origin_not_allowed",
   ] as const) {
     it(`maps ${reason} to the generic permission failure`, () => {
       expect(mapRemoteEnvironmentError(forbidden(reason))).toMatchObject({
@@ -69,6 +69,21 @@ describe("mapRemoteEnvironmentError", () => {
       });
     });
   }
+
+  // A refusal whose body this client cannot decode — an older or newer server's
+  // reason — still carries its status, and the status says whose move it is.
+  it.each([
+    { status: 401, mapped: { _tag: "ConnectionBlockedError", reason: "authentication" } },
+    { status: 403, mapped: { _tag: "ConnectionBlockedError", reason: "permission" } },
+    { status: 404, mapped: { _tag: "ConnectionTransientError", reason: "remote-unavailable" } },
+    { status: 502, mapped: { _tag: "ConnectionTransientError", reason: "remote-unavailable" } },
+  ] as const)("reads an undecodable $status by its status", ({ status, mapped }) => {
+    expect(
+      mapRemoteEnvironmentError(
+        new RemoteEnvironmentAuthUndeclaredStatusError("https://mate.example/api", status),
+      ),
+    ).toMatchObject(mapped);
+  });
 
   it("maps a missing scope to the generic permission failure", () => {
     expect(

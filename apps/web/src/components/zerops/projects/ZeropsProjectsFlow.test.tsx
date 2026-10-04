@@ -72,20 +72,23 @@ describe("the containers no project holds", () => {
   });
 });
 
-describe("the tools", () => {
-  it("are one quiet line at the end, after the containers: the organization's HQ", () => {
+describe("HQ's card", () => {
+  it("is the page's quiet end, after the containers, under no Tools label", () => {
     const html = render({
       groups: [MERGING],
       ungrouped: [{ item: item("loose"), action: "open" }],
     });
-    expect(html).toContain('data-test-hq-tool="true"');
     expect(html.indexOf('data-zerops-surface="other-containers"')).toBeLessThan(
-      html.indexOf('data-zerops-tools="true"'),
+      html.indexOf('data-test-hq-card="true"'),
     );
+    expect(html.indexOf('data-zerops-surface="quiet-end"')).toBeLessThan(
+      html.indexOf('data-test-hq-card="true"'),
+    );
+    expect(html).not.toContain(">Tools<");
   });
 
-  it("wait for an account that has started", () => {
-    expect(render({ onCreateProject: () => {} })).not.toContain('data-test-hq-tool="true"');
+  it("waits for an account that has started", () => {
+    expect(render({ onCreateProject: () => {} })).not.toContain('data-test-hq-card="true"');
   });
 });
 

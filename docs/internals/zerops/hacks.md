@@ -254,7 +254,7 @@ H-17 for the same reasoning applied to the web mounts panel.
 
 ### H-15 · The `/z3-pair` mint response uses `Access-Control-Allow-Origin: *` · superseded (2026-09-04)
 
-**Superseded**: the `/z3-pair` endpoint no longer exists (spec §3.2). The door's own origin policy is the allowlist in spec §3.4. The text below is the POC record.
+**Superseded**: the `/z3-pair` endpoint no longer exists (spec §3.2). The door's origin allowlist (spec §3.4) is gone too since 2026-10-04 (spec D36): the door takes only bearer tokens and tickets, so it answers any origin. The text below is the POC record.
 
 **Where** `zcp` — `internal/z3sidecar/z3sidecar.go`'s `handleMint`
 **Why** The caller is the mate web app, a different origin than the container, so the mint response
@@ -411,7 +411,7 @@ midnight; hand delivery means build → try → throw away within minutes.
 **Cost** the platform recipe runs `install.sh` (unpinned → latest _release_) on every container
 start, so any restart replaces the dev binary and `zcp init z3` with it — push again after every
 restart, and restart only to measure S0.2. The web client never goes in (`vite dev` on the
-laptop against the container), so `http://localhost:*` is on the mate Origin/CORS allowlist.
+laptop against the container), so `http://localhost:*` was on the mate Origin/CORS allowlist (removed 2026-10-04, spec D36: any origin is answered).
 **Owner decision 2026-08-28 (end of day 1)** hand delivery stays the ONLY channel until
 further notice, and **no zcp release from `main` while the `zcp init z3` step is unconditional**
 (`../zcp/internal/init/init_mate.go`): a release would, on every container restart fleet-wide,

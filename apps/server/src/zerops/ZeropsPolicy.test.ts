@@ -25,7 +25,6 @@ import { UPSTREAM_POLICY, ZEROPS_POLICY, zeropsPolicy } from "./ZeropsPolicy.ts"
 const zeropsEnvironment = resolveZeropsEnvironment({
   projectId: "nTV3oMB2SS634ImDJnQckg",
   apiHost: undefined,
-  allowedOrigins: [],
 });
 
 const configLayer = (overrides?: Partial<ServerConfig.ServerConfig["Service"]>) =>

@@ -4,8 +4,8 @@
  * advisory lock does not survive the pooler on 6432); `PORT` (8080); the platform's `projectId`,
  * whose own domain is this Core's address, which the anchor must name (`official.ts`); `HQ_ORG_TOKEN`, the org Read only credential HQ reads Zerops with (absent
  * means `credentials_wrong`); `HQ_KEY_SECRET`, the key its environments' deploy tokens are sealed
- * with (`deployKeys.ts`; absent, HQ deploys nothing); `HQ_ZEROPS_API`, the region's REST API; `HQ_CLIENT_ORIGINS`, the
- * client origins the API answers; `HQ_DRAIN_SECONDS`, how long the server still answers on shutdown (`core.ts`);
+ * with (`deployKeys.ts`; absent, HQ deploys nothing); `HQ_ZEROPS_API`, the region's REST API;
+ * `HQ_DRAIN_SECONDS`, how long the server still answers on shutdown (`core.ts`);
  * `HQ_BACKUP_*`, the bucket backup sets are kept in (`bucketStore.ts`; without it backup is off). The
  * server answers from the first moment; the official check and the leader work behind it. The
  * leading Core takes a backup set every hour (`backup.ts`).
@@ -68,9 +68,6 @@ const core = Layer.unwrap(
     const api = yield* Config.String("HQ_ZEROPS_API").pipe(
       Config.withDefault("https://api.app-prg1.zerops.io/api/rest/public"),
     );
-    const origins = yield* Config.String("HQ_CLIENT_ORIGINS").pipe(
-      Config.withDefault("https://mate.zerops.io,http://localhost:4380"),
-    );
     const bucket = yield* bucketOfEnv;
     const zerops = Layer.mergeAll(
       Layer.effect(ZeropsApi, makeZeropsApiHttp(api)),
@@ -93,7 +90,6 @@ const core = Layer.unwrap(
       hqProjectId: yield* Config.String("projectId"),
       credential: yield* Config.option(Config.Redacted("HQ_ORG_TOKEN")),
       keySecret: yield* Config.option(Config.Redacted("HQ_KEY_SECRET")),
-      clientOrigins: origins.split(",").map((origin) => origin.trim()),
       build: BUILD,
     };
     return coreApp(options).pipe(
