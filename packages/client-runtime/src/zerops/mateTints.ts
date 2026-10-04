@@ -25,56 +25,13 @@ import {
   type MateTintId,
 } from "@t3tools/shared/brand";
 
+import { assignMateTints, preferredMateTint } from "@t3tools/shared/mateFaces";
+
 import type { ZeropsCandidate } from "./candidates.ts";
 import { readZeropsMembership } from "./groups.ts";
 import { selectMateEnvironments } from "./mateEnvironments.ts";
 
-/** FNV-1a over the name's code units — small, stable, and even over eight buckets. */
-function hashName(name: string): number {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < name.length; index += 1) {
-    hash ^= name.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash;
-}
-
-function normalize(name: string): string {
-  return name.trim().toLowerCase();
-}
-
-/** The tint a name asks for on its own, before any clash is resolved. */
-export function preferredMateTint(name: string): MateTintId {
-  return MATE_TINT_IDS[hashName(normalize(name)) % MATE_TINT_IDS.length]!;
-}
-
-/**
- * One tint per distinct name (case-insensitively). Blank names get nothing.
- */
-export function assignMateTints(names: ReadonlyArray<string>): ReadonlyMap<string, MateTintId> {
-  // The first spelling of a name wins; a later "fen" is the same Mate as "Fen".
-  const seen = new Set<string>();
-  const distinct = names
-    .filter((name) => {
-      const key = normalize(name);
-      if (key.length === 0 || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((left, right) => normalize(left).localeCompare(normalize(right), "en"));
-  const count = MATE_TINT_IDS.length;
-  const taken = new Set<number>();
-  const tints = new Map<string, MateTintId>();
-  for (const name of distinct) {
-    let index = hashName(normalize(name)) % count;
-    if (taken.size < count) {
-      while (taken.has(index)) index = (index + 1) % count;
-    }
-    taken.add(index);
-    tints.set(name, MATE_TINT_IDS[index]!);
-  }
-  return tints;
-}
+export { assignMateTints, preferredMateTint } from "@t3tools/shared/mateFaces";
 
 /**
  * The account's Mates, each with its tint, keyed by the project it lives in.
@@ -119,7 +76,7 @@ export function assignCandidateMateTints(
 export function newMateTint(candidates: ReadonlyArray<ZeropsCandidate>, name: string): MateTintId {
   const worn = new Set(assignCandidateMateTints(candidates).values());
   const count = MATE_TINT_IDS.length;
-  let index = hashName(normalize(name)) % count;
+  let index = MATE_TINT_IDS.indexOf(preferredMateTint(name));
   if (worn.size < count) {
     while (worn.has(MATE_TINT_IDS[index]!)) index = (index + 1) % count;
   }
