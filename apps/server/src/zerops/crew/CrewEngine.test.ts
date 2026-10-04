@@ -704,6 +704,7 @@ describe("CrewEngine", () => {
         yield* snapshotWhere((current) => current.attention.length === 1);
         const tries = (yield* Ref.get(world.admitted)).length;
         yield* world.signedInAs("codex");
+        yield* world.extraSignedIn("work");
         yield* Effect.sleep("300 millis");
         assert.deepStrictEqual(
           [(yield* Ref.get(world.admitted)).length, (yield* latest).board.tasks[0]!.state],
