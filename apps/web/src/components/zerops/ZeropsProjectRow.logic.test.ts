@@ -2,6 +2,7 @@ import { newMateTint, offerAsker } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
+import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -20,6 +21,7 @@ import {
   releaseRowTone,
   zeropsReasonSentence,
   hqRecordedProjects,
+  plainEvidenceOf,
   type PlainProjectEvidence,
   type ZeropsRowCandidate,
   type ZeropsRowInput,
@@ -374,6 +376,57 @@ describe("deriveZeropsRowAction", () => {
         project: { ...shop.project, tagList: ["mate"] },
       } as ZeropsRowCandidate;
       expect(offered(unread)).toBe("none");
+    });
+
+    // Live, 2026-10-04: the page took HQ's age from its candidate rows, which never hold the HQ's
+    // own project, so no project could ever be plain. Its age comes from the organization's whole
+    // project listing.
+    describe("plainEvidenceOf — the page's evidence", () => {
+      const ORG_PROJECTS = [
+        { id: "hq-1", created: "2026-10-02T21:19:21Z" },
+        { id: "old-hq", created: "2026-09-22T10:00:00Z" },
+        { id: "bare", created: "2026-09-29T10:25:57Z" },
+      ];
+      const STRUCTURE = { ungrouped: [], apps: [] } as never;
+      const evidence = (
+        projects: ReadonlyArray<{ readonly id: string; readonly created?: string }>,
+        hq: OfficialHq = { kind: "official", projectId: "hq-1", address: "https://hq.test" },
+      ) =>
+        plainEvidenceOf({
+          hqKnown: true,
+          structure: STRUCTURE,
+          hq,
+          organizationProjects: projects,
+          local: [],
+        });
+
+      it("takes HQ's age from the organization's projects, where the candidates hold no HQ", () => {
+        expect(evidence(ORG_PROJECTS)?.hqBornAt).toBe("2026-10-02T21:19:21Z");
+        const live = {
+          ...shop,
+          project: { ...shop.project, name: "central-prometheus", created: "2026-09-29T10:25:57Z" },
+        } as ZeropsRowCandidate;
+        expect(offered(live, PLAIN, evidence(ORG_PROJECTS)!)).toBe("set-up-mate");
+      });
+
+      it("is never plain where HQ's own project is not listed, nor without an official HQ", () => {
+        expect(evidence(ORG_PROJECTS.filter(({ id }) => id !== "hq-1"))?.hqBornAt).toBeUndefined();
+        expect(
+          evidence(ORG_PROJECTS, { kind: "unclear", projectIds: ["hq-1", "old-hq"] }),
+        ).toMatchObject({ hqBornAt: undefined, hqAnchors: new Set(["hq-1", "old-hq"]) });
+      });
+
+      it("is none while HQ's structure is not known", () => {
+        expect(
+          plainEvidenceOf({
+            hqKnown: false,
+            structure: STRUCTURE,
+            hq: { kind: "none" },
+            organizationProjects: ORG_PROJECTS,
+            local: [],
+          }),
+        ).toBeUndefined();
+      });
     });
 
     it("gathers every project HQ's structure holds any record of", () => {

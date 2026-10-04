@@ -29,7 +29,11 @@ import {
   type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { HQ_PROJECT_NAME, type HqStructure } from "@t3tools/client-runtime/zerops/hq";
+import {
+  HQ_PROJECT_NAME,
+  type HqStructure,
+  type OfficialHq,
+} from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
 import {
@@ -389,6 +393,43 @@ export function plainZeropsProject(
     !Number.isNaN(hqBorn) &&
     created < hqBorn
   );
+}
+
+/**
+ * The page's evidence for `plainZeropsProject`, none while HQ's structure is not known. HQ's age
+ * comes from the organization's whole project listing — the store's, which holds the HQ's own
+ * project — never from the page's candidate rows, which never do (live, 2026-10-04). Only an
+ * official HQ dates anything: with none, or an unclear one, nothing is plain.
+ */
+export function plainEvidenceOf(input: {
+  readonly hqKnown: boolean;
+  readonly structure: HqStructure | null;
+  readonly hq: OfficialHq;
+  /** The organization's projects as its listing in the store holds them, the HQ's own among them. */
+  readonly organizationProjects: ReadonlyArray<{
+    readonly id: string;
+    readonly created?: string | undefined;
+  }>;
+  /** The projects this tab is making or finishing. */
+  readonly local: Iterable<string>;
+}): PlainProjectEvidence | undefined {
+  if (!input.hqKnown || input.structure === null) return undefined;
+  const official = input.hq.kind === "official" ? input.hq.projectId : undefined;
+  return {
+    hqRecords: hqRecordedProjects(input.structure),
+    hqAnchors: new Set(
+      input.hq.kind === "official"
+        ? [input.hq.projectId]
+        : input.hq.kind === "unclear"
+          ? input.hq.projectIds
+          : [],
+    ),
+    hqBornAt:
+      official === undefined
+        ? undefined
+        : input.organizationProjects.find((project) => project.id === official)?.created,
+    local: new Set(input.local),
+  };
 }
 
 /**
