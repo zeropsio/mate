@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 /** The dialog over a rename HQ answers when the test says. */
-function mount() {
+function mount(group: ZeropsGroup = GROUP) {
   let settle = { take: () => {}, refuse: (_cause: unknown) => {} };
   const rename = vi.fn(
     () =>
@@ -52,7 +52,7 @@ function mount() {
   mock.rename = rename;
   const onClose = vi.fn();
   act(() => {
-    mounted.push(create(<ZeropsRenameProjectDialog group={GROUP} onClose={onClose} />));
+    mounted.push(create(<ZeropsRenameProjectDialog group={group} onClose={onClose} />));
   });
   return {
     rename,
@@ -63,6 +63,19 @@ function mount() {
 }
 
 describe("ZeropsRenameProjectDialog", () => {
+  it.each([
+    { name: "starts from the name HQ holds", nameSource: "hq", initialValue: "Shop" },
+    // Its id is a handle, not a name: the field does not offer it as one.
+    {
+      name: "starts empty where the name could not be read",
+      nameSource: "unread",
+      initialValue: "",
+    },
+  ])("$name, and renames", ({ nameSource, initialValue }) => {
+    mount({ ...GROUP, nameSource } as ZeropsGroup);
+    expect(mock.dialog).toMatchObject({ initialValue, title: "Rename the project" });
+  });
+
   it("says Mate shows the new name, and its environments in Zerops keep theirs", () => {
     mount();
     expect(mock.dialog?.description).toBe(

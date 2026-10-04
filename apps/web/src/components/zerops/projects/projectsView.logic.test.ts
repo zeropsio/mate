@@ -723,20 +723,33 @@ describe("withoutOfficialHq — the page's projects, never the organization's HQ
 
 describe("the Overview's ungrouped projects", () => {
   it("leaves foreign environments without a Mate out of the collapsed containers and setup list", () => {
-    const row = (id: string, tags: string[], container: boolean) => ({
+    const row = (id: string, tags: string[], container: boolean, placedMate = false) => ({
       item: {
         key: id,
         group: "unavailable" as const,
-        project: { id, name: id, status: "ACTIVE", tagList: tags },
+        project: {
+          id,
+          name: id,
+          status: "ACTIVE",
+          tagList: tags,
+          // A Mate HQ holds in no application.
+          ...(placedMate
+            ? { hq: { appId: null, appName: null, kind: "mate" as const, mate: { face: "" } } }
+            : {}),
+        },
         ...(container ? { service: { id: "zcp", name: "zcp", status: "ACTIVE" } } : {}),
       },
       action: "none" as const,
     });
     const mate = row("foreign-mate", ["mate"], true);
-    const lostMate = row("lost-mate", ["mate"], false);
+    const lostMate = row("lost-mate", ["mate"], false, true);
+    const markedOnly = row("marked-only", ["mate"], false);
     const production = row("foreign-prod", ["mate:g:foreign", "mate:role:prod"], false);
     const ordinary = row("central-prometheus", [], false);
-    expect(shownUngrouped([production, ordinary, mate, lostMate])).toEqual([mate, lostMate]);
+    expect(shownUngrouped([production, ordinary, markedOnly, mate, lostMate])).toEqual([
+      mate,
+      lostMate,
+    ]);
   });
 });
 

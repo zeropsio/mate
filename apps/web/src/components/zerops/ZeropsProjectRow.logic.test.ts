@@ -255,19 +255,31 @@ describe("deriveZeropsRowAction", () => {
   });
 
   describe("Set up Mate", () => {
-    const bare: ZeropsRowCandidate = {
+    const unplaced: ZeropsRowCandidate = {
       key: "bare",
       project: { id: "bare", name: "bare", status: "ACTIVE", tagList: ["mate"] },
       group: "unavailable",
       reason: "no Zerops Mate container in this project",
       missingContainer: true,
     };
+    // A Mate HQ holds in no application: ungrouped, its container gone.
+    const bare: ZeropsRowCandidate = {
+      ...unplaced,
+      project: {
+        ...unplaced.project,
+        hq: { appId: null, appName: null, kind: "mate", mate: { face: "" } },
+      },
+    };
 
-    it("is offered on a declared Mate that has lost its container", () => {
+    it("is offered on a Mate HQ places that has lost its container", () => {
       expect(deriveZeropsRowAction(input(bare, undefined))).toEqual({
         kind: "set-up-mate",
         label: "Set up Mate",
       });
+    });
+
+    it("is not offered on a project only the GUI marker calls a Mate", () => {
+      expect(deriveZeropsRowAction(input(unplaced, undefined))).toEqual({ kind: "none" });
     });
 
     it.each([
@@ -276,12 +288,15 @@ describe("deriveZeropsRowAction", () => {
       ["ZIT - stage", ["mate:g:foreign", "mate:role:stage"]],
       ["Imperial Titan - production", ["mate:g:foreign", "mate:role:prod"]],
     ])("does not offer to convert an unrecorded environment (%s)", (name, tagList) => {
-      const foreign = { ...bare, project: { ...bare.project, name, tagList } };
+      const foreign = { ...unplaced, project: { ...unplaced.project, name, tagList } };
       expect(deriveZeropsRowAction(input(foreign, undefined))).toEqual({ kind: "none" });
     });
 
     it("is never offered to a tool, which has no container by design", () => {
-      const gitea = { ...bare, project: { ...bare.project, tagList: ["mate:tool:gitea"] } };
+      const gitea = {
+        ...unplaced,
+        project: { ...unplaced.project, tagList: ["mate:tool:gitea"] },
+      };
       expect(deriveZeropsRowAction(input(gitea, undefined))).toEqual({ kind: "none" });
     });
 

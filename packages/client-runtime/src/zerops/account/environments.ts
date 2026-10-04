@@ -174,9 +174,9 @@ export interface AccountEnvironmentPorts {
   /**
    * HQ's index of the Mates the reader observes: the project whose Mate serves an environment
    * (krok-a-hub §3). A route or an action no record or descriptor names finds its target through
-   * it, with no descriptor sweep. Absent: it names none.
+   * it, with no descriptor sweep. Null where HQ names none, or is not read.
    */
-  readonly hqIndex?: {
+  readonly hqIndex: {
     readonly projectOf: (environmentId: EnvironmentId) => string | null;
     readonly subscribe: (listener: () => void) => () => void;
   };
@@ -192,19 +192,19 @@ export interface AccountEnvironmentPorts {
   /**
    * The projects whose Mate HQ holds online now: each proves its container up without a probe
    * (`ContainerStore.setOnline`). Null while HQ's word is not current: a Mate first listed
-   * meanwhile waits for it, a bounded while. Without it, every container is read as before.
+   * meanwhile waits for it, a bounded while.
    */
-  readonly online?: {
+  readonly online: {
     readonly read: () => ReadonlySet<string> | null;
     readonly subscribe: (listener: () => void) => () => void;
   };
   /**
    * The organization whose official HQ's word on its Mates is current: a project it lists that HQ
    * does not hold online — no Mate of HQ's there, or one HQ holds offline — is read only once a
-   * lease waits on it (`ContainerStore.setHqScope`). Null while no official HQ's word is; absent,
-   * every listed container is read as the listing says.
+   * lease waits on it (`ContainerStore.setHqScope`). Null while no official HQ's word is: every
+   * listed container is read as the listing says.
    */
-  readonly hqOrganization?: {
+  readonly hqOrganization: {
     readonly read: () => string | null;
     readonly subscribe: (listener: () => void) => () => void;
   };
@@ -531,7 +531,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
   /** The listed Mate of the project HQ's index names for an environment, once its services are read. */
   const hintedTarget = (environmentId: EnvironmentId): TargetKey | null => {
-    const projectId = ports.hqIndex?.projectOf(environmentId) ?? null;
+    const projectId = ports.hqIndex.projectOf(environmentId);
     if (projectId === null) return null;
     return (
       rows.find((row) => row.project.id === projectId && row.service !== undefined)?.key ?? null
@@ -571,9 +571,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       drawn.flatMap((environmentId) => {
         const projectId =
           stores!.records.list().find((record) => record.environmentId === environmentId)
-            ?.projectRef?.projectId ??
-          ports.hqIndex?.projectOf(environmentId) ??
-          null;
+            ?.projectRef?.projectId ?? ports.hqIndex.projectOf(environmentId);
         return projectId !== null &&
           projectRefOf(projectId)?.organization.organizationId === activeOrganization
           ? [projectId]
@@ -768,15 +766,11 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       route === null
         ? null
         : (stores.records.list().find((record) => record.environmentId === route)?.projectRef
-            ?.projectId ??
-          ports.hqIndex?.projectOf(route) ??
-          null);
+            ?.projectId ?? ports.hqIndex.projectOf(route));
     const actionProjects = [...actions].map(
       ({ environmentId }) =>
         stores!.records.list().find((record) => record.environmentId === environmentId)?.projectRef
-          ?.projectId ??
-        ports.hqIndex?.projectOf(environmentId) ??
-        null,
+          ?.projectId ?? ports.hqIndex.projectOf(environmentId),
     );
     const wanted = new Set(
       [onScreen, routedProject, ...actionProjects].filter(
@@ -956,7 +950,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     // speaks for and does not — is read on sight; what it speaks for before what it holds online,
     // as HQ's answer reads what waited for it.
     const updateHqScope = () => {
-      const organizationId = ports.hqOrganization?.read() ?? null;
+      const organizationId = ports.hqOrganization.read();
       const spoken = listings.find((entry) => entry.organizationId === organizationId);
       containers.setHqScope(
         spoken === undefined
@@ -966,7 +960,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     };
     const updateOnline = () => {
       updateHqScope();
-      containers.setOnline(ports.online === undefined ? new Set() : ports.online.read());
+      containers.setOnline(ports.online.read());
     };
     updateOnline();
     const holdBackground = () => driver.holdBackground(ports.pressInFlight?.read() ?? false);
@@ -993,13 +987,13 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       }),
       ports.records.listen(registrationsChanged),
       ports.pressInFlight?.subscribe(holdBackground) ?? (() => undefined),
-      ports.hqIndex?.subscribe(() => {
+      ports.hqIndex.subscribe(() => {
         updateRoute();
         updateActions();
         updateDrawn();
-      }) ?? (() => undefined),
-      ports.online?.subscribe(updateOnline) ?? (() => undefined),
-      ports.hqOrganization?.subscribe(updateOnline) ?? (() => undefined),
+      }),
+      ports.online.subscribe(updateOnline),
+      ports.hqOrganization.subscribe(updateOnline),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;

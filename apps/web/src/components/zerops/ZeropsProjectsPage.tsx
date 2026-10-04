@@ -190,7 +190,7 @@ import {
   creatableRoles,
   environmentRoleLabel,
   environmentRoleTag,
-  groupNameIsPlaceholder,
+  groupNameUnread,
 } from "./ZeropsGroupTree.logic";
 import { ZeropsProjectsFlow, type ProjectsFlowGroup } from "./projects/ZeropsProjectsFlow";
 import {
@@ -506,8 +506,8 @@ export function declaredEnvironmentSummary(
 }
 
 /**
- * The one line a group says about itself, in its own row: that it has no name
- * yet, or where a stage or production stands whose setup is not finished —
+ * The one line a group says about itself, in its own row: that its name could
+ * not be read, or where a stage or production stands whose setup is not finished —
  * being finished, finished in vain, or waiting for the person's *Finish setting
  * up* (audit R2: the page never finishes one by itself). A finish's failure is
  * the group's to show, in the page's words — the platform's own message is not
@@ -522,7 +522,7 @@ export function projectsGroupLine(input: {
   /** Its environment whose setup is not finished. */
   readonly halfMade: GroupEnvironmentTier | undefined;
 }): string | undefined {
-  if (input.placeholder) return "This project has no name yet";
+  if (input.placeholder) return "Couldn't read this project's name";
   if (input.finishing !== undefined) return `Finishing ${input.finishing}…`;
   if (input.unfinished !== undefined) return `Couldn't finish setting up ${input.unfinished}`;
   if (input.halfMade !== undefined) return `Setting up ${input.halfMade} isn't finished`;
@@ -2485,7 +2485,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       const members = groupMemberFactsOf(environments, activityOf, conversationsRead, user?.id);
       const isStop = (role: ZeropsEnvironmentRole | undefined) =>
         role === "stage" || role === "prod";
-      const placeholder = groupNameIsPlaceholder(group);
+      const placeholder = groupNameUnread(group);
       return {
         group,
         contents: applicationContents(hqStructure, activeOrganization?.id, group.groupId),
@@ -2531,8 +2531,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         ),
         others: environments.filter(({ item, role }) => !hasMate(item) && !isStop(role)),
         lastMerged: reads === undefined ? undefined : lastMergedCode(reads.merged),
-        // Visible rather than a tooltip: it is an invitation to name the
-        // project, and it disappears the moment one does.
+        // Visible rather than a tooltip: a name HQ holds that could not be
+        // read is a read problem, said where the name would be.
         line: projectsGroupLine({
           placeholder,
           unfinished: finishing.unfinished.get(group.groupId),

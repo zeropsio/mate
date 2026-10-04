@@ -961,7 +961,7 @@ describe("a declared environment's row", () => {
 describe("a group's one line about itself", () => {
   const NONE = { finishing: undefined, halfMade: undefined };
   it.each([
-    [{ ...NONE, placeholder: true, unfinished: "production" }, "This project has no name yet"],
+    [{ ...NONE, placeholder: true, unfinished: "production" }, "Couldn't read this project's name"],
     [
       { ...NONE, placeholder: false, unfinished: "production" },
       "Couldn't finish setting up production",
