@@ -126,6 +126,32 @@ export const currentOrFirstStint = (core: CrewCore, member: CrewMember) =>
     }),
   );
 
+/**
+ * At boot, a writer's current conversation that records no copy at all — a
+ * stint made while the Zerops policy dropped a worktree from every new
+ * thread — gets its crew copy back. Nothing was chosen there, so nothing is
+ * lost; a path a person chose stays theirs (`conversationCopies`).
+ */
+export const repairUnsetCopies = (core: CrewCore, applied: AppliedCrew) =>
+  Effect.gen(function* () {
+    for (const handle of applied.members.keys()) {
+      const member = memberOf(applied, handle);
+      const stint = currentStint(applied, handle);
+      const crewPath = member === undefined ? null : worktreeOf(applied, member);
+      if (stint === undefined || crewPath === null) continue;
+      const shell = yield* core.projection
+        .getThreadShellById(ThreadId.make(stint.threadId))
+        .pipe(Effect.orElseSucceed(() => Option.none()));
+      if (Option.isNone(shell) || (shell.value.worktreePath ?? null) !== null) continue;
+      yield* dispatch(core, {
+        type: "thread.meta.update",
+        commandId: CommandId.make(`crew:copy:${yield* core.uuid}`),
+        threadId: ThreadId.make(stint.threadId),
+        worktreePath: crewPath,
+      });
+    }
+  });
+
 /** A selected legacy path discrepancy; reading it never changes the conversation. */
 export const conversationCopies = (core: CrewCore, applied: AppliedCrew) =>
   Effect.gen(function* () {

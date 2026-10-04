@@ -16,6 +16,7 @@ import {
   type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
 import {
+  AS_CREW,
   KAREL,
   applied,
   command,
@@ -377,7 +378,7 @@ describe("CrewEngine runs", () => {
             {
               run: ["refused", "You are not this login's signer."],
               second: "queued",
-              principal: { kind: "crew", startedBy: "user-karel" },
+              principal: AS_CREW,
               inRun: [true, true],
             },
           );
@@ -406,7 +407,7 @@ describe("CrewEngine runs", () => {
         const turns = yield* dispatchedOf(world, "thread.turn.start");
         assert.deepStrictEqual(
           [nudges(turns).length, (yield* Ref.get(world.admitted)).at(-1)?.principal],
-          [1, { kind: "crew", startedBy: "user-karel" }],
+          [1, AS_CREW],
         );
       }),
     ),

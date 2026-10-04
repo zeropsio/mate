@@ -244,7 +244,8 @@ engine never deploys); the crewmate's app (`appRun`, `appStop`); person-started 
 `message`, `tell`, `taskCreate`, `taskEdit`, `discard`, `markFresh`, `taskRetry`; the WIP commit
 at every turn end; merge-in, check, `land` and `landNow` with landing refusals classified
 (`classifyLandingRefusal.ts`); `startFresh`; `briefSave` and `jobSave` with rotation;
-`removeCrewmate`; `deliverDraft`, `orphanScan`, `adopt`; explicit continuation after a Mate server restart.
+`removeCrewmate`; `deliverDraft`, `orphanScan`, `adopt`; work a Mate server restart interrupted
+carries on from its recorded stage, and only an ambiguous resume waits for a person's Continue.
 Every crew turn traces to a person's press.
 
 **Show on dev** (`crewClaims.ts`, `CrewRuntime.ts`): the crewmate asks with `crew_show_on_dev` (the
@@ -253,7 +254,8 @@ request times out after 10 minutes); the person answers with `claimGrant`, `clai
 — as request and grant at once. A grant pressed while the crewmate's turn runs waits for that turn's
 end, then sends the claim turn as the person who pressed it, and keeps the request from timing out;
 a deny or any other move of the claim drops it. The waiting grant is `grantWaiting` on the wire —
-the crewmate's row reads "Shows its work at Fen's dev address once its current step ends." — and the retained request after a restart. Show on dev restarts the dev server zcp
+the crewmate's row reads "Shows its work at Fen's dev address once its current step ends." — and a grant whose turn a restart ended goes out once the server accepts commands, before the
+crewmate's interrupted work carries on. Show on dev restarts the dev server zcp
 started; with none, the refusal says to ask the Mate to start it, or to open the crewmate's own app
 when it has a crew port.
 
@@ -308,8 +310,9 @@ on holds every task after it.
 A turn that leaves its task `working` ends the task's attempt — `crew_attempt.ending` is `budget`,
 `run-paused`, `run-stopped`, `interrupted`, `failed` or `no-report`, with its words in
 `ending_detail` and `ended_at` — and the attempt's next turn opens it again; a rework's new
-attempt has a row of its own. At boot an attempt a turn left open without the engine seeing it end
-ends interrupted at restart, with its dirty files untouched and its last confirmed operation stage visible immediately. The five minutes are one rule (`UNATTENDED_MS`): a `stalled` row
+attempt has a row of its own. At boot an attempt whose turn the restart killed ends `interrupted`
+and carries on in its copy; one a turn left open without the engine seeing it end ends
+`no-report` when the task last moved. The five minutes are one rule (`UNATTENDED_MS`): a `stalled` row
 counts from the attempt's end, a `review-wait` row from the task's move into review, and the feed
 publishes again when they pass.
 
@@ -424,11 +427,19 @@ changed since the row was read refuses the action. New stints record their copy 
 `crew_operation` owns dispatch, checkpoint, merge/check, landing and selected copy rebuilds.
 An identity, actor, exact thread command or copy/ref target, and pending stage are durable before
 that stage runs. Its receipt confirms the stage afterward; the handle remains running until the
-consumer has recorded the task outcome. A fatal restart marks running handles interrupted. Boot
-reads copy status and known landing trailers, pauses a running run, and does not commit files,
-recreate copies, delete landing anchors, merge, check, dispatch, or advance queues.
+consumer has recorded the task outcome. A fatal restart marks running handles interrupted and
+reads copy status and known landing trailers; a running run stays running, its clock counting
+again once its crew works. Once the server accepts commands, the engine carries each interrupted
+handle on from its last confirmed stage as its crewmate is free, as Continue would
+(`resumeAfterRestart` in `crewContinue.ts`): a died turn continues in its copy as the run's
+starter or the task's creator, a checkpoint commits, a check merges and checks again, a landing
+records an outcome its trailer already shows or lands again as the person who pressed Land.
+Only an ambiguous resume waits for a person: a rebuild a person chose, a conversation's own turn
+outside a run (the lead's in a running run is woken again on its spacing), a changed task, or a
+resume admission refuses, whose row says why. A writer's conversation that records no copy at all
+gets its crew copy back.
 
-Interrupted rows offer Continue and, before landing, Drop it. Continue operates on the selected
+Rows still interrupted offer Continue and, before landing, Drop it. Continue operates on the selected
 handle under the crewmate's lock, rejects a changed attempt or newer handle, and records a new
 operation for its side effects. An already landed receipt only records the task's outcome.
 Drop it ends the task's records while leaving its dirty files and HEAD in place. Missing copies

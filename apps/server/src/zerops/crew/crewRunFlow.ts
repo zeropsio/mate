@@ -1,3 +1,4 @@
+import { resumeAfterRestart } from "./crewContinue.ts";
 import { operationHolds } from "./crewOperations.ts";
 /**
  * crewRunFlow — what a running run does on its own once a crewmate is free
@@ -205,6 +206,7 @@ export const autoLand = (
 
 export const advance = (core: CrewCore, handle: string) =>
   Effect.gen(function* () {
+    yield* resumeAfterRestart(core, handle);
     if (yield* operationHolds(core, handle)) return;
     const applied = yield* core.applied;
     if (applied === undefined) return;

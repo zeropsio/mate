@@ -19,6 +19,7 @@ import {
   snapshotWhere,
 } from "./testing/crewEngineSteps.ts";
 import {
+  eventually,
   spiEvent,
   withCrewEngine,
   withCrewEngines,
@@ -186,7 +187,7 @@ describe("owned crew operations", () => {
 });
 
 for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
-  it.live(`restart interrupts ${kind} at its confirmed stage and preserves dirty work`, () => {
+  it.live(`restart carries ${kind} on from its confirmed stage, its dirty work kept`, () => {
     let head = "";
     return withCrewEngines([
       (world) =>
@@ -223,43 +224,34 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
       (world) =>
         Effect.gen(function* () {
           yield* (yield* ServerCommandReadiness).complete;
-          const snapshot = yield* snapshotWhere(
+          const settled = yield* snapshotWhere(
             (frame) =>
-              frame.attention.some(
-                (need) =>
-                  need.operation?.id === `crashed-${kind}` &&
-                  need.operation.status === "interrupted",
-              ) && frame.crewmates[0]?.lane?.dirty === true,
+              !frame.operations?.some((row) => row.id === `crashed-${kind}`) &&
+              (kind === "dispatch" || kind === "checkpoint"
+                ? frame.board.tasks[0]?.attempts === 2 && frame.board.tasks[0]?.state === "working"
+                : frame.board.tasks[0]?.state === (kind === "check" ? "ready" : "landed")),
           );
-          const interrupted = snapshot.attention.find(
-            (need) => need.operation?.id === `crashed-${kind}`,
-          )!.operation!;
-          assert.strictEqual(interrupted.confirmedStage, "prepared");
-          assert.strictEqual(snapshot.crewmates[0]!.lane?.dirty, true);
-          assert.strictEqual(snapshot.board.tasks[0]!.attempts, 1);
+          const operation = yield* (yield* CrewStore).getOperation(`crashed-${kind}`);
           assert.strictEqual(
-            git(NodePath.join(world.root, ".crew/backend"), ["rev-parse", "HEAD"]),
-            head,
+            operation._tag === "Some" ? operation.value.status : null,
+            "continued",
           );
+          assert.isFalse(settled.attention.some((need) => need.kind === "interrupted"));
+          const copy = NodePath.join(world.root, ".crew/backend");
           assert.strictEqual(
-            (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
-              .length,
-            1,
+            NodeFS.readFileSync(
+              NodePath.join(kind === "landing" ? world.root : copy, "ok.txt"),
+              "utf8",
+            ),
+            "dirty work\n",
           );
-          yield* command({
-            _tag: "operationContinue",
-            handle: "backend",
-            operationId: interrupted.id,
-          });
-          const settled = yield* (yield* CrewStore).getOperation(interrupted.id);
-          assert.strictEqual(settled._tag === "Some" ? settled.value.status : null, "continued");
-          if (kind === "dispatch" || kind === "checkpoint") {
-            assert.strictEqual((yield* (yield* CrewStore).assignments(CREW_ID))[0]!.attempt, 2);
-            const continued = yield* snapshotWhere((frame) => frame.board.tasks[0]?.attempts === 2);
-            assert.strictEqual(continued.board.tasks[0]!.state, "working");
-          } else if (kind === "check" || kind === "landing") {
-            yield* snapshotWhere(
-              (frame) => frame.board.tasks[0]?.state === (kind === "check" ? "ready" : "landed"),
+          if (kind === "dispatch") {
+            assert.strictEqual(git(copy, ["rev-parse", "HEAD"]), head);
+            yield* eventually(
+              Effect.map(
+                Ref.get(world.dispatched),
+                (rows) => rows.filter((entry) => entry.type === "thread.turn.start").length === 2,
+              ),
             );
           }
         }),
@@ -347,7 +339,7 @@ for (const [ending, setup] of [
 
 for (const taskState of ["landing", "landed"] as const) {
   it.live(
-    `restart reports an already landed outcome for a ${taskState} task, and Continue records it`,
+    `restart records an already landed outcome for a ${taskState} task without landing again`,
     () => {
       let operationId = "";
       let landedHead = "";
@@ -385,26 +377,15 @@ for (const taskState of ["landing", "landed"] as const) {
         (world) =>
           Effect.gen(function* () {
             yield* (yield* ServerCommandReadiness).complete;
-            const snapshot = yield* snapshotWhere(
-              (frame) =>
-                frame.operations?.some(
-                  (operation) => operation.id === operationId && operation.result !== null,
-                ) === true,
-            );
-            const need = snapshot.attention.find((need) => need.operation?.id === operationId);
-            assert.isDefined(
-              need,
-              "the unfinished landing must remain visible after the task outcome is saved",
-            );
-            const operation = need!.operation!;
-            assert.deepStrictEqual(operation.result, {
-              _tag: "already-landed",
-              commit: landedHead,
-            });
-            assert.strictEqual(git(world.root, ["rev-parse", "HEAD"]), landedHead);
-            yield* command({ _tag: "operationContinue", handle: "backend", operationId });
             const recorded = yield* snapshotWhere(
-              (frame) => frame.board.tasks[0]?.state === "landed",
+              (frame) =>
+                frame.board.tasks[0]?.state === "landed" &&
+                !frame.attention.some((need) => need.operation?.id === operationId),
+            );
+            const operation = yield* (yield* CrewStore).getOperation(operationId);
+            assert.strictEqual(
+              operation._tag === "Some" ? operation.value.status : null,
+              "continued",
             );
             assert.strictEqual(recorded.board.tasks[0]!.landedCommit, landedHead);
             assert.strictEqual(git(world.root, ["rev-parse", "HEAD"]), landedHead);
@@ -415,7 +396,7 @@ for (const taskState of ["landing", "landed"] as const) {
 }
 
 it.live(
-  "Drop it cancels an interrupted task while keeping its dirty files and HEAD in place",
+  "Drop it cancels a task its restart could not carry on, keeping its dirty files and HEAD",
   () => {
     let head = "";
     return withCrewEngines([
@@ -429,13 +410,23 @@ it.live(
         }),
       (world) =>
         Effect.gen(function* () {
+          yield* Ref.set(world.refusal, "not the login's signer");
           yield* (yield* ServerCommandReadiness).complete;
           const stopped = yield* snapshotWhere((frame) =>
-            frame.attention.some((need) => need.kind === "interrupted"),
+            frame.attention.some(
+              (need) =>
+                need.kind === "interrupted" &&
+                need.text?.includes("not the login's signer") === true,
+            ),
           );
           const operation = stopped.attention.find(
             (need) => need.kind === "interrupted",
           )!.operation!;
+          assert.strictEqual(
+            (yield* Ref.get(world.dispatched)).filter((entry) => entry.type === "thread.turn.start")
+              .length,
+            1,
+          );
           yield* command({
             _tag: "operationDiscard",
             handle: "backend",

@@ -12,7 +12,8 @@ import { continueOperation, discardOperation, rebuildCopy } from "./crewContinue
  *
  * The live engine subscribes to the provider event bus when it is built (an
  * event before the subscription is invisible to it), records restart interruptions
- * before exposing commands, and keeps one snapshot hub: a
+ * before exposing commands, carries them on once the server accepts commands
+ * (`crewBoot`), and keeps one snapshot hub: a
  * change to the crew tables or to the engine's memory rebuilds the snapshot
  * from SQLite, at most four times a second, `seq` rising across restarts.
  *
@@ -41,6 +42,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import { ServerConfig } from "../../config.ts";
 import { ClaudeThreadExtensionRegistry } from "../../spi/claudeThreadProfile.ts";
 import { ProviderRuntimeEventBus } from "../../spi/ProviderRuntimeEventBus.ts";
+import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { isZeropsEnvironment } from "../ZeropsEnvironment.ts";
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
@@ -61,7 +63,7 @@ import {
   type Activate,
 } from "./crewApply.ts";
 import { conversationCopies, useCrewCopy } from "./CrewStints.ts";
-import { boot, inspectBoot } from "./crewBoot.ts";
+import { boot, carryOnAtBoot, inspectBoot } from "./crewBoot.ts";
 import { grantClaim, moveClaim, releaseClaim, showOnDevNow } from "./crewClaims.ts";
 import * as CrewChecks from "./CrewChecks.ts";
 import {
@@ -476,6 +478,7 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     const core = yield* makeCrewCore;
     yield* restoreNotes(core);
     const bus = yield* ProviderRuntimeEventBus;
+    const readiness = yield* ServerCommandReadiness;
     const policies = yield* ThreadToolPolicyRegistry;
     const extensions = yield* ClaudeThreadExtensionRegistry;
     const scope = yield* Effect.scope;
@@ -535,6 +538,18 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
             ),
       ),
     ).pipe(Effect.forkIn(scope));
+    // Interrupted work carries on once the server accepts commands.
+    yield* Deferred.await(inspected).pipe(
+      Effect.andThen(readiness.await),
+      Effect.andThen(carryOnAtBoot(core)),
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          core.memory.lastError = failureWords(error);
+          yield* core.changed;
+        }),
+      ),
+      Effect.forkIn(scope),
+    );
 
     yield* core.listDevHosts;
     let seq = yield* Clock.currentTimeMillis;
