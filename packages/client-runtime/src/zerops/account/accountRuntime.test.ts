@@ -2499,6 +2499,66 @@ describe("the post-grant stage's Mate environments", () => {
         }),
       ),
   );
+  // E2E 0.13.6, a warm profile: Usage loaded in a tab that was not in front stayed on its skeleton
+  // with no exchange, while the route's Mate connected. A drawn Mate is background demand: it
+  // waits for the tab to be shown, as the Mate left last does, and goes on the moment it is.
+  it.effect("a hidden tab's drawn Mates wait unread and go on once the tab is shown", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const drawn = ["1", "2"].map((id) => {
+          const listed = mate(id);
+          const environmentId = EnvironmentId.make(`env-${id}`);
+          const record: RegistrationRecord = {
+            targetKey: listed.key,
+            environmentId,
+            origin: listed.origin,
+            projectRef: { projectId: listed.projectId, orgId: organization.organizationId },
+            name: listed.project.name,
+          };
+          return { mate: listed, environmentId, record };
+        });
+        const opened = yield* openAccount(
+          drawn.map(({ record }) => record),
+          drawn.map(({ mate }) => mate),
+          undefined,
+          undefined,
+          {
+            hqIndex: {
+              projectOf: (environmentId) =>
+                drawn.find((entry) => entry.environmentId === environmentId)?.mate.projectId ??
+                null,
+              subscribe: () => () => undefined,
+            },
+          },
+        );
+        yield* opened.grant.answer();
+        yield* settle;
+        const { environments } = yield* opened.built.postGrant;
+        opened.rig.catalog().environments(registered(...drawn.map((e) => e.environmentId)));
+        environments.setActiveOrganization(organization.organizationId);
+        yield* opened.page.emit({ type: "visibility", hidden: true });
+        yield* settle;
+
+        environments.setDrawn(drawn.map(({ environmentId }) => environmentId));
+        yield* opened.clock.advance(SECOND);
+        yield* settle;
+        expect(opened.rig.descriptors).toEqual([]);
+        expect(opened.rig.exchanges).toEqual([]);
+        for (const { mate } of drawn) {
+          expect(environments.machines().get(mate.key)?.credential).toMatchObject({
+            kind: "waiting",
+            on: "visible",
+          });
+        }
+
+        yield* opened.page.emit({ type: "visibility", hidden: false });
+        yield* settle;
+        for (const { mate } of drawn) {
+          expect(environments.machines().get(mate.key)?.credential.kind).toBe("exchanging");
+        }
+      }),
+    ),
+  );
 
   // A drawn project's lease the data runtime refuses is not held as taken: the page's next demand
   // asks for it again, as the inventory demand does, with no timer of its own.
