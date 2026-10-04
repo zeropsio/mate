@@ -120,8 +120,8 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly onRetryContainers: (items: ReadonlyArray<T>) => void;
   /** A creation runs: every add verb is disabled, never hidden. */
   readonly creating?: boolean;
-  /** The organization's HQ, on the page's last quiet line (`ZeropsHqTool`). */
-  readonly hqTool: ReactNode;
+  /** The organization's HQ, the page's quiet end (`ZeropsHqCard`). */
+  readonly hqCard: ReactNode;
   /** Starts the account's first project; absent leaves an empty account empty. */
   readonly onCreateProject?: (() => void) | undefined;
   /** The group whose row opens and scrolls into view (`?group=`). */

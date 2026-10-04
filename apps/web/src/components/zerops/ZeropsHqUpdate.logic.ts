@@ -59,7 +59,7 @@ export function hqUpdateWords(state: HqUpdateState, answering: string | undefine
 }
 
 /**
- * What the Tools row offers an owner or an admin beside HQ's health: its update while HQ's health
+ * What HQ's card offers an owner or an admin beside HQ's health: its update while HQ's health
  * names an older Core than this app carries, else the way to see that it is up to date — both from
  * data already read. `null` for anybody else, and while either Core is unread.
  */

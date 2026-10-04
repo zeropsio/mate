@@ -1,5 +1,5 @@
 /**
- * HQ's update, for an owner or an admin (`ZeropsHqTool`): offered when HQ's health names an older
+ * HQ's update, for an owner or an admin (`ZeropsHqCard`): offered when HQ's health names an older
  * Core than this app carries, so the offer costs no read of its own. Opened, it reads where HQ
  * stands from Zerops — its `hq` service's app version and builds — and offers the one action that
  * fits. *Update HQ* deploys the carried Core with the person's own token and follows that deploy;
@@ -141,12 +141,13 @@ export function ZeropsHqUpdatePanel({
   );
 }
 
-/** The offer on the Tools row, and the dialog it opens. */
+/** The offer on HQ's card, and the dialog it opens. */
 export function ZeropsHqUpdate({
   projectId,
   carried,
   answering,
   trigger,
+  onBusy,
 }: {
   /** HQ's project. */
   readonly projectId: string;
@@ -155,10 +156,19 @@ export function ZeropsHqUpdate({
   /** The Core HQ's health names. */
   readonly answering: string;
   readonly trigger: "Update available" | "Up to date";
+  /** Told when an update pressed here starts and ends. */
+  readonly onBusy: (busy: boolean) => void;
 }) {
   const { client } = useZeropsSession();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const busyNow = useCallback(
+    (next: boolean) => {
+      setBusy(next);
+      onBusy(next);
+    },
+    [onBusy],
+  );
   const read = useCallback(
     () => readHqUpdate({ platform: client, projectId, carried }),
     [carried, client, projectId],
@@ -190,7 +200,7 @@ export function ZeropsHqUpdate({
       >
         <DialogPopup className="max-w-md">
           {open ? (
-            <ZeropsHqUpdatePanel answering={answering} onBusy={setBusy} read={read} run={run} />
+            <ZeropsHqUpdatePanel answering={answering} onBusy={busyNow} read={read} run={run} />
           ) : null}
         </DialogPopup>
       </Dialog>

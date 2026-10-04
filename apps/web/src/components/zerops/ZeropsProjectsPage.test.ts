@@ -778,9 +778,9 @@ describe("a status word's hand", () => {
   });
 });
 
-describe("the tools line", () => {
+describe("HQ's card", () => {
   it("is the organization's HQ, whose project is no project of the page's", () => {
-    expect(projectsPageSource).toContain("hqTool={<ZeropsHqTool />}");
+    expect(projectsPageSource).toContain("hqCard={<ZeropsHqCard />}");
     // The project its anchor names, never one by its name (`withoutOfficialHq`).
     expect(projectsPageSource).toContain("withoutOfficialHq(groupTree.ungrouped, accountHq.hq)");
   });
