@@ -4330,7 +4330,8 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         observation.kind === "access-verified" ||
         observation.kind === "project-access-established"
       ) {
-        yield* retryRefusedHydrations;
+        // Both outside the grant's lock: a full read queue fails a receiver under the lifecycle's.
+        yield* retryRefusedHydrations.pipe(forkOwned);
         yield* retryRefusedInterestsSoon;
       }
     });
@@ -4339,12 +4340,21 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
    * A grant round answered: each refusal is sent once more, outside the grant's own lock (the
    * grant reports from inside it, and a shutdown holding the lifecycle waits for that lock).
    */
+  const refusedOnItsOwn = (state: ZeropsDataState, runtimeInterest: RuntimeInterest): boolean => {
+    const failed = state.interests.get(runtimeInterest.key)?.interest;
+    return (
+      runtimeInterest.leases.size > 0 &&
+      failed?.status === "failed" &&
+      !failed.retryable &&
+      // A read's refusal is the read's to retry: registering again would hide its next answer.
+      !readFailures.has(runtimeInterest.key)
+    );
+  };
   const retryRefusedInterestsSoon = Effect.suspend(() => {
     const state = Ref.getUnsafe(model);
-    const anyRefused = [...interests.values()].some((runtimeInterest) => {
-      const failed = state.interests.get(runtimeInterest.key)?.interest;
-      return runtimeInterest.leases.size > 0 && failed?.status === "failed" && !failed.retryable;
-    });
+    const anyRefused = [...interests.values()].some((runtimeInterest) =>
+      refusedOnItsOwn(state, runtimeInterest),
+    );
     return anyRefused ? retryRefusedInterests.pipe(forkOwned, Effect.asVoid) : Effect.void;
   });
 
@@ -4356,10 +4366,9 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
     Effect.gen(function* () {
       if (yield* Ref.get(closed)) return;
       const state = yield* Ref.get(model);
-      const refused = [...interests.values()].filter((runtimeInterest) => {
-        const failed = state.interests.get(runtimeInterest.key)?.interest;
-        return runtimeInterest.leases.size > 0 && failed?.status === "failed" && !failed.retryable;
-      });
+      const refused = [...interests.values()].filter((runtimeInterest) =>
+        refusedOnItsOwn(state, runtimeInterest),
+      );
       const retried: RuntimeInterest[] = [];
       for (const runtimeInterest of refused) {
         const receiver = receivers.get(receiverKeyOf(runtimeInterest.descriptor));

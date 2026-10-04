@@ -4800,6 +4800,14 @@ describe("incomplete data says so, with its retry", () => {
       yield* settle;
       const afterGrant = afterAMinute + processReads - before;
       expect({ atFirst: atFirst > 0 ? 1 : 0, afterAMinute, afterGrant }).toEqual(reads);
+      // A read failing again under the new grant says so again: the round never hides it.
+      for (let second = 0; second < 2; second++) {
+        yield* TestClock.adjust("1 second");
+        yield* settle;
+      }
+      expect(registry.get(runtime.stateAtom).interests.get(lease.interest)?.interest.status).toBe(
+        "failed",
+      );
 
       yield* runtime.shutdown("application-close");
       yield* Scope.close(leaseScope, Exit.void);
