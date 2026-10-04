@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   helperCallsLeftOut,
   helperMap,
+  helperModelWords,
   helperNowWords,
   helperRecord,
   helperReportLine,
@@ -313,4 +314,19 @@ describe("helperSpan", () => {
       span: { since: at(10), ranMs: null },
     },
   ])("$name", ({ subject, span }) => expect(helperSpan(subject)).toEqual(span));
+});
+
+describe("helperModelWords", () => {
+  it.each([
+    ["claude-opus-5-5", "max", "Opus 5.5 · Max"],
+    ["claude-sonnet-5[1m]", "high", "Sonnet 5 · High"],
+    ["claude-haiku-4-5-20251001", null, "Haiku 4.5"],
+    ["opus-4", "xhigh", "Opus 4 · Extra high"],
+    ["gpt-5.6", "medium", "GPT-5.6 · Medium"],
+    ["gpt-5.6-codex", null, "GPT-5.6 Codex"],
+    ["grok-code-fast", "7", "grok-code-fast · 7"],
+    [null, "max", null],
+  ] as const)("%s · %s → %s", (model, effort, words) =>
+    expect(helperModelWords(model, effort)).toBe(words),
+  );
 });

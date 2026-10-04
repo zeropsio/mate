@@ -248,3 +248,36 @@ export function helperSpan(helper: RuntimeSubagent): {
   const ranMs = Math.max(counted ?? 0, byRows ?? 0);
   return { since: null, ranMs: ranMs > 0 ? ranMs : null };
 }
+
+const EFFORT_WORDS: Readonly<Record<string, string>> = {
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+};
+
+/**
+ * What it ran on, as the composer names a model: "Opus 5.5 · Max", never the
+ * slug ("claude-opus-5-5"). A name it does not know stays as the driver said.
+ */
+export function helperModelWords(model: string | null, effort: string | null): string | null {
+  if (model === null) return null;
+  const slug = model
+    .trim()
+    .replace(/\[[^\]]*\]$/u, "")
+    .replace(/-\d{8}$/u, "")
+    .replace(/-latest$/u, "");
+  const claude = /^(?:claude-)?(opus|sonnet|haiku|fable)-(\d+)(?:-(\d+))?$/u.exec(slug);
+  const gpt = /^gpt-(.+)$/u.exec(slug);
+  const name =
+    claude !== null
+      ? `${claude[1]!.charAt(0).toUpperCase()}${claude[1]!.slice(1)} ${claude[2]}${claude[3] === undefined ? "" : `.${claude[3]}`}`
+      : gpt !== null
+        ? `GPT-${gpt[1]!.replace(/-codex$/u, " Codex")}`
+        : model.trim();
+  const level =
+    effort === null ? null : (EFFORT_WORDS[effort.trim().toLowerCase()] ?? effort.trim());
+  return level === null || level.length === 0 ? name : `${name} · ${level}`;
+}
