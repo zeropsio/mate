@@ -539,27 +539,25 @@ export function ZeropsReleaseVerb({
 
 /**
  * Where each declared stage of the group that runs nothing stands on its first deploy
- * (`stageFirstDeploy`), as its cell on the projects page and the menu say it: on the minute clock
- * its setting up is read by, from what the platform runs and HQ's jobs of its deploys.
+ * (`stageFirstDeploy`), as its cell on the projects page and the menu say it: from what the
+ * platform runs, HQ's jobs of its deploys, and whether HQ is still bringing it up.
  */
 function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDeploy | undefined {
   const { listing } = useZeropsCandidates();
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
-  const nowMs = useNowMs();
   return (projectId) => {
     const row = flow?.environments.find(
       (entry) => entry.projectId === projectId && entry.tier === "stage",
     );
     const candidate = heldCandidates(listing).rows.find((entry) => entry.project.id === projectId);
     return stageFirstDeploy({
-      createdAt: candidate?.project.created,
+      birth: row?.birth,
       projectStatus: candidate?.project.status,
       services: candidate?.services === undefined ? undefined : candidate.services.statuses,
       deployment: flowValue?.deployments.get(projectId),
       deploys: row?.deploys,
       keyGap: row?.keyGap ?? false,
-      nowMs,
     });
   };
 }

@@ -959,7 +959,6 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
     projectId: "p-pantry-stage",
     name: "Pantry - stage",
     tier: "stage",
-    createdAt: at(MINUTE),
     projectStatus: "ACTIVE",
     row: declared({ projectId: "p-pantry-stage", name: "Pantry - stage", tier: "stage" }),
     deployment: NOTHING_RUNS,
@@ -1036,7 +1035,7 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       first: undefined,
     },
   ])("$case", ({ row, first }) => {
-    const flow = groupFlow(group({ stops: [stageStop({ row })], nowMs: NOW }));
+    const flow = groupFlow(group({ stops: [stageStop({ row })] }));
     expect(flow.stages[0]?.firstDeploy).toEqual(first);
   });
 
@@ -1090,7 +1089,7 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       first: undefined,
     },
   ])("$case", ({ over, first }) => {
-    const flow = groupFlow(group({ stops: [stageStop(over)], nowMs: NOW }));
+    const flow = groupFlow(group({ stops: [stageStop(over)] }));
     expect(flow.stages[0]?.firstDeploy).toEqual(first);
   });
 
@@ -1121,14 +1120,14 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       first: { kind: "on-its-way" },
     },
   ])("$case", ({ over, first }) => {
-    const flow = groupFlow(group({ stops: [stageStop(over)], nowMs: NOW }));
+    const flow = groupFlow(group({ stops: [stageStop(over)] }));
     expect(flow.stages[0]?.firstDeploy).toEqual(first);
   });
 
   it("reports HQ's failed job with its words after the import, and the import first", () => {
     const row = withDeploys({ state: "failed", reason: "the build exited with 1", msAgo: MINUTE });
     const first = (over: Partial<GroupFlowStopInput>) =>
-      groupFlow(group({ stops: [stageStop({ row, ...over })], nowMs: NOW })).stages[0]?.firstDeploy;
+      groupFlow(group({ stops: [stageStop({ row, ...over })] })).stages[0]?.firstDeploy;
     expect(first({})).toEqual({ kind: "failed", reason: "the build exited with 1" });
     expect(first({ services: [{ hostname: "app", status: "CREATING", runtime: true }] })).toEqual({
       kind: "setting-up",
@@ -1138,8 +1137,8 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
 
   it("is setting up while its own import runs, and only then", () => {
     const settingUp = (over: Partial<GroupFlowStopInput>) =>
-      groupFlow(group({ stops: [stageStop(over)], mainHasCode: true, nowMs: NOW })).stages[0]
-        ?.firstDeploy?.kind === "setting-up"
+      groupFlow(group({ stops: [stageStop(over)], mainHasCode: true })).stages[0]?.firstDeploy
+        ?.kind === "setting-up"
         ? true
         : undefined;
     const making = { hostname: "app", status: "NEW", runtime: true };
@@ -1152,7 +1151,14 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
     // Its project's own status first: one being made is set up whatever its services say.
     expect(settingUp({ projectStatus: "CREATING", services: undefined })).toBe(true);
     expect(settingUp({ projectStatus: "DELETING", services: [making] })).toBeUndefined();
-    expect(settingUp({ services: [making], createdAt: at(20 * MINUTE) })).toBeUndefined();
+    // Past what the platform says it makes, only while HQ still brings it up (H2) — never by age.
+    const born = (ended: boolean) => ({
+      ...declared({ projectId: "p-pantry-stage", name: "Pantry - stage", tier: "stage" }),
+      birth: { ended },
+    });
+    expect(settingUp({ services: [], row: born(false) })).toBe(true);
+    expect(settingUp({ services: [], row: born(true) })).toBeUndefined();
+    expect(settingUp({ services: [] })).toBeUndefined();
     // Something runs there: never setting up again.
     expect(settingUp({ services: [making], deployment: runs(STAGE_SHA) })).toBeUndefined();
   });

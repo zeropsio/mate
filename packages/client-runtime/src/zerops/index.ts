@@ -389,7 +389,6 @@ export {
 } from "./groupFlow.ts";
 export {
   comingLine,
-  COMING_UP_WINDOW_MS,
   FIRST_DEPLOY_FAILED,
   FIRST_DEPLOY_ON_ITS_WAY,
   firstDeploy,

@@ -69,6 +69,7 @@ const STAGE: HqEnvironment = {
     },
   ],
   release: null,
+  birth: null,
 };
 const ACME_STAGED: HqStructure["apps"][number] = { ...ACME, environments: [STAGE] };
 const LONE: HqStructure["ungrouped"][number] = {

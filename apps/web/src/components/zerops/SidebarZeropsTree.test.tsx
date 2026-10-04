@@ -4266,16 +4266,10 @@ describe("a Mate on its way off Zerops", () => {
   });
 });
 
-describe("the menu's coming-up line reads the shared minute clock, never the moment it was drawn", () => {
-  afterEach(() => {
-    clock.ms = undefined;
-  });
-  const CLOCK = Date.parse("2025-03-04T10:00:00.000Z");
+// Coming up is its owners' word, never its age (H2): what the platform says it is making says so,
+// however long ago its project was made.
+describe("the menu's coming-up line reads what the platform makes, never how old the project is", () => {
   const madeAt = (ms: number) => new Date(ms).toISOString();
-  const stage = (created: number) => {
-    const item = up(CRM_STAGE, "CREATING");
-    return { ...item, project: { ...item.project, created: madeAt(created) } } as ZeropsCandidate;
-  };
   const lineWords = (html: string) => {
     const at = html.indexOf('data-zerops-surface="sidebar-project-line"');
     return at === -1
@@ -4285,20 +4279,12 @@ describe("the menu's coming-up line reads the shared minute clock, never the mom
           .replace(/<[^>]+>/gu, "")
           .trim() || undefined;
   };
-  it.each([
-    {
-      case: "made 5 min before the clock: coming up",
-      madeMinutesAgo: 5,
-      words: "Stage coming up · adding the app",
-    },
-    {
-      case: "made 20 min before the clock: the window closed",
-      madeMinutesAgo: 20,
-      words: undefined,
-    },
-  ])("$case", ({ madeMinutesAgo, words }) => {
-    clock.ms = CLOCK;
-    const html = render([CRM_DEV, stage(CLOCK - madeMinutesAgo * 60_000)]);
-    expect(lineWords(html)).toBe(words);
+  it.each([5, 20, 24 * 60])("made %i min ago, its app being made: coming up", (minutes) => {
+    const item = up(CRM_STAGE, "CREATING");
+    const stage = {
+      ...item,
+      project: { ...item.project, created: madeAt(Date.now() - minutes * 60_000) },
+    } as ZeropsCandidate;
+    expect(lineWords(render([CRM_DEV, stage]))).toBe("Stage coming up · adding the app");
   });
 });

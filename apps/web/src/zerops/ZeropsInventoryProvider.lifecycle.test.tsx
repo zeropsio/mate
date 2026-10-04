@@ -1172,6 +1172,7 @@ it.live(
                       keyInvalid: false,
                       jobs: [],
                       release: null,
+                      birth: null,
                     })),
                   },
                 ],

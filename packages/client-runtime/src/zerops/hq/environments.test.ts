@@ -38,6 +38,7 @@ const STAGE: HqEnvironment = {
   keyInvalid: false,
   jobs: [],
   release: null,
+  birth: null,
 };
 
 describe("jobsByService — each service's newest job and newest live one, from HQ's newest first", () => {

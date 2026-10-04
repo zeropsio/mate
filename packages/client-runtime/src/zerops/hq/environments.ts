@@ -14,6 +14,7 @@
  * @module hq/environments
  */
 import { HqOffers } from "@t3tools/shared/hqOffers";
+import { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 import { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -91,6 +92,8 @@ export const HqEnvironment = Schema.Struct({
   jobs: Schema.Array(HqJob),
   /** A production's: where its application's newest release stands there; none before one, and for a stage. */
   release: Schema.NullOr(ReleaseRollout),
+  /** Whether the rollout its attach asked for has ended; none where HQ did not bring it up. */
+  birth: Schema.NullOr(EnvironmentBirth),
   /** What the reader may do with it (`@t3tools/shared/hqOffers`); absent where HQ sent none. */
   can: Schema.optional(HqOffers),
 });

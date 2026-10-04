@@ -1094,7 +1094,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             addsOffered: groupAddsOffered(entries, health),
           }),
         pending: group?.pending ?? [],
-        nowMs: minuteMs,
       }),
     );
     // Production and its stages are the chips on the heading (M2), never rows:
@@ -1302,14 +1301,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       return {
         stop,
         projectStatus: item?.project.status,
-        createdAt: item?.project.created,
         services: item?.services?.statuses,
         building: buildingOf(deployments?.get(stop.projectId)) !== undefined,
         routes: item?.routes?.length ?? 0,
       };
     };
     const comingOf = (tier: "stage" | "production", stop: GroupFlowStop): StopComing | undefined =>
-      listedStopComing(tier, listedOf(stop), minuteMs);
+      listedStopComing(tier, listedOf(stop));
     const PENDING: StopComing = { kind: "coming", step: "project" };
     const line: HeadingLineInput | undefined =
       group === undefined

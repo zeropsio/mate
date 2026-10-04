@@ -2501,7 +2501,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               addsOffered: addsOfferedFor(group),
             }),
             pending: group.pending,
-            nowMs,
           }),
         ),
         activities: rowMateActivitiesOf(

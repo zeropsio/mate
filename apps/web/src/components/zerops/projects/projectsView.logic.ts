@@ -8,7 +8,6 @@
 import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
-  changesNotLive,
   deployWord,
   firstDeployLine,
   STAGE_SETTING_UP,
@@ -341,7 +340,6 @@ export function stopLine(stop: GroupFlowStop): {
 
 /** One Zerops project of a group, as the page already holds it. */
 export interface GroupMemberFacts {
-  readonly createdAt?: string | undefined;
   readonly projectStatus?: string | undefined;
   readonly services?: ReadonlyArray<PlatformService> | undefined;
   readonly projectId: string;
@@ -400,7 +398,6 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
     const connected =
       (item.group === "connected" && item.environmentId !== undefined) || activity !== undefined;
     return {
-      createdAt: item.project.created,
       projectStatus: item.project.status,
       services: item.services?.statuses,
       projectId: item.project.id,
@@ -505,8 +502,6 @@ export function groupFlowInputOf(input: {
   readonly productionAddable: boolean;
   /** The group's creations under way (the group tree's `pending`). */
   readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
-  /** The clock a stage's first deploy on its way is bounded by. */
-  readonly nowMs?: number | undefined;
 }): GroupFlowInput {
   const { flow } = input;
   return {
@@ -536,7 +531,6 @@ export function groupFlowInputOf(input: {
       return [
         {
           projectId: member.projectId,
-          createdAt: member.createdAt,
           projectStatus: member.projectStatus,
           services: member.services,
           name: row?.name ?? member.name,
@@ -556,7 +550,6 @@ export function groupFlowInputOf(input: {
     mainHead: undefined,
     productionAddable: input.productionAddable,
     pending: input.pending,
-    nowMs: input.nowMs,
   };
 }
 

@@ -6,9 +6,10 @@ import { groupFlow } from "./groupFlow.ts";
 import { deployedVersion, environmentRow } from "./groupRows.ts";
 import type { HqJob } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";
+import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
+
 import {
   comingLine,
-  COMING_UP_WINDOW_MS,
   firstDeploy,
   listedStopComing,
   stopComing,
@@ -29,8 +30,8 @@ const base = {
   tier: "stage" as const,
   pending: false,
   projectStatus: "ACTIVE",
-  createdAt: ago(60_000),
-  nowMs: NOW,
+  /** HQ still bringing it up: the rollout its attach asked for has not ended. */
+  birth: { ended: false } as { readonly ended: boolean } | null | undefined,
   services: [db("ACTIVE"), app("ACTIVE")] as ReadonlyArray<ReturnType<typeof app>> | undefined,
   building: false,
   deployed: true as boolean | undefined,
@@ -61,9 +62,9 @@ describe("stopComing — where a stage or a production coming up has got", () =>
       coming: undefined,
     },
     {
-      case: "its project being made a window ago: the pill's, not coming up",
-      over: { projectStatus: "CREATING", createdAt: ago(COMING_UP_WINDOW_MS) },
-      coming: undefined,
+      case: "its project being made, whoever brought it up: making the project",
+      over: { projectStatus: "CREATING", birth: null },
+      coming: { kind: "coming", step: "project" },
     },
     {
       case: "the database not running yet",
@@ -177,15 +178,47 @@ describe("stopComing — where a stage or a production coming up has got", () =>
       over: { services: [db("ACTIVE"), app("ACTION_FAILED")] },
       coming: undefined,
     },
+    // Coming up is its owners' word, never its age (H2): one HQ did not bring up, or whose birth
+    // ended, shows what it lacks on its pill.
     {
-      case: "made long ago: the pill says what it lacks",
-      over: { createdAt: ago(COMING_UP_WINDOW_MS), routes: 0 },
+      case: "one HQ did not bring up, its database stopped: never coming up",
+      over: { birth: null, services: [db("STOPPED"), app("ACTIVE")], routes: 0 },
       coming: undefined,
     },
     {
-      case: "when it was made unknown",
-      over: { createdAt: undefined, routes: 0 },
+      case: "one HQ did not bring up, nothing deployed: never coming up",
+      over: {
+        birth: null,
+        services: [db("ACTIVE"), app("READY_TO_DEPLOY")],
+        deployed: false,
+        routes: 0,
+      },
       coming: undefined,
+    },
+    {
+      case: "one HQ did not bring up, no address: never coming up",
+      over: { birth: null, routes: 0 },
+      coming: undefined,
+    },
+    {
+      case: "one whose birth HQ has not told: never coming up",
+      over: { birth: undefined, routes: 0 },
+      coming: undefined,
+    },
+    {
+      case: "a birth that ended: stops coming up at once, whatever it lacks",
+      over: { birth: { ended: true }, deployed: false, routes: 0 },
+      coming: undefined,
+    },
+    {
+      case: "a birth HQ still runs, however long ago it began: still coming up",
+      over: { birth: { ended: false }, routes: 0 },
+      coming: { kind: "coming", step: "address" },
+    },
+    {
+      case: "a service being added to one HQ did not bring up: what the platform says it makes",
+      over: { birth: null, services: [db("ACTIVE"), app("CREATING")], routes: 0 },
+      coming: { kind: "coming", step: "app" },
     },
     { case: "stopped", over: { projectStatus: "STOPPED" }, coming: undefined },
     {
@@ -272,12 +305,12 @@ describe("firstDeploy — where a stage's first deploy stands by HQ's jobs of it
     { case: "building", deploys: [job({ state: "building" })], first: { kind: "on-its-way" } },
     {
       case: "asked for long ago and not ended: HQ still follows it, so still on its way",
-      deploys: [job({ state: "building", at: ago(COMING_UP_WINDOW_MS * 4) })],
+      deploys: [job({ state: "building", at: ago(60 * 60_000) })],
       first: { kind: "on-its-way" },
     },
     {
       case: "its build failed, however long ago: final",
-      deploys: [ended("failed", { endedAt: ago(COMING_UP_WINDOW_MS * 4) })],
+      deploys: [ended("failed", { endedAt: ago(60 * 60_000) })],
       first: { kind: "failed" },
     },
     {
@@ -372,6 +405,7 @@ describe("listedStopComing — a production, read the way the menu reads it", ()
             name: "xyz - production",
             tier: "production",
             sources: "release",
+            birth: { ended: false },
             services: [
               {
                 hostname: "app",
@@ -398,18 +432,13 @@ describe("listedStopComing — a production, read the way the menu reads it", ()
       pending: [],
     });
     if (!("stop" in flow.production)) throw new Error("the production is listed");
-    return listedStopComing(
-      "production",
-      {
-        stop: flow.production.stop,
-        projectStatus: "ACTIVE",
-        createdAt: ago(60_000),
-        services: [db("ACTIVE"), app("ACTIVE")],
-        building: false,
-        routes: 0,
-      },
-      NOW,
-    );
+    return listedStopComing("production", {
+      stop: flow.production.stop,
+      projectStatus: "ACTIVE",
+      services: [db("ACTIVE"), app("ACTIVE")],
+      building: false,
+      routes: 0,
+    });
   };
 
   it.each([
@@ -469,7 +498,7 @@ describe("comingLine — the line an environment coming up says", () => {
 });
 
 describe("stopImport — where an environment's own import has got, the one order both surfaces keep", () => {
-  const made = { projectStatus: "ACTIVE", createdAt: ago(60_000), nowMs: NOW };
+  const made = { projectStatus: "ACTIVE", birth: { ended: false } as EnvironmentBirth | null };
   const cases = [
     { case: "its project being made", over: { projectStatus: "CREATING" }, step: "project" },
     { case: "a reload: its services unread", over: { services: undefined }, step: undefined },
@@ -480,9 +509,9 @@ describe("stopImport — where an environment's own import has got, the one orde
     },
     { case: "its project being deleted", over: { projectStatus: "DELETING" }, step: undefined },
     {
-      case: "its project being made a window ago",
-      over: { projectStatus: "CREATING", createdAt: ago(COMING_UP_WINDOW_MS) },
-      step: undefined,
+      case: "its project being made, HQ bringing up none",
+      over: { projectStatus: "CREATING", birth: null },
+      step: "project",
     },
     { case: "no runtime listed yet", over: { services: [] }, step: "app" },
     { case: "its runtime new", over: { services: [app("NEW")] }, step: "app" },
@@ -505,8 +534,18 @@ describe("stopImport — where an environment's own import has got, the one orde
     },
     { case: "stopped", over: { projectStatus: "STOPPED", services: [] }, step: undefined },
     {
-      case: "made a window ago",
-      over: { createdAt: ago(COMING_UP_WINDOW_MS), services: [app("NEW")] },
+      case: "its runtime new, HQ bringing up none: what the platform says it makes",
+      over: { birth: null, services: [app("NEW")] },
+      step: "app",
+    },
+    {
+      case: "no runtime listed, its birth ended: nothing said",
+      over: { birth: { ended: true }, services: [] },
+      step: undefined,
+    },
+    {
+      case: "its database stopped, HQ bringing up none: never adding it",
+      over: { birth: null, services: [db("STOPPED"), app("ACTIVE")] },
       step: undefined,
     },
   ] as const;
