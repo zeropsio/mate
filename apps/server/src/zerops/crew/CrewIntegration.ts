@@ -185,7 +185,7 @@ export const make = Effect.gen(function* () {
 
   /**
    * Refuses a frozen, missing, dirty or foreign-tipped lane before any write.
-   * A landing lands the committed tree alone, so `tracked` ignores untracked files.
+   * A merge and a landing take the committed tree alone, so `tracked` ignores untracked files.
    */
   const laneReady = (row: CrewLaneRow, tracked = false): string =>
     `[ -d ${shellQuote(laneDirectory(row.lane))} ] || { printf 'status\\tlane-missing\\n'; exit 0; }\n` +
@@ -213,7 +213,7 @@ export const make = Effect.gen(function* () {
       const out = yield* run(
         row.host,
         "mergeIn",
-        laneReady(row) +
+        laneReady(row, true) +
           `H=$(${git("integration", ["rev-parse", "--verify", "HEAD^{commit}"])}) || exit 1\n` +
           `printf 'head\\t%s\\n' "$H"\n` +
           `${lg(["merge-base", H, "HEAD"])} >/dev/null || { printf 'status\\tunrelated\\n'; exit 0; }\n` +

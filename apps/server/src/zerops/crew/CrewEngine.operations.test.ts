@@ -232,7 +232,7 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
               !frame.operations?.some((row) => row.id === `crashed-${kind}`) &&
               (kind === "dispatch" || kind === "checkpoint"
                 ? frame.board.tasks[0]?.attempts === 1 && frame.board.tasks[0]?.state === "working"
-                : frame.board.tasks[0]?.state === (kind === "check" ? "ready" : "parked")),
+                : frame.board.tasks[0]?.state === (kind === "check" ? "ready" : "landed")),
           );
           const operation = yield* (yield* CrewStore).getOperation(`crashed-${kind}`);
           assert.strictEqual(
@@ -246,11 +246,8 @@ for (const kind of ["dispatch", "checkpoint", "check", "landing"] as const) {
             "dirty work\n",
           );
           if (kind === "landing") {
-            // Edits on a copy whose task stands landing were never checked: kept, never landed.
-            assert.deepStrictEqual(
-              [settled.board.tasks[0]!.reason, git(copy, ["rev-parse", "HEAD"])],
-              [EDITED_AFTER_CHECK, head],
-            );
+            // Its untracked file is no edit after the check: the landing goes on, without it.
+            assert.isFalse(NodeFS.existsSync(NodePath.join(world.root, "ok.txt")));
           }
           if (kind === "checkpoint") {
             // Its turn had ended: the save is redone, and no turn goes out outside a run.
