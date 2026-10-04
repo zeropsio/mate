@@ -12,6 +12,7 @@
  * has them there itself.
  */
 import { ROOM_TAU_MS, approach } from "./runMotion.logic";
+import { GLIDING_ATTRIBUTE, scrollOwn } from "./timelineEndFollow";
 
 /** Frames the rows under the card are held after the fold, while the list catches up. */
 const HOLD_AFTER_FRAMES = 6;
@@ -21,9 +22,6 @@ const WAIT_AT_MOST_FRAMES = 60;
 
 /** Frames the list takes to lay out the rows a settle brings, at the least. */
 const LIST_LAYS_OUT_FRAMES = 3;
-
-/** Said on the conversation's scroll while it glides to its end (`createEndFollow`). */
-export const GLIDING_ATTRIBUTE = "data-timeline-gliding";
 
 export function foldWork({
   above,
@@ -109,7 +107,8 @@ export function foldWork({
     above.style.height = `${next}px`;
     above.style.opacity = String(Math.max(0, 1 - (1 - next / from) / 0.6));
     if (scroller !== null && scroller.closest("[data-timeline-follows-end]") !== null) {
-      scroller.scrollTop -= taken;
+      // The page's own move: never read as the person leaving the end.
+      scrollOwn(scroller, scroller.scrollTop - taken);
     }
     hold();
     if (next === 0) {
