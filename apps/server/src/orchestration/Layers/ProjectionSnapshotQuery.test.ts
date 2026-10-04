@@ -2839,17 +2839,50 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
           ('helper-end', 'thread-w', 'turn-5', 'tool', 'task.completed', 'Done',
             '{"taskId":"helper","status":"completed"}', 5, '2026-03-01T00:04:03.000Z')
       `;
-        yield* sql`
-        WITH RECURSIVE calls(n) AS (
-          VALUES (1) UNION ALL SELECT n + 1 FROM calls WHERE n < 501
-        )
-        INSERT INTO projection_thread_activities (
-          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
-        )
-        SELECT 'call-' || n, 'thread-w', 'turn-5', 'tool', 'tool.completed', 'Tool',
-          '{}', n + 5, '2026-03-01T00:04:04.000Z' FROM calls
-      `;
-        for (const window of [undefined, { turnLimit: 1 }]) {
+        let calls = 0;
+        const seedCallsUpTo = (count: number) =>
+          Effect.gen(function* () {
+            yield* sql`
+            WITH RECURSIVE seeded(n) AS (
+              VALUES (${calls + 1}) UNION ALL SELECT n + 1 FROM seeded WHERE n < ${count}
+            )
+            INSERT INTO projection_thread_activities (
+              activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
+            )
+            SELECT 'call-' || n, 'thread-w', 'turn-5', 'tool', 'tool.completed', 'Tool',
+              '{}', n + 5, '2026-03-01T00:04:04.000Z' FROM seeded
+          `;
+            calls = count;
+          });
+        // Each read one call past its own cap (500 unpaged, 3,000 a page); the last unpaged read
+        // holds the lifecycles beyond its scan, where a progress tick is superseded by later ones.
+        for (const { window, seed, cap, lifecycles } of [
+          {
+            window: undefined,
+            seed: 501,
+            cap: 500,
+            lifecycles: [
+              "old-helper",
+              "helper-start",
+              "helper-progress",
+              "helper-update",
+              "helper-end",
+            ],
+          },
+          {
+            window: { turnLimit: 1 },
+            seed: 3_001,
+            cap: 3_000,
+            lifecycles: ["helper-start", "helper-progress", "helper-update", "helper-end"],
+          },
+          {
+            window: undefined,
+            seed: 3_001,
+            cap: 500,
+            lifecycles: ["old-helper", "helper-start", "helper-update", "helper-end"],
+          },
+        ]) {
+          if (seed > calls) yield* seedCallsUpTo(seed);
           const snapshot = yield* query.getThreadDetailSnapshot(threadW, window);
           assert(Option.isSome(snapshot));
           const activities = snapshot.value.thread.activities;
@@ -2857,16 +2890,11 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
             activities
               .filter((activity) => activity.kind.startsWith("task."))
               .map((activity) => activity.id),
-            (window === undefined ? ["old-helper"] : []).concat([
-              "helper-start",
-              "helper-progress",
-              "helper-update",
-              "helper-end",
-            ]),
+            lifecycles,
           );
           assert.equal(
             activities.filter((activity) => activity.kind === "tool.completed").length,
-            500,
+            cap,
           );
           assert.equal(new Set(activities.map((activity) => activity.id)).size, activities.length);
         }
@@ -2875,7 +2903,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery windowed thread detail", (it) =
         INSERT INTO projection_thread_activities (
           activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
         ) VALUES ('recent-helper', 'thread-w', 'turn-5', 'tool', 'task.updated', 'Done',
-          '{"taskId":"helper","status":"completed"}', 507, '2026-03-01T00:04:05.000Z')
+          '{"taskId":"helper","status":"completed"}', 3007, '2026-03-01T00:04:05.000Z')
       `;
         const snapshot = yield* query.getThreadDetailSnapshot(threadW, { turnLimit: 1 });
         assert(Option.isSome(snapshot));
