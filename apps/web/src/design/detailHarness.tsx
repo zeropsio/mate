@@ -655,7 +655,6 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       history={history}
       names={NAMES}
       onEnableRoute={() => {}}
-      onOpenProject={() => {}}
       onRollBack={() => {}}
       pending={new Set()}
       release={release}
