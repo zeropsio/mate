@@ -156,7 +156,8 @@
       "contracts": [
         "@t3tools/client-runtime/zerops/browserStream",
         "subscribeZeropsBrowserStream",
-        "zerops.browser.input"
+        "zerops.browser.input",
+        "zerops.browser.reconnect"
       ],
       "reverseStates": [
         {
@@ -166,11 +167,13 @@
         {
           "action": "Let the agent drive",
           "reverse": "Take over"
+        },
+        {
+          "action": "Reconnect",
+          "reverse": "none: Closing the last viewer releases the stream."
         }
       ],
-      "docs": {
-        "none": "No docs/user page documents the Browser panel yet."
-      },
+      "docs": "docs/user/agent-browser.md",
       "tests": [
         "apps/web/src/components/zerops/ZeropsBrowserPanel.test.tsx",
         "packages/client-runtime/src/zerops/browserStream.test.ts"

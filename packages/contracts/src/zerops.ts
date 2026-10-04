@@ -609,14 +609,18 @@ export class ZeropsAgentLoginError extends Schema.TaggedError<ZeropsAgentLoginEr
 // ---------------------------------------------------------------------------
 
 /**
- * `no-browser` — the daemon's published port file is absent or unparsable
- * (no session, or the container restarted). `connecting` — a port was read
- * and a socket to the daemon is being opened/re-opened. `live` — frames are
- * flowing. Never a fourth "error" value: a socket failure re-reads the port
- * and retries with backoff, landing back on one of these three (spec-mate.md
- * §0 rule 3 — zcp sets nothing here; the port file is the only signal).
+ * `no-browser` — no published endpoint. `connecting` — one opening in progress.
+ * `live` — the daemon socket is open. `failed` / `closed` — that opening ended;
+ * its reason is carried in the state event. A new endpoint publication or an
+ * explicit Reconnect permits one new opening.
  */
-export const ZeropsBrowserStreamStatus = Schema.Literals(["no-browser", "connecting", "live"]);
+export const ZeropsBrowserStreamStatus = Schema.Literals([
+  "no-browser",
+  "connecting",
+  "live",
+  "failed",
+  "closed",
+]);
 export type ZeropsBrowserStreamStatus = typeof ZeropsBrowserStreamStatus.Type;
 
 /**
@@ -650,6 +654,7 @@ export type ZeropsBrowserFrame = typeof ZeropsBrowserFrame.Type;
 export const ZeropsBrowserStateEvent = Schema.Struct({
   type: Schema.Literal("state"),
   status: ZeropsBrowserStreamStatus,
+  reason: Schema.optional(Schema.String),
   url: Schema.optional(Schema.String),
   title: Schema.optional(Schema.String),
 });

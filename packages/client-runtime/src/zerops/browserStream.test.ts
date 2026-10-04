@@ -103,6 +103,21 @@ describe("mapCanvasPointToDevicePixels", () => {
 });
 
 describe("foldBrowserStreamEvent", () => {
+  it("carries the terminal reason, clears the frame, and clears the reason on reconnect", () => {
+    const failed = foldBrowserStreamEvent(
+      { status: "live", frame: frame() },
+      {
+        type: "state",
+        status: "failed",
+        reason: "opening refused",
+      },
+    );
+    expect(failed).toEqual({ status: "failed", reason: "opening refused" });
+    expect(foldBrowserStreamEvent(failed, { type: "state", status: "connecting" })).toEqual({
+      status: "connecting",
+    });
+  });
+
   const stateEvent = (
     status: "no-browser" | "connecting" | "live",
     url?: string,

@@ -47,6 +47,7 @@ type ZeropsRpcTag =
   | typeof WS_METHODS.subscribeZeropsAgentAuth
   | typeof WS_METHODS.subscribeZeropsBrowserStream
   | typeof WS_METHODS.zeropsBrowserInput
+  | typeof WS_METHODS.zeropsBrowserReconnect
   | typeof WS_METHODS.zeropsMateUpdate
   | typeof WS_METHODS.zeropsMateCheckUpdate
   | typeof WS_METHODS.zeropsDataConsoleCall
@@ -332,6 +333,10 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
           "rpc.aggregate": "zerops",
         },
       ),
+    [WS_METHODS.zeropsBrowserReconnect]: () =>
+      observeRpcEffect(WS_METHODS.zeropsBrowserReconnect, zeropsBrowserStream.reconnect, {
+        "rpc.aggregate": "zerops",
+      }),
     [WS_METHODS.zeropsBrowserInput]: (input) =>
       observeRpcEffect(WS_METHODS.zeropsBrowserInput, zeropsBrowserStream.sendInput(input), {
         "rpc.aggregate": "zerops",

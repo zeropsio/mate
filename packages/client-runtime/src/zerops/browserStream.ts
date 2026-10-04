@@ -78,6 +78,7 @@ export function mapCanvasPointToDevicePixels(
  */
 export interface ZeropsBrowserStreamState {
   readonly status: ZeropsBrowserStreamStatus;
+  readonly reason?: string;
   /** The page the daemon last reported, once known (its active tab's `url`). */
   readonly url?: string;
   /** The active tab's title, once known. */
@@ -98,6 +99,7 @@ export function foldBrowserStreamEvent(
   }
   return {
     status: event.status,
+    ...(event.reason !== undefined ? { reason: event.reason } : {}),
     // Sticky: a reconnect/tab-update event that carries only part of the
     // page info keeps showing the rest of the last known page rather than
     // blanking the "what page" line.
