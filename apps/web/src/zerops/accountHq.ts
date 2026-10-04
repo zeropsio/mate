@@ -60,9 +60,6 @@ import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
-/** The origins an HQ's API answers (`HQ_CLIENT_ORIGINS`): this one, and the hosted app. */
-export const HOSTED_APP_ORIGIN = "https://mate.zerops.io";
-
 export interface AccountHq {
   /**
    * `ready` once the member list was read, or while this browser keeps the verdict: only then is
@@ -401,13 +398,11 @@ export function hqBirthDeps(client: ZeropsApiClient): HqBirthDeps {
   };
 }
 
-/** The birth's own inputs beside its record: the origins HQ answers, the API Core reads. */
+/** The birth's own input beside its record: the API Core reads. */
 export function hqBirthSite(client: ZeropsApiClient): {
-  readonly origins: ReadonlyArray<string>;
   readonly zeropsApi: string;
 } {
   return {
-    origins: [window.location.origin, HOSTED_APP_ORIGIN],
     zeropsApi: `${client.baseUrl}/api/rest/public`,
   };
 }

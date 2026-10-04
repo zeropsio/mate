@@ -65,7 +65,6 @@ export interface CoreOptions {
   readonly credential: Option.Option<Redacted.Redacted>;
   /** `HQ_KEY_SECRET`, the key HQ seals its environments' deploy tokens with (`deployKeys.ts`). */
   readonly keySecret: Option.Option<Redacted.Redacted>;
-  readonly clientOrigins: ReadonlyArray<string>;
   readonly build: string;
   /** How long the server still answers after the lead is given up on shutdown; 10 s. */
   readonly drainFor?: Duration.Duration;
@@ -83,7 +82,6 @@ const routes = (options: CoreOptions) =>
   Layer.mergeAll(
     healthRoute(options.build),
     apiRoutes({
-      clientOrigins: options.clientOrigins,
       ...(options.streamRecheck === undefined ? {} : { recheck: options.streamRecheck }),
       ...(options.pingEvery === undefined ? {} : { pingEvery: options.pingEvery }),
       link: {
