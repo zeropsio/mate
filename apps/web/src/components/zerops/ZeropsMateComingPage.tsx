@@ -33,6 +33,7 @@ import {
 import {
   assignCandidateMateTints,
   FINISH_MATE_SETUP_VERB,
+  nameUnderApp,
   readZeropsMembership,
   resolvePrimaryConversation,
   type ZeropsMateFace,
@@ -300,7 +301,15 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // and until then what its creation or its press knew.
   const tints = useMemo(() => assignCandidateMateTints(held.rows), [held.rows]);
   const mate = useMemo((): ZeropsMateIdentity => {
-    if (candidate !== undefined) return zeropsMateIdentityOf(candidate, tints);
+    if (candidate !== undefined) {
+      const listed = zeropsMateIdentityOf(candidate, tints);
+      // Listed before HQ places it: no application to cut its name under, but its creation or its
+      // press knows it, so its name is its own all along.
+      const app = creation?.groupName ?? press?.placement?.groupName;
+      if (readZeropsMembership(candidate.project).groupId !== undefined || app === undefined)
+        return listed;
+      return { ...listed, name: nameUnderApp(candidate.project.name, app) };
+    }
     // Before the listing is read, the Mate this browser last knew in the project: never a
     // placeholder name, and its face from the first frame.
     const known =

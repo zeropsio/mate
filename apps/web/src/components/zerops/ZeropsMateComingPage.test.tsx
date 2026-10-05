@@ -716,6 +716,18 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(composer()).toHaveLength(0);
   });
 
+  it("goes by its own name while the listing holds its project and HQ has not placed it", () => {
+    const unplaced = {
+      ...coming,
+      project: { id: PROJECT, name: "Beviro - Quinn", status: "ACTIVE", tagList: ["mate"] },
+    } as unknown as ZeropsCandidate;
+    app.creations = { [PROJECT]: QUINN_MADE };
+    app.listing = listingOf([unplaced]);
+    openView();
+    expect(said()).toContain("Quinn");
+    expect(said()).not.toContain("Beviro - Quinn");
+  });
+
   // One pose wherever its face shows (`matePose`): the header wears the stage's, waking.
   it("wears its waking face in the header while it comes up", () => {
     app.creations = { [PROJECT]: QUINN_MADE };
