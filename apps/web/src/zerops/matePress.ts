@@ -915,15 +915,30 @@ export function pressHold(
   let importProcessId: string | undefined;
   let renewal: ReturnType<typeof setInterval> | null = null;
   let heldAt = Number.NEGATIVE_INFINITY;
-  const hold = async () => {
-    if (api === null || projectId === null) return;
+  // Whether HQ answered a hold of this press: from then on each hold only renews its own live
+  // hold, so one landing after the press's end changes nothing there.
+  let taken = false;
+  // Every hold sent, one after another: the end waits for the last to land.
+  let sending: Promise<void> = Promise.resolve();
+  const hold = (): Promise<void> => {
+    const held = projectId;
+    if (api === null || held === null) return Promise.resolve();
     heldAt = Date.now();
-    await api.holdPress(projectId, {
+    const body = {
       owner,
       kind: press.kind,
       ...(press.appId === undefined ? {} : { appId: press.appId }),
       ...(importProcessId === undefined ? {} : { importProcessId }),
+    };
+    const sent = sending.then(async () => {
+      // The press ended while this waited its turn: nothing is held any more.
+      if (projectId !== held) return;
+      await api.holdPress(held, taken ? { ...body, renew: true } : body);
+      taken = true;
     });
+    // The next waits for this one to land, however it lands; its caller hears how.
+    sending = Promise.allSettled([sent]).then(() => undefined);
+    return sent;
   };
   const renewNow = () => {
     hold().catch(() => undefined);
@@ -932,8 +947,8 @@ export function pressHold(
     if (Date.now() - heldAt >= PRESS_STEP_RENEW_MS) renewNow();
   };
   return {
-    take: async (taken) => {
-      projectId = taken;
+    take: async (pressed) => {
+      projectId = pressed;
       try {
         await hold();
       } catch (cause) {
@@ -960,6 +975,8 @@ export function pressHold(
       projectId = null;
       importProcessId = undefined;
       if (api === null || held === null) return;
+      // A renewal in flight lands first: the end is always the last word HQ hears of this press.
+      await sending;
       try {
         await api.endPress(held, owner, finished);
       } catch {
