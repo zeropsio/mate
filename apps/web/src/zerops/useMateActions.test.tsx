@@ -798,8 +798,9 @@ describe("useMateActions — Finish setup on a Mate its press left open", () => 
 });
 
 // ADR 0003's fallout: HQ says the key of a Mate it holds still reads other projects. No page's read
-// repairs it (2026-10-03): its menu offers Finish setup, saying why, and Finish setup's harden takes
-// those grants off.
+// repairs it (2026-10-03): its menu offers Finish setup, saying why, to whoever HQ offers editing
+// the Mate's record — the one HQ tells the key's id to — and Finish setup's harden takes those
+// grants off.
 describe("useMateActions — Finish setup on a Mate whose key reads other projects", () => {
   const wider = (() => {
     const base = mate("Ivo");
@@ -825,18 +826,23 @@ describe("useMateActions — Finish setup on a Mate whose key reads other projec
   };
 
   it.each([
-    { who: "an owner", role: "OWNER", want: KEY_WIDER_WHY },
-    { who: "a member", role: "BASIC_USER", want: undefined },
-  ])("$who: offered, saying why: $want", ({ role, want }) => {
-    mock.roleCode = role;
+    { who: "one HQ offers its record", edit: { kind: "allowed" } as const, want: KEY_WIDER_WHY },
+    {
+      who: "one HQ refuses its record",
+      edit: { kind: "refused", reason: "not_project_admin" } as const,
+      want: undefined,
+    },
+  ])("$who: offered, saying why: $want", ({ edit, want }) => {
+    mock.roleCode = "BASIC_USER";
+    mock.mateOffers = () => ({ ...OWNER_OFFERS, edit });
     listing();
     mount();
     expect(finishVerb()?.why).toBe(want);
     expect(mock.asked.includes("tokens")).toBe(false);
   });
 
-  it("hardens it, finding its widened key as it runs", async () => {
-    mock.roleCode = "OWNER";
+  it("hardens it, by the key HQ names as it runs", async () => {
+    mock.roleCode = "BASIC_USER";
     mock.finishMateSetup.mockResolvedValue({ ok: true });
     listing();
     mount();

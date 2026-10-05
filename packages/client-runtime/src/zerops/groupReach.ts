@@ -143,28 +143,6 @@ export function findHeldMateKey(
   return newestFirst(keys.filter((key) => madeBefore(key, container)))[0];
 }
 
-/**
- * The key of a Mate an earlier client widened (ADR 0003's fallout): named as the platform names a
- * Mate's key, holding its own project at a Mate's role and `READ_ONLY` on other projects, nothing
- * more — the newest made before its container. Only its Mate's *Finish setup* reads it, and its
- * harden takes the extra grants off (`planMateKey`); no page's read does (2026-10-03).
- */
-export function findWiderMateKey(
-  tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  projectId: string,
-  containerCreated: string | undefined,
-): ZeropsIntegrationToken | undefined {
-  const container = containerCreated === undefined ? Number.NaN : Date.parse(containerCreated);
-  return newestFirst(
-    tokens.filter(
-      (token) =>
-        MATE_KEY_NAME_PREFIXES.some((prefix) => token.name.startsWith(prefix)) &&
-        mateKeyReach(token.projects ?? [], projectId) === "wider" &&
-        madeBefore(token, container),
-    ),
-  )[0];
-}
-
 /** A key's role on its Mate's own project. */
 function selfRoleOf(token: ZeropsIntegrationToken, projectId: string): string | undefined {
   return (token.projects ?? []).find((grant) => grant.projectId === projectId)?.roleCode;

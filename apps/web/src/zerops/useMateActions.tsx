@@ -579,6 +579,17 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     (candidate: ZeropsCandidatePresentation) => hqKnown && heldOf(candidate.project) === "none",
     [hqKnown],
   );
+  /**
+   * Whether HQ offers the viewer editing the record of a Mate it holds (`edit_mate_record`): the
+   * one HQ tells its key's id to, which a widened key's harden narrows.
+   */
+  const mayEditRecord = useCallback(
+    (candidate: ZeropsCandidatePresentation) => {
+      const offers = mateOffersOf(candidate.project.id);
+      return offers?.held === true && offers.edit.kind === "allowed";
+    },
+    [mateOffersOf],
+  );
   /** Whether HQ offers the viewer writing the record of a Mate it holds none of. */
   const mayCreateRecord = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
@@ -624,6 +635,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         recordMissing: recordMissing(candidate),
         mayCreateRecord: mayCreateRecord(candidate),
         keyWider: keyWiderOf(candidate),
+        mayEditRecord: mayEditRecord(candidate),
       });
     },
     [
@@ -631,6 +643,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       groupTree.groups,
       interrupted,
       mayCreateRecord,
+      mayEditRecord,
       orgOffer,
       pressedElsewhere,
       presses,
@@ -651,10 +664,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const whole = finishMateSetupScope(orgOffer("create_app").kind === "allowed") === "whole";
       // A Mate HQ holds no record of is adopted, and only then is its key lowered from ADMIN — by
       // the harden itself, which reads its key as it runs; never from a token list read on a load
-      // (step A, A11). A Mate whose key HQ says reads other projects has its harden too, which
-      // takes those grants off (ADR 0003's fallout).
+      // (step A, A11). A Mate whose key HQ says reads other projects has its harden too, for
+      // whoever HQ tells that key's id, which takes those grants off (ADR 0003's fallout).
       const adopting = recordMissing(candidate) && mayCreateRecord(candidate);
-      const keyWider = whole && keyWiderOf(candidate);
+      const keyWider = keyWiderOf(candidate) && mayEditRecord(candidate);
       // What it registers, by the rule Set up Mate registers by: in the application HQ or the
       // press this tab holds places it in, under that face; a new Mate in no application
       // only where neither does — the stand-up asked by whoever finishes a Mate its press made.
@@ -723,6 +736,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       hqStructure?.structure,
       interrupted,
       mayCreateRecord,
+      mayEditRecord,
       organizationRef,
       projectRef,
       orgOffer,

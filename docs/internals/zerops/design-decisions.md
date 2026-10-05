@@ -3474,8 +3474,9 @@ no-cache`.
 - **2026-10-02** — **Superseded 2026-10-03 in part by "A Mate's key is lowered only when Finish
   setup adopts it" below: the projects page lowers no key on its read. Superseded 2026-10-05 in
   part: the harden keeps no other grant on a key HQ knows by the id the Mate enrolled with — it sets
-  that key to its own project alone (`planMateKey`, `foundBy: "id"`); only a key found by its name
-  alone is never narrowed, and the grants by hand are that key's.**
+  that key to its own project alone (`planMateKey`, `foundBy: "id"`), a widened key HQ tells by id
+  (`keyWider`) included; only a key found by its name alone is never narrowed, and the grants by
+  hand are that key's.**
   **A Mate's key reaches only its own project** (the owner, ADR 0003). The key a
   Mate's container holds is `NO_ACCESS` at the org and `BASIC_USER` on its own project, and nothing
   more: the mint grants its own project alone (`api.ts:1791`), the press gives no sibling reach, and
@@ -3876,14 +3877,15 @@ no-cache`.
 - **2026-10-04** — **Finish setup takes an old Mate key's sibling grants off; HQ says which keys still
   reach further.**
   - HQ records a key wider than its project at enrollment and on its credential (`keyWider`, HQ
-    migration 0042). The Mate then offers Finish setup, whose harden leaves the key on its own
-    project.
+    migration 0042). The Mate then offers Finish setup to whoever HQ offers its record
+    (`edit_mate_record`). HQ tells them that key's id, and the harden sets the key to its own
+    project alone by it (`planMateKey`, `foundBy: "id"`).
   - The client keeps no path for a Core older than that: the fleet's Cores are updated first, as
     an admin updates any Core from HQ's card (`ZeropsHqUpdate`).
-  - `planMateKey` writes a Mate's key as exactly its own project at `BASIC_USER`. A Mate's key is one
-    with a single `ADMIN` or `BASIC_USER` grant on its own project and nothing above `READ_ONLY`
-    elsewhere (`mateKeyReach`, shared by HQ and the client). Any other `zcp-*` key is left alone and
-    a new one is minted.
+  - `planMateKey` writes a Mate's key as exactly its own project at `BASIC_USER`. Found by its name,
+    a key is a Mate's only with a single `ADMIN` or `BASIC_USER` grant on its own project and nothing
+    else (`mateKeyReach`, shared by HQ and the client); any other `zcp-*` key is never narrowed, and a
+    press mints a new one beside it (2026-10-05, the HQ-answers pass).
   - No load reads a token list.
   - **Supersedes in part:** the 2026-10-02 row's "taken off by hand", and the 2026-10-03 row's "a
     Mate HQ holds is never hardened", for widened keys only.

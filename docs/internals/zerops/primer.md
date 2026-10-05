@@ -167,7 +167,8 @@ an admin updates it from HQ's card at the projects page's end to the Core the cl
   A, A11), sets it to its own project alone (`planMateKey`): a key found by the id the Mate enrolled
   with HQ loses every other grant, a `READ_ONLY` grant on a sibling an earlier client gave included;
   a key found only by its name is the Mate's only while it holds its own project alone, and is never
-  narrowed. A grant on a key HQ cannot identify stays until it is taken off by hand
+  narrowed. A widened key the Mate names, HQ says (`keyWider`) and tells Finish setup by its id. A
+  grant on a key HQ cannot identify stays until it is taken off by hand
   - _Reaches:_ its own project — the door's role reads, zcp's every platform call, the challenge it
     writes for HQ
 - **a Mate credential** — issued by HQ for a challenge whose nonce it finds in the Mate's own
@@ -1139,9 +1140,9 @@ lands.
 1. **Grants an earlier client left on a Mate's key.** The Gitea release gave each Mate's key
    `READ_ONLY` on its application's other projects, and the rebuild's client did until
    `04d73b1557`. The client adds no such grant now, and a Mate's harden takes any other grant off a
-   key HQ knows by the id the Mate enrolled with (`planMateKey`, `2f75bd226b`); a key HQ cannot
-   identify — found only by its name, widened before HQ — is never narrowed, and its grants are
-   removed by hand.
+   key HQ knows by the id the Mate enrolled with (`planMateKey`, `2f75bd226b`), or by the id of a
+   widened key the Mate named (`keyWider`); a key HQ cannot identify — found only by its name — is
+   never narrowed, and its grants are removed by hand.
 2. **The pairs the Gitea release's zcp wired to the old Gitea.** zcp's move of such a pair to HQ
    (`38c4695c6`) is removed from zcp. Their checkouts still name Mate s.r.o.'s old Gitea as
    `origin`, which a worktree's preparation fetches (`apps/server/src/ws.ts`), so that project runs

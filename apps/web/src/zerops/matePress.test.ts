@@ -1666,8 +1666,8 @@ describe("finishMateSetup — the harden path", () => {
   });
 
   // ADR 0003's fallout: a Mate HQ holds whose key reads other projects is hardened by its Finish
-  // setup, which matches its widened key on the token list — HQ never takes that key for the
-  // Mate's — and then asks HQ to read the key again.
+  // setup by the id HQ names — the widened key its container holds, never taken for the Mate's own
+  // — and then asks HQ to read the key again.
   it("hardens a Mate whose key reads other projects, then asks HQ to read its key again", async () => {
     begin();
     const calls: Array<string> = [];
@@ -1701,7 +1701,7 @@ describe("finishMateSetup — the harden path", () => {
       },
     };
     hq.calls = calls;
-    hq.key = "token-own-earlier";
+    hq.key = "token-wide";
     expect(
       await finishMateSetup({
         inputs: matched as never,
@@ -1718,7 +1718,7 @@ describe("finishMateSetup — the harden path", () => {
       }),
     ).toMatchObject({ ok: true });
     hq.key = null;
-    expect(asked).toEqual([undefined]);
+    expect(asked).toEqual(["token-wide"]);
     expect(calls).toEqual(["harden", "recheck key", "mark"]);
     forgetPress("p-old");
   });

@@ -31,7 +31,6 @@ import {
 } from "./projectCreation.ts";
 import {
   findHeldMateKey,
-  findWiderMateKey,
   makeTokenWriteLock,
   mateAdminKeys,
   MATE_SELF_PROJECT_ROLE,
@@ -2418,9 +2417,8 @@ export class ZeropsApiClient {
 
   /**
    * The keys of a Mate HQ knows no key id of, matched on the organization's token list: the one its
-   * container holds — where two are its, the newest made before the container — every other still
-   * ADMIN on its project, a raced press's or an older platform key, and one an earlier client
-   * widened with READ_ONLY on siblings (`findWiderMateKey`), which HQ never takes for its key.
+   * container holds — where two are its, the newest made before the container — and every other
+   * still ADMIN on its project, a raced press's or an older platform key.
    */
   async #mateKeys(
     clientId: string,
@@ -2430,12 +2428,10 @@ export class ZeropsApiClient {
     const container = (await this.listProjectServices(projectId, signal)).find(isZcpService);
     const tokens = await this.listIntegrationTokens(clientId, signal);
     const token = findHeldMateKey(tokens, projectId, container?.created);
-    const wider = findWiderMateKey(tokens, projectId, container?.created);
     return [
       ...new Set([
         ...(token === undefined ? [] : [token.id]),
         ...mateAdminKeys(tokens, projectId, container?.created).map((key) => key.id),
-        ...(wider === undefined ? [] : [wider.id]),
       ]),
     ];
   }

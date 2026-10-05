@@ -1356,10 +1356,10 @@ async function finishLocked(
   // The harden first, whatever plan this tab keeps: a kept plan never skips the key's lowering.
   if (input.harden === true) {
     let keyNotLowered: string | null = null;
-    // The key its Mate named to HQ by its id, hardened by it alone (audit K3); matched on the token
-    // list only where the Mate named none, or HQ does not say — or where the key it holds reads
-    // other projects, which HQ never takes for its key.
-    const keyTokenId = input.keyWider === true ? null : await mateKeyAtHq(input);
+    // The key its Mate named to HQ by its id, hardened by it alone (audit K3) — a widened one
+    // included, which its id lets the harden narrow; matched on the token list only where the Mate
+    // named none, or HQ does not say.
+    const keyTokenId = await mateKeyAtHq(input);
     try {
       const hardened = await runZeropsCommand(
         input.inputs.data.runtime.commands.isolateProjectEnv(

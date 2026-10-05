@@ -5,7 +5,6 @@ import {
   newestMateKey,
   makeTokenWriteLock,
   planMateKey,
-  findWiderMateKey,
   type TokenWriteLocks,
   type ZeropsIntegrationToken,
 } from "./groupReach.ts";
@@ -220,58 +219,6 @@ describe("planMateKey", () => {
     expect(planMateKey({ token, selfProjectId: DEV, foundBy: "name" })).toEqual({
       kind: "not-its-key",
     });
-  });
-});
-
-// The keys an earlier client widened with READ_ONLY on siblings: found only by their Mate's
-// Finish setup, which takes the extra grants off — never a deploy key, a person's token, nor a key
-// that writes anything beyond its own project.
-describe("findWiderMateKey — a Mate's key an earlier client widened", () => {
-  const CONTAINER = "2026-09-20T10:00:00Z";
-  const wide = (over: Partial<ZeropsIntegrationToken> = {}): ZeropsIntegrationToken => ({
-    ...MATE_TOKEN,
-    created: "2026-09-20T09:59:00Z",
-    projects: [
-      { projectId: DEV, roleCode: "BASIC_USER" },
-      { projectId: PROD, roleCode: "READ_ONLY" },
-      { projectId: STAGE, roleCode: "READ_ONLY" },
-    ],
-    ...over,
-  });
-  it.each([
-    { case: "its own project and READ_ONLY siblings", token: wide(), found: true },
-    {
-      case: "as the Zerops GUI names it",
-      token: wide({ name: "zerops-zcp-zcp" }),
-      found: true,
-    },
-    { case: "a key on its own project alone", token: LOWERED_MATE_TOKEN, found: false },
-    { case: "a deploy key", token: wide({ name: "gitea-deploy-aurora-prod" }), found: false },
-    { case: "a person's token", token: wide({ name: "mate-demo-owner" }), found: false },
-    {
-      case: "a key that writes a sibling",
-      token: wide({
-        projects: [
-          { projectId: DEV, roleCode: "BASIC_USER" },
-          { projectId: PROD, roleCode: "ADMIN" },
-        ],
-      }),
-      found: false,
-    },
-    {
-      case: "a key that reads siblings and not its own project",
-      token: wide({ projects: [{ projectId: PROD, roleCode: "READ_ONLY" }] }),
-      found: false,
-    },
-    {
-      case: "a key made after its container",
-      token: wide({ created: "2026-09-20T11:00:00Z" }),
-      found: false,
-    },
-  ])("$case: $found", ({ token, found }) => {
-    expect(findWiderMateKey([OWNER_TOKEN, token, DEPLOY_TOKEN], DEV, CONTAINER)?.id).toBe(
-      found ? token.id : undefined,
-    );
   });
 });
 

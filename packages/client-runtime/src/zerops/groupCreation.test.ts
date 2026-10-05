@@ -219,17 +219,23 @@ describe("finishMateSetupVerb", () => {
       writer: true,
       expected: undefined,
     },
-    // ADR 0003's fallout: HQ says its key reads other projects — Finish setup takes that off, for
-    // a registry writer (an owner or an admin), at once; nobody else may write the key.
+    // ADR 0003's fallout: HQ says its key reads other projects — Finish setup takes that off, at
+    // once, for whoever HQ offers editing the Mate's record: the one it tells the key's id to.
     {
-      name: "an owner, on a Mate whose key reads other projects",
-      input: { ...HALF_MADE, keyWider: true },
-      writer: true,
+      name: "the project's admin, on a Mate whose key reads other projects",
+      input: { ...HALF_MADE, keyWider: true, mayEditRecord: true },
+      writer: false,
       expected: "Finish setup",
     },
     {
+      name: "a registry writer HQ does not offer the Mate's record, on a Mate whose key reads other projects",
+      input: { ...HALF_MADE, keyWider: true, mayEditRecord: false },
+      writer: true,
+      expected: undefined,
+    },
+    {
       name: "a member, on a Mate whose key reads other projects",
-      input: { ...HALF_MADE, keyWider: true, viewerIsAdder: true },
+      input: { ...HALF_MADE, keyWider: true, mayEditRecord: false, viewerIsAdder: true },
       writer: false,
       expected: undefined,
     },

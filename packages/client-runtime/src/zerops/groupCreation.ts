@@ -142,11 +142,16 @@ export function finishMateSetupVerb(input: {
   readonly mayCreateRecord: boolean;
   /**
    * HQ says its key reads other projects too (`keyWider`, ADR 0003's fallout): *Finish setup*'s
-   * harden takes those grants off — for a registry writer, who may write the key.
+   * harden takes those grants off, by the key's id HQ tells (`mayEditRecord`).
    */
   readonly keyWider?: boolean;
+  /**
+   * HQ offers the viewer editing the Mate's record (`edit_mate_record`): HQ tells them its key's
+   * id, which the harden narrows.
+   */
+  readonly mayEditRecord?: boolean;
 }): string | undefined {
-  if (input.keyWider === true && input.writer) return FINISH_MATE_SETUP_VERB;
+  if (input.keyWider === true && input.mayEditRecord === true) return FINISH_MATE_SETUP_VERB;
   // Its record, and its birth after it, are whoever HQ's rule lets create the record.
   if (
     input.recordMissing &&
