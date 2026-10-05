@@ -33,8 +33,13 @@ export type ProbeReading =
       readonly projectId: string | null;
       readonly initAt: string | null;
     }
-  /** `/healthz` answered and the descriptor did not: Mate is still coming up. */
+  /** `/healthz` answered, zcp's init not complete, and the descriptor did not: Mate is coming up. */
   | { readonly kind: "initializing"; readonly initAt: string | null }
+  /**
+   * `/healthz` says zcp's init is complete and the descriptor did not answer: the container is up
+   * and its Mate is not answering — stopped, or crashed — never a container still coming up.
+   */
+  | { readonly kind: "not-answering"; readonly initAt: string | null }
   /** Neither route is served: an older zcp, or one with `ZCP_MATE_ENABLED` off. */
   | { readonly kind: "predates-mate" }
   /** No usable answer before the deadline: the container is away, or restarting. */

@@ -414,6 +414,40 @@ describe("container machine (DESIGN §4.5)", () => {
     });
   });
 
+  // Live, 2026-10-05: zcp's init marker kept answering while the Mate was stopped. A container
+  // whose init is complete and whose Mate does not answer is not coming up: only failed probes say
+  // anything of a boot, so it is never one the platform's words describe.
+  it.each([
+    {
+      name: "init complete, the Mate not answering, after it was up: a guessed boot",
+      from: "ready",
+      reading: { kind: "not-answering", initAt: "2026-10-05T01:00:00Z" },
+      verdict: { level: "booting", overdue: false, guessed: true },
+    },
+    {
+      name: "init complete, the Mate not answering, never up here: a guessed boot",
+      from: "active",
+      reading: { kind: "not-answering", initAt: "2026-10-05T01:00:00Z" },
+      verdict: { level: "booting", overdue: false, guessed: true },
+    },
+    {
+      name: "init not complete: a boot on its way",
+      from: "active",
+      reading: { kind: "initializing", initAt: null },
+      verdict: { level: "booting", overdue: false },
+    },
+  ] as const)("$name", ({ from, reading, verdict }) => {
+    const start = from === "ready" ? ready() : drive([active]);
+    const run = drive(
+      [
+        probed(reading, start.nowMs + READY_SILENCE_MS),
+        probed(reading, start.nowMs + READY_SILENCE_MS + 1_000),
+      ],
+      start,
+    );
+    expect(containerVerdict(run.machine)).toEqual(verdict);
+  });
+
   it("a ready container silent past its grace is a guessed boot, polled only while someone waits on it, and stalls at its cap", () => {
     const linked = drive([{ type: "LINK", connected: true }], ready());
     // The Mate process dies and the platform says nothing: the service stays ACTIVE.

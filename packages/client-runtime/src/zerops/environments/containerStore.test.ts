@@ -479,29 +479,47 @@ describe("container store (DESIGN §4.5)", () => {
   // conversation open 127 s its banner said "Ada is taking longer than usual to start." with only
   // Go to projects. Nothing but failed probes said it was starting: the link is failing, and says
   // so with Try now — "starting" is the platform's word alone.
-  it("an ACTIVE container whose server stops answering reads as its link failing, with Try now", async () => {
-    const setup = rig();
-    const { clock, store } = setup;
-    store.setTargets([target("ACTIVE")]);
-    const { driver, dispose } = await boundDriver(setup);
-    driver.link(ENVIRONMENT_ID, { phase: "connected" });
-    await clock.advance(1_000);
+  // Live, 2026-10-05, again: nginx kept serving zcp's init marker at `/mate/healthz` (200,
+  // initComplete true) while the Mate was stopped, and the descriptor's CORS-less 502 read as no
+  // answer — "Almost there." at 60 s, then "taking longer than usual to start".
+  it.each([
+    { name: "every probe unanswered", answer: { kind: "unreachable" } },
+    {
+      name: "zcp's init marker answering, the Mate not",
+      answer: { kind: "not-answering", initAt: "2026-10-05T01:00:00Z" },
+    },
+  ] as const)(
+    "an ACTIVE container whose server stops answering reads as its link failing, with Try now: $name",
+    async ({ answer }) => {
+      const setup = rig();
+      const { clock, store } = setup;
+      store.setTargets([target("ACTIVE")]);
+      const { driver, dispose } = await boundDriver(setup);
+      driver.link(ENVIRONMENT_ID, { phase: "connected" });
+      await clock.advance(1_000);
 
-    // The server stops: the socket drops into backoff and every probe goes unanswered, while the
-    // platform keeps saying ACTIVE.
-    setup.answer = { kind: "unreachable" };
-    driver.link(ENVIRONMENT_ID, { phase: "backoff", retryAtMs: null });
-    for (let second = 0; second < 127; second += 1) await clock.advance(1_000);
-
-    const machine = driver.machine(KEY)!;
-    const verdict = selectReachability(machine, ENVIRONMENT_ID);
-    expect(verdict.kind).not.toBe("container");
-    const phrase = reachabilityPhrase(verdict, { nowMs: clock.now().wall, mateName: "Ada" });
-    expect(phrase.text ?? "").not.toMatch(/start/u);
-    expect(phrase.actions).toContain("try-now");
-    dispose();
-    store.dispose();
-  });
+      // The server stops: the socket drops into backoff, the link counting down to its next try,
+      // while the platform keeps saying ACTIVE.
+      setup.answer = answer;
+      driver.link(ENVIRONMENT_ID, { phase: "backoff", retryAtMs: null });
+      const words: Array<string> = [];
+      for (let second = 0; second < 127; second += 1) {
+        await clock.advance(1_000);
+        driver.link(ENVIRONMENT_ID, { phase: "backoff", retryAtMs: clock.now().wall + 4_000 });
+        await clock.advance(0);
+        const verdict = selectReachability(driver.machine(KEY)!, ENVIRONMENT_ID);
+        expect(verdict.kind).not.toBe("container");
+        const phrase = reachabilityPhrase(verdict, { nowMs: clock.now().wall, mateName: "Ada" });
+        expect(phrase.actions).toContain("try-now");
+        words.push(phrase.text ?? "");
+      }
+      // Never a start, never "Almost there.": its server is not answering, counted down.
+      expect(words.filter((text) => /start|Almost there/u.test(text))).toEqual([]);
+      expect(words.at(-1)).toBe("This Mate isn't answering. Trying again in 4 s.");
+      dispose();
+      store.dispose();
+    },
+  );
 
   it("container ready kicks a link in backoff", async () => {
     const setup = rig();

@@ -9,8 +9,10 @@
  *   document, and the **authority**: if it answers, Zerops Mate is up and
  *   reachable, which is the whole question.
  * - `GET /mate/healthz` — `{"initComplete": bool, "initAt": "…"}`, served statically
- *   by nginx outside the code-server cookie gate. Consulted only when the
- *   descriptor does not answer, to tell "still starting" from "this container
+ *   by nginx outside the code-server cookie gate — zcp's init marker, not the
+ *   Mate's liveness: it answers with the Mate stopped. Consulted only when the
+ *   descriptor does not answer, to tell "still starting" (init not complete)
+ *   from "its Mate is not answering" (init complete) and from "this container
  *   is not serving Zerops Mate at all".
  *
  * The readiness path lives under the `/mate/` prefix, not at the container root:
@@ -277,6 +279,12 @@ export async function readZeropsContainer(
     }
   }
   const health = await (healthRead ?? readHealth());
+  // zcp's init is complete — nginx serves its marker whether Mate runs or not — and the descriptor
+  // did not answer, however it failed (a 502 without CORS reads as no answer at all): the
+  // container is up and its Mate is not answering, never a container still coming up.
+  if (health.kind === "json" && health.body.initComplete === true) {
+    return { reading: { kind: "not-answering", initAt: initAtOf(health) }, sentAt };
+  }
   const concluded = concludeWithoutDescriptor(descriptor, health);
   return {
     reading:

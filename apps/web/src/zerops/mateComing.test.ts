@@ -2,8 +2,12 @@ import { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import { ARRIVAL_MS, deriveZeropsCandidates } from "@t3tools/client-runtime/zerops/candidates";
 import {
+  CONTAINER_CAPS_MS,
   IDLE_GUARDS,
   candidatePresence,
+  containerVerdict,
+  initialContainer,
+  transitionContainer,
   initialEnvironment,
   mateLink,
   reachabilityPhrase,
@@ -801,6 +805,81 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
     { case: "nothing known yet", page: undefined, cameUp: true, expected: undefined },
   ])("$case", ({ page, cameUp, failuresSinceConnect = 0, expected }) => {
     expect(mateArrivalShown({ page, cameUp, failuresSinceConnect })).toEqual(expected);
+  });
+
+  // Live, 2026-10-05: a new Mate's arrival keeps its board while zcp's init runs, and through its
+  // Mate not answering yet once the init is complete — until a boot's cap, when its words and
+  // Try now speak instead.
+  it("a new Mate keeps its board through its init and its Mate's first silence, until the cap", () => {
+    const KEY = "project-wren:zcp";
+    let nowMs = 1_000;
+    const at = () => ({ wall: nowMs, mono: nowMs });
+    let container = transitionContainer(
+      initialContainer(),
+      { type: "PLATFORM", status: { project: "ACTIVE", service: "ACTIVE" } },
+      { now: at() },
+    ).state;
+    let environment: EnvironmentMachine = transitionEnvironment(
+      initialEnvironment({ record: null }),
+      { type: "PRESENCE", presence: { kind: "present", origin: "https://zcp-wren.example.test" } },
+      { now: at(), random: () => 0.5 },
+    ).state;
+    const shown = () => {
+      environment = transitionEnvironment(
+        environment,
+        { type: "CONTAINER", container: containerVerdict(container) },
+        { now: at(), random: () => 0.5 },
+      ).state;
+      const link = mateLink({
+        key: KEY,
+        projectId: "project-wren",
+        machines: new Map([[KEY, environment]]),
+        index: { serving: new Map(), reported: new Map() },
+        records: [],
+        registered: new Set(),
+      });
+      return {
+        reachability: link.reachability,
+        arrival: mateArrivalShown({
+          page: { kind: "reaching", reachability: link.reachability },
+          cameUp: true,
+          failuresSinceConnect: link.failuresSinceConnect,
+        }),
+      };
+    };
+    const probe = (
+      reading: Parameters<typeof transitionContainer>[1] extends infer E
+        ? E extends { readonly type: "PROBED"; readonly reading: infer R }
+          ? R
+          : never
+        : never,
+    ) => {
+      nowMs += 1_000;
+      container = transitionContainer(
+        container,
+        { type: "PROBED", reading, sentAt: at() },
+        { now: at() },
+      ).state;
+    };
+
+    // zcp's init still running: a boot on its way.
+    probe({ kind: "initializing", initAt: null });
+    expect(shown().reachability).toEqual({
+      kind: "container",
+      container: { level: "booting", overdue: false },
+    });
+    expect(shown().arrival).toEqual(OPENING);
+
+    // Its init complete, its Mate not answering yet: not a start, and the board still stands.
+    probe({ kind: "not-answering", initAt: "2026-10-05T01:00:00Z" });
+    expect(shown().reachability).toEqual({ kind: "not-answering", overdue: false });
+    expect(shown().arrival).toEqual(OPENING);
+
+    // Past a boot's cap: its words, with Try now.
+    nowMs += CONTAINER_CAPS_MS.booting;
+    container = transitionContainer(container, { type: "TICK" }, { now: at() }).state;
+    expect(shown().reachability).toEqual({ kind: "not-answering", overdue: true });
+    expect(shown().arrival).toBeUndefined();
   });
 
   // The lead, 2026-10-05: a new Mate whose container is ready and whose exchanges keep failing is
