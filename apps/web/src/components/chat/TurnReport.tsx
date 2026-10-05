@@ -20,6 +20,7 @@ import { ArrowUpRightIcon, GitPullRequestIcon, TriangleAlertIcon, UsersIcon } fr
 import {
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type AnimationEvent,
@@ -40,8 +41,8 @@ import type { OutcomeModel } from "./conversation.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   resultPictures,
-  rowPictures,
-  standingPictures,
+  placeResultPictures,
+  stripShowsFiles,
   resultRows,
   tileRatio,
   type ResultFacts,
@@ -50,6 +51,7 @@ import {
   STRIP_TILES,
 } from "./runResult.logic";
 import { useRunResultFacts } from "./runResultFacts";
+import { publishStripFiles } from "./resultStripFiles";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
 
 const NOTHING_RISING: ReadonlySet<string> = new Set();
@@ -431,7 +433,6 @@ function Report({
   const read = useRunResultFacts(outcome);
   const now = facts ?? read;
   const rows = useMemo(() => resultRows(outcome, now), [now, outcome]);
-  const all = useMemo(() => resultPictures(outcome), [outcome]);
   const gone = useMemo(
     () =>
       new Set(
@@ -443,17 +444,13 @@ function Report({
   );
   // Every picture of a service stands under its row; the rest in the strip.
   const placed = useMemo(
-    () =>
-      rowPictures(
-        outcome,
-        rows,
-        files === null
-          ? all.filter((picture) => picture.kind === "check")
-          : standingPictures(all, gone),
-      ),
-    [all, files, gone, outcome, rows],
+    () => placeResultPictures(outcome, rows, files === null ? null : gone),
+    [files, gone, outcome, rows],
   );
   const pictures = placed.rest;
+  // What the strip draws, for the card's steps to leave to it (`resultStripFiles`).
+  const drawn = useMemo(() => stripShowsFiles(pictures), [pictures]);
+  useEffect(() => publishStripFiles(outcome.turnKey, drawn), [drawn, outcome.turnKey]);
   // The rows the result arrived with, while the person watched, rise once
   // and drop their rise as it ends: a row that turns up later is simply
   // there, and one that moves later (a service stopping tonight moves up to

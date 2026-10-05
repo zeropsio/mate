@@ -2,7 +2,7 @@ import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { AssetUrlState } from "../../assets/assetUrls";
@@ -10,6 +10,7 @@ import { ReviewContext } from "../../zerops/review";
 import type { OutcomeModel, OutcomePicture } from "./conversation.logic";
 import type { ResultFacts } from "./runResult.logic";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
+import { useStripFiles } from "./resultStripFiles";
 import { TurnReport } from "./TurnReport";
 
 /** What the workspace answers for each picture's file, by its path: loading unless told. */
@@ -376,9 +377,39 @@ describe("TurnReport's pictures", () => {
     const tiles = tilesOf(renderPictures(pictures));
     expect(tiles).toHaveLength(6);
     expect(tiles.at(-1)!.props["aria-label"]).toBe("map-landscape.png. Open the picture");
-    expect(
-      tiles.flatMap((tile) => tile.findAll((node) => node.props.className === "run-result-more")),
-    ).toEqual([]);
+    // No tile says "+N": nothing stands past the six.
+    const said = (node: ReactTestInstance): string =>
+      node.children.map((child) => (typeof child === "string" ? child : said(child))).join("");
+    expect(tiles.map(said).filter((words) => /\+\d/.test(words))).toEqual([]);
+  });
+
+  // The card's steps leave to the result what its strip draws: here the seventh file, once the
+  // second is gone, and never the gone one.
+  it("hands the card the files its strip draws", () => {
+    workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
+    const names = [
+      "home-mobile.png",
+      "world-mobile.png",
+      "a.png",
+      "b.png",
+      "c.png",
+      "d.png",
+      "e.png",
+    ];
+    renderPictures(names.map(filePicture));
+    const seen: Array<ReadonlyArray<string>> = [];
+    function Card() {
+      seen.push([...useStripFiles(OUTCOME.turnKey, new Set())]);
+      return null;
+    }
+    act(() => {
+      create(<Card />);
+    });
+    expect(seen.at(-1)).toEqual(
+      names
+        .filter((name) => name !== "world-mobile.png")
+        .map((name) => `/var/www/app/.shots/${name}`),
+    );
   });
 
   // Every result picture gone: nothing of them shows — no strip, and a run
