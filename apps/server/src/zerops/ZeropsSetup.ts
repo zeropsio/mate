@@ -41,6 +41,7 @@ import {
 } from "@t3tools/contracts";
 import type { MateState } from "@t3tools/shared/mateLink";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
+import { selectionWithPreferredEffort } from "@t3tools/shared/zeropsEffort";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -538,18 +539,16 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           resuming?.threadId ?? main?.id ?? (yield* crypto.randomUUIDv4),
         );
         // On the agent the person signed in, else on the ready one that needs no sign-in.
-        let modelSelection: ModelSelection;
+        let chosen: ModelSelection;
         if ("agentId" in decision) {
-          modelSelection = standUpModelSelection(
-            decision.agentId,
-            main,
-            project.defaultModelSelection,
-          );
+          chosen = standUpModelSelection(decision.agentId, main, project.defaultModelSelection);
         } else if (readyHere !== undefined) {
-          modelSelection = standUpModelSelectionOn(readyHere, main, project.defaultModelSelection);
+          chosen = standUpModelSelectionOn(readyHere, main, project.defaultModelSelection);
         } else {
           return false;
         }
+        // The stand-up is a new conversation's first turn: Extra High unless it has an effort (D10).
+        const modelSelection = selectionWithPreferredEffort(providers, chosen);
         const ids =
           resuming === undefined
             ? standUpCommandIds(threadId)

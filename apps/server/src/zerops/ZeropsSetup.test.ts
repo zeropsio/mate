@@ -484,6 +484,59 @@ describe("ZeropsSetup: the stand-up", () => {
     }),
   );
 
+  // D10: a new conversation starts on Extra High, else the highest effort below Max; an effort the
+  // conversation already has stays.
+  it.live("the stand-up starts on the highest effort below Max, and keeps one already set", () =>
+    Effect.gen(function* () {
+      const reasoning = {
+        optionDescriptors: [
+          {
+            id: "reasoning",
+            label: "Reasoning",
+            type: "select" as const,
+            options: [
+              { id: "low", label: "Low" },
+              { id: "medium", label: "Medium", isDefault: true },
+              { id: "high", label: "High" },
+              { id: "max", label: "Max" },
+            ],
+          },
+        ],
+      };
+      const cursor: ServerProvider = {
+        ...instance("cursor"),
+        models: [
+          { slug: "composer-2", name: "Composer", isCustom: false, capabilities: reasoning },
+        ],
+      };
+      const standUpSelection = (thread: OrchestrationThreadShell) =>
+        Effect.gen(function* () {
+          const world = yield* makeWorld;
+          yield* Ref.set(world.providers, [...NOTHING_TO_RUN, cursor]);
+          yield* Ref.set(world.threads, [thread]);
+          const [turn] = yield* withServer(world, freshDatabase(), () =>
+            eventually(turnsOf(world), (turns) => turns.length > 0),
+          );
+          return turn!.modelSelection?.options;
+        });
+      const onCursor = (options?: ReadonlyArray<{ id: string; value: string }>) =>
+        mainThread({
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("cursor"),
+            model: "composer-2",
+            ...(options ? { options } : {}),
+          },
+        });
+      assert.deepStrictEqual(yield* standUpSelection(onCursor()), [
+        { id: "reasoning", value: "high" },
+      ]);
+      assert.deepStrictEqual(
+        yield* standUpSelection(onCursor([{ id: "reasoning", value: "low" }])),
+        [{ id: "reasoning", value: "low" }],
+      );
+    }),
+  );
+
   it.live("keeps the conversation on its own ready instance over the registry's first", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
