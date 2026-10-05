@@ -70,6 +70,32 @@ describe("halfMadeGroupEnvironments", () => {
     ]);
   });
 
+  // B5: a stage's press cut short between its import and its registration — its project placed
+  // by its press's record alone — is half made once no press is at it, never while one is.
+  it.each([
+    { pressing: true, named: false },
+    { pressing: false, named: true },
+  ])(
+    "names a stage its press placed, unregistered, while a press is at it: $pressing → $named",
+    ({ pressing, named }) => {
+      const unregistered = {
+        id: "p-new-stage",
+        name: "Acme - stage 2",
+        tagList: [],
+        hq: { ...inAcme("stage"), unregistered: true as const },
+      };
+      expect(
+        halfMadeGroupEnvironments({
+          projects: [unregistered],
+          registry,
+          environments: new Map([["g-1", [environment("p-stage")]]]),
+          mayKey: anybody,
+          pressing: (projectId) => pressing && projectId === "p-new-stage",
+        }),
+      ).toEqual(named ? [{ groupId: "g-1", projectId: "p-new-stage", tier: "stage" }] : []);
+    },
+  );
+
   it("names nothing in a group whose environments HQ has not said yet", () => {
     // A cold load: every environment read as missing until HQ answered, and the page repaired each
     // one, no write needed (measured 2026-10-01: six repairs, 36 reads).

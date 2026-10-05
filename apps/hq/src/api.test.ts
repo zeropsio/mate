@@ -199,6 +199,7 @@ describe("HQ API", () => {
           assert.deepStrictEqual((yield* call("GET", "/api/structure", { session })).body, {
             can: ORG_ALLOWED,
             unheld: {},
+            presses: {},
             ungrouped: [],
             apps: [
               {
@@ -671,6 +672,7 @@ describe("HQ API", () => {
           assert.deepStrictEqual((yield* call("GET", "/api/structure", { session: dev })).body, {
             can: ORG_REFUSED,
             unheld: {},
+            presses: {},
             ungrouped: [],
             apps: [],
           });
@@ -1221,6 +1223,7 @@ describe("HQ API", () => {
             can: ORG_ALLOWED,
             // P_MATE is HQ's nowhere yet: its owner may set its Mate up.
             unheld: { P_MATE: { create_mate_record: ALLOW } },
+            presses: {},
             ungrouped: [],
             apps: [],
             changes: {},
@@ -1361,6 +1364,7 @@ describe("HQ API", () => {
         assert.deepStrictEqual(timeless(yield* devSocket.next("snapshot")), {
           can: ORG_REFUSED,
           unheld: {},
+          presses: {},
           ungrouped: [],
           apps: [],
           changes: {},
@@ -1464,6 +1468,7 @@ describe("HQ API", () => {
           can: ORG_REFUSED,
           // The org reader reads P_MATE, held nowhere, and may not write its Mate's record.
           unheld: { P_MATE: { create_mate_record: refusedFor("not_project_admin") } },
+          presses: {},
           ungrouped: [],
           apps: [
             {
@@ -1540,6 +1545,7 @@ describe("HQ API", () => {
           assert.deepStrictEqual(timeless(yield* opened.next("snapshot")), {
             can: ORG_ALLOWED,
             unheld: { P_MATE: { create_mate_record: ALLOW } },
+            presses: {},
             ungrouped: [],
             apps: [],
             changes: {},
@@ -1895,6 +1901,30 @@ describe("HQ API", () => {
             200,
             { ...born, standupRequestedBy: "owner", closedOff: true, signers: {}, ...none },
           ]);
+
+          // B5: its press held by the browser running it, read by another, and let go at its end.
+          const pressed = yield* call("PUT", "/api/presses/P_MATE", {
+            session: owner,
+            body: { owner: "press-a", kind: "mate", importProcessId: "imp-1" },
+          });
+          assert.deepStrictEqual(
+            [pressed.status, (pressed.body as { importProcessId?: string }).importProcessId],
+            [200, "imp-1"],
+          );
+          const taken = yield* call("PUT", "/api/presses/P_MATE", {
+            session: owner,
+            body: { owner: "press-b", kind: "mate" },
+          });
+          assert.deepStrictEqual(
+            [taken.status, taken.body],
+            [409, { code: "conflict", reason: "press_held" }],
+          );
+          const stopped = yield* call("POST", "/api/presses/P_MATE/press-a/stopped", {
+            session: owner,
+          });
+          assert.strictEqual(stopped.status, 200);
+          const finished = yield* call("DELETE", "/api/presses/P_MATE/press-a", { session: owner });
+          assert.strictEqual(finished.status, 200);
 
           const dev = yield* sessionFor(call, "door-dev");
           const refused = yield* call("POST", "/api/mates/P_MATE/closed-off", { session: dev });

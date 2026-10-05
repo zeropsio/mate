@@ -118,11 +118,11 @@ export function finishMateSetupVerb(input: {
    */
   readonly closedOffMissing: boolean;
   /**
-   * Its project is older than the grace a press in another browser has (`MATE_CONTAINER_GRACE_MS`):
-   * before it, an unregistered or unmarked Mate may be a press still running, and finishing it
-   * would race that press. A press this tab made and saw stop needs no grace.
+   * A press in another browser may still be at it (`pressElsewhere`): HQ holds its press, or has
+   * not said — an unregistered or unmarked Mate is then that press running, and finishing it would
+   * race it. A press this tab made and saw stop holds nothing.
    */
-  readonly pastGrace: boolean;
+  readonly pressedElsewhere: boolean;
   /** The viewer added this Mate: closing it off needs no registry rights. */
   readonly viewerIsAdder: boolean;
   /** Its project has its container: without one there is nothing for a close-off to finish. */
@@ -141,14 +141,18 @@ export function finishMateSetupVerb(input: {
   readonly mayCreateRecord: boolean;
 }): string | undefined {
   // Its record, and its birth after it, are whoever HQ's rule lets create the record.
-  if (input.recordMissing && input.mayCreateRecord && (input.pressStopped || input.pastGrace)) {
+  if (
+    input.recordMissing &&
+    input.mayCreateRecord &&
+    (input.pressStopped || !input.pressedElsewhere)
+  ) {
     return FINISH_MATE_SETUP_VERB;
   }
   if (input.writer === undefined) return undefined;
   if (input.writer) {
     const halfMade =
       input.pressStopped ||
-      (input.pastGrace &&
+      (!input.pressedElsewhere &&
         (input.registration === "unplaced" || input.containerMissing || input.closedOffMissing));
     return halfMade ? FINISH_MATE_SETUP_VERB : undefined;
   }
@@ -157,7 +161,7 @@ export function finishMateSetupVerb(input: {
   if (
     input.viewerIsAdder &&
     input.hasContainer &&
-    (input.pressStopped || (input.pastGrace && input.closedOffMissing))
+    (input.pressStopped || (!input.pressedElsewhere && input.closedOffMissing))
   ) {
     return FINISH_MATE_SETUP_VERB;
   }

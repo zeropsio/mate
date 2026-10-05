@@ -69,7 +69,10 @@ export type HqStructureEvent =
       /** `null` where HQ sent none — an HQ from before the Mates' overviews — or none readable. */
       readonly mates: HqMates | null;
       readonly people: HqPeople | null;
+      /** None where HQ sent none — an HQ from before the presses — or none readable. */
+      readonly presses?: HqPressesSent | null;
     }
+  | { readonly kind: "presses"; readonly presses: HqPressesSent }
   | { readonly kind: "change"; readonly appId: string; readonly app: HqApp | null }
   | { readonly kind: "ungrouped"; readonly mates: HqUngrouped }
   | {
@@ -99,6 +102,60 @@ export type HqStructureEvent =
     };
 
 const readSnapshotChanges = Schema.decodeUnknownOption(ChangesSnapshot);
+
+/** A press HQ holds a record of, as HQ sent it (`Structure.holdPress`). */
+const PressSent = Schema.Struct({
+  /** What it makes: a Mate, or a stage's or a production's environment. */
+  kind: Schema.Literals(["mate", "stage", "production"]),
+  /** The application its registration places it in; none for a Mate in no application. */
+  appId: Schema.optionalKey(Schema.String),
+  /** How long its hold runs on from the message that said it, ms; 0 where it ran out. */
+  heldForMs: Schema.Number,
+  /** The Zerops process of the container import its press asked for, once Zerops answered it. */
+  importProcessId: Schema.optionalKey(Schema.String),
+});
+const PressesSent = Schema.Record(Schema.String, PressSent);
+export type HqPressesSent = typeof PressesSent.Type;
+const readPressesSent = Schema.decodeUnknownOption(PressesSent);
+
+/**
+ * A press HQ holds a record of, by its project: what it makes and where, until when its hold runs
+ * on this browser's clock — measured from when its message arrived, never against HQ's clock — and
+ * its import. A press that finished has none.
+ */
+export interface HqPressHold {
+  readonly kind: "mate" | "stage" | "production";
+  readonly appId?: string;
+  readonly expiresAtMs: number;
+  readonly importProcessId?: string;
+}
+
+export type HqPresses = ReadonlyMap<string, HqPressHold>;
+
+/**
+ * The presses an event leaves, measured from `receivedAtMs`: a snapshot or a presses message
+ * replaces them whole; any other event leaves them as they are. `null` until HQ says any.
+ */
+export function applyPressesEvent(
+  presses: HqPresses | null,
+  event: HqStructureEvent,
+  receivedAtMs: number,
+): HqPresses | null {
+  if (event.kind !== "snapshot" && event.kind !== "presses") return presses;
+  const sent = event.presses ?? null;
+  if (sent === null) return null;
+  return new Map(
+    Object.entries(sent).map(([projectId, press]) => [
+      projectId,
+      {
+        kind: press.kind,
+        ...(press.appId === undefined ? {} : { appId: press.appId }),
+        expiresAtMs: receivedAtMs + press.heldForMs,
+        ...(press.importProcessId === undefined ? {} : { importProcessId: press.importProcessId }),
+      },
+    ]),
+  );
+}
 const readChangesMessage = Schema.decodeUnknownOption(ChangesMessage);
 const readAppReads = Schema.decodeUnknownOption(AppReads);
 const readReleaseRevisionMessage = Schema.decodeUnknownOption(ReleaseRevisionMessage);
@@ -261,11 +318,12 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
   if (typeof message !== "object" || message === null) return undefined;
   const { type } = message as { readonly type?: unknown };
   if (type === "snapshot") {
-    const { changes, appReads, mates, people } = message as {
+    const { changes, appReads, mates, people, presses } = message as {
       readonly changes?: unknown;
       readonly appReads?: unknown;
       readonly mates?: unknown;
       readonly people?: unknown;
+      readonly presses?: unknown;
     };
     const structure = hqStructureOf(message);
     if (structure === undefined) return undefined;
@@ -282,7 +340,15 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       }),
       mates: matesOf(mates),
       people: Option.getOrNull(readPeople(people)),
+      presses: Option.getOrNull(readPressesSent(presses)),
     };
+  }
+  if (type === "presses") {
+    const { presses } = message as { readonly presses?: unknown };
+    return Option.match(readPressesSent(presses), {
+      onNone: () => undefined,
+      onSome: (sent): HqStructureEvent => ({ kind: "presses", presses: sent }),
+    });
   }
   if (type === "mate" || type === "people") {
     return Option.match(readMatesMessage(message), {

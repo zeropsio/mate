@@ -23,6 +23,7 @@ import { migrate } from "./migrations.ts";
 import { type OrgView, Roles, WriteConfirm } from "./roles.ts";
 import {
   JOBS_SHOWN,
+  PRESS_HOLD_MS,
   type MateRecord,
   Structure,
   type StructureRead,
@@ -1153,6 +1154,111 @@ describe("structure", () => {
             assert.deepStrictEqual(yield* birthsOf, []);
           }),
         ),
+    );
+
+    // B5: a Mate's press in one browser, read in another — held while its press renews it, taken
+    // over once it ran out, and following the container import it asked for.
+    it.effect("holds a Mate's press for the browser running it, and lets it go at its end", () =>
+      withStructure((_view, _down, _zerops, asked) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const MATE = { kind: "mate" } as const;
+          const pressOf = (userId: string) =>
+            Effect.map(structure.read(userId), (read) => read.presses["P_OWN"]);
+          const held = yield* structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-a" });
+          assert.isTrue(held.heldForMs > PRESS_HOLD_MS - 5_000 && held.heldForMs <= PRESS_HOLD_MS);
+          assert.strictEqual(held.kind, "mate");
+          // Another browser's press is refused while the first one's hold runs.
+          assert.strictEqual(
+            yield* reasonOf(structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-b" })),
+            "press_held",
+          );
+          // Renewed by its own press, with the import Zerops answered, kept through a renewal.
+          yield* structure.holdPress("maker", "P_OWN", {
+            ...MATE,
+            owner: "press-a",
+            importProcessId: "imp-1",
+          });
+          yield* structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-a" });
+          assert.strictEqual((yield* pressOf("owner"))?.importProcessId, "imp-1");
+          // Nobody who does not read the project holds it, or reads it — a refusal confirmed over
+          // a fresh read, as a project Zerops made seconds ago may be missing from the recent one.
+          yield* Ref.set(asked, []);
+          assert.strictEqual(
+            yield* reasonOf(structure.holdPress("nobody", "P_OWN", { ...MATE, owner: "press-c" })),
+            "not_project_reader",
+          );
+          assert.deepStrictEqual(yield* Ref.get(asked), ["write recent", "write fresh"]);
+          assert.isUndefined(yield* pressOf("nobody"));
+          // A hold that ran out — its tab closed — reads none left, and another press takes it over.
+          yield* sql`UPDATE hq_press SET until = now() - interval '1 second'`;
+          const ranOut = yield* pressOf("owner");
+          assert.deepStrictEqual([ranOut?.heldForMs, ranOut?.importProcessId], [0, "imp-1"]);
+          yield* structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-b" });
+          assert.isUndefined((yield* pressOf("owner"))?.importProcessId);
+          // Only the press holding it ends it; one that finished leaves no record.
+          yield* structure.endPress("maker", "P_OWN", { owner: "press-a", finished: true });
+          assert.isDefined(yield* pressOf("owner"));
+          yield* structure.endPress("maker", "P_OWN", { owner: "press-b", finished: true });
+          assert.isUndefined(yield* pressOf("owner"));
+        }),
+      ),
+    );
+
+    // B5: a stage's press imports first and registers last; one cut short between them leaves a
+    // project HQ holds nowhere, whose press record says what it is and where it goes.
+    it.effect("keeps a stopped stage press's record, its hold ended, until its project goes", () =>
+      withStructure((view) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const team = yield* structure.createApp("owner", "Team");
+          const pressOf = Effect.map(structure.read("owner"), (read) => read.presses["P_STAGE"]);
+          yield* structure.holdPress("owner", "P_STAGE", {
+            owner: "press-s",
+            kind: "stage",
+            appId: team.id,
+          });
+          assert.deepStrictEqual(
+            [(yield* pressOf)?.kind, (yield* pressOf)?.appId],
+            ["stage", team.id],
+          );
+          // An application HQ does not hold is refused.
+          assert.strictEqual(
+            yield* reasonOf(
+              structure.holdPress("owner", "P_STAGE", {
+                owner: "press-s",
+                kind: "stage",
+                appId: "00000000-0000-0000-0000-000000000000",
+              }),
+            ),
+            "app_not_found",
+          );
+          // Stopped: its hold ends now, its record stays.
+          yield* structure.endPress("owner", "P_STAGE", { owner: "press-s", finished: false });
+          assert.deepStrictEqual(
+            [(yield* pressOf)?.heldForMs, (yield* pressOf)?.kind],
+            [0, "stage"],
+          );
+          // Its setup finished elsewhere — registered as its stage — its record is over.
+          yield* structure.attachProject("owner", team.id, { projectId: "P_STAGE", kind: "stage" });
+          assert.isUndefined(yield* pressOf);
+          yield* structure.holdPress("owner", "P_STAGE", {
+            owner: "press-t",
+            kind: "stage",
+            appId: team.id,
+          });
+          // Its project gone from Zerops: its record goes with it.
+          yield* Ref.update(view, (org) => ({
+            ...org,
+            projects: org.projects.filter((project) => project.id !== "P_STAGE"),
+          }));
+          yield* structure.reconcile;
+          assert.isUndefined(
+            (yield* Effect.map(structure.read("owner"), (read) => read.presses))["P_STAGE"],
+          );
+        }),
+      ),
     );
 
     it.effect("reads the tool projects HQ holds", () =>

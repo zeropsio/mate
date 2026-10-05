@@ -470,6 +470,49 @@ describe("HQ menu currency", () => {
   );
 });
 describe("driveHqStructure", () => {
+  // B5: a press another browser holds, measured on this browser's clock from when HQ said it.
+  it("keeps each press HQ holds, its hold from when HQ said it, until a message says them again", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    const api = streamingApi([
+      {
+        events: [
+          {
+            kind: "snapshot",
+            structure: ACME,
+            changes: null,
+            appReads: null,
+            mates: null,
+            people: null,
+            presses: { p1: { kind: "mate", heldForMs: 60_000 } },
+          },
+          { pingAfterMs: 5_000, tick: h.tick },
+          {
+            kind: "presses",
+            presses: { p1: { kind: "mate", heldForMs: 60_000, importProcessId: "imp-1" } },
+          },
+        ],
+        end: "hang",
+      },
+    ]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      const pressesSaid = h.views.flatMap((view) => (view.presses == null ? [] : [view.presses]));
+      expect(pressesSaid[0]).toEqual(
+        new Map([["p1", { kind: "mate", expiresAtMs: 10_000 + 60_000 }]]),
+      );
+      expect(h.views.at(-1)?.presses).toEqual(
+        new Map([["p1", { kind: "mate", expiresAtMs: 15_000 + 60_000, importProcessId: "imp-1" }]]),
+      );
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
   it("automatically reconnects an initial failure with no data to show", async () => {
     vi.useFakeTimers();
     const api = streamingApi([

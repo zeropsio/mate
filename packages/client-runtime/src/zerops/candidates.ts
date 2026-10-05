@@ -258,8 +258,8 @@ export interface SubdomainProcess {
   readonly serviceStackIds: ReadonlyArray<string>;
   readonly status: string;
   readonly created: string;
-  /** The receipt ordinal its end was first read at; absent while it is not read as ended. */
-  readonly endedAt?: number;
+  /** When it ended on Zerops' own clock (ISO 8601); absent while it has not. */
+  readonly finished?: string;
 }
 
 /** The newest `stack.enableSubdomainAccess` or `stack.disableSubdomainAccess` of the service. */
@@ -280,15 +280,16 @@ export function newestSubdomainProcess<Process extends SubdomainProcess>(
  * it: `on` while its newest `stack.enableSubdomainAccess` is queued or running, or finished with no
  * `stack.disableSubdomainAccess` after it — the service's record follows the process seconds later
  * (measured 2026-10-02: 5.6 s from ACTIVE to the address in the tab, under 20 s in the REST
- * record) — until a read of its services taken after its end (`servicesCheckedAt`, a receipt
- * ordinal past `endedAt`) still lacks the address: the record has caught up, and it is `off`. `off`
+ * record) — until the service's record, last updated after the enable ended (`serviceUpdatedAt`,
+ * both on Zerops' own clock), still lacks the address: the record has caught up, and it is `off`.
+ * Never by the order this browser read them in: a read can land while the record still lags. `off`
  * too where it failed, a disable is newer, or none is held. `undefined` while the processes are not
  * read: running ones and the newest history both.
  */
 export function subdomainEnableOf(
   processes: ReadonlyArray<SubdomainProcess> | undefined,
   serviceId: string,
-  servicesCheckedAt: number | null = null,
+  serviceUpdatedAt: string | null = null,
 ): SubdomainEnable | undefined {
   if (processes === undefined) return undefined;
   const newest = newestSubdomainProcess(processes, serviceId);
@@ -297,9 +298,9 @@ export function subdomainEnableOf(
   }
   const caughtUp =
     newest.status === "FINISHED" &&
-    newest.endedAt !== undefined &&
-    servicesCheckedAt !== null &&
-    servicesCheckedAt > newest.endedAt;
+    newest.finished !== undefined &&
+    serviceUpdatedAt !== null &&
+    Date.parse(serviceUpdatedAt) > Date.parse(newest.finished);
   return caughtUp ? "off" : "on";
 }
 

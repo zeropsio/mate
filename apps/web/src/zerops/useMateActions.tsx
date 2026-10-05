@@ -119,7 +119,8 @@ import {
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
-import { finishSetupContainer, mateProjectPastGrace } from "./finishSetup.logic";
+import { finishSetupContainer } from "./finishSetup.logic";
+import { usePressesElsewhere } from "./usePressesElsewhere";
 import {
   refinishNewProjectBirth,
   registrationUnfinished,
@@ -269,6 +270,12 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
   // at no cost of their own, for anyone who could finish it — its own adder too.
   const interrupted = useInterruptedPresses(candidates, { runtime, projectRef });
+  // Whether each Mate's press in another browser is still at it, as HQ holds it (B5).
+  const pressOf = usePressesElsewhere(candidates);
+  const pressedElsewhere = useCallback(
+    (projectId: string) => pressOf(projectId) !== "stopped",
+    [pressOf],
+  );
   // An application HQ holds with no project is one too: a Mate may be moved into it, as the
   // projects page draws it (F29: a birth cut before its Mate was attached leaves its one empty).
   const groupTree = useMemo(
@@ -574,6 +581,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
   const finishSetupVerbFor = useCallback(
     (candidate: ZeropsCandidatePresentation, tags: ZeropsMembership): string | undefined => {
+      // A stage or a production is no Mate: its own setup is finished as its tier
+      // (`halfMadeGroupEnvironments`), never as a Mate's.
+      if (tags.role === "stage" || tags.role === "prod") return undefined;
       const press = presses.find((entry) => entry.projectId === candidate.project.id);
       // A Mate claimed from the pool is in no group: no registration of its, no container to make.
       const grouped = tags.groupId !== undefined;
@@ -588,13 +598,18 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             })
           : "registered",
         containerMissing:
-          grouped && mateContainerMissing(candidate, press !== undefined, Date.now()),
+          grouped &&
+          mateContainerMissing(
+            candidate,
+            press !== undefined,
+            pressedElsewhere(candidate.project.id),
+          ),
         closedOffMissing: candidate.service !== undefined && interrupted.has(candidate.service.id),
         // A press this tab saw stop, or saw end with its registration refused: no press
-        // elsewhere is still at it, so no grace.
+        // elsewhere is still at it.
         pressStopped:
           press?.state.kind === "failed" || registrationUnfinished(births, candidate.project.id),
-        pastGrace: mateProjectPastGrace(candidate.project, Date.now()),
+        pressedElsewhere: pressedElsewhere(candidate.project.id),
         viewerIsAdder: mateAddedBy(candidate.project, user?.id),
         hasContainer: candidate.service !== undefined,
         writer: writes(orgOffer("create_app")),
@@ -608,6 +623,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       interrupted,
       mayCreateRecord,
       orgOffer,
+      pressedElsewhere,
       presses,
       recordMissing,
       registry.registry,
@@ -652,7 +668,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         ? finishSetupContainer({
             hasService: candidate.service !== undefined,
             pressStopped,
-            pastGrace: mateProjectPastGrace(candidate.project, Date.now()),
+            pressedElsewhere: pressedElsewhere(candidate.project.id),
           })
         : null;
       // Its row says it runs and ends (`finishSetupRowLine`), on any screen; its view draws the
@@ -698,6 +714,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       organizationRef,
       projectRef,
       orgOffer,
+      pressedElsewhere,
       recordMissing,
       refresh,
       runtime,
@@ -1208,17 +1225,16 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
 }
 
 /**
- * Whether a Mate's container never came: its project lists no zcp, it is past the moments a press
- * takes to import one, and this tab is not pressing it — a listing read that soon may not show a
- * container just imported, and importing one again would make a second.
+ * Whether a Mate's container never came: its project lists no zcp, and no press — this tab's, or
+ * one another browser holds at HQ (`pressElsewhere`) — is importing one: importing one again
+ * would make a second.
  */
 export function mateContainerMissing(
-  candidate: Pick<ZeropsCandidatePresentation, "service" | "project">,
+  candidate: Pick<ZeropsCandidatePresentation, "service">,
   pressedHere: boolean,
-  nowMs: number,
+  pressedElsewhere: boolean,
 ): boolean {
-  if (candidate.service !== undefined || pressedHere) return false;
-  return mateProjectPastGrace(candidate.project, nowMs);
+  return candidate.service === undefined && !pressedHere && !pressedElsewhere;
 }
 
 /**

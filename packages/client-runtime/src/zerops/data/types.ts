@@ -1972,7 +1972,11 @@ export type PlatformCommandResult =
   | { readonly kind: "set-project-member-role"; readonly value: ZeropsProject }
   | {
       readonly kind: "import-development-container";
-      readonly value: { readonly serviceName: string; readonly imported: boolean };
+      readonly value: {
+        readonly serviceName: string;
+        readonly imported: boolean;
+        readonly processId?: string;
+      };
     }
   | { readonly kind: "enable-zerops-mate"; readonly value: void }
   | { readonly kind: "enable-subdomain-access"; readonly value: void }
@@ -2202,7 +2206,11 @@ export interface ZeropsDataCommands {
       readonly project: ProjectRef;
     },
   ) => Effect.Effect<
-    CommandExecution<{ readonly serviceName: string; readonly imported: boolean }>,
+    CommandExecution<{
+      readonly serviceName: string;
+      readonly imported: boolean;
+      readonly processId?: string;
+    }>,
     CommandAdmissionError | AdapterError
   >;
   readonly enableZeropsMate: (

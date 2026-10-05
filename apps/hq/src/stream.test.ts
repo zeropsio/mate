@@ -83,6 +83,7 @@ const OWNER_CAN: StructureRead["can"] = {
 const STRUCTURE: StructureRead = {
   can: OWNER_CAN,
   unheld: {},
+  presses: {},
   ungrouped: [
     {
       projectId: "P_MATE",
@@ -150,6 +151,8 @@ const streamFor = (
     );
     /** What the read offers the reader of the organization. */
     const orgCan = yield* Ref.make(OWNER_CAN);
+    /** Each Mate's press a browser holds, as the read says it. */
+    const presses = yield* Ref.make<StructureRead["presses"]>({});
     const overviews = yield* makeMateOverviews(memoryStore().store);
     yield* before(overviews);
     const services = Layer.mergeAll(
@@ -163,6 +166,7 @@ const streamFor = (
               return {
                 ...STRUCTURE,
                 can: yield* Ref.get(orgCan),
+                presses: yield* Ref.get(presses),
                 ungrouped: STRUCTURE.ungrouped.map((entry) => ({
                   ...entry,
                   can: mateOffers(reader, entry.projectId, "mate", facts),
@@ -233,6 +237,7 @@ const streamFor = (
       view,
       seen,
       orgCan,
+      presses,
       overviews,
       revisions,
       released,
@@ -280,6 +285,45 @@ describe("the structure stream", () => {
           ]);
         }),
       ),
+  );
+
+  // B5: a press another browser holds, said when it is taken, renewed or let go — never because
+  // how long it runs on ticked down between two reads.
+  it.effect("says each Mate's press as its holder moves it, never as its hold ticks", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner");
+        assert.deepStrictEqual(h.sent[0]?.["presses"], {});
+        const held = {
+          kind: "mate",
+          heldForMs: 60_000,
+          until: "2026-10-05T10:01:00.000Z",
+        } as const;
+        const tick = (next: StructureRead["presses"]) =>
+          Effect.gen(function* () {
+            yield* Ref.set(h.presses, next);
+            yield* SubscriptionRef.update(h.version, (n) => n + 1);
+            yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+          });
+        yield* tick({ P_MATE: held });
+        // The same hold read a moment later, its time ticked down: nothing to say.
+        yield* tick({ P_MATE: { ...held, heldForMs: 40_000 } });
+        // Its import, once Zerops answered it.
+        yield* tick({ P_MATE: { ...held, heldForMs: 30_000, importProcessId: "imp-1" } });
+        yield* tick({});
+        assert.deepStrictEqual(
+          h.sent.slice(1).filter((message) => message.type === "presses"),
+          [
+            { type: "presses", presses: { P_MATE: held } },
+            {
+              type: "presses",
+              presses: { P_MATE: { ...held, heldForMs: 30_000, importProcessId: "imp-1" } },
+            },
+            { type: "presses", presses: {} },
+          ],
+        );
+      }),
+    ),
   );
 
   it.effect("carries the four load reads for readable apps, and re-reads only the moved app", () =>

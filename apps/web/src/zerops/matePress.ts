@@ -43,6 +43,8 @@ import {
   attachToApp,
   birthIntentOf,
   heldOf,
+  HqError,
+  type HqApi,
   type HqEndpoint,
   type HqPlacement,
   type HqStructure,
@@ -58,6 +60,7 @@ import {
   withLockIfFree,
   type LockManagerLike,
 } from "./mateLocks";
+import { randomUUID } from "~/lib/utils";
 import { accountHqApi } from "./accountHq";
 import { addGroupEnvironment } from "./addGroupEnvironment";
 import { createMateRecord, markClosedOffAtHq } from "./hqMateBirth";
@@ -744,6 +747,8 @@ export function pressPlatform(
      */
     readonly hq: HqEndpoint | null;
     readonly readObservedServices: EnvironmentCreationPlatform["readObservedServices"];
+    /** Its hold at HQ (`pressHold`), told of its container import's process once Zerops answers. */
+    readonly hold?: PressHold | undefined;
   },
 ): EnvironmentCreationPlatform {
   const { client, data, organizationId } = inputs;
@@ -754,15 +759,19 @@ export function pressPlatform(
       runZeropsCommand(data.runtime.commands.createProject({ organization, ...input })),
     // Reads, not writes: the platform's verdict on what the press made, waited on by the runner.
     readProjectCreation: (input) => client.readProjectCreation(input),
-    importDevelopmentContainer: ({ projectId, projectName, agents, setupRuntimesYaml }) =>
-      runZeropsCommand(
+    importDevelopmentContainer: async ({ projectId, projectName, agents, setupRuntimesYaml }) => {
+      const imported = await runZeropsCommand(
         data.runtime.commands.importDevelopmentContainer({
           project: projectOf(projectId),
           projectName,
           agents,
           ...(setupRuntimesYaml === undefined ? {} : { setupRuntimesYaml }),
         }),
-      ),
+      );
+      // Followed by its import's own process from now on, in any browser.
+      if (imported.processId !== undefined) await options.hold?.imported(imported.processId);
+      return imported;
+    },
     importServices: (projectId, yaml) =>
       runZeropsCommand(data.runtime.commands.importServices(projectOf(projectId), yaml)),
     importProject: ({ clientId: _clientId, yaml }) =>
@@ -815,6 +824,11 @@ export async function runPress(input: {
   readonly heldLock?: boolean;
   /** Between accepted creation observations; the clock's own where omitted. */
   readonly sleep?: (ms: number) => Promise<void>;
+  /**
+   * Its hold at HQ, where its organization's HQ is open here (`pressHold`): taken once its project
+   * is known, let go at its end; another browser's press holding it stops this one.
+   */
+  readonly hold?: PressHold | undefined;
 }): Promise<EnvironmentCreationOutcome> {
   const locks = "locks" in input ? input.locks : browserLocks();
   const resume = input.resume;
@@ -824,7 +838,7 @@ export async function runPress(input: {
       locks,
       matePressLockName(resume.projectId),
       () => pressRun({ ...input, locks, heldLock: true }),
-      () => pressedElsewhere(input, resume),
+      () => pressedElsewhere(input, resume, PRESSED_ELSEWHERE),
     );
   }
   return pressRun({ ...input, locks });
@@ -833,23 +847,126 @@ export async function runPress(input: {
 /** What a press says where another tab is running one for the project. */
 export const PRESSED_ELSEWHERE = "Its setup is already running in another tab.";
 
+/** What a press says where HQ holds another browser's press of the project (`pressHold`). */
+export const PRESSED_IN_ANOTHER_BROWSER = "Its setup is already running in another browser.";
+
 function pressedElsewhere(
   input: Parameters<typeof runPress>[0],
   resume: NonNullable<Parameters<typeof runPress>[0]["resume"]>,
+  reason: string,
 ): EnvironmentCreationOutcome {
   const failedStep = input.steps[resume.from] ?? input.steps[0]!;
   if (input.isCurrent()) {
     settlePress(resume.projectId, {
       kind: "failed",
       step: failedStep.kind,
-      reason: PRESSED_ELSEWHERE,
+      reason,
       retry: async () => {
         settlePress(resume.projectId, { kind: "pressing" });
         await runPress(input);
       },
     });
   }
-  return { ok: false, projectId: resume.projectId, failedStep, error: PRESSED_ELSEWHERE };
+  return { ok: false, projectId: resume.projectId, failedStep, error: reason };
+}
+
+/**
+ * How often a running press renews its hold at HQ, besides each of its steps: once a minute. HQ
+ * holds it five minutes from each renewal (`PRESS_HOLD_MS`); a browser wakes a hidden tab's timers
+ * at most once a minute (Chrome's intensive throttling), so a press in a background tab keeps its
+ * hold with four minutes to spare, and a closed tab's hold runs out within five.
+ */
+export const PRESS_RENEW_MS = 60_000;
+
+/** The least time between two renewals a press's steps ask for: its steps move far more often. */
+export const PRESS_STEP_RENEW_MS = 20_000;
+
+/**
+ * A press's hold at its organization's HQ (`PUT /api/presses/{projectId}`, B5): what another
+ * browser reads to tell a press still running — however slow — from one whose tab closed, and what
+ * keeps two presses from writing one project twice. Taken once the press's project is known,
+ * renewed every {@link PRESS_RENEW_MS} and at each of its steps while it runs, given its container
+ * import's process once Zerops answered it, and ended at its end: a press that finished leaves no
+ * record, one that stopped keeps it for its setup to be finished for its kind. A hold HQ does not
+ * answer is not the press's to wait on: it goes on, renewing; only HQ's refusal for another
+ * browser's press stops it. One HQ refuses this person outright leaves the press unheld, never
+ * asked again.
+ */
+export interface PressHold {
+  /** Holds the press of `projectId`: `elsewhere` where another browser's press holds it. */
+  readonly take: (projectId: string) => Promise<"held" | "elsewhere">;
+  /**
+   * Renews the hold now — a step of the press moved — unless it was renewed within
+   * {@link PRESS_STEP_RENEW_MS}.
+   */
+  readonly renew: () => void;
+  /** Names the container import's Zerops process the press is followed by from now on. */
+  readonly imported: (processId: string) => Promise<void>;
+  /** Ends the hold at the press's end: whether it `finished`, or stopped. */
+  readonly end: (finished: boolean) => Promise<void>;
+}
+
+export function pressHold(
+  api: Pick<HqApi, "holdPress" | "endPress"> | null,
+  press: { readonly kind: "mate" | "stage" | "production"; readonly appId?: string | undefined },
+  owner: string = randomUUID(),
+): PressHold {
+  let projectId: string | null = null;
+  let importProcessId: string | undefined;
+  let renewal: ReturnType<typeof setInterval> | null = null;
+  let heldAt = Number.NEGATIVE_INFINITY;
+  const hold = async () => {
+    if (api === null || projectId === null) return;
+    heldAt = Date.now();
+    await api.holdPress(projectId, {
+      owner,
+      kind: press.kind,
+      ...(press.appId === undefined ? {} : { appId: press.appId }),
+      ...(importProcessId === undefined ? {} : { importProcessId }),
+    });
+  };
+  const renewNow = () => {
+    hold().catch(() => undefined);
+  };
+  const renew = () => {
+    if (Date.now() - heldAt >= PRESS_STEP_RENEW_MS) renewNow();
+  };
+  return {
+    take: async (taken) => {
+      projectId = taken;
+      try {
+        await hold();
+      } catch (cause) {
+        if (cause instanceof HqError && cause.reason === "press_held") return "elsewhere";
+        // HQ's refusal of this person's hold is definitive: the press goes on unheld, and is
+        // never asked again. One HQ did not answer is renewed as the press runs.
+        if (cause instanceof HqError && cause.kind === "refused") {
+          projectId = null;
+          return "held";
+        }
+      }
+      if (api !== null && renewal === null) renewal = setInterval(renewNow, PRESS_RENEW_MS);
+      return "held";
+    },
+    renew,
+    imported: async (processId) => {
+      importProcessId = processId;
+      await hold().catch(() => undefined);
+    },
+    end: async (finished) => {
+      if (renewal !== null) clearInterval(renewal);
+      renewal = null;
+      const held = projectId;
+      projectId = null;
+      importProcessId = undefined;
+      if (api === null || held === null) return;
+      try {
+        await api.endPress(held, owner, finished);
+      } catch {
+        // A hold HQ did not end runs out on its own: it is the press's lease.
+      }
+    },
+  };
 }
 
 async function pressRun(
@@ -861,6 +978,13 @@ async function pressRun(
   }
   // Each step's state is kept on the press, once the platform has taken its project.
   let accepted = input.resume?.projectId;
+  // A press on a project that exists holds it at HQ before it writes: another browser's press
+  // holding it stops this one before anything is written twice.
+  if (input.resume !== undefined && input.hold !== undefined) {
+    if ((await input.hold.take(input.resume.projectId)) === "elsewhere") {
+      return pressedElsewhere(input, input.resume, PRESSED_IN_ANOTHER_BROWSER);
+    }
+  }
   // A new project's press holds its lock from the moment the platform takes it to its end.
   let ended: () => void = () => undefined;
   const end = new Promise<void>((resolve) => {
@@ -880,9 +1004,13 @@ async function pressRun(
         if (input.heldLock !== true) {
           void withExclusiveLock(input.locks, matePressLockName(projectId), () => end);
         }
+        // Its new project is held at HQ from the moment Zerops takes it: nobody else's yet.
+        await input.hold?.take(projectId);
         await input.onProjectAccepted?.(projectId, projectName);
       },
       onProgress: (progress) => {
+        // Each step that moves renews the press's hold, whatever its timers are let do.
+        input.hold?.renew();
         if (accepted !== undefined && input.isCurrent()) {
           const held = readMatePress(accepted);
           progressPress(accepted, progress);
@@ -895,6 +1023,8 @@ async function pressRun(
       },
     }),
   ).finally(ended);
+  // A press that went through leaves no record at HQ; one that stopped keeps it, its hold ended.
+  void input.hold?.end(outcome.ok);
   const projectId = outcome.projectId;
   if (projectId === undefined || !input.isCurrent()) return outcome;
   if (outcome.ok) {
@@ -1084,6 +1214,17 @@ async function finishLocked(
   // the one it holds is the Mate its record names.
   const service = await mateServiceOf(input);
   if (!service.ok) return finishStopped(input, steps[0]!, service.error);
+  // Held at HQ while it runs, so another browser neither finishes it too nor reads it half made.
+  const hold =
+    input.hq === null
+      ? undefined
+      : pressHold(accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq), {
+          kind: "mate",
+          appId:
+            input.registration !== null && input.registration.kind === "mate"
+              ? input.registration.groupId
+              : undefined,
+        });
   const platform = pressPlatform(input.inputs, {
     register:
       input.registration === null
@@ -1091,6 +1232,7 @@ async function finishLocked(
         : pressRegistration(input.inputs, input.registration, service.serviceId),
     hq: input.hq,
     readObservedServices: async () => [],
+    hold,
   });
   if (resumeSetup !== undefined) return resumeSetup(true, input.onProgress, platform);
   if (input.harden === true) {
@@ -1124,6 +1266,7 @@ async function finishLocked(
     locks: input.locks,
     heldLock: true,
     ...(input.sleep === undefined ? {} : { sleep: input.sleep }),
+    hold,
   });
 }
 

@@ -137,6 +137,7 @@ vi.mock("~/zerops/accountEnvironments", () => ({
 }));
 const environments = { setOnScreen: (projectId: string | null) => app.onScreen(projectId) };
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));
+vi.mock("~/zerops/usePressesElsewhere", () => ({ usePressesElsewhere: () => () => "stopped" }));
 vi.mock("~/zerops/useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({
     listing: app.listing,

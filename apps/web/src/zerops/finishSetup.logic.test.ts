@@ -1,51 +1,38 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { finishSetupContainer, mateProjectPastGrace } from "./finishSetup.logic";
-import { MATE_CONTAINER_GRACE_MS } from "./mateComing";
-
-const NOW = Date.parse("2026-10-01T12:00:00Z");
-const ago = (ms: number) => new Date(NOW - ms).toISOString();
-
-describe("mateProjectPastGrace — a press in another browser has had its time", () => {
-  it.each([
-    { case: "made a moment ago", created: ago(10_000), want: false },
-    { case: "made past the grace", created: ago(MATE_CONTAINER_GRACE_MS + 1), want: true },
-    { case: "of no known age", created: undefined, want: false },
-  ])("$case: $want", ({ created, want }) => {
-    expect(mateProjectPastGrace(created === undefined ? {} : { created }, NOW)).toBe(want);
-  });
-});
+import { finishSetupContainer } from "./finishSetup.logic";
 
 // Finish setup imports a container only where its project has none and no press may still be
 // making one: a key is regenerated for it, which would cut a live container off (pass 28 review).
+// Whether a press elsewhere still is, is its hold at HQ (B5), never its project's age.
 describe("finishSetupContainer — whether Finish setup imports a container", () => {
   it.each([
     {
       case: "a Mate with its container",
       hasService: true,
       pressStopped: true,
-      pastGrace: true,
+      pressedElsewhere: false,
       want: null,
     },
     {
-      case: "a Mate past the grace with none",
+      case: "a Mate with none, no press holding it",
       hasService: false,
       pressStopped: false,
-      pastGrace: true,
+      pressedElsewhere: false,
       want: { agents: [] },
     },
     {
       case: "a Mate whose press this tab saw stop before its container",
       hasService: false,
       pressStopped: true,
-      pastGrace: false,
+      pressedElsewhere: false,
       want: { agents: [] },
     },
     {
-      case: "a Mate made a moment ago, whose press may still be importing it elsewhere",
+      case: "a Mate a slow press in another browser still holds",
       hasService: false,
       pressStopped: false,
-      pastGrace: false,
+      pressedElsewhere: true,
       want: null,
     },
   ])("$case", ({ want, ...input }) => {

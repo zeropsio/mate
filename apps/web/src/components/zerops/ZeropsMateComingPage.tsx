@@ -113,6 +113,7 @@ import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useToldActivity } from "~/zerops/useMenuMateReadings";
 import { useOpenMate } from "~/zerops/useOpenMate";
+import { usePressesElsewhere } from "~/zerops/usePressesElsewhere";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
 import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
@@ -242,6 +243,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Its first build's processes, read only while its container waits for that build.
   const firstBuilding = candidate?.service?.status === "READY_TO_DEPLOY";
   const { processes: firstBuildProcesses } = useProjectActivity(firstBuilding ? projectId : null);
+  // A press of it in another browser, as HQ holds it: no container yet is that press at work.
+  const pressOf = usePressesElsewhere(held.rows);
   const coming = mateComing({
     press:
       press === undefined
@@ -261,6 +264,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     firstBuild: firstBuilding
       ? firstBuildState(firstBuildProcesses, candidate?.service?.id)
       : undefined,
+    pressElsewhere: pressOf(projectId),
   });
   // An absent project is decided by the person's project scope. Unopened projects' container
   // reads cannot keep an ungranted direct link waiting after that scope has answered.

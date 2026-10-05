@@ -133,9 +133,15 @@ export function halfMadeGroupEnvironments(input: {
   >;
   /** Whether HQ's rule lets this person keep a project's deploy key (`keep_deploy_token`). */
   readonly mayKey: (projectId: string) => boolean;
+  /**
+   * Whether a press still holds the project (`pressElsewhere`): what it has not written yet is
+   * its own to write, never half made.
+   */
+  readonly pressing?: (projectId: string) => boolean;
 }): ReadonlyArray<HalfMadeGroupEnvironment> {
   const out: Array<HalfMadeGroupEnvironment> = [];
   for (const project of input.projects) {
+    if (input.pressing?.(project.id) === true) continue;
     const membership = readZeropsMembership(project);
     if (membership.groupId === undefined) continue;
     const tier = environmentTierForRole(membership.role);

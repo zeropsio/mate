@@ -202,6 +202,13 @@ const AttachBody = Schema.Struct({
   birth: Schema.optionalKey(Schema.String),
   created: Schema.optionalKey(Schema.Boolean),
 });
+/** A press held, or renewed, by the browser running it (`holdPress`). */
+const PressBody = Schema.Struct({
+  owner: Schema.String,
+  kind: Schema.Literals(["mate", "stage", "production"]),
+  appId: Schema.optionalKey(Schema.String),
+  importProcessId: Schema.optionalKey(Schema.String),
+});
 const BirthBody = Schema.Struct({
   appId: Schema.String,
   face: Schema.String,
@@ -1417,6 +1424,47 @@ const routes = (
             }),
           );
         }),
+      ),
+    ),
+    HttpRouter.add(
+      "PUT",
+      "/api/presses/:projectId",
+      handle(
+        Effect.gen(function* () {
+          const press = yield* jsonBody(PressBody, BODY_LIMIT);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
+              return json(yield* (yield* Structure).holdPress(userId, projectId, press), 200);
+            }),
+          );
+        }),
+      ),
+    ),
+    // A press that finished leaves no record; one that stopped ends its hold and keeps it.
+    ...(
+      [
+        ["DELETE", "/api/presses/:projectId/:owner", true],
+        ["POST", "/api/presses/:projectId/:owner/stopped", false],
+      ] as const
+    ).map(([method, path, finished]) =>
+      HttpRouter.add(
+        method,
+        path,
+        handle(
+          outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const params = yield* HttpRouter.params;
+              yield* (yield* Structure).endPress(userId, params["projectId"] ?? "", {
+                owner: params["owner"] ?? "",
+                finished,
+              });
+              return json({}, 200);
+            }),
+          ),
+        ),
       ),
     ),
     HttpRouter.add(

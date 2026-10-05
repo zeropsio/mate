@@ -74,11 +74,16 @@ export {
   type HqMateOfferStates,
   type HqPlacement,
 } from "./placement.ts";
+export { nextPressExpiry, pressElsewhere, type PressElsewhere } from "./pressElsewhere.ts";
 export {
   applyChangesEvent,
   applyAppReadsEvent,
+  applyPressesEvent,
   applyStructureEvent,
   structureEventOf,
+  type HqPressHold,
+  type HqPresses,
+  type HqPressesSent,
   type HqChanges,
   type HqMates,
   type HqAppReads,

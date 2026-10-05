@@ -175,6 +175,11 @@ export interface Targets {
   readonly move: PlacementTarget;
   readonly detach: ProjectTarget;
   readonly create_mate_record: ProjectTarget;
+  /**
+   * A press held by the browser running it (`hq_press`): whoever reads its project — the one
+   * making it — so another browser takes it for a press still running.
+   */
+  readonly hold_press: { readonly projectId: string };
   readonly edit_mate_record: ProjectTarget;
   readonly enroll_mate: ProjectTarget;
   readonly ensure_repo: MateTarget;
@@ -322,6 +327,7 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
 
   switch (request.verb) {
     case "read_project":
+    case "hold_press":
       return readsProject(request.target.projectId) ? ALLOW : deny("not_project_reader");
     case "read_app":
       return seesApp(request.target.projectIds) ? ALLOW : deny("app_not_seen");

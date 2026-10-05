@@ -7,6 +7,7 @@ import type { HqEnvironment } from "./environments.ts";
 import {
   applyChangesEvent,
   applyAppReadsEvent,
+  applyPressesEvent,
   applyStructureEvent,
   structureEventOf,
 } from "./stream.ts";
@@ -134,6 +135,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: null,
       },
     ],
     [
@@ -146,6 +148,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: null,
       },
     ],
     [
@@ -158,6 +161,7 @@ describe("structureEventOf", () => {
         changes: new Map([["app-1", [CHANGE]]]),
         mates: null,
         people: null,
+        presses: null,
       },
     ],
     [
@@ -170,6 +174,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: null,
       },
     ],
     // SPEC §3.2b: an application's stage and production with their jobs, to whoever reads its
@@ -184,6 +189,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: null,
       },
     ],
     [
@@ -196,6 +202,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: null,
       },
     ],
     [
@@ -211,6 +218,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: null,
       },
     ],
     [
@@ -229,6 +237,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: null,
       },
     ],
     [
@@ -289,6 +298,7 @@ describe("structureEventOf", () => {
       changes: null,
       mates: new Map([["p1", VERA_VIEW]]),
       people,
+      presses: null,
     });
     expect(
       structureEventOf({ type: "mate", projectId: "p1", value: { main: null, later: {} } }),
@@ -347,6 +357,7 @@ describe("applyStructureEvent", () => {
       changes: null,
       mates: null,
       people: null,
+      presses: null,
     });
     structure = applyStructureEvent(structure, { kind: "change", appId: "app-2", app: BETA });
     expect(structure).toEqual({ ungrouped: [LONE], apps: [ACME, BETA] });
@@ -451,6 +462,61 @@ describe("applyStructureEvent", () => {
   });
 });
 
+// B5: a Mate's press another browser holds, measured from when HQ's message arrived — never
+// against HQ's own clock — and replaced whole by each message that says them.
+describe("applyPressesEvent", () => {
+  const AT = Date.parse("2026-10-05T10:00:00.000Z");
+
+  it("reads a press HQ says, and leaves nothing of one it does not", () => {
+    expect(
+      structureEventOf({
+        type: "presses",
+        presses: {
+          p1: { kind: "mate", heldForMs: 60_000, until: "x", importProcessId: "imp-1" },
+          p2: { kind: "stage", appId: "app-1", heldForMs: 0, until: "x" },
+        },
+      }),
+    ).toEqual({
+      kind: "presses",
+      presses: {
+        p1: { kind: "mate", heldForMs: 60_000, importProcessId: "imp-1" },
+        p2: { kind: "stage", appId: "app-1", heldForMs: 0 },
+      },
+    });
+    expect(structureEventOf({ type: "presses", presses: { p1: { heldForMs: "soon" } } })).toBe(
+      undefined,
+    );
+  });
+
+  it("holds each press until its hold runs out on this browser's clock, from its message", () => {
+    const held = applyPressesEvent(
+      null,
+      {
+        kind: "presses",
+        presses: {
+          p1: { kind: "mate", heldForMs: 60_000 },
+          p2: { kind: "stage", appId: "app-1", heldForMs: 0 },
+        },
+      },
+      AT,
+    );
+    expect(held).toEqual(
+      new Map([
+        ["p1", { kind: "mate", expiresAtMs: AT + 60_000 }],
+        ["p2", { kind: "stage", appId: "app-1", expiresAtMs: AT }],
+      ]),
+    );
+    // Any other event leaves them; the next message replaces them whole.
+    expect(applyPressesEvent(held, { kind: "people", people: {} }, AT + 1)).toBe(held);
+    expect(applyPressesEvent(held, { kind: "presses", presses: {} }, AT + 1)).toEqual(new Map());
+  });
+
+  it("knows none from a snapshot of an HQ that says none", () => {
+    const snapshot = structureEventOf({ type: "snapshot", ungrouped: [], apps: [] })!;
+    expect(applyPressesEvent(new Map(), snapshot, AT)).toBeNull();
+  });
+});
+
 describe("applyChangesEvent", () => {
   const merged: HqChange = {
     ...CHANGE,
@@ -468,6 +534,7 @@ describe("applyChangesEvent", () => {
       changes: new Map([["app-1", [CHANGE]]]),
       mates: null,
       people: null,
+      presses: null,
     });
     changes = applyChangesEvent(changes, { kind: "changes", appId: "app-1", changes: [merged] });
     changes = applyChangesEvent(changes, { kind: "changes", appId: "app-2", changes: [] });

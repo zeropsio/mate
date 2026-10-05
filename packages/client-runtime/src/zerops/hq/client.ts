@@ -295,6 +295,27 @@ export interface HqApi {
    * the attach that closes it records the caller as its stand-up's asker where `standUp` says so.
    */
   readonly recordBirth: (birth: { readonly appId: string } & HqNewMate) => Promise<HqBirth>;
+  /**
+   * Holds, or renews, a press for this browser's press `owner` (`PUT /api/presses/{projectId}`):
+   * what it makes and into which application, with its container import's Zerops process once
+   * Zerops answered it — another browser takes it for a press still running. Another press's hold
+   * refuses it (`press_held`).
+   */
+  readonly holdPress: (
+    projectId: string,
+    press: {
+      readonly owner: string;
+      readonly kind: "mate" | "stage" | "production";
+      readonly appId?: string;
+      readonly importProcessId?: string;
+    },
+  ) => Promise<void>;
+  /**
+   * This browser's press's end: one that `finished` leaves no record (`DELETE
+   * /api/presses/{projectId}/{owner}`); one that stopped ends its hold and keeps its record, for its
+   * setup to be finished for its kind (`POST …/stopped`).
+   */
+  readonly endPress: (projectId: string, owner: string, finished: boolean) => Promise<void>;
   readonly bindBirth: (birthId: string, projectId: string) => Promise<void>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
   /**
@@ -995,6 +1016,21 @@ export function makeHqApi(input: {
       json<HqBirth>(
         await authorized("/api/births", { method: "POST", body: JSON.stringify(birth) }, true),
       ),
+    holdPress: async (projectId, press) => {
+      await authorized(
+        `/api/presses/${encodeURIComponent(projectId)}`,
+        { method: "PUT", body: JSON.stringify(press) },
+        true,
+      );
+    },
+    endPress: async (projectId, owner, finished) => {
+      const path = `/api/presses/${encodeURIComponent(projectId)}/${encodeURIComponent(owner)}`;
+      await authorized(
+        finished ? path : `${path}/stopped`,
+        { method: finished ? "DELETE" : "POST" },
+        true,
+      );
+    },
     bindBirth: async (birthId, projectId) => {
       await authorized(
         `/api/births/${encodeURIComponent(birthId)}/project`,
