@@ -131,9 +131,7 @@ export type Opener =
   /** A thought: past its four lines. */
   | { readonly control: "thought"; readonly pastCap: boolean }
   /** "Show work" on a settled run's line: the scroll of what the run shows. */
-  | { readonly control: "work"; readonly lines: number }
-  /** A picture of the result: the viewer, onto a file still there or the pictures past it. */
-  | { readonly control: "picture"; readonly gone: boolean; readonly more: number };
+  | { readonly control: "work"; readonly lines: number };
 
 /** Whether a control opens onto something not already on screen: else it is not drawn. */
 export function opensOnto(opener: Opener): boolean {
@@ -157,8 +155,6 @@ export function opensOnto(opener: Opener): boolean {
       return opener.pastCap;
     case "work":
       return opener.lines > 0;
-    case "picture":
-      return !opener.gone || opener.more > 0;
   }
 }
 

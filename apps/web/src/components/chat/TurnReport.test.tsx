@@ -2,7 +2,7 @@ import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { AssetUrlState } from "../../assets/assetUrls";
@@ -10,13 +10,19 @@ import { ReviewContext } from "../../zerops/review";
 import type { OutcomeModel, OutcomePicture } from "./conversation.logic";
 import type { ResultFacts } from "./runResult.logic";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
+import { useStripFiles } from "./resultStripFiles";
 import { TurnReport } from "./TurnReport";
 
 /** What the workspace answers for each picture's file, by its path: loading unless told. */
 const workspace = vi.hoisted(() => ({
   files: new Map<string, AssetUrlState>(),
-  /** Files given an address the read of which then failed. */
-  addressed: new Map<string, string>(),
+  /** The pictures this conversation remembers gone (`gonePictureMemory`). */
+  gone: new Set<string>() as ReadonlySet<string>,
+}));
+
+vi.mock("../../zerops/gonePictureMemory", () => ({
+  rememberedGonePictures: () => workspace.gone,
+  rememberGonePicture: () => undefined,
 }));
 
 // A tile's tooltip, drawn in place of its popup: the words a pointer reads.
@@ -40,15 +46,10 @@ vi.mock("../ui/tooltip", async () => {
 vi.mock("../../assets/assetUrls", () => {
   const stateOf = (path: string): AssetUrlState => workspace.files.get(path) ?? { _tag: "Loading" };
   return {
-    useAssetUrlState: (_environment: unknown, resource: { readonly path: string }) =>
-      stateOf(resource.path),
-    useAssetUrls: (_environment: unknown, resources: ReadonlyArray<{ readonly path: string }>) =>
-      resources.map((resource) => {
-        const state = stateOf(resource.path);
-        return state._tag === "Success"
-          ? state.url
-          : (workspace.addressed.get(resource.path) ?? null);
-      }),
+    useAssetUrlStates: (
+      _environment: unknown,
+      resources: ReadonlyArray<{ readonly path: string }>,
+    ) => resources.map((resource) => stateOf(resource.path)),
   };
 });
 
@@ -229,6 +230,7 @@ const tilesOf = (renderer: ReactTestRenderer) =>
 
 describe("TurnReport's pictures", () => {
   beforeEach(() => {
+    workspace.gone = new Set();
     workspace.files = new Map(
       ["home-mobile.png", "world-mobile.png", "map-landscape.png"].map((name) => [
         `/var/www/app/.shots/${name}`,
@@ -338,9 +340,10 @@ describe("TurnReport's pictures", () => {
     });
   });
 
-  // Nothing ever shifts: a file on its way is a quiet tile of its size, one
-  // that is gone keeps its tile saying so, and neither is in the viewer.
-  it("keeps a tile for a file still read and for one gone, and the viewer skips them", () => {
+  // A file on its way is a quiet tile of its size; one that can no longer be
+  // read is no result (run 11: a muted "Gone" box stood as a turn's result):
+  // it has no tile and no room, and neither is in the viewer.
+  it("keeps a tile for a file still read, leaves one gone out, and the viewer skips both", () => {
     workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
     const onOpenImage = vi.fn();
     const tiles = tilesOf(
@@ -354,15 +357,14 @@ describe("TurnReport's pictures", () => {
         { onOpenImage },
       ),
     );
-    expect(tiles.map((tile) => [tile.type, tile.props["data-result-picture"]])).toEqual([
-      ["button", "ready"],
-      ["span", "gone"],
-      ["span", "loading"],
-      ["button", "ready"],
+    expect(
+      tiles.map((tile) => [tile.type, tile.props["data-result-picture"], tile.props["aria-label"]]),
+    ).toEqual([
+      ["button", "ready", "home-mobile.png. Open the picture"],
+      ["span", "loading", "draft-mobile.png"],
+      ["button", "ready", "/status in the browser. Open the picture"],
     ]);
-    expect(tiles[1]!.props["aria-label"]).toBe("world-mobile.png, gone");
-    expect(tiles[1]!.findByProps({ className: "run-result-gone" }).children).toEqual(["Gone"]);
-    act(() => tiles[3]!.props.onClick());
+    act(() => tiles[2]!.props.onClick());
     expect(onOpenImage).toHaveBeenCalledWith({
       images: [
         { src: served("home-mobile.png"), name: "home-mobile.png" },
@@ -372,81 +374,101 @@ describe("TurnReport's pictures", () => {
     });
   });
 
-  // The last tile of a run with more stands for the rest: its own file
-  // gone, it still says how many more, and opens the viewer on the next.
-  it("reaches the rest from the last tile when its own file is gone", () => {
+  // A gone file gives its place to the next: the strip counts only what stands.
+  it("counts only the pictures that stand toward the strip's six and its more", () => {
     workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
-    const onOpenImage = vi.fn();
     const pictures = [
       ...["a", "b", "c", "d", "e"].map((name) => checkPicture(`op:${name}`, `/${name}`)),
       filePicture("world-mobile.png"),
       filePicture("map-landscape.png"),
     ];
-    const last = tilesOf(renderPictures(pictures, { onOpenImage })).at(-1)!;
-    expect([last.type, last.props["data-result-picture"], last.props["aria-label"]]).toEqual([
-      "button",
-      "gone",
-      "world-mobile.png, gone, and 1 more. Open the pictures",
+    const tiles = tilesOf(renderPictures(pictures));
+    expect(tiles).toHaveLength(6);
+    expect(tiles.at(-1)!.props["aria-label"]).toBe("map-landscape.png. Open the picture");
+    // No tile says "+N": nothing stands past the six.
+    const said = (node: ReactTestInstance): string =>
+      node.children.map((child) => (typeof child === "string" ? child : said(child))).join("");
+    expect(tiles.map(said).filter((words) => /\+\d/.test(words))).toEqual([]);
+  });
+
+  // A reload paints nothing it takes back: a file this conversation found gone before is left
+  // out from the first paint, while its read is still on its way.
+  it("leaves out a picture remembered gone before its read answers", () => {
+    workspace.gone = new Set(["/var/www/app/.shots/world-mobile.png"]);
+    workspace.files.delete("/var/www/app/.shots/world-mobile.png");
+    const tiles = tilesOf(
+      renderPictures([filePicture("home-mobile.png"), filePicture("world-mobile.png")]),
+    );
+    expect(tiles.map((tile) => tile.props["aria-label"])).toEqual([
+      "home-mobile.png. Open the picture",
     ]);
-    expect(last.findAll((node) => node.props.className === "run-result-gone")).toEqual([]);
-    expect(last.findByProps({ className: "run-result-more" }).children).toEqual(["+", "1"]);
-    act(() => last.props.onClick());
-    expect(onOpenImage).toHaveBeenCalledWith(expect.objectContaining({ index: 5 }));
-    expect(onOpenImage.mock.calls[0]![0].images.at(5)).toEqual({
-      src: served("map-landscape.png"),
-      name: "map-landscape.png",
-    });
   });
 
-  // An address can be given for a file whose read then fails: the last tile
-  // standing for more opens the viewer past its own, never on itself.
-  it("opens the viewer past the last tile's own file when its read failed", () => {
+  // The card's steps leave to the result what its strip draws: here the seventh file, once the
+  // second is gone, and never the gone one.
+  it("hands the card the files its strip draws", () => {
     workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
-    workspace.addressed.set("/var/www/app/.shots/world-mobile.png", served("world-mobile.png"));
-    try {
-      const onOpenImage = vi.fn();
-      const pictures = [
-        ...["a", "b", "c", "d", "e"].map((name) => checkPicture(`op:${name}`, `/${name}`)),
-        filePicture("world-mobile.png"),
-        filePicture("map-landscape.png"),
-      ];
-      const last = tilesOf(renderPictures(pictures, { onOpenImage })).at(-1)!;
-      act(() => last.props.onClick());
-      const opened = onOpenImage.mock.calls[0]![0];
-      expect(opened.images.at(opened.index)).toEqual({
-        src: served("map-landscape.png"),
-        name: "map-landscape.png",
-      });
-    } finally {
-      workspace.addressed.clear();
+    const names = [
+      "home-mobile.png",
+      "world-mobile.png",
+      "a.png",
+      "b.png",
+      "c.png",
+      "d.png",
+      "e.png",
+    ];
+    renderPictures(names.map(filePicture));
+    const seen: Array<ReadonlyArray<string>> = [];
+    function Card() {
+      seen.push([...useStripFiles(OUTCOME.turnKey, new Set())]);
+      return null;
     }
+    act(() => {
+      create(<Card />);
+    });
+    expect(seen.at(-1)).toEqual(
+      names
+        .filter((name) => name !== "world-mobile.png")
+        .map((name) => `/var/www/app/.shots/${name}`),
+    );
   });
 
-  // Gone, with nothing past it the viewer can show, the last tile is no
-  // button: it would open nothing (E16).
-  it("draws a gone last tile with nothing viewable past it as no button", () => {
+  // Every result picture gone: nothing of them shows — no strip, and a run
+  // that left no row leaves no result.
+  it.each([
+    { name: "under the rows, no strip", live: OUTCOME.live, report: true },
+    {
+      name: "with no row, no result",
+      live: [] as OutcomeModel["live"],
+      report: false,
+    },
+  ])("shows nothing of a run's pictures when every one is gone: $name", ({ live, report }) => {
     workspace.files.set("/var/www/app/.shots/world-mobile.png", { _tag: "Failure" });
     workspace.files.set("/var/www/app/.shots/map-landscape.png", { _tag: "Failure" });
-    workspace.addressed.set("/var/www/app/.shots/world-mobile.png", served("world-mobile.png"));
-    try {
-      const pictures = [
-        ...["a", "b", "c", "d", "e"].map((name) => checkPicture(`op:${name}`, `/${name}`)),
-        filePicture("world-mobile.png"),
-        filePicture("map-landscape.png"),
-      ];
-      const last = tilesOf(renderPictures(pictures, { onOpenImage: vi.fn() })).at(-1)!;
-      expect([last.type, last.props["data-result-picture"]]).toEqual(["span", "gone"]);
-    } finally {
-      workspace.addressed.clear();
-      workspace.files.delete("/var/www/app/.shots/map-landscape.png");
-    }
+    const renderer = renderPictures(
+      [filePicture("world-mobile.png"), filePicture("map-landscape.png")],
+      {
+        outcome: {
+          ...OUTCOME,
+          ...(report ? {} : { live, change: null, checks: null }),
+          pictures: [filePicture("world-mobile.png"), filePicture("map-landscape.png")],
+        },
+      },
+    );
+    expect(tilesOf(renderer)).toEqual([]);
+    expect(renderer.root.findAll((node) => node.props["data-result-strip"] !== undefined)).toEqual(
+      [],
+    );
+    expect(
+      renderer.root.findAll((node) => node.props["data-turn-report"] !== undefined).length > 0,
+    ).toBe(report);
   });
 
   // Each tile takes its picture's shape at the strip's one height, from its
   // first frame (the owner, 2026-09-29: "why these has different ration
   // than the result?"): a check's from the check, a file's from the size the
   // workspace read off its header with its address; one still being read,
-  // or gone, a desktop's room.
+  // a desktop's room.
   it("stands each tile in its picture's own shape before the picture loads", () => {
     const shot = (name: string, width: number, height: number): AssetUrlState => ({
       _tag: "Success",
@@ -456,7 +478,6 @@ describe("TurnReport's pictures", () => {
     workspace.files = new Map([
       ["/var/www/app/.shots/map-landscape.png", shot("map-landscape.png", 844, 390)],
       ["/var/www/app/.shots/full-page.png", shot("full-page.png", 1440, 5200)],
-      ["/var/www/app/.shots/world-mobile.png", { _tag: "Failure" }],
     ]);
     const tiles = tilesOf(
       renderPictures([
@@ -465,11 +486,10 @@ describe("TurnReport's pictures", () => {
         filePicture("map-landscape.png"),
         filePicture("full-page.png"),
         filePicture("draft-mobile.png"),
-        filePicture("world-mobile.png"),
       ]),
     );
     expect(tiles.map((tile) => Number(tile.props.style.aspectRatio.toFixed(3)))).toEqual([
-      0.461, 1.6, 2.164, 0.45, 1.6, 1.6,
+      0.461, 1.6, 2.164, 0.45, 1.6,
     ]);
     expect(tiles.map((tile) => tile.props["data-result-picture"])).toEqual([
       "ready",
@@ -477,7 +497,6 @@ describe("TurnReport's pictures", () => {
       "ready",
       "ready",
       "loading",
-      "gone",
     ]);
   });
 

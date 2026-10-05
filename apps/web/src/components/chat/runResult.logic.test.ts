@@ -12,8 +12,10 @@ import {
   resultPictures,
   STRIP_TILES,
   stripShowsFiles,
+  placeResultPictures,
   rowPictures,
   resultRows,
+  standingPictures,
   runEffortWords,
   tileRatio,
   type ResultChange,
@@ -912,29 +914,74 @@ describe("resultPictures", () => {
     expect(resultPictures(model).map((picture) => picture.label)).toEqual(labels);
   });
 
-  // Review of pass 39: an opened card left a step's picture to the strip,
-  // which shows six, and to a strip that drops one a later run took over.
+  // Review of pass 39: an opened card left a step's picture to the strip, which shows six, and
+  // to a strip that drops one a later run took over. Pass 43's review: the set is what the strip
+  // draws of the pictures that stand — a gone file gives its tile to the next, and a check placed
+  // under its service's row moves the files after it forward — never the first six of all.
   it.each([
-    { name: "six files: all stand", files: 6, later: [] as string[], shown: 6 },
-    { name: "eight files: the first six stand", files: 8, later: [] as string[], shown: 6 },
+    {
+      name: "six files: all stand",
+      files: 6,
+      taken: [],
+      gone: [],
+      checks: 0,
+      drawn: [0, 1, 2, 3, 4, 5],
+    },
+    {
+      name: "eight files: the first six",
+      files: 8,
+      taken: [],
+      gone: [],
+      checks: 0,
+      drawn: [0, 1, 2, 3, 4, 5],
+    },
     {
       name: "one a later run took over: not this strip's",
       files: 2,
-      later: ["/s/0.png"],
-      shown: 1,
+      taken: [0],
+      gone: [],
+      checks: 0,
+      drawn: [1],
     },
-  ])(
-    "says which of its files surely stand in its strip: $name",
-    ({ files, later: taken, shown }) => {
-      const model = outcome({
-        pictures: Array.from({ length: files }, (_, index) => filePicture(`/s/${index}.png`)),
-        later: later({ files: taken }),
-      });
-      const standing = stripShowsFiles(model);
-      expect(standing.size).toBe(shown);
-      expect(standing.has(`/s/${files - 1}.png`)).toBe(files <= STRIP_TILES);
+    {
+      name: "eight files, the second gone: it gives its tile to the seventh",
+      files: 8,
+      taken: [],
+      gone: [1],
+      checks: 0,
+      drawn: [0, 2, 3, 4, 5, 6],
     },
-  );
+    {
+      name: "a check under its row moves the files after it forward",
+      files: 6,
+      taken: [],
+      gone: [],
+      checks: 1,
+      drawn: [0, 1, 2, 3, 4, 5],
+    },
+    {
+      name: "no workspace to read a file from: none drawn",
+      files: 3,
+      taken: [],
+      gone: null,
+      checks: 0,
+      drawn: [],
+    },
+  ])("says which of its files its strip draws: $name", ({ files, taken, gone, checks, drawn }) => {
+    const path = (index: number) => `/s/${index}.png`;
+    const model = outcome({
+      live: [service("appdev", { url: "https://appdev-1f3c-3000.prg1.example.app" })],
+      pictures: [
+        ...Array.from({ length: checks }, (_, index) => checkPicture(`op:b${index}`, "/status")),
+        ...Array.from({ length: files }, (_, index) => filePicture(path(index))),
+      ],
+      later: later({ files: taken.map(path) }),
+    });
+    const rows = [{ key: "service:appdev" }] as unknown as ReadonlyArray<ResultRow>;
+    const placed = placeResultPictures(model, rows, gone === null ? null : new Set(gone.map(path)));
+    expect([...stripShowsFiles(placed.rest)]).toEqual(drawn.map(path));
+    expect(STRIP_TILES).toBe(6);
+  });
 });
 
 describe("a service's row reads as one line", () => {
@@ -1022,6 +1069,62 @@ describe("rowPictures — every picture of a service under its row", () => {
       Object.fromEntries([...read.byRow].map(([key, list]) => [key, list.map((p) => p.key)])),
     ).toEqual(byRow);
     expect(read.rest.map((picture) => picture.key)).toEqual(rest);
+  });
+});
+
+describe("standingPictures — a picture that can no longer load is no result (N2)", () => {
+  const take = (key: string) => ({
+    kind: "check" as const,
+    key,
+    src: `data:image/png;base64,${key}`,
+    caption: "/",
+    page: "appdev-1f3c-3000.prg1.example.app/",
+    device: null,
+    failed: false,
+    ratio: 1.6,
+    label: key,
+  });
+  const file = (name: string) => ({
+    kind: "file" as const,
+    key: `file:/var/www/shots/${name}`,
+    path: `/var/www/shots/${name}`,
+    name,
+    label: name,
+  });
+
+  // Run 11: a symbol the turn downloaded and looked at stood as its result,
+  // a muted "Gone" box. A file whose read failed is left out, with no room
+  // held for it; one still being read keeps its tile; a check's own pixels
+  // never go.
+  it.each([
+    {
+      name: "every picture stands while each file reads or loaded",
+      pictures: [take("b1"), file("home.png"), file("map.png")],
+      gone: [],
+      standing: ["b1", "file:/var/www/shots/home.png", "file:/var/www/shots/map.png"],
+    },
+    {
+      name: "a file that can no longer be read is left out",
+      pictures: [file("home.png"), file("symbol.svg"), take("b1")],
+      gone: ["/var/www/shots/symbol.svg"],
+      standing: ["file:/var/www/shots/home.png", "b1"],
+    },
+    {
+      name: "every file gone leaves nothing of them",
+      pictures: [file("symbol.svg"), file("logo.png")],
+      gone: ["/var/www/shots/symbol.svg", "/var/www/shots/logo.png"],
+      standing: [],
+    },
+    {
+      name: "a check stands whatever the files say",
+      pictures: [take("b1")],
+      gone: ["/var/www/shots/home.png"],
+      standing: ["b1"],
+    },
+  ])("$name", ({ pictures, gone, standing }) => {
+    expect(standingPictures(pictures, new Set(gone)).map((picture) => picture.key)).toEqual(
+      standing,
+    );
   });
 });
 

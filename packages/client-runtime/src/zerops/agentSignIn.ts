@@ -19,17 +19,74 @@
  */
 
 /**
- * Whether an error is an agent refusing for want of credentials.
- *
- * Matched on the one phrase every driver shares — Claude's
- * `claudeSignedOutMessage` and Antigravity's both open with it — rather than
- * on either one's full sentence, which carries a configured path and a binary
- * name that differ per environment.
+ * Each agent driver's own sentence for a turn it refused for want of a sign-in, as it opens, and
+ * what the person signs in to. Whole sentences from their first word, never a phrase anywhere: Git
+ * "could not authenticate with the remote" too, and that is no agent signed out.
  */
-export function agentNeedsSignIn(error: string | null | undefined): boolean {
-  return error !== null && error !== undefined && error.includes("could not authenticate");
+const SIGN_IN_FAILURES: ReadonlyArray<{
+  readonly driver: string;
+  readonly agent: string;
+  readonly opens: string;
+}> = [
+  // `claudeSignedOutMessage`.
+  {
+    driver: "claudeAgent",
+    agent: "Claude",
+    opens: "Claude could not authenticate. For subscription login",
+  },
+  // `claudeStreamFailure`: a stream that died signed out.
+  { driver: "claudeAgent", agent: "Claude", opens: "Claude's sign-in has expired." },
+  // `AntigravityAuth`'s refusal of configured credentials.
+  {
+    driver: "antigravity",
+    agent: "Antigravity",
+    opens: "Antigravity could not authenticate with the configured credentials.",
+  },
+];
+
+/**
+ * The agent an error says is signed out, by the name the person signs in to; `null` where it is
+ * no agent driver's own sign-in failure — or another driver's than `driver`, the conversation's
+ * driver (its session's `providerName`), where that is known.
+ */
+export function signedOutAgent(
+  error: string | null | undefined,
+  driver?: string | null,
+): string | null {
+  if (error === null || error === undefined) return null;
+  const said = error.trimStart();
+  const failure = SIGN_IN_FAILURES.find(
+    (entry) =>
+      (driver === undefined || driver === null || driver === entry.driver) &&
+      said.startsWith(entry.opens),
+  );
+  return failure?.agent ?? null;
 }
 
-/** What the banner says in place of a command nobody here can run. */
+/** Whether an error is an agent refusing for want of credentials (`signedOutAgent`). */
+export function agentNeedsSignIn(
+  error: string | null | undefined,
+  driver?: string | null,
+): boolean {
+  return signedOutAgent(error, driver) !== null;
+}
+
+/** What the banner says in place of a command nobody here can run, where no Mate is named. */
 export const AGENT_SIGN_IN_MESSAGE =
   "This agent is not signed in yet. Authorize it here and start a new thread.";
+
+/**
+ * An error as a Mate's surface says it: a sign-in failure with the Mate as its subject and the
+ * agent only what the person signs in to — "Sage is signed out of Claude. Sign in again to
+ * continue." (F7: the driver's words name Claude, and its adapter does not know the Mate). Any
+ * other error as it was said.
+ */
+export function mateErrorWords(
+  error: string,
+  mate: string | undefined,
+  driver?: string | null,
+): string {
+  const agent = signedOutAgent(error, driver);
+  if (agent === null) return error;
+  return `${mate === undefined ? "Signed" : `${mate} is signed`} out of ${agent}. Sign in again to continue.`;
+}

@@ -37,6 +37,18 @@ describe("turnAuthFailureAgent", () => {
       "claude-code",
     ],
     [
+      "a Claude stream that died signed out",
+      event({
+        type: "runtime.error",
+        provider: "claudeAgent",
+        payload: {
+          message:
+            "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
+        },
+      }),
+      "claude-code",
+    ],
+    [
       "Codex answering unauthorized",
       event({ type: "runtime.error", provider: "codex", payload: codexError("unauthorized") }),
       "codex",
@@ -85,6 +97,16 @@ describe("turnAuthFailureAgent", () => {
         type: "runtime.error",
         provider: "claudeAgent",
         payload: { message: "Claude API is overloaded (529). Try again shortly." },
+      }),
+      undefined,
+    ],
+    // Pass 43's review: Git's refusal says "could not authenticate" too.
+    [
+      "a Git refusal in a Claude turn",
+      event({
+        type: "runtime.error",
+        provider: "claudeAgent",
+        payload: { message: "mirror_error: Git could not authenticate with the remote." },
       }),
       undefined,
     ],

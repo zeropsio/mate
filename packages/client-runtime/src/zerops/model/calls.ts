@@ -128,6 +128,17 @@ function readZeropsTruncated(payload: Record<string, unknown>): boolean {
   return zerops?.truncated === true;
 }
 
+/**
+ * The images read from a row's payload, by its images list: a live run
+ * re-derives the model on every activity, and a row read again gives the
+ * images it gave before — what is built from them (a screenshot's address,
+ * the whole picture as text) is built once (run 12).
+ */
+const imagesRead = new WeakMap<
+  ReadonlyArray<unknown>,
+  ReadonlyArray<ZeropsCallImage> | undefined
+>();
+
 /** A malformed image is dropped rather than failing the whole row — one bad entry must not blank every other image the row carries. */
 function readZeropsImages(
   payload: Record<string, unknown>,
@@ -138,6 +149,15 @@ function readZeropsImages(
   if (!Array.isArray(raw) || raw.length === 0) {
     return undefined;
   }
+  if (imagesRead.has(raw)) {
+    return imagesRead.get(raw);
+  }
+  const images = readImages(raw);
+  imagesRead.set(raw, images);
+  return images;
+}
+
+function readImages(raw: ReadonlyArray<unknown>): ReadonlyArray<ZeropsCallImage> | undefined {
   const images: ZeropsCallImage[] = [];
   for (const candidate of raw) {
     const record = readRecord(candidate);

@@ -332,6 +332,25 @@ describe("projectActivityPayload", () => {
       expected: { description: "Audit the fold" },
     },
     {
+      // F6: the name the Mate gave its helper is what its own text calls it.
+      name: "a subagent keeps the name the Mate gave it",
+      itemType: "collab_agent_tool_call",
+      toolName: "Agent",
+      input: {
+        description: "Build the scene",
+        prompt: "p".repeat(5_000),
+        name: "deep-sea-builder",
+      },
+      expected: { description: "Build the scene", name: "deep-sea-builder" },
+    },
+    {
+      name: "any other call's name is not its own words",
+      itemType: "dynamic_tool_call",
+      toolName: "Skill",
+      input: { description: "Read the guide", name: "zerops-guide" },
+      expected: { description: "Read the guide" },
+    },
+    {
       name: "a kept value is trimmed, and a blank or non-string one is dropped",
       itemType: "command_execution",
       toolName: "Bash",

@@ -127,7 +127,8 @@ import { useLiveSlot } from "./useLiveSlot";
 import { usePace } from "./usePace";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { landingHosts, slotMoves } from "./slotMoves.logic";
-import { stripShowsFiles } from "./runResult.logic";
+import { resultPictures as allResultPictures, stripShowsFiles } from "./runResult.logic";
+import { useStripFiles } from "./resultStripFiles";
 import {
   backgroundItemWord,
   reportsInline,
@@ -3769,10 +3770,12 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       />
     );
   const settledOutcome = settled ? row.outcome : null;
-  const resultPictures = useMemo(
-    () => (settledOutcome === null ? NO_PATHS : stripShowsFiles(settledOutcome)),
+  // What the result's strip draws, as it said (`resultStripFiles`); the first six until then.
+  const stripGuess = useMemo(
+    () => (settledOutcome === null ? NO_PATHS : stripShowsFiles(allResultPictures(settledOutcome))),
     [settledOutcome],
   );
+  const resultPictures = useStripFiles(settledOutcome?.turnKey ?? null, stripGuess);
   return (
     // One container for the chat and its now line: the Mate's column keeps
     // one gap for both. Its words wear its tint (`.run-speech`). Keyed, so the

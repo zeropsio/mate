@@ -4104,3 +4104,41 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
     `Rune`): in an application a project is `<application> - <Mate>`, outside any just `<Mate>`.
   - _Why:_ the organization's project list in Zerops is where the projects of every application
     stand side by side; without the prefix a Mate's project says nothing of whose it is.
+- **2026-10-06** — **Every list of a Mate's changes reads D7 by one rule** (pass 43: the menu's rows
+  hid a change's _Review_ while its Mate worked, the projects page did not). `changeShowsReview` —
+  described at its head, and its Mate not working in any of its chats, a turn or helpers it
+  started — is read by the menu's change rows, the projects page's change rows, the group's next
+  step and the composer's top (`mateNextStep`; the composer gives way by its own hold, which keeps
+  a dismissed strip remembered). A rule by HQ's `updatedAt` against the run's start was tried and
+  dropped: a person's comment moves a change, a change the run will amend could be merged
+  mid-edit, and two clocks would decide it.
+  - _Why:_ 0fc8a2eca's D7 — "While the Mate works in any of its chats … its rows carry no Review,
+    and the group's next step passes its changes by" — and the surfaces disagreed.
+- **2026-10-06** — **A sign-in failure is the Mate's, said in its words** (F7: the reason read
+  "Claude's sign-in has expired. Sign Claude in again, …" under Sage). Where a Mate is named, its
+  sign-in failure reads "Sage is signed out of Claude. Sign in again to continue." — the Mate the
+  subject, the agent only what the person signs in to; on the Mate's own menu row, under its name,
+  "Signed out of Claude. Sign in again to continue." The driver's words stay the driver's
+  (`apps/server/src/provider` is ported): the client recognises them (`signedOutAgent`: each agent
+  driver's own sentence from its first word — Claude's "could not authenticate. For subscription
+  login" and "'s sign-in has expired.", Antigravity's — and only the conversation's own driver's
+  where it is known; Git's "could not authenticate with the remote" is no agent signed out) and
+  says them (`mateErrorWords`) in the conversation's banner, the menu row and the jump box.
+  - _Why:_ the adapter does not know the Mate's name, and the client does wherever it draws one.
+- **2026-10-06** — **A helper is called what the Mate called it** (F6: the Mate's text said "the
+  deep-sea builder", the card said the launch's task). Where a helper's launch gave it a name —
+  Claude's Agent `name`, kept by the activity projection for an agent launch only — every place
+  the card names that helper (its row, its band, the dock, its report's wake) reads the name;
+  Codex's helpers were already named by their nickname or path. Where the launch named none, or
+  aged out, the task's words stand as before. Cursor, Grok, Antigravity and OpenCode report no
+  named helpers.
+- **2026-10-06** — **A result picture that can no longer load is no result** (N2, run 11: a muted
+  "Gone" tile stood as a Noibit turn's result). A file the workspace says is not there leaves the
+  result strip with no room held: the next picture takes its place, the strip's six and its "+N"
+  count only what stands, and a run whose pictures are all gone shows nothing of them (no strip;
+  no result where it left no row). Only the server's "not there" makes a picture gone: one whose
+  Mate is asleep, offline or reconnecting stays a quiet tile and is asked again on the signing's
+  retry schedule. A conversation remembers its gone pictures per account (`gonePictureMemory`), so
+  a reload leaves them out before their reads answer and paints no tile it takes back; one that
+  loads again is forgotten. The opened card's steps leave to the result exactly the files its strip
+  draws, as the result itself placed them (`resultStripFiles`).

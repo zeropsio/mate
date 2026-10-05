@@ -22,7 +22,7 @@
 
 import {
   byNewest,
-  changeAsksForReview,
+  changeShowsReview,
   changeNamesRepository,
   sidebarChangeLabel,
   type FlowPullRequest,
@@ -62,6 +62,11 @@ export function mateNextStep(input: {
   readonly mateProjectId: string | undefined;
   /** What that Mate is called; the strip says its name, never a bot login. */
   readonly mateName: string | undefined;
+  /**
+   * It works in one of its chats (`changeShowsReview`). The composer's top leaves it out and gives
+   * way by its own hold instead, which keeps what it remembers of the strip (a dismissal).
+   */
+  readonly working?: boolean;
 }): MateNextStep {
   const { pullRequests, mateProjectId } = input;
   if (pullRequests === undefined || mateProjectId === undefined) return NONE;
@@ -75,7 +80,7 @@ export function mateNextStep(input: {
         entry.mateProjectId === mateProjectId &&
         !entry.merged &&
         entry.mergeability === "mergeable" &&
-        changeAsksForReview(entry),
+        changeShowsReview(entry, { working: input.working }),
     )
     .sort(byNewest);
   const [pull] = waiting;

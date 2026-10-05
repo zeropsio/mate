@@ -306,6 +306,7 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
       "data-test-compact": String(options.compact),
       "data-test-pull": value.number,
       "data-test-with-merge": String(options.withMerge),
+      "data-test-review": String(options.review),
     }),
   hqCard: h("div", { "data-test-hq-card": "true" }),
   ungrouped: [],

@@ -335,7 +335,12 @@ export {
   type ReleaseDeployFailure,
   type ReleaseDeploys,
 } from "./groupDeploys.ts";
-export { agentNeedsSignIn, AGENT_SIGN_IN_MESSAGE } from "./agentSignIn.ts";
+export {
+  agentNeedsSignIn,
+  AGENT_SIGN_IN_MESSAGE,
+  mateErrorWords,
+  signedOutAgent,
+} from "./agentSignIn.ts";
 export {
   groupHistory,
   historyAge,
@@ -498,6 +503,8 @@ export {
   changeLandedEvents,
   type ChangeLandedEvent,
   changeAsksForReview,
+  changeShowsReview,
+  type MateRunFacts,
   changeState,
   pullRequestMergeLine,
   pullRequestsFolded,

@@ -196,6 +196,12 @@ const TOOL_INPUT_KEPT_FIELDS = [
   "query",
 ] as const;
 
+/**
+ * A helper's launch keeps the name the Mate gave it, where its driver takes one (Claude's Agent
+ * `name`): what the Mate's own text calls that helper, and the card with it (F6).
+ */
+const AGENT_LAUNCH_KEPT_FIELDS = ["name"] as const;
+
 const TOOL_INPUT_FIELD_MAX_LENGTH = 300;
 
 /** The keys another driver spells a kept field with, in Claude's spelling: OpenCode's `filePath`. */
@@ -233,12 +239,15 @@ function callInputOf(data: Record<string, unknown>): Record<string, unknown> | n
 
 function projectToolInput(
   input: Record<string, unknown> | null,
+  agentLaunch: boolean,
 ): Record<string, string> | undefined {
   if (!input) {
     return undefined;
   }
   const projected: Record<string, string> = {};
-  for (const key of TOOL_INPUT_KEPT_FIELDS) {
+  for (const key of agentLaunch
+    ? [...TOOL_INPUT_KEPT_FIELDS, ...AGENT_LAUNCH_KEPT_FIELDS]
+    : TOOL_INPUT_KEPT_FIELDS) {
     const value = asTrimmedString(input[key]);
     if (!value) {
       continue;
@@ -559,7 +568,8 @@ export function projectActivityPayload(
   const callInput = callInputOf(data);
   // A Zerops call's arguments are its card's: kept whole, as an MCP call's are.
   const zeropsArguments = asRecord(zeropsCall?.arguments);
-  const input = zeropsArguments ?? projectToolInput(callInput);
+  const input =
+    zeropsArguments ?? projectToolInput(callInput, payload.itemType === "collab_agent_tool_call");
   if (input) {
     projectedData.input = input;
   }

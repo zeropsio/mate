@@ -18,9 +18,20 @@ import {
   type KnownSurface,
 } from "./knowledge/index.ts";
 
+/**
+ * Each frame's address, built once: it is the whole frame as text (up to
+ * 1.4 MB in run 12), and every draw of a card showing the live frame asks
+ * for it — built anew each time, each draw held a copy of its own.
+ */
+const frameSrcs = new WeakMap<ZeropsBrowserFrame, string>();
+
 /** The daemon relays JPEG frames (S8b brief), never re-encoded — `data` is base64 as received. */
 export function frameImageSrc(frame: ZeropsBrowserFrame): string {
-  return `data:image/jpeg;base64,${frame.data}`;
+  const known = frameSrcs.get(frame);
+  if (known !== undefined) return known;
+  const src = `data:image/jpeg;base64,${frame.data}`;
+  frameSrcs.set(frame, src);
+  return src;
 }
 
 export interface CanvasPoint {

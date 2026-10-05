@@ -105,6 +105,24 @@ export function changeAsksForReview(pull: Pick<FlowPullRequest, "ready">): boole
   return pull.ready !== false;
 }
 
+/** A change's Mate as its Review reads it: whether it works now, in any of its chats. */
+export interface MateRunFacts {
+  readonly working?: boolean | undefined;
+}
+
+/**
+ * Whether a change shows its *Review* — the menu's rows, the projects page, the group's next step
+ * and the composer's top read this one rule (D7): its Mate described it at its head, and the Mate
+ * does not work in any of its chats — a turn, or helpers it started. While it works, its changes
+ * still move: none asks for review until it rests.
+ */
+export function changeShowsReview(
+  pull: Pick<FlowPullRequest, "ready">,
+  mate: MateRunFacts | undefined,
+): boolean {
+  return changeAsksForReview(pull) && mate?.working !== true;
+}
+
 /**
  * A Mate's proposal of the application's recipe: the recipe repository's change of zcp's title
  * (`RECIPE_PROPOSAL_TITLE`), the tiers `main` lacks, which Core lands by itself when it only adds

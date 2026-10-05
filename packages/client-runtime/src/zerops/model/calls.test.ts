@@ -7,6 +7,7 @@ import {
 } from "../operations/__fixtures__/index.ts";
 import { collectZeropsCalls } from "./calls.ts";
 import { deriveZeropsThreadModel } from "./deriveThreadModel.ts";
+import type { ZeropsTimelineEntry } from "./types.ts";
 
 function toolCallIdsOf(thread: ZeropsShowcaseThread): ReadonlySet<string> {
   const ids = new Set<string>();
@@ -344,5 +345,59 @@ describe("collectZeropsCalls — the lattice properties", () => {
     );
     expect(browserEntry).toBeDefined();
     expect(browserEntry?.operation.screenshot?.src.startsWith("data:")).toBe(true);
+  });
+
+  // A live run re-derives the model on every activity. A screenshot's address
+  // is its whole picture as text (hundreds of kB each, run 12: 77 of them), so
+  // one built anew per update was copied by every draw that held it: the page
+  // kept several copies of each picture and made new ones as fast as events came.
+  describe("a picture's screenshot is built once, however often a live run re-derives", () => {
+    const shot = [
+      started({
+        id: "s1",
+        payload: {
+          toolCallId: "shot",
+          data: { toolName: "mcp__zerops__zerops_browser", input: { url: "https://example.com" } },
+        },
+      }),
+      completed({
+        id: "s2",
+        payload: {
+          toolCallId: "shot",
+          data: {
+            toolName: "mcp__zerops__zerops_browser",
+            zerops: {
+              resultText: JSON.stringify({ status: "ok" }),
+              images: [{ mimeType: "image/jpeg", data: "abc123" }],
+            },
+          },
+        },
+      }),
+    ];
+    const screenshotOf = (activities: ReadonlyArray<OrchestrationThreadActivity>) =>
+      deriveZeropsThreadModel({ activities, runningTurnId: "t1" }).entries.find(
+        (e): e is Extract<ZeropsTimelineEntry, { kind: "operation" }> =>
+          e.kind === "operation" && e.operation.kind === "browser",
+      )?.operation.screenshot;
+
+    it.each([
+      { name: "the same activities again", later: shot },
+      {
+        name: "a later call landing after it",
+        later: [
+          ...shot,
+          started({
+            id: "d1",
+            createdAt: "2026-09-01T00:00:05.000Z",
+            payload: { toolCallId: "deploy" },
+          }),
+        ],
+      },
+      { name: "the same activities as a new list", later: [...shot] },
+    ])("$name", ({ later }) => {
+      const first = screenshotOf(shot);
+      expect(first).toBeDefined();
+      expect(screenshotOf(later)).toBe(first);
+    });
   });
 });

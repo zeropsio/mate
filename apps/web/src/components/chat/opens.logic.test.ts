@@ -152,22 +152,6 @@ describe("opens — a control is drawn only when it opens onto something not on 
       opener: { control: "work", lines: 3 },
       opens: true,
     },
-    // 9. A picture of the result.
-    {
-      name: "a picture whose file is gone",
-      opener: { control: "picture", gone: true, more: 0 },
-      opens: false,
-    },
-    {
-      name: "a gone picture standing for more opens onto those",
-      opener: { control: "picture", gone: true, more: 2 },
-      opens: true,
-    },
-    {
-      name: "a picture opens onto itself, larger",
-      opener: { control: "picture", gone: false, more: 0 },
-      opens: true,
-    },
     // A thought.
     {
       name: "a thought within its four lines reads whole",

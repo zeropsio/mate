@@ -266,10 +266,11 @@ function RowDetail<T>({
         className="flex flex-col divide-y divide-border/50"
         data-zerops-surface="environment-rows"
       >
-        {flow.pullRequests.map(({ pull }) => (
+        {flow.pullRequests.map(({ pull, review }) => (
           <Fragment key={`${pull.repository}#${String(pull.number)}`}>
             {props.renderPullRequest(group, pull, {
               withMerge: !mergesHere(flow, pull),
+              review,
               compact: false,
             })}
           </Fragment>
