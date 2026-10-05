@@ -656,40 +656,84 @@ describe("ProviderCommandReactor", () => {
     };
   }
 
-  effectIt.effect("never sets a session up under another message's send", () =>
-    Effect.gen(function* () {
-      const firstSendHeld = yield* Deferred.make<void>();
-      let sends = 0;
-      const harness = yield* Effect.promise(() =>
-        createHarness({
-          threadModelSelection: {
-            instanceId: ProviderInstanceId.make("claudeAgent"),
-            model: "claude-sonnet-4-6",
-          },
-          inSessionModelOptions: ["effort"],
-          workspaceHistory: {
-            prepare: () => Effect.void,
-            release: () => Effect.void,
-            markDispatched: () => Effect.void,
-          },
-          onSendTurn: Effect.suspend(() =>
-            ++sends === 1 ? Deferred.await(firstSendHeld) : Effect.void,
-          ),
-        }),
-      );
+  // The first send is held in its handshake; once it goes through, the
+  // agent's session runs that message's turn.
+  const heldFirstSendHarness = Effect.fn("heldFirstSendHarness")(function* () {
+    const firstSendHeld = yield* Deferred.make<void>();
+    let sends = 0;
+    let sessions: Array<ProviderSession> = [];
+    const harness = yield* Effect.promise(() =>
+      createHarness({
+        threadModelSelection: {
+          instanceId: ProviderInstanceId.make("claudeAgent"),
+          model: "claude-sonnet-4-6",
+        },
+        inSessionModelOptions: ["effort"],
+        workspaceHistory: {
+          prepare: () => Effect.void,
+          release: () => Effect.void,
+          markDispatched: () => Effect.void,
+        },
+        onSendTurn: Effect.suspend(() =>
+          ++sends === 1
+            ? Deferred.await(firstSendHeld).pipe(
+                Effect.andThen(
+                  Effect.sync(() => {
+                    sessions[0] = {
+                      ...sessions[0]!,
+                      status: "running",
+                      activeTurnId: asTurnId("turn-1"),
+                    };
+                  }),
+                ),
+              )
+            : Effect.void,
+        ),
+      }),
+    );
+    sessions = harness.runtimeSessions;
+    yield* harness.engine.dispatch(claudeTurnStart("lane-a", [{ id: "fastMode", value: false }]));
+    yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
+    // Without the lane, setup that came in meanwhile restarts the session here.
+    const settle = Effect.promise(() =>
+      waitFor(() => harness.startSession.mock.calls.length > 1, 300).catch(() => undefined),
+    );
+    return { harness, release: Deferred.succeed(firstSendHeld, undefined), settle };
+  });
 
-      yield* harness.engine.dispatch(claudeTurnStart("lane-a", [{ id: "fastMode", value: false }]));
-      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
-      yield* harness.engine.dispatch(claudeTurnStart("lane-b", [{ id: "fastMode", value: true }]));
-      // Without the lane the second message's setup restarts the session here.
-      yield* Effect.promise(() =>
-        waitFor(() => harness.startSession.mock.calls.length > 1, 300).catch(() => undefined),
-      );
+  effectIt.effect(
+    "never restarts a session under another message's send, nor in the turn it starts",
+    () =>
+      Effect.gen(function* () {
+        const { harness, release, settle } = yield* heldFirstSendHarness();
+        yield* harness.engine.dispatch(
+          claudeTurnStart("lane-b", [{ id: "fastMode", value: true }]),
+        );
+        yield* settle;
+        expect(harness.startSession).toHaveBeenCalledTimes(1);
+
+        yield* release;
+        yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 2));
+        // The start-only change waits for the running turn to end.
+        expect(harness.startSession).toHaveBeenCalledTimes(1);
+      }),
+  );
+
+  effectIt.effect("a runtime mode change sets the session up after a send in flight", () =>
+    Effect.gen(function* () {
+      const { harness, release, settle } = yield* heldFirstSendHarness();
+      yield* harness.engine.dispatch({
+        type: "thread.runtime-mode.set",
+        commandId: CommandId.make("cmd-lane-runtime-mode"),
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* settle;
       expect(harness.startSession).toHaveBeenCalledTimes(1);
 
-      yield* Deferred.succeed(firstSendHeld, undefined);
-      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 2));
-      expect(harness.startSession).toHaveBeenCalledTimes(2);
+      yield* release;
+      yield* Effect.promise(() => waitFor(() => harness.startSession.mock.calls.length === 2));
     }),
   );
 
