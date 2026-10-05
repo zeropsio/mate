@@ -6,17 +6,22 @@
  */
 import { useNavigate } from "@tanstack/react-router";
 import {
+  buildZeropsGroupTree,
   readZeropsMembership,
   type GroupEnvironmentTier,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useCallback, useContext, useMemo } from "react";
 
 import { mayAddEnvironment } from "~/components/zerops/projects/projectsView.logic";
 
 import { questionFactsOf } from "./addEnvironment.logic";
 import { HeldInventoryContext } from "./inventoryContext";
+import { placedPressesIn, useMatePresses } from "./matePress";
+import { useNewProjectBirths } from "./newProjectBirth";
 import { useSetUpEnvironment } from "./setUpEnvironment";
+import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -28,6 +33,44 @@ function useGroupProjects(): (groupId: string) => ReadonlyArray<ZeropsProject> {
   return useCallback(
     (groupId) => projects.filter((project) => readZeropsMembership(project).groupId === groupId),
     [projects],
+  );
+}
+
+/**
+ * The stages and productions of an application the platform accepted and HQ does not hold yet,
+ * each as the group tree draws it from this tab's presses (`placedPressesIn`): being made, or
+ * failed.
+ */
+export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<{
+  readonly id: string;
+  readonly tier: GroupEnvironmentTier;
+  readonly name: string;
+  readonly failed: boolean;
+}> {
+  const { listing } = useZeropsCandidates();
+  const presses = useMatePresses();
+  const made = useNewProjectBirths((state) => state.births);
+  const organizationId = useZeropsSession().activeOrganization?.id;
+  return useMemo(
+    () =>
+      (
+        buildZeropsGroupTree(heldCandidates(listing).rows, {
+          order: "name",
+          births: placedPressesIn(presses, organizationId, Object.values(made)),
+        }).groups.find((entry) => entry.group.groupId === groupId)?.group.pending ?? []
+      ).flatMap((member) =>
+        member.kind === "stage" || member.kind === "production"
+          ? [
+              {
+                id: member.projectId,
+                tier: member.kind,
+                name: member.name,
+                failed: member.failed === true,
+              },
+            ]
+          : [],
+      ),
+    [groupId, listing, made, organizationId, presses],
   );
 }
 
@@ -52,14 +95,16 @@ export function useEnvironmentQuestionFacts(
 ): ReturnType<typeof questionFactsOf> {
   const mayAdd = useMayAddEnvironment()(groupId);
   const projects = useGroupProjects()(groupId);
+  const pending = useGroupPendingEnvironments(groupId);
   return useMemo(
     () =>
       questionFactsOf({
         mayAdd,
         missing,
         roles: projects.map((project) => readZeropsMembership(project).role),
+        pending: pending.map((entry) => entry.tier),
       }),
-    [mayAdd, missing, projects],
+    [mayAdd, missing, pending, projects],
   );
 }
 

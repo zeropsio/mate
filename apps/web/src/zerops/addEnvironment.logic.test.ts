@@ -14,6 +14,16 @@ describe("questionFactsOf", () => {
       want: { addable: { stage: true, production: true }, productionHeld: false },
     },
     {
+      case: "a production being created, in flight or failed",
+      input: { mayAdd: true, missing: both, roles: [] as const, pending: ["production"] as const },
+      want: { addable: { stage: true, production: false }, productionHeld: true },
+    },
+    {
+      case: "a stage being created",
+      input: { mayAdd: true, missing: both, roles: [] as const, pending: ["stage"] as const },
+      want: { addable: { stage: false, production: true }, productionHeld: false },
+    },
+    {
       case: "the person may not add",
       input: { mayAdd: false, missing: both, roles: ["dev"] as const },
       want: { addable: { stage: false, production: false }, productionHeld: false },

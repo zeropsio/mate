@@ -24,7 +24,9 @@ import type { ZeropsEnvironmentRole } from "./groups.ts";
 import { environmentKeyed } from "./deployToken.ts";
 import { deploymentReadFailed, type Deployment } from "./flow/deployment.ts";
 import type { Shown } from "./knowledge/known.ts";
+import { PRODUCTION_SETTING_UP } from "./groupFlow.ts";
 import { changesCountWords } from "./projectAttention.ts";
+import { STAGE_SETTING_UP } from "./stopComing.ts";
 
 /** What a group environment is: a stage, or the one production. */
 export type GroupEnvironmentTier = "stage" | "production";
@@ -191,6 +193,18 @@ export type EnvironmentSlotRow =
     }
   /** A Mate that is also the application's stage: the agent deploys there, HQ does not. */
   | { readonly kind: "devstage"; readonly id: string; readonly line: string }
+  /**
+   * An environment whose creation is under way or failed, and HQ does not hold yet: it stands in
+   * the tier's place, so the tier is never offered a second time (§9.6).
+   */
+  | {
+      readonly kind: "creating";
+      readonly tier: GroupEnvironmentTier;
+      readonly id: string;
+      readonly line: string;
+      /** Whether *Try again* stands on it: the creation failed and this person may add. */
+      readonly retry: boolean;
+    }
   /** A tier nobody added: quiet, never a step, a dot or a count. */
   | {
       readonly kind: "slot";
@@ -216,6 +230,13 @@ export function environmentSlots(input: {
   }>;
   /** Mates that are also the stage (`devstage`). */
   readonly devstages: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  /** Creations the platform accepted and HQ does not hold yet (the group tree's `pending`). */
+  readonly pending: ReadonlyArray<{
+    readonly id: string;
+    readonly tier: GroupEnvironmentTier;
+    readonly name: string;
+    readonly failed: boolean;
+  }>;
   /** The tiers the recipe on `main` offers and the application lacks (`missingEnvironmentRows`). */
   readonly missing: ReadonlyArray<GroupEnvironmentTier>;
   /** Whether the recipe is read: until it is, no slot is offered or said to wait for it. */
@@ -245,6 +266,24 @@ export function environmentSlots(input: {
   };
   const stages = input.environments.filter((entry) => entry.tier === "stage");
   const production = input.environments.find((entry) => entry.tier === "production");
+  // The listing's member stands in a creation's place once HQ holds the project.
+  const held = new Set(input.environments.map((entry) => entry.id));
+  const creating = (tier: GroupEnvironmentTier) =>
+    input.pending
+      .filter((entry) => entry.tier === tier && !held.has(entry.id))
+      .map((entry): EnvironmentSlotRow => ({
+        kind: "creating",
+        tier,
+        id: entry.id,
+        line: entry.failed
+          ? "Setup failed"
+          : tier === "stage"
+            ? STAGE_SETTING_UP
+            : PRODUCTION_SETTING_UP,
+        retry: entry.failed && input.mayAdd,
+      }));
+  const stagesComing = creating("stage");
+  const productionComing = creating("production");
   const rows: Array<EnvironmentSlotRow> = [
     ...stages.map(({ id, tier }): EnvironmentSlotRow => ({
       kind: "environment",
@@ -258,12 +297,17 @@ export function environmentSlots(input: {
       line: `${name} — the stage, deployed by its agent`,
     })),
   ];
+  rows.push(...stagesComing);
   if (rows.length === 0) rows.push(slot("stage"));
-  rows.push(
-    production === undefined
-      ? slot("production")
-      : { kind: "environment", tier: "production", id: production.id, note: productionNote(input) },
-  );
+  if (production !== undefined)
+    rows.push({
+      kind: "environment",
+      tier: "production",
+      id: production.id,
+      note: productionNote(input),
+    });
+  else if (productionComing.length > 0) rows.push(...productionComing);
+  else rows.push(slot("production"));
   return rows;
 }
 

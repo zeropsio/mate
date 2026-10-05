@@ -110,6 +110,7 @@ const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
   environmentSlots({
     environments: environments.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
     devstages: [],
+    pending: [],
     missing: [],
     recipeRead: false,
     mayAdd: false,
@@ -313,6 +314,7 @@ describe("ZeropsGroupPane", () => {
       environmentSlots({
         environments: [],
         devstages: [],
+        pending: [],
         missing: ["stage", "production"],
         recipeRead: true,
         mayAdd: true,
@@ -348,6 +350,31 @@ describe("ZeropsGroupPane", () => {
       expect(markup).toContain("Vera — the stage, deployed by its agent");
       expect(markup).not.toContain("Add stage");
       expect(markup).toContain("Add production");
+    });
+
+    it("says a production being created is being set up, and offers no second Add for it", () => {
+      const markup = render(undefined, {
+        environments: [],
+        slots: slots({
+          pending: [{ id: "p-new", tier: "production", name: "Shop - production", failed: false }],
+          missing: ["stage"],
+        }),
+      });
+      expect(markup).toContain("Setting up production…");
+      expect(markup).not.toContain("Add production");
+    });
+
+    it("says a failed creation failed, with Try again and not a second Add", () => {
+      const markup = render(undefined, {
+        environments: [],
+        slots: slots({
+          pending: [{ id: "p-new", tier: "production", name: "Shop - production", failed: true }],
+          missing: ["stage"],
+        }),
+      });
+      expect(markup).toContain("Setup failed");
+      expect(markup).toContain("Try again");
+      expect(markup).not.toContain("Add production");
     });
 
     it("says an empty production waits for its first release, with Review release where offered", () => {

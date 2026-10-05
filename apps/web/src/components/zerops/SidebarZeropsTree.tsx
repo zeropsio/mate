@@ -238,7 +238,7 @@ import {
 import {
   groupFlowInputOf,
   groupMemberFactsOf,
-  mayAddEnvironment,
+  environmentsOffered,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import {
@@ -1603,15 +1603,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             line={line}
             openStop={openStop}
             group={group}
-            missing={
-              organization !== null &&
-              mayAddEnvironment({
-                organization,
-                projects: environments.map(({ item }) => item.project),
-              })
-                ? (getFlow?.(group.groupId)?.missing ?? [])
-                : NO_MISSING_TIERS
-            }
+            missing={environmentsOffered({
+              organization,
+              projects: environments.map(({ item }) => item.project),
+              missing: getFlow?.(group.groupId)?.missing ?? NO_MISSING_TIERS,
+            })}
             onAddMate={onAddMate}
             onSetUp={onSetUp}
             onBrowseProjects={onBrowseProjects}

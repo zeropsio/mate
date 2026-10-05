@@ -132,7 +132,11 @@ import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { useZeropsCompares, type ComparedCommits } from "~/zerops/useZeropsCompares";
 import { useZeropsRecipeFailure } from "~/zerops/useZeropsAppRecipes";
-import { useAddEnvironment, useMayAddEnvironment } from "~/zerops/useAddEnvironment";
+import {
+  useAddEnvironment,
+  useGroupPendingEnvironments,
+  useMayAddEnvironment,
+} from "~/zerops/useAddEnvironment";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { useZeropsHistory, type ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 import { cn } from "~/lib/utils";
@@ -724,6 +728,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const mayAdd = useMayAddEnvironment()(groupId);
   const addEnvironment = useAddEnvironment();
   const devstages = useDevstages(groupId);
+  const pendingEnvironments = useGroupPendingEnvironments(groupId);
 
   if (flow === undefined) {
     return (
@@ -744,6 +749,7 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const slots = environmentSlots({
     environments: environments.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
     devstages,
+    pending: pendingEnvironments,
     missing: flow.missing.map((row) => row.tier),
     recipeRead: flow.recipeRead,
     mayAdd,
@@ -752,9 +758,14 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
         ? "unknown"
         : productionRunsOf(flowValue?.deployments.get(production.projectId)),
     waiting: { count: waiting.total, atLeast: waiting.atLeast },
-    // Entries are what `main` would put in a release: none says it holds no code, once read.
+    // Entries are what `main` would put in a release: none says it holds no code, once the
+    // repositories and the recipe that names their services are both read.
     mainHasCode:
-      flow.release.entries.length > 0 ? true : flow.repos === undefined ? undefined : false,
+      flow.release.entries.length > 0
+        ? true
+        : flow.repos === undefined || !flow.recipeRead
+          ? undefined
+          : false,
     releaseOffered: release.offered,
     releasing: flow.release.inFlight,
   });
@@ -963,6 +974,28 @@ export function ZeropsGroupPane({
               return (
                 <li className="px-2 py-2 text-sm text-muted-foreground" key={slot.id}>
                   {slot.line}
+                </li>
+              );
+            if (slot.kind === "creating")
+              return (
+                <li className="flex min-w-0 items-center gap-3 px-2 py-2" key={slot.id}>
+                  <span className="shrink-0 text-sm font-medium text-muted-foreground">
+                    {slot.tier === "stage" ? "Stage" : "Production"}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                    {slot.line}
+                  </span>
+                  {slot.retry ? (
+                    <Button
+                      onClick={() => {
+                        onAdd(slot.tier);
+                      }}
+                      size="sm"
+                      variant="outline"
+                    >
+                      Try again
+                    </Button>
+                  ) : null}
                 </li>
               );
             if (slot.kind === "slot")

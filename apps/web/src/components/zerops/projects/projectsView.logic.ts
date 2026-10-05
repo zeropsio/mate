@@ -456,6 +456,21 @@ export function mayAddEnvironment(input: {
   );
 }
 
+/**
+ * The tiers a project's menu offers *Add* for: those the recipe holds and the application lacks,
+ * to the people `mayAddEnvironment` names, and to nobody before the person's organization is known.
+ */
+export function environmentsOffered<Row>(input: {
+  readonly organization: Parameters<typeof mayAddEnvironment>[0]["organization"] | null;
+  readonly projects: Parameters<typeof mayAddEnvironment>[0]["projects"];
+  readonly missing: ReadonlyArray<Row>;
+}): ReadonlyArray<Row> {
+  return input.organization !== null &&
+    mayAddEnvironment({ organization: input.organization, projects: input.projects })
+    ? input.missing
+    : [];
+}
+
 /** The part of a group's project flow `groupFlow` reads. */
 export interface GroupFlowReads {
   readonly environments: ReadonlyArray<EnvironmentRow>;

@@ -227,6 +227,7 @@ describe("environmentSlots", () => {
   const base: Parameters<typeof environmentSlots>[0] = {
     environments: [],
     devstages: [],
+    pending: [],
     missing: ["stage", "production"],
     recipeRead: true,
     mayAdd: true,
@@ -240,9 +241,11 @@ describe("environmentSlots", () => {
     rows.map((row) =>
       row.kind === "slot"
         ? [row.kind, row.tier, row.line, row.add]
-        : row.kind === "devstage"
-          ? [row.kind, row.id, row.line]
-          : [row.kind, row.id, row.note?.text, row.note?.review],
+        : row.kind === "creating"
+          ? [row.kind, row.id, row.line, row.retry]
+          : row.kind === "devstage"
+            ? [row.kind, row.id, row.line]
+            : [row.kind, row.id, row.note?.text, row.note?.review],
     );
   const withProduction = (over: Partial<typeof base>): typeof base => ({
     ...base,
@@ -372,6 +375,82 @@ describe("environmentSlots", () => {
     {
       case: "production current: no line of its own",
       input: withProduction({ productionRuns: "running" }),
+      rows: [
+        ["slot", "stage", "Waiting for the Mate's recipe", false],
+        ["environment", "p-prod", undefined, undefined],
+      ],
+    },
+    {
+      case: "a production being created is its row, never a second Add (§9.6)",
+      input: {
+        ...base,
+        pending: [{ id: "p-new", tier: "production", name: "Todo - production", failed: false }],
+        missing: ["stage"],
+      },
+      rows: [
+        ["slot", "stage", "Not added", true],
+        ["creating", "p-new", "Setting up production…", false],
+      ],
+    },
+    {
+      case: "a production whose creation failed offers only Try again, to who may add",
+      input: {
+        ...base,
+        pending: [{ id: "p-new", tier: "production", name: "Todo - production", failed: true }],
+        missing: ["stage"],
+      },
+      rows: [
+        ["slot", "stage", "Not added", true],
+        ["creating", "p-new", "Setup failed", true],
+      ],
+    },
+    {
+      case: "a failed creation, somebody who may not add: the words only",
+      input: {
+        ...base,
+        mayAdd: false,
+        pending: [{ id: "p-new", tier: "production", name: "Todo - production", failed: true }],
+        missing: ["stage"],
+      },
+      rows: [
+        ["slot", "stage", "Not added", false],
+        ["creating", "p-new", "Setup failed", false],
+      ],
+    },
+    {
+      case: "a stage being created stands in for the stage slot",
+      input: {
+        ...base,
+        pending: [{ id: "p-st", tier: "stage", name: "Todo - stage", failed: false }],
+        missing: ["production"],
+      },
+      rows: [
+        ["creating", "p-st", "Setting up a stage…", false],
+        ["slot", "production", "Not added", true],
+      ],
+    },
+    {
+      case: "a stage being created beside a stage that exists is one more row",
+      input: {
+        ...base,
+        environments: [STAGE],
+        pending: [{ id: "p-st2", tier: "stage", name: "Todo - stage 2", failed: false }],
+        missing: ["production"],
+      },
+      rows: [
+        ["environment", "p-stage", undefined, undefined],
+        ["creating", "p-st2", "Setting up a stage…", false],
+        ["slot", "production", "Not added", true],
+      ],
+    },
+    {
+      case: "a creation HQ already holds is the environment, not a pending one",
+      input: {
+        ...base,
+        environments: [PROD],
+        pending: [{ id: "p-prod", tier: "production", name: "Todo - production", failed: false }],
+        missing: [],
+      },
       rows: [
         ["slot", "stage", "Waiting for the Mate's recipe", false],
         ["environment", "p-prod", undefined, undefined],

@@ -24,6 +24,7 @@ import {
   stopLine,
   nextStepAwaitsSomebody,
   parseProjectsSearch,
+  environmentsOffered,
   matesKnownOf,
   mayAddEnvironment,
   rowMateActivitiesOf,
@@ -1040,6 +1041,18 @@ describe("a project row's Mates — what each is on, and whether each is known",
         () => read,
       ),
     ).toBe(expected);
+  });
+});
+
+describe("environmentsOffered", () => {
+  const MISSING = [{ tier: "stage" }, { tier: "production" }] as const;
+  const org = { membershipId: "member-1", roleCode: "ADMIN" };
+  it.each([
+    ["an admin is offered both", org, MISSING],
+    ["a reader is offered none", { ...org, roleCode: "READ_ONLY" }, []],
+    ["nobody known is offered none", null, []],
+  ])("%s", (_name, organization, expected) => {
+    expect(environmentsOffered({ organization, projects: [], missing: MISSING })).toEqual(expected);
   });
 });
 

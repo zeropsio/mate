@@ -15,16 +15,24 @@ export function questionFactsOf(input: {
   readonly missing: ReadonlyArray<GroupEnvironmentTier>;
   /** The roles of the application's projects the account holds, declared in HQ or not. */
   readonly roles: ReadonlyArray<ZeropsEnvironmentRole | undefined>;
+  /** The tiers of creations under way or failed that the listing does not hold yet. */
+  readonly pending?: ReadonlyArray<GroupEnvironmentTier> | undefined;
 }): {
   readonly addable: { readonly stage: boolean; readonly production: boolean };
-  /** A production project held in any state is a production. */
+  /** A production in any state — held, being made, failed — is a production. */
   readonly productionHeld: boolean;
 } {
-  const productionHeld = input.roles.includes("prod");
+  const pending = input.pending ?? [];
+  const productionHeld = input.roles.includes("prod") || pending.includes("production");
   return {
     addable: {
-      // A Mate that is also the stage is the stage: no second one is asked for.
-      stage: input.mayAdd && input.missing.includes("stage") && !input.roles.includes("devstage"),
+      // A Mate that is also the stage is the stage, and one being made will be: no second one is
+      // asked for.
+      stage:
+        input.mayAdd &&
+        input.missing.includes("stage") &&
+        !input.roles.includes("devstage") &&
+        !pending.includes("stage"),
       production: input.mayAdd && input.missing.includes("production") && !productionHeld,
     },
     productionHeld,
