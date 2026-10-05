@@ -3472,7 +3472,10 @@ no-cache`.
   applications and never writes to it (`tools.ts`). Retiring it is a separate decision, later.
   - _Why:_ accounts that ran it still have it, and HQ replaces it without taking it down
 - **2026-10-02** — **Superseded 2026-10-03 in part by "A Mate's key is lowered only when Finish
-  setup adopts it" below: the projects page lowers no key on its read.**
+  setup adopts it" below: the projects page lowers no key on its read. Superseded 2026-10-05 in
+  part: the harden keeps no other grant on a key HQ knows by the id the Mate enrolled with — it sets
+  that key to its own project alone (`planMateKey`, `foundBy: "id"`); only a key found by its name
+  alone is never narrowed, and the grants by hand are that key's.**
   **A Mate's key reaches only its own project** (the owner, ADR 0003). The key a
   Mate's container holds is `NO_ACCESS` at the org and `BASIC_USER` on its own project, and nothing
   more: the mint grants its own project alone (`api.ts:1791`), the press gives no sibling reach, and
@@ -3514,7 +3517,8 @@ no-cache`.
   `design-system.md` §2). **Supersedes:** the word "group" in the 2026-09-05 group-model row.
   - _Why:_ the menus that open the Move dialog already said "project", and the dialog spoke of
     groups and explained that a group is what you call the application
-- **2026-10-02** — **A Mate names who made it** (the owner, on pass 34's open choices: "use
+- **2026-10-02** — **Superseded 2026-10-05 in part: no `mate:by:` tag is written; who made a Mate
+  is HQ's record of it (`madeBy`).** **A Mate names who made it** (the owner, on pass 34's open choices: "use
   recommended"; the entries below take the same answer). New project and Add a Mate tag a
   development Mate's project `mate:by:<userId>` at birth; the tag is never cleared and shows in the
   Zerops dashboard. The Mate's row reads "Waiting for your sign-in" to its maker and "Waiting for
@@ -3524,15 +3528,18 @@ no-cache`.
   - _Why:_ the two flows made the same Mate and said two things about it; the service's
     `createdByUser` is on the REST record but not on the socket's, and a tag reaches every window
     through the store the sockets feed
-- **2026-10-02** — **A merge reaches the other window within 15 s.** While a group has an open pull
+- **2026-10-02** — **Superseded 2026-10-05: no window lists Gitea; a merge reaches every window on
+  HQ's structure stream. The goal stands.** **A merge reaches the other window within 15 s.** While a group has an open pull
   request, each window lists that group's Gitea org every 15 s (`PULL_WATCH_MS`), one org a tick, at
   most +4 requests a minute per window; a pull request that hasn't moved for 30 min leaves the
   watch. Nothing runs while none is open or the page is hidden. The clock sits in the web forge hook
   beside the 60 s Gitea refresh; the rule lives in client-runtime.
   - _Why:_ a merge took 48 s to clear the Mate's "needs you" face in another window (run 4); run 5
     measured 10.0 s
-- **2026-10-02** — **A stage's first deploy counts as asked for once the stage is declared and
-  `main` has code**, bounded at 15 min from the later of the stage's making and `main`'s last code
+- **2026-10-02** — **Superseded 2026-10-05: an environment is coming up while HQ's birth of it
+  runs or the platform makes something of it; the 15 min bound and the inference from `main` are
+  gone.** **A stage's first deploy counts as asked for once the stage is declared and `main` has
+  code**, bounded at 15 min from the later of the stage's making and `main`'s last code
   landing; past the bound the line reads "Nothing deployed yet". No new request.
   - _Why:_ no reader held the broker's pending status on `main`, and the broker deploys exactly when
     a declaration lands on a `main` with code
@@ -3551,7 +3558,9 @@ no-cache`.
   v0.1.1", and the project's line in the menu follows the newer one.
   - _Why:_ a release with no final state kept "Releasing" and its clock running for as long as the
     dialog was open
-- **2026-10-02** — **A failure on the version a stop runs still reads Failed.** Until the broker
+- **2026-10-02** — **Superseded 2026-10-05: no broker marks a version; a deploy's verdict is HQ's
+  job for a build HQ made, the build's Zerops process otherwise.** **A failure on the version a stop
+  runs still reads Failed.** Until the broker
   marks that version live, a rare Deployed → Failed → Deployed flicker stays; reading the failure on
   the version the broker tried is a new read, for later.
   - _Why:_ reading it as Deployed would switch off the failed deploy's next step (2026-09-25),
@@ -3562,7 +3571,9 @@ no-cache`.
   any other: "Coming up", Finish setup hidden, until its server answers its first probe.
   - _Why:_ a reload paints nothing it takes back, and excluding a close-off-pending Mate would bring
     the asleep row back for a normal press
-- **2026-10-03** — **A stage's first deploy that fails says so** (run 5: a group workflow's own step
+- **2026-10-03** — **Superseded 2026-10-05: no status on `main` is read; a first deploy fails by
+  its owner's word — HQ's job, or the build's Zerops process — and the reads' schedule is gone.**
+  **A stage's first deploy that fails says so** (run 5: a group workflow's own step
   failed, and both windows said "first deploy on its way" for 4.3 min). While a declared stage runs
   nothing, the group's deploy reader reads `main`'s head of each repository the stage builds from,
   and its statuses, and takes the newest status of each context. The broker's own
@@ -3651,7 +3662,8 @@ no-cache`.
   stops nothing; a stop says its reason in its step's place without moving the rows above.
   - _Why:_ the dialog and the page showed one coming-up twice, and the dialog's own steps held the
     person on a modal for the half minute that needed them.
-- **2026-10-03** — **One Gitea listing a minute for the whole account** (run 6: idle windows made 22
+- **2026-10-03** — **Superseded 2026-10-05: the client lists no Gitea; HQ's structure stream
+  carries the changes.** **One Gitea listing a minute for the whole account** (run 6: idle windows made 22
   and 20 requests a minute, 13.4 of them one repository list per group org). The forge reads tick
   together; at each tick one id-ordered listing of the person's repositories (`/repos/search` as the
   person, with Gitea's count) feeds every group's slice. A group the listing does not name yet, a
@@ -3826,3 +3838,41 @@ no-cache`.
     čekalo, že něco proběhne do 30 min, nebo že se nějak magicky dělo historicky něco v Gitee. Ne to,
     že se něco automaticky opakuje a vyrovnává se stavem, který nějak vzniká, a je to jeho legitimní
     řešení, jako třeba že se automaticky obnoví session."
+- **2026-10-05** — **HQ answers; the client draws** (the HQ-answers pass: what was left of the
+  Gitea model — the client computing permissions and verdicts, structure in project tags, clocks
+  standing in for answers — goes, each to the owner of its inputs).
+  - **HQ answers what a person may do, in its stream.** `can` runs in HQ alone
+    (`apps/hq/src/permissions.ts`); HQ streams a decision per verb beside the org, each application,
+    environment and Mate (`offers.ts`, `hqOffers.ts`), over the target the write is enforced with.
+    The client draws allowed, refused in HQ's words, unknown or unavailable, and decides nothing.
+    _Why:_ one verdict has one owner. HQ holds the inputs — the org as it reads it, the target as it
+    holds it — and enforces the write, so a client's copy could only offer what HQ then refused, and
+    it read project access only to feed itself.
+  - **A release ends with HQ's rollout.** On its way until HQ ends its rollout in every production;
+    stalled only where HQ ended it without landing. _Why:_ the 30 min cutoff called a release over
+    while HQ still followed its build, and offered _Release_ again.
+  - **Coming up is HQ's birth of an environment**, or the platform making something of it — never
+    its age. _Why:_ an environment's age says nothing about whether anyone is still bringing it up;
+    HQ, which runs its first deploy, knows.
+  - **A write that cannot be undone reads its roles fresh.** Merges, closes, releases, roll backs, a
+    deploy asked again, a service added, deletions, a kept deploy token, moving, detaching and
+    attaching are decided over roles read after they were asked; Zerops silent, HQ writes nothing
+    and answers `zerops_unanswered`. _Why:_ a write nobody can take back must not stand on a view a
+    lowered role has outdated.
+  - **A Mate exists where HQ places it.** The bare `mate` tag is written for the Zerops GUI and read
+    by nothing; a Mate's name is its project's. _Why:_ a marker on a project with no Mate made a
+    Mate row, a _Set up Mate_ and a taken name.
+  - **A press holds its project at HQ** while it runs, and a press that stopped keeps its record
+    there. _Why:_ another browser could not tell a press still at work from one whose tab closed,
+    and guessed by the project's age.
+  - **A Mate update's outcome is the server it comes back as**, by version and boot id: another
+    version is updated; the version it left on another boot did not take; the same boot is still
+    updating. _Why:_ followed by version alone, a failed install waited for ever; followed by the
+    container, it could say "Updated to" the version it left.
+  - **No client clock stands in for an owner's answer**, by the 2026-10-05 recovery rule above. Gone
+    with this pass: the first deploy's 20 s grace (HQ's job, or the build's Zerops process); a held
+    verb's 30 s (HQ's answer, or HQ not answering); an update's 120 s verdict (its server; past the budget it only says it is taking longer); an address's
+    2 min (its enable process); a first build's 30 min (its process); a deploy's 10 min cap (its
+    build's end); a stand-up's quiet file (its zcp process by PID and start, and its turn); a Mate's
+    retry cap kept across loads (the connection's own ladder, which a load starts over). Faces keep
+    their own clocks: a pose is never a verdict.
