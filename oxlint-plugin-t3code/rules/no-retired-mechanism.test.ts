@@ -70,7 +70,27 @@ describe("retired mechanisms", () => {
   });
 });
 
+const DISTINCTIVE = RETIRED_MECHANISMS.filter((mechanism) => mechanism.paths === undefined);
+/** File-bound tokens, less any that holds a distinctive token, which is retired everywhere. */
+const BOUND = RETIRED_MECHANISMS.filter(
+  (mechanism) =>
+    mechanism.paths !== undefined &&
+    !DISTINCTIVE.some((distinctive) => mechanism.token.includes(distinctive.token)),
+);
+const freshFile = createOxlintRuleHarness(RULE, {
+  filename: "apps/web/src/components/zerops/FreshUnrelatedPanel.tsx",
+});
+
 it.layer(NodeServices.layer)("no-retired-mechanism ledger", (it) => {
+  it.effect("reports a common name in a file its mechanism lives in", () =>
+    withFixtureLedger(
+      [],
+      createOxlintRuleHarness(RULE, {
+        filename: "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
+      }).runAndExpectFailure(`const [awaiting, setAwaiting] = useState(false);`),
+    ),
+  );
+
   it.effect("an exact ledger entry suppresses the finding", () =>
     withFixtureLedger([KEEP_ENTRY], webFile.run(KEEP)),
   );
@@ -93,22 +113,30 @@ describe("t3code/no-retired-mechanism", () => {
     "reports a retired storage key and call pattern, naming the replacement",
     [
       `const KEY = "mate:zerops:menu-memory";`,
-      `export const read = (client) => client.readProjectCreation(KEY);`,
+      `export const useCompares = (compareAsks) => useZeropsCompares(compareAsks);`,
     ].join("\n"),
     (output) => assert.match(output, /the store holds them in memory/u),
     2,
   );
   webFile.invalid(
     "reports a pattern a formatter wrapped over two lines",
-    `export const read = (client) =>\n  client\n    .readProjectCreation("p");`,
+    `export const useInventory = (drawnMateProjects) =>\n  useMatesInventory(\n    useMemo(() =>\n      drawnMateProjects, []));`,
   );
   webFile.invalid(
-    "reports a pattern written across lines with its own spacing",
-    `const rootAtom =\n  Atom.make(0);\nexport { rootAtom };`,
+    "reports a pattern written with its own spacing",
+    `export const useCompares = (compareAsks) => useZeropsCompares( compareAsks );`,
   );
   hqFile.invalid(
     "reports a retired HQ mechanism",
     `export const segment = STRUCTURE_SEGMENT_LIFETIME;`,
+  );
+  freshFile.valid(
+    "leaves ordinary new code that happens to use a common name alone",
+    `export function Panel() {\n  const [awaiting, setAwaiting] = useState(false);\n  return [awaiting, setAwaiting];\n}`,
+  );
+  freshFile.valid(
+    "leaves every file-bound token alone in a file outside its mechanism",
+    `export const names = [${BOUND.map((mechanism) => `String.raw\`${mechanism.token}\``).join(", ")}];`,
   );
   webFile.valid(
     "leaves a retired name in a comment alone",

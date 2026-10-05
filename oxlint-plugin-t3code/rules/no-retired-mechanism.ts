@@ -124,6 +124,7 @@ export default defineRule({
         const source = compact(context.sourceCode.text, comments);
 
         for (const [mechanism, token] of COMPACT_TOKENS) {
+          if (mechanism.paths !== undefined && !mechanism.paths.includes(path)) continue;
           for (const index of occurrences(source.text, token)) {
             const fingerprint = normalizeFingerprint(mechanism.token);
             const ledgered = ledger.has({ path, kind: KIND, fingerprint });
