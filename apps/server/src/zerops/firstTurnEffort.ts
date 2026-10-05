@@ -9,12 +9,16 @@
  * A conversation that ran keeps what it sends, a person's own pick wins, and a
  * crewmate's thread keeps the crew's rule.
  */
-import type {
-  ModelSelection,
-  OrchestrationCommand,
-  OrchestrationThreadShell,
-  ServerProvider,
+import {
+  CommandId,
+  type ModelSelection,
+  type OrchestrationCommand,
+  type OrchestrationThreadShell,
+  type ServerProvider,
+  type ThreadId,
 } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import { isUnstartedThread, selectionWithPreferredEffort } from "@t3tools/shared/zeropsEffort";
 
 export type TurnStart = Extract<OrchestrationCommand, { type: "thread.turn.start" }>;
@@ -66,3 +70,42 @@ export function planFirstTurnEffort(input: {
     store: sameSelection(modelSelection, thread.modelSelection) ? undefined : modelSelection,
   };
 }
+
+export interface PlannedCommand {
+  readonly command: OrchestrationCommand;
+  /** What the server dispatches first: the thread storing its first turn's selection. */
+  readonly store: OrchestrationCommand | undefined;
+}
+
+/**
+ * The plan for a command a client sends (the socket and the HTTP route alike): a turn as
+ * `planFirstTurnEffort` reads it, everything else as it came. A thread it cannot read leaves the
+ * turn as it came — the rule is a preference, never a reason to refuse.
+ */
+export const makeFirstTurnEffort =
+  <E>(deps: {
+    readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
+    readonly threadShell: (
+      threadId: ThreadId,
+    ) => Effect.Effect<Option.Option<OrchestrationThreadShell>, E>;
+  }) =>
+  (command: OrchestrationCommand): Effect.Effect<PlannedCommand> => {
+    if (command.type !== "thread.turn.start") return Effect.succeed({ command, store: undefined });
+    return Effect.gen(function* () {
+      const providers = yield* deps.providers;
+      const thread = Option.getOrUndefined(yield* deps.threadShell(command.threadId));
+      const plan = planFirstTurnEffort({ turn: command, thread, providers });
+      return {
+        command: plan.turn,
+        store:
+          plan.store === undefined
+            ? undefined
+            : {
+                type: "thread.meta.update" as const,
+                commandId: CommandId.make(`${command.commandId}-effort`),
+                threadId: command.threadId,
+                modelSelection: plan.store,
+              },
+      };
+    }).pipe(Effect.orElseSucceed((): PlannedCommand => ({ command, store: undefined })));
+  };

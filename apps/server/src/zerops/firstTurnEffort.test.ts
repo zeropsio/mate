@@ -3,14 +3,22 @@ import {
   CommandId,
   type ModelSelection,
   MessageId,
+  type OrchestrationThreadShell,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
-import { planFirstTurnEffort, type FirstTurnThread, type TurnStart } from "./firstTurnEffort.ts";
+import {
+  makeFirstTurnEffort,
+  planFirstTurnEffort,
+  type FirstTurnThread,
+  type TurnStart,
+} from "./firstTurnEffort.ts";
 
 // D10 on the server: a new conversation's first turn runs on Extra High when it names no effort —
 // a phone task queued before the catalog arrived, a stand-up — and the thread stores what it ran
@@ -161,4 +169,48 @@ describe("planFirstTurnEffort", () => {
       plan.store,
     ]).toEqual([opus("xhigh"), opus("xhigh"), undefined]);
   });
+});
+
+describe("makeFirstTurnEffort", () => {
+  const shell = (current: FirstTurnThread | undefined) => () =>
+    Effect.succeed(Option.fromNullishOr(current as OrchestrationThreadShell | undefined));
+  const firstTurn = (
+    threadShell: () => Effect.Effect<
+      Option.Option<OrchestrationThreadShell>,
+      { readonly _tag: "ReadFailed" }
+    >,
+  ) => makeFirstTurnEffort({ providers: Effect.succeed([claude]), threadShell });
+
+  it.effect("a client's first turn goes out on Extra High after the thread stores it", () =>
+    Effect.gen(function* () {
+      const planned = yield* firstTurn(shell(thread()))(turn({ modelSelection: opus() }));
+      expect(planned).toEqual({
+        command: turn({ modelSelection: opus("xhigh") }),
+        store: {
+          type: "thread.meta.update",
+          commandId: CommandId.make("c-1-effort"),
+          threadId: ThreadId.make("t-1"),
+          modelSelection: opus("xhigh"),
+        },
+      });
+    }),
+  );
+
+  it.effect("any other command, or a thread it cannot read, goes out as it came", () =>
+    Effect.gen(function* () {
+      const archive = {
+        type: "thread.archive",
+        commandId: CommandId.make("c-2"),
+        threadId: ThreadId.make("t-1"),
+      } as const;
+      expect(yield* firstTurn(shell(thread()))(archive)).toEqual({
+        command: archive,
+        store: undefined,
+      });
+      const unread = yield* firstTurn(() => Effect.fail({ _tag: "ReadFailed" } as const))(
+        turn({ modelSelection: opus() }),
+      );
+      expect(unread).toEqual({ command: turn({ modelSelection: opus() }), store: undefined });
+    }),
+  );
 });
