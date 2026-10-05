@@ -925,6 +925,48 @@ describe("a helper's own work", () => {
         expect(agent?.toolUseId).toBe("toolu-task-1");
       },
     },
+    // F6: the Mate's own text names its helpers by the name it gave them at the
+    // launch ("the deep-sea builder"); the card names them the same way, and by
+    // their task where the launch gave none (or aged out).
+    {
+      name: "is named by the name its launch gave it",
+      rows: () => [
+        activity("tool.started", {
+          itemType: "collab_agent_tool_call",
+          toolCallId: "toolu-task-1",
+          data: {
+            toolName: "Agent",
+            input: { description: "Build the scene", name: "deep-sea-builder" },
+          },
+        }),
+        started("task-1", { title: "Build the scene" }),
+      ],
+      expect: ([agent]) => expect(agent?.title).toBe("deep-sea-builder"),
+    },
+    {
+      name: "keeps its task's words where its launch named it nothing",
+      rows: () => [
+        activity("tool.started", {
+          itemType: "collab_agent_tool_call",
+          toolCallId: "toolu-task-1",
+          data: { toolName: "Agent", input: { description: "Build the scene" } },
+        }),
+        started("task-1", { title: "Build the scene" }),
+      ],
+      expect: ([agent]) => expect(agent?.title).toBe("Build the scene"),
+    },
+    {
+      name: "takes no name from a call that launched no helper",
+      rows: () => [
+        started("task-1", { title: "Build the scene" }),
+        activity("tool.started", {
+          itemType: "dynamic_tool_call",
+          toolCallId: "toolu-task-1",
+          data: { toolName: "Skill", input: { name: "zerops-guide" } },
+        }),
+      ],
+      expect: ([agent]) => expect(agent?.title).toBe("Build the scene"),
+    },
     {
       name: "keeps its report whole",
       rows: () => [
