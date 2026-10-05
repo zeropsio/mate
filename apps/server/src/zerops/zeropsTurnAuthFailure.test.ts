@@ -37,6 +37,18 @@ describe("turnAuthFailureAgent", () => {
       "claude-code",
     ],
     [
+      "a Claude stream that died signed out",
+      event({
+        type: "runtime.error",
+        provider: "claudeAgent",
+        payload: {
+          message:
+            "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
+        },
+      }),
+      "claude-code",
+    ],
+    [
       "Codex answering unauthorized",
       event({ type: "runtime.error", provider: "codex", payload: codexError("unauthorized") }),
       "codex",
