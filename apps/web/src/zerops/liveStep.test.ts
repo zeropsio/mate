@@ -41,12 +41,12 @@ describe("liveStepWords", () => {
     { name: "thinking", step: { kind: "thinking", since }, words: { words: "Thinking" } },
     { name: "its words streaming", step: { kind: "writing", since }, words: { words: "Writing" } },
     {
-      name: "a command that says what it is for: the words, then the command",
+      name: "a command that says what it is for: its words alone, never its code",
       step: calls(build),
-      words: { words: "Build the app", code: "pnpm build" },
+      words: { words: "Build the app" },
     },
     {
-      name: "a command that says nothing of itself is its own title, its shell wrapper dropped",
+      name: "a command that says nothing of itself is said in words, never its code",
       step: calls(
         call({
           id: "call-codex",
@@ -56,7 +56,7 @@ describe("liveStepWords", () => {
           command: "/bin/zsh -lc 'cd /var/www && pnpm build'",
         }),
       ),
-      words: { words: "pnpm build" },
+      words: { words: "Running a command" },
     },
     {
       name: "a call whose input is not in yet is no step on its card: still thinking",
@@ -293,7 +293,7 @@ describe("liveStepWords", () => {
           toolName: "Bash",
         }),
       ),
-      words: { words: "Build the app", code: "pnpm build" },
+      words: { words: "Build the app" },
     },
     {
       // Codex starts a command with the whole command and says nothing more
@@ -308,7 +308,7 @@ describe("liveStepWords", () => {
           command: "/usr/bin/zsh -lc 'pnpm build'",
         }),
       ),
-      words: { words: "pnpm build" },
+      words: { words: "Running a command" },
     },
     {
       // Several at once, as the card's now line says them (K10).
@@ -328,7 +328,7 @@ describe("liveStepWords", () => {
       words: { words: "Running 2 commands" },
     },
     {
-      name: "a credential in the command is masked",
+      name: "a command with a credential in it never shows it",
       step: calls(
         call({
           id: "call-push",
@@ -338,7 +338,7 @@ describe("liveStepWords", () => {
           command: `git push https://mate:${["ghp", "abcdefghijklmnopqrstuvwxyz0123"].join("_")}@git.example.app/shop.git`,
         }),
       ),
-      words: { words: "git push https://mate:••••••@git.example.app/shop.git" },
+      words: { words: "Running a command" },
     },
     { name: "no call relayed it can read", step: calls(), words: { words: "Thinking" } },
   ])("$name", ({ step, words }) => {
@@ -353,8 +353,7 @@ it("holds a row's step as long as the card's now line stands", () => {
 });
 
 describe("paceLiveStep", () => {
-  const building = { words: "Build the app", code: "pnpm build" };
-  const testing = { words: "Build the app", code: "pnpm test" };
+  const building = { words: "Build the app" };
   const reading = { words: "Reading index.ts" };
   const shownAt = (step: LiveStepWords, since: number): ShownLiveStep => ({ step, since });
 
@@ -391,13 +390,6 @@ describe("paceLiveStep", () => {
       shown: shownAt(building, 1_000),
       next: reading,
       nowMs: 1_120,
-      paced: { shown: shownAt(building, 1_000), recheckAt: 1_000 + LIVE_STEP_HOLD_MS },
-    },
-    {
-      name: "the same words running another command are another step",
-      shown: shownAt(building, 1_000),
-      next: testing,
-      nowMs: 1_200,
       paced: { shown: shownAt(building, 1_000), recheckAt: 1_000 + LIVE_STEP_HOLD_MS },
     },
     {

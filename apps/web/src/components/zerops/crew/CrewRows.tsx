@@ -265,12 +265,6 @@ function RowLine({
       )}
     >
       {line.text}
-      {line.code === undefined ? null : (
-        <>
-          {" "}
-          <code className="font-mono text-xs">{line.code}</code>
-        </>
-      )}
       {line.diff === undefined ? null : (
         <span className="tabular-nums">
           {" · "}

@@ -3325,15 +3325,7 @@ function MateReply({
         data-zerops-surface="sidebar-mate-live-step"
         key={`live:${reply.words}`}
       >
-        <span data-run-shimmer="">
-          {reply.words}
-          {reply.code === undefined ? null : (
-            <>
-              {" · "}
-              <span className="font-mono">{reply.code}</span>
-            </>
-          )}
-        </span>
+        <span data-run-shimmer="">{reply.words}</span>
       </span>
     );
   }

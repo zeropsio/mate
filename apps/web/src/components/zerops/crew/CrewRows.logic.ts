@@ -103,8 +103,6 @@ export type CrewRowTone = "ink-2" | "muted" | "ink" | "failed";
 export interface CrewRowLine {
   readonly text: string;
   readonly tone: CrewRowTone;
-  /** A step's command, after its words, in mono. */
-  readonly code?: string | undefined;
   /** Finished work's size, after its words, in the diff's colours. */
   readonly diff?: { readonly insertions: number; readonly deletions: number } | undefined;
 }
@@ -605,7 +603,7 @@ export function crewRowModel(input: {
         : thread.working
           ? thread.liveStep === null
             ? null
-            : { text: thread.liveStep.words, tone: "muted", code: thread.liveStep.code }
+            : { text: thread.liveStep.words, tone: "muted" }
           : pendingWords !== null
             ? { text: pendingWords, tone: "muted" }
             : standsAt === null

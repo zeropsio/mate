@@ -879,12 +879,12 @@ describe("the row's live step", () => {
   it.each<{
     readonly name: string;
     readonly thread: EnvironmentThreadShell;
-    readonly liveStep: { readonly words: string; readonly code?: string } | undefined;
+    readonly liveStep: { readonly words: string } | undefined;
   }>([
     {
-      name: "a working Mate says the step its card's now line says",
+      name: "a working Mate says the step its card's now line says, never its code",
       thread: shell({ ...RUNNING, liveStep: building }),
-      liveStep: { words: "Compile the gallery", code: "npm run compile" },
+      liveStep: { words: "Compile the gallery" },
     },
     {
       name: "between steps it thinks",

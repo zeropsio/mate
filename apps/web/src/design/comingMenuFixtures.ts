@@ -126,7 +126,7 @@ const ADA_WORDS = words("acme-ada", {
   task: "Add search to the docs",
   awaitingWords: true,
   at: minutesAgo(3),
-  liveStep: { words: "Build the search index", code: "pnpm build:search" },
+  liveStep: { words: "Build the search index" },
 });
 const QUINN_AT_WORK = words("acme-quinn", {
   kind: "working",
@@ -135,7 +135,7 @@ const QUINN_AT_WORK = words("acme-quinn", {
   task: "Stand up development of the project.",
   awaitingWords: true,
   at: minutesAgo(1),
-  liveStep: { words: "Setting up the project", code: undefined },
+  liveStep: { words: "Setting up the project" },
 });
 
 /** Quinn as HQ last told it, stored while it slept: its first job asked, no words back yet. */

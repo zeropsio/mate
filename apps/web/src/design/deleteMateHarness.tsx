@@ -125,7 +125,7 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
       kind: "working",
       face: "working",
       at: minutesAgo(3),
-      liveStep: { words: "Running the tests", code: "npm test" },
+      liveStep: { words: "Running the tests" },
     }),
   ],
   [

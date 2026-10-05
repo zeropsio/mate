@@ -47,7 +47,7 @@ const AT_WORK: CrewRowThread = {
   face: "working",
   working: true,
   at: "2026-09-27T09:10:00.000Z",
-  liveStep: { words: "Running", code: "npm test" },
+  liveStep: { words: "Running the tests" },
   asked: null,
 };
 
@@ -128,10 +128,9 @@ describe("crewRowModel: a crewmate at rest and at work", () => {
     const model = rowOf(quiet(), "backend", AT_WORK);
     expect(lines(model)).toEqual({
       line2: ["Add pagination to /api/items", "ink-2"],
-      line3: ["Running", "muted"],
+      line3: ["Running the tests", "muted"],
       needs: [],
     });
-    expect(model.line3?.code).toBe("npm test");
     expect([model.pose, model.slot]).toEqual([
       "working",
       { kind: "clock", since: "2026-09-27T09:10:00.000Z" },

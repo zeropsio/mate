@@ -6,10 +6,12 @@
  * the menu and the card can never say different things: each relayed call
  * becomes the activity the card read it from, and goes through
  * `deriveZeropsThreadModel` and `deriveWorkLogEntries` as the card's
- * timeline does, then `stepOf` — the step, in its words and its command.
+ * timeline does, then `stepOf` — the step, in its words.
  *
- * The newest call the card would draw is the step, said as the card's now
- * line says it (`nowLineWords`), and several steps at once as it says them —
+ * The newest call the card would draw is the step, said in the words the
+ * card's now line says it in (`nowLineWords`) — a command by what it is for,
+ * never its code, which only the card shows — and several steps at once as
+ * it says them —
  * "Running 3 commands"; a call it draws nothing for yet (a call whose input
  * is still streaming in, a Zerops call it keeps out of the chat) is none, and
  * with none left the Mate is still thinking.
@@ -26,7 +28,12 @@ import { maskSecrets } from "@t3tools/shared/messagePreview";
 
 import { isActivityWork, isQuestionToolCall } from "../components/chat/conversation.logic";
 import { NOW_LINE_DWELL_MS } from "../components/chat/nowLineCalm.logic";
-import { nowLineWords, severalWords, type NowLine } from "../components/chat/runCard.logic";
+import {
+  nowLineWords,
+  severalWords,
+  stepNowWords,
+  type NowLine,
+} from "../components/chat/runCard.logic";
 import { stepOf } from "../components/chat/workSteps.logic";
 import {
   deriveWorkLogEntries,
@@ -34,10 +41,9 @@ import {
   type WorkLogEntry,
 } from "../session-logic";
 
-/** A live step as a row says it: its words, and the command it runs after them. */
+/** A live step as a row says it: in words, never a command's code. */
 export interface LiveStepWords {
   readonly words: string;
-  readonly code?: string | undefined;
 }
 
 // The now line's words for what is no call.
@@ -85,12 +91,14 @@ function entryLine(entry: WorkLogEntry): CallLine | null {
   return step.words === null && step.code === null ? null : { kind: "step", step };
 }
 
-/** A call the now line carries, in its words — a command's code after its own words. */
+/**
+ * A call the now line carries, in its words: a command by what it is for, and
+ * one that says nothing of itself as the now line says a command with no code.
+ */
 function lineWords(line: CallLine): LiveStepWords {
-  const words = nowLineWords(line);
-  return line.kind === "step" && line.step.words !== null && line.step.code !== null
-    ? { words, code: line.step.code }
-    : { words };
+  return {
+    words: line.kind === "step" ? stepNowWords({ ...line.step, code: null }) : nowLineWords(line),
+  };
 }
 
 /** One running call as the card's now line has it; null for a call the card draws nothing for yet. */
@@ -110,9 +118,7 @@ function callLine(call: ThreadLiveCall): CallLine | null {
 }
 
 function masked(words: LiveStepWords): LiveStepWords {
-  return words.code === undefined
-    ? { words: maskSecrets(words.words) }
-    : { words: maskSecrets(words.words), code: maskSecrets(words.code) };
+  return { words: maskSecrets(words.words) };
 }
 
 /** What the Mate is on this moment, in its card's words. */
@@ -150,9 +156,9 @@ export interface ShownLiveStep {
   readonly since: number;
 }
 
-/** The same words and the same command: the same step, as a row reads it. */
+/** The same words: the same step, as a row reads it. */
 export function sameLiveStep(left: LiveStepWords, right: LiveStepWords): boolean {
-  return left.words === right.words && left.code === right.code;
+  return left.words === right.words;
 }
 
 /**
