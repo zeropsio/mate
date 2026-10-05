@@ -51,7 +51,8 @@ function structure(
     latest?: { id: string; state: string; completed: boolean };
     working?: boolean;
     nowMs?: number;
-    workGoesOn?: boolean;
+    /** The task ids of the helpers still at work. */
+    helpersAtWork?: ReadonlyArray<string>;
   } = {},
 ) {
   const latestTurn = options.latest
@@ -69,7 +70,9 @@ function structure(
     isWorking: options.working ?? options.live !== undefined,
     activeTurnStartedAt: options.live ? at(0) : null,
     ...(options.nowMs === undefined ? {} : { nowMs: options.nowMs }),
-    ...(options.workGoesOn === undefined ? {} : { workGoesOn: options.workGoesOn }),
+    ...(options.helpersAtWork === undefined
+      ? {}
+      : { helperWorks: (taskId: string) => options.helpersAtWork!.includes(taskId) }),
   });
 }
 
@@ -476,10 +479,10 @@ describe("deriveConversationStructure", () => {
       ],
       { latest: { id: "t1", state: "completed", completed: true }, working: true },
     );
-    // Nobody wrote to start it: it is the run before it, going on (run 11).
-    expect(result.turns).toHaveLength(1);
-    expect(result.turns[0]).toMatchObject({ live: true, answer: null });
-    expect(result.turns[0]!.span.turnIds).toEqual([turn("t1"), turn("t2")]);
+    // The run before it launched no helper: it is a run of its own.
+    const last = result.turns.at(-1)!;
+    expect(last).toMatchObject({ turnId: turn("t2"), live: true, answer: null });
+    expect(result.turns[0]).toMatchObject({ live: false });
 
     // Working right after the person wrote is their message's turn, never the
     // one that finished before it.
@@ -3215,8 +3218,8 @@ describe("deriveOutcome: a service's standing is the latest word on it", () => {
 });
 
 // Run 11 (2026-10-05): a run is what the Mate did for one message of the
-// person's, the turns its helpers and background work woke included — one
-// card, live while anything it started runs, its answer decided as it ends.
+// person's, the turns its helpers woke included — one card, open while its
+// helpers work, its answer decided as it ends.
 describe("a run, its woken turns and its work", () => {
   const ANSWER = "All four sites are live.\n\nEach one has its ten pages, and the switcher works.";
   // A helper's finish reaches the thread under no turn.
@@ -3230,11 +3233,20 @@ describe("a run, its woken turns and its work", () => {
     const { turnId: _turnId, command: _command, toolCallId: _call, ...entry } = base.entry;
     return { ...base, entry };
   };
+  // A helper the run launched: its row stands where it was spawned.
+  const launched = (id: string, minute: number): TimelineEntry =>
+    tool(`launch-${id}`, "t1", minute, {
+      label: `Review ${id}`,
+      sourceActivityKind: "task.started",
+      taskId: `task-${id}`,
+      agentSpawn: { workflowId: null, agentTaskIds: [`task-${id}`] },
+    });
 
   it("draws a turn nobody wrote to start as the run before it going on", () => {
     const entries = [
       user("u1", 0),
       tool("w1", "t1", 1),
+      launched("h1", 1),
       assistant("a1", "t1", 2, "Fresh screenshots are being captured now."),
       finished("h1", 4),
       tool("w2", "t2", 5),
@@ -3247,22 +3259,89 @@ describe("a run, its woken turns and its work", () => {
     expect(run!.answer?.id).toBe("a2");
     // What woke it is the run's: never a loose line between two cards.
     expect([...built.looseIndexes]).toEqual([]);
+    // A run that launched none settled with its answer: the turn after it is
+    // a run of its own, never one that takes the settled card back.
+    const alone = structure(
+      entries.filter((entry) => entry.id !== "launch-h1"),
+      { latest: { id: "t2", state: "completed", completed: true } },
+    );
+    expect(alone.turns.map((each) => each.answer?.id ?? null)).toEqual(["a1", "a2"]);
   });
 
-  it("keeps a run whose work goes on waiting, its last words no answer yet", () => {
-    const entries = [user("u1", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, ANSWER)];
-    const settled = structure(entries, {
-      latest: { id: "t1", state: "completed", completed: true },
+  // Review of pass 42: the words a run said before the work its helpers woke
+  // it to were on the way, never its answer.
+  // Review of pass 42: the files the turns its helpers woke changed went
+  // unsaid, and the diff opened the first turn's alone.
+  it("counts the files every turn of a run changed, its diff the whole run's", () => {
+    const entries = [
+      user("u1", 0),
+      launched("h1", 1),
+      assistant("a1", "t1", 2, "Started it."),
+      finished("h1", 4),
+      tool("w2", "t2", 5),
+      assistant("a2", "t2", 6, ANSWER),
+    ];
+    const [run] = structure(entries, {
+      latest: { id: "t2", state: "completed", completed: true },
+    }).turns;
+    const diffOf = (turnId: string, paths: ReadonlyArray<string>) =>
+      ({
+        turnId: turn(turnId),
+        checkpointTurnCount: 1,
+        checkpointRef: "ref" as TurnDiffSummary["checkpointRef"],
+        status: "ready",
+        files: paths.map((path) => ({ path, kind: "modified", additions: 5, deletions: 1 })),
+        assistantMessageId: null,
+        completedAt: at(9),
+      }) as TurnDiffSummary;
+    const outcome = deriveOutcome({
+      turn: run!,
+      landed: [],
+      diffs: [diffOf("t1", ["a.ts", "b.ts"]), diffOf("t2", ["b.ts", "c.ts"])],
     });
+    expect(outcome?.files).toEqual({
+      count: 3,
+      additions: 20,
+      deletions: 4,
+      turnId: turn("t2"),
+      fromTurnId: turn("t1"),
+    });
+  });
+
+  it("answers a run its helpers woke with its last turn's words alone", () => {
+    const entries = [
+      user("u1", 0),
+      launched("h1", 1),
+      assistant("a1", "t1", 2, ANSWER),
+      finished("h1", 4),
+      tool("w2", "t2", 5),
+    ];
+    const [run] = structure(entries, {
+      latest: { id: "t2", state: "completed", completed: true },
+    }).turns;
+    expect(run!.span.turnIds).toEqual([turn("t1"), turn("t2")]);
+    expect(run!.answer).toBeNull();
+  });
+
+  it("keeps a run waiting on the helpers it launched, its last words no answer yet", () => {
+    const entries = [
+      user("u1", 0),
+      tool("w1", "t1", 1),
+      launched("h1", 1),
+      assistant("a1", "t1", 2, ANSWER),
+    ];
+    const latest = { id: "t1", state: "completed", completed: true };
+    const settled = structure(entries, { latest });
     expect(settled.turns[0]!.waiting).toBe(false);
     expect(settled.turns[0]!.answer?.id).toBe("a1");
-    const waiting = structure(entries, {
-      latest: { id: "t1", state: "completed", completed: true },
-      workGoesOn: true,
-    });
+    const waiting = structure(entries, { latest, helpersAtWork: ["task-h1"] });
     expect(waiting.turns[0]!.waiting).toBe(true);
     expect(waiting.turns[0]!.live).toBe(false);
     expect(waiting.turns[0]!.answer).toBeNull();
+    // Review of pass 42: work it never launched — a helper of another run, a
+    // dev server, a watch — holds no run open, nor hides its answer.
+    const other = structure(entries, { latest, helpersAtWork: ["task-elsewhere"] });
+    expect(other.turns[0]).toMatchObject({ waiting: false, answer: { id: "a1" } });
   });
 
   // D4: the answer is decided when the run ends. While it runs, its words
@@ -3316,5 +3395,48 @@ describe("a run, its woken turns and its work", () => {
     );
     expect(stoppedThenWritten.turns[0]!.interrupted).toBe(true);
     expect(stoppedThenWritten.turns[0]!.byMessage).toBe(false);
+  });
+
+  // Review of pass 42: a completion of the run's call filed under the turn
+  // the person's message started cleared that message, and the run took it in.
+  it("keeps the person's interrupting message the opener of its own run", () => {
+    const built = structure(
+      [
+        user("u1", 0),
+        tool("w1", "t1", 1, { toolLifecycleStatus: "inProgress", toolCallId: "call-c1" }),
+        user("u2", 2),
+        tool("w1done", "t2", 2, { toolCallId: "call-c1" }),
+        tool("w2", "t2", 3),
+        assistant("a2", "t2", 4),
+      ],
+      { latest: { id: "t2", state: "completed", completed: true } },
+    );
+    expect(built.turns.map((turn) => turn.span.opener?.id ?? null)).toEqual(["u1", "u2"]);
+    expect(built.turns[0]!.interrupted).toBe(true);
+  });
+
+  it("never takes a woken turn into a run that launched no helper", () => {
+    const compacted = structure(
+      [
+        user("u1", 0),
+        assistant("a1", "t1", 1),
+        user("cmd", 2, "/compact"),
+        tool("cmp", "t2", 3, { sourceActivityKind: "context-compaction", label: "Compacted" }),
+        tool("w3", "t3", 4),
+        assistant("a3", "t3", 5),
+      ],
+      { latest: { id: "t3", state: "completed", completed: true } },
+    );
+    expect(compacted.turns.map((turn) => turn.span.turnIds.length)).toEqual([1, 1, 1]);
+    const late = structure(
+      [
+        user("u1", 0),
+        assistant("a1", "t1", 1),
+        tool("w2", "t2", 1 + 61),
+        assistant("a2", "t2", 63),
+      ],
+      { latest: { id: "t2", state: "completed", completed: true } },
+    );
+    expect(late.turns).toHaveLength(2);
   });
 });

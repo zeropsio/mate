@@ -1164,11 +1164,60 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
-  // Nobody wrote to start it: the run before it goes on in its own card, what
-  // woke it said where it took it in (run 11).
-  it("goes on with the run a finished background task woke, before its first words", () => {
+  it("draws a run a finished background task woke, before its first words", () => {
     const list = rows({
       entries: [user("m0", 0), assistant("a1", "t1", 1, "Started it."), background("b1", 5)],
+      live: "t2",
+    });
+    expect(shape(list).slice(-3)).toEqual([
+      "background:background:b1",
+      "record:record:turn:t2",
+      "working:working:turn:t2",
+    ]);
+    expect(recordOf(list)).toMatchObject({ items: [], now: { kind: "thinking", messages: [] } });
+  });
+
+  // Review of pass 42: a run's clock is the Mate's own time — a 20-minute
+  // helper between two short turns read "worked 21m".
+  it("counts no wait on its helpers into a run's worked time", () => {
+    const helper = tool("h1", "t1", 1, {
+      label: "Review h1",
+      taskId: "task-h1",
+      agentRole: "general-purpose",
+      sourceActivityKind: "task.completed",
+      tone: "info",
+      updatedAt: at(20),
+    });
+    const list = rows({
+      entries: [
+        user("m0", 0),
+        helper,
+        assistant("a1", "t1", 1, "Started it."),
+        tool("w2", "t2", 21),
+        assistant("a2", "t2", 22, "Done."),
+      ],
+      settled: "t2",
+    });
+    const status = recordOf(list)?.status;
+    const span = Date.parse(status?.endedAt ?? "") - Date.parse(status?.startedAt ?? "");
+    // Twenty-two minutes from the person's message to the answer, two of them the Mate's.
+    expect(span - (status?.waitedMs ?? 0)).toBeLessThan(3 * 60_000);
+  });
+
+  // Nobody wrote to start it, after a run that launched a helper: that run
+  // goes on in its own card, what woke it said where it took it in (run 11).
+  it("goes on with the run its helper's finish woke, before its first words", () => {
+    const helper = tool("h1", "t1", 2, {
+      label: "Review h1",
+      toolTitle: "Review h1",
+      taskId: "task-h1",
+      agentRole: "general-purpose",
+      sourceActivityKind: "task.completed",
+      tone: "info",
+      updatedAt: at(5),
+    });
+    const list = rows({
+      entries: [user("m0", 0), assistant("a1", "t1", 1, "Started it."), helper],
       live: "t2",
     });
     expect(shape(list).slice(-3)).toEqual([
@@ -1176,7 +1225,7 @@ describe("deriveMessagesTimelineRows", () => {
       "record:record:msg:m0",
       "working:working:msg:m0",
     ]);
-    expect(recordOf(list)?.items.map((item) => item.key)).toEqual(["note:a1", "woke:turn:t2"]);
+    expect(recordOf(list)?.items.at(-1)?.key).toBe("woke:turn:t2");
     expect(recordOf(list)).toMatchObject({ now: { kind: "thinking", messages: [] } });
   });
 
@@ -1403,12 +1452,12 @@ describe("deriveMessagesTimelineRows", () => {
       after: [],
       woke: null,
     },
-    // Inside the run, a task that reported between its turns is what woke it.
+    // Work no turn owns between two runs says itself in its own line.
     {
-      name: "a task that reported between its turns",
+      name: "a task no turn owns, between two runs",
       during: [],
       after: [background("b1", 5)],
-      woke: { entries: [{ id: "b1" }], tasks: 1, helpers: false, title: "Task b1" },
+      woke: null,
     },
     {
       name: "a helper that finished after a task reported",
@@ -1427,17 +1476,29 @@ describe("deriveMessagesTimelineRows", () => {
       assistant("a3", "t2", 6, "It came back clean."),
     ];
     const list = rows({ entries, settled: "t2" });
-    // Nobody wrote to start it: it is the run before it going on, one card
-    // (run 11), and what woke it is said inside it, where the run took it in.
-    expect(list.filter((row) => row.kind === "record")).toHaveLength(1);
-    const items = recordOf(list)?.items ?? [];
-    const caption = items.find((item) => item.key === "woke:turn:t2");
+    // Nobody wrote to start it: after a run that launched helpers, it is that
+    // run going on, one card (run 11), and what woke it is said inside it,
+    // where the run took it in; after any other, it is a run of its own, and
+    // what woke it is said over it (review of pass 42).
+    const goesOn = during.length > 0;
+    const records = list.filter((row) => row.kind === "record");
+    if (goesOn) expect(records).toHaveLength(1);
+    const items = records.flatMap((row) => (row.kind === "record" ? row.items : []));
+    const line = list.find((row) => row.id === "woke:turn:t2");
+    const caption = goesOn ? items.find((item) => item.key === "woke:turn:t2") : line;
     if (woke === null) {
       expect(caption).toBeUndefined();
       return;
     }
     const { entries: _said, ...told } = woke;
-    expect(caption).toMatchObject({ kind: "event", event: { type: "woke", ...told } });
+    if (goesOn) {
+      expect(line).toBeUndefined();
+      expect(caption).toMatchObject({ kind: "event", event: { type: "woke", ...told } });
+    } else {
+      // It stands where the person's message would: first in the run.
+      expect(line).toMatchObject({ kind: "background", ...woke });
+      expect(list[list.indexOf(line!) + 1]?.id).toBe("a3");
+    }
     // Said once: never again as a line of the run.
     const reported = new Set(woke.entries.map((entry) => entry.id));
     expect(items.filter((item) => item.kind === "task" && reported.has(item.entry.id))).toEqual([]);
@@ -1469,8 +1530,10 @@ describe("deriveMessagesTimelineRows", () => {
     ];
     const list = rows({ entries, settled: "t2" });
     expect(list.some((row) => row.kind === "background")).toBe(false);
-    // The run goes on over its second turn (run 11): its call is one step there.
-    expect(recordOf(list)?.items.map((item) => item.kind)).toEqual(["step", "note", "step"]);
+    const second = list.findLast((row) => row.kind === "record");
+    expect(second?.kind === "record" ? second.items.map((item) => item.kind) : null).toEqual([
+      "step",
+    ]);
   });
 
   // Run 9: a helper that finished during the run that launched it was taken
@@ -2817,16 +2880,46 @@ describe("deriveMessagesTimelineRows", () => {
   );
 
   it.each([
-    { afterTurnWork: "working" as const, last: "card-end:card-end:msg:m0" },
-    { afterTurnWork: "monitoring" as const, last: "card-end:card-end:msg:m0" },
-    { afterTurnWork: null, last: "message:a1" },
+    {
+      name: "its helper works",
+      afterTurnWork: "working" as const,
+      live: ["task-h1"],
+      last: "card-end:card-end:msg:m0",
+    },
+    // Review of pass 42: a dev server or a watch runs for hours, and a
+    // helper of another run is that run's: neither holds this one open.
+    {
+      name: "a watch works",
+      afterTurnWork: "monitoring" as const,
+      live: ["task-watch"],
+      last: "after-work:after-work",
+    },
+    {
+      name: "another run's helper works",
+      afterTurnWork: "working" as const,
+      live: ["task-other"],
+      last: "after-work:after-work",
+    },
+    { name: "nothing works", afterTurnWork: null, live: [] as string[], last: "message:a1" },
   ])(
     // Run 11, "finished, but background running": the run's own card waits on
-    // what it started, its last words no answer yet, nothing at the bottom.
-    "keeps the run's card waiting while what it started runs on ($afterTurnWork)",
-    ({ afterTurnWork, last }) => {
+    // the helpers it launched, its last words no answer yet, nothing at the bottom.
+    "keeps the run's card waiting while its helpers work on: $name",
+    ({ afterTurnWork, live, last }) => {
+      const helper = tool("h1", "t1", 1, {
+        label: "Review h1",
+        taskId: "task-h1",
+        agentRole: "general-purpose",
+        sourceActivityKind: "task.started",
+        tone: "info",
+      });
       const list = deriveMessagesTimelineRows({
-        timelineEntries: [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, "Done.")],
+        timelineEntries: [
+          user("m0", 0),
+          helper,
+          tool("w1", "t1", 1),
+          assistant("a1", "t1", 2, "Done."),
+        ],
         latestTurn: {
           turnId: turn("t1"),
           state: "completed",
@@ -2838,13 +2931,14 @@ describe("deriveMessagesTimelineRows", () => {
         turnDiffSummaries: [],
         supportsConversationRollback: false,
         afterTurnWork,
+        liveJobs: { ids: new Set(live) },
       });
       expect(shape(list).at(-1)).toBe(last);
-      if (afterTurnWork !== null) {
+      if (live.includes("task-h1")) {
         expect(list.some((row) => row.kind === "after-work")).toBe(false);
         expect(recordOf(list)).toMatchObject({
           live: true,
-          now: { kind: "after", on: afterTurnWork === "working" ? "helpers" : "background" },
+          now: { kind: "after" },
           status: { live: true },
         });
         expect(list.some((row) => row.kind === "working")).toBe(true);

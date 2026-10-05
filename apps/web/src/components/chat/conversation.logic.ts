@@ -318,12 +318,14 @@ export interface TurnSpan {
   readonly turnId: TurnId | null;
   /**
    * Every turn of the run, in order: the one the person's message started,
-   * then the ones nobody wrote to start — its helpers' and background work's
-   * results woke the Mate, and it went on (run 11).
+   * then the ones nobody wrote to start — its helpers' results woke the
+   * Mate, and it went on (run 11).
    */
   readonly turnIds: ReadonlyArray<TurnId>;
   /** Where each turn nobody wrote to start joined the run: its first entry's index. */
   readonly wakes: ReadonlyArray<number>;
+  /** The helpers its turns launched, by task id: what it waits on, and what wakes it. */
+  readonly helpers: ReadonlyArray<string>;
   readonly opener: MessageEntry | null;
   readonly openerIndex: number | null;
   /** Timeline indexes of the turn's own entries, in order. */
@@ -355,6 +357,18 @@ function entryTurnId(entry: TimelineEntry, calls: ReadonlyMap<string, TurnId>): 
     if (began !== undefined) return began;
   }
   return timelineEntryTurnId(entry);
+}
+
+/**
+ * The helpers an entry is the launch or the report of, by task id: a launch
+ * gathers the helpers it started; a helper's own task names its role, where
+ * a shell's or a watch's names none.
+ */
+function helpersOf(entry: TimelineEntry): ReadonlyArray<string> {
+  if (entry.kind !== "work") return [];
+  const work = entry.entry;
+  if (work.agentSpawn !== undefined) return work.agentSpawn.agentTaskIds;
+  return work.agentRole !== undefined && work.taskId !== undefined ? [work.taskId] : [];
 }
 
 /** Whether a run's last word, a helper's report aside, is a usage limit refusing it. */
@@ -419,6 +433,7 @@ export function deriveTurnSpans(input: {
     turnId: TurnId | null;
     turnIds: TurnId[];
     wakes: number[];
+    helpers: string[];
     opener: MessageEntry | null;
     openerIndex: number | null;
     entryIndexes: number[];
@@ -458,6 +473,7 @@ export function deriveTurnSpans(input: {
       turnId,
       turnIds: turnId === null ? [] : [turnId],
       wakes: [],
+      helpers: [],
       opener: opener?.entry ?? null,
       openerIndex: opener?.index ?? null,
       entryIndexes: [],
@@ -468,19 +484,26 @@ export function deriveTurnSpans(input: {
     return span;
   };
   /**
-   * A turn nobody wrote to start goes on with the run before it (run 11): its
-   * helpers' and background work's results woke the Mate, and the run is one
-   * card, not a card per wake. Only the conversation's first turn, with no
-   * run before it, stands alone.
+   * A turn nobody wrote to start goes on with the run before it when that run
+   * launched helpers (run 11): their results woke the Mate, and the run is
+   * one card, not a card per wake — it waited open on them. Any other run's
+   * card settled with its answer, and a turn after it — what a background
+   * command's end woke, a `/compact`'s, a wake-up hours on — is a run of its
+   * own, never one that takes the settled card back (review of pass 42).
    */
   const wake = (turnId: TurnId, index: number | null): MutableSpan | null => {
     const previous = spans.at(-1);
-    if (previous === undefined || previous.turnId === null) return null;
+    if (previous === undefined || previous.turnId === null || previous.helpers.length === 0) {
+      return null;
+    }
     // A usage limit's own attempts and the server's resume after it are the
     // pause's to tell, turn by turn.
     if (endsOnALimit(input.timelineEntries, previous.entryIndexes)) return null;
     previous.turnIds.push(turnId);
     if (index !== null) previous.wakes.push(index);
+    // Its answer is the last turn's to give: words before the work it woke to
+    // were on the way.
+    previous.terminalEntry = null;
     byTurnId.set(turnId, previous);
     return previous;
   };
@@ -495,6 +518,20 @@ export function deriveTurnSpans(input: {
       if (endsTheWait(entry)) unclaimed = [];
       continue;
     }
+    // A completion filed under a later turn than its call began in is its
+    // call's, but says the later turn began: the person's messages waiting
+    // started it (review of pass 42: their message, taken for one sent into
+    // the run it interrupted, lost its own run).
+    const filedUnder = timelineEntryTurnId(entry);
+    if (
+      filedUnder !== null &&
+      filedUnder !== turnId &&
+      unclaimed.length > 0 &&
+      !byTurnId.has(filedUnder)
+    ) {
+      open(filedUnder, openerOf(unclaimed));
+      unclaimed = [];
+    }
     let span = byTurnId.get(turnId);
     if (span) {
       unclaimed = [];
@@ -504,6 +541,7 @@ export function deriveTurnSpans(input: {
       unclaimed = [];
     }
     span.entryIndexes.push(index);
+    span.helpers.push(...helpersOf(entry));
     if (entry.kind === "message" && input.terminalAssistantMessageIds.has(entry.message.id)) {
       span.terminalEntry = entry;
     }
@@ -756,10 +794,11 @@ export function deriveConversationStructure(given: {
   /** The clock the last words' wait is read against; without it nothing waits. */
   readonly nowMs?: number;
   /**
-   * Work the thread started goes on with no turn running — a helper, a
-   * background job (the server's live tasks): the latest run waits on it.
+   * Whether a helper still works, by its task id; unset while a turn runs.
+   * The latest run waits on the helpers it launched, its turns over (run 11)
+   * — never on a background command or a watch, which may run for hours.
    */
-  readonly workGoesOn?: boolean;
+  readonly helperWorks?: (taskId: string) => boolean;
 }): ConversationStructure {
   const entries = given.timelineEntries;
   // The server settled the latest turn a moment before its words landed: it
@@ -785,8 +824,15 @@ export function deriveConversationStructure(given: {
       spans.find((span) => span.turnId === null))
     : undefined;
   // The latest run, its turns over, while what it started goes on.
+  const latestSpan = spans.at(-1);
+  const helperWorks = input.helperWorks;
   const waitingSpan =
-    liveSpan === undefined && input.workGoesOn === true ? spans.at(-1) : undefined;
+    liveSpan === undefined &&
+    helperWorks !== undefined &&
+    latestSpan !== undefined &&
+    latestSpan.helpers.some((taskId) => helperWorks(taskId))
+      ? latestSpan
+      : undefined;
   const openerIndexes = new Set(
     spans.flatMap((span) => (span.openerIndex === null ? [] : [span.openerIndex])),
   );

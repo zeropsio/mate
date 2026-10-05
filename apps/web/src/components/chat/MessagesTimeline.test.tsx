@@ -1757,10 +1757,10 @@ describe("MessagesTimeline — the conversation", () => {
     { watch: true, words: "Watching in the background", title: "Watch the pull request" },
     { watch: false, words: "Still working in the background", title: "Typecheck appdev" },
   ])(
-    // Run 11, "finished, but background running": the run's own card waits
-    // on what it started, with the way to stop it — nothing at the bottom.
-    "keeps the run's card waiting on what it started, with a stop ($title)",
-    ({ watch, title }) => {
+    // A watch or a background command may run for hours: the run settles with
+    // its answer, and the work goes on at the bottom with the way to stop it.
+    "keeps the Mate at work at the bottom after its answer while work runs on, with a stop ($words)",
+    ({ watch, words, title }) => {
       const markup = renderToStaticMarkup(
         <MessagesTimeline
           {...buildProps()}
@@ -1796,12 +1796,49 @@ describe("MessagesTimeline — the conversation", () => {
           ]}
         />,
       );
-      expect(markup).not.toContain("data-conversation-after-work");
-      expect(markup).toContain("Waiting for its background work");
+      expect(markup).toContain('data-conversation-after-work="monitoring"');
+      expect(markup).toContain(words);
       expect(markup).toContain(title);
       expect(markup).toContain(">Stop<");
+      // The answer stays where it was: the panel comes after it.
+      expect(markup.indexOf("On it.")).toBeLessThan(markup.indexOf(words));
     },
   );
+
+  // Run 11, "finished, but background running": the run's own card waits on
+  // the helpers it launched, with the way to stop them — nothing at the bottom.
+  it("keeps the run's card waiting on its helpers, with a stop", () => {
+    const review = tool("h1", 8);
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={settled}
+        afterTurnWork="working"
+        liveJobs={{ ids: new Set(["task-1"]) }}
+        timelineEntries={
+          [
+            buildUserTimelineEntry("Have a helper review it"),
+            {
+              ...review,
+              entry: {
+                ...review.entry,
+                label: "Review the endpoint",
+                toolTitle: "Review the endpoint",
+                sourceActivityKind: "task.started",
+                taskId: "task-1",
+                agentRole: "general-purpose",
+                tone: "info",
+              },
+            },
+            assistant("a1", 10, "A helper is reviewing it."),
+          ] as Parameters<typeof MessagesTimeline>[0]["timelineEntries"]
+        }
+      />,
+    );
+    expect(markup).not.toContain("data-conversation-after-work");
+    expect(markup).toContain("Waiting for its helpers");
+    expect(markup).toContain(">Stop<");
+  });
 
   it("draws a usage limit as one pause, however many attempts hit it", () => {
     const limit = "You've hit your session limit · resets 9:20pm (UTC)";

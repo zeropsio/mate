@@ -3022,7 +3022,7 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
     case "after":
       return (
         <>
-          <span className="run-slot-word">{nowLineWords({ kind: "after", on: filler.on })}</span>
+          <span className="run-slot-word">{nowLineWords({ kind: "after" })}</span>
           <TypingDots className="run-now-dots" />
         </>
       );
@@ -3043,9 +3043,7 @@ const NO_ITEMS: ReadonlyMap<string, RecordItem> = new Map();
 
 /** What the empty slot says, as a key: the same words are no change. */
 function fillerKey(filler: SlotFiller): string {
-  return filler.kind === "waiting" || filler.kind === "after"
-    ? `${filler.kind}:${filler.on}`
-    : filler.kind;
+  return filler.kind === "waiting" ? `${filler.kind}:${filler.on}` : filler.kind;
 }
 
 function LiveSlot({

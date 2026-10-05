@@ -404,11 +404,8 @@ export type TurnHeaderActivity =
       readonly kind: "writing";
       readonly note?: { readonly key: string; readonly message: ChatMessage };
     }
-  /**
-   * Its turns are over and what it started goes on — its helpers, or work it
-   * sent to the background: the run waits on it (run 11).
-   */
-  | { readonly kind: "after"; readonly on: "helpers" | "background" }
+  /** Its turns are over and the helpers it launched work on: the run waits on them (run 11). */
+  | { readonly kind: "after" }
   /**
    * It asked the person something — a question, an approval — and waits; a
    * question it asked in its own words is the record's item `key` too.
@@ -1048,7 +1045,7 @@ function pendingQuestion(stretch: Stretch): Extract<TimelineEntry, { kind: "work
 
 /**
  * Whether an approval the Mate asked for still waits on the person: one asked
- * for and not given yet, the clock standing still meanwhile (`waitedOnPerson`).
+ * for and not given yet, the clock standing still meanwhile (`waitedOn`).
  */
 function approvalPending(stretch: Stretch): Extract<TimelineEntry, { kind: "work" }> | null {
   const open: Array<Extract<TimelineEntry, { kind: "work" }>> = [];
@@ -1061,23 +1058,37 @@ function approvalPending(stretch: Stretch): Extract<TimelineEntry, { kind: "work
 }
 
 /**
- * How long a run waited on the person: from each question or approval it
- * asked to the person's answer. Live, a wait still open is where the clock
- * stands still; settled, it lasted to the run's end.
+ * How long a run waited, which is not the Mate's work: on the person, from
+ * each question or approval it asked to their answer, and on its helpers,
+ * from a turn's end to the turn their results woke (review of pass 42: a
+ * 20-minute helper between two short turns read "worked 21m"). Live, a wait
+ * still open is where the clock stands still; settled, a person's wait
+ * lasted to the run's end.
  */
-function waitedOnPerson(turn: ConversationTurn): { waitedMs: number; waitingSince: string | null } {
+function waitedOn(turn: ConversationTurn): { waitedMs: number; waitingSince: string | null } {
   let waitedMs = 0;
   let since: TimelineEntry | null = null;
-  for (const entry of turn.stretches.flatMap((stretch) => stretch.entries)) {
-    if (entry.kind !== "work") continue;
-    const kind = entry.entry.sourceActivityKind;
-    if (kind === "user-input.requested" || kind === "approval.requested") since ??= entry;
-    else if ((kind === "user-input.resolved" || kind === "approval.resolved") && since !== null) {
-      waitedMs += Math.max(0, Date.parse(entry.createdAt) - Date.parse(since.createdAt)) || 0;
-      since = null;
+  for (const [position, stretch] of turn.stretches.entries()) {
+    const before = position === 0 ? null : (turn.stretches[position - 1]?.endedAt ?? null);
+    if (stretch.lead === null && before !== null) {
+      waitedMs += Math.max(0, Date.parse(stretch.startedAt) - Date.parse(before)) || 0;
+    }
+    for (const entry of stretch.entries) {
+      if (entry.kind !== "work") continue;
+      const kind = entry.entry.sourceActivityKind;
+      if (kind === "user-input.requested" || kind === "approval.requested") since ??= entry;
+      else if ((kind === "user-input.resolved" || kind === "approval.resolved") && since !== null) {
+        waitedMs += Math.max(0, Date.parse(entry.createdAt) - Date.parse(since.createdAt)) || 0;
+        since = null;
+      }
     }
   }
-  if (since === null) return { waitedMs, waitingSince: null };
+  if (since === null) {
+    return {
+      waitedMs,
+      waitingSince: turn.waiting ? (turn.stretches.at(-1)?.endedAt ?? null) : null,
+    };
+  }
   if (turn.live) return { waitedMs, waitingSince: since.createdAt };
   const end = turn.stretches.at(-1)?.endedAt ?? null;
   const left = end === null ? 0 : Date.parse(end) - Date.parse(since.createdAt);
@@ -1908,8 +1919,18 @@ export function deriveMessagesTimelineRows(input: {
     isWorking: input.isWorking,
     activeTurnStartedAt: input.activeTurnStartedAt,
     ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
-    // What the Mate started goes on with no turn running: the latest run waits on it.
-    workGoesOn: !input.isWorking && input.afterTurnWork != null,
+    // The helpers a run launched work on with no turn running: it waits on
+    // them. The server's live tasks say which — a moment past their end
+    // (`LIVE_JOB_GRACE_MS`), so the turn a finish wakes finds the run still
+    // open; a server from before says only that some helper works.
+    ...(input.isWorking
+      ? {}
+      : {
+          helperWorks: (taskId: string) =>
+            input.liveJobs != null
+              ? input.liveJobs.ids.has(taskId)
+              : input.afterTurnWork === "working",
+        }),
   });
   const turnByKey = new Map(structure.turns.map((turn) => [turn.key, turn]));
   // Which tasks are the commands they track: a command's words, and no row of their own.
@@ -2412,7 +2433,7 @@ export function deriveMessagesTimelineRows(input: {
       face: waiting ? "working" : stretchFace({ stretch: last, turn, pausedHere }),
       startedAt: first.startedAt,
       endedAt: waiting ? null : last.endedAt,
-      ...waitedOnPerson(turn),
+      ...waitedOn(turn),
       // A question it asked is work too: a run that only asked read "thought".
       worked:
         items.some(
@@ -2454,7 +2475,7 @@ export function deriveMessagesTimelineRows(input: {
           live: turn.live || waiting,
           items,
           now: waiting
-            ? { kind: "after", on: input.afterTurnWork === "monitoring" ? "background" : "helpers" }
+            ? { kind: "after" }
             : working && answer === null
               ? liveActivity(last, turn.writing, tracked, batch)
               : null,

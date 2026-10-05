@@ -321,8 +321,8 @@ export type NowLine =
   | { readonly kind: "several"; readonly calls: ReadonlyArray<LiveCall> }
   /** It waits on the person: their answer to its question, or their approval. */
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
-  /** Its turns are over, and what it started goes on: its helpers, or its background work. */
-  | { readonly kind: "after"; readonly on: "helpers" | "background" }
+  /** Its turns are over, and the helpers it launched work on. */
+  | { readonly kind: "after" }
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
   /** Over: who, what it did and for how long, and what the effort came to. */
@@ -376,7 +376,7 @@ export function nowLineOf(input: {
     case "waiting":
       return { kind: "waiting", on: now.on };
     case "after":
-      return { kind: "after", on: now.on };
+      return { kind: "after" };
     case "writing":
       return { kind: "writing" };
     case "thinking":
@@ -405,7 +405,7 @@ export type SlotFiller =
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
-  | { readonly kind: "after"; readonly on: "helpers" | "background" };
+  | { readonly kind: "after" };
 
 /**
  * What the live slot holds (pass 35): what the Mate is doing this moment,
@@ -449,7 +449,7 @@ export function slotModelOf(input: {
   if (now === null) return thinking;
   switch (now.kind) {
     case "after":
-      return { live: [], filler: { kind: "after", on: now.on } };
+      return { live: [], filler: { kind: "after" } };
     case "thinking":
       return now.key !== null && now.messages.some((message) => message.text.trim().length > 0)
         ? {
@@ -550,7 +550,7 @@ export function nowLineWords(line: NowLine): string {
     case "waiting":
       return line.on === "approval" ? "Waiting for your approval" : "Waiting for your answer";
     case "after":
-      return line.on === "helpers" ? "Waiting for its helpers" : "Waiting for its background work";
+      return "Waiting for its helpers";
     case "writing":
       return "Writing";
     case "condensing":
@@ -571,7 +571,7 @@ export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
       case "waiting":
         return nowLineWords({ kind: "waiting", on: filler.on });
       case "after":
-        return nowLineWords({ kind: "after", on: filler.on });
+        return nowLineWords({ kind: "after" });
       case "thinking":
         return nowLineWords({ kind: "thinking", thought: null });
       default:
