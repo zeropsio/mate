@@ -5,6 +5,7 @@ import {
   planProjectMove,
   planProjectRenames,
   projectRenameTrouble,
+  renameStillDue,
   renamesLeft,
   runProjectRenames,
 } from "./projectRenames.logic";
@@ -130,6 +131,26 @@ describe("runProjectRenames — every project is tried, a refusal is kept", () =
 
   it("retries the same targets: what is left is the failed renames as they were planned", () => {
     expect(renamesLeft([{ rename: plan[1]!, reason: "x" }])).toEqual([plan[1]]);
+  });
+});
+
+describe("renameStillDue", () => {
+  const left = { projectId: "p1", from: "SPN - Rune", to: "Shop - Rune" };
+
+  it.each([
+    { case: "while the project is named as planned from", current: " SPN - Rune ", due: left },
+    {
+      case: "no longer once the project was renamed since",
+      current: "Shop - Rune",
+      due: undefined,
+    },
+    { case: "no longer once it is named another way", current: "Milo", due: undefined },
+  ])("offers it $case", ({ current, due }) => {
+    expect(renameStillDue(left, current)).toEqual(due);
+  });
+
+  it("offers nothing where nothing was left", () => {
+    expect(renameStillDue(undefined, "SPN - Rune")).toBeUndefined();
   });
 });
 

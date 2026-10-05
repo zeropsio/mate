@@ -14,6 +14,7 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { useUnrenamedProjects } from "./unrenamedProjects";
 
 import type { ZeropsMenuAction } from "../components/zerops/ZeropsProjectMenu";
 import { hqMatesViewAtom, hqStructureAtom, zeropsSessionAtom } from "../state/zerops";
@@ -389,6 +390,7 @@ beforeEach(() => {
   mock.deleteDialog.current = null;
   mock.moveDialog.current = null;
   mock.updateMate.mockReset();
+  useUnrenamedProjects.setState({ left: new Map() });
   mock.moveProject.mockReset();
   mock.createApp.mockReset();
   mock.renameProject.mockReset();
@@ -1422,6 +1424,25 @@ describe("useMateActions — Move renames the Mate's project in Zerops", () => {
       "Acme Docs - Fen",
     );
     expect(verbs(named).find((verb) => verb.id === "finish-rename")).toBeUndefined();
+  });
+  it("offers nothing to finish once the project was renamed since", async () => {
+    mock.renameProject.mockRejectedValueOnce(new Error("No access."));
+    await pressMove(SHOP);
+    const since = { ...named, project: { ...named.project, name: "Milo" } };
+    expect(verbs(since as ZeropsCandidatePresentation).map((verb) => verb.id)).not.toContain(
+      "finish-rename",
+    );
+  });
+
+  it("drops what was left once the Mate is moved again", async () => {
+    mock.renameProject.mockRejectedValueOnce(new Error("No access."));
+    await pressMove(SHOP);
+    expect(verbs(named).map((verb) => verb.id)).toContain("finish-rename");
+    // Back into its own application: nothing to rename, and nothing left to finish either.
+    await act(async () => {
+      mock.moveDialog.current!.onSubmit({ kind: "new", name: "Acme Docs", role: "dev" });
+    });
+    expect(verbs(named).map((verb) => verb.id)).not.toContain("finish-rename");
   });
 });
 

@@ -91,6 +91,17 @@ export async function runProjectRenames(
   return settled.filter((failure) => failure !== undefined);
 }
 
+/**
+ * The rename a Mate's menu still offers to finish: the one left, while its project is named as it
+ * was planned from. A project renamed since has nothing left to finish.
+ */
+export function renameStillDue(
+  left: ProjectRename | undefined,
+  currentName: string,
+): ProjectRename | undefined {
+  return left !== undefined && left.from.trim() === currentName.trim() ? left : undefined;
+}
+
 /** What a retry sends: the failed renames, with the targets they were planned with. */
 export function renamesLeft(
   failures: ReadonlyArray<ProjectRenameFailure>,

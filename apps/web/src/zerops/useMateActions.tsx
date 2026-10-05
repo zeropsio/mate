@@ -145,8 +145,10 @@ import {
   planProjectLeave,
   planProjectMove,
   projectRenameTrouble,
+  renameStillDue,
   type ProjectRename,
 } from "./projectRenames.logic";
+import { useUnrenamedProjects } from "./unrenamedProjects";
 import { useRenameProjects } from "./useRenameProjects";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -492,6 +494,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       if (activeOrganization === null) return;
       const full = renamedProjectName(candidate.project, name);
       if (full === undefined) return;
+      useUnrenamedProjects.getState().drop(candidate.project.id);
       const project = projectRef(activeOrganization.id, candidate.project.id);
       void write(
         candidate.key,
@@ -565,21 +568,19 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
 
   /**
-   * The renames Zerops has not taken after a move, by project: HQ has the Mate in its new
-   * application, its project still carries the old name. Finished by *Finish renaming*, with the
-   * targets planned before the move.
+   * The renames Zerops has not taken after a move, by project (`unrenamedProjects.ts`): HQ has the
+   * Mate in its new application, its project still carries the old name. Finished by *Finish
+   * renaming*, with the targets planned before the move — while the project is named as planned from.
    */
-  const [unrenamed, setUnrenamed] = useState<ReadonlyMap<string, ProjectRename>>(new Map());
+  const unrenamed = useUnrenamedProjects((store) => store.left);
   const renameProjects = useRenameProjects();
   const settleRenames = useCallback(
     async (renames: ReadonlyArray<ProjectRename>, lead: string) => {
       const failures = await renameProjects(renames);
-      setUnrenamed((held) => {
-        const next = new Map(held);
-        for (const { projectId } of renames) next.delete(projectId);
-        for (const { rename } of failures) next.set(rename.projectId, rename);
-        return next;
-      });
+      useUnrenamedProjects.getState().settle(
+        renames,
+        failures.map(({ rename }) => rename),
+      );
       if (failures.length > 0) throw new Error(`${lead}${projectRenameTrouble(failures)}`);
     },
     [renameProjects],
@@ -598,6 +599,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           : membership.kind === "new"
             ? membership.name
             : groupTree.groups.find(({ group }) => group.groupId === membership.appId)?.group.name;
+      // Whatever a move before left is stale from here: this one plans from the name as it stands.
+      useUnrenamedProjects.getState().drop(candidate.project.id);
       const project = { id: candidate.project.id, name: candidate.project.name };
       const oldApp = readZeropsMembership(candidate.project).label;
       const plan =
@@ -634,7 +637,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /** Sends the renames a move left, as they were planned. */
   const finishRename = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
-      const left = unrenamed.get(candidate.project.id);
+      const left = renameStillDue(unrenamed.get(candidate.project.id), candidate.project.name);
       if (left === undefined) return;
       void write(candidate.key, () => settleRenames([left], ""), refresh);
     },
@@ -1114,7 +1117,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               },
             ]
           : []),
-        ...(unrenamed.has(candidate.project.id)
+        ...(renameStillDue(unrenamed.get(candidate.project.id), candidate.project.name) !==
+        undefined
           ? [
               {
                 id: "finish-rename",
