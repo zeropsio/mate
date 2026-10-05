@@ -2,13 +2,14 @@
 
 > For maintainers. Using Zerops Mate? See [docs/user](../user/).
 
-The released clients reach a Mate only through a Zerops account: a person signs in, the
+The released web client reaches a Mate only through a Zerops account: a person signs in, the
 organization's HQ stands in front of the product (ADR 0001: HQ is mandatory, with no mode without
 it), and each Mate is entered through its identity door with a throwaway token. There is no
 standalone server, pairing code or manually entered endpoint in the product: the retired `/pair`
 bookmark discards its credential and redirects to `/zerops` (`apps/web/src/routes/pair.tsx`).
 Shared client source still retains upstream's other connection target shapes and its pairing
-helpers, which no released surface offers, and this fork publishes no client that provisions SSH
+helpers, which the web client never offers (mobile keeps a dormant native pairing screen, below),
+and this fork publishes no client that provisions SSH
 tunnels. For the user-facing guide see [your Zerops account](../user/zerops-account.md).
 
 ## The model
@@ -62,8 +63,9 @@ control plane or copy of session state.
 
 Bearer and SSH are persisted; primary is platform-managed. A Mate's bearer registration comes from
 its door's exchange in [`onboarding.ts`][onboarding]. The upstream pairing path beside it
-(`preparePairingRegistration`, a pairing URL or a host plus pairing code) is retained source that no
-released surface calls.
+(`preparePairingRegistration`, a pairing URL or a host plus pairing code) is never called by the
+web client; mobile still reaches it through its native pairing screen (`ConnectionsPairing`,
+`connectPairingUrl`), kept as dormant source (`mobile-zerops-integration-source.test.ts`).
 
 ### AdvertisedEndpoint
 
@@ -74,7 +76,7 @@ public, tunnel), and compatibility hints such as whether the hosted HTTPS app ca
 Clients treat advertised endpoints as hints, not proof that a route works from the current device.
 The connection attempt decides.
 
-The released clients show no endpoint to pair with: the connections settings point to the Zerops
+The released web client shows no endpoint to pair with: the connections settings point to the Zerops
 projects (`ConnectionsSettings.tsx`), and a Mate's address comes from its Zerops project.
 
 ### Endpoint providers
@@ -139,7 +141,7 @@ it separate from access.
 
 - **Zerops environment.** zcp installs and supervises the Mate server release in the project
   container. It is the only launch the product serves; a standalone `mate serve` outside a Zerops
-  project has no entry in the released clients.
+  project has no entry in the released web client.
 
 ## Security model
 
