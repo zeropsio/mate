@@ -162,9 +162,10 @@ describe("what runs alongside the Mate", () => {
     expect(barsOf(render(DOCK, [INCIDENT])).map(({ text }) => text)).toEqual([
       "apidev Not running · HTTP 502",
       "Tasks Fix the status route 1/3",
-      "3 helpers 2 working · 1 done",
-      // How long it has run, from when it started.
-      expect.stringMatching(/^Background Serve the app on port 3000 \d+[smhd]/),
+      // Several helpers: their count and the newest at work, its mark says how.
+      expect.stringMatching(/^3 helpers Review the docs \d+[smhd]/),
+      // The background's glyph in place of its name, and how long it has run.
+      expect.stringMatching(/^Serve the app on port 3000 \d+[smhd]/),
     ]);
   });
 
@@ -173,10 +174,11 @@ describe("what runs alongside the Mate", () => {
   // No mark at rest: a bar's name says what it is. One that opens wears a
   // call's chevron after its figure, there at rest too, so what opens is
   // plain before the pointer finds it.
-  it("wears no icon at rest, and a chevron where it opens", () => {
-    for (const { body, opens } of barsOf(render(DOCK, [INCIDENT]))) {
+  // The background wears its glyph in place of its name (pass 43, R12-9).
+  it("wears no icon at rest but the background's glyph, and a chevron where it opens", () => {
+    for (const { body, opens, label } of barsOf(render(DOCK, [INCIDENT]))) {
       if (!opens) {
-        expect(body).not.toContain("<svg");
+        expect(body.match(/<svg/g)?.length ?? 0).toBe(label.startsWith("Background") ? 1 : 0);
         continue;
       }
       const chevron = /<svg[^>]*class="([^"]*)"/.exec(body)?.[1]?.split(" ") ?? [];
@@ -406,5 +408,133 @@ describe("what runs alongside the Mate", () => {
       ),
     ];
     expect(figures).toHaveLength(3);
+  });
+});
+
+// One place per fact (pass 43, R12-9): no bar, no "n working", no "n/total";
+// a count only where there are several, the others in words.
+describe("the helpers' and the background's bands", () => {
+  const helpers = DOCK.helpers!;
+  const background = DOCK.background!;
+  const task = (id: string, state: "running" | "done" | "failed", minute: number) => ({
+    ...background.tasks[0]!,
+    id,
+    title: `Task ${id}`,
+    state,
+    startedAt: at(minute),
+    endedAt: state === "running" ? null : at(minute + 1),
+  });
+  const band = (dock: DockModel, name: string) =>
+    barsOf(render(dock)).find(({ label }) => label.startsWith(name));
+  const only = (over: Partial<DockModel>): DockModel => ({
+    ...DOCK,
+    tasks: null,
+    helpers: null,
+    background: null,
+    ...over,
+  });
+
+  it.each([
+    {
+      name: "one helper: its title and its time, no count",
+      dock: only({ helpers: { ...helpers, rows: [helpers.rows[1]!] } }),
+      bar: "Helper",
+      says: /^Review the UI( \d+[smhd]){1,2}$/,
+      label: "Helper: Review the UI, working",
+    },
+    {
+      name: "several helpers: the count and the newest at work",
+      dock: only({ helpers }),
+      bar: "Helpers",
+      says: /^3 helpers Review the docs( \d+[smhd]){1,2}$/,
+      label: "Helpers: 3, Review the docs, working",
+    },
+    {
+      name: "one background task: its title and its time",
+      dock: only({ background }),
+      bar: "Background",
+      says: /^Serve the app on port 3000( \d+[smhd]){1,2}$/,
+      label: "Background: Serve the app on port 3000, running",
+    },
+    {
+      name: "background tasks: the running one, the others in words",
+      dock: only({
+        background: {
+          ...background,
+          tasks: [task("seed", "done", 1), task("build", "running", 2)],
+        },
+      }),
+      bar: "Background",
+      says: /^Task build · 1 other done( \d+[smhd]){1,2}$/,
+      label: "Background: Task build, running, 1 other done",
+    },
+  ])("$name", ({ dock, bar, says, label }) => {
+    const drawn = band(dock, bar);
+    expect(drawn?.text).toMatch(says);
+    expect(drawn?.label.startsWith(label)).toBe(true);
+    expect(drawn?.body).not.toContain("data-status-bar");
+  });
+
+  it.each([
+    { name: "Helpers", dock: only({ helpers }), titles: helpers.rows.map((row) => row.title) },
+    {
+      name: "Background",
+      dock: only({
+        background: {
+          ...background,
+          tasks: [task("seed", "done", 1), task("build", "running", 2)],
+        },
+      }),
+      titles: ["Task seed", "Task build"],
+    },
+  ])("opened, $name shows a row each: its mark, its title, its time", ({ name, dock, titles }) => {
+    const observers = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = create(
+          <ConversationWorking
+            dock={dock}
+            environmentId={null}
+            incidents={[]}
+            onOpenAgents={() => undefined}
+            threadRef={null}
+          />,
+        );
+      });
+      const opener = renderer.root.find(
+        (node) => node.type === "button" && String(node.props["aria-label"]).startsWith(name),
+      );
+      act(() => opener.props.onClick());
+      const detail = renderer.root.find(
+        (node) => node.type === "div" && node.props["data-working-detail"] !== undefined,
+      );
+      const rows = detail.findAll((node) => node.type === "li");
+      expect(rows).toHaveLength(titles.length);
+      const text = (node: (typeof rows)[number]): string =>
+        node.children.map((child) => (typeof child === "string" ? child : text(child))).join(" ");
+      rows.forEach((row, index) => expect(text(row)).toContain(titles[index]));
+      act(() => renderer.unmount());
+    } finally {
+      globalThis.ResizeObserver = observers;
+    }
+  });
+
+  // Every state is one line: nothing shifts as helpers start and end.
+  it("stays one line as helpers start and end", () => {
+    const lines = [
+      [helpers.rows[1]!],
+      helpers.rows,
+      helpers.rows.map((row) => ({ ...row, tone: "ok" as const, endedAt: at(9) })),
+    ].map((rows) => {
+      const drawn = band(only({ helpers: { ...helpers, rows } }), "Helper");
+      return drawn?.body.match(/<(br|div|li)\b/g)?.length ?? 0;
+    });
+    expect(lines).toEqual([0, 0, 0]);
   });
 });
