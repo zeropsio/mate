@@ -68,13 +68,26 @@ export function diffLines(text: string): DiffLine[] {
   });
 }
 
-/** Why the Files tab shows no written file, said plainly; anything else is "can't be read here". */
-export function writtenFileRefusalWords(reason: ThreadWrittenFileRefusal | null): string {
+/**
+ * Why the Files tab shows no written file, said plainly, the Mate by its
+ * name where it is known; anything else is "can't be read here".
+ */
+export function writtenFileRefusalWords(
+  reason: ThreadWrittenFileRefusal | null,
+  mate: string | null,
+): string {
+  const who = mate ?? "your Mate";
   switch (reason) {
     case "not_written":
-      return "This conversation's Mate didn't write this file, so it isn't shown.";
+      return `${mate ?? "Your Mate"} didn't write this file in this conversation, so it isn't shown.`;
+    case "changed_since_write":
+      return `This file changed after ${who} wrote it, so it isn't shown.`;
     case "link_after_thread":
       return "This file is reached through a link made after the conversation began, so it isn't shown.";
+    case "system":
+      return "This path belongs to the system, so it isn't shown.";
+    case "remote_fs":
+      return "This file is on a shared or network mount, where its changes can't be checked, so it isn't shown.";
     case "not_file":
       return "This file is gone.";
     case "binary":

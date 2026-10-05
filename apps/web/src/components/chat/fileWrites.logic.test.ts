@@ -88,11 +88,24 @@ describe("diffLines — a change drawn a line at a time", () => {
 
 describe("writtenFileRefusalWords — why the Files tab shows no written file", () => {
   it.each([
-    ["not_written", "This conversation's Mate didn't write this file, so it isn't shown."],
-    ["too_large", "This file is over 1 MB."],
-    ["binary", "This file isn't text."],
-    [null, "This file can't be read here."],
-  ] as const)("%s", (reason, words) => {
-    expect(writtenFileRefusalWords(reason)).toBe(words);
+    ["not_written", "Sage", "Sage didn't write this file in this conversation, so it isn't shown."],
+    ["changed_since_write", "Sage", "This file changed after Sage wrote it, so it isn't shown."],
+    ["changed_since_write", null, "This file changed after your Mate wrote it, so it isn't shown."],
+    [
+      "link_after_thread",
+      "Sage",
+      "This file is reached through a link made after the conversation began, so it isn't shown.",
+    ],
+    ["system", "Sage", "This path belongs to the system, so it isn't shown."],
+    [
+      "remote_fs",
+      "Sage",
+      "This file is on a shared or network mount, where its changes can't be checked, so it isn't shown.",
+    ],
+    ["too_large", "Sage", "This file is over 1 MB."],
+    ["binary", "Sage", "This file isn't text."],
+    [null, "Sage", "This file can't be read here."],
+  ] as const)("%s, %s", (reason, mate, words) => {
+    expect(writtenFileRefusalWords(reason, mate)).toBe(words);
   });
 });

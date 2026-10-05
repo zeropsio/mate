@@ -17,6 +17,7 @@ import { useTheme } from "~/hooks/useTheme";
 import { DIFF_SURFACE_THEME_UNSAFE_CSS, resolveDiffThemeName } from "~/lib/diffRendering";
 import { threadFileWritesCommands } from "~/state/threadFileWritesCommands";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { useKnownMate } from "~/zerops/useZeropsMates";
 
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 import { projectFileCacheKey } from "./fileContentRevision";
@@ -44,6 +45,7 @@ export default function WrittenFilePanel({
   readonly path: string;
 }) {
   const { resolvedTheme } = useTheme();
+  const mate = useKnownMate(environmentId);
   const wordWrap = useClientSettings((settings) => settings.wordWrap);
   const [read, setRead] = useState<Read>({ state: "reading" });
   const readWrittenFile = useAtomCommand(threadFileWritesCommands.readWrittenFile, {
@@ -92,7 +94,7 @@ export default function WrittenFilePanel({
           className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-xs leading-relaxed text-muted-foreground"
           data-written-file-refused={read.reason ?? "unavailable"}
         >
-          {writtenFileRefusalWords(read.reason)}
+          {writtenFileRefusalWords(read.reason, mate?.name ?? null)}
         </div>
       ) : (
         <DiffWorkerPoolProvider>
