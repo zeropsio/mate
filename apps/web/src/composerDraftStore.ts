@@ -571,6 +571,8 @@ interface ComposerDraftStoreState {
       replaceOptions?: boolean;
     },
   ) => void;
+  /** Drop the draft's model pick, so the thread's own selection shows. */
+  clearModelSelection: (threadRef: ComposerThreadTarget) => void;
   /** Replace the model options for one or more providers in the draft. */
   setModelOptions: (
     threadRef: ComposerThreadTarget,
@@ -2899,6 +2901,31 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 normalizedContexts.length,
               ),
               terminalContexts: normalizedContexts,
+            };
+            const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
+            if (shouldRemoveDraft(nextDraft)) {
+              delete nextDraftsByThreadKey[threadKey];
+            } else {
+              nextDraftsByThreadKey[threadKey] = nextDraft;
+            }
+            return { draftsByThreadKey: nextDraftsByThreadKey };
+          });
+        },
+        clearModelSelection: (threadRef) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          set((state) => {
+            const existing = state.draftsByThreadKey[threadKey];
+            if (
+              !existing ||
+              (Object.keys(existing.modelSelectionByProvider).length === 0 &&
+                existing.activeProvider === null)
+            ) {
+              return state;
+            }
+            const nextDraft: ComposerThreadDraftState = {
+              ...existing,
+              modelSelectionByProvider: {},
+              activeProvider: null,
             };
             const nextDraftsByThreadKey = { ...state.draftsByThreadKey };
             if (shouldRemoveDraft(nextDraft)) {
