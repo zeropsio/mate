@@ -111,6 +111,7 @@ describe("t3code/no-remote-data-in-browser-storage", () => {
     "apps/web/src/zerops/mutedMates.ts",
     "apps/web/src/composerDraftStore.ts",
     "apps/web/src/zerops/handover.ts",
+    "apps/web/src/zerops/bootFrame.ts",
     "apps/mobile/src/features/zerops/storage.ts",
   ]) {
     createOxlintRuleHarness(RULE, { filename }).valid(

@@ -40,6 +40,8 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/zerops/navigationStorage.ts",
   "apps/web/src/zerops/reauth.ts",
   "apps/web/src/zerops/keptSessions.ts",
+  // The first frame follows whether this browser holds a session, never what a source said.
+  "apps/web/src/zerops/bootFrame.ts",
   "apps/web/src/cloud/dpop.ts",
   "apps/mobile/src/features/zerops/storage.ts",
   "apps/mobile/src/features/cloud/dpop.ts",

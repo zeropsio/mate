@@ -40,30 +40,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/bootFrame.ts",
-    "kind": "CallExpression",
-    "fingerprint": "getLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY)",
-    "owner": "invariant 9: sign-in/session",
-    "reason": "reads the menu-width preference inside the boot-frame module; stays when the module moves to the allowlist without its verdict",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/bootFrame.ts",
-    "kind": "CallExpression",
-    "fingerprint": "window.localStorage.removeItem(BOOT_FRAME_STORAGE_KEY)",
-    "owner": "invariant 9: sign-in/session",
-    "reason": "remembers that the last load was signed in to choose the first frame; derived from the local session, so it may join the allowlist instead of going",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/bootFrame.ts",
-    "kind": "CallExpression",
-    "fingerprint": "window.localStorage.setItem(BOOT_FRAME_STORAGE_KEY)",
-    "owner": "invariant 9: sign-in/session",
-    "reason": "remembers that the last load was signed in to choose the first frame; derived from the local session, so it may join the allowlist instead of going",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/composerTopMemory.ts",
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(COMPOSER_TOP_MEMORY_STORAGE_KEY)",
