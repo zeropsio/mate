@@ -5,18 +5,23 @@ import {
   givenOutage,
   reportsWork,
   menuSays,
-  menuOmits,
   menuRowGone,
   caughtUp,
-  catchingUp,
+  cappedHqOutage,
+  zeropsCatchesUp,
+  lastingZeropsOutage,
+  newSegmentWithoutSnapshot,
+  stallsHq,
+  frozenMenuStillSays,
   zeropsGoesDown,
-  heartbeatsWithoutFacts,
+  heartbeatsWithoutSnapshot,
   corruptMate,
   checkpoint,
   opensMate,
   messageAppears,
   showsWokenTab,
 } from "./dsl.ts";
+import { expectedFailureTarget } from "./expectedFailure.ts";
 
 describe("G: outages, sleep and several tabs", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
@@ -28,29 +33,13 @@ describe("G: outages, sleep and several tabs", () => {
         yield* caughtUp(s, "Shop");
         const retained = yield* s.then.menu.keepsRows(["Shop", "Ada"]);
         yield* s.when.hq.socket.drops;
-        yield* catchingUp(s);
+        yield* s.then.hq.isUnavailable;
         yield* opensMate(s);
         yield* s.then.conversation.appears;
         yield* s.when.conversation.sends("Inspect checkout while HQ is down");
         yield* messageAppears(s, "Inspect checkout while HQ is down");
+        yield* cappedHqOutage(s);
         yield* retained;
-        yield* checkpoint(s);
-      }),
-    );
-
-    // Catches reconnect leaving the menu stuck on an application's pre-outage name.
-    it.effect("HQ return reconciles a colleague's outage-time rename", () =>
-      Effect.gen(function* () {
-        const s = yield* givenOutage();
-        yield* s.given.signedIn;
-        yield* caughtUp(s, "Shop");
-        yield* s.when.hq.socket.drops;
-        yield* catchingUp(s);
-        yield* s.when.hq.colleague.renamesProject("Shop", "Shop returned");
-        yield* s.when.hq.socket.returns;
-        yield* Effect.promise(() => s.clock.advance(30_000));
-        yield* caughtUp(s, "Shop returned");
-        yield* menuRowGone(s.page, "Shop");
         yield* checkpoint(s);
       }),
     );
@@ -61,13 +50,16 @@ describe("G: outages, sleep and several tabs", () => {
         const s = yield* givenOutage();
         yield* s.given.signedIn;
         yield* caughtUp(s, "Shop");
+        let previous = "Shop";
         for (const name of ["Shop first return", "Shop second return"]) {
           yield* s.when.hq.socket.drops;
-          yield* catchingUp(s);
+          yield* s.then.hq.isUnavailable;
           yield* s.when.hq.colleague.renamesProject("Shop", name);
           yield* s.when.hq.socket.returns;
           yield* Effect.promise(() => s.clock.advance(30_000));
           yield* caughtUp(s, name);
+          yield* menuRowGone(s.page, previous);
+          previous = name;
         }
         yield* checkpoint(s);
       }),
@@ -79,13 +71,18 @@ describe("G: outages, sleep and several tabs", () => {
         const s = yield* givenOutage();
         yield* s.given.signedIn;
         yield* caughtUp(s, "Shop");
+        const stalled = yield* stallsHq(s);
+        yield* s.when.hq.colleague.renamesProject("Shop", "Shop while stalled");
+        yield* Effect.promise(() => stalled.waitForDownstream("Shop while stalled"));
+        yield* Effect.promise(() => s.clock.advance(30_000));
+        yield* menuRowGone(s.page, "Shop while stalled");
+        yield* menuSays(s.page, "Shop");
         yield* Effect.promise(() => s.clock.sleep());
-        yield* s.when.hq.socket.drops;
         yield* s.when.hq.colleague.renamesProject("Shop", "Shop after wake");
-        yield* s.when.hq.socket.returns;
+        yield* Effect.promise(() => stalled.waitForDownstream("Shop after wake"));
+        yield* frozenMenuStillSays(s, "Shop", "Shop after wake");
         yield* Effect.promise(() => s.clock.wake(3_600_000));
         yield* showsWokenTab(s);
-        yield* Effect.promise(() => s.clock.advance(30_000));
         yield* caughtUp(s, "Shop after wake");
         yield* checkpoint(s);
       }),
@@ -125,24 +122,31 @@ describe("G: outages, sleep and several tabs", () => {
     );
 
     // Catches losing the menu or an already connected conversation when Zerops realtime fails.
-    it.effect("Zerops down preserves the menu and an open Mate's conversation", () =>
-      Effect.gen(function* () {
-        const s = yield* givenOutage();
-        yield* s.given.signedIn;
-        yield* caughtUp(s, "Shop");
-        yield* opensMate(s);
-        yield* s.then.conversation.appears;
-        const retained = yield* s.then.menu.keepsRows(["Shop", "Ada"]);
-        yield* zeropsGoesDown(s);
-        yield* s.when.conversation.sends("Inspect checkout while Zerops is down");
-        yield* messageAppears(s, "Inspect checkout while Zerops is down");
-        yield* retained;
-        yield* checkpoint(s);
-      }),
+    it.effect(
+      "Zerops outage shows catching up and retains menu/chat through capped HQ retries",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* givenOutage();
+          yield* s.given.signedIn;
+          yield* caughtUp(s, "Shop");
+          yield* opensMate(s);
+          yield* s.then.conversation.appears;
+          const retained = yield* s.then.menu.keepsRows(["Shop", "Ada"]);
+          yield* zeropsGoesDown(s);
+          yield* lastingZeropsOutage(s);
+          yield* zeropsCatchesUp(s);
+          yield* s.when.hq.socket.drops;
+          yield* cappedHqOutage(s);
+          yield* zeropsCatchesUp(s);
+          yield* s.when.conversation.sends("Inspect checkout while Zerops is down");
+          yield* messageAppears(s, "Inspect checkout while Zerops is down");
+          yield* retained;
+          yield* checkpoint(s);
+        }),
     );
 
     // Catches one unreadable HQ Mate record erasing an unrelated Mate's task or the whole menu.
-    it.effect("a corrupt HQ Mate record removes only its own task", () =>
+    it.effect("a corrupt HQ Mate record keeps unrelated tasks and menu rows", () =>
       Effect.gen(function* () {
         const s = yield* givenOutage();
         yield* s.given.project("Bea", { mate: true, app: "Shop" });
@@ -152,10 +156,11 @@ describe("G: outages, sleep and several tabs", () => {
         yield* menuSays(s.page, "Inspect Ada checkout");
         yield* menuSays(s.page, "Inspect Bea checkout");
         yield* corruptMate(s, "Ada");
-        yield* menuOmits(s.page, "Inspect Ada checkout");
+        yield* s.when.hq.colleague.renamesProject("Shop", "Shop after corrupt");
+        yield* menuSays(s.page, "Shop after corrupt");
         yield* menuSays(s.page, "Inspect Bea checkout");
         yield* s.then.menu.row("Ada").appears();
-        yield* s.then.menu.row("Shop").appears();
+        yield* s.then.menu.row("Shop after corrupt").appears();
         yield* checkpoint(s);
       }),
     );
@@ -168,7 +173,8 @@ describe("G: outages, sleep and several tabs", () => {
         yield* s.given.signedIn;
         yield* menuSays(s.page, "Inspect checkout before outage");
         yield* s.when.hq.socket.drops;
-        yield* catchingUp(s);
+        yield* s.then.hq.isUnavailable;
+        yield* cappedHqOutage(s);
         yield* menuSays(s.page, "Inspect checkout before outage").pipe(
           Effect.ensuring(checkpoint(s)),
         );
@@ -178,13 +184,16 @@ describe("G: outages, sleep and several tabs", () => {
     // Targets an HQ outage erasing a pending question that the user still needs to answer.
     it.effect.fails("HQ down retains the last known pending question", () =>
       Effect.gen(function* () {
+        const target = expectedFailureTarget("retained pending question");
         const s = yield* givenOutage();
         yield* reportsWork(s, "Ada", "Inspect checkout", "Which checkout should I inspect?");
         yield* s.given.signedIn;
         yield* menuSays(s.page, "Which checkout should I inspect?");
         yield* s.when.hq.socket.drops;
-        yield* catchingUp(s);
-        yield* menuSays(s.page, "Which checkout should I inspect?").pipe(
+        yield* s.then.hq.isUnavailable;
+        yield* cappedHqOutage(s);
+        yield* checkpoint(s);
+        yield* target(menuSays(s.page, "Which checkout should I inspect?")).pipe(
           Effect.catchDefect((cause) =>
             Effect.die(
               new Error("Last known pending question disappeared during HQ outage", { cause }),
@@ -195,21 +204,33 @@ describe("G: outages, sleep and several tabs", () => {
       }),
     );
 
-    // Targets heartbeats keeping old HQ facts apparently current forever without another snapshot.
-    it.effect.fails("pings alone cannot keep a three-minute-old HQ view live", () =>
+    // Targets a new segment staying apparently current when pings arrive but its snapshot never does.
+    it.effect.fails("a new HQ segment without its snapshot cannot stay live on pings", () =>
       Effect.gen(function* () {
+        const target = expectedFailureTarget("new-segment outage surface");
         const s = yield* givenOutage();
         yield* s.given.signedIn;
         yield* caughtUp(s, "Shop");
-        yield* heartbeatsWithoutFacts(s);
-        yield* catchingUp(s).pipe(
-          Effect.catchDefect((cause) =>
-            Effect.die(
-              new Error("HQ still appears live after nine pings without fresh facts", { cause }),
-            ),
-          ),
-          Effect.ensuring(checkpoint(s)),
-        );
+        yield* newSegmentWithoutSnapshot(s);
+        yield* heartbeatsWithoutSnapshot(s);
+        yield* checkpoint(s);
+        yield* target(s.then.hq.isUnavailable);
+      }),
+    );
+
+    // Targets corrupt HQ data deleting the last valid task instead of keeping it until a valid replacement.
+    it.effect.fails("Ada's task is kept after a corrupt update", () =>
+      Effect.gen(function* () {
+        const target = expectedFailureTarget("retained task after corrupt update");
+        const s = yield* givenOutage();
+        yield* reportsWork(s, "Ada", "Inspect Ada checkout");
+        yield* s.given.signedIn;
+        yield* menuSays(s.page, "Inspect Ada checkout");
+        yield* corruptMate(s, "Ada");
+        yield* s.when.hq.colleague.renamesProject("Shop", "Shop after corrupt");
+        yield* menuSays(s.page, "Shop after corrupt");
+        yield* checkpoint(s);
+        yield* target(menuSays(s.page, "Inspect Ada checkout"));
       }),
     );
   });

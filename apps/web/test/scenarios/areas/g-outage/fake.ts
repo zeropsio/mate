@@ -4,6 +4,7 @@ import { MateLinkUp, MateOverview } from "@t3tools/shared/mateLink";
 import { overviewOf, mainAt } from "../../../../../hq/test/harness/overviews.ts";
 import { deadline } from "../../harness/http.ts";
 import type { ScenarioExtension, ScenarioDrivers } from "../../harness/scenario.ts";
+import type { Page } from "puppeteer-core";
 import { outageConnection } from "../../fakes/g-outage/connection.ts";
 
 const controls = new WeakMap<ScenarioDrivers, Awaited<ReturnType<typeof outageConnection>>>();
@@ -20,6 +21,21 @@ export function outageControls(drivers: ScenarioDrivers) {
   if (!connection) throw new Error("Install the outage extension before creating fixtures");
   return connection;
 }
+
+export const refusedHqRetry = (page: Page) =>
+  page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/stream-ticket") &&
+      response.request().method() === "POST" &&
+      response.status() === 503,
+    { timeout: 10_000 },
+  );
+
+export const refusedZeropsRetry = (page: Page) =>
+  page.waitForResponse(
+    (response) => response.url().includes("api.app-prg1.zerops.io") && response.status() === 503,
+    { timeout: 10_000 },
+  );
 
 const decodeOverview = Schema.decodeUnknownEffect(MateOverview);
 const encodeLink = Schema.encodeEffect(MateLinkUp);
@@ -55,7 +71,9 @@ export const reportsWork = Effect.fn("outage.reportsWork")(function* (
 
 export const dropZerops = (drivers: ScenarioDrivers) =>
   Effect.promise(async () => {
-    drivers.zerops.handlers.push(() => drivers.zerops.error(503, "serviceUnavailable"));
+    drivers.zerops.handlers.push((request) =>
+      request.method === "OPTIONS" ? undefined : drivers.zerops.error(503, "serviceUnavailable"),
+    );
     drivers.zerops.faults.set("POST /web-socket/login", { status: 503 });
     const sockets = [...drivers.zerops.sockets.values()];
     if (sockets.length === 0)

@@ -1,7 +1,14 @@
 import * as Effect from "effect/Effect";
 import type { Page } from "puppeteer-core";
 import { createScenario } from "../../harness/scenario.ts";
-import { installArea, outageControls, reportsWork as reportWork, dropZerops } from "./fake.ts";
+import {
+  installArea,
+  outageControls,
+  reportsWork as reportWork,
+  dropZerops,
+  refusedHqRetry,
+  refusedZeropsRetry,
+} from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 type Actor = Pick<Scenario, "page" | "clock" | "then">;
@@ -32,19 +39,6 @@ export const menuSays = (page: Page, words: string) =>
     );
   });
 
-export const menuOmits = (page: Page, words: string) =>
-  Effect.promise(async () => {
-    await page.bringToFront();
-    await page.waitForFunction(
-      (words) =>
-        [
-          ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-environments"]'),
-        ].every((element) => !element.innerText.includes(words)),
-      { timeout: 10_000, polling: "raf" },
-      words,
-    );
-  });
-
 export const menuRowGone = (page: Page, name: string) =>
   Effect.promise(async () => {
     await page.bringToFront();
@@ -70,29 +64,95 @@ export const caughtUp = (actor: Actor, name: string) =>
     );
   });
 
-export const catchingUp = (actor: Actor) =>
-  Effect.promise(async () => {
-    await actor.page.waitForFunction(
-      () =>
-        [
-          ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-hq-outage"]'),
-        ].some((element) => /Reconnecting|Updating|unavailable/.test(element.textContent ?? "")),
-      { timeout: 10_000, polling: "raf" },
-    );
+export const cappedHqOutage = (s: Scenario) =>
+  Effect.gen(function* () {
+    yield* s.then.hq.isUnavailable;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const capped = yield* Effect.promise(() =>
+        s.page.evaluate(
+          () =>
+            document
+              .querySelector('[data-zerops-surface="sidebar-hq-outage"]')
+              ?.textContent?.includes("Retrying every 30 seconds.") === true,
+        ),
+      );
+      if (capped) return;
+      const receipt = refusedHqRetry(s.page);
+      yield* Effect.promise(() => s.clock.advance(30_000));
+      yield* Effect.promise(() => receipt);
+      yield* Effect.promise(() =>
+        s.page.evaluate(
+          () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+        ),
+      );
+    }
+    throw new Error("HQ never reached its capped outage state after eight 30-second retry rounds");
   });
 
 export const zeropsGoesDown = (s: Scenario) => dropZerops(s.drivers);
 
-export const heartbeatsWithoutFacts = (s: Scenario) =>
+export const zeropsCatchesUp = (s: Scenario) =>
+  Effect.promise(async () => {
+    await s.page.waitForFunction(
+      () =>
+        [
+          ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-account-line"]'),
+        ].some(
+          (element) =>
+            element.getBoundingClientRect().height > 0 &&
+            element.innerText.includes("Zerops isn't answering. Trying again…"),
+        ),
+      { timeout: 10_000, polling: "raf" },
+    );
+  });
+
+export const lastingZeropsOutage = (s: Scenario) =>
   Effect.gen(function* () {
-    const wire = outageControls(s.drivers);
-    wire.silenceFacts();
-    yield* s.when.hq.colleague.renamesProject("Shop", "Shop during lost updates");
-    // Nine acknowledged heartbeats cover three 60-second silence windows in virtual browser time.
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const shown = yield* Effect.promise(() =>
+        s.page.evaluate(
+          () =>
+            document
+              .querySelector<HTMLElement>('[data-zerops-surface="sidebar-account-line"]')
+              ?.innerText.includes("Zerops isn't answering. Trying again…") === true,
+        ),
+      );
+      if (shown) return;
+      const receipt = refusedZeropsRetry(s.page);
+      yield* Effect.promise(() => s.clock.advance(30_000));
+      yield* Effect.promise(() => receipt);
+      yield* Effect.promise(() =>
+        s.page.evaluate(
+          () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+        ),
+      );
+    }
+    throw new Error("Zerops never showed its catching-up line after eight 30-second retry rounds");
+  });
+
+export const newSegmentWithoutSnapshot = (s: Scenario) =>
+  Effect.promise(() => outageControls(s.drivers).nextSegmentWithoutSnapshot());
+
+export const heartbeatsWithoutSnapshot = (s: Scenario) =>
+  Effect.gen(function* () {
+    // Nine acknowledged heartbeats in the NEW segment span 180 seconds of virtual browser time.
     for (let n = 0; n < 9; n++) {
       yield* Effect.promise(() => s.clock.advance(20_000));
-      yield* Effect.promise(() => wire.ping());
+      yield* Effect.promise(() => outageControls(s.drivers).ping());
     }
+  });
+
+export const stallsHq = (s: Scenario) => Effect.promise(() => outageControls(s.drivers).stall());
+
+export const frozenMenuStillSays = (s: Scenario, name: string, absent: string) =>
+  Effect.promise(async () => {
+    const words = await s.page.evaluate(() =>
+      [...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-environments"]')]
+        .map((element) => element.innerText)
+        .join("\n"),
+    );
+    if (!words.split("\n").includes(name) || words.includes(absent))
+      throw new Error("Stalled HQ recovered before the laptop woke");
   });
 
 export const corruptMate = (s: Scenario, name: string) =>
