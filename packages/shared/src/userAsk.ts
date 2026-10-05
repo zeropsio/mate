@@ -88,10 +88,11 @@ export function userAskOf(message: UserAskSource): UserAsk | null {
   }
   const attachments = message.attachments ?? [];
   const images = attachments.filter((attachment) => attachment.type === "image").length;
-  // A picture's label is not something the person wrote; its notes are.
+  // A picture's or a file's label is not something the person wrote; a picture's notes are.
   const words = pictureWords(
     trimmed.startsWith(EFFORT_PREFIX) ? trimmed.slice(EFFORT_PREFIX.length).trim() : trimmed,
     images,
+    attachments.length - images,
   );
   if (words.length > 0 && words !== IMAGE_ONLY_BOOTSTRAP_PROMPT) {
     return { kind: "text", text: words };

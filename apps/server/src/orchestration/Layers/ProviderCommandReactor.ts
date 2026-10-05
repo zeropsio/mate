@@ -1409,8 +1409,9 @@ const make = Effect.gen(function* () {
 
     const isCompactCommand = isCompactCommandMessage(message);
     // Only the first real ask titles the thread and names its branch: a slash
-    // command or the usage-limit resume asks nothing, and attachments without
-    // words are read from the attachments, never from the client's placeholder.
+    // command or the usage-limit resume asks nothing, attachments without
+    // words are read from the attachments, never from the client's placeholder,
+    // and words are the person's own, without a label or the effort prefix.
     const ask = userAskOf(message);
     if (!hasOtherAsks && ask !== null) {
       const project = yield* resolveProject(thread.projectId);
@@ -1420,7 +1421,7 @@ const make = Effect.gen(function* () {
           projects: project ? [project] : [],
         }) ?? process.cwd();
       const generationInput = {
-        messageText: ask.kind === "text" ? message.text : "",
+        messageText: ask.kind === "text" ? ask.text : "",
         ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
         ...(event.payload.titleSeed !== undefined ? { titleSeed: event.payload.titleSeed } : {}),
       };

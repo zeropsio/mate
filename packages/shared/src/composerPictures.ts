@@ -142,18 +142,32 @@ export function splitPictureText(text: string, pictureCount: number): PictureTex
 }
 
 /**
- * What the person wrote in a message with pictures: the words, and each
- * picture's notes in its place. A label is not something they wrote, nor is
- * the line an empty mark stands for.
+ * What the person wrote in a message with pictures and files: the words, and
+ * each picture's notes in its place. A label is not something they wrote, nor
+ * is the line an empty mark stands for. A file's label goes while the message
+ * has that file; one with no file behind it is words, as a picture's is.
  */
-export function pictureWords(text: string, pictureCount: number): string {
+export function pictureWords(text: string, pictureCount: number, fileCount = 0): string {
   return splitPictureText(text, pictureCount)
     .flatMap((segment) =>
       segment.kind === "text"
-        ? [segment.text]
+        ? [withoutFileLabels(segment.text, fileCount)]
         : segment.notes.filter((note) => note !== PICTURE_EMPTY_NOTE),
     )
+    .filter((words) => words.trim().length > 0)
     .join("\n");
+}
+
+function withoutFileLabels(text: string, fileCount: number): string {
+  if (fileCount === 0) return text;
+  return text
+    .split("\n")
+    .filter((line) => {
+      const label = FILE_LABEL_PATTERN.exec(line);
+      return label === null || Number(label[1]) > fileCount;
+    })
+    .join("\n")
+    .replace(/^\n+|\n+$/gu, "");
 }
 
 export interface MessagePicture<A> {

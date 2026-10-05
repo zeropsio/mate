@@ -129,6 +129,16 @@ describe("userAskOf", () => {
       },
       { kind: "attachments", images: 1, files: 1 },
     ],
+    [
+      "words after a file, its label left out",
+      { text: "[File 1]\nStand up the shop from this export", attachments: [file] },
+      { kind: "text", text: "Stand up the shop from this export" },
+    ],
+    [
+      "a file with nothing written asks by its file",
+      { text: "[File 1]", attachments: [file] },
+      { kind: "attachments", images: 0, files: 1 },
+    ],
   ])("%s asks", (_, message, expected) => {
     expect(userAskOf(message)).toEqual(expected);
   });
@@ -167,6 +177,12 @@ describe("userAskPreviewText", () => {
     ["a slash command", { text: "/compact" }, null],
     ["the resume prompt", { text: USAGE_LIMIT_RESUME_PROMPT }, null],
     ["marks alone", { text: "---" }, null],
+    [
+      "words after a file, without its label",
+      { text: "[File 1]\nStand up the shop from this export", attachments: [file] },
+      "Stand up the shop from this export",
+    ],
+    ["a file alone", { text: "[File 1]", attachments: [file] }, "1 file"],
   ])("%s", (_, message, expected) => {
     expect(userAskPreviewText(message)).toBe(expected);
   });
