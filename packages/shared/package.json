@@ -387,6 +387,10 @@
       "types": "./src/favicon.ts",
       "import": "./src/favicon.ts"
     },
+    "./zeropsEffort": {
+      "types": "./src/zeropsEffort.ts",
+      "import": "./src/zeropsEffort.ts"
+    },
     "./crewHome": {
       "types": "./src/crewHome.ts",
       "import": "./src/crewHome.ts"
