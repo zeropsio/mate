@@ -4542,16 +4542,14 @@ function cardRowOf(chat: HTMLElement | null): HTMLElement | null {
  */
 function stopGliding(element: HTMLElement): void {
   if (typeof element.getAnimations !== "function") return;
+  // Only its own: a row's rise in (`run-rise`) moves it by a translate too.
   for (const animation of element.getAnimations()) {
-    const effect = animation.effect;
-    if (
-      effect instanceof KeyframeEffect &&
-      effect.getKeyframes().some((frame) => "translate" in frame)
-    ) {
-      animation.cancel();
-    }
+    if (animation.id === GLIDE_ID) animation.cancel();
   }
 }
+
+/** What names a plop's or a glide's animation, so a new move stops only those. */
+const GLIDE_ID = "run-glide";
 
 /**
  * An element gliding to its place from where it showed (`stood`, its top on
@@ -4567,6 +4565,7 @@ function glideFrom(element: HTMLElement, stood: number): number {
 function glideBy(element: HTMLElement, moved: number): number {
   if (Math.abs(moved) < 0.5) return 0;
   element.animate([{ translate: `0 ${moved}px` }, { translate: "0 0" }], {
+    id: GLIDE_ID,
     duration: PLOP_MS,
     easing: "cubic-bezier(0.23, 1, 0.32, 1)",
   }).currentTime = 0;
@@ -4746,6 +4745,7 @@ function plop(row: HTMLElement, from: number) {
   // In effect from this frame: a new animation waits a frame for its start
   // time, and the row would stand a frame at its place before travelling.
   row.animate(frames, {
+    id: GLIDE_ID,
     duration: Math.max(PLOP_MS, steps * PLOP_FRAME_MS),
     easing: "linear",
   }).currentTime = 0;
