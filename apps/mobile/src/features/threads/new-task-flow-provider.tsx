@@ -99,6 +99,7 @@ import {
   resolveNewTaskLocalWorkspaceSelection,
 } from "./new-task-context-presentation";
 import { resolveEnvironmentProjectMatch } from "./new-task-project-selection";
+import { newConversationSelection } from "../zerops/new-conversation-effort";
 
 type WorkspaceMode = "local" | "worktree";
 
@@ -495,12 +496,22 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
 
   // An unsent draft keeps its explicit pick. Fresh drafts resolve the project
   // default before the last manual app-wide selection and provider default.
-  const selectedModel = resolveNewTaskModelSelection({
+  const resolvedNewTaskModel = resolveNewTaskModelSelection({
     draftSelection: draftModelSelection,
     projectDefaultSelection: projectDefaultModelSelection,
     stickySelection: stickyModelSelection,
     modelOptions,
   });
+  // A new task is a new conversation: Extra High unless an effort is picked (D10).
+  const selectedModel = useMemo(
+    () =>
+      newConversationSelection({
+        isNew: true,
+        providers: selectedEnvironmentServerConfig?.providers,
+        selection: resolvedNewTaskModel,
+      }),
+    [resolvedNewTaskModel, selectedEnvironmentServerConfig?.providers],
+  );
   const selectedModelKey = selectedModel
     ? `${selectedModel.instanceId}:${selectedModel.model}`
     : null;
@@ -951,11 +962,15 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
       const text = draft.text.trim();
       // Use the displayed selection rules without substituting an unavailable
       // Antigravity model while the task is queued.
-      const draftModelSelection =
-        resolveSelectableModelSelection(
-          selectedEnvironmentServerConfig,
-          draft.modelSelection ?? null,
-        ) ?? selectedModel;
+      const draftModelSelection = newConversationSelection({
+        isNew: true,
+        providers: selectedEnvironmentServerConfig?.providers,
+        selection:
+          resolveSelectableModelSelection(
+            selectedEnvironmentServerConfig,
+            draft.modelSelection ?? null,
+          ) ?? selectedModel,
+      });
       if (text.length === 0 || !draftModelSelection) {
         return null;
       }

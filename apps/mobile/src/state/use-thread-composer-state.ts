@@ -23,6 +23,8 @@ import { deriveActiveWorkStartedAt } from "@t3tools/shared/orchestrationTiming";
 
 import { makeQueuedMessageMetadata } from "../lib/commandMetadata";
 import { isModelSelectionUnavailable } from "../lib/modelOptions";
+import { newConversationSelection } from "../features/zerops/new-conversation-effort";
+import { isUnstartedThread } from "@t3tools/shared/zeropsEffort";
 import { resolveProviderInteractionMode } from "./legacy-plan-mode";
 import {
   convertPastedImagesToAttachments,
@@ -182,7 +184,20 @@ export function useThreadComposerState() {
   const draftAttachments = selectedDraft?.attachments ?? [];
   const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
   const selectedThread = selectedThreadDetail ?? selectedThreadShell;
-  const modelSelection = selectedDraft?.modelSelection ?? selectedThread?.modelSelection ?? null;
+  // A thread that never ran a turn is a new conversation: Extra High unless an effort is picked (D10).
+  const modelSelection = useMemo(
+    () =>
+      newConversationSelection({
+        isNew: isUnstartedThread(selectedThread),
+        providers: selectedEnvironmentRuntime?.serverConfig?.providers,
+        selection: selectedDraft?.modelSelection ?? selectedThread?.modelSelection ?? null,
+      }),
+    [
+      selectedDraft?.modelSelection,
+      selectedEnvironmentRuntime?.serverConfig?.providers,
+      selectedThread,
+    ],
+  );
   const runtimeMode = selectedDraft?.runtimeMode ?? selectedThread?.runtimeMode ?? null;
   const selectedProvider = selectedEnvironmentRuntime?.serverConfig?.providers.find(
     (provider) => provider.instanceId === modelSelection?.instanceId,
@@ -296,8 +311,12 @@ export function useThreadComposerState() {
       return null;
     }
 
-    const modelSelection = draft.modelSelection ?? thread.modelSelection;
     const serverConfig = selectedEnvironmentRuntime?.serverConfig;
+    const modelSelection = newConversationSelection({
+      isNew: isUnstartedThread(thread),
+      providers: serverConfig?.providers,
+      selection: draft.modelSelection ?? thread.modelSelection,
+    });
     if (
       selectedEnvironmentRuntime?.connectionState === "connected" &&
       isModelSelectionUnavailable(serverConfig, modelSelection)
