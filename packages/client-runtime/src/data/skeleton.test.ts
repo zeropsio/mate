@@ -19,6 +19,7 @@ import { classifyHttp, zeropsNavigationLink } from "./adapters/zerops.ts";
 import { scopeKeys } from "./model.ts";
 import { menuRow, menuRowKeys, type MenuRow } from "./projections/navigation.ts";
 import { makeAccountStore, type AccountStore } from "./store.ts";
+import { STREAM_POLICY } from "./streamMachine.ts";
 import { superviseLink, type LinkSupervisor } from "./supervisor.ts";
 
 const ORG = "org";
@@ -297,5 +298,70 @@ describe("the walking skeleton", () => {
       expect(row.latest().status.display).toBe("partial");
       for (const fiber of fibers) yield* Fiber.interrupt(fiber);
     }),
+  );
+
+  it.effect(
+    "ends an attempt whose HQ socket only pings once the scope's baseline deadline passes",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        let opened = 0;
+        const pinging: HqStructureSource = {
+          streamStructure: (handlers, signal) =>
+            new Promise<void>((resolve) => {
+              opened += 1;
+              handlers.onAlive();
+              signal.addEventListener("abort", () => resolve(), { once: true });
+            }),
+        };
+        const supervisor = yield* superviseLink({
+          ...hqNavigationLink({ orgId: ORG, source: pinging, store }),
+          store,
+          repairSession: Effect.void,
+        });
+        const fiber = yield* Effect.forkChild(supervisor.run);
+        yield* settle;
+        expect(store.state().streams.get(scopeKeys.navigation(ORG))?.phase).toBe("baselining");
+        yield* TestClock.adjust(STREAM_POLICY.baselineTimeoutMs);
+        yield* settle;
+        expect(store.state().streams.get(scopeKeys.hqLink(ORG))?.phase).toBe("recovering");
+        expect(store.state().streams.get(scopeKeys.navigation(ORG))?.phase).toBe("stale");
+        const link = store.state().streams.get(scopeKeys.hqLink(ORG));
+        yield* TestClock.adjust(
+          link?.next.kind === "retry" ? link.next.at - STREAM_POLICY.baselineTimeoutMs : 0,
+        );
+        yield* settle;
+        expect(opened).toBe(2);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "ends an attempt whose Zerops registration hangs once its baseline deadline passes",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const wire = fixtureWire((request) =>
+          request.path === "/process/search" && request.body?.wsOutputType === "listStream"
+            ? Effect.never
+            : Effect.succeed(
+                request.body?.wsOutputType === "updateStream" ? { success: true } : { items: [] },
+              ),
+        );
+        const supervisor = yield* superviseLink({
+          ...zeropsNavigationLink({ orgId: ORG, wire: wire.wire, store, makeId: () => "sub" }),
+          store,
+          repairSession: Effect.void,
+        });
+        const fiber = yield* Effect.forkChild(supervisor.run);
+        yield* settle;
+        expect(store.state().streams.get(scopeKeys.running(ORG))?.phase).toBe("baselining");
+
+        yield* TestClock.adjust(STREAM_POLICY.baselineTimeoutMs);
+        yield* settle;
+        expect(store.state().streams.get(scopeKeys.zeropsLink(ORG))?.phase).toBe("recovering");
+        expect(store.state().streams.get(scopeKeys.running(ORG))?.phase).toBe("stale");
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 });

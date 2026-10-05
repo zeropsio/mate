@@ -17,7 +17,7 @@ import type * as Scope from "effect/Scope";
 import type { LinkKey, ScopeKey } from "./model.ts";
 import { streamOf, type RuntimeDirective } from "./reducer.ts";
 import type { AccountStore } from "./store.ts";
-import type { StreamEvent, StreamFault } from "./streamMachine.ts";
+import { STREAM_POLICY, type StreamEvent, type StreamFault } from "./streamMachine.ts";
 
 export type LinkSignal = "manual-retry" | "input-changed";
 
@@ -37,7 +37,10 @@ export interface LinkOptions {
   readonly repairSession: Effect.Effect<void, StreamFault>;
 }
 
-const DEADLINE = { deadline: true } as const;
+/** A named deadline passed: the stream that named it. */
+interface Deadline {
+  readonly deadline: LinkKey | ScopeKey;
+}
 
 export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSupervisor> =>
   Effect.gen(function* () {
@@ -49,21 +52,31 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
         store.dispatch({ kind: "stream", key: target, now, event }),
       );
 
-    /** Fails once the attempt's named deadline passes in the phase that named it. */
-    const deadlines = (generation: number): Effect.Effect<never, typeof DEADLINE> =>
+    /**
+     * Fails once a named deadline passes in the phase that named it: the link's for this attempt,
+     * or any scope's while it waits on its handshake or baseline. A scope's generation is its own,
+     * so for a scope only the waiting state counts. Ending the attempt re-registers every scope.
+     */
+    const watch = (
+      target: LinkKey | ScopeKey,
+      generation: number | null,
+    ): Effect.Effect<never, Deadline> =>
       Effect.gen(function* () {
         while (true) {
-          const { next, generation: current } = streamOf(store.state(), key);
-          if (
-            current !== generation ||
-            (next.kind !== "await-handshake" && next.kind !== "await-baseline")
-          )
+          const { next, phase, generation: current } = streamOf(store.state(), target);
+          const waiting = next.kind === "await-handshake" || next.kind === "await-baseline";
+          // The link's watch ends once this attempt stops waiting; a scope's once it is live.
+          if (generation !== null && (current !== generation || !waiting))
             return yield* Effect.never;
+          if (phase === "live") return yield* Effect.never;
           const now = yield* Clock.currentTimeMillis;
-          if (now >= next.deadlineAt) return yield* Effect.fail(DEADLINE);
-          yield* Effect.sleep(next.deadlineAt - now);
+          if (waiting && now >= next.deadlineAt) return yield* Effect.fail({ deadline: target });
+          // A scope not begun yet is looked at again within the time its handshake may take.
+          yield* Effect.sleep(waiting ? next.deadlineAt - now : STREAM_POLICY.handshakeTimeoutMs);
         }
       });
+    const deadlines = (generation: number): Effect.Effect<never, Deadline> =>
+      Effect.raceAllFirst([watch(key, generation), ...scopes.map((scope) => watch(scope, null))]);
 
     const step = (
       directives: ReadonlyArray<RuntimeDirective>,
@@ -78,7 +91,14 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
           );
           if ("deadline" in ended) {
             for (const scope of scopes) yield* dispatch({ kind: "parent-lost" }, scope);
-            return yield* dispatch({ kind: "deadline" });
+            // The link's own deadline is its machine's; a scope's ends the link's attempt.
+            return yield* ended.deadline === key
+              ? dispatch({ kind: "deadline" })
+              : dispatch({
+                  kind: "fault",
+                  fault: { outcome: "transient", message: `No answer for ${ended.deadline}.` },
+                  jitter: yield* Random.next,
+                });
           }
           const jitter = yield* Random.next;
           // A refusal of the link is its scopes' refusal too; any other end leaves them waiting.
