@@ -3119,8 +3119,13 @@ export function RunLine({ status }: { readonly status: RunStatus }) {
   return <NowLine answering={false} now={null} outcome={null} status={status} />;
 }
 
-/** The boxes in a run's chat whose height eases as what they hold grows (`easeRooms`). */
-const EASED_BOXES = "[data-chat-bubble],[data-chat-calls]";
+/**
+ * The boxes in a run's chat whose height eases as what they hold grows
+ * (`easeRooms`): a bubble, a card of calls, and a deploy's step, which gains
+ * its failure or its log under it as it ends — eased there, the steps under
+ * it ride its edge instead of dropping 32 px in a frame (R12-26).
+ */
+const EASED_BOXES = "[data-chat-bubble],[data-chat-calls],[data-zerops-pipeline-step]";
 
 const NO_KEYS: ReadonlyArray<string> = [];
 const NO_HOLDS: ReadonlySet<string> = new Set();
