@@ -25,6 +25,12 @@ import type {
   StreamKey,
 } from "./model.ts";
 import {
+  isOperationInput,
+  reduceOperation,
+  requestIdOf,
+  type OperationInput,
+} from "./operations/receipts.ts";
+import {
   initialStream,
   transition,
   type StreamDirective,
@@ -43,6 +49,7 @@ export type Row = {
 }[Family];
 
 export type AccountInput =
+  | OperationInput
   | {
       readonly kind: "stream";
       readonly key: StreamKey;
@@ -419,6 +426,18 @@ export function reduceAccount(state: AccountState, input: AccountInput): Reducti
       state: { ...state, streams: new Map(state.streams).set(input.key, stream) },
       changed,
       directives: directives.map((directive) => ({ ...directive, key: input.key })),
+    };
+  }
+  if (isOperationInput(input)) {
+    const requestId = requestIdOf(input);
+    const current = state.operations.get(requestId);
+    const next = reduceOperation(current, input);
+    if (next === current || next === undefined) return { state, changed, directives: [] };
+    changed.add(`operation:${requestId}`);
+    return {
+      state: { ...state, operations: new Map(state.operations).set(requestId, next) },
+      changed,
+      directives: [],
     };
   }
   // A superseded attempt's input is late: its scope already re-registered.

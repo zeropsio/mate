@@ -17,6 +17,7 @@ import {
   type Fact,
   type Family,
   type FamilyValues,
+  type OperationRecord,
   type PublicRead,
   type ReadKey,
   type ScopeKey,
@@ -42,6 +43,7 @@ export interface ProjectionReads {
   /** The projects HQ places in an application. */
   readonly app: (appId: string) => ReadonlySet<string>;
   readonly stream: (key: StreamKey) => StreamState;
+  readonly operation: (requestId: string) => OperationRecord | undefined;
 }
 
 export interface Projection<Key, Value> {
@@ -117,6 +119,8 @@ function valueOf(state: AccountState, key: ReadKey): unknown {
       return state.running.get(rest) ?? EMPTY_IDS;
     case "app":
       return state.apps.get(rest) ?? EMPTY_IDS;
+    case "operation":
+      return state.operations.get(rest);
     default:
       return publicRead((state[head as Family] as ReadonlyMap<string, Fact<unknown>>).get(rest));
   }
@@ -131,6 +135,7 @@ export function readsOf(read: <T>(key: ReadKey) => T): ProjectionReads {
     running: (projectId) => read(`running:${projectId}`),
     app: (appId) => read(`app:${appId}`),
     stream: (key) => read(`stream:${key}`),
+    operation: (requestId) => read(`operation:${requestId}`),
   };
 }
 

@@ -139,6 +139,42 @@ export interface Membership {
   } | null;
 }
 
+/** What the person asked an owner to do; the skeleton's one operation moves a project. */
+export interface OperationIntent {
+  readonly kind: "move-project";
+  readonly projectId: string;
+  readonly to: { readonly appId: string; readonly role: string };
+}
+
+/** The owner's word on a request: accepted or refused, and later how it ended. */
+export interface OperationReceipt {
+  readonly requestId: string;
+  readonly operationId: string;
+  readonly executor: Authority;
+  readonly affected: ReadonlyArray<{ readonly family: Family; readonly id: string }>;
+  readonly acceptance:
+    | { readonly kind: "accepted" }
+    | { readonly kind: "refused"; readonly reason: string };
+  readonly outcome:
+    | { readonly kind: "pending" }
+    | { readonly kind: "succeeded" | "failed" | "cancelled"; readonly evidence: string };
+}
+
+/**
+ * An operation as this account knows it: the intent and request id recorded before sending, the
+ * owner's receipt once it answers, and how its observation stands. Acceptance, reflection and
+ * outcome are separate: reflection is read from the affected facts, the outcome only from the owner.
+ */
+export interface OperationRecord {
+  readonly requestId: string;
+  readonly intent: OperationIntent;
+  /** `uncertain`: sent, its answer lost — ask the owner by this id, never send again blindly. */
+  readonly submission: "recorded" | "uncertain" | "answered";
+  readonly receipt: OperationReceipt | null;
+  /** Observation ended without the owner's word: who must act next, never an invented failure. */
+  readonly unresolved: { readonly nextActor: string } | null;
+}
+
 export interface AccountState {
   readonly streams: ReadonlyMap<StreamKey, StreamState>;
   readonly project: ReadonlyMap<string, Fact<ProjectValue>>;
@@ -150,6 +186,7 @@ export interface AccountState {
   readonly running: ReadonlyMap<string, ReadonlySet<string>>;
   /** Project ids by the application HQ currently places them in, maintained by the same. */
   readonly apps: ReadonlyMap<string, ReadonlySet<string>>;
+  readonly operations: ReadonlyMap<string, OperationRecord>;
 }
 
 export const emptyAccount: AccountState = {
@@ -161,6 +198,7 @@ export const emptyAccount: AccountState = {
   memberships: new Map(),
   running: new Map(),
   apps: new Map(),
+  operations: new Map(),
 };
 
 /** What a reader gets for one fact: never a raw record, never a withheld payload. */
