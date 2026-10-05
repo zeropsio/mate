@@ -3,7 +3,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import { afterAll, expect } from "vite-plus/test";
 import puppeteer, { type Page, type BrowserContext } from "puppeteer-core";
-import { clientClock } from "./clientClock.ts";
+import { clientClock, type ScenarioWallClock } from "./clientClock.ts";
 import { serve } from "./http.ts";
 
 // Vitest inverts afterEach failures inside it.fails too. Retain diagnostics from every opened
@@ -32,7 +32,11 @@ const contentTypes: Record<string, string> = {
   ".wasm": "application/wasm",
 };
 
-export async function openBrowser(dist: string, routes: Record<string, string>) {
+export async function openBrowser(
+  dist: string,
+  routes: Record<string, string>,
+  wallClock?: ScenarioWallClock,
+) {
   const web = await serve(async ({ url }) => {
     const path = NodePath.resolve(dist, `.${decodeURIComponent(url.pathname)}`);
     if (!path.startsWith(`${dist}/`) && path !== dist) return { status: 403 };
@@ -102,7 +106,7 @@ export async function openBrowser(dist: string, routes: Record<string, string>) 
   const routeSetters = new Map<Page, () => Promise<void>>();
   const newPage = async (context: BrowserContext = browser.defaultBrowserContext()) => {
     const page = await context.newPage();
-    clocks.set(page, clientClock(page));
+    clocks.set(page, clientClock(page, wallClock));
     await page.setBypassServiceWorker(true);
     await page.setViewport({ width: 1280, height: 900 });
     page.on("pageerror", (error) => {

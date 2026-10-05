@@ -232,7 +232,9 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     yield* link.send(yield* encodeLink({ type: "overview", full: true, overview }));
   });
 
-  const web = yield* Effect.promise(() => openBrowser(inject("scenarioDist"), routes));
+  const web = yield* Effect.promise(() =>
+    openBrowser(inject("scenarioDist"), routes, zerops.clock),
+  );
   cleanup.push(web.close);
   const actor = (page: Page, initialPerson = "owner") => {
     let selectedPerson = initialPerson;

@@ -29,6 +29,7 @@ Only browsers actually opened by selected tests contribute diagnostics; `-t` fil
 - `harness/scenario.ts`: real Core composition and the foundation `given / when / then` DSL.
 - `harness/clientClock.ts`: opt-in browser timers, stepped network settling and lifecycle controls.
 - `harness/hqCore.ts`: production-like Core timing defaults and per-scenario overrides.
+- `apps/hq/test/harness/coreWithDeployTimings.ts`: opt-in composition of real Core layers for deploy timing overrides.
 - `fakes/zerops.ts`: REST, socket login, subscriptions, versioned entity tables, faults and budgets.
 - `fakes/zeropsWrites.ts`: shared HTTP deployment/import driver and process transitions.
 - `fakes/zeropsWorld.ts`: organization memberships, person presets and project grants.
@@ -68,6 +69,8 @@ synthetic ids: use URL-safe names. Environment names follow Core's lowercase nam
 const s = yield * createScenario([installArea]); // existing calls remain valid
 // Optional second argument; all values are milliseconds, scoped to this scenario:
 // createScenario([installArea], { hq: { pingEvery: 20_000, reconcileEvery: 60_000, streamRecheck: 30_000 } });
+// A running deploy is refused after ~10 s of REAL Core time; poll every 250 ms:
+// createScenario([installArea], { hq: { followFor: 10_000, pollEvery: 250 } });
 yield * s.given.app("Shop"); // idempotent, also created automatically by given.project
 for (const name of ["Ada", "Bea"]) yield * s.given.project(name, { mate: true, app: "Shop" });
 yield * s.given.project("Shop-stage", { app: "Shop", kind: "stage", environmentName: "stage" });
@@ -148,6 +151,12 @@ Scenario Core now uses production-like ping/reconcile/stream-recheck intervals o
 Override them with `createScenario(extensions, {hq: {pingEvery?, reconcileEvery?, streamRecheck?}})`;
 values are milliseconds. `startCore` accepts corresponding Effect Duration overrides, retaining
 its old 300/200/200 ms defaults for existing HQ unit tests. Page clocks do not advance Core time.
+`followFor` and `pollEvery` similarly pass from `createScenario` through `startScenarioCore` into
+`startCore`, which accepts Effect Durations. Omitting either preserves that Deploys default
+(75 minutes / 10 seconds). Production `coreApp` currently hard-codes `deploysLayer()`; only timing
+overrides select a test-only composition using the same real service graph, routes and production
+drain. Keep that graph aligned with `apps/hq/src/core.ts`; remove the copy when Core exposes deploy
+options. The default harness path still uses production `coreApp` directly.
 G exercises real client reconnect timers with this clock. Core's own 10-second HTTP timeout is
 native; it is not sped up by the page clock. For time-sensitive areas this split is the least
 intrusive seam: no application hooks, fake responses or altered backoff implementation.
@@ -155,7 +164,14 @@ intrusive seam: no application hooks, fake responses or altered backoff implemen
 Faults: `zerops.faults.set("GET /project/Ada", { status: 429, retryAfter: 7 })`, optionally `code`,
 `message`, `latency`, `timeout` or `silence`. Use `<kind>:push` + `silence` for realtime loss.
 `zerops.clock.advance(ms)` releases fake latency and expires socket credentials; it is separate
-from each page's clock. Await `zerops.waitForRequest(key, count)` before releasing pending latency.
+from each page's clock. Process/version timestamps use `zerops.clock.currentTimeMillis()`: native
+wall time by default, or a pinned epoch via `zerops.clock.setTime(epochMilliseconds)` followed by
+`clock.advance(ms)`. Installing an actor's page clock pins the fake wall clock to that actor and
+synchronizes it before every timer callback (including stepped advances and wake). Therefore a
+page-triggered write is stamped at the callback's virtual deadline, while latency/socket expiry
+remain independent. If several actor clocks are installed, the most recently driven actor controls
+the shared world's wall time; advance them coherently when comparing timestamps across tabs.
+Await `zerops.waitForRequest(key, count)` before releasing pending latency.
 Counters: `requests` (method/path), `requestsByKind`, `requestsByCredential` (credential → method/path
 map), `registrations` and `framesByKind` (kind:output). Core's platform requests use these SAME
 HTTP counters; `core.fake.calls` is only meaningful with the default HQ in-memory test backend.

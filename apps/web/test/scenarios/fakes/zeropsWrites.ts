@@ -22,7 +22,7 @@ export class ZeropsWrites {
     return `${kind}-${++this.serial}`;
   }
   private at() {
-    return new Date(Date.UTC(2026, 9, 5, 12) + this.platform.clock.now).toISOString();
+    return new Date(this.platform.clock.currentTimeMillis()).toISOString();
   }
   private row(kind: string, id: string) {
     return this.platform.rows(kind).find((row) => row.id === id);
