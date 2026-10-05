@@ -1,0 +1,161 @@
+import { applicationDetailsGate } from "../../fakes/b-menu/hqDetails.ts";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import {
+  MateLinkUp,
+  MateOverview,
+  type OverviewMain,
+  type MateThreadKind,
+} from "@t3tools/shared/mateLink";
+import type { ScenarioExtension, ScenarioDrivers } from "../../harness/scenario.ts";
+
+// This area drives the real Mate → HQ link, never the browser's stores.
+export const installMenu: ScenarioExtension = () => {};
+const AT = "2026-10-06T12:00:00.000Z";
+const encode = Schema.encodeEffect(MateLinkUp);
+const decode = Schema.decodeUnknownEffect(MateOverview);
+export const reportConversation = Effect.fn("menu.reportConversation")(function* (
+  drivers: Pick<ScenarioDrivers, "mates"> & {
+    links: ReadonlyMap<string, { send: (value: unknown) => Effect.Effect<void> }>;
+  },
+  name: string,
+  patch: Partial<OverviewMain> = {},
+  kind: MateThreadKind = "idle",
+) {
+  const mate = drivers.mates.get(name)!;
+  const main = {
+    ...mate.shellThread(),
+    backgroundLiveness: null,
+    latestUserMessageAt: AT,
+    latestUserMessagePreview: { text: "Inspect the checkout" },
+    latestMessagePreview: null,
+    planProgress: null,
+    pendingQuestion: null,
+    usagePause: null,
+    liveStep: null,
+    updatedAt: AT,
+    ...patch,
+  };
+  const overview = yield* decode({
+    identity: {
+      environmentId: mate.descriptor.environmentId,
+      serverVersion: "0.14.11",
+      update: null,
+      runsWithoutSignIn: true,
+    },
+    main,
+    threads: {
+      list: [
+        {
+          id: main.id,
+          title: main.title,
+          kind,
+          turnId: main.latestTurn?.turnId ?? null,
+          turnState: main.latestTurn?.state ?? null,
+          completedAt: main.latestTurn?.completedAt ?? null,
+        },
+      ],
+      omitted: 0,
+    },
+    logins: {},
+    crew: { status: "off" },
+  });
+  yield* drivers.links.get(name)!.send(yield* encode({ type: "overview", full: true, overview }));
+});
+
+export const moveMate = Effect.fn("menu.moveMate")(function* (
+  drivers: ScenarioDrivers,
+  name: string,
+  app: string | null,
+) {
+  const response = yield* drivers.core.call("PUT", `/api/projects/${name}/app`, {
+    session: drivers.owner,
+    body: { appId: app === null ? null : drivers.appIds.get(app), kind: "mate" },
+  });
+  if (response.status !== 200)
+    return yield* Effect.die(new Error(`Move refused: ${response.status}`));
+});
+
+export const removeProject = (drivers: ScenarioDrivers, name: string) =>
+  Effect.sync(() => drivers.zerops.remove("project", name));
+export const denyProjectRead = (drivers: ScenarioDrivers, name: string) =>
+  Effect.sync(() => {
+    const key = `GET /project/${name}`;
+    const reads = drivers.zerops.requests.get(key) ?? 0;
+    drivers.zerops.faults.set(key, {
+      status: 403,
+      code: "insufficientPermissions",
+    });
+    return Effect.promise(() => drivers.zerops.waitForRequest(key, reads + 1));
+  });
+export const startStageBuild = (drivers: ScenarioDrivers, name: string) =>
+  Effect.sync(() => {
+    drivers.zerops.writes.autoComplete = false;
+    drivers.zerops.writes.start(name, "stack.build", [`app-${name}`]);
+  });
+
+export const stageService = (drivers: ScenarioDrivers, name: string) =>
+  Effect.sync(() => {
+    drivers.zerops.world.appVersions.set(`version-${name}`, {
+      id: `version-${name}`,
+      serviceId: `app-${name}`,
+      name: "stage-existing",
+      status: "ACTIVE",
+      archive: undefined,
+      zeropsYaml: undefined,
+      setup: undefined,
+    });
+    drivers.zerops.put(
+      "app-version",
+      {
+        id: `version-${name}`,
+        clientId: "ORG",
+        projectId: name,
+        serviceStackId: `app-${name}`,
+        name: "stage-existing",
+        status: "ACTIVE",
+        created: "2026-10-05T12:00:00.000Z",
+      },
+      "membership-first",
+    );
+    drivers.zerops.put(
+      "service-stack",
+      {
+        id: `app-${name}`,
+        projectId: name,
+        clientId: "ORG",
+        name: "app",
+        activeAppVersion: { id: `version-${name}`, name: "stage-existing" },
+        userData: [
+          { key: "appVersionId", content: `version-${name}` },
+          { key: "appVersionName", content: "stage-existing" },
+        ],
+        status: "ACTIVE",
+        isSystem: false,
+        ports: [{ port: 3000, scheme: "http" }],
+        serviceStackTypeInfo: {
+          serviceStackTypeName: "nodejs",
+          serviceStackTypeVersionName: "nodejs@22",
+          serviceStackTypeCategory: "USER",
+        },
+      },
+      "membership-first",
+    );
+  });
+
+const gates = new WeakMap<ScenarioDrivers, Awaited<ReturnType<typeof applicationDetailsGate>>>();
+export const installDelayedDetails: ScenarioExtension = async (drivers) => {
+  const origin = drivers.routes["https://hqzone.prg1-zerops.zone"]!;
+  const gate = await applicationDetailsGate(origin);
+  gates.set(drivers, gate);
+  drivers.routes["https://hqzone.prg1-zerops.zone"] = gate.origin;
+  drivers.cleanup.push(gate.close);
+};
+export const holdDetails = (drivers: ScenarioDrivers, app: string) =>
+  Effect.sync(() => {
+    const gate = gates.get(drivers)!;
+    gate.hold(drivers.appIds.get(app)!);
+    return Effect.promise(() => gate.waitForHeld());
+  });
+export const releaseDetails = (drivers: ScenarioDrivers) =>
+  Effect.sync(() => gates.get(drivers)!.release());
