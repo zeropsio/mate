@@ -122,12 +122,14 @@ const MAX_BUFFERED_ASSISTANT_CHARS = 24_000;
 const MIN_ASSISTANT_DELIVERY_INTERVAL_MS = 400;
 /**
  * A thought flows in words (D3): what it has said so far reaches the page about
- * ten times a second. Thinking arrives at a few hundred characters a second,
- * so each delivery is a handful of words, which reads as text growing rather
- * than lines jumping in; and each is a command, an event-store write and a
- * fan-out, which this pace bounds to ten a second per thought.
+ * five times a second. Thinking arrives at a few hundred characters a second,
+ * so each delivery is a line's worth of words, which reads as text growing
+ * rather than paragraphs jumping in; and each is a command, an event-store
+ * write, a fan-out and a rewrite of the message's projected row, which this
+ * pace bounds to five a second per thought (review of pass 42: at ten, a
+ * two-minute thought rewrote its row eleven hundred times, 16 MB).
  */
-export const THOUGHT_DELIVERY_INTERVAL_MS = 100;
+export const THOUGHT_DELIVERY_INTERVAL_MS = 200;
 const STRICT_PROVIDER_LIFECYCLE_GUARD = process.env.T3CODE_STRICT_PROVIDER_LIFECYCLE_GUARD !== "0";
 
 type TurnStartRequestedDomainEvent = Extract<
