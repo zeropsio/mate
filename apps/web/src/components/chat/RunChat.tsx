@@ -1826,7 +1826,8 @@ function OperationLine({
       <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
         <span
           className={stepped ? "text-foreground" : "text-foreground/75"}
-          data-run-shimmer={live === null ? undefined : ""}
+          // A deploy's running step pulses: its name stands still in the ink.
+          data-run-shimmer={live === null || stepped ? undefined : ""}
         >
           {words}
         </span>
