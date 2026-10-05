@@ -110,6 +110,7 @@ export class StructureRefused extends Schema.TaggedError<StructureRefused>()("St
     "birth_project_taken",
     "press_owner_length",
     "press_held",
+    "press_not_held",
   ]),
 }) {}
 
@@ -411,7 +412,9 @@ export class Structure extends Context.Service<
      * (`owner`), for {@link PRESS_HOLD_MS} from now — what it makes, into which application, and
      * the Zerops process of the container import it asked for once Zerops answered it, kept where
      * a renewal names none. Another press's hold still running refuses it (`press_held`); one that
-     * ran out is taken over. By whoever reads the project (`hold_press`).
+     * ran out is taken over. A `renew` only extends its own press's live hold — never one that
+     * stopped, ran out or finished, so a renewal landing after its press's end changes nothing
+     * (`press_not_held`); only a first hold creates. By whoever reads the project (`hold_press`).
      */
     readonly holdPress: (
       userId: string,
@@ -421,6 +424,7 @@ export class Structure extends Context.Service<
         readonly kind: PressKind;
         readonly appId?: string;
         readonly importProcessId?: string;
+        readonly renew?: boolean;
       },
     ) => Effect.Effect<PressView, WriteError>;
     /**
@@ -915,6 +919,17 @@ export const structureLayer = (options: {
                   const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
                   if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
                 }
+                if (press.renew === true) {
+                  return yield* sql<PressRow>`
+              UPDATE hq_press SET
+                kind = ${press.kind}, app_id = ${appId}::uuid, held_by = ${userId},
+                until = now() + ${`${PRESS_HOLD_MS} milliseconds`}::interval,
+                import_process_id = COALESCE(${importProcessId}, import_process_id)
+              WHERE project_id = ${projectId} AND owner = ${press.owner} AND until > now()
+              RETURNING project_id, kind, app_id::text AS app_id, import_process_id,
+                GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms,
+                to_char(until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS until`;
+                }
                 return yield* sql<PressRow>`
               INSERT INTO hq_press (project_id, kind, app_id, owner, held_by, until, import_process_id)
               VALUES (${projectId}, ${press.kind}, ${appId}::uuid, ${press.owner}, ${userId},
@@ -933,7 +948,11 @@ export const structureLayer = (options: {
               }),
             );
             const held = rows[0];
-            if (held === undefined) return yield* refuse("conflict", "press_held");
+            if (held === undefined)
+              return yield* refuse(
+                "conflict",
+                press.renew === true ? "press_not_held" : "press_held",
+              );
             yield* changed;
             return pressView(held);
           }),

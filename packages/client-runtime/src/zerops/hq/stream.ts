@@ -69,7 +69,10 @@ export type HqStructureEvent =
       /** `null` where HQ sent none — an HQ from before the Mates' overviews — or none readable. */
       readonly mates: HqMates | null;
       readonly people: HqPeople | null;
-      /** None where HQ sent none — an HQ from before the presses — or none readable. */
+      /**
+       * Empty where HQ sent none — a Core from before the presses holds none; `null` where it sent
+       * presses this build cannot read.
+       */
       readonly presses?: HqPressesSent | null;
     }
   | { readonly kind: "presses"; readonly presses: HqPressesSent }
@@ -357,7 +360,8 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       }),
       mates: matesOf(mates),
       people: Option.getOrNull(readPeople(people)),
-      presses: Option.getOrNull(readPressesSent(presses)),
+      // A Core from before the presses sends none: it holds none. One unreadable says nothing.
+      presses: presses === undefined ? {} : Option.getOrNull(readPressesSent(presses)),
     };
   }
   if (type === "presses") {

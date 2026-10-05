@@ -208,6 +208,8 @@ const PressBody = Schema.Struct({
   kind: Schema.Literals(["mate", "stage", "production"]),
   appId: Schema.optionalKey(Schema.String),
   importProcessId: Schema.optionalKey(Schema.String),
+  /** A renewal of its own live hold, never a first hold (`Structure.holdPress`). */
+  renew: Schema.optionalKey(Schema.Boolean),
 });
 const BirthBody = Schema.Struct({
   appId: Schema.String,

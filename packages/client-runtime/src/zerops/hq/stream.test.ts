@@ -8,6 +8,7 @@ import type { ZeropsCandidate } from "../candidates.ts";
 import { hasMate } from "../mateEnvironments.ts";
 import { partitionZeropsToolProjects, readZeropsToolKind } from "../tools.ts";
 import { placementsOf, placeProjects } from "./placement.ts";
+import { pressElsewhere } from "./pressElsewhere.ts";
 import {
   applyChangesEvent,
   applyAppReadsEvent,
@@ -139,7 +140,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
-        presses: null,
+        presses: {},
       },
     ],
     [
@@ -152,7 +153,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
-        presses: null,
+        presses: {},
       },
     ],
     [
@@ -165,7 +166,7 @@ describe("structureEventOf", () => {
         changes: new Map([["app-1", [CHANGE]]]),
         mates: null,
         people: null,
-        presses: null,
+        presses: {},
       },
     ],
     [
@@ -178,7 +179,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
-        presses: null,
+        presses: {},
       },
     ],
     // SPEC §3.2b: an application's stage and production with their jobs, to whoever reads its
@@ -193,7 +194,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
-        presses: null,
+        presses: {},
       },
     ],
     [
@@ -206,7 +207,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
-        presses: null,
+        presses: {},
       },
     ],
     [
@@ -222,7 +223,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
-        presses: null,
+        presses: {},
       },
     ],
     [
@@ -241,7 +242,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
-        presses: null,
+        presses: {},
       },
     ],
     [
@@ -302,7 +303,7 @@ describe("structureEventOf", () => {
       changes: null,
       mates: new Map([["p1", VERA_VIEW]]),
       people,
-      presses: null,
+      presses: {},
     });
     expect(
       structureEventOf({ type: "mate", projectId: "p1", value: { main: null, later: {} } }),
@@ -396,7 +397,7 @@ describe("applyStructureEvent", () => {
       changes: null,
       mates: null,
       people: null,
-      presses: null,
+      presses: {},
     });
     structure = applyStructureEvent(structure, { kind: "change", appId: "app-2", app: BETA });
     expect(structure).toEqual({ ungrouped: [LONE], apps: [ACME, BETA] });
@@ -550,9 +551,24 @@ describe("applyPressesEvent", () => {
     expect(applyPressesEvent(held, { kind: "presses", presses: {} }, AT + 1)).toEqual(new Map());
   });
 
-  it("knows none from a snapshot of an HQ that says none", () => {
+  // A Core from before the presses sends no `presses` at all: it holds none, and a half-made
+  // Mate is finished against it as before.
+  it("reads a snapshot without presses as HQ holding none", () => {
     const snapshot = structureEventOf({ type: "snapshot", ungrouped: [], apps: [] })!;
-    expect(applyPressesEvent(new Map(), snapshot, AT)).toBeNull();
+    const presses = applyPressesEvent(null, snapshot, AT);
+    expect(presses).toEqual(new Map());
+    expect(pressElsewhere({ presses, projectId: "p1", nowMs: AT })).toBe("stopped");
+  });
+
+  it("says nothing either way before any snapshot, or of presses it cannot read", () => {
+    expect(pressElsewhere({ presses: null, projectId: "p1", nowMs: AT })).toBe("unknown");
+    const unreadable = structureEventOf({
+      type: "snapshot",
+      ungrouped: [],
+      apps: [],
+      presses: { p1: { heldForMs: "soon" } },
+    })!;
+    expect(applyPressesEvent(null, unreadable, AT)).toBeNull();
   });
 });
 
@@ -573,7 +589,7 @@ describe("applyChangesEvent", () => {
       changes: new Map([["app-1", [CHANGE]]]),
       mates: null,
       people: null,
-      presses: null,
+      presses: {},
     });
     changes = applyChangesEvent(changes, { kind: "changes", appId: "app-1", changes: [merged] });
     changes = applyChangesEvent(changes, { kind: "changes", appId: "app-2", changes: [] });
