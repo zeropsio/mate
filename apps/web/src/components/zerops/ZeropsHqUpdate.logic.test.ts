@@ -1,7 +1,13 @@
 import { hqUpdateState } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
-import { coreLabel, hqUpdateTrigger, hqUpdateWords } from "./ZeropsHqUpdate.logic";
+import {
+  coreLabel,
+  hqUpdateMount,
+  hqUpdateTrigger,
+  hqUpdateWords,
+  type HqUpdateMount,
+} from "./ZeropsHqUpdate.logic";
 
 const CARRIED = "20261004T100000Z.0123456789ab";
 const OLDER = "20261003T080500Z.ba9876543210";
@@ -193,5 +199,55 @@ describe("hqUpdateTrigger", () => {
         zerops: read === undefined ? undefined : zerops(read),
       }),
     ).toBe(trigger);
+  });
+});
+
+// The rollout, 2026-10-05: an HQ Core update's own switch answered the card's health read 503 once;
+// the card said "Unavailable since …" and the Update dialog the owner followed vanished with it.
+describe("hqUpdateMount — the update control, mounted through HQ's own switch", () => {
+  const HEALTHY = { kind: "healthy", build: OLDER, parts: { quarantined: [] } } as const;
+  const DOWN = { kind: "unavailable", since: 1 } as const;
+  const SHOWN: HqUpdateMount = { trigger: "Update available", answering: OLDER, carried: CARRIED };
+
+  it.each<[string, Parameters<typeof hqUpdateMount>[0], HqUpdateMount | null]>([
+    [
+      "HQ healthy: what it answers now",
+      { admin: true, standing: HEALTHY, carried: CARRIED, following: false, last: null },
+      SHOWN,
+    ],
+    [
+      "HQ healthy, its stream naming no Core: as Zerops says it stands",
+      {
+        admin: true,
+        standing: { kind: "healthy", parts: { quarantined: [] } },
+        carried: CARRIED,
+        zerops: { kind: "available", running: OLDER, carried: CARRIED },
+        following: false,
+        last: null,
+      },
+      { trigger: "Update available", answering: undefined, carried: CARRIED },
+    ],
+    [
+      "HQ not answering while the person follows an update: as it was last shown",
+      { admin: true, standing: DOWN, carried: CARRIED, following: true, last: SHOWN },
+      SHOWN,
+    ],
+    [
+      "HQ not answering, nobody following: none",
+      { admin: true, standing: DOWN, carried: CARRIED, following: false, last: SHOWN },
+      null,
+    ],
+    [
+      "HQ not answering, never shown: none",
+      { admin: true, standing: DOWN, carried: CARRIED, following: true, last: null },
+      null,
+    ],
+    [
+      "a developer: none",
+      { admin: false, standing: HEALTHY, carried: CARRIED, following: false, last: null },
+      null,
+    ],
+  ])("%s", (_, input, expected) => {
+    expect(hqUpdateMount(input)).toEqual(expected);
   });
 });
