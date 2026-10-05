@@ -448,6 +448,7 @@ export {
   type ReviewModel,
   type ReviewPress,
   type ReviewPrimary,
+  type ReviewQuestion,
   type ReviewSecondary,
   type ReviewState,
   type ReviewTone,

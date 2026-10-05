@@ -25,8 +25,10 @@ import {
   waitingForProduction,
   REVIEW_RELEASE_LABEL,
   type ChangeReadout,
+  type ChangeReviewInput,
   type ReviewClose,
   type ReviewPress,
+  type ReviewQuestion,
   type ChangeReadoutCommit,
   type ChangeRemark,
   type FlowPullRequest,
@@ -37,6 +39,7 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useRouter } from "@tanstack/react-router";
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { Button } from "~/components/ui/button";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import {
@@ -46,6 +49,7 @@ import {
 } from "~/zerops/projectFlowContext";
 import type { ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
+import { useAddEnvironment, useEnvironmentQuestionFacts } from "~/zerops/useAddEnvironment";
 import { type ZeropsChangeOffers, useChangeOffers } from "~/zerops/useChangeOffers";
 import {
   mergedMain,
@@ -235,6 +239,9 @@ function ChangeReviewData({
   const askMateToFix = useAskMateToFix();
   const mates = useZeropsReviewMates(target.groupId);
   const pictures = useHqPictureSource();
+  const addEnvironment = useAddEnvironment();
+  const missingTiers = useMemo(() => flow?.missing.map((row) => row.tier) ?? [], [flow?.missing]);
+  const question = useEnvironmentQuestionFacts(target.groupId, missingTiers);
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   const [closing, setClosing] = useState<ReviewClose>({ kind: "idle" });
   const change = { repository: pull.repository, number: pull.number };
@@ -310,6 +317,12 @@ function ChangeReviewData({
   return (
     <ChangeReviewView
       environments={flow?.environmentInputs ?? NO_ENVIRONMENTS}
+      productionHeld={question.productionHeld}
+      addable={question.addable}
+      onAddEnvironment={(tier) => {
+        addEnvironment(target.groupId, tier);
+        onClose();
+      }}
       frame={frame}
       hqAddress={flowValue.hqAddress}
       back={back}
@@ -435,6 +448,12 @@ export interface ChangeReviewViewProps {
   readonly environments: ReadonlyArray<{ readonly tier: GroupEnvironmentTier }>;
   /** How many changes wait for production, as the flow last read it. */
   readonly waitingForProduction: number;
+  /** Whether the application holds a production in any state (`ReviewQuestion`). */
+  readonly productionHeld?: boolean | undefined;
+  /** The environments the one question after a first merge may offer. */
+  readonly addable?: ChangeReviewInput["addable"];
+  /** Opens the form that adds the stage or the production the question offered. */
+  readonly onAddEnvironment?: ((tier: GroupEnvironmentTier) => void) | undefined;
   /** The same release verdict the flow hands to the release review. */
   readonly release: ReleaseGate | undefined;
   /** The release production runs. */
@@ -489,6 +508,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         ? undefined
         : { files: read.conflict, by: undefined },
     downstream,
+    productionHeld: props.productionHeld,
+    addable: props.addable,
     waiting: {
       // Until HQ's stream brings it merged, the change just merged is not among what waits yet.
       count:
@@ -525,6 +546,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> =
     readout.kind === "read" ? { kind: "read", value: readout.value.commits } : readout;
   const mine = mate.mine ? mate : undefined;
+  const [questionClosed, setQuestionClosed] = useState(false);
   const answer = answeredDeploys(press);
   const fix = model.verdict.fix;
   // Once merged, its one button is the release's review.
@@ -608,6 +630,17 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       titleId={props.titleId}
       verdict={model.verdict}
     >
+      {model.question === undefined || questionClosed ? null : (
+        <ReviewQuestionBlock
+          onAnswer={(tier) => {
+            props.onAddEnvironment?.(tier);
+          }}
+          onDismiss={() => {
+            setQuestionClosed(true);
+          }}
+          question={model.question}
+        />
+      )}
       {answer === undefined ? null : (
         <ReviewSection title="Where">
           <ReviewWhere answer={answer} />
@@ -653,6 +686,42 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       />
       <ReviewCommits commits={commits} now={props.now} onRetry={props.onRetry} />
     </ZeropsReviewSurface>
+  );
+}
+
+/**
+ * The one question after an application's first merge: where the code should run, with an equal
+ * button for each environment the person may add, and *Not now*, which only closes it — the
+ * application's page keeps the slots.
+ */
+export function ReviewQuestionBlock({
+  question,
+  onAnswer,
+  onDismiss,
+}: {
+  readonly question: ReviewQuestion;
+  readonly onAnswer: (tier: GroupEnvironmentTier) => void;
+  readonly onDismiss: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label={question.text}>
+      <p className="mr-2 text-sm text-foreground">{question.text}</p>
+      {question.options.map((option) => (
+        <Button
+          key={option.tier}
+          onClick={() => {
+            onAnswer(option.tier);
+          }}
+          size="sm"
+          variant="outline"
+        >
+          {option.label}
+        </Button>
+      ))}
+      <button className="rv-textbtn" onClick={onDismiss} type="button">
+        {question.dismiss}
+      </button>
+    </div>
   );
 }
 

@@ -87,6 +87,13 @@ vi.mock("~/zerops/useChangePicture", () => ({
   useChangePicture: () => ({ kind: "reading" }),
 }));
 vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => () => undefined }));
+vi.mock("~/zerops/useAddEnvironment", () => ({
+  useAddEnvironment: () => () => undefined,
+  useEnvironmentQuestionFacts: () => ({
+    addable: { stage: false, production: false },
+    productionHeld: false,
+  }),
+}));
 vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => () => undefined }));
 vi.mock("~/zerops/fixMates", () => ({ useFixMates: () => [] }));
 vi.mock("~/zerops/useZeropsReviewMates", () => ({ useZeropsReviewMates: () => new Map() }));
@@ -604,5 +611,36 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
       expect(host.textContent).toContain("Rebuild the full API on the new schema");
       expect(elementsOf(host, "textarea")).toHaveLength(0);
     });
+  });
+});
+
+describe("the one question after the first merge", () => {
+  const FIRST = merged({ firstCodeMerge: true });
+  const asking: Partial<ChangeReviewViewProps> = {
+    environments: [],
+    press: { kind: "done" },
+    productionHeld: false,
+    addable: { stage: true, production: true },
+  };
+
+  it("asks where the code should run, with an equal button for each tier and a Not now", () => {
+    const text = textOf(render(FIRST, [changed("a.ts")], asking));
+    expect(text).toContain("Your code is on main. Where should it run?");
+    expect(text).toContain("Add stage");
+    expect(text).toContain("Add production");
+    expect(text).toContain("Not now");
+  });
+
+  it.each([
+    ["it was not the first code merge", merged({ firstCodeMerge: false }), asking],
+    ["the review is only reopened", FIRST, { ...asking, press: { kind: "idle" } as const }],
+    ["a production is held", FIRST, { ...asking, productionHeld: true }],
+    [
+      "the person may add nothing",
+      FIRST,
+      { ...asking, addable: { stage: false, production: false } },
+    ],
+  ])("is not asked when %s", (_name, pull, over) => {
+    expect(textOf(render(pull, [changed("a.ts")], over))).not.toContain("Where should it run?");
   });
 });

@@ -1,33 +1,65 @@
 /**
- * The two questions every door to *Add stage* and *Add production* asks: whether this person may
- * add one to an application (`mayAddEnvironment`), and the way in — the projects page's own
- * creation form, asked for through `useSetUpEnvironment`.
+ * What every door to *Add stage* and *Add production* asks: whether this person may add one to an
+ * application (`mayAddEnvironment`), what the one question after a first merge may offer
+ * (`questionFactsOf`), and the way in — the projects page's own creation form, asked for through
+ * `useSetUpEnvironment`.
  */
 import { useNavigate } from "@tanstack/react-router";
-import { readZeropsMembership, type GroupEnvironmentTier } from "@t3tools/client-runtime/zerops";
-import { useCallback, useContext } from "react";
+import {
+  readZeropsMembership,
+  type GroupEnvironmentTier,
+  type ZeropsProject,
+} from "@t3tools/client-runtime/zerops";
+import { useCallback, useContext, useMemo } from "react";
 
 import { mayAddEnvironment } from "~/components/zerops/projects/projectsView.logic";
 
+import { questionFactsOf } from "./addEnvironment.logic";
 import { HeldInventoryContext } from "./inventoryContext";
 import { useSetUpEnvironment } from "./setUpEnvironment";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
-/** Whether this person may add a stage or a production to an application, by its id. */
-export function useMayAddEnvironment(): (groupId: string) => boolean {
-  const organization = useZeropsSession().activeOrganization;
+/** The account's projects of an application, as the inventory holds them. */
+function useGroupProjects(): (groupId: string) => ReadonlyArray<ZeropsProject> {
   const inventory = useZeropsInventory();
   const held = useContext(HeldInventoryContext);
   const projects = held?.projects ?? inventory.projects;
   return useCallback(
+    (groupId) => projects.filter((project) => readZeropsMembership(project).groupId === groupId),
+    [projects],
+  );
+}
+
+/** Whether this person may add a stage or a production to an application, by its id. */
+export function useMayAddEnvironment(): (groupId: string) => boolean {
+  const organization = useZeropsSession().activeOrganization;
+  const projectsOf = useGroupProjects();
+  return useCallback(
     (groupId) =>
-      organization !== null &&
-      mayAddEnvironment({
-        organization,
-        projects: projects.filter((project) => readZeropsMembership(project).groupId === groupId),
+      organization !== null && mayAddEnvironment({ organization, projects: projectsOf(groupId) }),
+    [organization, projectsOf],
+  );
+}
+
+/**
+ * What the one question after an application's first merge may offer, given the tiers the recipe
+ * holds and the application lacks.
+ */
+export function useEnvironmentQuestionFacts(
+  groupId: string,
+  missing: ReadonlyArray<GroupEnvironmentTier>,
+): ReturnType<typeof questionFactsOf> {
+  const mayAdd = useMayAddEnvironment()(groupId);
+  const projects = useGroupProjects()(groupId);
+  return useMemo(
+    () =>
+      questionFactsOf({
+        mayAdd,
+        missing,
+        roles: projects.map((project) => readZeropsMembership(project).role),
       }),
-    [organization, projects],
+    [mayAdd, missing, projects],
   );
 }
 

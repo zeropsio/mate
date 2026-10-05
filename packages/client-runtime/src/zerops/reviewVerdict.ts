@@ -23,6 +23,7 @@
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
+import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
 import { hqRefusalWords } from "./hq/refusals.ts";
 import type { FlowPullRequestKind } from "./projectFlow.ts";
 import type { RecipeReach } from "./recipeReach.ts";
@@ -136,6 +137,19 @@ export interface ReviewSecondary {
   readonly enabled: boolean;
 }
 
+/**
+ * The one question a review may ask after a merge: where the code should run, with a button for
+ * each environment the person may add, and a quiet way to say not now. It is asked once and
+ * remembers nothing: no answer is stored, and no later merge asks it.
+ */
+export interface ReviewQuestion {
+  readonly text: string;
+  /** Equal peers, in the order stage, production; none is the default. */
+  readonly options: ReadonlyArray<{ readonly tier: GroupEnvironmentTier; readonly label: string }>;
+  /** The word that closes the question and keeps the slots in the application's page. */
+  readonly dismiss: string;
+}
+
 export interface ReviewModel {
   readonly verdict: ReviewVerdict;
   /** What pressing does, said beside the button — or, once it is over, where things stand. */
@@ -143,6 +157,8 @@ export interface ReviewModel {
   /** `undefined` where there is nothing left to press. */
   readonly primary: ReviewPrimary | undefined;
   readonly secondary?: ReviewSecondary | undefined;
+  /** Where the code should run, asked once after the first code merge (`ReviewQuestion`). */
+  readonly question?: ReviewQuestion | undefined;
 }
 
 /** The press, as the caller holds it: running, refused with HQ's words, or done. */
@@ -210,6 +226,8 @@ export interface ChangeReviewInput {
     readonly behind: boolean;
     /** Whether it asks for review: its Mate described it at its head. Absent reads as ready. */
     readonly ready?: boolean | undefined;
+    /** HQ's word, once it merged, that it was the application's first merged code change. */
+    readonly firstCodeMerge?: boolean | undefined;
   };
   /** The name of the Mate that wrote it: only Mates open changes (SPEC §5.4). */
   readonly mateName: string;
@@ -233,6 +251,16 @@ export interface ChangeReviewInput {
     | undefined;
   /** Where `main` goes next: a production a release puts it in front of, a stage that follows it. */
   readonly downstream: { readonly production: boolean; readonly stage: boolean };
+  /**
+   * Whether the application holds a production in any state — declared, being made, failed — which
+   * is as good as present: the question after the first merge is never asked of it.
+   */
+  readonly productionHeld?: boolean | undefined;
+  /**
+   * The environments this person may add now: those the recipe on `main` holds, the application
+   * lacks, and the person may add (`mayAddEnvironment`). Absent, none: nothing is offered on a guess.
+   */
+  readonly addable?: { readonly stage: boolean; readonly production: boolean } | undefined;
   /** Once merged: how many changes wait for production now, and what production runs. */
   readonly waiting?: { readonly count: number; readonly live: string | undefined } | undefined;
   /**
@@ -551,6 +579,28 @@ function changeVerdictOf(input: ChangeReviewInput): {
   };
 }
 
+/**
+ * The question after a first code merge: only in the review of the merge this person just finished
+ * (`press` done — never a reopened one), only for the application's first merged code change as HQ
+ * says it, only where no production is held in any state, and only with a button to answer it.
+ */
+function whereShouldItRun(input: ChangeReviewInput): ReviewQuestion | undefined {
+  if (input.press?.kind !== "done" || input.pull.firstCodeMerge !== true) return undefined;
+  if (input.downstream.production || input.productionHeld === true) return undefined;
+  const options = (
+    [
+      ["stage", input.addable?.stage === true, "Add stage"],
+      ["production", input.addable?.production === true, "Add production"],
+    ] as const
+  ).flatMap(([tier, offered, label]) => (offered ? [{ tier, label }] : []));
+  if (options.length === 0) return undefined;
+  return {
+    text: `Your code is on ${input.pull.baseBranch}. Where should it run?`,
+    options,
+    dismiss: "Not now",
+  };
+}
+
 export function changeReview(input: ChangeReviewInput): ReviewModel {
   const { pull } = input;
   const base = pull.baseBranch;
@@ -598,6 +648,7 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
         !recipe && input.downstream.production && input.release?.allowed === true
           ? { label: REVIEW_RELEASE_LABEL, enabled: true, safe: true }
           : undefined,
+      question: recipe ? undefined : whereShouldItRun(input),
     };
   }
 

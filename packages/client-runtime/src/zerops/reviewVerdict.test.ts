@@ -1253,3 +1253,58 @@ it.each([undefined, true, false])(
     expect(model.secondary?.label).toBe(merge === undefined ? undefined : "Close without merging…");
   },
 );
+
+// The one question after the first code merge of an application with no production (MODEL §3,
+// §9.3 – §9.5, §9.11): said once, in the review of the merge this person just finished, never on a
+// reopen, never to somebody with nothing to answer it with.
+describe("changeReview: where should it run (the one question)", () => {
+  const both = { stage: true, production: true };
+  const first = (over: Partial<ChangeReviewInput> = {}): ChangeReviewInput =>
+    change({
+      pull: pull({ merged: true, mergedAt: minutesAgo(1), firstCodeMerge: true }),
+      press: { kind: "done" },
+      downstream: { production: false, stage: false },
+      productionHeld: false,
+      addable: both,
+      ...over,
+    });
+
+  it("asks it once, with an equal button for each tier the person may add", () => {
+    expect(changeReview(first()).question).toEqual({
+      text: "Your code is on main. Where should it run?",
+      options: [
+        { tier: "stage", label: "Add stage" },
+        { tier: "production", label: "Add production" },
+      ],
+      dismiss: "Not now",
+    });
+  });
+
+  it.each<[string, Partial<ChangeReviewInput>]>([
+    [
+      "it was not the application's first code merge",
+      { pull: pull({ merged: true, firstCodeMerge: false }) },
+    ],
+    ["HQ said nothing of it being the first (an old row)", { pull: pull({ merged: true }) }],
+    [
+      "the merge is a recipe's",
+      { pull: pull({ merged: true, kind: "recipe", firstCodeMerge: true }) },
+    ],
+    ["a production is held in any state (being made, failed)", { productionHeld: true }],
+    ["the review is reopened: nobody pressed Merge here", { press: { kind: "idle" } }],
+    ["the merge is still running", { press: { kind: "running" } }],
+    ["the person may add neither", { addable: { stage: false, production: false } }],
+    ["no tier is offered at all", { addable: undefined }],
+  ])("asks nothing when %s", (_name, over) => {
+    expect(changeReview(first(over)).question).toBeUndefined();
+  });
+
+  it.each<[string, ChangeReviewInput["addable"], ReadonlyArray<string>]>([
+    ["only a stage may be added", { stage: true, production: false }, ["Add stage"]],
+    ["only a production may be added", { stage: false, production: true }, ["Add production"]],
+  ])("offers just the tier left where %s", (_name, addable, labels) => {
+    expect(
+      changeReview(first({ addable })).question?.options.map((option) => option.label),
+    ).toEqual(labels);
+  });
+});
