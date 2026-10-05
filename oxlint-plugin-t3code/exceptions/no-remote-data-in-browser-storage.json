@@ -4,7 +4,7 @@
     "kind": "CallExpression",
     "fingerprint": "window.localStorage.getItem(STORAGE_KEY)",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 9: the composer's model label copied from a Mate's provider catalog, in raw storage no account owns; the catalog's projection replaces it",
+    "reason": "source data stays out of browser storage: the composer's model label copied from a Mate's provider catalog, in raw storage no account owns; the catalog's projection replaces it",
     "expires": "never"
   },
   {
@@ -12,7 +12,7 @@
     "kind": "CallExpression",
     "fingerprint": "window.localStorage.setItem(STORAGE_KEY)",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 9: the composer's model label copied from a Mate's provider catalog, in raw storage no account owns; the catalog's projection replaces it",
+    "reason": "source data stays out of browser storage: the composer's model label copied from a Mate's provider catalog, in raw storage no account owns; the catalog's projection replaces it",
     "expires": "never"
   },
   {
@@ -20,7 +20,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(RISEN_MEMORY_KEY)",
     "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "invariant 9: remembers which project rows last rose as a verdict; the attention projection decides on every load",
+    "reason": "source data stays out of browser storage: remembers which project rows last rose as a verdict; the attention projection decides on every load",
     "expires": "never"
   },
   {
@@ -28,7 +28,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.removeItem(RISEN_MEMORY_KEY)",
     "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "invariant 9: remembers which project rows last rose as a verdict; the attention projection decides on every load",
+    "reason": "source data stays out of browser storage: remembers which project rows last rose as a verdict; the attention projection decides on every load",
     "expires": "never"
   },
   {
@@ -36,7 +36,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.setItem(RISEN_MEMORY_KEY)",
     "owner": "data-layer rewrite: Mate attention/overview",
-    "reason": "invariant 9: remembers which project rows last rose as a verdict; the attention projection decides on every load",
+    "reason": "source data stays out of browser storage: remembers which project rows last rose as a verdict; the attention projection decides on every load",
     "expires": "never"
   },
   {
@@ -44,7 +44,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(COMPOSER_TOP_MEMORY_STORAGE_KEY)",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "invariant 9: copies the composer's change strip (repo, number, title) from HQ; the change projection paints it",
+    "reason": "source data stays out of browser storage: copies the composer's change strip (repo, number, title) from HQ; the change projection paints it",
     "expires": "never"
   },
   {
@@ -52,7 +52,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.removeItem(COMPOSER_TOP_MEMORY_STORAGE_KEY)",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "invariant 9: copies the composer's change strip (repo, number, title) from HQ; the change projection paints it",
+    "reason": "source data stays out of browser storage: copies the composer's change strip (repo, number, title) from HQ; the change projection paints it",
     "expires": "never"
   },
   {
@@ -60,7 +60,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.setItem(COMPOSER_TOP_MEMORY_STORAGE_KEY)",
     "owner": "data-layer rewrite: changes/review",
-    "reason": "invariant 9: copies the composer's change strip (repo, number, title) from HQ; the change projection paints it",
+    "reason": "source data stays out of browser storage: copies the composer's change strip (repo, number, title) from HQ; the change projection paints it",
     "expires": "never"
   },
   {
@@ -68,7 +68,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(key)",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 9: registration records (Mate origin, project, name) kept across loads and tabs; the listing's projection replaces them",
+    "reason": "source data stays out of browser storage: registration records (Mate origin, project, name) kept across loads and tabs; the listing's projection replaces them",
     "expires": "never"
   },
   {
@@ -76,7 +76,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.setItem(key)",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 9: registration records (Mate origin, project, name) kept across loads and tabs; the listing's projection replaces them",
+    "reason": "source data stays out of browser storage: registration records (Mate origin, project, name) kept across loads and tabs; the listing's projection replaces them",
     "expires": "never"
   },
   {
@@ -84,7 +84,7 @@
     "kind": "CallExpression",
     "fingerprint": "window.addEventListener(\"storage\")",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 9: registration records (Mate origin, project, name) kept across loads and tabs; the listing's projection replaces them",
+    "reason": "source data stays out of browser storage: registration records (Mate origin, project, name) kept across loads and tabs; the listing's projection replaces them",
     "expires": "never"
   },
   {
@@ -92,7 +92,7 @@
     "kind": "CallExpression",
     "fingerprint": "window.sessionStorage.getItem(key)",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 9: this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
+    "reason": "source data stays out of browser storage: this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
     "expires": "never"
   },
   {
@@ -100,7 +100,7 @@
     "kind": "CallExpression",
     "fingerprint": "window.sessionStorage.removeItem(key)",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 9: this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
+    "reason": "source data stays out of browser storage: this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
     "expires": "never"
   },
   {
@@ -108,7 +108,7 @@
     "kind": "CallExpression",
     "fingerprint": "window.sessionStorage.setItem(key)",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 9: this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
+    "reason": "source data stays out of browser storage: this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
     "expires": "never"
   },
   {
@@ -116,7 +116,7 @@
     "kind": "CallExpression",
     "fingerprint": "localStorage.getItem(STORAGE_KEY)",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "invariant 9: remembers which HQ is official, or that none is, for a day; HQ's own answer replaces the verdict",
+    "reason": "source data stays out of browser storage: remembers which HQ is official, or that none is, for a day; HQ's own answer replaces the verdict",
     "expires": "never"
   },
   {
@@ -124,7 +124,7 @@
     "kind": "CallExpression",
     "fingerprint": "localStorage.setItem(STORAGE_KEY)",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "invariant 9: remembers which HQ is official, or that none is, for a day; HQ's own answer replaces the verdict",
+    "reason": "source data stays out of browser storage: remembers which HQ is official, or that none is, for a day; HQ's own answer replaces the verdict",
     "expires": "never"
   },
   {
@@ -132,7 +132,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(LAST_CONVERSATION_MEMORY_KEY)",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 9: remembers the last conversation so a cold load guesses where to land; the home waits for a source",
+    "reason": "source data stays out of browser storage: remembers the last conversation so a cold load guesses where to land; the home waits for a source",
     "expires": "never"
   },
   {
@@ -140,7 +140,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.removeItem(LAST_CONVERSATION_MEMORY_KEY)",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 9: remembers the last conversation so a cold load guesses where to land; the home waits for a source",
+    "reason": "source data stays out of browser storage: remembers the last conversation so a cold load guesses where to land; the home waits for a source",
     "expires": "never"
   },
   {
@@ -148,7 +148,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.setItem(LAST_CONVERSATION_MEMORY_KEY)",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 9: remembers the last conversation so a cold load guesses where to land; the home waits for a source",
+    "reason": "source data stays out of browser storage: remembers the last conversation so a cold load guesses where to land; the home waits for a source",
     "expires": "never"
   },
   {
@@ -156,7 +156,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(MATE_IDENTITY_MEMORY_KEY)",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 9: copies each Mate's name, face and project from the listing; the identity projection draws the first frame",
+    "reason": "source data stays out of browser storage: copies each Mate's name, face and project from the listing; the identity projection draws the first frame",
     "expires": "never"
   },
   {
@@ -164,7 +164,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.removeItem(MATE_IDENTITY_MEMORY_KEY)",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 9: copies each Mate's name, face and project from the listing; the identity projection draws the first frame",
+    "reason": "source data stays out of browser storage: copies each Mate's name, face and project from the listing; the identity projection draws the first frame",
     "expires": "never"
   },
   {
@@ -172,7 +172,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.setItem(MATE_IDENTITY_MEMORY_KEY)",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 9: copies each Mate's name, face and project from the listing; the identity projection draws the first frame",
+    "reason": "source data stays out of browser storage: copies each Mate's name, face and project from the listing; the identity projection draws the first frame",
     "expires": "never"
   },
   {
@@ -180,7 +180,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(MENU_MEMORY_STORAGE_KEY)",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "invariant 9: copies HQ's structure, Mates, members, change rows and chips to draw the menu before HQ answers; the store holds them in memory",
+    "reason": "source data stays out of browser storage: copies HQ's structure, Mates, members, change rows and chips to draw the menu before HQ answers; the store holds them in memory",
     "expires": "never"
   },
   {
@@ -188,7 +188,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.removeItem(MENU_MEMORY_STORAGE_KEY)",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "invariant 9: copies HQ's structure, Mates, members, change rows and chips to draw the menu before HQ answers; the store holds them in memory",
+    "reason": "source data stays out of browser storage: copies HQ's structure, Mates, members, change rows and chips to draw the menu before HQ answers; the store holds them in memory",
     "expires": "never"
   },
   {
@@ -196,7 +196,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.setItem(MENU_MEMORY_STORAGE_KEY)",
     "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "invariant 9: copies HQ's structure, Mates, members, change rows and chips to draw the menu before HQ answers; the store holds them in memory",
+    "reason": "source data stays out of browser storage: copies HQ's structure, Mates, members, change rows and chips to draw the menu before HQ answers; the store holds them in memory",
     "expires": "never"
   },
   {
@@ -204,7 +204,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(MENU_SKELETON_STORAGE_KEY)",
     "owner": "data-layer rewrite: projects",
-    "reason": "invariant 9: copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
+    "reason": "source data stays out of browser storage: copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
     "expires": "never"
   },
   {
@@ -212,7 +212,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.removeItem(MENU_SKELETON_STORAGE_KEY)",
     "owner": "data-layer rewrite: projects",
-    "reason": "invariant 9: copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
+    "reason": "source data stays out of browser storage: copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
     "expires": "never"
   },
   {
@@ -220,7 +220,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.removeItem(MENU_SKELETON_STORAGE_KEY)",
     "owner": "data-layer rewrite: projects",
-    "reason": "invariant 9: copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
+    "reason": "source data stays out of browser storage: copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
     "expires": "never"
   },
   {
@@ -228,7 +228,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.setItem(MENU_SKELETON_STORAGE_KEY)",
     "owner": "data-layer rewrite: projects",
-    "reason": "invariant 9: copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
+    "reason": "source data stays out of browser storage: copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
     "expires": "never"
   },
   {
@@ -236,7 +236,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(WRITER_MEMORY_KEY)",
     "owner": "data-layer rewrite: permissions/members",
-    "reason": "invariant 9: remembers who may write in each conversation as a verdict; the footer waits for the live answer",
+    "reason": "source data stays out of browser storage: remembers who may write in each conversation as a verdict; the footer waits for the live answer",
     "expires": "never"
   },
   {
@@ -244,7 +244,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.removeItem(WRITER_MEMORY_KEY)",
     "owner": "data-layer rewrite: permissions/members",
-    "reason": "invariant 9: remembers who may write in each conversation as a verdict; the footer waits for the live answer",
+    "reason": "source data stays out of browser storage: remembers who may write in each conversation as a verdict; the footer waits for the live answer",
     "expires": "never"
   },
   {
@@ -252,7 +252,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.setItem(WRITER_MEMORY_KEY)",
     "owner": "data-layer rewrite: permissions/members",
-    "reason": "invariant 9: remembers who may write in each conversation as a verdict; the footer waits for the live answer",
+    "reason": "source data stays out of browser storage: remembers who may write in each conversation as a verdict; the footer waits for the live answer",
     "expires": "never"
   }
 ]

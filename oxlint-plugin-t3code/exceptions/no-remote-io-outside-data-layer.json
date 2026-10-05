@@ -4,7 +4,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
     "owner": "data-layer rewrite: Mate transport",
-    "reason": "invariant 1: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "reason": "only the data layer's adapters reach a remote: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
     "expires": "never"
   },
   {
@@ -12,7 +12,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.listServiceVariableNames",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -20,7 +20,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.readProjectEnv",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -28,7 +28,7 @@
     "kind": "NewExpression",
     "fingerprint": "new WebSocket",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {
@@ -36,7 +36,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.fetchUser",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -44,7 +44,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.fetchUser",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -52,7 +52,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.fetchUser",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -60,7 +60,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.login",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -68,7 +68,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.logout",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -76,7 +76,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.verifyTotp",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -84,7 +84,7 @@
     "kind": "NewExpression",
     "fingerprint": "new ZeropsApiClient",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -92,7 +92,7 @@
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {
@@ -100,7 +100,7 @@
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {
@@ -108,7 +108,7 @@
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {
@@ -116,7 +116,7 @@
     "kind": "Identifier",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "reason": "only the data layer's adapters reach a remote: the app hands the network to a client it builds; the adapter is given fetch, not the view",
     "expires": "never"
   },
   {
@@ -124,7 +124,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/socket/Socket",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app wires a socket transport itself; moves into the client runtime's transport adapters",
+    "reason": "only the data layer's adapters reach a remote: the app wires a socket transport itself; moves into the client runtime's transport adapters",
     "expires": "never"
   },
   {
@@ -132,7 +132,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
     "owner": "data-layer rewrite: Mate transport",
-    "reason": "invariant 1: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "reason": "only the data layer's adapters reach a remote: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
     "expires": "never"
   },
   {
@@ -140,7 +140,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.listProjectProcesses",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -148,7 +148,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.listProjectServices",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -156,7 +156,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.listOrganizationMembers",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -164,7 +164,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -172,7 +172,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
     "owner": "data-layer rewrite: Mate transport",
-    "reason": "invariant 1: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "reason": "only the data layer's adapters reach a remote: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
     "expires": "never"
   },
   {
@@ -180,7 +180,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
     "owner": "data-layer rewrite: Mate transport",
-    "reason": "invariant 1: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "reason": "only the data layer's adapters reach a remote: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
     "expires": "never"
   },
   {
@@ -188,7 +188,7 @@
     "kind": "MemberExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "reason": "only the data layer's adapters reach a remote: the app hands the network to a client it builds; the adapter is given fetch, not the view",
     "expires": "never"
   },
   {
@@ -196,7 +196,7 @@
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate transport",
-    "reason": "invariant 1: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "reason": "only the data layer's adapters reach a remote: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
     "expires": "never"
   },
   {
@@ -204,7 +204,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/socket/Socket",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app wires a socket transport itself; moves into the client runtime's transport adapters",
+    "reason": "only the data layer's adapters reach a remote: the app wires a socket transport itself; moves into the client runtime's transport adapters",
     "expires": "never"
   },
   {
@@ -212,7 +212,7 @@
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
     "owner": "data-layer rewrite: Mate transport",
-    "reason": "invariant 1: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "reason": "only the data layer's adapters reach a remote: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
     "expires": "never"
   },
   {
@@ -220,7 +220,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -228,7 +228,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -236,7 +236,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -244,7 +244,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -252,7 +252,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -260,7 +260,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -268,7 +268,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -276,7 +276,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcQueryAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {
@@ -284,7 +284,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.fetchProjectLogAccess",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -292,7 +292,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -300,7 +300,7 @@
     "kind": "NewExpression",
     "fingerprint": "new WebSocket",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {
@@ -308,7 +308,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.closeChange",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -316,7 +316,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.mergeChange",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -324,7 +324,7 @@
     "kind": "CallExpression",
     "fingerprint": "hqApi.addService",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -332,7 +332,7 @@
     "kind": "CallExpression",
     "fingerprint": "hqApi.redeploy",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -340,7 +340,7 @@
     "kind": "CallExpression",
     "fingerprint": "hqApi.release",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -348,7 +348,7 @@
     "kind": "CallExpression",
     "fingerprint": "hqApi.rollback",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -356,7 +356,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.adoptSession",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -364,7 +364,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.adoptSession",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -372,7 +372,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.fetchUser",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -380,7 +380,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.fetchUser",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -388,7 +388,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.fetchUser",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -396,7 +396,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.fetchUser",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -404,7 +404,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.fetchUser",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -412,7 +412,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.fetchUser",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -420,7 +420,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.login",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -428,7 +428,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.register",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -436,7 +436,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.verifyTotp",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -444,7 +444,7 @@
     "kind": "MemberExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "reason": "only the data layer's adapters reach a remote: the app hands the network to a client it builds; the adapter is given fetch, not the view",
     "expires": "never"
   },
   {
@@ -452,7 +452,7 @@
     "kind": "NewExpression",
     "fingerprint": "new ZeropsApiClient",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -460,7 +460,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -468,7 +468,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -476,7 +476,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -484,7 +484,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -492,7 +492,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -500,7 +500,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -508,7 +508,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -516,7 +516,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -524,7 +524,7 @@
     "kind": "CallExpression",
     "fingerprint": "makeHqApi",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -532,7 +532,7 @@
     "kind": "NewExpression",
     "fingerprint": "new WebSocket",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {
@@ -540,7 +540,7 @@
     "kind": "CallExpression",
     "fingerprint": "input.hq.structure",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -548,7 +548,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -556,7 +556,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -564,7 +564,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -572,7 +572,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -580,7 +580,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -588,7 +588,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -596,7 +596,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -604,7 +604,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -612,7 +612,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -620,7 +620,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -628,7 +628,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -636,7 +636,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -644,7 +644,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -652,7 +652,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -660,7 +660,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -668,7 +668,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcCommand",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "reason": "only the data layer's adapters reach a remote: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -676,7 +676,7 @@
     "kind": "CallExpression",
     "fingerprint": "hq.structure",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -684,7 +684,7 @@
     "kind": "CallExpression",
     "fingerprint": "input.client.deleteIntegrationToken",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -692,7 +692,7 @@
     "kind": "CallExpression",
     "fingerprint": "input.client.mintIntegrationToken",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -700,7 +700,7 @@
     "kind": "CallExpression",
     "fingerprint": "input.hq.keepDeployToken",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -708,7 +708,7 @@
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {
@@ -716,7 +716,7 @@
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {
@@ -724,7 +724,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcSubscriptionAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {
@@ -732,7 +732,7 @@
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcSubscriptionAtomFamily",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {
@@ -740,7 +740,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.createMate",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -748,7 +748,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.recordClosedOff",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -756,7 +756,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -764,7 +764,7 @@
     "kind": "CallExpression",
     "fingerprint": "input.api.streamStructure",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -772,7 +772,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -780,7 +780,7 @@
     "kind": "CallExpression",
     "fingerprint": "fetch",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -788,7 +788,7 @@
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "reason": "only the data layer's adapters reach a remote: the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
     "expires": "never"
   },
   {
@@ -796,7 +796,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).mateKey",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -804,7 +804,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).recheckKey",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -812,7 +812,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.endPress",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -820,7 +820,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.holdPress",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -828,7 +828,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.readProjectCreation",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -836,7 +836,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.readProjectEnv",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -844,7 +844,7 @@
     "kind": "CallExpression",
     "fingerprint": "hq.bindBirth",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -852,7 +852,7 @@
     "kind": "CallExpression",
     "fingerprint": "input.inputs.client.listProjectServices",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -860,7 +860,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.readProcessStatus",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -868,7 +868,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.stopService",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -876,7 +876,7 @@
     "kind": "CallExpression",
     "fingerprint": "hq.api.changeAttachment",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -884,7 +884,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountHqApi(client, activeOrganization.id, officialHq(accountHq)).deleteApp",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -892,7 +892,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountHqApi(client, organization.id, hq).bindBirth",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -900,7 +900,7 @@
     "kind": "CallExpression",
     "fingerprint": "hq.recordBirth",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -908,7 +908,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.gitCredentials",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -916,7 +916,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.issueGitCredential",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -924,7 +924,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.revokeGitCredential",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -932,7 +932,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.createApp",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -940,7 +940,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.moveProject",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -948,7 +948,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.moveProject",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -956,7 +956,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.deleteIntegrationToken",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -964,7 +964,7 @@
     "kind": "CallExpression",
     "fingerprint": "hqApi().completeProjectDeletion",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -972,7 +972,7 @@
     "kind": "CallExpression",
     "fingerprint": "hqApi().mateKey",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -980,7 +980,7 @@
     "kind": "CallExpression",
     "fingerprint": "hqApi().prepareProjectDeletion",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -988,7 +988,7 @@
     "kind": "CallExpression",
     "fingerprint": "hqApi().updateMate",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -996,7 +996,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountHqApi(client, organizationId, hq).createApp",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -1004,7 +1004,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountHqApi(client, organizationId, hq).recordBirth",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -1012,7 +1012,7 @@
     "kind": "CallExpression",
     "fingerprint": "accountHqApi(client, activeOrganization.id, officialHq(accountHq)).renameApp",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -1020,7 +1020,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.repositorySource",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -1028,7 +1028,7 @@
     "kind": "CallExpression",
     "fingerprint": "hq.api.changeComments",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -1036,7 +1036,7 @@
     "kind": "CallExpression",
     "fingerprint": "hq.api.commentOnChange",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -1044,7 +1044,7 @@
     "kind": "CallExpression",
     "fingerprint": "api.change",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -1052,7 +1052,7 @@
     "kind": "CallExpression",
     "fingerprint": "hq.api.compare",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -1060,7 +1060,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.readProjectCreation",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -1068,7 +1068,7 @@
     "kind": "CallExpression",
     "fingerprint": "hq.api.change",
     "owner": "data-layer rewrite: HQ",
-    "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -1076,7 +1076,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.deleteIntegrationToken",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -1084,7 +1084,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.deleteIntegrationToken",
     "owner": "data-layer rewrite: Zerops platform",
-    "reason": "invariant 1: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "reason": "only the data layer's adapters reach a remote: a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
     "expires": "never"
   },
   {
@@ -1092,7 +1092,7 @@
     "kind": "NewExpression",
     "fingerprint": "new ZeropsApiClient",
     "owner": "data-layer rewrite: sign-in/session",
-    "reason": "invariant 1: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "reason": "only the data layer's adapters reach a remote: the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
     "expires": "never"
   },
   {
@@ -1100,7 +1100,7 @@
     "kind": "MemberExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "reason": "only the data layer's adapters reach a remote: the app hands the network to a client it builds; the adapter is given fetch, not the view",
     "expires": "never"
   },
   {
@@ -1108,7 +1108,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.deleteThrowaway",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1116,7 +1116,7 @@
     "kind": "CallExpression",
     "fingerprint": "client.mintThrowaway",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1124,7 +1124,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.buildAndDeployAppVersion",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1132,7 +1132,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.createAppVersion",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1140,7 +1140,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.createPublicHttpRouting",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1148,7 +1148,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.fetchProject",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1156,7 +1156,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.importProject",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1164,7 +1164,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.listClientProjects",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1172,7 +1172,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.listClientProjects",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1180,7 +1180,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.listIntegrationTokens",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1188,7 +1188,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.listIntegrationTokens",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1196,7 +1196,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.listOrganizationMembers",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1204,7 +1204,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.listProjectServices",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1212,7 +1212,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.listProjectServices",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1220,7 +1220,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.listProjectServices",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1228,7 +1228,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.listPublicHttpRoutings",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1236,7 +1236,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.listServiceVariableNames",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1244,7 +1244,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.mintIntegrationToken",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1252,7 +1252,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.mintIntegrationToken",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1260,7 +1260,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.readProcessStatus",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1268,7 +1268,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.readProcessStatus",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1276,7 +1276,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.readProcessStatus",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1284,7 +1284,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.readProcessStatus",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1292,7 +1292,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.readProjectBirthEnv",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1300,7 +1300,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.readProjectBirthEnv",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1308,7 +1308,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.readProjectCreation",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1316,7 +1316,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.readProjectCreation",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1324,7 +1324,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.regenerateIntegrationToken",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1332,7 +1332,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.syncPublicHttpRouting",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1340,7 +1340,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.uploadAppVersionArchive",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1348,7 +1348,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.writeServiceSecret",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1356,7 +1356,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.writeServiceSecret",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1364,7 +1364,7 @@
     "kind": "CallExpression",
     "fingerprint": "this.deps.platform.createProjectEnv",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1372,7 +1372,7 @@
     "kind": "CallExpression",
     "fingerprint": "this.deps.platform.readProcessStatus",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1380,7 +1380,7 @@
     "kind": "CallExpression",
     "fingerprint": "this.deps.platform.readProjectBirthEnv",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1388,7 +1388,7 @@
     "kind": "CallExpression",
     "fingerprint": "this.deps.platform.readProjectBirthEnv",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1396,7 +1396,7 @@
     "kind": "CallExpression",
     "fingerprint": "this.deps.platform.readProjectBirthEnv",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1404,7 +1404,7 @@
     "kind": "CallExpression",
     "fingerprint": "this.deps.platform.readProjectBirthEnv",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1412,7 +1412,7 @@
     "kind": "CallExpression",
     "fingerprint": "this.deps.platform.readProjectBirthEnv",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1420,7 +1420,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.buildAndDeployAppVersion",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1428,7 +1428,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.createAppVersion",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1436,7 +1436,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.listProjectProcesses",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1444,7 +1444,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.listProjectServices",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1452,7 +1452,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.readProcessStatus",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1460,7 +1460,7 @@
     "kind": "CallExpression",
     "fingerprint": "platform.uploadAppVersionArchive",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1468,7 +1468,7 @@
     "kind": "MemberExpression",
     "fingerprint": "globalThis.fetch",
     "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "invariant 1: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "reason": "only the data layer's adapters reach a remote: the app hands the network to a client it builds; the adapter is given fetch, not the view",
     "expires": "never"
   },
   {
@@ -1476,7 +1476,7 @@
     "kind": "CallExpression",
     "fingerprint": "input.platform.createProject",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1484,7 +1484,7 @@
     "kind": "CallExpression",
     "fingerprint": "input.platform.importDevelopmentContainer",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1492,7 +1492,7 @@
     "kind": "CallExpression",
     "fingerprint": "input.platform.importProject",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1500,7 +1500,7 @@
     "kind": "CallExpression",
     "fingerprint": "input.platform.readProjectCreation",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   },
   {
@@ -1508,7 +1508,7 @@
     "kind": "CallExpression",
     "fingerprint": "input.platform.register",
     "owner": "data-layer rewrite: operations",
-    "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "reason": "only the data layer's adapters reach a remote: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
     "expires": "never"
   }
 ]
