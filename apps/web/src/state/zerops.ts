@@ -51,14 +51,13 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { HqPeople } from "@t3tools/shared/hqMates";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import { Atom } from "effect/unstable/reactivity";
-import { projectProcesses } from "@t3tools/client-runtime/data";
+import { projectProcessesAtom } from "@t3tools/client-runtime/data";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import type { HqStanding } from "../zerops/accountHq";
 import { registeredZeropsOrigins, rowEnvironment } from "../zerops/environmentOrigins";
 import { createZeropsFeedAtoms } from "../zerops/feeds";
-import { accountDataAtom } from "../zerops/ZeropsAccountData";
 import { findInventoryProjectRef, type InventoryProjection } from "../zerops/inventoryContext";
 import { evidenceOfGrant, listingWholeForPerson } from "../zerops/listingWhole";
 import type {
@@ -564,7 +563,6 @@ function latestObservedAt(topology: ProjectTopologyRead): number | undefined {
   return stamps.length === 0 ? undefined : Math.max(...stamps);
 }
 
-const NOTHING_RUNNING: ReadonlyArray<ActivityProcess> = [];
 const EMPTY_USAGE_READS: ReadonlyMap<string, UsageRead> = new Map();
 const EMPTY_HISTORY_READS: ReadonlyMap<string, HistoryReadView> = new Map();
 
@@ -685,16 +683,7 @@ const projectTopologyFamily = Atom.family((key: string) =>
       ),
     );
     // What runs in it is the account store's: the organization's running work, never the runtime's.
-    const account = get(accountDataAtom);
-    const running =
-      account === null || account.orgId === null
-        ? NOTHING_RUNNING
-        : get(
-            account.data.project(projectProcesses, {
-              orgId: account.orgId,
-              projectId: project.projectId,
-            }),
-          ).running;
+    const running = get(projectProcessesAtom(project.projectId)).running;
     return projectTopologySnapshotFromRead(topology, running, usage, history);
   }).pipe(Atom.withLabel(`zerops:project-topology:${key}`)),
 );

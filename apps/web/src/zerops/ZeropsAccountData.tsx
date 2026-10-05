@@ -10,7 +10,8 @@ import {
   makeZeropsWire,
   observeAccount,
   repairZeropsSession,
-  type AccountStore,
+  accountReadsAtom,
+  type AccountReads,
   type DetailDemand,
   type Projection,
 } from "@t3tools/client-runtime/data";
@@ -21,24 +22,9 @@ import { accountOperations, AccountOperationsContext } from "./accountOperations
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** What a screen may reach of the account's data: the store's reads, never its writer. */
-export interface AccountData {
-  readonly data: AccountStore["data"];
-  /** The organization whose navigation is observed; `null` before one is chosen. */
-  readonly orgId: string | null;
-  /** A screen's hold on a detail while it is drawn; the release lets it go. */
-  readonly demandDetail: (demand: DetailDemand) => () => void;
-}
+export type AccountData = AccountReads;
 
 const AccountDataContext = createContext<AccountData | null>(null);
-
-/**
- * The same account data for atoms outside React (a project's topology reads its running work
- * through it); `null` while no account is mounted.
- */
-export const accountDataAtom = Atom.make<AccountData | null>(null).pipe(
-  Atom.keepAlive,
-  Atom.withLabel("zerops:account-data"),
-);
 
 export function ZeropsAccountData({ children }: { readonly children: ReactNode }) {
   const { client, status, activeOrganization } = useZeropsSession();
@@ -68,8 +54,8 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
     [client, observation, registry, store],
   );
   useEffect(() => {
-    registry.set(accountDataAtom, value);
-    return () => registry.set(accountDataAtom, null);
+    registry.set(accountReadsAtom, value);
+    return () => registry.set(accountReadsAtom, null);
   }, [registry, value]);
   return (
     <AccountDataContext value={value}>
