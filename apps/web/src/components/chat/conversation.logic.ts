@@ -14,6 +14,7 @@
  */
 import type { TurnId } from "@t3tools/contracts";
 import {
+  envChangeWords,
   isReadOperationKind,
   standupStepRole,
   type ZeropsOperation,
@@ -1422,7 +1423,9 @@ export function operationUnreturnedWords(operation: ZeropsOperation): string {
     case "manage":
       return `Manage ${subject}`;
     case "env":
-      return `Update the environment of ${subject}`;
+      return operation.envChange === undefined
+        ? `Update the environment of ${subject}`
+        : envChangeWords(operation.envChange, "asked");
     case "devServer":
       return `Manage the dev server on ${subject}`;
     case "logs":
@@ -1514,6 +1517,16 @@ export function operationLineWords(operation: ZeropsOperation): string {
       if (statusWord !== "Complete") return `${statusWord} ${subject}`;
       // An adopt-route session took over what stood already (its kicker, "Adopt · …").
       return operation.kicker.startsWith("Adopt ·") ? `Adopted ${subject}` : `Stood ${subject} up`;
+    // What it changed and where (the project's variables, a service's), never a value.
+    case "env":
+      if (operation.envChange !== undefined) {
+        if (failed) return envChangeWords(operation.envChange, "failed");
+        // Declined, stopped, unconfirmed: what was asked, and how it ended.
+        return operation.phase === "done"
+          ? envChangeWords(operation.envChange, "done")
+          : `${envChangeWords(operation.envChange, "asked")}: ${statusWord.toLowerCase()}`;
+      }
+      return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${statusWord} ${subject}`;
     case "devServer":
       // What it came to, as its pill says it: "Running app" read as work
       // still going on, under a finished bar.

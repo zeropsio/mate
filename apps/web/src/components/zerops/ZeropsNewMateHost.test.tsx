@@ -79,6 +79,7 @@ afterEach(() => {
   useNewMate.setState({ asked: null });
   closeAccountLifetime();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 const open = (again?: Parameters<ReturnType<typeof useNewMate.getState>["ask"]>[1]) => {
@@ -103,10 +104,18 @@ describe("Add a Mate's dialog, from its host", () => {
     ).toBeUndefined();
   });
 
+  // The roll is the pool's first name when every random byte is zero: a fixed roll, so a test
+  // never draws the name another one asserts against (CI drew "Ida" once).
   it("asks for a fresh one where nothing was started over", () => {
+    vi.spyOn(crypto, "getRandomValues").mockImplementation((bytes) => {
+      if (bytes instanceof Uint8Array) bytes.fill(0);
+      return bytes;
+    });
     const dialog = open();
-    expect(dialog.defaultName).not.toBe("Ida");
-    expect((dialog.defaultShapeFor as (name: string) => string | undefined)("Ida")).toBeUndefined();
+    expect(dialog.defaultName).toBe("Abel");
+    expect(
+      (dialog.defaultShapeFor as (name: string) => string | undefined)("Abel"),
+    ).toBeUndefined();
   });
 
   // Run 6's second review: Add lands on the new Mate's page; the focus never goes back to the +.

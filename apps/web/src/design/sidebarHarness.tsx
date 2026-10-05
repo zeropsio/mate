@@ -381,7 +381,7 @@ const ACTIVITY = new Map<string, ZeropsAgentActivity>([
         face: "working",
         kind: "working",
       }),
-      liveStep: { words: "Bundle the search box", code: "npm run bundle" },
+      liveStep: { words: "Bundle the search box" },
     },
   ],
   [

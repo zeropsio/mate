@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import {
+  type InterestState,
   processRecordToActivityProcess,
   type ProcessHistoryRead,
   type ProjectActivityRead,
@@ -23,6 +24,11 @@ export interface ProjectActivitySnapshot {
    */
   readonly live: boolean;
   readonly unavailableReason?: string | undefined;
+  /**
+   * A read failed and the runtime retries it — the socket's routine reconnect,
+   * or an outage while it lasts: not the feed's error, and not live.
+   */
+  readonly reconnecting?: true;
   /** Where the project's newest process history read stands; `unread` when not said. */
   readonly processHistory?: ProcessHistoryRead;
 }
@@ -40,7 +46,13 @@ const EMPTY_PROJECT_ACTIVITY_READ_ATOM = Atom.make<ProjectActivityRead | null>(n
 export function projectActivitySnapshotFromRead(
   read: ProjectActivityRead,
 ): ProjectActivitySnapshot {
-  const failed = read.observation.required.find((interest) => interest.status === "failed");
+  // A failure the runtime retries — the socket's routine reconnect — is no
+  // error of the feed: the read is just not live, and ages as one that stopped
+  // observing does. Only one it gives up on makes the read unavailable.
+  const failed = read.observation.required.find(
+    (interest): interest is Extract<InterestState, { readonly status: "failed" }> =>
+      interest.status === "failed" && !interest.retryable,
+  );
   const access = read.observation.access;
   const unavailableReason =
     access.status === "expired"
@@ -50,6 +62,11 @@ export function projectActivitySnapshotFromRead(
           ? "forbidden"
           : "expired-session"
         : failed?.reason;
+  const reconnecting =
+    unavailableReason === undefined &&
+    read.observation.required.some(
+      (interest) => interest.status === "failed" && interest.retryable,
+    );
   const knowledge = [...read.running.value, ...read.retainedHistory];
   const processes = knowledge.flatMap((entry) => {
     if (entry.knowledge !== "observed") return [];
@@ -76,6 +93,7 @@ export function projectActivitySnapshotFromRead(
       ...EMPTY_PROJECT_ACTIVITY_SNAPSHOT,
       processHistory: read.processHistory,
       ...(unavailableReason ? { unavailableReason } : {}),
+      ...(reconnecting ? { reconnecting: true as const } : {}),
     };
   }
   const required = read.observation.required;
@@ -85,6 +103,7 @@ export function projectActivitySnapshotFromRead(
     live: required.length > 0 && required.every((interest) => interest.status === "observing"),
     processHistory: read.processHistory,
     ...(unavailableReason ? { unavailableReason } : {}),
+    ...(reconnecting ? { reconnecting: true as const } : {}),
   };
 }
 

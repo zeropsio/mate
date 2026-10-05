@@ -24,13 +24,14 @@ export function limitTitleMessage(text: string, budget: number): string {
 
 /**
  * What a message contributes to a title: a user message only when it asks
- * something (`@t3tools/shared/userAsk`), and attachments without words by
- * their names alone, never by the placeholder a client sent the agent.
+ * something (`@t3tools/shared/userAsk`), by the person's words without the
+ * labels a client wrote for its pictures and files, and attachments without
+ * words by their names alone, never by the placeholder a client sent the agent.
  */
 function titleText(message: ThreadTitleMessage): string | null {
   if (message.role !== "user") return message.text;
   const ask = userAskOf(message);
-  return ask === null ? null : ask.kind === "text" ? message.text : "";
+  return ask === null ? null : ask.kind === "text" ? ask.text : "";
 }
 
 /** Reserve space for user intent before adding assistant findings, in conversation order. */

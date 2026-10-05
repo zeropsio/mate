@@ -190,8 +190,37 @@ describe("pictureWords", () => {
       1,
       "",
     ],
-  ])("%s", (_label, text, pictureCount, expected) => {
-    expect(pictureWords(text, pictureCount)).toBe(expected);
+    [
+      "a file's label goes, the words around it stay",
+      "[File 1]\nStand up the shop from this export:\n[File 2]\nKeep the prices",
+      0,
+      "Stand up the shop from this export:\nKeep the prices",
+      2,
+    ],
+    ["a file without words", "[File 1]", 0, "", 1],
+    [
+      "a file label with no file behind it is words",
+      "[File 1]\nSee above",
+      0,
+      "[File 1]\nSee above",
+      0,
+    ],
+    [
+      "a label the person wrote ends in a space and stays",
+      "[File 1] \nSee above",
+      0,
+      "[File 1] \nSee above",
+      1,
+    ],
+    [
+      "pictures and files together",
+      "[Picture 1]\nNotes on picture 1:\n1. Bigger logo\n[File 1]\nUse this palette",
+      1,
+      "Bigger logo\nUse this palette",
+      1,
+    ],
+  ])("%s", (_label, text, pictureCount, expected, fileCount = 0) => {
+    expect(pictureWords(text, pictureCount, fileCount)).toBe(expected);
   });
 });
 

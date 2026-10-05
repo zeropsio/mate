@@ -12,6 +12,7 @@
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type {
+  ZeropsEnvChange,
   ZeropsOperationKind,
   ZeropsOperationPhase,
   ZeropsOperationStepState,
@@ -372,6 +373,70 @@ export function neutralStatusWord(phase: ZeropsOperationPhase): string {
     case "uncertain":
       return settledPhaseWord(phase);
   }
+}
+
+/** An env call's verb by its action, as asked, while it runs, and done. */
+const ENV_VERB: Readonly<
+  Record<ZeropsEnvChange["action"], { asked: string; running: string; done: string }>
+> = {
+  set: { asked: "Set", running: "Setting", done: "Set" },
+  delete: { asked: "Remove", running: "Removing", done: "Removed" },
+  get: { asked: "Read", running: "Reading", done: "Read" },
+  dotenv: { asked: "Write", running: "Writing", done: "Wrote" },
+  dotenvPreview: { asked: "Read", running: "Reading", done: "Read" },
+  // An action it does not know: neutral, never a claim of what it did.
+  update: { asked: "Change", running: "Changing", done: "Changed" },
+};
+
+/**
+ * What an env call changed and where, in a sentence: "Set 6 of the project's
+ * variables", "Removed one of apidev's variables", "Wrote the .env for dev".
+ * Says how many when the call named them, never a name or a value.
+ */
+export function envChangeWords(
+  change: ZeropsEnvChange,
+  tense: "asked" | "running" | "done" | "failed",
+): string {
+  const verb = ENV_VERB[change.action];
+  const dotenv = change.service === undefined ? "the .env" : `the .env for ${change.service}`;
+  const what =
+    change.action === "dotenv"
+      ? dotenv
+      : change.action === "dotenvPreview"
+        ? `what ${dotenv} would change`
+        : envVariablesWords(change);
+  // zcp's safety gate kept it from writing over variables set by hand.
+  if (tense === "done" && change.refused !== undefined) {
+    const byHand =
+      change.refused === 0
+        ? "it holds variables set by hand"
+        : change.refused === 1
+          ? "one of its variables was set by hand"
+          : `${change.refused} of its variables were set by hand`;
+    return `Didn't write ${dotenv}: ${byHand}`;
+  }
+  switch (tense) {
+    case "asked":
+      return `${verb.asked} ${what}`;
+    case "running":
+      return `${verb.running} ${what}`;
+    case "done":
+      return `${verb.done} ${what}`;
+    case "failed":
+      return `${verb.running} ${what} failed`;
+  }
+}
+
+function envVariablesWords(change: ZeropsEnvChange): string {
+  const owner =
+    change.scope === "project"
+      ? "the project's"
+      : change.service === undefined
+        ? "the service's"
+        : `${change.service}'s`;
+  const counted = change.action === "set" || change.action === "delete";
+  if (!counted || change.count === undefined || change.count === 0) return `${owner} variables`;
+  return `${change.count === 1 ? "one" : change.count} of ${owner} variables`;
 }
 
 const DELETE_SCALE_MANAGE_ENV_VOICE: Readonly<Record<string, string>> = {

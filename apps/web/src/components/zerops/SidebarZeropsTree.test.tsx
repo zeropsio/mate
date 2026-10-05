@@ -3106,7 +3106,7 @@ describe("a Mate's row says more without words", () => {
   it.each([
     {
       case: "a working Mate whose step is relayed",
-      activity: working({ liveStep: { words: "Compile the gallery", code: "npm run compile" } }),
+      activity: working({ liveStep: { words: "Compile the gallery" } }),
     },
     { case: "a resting Mate with no last words", activity: live({ snippet: undefined }) },
     {
@@ -3153,7 +3153,7 @@ describe("a Mate's row says more without words", () => {
     },
     {
       case: "working, its step relayed",
-      activity: working({ liveStep: { words: "Compile the gallery", code: "npm run compile" } }),
+      activity: working({ liveStep: { words: "Compile the gallery" } }),
       face: "working",
       dot: undefined,
       third: 'data-zerops-surface="sidebar-mate-live-step"',
@@ -3222,14 +3222,6 @@ describe("a Mate's row says more without words", () => {
     });
     expect(dot(watched).props["data-tone"]).toBe("unread");
     expect(dot(watched).props["data-arrived"]).toBe("");
-  });
-
-  it("writes the live step's command in mono under the sweep", () => {
-    const html = row(
-      working({ liveStep: { words: "Compile the gallery", code: "npm run compile" } }),
-    );
-    expect(html).toContain('data-run-shimmer=""');
-    expect(html).toContain('Compile the gallery · <span class="font-mono">npm run compile</span>');
   });
 
   // A new step rises into its line as the sweep keeps running over its words:

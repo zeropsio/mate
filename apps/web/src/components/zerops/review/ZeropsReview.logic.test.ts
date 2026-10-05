@@ -10,7 +10,6 @@ import {
   commitFold,
   crewLandCommand,
   descriptionPicture,
-  focusesPrimaryLate,
   diffFold,
   keyStaysInReview,
   pressesPrimary,
@@ -502,25 +501,6 @@ describe("changeRunMessage: the run that made a change is the newest answer link
     expect(changeRunMessage(messages, change(5), HQ)?.text).toContain("Added the route.");
     expect(changeRunMessage(messages, change(53), HQ)?.text).toContain("Footer done.");
     expect(changeRunMessage(messages, change(7), HQ)).toBeUndefined();
-  });
-});
-
-describe("focusesPrimaryLate: focus reaches the button once it turns safe, soon after opening", () => {
-  it.each([
-    [
-      "safe while focus still rests on the review, just after it opened",
-      { safe: true, onReview: true, sinceOpenMs: 300 },
-      true,
-    ],
-    [
-      "safe after the person moved the focus on",
-      { safe: true, onReview: false, sinceOpenMs: 300 },
-      false,
-    ],
-    ["safe only long after it opened", { safe: true, onReview: true, sinceOpenMs: 4000 }, false],
-    ["not safe", { safe: false, onReview: true, sinceOpenMs: 300 }, false],
-  ])("%s", (_case, input, focuses) => {
-    expect(focusesPrimaryLate(input)).toBe(focuses);
   });
 });
 

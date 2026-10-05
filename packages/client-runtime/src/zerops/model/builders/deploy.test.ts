@@ -174,7 +174,10 @@ describe("buildDeployFields — why a deploy failed or timed out", () => {
           runtimeLogs: ["unrelated"],
         },
       },
-      expected: { reason: "Build OOM-killed", logTail: lines(20, "build").slice(-12) },
+      expected: {
+        reason: "Its build failed, so nothing new was deployed.",
+        logTail: lines(20, "build").slice(-12),
+      },
     },
     {
       name: "the message and the runtime log of a failed init",
@@ -189,6 +192,27 @@ describe("buildDeployFields — why a deploy failed or timed out", () => {
         },
       },
       expected: { reason: "initCommand exited 1", logTail: ["Error: EADDRINUSE"] },
+    },
+    {
+      name: "a failed start-up command in the person's words, its line left to the log",
+      overrides: {
+        result: {
+          status: "DEPLOY_FAILED",
+          targetService: "apidev",
+          message: "initCommand exited 1",
+          failedPhase: "init",
+          failureClassification: {
+            category: "start",
+            likelyCause: "A run.initCommand exited non-zero, which aborts the deploy.",
+            signals: ["phase:init"],
+          },
+          runtimeLogs: ["Error: Cannot find module 'x'"],
+        },
+      },
+      expected: {
+        reason: "Its start-up command failed, so the new version didn't go live.",
+        logTail: ["Error: Cannot find module 'x'"],
+      },
     },
     {
       name: "the message of a build zcp stopped waiting for",
@@ -212,7 +236,7 @@ describe("buildDeployFields — why a deploy failed or timed out", () => {
           failureClassification: { category: "credential", likelyCause: "GIT_TOKEN missing" },
         },
       },
-      expected: { reason: "GIT_TOKEN missing" },
+      expected: { reason: "A sign-in was refused, so the deploy never ran." },
     },
     {
       name: "the result's own evidence when a failed call carries a deploy result",
@@ -567,7 +591,7 @@ describe("buildDeployFields — a git push says what it did, a deploy only once 
     { call: "delivered", expected: "appstage is live." },
     {
       call: "buildFailed",
-      expected: "Build pipeline failed; no recognized log pattern matched.",
+      expected: "Its build failed, so nothing new was deployed.",
     },
     { call: "buildFailedPastTheWatch", expected: "Failed." },
     { call: "noBuildFollowed", expected: "No result from the build. Check it in Zerops." },
@@ -683,7 +707,7 @@ describe("buildDeployFields — why a git push failed", () => {
     {
       call: "buildFailed",
       expected: {
-        reason: "Build pipeline failed; no recognized log pattern matched.",
+        reason: "Its build failed, so nothing new was deployed.",
         logTail: lines(20, "build").slice(-12),
       },
     },
@@ -695,7 +719,7 @@ describe("buildDeployFields — why a git push failed", () => {
           "meta records git-push as configured for appdev, but the service env carries no GIT_TOKEN secret.",
       },
     },
-    { call: "pushFailed", expected: { reason: "GIT_TOKEN rejected" } },
+    { call: "pushFailed", expected: { reason: "A sign-in was refused, so the deploy never ran." } },
   ] as const)("$call", ({ call, expected }) => {
     expect(buildDeployFields(GIT_PUSH_CASES[call], CONTEXT).explanation).toEqual(expected);
   });

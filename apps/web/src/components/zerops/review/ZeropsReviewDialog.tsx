@@ -3,10 +3,9 @@
  *
  * It opens from the thing that was pressed — its scale grows from that point, 200 ms, a touch
  * of lift and a fade — and closes in 150 ms (R7). Esc closes it and so does a press outside it.
- * Focus lands on the one button only when that button is safe to press, and on the review
- * itself otherwise; a button that turns safe just after it opened — Merge, once the change's
- * files are in — takes the focus then, if the review still holds it. Focus goes back to what
- * opened it. ⌘↵ presses the button while it is safe. Reduced motion keeps only the fade.
+ * Focus lands on the review itself, never on its one button, so a stray Enter presses nothing
+ * (the owner, 2026-10-05: Enter merged); ⌘↵ presses the button while it is safe. Focus goes back
+ * to what opened it. Reduced motion keeps only the fade.
  *
  * A review stepped into another one in place — a release's change — takes the first Esc to step
  * back (`useReviewEscape`); the next one closes. A step set aside is `inert`: its button is never
@@ -29,12 +28,7 @@ import {
 
 import { gatedPortal } from "~/components/ui/portal-gate";
 
-import {
-  focusesPrimaryLate,
-  keyStaysInReview,
-  pressesPrimary,
-  reviewOrigin,
-} from "./ZeropsReview.logic";
+import { keyStaysInReview, pressesPrimary, reviewOrigin } from "./ZeropsReview.logic";
 import { isField } from "./ZeropsReviewSurface";
 
 const ReviewPortal = gatedPortal(DialogPrimitive.Portal);
@@ -65,10 +59,6 @@ export function useReviewEscape(onEscape: ReviewEscape | undefined): void {
     if (take === null || onEscape === undefined) return undefined;
     return take(onEscape);
   }, [onEscape, take]);
-}
-
-function isSafe(primary: HTMLButtonElement): boolean {
-  return primary.dataset.safe === "true" && !primary.disabled;
 }
 
 export function ZeropsReviewDialog({
@@ -116,29 +106,7 @@ export function ZeropsReviewDialog({
       );
       element.style.setProperty("--rv-origin-x", `${String(origin.x)}px`);
       element.style.setProperty("--rv-origin-y", `${String(origin.y)}px`);
-
-      const opened = performance.now();
-      const turnsSafe = new MutationObserver(() => {
-        const primary = primaryOf(element);
-        if (
-          primary !== null &&
-          focusesPrimaryLate({
-            safe: isSafe(primary),
-            onReview: document.activeElement === element,
-            sinceOpenMs: performance.now() - opened,
-          })
-        ) {
-          primary.focus({ preventScroll: true });
-        }
-      });
-      turnsSafe.observe(element, {
-        subtree: true,
-        childList: true,
-        attributes: true,
-        attributeFilter: ["data-safe", "disabled"],
-      });
       return () => {
-        turnsSafe.disconnect();
         popup.current = null;
       };
     },
@@ -195,10 +163,7 @@ export function ZeropsReviewDialog({
             data-slot="dialog-popup"
             data-zerops-surface="review"
             finalFocus={() => (from?.isConnected === true ? from : true)}
-            initialFocus={() => {
-              const primary = primaryOf(popup.current);
-              return primary !== null && isSafe(primary) ? primary : popup.current;
-            }}
+            initialFocus={() => popup.current}
             onKeyDown={onKeyDown}
             ref={place}
           >

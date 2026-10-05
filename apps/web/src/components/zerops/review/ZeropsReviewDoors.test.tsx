@@ -369,3 +369,13 @@ describe("the review is a layer: what is typed in it acts on nothing behind it",
     expect(reviewDialogSource).toContain(words);
   });
 });
+
+describe("the review takes the focus itself, never its button (the owner, 2026-10-05)", () => {
+  it("opens with the focus on the review, so a stray Enter presses nothing", () => {
+    expect(reviewDialogSource).toContain("initialFocus={() => popup.current}");
+  });
+
+  it("never moves the focus onto the button once it turns safe", () => {
+    expect(reviewDialogSource).not.toMatch(/\.focus\(/u);
+  });
+});

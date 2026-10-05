@@ -83,6 +83,12 @@ export interface ObservationInput {
    * and `stale-timeout` are computed here and never need to be passed in.
    */
   readonly unavailableReason?: ObservationOffReason;
+  /**
+   * Since when every read of Zerops has failed and been retried
+   * (`unreachableSince`): before a first read, past the same grace a read
+   * gets before it goes stale, the card says Zerops isn't answering.
+   */
+  readonly unreachableSinceMs?: number;
   readonly lastRead?: {
     readonly attribution: AttributionResult;
     /**
@@ -178,6 +184,30 @@ function observationFor(attribution: AttributionResult, atMs: number): Observati
   };
 }
 
+/** How long Zerops may be unreachable before what never read says so: the grace a read gets. */
+export const UNREACHABLE_GRACE_MS = STALE_AFTER_MS;
+
+/**
+ * Since when Zerops has been unreachable — every read failed and retried, the
+ * socket's routine 30-minute reconnect among them: from the first moment seen
+ * so, kept while it lasts, gone once it is back.
+ */
+export function unreachableSince(
+  previousMs: number | undefined,
+  reconnecting: boolean,
+  nowMs: number,
+): number | undefined {
+  return reconnecting ? (previousMs ?? nowMs) : undefined;
+}
+
+/**
+ * Whether Zerops has been unreachable past the grace a read gets before it
+ * goes stale: the routine reconnect is back within it, a lasting outage is not.
+ */
+export function unreachableLasts(sinceMs: number | undefined, nowMs: number): boolean {
+  return sinceMs !== undefined && nowMs - sinceMs > UNREACHABLE_GRACE_MS;
+}
+
 export function observe(input: ObservationInput, nowMs: number): ObservationState {
   const ceilingMs = input.ceilingMs ?? DEFAULT_CEILING_MS;
 
@@ -194,6 +224,9 @@ export function observe(input: ObservationInput, nowMs: number): ObservationStat
   }
 
   if (input.lastRead === undefined) {
+    if (unreachableLasts(input.unreachableSinceMs, nowMs)) {
+      return { kind: "off", reason: "stale-timeout" };
+    }
     return {
       kind: "observing",
       observation: { chips: [], readAtMs: nowMs },

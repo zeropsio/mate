@@ -297,7 +297,7 @@ export const PLAN_ACTIVITY = new Map<string, ZeropsAgentActivity>([
       kind: "working",
       face: "working",
       subject: "Add a health page with the build number and the uptime",
-      liveStep: { words: "Stamp the build number into the page", code: "npm run stamp" },
+      liveStep: { words: "Stamp the build number into the page" },
     }),
   ],
   [

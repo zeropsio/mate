@@ -1279,6 +1279,18 @@ function liveActivity(
         : { kind: "operation", operation: newest.operation, ...rest };
     }
     if (entry.kind === "message") {
+      // A call that started at the instant the message was stamped is no
+      // older than it, whichever the record files first: an open one is what
+      // the Mate's hands are on (run 12: a note and a command's start at
+      // 14:40:20.255Z read "Thinking" through the whole command).
+      const instant = Date.parse(entry.createdAt);
+      if (
+        stretch.entries
+          .slice(0, index)
+          .some((earlier) => open.has(earlier) && Date.parse(earlier.createdAt) === instant)
+      ) {
+        continue;
+      }
       if (entry.message.role !== "reasoning" || passed) {
         return { kind: "thinking", key: null, messages: [] };
       }

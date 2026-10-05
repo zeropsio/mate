@@ -25,6 +25,7 @@ import { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import * as ConnectionWakeups from "../connection/wakeups.ts";
 import { EnvironmentCacheStore } from "../platform/persistence.ts";
 import { subscribeDynamic } from "../rpc/client.ts";
+import type { RpcSession } from "../rpc/session.ts";
 import { ThreadSnapshotLoader, type ThreadSnapshotWindow } from "./threadSnapshotHttp.ts";
 import { parseThreadKey, threadKey } from "./entities.ts";
 import { mergeFirstPageSnapshot } from "./threadSnapshotMerge.ts";
@@ -752,22 +753,33 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
       service.changes.pipe(Stream.filter(ConnectionWakeups.shouldResubscribeAfterWakeup)),
   });
 
-  // Only the first subscription after a warm live resume keeps the retained
-  // status. A replacement session or foreground resubscribe on the same scope
-  // may have missed events, so those show sync progress until confirmed.
+  // The first subscription after a warm live resume keeps the retained
+  // status, and so does a foreground resubscribe on the same session: what it
+  // replays moves the status to "synchronizing" on its own (`setThread`), and
+  // one that brings nothing new leaves a live thread live (run 12: twenty
+  // window refocuses each marked it synchronizing, which switched the run
+  // card's motion off). A replacement session may have missed events, so it
+  // shows sync progress until confirmed. The cost: a socket that died while
+  // the page was away reads as live after a wake until the connection's probe
+  // finds it dead and replaces the session — up to 15 s (review of pass 43);
+  // nothing is lost, the replacement resumes from the last applied sequence.
   const resumingLive = yield* Ref.make(initialState.status === "live");
-  const markSynchronizing = Effect.gen(function* () {
+  const subscribedSession = yield* Ref.make<RpcSession | null>(null);
+  const markSynchronizing = Effect.fn("EnvironmentThreadState.markSynchronizing")(function* (
+    sameSession = false,
+  ) {
     if (yield* Ref.get(resumingLive)) return;
     // Connection notifications do not establish that a terminated load restarted.
     // Clear its diagnostic only when this subscription actually tries again.
     yield* SubscriptionRef.update(state, (current) =>
-      current.status === "deleted"
+      current.status === "deleted" ||
+      (sameSession && current.status === "live" && Option.isSome(current.data))
         ? current
         : { ...current, status: "synchronizing" as const, error: Option.none() },
     );
   });
 
-  yield* markSynchronizing;
+  yield* markSynchronizing();
 
   // A server whose descriptor names the snapshot's parameters (`prepared.threadSnapshot`) has
   // the thread read over HTTP as soon as its connection is prepared, on the tab's warm HTTP/2
@@ -846,7 +858,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
         yield* Ref.set(reasoningMessagesSupported, supportsReasoningMessages);
         yield* Ref.set(paginationSupported, supportsPagination);
         yield* Ref.set(awaitingCompletion, supportsCompletionMarker);
-        yield* markSynchronizing;
+        yield* markSynchronizing((yield* Ref.getAndSet(subscribedSession, session)) === session);
         yield* Ref.set(resumingLive, false);
         yield* Deferred.await(earlyRead);
 

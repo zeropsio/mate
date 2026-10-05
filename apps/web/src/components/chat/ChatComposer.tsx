@@ -138,6 +138,8 @@ import {
 } from "@t3tools/client-runtime/zerops/dataConsole";
 import { useZeropsDataCatalogStore } from "../../zerops/dataCatalog";
 import { useZeropsDataMentions } from "../../zerops/useZeropsDataMentions";
+import { composerModelOptionsFor, isNewConversation } from "../../zerops/newConversationEffort";
+import { getProviderModelCapabilities } from "../../providerModels";
 import { zeropsCommands } from "../../state/zeropsCommands";
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
 import { shouldUseCompactComposerPrimaryActions } from "../composerFooterLayout";
@@ -1028,6 +1030,30 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     () => getComposerPromptInjectionState(prompt),
     [prompt],
   );
+  // D10: a new conversation shows and sends Extra High; a person's own pick wins.
+  const newConversation = isNewConversation(routeKind, activeThread);
+  const selectedComposerModelOptions = useMemo(
+    () =>
+      composerModelOptionsFor({
+        isNew: newConversation,
+        capabilities: getProviderModelCapabilities(
+          selectedProviderModels,
+          selectedModel,
+          selectedProvider,
+          settings.planModeEnabled,
+        ),
+        options: composerModelOptions?.[selectedInstanceId],
+      }),
+    [
+      composerModelOptions,
+      newConversation,
+      selectedInstanceId,
+      selectedModel,
+      selectedProvider,
+      selectedProviderModels,
+      settings.planModeEnabled,
+    ],
+  );
   const composerProviderState = useMemo(
     () =>
       getComposerProviderState({
@@ -1035,13 +1061,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         model: selectedModel,
         models: selectedProviderModels,
         promptInjectionState: composerPromptInjectionState,
-        modelOptions: composerModelOptions?.[selectedInstanceId],
+        modelOptions: selectedComposerModelOptions,
         planModeEnabled: settings.planModeEnabled,
       }),
     [
-      composerModelOptions,
       composerPromptInjectionState,
-      selectedInstanceId,
+      selectedComposerModelOptions,
       selectedModel,
       selectedProvider,
       selectedProviderModels,
@@ -1603,7 +1628,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           ...(routeKind === "draft" && draftId ? { draftId } : {}),
           model: selectedModel,
           models: selectedProviderModels,
-          modelOptions: composerModelOptions?.[selectedInstanceId],
+          modelOptions: selectedComposerModelOptions,
           prompt,
           onPromptChange: setPromptFromTraits,
           planModeEnabled: settings.planModeEnabled,
@@ -1614,7 +1639,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     models: selectedProviderModels,
     model: selectedModel,
     prompt,
-    modelOptions: composerModelOptions?.[selectedInstanceId],
+    modelOptions: selectedComposerModelOptions,
     planModeEnabled: settings.planModeEnabled,
   });
   // The access lives in the one control's menu, which opens only where the

@@ -34,6 +34,8 @@ const store = vi.hoisted(() => ({
   history: "read" as "unread" | "reading" | "read" | "failed",
   /** Why the store's read of the project failed, if it did. */
   failure: undefined as string | undefined,
+  /** The dev service's subdomain, where the topology knows one. */
+  subdomainUrl: undefined as string | undefined,
 }));
 
 vi.mock("../../zerops/activity/useProjectActivity", async (importOriginal) => {
@@ -78,7 +80,13 @@ vi.mock("../../zerops/useZeropsFeeds", async (importOriginal) => {
     useZeropsTopology: () => ({
       project: { id: "proj-7", name: "orchard" },
       services: [
-        { hostname: "appdev", serviceId: "svc-app", typeName: "Node.js", routes: [] },
+        {
+          hostname: "appdev",
+          serviceId: "svc-app",
+          typeName: "Node.js",
+          routes: [],
+          ...(store.subdomainUrl === undefined ? {} : { subdomainUrl: store.subdomainUrl }),
+        },
         { hostname: "apidev", serviceId: "svc-api", typeName: "Go", routes: [] },
       ],
       warnings: [],
@@ -307,6 +315,7 @@ describe("RunChat — an operation's card, read from the account store", () => {
     store.logLines = LOG_LINES;
     store.history = "read";
     store.failure = undefined;
+    store.subdomainUrl = undefined;
   });
   afterEach(() => {
     act(() => {
@@ -619,5 +628,163 @@ describe("RunChat — an operation's card, read from the account store", () => {
     expect(count(renderer)).toEqual({ steps: 0, log: 0, whole: 0 });
     expect(opener(renderer)).toHaveLength(0);
     expect(store.reading).toBe(false);
+  });
+
+  // A control that opens opens onto something, kind by kind (pass 43: an env
+  // call wore a chevron that opened onto nothing).
+  const said = (renderer: ReactTestRenderer) =>
+    nodes(renderer, "data-chat-detail")
+      .flatMap((node) => node.findAll(() => true))
+      .flatMap((node) => node.children.filter((child) => typeof child === "string"))
+      .join("")
+      .trim();
+  const kindOp = (overrides: Partial<ZeropsOperation> & Pick<ZeropsOperation, "kind">) => {
+    const entry = operation("k1", "turn-0", 1, overrides);
+    if (entry.kind !== "operation") throw new Error("an operation");
+    return entry.operation;
+  };
+  const one = (state: "done" | "failed") => [
+    { id: "apidev", label: "apidev", state, stateLabel: state === "done" ? "Done" : "Failed" },
+  ];
+  it.each([
+    {
+      name: "a failed env call",
+      op: kindOp({
+        kind: "env",
+        phase: "failed",
+        steps: one("failed"),
+        explanation: { reason: "quota exceeded" },
+      }),
+    },
+    {
+      name: "a failed restart",
+      op: kindOp({
+        kind: "manage",
+        phase: "failed",
+        steps: one("failed"),
+        explanation: { reason: "quota exceeded" },
+      }),
+    },
+    { name: "a mount", op: kindOp({ kind: "mount", steps: one("done") }) },
+    { name: "a check", op: kindOp({ kind: "verify", steps: one("done") }) },
+    {
+      name: "a subdomain",
+      op: kindOp({
+        kind: "subdomain",
+        steps: one("done"),
+        links: [{ label: "app.example", url: "https://app.example" }],
+      }),
+    },
+    {
+      name: "an error",
+      op: kindOp({ kind: "error", phase: "failed", explanation: { reason: "No such tool" } }),
+    },
+    {
+      name: "a look at the services",
+      op: kindOp({
+        kind: "discover",
+        readResult: {
+          kind: "discover",
+          pending: false,
+          rows: [{ hostname: "apidev", status: { tone: "ok", word: "Running" } }],
+        },
+      }),
+    },
+    {
+      name: "a log read",
+      op: kindOp({
+        kind: "logs",
+        readResult: {
+          kind: "logs",
+          pending: false,
+          service: "apidev",
+          lines: [{ id: "l1", severity: "info", text: "listening" }],
+        },
+      }),
+    },
+    {
+      name: "the events read",
+      op: kindOp({
+        kind: "events",
+        readResult: {
+          kind: "events",
+          pending: false,
+          rows: [{ id: "e1", action: "Deploy", status: { tone: "ok", word: "Finished" } }],
+        },
+      }),
+    },
+    {
+      name: "a process followed",
+      op: kindOp({
+        kind: "process",
+        steps: one("done"),
+        readResult: { kind: "process", pending: false },
+      }),
+    },
+    // A deploy's steps are its pipeline's, as the store read them.
+    { name: "a deploy", op: deploy("done", { key: "op:d9" }), processes: [process("finished")] },
+  ] as ReadonlyArray<{
+    name: string;
+    op: ZeropsOperation;
+    processes?: ReadonlyArray<ActivityProcess>;
+  }>)("$name opens onto what it shows", ({ op, processes = [] }) => {
+    store.processes = processes;
+    const renderer = openSettled(op);
+    expect(said(renderer)).not.toBe("");
+  });
+
+  it.each([
+    ...(["env", "delete", "scale", "manage", "devServer"] as const).map((kind) => ({
+      name: `a ${kind} call that went through`,
+      op: kindOp({ kind, steps: one("done") }),
+    })),
+    {
+      name: "a look that found no service",
+      op: kindOp({
+        kind: "discover",
+        steps: one("done"),
+        readResult: { kind: "discover", pending: false, rows: [] },
+      }),
+    },
+  ])("$name has nothing to open", ({ op }) => {
+    store.processes = [];
+    const renderer = mount(settledRow(op));
+    expect(opener(renderer)).toHaveLength(0);
+  });
+
+  // A settled call of one step wears no bar: its mark and its time say it (pass 43).
+  it.each([
+    { name: "a call of one step", op: kindOp({ kind: "env", steps: one("done") }), bars: 0 },
+    {
+      name: "a look at the services",
+      op: kindOp({
+        kind: "discover",
+        readResult: { kind: "discover", pending: false, rows: [] },
+      }),
+      bars: 0,
+    },
+    {
+      name: "a batch, a segment per service",
+      op: kindOp({
+        kind: "deploy",
+        batch: true,
+        steps: [...one("done"), { id: "web", label: "web", state: "done", stateLabel: "Done" }],
+      }),
+      bars: 1,
+    },
+  ])("$name: bars $bars", ({ op, bars }) => {
+    store.processes = [];
+    const renderer = mount(settledRow(op));
+    expect(nodes(renderer, "data-status-bar")).toHaveLength(bars);
+  });
+
+  // A settled dev server opens onto the way to its service when the topology
+  // knows its subdomain: the card draws an "Open" chip there (pass 43).
+  it("a dev server opens onto its Open link when the topology knows its address", () => {
+    store.processes = [];
+    store.subdomainUrl = "https://appdev.example.test";
+    const op = kindOp({ kind: "devServer", subject: "appdev", steps: one("done") });
+    const renderer = openSettled(op);
+    expect(said(renderer)).toContain("Open");
   });
 });

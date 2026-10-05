@@ -1804,7 +1804,7 @@ describe("ZeropsOperationCard — why a card failed or timed out", () => {
         failureClassification: { category: "build", likelyCause: "Build OOM-killed" },
         buildLogs: ["> next build", "npm ERR! missing script: build"],
       }),
-      reason: "Build OOM-killed",
+      reason: "Its build failed, so nothing new was deployed.",
       tail: [
         { text: "&gt; next build", error: false },
         { text: "npm ERR! missing script: build", error: true },
@@ -1843,7 +1843,7 @@ describe("ZeropsOperationCard — why a card failed or timed out", () => {
         error: "zcli push failed",
         failureClassification: { category: "credential", likelyCause: "GIT_TOKEN missing" },
       }),
-      reason: "GIT_TOKEN missing",
+      reason: "A sign-in was refused, so the deploy never ran.",
       tail: [],
     },
   ])("$name", ({ operation, reason, tail }) => {
@@ -1888,6 +1888,6 @@ describe("ZeropsOperationCard — why a card failed or timed out", () => {
       />,
     );
     expect(html).toContain('data-zerops-card-outcome="true"');
-    expect(html).toContain("GIT_TOKEN missing");
+    expect(html).toContain("A sign-in was refused, so the deploy never ran.");
   });
 });

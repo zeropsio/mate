@@ -62,6 +62,7 @@ import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { pickReadyAgentWithoutSignIn, resolveBootstrapModelSlug } from "./ZeropsBootstrapModel.ts";
+import { planFirstTurnEffort } from "./firstTurnEffort.ts";
 import { overlayZeropsAgentAuth } from "./zeropsAgentProviderOverlay.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
@@ -538,15 +539,11 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           resuming?.threadId ?? main?.id ?? (yield* crypto.randomUUIDv4),
         );
         // On the agent the person signed in, else on the ready one that needs no sign-in.
-        let modelSelection: ModelSelection;
+        let chosen: ModelSelection;
         if ("agentId" in decision) {
-          modelSelection = standUpModelSelection(
-            decision.agentId,
-            main,
-            project.defaultModelSelection,
-          );
+          chosen = standUpModelSelection(decision.agentId, main, project.defaultModelSelection);
         } else if (readyHere !== undefined) {
-          modelSelection = standUpModelSelectionOn(readyHere, main, project.defaultModelSelection);
+          chosen = standUpModelSelectionOn(readyHere, main, project.defaultModelSelection);
         } else {
           return false;
         }
@@ -554,7 +551,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           resuming === undefined
             ? standUpCommandIds(threadId)
             : { commandId: resuming.commandId, messageId: resuming.commandId };
-        const turn = {
+        const standUpTurn = {
           type: "thread.turn.start",
           commandId: CommandId.make(ids.commandId),
           threadId,
@@ -564,11 +561,19 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
             text: STAND_UP_MESSAGE,
             attachments: [],
           },
-          modelSelection,
+          modelSelection: chosen,
           runtimeMode: main?.runtimeMode ?? "full-access",
           interactionMode: main?.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE,
           createdAt: now,
         } satisfies OrchestrationCommand;
+        // The stand-up is a new conversation's first turn: Extra High unless it names an effort,
+        // and the thread stores it, so a reload reads it back (D10).
+        const { turn, store } = planFirstTurnEffort({
+          turn: standUpTurn,
+          thread: main ?? { latestTurn: null, modelSelection: chosen },
+          providers,
+        });
+        const modelSelection = turn.modelSelection ?? chosen;
         // For the person who asked, with no session of theirs behind it: admitted while this
         // project opens for them, on an agent they signed in (D6, X3).
         const principal: TurnPrincipal = { kind: "standup", startedBy: decision.userId };
@@ -606,6 +611,13 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
               branch: null,
               worktreePath: null,
               createdAt: now,
+            });
+          } else if (store !== undefined) {
+            yield* orchestration.dispatch({
+              type: "thread.meta.update",
+              commandId: CommandId.make(`${ids.commandId}-effort`),
+              threadId,
+              modelSelection: store,
             });
           }
           yield* orchestration.dispatch(turn);

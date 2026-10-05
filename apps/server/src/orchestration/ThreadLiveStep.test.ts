@@ -224,6 +224,35 @@ describe("ThreadLiveStep", () => {
       ],
       step: { kind: "thinking", since: at(7) },
     },
+    // Run 12: a note and a command's start stamped one instant; the note's
+    // words arriving after the start put the running command behind them.
+    {
+      name: "words stamped the instant a call started leave the call the step",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5) },
+        { type: "writing", at: at(5) },
+      ],
+      step: { kind: "calls", since: at(5), calls: [call("c1", 5)] },
+    },
+    {
+      name: "a thought stamped the instant a call started leaves the call the step",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5) },
+        { type: "thinking", at: at(5) },
+      ],
+      step: { kind: "calls", since: at(5), calls: [call("c1", 5)] },
+    },
+    {
+      name: "words after a call put the call behind them",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5) },
+        { type: "writing", at: at(6) },
+      ],
+      step: { kind: "writing", since: at(6) },
+    },
     {
       name: "a call put behind a thought that ends changes nothing",
       observations: [
@@ -489,6 +518,34 @@ describe("liveCallOf", () => {
         title: "zerops · zerops_deploy",
         toolName: "zerops_deploy",
         input: { targetService: "appdev" },
+        startedAt: at(5),
+      },
+    },
+    // The rows say an env call as its card does (pass 43): what it changes
+    // and where, so a flag and how many variables ride along — never one.
+    {
+      name: "an env call relays its flag as words and its variables as a count, never a value",
+      input: item({
+        itemType: "mcp_tool_call",
+        status: "inProgress",
+        title: "MCP tool call",
+        data: {
+          toolName: "mcp__zerops__zerops_env",
+          input: {
+            action: "set",
+            project: true,
+            skipRestart: false,
+            variables: ["STAGE_URL=https://example.test", "SMTP_PASS=hunter2"],
+          },
+        },
+      }),
+      call: {
+        id: "call-1",
+        activityKind: "tool.updated",
+        itemType: "mcp_tool_call",
+        title: "MCP tool call",
+        toolName: "mcp__zerops__zerops_env",
+        input: { action: "set", project: "true", skipRestart: "false", variablesCount: "2" },
         startedAt: at(5),
       },
     },

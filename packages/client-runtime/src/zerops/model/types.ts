@@ -219,6 +219,29 @@ export interface ZeropsDiscoverRow {
 }
 
 /**
+ * What a `zerops_env` call changed and where, read off its input: the
+ * project's variables or a service's, and how many it named. Never a value —
+ * these can be secrets.
+ */
+export interface ZeropsEnvChange {
+  /**
+   * `generate-dotenv` writes a local `.env`, or with `preview` only reads what
+   * it would change; an action it does not know updates.
+   */
+  readonly action: "get" | "set" | "delete" | "dotenv" | "dotenvPreview" | "update";
+  readonly scope: "project" | "service";
+  /** The service by its hostname, or the setup block a `.env` is written for. */
+  readonly service?: string;
+  /** How many variables the call named, when it named any. */
+  readonly count?: number;
+  /**
+   * `dotenv` only: zcp's safety gate refused to write the `.env`, which holds
+   * this many variables nothing sets — set by hand, lost on a write.
+   */
+  readonly refused?: number;
+}
+
+/**
  * What a read tool's card draws (`logs` · `events` · `process` · `discover`).
  * `pending` while the call runs with no result yet: the card draws its final
  * shape empty, so nothing moves when the result lands. `process` rows are the
@@ -335,6 +358,8 @@ export interface ZeropsOperation {
   readonly deviceName?: string;
   /** `logs` · `events` · `process` · `discover` only. */
   readonly readResult?: ZeropsReadResult;
+  /** `env` only. */
+  readonly envChange?: ZeropsEnvChange;
   /** bootstrap only. */
   readonly session?: {
     readonly sessionIds: ReadonlyArray<string>;

@@ -58,6 +58,24 @@ describe("thread title context", () => {
       expected:
         "USER:\nFix pairing\n\nASSISTANT:\nThe QR token expired.\n\nUSER:\n[Attachments: shot.png]",
     },
+    {
+      name: "a file's label, keeping the words and the file's name",
+      message: {
+        role: "user" as const,
+        text: "[File 1]\nStand up the shop from this export",
+        attachments: [
+          {
+            type: "file" as const,
+            id: "title-context-export",
+            name: "shop-export.zip",
+            mimeType: "application/zip",
+            sizeBytes: 5,
+          },
+        ],
+      },
+      expected:
+        "USER:\nFix pairing\n\nASSISTANT:\nThe QR token expired.\n\nUSER:\nStand up the shop from this export\n[Attachments: shop-export.zip]",
+    },
   ])("leaves out $name", ({ message, expected }) => {
     expect(
       formatThreadTitleContext([

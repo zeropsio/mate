@@ -571,6 +571,18 @@ describe("deriveMessagesTimelineRows", () => {
   });
   it.each([
     {
+      // Run 12: a note and the command's start stamped 14:40:20.255Z; the
+      // scan stopped at the note and the open command never showed as live.
+      name: "a note at the instant an open call started: the call",
+      entries: [open("w1", 1), assistant("a1", "t1", 1, "Running the build.")],
+      now: { kind: "step", step: { key: "w1" } },
+    },
+    {
+      name: "a note at the instant a call started that has returned: it thinks",
+      entries: [returned("w1", 1, 0, 1, 5), assistant("a1", "t1", 1, "Ran the build.")],
+      now: { kind: "thinking", key: null, messages: [] },
+    },
+    {
       name: "a call whose completion never came is behind the batch after it",
       entries: [open("w1", 1), returned("w2", 2, 0, 2, 5), open("w3", 3)],
       now: { kind: "step", step: { key: "w3" } },

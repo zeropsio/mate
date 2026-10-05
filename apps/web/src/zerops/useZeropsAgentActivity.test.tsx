@@ -25,7 +25,7 @@ function Row({
   readonly activity: ReadonlyMap<EnvironmentId, ZeropsAgentActivity>;
 }): ReactNode {
   const step = usePacedLiveSteps(activity).get(NOVA)?.liveStep;
-  return step === undefined ? "…" : [step.words, step.code].filter(Boolean).join(" · ");
+  return step === undefined ? "…" : step.words;
 }
 
 afterEach(() => {
@@ -50,12 +50,12 @@ describe("usePacedLiveSteps", () => {
     show({ words: "Reading index.ts" });
     expect(row!.toJSON()).toBe("Thinking");
     act(() => vi.advanceTimersByTime(100));
-    show({ words: "Build the app", code: "pnpm build" });
+    show({ words: "Build the app" });
     expect(row!.toJSON()).toBe("Thinking");
 
     // The hold ends: the latest step, never the one it skipped.
     act(() => vi.advanceTimersByTime(LIVE_STEP_HOLD_MS - 200));
-    expect(row!.toJSON()).toBe("Build the app · pnpm build");
+    expect(row!.toJSON()).toBe("Build the app");
 
     // A step that comes after the shown one has stood its hold shows at once.
     act(() => vi.advanceTimersByTime(LIVE_STEP_HOLD_MS));

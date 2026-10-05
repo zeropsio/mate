@@ -92,6 +92,7 @@ import {
   cleanupFailedUploadedAttachments,
   normalizeDispatchCommand,
 } from "./orchestration/Normalizer.ts";
+import { makeFirstTurnEffort } from "./zerops/firstTurnEffort.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
@@ -1262,10 +1263,33 @@ const makeWsRpcLayer = (
           );
         });
 
+      // D10: a new conversation's first turn runs on Extra High when it names no effort, and the
+      // thread stores what it runs on (zerops/firstTurnEffort.ts).
+      const firstTurnEffort = makeFirstTurnEffort({
+        providers: providerRegistry.getProviders,
+        threadShell: projectionSnapshotQuery.getThreadShellById,
+      });
       const dispatchNormalizedCommand = (
+        incomingCommand: OrchestrationCommand,
+      ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> =>
+        firstTurnEffort(incomingCommand).pipe(
+          Effect.flatMap(({ command, store }) => dispatchPlannedCommand(command, store)),
+        );
+      const dispatchPlannedCommand = (
         normalizedCommand: OrchestrationCommand,
+        store: OrchestrationCommand | undefined,
       ): Effect.Effect<{ readonly sequence: number }, OrchestrationDispatchCommandError> => {
-        const dispatchEffect =
+        const storeEffect =
+          store === undefined
+            ? Effect.void
+            : orchestrationEngine
+                .dispatch(store)
+                .pipe(
+                  Effect.mapError((cause) =>
+                    toDispatchCommandError(cause, "Failed to store the conversation's model"),
+                  ),
+                );
+        const turnEffect =
           normalizedCommand.type === "thread.turn.start" && normalizedCommand.bootstrap
             ? dispatchBootstrapTurnStart(normalizedCommand)
             : dispatchFromClient(normalizedCommand).pipe(
@@ -1281,6 +1305,7 @@ const makeWsRpcLayer = (
                   toDispatchCommandError(cause, "Failed to dispatch orchestration command"),
                 ),
               );
+        const dispatchEffect = Effect.andThen(storeEffect, turnEffect);
 
         return turnAdmission
           .admit({

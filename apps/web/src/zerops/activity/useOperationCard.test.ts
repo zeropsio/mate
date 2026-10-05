@@ -454,7 +454,21 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
     expect(deriveObservedStepsRegion("import", "running", state, undefined, NOW)).toBeUndefined();
   });
 
-  it("off with nothing seen: undefined, regardless of reason", () => {
+  // Review of pass 43: a running card that never read says it once the feed
+  // has been out past its grace, rather than sitting blank.
+  it.each([
+    { name: "past its timeout", reason: "stale-timeout" },
+    { name: "the feed failed", reason: "feed-error" },
+  ] as const)("off with nothing seen, $name: it says Zerops isn't answering", ({ reason }) => {
+    const state: ObservationState = { kind: "off", reason };
+    expect(deriveObservedStepsRegion("import", "running", state, undefined, NOW)).toEqual({
+      steps: [],
+      chips: [],
+      provenance: "Zerops isn't answering",
+    });
+  });
+
+  it("off with nothing seen, for another reason: undefined", () => {
     const state: ObservationState = { kind: "off", reason: "not-found" };
     expect(deriveObservedStepsRegion("import", "running", state, undefined, NOW)).toBeUndefined();
   });

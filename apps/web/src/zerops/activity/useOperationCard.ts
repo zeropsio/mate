@@ -321,7 +321,10 @@ export function deriveObservedStepsRegion(
       : state.observation;
   const source = current ?? history;
   if (source === undefined) {
-    return undefined;
+    // Never read, and Zerops out past the grace: it says so, never blank.
+    return feedNotObserving(state)
+      ? { steps: [], chips: [], provenance: "Zerops isn't answering" }
+      : undefined;
   }
   return regionOf(source, provenanceFor(state, source, nowMs));
 }

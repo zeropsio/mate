@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   browserFiguresLine,
   browserLiveCaption,
+  envChangeWords,
   gitPushClosing,
   gitPushVoice,
   humanizeCheckName,
@@ -349,5 +350,112 @@ describe("platformStatus — one reading of a platform process or app-version st
       operationStatusWord("process", "running", { action: "cancel" }),
       operationStatusWord("process", "done", { processOutcome: "canceled" }),
     ]).toEqual(["Cancelling", "Cancelled"]);
+  });
+});
+
+describe("envChangeWords — what an env call changed and where, never a value", () => {
+  const project = { scope: "project" } as const;
+  const service = { scope: "service", service: "apidev" } as const;
+  it.each([
+    {
+      change: { ...project, action: "set", count: 6 },
+      tense: "done",
+      words: "Set 6 of the project's variables",
+    },
+    {
+      change: { ...project, action: "set", count: 1 },
+      tense: "done",
+      words: "Set one of the project's variables",
+    },
+    {
+      change: { ...project, action: "set", count: 6 },
+      tense: "running",
+      words: "Setting 6 of the project's variables",
+    },
+    {
+      change: { ...project, action: "set", count: 6 },
+      tense: "failed",
+      words: "Setting 6 of the project's variables failed",
+    },
+    {
+      change: { ...project, action: "set", count: 6 },
+      tense: "asked",
+      words: "Set 6 of the project's variables",
+    },
+    {
+      change: { ...service, action: "set", count: 2 },
+      tense: "done",
+      words: "Set 2 of apidev's variables",
+    },
+    { change: { ...service, action: "set" }, tense: "done", words: "Set apidev's variables" },
+    {
+      change: { ...project, action: "delete", count: 2 },
+      tense: "done",
+      words: "Removed 2 of the project's variables",
+    },
+    {
+      change: { ...service, action: "delete", count: 1 },
+      tense: "asked",
+      words: "Remove one of apidev's variables",
+    },
+    { change: { ...project, action: "get" }, tense: "done", words: "Read the project's variables" },
+    {
+      change: { ...service, action: "get" },
+      tense: "running",
+      words: "Reading apidev's variables",
+    },
+    {
+      change: { scope: "service", service: "dev", action: "dotenv" },
+      tense: "done",
+      words: "Wrote the .env for dev",
+    },
+    {
+      change: { scope: "service", service: "dev", action: "dotenv" },
+      tense: "failed",
+      words: "Writing the .env for dev failed",
+    },
+    {
+      change: { ...service, action: "update" },
+      tense: "done",
+      words: "Changed apidev's variables",
+    },
+    {
+      change: { ...service, action: "update" },
+      tense: "asked",
+      words: "Change apidev's variables",
+    },
+    {
+      change: { scope: "service", action: "set", count: 2 },
+      tense: "done",
+      words: "Set 2 of the service's variables",
+    },
+    { change: { scope: "service", action: "dotenv" }, tense: "done", words: "Wrote the .env" },
+    {
+      change: { scope: "service", service: "dev", action: "dotenvPreview" },
+      tense: "running",
+      words: "Reading what the .env for dev would change",
+    },
+    {
+      change: { scope: "service", service: "dev", action: "dotenvPreview" },
+      tense: "done",
+      words: "Read what the .env for dev would change",
+    },
+    {
+      change: { scope: "service", service: "dev", action: "dotenv", refused: 2 },
+      tense: "done",
+      words: "Didn't write the .env for dev: 2 of its variables were set by hand",
+    },
+    {
+      change: { scope: "service", service: "dev", action: "dotenv", refused: 1 },
+      tense: "done",
+      words: "Didn't write the .env for dev: one of its variables was set by hand",
+    },
+    {
+      change: { ...service, action: "update" },
+      tense: "failed",
+      words: "Changing apidev's variables failed",
+    },
+  ] as const)("$words", ({ change, tense, words }) => {
+    expect(envChangeWords(change, tense)).toBe(words);
   });
 });

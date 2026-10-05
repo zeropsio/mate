@@ -2783,6 +2783,46 @@ describe("operationLineWords", () => {
   });
 });
 
+// An env call says what it changed and where — the project's variables or a
+// service's, how many — never "Updated the service", never a value.
+describe("operationLineWords — an env call, by what it changed and where", () => {
+  const env = (phase: ZeropsOperation["phase"], noResult = false) => {
+    const entry = operation("e", "t1", 1, {
+      kind: "env",
+      subject: "the project",
+      voice: "Setting 6 of the project's variables.",
+      statusWord: phase === "failed" ? "Failed" : phase === "declined" ? "Declined" : "Updated",
+      phase,
+      envChange: { action: "set", scope: "project", count: 6 },
+    });
+    if (entry.kind !== "operation") throw new Error("an operation");
+    return noResult
+      ? operationUnreturnedWords(entry.operation)
+      : operationLineWords(entry.operation);
+  };
+  it.each([
+    { name: "done", words: env("done"), expected: "Set 6 of the project's variables" },
+    { name: "running", words: env("running"), expected: "Setting 6 of the project's variables" },
+    {
+      name: "failed",
+      words: env("failed"),
+      expected: "Setting 6 of the project's variables failed",
+    },
+    {
+      name: "declined",
+      words: env("declined"),
+      expected: "Set 6 of the project's variables: declined",
+    },
+    {
+      name: "never returned",
+      words: env("running", true),
+      expected: "Set 6 of the project's variables",
+    },
+  ])("$name: $expected", ({ words, expected }) => {
+    expect(words).toBe(expected);
+  });
+});
+
 describe("operationLineWords — a stand-up call, by what its report said", () => {
   const op = (overrides: Partial<ZeropsOperation>) =>
     (

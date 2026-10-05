@@ -524,7 +524,9 @@ function processHistoryReadOf(state: ZeropsDataState, project: ProjectRef): Proc
       case "observing":
         return "read";
       case "failed":
-        return "failed";
+        // A failure the runtime retries — the socket's routine reconnect —
+        // leaves the read on its way; only one it gives up on failed it.
+        return desired.interest.retryable ? "reading" : "failed";
       case "paused":
         return "unread";
       default:

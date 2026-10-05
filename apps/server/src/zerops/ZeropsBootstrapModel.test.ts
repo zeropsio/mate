@@ -153,6 +153,38 @@ describe("resolveZeropsBootstrapModelSelection", () => {
   it("returns undefined when no provider is ready", () => {
     assert.isUndefined(resolveZeropsBootstrapModelSelection([unauthenticatedCodex]));
   });
+
+  it("opens the first conversation on Extra High where the model offers it (D10)", () => {
+    const effortClaude = provider({
+      driver: CLAUDE,
+      models: [
+        {
+          slug: DEFAULT_MODEL_BY_PROVIDER[CLAUDE]!,
+          name: "Opus 5.5",
+          isCustom: false,
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "effort",
+                label: "Effort",
+                type: "select",
+                options: [
+                  { id: "medium", label: "Medium", isDefault: true },
+                  { id: "xhigh", label: "Extra High" },
+                  { id: "max", label: "Max" },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+    assert.deepStrictEqual(resolveZeropsBootstrapModelSelection([effortClaude]), {
+      instanceId: ProviderInstanceId.make("claudeAgent"),
+      model: DEFAULT_MODEL_BY_PROVIDER[CLAUDE]!,
+      options: [{ id: "effort", value: "xhigh" }],
+    });
+  });
 });
 
 /**

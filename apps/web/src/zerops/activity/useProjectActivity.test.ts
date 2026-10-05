@@ -70,3 +70,32 @@ describe("projectActivitySnapshotFromRead", () => {
     expect(projectActivitySnapshotFromRead(emptyRead(required)).live).toBe(live);
   });
 });
+
+// Run 12: the Zerops socket closes every 30 minutes and the client reconnects;
+// each close failed every read with a retry scheduled, and the deploy card
+// said "Zerops isn't answering" at once. A failure the runtime retries ages
+// the card's read like any feed that stops observing; one it gives up on is
+// the feed's error.
+describe("what a failed interest makes of the read", () => {
+  it.each([
+    {
+      name: "a reconnect the runtime retries is no failure",
+      retryable: true,
+      reason: undefined,
+      reconnecting: true,
+    },
+    {
+      name: "a failure it does not retry is one",
+      retryable: false,
+      reason: "disconnect",
+      reconnecting: undefined,
+    },
+  ])("$name", ({ retryable, reason, reconnecting }) => {
+    const snapshot = projectActivitySnapshotFromRead(
+      emptyRead([OBSERVING, { ...FAILED, retryable }]),
+    );
+    expect(snapshot.unavailableReason).toBe(reason);
+    expect(snapshot.reconnecting).toBe(reconnecting);
+    expect(snapshot.live).toBe(false);
+  });
+});

@@ -1,6 +1,8 @@
-import type { ThreadLiveCall, ThreadLiveStep } from "@t3tools/contracts";
+import { EventId, TurnId, type ThreadLiveCall, type ThreadLiveStep } from "@t3tools/contracts";
+import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
+import { operationLineWords } from "../components/chat/conversation.logic";
 import { NOW_LINE_DWELL_MS } from "../components/chat/nowLineCalm.logic";
 
 import {
@@ -41,9 +43,9 @@ describe("liveStepWords", () => {
     { name: "thinking", step: { kind: "thinking", since }, words: { words: "Thinking" } },
     { name: "its words streaming", step: { kind: "writing", since }, words: { words: "Writing" } },
     {
-      name: "a command that says what it is for: the words, then the command",
+      name: "a command that says what it is for: its words alone, never its code",
       step: calls(build),
-      words: { words: "Build the app", code: "pnpm build" },
+      words: { words: "Build the app" },
     },
     {
       name: "a command that says nothing of itself is its own title, its shell wrapper dropped",
@@ -293,7 +295,7 @@ describe("liveStepWords", () => {
           toolName: "Bash",
         }),
       ),
-      words: { words: "Build the app", code: "pnpm build" },
+      words: { words: "Build the app" },
     },
     {
       // Codex starts a command with the whole command and says nothing more
@@ -353,8 +355,7 @@ it("holds a row's step as long as the card's now line stands", () => {
 });
 
 describe("paceLiveStep", () => {
-  const building = { words: "Build the app", code: "pnpm build" };
-  const testing = { words: "Build the app", code: "pnpm test" };
+  const building = { words: "Build the app" };
   const reading = { words: "Reading index.ts" };
   const shownAt = (step: LiveStepWords, since: number): ShownLiveStep => ({ step, since });
 
@@ -394,13 +395,6 @@ describe("paceLiveStep", () => {
       paced: { shown: shownAt(building, 1_000), recheckAt: 1_000 + LIVE_STEP_HOLD_MS },
     },
     {
-      name: "the same words running another command are another step",
-      shown: shownAt(building, 1_000),
-      next: testing,
-      nowMs: 1_200,
-      paced: { shown: shownAt(building, 1_000), recheckAt: 1_000 + LIVE_STEP_HOLD_MS },
-    },
-    {
       name: "a row that stops working holds nothing",
       shown: shownAt(building, 1_000),
       next: undefined,
@@ -409,5 +403,64 @@ describe("paceLiveStep", () => {
     },
   ])("$name", ({ shown, next, nowMs, paced }) => {
     expect(paceLiveStep(shown, next, nowMs)).toEqual(paced);
+  });
+});
+
+// The rows say an env call as its card does (pass 43): the server relays its
+// flag as words and its variables as a count, and the card reads the call's
+// whole input.
+describe("liveStepWords — an env call says what its card says", () => {
+  const relayed = (input: Record<string, string>) =>
+    calls(
+      call({
+        id: "call-env",
+        activityKind: "tool.updated",
+        itemType: "mcp_tool_call",
+        title: "MCP tool call",
+        toolName: "mcp__zerops__zerops_env",
+        input,
+      }),
+    );
+  const cardWords = (input: Record<string, unknown>) => {
+    const model = deriveZeropsThreadModel({
+      activities: [
+        {
+          id: EventId.make("card-env"),
+          createdAt: since,
+          tone: "tool",
+          kind: "tool.updated",
+          summary: "MCP tool call",
+          turnId: TurnId.make("turn-1"),
+          payload: {
+            itemType: "mcp_tool_call",
+            toolCallId: "call-env",
+            status: "inProgress",
+            data: { toolCallId: "call-env", toolName: "mcp__zerops__zerops_env", input },
+          },
+        },
+      ],
+      runningTurnId: TurnId.make("turn-1"),
+    });
+    const entry = model.entries[0];
+    if (entry?.kind !== "operation") throw new Error("an operation");
+    return operationLineWords(entry.operation);
+  };
+  const values = ["A=1", "B=2", "C=3", "D=4", "E=5", "F=6"];
+  it.each([
+    {
+      name: "the project's variables",
+      card: { action: "set", project: true, variables: values },
+      relay: { action: "set", project: "true", variablesCount: "6" },
+      words: "Setting 6 of the project's variables",
+    },
+    {
+      name: "a service's variables",
+      card: { action: "set", serviceHostname: "apidev", variables: values.slice(0, 2) },
+      relay: { action: "set", serviceHostname: "apidev", variablesCount: "2" },
+      words: "Setting 2 of apidev's variables",
+    },
+  ])("$name", ({ card, relay, words }) => {
+    expect(cardWords(card)).toBe(words);
+    expect(liveStepWords(relayed(relay))).toEqual({ words });
   });
 });

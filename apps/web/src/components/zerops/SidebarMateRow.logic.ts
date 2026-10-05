@@ -287,7 +287,7 @@ export type MateRowReply =
       /** Muted at rest, the second ink unread, full ink as a question, red as an error. */
       readonly tone: "muted" | "ink-2" | "ink" | "failed";
     }
-  | { readonly kind: "live"; readonly words: string; readonly code: string | undefined }
+  | { readonly kind: "live"; readonly words: string }
   | { readonly kind: "pending" }
   /**
    * The line told as holding words still to come, drawn at rest: its place kept, so a socket
@@ -393,12 +393,12 @@ export function mateRowView(
     case "working":
       // Its turn over, its helpers at work: its card's own words, its clock stopped with its turn.
       if (activity.waitsOnHelpers === true) {
-        return view({ kind: "live", words: nowLineWords({ kind: "after" }), code: undefined });
+        return view({ kind: "live", words: nowLineWords({ kind: "after" }) });
       }
       return view(
         activity.liveStep === undefined
           ? { kind: "pending" }
-          : { kind: "live", words: activity.liveStep.words, code: activity.liveStep.code },
+          : { kind: "live", words: activity.liveStep.words },
         { kind: "clock", since: activity.at },
       );
     case "needs":
@@ -653,7 +653,6 @@ export function mateRowDraft(
 const SETTING_UP_DEVELOPMENT = {
   kind: "live",
   words: "Setting up development",
-  code: undefined,
 } as const satisfies MateRowReply;
 
 /** Setting a new Mate up stopped — a step of its birth, or its first run. */

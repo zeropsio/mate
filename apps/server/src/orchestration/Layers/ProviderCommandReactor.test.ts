@@ -2875,11 +2875,18 @@ describe("ProviderCommandReactor", () => {
     mimeType: "image/png",
     sizeBytes: 5,
   };
+  const firstAskFile = {
+    type: "file" as const,
+    id: "first-ask-export",
+    name: "shop-export.zip",
+    mimeType: "application/zip",
+    sizeBytes: 5,
+  };
   const dispatchUserTurns = async (
     harness: Awaited<ReturnType<typeof createHarness>>,
     messages: ReadonlyArray<{
       readonly text: string;
-      readonly attachments?: ReadonlyArray<typeof firstAskImage>;
+      readonly attachments?: ReadonlyArray<typeof firstAskImage | typeof firstAskFile>;
       readonly titleSeed: string;
     }>,
   ) => {
@@ -2935,6 +2942,24 @@ describe("ProviderCommandReactor", () => {
         },
       ],
       expected: { message: "", attachments: [firstAskImage] },
+    },
+    {
+      name: "a file and words, titled from the words without the file's label",
+      initialTitle: "Stand up the shop from this export",
+      messages: [
+        {
+          text: "[File 1]\nStand up the shop from this export",
+          attachments: [firstAskFile],
+          titleSeed: "Stand up the shop from this export",
+        },
+      ],
+      expected: { message: "Stand up the shop from this export", attachments: [firstAskFile] },
+    },
+    {
+      name: "the effort prefix, titled from the words behind it",
+      initialTitle: "Fix the login page",
+      messages: [{ text: "Ultrathink:\nFix the login page", titleSeed: "Fix the login page" }],
+      expected: { message: "Fix the login page" },
     },
   ])(
     "titles the thread from the first real ask after $name",

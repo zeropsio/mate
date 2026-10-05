@@ -23,7 +23,8 @@
  *   a real run's 669 items, the history trails the Mate by 2.4 s at most.
  * - The last one standing holds its place `SLOT_HOLD_MS` past its end for the
  *   next, which takes it in one change; only a longer quiet says "Thinking",
- *   and once said it stands its minimum too.
+ *   and once said it stands its minimum against words — a call takes its
+ *   place once it has stood the pace, so the call shows as it runs.
  * - What the record holds when the slot is first drawn is history at once,
  *   and so is everything once the run is over (`final`).
  *
@@ -33,7 +34,8 @@
 
 /**
  * How long anything the slot says, once said, stands before something else
- * takes its place: an item, and "Thinking" too.
+ * takes its place: an item, and "Thinking" too — against words; a call takes
+ * its place once it has stood `SLOT_BUSY_SHOW_MS`.
  */
 export const SLOT_MIN_SHOW_MS = 800;
 
@@ -155,11 +157,33 @@ function plopsAt(slot: Queue & Pick<LiveSlot, "lastPlopAt">, entry: SlotEntry): 
   return slot.lastPlopAt === null ? due : Math.max(due, slot.lastPlopAt + plopGap(slot));
 }
 
+/** A call of the Mate's — a step, an operation, a call — rather than its words or the person's. */
+function isCall(key: string): boolean {
+  return key.startsWith("step:") || key.startsWith("operation:") || key.startsWith("call:");
+}
+
+/**
+ * How long "Thinking", once said, stands before what waits next takes its
+ * place: the pace before a call — first seen ended, or live, what is live
+ * beside it coming along — so a call shows as it runs (run 12: seven times a
+ * short command waited out Thinking's minimum, ended meanwhile, and stood
+ * finished between two "Thinking"s), yet never two changes within the pace
+ * (review of pass 43: a call 10 ms after Thinking showed it for 10 ms); its
+ * minimum before words, a thought or a question.
+ */
+function thinkingStandsFor(queue: Queue): number {
+  const [next] = queue.pending;
+  const shown = new Set(queue.entries.map((entry) => entry.key));
+  const callNext =
+    next !== undefined ? isCall(next) : queue.live.some((key) => !shown.has(key) && isCall(key));
+  return callNext ? SLOT_BUSY_SHOW_MS : SLOT_MIN_SHOW_MS;
+}
+
 /**
  * What waits enters once no ended item stands in the slot, and once the
- * "Thinking" it says, empty, has stood its minimum (`quietSince`): first what
- * arrived ended, one at a time, in the order it came; then what is live, all
- * of it at once.
+ * "Thinking" it says, empty, has stood its time (`thinkingStandsFor`): first
+ * what arrived ended, one at a time, in the order it came; then what is live,
+ * all of it at once.
  */
 function admit(
   queue: Queue,
@@ -168,7 +192,7 @@ function admit(
 ): Pick<LiveSlot, "entries" | "pending"> {
   const { entries, pending } = queue;
   if (entries.some((entry) => entry.endedAt !== null)) return { entries, pending };
-  if (entries.length === 0 && quietSince !== null && at < quietSince + SLOT_MIN_SHOW_MS) {
+  if (entries.length === 0 && quietSince !== null && at < quietSince + thinkingStandsFor(queue)) {
     return { entries, pending };
   }
   const [next, ...rest] = pending;
@@ -367,9 +391,9 @@ export function slotDue(slot: LiveSlot): number | null {
     const at = plopsAt(slot, entry);
     if (at !== null && (due === null || at < due)) due = at;
   }
-  // An item waits while "Thinking" stands its minimum.
+  // An item waits while "Thinking" stands its time.
   if (slot.entries.length === 0 && slot.quietSince !== null && waiting(slot) > 0) {
-    const at = slot.quietSince + SLOT_MIN_SHOW_MS;
+    const at = slot.quietSince + thinkingStandsFor(slot);
     if (due === null || at < due) due = at;
   }
   return due;

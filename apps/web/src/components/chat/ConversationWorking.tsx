@@ -18,7 +18,6 @@
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import {
   createContext,
   use,
@@ -29,8 +28,9 @@ import {
   type ReactNode,
 } from "react";
 
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, TerminalIcon } from "lucide-react";
 
+import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { cn } from "~/lib/utils";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
@@ -55,14 +55,15 @@ import {
 import { opensOnto, standsOpen } from "./opens.logic";
 import { StatusBar, type BarTone } from "./StatusBar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import type { DockBackgroundTask, DockModel } from "./conversationDock.logic";
+import type { DockModel } from "./conversationDock.logic";
 import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
-import { DetailRow, spanOf } from "./DetailRow";
+import { DetailRow, spanOf, ToneDot } from "./DetailRow";
 import { showHelper } from "./helperFocus";
 import { standupBar } from "./standupBar.logic";
 import { OperationDetail, PlanSteps, useHoldReading } from "./RunChat";
 import { drawerEase, stepHeight, type CarriedRow } from "./stepHeight";
 import { useEasedRoom } from "./runRoom";
+import { backgroundBand, helpersBand, TASK_TONE, type BandLine } from "./workingBands.logic";
 
 // ---------------------------------------------------------------------------
 // Arriving live
@@ -92,14 +93,6 @@ const STEP_BAR: Record<string, BarTone> = {
   running: "running",
   failed: "failed",
   queued: "waiting",
-};
-
-const HELPER_BAR: Record<ServiceStatusToneId, BarTone> = {
-  ok: "done",
-  busy: "running",
-  attention: "attention",
-  failed: "failed",
-  off: "waiting",
 };
 
 const INCIDENT_BAR: Record<IncidentModel["tone"], BarTone> = {
@@ -183,6 +176,83 @@ function Instrument({
     <button
       aria-expanded={open}
       aria-label={label}
+      className="run-bar group/bar"
+      onClick={onToggle}
+      type="button"
+    >
+      {body}
+    </button>
+  );
+}
+
+/**
+ * The helpers' or the background tasks' band, as one line (pass 43, R12-9):
+ * its mark says how it stands, then what it names it by — a count where there
+ * are several, the background's glyph — the title of the one in focus, the
+ * others in words, and its time. One line in every state, so nothing shifts
+ * as work starts and ends; a new title eases in, only once the person watched
+ * the old one.
+ */
+function Band({
+  line,
+  glyph = null,
+  open = false,
+  onToggle = null,
+}: {
+  readonly line: BandLine;
+  readonly glyph?: ReactNode;
+  readonly open?: boolean;
+  readonly onToggle?: (() => void) | null;
+}) {
+  const changed = useChangedSinceShown(line.title);
+  const body = (
+    <>
+      <span className="flex justify-center">
+        <ToneDot tone={line.tone} />
+      </span>
+      <span className="flex min-w-0 items-center gap-2">
+        {glyph}
+        {line.count === null ? null : (
+          <span className="shrink-0 font-medium text-foreground">{line.count}</span>
+        )}
+        <span
+          key={line.title}
+          className={cn(
+            "min-w-0 truncate",
+            line.count === null ? "text-foreground" : "text-muted-foreground",
+            changed && "animate-words-in motion-reduce:animate-none",
+          )}
+        >
+          {line.title}
+        </span>
+        {line.others === null ? null : (
+          <span className="min-w-0 max-w-1/2 shrink-0 truncate text-muted-foreground">
+            · {line.others}
+          </span>
+        )}
+      </span>
+      <span className="flex items-center gap-1.5 text-muted-foreground tabular-nums">
+        {spanOf(line.startedAt, line.endedAt)}
+        {onToggle === null ? null : (
+          <ChevronDownIcon
+            aria-hidden="true"
+            className="size-3.5 shrink-0 text-muted-foreground/55 transition-[color,rotate] duration-150 ease-out group-hover/bar:text-foreground group-aria-expanded/bar:rotate-180 motion-reduce:transition-none"
+          />
+        )}
+      </span>
+    </>
+  );
+  if (onToggle === null) {
+    return (
+      <div aria-label={line.label} className="run-bar" role="group">
+        {body}
+      </div>
+    );
+  }
+  return (
+    <button
+      aria-expanded={open}
+      aria-label={`${line.label}. ${open ? "Hide" : "Show"} each one`}
       className="run-bar group/bar"
       onClick={onToggle}
       type="button"
@@ -506,29 +576,6 @@ function usePanelRoom({
   return { panelRef, settle };
 }
 
-/**
- * A background task's segment fills as it finishes: a bar of tasks that all
- * run reads empty, never full beside "0/3" (Bodhi, run 9).
- */
-const TASK_BAR: Record<DockBackgroundTask["state"], BarTone> = {
-  running: "waiting",
-  done: "done",
-  failed: "failed",
-  stopped: "waiting",
-  lost: "waiting",
-};
-
-const TASK_STATE: Record<
-  DockBackgroundTask["state"],
-  { readonly tone: ServiceStatusToneId; readonly word: string }
-> = {
-  running: { tone: "busy", word: "Running" },
-  done: { tone: "ok", word: "Done" },
-  failed: { tone: "failed", word: "Failed" },
-  stopped: { tone: "off", word: "Stopped" },
-  lost: { tone: "off", word: "Didn't report back" },
-};
-
 /** Whether anything in the dock runs alongside the Mate: a bar of its own under the live line. */
 export function dockDraws(dock: DockModel | null): boolean {
   return (
@@ -587,7 +634,6 @@ function Instruments({
   const tasks = dock?.tasks ?? null;
   const background = dock?.background ?? null;
   if (!dockDraws(dock) && standing.length === 0) return null;
-  const runningTask = background?.tasks.findLast((task) => task.state === "running");
   // One task's row would say the bar's own title and time again.
   const backgroundOpens =
     background !== null && opensOnto({ control: "background-bar", tasks: background.tasks.length });
@@ -604,16 +650,6 @@ function Instruments({
       return next;
     });
   };
-  const helperWords =
-    helpers === null
-      ? ""
-      : [
-          helpers.working > 0 ? `${helpers.working} working` : null,
-          helpers.done > 0 ? `${helpers.done} done` : null,
-          helpers.failed > 0 ? `${helpers.failed} failed` : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
   return (
     <ul className="run-band grid" data-working-instruments>
       {operations.map((operation) => {
@@ -688,16 +724,10 @@ function Instruments({
       ) : null}
       {helpers !== null ? (
         <Arriving>
-          <Instrument
-            bar={helpers.rows.map((helper) => ({
-              key: helper.id,
-              tone: HELPER_BAR[helper.tone],
-            }))}
-            label={`Helpers: ${helperWords}. ${open.has("helpers") ? "Hide" : "Show"} each one`}
+          <Band
+            line={helpersBand(helpers)}
             onToggle={() => toggle("helpers")}
             open={open.has("helpers")}
-            subject={helpers.rows.length === 1 ? "1 helper" : `${helpers.rows.length} helpers`}
-            words={helperWords}
           />
           {open.has("helpers") ? (
             <InstrumentDetail>
@@ -705,7 +735,6 @@ function Instruments({
                 {helpers.rows.map((helper) => (
                   <DetailRow
                     key={helper.id}
-                    long="word"
                     onOpen={() => {
                       if (threadRef !== null) showHelper(scopedThreadKey(threadRef), helper.id);
                       onOpenAgents();
@@ -713,7 +742,6 @@ function Instruments({
                     time={spanOf(helper.startedAt, helper.endedAt)}
                     title={helper.title}
                     tone={helper.tone}
-                    word={helper.word}
                   />
                 ))}
               </ul>
@@ -730,31 +758,16 @@ function Instruments({
       ) : null}
       {background !== null ? (
         <Arriving>
-          <Instrument
-            bar={background.tasks.map((task) => ({ key: task.id, tone: TASK_BAR[task.state] }))}
-            failed={background.running === 0 && background.failed > 0}
-            figure={
-              // How many ended of all, once one has; while all run, nothing to count.
-              background.tasks.length > 1 && background.running < background.tasks.length
-                ? `${background.tasks.length - background.running}/${background.tasks.length}`
-                : background.tasks.length > 1
-                  ? null
-                  : runningTask !== undefined
-                    ? spanOf(runningTask.startedAt, null)
-                    : null
+          <Band
+            glyph={
+              <TerminalIcon
+                aria-hidden="true"
+                className="size-3.5 shrink-0 text-muted-foreground"
+              />
             }
-            label={`Background tasks: ${background.running} running, ${background.done} done, ${background.failed} failed.${backgroundOpens ? ` ${backgroundShown ? "Hide" : "Show"} each one` : ""}`}
+            line={backgroundBand(background)}
             onToggle={backgroundOpens ? () => toggle("background") : null}
             open={backgroundShown}
-            subject="Background"
-            words={
-              runningTask?.title ??
-              (background.failed > 0
-                ? background.failed === 1
-                  ? "1 failed"
-                  : `${background.failed} failed`
-                : "All done")
-            }
           />
           {backgroundShown ? (
             <InstrumentDetail>
@@ -764,8 +777,7 @@ function Instruments({
                     key={task.id}
                     time={spanOf(task.startedAt, task.endedAt)}
                     title={task.title}
-                    tone={TASK_STATE[task.state].tone}
-                    word={TASK_STATE[task.state].word}
+                    tone={TASK_TONE[task.state]}
                   />
                 ))}
               </ul>

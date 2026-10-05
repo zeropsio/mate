@@ -14,6 +14,7 @@ import type {
 import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
+import { drawnSteps } from "../zerops/operation/drawnSteps";
 import { splitBatchDeploy } from "./conversation.logic";
 import type { BarTone } from "./StatusBar";
 
@@ -159,15 +160,21 @@ export function processReasons(
 
 /**
  * A settled operation's bar in the chat, from what it knew of its steps: it
- * carries what the call found, not only that the call ran. Whole and green
- * when all went as asked; a step that found something wrong — a dev server
- * not running, from a call that itself went through — amber; a call that
- * failed cut where it failed, red while that still stands and quiet once a
- * later one undid it (K9).
+ * carries what the call found, not only that the call ran. A step that found
+ * something wrong — a check that did not pass, from a call that itself went
+ * through — amber; a call that failed cut where it failed, red while that
+ * still stands and quiet once a later one undid it (K9). Its segments are its
+ * services where they mean services — a batch, an import, a mount, a
+ * stand-up, a check of every service — and kept however they went. In the
+ * log, empty — no bar — where it would say nothing its mark, its words and
+ * its time do not: one segment, or every one only done (pass 43). In the live
+ * slot it keeps the bar it wore while it ran, so nothing beside it moves as
+ * it settles; the rule applies once it stands in the log.
  */
 export function settledOperationBar(
   operation: ZeropsOperation,
   undone: boolean,
+  where: "slot" | "log" = "log",
 ): ReadonlyArray<{ readonly key: string; readonly tone: BarTone }> {
   const failed = operation.phase === "failed";
   const cut: BarTone = undone ? "waiting" : "failed";
@@ -176,8 +183,10 @@ export function settledOperationBar(
     operation.kind === "standup"
       ? operation.steps.filter((step) => standupStepRole(step) === "own")
       : operation.steps;
-  if (steps.length === 0) return [{ key: "whole", tone: failed ? cut : "done" }];
-  return steps.map((step) => ({
+  if (steps.length === 0)
+    return where === "slot" ? [{ key: "whole", tone: failed ? cut : "done" }] : [];
+  if (steps.length < 2 && where === "log") return [];
+  const segments = steps.map((step): { readonly key: string; readonly tone: BarTone } => ({
     key: step.id,
     tone: failed
       ? step.state === "done"
@@ -191,6 +200,24 @@ export function settledOperationBar(
           : "attention"
         : "done",
   }));
+  if (where === "slot" || segmentsAreServices(operation)) return segments;
+  return segments.every((segment) => segment.tone === "done") ? [] : segments;
+}
+
+/** Whether an operation's steps are its services: a batch, an import, a mount, a stand-up, a check of every service. */
+function segmentsAreServices(operation: ZeropsOperation): boolean {
+  switch (operation.kind) {
+    case "deploy":
+      return operation.batch === true;
+    case "import":
+    case "mount":
+    case "standup":
+      return true;
+    case "verify":
+      return operation.subject === "all services";
+    default:
+      return false;
+  }
 }
 
 /** A pipeline step's state as its segment's tone. */
@@ -317,34 +344,50 @@ export function detailLines(
   operation: ZeropsOperation,
   standupRows: number | null,
   observed: ObservedLines | null = null,
+  /** A dev server's address, as the topology knows it: its card draws the way to it (`devServerUrlFor`). */
+  devServerUrl: string | undefined = undefined,
 ): number {
   if (operation.kind === "standup") return standupRows ?? 0;
   if (operation.kind === "import") return Math.max(operation.steps.length, observed?.steps ?? 0);
-  const read = operation.readResult;
-  const returned =
-    read === undefined
-      ? 0
-      : read.kind === "logs"
-        ? read.lines.length + (read.note === undefined ? 0 : 1)
-        : read.kind === "events" || read.kind === "discover"
-          ? read.rows.length
-          : 0;
+  // A read's card draws what it returned in place of its steps and its reason.
+  if (operation.readResult !== undefined) {
+    return returnedLines(operation.readResult, operation.steps) + operation.links.length;
+  }
+  // A result-line kind's one step is drawn only when it failed (`drawnSteps`).
+  const own = drawnSteps(operation, operation.steps).length;
   // What it read of the platform stands for the steps its call reserved.
   const drawn =
     observed === null
-      ? operation.steps.length
-      : (observed.steps > 0 ? observed.steps : operation.steps.length) +
-        observed.chips +
-        (observed.log ? 1 : 0);
+      ? own
+      : (observed.steps > 0 ? observed.steps : own) + observed.chips + (observed.log ? 1 : 0);
+  const openLink = operation.kind === "devServer" && devServerUrl !== undefined ? 1 : 0;
   return (
     drawn +
     operation.links.length +
-    returned +
+    openLink +
     (operation.explanation === undefined ? 0 : 1) +
     (operation.version === undefined ? 0 : 1) +
     (operation.screenshot === undefined ? 0 : 1) +
     (operation.browserRead === undefined ? 0 : 1)
   );
+}
+
+/** What a read's card draws of what it returned: a log's lines and its note, a row each, a process each. */
+function returnedLines(
+  read: NonNullable<ZeropsOperation["readResult"]>,
+  steps: ZeropsOperation["steps"],
+): number {
+  if (read.pending) return 0;
+  switch (read.kind) {
+    case "logs":
+      return read.lines.length + (read.counts === undefined && read.note === undefined ? 0 : 1);
+    case "events":
+      return read.rows.length + (read.more === undefined ? 0 : 1);
+    case "discover":
+      return read.rows.length;
+    case "process":
+      return steps.length;
+  }
 }
 
 /**

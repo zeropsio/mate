@@ -560,7 +560,8 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     from its own doors (2026-10-05); a release's progress with its clock, then "Released" or the
     failure and its fix (R6). It grows from what was pressed (200 ms: scale .98, 6 px of lift, a fade) and closes in
     about 150 ms; Esc or a press outside closes it and gives the focus back; the focus lands on the
-    button, and ⌘↵ presses it, only while it is safe — never for _Release_ or _Roll back_; reduced
+    review, never on its button, and ⌘↵ presses the button only while it is safe — never for
+    _Release_ or _Roll back_ (2026-10-05); reduced
     motion keeps only the fade; what is typed in it reaches nothing behind it (R7); a release's change rows press through to that
     change's review inside the dialog — the whole row presses, a › at its end, none on a commit no
     review carried — shown merged ("✓ Merged" where the button stands, "← Release" in the kind line),
@@ -706,7 +707,8 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     it go on. Under it the person's last ask, 13/18 in the second ink, then the third line (M7): its
     last words muted — in the second ink while unread; the question itself in ink while it needs you
     (D6); the error's first line in red where it stopped on one; while it works, the step it is on,
-    its command in mono under a sweep of light (D5), or three still dots while words are to come; the
+    in its words — a command's code only where it says nothing of itself — under a sweep of light
+    (D5), or three still dots while words are to come; the
     second line is the person's — the sign-in, else _Draft:_ and the unsent words over the ask, else
     the ask, else "Nothing asked yet" once its conversations are read; a draft never covers the
     Mate's line. One even leading, no gaps (M5): every row three lines, 76 px, its third blank while

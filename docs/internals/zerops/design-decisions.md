@@ -1933,9 +1933,11 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   - _Why:_ two scrollbars in one view is where most of the earlier passes' scroll bugs lived
 - **2026-09-29** — **A working Mate's row says the step it is on** (the owner's D5). The Mate server
   relays each running thread's current step on its shell, and the row's third line reads what the
-  card's now line reads — "Build the app · `pnpm build`", "Reading `index.ts`", "Checking /status in
-  the browser", "Running 2 commands", "Thinking" — its command in mono under a sweep of light,
-  changing at most twice a second; until a Mate's server carries it, the dots.
+  card's now line reads — "Build the app", "Reading `index.ts`", "Checking /status in the browser",
+  "Running 2 commands", "Thinking" — under a sweep of light, changing at most twice a second; until a
+  Mate's server carries it, the dots. A command reads as its words, never with its code after them
+  (the owner, 2026-10-05, of "Download every product page · mkdir -p prod && pytho…"); one that says
+  nothing of itself — every command of an agent that writes no descriptions — reads as its code.
   - _Why:_ "is working" said nothing the turning face did not; the step is what a glance at the menu
     wants
 - **2026-09-29** — **A row that needs you shows the question itself** (the owner's D6), in ink on
@@ -4043,3 +4045,30 @@ no-cache`.
   2026-09-29 hand-off (R6) for a change.
   - _Why:_ the button that merged turned, in the same place and under the same ⌘↵, into the way to
     production, so the second press of one gesture reached a different decision.
+- **2026-10-05** — **The review's button never takes the focus.** The review opens with the focus on
+  itself, and a button that turns safe later doesn't take it either; ⌘↵ presses the button while it
+  is safe, as before. Replaces the focus half of the 2026-09-29 R5 rule ("The focus lands on it, and
+  ⌘↵ presses it, only while it is safe"); decided by the lead under the owner's delegation ("take the
+  best possible and the most recommended solution").
+  - _Why:_ with the focus on a safe _Merge_, a plain Enter merged (found in pass 39, T6); ⌘↵ is the
+    deliberate press, Enter is not.
+- **2026-10-05** — **D10 (the owner): a new conversation starts on Extra High, wherever its model
+  offers it.**
+  - **Every new conversation:** a new Mate's first (the bootstrap thread and its stand-up) and every
+    later one (a draft, a thread that never ran a turn), on the web and the phone. The drivers keep
+    their own `isDefault` (Port zone untouched); the preference lives in `@t3tools/shared/zeropsEffort`.
+  - **The rule:** the effort option (`effort`, `reasoningEffort`, `reasoning`, `variant`) takes
+    `xhigh` by id; without it, the highest step below `max` on the ladder `none < minimal < low <
+medium < high < xhigh` (a driver's own order does not rank: Grok reports its levels top first,
+    OpenCode's come from an object's keys); no effort option, or nothing on the ladder, selects
+    nothing; `max` never.
+  - **What stays:** a conversation that has run keeps its effort, a person's own pick always wins,
+    and crewmates keep their own rule (unset = the login's default).
+  - **The remembered selection carries no effort** (the lead, under the owner's delegation): the
+    last-used model and traits a new draft inherits drop the effort, since touching any trait
+    remembers every value, the default effort included. A pick inside a draft or a conversation
+    still wins there.
+  - **The server applies it too:** a non-crew thread's first turn naming no effort (a phone task
+    queued before the catalog arrived, the stand-up) runs on the preference, and the thread stores
+    what its first turn ran on, so a reload reads it back.
+  - _Why:_ the owner runs real work on Extra High — "at least extra high effort".

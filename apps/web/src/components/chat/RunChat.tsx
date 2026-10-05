@@ -96,9 +96,11 @@ import { KindGlyph, readsPipeline, ZeropsOperationCard } from "../zerops/ZeropsO
 import { MateFace } from "../zerops/primitives";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import {
+  devServerUrlFor,
   useOperationCard,
   type OperationCardRegions,
 } from "../../zerops/activity/useOperationCard";
+import { useZeropsTopology } from "../../zerops/useZeropsFeeds";
 import { deriveAgentSpawnSummary } from "./agentSpawnSummary";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
 import {
@@ -1774,7 +1776,10 @@ function OperationLine({
   // Its call returned while it runs on: the band under the chat draws it, so
   // its line here lands closed and opens onto nothing until it ends.
   const inBand = !inSlot && turnRuns && runsOnInBand(operation);
-  const lines = inBand ? 0 : (given ?? detailLines(operation, null, observed));
+  // A dev server's card draws the way to its address, where the topology knows it.
+  const topology = useZeropsTopology(ctx.activeThreadEnvironmentId);
+  const devServerUrl = devServerUrlFor(operation, topology);
+  const lines = inBand ? 0 : (given ?? detailLines(operation, null, observed, devServerUrl));
   // In the slot the newest running deploy stands open on what its card read, and lands so.
   const disclosure = useDisclosure(
     inSlot && line !== null && line === standsOpen && showsCardInSlot(observed),
@@ -1794,6 +1799,8 @@ function OperationLine({
           operation.batch === true ? undefined : regions?.observed?.pipeline,
         )
       : null;
+  // Settled, a bar only where it says what the line does not (`settledOperationBar`).
+  const settled = settledOperationBar(operation, undone, inSlot ? "slot" : "log");
   const words =
     noResult === undefined ? operationLineWords(operation) : operationUnreturnedWords(operation);
   // A deploy's steps are its progress, under its name: the line holds its
@@ -1836,8 +1843,8 @@ function OperationLine({
             <StatusBar className="w-12" segments={live.segments} />
             {live.word === null ? null : <span className="text-muted-foreground">{live.word}</span>}
           </>
-        ) : running || noResult !== undefined ? null : (
-          <StatusBar className="w-12" segments={settledOperationBar(operation, undone)} />
+        ) : running || noResult !== undefined || settled.length === 0 ? null : (
+          <StatusBar className="w-12" segments={settled} />
         )}
         {detail !== null ? (
           <span

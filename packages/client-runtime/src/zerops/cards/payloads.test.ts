@@ -53,6 +53,7 @@ describe("decodeZeropsCard — deploy", () => {
           category: "build",
           likelyCause: "missing dependency",
           suggestedAction: "add it to package.json",
+          signals: ["build:npm-package-missing"],
         },
         warnings: ["build logs truncated"],
       }),
@@ -62,8 +63,8 @@ describe("decodeZeropsCard — deploy", () => {
       status: "BUILD_FAILED",
       buildStatus: "BUILD_FAILED",
       failedPhase: "build",
-      failureCause: "missing dependency",
-      failureAction: "add it to package.json",
+      failureClass: "build",
+      failureSignals: ["build:npm-package-missing"],
       warnings: ["build logs truncated"],
     });
   });

@@ -7,18 +7,28 @@ import {
   type ProviderInteractionMode,
   type RuntimeMode,
 } from "@t3tools/contracts";
-import { isSlashCommand } from "@t3tools/shared/userAsk";
+import { userAskOf } from "@t3tools/shared/userAsk";
 
 import type { UploadedMobileAttachment } from "./attachmentUpload";
 
-export function deriveThreadTitleFromPrompt(value: string): string {
-  const trimmed = value.trim();
-  // A slash command is an instruction to the harness, not the thread's subject.
-  if (trimmed.length === 0 || isSlashCommand(trimmed)) {
-    return "New thread";
+/**
+ * A new thread's first title: the person's words (`userAskOf`), without the
+ * labels a client writes for its pictures and files, or the first
+ * attachment's name when they wrote none. A slash command is an instruction
+ * to the harness, not the thread's subject.
+ */
+export function deriveThreadTitleFromPrompt(
+  value: string,
+  attachments: ReadonlyArray<{ readonly type: string; readonly name: string }> = [],
+): string {
+  const ask = userAskOf({ text: value, attachments });
+  if (ask === null) return "New thread";
+  if (ask.kind === "attachments") {
+    const first = attachments.find((attachment) => attachment.type === "image") ?? attachments[0];
+    if (!first) return "New thread";
+    return `${first.type === "image" ? "Image" : "File"}: ${first.name}`;
   }
-
-  const compact = trimmed.replace(/\s+/g, " ");
+  const compact = ask.text.replace(/\s+/g, " ");
   return compact.length <= 72 ? compact : `${compact.slice(0, 69).trimEnd()}...`;
 }
 
@@ -49,7 +59,7 @@ export interface ProjectThreadStartTurnSpec {
  * offline outbox drain so both deliver identical commands.
  */
 export function buildProjectThreadStartTurnInput(spec: ProjectThreadStartTurnSpec) {
-  const title = deriveThreadTitleFromPrompt(spec.text);
+  const title = deriveThreadTitleFromPrompt(spec.text, spec.uploadedAttachments);
   const isWorktree = spec.workspaceMode === "worktree";
   return {
     commandId: CommandId.make(spec.commandId),

@@ -4,8 +4,8 @@
  */
 import { readString } from "../../cards/decode.ts";
 import { decodeProcessOutcome, type ZeropsProcessOutcome } from "../../cards/payloads.ts";
-import { operationClosing } from "../../operations/phrases.ts";
-import type { ZeropsCall } from "../types.ts";
+import { envChangeWords, operationClosing } from "../../operations/phrases.ts";
+import type { ZeropsCall, ZeropsEnvChange } from "../types.ts";
 import {
   type BuiltCardFields,
   KIND_LABEL,
@@ -50,8 +50,27 @@ export function buildSimpleFields(
   const decoded = decodeCall(call);
   const errorInfo = errorInfoFor(call, decoded);
   const phase = phaseFor(call.status);
-  const subject = readSimpleSubject(call.input, decoded.document) ?? "the service";
-  const { voice, voiceSource } = mateVoiceFor(kind, subject);
+  const envChange = kind === "env" ? readEnvChange(call.input, decoded.document) : undefined;
+  // The service it names, the one it observes: none where it names none.
+  const named =
+    envChange === undefined
+      ? readSimpleSubject(call.input, decoded.document)
+      : envChange.scope === "service" &&
+          envChange.action !== "dotenv" &&
+          envChange.action !== "dotenvPreview"
+        ? envChange.service
+        : undefined;
+  const subject =
+    named ??
+    (envChange?.scope === "project"
+      ? "the project"
+      : envChange?.action === "dotenv" || envChange?.action === "dotenvPreview"
+        ? (envChange.service ?? "the service")
+        : "the service");
+  const { voice, voiceSource } =
+    envChange === undefined
+      ? mateVoiceFor(kind, subject)
+      : { voice: `${envChangeWords(envChange, "running")}.`, voiceSource: "mate" as const };
 
   const outcome =
     decoded.document !== undefined ? decodeProcessOutcome(decoded.document) : undefined;
@@ -60,13 +79,18 @@ export function buildSimpleFields(
   const summary = decoded.document !== undefined ? readString(decoded.document.summary) : undefined;
   const messageFirstParagraph = rawMessage !== undefined ? firstParagraph(rawMessage) : undefined;
 
+  // An env call's failure never carries an entry it was given: values can be secrets.
+  const failure =
+    errorInfo === undefined
+      ? undefined
+      : kind === "env"
+        ? envFailureLine(firstLine(errorInfo.message), decoded.document, call.input)
+        : firstLine(errorInfo.message);
   const closing =
     phase === "running"
       ? undefined
       : phase === "failed"
-        ? operationClosing(kind, "failed", {
-            errorFirstLine: errorInfo !== undefined ? firstLine(errorInfo.message) : undefined,
-          })
+        ? operationClosing(kind, "failed", { errorFirstLine: failure })
         : phase === "done"
           ? operationClosing(kind, "done", { message: messageFirstParagraph, summary })
           : operationClosing(kind, phase, {});
@@ -91,10 +115,12 @@ export function buildSimpleFields(
       ),
     ],
     links: [],
-    target: { hostname: subject },
+    // The project, a setup block a `.env` is written for, or no name at all is no service to observe.
+    ...(named === undefined ? {} : { target: { hostname: named } }),
+    ...(envChange !== undefined ? { envChange } : {}),
     hasResult: decoded.document !== undefined,
     ...(errorInfo !== undefined
-      ? explanationField(failedCallReason(decoded, errorInfo))
+      ? explanationField(kind === "env" ? failure : failedCallReason(decoded, errorInfo))
       : explanationField(outcomeReason(decoded.document, outcome))),
   };
 }
@@ -111,4 +137,96 @@ function outcomeReason(
     return readString(document?.message) ?? readString(document?.warning);
   }
   return undefined;
+}
+
+const ENV_ACTIONS: Readonly<Record<string, ZeropsEnvChange["action"]>> = {
+  get: "get",
+  set: "set",
+  delete: "delete",
+  "generate-dotenv": "dotenv",
+};
+
+/**
+ * What a `zerops_env` call changes and where, from its input (zcp
+ * `internal/tools/env.go`): `project` (zcp's FlexBool: a boolean, or "true"
+ * in any case) names the project's variables, else `serviceHostname` a service's;
+ * `generate-dotenv` writes a `.env` for its `setup` block. The variables are
+ * only counted: their values can be secrets.
+ */
+function readEnvChange(
+  input: Record<string, unknown> | undefined,
+  document: Record<string, unknown> | undefined,
+): ZeropsEnvChange {
+  const asked = ENV_ACTIONS[readInputString(input, "action") ?? ""] ?? "update";
+  // A preview writes nothing: it reads what a write would change.
+  const action = asked === "dotenv" && readFlexBool(input, "preview") ? "dotenvPreview" : asked;
+  const project = readFlexBool(input, "project");
+  const service =
+    action === "dotenv" || action === "dotenvPreview"
+      ? (readInputString(input, "setup") ?? readInputString(input, "serviceHostname"))
+      : readInputString(input, "serviceHostname");
+  const count = action === "set" || action === "delete" ? variablesCount(input) : undefined;
+  const scope = project && asked !== "dotenv" ? "project" : "service";
+  const refused = action === "dotenv" ? refusedByHand(document) : undefined;
+  return {
+    action,
+    scope,
+    ...(scope === "project" || service === undefined ? {} : { service }),
+    ...(count === undefined ? {} : { count }),
+    ...(refused === undefined ? {} : { refused }),
+  };
+}
+
+/**
+ * A `.env` zcp's safety gate refused to write (`refused`), by how many of its
+ * variables nothing sets (`diff.unowned`): set by hand, lost on a write.
+ */
+function refusedByHand(document: Record<string, unknown> | undefined): number | undefined {
+  if (document?.refused !== true) return undefined;
+  const diff = document.diff;
+  const unowned =
+    typeof diff === "object" && diff !== null && !Array.isArray(diff)
+      ? (diff as Record<string, unknown>).unowned
+      : undefined;
+  return Array.isArray(unowned) ? unowned.length : 0;
+}
+
+/** zcp's FlexBool (`internal/tools/flexbool.go`): a boolean, or "true" in any case. */
+function readFlexBool(input: Record<string, unknown> | undefined, key: string): boolean {
+  const value = input?.[key];
+  return value === true || (typeof value === "string" && value.toLowerCase() === "true");
+}
+
+/**
+ * How many variables an env call names: its `variables` list, or the count
+ * the live step relays in its place (`variablesCount`, the server's
+ * `ThreadLiveStep`), never their entries.
+ */
+function variablesCount(input: Record<string, unknown> | undefined): number | undefined {
+  const variables = input?.variables;
+  if (Array.isArray(variables)) return variables.length;
+  const relayed = readInputString(input, "variablesCount");
+  return relayed !== undefined && /^\d+$/u.test(relayed) ? Number(relayed) : undefined;
+}
+
+/**
+ * An env call's failure in words that never carry an entry it was given:
+ * zcp's error for an entry with no "=" repeats it whole
+ * (`internal/ops/helpers.go` `parseEnvPairs`), and an agent may pass a bare
+ * secret. That error reads as what was wrong; any other line that repeats an
+ * entry or its value reads as a refusal.
+ */
+function envFailureLine(
+  line: string,
+  document: Record<string, unknown> | undefined,
+  input: Record<string, unknown> | undefined,
+): string {
+  if (readString(document?.code) === "INVALID_ENV_FORMAT") return "An entry wasn't KEY=value";
+  const variables = Array.isArray(input?.variables) ? input.variables : [];
+  const repeats = variables.some((entry) => {
+    if (typeof entry !== "string") return false;
+    const value = entry.includes("=") ? entry.slice(entry.indexOf("=") + 1) : entry;
+    return (entry.length > 0 && line.includes(entry)) || (value.length > 0 && line.includes(value));
+  });
+  return repeats ? "Its variables were refused" : line;
 }

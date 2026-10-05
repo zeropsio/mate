@@ -21,6 +21,8 @@ import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
 import { OrchestrationEngineService } from "./Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./Services/ProjectionSnapshotQuery.ts";
 import { ZeropsTurnAdmission } from "../zerops/ZeropsTurnAdmission.ts";
+import { makeFirstTurnEffort } from "../zerops/firstTurnEffort.ts";
+import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 
 export const orchestrationHttpApiLayer = HttpApiBuilder.group(
   EnvironmentHttpApi,
@@ -30,6 +32,12 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
     const orchestrationEngine = yield* OrchestrationEngineService;
     const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
     const turnAdmission = yield* ZeropsTurnAdmission;
+    // D10: a new conversation's first turn runs on Extra High when it names no effort, and the
+    // thread stores what it runs on — over HTTP as over the socket.
+    const firstTurnEffort = makeFirstTurnEffort({
+      providers: (yield* ProviderRegistry).getProviders,
+      threadShell: projectionSnapshotQuery.getThreadShellById,
+    });
 
     return handlers
       .handle(
@@ -109,8 +117,11 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
               failEnvironmentInternal("orchestration_dispatch_failed", cause),
             ),
           );
-          const normalizedCommand = yield* normalizeDispatchCommand(args.payload).pipe(
+          const { command: normalizedCommand, store } = yield* normalizeDispatchCommand(
+            args.payload,
+          ).pipe(
             Effect.catch(() => failEnvironmentInvalidRequest("invalid_command")),
+            Effect.flatMap(firstTurnEffort),
           );
           // A turn over HTTP spends the same login a turn over the socket
           // does, so it passes the same gate (D6) as the same person. A
@@ -127,8 +138,8 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
                     reason: refusal.message,
                   }).pipe(Effect.andThen(failEnvironmentOperationForbidden("zerops_turn_refused"))),
                 onSuccess: () =>
-                  orchestrationEngine
-                    .dispatch(normalizedCommand)
+                  (store === undefined ? Effect.void : orchestrationEngine.dispatch(store))
+                    .pipe(Effect.andThen(orchestrationEngine.dispatch(normalizedCommand)))
                     .pipe(
                       Effect.catch((cause) =>
                         failEnvironmentInternal("orchestration_dispatch_failed", cause),

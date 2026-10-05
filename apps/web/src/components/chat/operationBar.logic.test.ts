@@ -194,25 +194,35 @@ describe("processReasons — why the platform says each service failed", () => {
   });
 });
 
+// A bar says what its line, its mark and its time do not: where a call
+// failed among its steps, how its services went. A bar of one segment, or one
+// whose only news is "done", says nothing and is not drawn (pass 43).
 describe("settledOperationBar — a settled operation's bar carries what it found", () => {
+  const two = [step("appdev", "done"), step("apidev", "done")];
   it.each([
     {
-      name: "a dev server found running: green",
-      op: { kind: "devServer", phase: "done", steps: [step("dev-server", "done")] },
+      name: "a call of one step: none",
+      op: { kind: "env", phase: "done", steps: [step("env", "done")] },
       undone: false,
-      tones: ["done"],
+      tones: [],
     },
     {
-      name: "a dev server found not running, from a call that went through: amber, never green",
-      op: { kind: "devServer", phase: "done", steps: [step("dev-server", "failed")] },
+      name: "a call with no steps: none",
+      op: { kind: "discover", phase: "done", steps: [] },
       undone: false,
-      tones: ["attention"],
+      tones: [],
     },
     {
-      name: "that finding undone by a later call: quiet",
+      name: "a one-step finding, its mark and words say it: none",
       op: { kind: "devServer", phase: "done", steps: [step("dev-server", "failed")] },
-      undone: true,
-      tones: ["waiting"],
+      undone: false,
+      tones: [],
+    },
+    {
+      name: "a one-step failure, its mark and reason say it: none",
+      op: { kind: "manage", phase: "failed", steps: [step("restart", "failed")] },
+      undone: false,
+      tones: [],
     },
     {
       name: "a call that failed: cut red where it failed",
@@ -225,16 +235,50 @@ describe("settledOperationBar — a settled operation's bar carries what it foun
       tones: ["done", "failed", "waiting"],
     },
     {
-      name: "all checks passed: whole",
-      op: { kind: "verify", phase: "done", steps: [step("a", "done"), step("b", "done")] },
+      name: "that failure undone by a later call: quiet",
+      op: {
+        kind: "deploy",
+        phase: "failed",
+        steps: [step("build", "done"), step("deploy", "failed")],
+      },
+      undone: true,
+      tones: ["done", "waiting"],
+    },
+    {
+      name: "every check passed, only done: none",
+      op: { kind: "verify", phase: "done", steps: two },
+      undone: false,
+      tones: [],
+    },
+    {
+      name: "a check that found something wrong: amber where",
+      op: { kind: "verify", phase: "done", steps: [step("a", "done"), step("b", "failed")] },
+      undone: false,
+      tones: ["done", "attention"],
+    },
+    {
+      name: "a batch deploy: a segment per service",
+      op: { kind: "deploy", phase: "done", batch: true, steps: two },
       undone: false,
       tones: ["done", "done"],
     },
     {
-      name: "no steps, landed: one green",
-      op: { kind: "deploy", phase: "done", steps: [] },
+      name: "a batch of one service: none",
+      op: { kind: "deploy", phase: "done", batch: true, steps: [step("appdev", "done")] },
       undone: false,
-      tones: ["done"],
+      tones: [],
+    },
+    {
+      name: "an import: a segment per service",
+      op: { kind: "import", phase: "done", steps: two },
+      undone: false,
+      tones: ["done", "done"],
+    },
+    {
+      name: "a check of all services: a segment per service",
+      op: { kind: "verify", phase: "done", subject: "all services", steps: two },
+      undone: false,
+      tones: ["done", "done"],
     },
   ] as const)("$name", ({ op, undone, tones }) => {
     expect(
@@ -242,6 +286,33 @@ describe("settledOperationBar — a settled operation's bar carries what it foun
         (segment) => segment.tone,
       ),
     ).toEqual(tones);
+  });
+});
+
+// Nothing moves while an item stands in the live slot (pass 43): a call that
+// wore a bar while it ran keeps a bar as it settles there, so its reason or
+// detail never jumps left by the bar's width. The rule that drops a bar
+// saying nothing applies once it stands in the log.
+describe("settledOperationBar — the slot's line keeps its parts from live to settled", () => {
+  const settled = (overrides: Partial<ZeropsOperation>) =>
+    operation({ phase: "done", ...overrides });
+  it.each([
+    { name: "a call of one step", op: { kind: "env", steps: [step("env", "done")] } },
+    { name: "a call with no steps", op: { kind: "discover", steps: [] } },
+    {
+      name: "a failed call of one step",
+      op: { kind: "manage", phase: "failed", steps: [step("x", "failed")] },
+    },
+    {
+      name: "checks that all passed",
+      op: { kind: "verify", steps: [step("a", "done"), step("b", "done")] },
+    },
+  ] as const)("$name", ({ op }) => {
+    const running = operation({ ...(op as Partial<ZeropsOperation>), phase: "running" });
+    const ended = settled(op as Partial<ZeropsOperation>);
+    expect(liveOperationBar(running).segments.length).toBeGreaterThan(0);
+    expect(settledOperationBar(ended, false, "slot").length).toBeGreaterThan(0);
+    expect(settledOperationBar(ended, false, "log")).toEqual([]);
   });
 });
 
@@ -275,6 +346,127 @@ describe("detailLines — how much an operation opens to", () => {
       lines: 1,
     },
     { name: "an import: its services", overrides: { steps: [step("db", "done")] }, lines: 1 },
+  ])("$name", ({ overrides, lines }) => {
+    expect(detailLines(operation(overrides as Partial<ZeropsOperation>), null)).toBe(lines);
+  });
+});
+
+// The count of what an operation opens to agrees with what its card draws,
+// kind by kind: a chevron that opens onto nothing is a defect (pass 43).
+describe("detailLines — the links a card adds of its own", () => {
+  it.each([
+    { name: "a dev server whose address is known: its Open link", url: "https://a.test", lines: 1 },
+    { name: "a dev server whose address is not known: nothing", url: undefined, lines: 0 },
+  ])("$name", ({ url, lines }) => {
+    const op = operation({ kind: "devServer", steps: [step("appdev", "done")] });
+    expect(detailLines(op, null, null, url)).toBe(lines);
+  });
+
+  it("an address counts only for a dev server", () => {
+    const op = operation({ kind: "env", steps: [step("appdev", "done")] });
+    expect(detailLines(op, null, null, "https://a.test")).toBe(0);
+  });
+});
+
+describe("detailLines — what its card draws, kind by kind", () => {
+  const done = step("apidev", "done");
+  const failed = step("apidev", "failed");
+  const link = { label: "app.example", url: "https://app.example" };
+  const discover = (rows: number) => ({
+    kind: "discover" as const,
+    pending: false,
+    rows: Array.from({ length: rows }, (_, index) => ({
+      hostname: `svc${index}`,
+      status: { tone: "ok" as const, word: "Running" },
+    })),
+  });
+  it.each([
+    // A result-line kind's one step repeats its line: drawn only when it failed.
+    ...(["env", "delete", "scale", "manage", "devServer"] as const).flatMap((kind) => [
+      { name: `${kind}, done: nothing`, overrides: { kind, steps: [done] }, lines: 0 },
+      {
+        name: `${kind}, failed: its step and why`,
+        overrides: {
+          kind,
+          phase: "failed" as const,
+          steps: [failed],
+          explanation: { reason: "quota exceeded" },
+        },
+        lines: 2,
+      },
+    ]),
+    {
+      name: "a mount: its services",
+      overrides: { kind: "mount" as const, steps: [done] },
+      lines: 1,
+    },
+    {
+      name: "a subdomain: its step and its address",
+      overrides: { kind: "subdomain" as const, steps: [done], links: [link] },
+      lines: 2,
+    },
+    {
+      name: "a check: its checks",
+      overrides: { kind: "verify" as const, steps: [done, done] },
+      lines: 2,
+    },
+    {
+      name: "an error: why",
+      overrides: {
+        kind: "error" as const,
+        phase: "failed" as const,
+        explanation: { reason: "No such tool" },
+      },
+      lines: 1,
+    },
+    // A read draws what it returned in place of its steps and its reason.
+    {
+      name: "a look at the services: a row each",
+      overrides: { kind: "discover" as const, readResult: discover(2) },
+      lines: 2,
+    },
+    {
+      name: "a look that returned no service: nothing",
+      overrides: { kind: "discover" as const, steps: [done], readResult: discover(0) },
+      lines: 0,
+    },
+    {
+      name: "a log: its lines and its note",
+      overrides: {
+        kind: "logs" as const,
+        steps: [done],
+        readResult: {
+          kind: "logs" as const,
+          pending: false,
+          service: "apidev",
+          lines: [{ id: "l1", text: "listening", severity: "info" as const }],
+          note: "1 line",
+        },
+      },
+      lines: 2,
+    },
+    {
+      name: "the events: a row each and the rest",
+      overrides: {
+        kind: "events" as const,
+        readResult: {
+          kind: "events" as const,
+          pending: false,
+          rows: [{ id: "e1", action: "Deploy", status: { tone: "ok" as const, word: "Finished" } }],
+          more: "3 more",
+        },
+      },
+      lines: 2,
+    },
+    {
+      name: "a process followed: its processes",
+      overrides: {
+        kind: "process" as const,
+        steps: [done],
+        readResult: { kind: "process" as const, pending: false },
+      },
+      lines: 1,
+    },
   ])("$name", ({ overrides, lines }) => {
     expect(detailLines(operation(overrides as Partial<ZeropsOperation>), null)).toBe(lines);
   });

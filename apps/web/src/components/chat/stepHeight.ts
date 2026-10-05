@@ -11,6 +11,27 @@
  * absolute place, which fought the list's re-pin once other rows arrived.
  */
 
+import { LONG_GONE_MS } from "./runMotion.logic";
+
+/**
+ * The longest step a timed ease counts: two frames at 60 Hz, so a step that
+ * waits a frame on the list's hearing keeps its pace.
+ */
+export const LATE_STEP_MS = 34;
+
+/**
+ * How far along a timed ease of `duration` stands after a frame `dtMs` past
+ * its last: a late frame counts no more than a late step — a stall slows the
+ * ease and nothing drops (run 12: a 195 ms stall dropped the helpers' card
+ * 41 px in one frame) — but a frame long gone, a tab out of sight coming
+ * back, finds it at its end.
+ */
+export function easedClock(elapsed: number, dtMs: number, duration: number): number {
+  if (dtMs <= 0) return elapsed;
+  if (dtMs >= LONG_GONE_MS) return duration;
+  return Math.min(duration, elapsed + Math.min(dtMs, LATE_STEP_MS));
+}
+
 /** A CSS cubic-bezier timing function, by bisection. */
 export function cubicBezier(x1: number, y1: number, x2: number, y2: number): (x: number) => number {
   const at = (p1: number, p2: number, t: number) =>
@@ -93,7 +114,8 @@ export function stepHeight({
   readonly each?: (eased: number, height: number) => void;
   readonly done: () => void;
 }): () => void {
-  let start: number | null = null;
+  let last: number | null = null;
+  let elapsed = 0;
   let frame = 0;
   let height = from;
   let over = false;
@@ -121,8 +143,9 @@ export function stepHeight({
       frame = requestAnimationFrame(step);
       return;
     }
-    start ??= now;
-    const t = Math.min(1, (now - start) / duration);
+    if (last !== null) elapsed = easedClock(elapsed, now - last, duration);
+    last = now;
+    const t = duration > 0 ? Math.min(1, elapsed / duration) : 1;
     const eased = ease(t);
     const next = from + (to - from) * eased;
     // What this step takes, which the list will move its rows for a frame

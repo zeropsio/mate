@@ -31,6 +31,7 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import { isAgentWithoutSignInReady, isProviderReadyToRun } from "@t3tools/shared/zeropsAgentAuth";
+import { selectionWithPreferredEffort } from "@t3tools/shared/zeropsEffort";
 
 /**
  * Which driver the bootstrap thread prefers when more than one is ready.
@@ -134,7 +135,8 @@ export const pickReadyAgentWithoutSignIn = (
 
 /**
  * The bootstrap model selection for a Zerops container, or `undefined` when
- * the caller should keep upstream's hardcoded default.
+ * the caller should keep upstream's hardcoded default. It is a new
+ * conversation's, so it starts on the preferred effort (D10).
  */
 export const resolveZeropsBootstrapModelSelection = (
   providers: ReadonlyArray<ServerProvider>,
@@ -142,5 +144,8 @@ export const resolveZeropsBootstrapModelSelection = (
   const chosen = pickBootstrapProvider(providers);
   return chosen === undefined
     ? undefined
-    : { instanceId: chosen.instanceId, model: resolveBootstrapModelSlug(chosen) };
+    : selectionWithPreferredEffort([chosen], {
+        instanceId: chosen.instanceId,
+        model: resolveBootstrapModelSlug(chosen),
+      });
 };
