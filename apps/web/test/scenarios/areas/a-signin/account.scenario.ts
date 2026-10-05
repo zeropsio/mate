@@ -1,3 +1,4 @@
+import { receivedHqReplies } from "../../fakes/a-signin/replies.ts";
 import { describe, it, expect } from "@effect/vitest";
 import { afterAll } from "vite-plus/test";
 import * as Effect from "effect/Effect";
@@ -7,19 +8,43 @@ import { installSignIn } from "./fake.ts";
 import {
   account,
   organizations,
-  retryHq,
+  renewHq,
   sessionEnds,
   signInOrganization,
   unchangedHandovers,
   allowHqRetries,
 } from "./dsl.ts";
 
-const browserChecks: { pageErrors: string[]; blocked: string[] }[] = [];
-const accountScenario = Effect.fn("signin.scenario")(function* () {
-  const s = yield* createScenario([installSignIn]);
-  browserChecks.push(s.web);
-  return s;
+const accountScenario = Effect.fn("signin.scenario")(function* (sessionFault = false) {
+  const s = yield* createScenario(
+    [installSignIn],
+    sessionFault ? { hq: { streamRecheck: 1_000 } } : {},
+  );
+  return { ...s, receivedReplies: receivedHqReplies(s.page, s.drivers.routes, s.hq.origin) };
 });
+const disposalMessage = `Error: Cannot access Atom {
+  "_id": "Atom",
+  "keepAlive": true,
+  "lazy": true,
+  "label": undefined
+}: registry is disposed`;
+const logoutDiagnostics: { name: string; raw: string[]; maximum: number }[] = [];
+function accountForLogoutError(
+  s: Effect.Success<ReturnType<typeof accountScenario>>,
+  name: string,
+  maximum: number,
+) {
+  return Effect.sync(() => {
+    if (expectedTargets.get(name) !== true) return;
+    const raw: string[] = [];
+    for (let index = s.web.pageErrors.length - 1; index >= 0; index--) {
+      if (s.web.pageErrors[index] === disposalMessage)
+        raw.push(...s.web.pageErrors.splice(index, 1));
+    }
+    // The shared guard still sees every unmatched error; web.errors keeps the original log.
+    logoutDiagnostics.push({ name, raw, maximum });
+  });
+}
 const expectedTargets = new Map<string, boolean>();
 function startExpectedFailure(name: string) {
   expectedTargets.set(name, false);
@@ -27,14 +52,13 @@ function startExpectedFailure(name: string) {
 }
 // afterAll runs outside Vitest's inversion of an expected failure and its afterEach hooks.
 afterAll(() => {
-  expect(
-    browserChecks.flatMap((web) => web.pageErrors),
-    "Uncaught browser errors",
-  ).toEqual([]);
-  expect(
-    browserChecks.flatMap((web) => web.blocked),
-    "Unmapped browser network",
-  ).toEqual([]);
+  for (const { name, raw, maximum } of logoutDiagnostics) {
+    expect(
+      raw.every((error) => error === disposalMessage),
+      `${name}: unexpected diagnostic`,
+    ).toBe(true);
+    expect(raw.length, `${name}: extra disposal errors`).toBeLessThanOrEqual(maximum);
+  }
   for (const [name, reached] of expectedTargets)
     expect(reached, `${name}: expected failure did not reach its visible assertion`).toBe(true);
 });
@@ -128,15 +152,17 @@ describe("A: sign-in, session and organizations", () => {
     // Catches an expired HQ session trapping an otherwise signed-in user even after Try again.
     it.effect("Try again renews an expired HQ session without account sign-in", () =>
       Effect.gen(function* () {
-        const s = yield* accountScenario();
+        const s = yield* accountScenario(true);
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         yield* s.then.menu.row("Shop").appears();
+        const retainedAuthorization = yield* unchangedHandovers(s);
         yield* sessionEnds(s, "expiry");
         yield* s.when.hq.colleague.renamesProject("Shop", "Renewed");
-        yield* retryHq(s);
+        yield* renewHq(s, "Renewed");
         yield* s.then.menu.row("Renewed").appears();
         yield* account(s.page).showsPerson("owner");
+        yield* retainedAuthorization();
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;
       }),
@@ -148,14 +174,14 @@ describe("A: sign-in, session and organizations", () => {
         const reachedVisible = startExpectedFailure(
           "HQ session-check outage recovers without user intervention",
         );
-        const s = yield* accountScenario();
+        const s = yield* accountScenario(true);
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* Effect.promise(() => s.clock.install());
         yield* s.given.signedIn;
         yield* s.then.menu.row("Shop").appears();
         yield* sessionEnds(s, "outage");
         yield* s.when.hq.colleague.renamesProject("Shop", "HQ returned");
-        yield* allowHqRetries(s, "HQ returned");
+        yield* allowHqRetries(s, "HQ returned", s.receivedReplies);
         reachedVisible();
         yield* s.then.menu
           .row("HQ returned")
@@ -163,59 +189,71 @@ describe("A: sign-in, session and organizations", () => {
           .pipe(Effect.ensuring(Effect.all([s.then.noReload, s.then.noExternalNetwork])));
       }),
     );
-    // Catches sign-out leaving account work visible or restoring it on reload.
-    // Blocked by the uncaught logout disposal error; see README for the shared API request.
-    it.effect.skip("sign-out clears the account's work", () =>
+    // Catches sign-out raising "registry is disposed" after clearing the account UI.
+    it.effect.fails("sign-out clears the account without registry disposal", () =>
       Effect.gen(function* () {
+        const name = "sign-out clears the account without registry disposal";
+        const reachedVisible = startExpectedFailure(name);
         const s = yield* accountScenario();
         yield* Effect.promise(() => s.clock.install());
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         yield* s.then.menu.row("Shop").appears();
-        yield* account(s.page).signOut;
-        yield* account(s.page).signedOut;
-        yield* account(s.page).reload;
-        yield* account(s.page).signedOut;
         yield* s.then.noExternalNetwork;
+        yield* Effect.gen(function* () {
+          yield* account(s.page).signOut;
+          yield* account(s.page).signedOut;
+          yield* account(s.page).reload;
+          yield* account(s.page).signedOut;
+          reachedVisible();
+          // Copy diagnostics so the failure report survives exact-error accounting in finally.
+          yield* Effect.sync(() =>
+            expect([...s.web.pageErrors], "Sign-out must not raise registry is disposed").toEqual(
+              [],
+            ),
+          );
+          yield* s.then.noExternalNetwork;
+        }).pipe(Effect.ensuring(accountForLogoutError(s, name, 1)));
       }),
     );
 
-    // Catches tab B's sign-out unexpectedly ending tab A's active session.
-    // Reproduces today, but its separate disposal errors need explicit shared accounting first.
-    it.effect.fails(
-      "sign-out in tab B leaves tab A's session usable",
-      () =>
-        Effect.gen(function* () {
-          const reachedVisible = startExpectedFailure(
-            "sign-out in tab B leaves tab A's session usable",
-          );
-          const s = yield* accountScenario();
-          yield* Effect.promise(() => s.clock.install());
-          yield* s.given.project("Ada", { mate: true, app: "Shop" });
-          yield* s.given.signedIn;
-          yield* s.then.menu.row("Shop").appears();
-          const b = yield* s.given.browserActor({ context: s.page.browserContext() });
-          yield* Effect.promise(() => b.clock.install());
-          yield* Effect.promise(async () => {
-            await b.page.goto(s.web.origin);
-          });
-          yield* account(b.page).showsPerson("owner");
-          yield* b.then.menu.row("Shop").appears();
+    // Catches tab B signing out tab A; its separate known disposal errors are audited explicitly.
+    it.effect.fails("sign-out in tab B leaves tab A's session usable", () =>
+      Effect.gen(function* () {
+        const name = "sign-out in tab B leaves tab A's session usable";
+        const reachedVisible = startExpectedFailure(name);
+        const s = yield* accountScenario();
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        yield* s.then.menu.row("Shop").appears();
+        const b = yield* s.given.browserActor({ context: s.page.browserContext() });
+        yield* Effect.promise(() => b.clock.install());
+        yield* Effect.promise(async () => {
+          await b.page.goto(s.web.origin);
+        });
+        yield* account(b.page).showsPerson("owner");
+        yield* b.then.menu.row("Shop").appears();
+        yield* s.then.noExternalNetwork;
+        yield* Effect.gen(function* () {
           yield* account(b.page).signOut;
           yield* account(b.page).signedOut;
           reachedVisible();
-          yield* account(s.page).showsPerson("owner");
+          yield* account(s.page).showsPerson("owner", "Tab A signed out when tab B signed out");
           yield* s.then.menu.row("Shop").appears();
-          yield* s.then.noExternalNetwork;
-        }),
-      { skip: true },
+        }).pipe(
+          Effect.ensuring(
+            accountForLogoutError(s, name, 2).pipe(Effect.andThen(s.then.noExternalNetwork)),
+          ),
+        );
+      }),
     );
 
     // Catches an expired HQ session permanently stopping live work until the user retries.
     it.effect.fails("HQ session expires and renews itself", () =>
       Effect.gen(function* () {
         const reachedVisible = startExpectedFailure("HQ session expires and renews itself");
-        const s = yield* accountScenario();
+        const s = yield* accountScenario(true);
         yield* Effect.promise(() => s.clock.install());
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
@@ -223,7 +261,7 @@ describe("A: sign-in, session and organizations", () => {
         const retainedAuthorization = yield* unchangedHandovers(s);
         yield* sessionEnds(s, "expiry");
         yield* s.when.hq.colleague.renamesProject("Shop", "Automatically renewed");
-        yield* allowHqRetries(s, "Automatically renewed");
+        yield* allowHqRetries(s, "Automatically renewed", s.receivedReplies);
         reachedVisible();
         yield* s.then.menu.row("Automatically renewed").appears({ within: 10_000 });
         yield* retainedAuthorization();

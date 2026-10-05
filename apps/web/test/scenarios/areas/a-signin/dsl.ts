@@ -46,7 +46,18 @@ export function account(page: Page) {
   return {
     showsOrganization: (name: string) =>
       Effect.promise(() => visibleText(page, "sidebar-account", name)),
-    showsPerson: (name: string) => Effect.promise(() => visibleText(page, "sidebar-account", name)),
+    showsPerson: (name: string, reason = "Signed-in account menu missing") =>
+      Effect.promise(async () => {
+        try {
+          await visibleText(page, "sidebar-account", name);
+        } catch (error) {
+          if (!(error instanceof Error) || error.name !== "TimeoutError") throw error;
+          throw new Error(
+            `${reason}: ${name}\n${await page.evaluate(() => document.body.innerText)}`,
+            { cause: error },
+          );
+        }
+      }),
     selectOrganization: (name: string) =>
       Effect.promise(async () => {
         await openMenu();
@@ -123,6 +134,41 @@ export const retryHq = Effect.fn("signin.retryHq")(function* (s: Scenario) {
   );
 });
 
+/** A future self-renewal must not make the existing manual recovery path fail its setup. */
+export const renewHq = Effect.fn("signin.renewHq")(function* (s: Scenario, name: string) {
+  const outcome = yield* Effect.promise(async () => {
+    const condition = await s.page.waitForFunction(
+      (name) => {
+        const renewed = [
+          ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-environments"]'),
+        ].some(
+          (element) =>
+            element.getBoundingClientRect().height > 0 &&
+            element.innerText.split("\n").some((line) => line.trim() === name),
+        );
+        if (renewed) return "renewed";
+        const retry = [
+          ...document.querySelectorAll<HTMLButtonElement>('button, [role="button"]'),
+        ].some(
+          (element) =>
+            element.getBoundingClientRect().height > 0 &&
+            element.textContent?.includes("HQ") &&
+            element.textContent.includes("Try again"),
+        );
+        return retry ? "retry" : false;
+      },
+      { timeout: 10_000, polling: "raf" },
+      name,
+    );
+    try {
+      return await condition.jsonValue();
+    } finally {
+      await condition.dispose();
+    }
+  });
+  if (outcome === "retry") yield* retryHq(s);
+});
+
 export function unchangedHandovers(s: Scenario) {
   return Effect.sync(() => {
     const before = handoverCount(s.drivers);
@@ -139,10 +185,11 @@ export function unchangedHandovers(s: Scenario) {
 export const allowHqRetries = Effect.fn("signin.allowHqRetries")(function* (
   s: Scenario,
   name: string,
+  settle: () => Promise<void>,
 ) {
   yield* Effect.promise(async () => {
     for (let step = 0; step < 12; step++) {
-      await s.clock.advance(10_000);
+      await s.clock.advanceStepped(10_000, { settle });
       try {
         await visibleText(s.page, "sidebar-environments", name, 1_000);
         return;
