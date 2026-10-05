@@ -4131,9 +4131,12 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   aged out, the task's words stand as before. Cursor, Grok, Antigravity and OpenCode report no
   named helpers.
 - **2026-10-06** — **A result picture that can no longer load is no result** (N2, run 11: a muted
-  "Gone" tile stood as a Noibit turn's result). A file whose read fails leaves the result strip
-  with no room held: the next picture takes its place, the strip's six and its "+N" count only
-  what stands, and a run whose pictures are all gone shows nothing of them (no strip; no result
-  where it left no row). A file still being read keeps its quiet tile, so the common case never
-  shifts; a gone one drops once its read fails. The opened card's step that looked at a picture
-  still says "… is not there any more".
+  "Gone" tile stood as a Noibit turn's result). A file the workspace says is not there leaves the
+  result strip with no room held: the next picture takes its place, the strip's six and its "+N"
+  count only what stands, and a run whose pictures are all gone shows nothing of them (no strip;
+  no result where it left no row). Only the server's "not there" makes a picture gone: one whose
+  Mate is asleep, offline or reconnecting stays a quiet tile and is asked again on the signing's
+  retry schedule. A conversation remembers its gone pictures per account (`gonePictureMemory`), so
+  a reload leaves them out before their reads answer and paints no tile it takes back; one that
+  loads again is forgotten. The opened card's steps leave to the result exactly the files its strip
+  draws, as the result itself placed them (`resultStripFiles`).

@@ -16,6 +16,13 @@ import { TurnReport } from "./TurnReport";
 /** What the workspace answers for each picture's file, by its path: loading unless told. */
 const workspace = vi.hoisted(() => ({
   files: new Map<string, AssetUrlState>(),
+  /** The pictures this conversation remembers gone (`gonePictureMemory`). */
+  gone: new Set<string>() as ReadonlySet<string>,
+}));
+
+vi.mock("../../zerops/gonePictureMemory", () => ({
+  rememberedGonePictures: () => workspace.gone,
+  rememberGonePicture: () => undefined,
 }));
 
 // A tile's tooltip, drawn in place of its popup: the words a pointer reads.
@@ -223,6 +230,7 @@ const tilesOf = (renderer: ReactTestRenderer) =>
 
 describe("TurnReport's pictures", () => {
   beforeEach(() => {
+    workspace.gone = new Set();
     workspace.files = new Map(
       ["home-mobile.png", "world-mobile.png", "map-landscape.png"].map((name) => [
         `/var/www/app/.shots/${name}`,
@@ -381,6 +389,19 @@ describe("TurnReport's pictures", () => {
     const said = (node: ReactTestInstance): string =>
       node.children.map((child) => (typeof child === "string" ? child : said(child))).join("");
     expect(tiles.map(said).filter((words) => /\+\d/.test(words))).toEqual([]);
+  });
+
+  // A reload paints nothing it takes back: a file this conversation found gone before is left
+  // out from the first paint, while its read is still on its way.
+  it("leaves out a picture remembered gone before its read answers", () => {
+    workspace.gone = new Set(["/var/www/app/.shots/world-mobile.png"]);
+    workspace.files.delete("/var/www/app/.shots/world-mobile.png");
+    const tiles = tilesOf(
+      renderPictures([filePicture("home-mobile.png"), filePicture("world-mobile.png")]),
+    );
+    expect(tiles.map((tile) => tile.props["aria-label"])).toEqual([
+      "home-mobile.png. Open the picture",
+    ]);
   });
 
   // The card's steps leave to the result what its strip draws: here the seventh file, once the

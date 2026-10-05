@@ -16,6 +16,7 @@
  * later, they are simply there.
  */
 import type { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { ArrowUpRightIcon, GitPullRequestIcon, TriangleAlertIcon, UsersIcon } from "lucide-react";
 import {
   useCallback,
@@ -32,6 +33,7 @@ import { useAssetUrlStates, type AssetUrlState } from "../../assets/assetUrls";
 import { formatDayAwareTimestamp } from "../../timestampFormat";
 import { runFixMate, useFixMates } from "../../zerops/fixMates";
 import { useAskMateToFix, type FixProblem } from "../../zerops/fixRequest";
+import { rememberedGonePictures, rememberGonePicture } from "../../zerops/gonePictureMemory";
 import { useOpenReview } from "../../zerops/review";
 import { useZeropsSessionOptional } from "../../zerops/sessionContext";
 import { ServiceBrowserLink } from "../ServiceBrowserLink";
@@ -204,6 +206,7 @@ function RowEnd({ row, mate }: { readonly row: ResultRow; readonly mate: MateOfR
 export type ResultFiles = ReadonlyMap<string, AssetUrlState>;
 
 const LOADING: AssetUrlState = { _tag: "Loading" };
+const GONE: AssetUrlState = { _tag: "Failure" };
 
 const NO_FILES: ResultFiles = new Map();
 
@@ -412,10 +415,27 @@ function WorkspaceReport({
     [paths, threadId],
   );
   const read = useAssetUrlStates(environmentId, resources);
+  // A picture this conversation found gone before is left out from the first paint, before its
+  // read answers: a reload paints no tile it then takes back.
+  const threadKey = scopedThreadKey(scopeThreadRef(environmentId, threadId));
+  const remembered = useMemo(() => rememberedGonePictures(threadKey), [threadKey]);
   const files = useMemo<ResultFiles>(
-    () => new Map(paths.map((path, index) => [path, read[index] ?? LOADING] as const)),
-    [paths, read],
+    () =>
+      new Map(
+        paths.map((path, index) => {
+          const state = read[index] ?? LOADING;
+          return [path, state._tag === "Loading" && remembered.has(path) ? GONE : state] as const;
+        }),
+      ),
+    [paths, read, remembered],
   );
+  useEffect(() => {
+    paths.forEach((path, index) => {
+      const state = read[index];
+      if (state?._tag === "Failure") rememberGonePicture(threadKey, path, true);
+      if (state?._tag === "Success") rememberGonePicture(threadKey, path, false);
+    });
+  }, [paths, read, threadKey]);
   return <Report {...props} files={files} />;
 }
 
