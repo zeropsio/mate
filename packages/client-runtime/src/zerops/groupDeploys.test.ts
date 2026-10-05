@@ -372,17 +372,6 @@ describe("an application's stops, as HQ records them", () => {
         ],
       ],
     ]);
-    expect(stops.missing.map((row) => row.tier)).toEqual(["production"]);
-  });
-
-  it("asks for no tier while the recipe is not read", () => {
-    const stops = groupStopsOf({
-      environments: [],
-      projects,
-      versions: new Map(),
-      recipe: undefined,
-    });
-    expect(stops.missing).toEqual([]);
   });
 });
 

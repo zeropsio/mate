@@ -28,7 +28,6 @@ const stopsOf = (environments: ReadonlyArray<GroupEnvironmentRowInput> = []): Gr
     sources: entry.sources,
   })),
   environments,
-  missing: [],
 });
 
 const NOTHING_WITHHELD: ReadonlyMap<string, string> = new Map();

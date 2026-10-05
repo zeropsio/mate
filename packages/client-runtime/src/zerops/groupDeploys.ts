@@ -28,13 +28,7 @@
 import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 
-import {
-  environmentTierForRole,
-  missingEnvironmentRows,
-  type GroupEnvironment,
-  type GroupEnvironmentTier,
-  type MissingEnvironmentRow,
-} from "./groupEnvironments.ts";
+import { type GroupEnvironment, type GroupEnvironmentTier } from "./groupEnvironments.ts";
 import { deployedCommit, type EnvironmentServiceState, type GroupRowTone } from "./groupRows.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import type { ZeropsServiceDeployedVersion } from "./data/deployedVersion.ts";
@@ -232,11 +226,10 @@ export interface GroupStopProject {
   readonly services: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
 }
 
-/** An application's stops: the environments HQ records, their rows' inputs, the tiers that ask. */
+/** An application's stops: the environments HQ records, their rows' inputs. */
 export interface GroupStops {
   readonly declarations: ReadonlyArray<GroupEnvironment>;
   readonly environments: ReadonlyArray<GroupEnvironmentRowInput>;
-  readonly missing: ReadonlyArray<MissingEnvironmentRow>;
 }
 
 /**
@@ -273,17 +266,6 @@ export function groupStopsOf(input: {
       repositories: recipe?.repositories,
       declared: recipe?.declared,
     }),
-    missing:
-      recipe === undefined
-        ? []
-        : missingEnvironmentRows({
-            tiersOnMain: recipe.tiers,
-            declarations,
-            filledTiers: input.projects.flatMap((project) => {
-              const tier = environmentTierForRole(project.role);
-              return tier === undefined ? [] : [tier];
-            }),
-          }),
   };
 }
 
