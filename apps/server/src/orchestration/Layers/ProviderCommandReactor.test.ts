@@ -162,6 +162,7 @@ describe("ProviderCommandReactor", () => {
     readonly deferReactorStart?: boolean;
     readonly threadModelSelection?: ModelSelection;
     readonly sessionModelSwitch?: "unsupported" | "in-session";
+    readonly inSessionModelOptions?: ReadonlyArray<string>;
     readonly requiresNewThreadForModelChange?: boolean;
     readonly unreadableHistory?: boolean;
     readonly titleRegenerationCompletionDispatchFailures?: number;
@@ -359,6 +360,9 @@ describe("ProviderCommandReactor", () => {
       getCapabilities: (_provider) =>
         Effect.succeed({
           sessionModelSwitch: input?.sessionModelSwitch ?? "in-session",
+          ...(input?.inSessionModelOptions !== undefined
+            ? { inSessionModelOptions: input.inSessionModelOptions }
+            : {}),
         }),
       assertConversationRollbackSupported: () => unsupported(),
       getInstanceInfo: (instanceId) => {
@@ -3284,73 +3288,102 @@ describe("ProviderCommandReactor", () => {
     });
   });
 
-  it("restarts claude sessions when claude effort changes", async () => {
-    const harness = await createHarness({
-      threadModelSelection: {
-        instanceId: ProviderInstanceId.make("claudeAgent"),
-        model: "claude-sonnet-4-6",
-      },
-    });
-    const now = "2026-01-01T00:00:00.000Z";
-
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.make("cmd-turn-start-claude-effort-1"),
-        threadId: ThreadId.make("thread-1"),
-        message: {
-          messageId: asMessageId("user-message-claude-effort-1"),
-          role: "user",
-          text: "first claude turn",
-          attachments: [],
-        },
-        modelSelection: createModelSelection(
-          ProviderInstanceId.make("claudeAgent"),
-          "claude-sonnet-4-6",
-          [{ id: "effort", value: "medium" }],
-        ),
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "approval-required",
-        createdAt: now,
-      }),
-    );
-
-    await waitFor(() => harness.startSession.mock.calls.length === 1);
-    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
-
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.make("cmd-turn-start-claude-effort-2"),
-        threadId: ThreadId.make("thread-1"),
-        message: {
-          messageId: asMessageId("user-message-claude-effort-2"),
-          role: "user",
-          text: "second claude turn",
-          attachments: [],
-        },
-        modelSelection: createModelSelection(
-          ProviderInstanceId.make("claudeAgent"),
-          "claude-sonnet-4-6",
-          [{ id: "effort", value: "max" }],
-        ),
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "approval-required",
-        createdAt: now,
-      }),
-    );
-
-    await waitFor(() => harness.startSession.mock.calls.length === 2);
-    await waitFor(() => harness.sendTurn.mock.calls.length === 2);
-    expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
-      resumeCursor: { opaque: "resume-1" },
-      modelSelection: createModelSelection(
-        ProviderInstanceId.make("claudeAgent"),
-        "claude-sonnet-4-6",
-        [{ id: "effort", value: "max" }],
-      ),
-    });
+  const claudeTurnStart = (
+    suffix: string,
+    options: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>,
+  ) => ({
+    type: "thread.turn.start" as const,
+    commandId: CommandId.make(`cmd-turn-start-claude-${suffix}`),
+    threadId: ThreadId.make("thread-1"),
+    message: {
+      messageId: asMessageId(`user-message-claude-${suffix}`),
+      role: "user" as const,
+      text: `claude turn ${suffix}`,
+      attachments: [],
+    },
+    modelSelection: createModelSelection(
+      ProviderInstanceId.make("claudeAgent"),
+      "claude-sonnet-4-6",
+      options,
+    ),
+    interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+    runtimeMode: "approval-required" as const,
+    createdAt: "2026-01-01T00:00:00.000Z",
   });
+
+  effectIt.effect.each([
+    {
+      name: "an effort change goes to the live session",
+      first: [{ id: "effort", value: "medium" }],
+      second: [{ id: "effort", value: "max" }],
+    },
+    {
+      name: "the same options in another order go to the live session",
+      first: [
+        { id: "effort", value: "max" },
+        { id: "fastMode", value: true },
+      ],
+      second: [
+        { id: "fastMode", value: true },
+        { id: "effort", value: "max" },
+      ],
+    },
+  ])("$name without a new claude session", ({ first, second }) =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          threadModelSelection: {
+            instanceId: ProviderInstanceId.make("claudeAgent"),
+            model: "claude-sonnet-4-6",
+          },
+          inSessionModelOptions: ["effort"],
+        }),
+      );
+
+      yield* harness.engine.dispatch(claudeTurnStart("a", first));
+      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
+      yield* harness.engine.dispatch(claudeTurnStart("b", second));
+      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 2));
+
+      expect(harness.startSession).toHaveBeenCalledTimes(1);
+      expect(harness.stopSession).not.toHaveBeenCalled();
+      expect(harness.sendTurn.mock.calls[1]?.[0]).toMatchObject({
+        modelSelection: { options: second },
+      });
+    }),
+  );
+
+  effectIt.effect("restarts claude for a start-only option only once the session is idle", () =>
+    Effect.gen(function* () {
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          threadModelSelection: {
+            instanceId: ProviderInstanceId.make("claudeAgent"),
+            model: "claude-sonnet-4-6",
+          },
+          inSessionModelOptions: ["effort"],
+        }),
+      );
+
+      yield* harness.engine.dispatch(claudeTurnStart("a", [{ id: "fastMode", value: false }]));
+      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
+      const live = harness.runtimeSessions[0]!;
+      harness.runtimeSessions[0] = { ...live, status: "running", activeTurnId: asTurnId("turn-1") };
+
+      yield* harness.engine.dispatch(claudeTurnStart("b", [{ id: "fastMode", value: true }]));
+      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 2));
+      expect(harness.startSession).toHaveBeenCalledTimes(1);
+
+      harness.runtimeSessions[0] = { ...live, status: "ready" };
+      yield* harness.engine.dispatch(claudeTurnStart("c", [{ id: "fastMode", value: true }]));
+      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 3));
+      expect(harness.startSession).toHaveBeenCalledTimes(2);
+      expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
+        resumeCursor: { opaque: "resume-1" },
+        modelSelection: { options: [{ id: "fastMode", value: true }] },
+      });
+    }),
+  );
 
   it("restarts the provider session when runtime mode is updated on the thread", async () => {
     const harness = await createHarness();

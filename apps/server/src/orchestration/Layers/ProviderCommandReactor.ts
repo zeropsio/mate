@@ -23,7 +23,6 @@ import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import * as Equal from "effect/Equal";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -65,6 +64,7 @@ import {
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { withAgentNotes } from "../agentNotes.ts";
+import { classifyModelSelectionChange } from "../modelSelectionChange.ts";
 const isProviderAdapterProcessError = Schema.is(ProviderAdapterProcessError);
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 const isProviderAdapterValidationError = Schema.is(ProviderAdapterValidationError);
@@ -769,8 +769,8 @@ const make = Effect.gen(function* () {
     if (existingSessionThreadId) {
       const runtimeModeChanged = thread.runtimeMode !== thread.session?.runtimeMode;
       const cwdChanged = effectiveCwd !== activeSession?.cwd;
-      const sessionModelSwitch = (yield* providerService.getCapabilities(desiredInstanceId))
-        .sessionModelSwitch;
+      const capabilities = yield* providerService.getCapabilities(desiredInstanceId);
+      const sessionModelSwitch = capabilities.sessionModelSwitch;
       const modelChanged =
         requestedModelSelection !== undefined &&
         requestedModelSelection.model !== activeSession?.model;
@@ -778,11 +778,21 @@ const make = Effect.gen(function* () {
         requestedModelSelection !== undefined &&
         activeSession?.providerInstanceId !== requestedModelSelection.instanceId;
       const shouldRestartForModelChange = modelChanged && sessionModelSwitch === "unsupported";
-      const previousModelSelection = threadModelSelections.get(threadId);
+      const modelSelectionChange =
+        preferredProvider === "claudeAgent" && requestedModelSelection !== undefined
+          ? classifyModelSelectionChange({
+              previous: threadModelSelections.get(threadId),
+              requested: requestedModelSelection,
+              inSessionOptions: capabilities.inSessionModelOptions ?? [],
+              modelSwitchInSession: sessionModelSwitch === "in-session",
+            })
+          : "none";
+      // A running turn is never cut off for a model selection: a change only a
+      // new session can run waits until the session is idle.
+      const sessionRunning =
+        activeSession?.status === "running" || thread.session?.status === "running";
       const shouldRestartForModelSelectionChange =
-        preferredProvider === "claudeAgent" &&
-        requestedModelSelection !== undefined &&
-        !Equal.equals(previousModelSelection, requestedModelSelection);
+        modelSelectionChange === "new-session" && !sessionRunning;
 
       if (
         !runtimeModeChanged &&
@@ -791,6 +801,9 @@ const make = Effect.gen(function* () {
         !shouldRestartForModelChange &&
         !shouldRestartForModelSelectionChange
       ) {
+        if (requestedModelSelection !== undefined && modelSelectionChange !== "new-session") {
+          threadModelSelections.set(threadId, requestedModelSelection);
+        }
         yield* refreshWorkspaceSnapshot;
         return existingSessionThreadId;
       }
@@ -829,11 +842,13 @@ const make = Effect.gen(function* () {
         cwd: restartedSession.cwd,
       });
       yield* bindSessionToThread(restartedSession);
+      threadModelSelections.set(threadId, desiredModelSelection);
       return restartedSession.threadId;
     }
 
     const startedSession = yield* startProviderSession(undefined);
     yield* bindSessionToThread(startedSession);
+    threadModelSelections.set(threadId, desiredModelSelection);
     return startedSession.threadId;
   });
 
@@ -857,9 +872,6 @@ const make = Effect.gen(function* () {
       ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
       pendingTurnStart: true,
     });
-    if (input.modelSelection !== undefined) {
-      threadModelSelections.set(input.threadId, input.modelSelection);
-    }
     const normalizedInput = toNonEmptyProviderInput(
       withAgentNotes(input.messageText, input.agentNotes),
     );
@@ -1459,9 +1471,6 @@ const make = Effect.gen(function* () {
             : { pendingTurnStart: true },
         );
         compactionSessionEnsured = true;
-        if (event.payload.modelSelection !== undefined) {
-          threadModelSelections.set(event.payload.threadId, event.payload.modelSelection);
-        }
         yield* providerService.compactThread(
           event.payload.threadId,
           event.payload.modelSelection,
