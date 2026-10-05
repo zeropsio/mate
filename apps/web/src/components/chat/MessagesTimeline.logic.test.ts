@@ -2861,6 +2861,15 @@ describe("thoughtParagraphs", () => {
     },
     { text: "The panel glides.\n\n**Next**", paragraphs: ["The panel glides.", "**Next**"] },
     { text: "  \n\n ", paragraphs: [] },
+    // A blank line inside a code block is the block's, closed or still open.
+    {
+      text: "Like this:\n\n```ts\nconst a = 1;\n\nconst b = 2;\n```\n\nDone.",
+      paragraphs: ["Like this:", "```ts\nconst a = 1;\n\nconst b = 2;\n```", "Done."],
+    },
+    {
+      text: "Like this:\n\n```ts\nconst a = 1;\n\nconst b",
+      paragraphs: ["Like this:", "```ts\nconst a = 1;\n\nconst b"],
+    },
   ])("$text", ({ text, paragraphs }) => {
     expect(thoughtParagraphs(text)).toEqual(paragraphs);
   });

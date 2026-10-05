@@ -251,21 +251,24 @@ export function reachesEarlier(
  * callout said as its word (`quoteWords`), its paragraphs run together.
  */
 export function thoughtRunText(text: string): string {
-  return quoteWords(text)
-    .split(/\n\s*\n/u)
-    .map((paragraph) => {
-      // A title standing alone reads as a sentence of its own, not the start of the next.
-      const title = /^\s*\*\*([^*\n]+)\*\*\s*$/u.exec(paragraph)?.[1]?.trim();
-      return title === undefined ? paragraph : /[.!?:…]$/u.test(title) ? title : `${title}.`;
-    })
-    .join("\n\n")
-    .replace(/```[\s\S]*?```/gu, " ")
-    .replace(/\*\*([^*\n]+)\*\*/gu, "$1")
-    .replace(/__([^_\n]+)__/gu, "$1")
-    .replace(/`([^`\n]+)`/gu, "$1")
-    .replace(/^\s{0,3}(?:#{1,6}|[-*+]|\d+[.)])\s+/gmu, "")
-    .replace(/\s+/gu, " ")
-    .trim();
+  return (
+    quoteWords(text)
+      .split(/\n\s*\n/u)
+      .map((paragraph) => {
+        // A title standing alone reads as a sentence of its own, not the start of the next.
+        const title = /^\s*\*\*([^*\n]+)\*\*\s*$/u.exec(paragraph)?.[1]?.trim();
+        return title === undefined ? paragraph : /[.!?:…]$/u.test(title) ? title : `${title}.`;
+      })
+      .join("\n\n")
+      // A code block is code, not words: a closed one, and one still streaming.
+      .replace(/```[\s\S]*?(?:```|$)/gu, " ")
+      .replace(/\*\*([^*\n]+)\*\*/gu, "$1")
+      .replace(/__([^_\n]+)__/gu, "$1")
+      .replace(/`([^`\n]+)`/gu, "$1")
+      .replace(/^\s{0,3}(?:#{1,6}|[-*+]|\d+[.)])\s+/gmu, "")
+      .replace(/\s+/gu, " ")
+      .trim()
+  );
 }
 
 /**

@@ -101,6 +101,9 @@ describe("thoughtRunText", () => {
       text: "Checked the scale.\n\n> [!WARNING]\n> My earlier claim was incorrect.",
       run: "Checked the scale. Warning: My earlier claim was incorrect.",
     },
+    { text: "Try:\n\n```sh\nls\n```\n\nThen this.", run: "Try: Then this." },
+    // A code block still streaming is code too, not words with backticks.
+    { text: "Try this:\n\n```ts\nconst port = 3000;", run: "Try this:" },
   ])("reads $text as one run of words", ({ text, run }) => {
     expect(thoughtRunText(text)).toBe(run);
   });

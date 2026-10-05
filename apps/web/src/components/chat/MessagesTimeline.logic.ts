@@ -1279,6 +1279,43 @@ function isTaskActivityKind(kind: string | undefined): boolean {
   return kind !== undefined && kind.startsWith("task.");
 }
 
+const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+
+/**
+ * Text cut at its blank lines, except those inside a code block: a block's
+ * blank line is its own, whether the block has closed or is still streaming.
+ */
+function blocksOutsideCode(text: string): string[] {
+  const blocks: string[] = [];
+  let block = "";
+  let openFence: string | null = null;
+  const parts = text.split(/(\n\s*\n)/);
+  for (let index = 0; index < parts.length; index += 2) {
+    const part = parts[index]!;
+    block = block.length === 0 ? part : `${block}${parts[index - 1]!}${part}`;
+    for (const line of part.split("\n")) {
+      const fence = FENCE_LINE.exec(line);
+      if (fence === null) continue;
+      const marker = fence[1]!;
+      if (openFence === null) {
+        openFence = marker;
+      } else if (
+        marker[0] === openFence[0] &&
+        marker.length >= openFence.length &&
+        fence[2]!.trim() === ""
+      ) {
+        openFence = null;
+      }
+    }
+    if (openFence === null) {
+      blocks.push(block);
+      block = "";
+    }
+  }
+  if (block.length > 0) blocks.push(block);
+  return blocks;
+}
+
 /**
  * A thought's paragraphs, in order; a paragraph that is only a bold title
  * joins the one under it, so a title never stands as a paragraph of its own.
@@ -1288,7 +1325,7 @@ function isTaskActivityKind(kind: string | undefined): boolean {
 export function thoughtParagraphs(text: string): string[] {
   const paragraphs: string[] = [];
   let title: string | null = null;
-  for (const block of text.split(/\n\s*\n/)) {
+  for (const block of blocksOutsideCode(text)) {
     const paragraph = block.trim();
     if (paragraph.length === 0) continue;
     if (/^\*\*[^*\n]+\*\*$/.test(paragraph)) {
