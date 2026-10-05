@@ -759,7 +759,10 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
   // one that brings nothing new leaves a live thread live (run 12: twenty
   // window refocuses each marked it synchronizing, which switched the run
   // card's motion off). A replacement session may have missed events, so it
-  // shows sync progress until confirmed.
+  // shows sync progress until confirmed. The cost: a socket that died while
+  // the page was away reads as live after a wake until the connection's probe
+  // finds it dead and replaces the session — up to 15 s (review of pass 43);
+  // nothing is lost, the replacement resumes from the last applied sequence.
   const resumingLive = yield* Ref.make(initialState.status === "live");
   const subscribedSession = yield* Ref.make<RpcSession | null>(null);
   const markSynchronizing = Effect.fn("EnvironmentThreadState.markSynchronizing")(function* (
