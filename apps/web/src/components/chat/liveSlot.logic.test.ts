@@ -275,6 +275,39 @@ describe("the live slot's schedule", () => {
     expect(played.plopped).toEqual(plopped);
   });
 
+  // Review of pass 43: only a call cuts a fresh Thinking short — words
+  // streaming, a thought, a question wait out its minimum as before.
+  it.each([
+    { name: "words", key: "note:n" },
+    { name: "a thought", key: "thought:t" },
+    { name: "a question", key: "question:q" },
+  ])("$name going live into a fresh Thinking wait out its minimum", ({ key }) => {
+    const played = play(
+      [
+        { at: 0, live: ["step:a"], record: [] },
+        { at: 300, live: [], record: ["step:a"] },
+        { at: 1600, live: [key], record: ["step:a"] },
+      ],
+      4000,
+    );
+    expect(played.shown).toEqual({
+      "step:a": 0,
+      [key]: 300 + SLOT_HOLD_MS + SLOT_MIN_SHOW_MS,
+    });
+  });
+
+  it("words beside a call going live into a fresh Thinking enter with it", () => {
+    const played = play(
+      [
+        { at: 0, live: ["step:a"], record: [] },
+        { at: 300, live: [], record: ["step:a"] },
+        { at: 1900, live: ["note:n", "step:b"], record: ["step:a"] },
+      ],
+      4000,
+    );
+    expect(played.shown).toEqual({ "step:a": 0, "note:n": 1900, "step:b": 1900 });
+  });
+
   it("holds nothing of what the record held when it was first drawn: a reload never plops", () => {
     const slot = slotStart({ at: 0, live: ["c3"], record: ["c1", "c2"] });
     expect([...slotHolds(slot)]).toEqual(["c3"]);

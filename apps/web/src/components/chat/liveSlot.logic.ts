@@ -188,6 +188,9 @@ function admit(
   const shown = new Set(entries.map((entry) => entry.key));
   const entering = queue.live.filter((key) => !shown.has(key));
   if (entering.length === 0) return { entries, pending };
+  // Words, a thought or a question going live wait it out; a call takes its
+  // place, and what is live beside it comes along in the same change.
+  if (thinkingFresh && !entering.some(isCall)) return { entries, pending };
   return {
     entries: [
       ...entries,
