@@ -46,7 +46,7 @@ describe("liveStepWords", () => {
       words: { words: "Build the app" },
     },
     {
-      name: "a command that says nothing of itself is said in words, never its code",
+      name: "a command that says nothing of itself is its own title, its shell wrapper dropped",
       step: calls(
         call({
           id: "call-codex",
@@ -56,7 +56,7 @@ describe("liveStepWords", () => {
           command: "/bin/zsh -lc 'cd /var/www && pnpm build'",
         }),
       ),
-      words: { words: "Running a command" },
+      words: { words: "pnpm build" },
     },
     {
       name: "a call whose input is not in yet is no step on its card: still thinking",
@@ -308,7 +308,7 @@ describe("liveStepWords", () => {
           command: "/usr/bin/zsh -lc 'pnpm build'",
         }),
       ),
-      words: { words: "Running a command" },
+      words: { words: "pnpm build" },
     },
     {
       // Several at once, as the card's now line says them (K10).
@@ -328,7 +328,7 @@ describe("liveStepWords", () => {
       words: { words: "Running 2 commands" },
     },
     {
-      name: "a command with a credential in it never shows it",
+      name: "a credential in the command is masked",
       step: calls(
         call({
           id: "call-push",
@@ -338,7 +338,7 @@ describe("liveStepWords", () => {
           command: `git push https://mate:${["ghp", "abcdefghijklmnopqrstuvwxyz0123"].join("_")}@git.example.app/shop.git`,
         }),
       ),
-      words: { words: "Running a command" },
+      words: { words: "git push https://mate:••••••@git.example.app/shop.git" },
     },
     { name: "no call relayed it can read", step: calls(), words: { words: "Thinking" } },
   ])("$name", ({ step, words }) => {

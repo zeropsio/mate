@@ -706,7 +706,8 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     it go on. Under it the person's last ask, 13/18 in the second ink, then the third line (M7): its
     last words muted — in the second ink while unread; the question itself in ink while it needs you
     (D6); the error's first line in red where it stopped on one; while it works, the step it is on,
-    its command in mono under a sweep of light (D5), or three still dots while words are to come; the
+    in its words — a command's code only where it says nothing of itself — under a sweep of light
+    (D5), or three still dots while words are to come; the
     second line is the person's — the sign-in, else _Draft:_ and the unsent words over the ask, else
     the ask, else "Nothing asked yet" once its conversations are read; a draft never covers the
     Mate's line. One even leading, no gaps (M5): every row three lines, 76 px, its third blank while

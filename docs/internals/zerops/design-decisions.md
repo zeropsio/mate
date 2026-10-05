@@ -1933,9 +1933,11 @@ its ratio)`, its size attributes giving its height before a byte has come; a pic
   - _Why:_ two scrollbars in one view is where most of the earlier passes' scroll bugs lived
 - **2026-09-29** — **A working Mate's row says the step it is on** (the owner's D5). The Mate server
   relays each running thread's current step on its shell, and the row's third line reads what the
-  card's now line reads — "Build the app · `pnpm build`", "Reading `index.ts`", "Checking /status in
-  the browser", "Running 2 commands", "Thinking" — its command in mono under a sweep of light,
-  changing at most twice a second; until a Mate's server carries it, the dots.
+  card's now line reads — "Build the app", "Reading `index.ts`", "Checking /status in the browser",
+  "Running 2 commands", "Thinking" — under a sweep of light, changing at most twice a second; until a
+  Mate's server carries it, the dots. A command reads as its words, never with its code after them
+  (the owner, 2026-10-05, of "Download every product page · mkdir -p prod && pytho…"); one that says
+  nothing of itself — every command of an agent that writes no descriptions — reads as its code.
   - _Why:_ "is working" said nothing the turning face did not; the step is what a glance at the menu
     wants
 - **2026-09-29** — **A row that needs you shows the question itself** (the owner's D6), in ink on

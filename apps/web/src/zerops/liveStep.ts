@@ -10,7 +10,7 @@
  *
  * The newest call the card would draw is the step, said in the words the
  * card's now line says it in (`nowLineWords`) — a command by what it is for,
- * never its code, which only the card shows — and several steps at once as
+ * its code only where it says nothing of itself — and several steps at once as
  * it says them —
  * "Running 3 commands"; a call it draws nothing for yet (a call whose input
  * is still streaming in, a Zerops call it keeps out of the chat) is none, and
@@ -28,12 +28,7 @@ import { maskSecrets } from "@t3tools/shared/messagePreview";
 
 import { isActivityWork, isQuestionToolCall } from "../components/chat/conversation.logic";
 import { NOW_LINE_DWELL_MS } from "../components/chat/nowLineCalm.logic";
-import {
-  nowLineWords,
-  severalWords,
-  stepNowWords,
-  type NowLine,
-} from "../components/chat/runCard.logic";
+import { nowLineWords, severalWords, type NowLine } from "../components/chat/runCard.logic";
 import { stepOf } from "../components/chat/workSteps.logic";
 import {
   deriveWorkLogEntries,
@@ -41,7 +36,7 @@ import {
   type WorkLogEntry,
 } from "../session-logic";
 
-/** A live step as a row says it: in words, never a command's code. */
+/** A live step as a row says it: its words, or a command's code where it has none. */
 export interface LiveStepWords {
   readonly words: string;
 }
@@ -92,13 +87,12 @@ function entryLine(entry: WorkLogEntry): CallLine | null {
 }
 
 /**
- * A call the now line carries, in its words: a command by what it is for, and
- * one that says nothing of itself as the now line says a command with no code.
+ * A call the now line carries, as the now line says it: a command by what it is
+ * for, never with its code after the words, and one that says nothing of itself
+ * by its code alone — the one thing an agent without descriptions gives.
  */
 function lineWords(line: CallLine): LiveStepWords {
-  return {
-    words: line.kind === "step" ? stepNowWords({ ...line.step, code: null }) : nowLineWords(line),
-  };
+  return { words: nowLineWords(line) };
 }
 
 /** One running call as the card's now line has it; null for a call the card draws nothing for yet. */
