@@ -162,6 +162,27 @@ export function supersedes(
   }
 }
 
+/**
+ * Whether a row replaces the fact held for it: a newer revision does. After a denial purged it, the
+ * same revision restores it only from an answer that lists it — a baseline, or a read of a member
+ * — never from a push, which says nothing of the viewer's access having returned.
+ */
+function admits(
+  state: AccountState,
+  input: Pick<Extract<AccountInput, { readonly kind: "rows" }>, "scope" | "method">,
+  current: Fact<unknown>,
+  row: Row,
+): boolean {
+  if (supersedes(current.revision, row.revision, input.method)) return true;
+  if (current.content.kind !== "purged") return false;
+  if (supersedes(row.revision, current.revision, input.method)) return false;
+  return (
+    input.method === "baseline" ||
+    (input.method === "read" &&
+      state.memberships.get(input.scope)?.members.get(row.id) === "member")
+  );
+}
+
 function reduceRows(
   state: AccountState,
   input: Pick<
@@ -176,8 +197,7 @@ function reduceRows(
     const facts =
       drafts.get(row.family) ?? (state[row.family] as ReadonlyMap<string, Fact<unknown>>);
     const current = facts.get(row.id);
-    if (current !== undefined && !supersedes(current.revision, row.revision, input.method))
-      continue;
+    if (current !== undefined && !admits(state, input, current, row)) continue;
     const fact: Fact<unknown> = {
       content: { kind: "value", value: row.value },
       revision: row.revision,

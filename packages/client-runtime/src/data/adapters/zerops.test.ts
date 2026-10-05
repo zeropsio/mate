@@ -284,6 +284,47 @@ describe("zeropsNavigationLink", () => {
       yield* Fiber.interrupt(fiber);
     }),
   );
+
+  it.effect(
+    "restores a denied project from a later baseline that lists it, never from a push",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const project = { id: "p", name: "p", status: "ACTIVE", _version: 1 };
+        const fixture = fixtureWire((request) =>
+          request.method === "GET"
+            ? Effect.succeed({ status: 403, body: null })
+            : answers({ projects: [project], running: () => [] })(request),
+        );
+        const fiber = yield* run(store, fixture);
+        yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+          add: [],
+          delete: ["p"],
+        });
+        yield* settle;
+        expect(store.state().project.get("p")?.content.kind).toBe("purged");
+
+        yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "updateStream"), {
+          update: [project],
+        });
+        yield* settle;
+        expect(store.state().project.get("p")?.content.kind).toBe("purged");
+
+        yield* fixture.drop({ outcome: "transient", message: "socket closed" });
+        yield* settle;
+        const link = store.state().streams.get(scopeKeys.zeropsLink(ORG));
+        yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
+        yield* settle;
+        expect(store.state().project.get("p")).toMatchObject({
+          content: { kind: "value", value: { name: "p" } },
+          access: "allowed",
+        });
+        expect(store.state().memberships.get(scopeKeys.projects(ORG))?.members.get("p")).toBe(
+          "member",
+        );
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
 });
 
 const itemsOf = (event: ReturnType<typeof recorded>) => ("items" in event ? event.items : []);
