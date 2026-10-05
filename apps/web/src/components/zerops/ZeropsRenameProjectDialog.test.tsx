@@ -51,7 +51,7 @@ function mount(group: ZeropsGroup = GROUP) {
   const rename = vi.fn(
     () =>
       new Promise<ReadonlyArray<unknown>>((resolve, reject) => {
-        settle = { take: resolve, refuse: reject };
+        settle = { take: (failures = []) => resolve(failures), refuse: reject };
       }),
   );
   mock.rename = rename;
