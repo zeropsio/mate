@@ -56,21 +56,35 @@ const EASING = "data-room-easing";
  * history at once — makes the browser clamp the scroll down, and it keeps
  * that clamp: once the boxes hold their heights, it is put back.
  */
-const scrollTops = new WeakMap<Element, number>();
+const scrollTops = new Map<HTMLElement, number>();
 
 /** A run's scroll stands at `scroll.scrollTop` by its own code's doing or the person's. */
 export function noteScrollTop(scroll: HTMLElement): void {
   scrollTops.set(scroll, scroll.scrollTop);
 }
 
-/** Puts back the following scrolls of the card around `element` the browser clamped down. */
+/** A run's scroll leaves the page: nothing keeps it. */
+export function forgetScrollTop(scroll: HTMLElement): void {
+  scrollTops.delete(scroll);
+}
+
+/**
+ * Puts back the following scrolls of the card around `element` the browser
+ * clamped down: read from the few scrolls noted, never by walking the card,
+ * which a long run fills with thousands of rows.
+ */
 function unclamp(element: HTMLElement): void {
   // A move the person just made is theirs to keep.
   if (personActedWithin(PERSON_INPUT_MS)) return;
   const card = element.closest("[data-run-chat]") ?? element;
-  for (const scroll of card.querySelectorAll<HTMLElement>("[data-run-scroll][data-follows]")) {
-    const top = scrollTops.get(scroll);
-    if (top !== undefined && scroll.scrollTop < top - 0.5) scroll.scrollTop = top;
+  for (const [scroll, top] of scrollTops) {
+    // One gone from the page is forgotten.
+    if (!scroll.isConnected) {
+      scrollTops.delete(scroll);
+      continue;
+    }
+    if (!scroll.hasAttribute("data-follows") || !card.contains(scroll)) continue;
+    if (scroll.scrollTop < top - 0.5) scroll.scrollTop = top;
   }
 }
 

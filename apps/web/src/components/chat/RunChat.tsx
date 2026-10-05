@@ -140,7 +140,7 @@ import {
 import { useRunEffortWords } from "./runResultFacts";
 import { foldWork } from "./foldWork";
 import { FOLLOW_TAU_MS, ROOM_TAU_MS, approach, keepsFoot, movesAsPerson } from "./runMotion.logic";
-import { easeRooms, noteScrollTop, type Rooms } from "./runRoom";
+import { easeRooms, forgetScrollTop, noteScrollTop, type Rooms } from "./runRoom";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
@@ -4180,6 +4180,7 @@ function RunScroll({
     if (roomsRef !== undefined) roomsRef.current = rooms;
     return () => {
       rooms.stop();
+      forgetScrollTop(element);
       roomRef.current = null;
       if (roomsRef !== undefined) roomsRef.current = null;
     };
