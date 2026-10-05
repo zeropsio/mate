@@ -22,13 +22,17 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
-/** The reviewed client source roots scanned by every oxlint-side design-system guard. */
+/**
+ * The reviewed source roots scanned by every oxlint-side guard: the client sources, and HQ for the
+ * guards that reach it (each rule still decides from a file's path whether it applies).
+ */
 export const GUARD_SCOPE_PATHS = [
   "apps/web/src",
   "apps/mobile/src",
   "apps/desktop/src",
   "packages/shared/src",
   "packages/client-runtime/src",
+  "apps/hq/src",
 ] as const;
 
 const DEFAULT_REPO_ROOT = NodePath.resolve(

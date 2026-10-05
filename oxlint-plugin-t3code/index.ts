@@ -14,6 +14,7 @@ import noNativeTitleTooltip from "./rules/no-native-title-tooltip.ts";
 import noPlatformGlobals from "./rules/no-platform-globals.ts";
 import noRemoteDataInBrowserStorage from "./rules/no-remote-data-in-browser-storage.ts";
 import noRemoteIoOutsideDataLayer from "./rules/no-remote-io-outside-data-layer.ts";
+import noRetiredMechanism from "./rules/no-retired-mechanism.ts";
 import noRestyle from "./rules/no-restyle.ts";
 import noUnknownClasses from "./rules/no-unknown-classes.ts";
 import noThemeEscapeHatches from "./rules/no-theme-escape-hatches.ts";
@@ -39,6 +40,7 @@ export default definePlugin({
     "no-remote-data-in-browser-storage": noRemoteDataInBrowserStorage,
     "no-remote-io-outside-data-layer": noRemoteIoOutsideDataLayer,
     "no-restyle": noRestyle,
+    "no-retired-mechanism": noRetiredMechanism,
     "no-unknown-classes": noUnknownClasses,
     "no-theme-escape-hatches": noThemeEscapeHatches,
     "require-static-classes": requireStaticClasses,

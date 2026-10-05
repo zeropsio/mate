@@ -122,6 +122,7 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
                 "apps/desktop/src",
                 "packages/shared/src",
                 "packages/client-runtime/src",
+                "apps/hq/src",
               ]);
               assert.deepStrictEqual(request.env, { T3CODE_GUARD_REPORT_LEDGERED: "1" });
             },
