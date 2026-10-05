@@ -92,7 +92,7 @@ import { echoOfMessage } from "./messagePictures.logic";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity } from "../zerops/crew/CrewTaskCard";
-import { KindGlyph, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
+import { KindGlyph, readsPipeline, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { MateFace } from "../zerops/primitives";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import {
@@ -1796,9 +1796,17 @@ function OperationLine({
       : null;
   const words =
     noResult === undefined ? operationLineWords(operation) : operationUnreturnedWords(operation);
-  const reason = failed ? (operation.explanation?.reason ?? operation.closing ?? null) : null;
+  // A deploy's steps are its progress, under its name: the line holds its
+  // name and its time alone — no bar, no step word, no reason (the owner,
+  // 2026-10-05: "it should be steps, but they should be visible").
+  const stepped = noResult === undefined && readsPipeline(operation);
+  const reason =
+    failed && !stepped ? (operation.explanation?.reason ?? operation.closing ?? null) : null;
   const detail =
-    reason ?? (operation.kind === "deploy" ? (versionText(operation.version?.name) ?? null) : null);
+    reason ??
+    (operation.kind === "deploy" && !stepped
+      ? (versionText(operation.version?.name) ?? null)
+      : null);
   // Its reason cut short on its one line is a way to the whole of it.
   // Opened, it stands whole in place, wrapped: no longer cut, still the
   // way back to its one line.
@@ -1816,10 +1824,14 @@ function OperationLine({
       timeTone={failure === "broken" ? "failed" : "muted"}
     >
       <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
-        <span className="text-foreground/75" data-run-shimmer={live === null ? undefined : ""}>
+        <span
+          className={stepped ? "text-foreground" : "text-foreground/75"}
+          // A deploy's running step pulses: its name stands still in the ink.
+          data-run-shimmer={live === null || stepped ? undefined : ""}
+        >
           {words}
         </span>
-        {live !== null ? (
+        {stepped ? null : live !== null ? (
           <>
             <StatusBar className="w-12" segments={live.segments} />
             {live.word === null ? null : <span className="text-muted-foreground">{live.word}</span>}

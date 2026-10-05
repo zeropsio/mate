@@ -366,41 +366,27 @@ describe("RunChat — an operation's card, read from the account store", () => {
     act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + 100));
   };
 
-  it("a running deploy stands open in the live slot on its pipeline and its build's newest lines", () => {
+  // Its steps are its progress, every one from the first frame, and the way
+  // to the build's log stands at the end of the build's line: no lines held
+  // under it (the owner, 2026-10-05: "it should be steps, but they should be
+  // visible … without a premade space for logs").
+  it("a running deploy stands open in the live slot on its steps, the way to its log on the build's line", () => {
     const renderer = mount(inSlot(deploy("running")));
-    expect(count(renderer)).toMatchObject({ log: 2, whole: 1 });
+    expect(count(renderer)).toMatchObject({ log: 0, whole: 1 });
     expect(count(renderer).steps).toBeGreaterThan(0);
     expect(store.reading).toBe(true);
   });
 
-  it("opens on its build's newest lines' room before the build wrote one", () => {
+  it("holds no room for the build's lines, before or after its first one", () => {
     store.logLines = [];
     const renderer = mount(inSlot(deploy("running")));
-    const glance = () => nodes(renderer, "data-zerops-build-log-glance").length;
-    expect([glance(), count(renderer).log]).toEqual([1, 0]);
+    const height = () => ({ ...count(renderer), steps: undefined });
+    const before = height();
     store.logLines = LOG_LINES;
     redraw(renderer, inSlot(deploy("running")));
-    expect([glance(), count(renderer).log]).toEqual([1, 2]);
+    expect(height()).toEqual(before);
+    expect(nodes(renderer, "data-zerops-build-log-glance")).toHaveLength(0);
   });
-
-  // The words say what the card knows: the build step itself runs and its
-  // stream stands with no line. Not before the build step (its container is
-  // still made), and not after it — a build step that ended with no line
-  // received keeps its room, silent, so the card does not move.
-  it.each([
-    { phase: "container", words: 0 },
-    { phase: "building", words: 1 },
-    { phase: "deploying", words: 0 },
-  ] as const)(
-    "its room waits for the first line only while it builds: $phase",
-    ({ phase, words }) => {
-      store.logLines = [];
-      store.processes = [process(phase)];
-      const renderer = mount(inSlot(deploy("running")));
-      expect(nodes(renderer, "data-zerops-build-log-glance")).toHaveLength(1);
-      expect(nodes(renderer, "data-zerops-build-log-waiting")).toHaveLength(words);
-    },
-  );
 
   it("says only its line while the store holds nothing of it", () => {
     store.processes = [];
@@ -413,9 +399,9 @@ describe("RunChat — an operation's card, read from the account store", () => {
     vi.setSystemTime(fixtureAt(2, 30));
     const renderer = mount(inSlot(batch("running")));
     expect(operationRows(renderer)).toBe(1);
-    // Its card is the API's, the one building: its pipeline, its newest lines, its log.
+    // Its card is the API's, the one building: its pipeline and the way to its log.
     expect([...store.logReads]).toEqual(["av-42"]);
-    expect(count(renderer)).toMatchObject({ log: 2, whole: 1 });
+    expect(count(renderer)).toMatchObject({ log: 0, whole: 1 });
     expect(count(renderer).steps).toBeGreaterThan(0);
   });
 

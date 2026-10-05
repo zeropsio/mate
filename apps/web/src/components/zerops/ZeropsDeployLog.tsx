@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { DeployLogTarget } from "@t3tools/client-runtime/zerops/hq";
-import { buildLogWaitsForFirstLine } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import { useDeployLog } from "~/zerops/activity/useDeployLog";
 import { Button } from "../ui/button";
 import { ZeropsBuildLog } from "./ZeropsBuildLog";
@@ -54,11 +53,6 @@ function DeployLogDetails({
         onToggle={() => setLogOpen(!logOpen)}
         subject={service}
         stands={!read.live}
-        waiting={buildLogWaitsForFirstLine({
-          buildStep: read.pipeline.steps.find(({ id }) => id === "RUN_BUILD_COMMANDS")?.state,
-          status: buildLog.status,
-          lineCount: buildLog.lines.length,
-        })}
       />
     );
   const pipeline = read?.pipeline;
@@ -77,7 +71,7 @@ function DeployLogDetails({
         <PipelineStepList
           aria-label={`${service} deploy steps`}
           steps={pipeline.steps}
-          beneath={{ RUN_BUILD_COMMANDS: log }}
+          after={{ RUN_BUILD_COMMANDS: log }}
         />
       )}
       {pipeline?.steps.some(({ id }) => id === "RUN_BUILD_COMMANDS") ? null : log}

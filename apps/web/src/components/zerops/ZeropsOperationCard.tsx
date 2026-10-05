@@ -233,7 +233,7 @@ function CardHeader({
  * A deploy card reads its pipeline; a batch deploy keeps one segment per
  * target, and a git push — its one step the push — has no build to read.
  */
-function readsPipeline(operation: ZeropsOperation): boolean {
+export function readsPipeline(operation: ZeropsOperation): boolean {
   const pushOnly =
     operation.strategy === "git-push" &&
     operation.steps.length === 1 &&
@@ -325,32 +325,69 @@ function reportedFailedStep(operation: ZeropsOperation): PipelineStepRow | undef
   };
 }
 
+/**
+ * Why a deploy failed, said once, under the step that broke: zcp's one
+ * sentence, whole — its log is a press away on the build's line (the owner,
+ * 2026-10-05: "no … long texts").
+ */
+function FailedBecause({ reason }: { readonly reason: string }) {
+  return (
+    <span
+      className="block break-words text-foreground text-line leading-5"
+      data-zerops-operation-failed-because
+    >
+      {reason}
+    </span>
+  );
+}
+
 /** A deploy's body: its pipeline's steps, "calculating" before they are known. */
 function DeployPipeline({
   operation,
   pipeline,
   log,
+  saysWhy,
 }: {
   readonly operation: ZeropsOperation;
   readonly pipeline: PipelineReadout | undefined;
-  /** The build's log, under the step that runs the build (the owner, 2026-09-26: "it should be under the actual step"). */
+  /** The way to the build's log, at the end of the step that runs the build (the owner, 2026-09-26: "it should be under the actual step"). */
   readonly log: ReactNode;
+  /** Under its line in the chat, it says why once, under the step that broke. */
+  readonly saysWhy: boolean;
 }) {
   const label = `${operation.kicker} steps`;
+  // Why it did not go through, failed or unconfirmed: said once.
+  const unsettled = operation.phase !== "running" && operation.phase !== "done";
+  const reason = saysWhy && unsettled ? operation.explanation?.reason : undefined;
+  const because = (steps: ReadonlyArray<PipelineStepRow>) => {
+    const broke = steps.find((step) => step.state === "failed");
+    return reason === undefined || broke === undefined
+      ? undefined
+      : { [broke.id]: <FailedBecause reason={reason} /> };
+  };
   if (pipeline !== undefined && !pipeline.calculating && pipeline.steps.length > 0) {
+    const under = because(pipeline.steps);
     return (
-      <PipelineStepList
-        aria-label={label}
-        beneath={log === null || log === undefined ? undefined : { RUN_BUILD_COMMANDS: log }}
-        steps={pipeline.steps}
-      />
+      <>
+        <PipelineStepList
+          after={log === null || log === undefined ? undefined : { RUN_BUILD_COMMANDS: log }}
+          aria-label={label}
+          beneath={under}
+          steps={pipeline.steps}
+        />
+        {/* It failed with no step that broke (a timeout): why, under the steps. */}
+        {under === undefined && reason !== undefined ? <FailedBecause reason={reason} /> : null}
+      </>
     );
   }
   if (operation.phase === "running") {
     return <PipelineCalculating aria-label={label} />;
   }
   const failed = reportedFailedStep(operation);
-  return failed === undefined ? null : <PipelineStepList aria-label={label} steps={[failed]} />;
+  if (failed === undefined) {
+    return reason === undefined ? null : <FailedBecause reason={reason} />;
+  }
+  return <PipelineStepList aria-label={label} beneath={because([failed])} steps={[failed]} />;
 }
 
 function UrlChip({ label, url }: { readonly label: string; readonly url: string }) {
@@ -585,20 +622,29 @@ function drawnClosing(operation: ZeropsOperation): string | undefined {
 }
 
 function StepsBody({
+  headless,
   observed,
   operation,
   steps,
 }: {
+  /** Under its line in the chat: a deploy says why under the step that broke. */
+  readonly headless: boolean;
   readonly observed: ObservedRegion | undefined;
   readonly operation: ZeropsOperation;
   readonly steps: ReadonlyArray<ProcessStep>;
 }) {
+  const saysWhyOnStep = headless && readsPipeline(operation);
   const failedChecks =
     operation.kind === "verify" ? steps.filter((step) => step.state === "failed") : [];
   return (
     <>
       {readsPipeline(operation) ? (
-        <DeployPipeline log={observed?.log} operation={operation} pipeline={observed?.pipeline} />
+        <DeployPipeline
+          log={observed?.log}
+          operation={operation}
+          pipeline={observed?.pipeline}
+          saysWhy={saysWhyOnStep}
+        />
       ) : steps.length === 0 ? null : PIPELINE_KINDS.has(operation.kind) ? (
         <PipelineSegments aria-label={`${operation.kicker} progress`} steps={steps} />
       ) : operation.kind === "verify" ? (
@@ -621,7 +667,8 @@ function StepsBody({
           {observed.provenance}
         </p>
       ) : null}
-      {operation.explanation !== undefined ? (
+      {/* A deploy says why under the step that broke; any other card here. */}
+      {operation.explanation !== undefined && !saysWhyOnStep ? (
         <ExplanationBlock explanation={operation.explanation} />
       ) : null}
     </>
@@ -704,7 +751,10 @@ export function ZeropsOperationCard(props: {
       ? { label: "Open", url: devServerUrl }
       : undefined;
   const links = openLink !== undefined ? [openLink, ...operation.links] : operation.links;
-  const version = versionLabel(operation.version);
+  // A deploy under its line says what it did in its steps: its version's
+  // hash is nothing the person reads (the owner, 2026-10-05: no ids, no hashes).
+  const version =
+    headless && readsPipeline(operation) ? undefined : versionLabel(operation.version);
   // Under its line (headless), the line says how it went: the closing would
   // say it again, and a bare "Failed." carries nothing — why stays, in its
   // explanation.
@@ -740,6 +790,7 @@ export function ZeropsOperationCard(props: {
             <ZeropsReadResultBody readResult={operation.readResult} steps={operation.steps} />
           ) : (
             <StepsBody
+              headless={headless}
               observed={observed}
               operation={operation}
               steps={drawnSteps(operation, observed?.steps ?? operation.steps)}

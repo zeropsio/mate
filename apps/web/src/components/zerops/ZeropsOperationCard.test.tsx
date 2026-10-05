@@ -224,7 +224,10 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
   const durationOf = (html: string) =>
     html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</)?.[1];
 
-  it("one row per step the pipeline has: its sentence and its duration, in the card's one format", () => {
+  // Every step the pipeline has, by its plain name in every state, and a
+  // step's time once it ended: one clock ticks, the line's (the owner,
+  // 2026-10-05: "it should be steps … no … long texts").
+  it("one row per step the pipeline has: its name, and its time once it ended", () => {
     const rows = rowsOf(render(running, observedOf(building)));
 
     expect(rows.map(({ id, state }) => [id, state])).toEqual([
@@ -232,14 +235,13 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
       ["RUN_BUILD_COMMANDS", "running"],
       ["DEPLOY", "waiting"],
     ]);
-    expect(rows[0]?.inner).toContain("Initialized build container");
+    expect(rows[0]?.inner).toContain(">Build container<");
     expect(rows[0]?.inner).toContain(">8s<");
-    expect(rows[1]?.inner).toContain("Running build commands from zerops.yml");
-    expect(rows[1]?.inner).toContain(">1m 1s<");
-    expect(rows[2]?.inner).toContain(
-      "Create app version 3f2a9c1 and upgrade Node.js service weatherdash",
-    );
+    expect(rows[1]?.inner).toContain(">Build<");
+    expect(rows[1]?.inner).not.toContain("tabular-nums");
+    expect(rows[2]?.inner).toContain(">Deploy<");
     expect(rows[2]?.inner).not.toContain("tabular-nums");
+    expect(rows.map(({ inner }) => inner).join("")).not.toContain("3f2a9c1");
   });
 
   // One mark per state across every step list of the card: a ring, what is
@@ -323,7 +325,7 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
     ).toEqual(["muted", "foreground", "muted"]);
   });
 
-  it("a running deploy's note follows its sentence", () => {
+  it("a running deploy step reads its name alone: no version, no note", () => {
     const deploying = readPipeline(
       {
         name: SHA,
@@ -335,9 +337,8 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
     const row = rowsOf(render(running, observedOf(deploying))).find(
       (entry) => entry.id === "DEPLOY",
     );
-    expect(row?.inner).toContain(
-      "Creating app version 3f2a9c1 and upgrading weatherdash · Preparing upgrade…",
-    );
+    expect(row?.inner).toContain(">Deploy<");
+    expect(row?.inner).not.toContain("Preparing upgrade");
   });
 
   // One word, one time: "Deploying weatherdash · 1m 9s", never "Running …
@@ -402,13 +403,13 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
     const rows = rowsOf(html);
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.inner).toContain("Calculating steps from zerops.yml");
+    expect(rows[0]?.inner).toContain("Reading zerops.yml");
     expect(rows[0]?.inner).toContain('data-step-glyph="running"');
     expect(durationOf(headerOf(html))).toBe("1m 14s");
   });
 
   // A git push has no build of its own to read: it is its one push step,
-  // never "Calculating steps from zerops.yml" for a pipeline that is not coming.
+  // never "Reading zerops.yml" for a pipeline that is not coming.
   it("a running git push reads no pipeline", () => {
     const pushing = deploy({ input: { targetService: "weatherdash", strategy: "git-push" } });
     const html = render(pushing, observedOf(readout({ status: "WAITING_TO_BUILD", build: {} })));
@@ -497,7 +498,7 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
         failedPhase: "build",
         versionName: SHA,
       },
-      rows: [["RUN_BUILD_COMMANDS", "Build commands from zerops.yml failed"]],
+      rows: [["RUN_BUILD_COMMANDS", "Build"]],
     },
     {
       name: "failed starting its new container",
@@ -507,7 +508,7 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
         failedPhase: "init",
         versionName: SHA,
       },
-      rows: [["DEPLOY", "Failed while creating app version 3f2a9c1 or upgrading weatherdash"]],
+      rows: [["DEPLOY", "Deploy"]],
     },
     {
       name: "landed",
@@ -1226,7 +1227,7 @@ describe("ZeropsOperationCard — empty body", () => {
     const list = html.match(/<ol[^>]*data-zerops-pipeline-steps[\s\S]*?<\/ol>/)?.[0];
 
     expect(list?.match(/<li/g)?.length).toBe(1);
-    expect(list).toContain("Calculating steps from zerops.yml");
+    expect(list).toContain("Reading zerops.yml");
     expect(html).not.toContain("data-zerops-pipeline-segments");
   });
 });
