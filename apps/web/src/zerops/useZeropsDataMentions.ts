@@ -7,8 +7,8 @@
  * `ready` — the `refresh` call it makes is what starts the console, so
  * waiting for `ready` alone would wait forever in a thread that never opened
  * the Data tab. A thread with no Data session at all (no Zerops project, an
- * unsupported or unavailable engine) never issues a request and always
- * answers with nothing.
+ * unavailable engine) never issues a request and always answers with
+ * nothing.
  */
 import {
   type DataMentionEntry,

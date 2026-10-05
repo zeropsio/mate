@@ -78,16 +78,6 @@ export interface HqGitOptions {
     repo: Repo,
     updates: ReadonlyArray<RefUpdate>,
   ) => Awaitable<ReadonlyArray<RefDecision>>;
-  /** Local directories a migration may import from (absolute paths and file: URLs). */
-  readonly importRoots?: ReadonlyArray<string>;
-  /**
-   * Host policy for https imports, given the URL's literal hostname (IPv6 without brackets); the
-   * default refuses private, loopback, link-local, and internal names. Residual: no DNS check, so
-   * a public name that resolves (or rebinds) to a private address is not refused here.
-   */
-  readonly allowImportHost?: (host: string) => boolean;
-  /** Import fetch bound (default 10 min); on expiry git stops and the partial repository goes. */
-  readonly importTimeoutMs?: number;
   /** Per-request deadline (default 30 min); a client that stops reading cannot hold git longer. */
   readonly requestTimeoutMs?: number;
   /**
@@ -95,10 +85,6 @@ export interface HqGitOptions {
    * git's own 100 ms is shorter than a writer slowed by IO holds it.
    */
   readonly refLockTimeoutMs?: number;
-}
-export interface ImportCredentials {
-  readonly username: string;
-  readonly password: string;
 }
 export class GitError extends Schema.TaggedError<GitError>()("GitError", {
   operation: Schema.String,
@@ -110,8 +96,6 @@ export class GitError extends Schema.TaggedError<GitError>()("GitError", {
     "invalid_path",
     "not_found",
     "no_main",
-    "source_refused",
-    "timeout",
     /** A ref write found the ref locked and changed nothing; retrying is safe. */
     "busy",
     "git_failed",
@@ -220,16 +204,6 @@ export interface HqGit {
    * no ref). An existing repository is `exists`.
    */
   readonly restore: (repo: Repo, bundle: string | null) => Effect.Effect<Repo, GitError>;
-  /**
-   * Fetches branches (except `mate/*`) and tags; HEAD is always main, so a source without main is
-   * refused. Credentials travel in environment config, never in a URL or argv. The repository
-   * appears with all its refs at once or not at all.
-   */
-  readonly import: (
-    repo: Repo,
-    source: string,
-    credentials?: ImportCredentials,
-  ) => Effect.Effect<Repo, GitError>;
   readonly list: (appId?: string) => Effect.Effect<ReadonlyArray<Repo>, GitError>;
   /**
    * The repository gone: moved out of `list`'s sight at once, then deleted; its application's

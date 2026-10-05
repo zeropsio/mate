@@ -1,12 +1,13 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
+import { ARRIVAL_MS, deriveZeropsCandidates } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  ADDRESS_GRACE_MS,
-  deriveZeropsCandidates,
-} from "@t3tools/client-runtime/zerops/candidates";
-import {
+  CONTAINER_CAPS_MS,
   IDLE_GUARDS,
   candidatePresence,
+  containerVerdict,
+  initialContainer,
+  transitionContainer,
   initialEnvironment,
   mateLink,
   reachabilityPhrase,
@@ -37,7 +38,7 @@ import {
 import type { MateLink, Reachability } from "@t3tools/client-runtime/zerops/environments";
 import {
   NO_ADDRESS_MEMORY,
-  addressClockOf,
+  addressFactsOf,
   rememberAddresses,
   type AddressMemory,
 } from "@t3tools/client-runtime/zerops/projections";
@@ -115,14 +116,11 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       },
     },
     {
-      case: "a Mate whose press stopped before its container, minutes on: half-made, with Finish setup",
+      case: "a Mate whose press elsewhere stopped before its container: half-made, with Finish setup",
       input: {
         press: undefined,
-        candidate: {
-          group: "unavailable",
-          missingContainer: true,
-          project: { created: new Date(NOW - 3 * 60_000).toISOString() },
-        },
+        candidate: { group: "unavailable", missingContainer: true },
+        pressElsewhere: "stopped",
         nowMs: NOW,
       },
       expected: { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" },
@@ -171,11 +169,8 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       case: "a Mate this tab made whose container went before it came: half-made, with Finish setup",
       input: {
         press: undefined,
-        candidate: {
-          group: "unavailable",
-          missingContainer: true,
-          project: { created: new Date(NOW - 3 * 60_000).toISOString() },
-        },
+        candidate: { group: "unavailable", missingContainer: true },
+        pressElsewhere: "stopped",
         created: true,
         nowMs: NOW,
       },
@@ -224,6 +219,23 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       },
       expected: { kind: "coming", line: "Taking longer than usual." },
     },
+    // A clock is no answer: half an hour on, with nothing read of its build, it is taking longer.
+    ...[true, undefined].map((created) => ({
+      case: `a first build half an hour on, nothing known of it${created === true ? ", made here" : ""}`,
+      input: {
+        press: undefined,
+        candidate: {
+          group: "provisioning" as const,
+          service: {
+            status: "READY_TO_DEPLOY",
+            created: new Date(NOW - 40 * 60_000).toISOString(),
+          },
+        },
+        created,
+        nowMs: NOW,
+      },
+      expected: { kind: "coming" as const, line: "Taking longer than usual." },
+    })),
     {
       case: "a first build half an hour on, its build still running: on its way",
       input: {
@@ -240,16 +252,14 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       },
       expected: { kind: "coming", line: "Taking longer than usual." },
     },
+    // B5: a slow press in another browser holds it at HQ, however old its project: never half made.
     {
-      case: "a Mate with no container yet, moments after its press: still coming up",
+      case: "a Mate with no container, its press elsewhere held at HQ an hour on: still coming up",
       input: {
         press: undefined,
-        candidate: {
-          group: "unavailable",
-          missingContainer: true,
-          project: { created: new Date(NOW - 30_000).toISOString() },
-        },
-        nowMs: NOW,
+        candidate: { group: "unavailable", missingContainer: true },
+        pressElsewhere: "pressing",
+        nowMs: NOW + 60 * 60_000,
       },
       expected: { kind: "coming", line: "Coming up. A few minutes." },
     },
@@ -291,23 +301,14 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       case: "a Mate this tab made that a whole listing, read well after, lacks",
       input: { press: undefined, candidate: undefined, created: true, listingLacksIt: true },
     },
-    // Half an hour on with nothing known of its build — another person's, a months-old one whose
-    // build failed — it is not coming up: its own row and menu say what it is, with their verbs.
-    ...[true, undefined].map((created) => ({
-      case: `a first build half an hour on, nothing known of it${created === true ? ", made here" : ""}`,
+    {
+      case: "a Mate with no container while HQ has said nothing of its presses: neither is said",
       input: {
         press: undefined,
-        candidate: {
-          group: "provisioning" as const,
-          service: {
-            status: "READY_TO_DEPLOY",
-            created: new Date(NOW - 40 * 60_000).toISOString(),
-          },
-        },
-        created,
-        nowMs: NOW,
+        candidate: { group: "unavailable", missingContainer: true },
+        pressElsewhere: "unknown",
       },
-    })),
+    },
     {
       case: "a Mate this tab made whose project is gone",
       input: { press: undefined, candidate: undefined, created: true, linkHolds: false },
@@ -507,7 +508,7 @@ describe("mateOpeningPhrase — what a Mate's own view says under its name", () 
     {
       case: "reconnecting",
       page: { kind: "reaching", reachability: { kind: "reconnecting" } },
-      phrase: { text: "Reconnecting…", actions: [] },
+      phrase: { text: "Reconnecting…", actions: ["try-now"] },
     },
     {
       case: "nothing known of it yet",
@@ -538,7 +539,7 @@ describe("mateOpeningPhrase — what a Mate's own view says under its name", () 
         kind: "reaching",
         reachability: { kind: "container", container: { level: "inactive", status: "STOPPED" } },
       },
-      phrase: { text: "This Mate isn't running.", actions: ["start"] },
+      phrase: { text: "This Mate isn't running.", actions: ["try-now", "start"] },
     },
     {
       case: "gone: why, and the projects",
@@ -805,6 +806,147 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
   ])("$case", ({ page, cameUp, failuresSinceConnect = 0, expected }) => {
     expect(mateArrivalShown({ page, cameUp, failuresSinceConnect })).toEqual(expected);
   });
+
+  // Live, 2026-10-05: a new Mate's arrival keeps its board while zcp's init runs, and through its
+  // Mate not answering yet once the init is complete — until a boot's cap, when its words and
+  // Try now speak instead.
+  it("a new Mate keeps its board through its init and its Mate's first silence, until the cap", () => {
+    const KEY = "project-wren:zcp";
+    let nowMs = 1_000;
+    const at = () => ({ wall: nowMs, mono: nowMs });
+    let container = transitionContainer(
+      initialContainer(),
+      { type: "PLATFORM", status: { project: "ACTIVE", service: "ACTIVE" } },
+      { now: at() },
+    ).state;
+    let environment: EnvironmentMachine = transitionEnvironment(
+      initialEnvironment({ record: null }),
+      { type: "PRESENCE", presence: { kind: "present", origin: "https://zcp-wren.example.test" } },
+      { now: at(), random: () => 0.5 },
+    ).state;
+    const shown = () => {
+      environment = transitionEnvironment(
+        environment,
+        { type: "CONTAINER", container: containerVerdict(container) },
+        { now: at(), random: () => 0.5 },
+      ).state;
+      const link = mateLink({
+        key: KEY,
+        projectId: "project-wren",
+        machines: new Map([[KEY, environment]]),
+        index: { serving: new Map(), reported: new Map() },
+        records: [],
+        registered: new Set(),
+      });
+      return {
+        reachability: link.reachability,
+        arrival: mateArrivalShown({
+          page: { kind: "reaching", reachability: link.reachability },
+          cameUp: true,
+          failuresSinceConnect: link.failuresSinceConnect,
+        }),
+      };
+    };
+    const probe = (
+      reading: Parameters<typeof transitionContainer>[1] extends infer E
+        ? E extends { readonly type: "PROBED"; readonly reading: infer R }
+          ? R
+          : never
+        : never,
+    ) => {
+      nowMs += 1_000;
+      container = transitionContainer(
+        container,
+        { type: "PROBED", reading, sentAt: at() },
+        { now: at() },
+      ).state;
+    };
+
+    // zcp's init still running: a boot on its way.
+    probe({ kind: "initializing", initAt: null });
+    expect(shown().reachability).toEqual({
+      kind: "container",
+      container: { level: "booting", overdue: false },
+    });
+    expect(shown().arrival).toEqual(OPENING);
+
+    // Its init complete, its Mate not answering yet: not a start, and the board still stands.
+    probe({ kind: "not-answering", initAt: "2026-10-05T01:00:00Z" });
+    expect(shown().reachability).toEqual({ kind: "not-answering", overdue: false });
+    expect(shown().arrival).toEqual(OPENING);
+
+    // Past a boot's cap: its words, with Try now.
+    nowMs += CONTAINER_CAPS_MS.booting;
+    container = transitionContainer(container, { type: "TICK" }, { now: at() }).state;
+    expect(shown().reachability).toEqual({ kind: "not-answering", overdue: true });
+    expect(shown().arrival).toBeUndefined();
+  });
+
+  // The lead, 2026-10-05: a new Mate whose container is ready and whose exchanges keep failing is
+  // healed on its own, and says so with Try now once its held failures are spent — in the window
+  // that made it too, never "Almost there." for good.
+  it("a new Mate whose container is ready and whose exchanges keep failing says so, with Try now", () => {
+    const KEY = "project-wren:zcp";
+    const GO = {
+      ...IDLE_GUARDS,
+      want: true,
+      routeTarget: true,
+      visible: true,
+      postGrant: true,
+      identityMint: { allowed: true },
+      budget: true,
+    } as const;
+    let nowMs = 1_000;
+    const step = (machine: EnvironmentMachine, event: EnvironmentEvent): EnvironmentMachine => {
+      nowMs = event.type === "TICK" && machine.timer !== null ? machine.timer.wall : nowMs + 1_000;
+      return transitionEnvironment(machine, event, {
+        now: { wall: nowMs, mono: nowMs },
+        random: () => 0.5,
+      }).state;
+    };
+    let machine: EnvironmentMachine = initialEnvironment({ record: null });
+    for (const event of [
+      { type: "GUARDS", guards: GO },
+      { type: "CONTAINER", container: { level: "ready" } },
+      { type: "PRESENCE", presence: { kind: "present", origin: "https://zcp-wren.example.test" } },
+    ] satisfies ReadonlyArray<EnvironmentEvent>) {
+      machine = step(machine, event);
+    }
+    const linkOf = (current: EnvironmentMachine) =>
+      mateLink({
+        key: KEY,
+        projectId: "project-wren",
+        machines: new Map([[KEY, current]]),
+        index: { serving: new Map(), reported: new Map() },
+        records: [],
+        registered: new Set(),
+      });
+    const holds: Array<boolean> = [];
+    for (let failure = 1; failure <= 6; failure += 1) {
+      if (machine.credential.kind !== "exchanging") throw new Error("no exchange");
+      machine = step(machine, {
+        type: "EXCHANGE_FAILED",
+        attempt: machine.credential.attempt,
+        failure: { class: "retryable", cause: { kind: "network" } },
+        descriptor: null,
+      });
+      holds.push(arrivalLinkHolds(linkOf(machine)));
+      // Still retried on its own: the next try is on the ladder.
+      expect(machine.credential.kind).toBe("backoff");
+      if (failure < 6) machine = step(machine, { type: "TICK" });
+    }
+    // The board through its first three failures, then its words: never "Almost there." for good.
+    expect(holds).toEqual([true, true, true, false, false, false]);
+
+    const link = linkOf(machine);
+    const page = { kind: "reaching", reachability: link.reachability } as const;
+    expect(
+      mateArrivalShown({ page, cameUp: true, failuresSinceConnect: link.failuresSinceConnect }),
+    ).toBeUndefined();
+    const phrase = mateOpeningPhrase(page, { nowMs, mateName: "Wren" });
+    expect(phrase.text).toMatch(/^This Mate isn't answering\. Trying again in \d+ s\.$/u);
+    expect(phrase.actions).toEqual(["try-now"]);
+  });
 });
 
 // A first build that failed leaves the Mate's service READY_TO_DEPLOY for good (the ledger,
@@ -855,6 +997,33 @@ describe("firstBuildState — a Mate's first build, as its project's processes s
         build("RUNNING", "2026-10-02T10:05:00Z"),
       ],
       expected: { kind: "running" },
+    },
+    // Review (web #5): a deploy that fails after its build — an init command, its runtime's
+    // prepare — leaves the build's process FINISHED and its version failed: the version's status is
+    // the platform's word, and ends the wait with Remove.
+    {
+      case: "built, its version's deploy failed",
+      processes: [
+        build("FINISHED", "2026-10-02T10:00:00Z", { appVersion: { status: "DEPLOY_FAILED" } }),
+      ],
+      expected: { kind: "failed", why: "Its container's first deploy failed: DEPLOY_FAILED" },
+    },
+    {
+      case: "its version's runtime prepare failed, with the platform's reason",
+      processes: [
+        build("FINISHED", "2026-10-02T10:00:00Z", {
+          failReason: "init command failed",
+          appVersion: { status: "PREPARING_RUNTIME_FAILED" },
+        }),
+      ],
+      expected: { kind: "failed", why: "init command failed" },
+    },
+    {
+      case: "built, its version still deploying",
+      processes: [
+        build("FINISHED", "2026-10-02T10:00:00Z", { appVersion: { status: "DEPLOYING" } }),
+      ],
+      expected: undefined,
     },
     {
       case: "another service's build failed",
@@ -936,11 +1105,15 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
   });
   const ORIGIN = "https://zcp-9f1c-8080.prg1.zerops.app";
 
-  /** How each tab reads it at `atMs` since its creation, first seen without its address at `seenMs`. */
+  /**
+   * How each tab reads it at `atMs` since its creation, where the platform says `enable` of turning
+   * its address on, and watched it come up where `watched`.
+   */
   const reading = (input: {
     readonly atMs: number;
     readonly service: ZeropsService;
-    readonly seenMs?: number;
+    readonly enable?: "on" | "off";
+    readonly watched?: boolean;
     readonly connected?: boolean;
     readonly created: boolean;
   }) => {
@@ -953,9 +1126,8 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
       {
         nowMs,
         addressSeen: () =>
-          input.seenMs === undefined
-            ? undefined
-            : { addressed: false, since: CREATED + input.seenMs },
+          input.watched === true ? { addressed: false, building: true } : undefined,
+        subdomainEnable: () => input.enable,
       },
     )[0]!;
     const presence = candidatePresence({ ...candidate, presence: "known" });
@@ -989,17 +1161,23 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
     readonly step: string;
     readonly atMs: number;
     readonly service: ZeropsService;
-    readonly seenMs?: number;
+    readonly enable?: "on" | "off";
+    readonly watched?: boolean;
   }> = [
     { step: "its first build", atMs: 60_000, service: zcp("READY_TO_DEPLOY", false) },
-    { step: "ACTIVE, its address not enabled yet", atMs: 109_700, service: zcp("ACTIVE", false) },
     {
-      step: "ACTIVE, its address still on its way",
+      step: "ACTIVE, its processes not read yet",
+      atMs: 109_700,
+      service: zcp("ACTIVE", false),
+      watched: true,
+    },
+    {
+      step: "ACTIVE, its address being turned on",
       atMs: 113_000,
       service: zcp("ACTIVE", false),
-      seenMs: 109_700,
+      enable: "on",
     },
-    { step: "its address landed", atMs: 115_300, service: zcp("ACTIVE", true) },
+    { step: "its address landed", atMs: 115_300, service: zcp("ACTIVE", true), watched: true },
   ];
 
   describe.each([
@@ -1028,7 +1206,12 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
   });
 
   it("an old Mate whose access is off says it has no public address, with Open in Zerops", () => {
-    const read = reading({ atMs: 3 * 60 * 60_000, service: zcp("ACTIVE", false), created: false });
+    const read = reading({
+      atMs: 3 * 60 * 60_000,
+      service: zcp("ACTIVE", false),
+      enable: "off",
+      created: false,
+    });
     expect(read.coming).toBeUndefined();
     expect(read.reachability).toEqual({ kind: "no-address", reason: "no-subdomain" });
     expect(reachabilityPhrase(read.reachability, { nowMs: 0, mateName: "Quinn" })).toEqual({
@@ -1037,11 +1220,12 @@ describe("a new Mate whose container is ACTIVE before its address landed", () =>
     });
   });
 
-  it("a young Mate whose address never came says so once its wait ends", () => {
+  it("a Mate whose address the platform did not turn on says so, watched or not", () => {
     const read = reading({
-      atMs: 109_700 + ADDRESS_GRACE_MS,
+      atMs: 113_000,
       service: zcp("ACTIVE", false),
-      seenMs: 109_700,
+      enable: "off",
+      watched: true,
       created: false,
     });
     expect(read.coming).toBeUndefined();
@@ -1185,7 +1369,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
         [step.service],
         new Map(step.connected === true ? [[ORIGIN, ENV]] : []),
         undefined,
-        addressClockOf(memory, nowMs),
+        addressFactsOf(memory, nowMs),
       )[0]!;
       memory = rememberAddresses(memory, [candidate]);
       return mateComing({
@@ -1209,7 +1393,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
   });
 
   it("past its two minutes, a Mate that never answered reads as any other", () => {
-    const late = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, atMs: 152_000 + ADDRESS_GRACE_MS }]);
+    const late = replay([...STEPS.slice(0, 3), { ...STEPS[3]!, atMs: 157_600 + ARRIVAL_MS }]);
     expect(late[3]).toBeUndefined();
   });
 
@@ -1265,7 +1449,7 @@ describe("a Mate whose address landed, not answering yet, in a window that did n
     },
     {
       case: "its fresh credentials refused past them",
-      reachability: { ...NOT_ANSWERING, last: { kind: "rejected" } },
+      reachability: { kind: "refused-credential" },
       failures: 4,
       errors: 4,
       coming: false,

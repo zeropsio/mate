@@ -17,9 +17,7 @@ import {
   formatMateFace,
   hasMate,
   isGenericPlatformError,
-  mayOffer,
   newMateTint,
-  type OfferAsker,
   readZeropsToolKind,
   readZeropsMembership,
   type ZeropsEnvironmentRole,
@@ -28,6 +26,7 @@ import {
   type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqMateOfferStates } from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
 import {
@@ -113,21 +112,24 @@ export interface ZeropsRowInput {
   };
 }
 
+const ROW_VERBS = (offered: boolean): ZeropsRowInput["can"] => ({
+  open: offered,
+  enable: offered,
+  setUpMate: offered,
+  start: offered,
+  restart: offered,
+  remove: offered,
+});
+
 /**
- * A row's verbs for this person: every one where its Mate's door opens for them — HQ's rule
- * (`observe_mate`) over what the client holds — none where it does not, nor where the client knows
- * nobody.
+ * A row's verbs for this person, none of them HQ's to enforce: opening is its Mate's door's, the
+ * rest Zerops' — each refusal shown as they word it. None where HQ refuses following its Mate
+ * (`observe_mate`): the door would refuse them too. Every one otherwise — where HQ offers it, has
+ * not said (an HQ from before its offers, a structure not read yet), or does not answer, and on a
+ * project HQ holds as no Mate.
  */
-export function mateRowCan(asker: OfferAsker | null, projectId: string): ZeropsRowInput["can"] {
-  const opens = mayOffer(asker, "observe_mate", { projectId });
-  return {
-    open: opens,
-    enable: opens,
-    setUpMate: opens,
-    start: opens,
-    restart: opens,
-    remove: opens,
-  };
+export function mateRowCan(offers: HqMateOfferStates | undefined): ZeropsRowInput["can"] {
+  return ROW_VERBS(offers?.held !== true || offers.observe.kind !== "refused");
 }
 
 export type ZeropsRowAction =
@@ -522,15 +524,18 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
 
 /**
  * The menu's Restart, offered whenever the Mate's container can be bounced:
- * the project is up and the container is known. Not a row verb — a running
- * Mate's primary action is to open or connect, and a restart is a quiet
- * recovery for the menu.
+ * the project is up and Zerops reports its container ACTIVE. One still on its
+ * first build, or already restarting, is the platform's to bring up — a restart
+ * would race it. Not a row verb — a running Mate's primary action is to open or
+ * connect, and a restart is a quiet recovery for the menu.
  */
 export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, can } = input;
   if (isZeropsToolCandidate(candidate)) return { kind: "none" };
   if (input.visibility === "listed") return { kind: "none" };
-  return can.restart && candidate.project.status === "ACTIVE" && candidate.service?.id !== undefined
+  return can.restart &&
+    candidate.project.status === "ACTIVE" &&
+    candidate.service?.status === "ACTIVE"
     ? { kind: "restart", label: "Restart" }
     : { kind: "none" };
 }

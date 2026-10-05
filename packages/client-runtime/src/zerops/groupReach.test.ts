@@ -141,48 +141,83 @@ describe("findHeldMateKey — a key the platform made, by either of its names", 
   });
 });
 
-// ADR 0003: a Mate's key holds its own project and nothing this client adds beside it. The plan
-// lowers a key the platform minted with ADMIN, and keeps every other grant it holds exactly as it
-// is — a grant on a sibling is neither added nor taken away here.
+// ADR 0003: a Mate's key holds its own project at BASIC_USER and nothing else. A key known for the
+// Mate's by the id HQ holds is written to exactly that; a key found by its name and grant alone is
+// lowered only while it is still that shape, and never narrowed: a key that reaches another project
+// beside its own is not taken for a Mate's.
 describe("planMateKey", () => {
+  const OWN = { projectId: DEV, roleCode: "BASIC_USER" } as const;
   it.each([
     {
-      case: "a key the platform minted with ADMIN is lowered in place",
+      case: "by id: a key the platform minted with ADMIN is lowered in place",
+      foundBy: "id",
       projects: [{ projectId: DEV, roleCode: "ADMIN" }],
-      written: [{ projectId: DEV, roleCode: "BASIC_USER" }],
+      plan: { kind: "write", tokenId: "tok-mate", projects: [OWN] },
     },
     {
-      case: "a key that reads a sibling keeps it, and gains nothing",
+      case: "by id: a key that reads a sibling loses it",
+      foundBy: "id",
       projects: [
         { projectId: DEV, roleCode: "ADMIN" },
         { projectId: PROD, roleCode: "READ_ONLY" },
       ],
-      written: [
-        { projectId: DEV, roleCode: "BASIC_USER" },
-        { projectId: PROD, roleCode: "READ_ONLY" },
-      ],
+      plan: { kind: "write", tokenId: "tok-mate", projects: [OWN] },
     },
     {
-      case: "a key already lowered plans nothing, whatever else it holds",
+      case: "by id: a key already lowered loses a sibling it still reads",
+      foundBy: "id",
       projects: [
         { projectId: PROD, roleCode: "READ_ONLY" },
         { projectId: DEV, roleCode: "BASIC_USER" },
       ],
-      written: null,
+      plan: { kind: "write", tokenId: "tok-mate", projects: [OWN] },
     },
     {
-      case: "a key with no grant on its own project is given one",
+      case: "by id: a key with no grant on its own project is given exactly that one",
+      foundBy: "id",
       projects: [{ projectId: STAGE, roleCode: "READ_ONLY" }],
-      written: [
-        { projectId: DEV, roleCode: "BASIC_USER" },
-        { projectId: STAGE, roleCode: "READ_ONLY" },
-      ],
+      plan: { kind: "write", tokenId: "tok-mate", projects: [OWN] },
     },
-  ] as const)("$case", ({ projects, written }) => {
+    {
+      case: "by id: a key holding exactly its own project plans nothing",
+      foundBy: "id",
+      projects: [OWN],
+      plan: { kind: "held" },
+    },
+    {
+      case: "by name: a key the platform minted with ADMIN is lowered in place",
+      foundBy: "name",
+      projects: [{ projectId: DEV, roleCode: "ADMIN" }],
+      plan: { kind: "write", tokenId: "tok-mate", projects: [OWN] },
+    },
+    {
+      case: "by name: a key holding exactly its own project plans nothing",
+      foundBy: "name",
+      projects: [OWN],
+      plan: { kind: "held" },
+    },
+    {
+      case: "by name: a key that reads a sibling is not the Mate's, and is not narrowed",
+      foundBy: "name",
+      projects: [OWN, { projectId: PROD, roleCode: "READ_ONLY" }],
+      plan: { kind: "not-its-key" },
+    },
+    {
+      case: "by name: a key with no grant on its own project is not the Mate's",
+      foundBy: "name",
+      projects: [{ projectId: STAGE, roleCode: "BASIC_USER" }],
+      plan: { kind: "not-its-key" },
+    },
+  ] as const)("$case", ({ foundBy, projects, plan }) => {
     const token: ZeropsIntegrationToken = { ...MATE_TOKEN, projects };
-    expect(planMateKey({ token, selfProjectId: DEV })).toEqual(
-      written === null ? undefined : { tokenId: "tok-mate", projects: written },
-    );
+    expect(planMateKey({ token, selfProjectId: DEV, foundBy })).toEqual(plan);
+  });
+
+  it("by name: a key no Mate's name carries is not the Mate's", () => {
+    const token: ZeropsIntegrationToken = { ...DEPLOY_TOKEN, projects: [OWN] };
+    expect(planMateKey({ token, selfProjectId: DEV, foundBy: "name" })).toEqual({
+      kind: "not-its-key",
+    });
   });
 });
 
@@ -290,6 +325,17 @@ describe("findHeldMateKey — the key a Mate's container holds", () => {
     },
   ])("$case", ({ tokens, container, want }) => {
     expect(findHeldMateKey(tokens, "p-1", container)?.id).toBe(want);
+  });
+
+  it("never reuses a key that reaches another project beside its own", () => {
+    const widened: ZeropsIntegrationToken = {
+      ...key("k-wide", "2026-10-01T10:00:00Z"),
+      projects: [
+        { projectId: "p-1", roleCode: "BASIC_USER" },
+        { projectId: "p-stage", roleCode: "READ_ONLY" },
+      ],
+    };
+    expect(newestMateKey([widened], "p-1")).toBeUndefined();
   });
 
   it("reuses the newest key where no container holds one", () => {

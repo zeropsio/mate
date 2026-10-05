@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { parseMateSetup, readMateSetup } from "./mateSetup.ts";
+import { parseMateSetup, readMateSetup, standUpFailureWords } from "./mateSetup.ts";
 
 const ORIGIN = "https://zcp-1a2b-8080.prg1.zerops.app";
 
@@ -107,12 +107,34 @@ describe("readMateSetup", () => {
     expect(asked).toEqual([{ url: `${ORIGIN}/mate/setup.json`, init: { redirect: "manual" } }]);
   });
 
+  /** A manual redirect as a browser hands it over: opaque, status 0. */
+  const redirected = (): Response => {
+    const response = new Response(null, { status: 200 });
+    Object.defineProperty(response, "type", { value: "opaqueredirect" });
+    return response;
+  };
+
   it.each([
-    { case: "a 404: an older Mate", response: new Response("", { status: 404 }), kind: "absent" },
     {
-      case: "a page in its place: an older server's catch-all",
-      response: new Response("<!doctype html>", { status: 200 }),
+      case: "a 404: a server outside a Zerops project, which has no setup",
+      response: new Response("", { status: 404 }),
       kind: "absent",
+    },
+    { case: "a redirect: turned away before the route", response: redirected(), kind: "refused" },
+    {
+      case: "a refusal of the read",
+      response: new Response("", { status: 403 }),
+      kind: "refused",
+    },
+    {
+      case: "a page in its place",
+      response: new Response("<!doctype html>", { status: 200 }),
+      kind: "invalid",
+    },
+    {
+      case: "JSON that is not the setup document",
+      response: new Response(JSON.stringify({ version: 0 }), { status: 200 }),
+      kind: "invalid",
     },
     {
       case: "a server error: on its way up",
@@ -126,8 +148,40 @@ describe("readMateSetup", () => {
   });
 });
 
-it("keeps a failed stand-up send distinct from an agent turn that failed", () => {
-  expect(
-    parseMateSetup(document([{ id: "standup", state: "failed", at: "", reason: "send_failed" }])),
-  ).toMatchObject({ standup: "failed", standupFailure: "send_failed" });
+describe("a failed stand-up's reason", () => {
+  it.each([
+    { reason: "send_failed", failure: "send_failed" },
+    { reason: "process_gone", failure: "process_gone" },
+    { reason: "stage_not_built", failure: "stage_not_built" },
+    { reason: "a_reason_this_build_does_not_know", failure: undefined },
+    { reason: undefined, failure: undefined },
+  ])("reads $reason as $failure", ({ reason, failure }) => {
+    const setup = parseMateSetup(
+      document([
+        { id: "standup", state: "failed", at: "", ...(reason === undefined ? {} : { reason }) },
+      ]),
+    );
+    expect(setup?.standup).toBe("failed");
+    expect(setup?.standupFailure).toBe(failure);
+  });
+
+  it("is read only off a stand-up that failed", () => {
+    expect(
+      parseMateSetup(document([{ id: "standup", state: "done", at: "", reason: "process_gone" }]))
+        ?.standupFailure,
+    ).toBeUndefined();
+  });
+
+  it.each([
+    { failure: "process_gone", words: "The stand-up's process stopped." },
+    {
+      failure: "stage_not_built",
+      words:
+        "Development is up; the previews were not built — ask the agent to build them, or deploy them by hand.",
+    },
+    { failure: "send_failed", words: undefined },
+    { failure: undefined, words: undefined },
+  ] as const)("words $failure for the person", ({ failure, words }) => {
+    expect(standUpFailureWords(failure)).toBe(words);
+  });
 });

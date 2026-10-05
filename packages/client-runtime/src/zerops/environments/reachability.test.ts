@@ -347,7 +347,32 @@ const ROWS: ReadonlyArray<{
       link: { phase: "backoff", retryAtMs: NOW + 2_000 },
       linkLostAt: at(NOW - 5_000),
     }),
-    verdict: { kind: "reconnecting" },
+    verdict: { kind: "reconnecting", retryAtMs: NOW + 2_000 },
+  },
+  // Live, 2026-10-05: a container the platform still says ACTIVE, its server stopped — only its
+  // failed probes say it boots. Its link is what fails: never a start, never "taking longer".
+  {
+    row: 10,
+    name: "held, the link lost while only failed probes say it boots, past a boot's cap",
+    machine: machine({
+      credential: HELD,
+      container: { level: "booting", overdue: true, guessed: true },
+      link: { phase: "backoff", retryAtMs: NOW + 4_000 },
+      linkLostAt: at(NOW - 127_000),
+    }),
+    verdict: { kind: "reconnecting", retryAtMs: NOW + 4_000 },
+  },
+  {
+    row: 7,
+    name: "never connected here, only failed probes saying it boots: not answering",
+    machine: machine({ container: { level: "booting", overdue: false, guessed: true } }),
+    verdict: { kind: "not-answering", overdue: false },
+  },
+  {
+    row: 7,
+    name: "a boot the platform says, past its cap: taking longer to start",
+    machine: machine({ container: { level: "booting", overdue: true } }),
+    verdict: { kind: "container", container: { level: "booting", overdue: true } },
   },
   {
     row: 12,
@@ -688,13 +713,18 @@ describe("reachabilityPhrase", () => {
     reachabilityPhrase(verdict, { nowMs: NOW, mateName: "shop" });
 
   it("names the cause only and offers each action once", () => {
+    // A definitive refusal: its reason, and the person's Try again — nothing asks again on its own.
     expect(phrase({ kind: "refused-role" })).toEqual({
       text: "You can see this project in Zerops but can't operate its Mate.",
-      actions: [],
+      actions: ["try-again"],
     });
     expect(phrase({ kind: "refused-configuration" })).toEqual({
       text: "This Mate keeps refusing its connection settings.",
-      actions: ["try-now"],
+      actions: ["try-again"],
+    });
+    expect(phrase({ kind: "refused-credential" })).toEqual({
+      text: "This Mate didn't accept the sign-in.",
+      actions: ["try-again"],
     });
     expect(phrase({ kind: "update-unavailable" })).toEqual({
       text: "This project's Zerops tooling installs an older Mate than this app supports.",
@@ -713,7 +743,7 @@ describe("reachabilityPhrase", () => {
     });
     expect(phrase({ kind: "container", container: { level: "booting", overdue: true } })).toEqual({
       text: "shop is taking longer than usual to start.",
-      actions: ["restart"],
+      actions: ["try-now", "restart"],
     });
     expect(
       phrase({
@@ -737,7 +767,28 @@ describe("reachabilityPhrase", () => {
       text: "This tab couldn't set up the connection to this Mate. Trying again in 2 s.",
       actions: ["try-now"],
     });
-    expect(phrase({ kind: "reconnecting" }).text).toBe("Reconnecting…");
+    expect(phrase({ kind: "reconnecting" })).toEqual({
+      text: "Reconnecting…",
+      actions: ["try-now"],
+    });
+    // Its link said when it tries again: its server is not answering, counted down, with Try now.
+    expect(phrase({ kind: "reconnecting", retryAtMs: NOW + 4_000 })).toEqual({
+      text: "This Mate isn't answering. Trying again in 4 s.",
+      actions: ["try-now"],
+    });
+    expect(phrase({ kind: "not-answering", overdue: true })).toEqual({
+      text: "This Mate isn't answering.",
+      actions: ["try-now", "restart"],
+    });
+    // Every down state is asked again with Try now, never only the way to the projects.
+    for (const container of [
+      { level: "inactive", status: "STOPPED" },
+      { level: "needs-enable" },
+      { level: "needs-update" },
+      { level: "not-yet-available" },
+    ] as const) {
+      expect(phrase({ kind: "container", container }).actions).toContain("try-now");
+    }
     expect(phrase({ kind: "gone", because: "direct-not-found" })).toEqual({
       text: "This project is no longer available. It was deleted, or you no longer have access.",
       actions: ["go-to-projects"],

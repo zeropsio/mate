@@ -15,6 +15,7 @@ import {
 } from "./containerStore.ts";
 import { makeExchangeDriver, type ExchangeClock } from "./exchangeDriver.ts";
 import type { ProbeReading } from "./probeStore.ts";
+import { reachabilityPhrase, selectReachability } from "./reachability.ts";
 
 /** Answers settle across a few promise hops; this lets every one of them land. */
 const flush = async (): Promise<void> => {
@@ -474,6 +475,52 @@ describe("container store (DESIGN §4.5)", () => {
     store.dispose();
   });
 
+  // Live, 2026-10-05: Ada's container stayed ACTIVE while `zerops@mate` was stopped; with the
+  // conversation open 127 s its banner said "Ada is taking longer than usual to start." with only
+  // Go to projects. Nothing but failed probes said it was starting: the link is failing, and says
+  // so with Try now — "starting" is the platform's word alone.
+  // Live, 2026-10-05, again: nginx kept serving zcp's init marker at `/mate/healthz` (200,
+  // initComplete true) while the Mate was stopped, and the descriptor's CORS-less 502 read as no
+  // answer — "Almost there." at 60 s, then "taking longer than usual to start".
+  it.each([
+    { name: "every probe unanswered", answer: { kind: "unreachable" } },
+    {
+      name: "zcp's init marker answering, the Mate not",
+      answer: { kind: "not-answering", initAt: "2026-10-05T01:00:00Z" },
+    },
+  ] as const)(
+    "an ACTIVE container whose server stops answering reads as its link failing, with Try now: $name",
+    async ({ answer }) => {
+      const setup = rig();
+      const { clock, store } = setup;
+      store.setTargets([target("ACTIVE")]);
+      const { driver, dispose } = await boundDriver(setup);
+      driver.link(ENVIRONMENT_ID, { phase: "connected" });
+      await clock.advance(1_000);
+
+      // The server stops: the socket drops into backoff, the link counting down to its next try,
+      // while the platform keeps saying ACTIVE.
+      setup.answer = answer;
+      driver.link(ENVIRONMENT_ID, { phase: "backoff", retryAtMs: null });
+      const words: Array<string> = [];
+      for (let second = 0; second < 127; second += 1) {
+        await clock.advance(1_000);
+        driver.link(ENVIRONMENT_ID, { phase: "backoff", retryAtMs: clock.now().wall + 4_000 });
+        await clock.advance(0);
+        const verdict = selectReachability(driver.machine(KEY)!, ENVIRONMENT_ID);
+        expect(verdict.kind).not.toBe("container");
+        const phrase = reachabilityPhrase(verdict, { nowMs: clock.now().wall, mateName: "Ada" });
+        expect(phrase.actions).toContain("try-now");
+        words.push(phrase.text ?? "");
+      }
+      // Never a start, never "Almost there.": its server is not answering, counted down.
+      expect(words.filter((text) => /start|Almost there/u.test(text))).toEqual([]);
+      expect(words.at(-1)).toBe("This Mate isn't answering. Trying again in 4 s.");
+      dispose();
+      store.dispose();
+    },
+  );
+
   it("container ready kicks a link in backoff", async () => {
     const setup = rig();
     const { clock, store, probes } = setup;
@@ -860,6 +907,24 @@ describe("container store: a Mate HQ holds online (krok-a §4)", () => {
     // HQ answering late proves it up from then on; a Mate listed after the wait is read at once.
     store.setOnline(new Set(["project-1"]));
     const other = "https://zcp-2.prg1.zerops.app";
+    store.setTargets([
+      target("ACTIVE"),
+      { ...target("ACTIVE", other), key: "project-2:service-2" },
+    ]);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN, other]);
+    store.dispose();
+  });
+
+  it("a Mate first seen where no HQ will answer is read at once, and never waits after", async () => {
+    const { clock, store, probes } = rig();
+    store.setOnline("absent");
+    store.setTargets([target("ACTIVE")]);
+    await clock.advance(0);
+    expect(probes).toEqual([ORIGIN]);
+
+    const other = "https://zcp-2.prg1.zerops.app";
+    store.setOnline("absent");
     store.setTargets([
       target("ACTIVE"),
       { ...target("ACTIVE", other), key: "project-2:service-2" },

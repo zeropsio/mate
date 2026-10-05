@@ -88,7 +88,7 @@ const authorizedAgentsRequest = (
   service: service(scope, serviceId, projectId),
 });
 
-const tokenGrantsRequest = (scope: AccountScope): TokensCellRequest => ({
+const tokensRequest = (scope: AccountScope): TokensCellRequest => ({
   kind: "tokens",
   account: scope,
   organization: organization(scope),
@@ -104,10 +104,9 @@ const unusedAdapter = (overrides: Partial<ZeropsCellAdapter> = {}): ZeropsCellAd
   readProjectPublicAccess: () => Effect.never,
   readOrganizationLocations: () => Effect.succeed([]),
   readOrganizationMembers: () => Effect.succeed([]),
-  readServiceVariableNames: () => Effect.succeed([]),
   readServiceAuthorizedAgents: () => Effect.succeed([]),
   readServiceMateFlag: () => Effect.succeed({ enabled: "unknown" }),
-  readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
+  readOrganizationIntegrationTokens: () => Effect.succeed([]),
   ...overrides,
 });
 
@@ -145,7 +144,7 @@ describe("zeropsCellKeyOf", () => {
   // A runtime's cells are one account epoch's: a request from any other is refused, never keyed.
   it.each([
     ["an organization's locations", locationsRequest(accountScope()), "locations:org-a"],
-    ["an organization's tokens", tokenGrantsRequest(accountScope()), "tokens:org-a"],
+    ["an organization's tokens", tokensRequest(accountScope()), "tokens:org-a"],
     ["an organization's members", membersRequest(accountScope()), "members:org-a"],
     ["a service's agents", authorizedAgentsRequest(accountScope()), "agents:service-a"],
     [
@@ -265,7 +264,7 @@ describe("makeZeropsCells", () => {
 
   // The token and member lists are each one heavy answer the platform may sit on: a read with no
   // deadline held its cell reading for as long as the platform did, with nothing retried.
-  it.effect.each([["tokens", tokenGrantsRequest] as const, ["members", membersRequest] as const])(
+  it.effect.each([["tokens", tokensRequest] as const, ["members", membersRequest] as const])(
     "a %s read the platform sits on fails at 30 s and stays failed until Read again",
     ([kind, request]) =>
       Effect.gen(function* () {
@@ -281,7 +280,7 @@ describe("makeZeropsCells", () => {
           access: () => verifiedAccess(scope),
           adapter: unusedAdapter(
             kind === "tokens"
-              ? { readOrganizationIntegrationTokenGrants: never }
+              ? { readOrganizationIntegrationTokens: never }
               : { readOrganizationMembers: never },
           ),
         });
@@ -416,14 +415,14 @@ describe("makeZeropsCells", () => {
           scope,
           access: () => verifiedAccess(scope),
           adapter: unusedAdapter({
-            readOrganizationIntegrationTokenGrants: () =>
+            readOrganizationIntegrationTokens: () =>
               Effect.sync(() => {
                 reads += 1;
-                return [{ tokenId: `token-${reads}`, name: "t", grants: [] }];
+                return [{ tokenId: `token-${reads}`, name: "t" }];
               }),
           }),
         });
-        const request = tokenGrantsRequest(scope);
+        const request = tokensRequest(scope);
         const held = yield* Scope.make();
         const lease = yield* broker.acquire(request).pipe(Scope.provide(held));
         yield* lease.awaitSettled;
@@ -694,13 +693,12 @@ describe("makeZeropsCells", () => {
             calls.push("agents");
             return Effect.succeed(["codex"]);
           },
-          readOrganizationIntegrationTokenGrants: () => {
-            calls.push("grants");
+          readOrganizationIntegrationTokens: () => {
+            calls.push("tokens");
             return Effect.succeed([
               {
                 tokenId: "token-id",
                 name: "zcp-project",
-                grants: [{ projectId: "project-a", roleCode: "ADMIN" }],
               },
             ]);
           },
@@ -709,7 +707,7 @@ describe("makeZeropsCells", () => {
       const requests = [
         locationsRequest(scope),
         authorizedAgentsRequest(scope),
-        tokenGrantsRequest(scope),
+        tokensRequest(scope),
       ] as const;
       const scopes = yield* Effect.forEach(requests, () => Scope.make());
       const leases = yield* Effect.forEach(requests, (request, index) =>
@@ -717,15 +715,14 @@ describe("makeZeropsCells", () => {
       );
       yield* Effect.forEach(leases, (lease) => lease.awaitSettled, { concurrency: "unbounded" });
 
-      expect(calls.sort()).toEqual(["agents", "grants", "locations"]);
+      expect(calls.sort()).toEqual(["agents", "locations", "tokens"]);
       const agents = yield* leases[1]!.snapshot;
       expect(agents.state === "known" ? agents.value : null).toEqual(["codex"]);
-      const grants = yield* leases[2]!.snapshot;
-      expect(grants.state === "known" ? grants.value : null).toEqual([
+      const tokens = yield* leases[2]!.snapshot;
+      expect(tokens.state === "known" ? tokens.value : null).toEqual([
         {
           tokenId: "token-id",
           name: "zcp-project",
-          grants: [{ projectId: "project-a", roleCode: "ADMIN" }],
         },
       ]);
       const diagnostics = yield* broker.diagnostics;
@@ -1365,7 +1362,7 @@ describe("makeZeropsCells", () => {
       yield* Effect.yieldNow;
 
       yield* broker.shutdown;
-      const lateAtom = broker.known(tokenGrantsRequest(scope));
+      const lateAtom = broker.known(tokensRequest(scope));
       unmounts.push(registry.mount(lateAtom));
       const stale = broker.known(locationsRequest(accountScope("account-a", 2)));
       unmounts.push(registry.mount(stale));
@@ -1491,17 +1488,17 @@ describe("the cells' one-shot reads", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readOrganizationIntegrationTokenGrants: () =>
+          readOrganizationIntegrationTokens: () =>
             Effect.suspend(() => {
               reads += 1;
-              const answer = [{ tokenId: `token-${reads}`, name: "t", grants: [] }];
+              const answer = [{ tokenId: `token-${reads}`, name: "t" }];
               return reads === 1
                 ? Deferred.await(gate).pipe(Effect.as(answer))
                 : Effect.succeed(answer);
             }),
         }),
       });
-      const request = tokenGrantsRequest(scope);
+      const request = tokensRequest(scope);
       const held = yield* Scope.make();
       const lease = yield* cells.acquire(request).pipe(Scope.provide(held));
       expect(yield* lease.snapshot).toMatchObject({ state: "reading" });
@@ -1529,17 +1526,17 @@ describe("the cells' one-shot reads", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readOrganizationIntegrationTokenGrants: () =>
+          readOrganizationIntegrationTokens: () =>
             Effect.suspend(() => {
               reads += 1;
-              const answer = [{ tokenId: `token-${reads}`, name: "t", grants: [] }];
+              const answer = [{ tokenId: `token-${reads}`, name: "t" }];
               return reads === 2
                 ? Deferred.await(gate).pipe(Effect.as(answer))
                 : Effect.succeed(answer);
             }),
         }),
       });
-      const request = tokenGrantsRequest(scope);
+      const request = tokensRequest(scope);
       const display = yield* Scope.make();
       const held = yield* cells.acquire(request).pipe(Scope.provide(display));
       yield* held.awaitSettled;
@@ -1568,16 +1565,16 @@ describe("the cells' one-shot reads", () => {
         scope,
         access: () => verifiedAccess(scope),
         adapter: unusedAdapter({
-          readOrganizationIntegrationTokenGrants: () =>
+          readOrganizationIntegrationTokens: () =>
             Effect.suspend(() => {
               reads++;
               return reads === 1
                 ? Deferred.await(gate).pipe(Effect.andThen(Effect.fail(transportFailure())))
-                : Effect.succeed([{ tokenId: "token-new", name: "new", grants: [] }]);
+                : Effect.succeed([{ tokenId: "token-new", name: "new" }]);
             }),
         }),
       });
-      const request = tokenGrantsRequest(scope);
+      const request = tokensRequest(scope);
       const reader = yield* Effect.forkChild(oneShot(cells, request));
       yield* Effect.yieldNow;
       yield* cells.invalidate(request);

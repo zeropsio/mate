@@ -18,6 +18,7 @@ import {
 } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -38,8 +39,10 @@ import {
   ZeropsSetupReads,
   makeZeropsSetup,
   standUpPollDelay,
+  zcpProcessGone,
   type ZeropsSetupTimings,
 } from "./ZeropsSetup.ts";
+import { procStartTime } from "./zeropsSetupSteps.ts";
 import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 
 const ZEROPS = resolveZeropsEnvironment({
@@ -137,6 +140,8 @@ interface World {
   /** How many times where it stands with HQ was read. */
   readonly hqReads: Ref.Ref<number>;
   readonly statusFile: Ref.Ref<unknown>;
+  /** The PIDs whose process is gone. */
+  readonly goneProcesses: Ref.Ref<ReadonlyArray<number>>;
   readonly threads: Ref.Ref<ReadonlyArray<OrchestrationThreadShell>>;
   readonly dispatched: Ref.Ref<ReadonlyArray<OrchestrationCommand>>;
   readonly admitted: Ref.Ref<ReadonlyArray<TurnPrincipal>>;
@@ -155,6 +160,7 @@ const makeWorld = Effect.gen(function* () {
     variables: yield* Ref.make<ReadonlyArray<string>>(["PATH", "MATE_SETUP_RUNTIMES"]),
     hqReads: yield* Ref.make(0),
     statusFile: yield* Ref.make<unknown>(undefined),
+    goneProcesses: yield* Ref.make<ReadonlyArray<number>>([]),
     threads: yield* Ref.make<ReadonlyArray<OrchestrationThreadShell>>([mainThread()]),
     dispatched: yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]),
     admitted: yield* Ref.make<ReadonlyArray<TurnPrincipal>>([]),
@@ -171,6 +177,8 @@ const fakes = (world: World) =>
       signers: Ref.get(world.signers),
       serviceVariables: Ref.get(world.variables),
       statusFile: Ref.get(world.statusFile),
+      processGone: (zcp) =>
+        Effect.map(Ref.get(world.goneProcesses), (gone) => gone.includes(zcp.pid)),
       providers: Ref.get(world.providers),
     }),
     Layer.mock(OrchestrationEngineService)({
@@ -927,6 +935,111 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
     }),
   );
 
+  const awaitingStages = (startedAt: string) => ({
+    state: "running",
+    phase: "stage",
+    startedAt,
+    process: { pid: 4242, start: "98765" },
+    services: [
+      { hostname: "appdev", step: "verify", state: "done" },
+      { hostname: "appstage", step: "build", state: "pending" },
+    ],
+  });
+  const standUpStep = (setup: ZeropsSetup["Service"]) =>
+    Effect.map(setup.document, (document) =>
+      document.steps.find((candidate) => candidate.id === "standup"),
+    );
+
+  it.live("a stand-up ends short when an owner of its end answers: its process, its turn", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      yield* Ref.set(world.signers, SIGNED);
+      const database = freshDatabase();
+      yield* withServer(world, database, (setup) =>
+        Effect.gen(function* () {
+          const [standUp] = yield* eventually(turnsOf(world), (turns) => turns.length === 1);
+          const { threadId } = standUp!;
+          const messageId = standUp!.message.messageId;
+          yield* turnRow(database, threadId, messageId, "running");
+          yield* setup.noteStandUpCall({
+            threadId,
+            turnId: `turn-${messageId}`,
+            startedAt: "2026-10-01T10:00:09.000Z",
+          });
+          yield* Ref.set(world.statusFile, {
+            version: 1,
+            standup: awaitingStages("2026-10-01T10:00:10Z"),
+          });
+          assert.strictEqual(
+            (yield* standUpStep(setup))?.state,
+            "running",
+            "its turn runs: the call is to come",
+          );
+          yield* Ref.set(world.goneProcesses, [4242]);
+          assert.deepStrictEqual(yield* standUpStep(setup), {
+            id: "standup",
+            state: "failed",
+            at: "",
+            reason: "process_gone",
+          });
+          yield* Ref.set(world.goneProcesses, []);
+          yield* turnRow(database, threadId, messageId, "completed");
+          assert.deepStrictEqual(yield* standUpStep(setup), {
+            id: "standup",
+            state: "failed",
+            at: "",
+            reason: "stage_not_built",
+          });
+          // A re-run in a later turn, waiting for its own stage call: its turn, not the first's.
+          yield* turnRow(database, threadId, "a-later-message", "running");
+          yield* setup.noteStandUpCall({
+            threadId,
+            turnId: "turn-a-later-message",
+            startedAt: "2026-10-01T11:00:00.000Z",
+          });
+          yield* Ref.set(world.statusFile, {
+            version: 1,
+            standup: awaitingStages("2026-10-01T11:00:01Z"),
+          });
+          assert.strictEqual((yield* standUpStep(setup))?.state, "running");
+        }),
+      );
+    }),
+  );
+
+  it.live(
+    "a stand-up nothing recorded ends short when its own turn ends without the stage call",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* Ref.set(world.hq, NOBODY_ASKED);
+        const database = freshDatabase();
+        yield* withServer(world, database, (setup) =>
+          Effect.gen(function* () {
+            yield* ticks;
+            yield* turnRow(database, "thread-main", "a-person-s-message", "running");
+            yield* setup.noteStandUpCall({
+              threadId: "thread-main",
+              turnId: "turn-a-person-s-message",
+              startedAt: "2026-10-01T10:00:09.000Z",
+            });
+            yield* Ref.set(world.statusFile, {
+              version: 1,
+              standup: awaitingStages("2026-10-01T10:00:10Z"),
+            });
+            assert.strictEqual((yield* standUpStep(setup))?.state, "running");
+            yield* turnRow(database, "thread-main", "a-person-s-message", "completed");
+            assert.deepStrictEqual(yield* standUpStep(setup), {
+              id: "standup",
+              state: "failed",
+              at: "",
+              reason: "stage_not_built",
+            });
+          }),
+        );
+      }),
+  );
+
   const afterDev = {
     state: "done",
     phase: "development",
@@ -989,12 +1102,15 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
   );
 });
 
-/** A turn of the projection's, as the engine records one, written into the Mate's database. */
+/**
+ * A turn of the projection's, as the engine records one, written into the Mate's database; the
+ * same turn written again is its later state.
+ */
 const turnRow = (database: string, threadId: string, messageId: string, state: string) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
     yield* sql`
-      INSERT INTO projection_turns
+      INSERT OR REPLACE INTO projection_turns
         (thread_id, turn_id, pending_message_id, state, requested_at, checkpoint_files_json)
       VALUES (${threadId}, ${`turn-${messageId}`}, ${messageId}, ${state},
         '2026-10-01T10:00:00.000Z', '[]')
@@ -1036,6 +1152,39 @@ describe("ZeropsSetup: the git step reads the Mate's enrollment with HQ", () => 
       }),
     );
   }
+});
+
+describe("zcpProcessGone", () => {
+  const goneOf = (pid: number, start: string) =>
+    Effect.flatMap(FileSystem.FileSystem, (fs) => zcpProcessGone(fs, { pid, start })).pipe(
+      Effect.provide(NodeServices.layer),
+    );
+  const ownStart = () => {
+    try {
+      return procStartTime(NodeFS.readFileSync("/proc/self/stat", "utf8"));
+    } catch {
+      return undefined;
+    }
+  };
+
+  it.effect("a PID no process holds is gone", () =>
+    Effect.map(goneOf(2 ** 22 + 7, "1"), (gone) => assert.isTrue(gone)),
+  );
+  it.effect("a live PID whose start zcp could not read is alive", () =>
+    Effect.map(goneOf(process.pid, ""), (gone) => assert.isFalse(gone)),
+  );
+  it.effect(
+    "a live PID under the start zcp wrote is alive; under another, a reused PID, gone",
+    () =>
+      Effect.gen(function* () {
+        const start = ownStart();
+        // Off Linux no start time reads, and a live PID is never declared gone over it.
+        assert.deepStrictEqual(
+          [yield* goneOf(process.pid, start ?? "1"), yield* goneOf(process.pid, "0-not-this-one")],
+          start === undefined ? [false, false] : [false, true],
+        );
+      }),
+  );
 });
 
 describe("standUpPollDelay", () => {

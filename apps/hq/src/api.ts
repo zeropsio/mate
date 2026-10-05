@@ -71,7 +71,8 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  * Every call but the doors carries `Authorization: Bearer <session>`, of a session issued for this
  * HQ's org. Only the leading HQ answers: a standby or an HQ that is not the official one answers
  * `503 not_active` with `Retry-After`, as does a Zerops that cannot be read (`zerops_unavailable`) —
- * a deploy runs two Cores side by side for a while, and zcp tries again. A refusal answers one
+ * a deploy runs two Cores side by side for a while, and zcp tries again. A write whose roles Zerops
+ * left unanswered answers `503 zerops_unanswered`: refused before it wrote anything. A refusal answers one
  * code, and for the structure and a Mate's changes a reason code beside it (`zeropsPermissions.ts`'s
  * or their own) — the words for a person are the client's; a
  * refusal at the person's door says nothing of which rule the token broke. Bodies are bounded (8
@@ -124,7 +125,7 @@ import { Leader, NotLeader, RETRY_AFTER } from "./leader.ts";
 import { MateCredentials, MateRefused } from "./mateCredentials.ts";
 import { DOOR_LIMIT, DoorRateLimit, PERSON_ADDRESS_LIMIT, TooManyRequests } from "./rateLimit.ts";
 import { Writes } from "./writes.ts";
-import { Roles } from "./roles.ts";
+import { ROLES_UNANSWERED, Roles } from "./roles.ts";
 import type { RolloutCause } from "./rollouts.ts";
 import { PersonGitCredentials, type GitHolder } from "./personGitCredentials.ts";
 import { Sessions } from "./sessions.ts";
@@ -200,6 +201,15 @@ const AttachBody = Schema.Struct({
   environment: Schema.optionalKey(Schema.Struct({ name: Schema.String })),
   birth: Schema.optionalKey(Schema.String),
   created: Schema.optionalKey(Schema.Boolean),
+});
+/** A press held, or renewed, by the browser running it (`holdPress`). */
+const PressBody = Schema.Struct({
+  owner: Schema.String,
+  kind: Schema.Literals(["mate", "stage", "production"]),
+  appId: Schema.optionalKey(Schema.String),
+  importProcessId: Schema.optionalKey(Schema.String),
+  /** A renewal of its own live hold, never a first hold (`Structure.holdPress`). */
+  renew: Schema.optionalKey(Schema.Boolean),
 });
 const BirthBody = Schema.Struct({
   appId: Schema.String,
@@ -358,7 +368,12 @@ export const failure = (error: {
     case "ZeropsRefused":
       return Effect.as(
         Effect.logWarning("zerops read failed", error),
-        unavailable("zerops_unavailable"),
+        // A write whose roles Zerops left unanswered wrote nothing: refused, never uncertain.
+        unavailable(
+          "operation" in error && error.operation === ROLES_UNANSWERED
+            ? "zerops_unanswered"
+            : "zerops_unavailable",
+        ),
       );
     case "TooLarge":
       return Effect.succeed(json({ code: "too_large" }, 413));
@@ -1414,6 +1429,47 @@ const routes = (
       ),
     ),
     HttpRouter.add(
+      "PUT",
+      "/api/presses/:projectId",
+      handle(
+        Effect.gen(function* () {
+          const press = yield* jsonBody(PressBody, BODY_LIMIT);
+          return yield* outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
+              return json(yield* (yield* Structure).holdPress(userId, projectId, press), 200);
+            }),
+          );
+        }),
+      ),
+    ),
+    // A press that finished leaves no record; one that stopped ends its hold and keeps it.
+    ...(
+      [
+        ["DELETE", "/api/presses/:projectId/:owner", true],
+        ["POST", "/api/presses/:projectId/:owner/stopped", false],
+      ] as const
+    ).map(([method, path, finished]) =>
+      HttpRouter.add(
+        method,
+        path,
+        handle(
+          outliving(
+            Effect.gen(function* () {
+              const { userId } = yield* principal;
+              const params = yield* HttpRouter.params;
+              yield* (yield* Structure).endPress(userId, params["projectId"] ?? "", {
+                owner: params["owner"] ?? "",
+                finished,
+              });
+              return json({}, 200);
+            }),
+          ),
+        ),
+      ),
+    ),
+    HttpRouter.add(
       "POST",
       "/api/births",
       handle(
@@ -1423,36 +1479,6 @@ const routes = (
             Effect.gen(function* () {
               const { userId } = yield* principal;
               return json(yield* (yield* Structure).recordBirth(userId, birth), 201);
-            }),
-          );
-        }),
-      ),
-    ),
-    HttpRouter.add(
-      "POST",
-      "/api/project-metadata/port",
-      handle(
-        Effect.gen(function* () {
-          const facts = yield* jsonBody(
-            Schema.Struct({
-              projectId: Schema.String,
-              mate: Schema.optionalKey(Schema.Boolean),
-              face: Schema.optionalKey(Schema.String),
-              madeBy: Schema.optionalKey(Schema.String),
-              birthId: Schema.optionalKey(Schema.String),
-              nameSource: Schema.optionalKey(Schema.Literals(["picked", "project"])),
-              standupRequestedBy: Schema.optionalKey(Schema.String),
-              closedOff: Schema.optionalKey(Schema.Boolean),
-              signers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-              tool: Schema.optionalKey(Schema.Literal("gitea")),
-            }),
-            BODY_LIMIT,
-          );
-          return yield* outliving(
-            Effect.gen(function* () {
-              const { userId } = yield* principal;
-              yield* (yield* Structure).portProjectMetadata(userId, facts);
-              return json({ projectId: facts.projectId }, 200);
             }),
           );
         }),

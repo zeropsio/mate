@@ -23,7 +23,7 @@ import {
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { HqPeople } from "@t3tools/shared/hqMates";
 
-import { groupNameIsPlaceholder } from "~/components/zerops/ZeropsGroupTree.logic";
+import { groupNameUnread } from "~/components/zerops/ZeropsGroupTree.logic";
 
 import { rowEnvironment } from "./environmentOrigins";
 import { zeropsMateOwnerOf } from "./useZeropsMateOwners";
@@ -42,21 +42,21 @@ export interface UsageEnvironmentOwner {
 export interface UsageEnvironmentIdentity {
   /** The Mate's display name as the left menu shows it, e.g. "Lena". */
   readonly mateName: string;
-  /** The group's name as the left menu header shows it; null when the group has no real name (placeholder). */
+  /** The group's name as the left menu header shows it; null when its name could not be read. */
   readonly projectName: string | null;
   readonly owner: UsageEnvironmentOwner | null;
 }
 
 export type UsageEnvironmentIdentities = ReadonlyMap<EnvironmentId, UsageEnvironmentIdentity>;
 
-/** Each project's group header, as the left menu names it; placeholder names left out. */
+/** Each project's group header, as the left menu names it; names that could not be read left out. */
 function groupNamesByProject(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): ReadonlyMap<string, string> {
   const names = new Map<string, string>();
   for (const { group, environments } of buildZeropsGroupTree(candidates, { order: "name" })
     .groups) {
-    if (groupNameIsPlaceholder(group)) continue;
+    if (groupNameUnread(group)) continue;
     for (const environment of environments) names.set(environment.item.project.id, group.name);
   }
   return names;

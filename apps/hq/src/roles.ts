@@ -6,13 +6,19 @@
  * where the facts refuse it once more over a fresh read, whose refusal stands; its waits on Zerops
  * end within 35 s (F22, 2026-10-03: a release waited on a fresh read while KRLS's org-wide reads
  * stalled 25 s, and went with its client at 20 s). The decisions themselves are `can`'s
- * (`@t3tools/shared/zeropsPermissions`); nothing about people is stored in HQ.
+ * (`permissions.ts`); nothing about people is stored in HQ.
+ *
+ * A write that cannot be taken back — a merge, a release, a deletion, a move out of an
+ * application, a deploy — is decided inside `decidedFresh` instead: over a read begun after it was
+ * asked, alone. Zerops leaving it unanswered within those 35 s refuses it before anything is
+ * written (`ROLES_UNANSWERED`, the owner, 2026-10-05): an aged view never allows one. Every
+ * write's unanswered roles are that refusal.
  *
  * While Zerops does not answer, `view` serves the last good view for five minutes from its read,
  * at once, and asks Zerops again behind it at most every 30 s (E2E 2026-10-03: KRLS's member list
  * missing HQ's 10 s answered every read of a new application `503` for a minute). A read that
  * Zerops leaves 3 s unanswered — counted from when the read under way began — takes it too, as
- * does a write's first pass; a write's confirmation never (F22, option A, 2026-10-03: KRLS's
+ * does a reversible write's first pass; a confirmation never (F22, option A, 2026-10-03: KRLS's
  * member list went unanswered for minutes at a time, and every release and read waited on it).
  * Past the five minutes a read fails as a write does.
  *
@@ -26,12 +32,8 @@
  *
  * @module roles
  */
-import {
-  type Facts,
-  type Freshness,
-  REASONS,
-  type WriteFreshness,
-} from "@t3tools/shared/zeropsPermissions";
+import { REASONS } from "@t3tools/shared/zeropsPermissions";
+import { type Facts, type Freshness, type WriteFreshness } from "./permissions.ts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -93,6 +95,11 @@ export class Roles extends Context.Service<
      */
     readonly exists: (projectId: string) => Effect.Effect<boolean, ZeropsError>;
     /**
+     * When Zerops answered the last good view (wall ms), the one `view` serves or will: none before
+     * Zerops ever answered. What a reader is told their offers are decided over (`stream.ts`).
+     */
+    readonly answeredAt: Effect.Effect<number | undefined>;
+    /**
      * Every view Zerops answers, as it lands, starting with the last good one: what HQ relays to
      * its Mates (`mateAccess.ts`). It reads nothing itself — the views are those its readers and
      * the official check (every minute) ask for.
@@ -140,6 +147,26 @@ export const confirmingRefusal = <A, E, R>(write: Effect.Effect<A, E, R>): Effec
         write.pipe(Effect.provideService(WriteConfirm, { fresh: true, until })),
       ),
     );
+  });
+
+/**
+ * The operation a write's `ZeropsUnavailable` names when Zerops did not answer its roles: nothing
+ * was written, and HQ answers it `503 zerops_unanswered` (`api.ts`), never as a write that may have
+ * landed.
+ */
+export const ROLES_UNANSWERED = "roles";
+
+/**
+ * A write that cannot be taken back — a merge, a release, a deletion, a move out of an
+ * application, a deploy — decided over roles Zerops answers for it, read after it was asked: never
+ * over a view kept from before (the owner, 2026-10-05). A slow answer within `WRITE_BUDGET` decides
+ * it; none refuses it before anything is written ({@link ROLES_UNANSWERED}). The writes that can be
+ * undone keep `confirmingRefusal`'s last good view.
+ */
+export const decidedFresh = <A, E, R>(write: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+  Effect.gen(function* () {
+    const until = (yield* Clock.currentTimeMillis) + Duration.toMillis(WRITE_BUDGET);
+    return yield* write.pipe(Effect.provideService(WriteConfirm, { fresh: true, until }));
   });
 
 /** How long after its read the last good view is served while Zerops does not answer. */
@@ -301,11 +328,17 @@ export const rolesLayer = (options: {
             orElse: () =>
               Effect.fail(
                 new ZeropsUnavailable({
-                  operation: "write",
+                  operation: ROLES_UNANSWERED,
                   message: "Zerops did not answer within the write's budget.",
                 }),
               ),
           }),
+          // Whatever Zerops did not answer, the write is refused before it writes anything.
+          Effect.mapError((error) =>
+            error._tag === "ZeropsUnavailable"
+              ? new ZeropsUnavailable({ operation: ROLES_UNANSWERED, message: error.message })
+              : error,
+          ),
         );
         return { ...read, freshness: fresh ? "fresh" : "recent" } as OrgView<WriteFreshness>;
       });
@@ -343,6 +376,7 @@ export const rolesLayer = (options: {
         Stream.filter((seen) => seen !== undefined),
         Stream.map((seen): OrgSeen => ({ view: seen.view, answered: seen.answered })),
       );
-      return Roles.of({ view, forWrite, recent, exists, views });
+      const answeredAt = Effect.map(SubscriptionRef.get(cached), (good) => good?.answered);
+      return Roles.of({ view, forWrite, recent, exists, answeredAt, views });
     }),
   );

@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import { DOOR_MAX_AGE_MS } from "@t3tools/shared/zeropsDoor";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -14,7 +15,7 @@ import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { make as makeMateKey } from "./ZeropsMateKey.ts";
 import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectAccessModule from "./ZeropsProjectAccess.ts";
-import { DOOR_THROWAWAY_MAX_AGE_MS, verifyThrowawayCaller } from "./ZeropsThrowawayIdentity.ts";
+import { verifyThrowawayCaller } from "./ZeropsThrowawayIdentity.ts";
 
 const PROJECT_ID = "nTV3oMB2SS634ImDJnQckg";
 const CLIENT_ID = "BkC8AGjFQMyFrLbzjHoE9g";
@@ -103,6 +104,8 @@ const TOKEN_RECORD = {
   roleCode: "NO_ACCESS",
   projects: [],
   canCreateProjects: false,
+  canViewFinances: false,
+  canEditFinances: false,
 };
 
 const MEMBERS = {
@@ -213,8 +216,13 @@ describe("verifyThrowawayCaller", () => {
       "has_rights",
     ],
     [
-      "a token carrying a finance flag",
-      { tokenRecord: { ...TOKEN_RECORD, hasFinances: true } },
+      "a token that can view finances",
+      { tokenRecord: { ...TOKEN_RECORD, canViewFinances: true } },
+      "has_rights",
+    ],
+    [
+      "a token that can edit finances",
+      { tokenRecord: { ...TOKEN_RECORD, canEditFinances: true } },
       "has_rights",
     ],
     [
@@ -232,7 +240,7 @@ describe("verifyThrowawayCaller", () => {
       {
         tokenRecord: {
           ...TOKEN_RECORD,
-          created: isoAt(API_NOW_MS - DOOR_THROWAWAY_MAX_AGE_MS - 1_000),
+          created: isoAt(API_NOW_MS - DOOR_MAX_AGE_MS - 1_000),
         },
       },
       "stale",

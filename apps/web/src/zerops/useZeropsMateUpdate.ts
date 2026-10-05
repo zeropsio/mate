@@ -5,14 +5,25 @@
  * after the update began, or its descriptor on another version. The container
  * machine owns that wait and its budget; this hook only says where the verb
  * stands. A Mate no container of this account follows (its project is not in
- * the organization's inventory) is followed by its own `serverVersion`
- * instead, within the same budget.
+ * the organization's inventory) is followed by its socket alone, within the
+ * same budget.
+ *
+ * **What the update came to is the server it comes back as**, by its
+ * descriptor's version and boot (`bootId`): another version, it updated; the
+ * version it left on another boot, the server restarted without it — the
+ * update did not take, and Update is offered again; the boot it was pressed in,
+ * the server has not restarted yet — a socket that only blinked, or a
+ * container back sooner than its socket — and it is still updating. A server
+ * that names no boot cannot say it restarted, so the version it left is no
+ * answer there.
  *
  * `idle → updating → updated/already-current → idle`, or `→ failed` from an
- * `exec:operate` refusal, the RPC's own `ZeropsMateUpdateResult.error`, or an
- * update past its budget. `already-current`/`updated` settle back to `idle`
- * on their own after a few seconds — nothing here is dismissable, nothing is
- * stored (MU-1).
+ * `exec:operate` refusal, the RPC's own `ZeropsMateUpdateResult.error`, or a
+ * server back on the version it left. An
+ * update past its budget is still updating, taking longer than usual: its
+ * outcome is the server it comes back as, never a clock, and Update stays off
+ * meanwhile. `already-current`/`updated` settle back to `idle` on their own
+ * after a few seconds — nothing here is dismissable, nothing is stored (MU-1).
  *
  * **The person is asked before the call, in the app's confirm dialog** —
  * never in a state of its own here. A confirmation drawn on the line lived
@@ -34,7 +45,11 @@
  */
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
-import type { EnvironmentId, ExecutionEnvironmentUpdate } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ExecutionEnvironmentDescriptor,
+  ExecutionEnvironmentUpdate,
+} from "@t3tools/contracts";
 
 import { isTransportConnectionErrorMessage } from "@t3tools/client-runtime/errors";
 import { CONTAINER_CAPS_MS, type TargetKey } from "@t3tools/client-runtime/zerops/environments";
@@ -64,20 +79,25 @@ export interface MateUpdate {
   readonly check: () => Promise<ExecutionEnvironmentUpdate | null | undefined>;
 }
 
+/** The Mate's server as its descriptor names it: its version and its boot; null while none stands. */
+export type MateServer = Pick<ExecutionEnvironmentDescriptor, "serverVersion" | "bootId">;
+
 interface MateUpdateEntry {
   readonly state: MateUpdateState;
   readonly checked: ExecutionEnvironmentUpdate | null | undefined;
   /**
    * What an accepted update is followed by: the container carrying its
-   * intent, or — when no container takes it — the version it started on;
-   * null while none is followed. Kept beside the phase rather than inside it,
+   * intent, or the socket alone when no container takes it — with the
+   * server's version and boot when the update was pressed; null
+   * while none is followed. Kept beside the phase rather than inside it,
    * because the following outlives what the line says — a Mate that comes
    * back after its budget ran out has still updated, and says so.
    */
-  readonly following:
-    | { readonly kind: "container"; readonly key: TargetKey }
-    | { readonly kind: "version"; readonly from: string }
-    | null;
+  readonly following: {
+    readonly container: TargetKey | null;
+    readonly from: string;
+    readonly bootId: string | undefined;
+  } | null;
   /** Bumped by every action, so an answer from an abandoned one is dropped. */
   readonly generation: number;
   /**
@@ -146,9 +166,7 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-const NOT_BACK = "The server has not come back yet. Check the connection again.";
-
-/** The one timer a Mate has at a time: the display settling back to idle, or a budget. */
+/** The one timer a Mate has at a time: the display settling back to idle, or a budget's label. */
 function schedule(environmentId: EnvironmentId, ms: number, run: () => void): void {
   clearTimer(environmentId);
   timers.set(
@@ -197,10 +215,31 @@ function settle(environmentId: EnvironmentId, generation: number, state: MateUpd
   }
 }
 
+/**
+ * What the server says of an update pressed while it ran `from` in boot `bootId`: updated on
+ * another version, not taken on another boot of the same one, and nothing while it is the same
+ * boot — or a boot it does not name.
+ */
+function cameBackAs(
+  pressed: { readonly from: string; readonly bootId: string | undefined },
+  serverVersion: string | undefined,
+  bootId: string | undefined,
+): MateUpdateState | null {
+  if (serverVersion === undefined) return null;
+  if (serverVersion !== pressed.from) return { phase: "updated", to: serverVersion };
+  if (bootId === undefined || bootId === pressed.bootId) return null;
+  return {
+    phase: "failed",
+    message: `The update did not take: this Mate is still on ${pressed.from}.`,
+  };
+}
+
 export function useZeropsMateUpdate(
   environmentId: EnvironmentId,
-  serverVersion: string | undefined,
+  server: MateServer | null,
 ): MateUpdate {
+  const serverVersion = server?.serverVersion;
+  const bootId = server?.bootId;
   const entry = useSyncExternalStore(subscribe, () => entryFor(environmentId));
   const container = useEnvironmentContainer(environmentId);
   const runUpdate = useAtomCommand(zeropsCommands.mateUpdate, {
@@ -219,32 +258,33 @@ export function useZeropsMateUpdate(
   const verdict = container.verdict;
   const updating = verdict.level === "updating";
   const overdue = updating && verdict.overdue;
+  const containerVersion = container.serverVersion;
   useEffect(() => {
     const current = entryFor(environmentId);
     const following = current.following;
     if (following === null) return;
-    if (following.kind === "container") {
-      if (following.key !== container.key) return;
+    const followed = following.container !== null && following.container === container.key;
+    // The server's own descriptor answers it, whatever the container says; with no answer there
+    // yet, a container back on another version does.
+    let state = cameBackAs(following, serverVersion, bootId);
+    if (state === null && followed) {
       if (updating) {
-        if (overdue && current.state.phase === "updating") {
-          write(environmentId, { ...current, state: { phase: "failed", message: NOT_BACK } });
+        if (overdue && current.state.phase === "updating" && current.state.overdue !== true) {
+          write(environmentId, { ...current, state: { ...current.state, overdue: true } });
         }
         return;
       }
-    } else if (serverVersion === following.from) {
-      return;
+      if (containerVersion !== undefined && containerVersion !== following.from) {
+        state = { phase: "updated", to: containerVersion };
+      }
     }
-    if (serverVersion === undefined) return;
+    if (state === null) return;
+    clearTimer(environmentId);
     // A check held from before the update has been overtaken by it; the
     // descriptor's own field is the current answer again.
-    write(environmentId, {
-      ...current,
-      checked: undefined,
-      following: null,
-      state: { phase: "updated", to: serverVersion },
-    });
-    settleToIdleAfter(environmentId, current.generation);
-  }, [container.key, environmentId, overdue, serverVersion, updating]);
+    write(environmentId, { ...current, checked: undefined, following: null, state });
+    if (state.phase === "updated") settleToIdleAfter(environmentId, current.generation);
+  }, [bootId, container.key, containerVersion, environmentId, overdue, serverVersion, updating]);
 
   const update = useCallback(
     (to: string) => {
@@ -262,15 +302,11 @@ export function useZeropsMateUpdate(
       });
 
       // The update was accepted, or the socket closed under it: its container
-      // follows it from here, from the version it was started on.
+      // follows it from here, or its socket alone — from the server's version and
+      // boot when it was pressed, so a server restarted before the answer still counts.
       const follow = () => {
         const accepted = entryFor(environmentId);
         if (accepted.generation !== generation) return;
-        const key = container.key;
-        if (key !== null && intendContainer(key, { kind: "update", from: serverVersion ?? null })) {
-          write(environmentId, { ...accepted, following: { kind: "container", key } });
-          return;
-        }
         if (serverVersion === undefined) {
           settle(environmentId, generation, {
             phase: "failed",
@@ -278,11 +314,17 @@ export function useZeropsMateUpdate(
           });
           return;
         }
-        write(environmentId, { ...accepted, following: { kind: "version", from: serverVersion } });
+        const key = container.key;
+        const pressedUnder = { from: serverVersion, bootId };
+        if (key !== null && intendContainer(key, { kind: "update", from: serverVersion })) {
+          write(environmentId, { ...accepted, following: { container: key, ...pressedUnder } });
+          return;
+        }
+        write(environmentId, { ...accepted, following: { container: null, ...pressedUnder } });
         schedule(environmentId, CONTAINER_CAPS_MS.updating, () => {
           const waited = entryFor(environmentId);
           if (waited.generation !== generation || waited.state.phase !== "updating") return;
-          write(environmentId, { ...waited, state: { phase: "failed", message: NOT_BACK } });
+          write(environmentId, { ...waited, state: { ...waited.state, overdue: true } });
         });
       };
 
@@ -316,7 +358,7 @@ export function useZeropsMateUpdate(
         follow();
       })();
     },
-    [container.key, environmentId, runUpdate, serverVersion],
+    [bootId, container.key, environmentId, runUpdate, serverVersion],
   );
 
   const check = useCallback(async () => {

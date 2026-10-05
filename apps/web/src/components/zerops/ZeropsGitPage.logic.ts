@@ -17,7 +17,7 @@ import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 export interface GitPageApp {
   readonly appId: string;
   readonly name: string;
-  /** Whether HQ's rule offers the person its changes (`useChangeOffers`); `undefined` while not asked. */
+  /** Whether HQ offers the person its changes (`useChangeOffers`); `undefined` while unsaid. */
   readonly read: boolean | undefined;
   readonly readReason?: string | undefined;
   /** The changes open on it a push reached, as HQ's stream says them; `undefined` until told. */

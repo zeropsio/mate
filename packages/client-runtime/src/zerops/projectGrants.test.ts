@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { HqPlacement } from "./hq/placement.ts";
 import type { Known } from "./knowledge/known.ts";
-import { changeOffers, offerAsker, type OfferViewer } from "./offers.ts";
 import { grantListing, projectGrantsOf, withProjectGrants } from "./projectGrants.ts";
 
 const OWNER_THERE = [
@@ -62,44 +60,5 @@ describe("withProjectGrants — a project row with its own grants", () => {
       waitingFor: null,
     };
     expect(grantListing(unread, grants)).toBe(unread);
-  });
-});
-
-// F12 (e2e, 2026-10-03): the Developer — NO_ACCESS in the organization, able to create projects —
-// is OWNER on Cyd, a Mate of application C. HQ lets them read, comment on, merge and close C's
-// changes; the client offered none of it, its project rows naming no grant.
-describe("a project grant counts in what the client offers", () => {
-  const developer: OfferViewer = {
-    userId: "u-dev",
-    clientUserId: "m-dev",
-    roleCode: "NO_ACCESS",
-    canCreateProjects: true,
-  };
-  const placements = new Map<string, HqPlacement>([
-    ["p-cyd", { appId: "app-c", appName: "C", kind: "mate", mate: null }],
-  ]);
-  const listed = [{ id: "p-cyd" }];
-
-  it("offers every change verb on the application through the grant its read named", () => {
-    const grants = projectGrantsOf(EVIDENCE);
-    const offers = changeOffers(
-      offerAsker(
-        developer,
-        listed.map((project) => withProjectGrants(project, grants)),
-      ),
-      placements,
-      "app-c",
-    );
-    expect(offers).toEqual({ read: true, comment: true, merge: true, close: true, redeploy: true });
-  });
-
-  it("offers nothing where no read named the grant: the org role alone counts", () => {
-    expect(changeOffers(offerAsker(developer, listed), placements, "app-c")).toEqual({
-      read: false,
-      comment: false,
-      merge: false,
-      close: false,
-      redeploy: false,
-    });
   });
 });

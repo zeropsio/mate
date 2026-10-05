@@ -2,16 +2,16 @@
  * Which of the account's projects have a Mate — the rows of the left menu and
  * the cards of the projects screen.
  *
- * The rule is a declared fact with a fallback, and one exclusion:
+ * The rule is HQ's word with a fallback, and one exclusion:
  *
- * - **The project says so** — it carries the `mate` marker tag (`groups.ts`).
- *   Written when the Mate is set up, kept when its container is rebuilt or
- *   lost, visible in the Zerops GUI: the Mate exists whether or not its body
- *   is there right now. Not "is connected" — keying membership on a live
- *   session would reshuffle a person's navigation every time the platform
- *   hiccuped. Presence is durable; only the face moves.
- * - **Or a Mate container is there** — a project set up before the marker
- *   existed, or by something that does not write it, is still a Mate.
+ * - **HQ places it as a Mate** (`groups.ts`) — dev or dev/stage. Kept when its
+ *   container is rebuilt or lost: the Mate exists whether or not its body is
+ *   there right now. Not "is connected" — keying membership on a live session
+ *   would reshuffle a person's navigation every time the platform hiccuped.
+ *   Presence is durable; only the face moves. The project's `mate` tag is the
+ *   Zerops GUI's marker and says nothing here.
+ * - **Or a Mate container is there** — a project HQ has not placed yet, or
+ *   while its word is unread, is still a Mate where its body runs.
  *   `candidates.ts` already emits a candidate with a `service` per zcp
  *   container, so this only reads that.
  * - **Never stage or production.** A Mate is a coding agent with a shell in
@@ -39,7 +39,7 @@ const GROUP_RANK: Record<ZeropsCandidate["group"], number> = {
   unavailable: 3,
 };
 
-/** A Mate container backs this candidate — the body, whether or not the project declares the Mate. */
+/** A Mate container backs this candidate — the body, whether or not HQ places the Mate. */
 export function hasMateContainer(candidate: ZeropsCandidate): boolean {
   return candidate.service !== undefined;
 }
@@ -59,9 +59,9 @@ function isTool(candidate: ZeropsCandidate): boolean {
 /** A Mate lives here — see the module doc for the rule. */
 export function hasMate(candidate: ZeropsCandidate): boolean {
   if (isTool(candidate)) return false;
-  const tags = readZeropsMembership(candidate.project);
-  if (tags.role === "stage" || tags.role === "prod") return false;
-  return tags.mate || hasMateContainer(candidate);
+  const membership = readZeropsMembership(candidate.project);
+  if (membership.role === "stage" || membership.role === "prod") return false;
+  return membership.mate || hasMateContainer(candidate);
 }
 
 /**

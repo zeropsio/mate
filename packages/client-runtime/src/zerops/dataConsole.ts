@@ -578,8 +578,6 @@ export function describeDataConsoleError(err: Pick<ZeropsDataConsoleError, "code
       return "The request timed out.";
     case "session_unavailable":
       return "Data isn't available right now.";
-    case "session_unsupported":
-      return "This project doesn't support Data yet.";
     case "internal":
     default:
       return "Something went wrong.";

@@ -976,10 +976,6 @@ export function ZeropsDataPanel({
   const sessionLine =
     status === "idle" || status === "starting" ? (
       <StatusDot label="Starting" pulse tone="busy" />
-    ) : status === "unsupported" ? (
-      <p className="text-muted-foreground text-xs" data-zerops-data-unsupported>
-        This project doesn't support Data yet.
-      </p>
     ) : status === "unavailable" ? (
       <div className="space-y-2">
         <p className="text-muted-foreground text-xs" data-zerops-data-unavailable>

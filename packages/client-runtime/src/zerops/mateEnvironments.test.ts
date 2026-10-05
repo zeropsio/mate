@@ -70,7 +70,7 @@ describe("hasMateContainer", () => {
 
 describe("hasMate", () => {
   it.each([
-    ["the project declares it, container or not", withoutMate("a", ["mate"]), true],
+    ["the GUI marker alone, with no placement nor container", withoutMate("a", ["mate"]), false],
     ["HQ places it as a Mate, container or not", placedAs(withoutMate("h"), "mate"), true],
     ["a container is there, declared or not", withMate("b"), true],
     ["a project with neither, whatever tags it carries", withoutMate("c", ["mate:g:x"]), false],
@@ -88,9 +88,14 @@ describe("selectMateEnvironments", () => {
     expect(rows.map((row) => row.project.id)).toEqual(["a", "c"]);
   });
 
-  it("keeps a declared Mate whose container is gone — the card is where it comes back", () => {
-    const rows = selectMateEnvironments([withoutMate("a", ["mate"]), withMate("b")]);
+  it("keeps a Mate HQ places whose container is gone — the card is where it comes back", () => {
+    const rows = selectMateEnvironments([placedAs(withoutMate("a"), "mate"), withMate("b")]);
     expect(rows.map((row) => row.project.id)).toEqual(["a", "b"]);
+  });
+
+  it("lists no Mate for a project that carries only the GUI marker", () => {
+    const rows = selectMateEnvironments([withoutMate("a", ["mate"]), withMate("b")]);
+    expect(rows.map((row) => row.project.id)).toEqual(["b"]);
   });
 
   it("never lists production as a Mate, whatever runs in it", () => {

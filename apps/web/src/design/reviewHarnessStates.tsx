@@ -44,6 +44,7 @@ import type {
   ZeropsChangeComments,
   ZeropsChangeCommentsState,
 } from "~/zerops/useZeropsChangeComments";
+import type { ZeropsChangeOffers } from "~/zerops/useChangeOffers";
 import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 
 import { HARNESS_HQ, HARNESS_PICTURES, harnessDescription } from "./reviewHarnessPictures";
@@ -277,7 +278,15 @@ const IDLE: ReviewPress = { kind: "idle" };
 /** Nobody asked to close it. */
 const OPEN: ReviewClose = { kind: "idle" };
 /** All HQ's rule offers a developer of the application: comment, Merge, Close. */
-const DEVELOPS = { read: true, comment: true, merge: true, close: true, redeploy: true } as const;
+const DEVELOPS: ZeropsChangeOffers = {
+  read: true,
+  comment: true,
+  merge: true,
+  close: true,
+  redeploy: true,
+  why: {},
+  readRefused: false,
+};
 /** Merged a minute ago: the review says what happened, and offers the release's review. */
 const MERGED_NOW: Partial<FlowPullRequest> = {
   state: "closed",
@@ -379,7 +388,7 @@ function recipeDiff(tiers: ReadonlyArray<string>): string {
         "+",
         "+  - hostname: mail",
         "+    type: nodejs@22",
-        "+    buildFromGit: https://gitea.example/snap/mail",
+        `+    buildFromGit: ${HARNESS_HQ}/git/g-snap/mail.git`,
         "+    zeropsSetup: mail",
         "+    enableSubdomainAccess: true",
       ];
@@ -678,7 +687,7 @@ function Settling({
   );
 }
 
-/** How long a settling review's reads take, as a slow Gitea answers. */
+/** How long a settling review's reads take, as a slow HQ answers. */
 const SETTLE_MS = 1_500;
 
 /** Immediate deploy answers, before the same jobs arrive in HQ's stream. */
@@ -873,9 +882,7 @@ export const REVIEW_STATES: ReadonlyArray<{
   {
     id: "not-offered",
     label: "Ready, to a person HQ's rule offers neither Merge nor Close",
-    node: (
-      <Change offers={{ read: true, comment: true, merge: false, close: false, redeploy: false }} />
-    ),
+    node: <Change offers={{ ...DEVELOPS, merge: false, close: false, redeploy: false }} />,
   },
   { id: "merging", label: "Merging", node: <Change press={{ kind: "running" }} /> },
   {
@@ -1178,12 +1185,12 @@ export function ReviewStage({
   );
 }
 
-/** How long the dialog's change takes to read its files, as a quick Gitea answers. */
+/** How long the dialog's change takes to read its files, as a quick HQ answers. */
 const TRY_READ_MS = 600;
 
 /**
  * The real dialog, opened from a button, to try its motion, its focus and its keys — its files
- * arriving a moment after it opens, as they do from Gitea.
+ * arriving a moment after it opens, as they do from HQ.
  */
 export function ReviewDialogTry() {
   const [from, setFrom] = useState<HTMLElement | null>(null);

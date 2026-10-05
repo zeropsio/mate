@@ -6,9 +6,9 @@
  * Mate's (D3).
  */
 import { RegistryContext } from "@effect/atom-react";
-import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
+import { readZeropsMembership, type ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
-import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import type { HqMateOfferStates, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { act } from "react";
@@ -42,7 +42,30 @@ interface FaceDialogProps {
   readonly onOpenChangeComplete: (open: boolean) => void;
 }
 
+/** Every kind a Mate may take, as HQ lists where it may go. */
+const KINDS = ["mate", "devstage", "stage", "production"];
+/** What HQ offers an org owner of a Mate: everything, anywhere. */
+const OWNER_OFFERS: HqMateOfferStates = {
+  held: true,
+  observe: { kind: "allowed" },
+  edit: { kind: "allowed" },
+  detach: { kind: "allowed" },
+  moveTo: { acme: KINDS, new: KINDS },
+};
+
 const mock = vi.hoisted(() => ({
+  /** HQ's registry as the page hands it to the hook; empty by default. */
+  registry: { groups: [] } as {
+    groups: ReadonlyArray<{
+      groupId: string;
+      name: string;
+      projects: ReadonlyArray<{ projectId: string; kind: "mate" | "stage" | "production" }>;
+    }>;
+  },
+  /** Whether each Mate's press in another browser is at it, as HQ holds it; none by default. */
+  pressElsewhere: (_projectId: string): "pressing" | "stopped" | "unknown" => "stopped",
+  /** What HQ offers of each project (`useMateOffers`); an owner's by default. */
+  mateOffers: (_projectId: string): unknown => undefined,
   /** HQ's `PATCH /api/mates/{projectId}`, a write here being the promise the test answers. */
   updateMate: vi.fn(),
   restartContainer: vi.fn(),
@@ -116,6 +139,14 @@ const mock = vi.hoisted(() => ({
 }));
 
 vi.mock("../state/entities", () => ({ useThreadShells: () => mock.threads }));
+vi.mock("./useHqOffers", () => ({
+  useMateOffers: () => mock.mateOffers,
+  // HQ offers writing the structure to the org's owners and admins (`create_app`).
+  useOrgOffers: () => () =>
+    mock.roleCode === "OWNER" || mock.roleCode === "ADMIN"
+      ? { kind: "allowed" }
+      : { kind: "refused", reason: "not_structure_writer" },
+}));
 vi.mock("./mateRestart", async (original) => ({
   ...(await original<typeof import("./mateRestart")>()),
   restartMateContainer: mock.restartContainer,
@@ -206,6 +237,9 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("./useOpenMate", () => ({ useOpenMate: () => () => {} }));
 vi.mock("../routes/-environmentTargets", () => ({
   useEnvironmentLinks: () => ({ linkTarget: () => undefined }),
+}));
+vi.mock("./usePressesElsewhere", () => ({
+  usePressesElsewhere: () => (projectId: string) => mock.pressElsewhere(projectId),
 }));
 vi.mock("./inventoryContext", async () => {
   const { useState } = await import("react");
@@ -308,7 +342,7 @@ const seen: Array<MateActions> = [];
 const actions = () => seen.at(-1)!;
 function Probe() {
   const handed = useMateActions({
-    registry: { registry: { groups: [] } },
+    registry: { registry: mock.registry },
     serverVersions: new Map(),
   });
   seen.push(handed);
@@ -323,8 +357,11 @@ beforeEach(() => {
   mock.threads = [];
   mock.restartDialog.current = null;
   mock.roleCode = "OWNER";
+  mock.mateOffers = () => OWNER_OFFERS;
   mock.user = { id: "user-ada" };
   mock.markers.clear();
+  mock.pressElsewhere = () => "stopped";
+  mock.registry = { groups: [] };
   mock.dialog.current = null;
   mock.assignDialog.current = null;
   mock.setProjectMemberRole.mockReset();
@@ -404,6 +441,11 @@ describe("useMateActions — Change face…", () => {
     { who: "a read-only member", role: "READ_ONLY", offered: false },
   ])("$who: offered $offered, right after Rename Mate as Rename is", ({ role, offered }) => {
     mock.roleCode = role;
+    // HQ offers the Mate's record exactly where the platform takes its rename.
+    mock.mateOffers = () => ({
+      ...OWNER_OFFERS,
+      edit: offered ? { kind: "allowed" } : { kind: "refused", reason: "not_project_admin" },
+    });
     mount();
     const ids = verbs(FEN).map((verb) => verb.id);
     expect(ids.includes("face")).toBe(offered);
@@ -417,11 +459,38 @@ describe("useMateActions — Change face…", () => {
 
   it("offers no Mate verb of HQ's to a person the session does not name: unknown is no", () => {
     mock.user = null;
+    mock.mateOffers = () => undefined;
     mount();
     const ids = verbs(FEN).map((verb) => verb.id);
     expect(ids.filter((id) => ["rename-agent", "face", "move", "leave"].includes(id))).toEqual([]);
     expect(actions().changeFace(FEN)).toBeUndefined();
     expect(actions().renameInPlace(FEN)).toBeUndefined();
+  });
+
+  // The web review, 2026-10-05: an HQ from before its offers says nothing of a Mate's: HQ's verbs
+  // are drawn and not pressable, never taken away; the platform's rename stands.
+  it("draws HQ's verbs not pressable on a Mate HQ has said nothing of", () => {
+    const unsaid = { kind: "unknown" } as const;
+    mock.mateOffers = () => ({
+      held: true,
+      observe: unsaid,
+      edit: unsaid,
+      detach: unsaid,
+      moveTo: undefined,
+    });
+    mount();
+    expect(
+      verbs(FEN)
+        .filter((verb) => ["rename-agent", "face", "move", "leave"].includes(verb.id))
+        .map((verb) => [verb.id, verb.disabled === true]),
+    ).toEqual([
+      ["rename-agent", false],
+      ["face", true],
+      ["move", true],
+      ["leave", true],
+    ]);
+    // Its row's verbs are the door's and Zerops': they stand.
+    expect(verbs(FEN).some((verb) => verb.id === "restart")).toBe(true);
   });
 
   it.each([
@@ -646,7 +715,7 @@ describe("useMateActions — Hand this Mate over", () => {
   });
 });
 
-// A Mate its press left open — marker present, not closed off, past the grace — is finished by
+// A Mate its press left open — marker present, not closed off, no press holding it — is finished by
 // whoever may: an owner or an admin, or, for its close-off, the member who added it. Read off the
 // store's markers, so a reload keeps it (pass 28 review).
 describe("useMateActions — Finish setup on a Mate its press left open", () => {
@@ -789,6 +858,12 @@ describe("useMateActions — Finish setup on a Mate HQ holds no record of", () =
     { who: "an owner, HQ's structure not known yet", role: "OWNER", known: false, want: false },
   ])("$who: offered $want", ({ role, known, want }) => {
     mock.roleCode = role;
+    // HQ offers writing its record to whom its rule lets.
+    mock.mateOffers = () => ({
+      held: false,
+      createRecord:
+        role === "OWNER" ? { kind: "allowed" } : { kind: "refused", reason: "not_project_admin" },
+    });
     listing();
     mount(hqRegistry(known));
     expect(finishVerb() !== undefined).toBe(want);
@@ -796,6 +871,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds no record of", () =
 
   it("writes its record, then its birth closed off, with nobody's stand-up asked", async () => {
     mock.finishMateSetup.mockResolvedValue({ ok: true });
+    mock.mateOffers = () => ({ held: false, createRecord: { kind: "allowed" } });
     listing();
     mount(hqRegistry(true));
     await act(async () => {
@@ -825,8 +901,10 @@ describe("useMateActions — Finish setup on a Mate whose press here stopped bef
   const FACE = { tint: "coral", shape: "gem" } as const;
   const startedAt = Date.now() - 2 * 60 * 60 * 1000;
   const DAN = {
-    key: "dan-project:zcp",
-    group: "ready",
+    key: "dan-project",
+    group: "unavailable",
+    // Its project's services read, and no zcp among them: its press stopped before its container.
+    missingContainer: true,
     presence: "known",
     environmentId: EnvironmentId.make("env-dan"),
     project: {
@@ -879,6 +957,8 @@ describe("useMateActions — Finish setup on a Mate whose press here stopped bef
       },
       container: true,
     });
+    // HQ holds Dan nowhere, and offers his owner writing his record.
+    mock.mateOffers = () => ({ held: false, createRecord: { kind: "allowed" } });
     mock.listing.current = {
       state: "known",
       value: [DAN],
@@ -924,7 +1004,9 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
     const { service: _none, ...base } = mate("Ivo", "coral:gem");
     return {
       ...base,
-      group: "ready",
+      group: "unavailable",
+      // Its project's services read, and no zcp among them.
+      missingContainer: true,
       project: { ...base.project, created: "2026-09-01T10:00:00Z" },
     } as ZeropsCandidatePresentation;
   })();
@@ -962,6 +1044,34 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
     return registry;
   };
 
+  // Live, KRLS 2026-10-05: unknown is never missing. A Mate whose project's services are not read
+  // yet — or could not be — has no container this browser knows of, and none it knows is missing:
+  // no Finish setup, and no container imported for it.
+  it("offers no Finish setup while its project's services are not read", () => {
+    // Registered in its application, so only its container could make it half made.
+    mock.registry = {
+      groups: [
+        {
+          groupId: "acme",
+          name: "Acme Docs",
+          projects: [{ projectId: IVO.project.id, kind: "mate" }],
+        },
+      ],
+    };
+    const { missingContainer: _read, ...unread } = IVO;
+    mock.listing.current = {
+      state: "known",
+      value: [unread as ZeropsCandidatePresentation],
+      asOf: { ordinal: 1, atMs: 1_000 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+    mount(known());
+    expect(
+      verbs(unread as ZeropsCandidatePresentation).some((verb) => verb.id === "finish-setup"),
+    ).toBe(false);
+  });
+
   it("registers it there again under HQ's face, writing no new Mate", async () => {
     mock.finishMateSetup.mockResolvedValue({ ok: true });
     mock.listing.current = {
@@ -991,6 +1101,53 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
   });
 });
 
+// B5: two browsers. A slow press the other one still holds at HQ is no half-made Mate, however
+// old its project; the moment its hold runs out — its tab closed — it is, for Finish setup.
+describe("useMateActions — Finish setup on a Mate another browser still presses", () => {
+  const SLOW = (() => {
+    const { service: _none, ...base } = mate("Una", "coral:gem");
+    return {
+      ...base,
+      group: "unavailable",
+      missingContainer: true,
+      project: { ...base.project, created: "2026-09-01T10:00:00Z" },
+    } as ZeropsCandidatePresentation;
+  })();
+
+  it.each([
+    { held: "pressing", offered: false },
+    { held: "unknown", offered: false },
+    { held: "stopped", offered: true },
+  ] as const)("its press elsewhere $held: Finish setup offered $offered", ({ held, offered }) => {
+    mock.pressElsewhere = (projectId) => (projectId === SLOW.project.id ? held : "stopped");
+    mount();
+    expect(verbs(SLOW).some((verb) => verb.id === "finish-setup")).toBe(offered);
+  });
+
+  // A stage's press cut short before its registration: its record places it in its application
+  // as a stage, and a stage is never set up as a Mate.
+  it("offers no Mate's Finish setup on a stage its press's record places", () => {
+    const STAGE = {
+      ...SLOW,
+      project: {
+        ...SLOW.project,
+        hq: {
+          appId: "acme",
+          appName: "Acme Docs",
+          kind: "stage",
+          mate: null,
+          unregistered: true,
+        },
+      },
+    } as ZeropsCandidatePresentation;
+    mount();
+    const offered = actions()
+      .actionsFor(STAGE, readZeropsMembership(STAGE.project))
+      .filter((entry): entry is ZeropsMenuAction => !("separator" in entry));
+    expect(offered.some((verb) => verb.id === "finish-setup")).toBe(false);
+  });
+});
+
 describe("useMateActions — a Mate's own verbs, where its door opens for this person", () => {
   const STOPPED = {
     ...FEN,
@@ -1000,17 +1157,36 @@ describe("useMateActions — a Mate's own verbs, where its door opens for this p
   const ids = () => verbs(STOPPED).map((verb) => verb.id);
 
   it.each([
-    { who: "a member", role: "BASIC_USER", user: { id: "user-ada" }, offered: true },
+    { who: "a member", role: "BASIC_USER", user: { id: "user-ada" }, known: true, offered: true },
     {
       who: "a read-only member, whose Mate is listed",
       role: "READ_ONLY",
       user: { id: "user-ada" },
+      known: true,
       offered: false,
     },
-    { who: "a person the session does not name", role: "OWNER", user: null, offered: false },
-  ])("$who: Start offered $offered", ({ role, user, offered }) => {
+    // An HQ that has not said takes nothing of Zerops' away: Zerops refuses in its own words.
+    {
+      who: "a member HQ has said nothing of yet",
+      role: "BASIC_USER",
+      user: { id: "user-ada" },
+      known: false,
+      offered: true,
+    },
+  ])("$who: Start offered $offered", ({ role, user, known, offered }) => {
     mock.roleCode = role;
     mock.user = user;
+    // HQ offers following the Mate to whom its door opens; it may not have said yet.
+    mock.mateOffers = () =>
+      known
+        ? {
+            ...OWNER_OFFERS,
+            observe:
+              role === "READ_ONLY"
+                ? { kind: "refused", reason: "not_mate_operator" }
+                : { kind: "allowed" },
+          }
+        : undefined;
     mock.listing.current = {
       state: "known",
       value: [STOPPED],
@@ -1076,6 +1252,12 @@ describe("useMateActions — Rename Mate", () => {
 describe("useMateActions — Move, for the person who made the Mate", () => {
   it("offers Change project or role to a member with no org access who owns the Mate's project", () => {
     mock.roleCode = "NO_ACCESS";
+    // HQ lets its maker keep it a Mate in its application, and nothing more.
+    mock.mateOffers = () => ({
+      ...OWNER_OFFERS,
+      edit: { kind: "allowed" },
+      moveTo: { acme: ["mate", "devstage"] },
+    });
     const made = {
       ...FEN,
       project: { ...FEN.project, userRoles: [{ clientUserId: "member-ada", roleCode: "OWNER" }] },
@@ -1092,7 +1274,8 @@ describe("useMateActions — Move, for the person who made the Mate", () => {
   });
 
   // e2e-krls F29: a birth cut before its Mate was attached leaves its application empty in HQ.
-  it("offers every application HQ holds, one with no project in it too", () => {
+  it("offers every application HQ offers it, one with no project in it too", () => {
+    mock.mateOffers = () => ({ ...OWNER_OFFERS, moveTo: { acme: KINDS, "app-g": KINDS } });
     const registry = AtomRegistry.make();
     registry.set(zeropsSessionAtom, {
       status: "signed-in",

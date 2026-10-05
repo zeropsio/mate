@@ -52,6 +52,8 @@ const tokens = [
   },
   { tokenId: "young", name: "mate-door:p:n2", created: new Date(NOW).toISOString() },
   { tokenId: "working", name: "mate-hq:p:address", created: new Date(0).toISOString() },
+  // Another device's throwaway, long past any window: this browser owes nothing for it.
+  { tokenId: "elsewhere", name: "mate-door:q:n3", created: new Date(0).toISOString() },
 ];
 
 beforeEach(() => {
@@ -169,7 +171,7 @@ describe("inventory throwaway cleanup", () => {
   });
 
   it("shows a new failed deletion even after this inventory already completed cleanup", async () => {
-    mocks.debt!.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001);
+    mocks.debt!.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001, "mate-door:p:n1");
     await mount();
     expect(shown.state).toBe("done");
     await act(async () => {
@@ -215,22 +217,49 @@ describe("inventory throwaway cleanup", () => {
     expect(shown.state).toBe("done");
   });
 
-  it("does not list tokens without debt; explicit cleanup discovers legacy leftovers", async () => {
-    mocks.read.mockResolvedValue([
-      { tokenId: "legacy", name: "mate-door:p1:nonce", created: new Date(0).toISOString() },
-    ]);
+  it("does not list tokens without debt, and an explicit cleanup owing nothing deletes nothing", async () => {
     await mount();
     expect(mocks.read).not.toHaveBeenCalled();
     await again();
-    expect(mocks.remove).toHaveBeenCalledWith(
-      { clientId: "org-1", tokenId: "legacy" },
-      expect.any(AbortSignal),
-    );
+    expect(mocks.remove).not.toHaveBeenCalled();
     expect(shown.state).toBe("done");
   });
 
+  it("sweeps exactly what this browser owes, never another device's old throwaway", async () => {
+    mocks.debt!.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001, "mate-door:p:n1");
+    await mount();
+    expect(mocks.remove.mock.calls.map(([input]) => input.tokenId)).toEqual(["stale"]);
+    expect(shown.state).toBe("done");
+  });
+
+  it("deletes an owed id directly, listed or not, and lists nothing for it", async () => {
+    for (const [name, id] of [
+      ["mate-door:s:n5", "unlisted"],
+      ["mate-door:s:n6", "gone"],
+    ] as const) {
+      mocks.debt!.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001, name);
+      mocks.debt!.minted("org-1", name, id);
+    }
+    mocks.remove.mockImplementation(async ({ tokenId }: { readonly tokenId: string }) => {
+      if (tokenId === "gone") throw new ZeropsApiError("Token not found.", "not-found", 404);
+    });
+    await mount();
+    expect(mocks.read).not.toHaveBeenCalled();
+    expect(mocks.remove.mock.calls.map(([input]) => input.tokenId)).toEqual(["unlisted", "gone"]);
+    expect(shown.state).toBe("done");
+    expect(mocks.debt!.failedAt("org-1")).toBeNull();
+  });
+
+  it("sweeps an owed throwaway by the id its mint answered, whatever it is named", async () => {
+    mocks.debt!.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001, "mate-door:r:n4");
+    mocks.debt!.minted("org-1", "mate-door:r:n4", "elsewhere");
+    await mount();
+    expect(mocks.remove.mock.calls.map(([input]) => input.tokenId)).toEqual(["elsewhere"]);
+    expect(mocks.debt!.failedAt("org-1")).toBeNull();
+  });
+
   it("leaves a failed cleanup visible and owed until manual again", async () => {
-    mocks.debt!.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001);
+    mocks.debt!.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001, "mate-door:p:n1");
     mocks.remove.mockRejectedValueOnce(new Error("Zerops did not answer."));
     await mount();
     expect(shown).toMatchObject({ state: "failed", failure: "Zerops did not answer." });
@@ -257,7 +286,7 @@ describe("inventory throwaway cleanup", () => {
       },
     };
     mocks.debt = makeThrowawayDebt(storage);
-    mocks.debt.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001);
+    mocks.debt.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001, "mate-door:p:n1");
     mocks.remove.mockRejectedValueOnce(new Error("Zerops did not answer."));
     await mount();
     expect(shown.state).toBe("failed");
@@ -273,19 +302,25 @@ describe("inventory throwaway cleanup", () => {
   });
 
   it("queues fresh debt until the door window ends, without sweeping a live throwaway", async () => {
-    mocks.debt!.owe("org-1", NOW);
+    mocks.debt!.owe("org-1", NOW, "mate-door:p:n2");
     await mount();
     expect(shown.state).toBe("waiting");
     expect(mocks.read).not.toHaveBeenCalled();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(THROWAWAY_SWEEP_AGE_MS + 1000);
     });
-    expect(mocks.remove).toHaveBeenCalledTimes(2);
+    expect(mocks.remove.mock.calls.map(([input]) => input.tokenId)).toEqual(["young"]);
     expect(mocks.read).toHaveBeenCalledTimes(1);
     expect(shown.state).toBe("done");
   });
 
   it("an explicit cleanup belongs to its organization and never starts one in the next", async () => {
+    // A mint whose answer was lost: its name is the only handle, so its cleanup lists the tokens.
+    mocks.debt!.failCleanup("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001, {
+      attempt: "mate-door:p:n1",
+      state: "unknown",
+      reason: "Answer lost.",
+    });
     await mount();
     await again();
     expect(mocks.read).toHaveBeenCalledTimes(1);
@@ -299,7 +334,7 @@ describe("inventory throwaway cleanup", () => {
   });
 
   it("drops a late token list after the organization changes", async () => {
-    mocks.debt!.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001);
+    mocks.debt!.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001, "mate-door:p:n1");
     let answer: ((value: typeof tokens) => void) | undefined;
     mocks.read.mockImplementation(
       () =>

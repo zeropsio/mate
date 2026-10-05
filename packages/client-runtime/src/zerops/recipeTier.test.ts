@@ -20,13 +20,13 @@ services:
   # The API, built from its own repository.
   - hostname: apidev
     type: nodejs@22
-    buildFromGit: https://gitea.test/acme/api
+    buildFromGit: https://hq.test/git/acme/api.git
     zeropsSetup: dev
     priority: 5
     minContainers: 1
   - hostname: apistage
     type: nodejs@22
-    buildFromGit: https://gitea.test/acme/api
+    buildFromGit: https://hq.test/git/acme/api.git
     zeropsSetup: prod
     enableSubdomainAccess: true
   - hostname: mail
@@ -77,8 +77,8 @@ describe("recipeTierServices", () => {
     { url: "https://github.com/acme/mailpit#main", role: "dev" },
     { url: "https://github.com:8443/acme/mailpit", role: "dev" },
     { url: "https://gist.github.com/acme/mailpit", role: "dev" },
-    { url: "https://github.com.gitea.test/acme/mailpit", role: "dev" },
-    { url: "https://gitea.test/acme/mailpit", role: "dev" },
+    { url: "https://github.com.hq.test/acme/mailpit", role: "dev" },
+    { url: "https://hq.test/git/acme/mailpit.git", role: "dev" },
     { url: "not a url", role: "dev" },
   ])("reads a build from $url as $role", ({ url, role }) => {
     const tier = `services:\n  - hostname: mail\n    type: go@1\n    buildFromGit: ${url}\n`;
@@ -96,7 +96,7 @@ describe("recipeTierServices", () => {
   });
 
   it("reads a stage half by its name, zcp's convention", () => {
-    const tier = `services:\n  - hostname: webstage\n    buildFromGit: https://gitea.test/acme/web\n`;
+    const tier = `services:\n  - hostname: webstage\n    buildFromGit: https://hq.test/git/acme/web.git\n`;
     expect(recipeTierServices(tier)).toEqual([{ hostname: "webstage", role: "stage" }]);
   });
 
@@ -106,7 +106,7 @@ describe("recipeTierServices", () => {
   - hostname: db
     type: postgresql@17
     envSecrets:
-      buildFromGit: https://gitea.test/acme/api
+      buildFromGit: https://hq.test/git/acme/api.git
 `;
     expect(recipeTierServices(tier)).toEqual([{ hostname: "db", role: "managed" }]);
   });
@@ -148,7 +148,7 @@ services:
   name: Acme - Vera
 services:
   - hostname: appdev
-    buildFromGit: https://gitea.test/acme/app
+    buildFromGit: https://hq.test/git/acme/app.git
 `);
     expect(only?.managed).toBe("project:\n  name: Acme - Vera\nservices: []\n");
     expect(only?.managedServices).toEqual([]);
@@ -187,7 +187,7 @@ services:
   it.each([
     {
       case: "a dev half starts empty, where its build was",
-      item: "  - hostname: apidev\n    buildFromGit: https://gitea.test/acme/api\n    zeropsSetup: dev\n",
+      item: "  - hostname: apidev\n    buildFromGit: https://hq.test/git/acme/api.git\n    zeropsSetup: dev\n",
       expected: "  - hostname: apidev\n    startWithoutCode: true\n",
     },
     {
@@ -197,12 +197,12 @@ services:
     },
     {
       case: "a stage half waits for its first deploy: no build, no empty start",
-      item: "  - hostname: apistage\n    buildFromGit: https://gitea.test/acme/api\n    startWithoutCode: true\n    zeropsSetup: prod\n",
+      item: "  - hostname: apistage\n    buildFromGit: https://hq.test/git/acme/api.git\n    startWithoutCode: true\n    zeropsSetup: prod\n",
       expected: "  - hostname: apistage\n",
     },
     {
       case: "a build written as a block goes with its nested lines",
-      item: "  - hostname: apidev\n    buildFromGit:\n      url: https://gitea.test/acme/api\n      ref: main\n    type: nodejs@22\n",
+      item: "  - hostname: apidev\n    buildFromGit:\n      url: https://hq.test/git/acme/api.git\n      ref: main\n    type: nodejs@22\n",
       expected: "  - hostname: apidev\n    startWithoutCode: true\n    type: nodejs@22\n",
     },
     {
@@ -228,13 +228,13 @@ describe("splitRecipeTier on zcp's own tiers", () => {
 project:
     name: Imperial Titan - Vera
 services:
-    - buildFromGit: https://gitea.test/imperial-titan/todoapp
+    - buildFromGit: https://hq.test/git/imperial-titan/todoapp.git
       envSecrets:
           SESSION_KEY: <@generateRandomString(<32>)>
       hostname: todoapp
       type: ubuntu/nodejs@22
       zeropsSetup: dev
-    - buildFromGit: https://gitea.test/imperial-titan/todoapp
+    - buildFromGit: https://hq.test/git/imperial-titan/todoapp.git
       enableSubdomainAccess: true
       hostname: todoappstage
       type: ubuntu/nodejs@22
@@ -320,17 +320,17 @@ describe("recipeTierRepositories", () => {
   it("names where each built service's code lives, a block's url included", () => {
     const tier = `services:
   - hostname: api
-    buildFromGit: https://gitea.test/acme/api
+    buildFromGit: https://hq.test/git/acme/api.git
   - hostname: web
     buildFromGit:
-      url: https://gitea.test/acme/web
+      url: https://hq.test/git/acme/web.git
       ref: main
   - hostname: db
     type: postgresql@17
 `;
     expect([...recipeTierRepositories(tier)]).toEqual([
-      ["api", "https://gitea.test/acme/api"],
-      ["web", "https://gitea.test/acme/web"],
+      ["api", "https://hq.test/git/acme/api.git"],
+      ["web", "https://hq.test/git/acme/web.git"],
     ]);
   });
 

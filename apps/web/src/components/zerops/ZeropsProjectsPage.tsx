@@ -44,7 +44,7 @@ import {
   useProjectOrderOptions,
 } from "~/zerops/projectOrderPreference";
 import {
-  applyFirstBuildGiveUp,
+  applyFirstBuildVerdict,
   firstBuildOverdue,
   applyProjectCreationVerdict,
   normalizeOrigin,
@@ -102,6 +102,9 @@ import { useZeropsSession, type ZeropsSessionStatus } from "~/zerops/ZeropsSessi
 import { withheldProjectNotices } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
+import { useZeropsFirstBuilds } from "~/zerops/useZeropsFirstBuilds";
+import { drawnMateProjects, useMatesInventory } from "~/zerops/useMatesInventory";
+import { usePressesElsewhere } from "~/zerops/usePressesElsewhere";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
@@ -142,15 +145,11 @@ import {
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
   type ZeropsMembership,
-  canWriteRegistry,
-  mayOffer,
-  offerAsker,
   firstDeployLine,
   type FirstDeploy,
   matePoseOf,
 } from "@t3tools/client-runtime/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
-import { sessionOfferViewer } from "~/zerops/offerViewer";
 
 import { MateFace, MicroLabel, StatusDot } from "./primitives";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
@@ -174,7 +173,8 @@ import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
-import { useChangeOffers } from "~/zerops/useChangeOffers";
+import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
+import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
 import { useFinishGroupEnvironment } from "~/zerops/useFinishGroupEnvironment";
@@ -190,7 +190,7 @@ import {
   creatableRoles,
   environmentRoleLabel,
   environmentRoleTag,
-  groupNameIsPlaceholder,
+  groupNameUnread,
 } from "./ZeropsGroupTree.logic";
 import { ZeropsProjectsFlow, type ProjectsFlowGroup } from "./projects/ZeropsProjectsFlow";
 import {
@@ -506,8 +506,8 @@ export function declaredEnvironmentSummary(
 }
 
 /**
- * The one line a group says about itself, in its own row: that it has no name
- * yet, or where a stage or production stands whose setup is not finished —
+ * The one line a group says about itself, in its own row: that its name could
+ * not be read, or where a stage or production stands whose setup is not finished —
  * being finished, finished in vain, or waiting for the person's *Finish setting
  * up* (audit R2: the page never finishes one by itself). A finish's failure is
  * the group's to show, in the page's words — the platform's own message is not
@@ -522,7 +522,7 @@ export function projectsGroupLine(input: {
   /** Its environment whose setup is not finished. */
   readonly halfMade: GroupEnvironmentTier | undefined;
 }): string | undefined {
-  if (input.placeholder) return "This project has no name yet";
+  if (input.placeholder) return "Couldn't read this project's name";
   if (input.finishing !== undefined) return `Finishing ${input.finishing}…`;
   if (input.unfinished !== undefined) return `Couldn't finish setting up ${input.unfinished}`;
   if (input.halfMade !== undefined) return `Setting up ${input.halfMade} isn't finished`;
@@ -852,16 +852,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     presses.find((press) => press.organizationId === activeOrganization?.id && press.container)
       ?.projectId ?? null,
   );
-  // A first build half an hour on reads as the platform leaves it, with what removes it.
+  // A first build whose process failed reads as the platform leaves it, with what removes it.
+  const firstBuilds = useZeropsFirstBuilds(observedCandidates);
+  // Each Mate the page draws has its project read: its container is what Restart and the
+  // application's Add Mate and Add stage stand on.
+  useMatesInventory(useMemo(() => drawnMateProjects(observedCandidates), [observedCandidates]));
   const candidates = useMemo(
     () =>
       observedCandidates.map((candidate) =>
-        applyFirstBuildGiveUp(
+        applyFirstBuildVerdict(
           applyProjectCreationVerdict(candidate, creationVerdicts.get(candidate.project.id)),
-          nowMs,
+          firstBuilds.get(candidate.key),
         ),
       ),
-    [creationVerdicts, nowMs, observedCandidates],
+    [creationVerdicts, firstBuilds, observedCandidates],
   );
   // A Mate this tab pressed lands the person in its conversation once it is
   // connected. A lease (the account runtime's) reaches the door — it never
@@ -960,16 +964,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         };
   const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
     viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
-  // Whom HQ's rule is asked about for each row's verbs (`mateRowCan`): nobody where the session
-  // names nobody, and nothing is then offered.
-  const asker = useMemo(
-    () =>
-      offerAsker(
-        sessionOfferViewer(user, activeOrganization),
-        candidates.map((candidate) => candidate.project),
-      ),
-    [activeOrganization, candidates, user],
-  );
+  // What HQ offers of each row's project (`mateRowCan`), and of the organization.
+  const mateOffersOf = useMateOffers();
+  const orgOffer = useOrgOffers();
   // Whose a Mate this person may see and not open is, named from HQ's people: no member list read.
   const people = useAtomValue(hqPeopleAtom);
 
@@ -1025,7 +1022,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       firstBuildOverdue: firstBuildOverdue(candidate, nowMs),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
-      can: mateRowCan(asker, candidate.project.id),
+      can: mateRowCan(mateOffersOf(candidate.project.id)),
       ...(role === undefined ? {} : { role }),
       ...(visibility === undefined ? {} : { visibility }),
       ...(ownerName === undefined ? {} : { ownerName }),
@@ -1097,8 +1094,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           structure: hqStructure?.structure ?? null,
           project: candidate.project,
           press: held,
-          writer: canWriteRegistry(sessionOfferViewer(user, activeOrganization)),
-          mayCreateRecord: mayOffer(asker, "create_mate_record", { projectId, held: "none" }),
+          writer: orgOffer("create_app").kind === "allowed",
+          mayCreateRecord: (() => {
+            const offers = mateOffersOf(projectId);
+            return offers?.held === false && offers.createRecord.kind === "allowed";
+          })(),
           standUp: false,
           candidates,
         });
@@ -1142,7 +1142,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [
       accountHq,
       activeOrganization,
-      asker,
+      mateOffersOf,
       candidates,
       client,
       groupTree.groups,
@@ -1150,11 +1150,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       hqStructure,
       organizationRef,
       projectRef,
+      orgOffer,
       readGroupAgents,
       setConnectError,
       settingUpKey,
       runtime,
-      user,
     ],
   );
 
@@ -1639,9 +1639,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const groupDeploys = projectFlow.flows;
 
   /**
-   * The environment row of one Zerops project, when some group declares it.
-   * A project no `environments.yaml` names is not a group environment and
-   * keeps the row it always had.
+   * The environment row of one Zerops project, when HQ records it as one of an
+   * application's environments. A project HQ records as none is not a group
+   * environment and keeps the row it always had.
    */
   const declaredEnvironment = useCallback(
     (projectId: string) => {
@@ -1901,6 +1901,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // Only an application whose environments HQ has said says what it holds: one still unsaid would
   // read as holding nothing, and every environment in it as half-made.
   const heldEnvironments = useAtomValue(hqEnvironmentsAtom);
+  const mayKeepKey = useKeepDeployKeyOffer();
+  // A press still at a project — this browser's or another's, as HQ holds it — is its own to finish.
+  const pressOf = usePressesElsewhere(candidates);
   const halfMade = useMemo(
     () =>
       heldEnvironments === null
@@ -1909,10 +1912,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             projects: candidates.map((candidate) => candidate.project),
             registry: registryState.registry,
             environments: heldEnvironments,
-            // A key is minted only by somebody HQ's rule lets keep it (`keep_deploy_token`).
-            mayKey: (projectId) => mayOffer(asker, "keep_deploy_token", { projectId }),
+            // A key is minted only by somebody HQ offers keeping it (`keep_deploy_token`).
+            mayKey: (projectId) => mayKeepKey(projectId) === true,
+            pressing: (projectId) => pressOf(projectId) === "pressing",
           }),
-    [asker, candidates, heldEnvironments, registryState.registry],
+    [candidates, heldEnvironments, mayKeepKey, pressOf, registryState.registry],
   );
   const finishing = useFinishGroupEnvironment({ client, clientId: activeOrganization?.id, hq });
 
@@ -2265,8 +2269,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
    *
    * The flow's own `add-production` next step stays the usual way there: it
    * needs `main` to have code, which today is read only from a merged code
-   * pull request still in the recent list (`groupFlowInputOf`'s own
-   * `mainHasCode`/`mainHead` go unread for every group). That misses the code
+   * change still in the recent list (nothing fills `groupFlowInputOf`'s own
+   * `mainHasCode`/`mainHead`). That misses the code
    * a recipe planted at birth and any merge that has since scrolled off, so
    * the menu offers the same verb on the one thing this account can always
    * answer — whether the role is still there to take (`creatableRoles`) and
@@ -2348,7 +2352,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           // A project with nothing in it goes, at whoever writes the structure's word.
           ...(deleteOffered(
             group,
-            mayOffer(asker, "delete_app", null),
+            orgOffer("delete_app").kind !== "refused",
             applicationContents(hqStructure, activeOrganization?.id, group.groupId),
           )
             ? [
@@ -2356,6 +2360,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                   id: "delete-group",
                   label: `Delete ${group.name}…`,
                   variant: "destructive" as const,
+                  // While HQ has not said or does not answer, drawn and not pressable.
+                  disabled: orgOffer("delete_app").kind !== "allowed",
                   onSelect: () => {
                     setRowDialog({ kind: "delete-group", group });
                   },
@@ -2485,7 +2491,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       const members = groupMemberFactsOf(environments, activityOf, conversationsRead, user?.id);
       const isStop = (role: ZeropsEnvironmentRole | undefined) =>
         role === "stage" || role === "prod";
-      const placeholder = groupNameIsPlaceholder(group);
+      const placeholder = groupNameUnread(group);
       return {
         group,
         contents: applicationContents(hqStructure, activeOrganization?.id, group.groupId),
@@ -2501,7 +2507,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               addsOffered: addsOfferedFor(group),
             }),
             pending: group.pending,
-            nowMs,
           }),
         ),
         activities: rowMateActivitiesOf(
@@ -2531,8 +2536,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         ),
         others: environments.filter(({ item, role }) => !hasMate(item) && !isStop(role)),
         lastMerged: reads === undefined ? undefined : lastMergedCode(reads.merged),
-        // Visible rather than a tooltip: it is an invitation to name the
-        // project, and it disappears the moment one does.
+        // Visible rather than a tooltip: a name HQ holds that could not be
+        // read is a read problem, said where the name would be.
         line: projectsGroupLine({
           placeholder,
           unfinished: finishing.unfinished.get(group.groupId),

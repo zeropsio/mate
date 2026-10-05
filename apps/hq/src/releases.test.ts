@@ -141,6 +141,7 @@ const withReleases = <A, E>(
             forWrite: Effect.succeed({ ...ORG_VIEW, freshness: "recent" as const }),
             recent: Effect.succeed({ ...ORG_VIEW, freshness: "cached" as const }),
             exists: () => Effect.succeed(true),
+            answeredAt: Effect.succeed(undefined),
             views: Stream.never,
           }),
         ),
@@ -871,25 +872,33 @@ describe("an application's releases over HQ's API", () => {
       { timeout: 60_000 },
     );
 
-    // F22, option A (2026-10-03): while Zerops left KRLS's member list unanswered for minutes, a
-    // release waited on it for its client's whole 20 s. A write waits on Zerops 3 s, then is
-    // decided over the last view Zerops answered within five minutes.
+    // F22 (2026-10-03): while Zerops left KRLS's member list unanswered for minutes, a release
+    // waited on it for its client's whole 20 s. The owner, 2026-10-05: a release cannot be taken
+    // back, so it is decided over roles Zerops answers for it — a slow answer still decides it, none
+    // refuses it at once, and nothing is released over a view kept from before.
     it.effect(
-      "answers a release within 5 s while Zerops's member list stalls, over a view read within the last five minutes",
+      "releases over roles Zerops answers slowly, and refuses one it does not answer at all",
       () =>
         Effect.gen(function* () {
-          const { fake, app, groupHead, timed } = yield* productionApp;
-          fake.membersTake = 40_000;
-          // Past the view's 200 ms here: the last one Zerops answered is all there is.
+          const { fake, app, groupHead, timed, tags } = yield* productionApp;
+          // Past the view's 200 ms here: every release reads the org again.
           yield* Effect.sleep(Duration.millis(500));
-          assert.deepStrictEqual(
-            yield* timed("/releases", {
-              tag: "v0.1.0",
-              groupHead,
-              entries: [{ service: "app", sha: app }],
-            }),
-            { status: 201, inTime: true, deploys: ["building"] },
-          );
+          fake.unanswered.add("members");
+          const refused = yield* timed("/releases", {
+            tag: "v0.1.0",
+            groupHead,
+            entries: [{ service: "app", sha: app }],
+          });
+          fake.unanswered.delete("members");
+          assert.deepStrictEqual([refused.status, refused.inTime, yield* tags], [503, true, []]);
+          fake.membersTake = 2000;
+          yield* Effect.sleep(Duration.millis(500));
+          const { status, deploys } = yield* timed("/releases", {
+            tag: "v0.1.0",
+            groupHead,
+            entries: [{ service: "app", sha: app }],
+          });
+          assert.deepStrictEqual([status, deploys], [201, ["building"]]);
         }),
       { timeout: 60_000 },
     );

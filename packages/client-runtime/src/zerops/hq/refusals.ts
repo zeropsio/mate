@@ -9,6 +9,7 @@
  * @module hq/refusals
  */
 import type { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
+import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import type { ReleaseRefusal } from "@t3tools/shared/hqRelease";
 import type { Reason } from "@t3tools/shared/zeropsPermissions";
 
@@ -157,6 +158,12 @@ export function enrollmentRefusalWords(code: string | undefined): string {
 /** Where zcp found no official HQ in the organization: an admin sets one up. */
 export const NO_HQ_WORDS = "This organization has no HQ yet. Ask an admin to set it up.";
 
+/**
+ * What a write HQ refused says when Zerops did not answer the roles it is decided over
+ * (`503 zerops_unanswered`): nothing was done, and pressing again may go through.
+ */
+export const ZEROPS_UNANSWERED = "Zerops is not answering, so HQ did nothing. Try again.";
+
 /** What anything asked of the organization's HQ says where its official HQ is not open here. */
 export const HQ_NOT_OPEN = "This organization's HQ is not open here.";
 
@@ -181,4 +188,36 @@ export function hqRefusalWords(refusal: {
     if (words !== undefined) return words;
   }
   return `HQ refused this (${reason ?? refusal.code}).`;
+}
+
+/** How a verb's state is worded: a wall time, and when Zerops answered HQ's view of the roles. */
+interface OfferWording {
+  readonly at: (ms: number) => string;
+  readonly rolesAnsweredAt: string | null;
+}
+
+/**
+ * What a control says beside a verb HQ does not offer (`hqOffer`): HQ's refusal, as of when Zerops
+ * answered the roles it was decided over; that HQ has not said; since when HQ does not answer.
+ * Nothing for an offered one. `at` words a wall time; nothing here compares one with now.
+ */
+export function hqOfferWords(
+  state: Exclude<HqOfferState, { readonly kind: "allowed" }>,
+  input: OfferWording,
+): string;
+export function hqOfferWords(state: HqOfferState, input: OfferWording): string | undefined;
+export function hqOfferWords(state: HqOfferState, input: OfferWording): string | undefined {
+  switch (state.kind) {
+    case "allowed":
+      return undefined;
+    case "refused": {
+      const words = hqRefusalWords({ code: "forbidden", reason: state.reason });
+      const answered = input.rolesAnsweredAt === null ? NaN : Date.parse(input.rolesAnsweredAt);
+      return Number.isNaN(answered) ? words : `${words} Zerops roles as of ${input.at(answered)}.`;
+    }
+    case "unknown":
+      return "HQ has not said yet.";
+    case "unavailable":
+      return `HQ unavailable since ${input.at(state.since)}.`;
+  }
 }

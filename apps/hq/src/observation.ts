@@ -9,7 +9,7 @@ import {
   type EnvironmentStatus,
   type ObservedEnvironment,
 } from "@t3tools/shared/hqObservation";
-import { can } from "@t3tools/shared/zeropsPermissions";
+import { can } from "./permissions.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";

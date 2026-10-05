@@ -52,7 +52,7 @@ export const zeropsGrantScopes: ReadonlyArray<AuthEnvironmentScope> = AuthZerops
  * Fails without issuing anything when the credential is not a throwaway for
  * this Mate, when its creator is `READ_ONLY` here (the Mate is theirs to see,
  * not to open), when they are no member at all, or when the platform cannot be
- * reached. The scopes are the same set `zerops-identity` grants: role decides
+ * reached. The scopes are always `AuthZeropsClientScopes`: role decides
  * *whether* the door opens, never *how far*.
  */
 export const mintZeropsThrowawayPairingCredential = Effect.fn(

@@ -33,8 +33,8 @@ export interface ZeropsReleaseOffer {
     | undefined;
   readonly gate: ReleaseGate;
   /**
-   * HQ's rule for this person (`releasePermission`), its refusal in words; `undefined` while it
-   * cannot be asked. HQ asks it again at the press.
+   * HQ's offer to this person (`can`'s `release`), its refusal in words; `undefined` while HQ
+   * has not said. HQ asks it again at the press.
    */
   readonly permission: ReleaseGate | undefined;
   /** The recipe's `main` as read with the offer: what the release tags; HQ refuses one that moved. */
@@ -46,6 +46,8 @@ export interface ZeropsReleaseOffer {
   readonly entries: ReadonlyArray<ReleaseEntry>;
   /** The release tag on its way to production (`releaseInFlight`); Release waits for it. */
   readonly inFlight: string | undefined;
+  /** The newest release, once HQ ended its deploy with some of it not live (`releaseStalled`). */
+  readonly stalled: string | undefined;
   /**
    * What pressing it would put live, per repository HQ compared (`movedCommits`): the commits
    * `main` has that its services do not run. With squash merges each is one task delivered.

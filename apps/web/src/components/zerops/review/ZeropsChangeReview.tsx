@@ -8,7 +8,7 @@
  * nobody wrote.
  *
  * Merge squashes it in HQ with the head the review shows, and *Close without merging…* asks
- * before it closes it — each where HQ's rule offers it to the person (`useChangeOffers`). After
+ * before it closes it — each where HQ offers it to the person (`useChangeOffers`). After
  * Merge the review stays: it says what happened, and where production waits for a code change,
  * its button opens the release's review in place. A recipe change is never released: its review
  * says, from the files it changed, what its merge does to the environments made from it.
@@ -46,8 +46,7 @@ import {
 } from "~/zerops/projectFlowContext";
 import type { ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
-import { type ZeropsChangeOffers } from "~/zerops/useChangeOffers";
-import { useChangeReviewOffers } from "~/zerops/useChangeReviewOffers";
+import { type ZeropsChangeOffers, useChangeOffers } from "~/zerops/useChangeOffers";
 import {
   mergedMain,
   useZeropsChangeDetail,
@@ -115,7 +114,7 @@ export function ZeropsChangeReview({
   /** Opens another review in this one's place — the release, once this merged. */
   readonly onReplace: (target: ReviewTarget) => void;
 }) {
-  const reviewOffers = useChangeReviewOffers(target.groupId);
+  const reviewOffers = useChangeOffers()(target.groupId);
   const router = useRouter();
   const flowValue = useZeropsProjectFlowOptional();
   // The dialog's way to the same review at the change's own address.
@@ -416,8 +415,8 @@ export interface ChangeReviewViewProps {
   readonly comments: ZeropsChangeComments;
   readonly remarks: ReadonlyArray<ChangeRemark>;
   /**
-   * What HQ's rule offers the person (`useChangeOffers`): the comment box, Merge, Close — each
-   * only where it does; `undefined` while its facts are not held, when Merge waits.
+   * What HQ offers the person (`useChangeOffers`): the comment box, Merge, Close — each only
+   * where it does; `undefined` while HQ has not said, when Merge waits.
    */
   readonly offers: ZeropsChangeOffers | undefined;
   /** Merge, as pressed: running, refused in HQ's words, or done. */
@@ -543,8 +542,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     <ZeropsReviewSurface
       back={props.back}
       consequence={
-        props.offers?.merge === false && props.offers.reason !== undefined
-          ? props.offers.reason
+        props.offers?.merge === false && props.offers.why.merge !== undefined
+          ? props.offers.why.merge
           : model.consequence
       }
       dismiss={over && !fromRelease ? "Close" : undefined}
@@ -575,26 +574,24 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       onOpenPage={props.onOpenPage}
       onClose={props.onClose}
       primary={
-        !over && !asked && props.offers?.again !== undefined
-          ? { label: "Again", enabled: true, safe: false, onPress: props.offers.again }
-          : primary === undefined
-            ? undefined
-            : {
-                ...primary,
-                busy: press.kind === "running" || closing.kind === "running",
-                label:
-                  press.kind === "running"
-                    ? "Merging"
-                    : closing.kind === "running"
-                      ? "Closing"
-                      : primary.label,
-                icon: next ? "tag" : undefined,
-                onPress: () => {
-                  if (asked) props.onClosing("press");
-                  else if (next) props.onReviewRelease();
-                  else props.onMerge();
-                },
-              }
+        primary === undefined
+          ? undefined
+          : {
+              ...primary,
+              busy: press.kind === "running" || closing.kind === "running",
+              label:
+                press.kind === "running"
+                  ? "Merging"
+                  : closing.kind === "running"
+                    ? "Closing"
+                    : primary.label,
+              icon: next ? "tag" : undefined,
+              onPress: () => {
+                if (asked) props.onClosing("press");
+                else if (next) props.onReviewRelease();
+                else props.onMerge();
+              },
+            }
       }
       secondary={
         secondary === undefined

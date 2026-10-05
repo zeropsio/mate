@@ -11,7 +11,6 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import * as NodeZlib from "node:zlib";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import { GitRunner } from "./git.ts";
 import { refusalReport } from "./protocol.ts";
 import { GitError, makeHqGit, type HqGit, type HqGitOptions, type Principal } from "./index.ts";
@@ -189,7 +188,6 @@ const setup = (overrides: Partial<HqGitOptions>) =>
     denyRead = false;
     git = yield* makeHqGit({
       rootDir: NodePath.join(dir, "repos"),
-      importRoots: [dir],
       authenticate: (req) => {
         switch (req.headers["x-principal"]) {
           case "core":
@@ -251,6 +249,23 @@ describe("repositories and real smart HTTP", () => {
           NodeFSP.readFile(NodePath.join(repoDir(), "HEAD"), "utf8"),
         );
         expect(head).toBe("ref: refs/heads/main\n");
+      }),
+    ),
+  );
+
+  it.live("restores nothing from an unreadable bundle and leaves the place free", () =>
+    fixture(
+      Effect.gen(function* () {
+        const bundle = NodePath.join(dir, "bad.bundle");
+        yield* Effect.promise(() => NodeFSP.writeFile(bundle, "not a bundle"));
+        const error = yield* Effect.flip(git.restore({ appId: "app", id: "repo" }, bundle));
+        expect(error).toMatchObject({ _tag: "GitError", reason: "git_failed" });
+        expect(error.message).not.toContain(dir);
+        expect(yield* git.list()).toEqual([]);
+        expect(
+          yield* Effect.promise(() => NodeFSP.readdir(NodePath.join(dir, "repos", "app"))),
+        ).toEqual([]);
+        yield* git.create({ appId: "app", id: "repo" });
       }),
     ),
   );
@@ -429,169 +444,6 @@ describe("repositories and real smart HTTP", () => {
         expect(yield* Effect.promise(() => NodeFSP.readdir(dir))).not.toContain("hook-ran");
       }),
     ),
-  );
-
-  it.live.each([
-    ["an http URL", () => "http://example.com/repo.git"],
-    ["a private https host", () => "https://10.0.0.5/repo.git"],
-    ["a loopback https host", () => "https://[::1]/repo.git"],
-    ["a project-internal https host", () => "https://db/repo.git"],
-    ["https credentials in the URL", () => "https://user:secret@example.com/repo.git"],
-    ["another app's repository by path", () => NodePath.join(dir, "repos", "victim", "secret.git")],
-    [
-      "another app's repository by file URL",
-      () => NodeURL.pathToFileURL(NodePath.join(dir, "repos", "victim", "secret.git")).href,
-    ],
-    ["a relative path", () => NodePath.relative(process.cwd(), NodePath.join(dir, "source"))],
-    ["a path outside the import roots", () => NodePath.dirname(packageDir)],
-    ["an ssh URL", () => "ssh://git@example.com/repo.git"],
-  ] satisfies Array<[string, () => string]>)("refuses to import from %s", ([_name, from]) =>
-    fixture(
-      Effect.gen(function* () {
-        yield* git.create({ appId: "victim", id: "secret" });
-        yield* Effect.promise(() => source());
-        const error = yield* Effect.flip(git.import({ appId: "attacker", id: "loot" }, from()));
-        expect(error).toMatchObject({ _tag: "GitError", reason: "source_refused" });
-        expect(error.message).not.toContain(dir);
-        expect(error.message).not.toContain("secret");
-        expect(yield* git.list("attacker")).toEqual([]);
-      }),
-    ),
-  );
-
-  it.live("refuses credentials for a local source", () =>
-    fixture(
-      Effect.gen(function* () {
-        const initial = yield* Effect.promise(() => source());
-        expect(
-          yield* Effect.flip(
-            git.import({ appId: "app", id: "repo" }, initial.path, {
-              username: "u",
-              password: "p",
-            }),
-          ),
-        ).toMatchObject({ reason: "source_refused" });
-      }),
-    ),
-  );
-
-  it.live.each(["path", "file"])(
-    "imports branches and tags from a local %s source, never mate/* or pull refs",
-    (kind) =>
-      fixture(
-        Effect.gen(function* () {
-          const initial = yield* Effect.promise(() => source());
-          for (const ref of [
-            "refs/tags/v1",
-            "refs/heads/topic",
-            "refs/heads/mate/alice/1",
-            "refs/pull/1/head",
-          ]) {
-            yield* Effect.promise(() => checked(initial.path, ["update-ref", ref, initial.sha]));
-          }
-          yield* Effect.promise(() =>
-            checked(initial.path, ["symbolic-ref", "HEAD", "refs/heads/topic"]),
-          );
-          const repo = yield* git.import(
-            { appId: "app", id: "repo" },
-            kind === "file" ? NodeURL.pathToFileURL(initial.path).href : initial.path,
-          );
-          expect(yield* git.list("app")).toEqual([repo]);
-          expect(
-            yield* Effect.promise(() =>
-              checked(repoDir(), ["for-each-ref", "--format=%(refname)"]),
-            ),
-          ).toBe(["refs/heads/main", "refs/heads/topic", "refs/tags/v1"].join("\n"));
-          expect(
-            yield* Effect.promise(() => NodeFSP.readFile(NodePath.join(repoDir(), "HEAD"), "utf8")),
-          ).toBe("ref: refs/heads/main\n");
-          expect(yield* Effect.promise(() => NodeFSP.readdir(repoDir()))).not.toContain(
-            "FETCH_HEAD",
-          );
-          expect(
-            yield* Effect.promise(() =>
-              NodeFSP.readFile(NodePath.join(repoDir(), "config"), "utf8"),
-            ),
-          ).not.toContain(initial.path);
-        }),
-      ),
-  );
-
-  it.live("refuses a source without main and leaves nothing behind", () =>
-    fixture(
-      Effect.gen(function* () {
-        const initial = yield* Effect.promise(() => source());
-        yield* Effect.promise(() => checked(initial.path, ["branch", "-m", "main", "trunk"]));
-        expect(
-          yield* Effect.flip(git.import({ appId: "app", id: "repo" }, initial.path)),
-        ).toMatchObject({ reason: "no_main" });
-        expect(yield* git.list()).toEqual([]);
-        expect(
-          yield* Effect.promise(() => NodeFSP.readdir(NodePath.join(dir, "repos", "app"))),
-        ).toEqual([]);
-        yield* git.create({ appId: "app", id: "repo" });
-      }),
-    ),
-  );
-
-  it.live(
-    "stops a stalled https import at its deadline and removes the partial repository",
-    () =>
-      fixture(
-        Effect.gen(function* () {
-          const peers: Array<Promise<void>> = [];
-          // Accepts and reads, never answers the TLS handshake.
-          const stall = NodeNet.createServer((socket) => {
-            peers.push(new Promise((resolve) => socket.on("close", () => resolve())));
-            socket.resume();
-          });
-          yield* Effect.acquireRelease(
-            Effect.promise(
-              () => new Promise<void>((resolve) => stall.listen(0, "127.0.0.1", resolve)),
-            ),
-            () => Effect.sync(() => stall.close()),
-          );
-          const { port } = stall.address() as NodeNet.AddressInfo;
-          const started = Date.now();
-          const pending = yield* Effect.forkChild(
-            Effect.flip(
-              git.import({ appId: "app", id: "repo" }, `https://127.0.0.1:${port}/repo.git`, {
-                username: "import-user",
-                password: "import-secret",
-              }),
-            ),
-          );
-          // Credentials travel in git's environment: never in an argv that `ps` shows.
-          const fetching = yield* Effect.promise(async () => {
-            for (;;) {
-              const commands = NodeChildProcess.execFileSync("ps", ["-eo", "args="])
-                .toString()
-                .split("\n")
-                .filter((command) => command.includes(`127.0.0.1:${port}`));
-              if (commands.length > 0) return commands.join("\n");
-              await new Promise((resolve) => setTimeout(resolve, 20));
-            }
-          });
-          for (const secret of [
-            "import-user",
-            "import-secret",
-            "aW1wb3J0LXVzZXI6aW1wb3J0LXNlY3JldA==",
-          ])
-            expect(fetching).not.toContain(secret);
-          const error = yield* Fiber.join(pending);
-          expect(error).toMatchObject({ reason: "timeout" });
-          expect(error.message).not.toContain("import-secret");
-          expect(Date.now() - started).toBeLessThan(8_000);
-          expect(
-            yield* Effect.promise(() => NodeFSP.readdir(NodePath.join(dir, "repos", "app"))),
-          ).toEqual([]);
-          // The whole git process group stops, including the helper that holds the connection.
-          expect(peers.length).toBeGreaterThan(0);
-          yield* Effect.promise(() => Promise.all(peers));
-        }),
-        { allowImportHost: () => true, importTimeoutMs: 1_500 },
-      ),
-    20_000,
   );
 
   it.live("prints refusal reports with a real stateless git send-pack client", () =>
@@ -1112,7 +964,9 @@ describe("repositories and real smart HTTP", () => {
         vi.stubEnv("GIT_CONFIG_KEY_0", "core.bare");
         vi.stubEnv("GIT_CONFIG_VALUE_0", "false");
         vi.stubEnv("GIT_CONFIG_GLOBAL", NodePath.join(fakeHome, ".gitconfig"));
-        yield* git.import({ appId: "app", id: "repo" }, initial.path);
+        const bundle = NodePath.join(dir, "source.bundle");
+        yield* Effect.promise(() => checked(initial.path, ["bundle", "create", bundle, "--all"]));
+        yield* git.restore({ appId: "app", id: "repo" }, bundle);
         yield* git.convergeRepo({ appId: "app", id: "repo" });
         expect(
           yield* Effect.promise(() => NodeFSP.readFile(NodePath.join(repoDir(), "HEAD"), "utf8")),
@@ -1134,7 +988,7 @@ describe("repositories and real smart HTTP", () => {
   it.live.each([
     ["a trailing-slash prefix", { pathPrefix: "/git/" }],
     ["a negative request deadline", { requestTimeoutMs: -1 }],
-    ["a NaN import deadline", { importTimeoutMs: Number.NaN }],
+    ["a NaN ref-lock wait", { refLockTimeoutMs: Number.NaN }],
   ] satisfies Array<[string, Partial<HqGitOptions>]>)("refuses to open with %s", ([_name, bad]) =>
     fixture(
       Effect.gen(function* () {

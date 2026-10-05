@@ -21,6 +21,8 @@ import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { arrivalAwaitsAnswer, arrivalLinkHolds, mateComing, type MateComing } from "./mateComing";
 import { useNewMate } from "./newMate";
 import { useZeropsCreationVerdicts } from "./useZeropsCreationVerdicts";
+import { useZeropsFirstBuilds } from "./useZeropsFirstBuilds";
+import { usePressesElsewhere } from "./usePressesElsewhere";
 import { pressComingInput, useMatePresses } from "./matePress";
 
 /**
@@ -119,8 +121,9 @@ export function useMateConversationsRead(): (candidate: ZeropsCandidate) => bool
 /**
  * Whether a Mate the menu lists is still in its first minutes, as its row says it: its press made
  * in this browser, its project on the way up, its address landed and its Mate not answering yet,
- * the platform's verdict on its creation (read as the projects page reads it), or a step of this
- * tab's creation that failed.
+ * the platform's verdict on its creation and its first build's process (read as the projects page
+ * reads them), its press in another browser as HQ holds it, or a step of this tab's creation that
+ * failed.
  */
 export function useMateComingOf(
   candidates: ReadonlyArray<ZeropsCandidate>,
@@ -132,6 +135,8 @@ export function useMateComingOf(
     candidates,
     presses.find((press) => press.container && press.state.kind === "pressing")?.projectId ?? null,
   );
+  const firstBuilds = useZeropsFirstBuilds(candidates);
+  const pressOf = usePressesElsewhere(candidates);
   return useCallback(
     (candidate: ZeropsCandidate) => {
       const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
@@ -147,8 +152,10 @@ export function useMateComingOf(
             : arrivalLinkHolds(mateLink(candidate)),
         answerAwaited:
           candidate.arriving === undefined ? undefined : arrivalAwaitsAnswer(mateLink(candidate)),
+        firstBuild: firstBuilds.get(candidate.key),
+        pressElsewhere: pressOf(candidate.project.id),
       });
     },
-    [presses, creations, mateLink, verdicts],
+    [presses, creations, firstBuilds, mateLink, pressOf, verdicts],
   );
 }

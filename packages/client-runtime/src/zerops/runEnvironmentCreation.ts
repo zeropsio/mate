@@ -70,7 +70,12 @@ export interface EnvironmentCreationPlatform {
     readonly agents: ReadonlyArray<ZeropsAgentType>;
     /** The tier's runtimes, for zcp to import on its first boot. */
     readonly setupRuntimesYaml?: string;
-  }) => Promise<{ readonly serviceName: string; readonly imported: boolean }>;
+  }) => Promise<{
+    readonly serviceName: string;
+    readonly imported: boolean;
+    /** The container's creation process Zerops answered the import with, where it named one. */
+    readonly processId?: string;
+  }>;
   readonly importServices: (projectId: string, yaml: string) => Promise<unknown>;
   /**
    * `POST /client/{id}/project/import` — a project and its services from one

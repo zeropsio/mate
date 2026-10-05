@@ -1,15 +1,20 @@
 /**
  * A Mate's setup, read off its own `/mate/setup.json` (`mateSetup.ts`) while its view shows it
  * coming up: the same answer in any browser, and whether a browser watches or not. Read every few
- * seconds while there is something left to happen, and no more once its Git access, its runtimes
- * and its stand-up have settled.
+ * seconds while there is something left to happen or nothing answers yet, and no more once its
+ * Git access, its runtimes and its stand-up have settled.
  *
- * `undefined` while nothing readable came back — not asked yet, on its way up, or an older Mate
- * whose server has no such route: the caller then reads the container's health, as it always
- * did (`/mate/healthz`).
+ * A read turned away, or answered with something that is not the setup, is a failure the view
+ * says, and ends the observation until the person's *Try again* (`refreshMateSetup`) or a changed
+ * input — its caller's `epoch`: a redeploy, its server restarting — reads it again. A server
+ * outside a Zerops project has no setup (`404`): nothing is said, and nothing read again.
  */
-import { readMateSetup, type MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
-import { useCallback, useSyncExternalStore } from "react";
+import {
+  readMateSetup,
+  type MateSetup,
+  type MateSetupFailure,
+} from "@t3tools/client-runtime/zerops/mateSetup";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { onAccountLifetimeClose } from "./accountLifetime";
 
 /** How often a Mate's setup is read while something in it is still to happen. */
@@ -32,14 +37,26 @@ export function mateSetupSettled(setup: MateSetup): boolean {
   );
 }
 
+/** What a Mate's setup observation holds; the same object until it changes. */
+export interface MateSetupObserved {
+  /** The last setup its Mate told; undefined while none came back. Kept through a failed read. */
+  readonly setup: MateSetup | undefined;
+  /** Why the last read could not be its setup; undefined while nothing says so. */
+  readonly failure: MateSetupFailure | undefined;
+}
+
+const NOTHING_OBSERVED: MateSetupObserved = { setup: undefined, failure: undefined };
+
 interface SetupObservation {
   readonly origin: string;
   readonly listeners: Set<() => void>;
-  setup: MateSetup | undefined;
+  observed: MateSetupObserved;
   controller: AbortController | undefined;
   timer: ReturnType<typeof setTimeout> | undefined;
   inFlight: boolean;
   dirty: boolean;
+  /** The caller's input the last read answered for (`useMateSetup`'s `epoch`). */
+  epoch: string | undefined;
 }
 const observations = new Map<string, SetupObservation>();
 function observation(origin: string): SetupObservation {
@@ -48,11 +65,12 @@ function observation(origin: string): SetupObservation {
     held = {
       origin,
       listeners: new Set(),
-      setup: undefined,
+      observed: NOTHING_OBSERVED,
       controller: undefined,
       timer: undefined,
       inFlight: false,
       dirty: false,
+      epoch: undefined,
     };
     observations.set(origin, held);
   }
@@ -67,16 +85,22 @@ async function ask(held: SetupObservation): Promise<void> {
   const reading = await readMateSetup(held.origin, undefined, controller.signal);
   if (controller.signal.aborted || held.controller !== controller) return;
   held.inFlight = false;
-  if (reading.kind === "setup") {
-    held.setup = reading.setup;
+  const observed: MateSetupObserved | null =
+    reading.kind === "setup"
+      ? { setup: reading.setup, failure: undefined }
+      : reading.kind === "refused" || reading.kind === "invalid"
+        ? { setup: held.observed.setup, failure: reading.kind }
+        : null;
+  if (observed !== null) {
+    held.observed = observed;
     for (const listener of held.listeners) listener();
   }
   if (held.dirty) {
     held.dirty = false;
     void ask(held);
   } else if (
-    reading.kind !== "absent" &&
-    !(reading.kind === "setup" && mateSetupSettled(reading.setup))
+    reading.kind === "unreachable" ||
+    (reading.kind === "setup" && !mateSetupSettled(reading.setup))
   ) {
     held.timer = setTimeout(() => {
       held.timer = undefined;
@@ -104,7 +128,11 @@ function stop(held: SetupObservation): void {
   held.timer = undefined;
 }
 
-export function useMateSetup(origin: string | undefined): MateSetup | undefined {
+export function useMateSetup(
+  origin: string | undefined,
+  /** What its setup depends on beyond its origin; a change reads it again. */
+  epoch?: string,
+): MateSetupObserved {
   const subscribe = useCallback(
     (listener: () => void) => {
       if (origin === undefined) return () => undefined;
@@ -119,10 +147,21 @@ export function useMateSetup(origin: string | undefined): MateSetup | undefined 
     [origin],
   );
   const snapshot = useCallback(
-    () => (origin === undefined ? undefined : observations.get(origin)?.setup),
+    () =>
+      origin === undefined
+        ? NOTHING_OBSERVED
+        : (observations.get(origin)?.observed ?? NOTHING_OBSERVED),
     [origin],
   );
-  return useSyncExternalStore(subscribe, snapshot, snapshot);
+  const observed = useSyncExternalStore(subscribe, snapshot, snapshot);
+  useEffect(() => {
+    if (origin === undefined || epoch === undefined) return;
+    const held = observation(origin);
+    const before = held.epoch;
+    held.epoch = epoch;
+    if (before !== undefined && before !== epoch) refreshMateSetup(origin);
+  }, [origin, epoch]);
+  return observed;
 }
 
 onAccountLifetimeClose(() => {

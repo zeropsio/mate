@@ -107,9 +107,10 @@ export interface ContainerStore {
    * The projects whose Mate HQ holds online now: each proves its container up as a socket does,
    * and HQ letting one go reads it again. Null while HQ's word is not current — not yet, or not
    * any more: what it last held online proves for `HQ_WAIT_MS` more, and a Mate first seen
-   * meanwhile waits as long for its word before its first read.
+   * meanwhile waits as long for its word before its first read. `"absent"` where no HQ will
+   * answer at all — a client that runs no HQ flow: nothing waits for a word that never comes.
    */
-  readonly setOnline: (projectIds: ReadonlySet<string> | null) => void;
+  readonly setOnline: (projectIds: ReadonlySet<string> | null | "absent") => void;
   /** Our verb was accepted: its level holds until a read fact settles it. */
   readonly intend: (key: TargetKey, intent: IntentRequest) => void;
   /**
@@ -522,6 +523,10 @@ export function makeContainerStore(ports: ContainerStorePorts): ContainerStore {
       }),
     setOnline: (projectIds) =>
       batch(() => {
+        if (projectIds === "absent") {
+          hear(new Set(), "silent");
+          return;
+        }
         if (projectIds !== null) {
           hear(projectIds, "answered");
           return;

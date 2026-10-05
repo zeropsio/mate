@@ -16,10 +16,18 @@
  * deploy that never comes reads "Nothing deployed yet" again, never on its way for ever. What holds
  * it, the line says, as main said its runner did: HQ holds no deploy key that works for the stage.
  *
+ * Whether it is coming up at all is its owners' word, never its age: its own import while the
+ * platform says something of it is being made (a project CREATING, a service NEW or CREATING), and
+ * past that only while HQ is still bringing it up (`HqEnvironment.birth`: the rollout its attach
+ * asked for, not ended). One HQ did not bring up, or whose birth ended, says what it lacks on its
+ * pill — a stopped database, nothing deployed, no address — never a step of coming up.
+ *
  * Pure: no network, no clock of its own, no platform globals (rule R1).
  *
  * @module stopComing
  */
+import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
+
 import { type HqJob, jobInFlight } from "./hq/environments.ts";
 
 /** Where an environment coming up has got. */
@@ -52,18 +60,13 @@ export type FirstDeploy =
   /** HQ holds no deploy key that works for the stage: it deploys nothing until one is minted. */
   | { readonly kind: "held" }
   /**
-   * A build of it was seen to end with nothing running (`Deployment.afterBuild`), or HQ says its
-   * build failed, or HQ refused it.
+   * Zerops ended a build of it HQ did not make failed with nothing running
+   * (`Deployment.failedBuild`), or HQ says its build failed, or HQ refused it.
    */
   | { readonly kind: "failed"; readonly reason?: string | undefined };
 
-/**
- * How long after its project was made an environment may still be coming up. The owner's stage
- * took 131 s (project 32 s, database 50 s, build 63–130 s, address 131 s); a first build can take
- * several minutes more. Past this, what it lacks is the pill's to say — not deployed yet, down —
- * not a step of its coming up.
- */
-export const COMING_UP_WINDOW_MS = 15 * 60_000;
+/** Whether HQ is still bringing an environment up: its birth told, and not ended. */
+const beingBorn = (birth: EnvironmentBirth | null | undefined): boolean => birth?.ended === false;
 
 const failing = (status: string) => /FAIL/u.test(status);
 
@@ -139,9 +142,8 @@ export function stopComing(input: {
   /** Its creation was accepted and the listing does not hold its project yet. */
   readonly pending: boolean;
   readonly projectStatus: string | undefined;
-  /** When its project was made; unknown is never "just made". */
-  readonly createdAt: string | undefined;
-  readonly nowMs: number;
+  /** HQ bringing it up (`HqEnvironment.birth`); none where HQ did not, or nothing told yet. */
+  readonly birth: EnvironmentBirth | null | undefined;
   /** Its services as the platform lists them; `undefined` while unread. */
   readonly services: ReadonlyArray<PlatformService> | undefined;
   /** A deploy runs on it (`deployBuilding`). */
@@ -154,8 +156,6 @@ export function stopComing(input: {
   readonly firstDeploy: FirstDeploy | undefined;
 }): StopComing | undefined {
   if (input.pending) return coming("project");
-  const made = input.createdAt === undefined ? Number.NaN : Date.parse(input.createdAt);
-  if (Number.isNaN(made) || input.nowMs - made >= COMING_UP_WINDOW_MS) return undefined;
   if (input.projectStatus === MAKING_PROJECT) return coming("project");
   // Stopped, being deleted, or a status nobody named: not a step of its coming up.
   if (input.projectStatus !== undefined && input.projectStatus !== "ACTIVE") return undefined;
@@ -169,6 +169,12 @@ export function stopComing(input: {
   // release, its runtime UPGRADING — is that deploy's to say, never the place coming up again.
   const deployed = input.deployed ?? (input.routes > 0 ? true : undefined);
   if (deployed === true && input.routes > 0) return undefined;
+  // What the platform says it is making is its import's own step, whoever brought it up; past
+  // that, only HQ still bringing it up makes it coming up.
+  if (!beingBorn(input.birth)) {
+    if (others.some(({ status }) => MAKING.has(status))) return coming("database");
+    return runtimes.some(({ status }) => MAKING.has(status)) ? coming("app") : undefined;
+  }
   const brokenOther = others.find(({ status }) => failing(status));
   if (brokenOther !== undefined && deployed !== true) {
     return { kind: "failed", reason: `the ${brokenOther.hostname} didn’t start` };
@@ -222,24 +228,28 @@ export interface PlatformService {
  * coming-up steps that come before any word about its first deploy, in {@link stopComing}'s order:
  * its project being made (CREATING), a database not running yet, its app being added (none listed
  * yet, or being made). `undefined` once the import is done, where something failed, its project
- * is stopped or being deleted, its services are unread under an active project (a reload), or its
- * window went by. A surface that cannot read the platform's steps still keeps their order by it:
+ * is stopped or being deleted, or its services are unread under an active project (a reload). Past
+ * what the platform says it is making, only while HQ is still bringing it up. A surface that cannot read the platform's steps still keeps their order by it:
  * the projects page's cell says nothing of a first deploy, or of the runner, before this is done.
  */
 export function stopImport(input: {
   readonly projectStatus: string | undefined;
-  readonly createdAt: string | undefined;
-  readonly nowMs: number;
+  /** HQ bringing it up (`HqEnvironment.birth`); none where HQ did not, or nothing told yet. */
+  readonly birth: EnvironmentBirth | null | undefined;
   /** Its services as the platform lists them; `undefined` while unread. */
   readonly services: ReadonlyArray<PlatformService> | undefined;
 }): "project" | "database" | "app" | undefined {
-  const made = input.createdAt === undefined ? Number.NaN : Date.parse(input.createdAt);
-  if (Number.isNaN(made) || input.nowMs - made >= COMING_UP_WINDOW_MS) return undefined;
   if (input.projectStatus === MAKING_PROJECT) return "project";
   if (input.projectStatus !== undefined && input.projectStatus !== "ACTIVE") return undefined;
   if (input.services === undefined) return undefined;
   if (input.services.some(({ status }) => failing(status))) return undefined;
   const runtimes = input.services.filter((service) => service.runtime);
+  if (!beingBorn(input.birth)) {
+    if (input.services.some((service) => !service.runtime && MAKING.has(service.status))) {
+      return "database";
+    }
+    return runtimes.some(({ status }) => MAKING.has(status)) ? "app" : undefined;
+  }
   if (input.services.some((service) => !service.runtime && service.status !== "ACTIVE")) {
     return "database";
   }
@@ -254,9 +264,10 @@ export interface ListedStop {
     readonly state: "checking" | "empty" | "deploying" | "deployed" | "failed";
     readonly version: unknown;
     readonly firstDeploy?: FirstDeploy | undefined;
+    /** HQ bringing it up (`HqEnvironment.birth`). */
+    readonly birth?: EnvironmentBirth | null | undefined;
   };
   readonly projectStatus: string | undefined;
-  readonly createdAt: string | undefined;
   readonly services: Parameters<typeof stopComing>[0]["services"];
   /** A deploy runs on it (`deployBuilding`). */
   readonly building: boolean;
@@ -267,14 +278,12 @@ export interface ListedStop {
 export function listedStopComing(
   tier: "stage" | "production",
   listed: ListedStop,
-  nowMs: number,
 ): StopComing | undefined {
   return stopComing({
     tier,
     pending: false,
     projectStatus: listed.projectStatus,
-    createdAt: listed.createdAt,
-    nowMs,
+    birth: listed.stop.birth,
     services: listed.services,
     building: listed.building,
     deployed: stopDeployed(listed.stop),
@@ -333,7 +342,7 @@ export function firstDeployTone(first: FirstDeploy | undefined): "busy" | "faile
 /** A stage's line while its creation, or its own import, is under way. */
 export const STAGE_SETTING_UP = "Setting up a stage…";
 
-/** A stage whose first build was seen to end with nothing running. */
+/** A stage whose first deploy failed: its build, as Zerops or HQ ended it, or HQ refusing it. */
 export const FIRST_DEPLOY_FAILED = "First deploy failed";
 
 /** A stage's first deploy on its way, where its line would say nothing is deployed. */

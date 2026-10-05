@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  type Decision,
-  type Facts,
-  type Principal,
-  REASONS,
-  type Targets,
-  type Verb,
-  can,
-} from "./zeropsPermissions.ts";
+import { type Decision, REASONS } from "@t3tools/shared/zeropsPermissions";
+import { type Facts, type Principal, type Targets, type Verb, can } from "./permissions.ts";
 
 /**
  * The person `U` (member row `C-U`) and one target project `P`; beside it `P_SEEN` (U reads it
@@ -273,6 +266,34 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "not_project_admin",
     ],
     ["an invited owner", { orgRole: "OWNER", status: "INVITED" }, KEEP_TOKEN, "not_active_member"],
+  ],
+  // A press held by the browser running it: by Basic user or above on its project, so a reader
+  // alone cannot hold a press and block another's Finish setup.
+  hold_press: [
+    [
+      "the one making it, Basic user there",
+      { override: "BASIC_USER" },
+      { verb: "hold_press", target: { projectId: "P" } },
+      "allow",
+    ],
+    [
+      "org Read only reads but may not hold it",
+      { orgRole: "READ_ONLY" },
+      { verb: "hold_press", target: { projectId: "P" } },
+      "not_mate_operator",
+    ],
+    [
+      "org none, no grant",
+      {},
+      { verb: "hold_press", target: { projectId: "P" } },
+      "not_project_reader",
+    ],
+    [
+      "an invited owner",
+      { orgRole: "OWNER", status: "INVITED" },
+      { verb: "hold_press", target: { projectId: "P" } },
+      "not_active_member",
+    ],
   ],
   read_project: [
     [

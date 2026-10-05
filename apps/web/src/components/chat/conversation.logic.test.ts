@@ -2505,11 +2505,11 @@ describe("deriveOutcome", () => {
       user("m0", 0),
       operation("i1", "t1", 1, {
         kind: "import",
-        subject: "gitea",
+        subject: "cache",
         phase: "failed",
-        voice: "Importing gitea",
+        voice: "Importing cache",
         statusWord: "Import failed",
-        explanation: { reason: "Gitea isn't connected yet." },
+        explanation: { reason: "Zerops has no service type valkey@9." },
       }),
       assistant("a1", "t1", 2),
     ];
@@ -2521,9 +2521,9 @@ describe("deriveOutcome", () => {
     expect(outcome?.notDone).toEqual([
       {
         key: "op:i1",
-        subject: "gitea",
+        subject: "cache",
         word: "Import failed",
-        reason: "Gitea isn't connected yet",
+        reason: "Zerops has no service type valkey@9",
         at: at(1, 30),
       },
     ]);
@@ -2546,11 +2546,11 @@ describe("deriveOutcome", () => {
       }),
       operation("i1", "t1", 2, {
         kind: "import",
-        subject: "gitea",
+        subject: "cache",
         phase: "failed",
-        voice: "Creating gitea.",
+        voice: "Creating cache.",
         statusWord: "Import failed",
-        explanation: { reason: "Gitea isn't connected yet." },
+        explanation: { reason: "Zerops has no service type valkey@9." },
       }),
       assistant("a1", "t1", 3),
     ];
@@ -2560,7 +2560,7 @@ describe("deriveOutcome", () => {
       diff: null,
     });
     expect(outcome?.notDone).toEqual([
-      expect.objectContaining({ subject: "gitea", reason: "Gitea isn't connected yet" }),
+      expect.objectContaining({ subject: "cache", reason: "Zerops has no service type valkey@9" }),
     ]);
   });
 });

@@ -324,7 +324,8 @@ descriptor → exchange → thread state.
 - **K, credential** — `none`, `waiting(on)`, `exchanging(attempt)`, `backoff(retryAt, n, last)`,
   `refused(reason)`, `held(envId, gen)`, `retired`
   - _Notes:_ `waiting` on presence, container, access, zerops, visible or budget. A socket auth
-    rejection of the installed generation → re-exchange; three in two minutes → backoff. A
+    rejection of the installed generation → re-exchange; three in two minutes → `refused(credential)`,
+    as is the door refusing the exchange's credential. A
     redeployed Mate (new `environmentId`) → `replaced`.
 - **L, link** — `idle`, `connecting`, `connected(since)`, `backoff(retryAt)`, `blocked(reason)`,
   `offline`
@@ -347,8 +348,10 @@ origin, 20 s per attempt. A Mate no lease holds is **parked**: the registry clos
 stops its renewal, and keeps its registration, kept session and cached data; unparked, it connects
 on the session it kept, through no door. A route or an action no record or descriptor names finds
 its Mate through HQ's index (`hqIndex`, environment → project) with no descriptor sweep. A command
-on a parked Mate is sent once its Mate connects, or after 30 s regardless (`whileMateHeld`). After five consecutive automatic failures a target retries every 5 minutes
-until a user retry or an input change. Mint budgets are per tab: a burst of 10 door mints refilled
+on a parked Mate is sent once its Mate connects, or after 30 s regardless (`whileMateHeld`). A transient failure is retried on the ladder (2, 4, 8, 15, 30, 60 s,
+jittered; a visible wake or the network back retries at once); after five consecutive automatic
+failures a target nobody looks at retries every 5 minutes, the route's stays on the ladder — until
+a user retry or an input change, in this load only. A definitive refusal is never retried. Mint budgets are per tab: a burst of 10 door mints refilled
 at 30 a minute, and the mint for a Mate the person asked for never waits (`doorThrowaway.ts`). A
 refusal (door role refusal, a server below the floor, a project mismatch) waits for an input change;
 descriptor `zerops.identity = failed` is retryable, not a refusal. Credential rotation writes
@@ -356,20 +359,22 @@ through the credential store (`registry.rotateCredential`) and never re-register
 
 **Reachability** is a projection over P, K, L, C and the descriptor; the first matching row wins.
 
-| Verdict                               | When                                                                                   | Terminal |
-| ------------------------------------- | -------------------------------------------------------------------------------------- | -------- |
-| `gone`                                | P gone                                                                                 | yes      |
-| `replaced(by)`                        | This `environmentId` was superseded                                                    | yes      |
-| `refused(role)`, `update-unavailable` | K refused for the role, or the floor with no restart that reaches it                   | yes      |
-| `update-required(actual, min)`        | K refused for the version and a restart reaches the floor                              | no       |
-| `connecting(waitingOn: descriptor)`   | L blocked while K re-evaluates it                                                      | no       |
-| `ready(notice?)`                      | K held, L connected, C not inactive; a restart or update shows as a notice             | no       |
-| `no-address(reason)`                  | P has no origin                                                                        | no       |
-| container verdict                     | C creating, provisioning, booting, restarting, updating, inactive or needing an action | no       |
-| `waiting-for-zerops`                  | K waits on Zerops                                                                      | no       |
-| `retrying(retryAt, last)`             | K in backoff                                                                           | no       |
-| `reconnecting`                        | K held and L not connected, or K reset after an auth rejection                         | no       |
-| `resolving`, `connecting`             | P unknown; otherwise                                                                   | no       |
+| Verdict                                         | When                                                                                                          | Terminal |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------- |
+| `gone`                                          | P gone                                                                                                        | yes      |
+| `replaced(by)`                                  | This `environmentId` was superseded                                                                           | yes      |
+| `refused(role)`, `update-unavailable`           | K refused for the role, or the floor with no restart that reaches it                                          | yes      |
+| `refused(configuration)`, `refused(credential)` | K refused; its reason, and Try again — never asked again on its own                                           | no       |
+| `update-required(actual, min)`                  | K refused for the version and a restart reaches the floor                                                     | no       |
+| `connecting(waitingOn: descriptor)`             | L blocked while K re-evaluates it                                                                             | no       |
+| `ready(notice?)`                                | K held, L connected, C not inactive; a restart or update shows as a notice                                    | no       |
+| `no-address(reason)`                            | P has no origin                                                                                               | no       |
+| container verdict                               | C creating, provisioning, booting (the platform says so), restarting, updating, inactive or needing an action | no       |
+| `not-answering(overdue)`                        | C booting only by failed probes, the link never lost here: its server is not answering; Try now               | no       |
+| `waiting-for-zerops`                            | K waits on Zerops                                                                                             | no       |
+| `retrying(retryAt, last)`                       | K in backoff                                                                                                  | no       |
+| `reconnecting(retryAt?)`                        | K held and L lost (whatever C guesses), or K reset after an auth rejection; with L's retry time, a countdown  | no       |
+| `resolving`, `connecting`                       | P unknown; otherwise                                                                                          | no       |
 
 Every surface that links to or renders a Mate reads this projection; a link is offered when the
 verdict is neither `gone` nor `replaced`.

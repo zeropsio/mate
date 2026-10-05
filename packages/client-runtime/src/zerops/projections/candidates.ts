@@ -17,13 +17,27 @@ import {
   addressSeenAfter,
   deriveZeropsCandidates,
   isZcpService,
-  type AddressClock,
+  newestSubdomainProcess,
+  subdomainEnableOf,
+  type AddressFacts,
   type AddressSeen,
+  type SubdomainEnable,
+  type SubdomainProcess,
   type ZeropsCandidate,
 } from "../candidates.ts";
 import { readZeropsMembership } from "../groups.ts";
-import { projectRecordToZeropsProject, serviceRecordToZeropsService } from "../data/dto.ts";
-import type { ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
+import {
+  processRecordToActivityProcess,
+  projectRecordToZeropsProject,
+  serviceRecordToZeropsService,
+} from "../data/dto.ts";
+import type {
+  CollectionRead,
+  ProjectActivityRead,
+  ProjectRecord,
+  ProjectRef,
+  ServiceRecord,
+} from "../data/types.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
 import {
   knownPresentation,
@@ -65,12 +79,12 @@ const known = (candidates: ReadonlyArray<ZeropsCandidate>): ReadonlyArray<Candid
 /**
  * One project's candidates; null while its name or status is not read yet. Only an active
  * project's services are read (`servicesOf`): any other status decides its one row alone. A reader
- * that holds a clock judges a young container's wait for its address by it (`AddressClock`).
+ * that holds what it knows of its containers' addresses judges them by it (`AddressFacts`).
  */
 export function projectCandidates(
   record: ProjectRecord,
   servicesOf: (project: ProjectRef) => Known<ReadonlyArray<ServiceRecord>>,
-  clock?: AddressClock,
+  facts?: AddressFacts,
 ): ReadonlyArray<CandidateRow> | null {
   const project = projectRecordToZeropsProject(record);
   if (project === null) return null;
@@ -80,7 +94,7 @@ export function projectCandidates(
   if (services === null) {
     return [{ key: project.id, project, group: "unavailable", presence: "unknown" }];
   }
-  return known(deriveZeropsCandidates(project, services, NO_CONNECTIONS, undefined, clock));
+  return known(deriveZeropsCandidates(project, services, NO_CONNECTIONS, undefined, facts));
 }
 
 /**
@@ -91,28 +105,91 @@ export function projectCandidates(
 export function selectCandidates(
   projects: Known<ReadonlyArray<ProjectRecord>>,
   servicesOf: (project: ProjectRef) => Known<ReadonlyArray<ServiceRecord>>,
-  clock?: AddressClock,
+  facts?: AddressFacts,
 ): Known<ReadonlyArray<CandidateRow>> {
   if (projects.state !== "known") return projects;
   return candidateListing(
     projects,
-    projects.value.map((record) => projectCandidates(record, servicesOf, clock)),
+    projects.value.map((record) => projectCandidates(record, servicesOf, facts)),
   );
+}
+
+/** A project's processes as read. */
+function subdomainProcessesOf(activity: ProjectActivityRead): ReadonlyArray<SubdomainProcess> {
+  return [...activity.running.value, ...activity.retainedHistory].flatMap((entry) => {
+    if (entry.knowledge !== "observed") return [];
+    const process = processRecordToActivityProcess(entry.record);
+    return process === null ? [] : [process];
+  });
+}
+
+/**
+ * Where the platform stands on turning a service's address on, from its project's activity
+ * (`subdomainEnableOf`): known once its running processes and its newest history are both read; a
+ * live enable among what is read says `on` before that. `serviceUpdatedAt` is when the service's
+ * record was last updated, on Zerops' clock. `undefined` while it is not known.
+ */
+export function subdomainEnableIn(
+  activity: ProjectActivityRead | null,
+  serviceId: string,
+  serviceUpdatedAt: string | null = null,
+): SubdomainEnable | undefined {
+  if (activity === null) return undefined;
+  const said = subdomainEnableOf(subdomainProcessesOf(activity), serviceId, serviceUpdatedAt);
+  const read = activity.running.query.status === "observed" && activity.processHistory === "read";
+  return read || said === "on" ? said : undefined;
+}
+
+/**
+ * When a service's enable ended on Zerops' clock, where its newest enable/disable is a finished
+ * enable: a direct read of its services after it brings a record that may have caught up. Null
+ * otherwise.
+ */
+export function finishedEnableAt(
+  activity: ProjectActivityRead | null,
+  serviceId: string,
+): string | null {
+  if (activity === null) return null;
+  const newest = newestSubdomainProcess(subdomainProcessesOf(activity), serviceId);
+  return newest?.actionName === "stack.enableSubdomainAccess" && newest.status === "FINISHED"
+    ? (newest.finished ?? null)
+    : null;
+}
+
+/** When a project's service's record was last updated, on Zerops' clock; null where not said. */
+export function serviceUpdatedAtIn(
+  services: CollectionRead<ServiceRecord> | null,
+  serviceId: string,
+): string | null {
+  for (const entry of services?.value ?? []) {
+    if (entry.knowledge !== "observed" || entry.record.ref.serviceId !== serviceId) continue;
+    const lifecycle = entry.record.lifecycle;
+    return lifecycle.knowledge === "observed" ? (lifecycle.fields.updatedAt ?? null) : null;
+  }
+  return null;
 }
 
 /**
  * What a reader remembers of its containers' addresses, by service id (`AddressSeen`). It outlives
- * every read — a listing that blinks unread, a project not admitted for a moment — so a wait never
- * begins again and a container once seen with its address never waits for it.
+ * every read — a listing that blinks unread, a project not admitted for a moment — so a container
+ * once seen with its address never waits for it, and one watched coming up stays watched.
  */
 export type AddressMemory = ReadonlyMap<string, AddressSeen>;
 
 export const NO_ADDRESS_MEMORY: AddressMemory = new Map();
 
-/** The clock a reader derives its rows by, over what it remembers. */
-export const addressClockOf = (memory: AddressMemory, nowMs: number): AddressClock => ({
+/**
+ * What a reader derives its rows by: what it remembers, and where the platform stands on turning
+ * each address on, where the reader reads that.
+ */
+export const addressFactsOf = (
+  memory: AddressMemory,
+  nowMs: number,
+  subdomainEnable?: (projectId: string, serviceId: string) => SubdomainEnable | undefined,
+): AddressFacts => ({
   nowMs,
   addressSeen: (serviceId) => memory.get(serviceId),
+  ...(subdomainEnable === undefined ? {} : { subdomainEnable }),
 });
 
 /** The memory after rows a reader derived; the same memory when they taught it nothing. */
@@ -134,36 +211,36 @@ export function rememberAddresses(
 }
 
 /**
- * When the first of the rows' address waits ends — for its address, or for its Mate to answer
- * once it landed (`arriving`) — wall ms; null when none waits.
+ * When the first of the rows' arrival poses ends (`arriving`), wall ms; null when none is shown.
+ * A pose only: an address's wait ends by its process, never here.
  */
-export function addressWaitEnd(rows: ReadonlyArray<ZeropsCandidate>): number | null {
+export function arrivalEnd(rows: ReadonlyArray<ZeropsCandidate>): number | null {
   let end: number | null = null;
   for (const row of rows) {
-    const until = row.addressAwaited?.until ?? row.arriving?.until;
+    const until = row.arriving?.until;
     if (until !== undefined && (end === null || until < end)) end = until;
   }
   return end;
 }
 
 /**
- * What a reader's listings teach its address memory, and when the soonest wait among them ends —
- * read off the known ones, so a reader never reads a listing's value itself (web and mobile never
- * read a Known's value).
+ * What a reader's listings teach its address memory, and when the soonest arrival pose among them
+ * ends — read off the known ones, so a reader never reads a listing's value itself (web and mobile
+ * never read a Known's value).
  */
 export function learnAddresses(
   memory: AddressMemory,
   listings: ReadonlyArray<Known<ReadonlyArray<ZeropsCandidate>>>,
-): { readonly memory: AddressMemory; readonly waitEnd: number | null } {
+): { readonly memory: AddressMemory; readonly arrivalEnd: number | null } {
   let learned = memory;
-  let waitEnd: number | null = null;
+  let soonest: number | null = null;
   for (const listing of listings) {
     if (listing.state !== "known") continue;
     learned = rememberAddresses(learned, listing.value);
-    const end = addressWaitEnd(listing.value);
-    if (end !== null && (waitEnd === null || end < waitEnd)) waitEnd = end;
+    const end = arrivalEnd(listing.value);
+    if (end !== null && (soonest === null || end < soonest)) soonest = end;
   }
-  return { memory: learned, waitEnd };
+  return { memory: learned, arrivalEnd: soonest };
 }
 
 /**

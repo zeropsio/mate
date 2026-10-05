@@ -39,8 +39,7 @@ export function makeMemberCells(input: {
         readOrganizationLocations: () => unused,
         readServiceAuthorizedAgents: () => unused,
         readServiceMateFlag: () => unused,
-        readOrganizationIntegrationTokenGrants: () => unused,
-        readServiceVariableNames: () => unused,
+        readOrganizationIntegrationTokens: () => unused,
       },
     }),
   );

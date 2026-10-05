@@ -13,6 +13,9 @@
  *
  * @module hq/environments
  */
+import { HqOffers } from "@t3tools/shared/hqOffers";
+import { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
+import { ReleaseRollout } from "@t3tools/shared/hqRelease";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -87,6 +90,18 @@ export const HqEnvironment = Schema.Struct({
   keyInvalid: Schema.Boolean,
   /** Its newest jobs, newest first, and each service's newest live one where it is older. */
   jobs: Schema.Array(HqJob),
+  /**
+   * A production's: where its application's newest release stands there; none before one, and for
+   * a stage. Absent from a Core older than this client: not known, never on its way.
+   */
+  release: Schema.optionalKey(Schema.NullOr(ReleaseRollout)),
+  /**
+   * Whether HQ is still bringing it up; none where HQ did not. Absent from a Core older than this
+   * client: not known, never coming up.
+   */
+  birth: Schema.optionalKey(Schema.NullOr(EnvironmentBirth)),
+  /** What the reader may do with it (`@t3tools/shared/hqOffers`); absent where HQ sent none. */
+  can: Schema.optional(HqOffers),
 });
 export type HqEnvironment = typeof HqEnvironment.Type;
 

@@ -465,29 +465,25 @@ const zeropsMateUpdateFixtureLayer = () =>
   );
 
 /**
- * A fixture/showcase run never has a real `zcp` binary to spawn — this
- * reports `unsupported` immediately on the first `call`/`subscribe`, the
- * same permanent state a client sees against an older zcp build. The fake
- * child "exits" on its own microtask, stderr shaped exactly like zcp's own
- * `unknown studio subcommand` message, so {@link ZeropsDataConsoleModule.classifyStartupFailure}
- * classifies it the same way the live degrade path does.
+ * A fixture/showcase run never has a real `zcp` binary to spawn, so its Data
+ * session is `unavailable` the way a missing binary makes it live: the fake
+ * spawn fails on its own microtask (`"zcp is not available"`), and every
+ * *Try again* fails the same way.
  */
 const dataConsoleLayer = () =>
   Layer.effect(
     ZeropsDataConsoleModule.ZeropsDataConsole,
     ZeropsDataConsoleModule.make({
       spawnDataConsole: () => {
-        let exitListener: ((code: number | null) => void) | undefined;
-        queueMicrotask(() => exitListener?.(1));
+        let errorListener: ((error: unknown) => void) | undefined;
+        queueMicrotask(() => errorListener?.(new Error("spawn zcp ENOENT")));
         return {
           onStdout: () => {},
-          onStderr: (listener) => {
-            listener("unknown studio subcommand: console\n");
+          onStderr: () => {},
+          onExit: () => {},
+          onError: (listener) => {
+            errorListener = listener;
           },
-          onExit: (listener) => {
-            exitListener = listener;
-          },
-          onError: () => {},
           endStdin: () => {},
           kill: () => {},
         };

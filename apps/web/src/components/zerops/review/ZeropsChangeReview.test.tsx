@@ -12,6 +12,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { buttonsLabelled, elementsOf, press, TestNode } from "~/zerops/__fixtures__/testDom";
+import type { ZeropsChangeOffers } from "~/zerops/useChangeOffers";
 
 import {
   ChangeReviewView,
@@ -89,12 +90,22 @@ vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => () => undefined }));
 vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => () => undefined }));
 vi.mock("~/zerops/fixMates", () => ({ useFixMates: () => [] }));
 vi.mock("~/zerops/useZeropsReviewMates", () => ({ useZeropsReviewMates: () => new Map() }));
-/** What HQ's rule offers the person of the application's changes; the one function every render. */
+/** What HQ offers the person of the application's changes; the one function every render. */
 const offers = vi.hoisted(() => {
-  const held = { current: { read: true, comment: true, merge: true, close: true, redeploy: true } };
+  const held: { current: ZeropsChangeOffers } = {
+    current: {
+      read: true,
+      comment: true,
+      merge: true,
+      close: true,
+      redeploy: true,
+      why: {},
+      readRefused: false,
+    },
+  };
   return { held, of: () => held.current };
 });
-vi.mock("~/zerops/useChangeReviewOffers", () => ({ useChangeReviewOffers: () => offers.of() }));
+vi.mock("~/zerops/useChangeOffers", () => ({ useChangeOffers: () => () => offers.of() }));
 
 const NOW = Date.parse("2026-09-30T10:00:00Z");
 const noop = () => undefined;
@@ -132,7 +143,15 @@ const changed = (path: string): ChangeFile => ({
 });
 
 /** Everything HQ's rule offers a developer of the application. */
-const DEVELOPS = { read: true, comment: true, merge: true, close: true, redeploy: true } as const;
+const DEVELOPS: ZeropsChangeOffers = {
+  read: true,
+  comment: true,
+  merge: true,
+  close: true,
+  redeploy: true,
+  why: {},
+  readRefused: false,
+};
 
 /** The review of `pull` in a project with a stage and a production two changes behind `main`. */
 function render(
@@ -284,7 +303,7 @@ describe("ChangeReviewView: a change after its merge", () => {
 const footOf = (html: string) => html.slice(html.indexOf('<footer class="rv-foot">'));
 
 describe("ChangeReviewView: an open change", () => {
-  it("explains missing project access instead of silently removing its actions", () => {
+  it("says since when HQ does not answer instead of silently removing its actions", () => {
     const html = render(merged({ merged: false, state: "open" }), [changed("README.md")], {
       offers: {
         read: false,
@@ -292,10 +311,12 @@ describe("ChangeReviewView: an open change", () => {
         merge: false,
         close: false,
         redeploy: false,
-        reason: "Project access has not been verified.",
+        why: { merge: "HQ unavailable since 10:00." },
+        readRefused: false,
       },
     });
-    expect(textOf(html)).toContain("Project access has not been verified.");
+    expect(textOf(html)).toContain("HQ unavailable since 10:00.");
+    expect(footOf(html)).not.toContain('data-zerops-primary-action="Merge"');
   });
 
   const open = merged({ state: "open", merged: false, mergedAt: undefined });
@@ -329,24 +350,6 @@ describe("ChangeReviewView: an open change", () => {
     expect(footOf(html)).toContain(">Close without merging…</button>");
   });
 
-  it("failed project access ends with its reason and a manual Again", () => {
-    const again = vi.fn();
-    const html = render(open, files, {
-      offers: {
-        read: true,
-        comment: true,
-        merge: false,
-        close: true,
-        redeploy: false,
-        reason: "Project access could not be verified: Zerops did not answer.",
-        again,
-      },
-    });
-    expect(textOf(html)).toContain("Project access could not be verified: Zerops did not answer.");
-    expect(footOf(html)).toContain(">Again</button>");
-    expect(footOf(html)).not.toContain('data-zerops-primary-action="Merge"');
-  });
-
   it("that merges cleanly offers Merge, safe to press, and Close without merging beside it", () => {
     const html = render(open, files);
     expect(html).toMatch(/data-safe="true" data-zerops-primary-action="Merge"/u);
@@ -356,7 +359,7 @@ describe("ChangeReviewView: an open change", () => {
   // Guide 0.8: a verb this person cannot finish is not offered.
   it("offers neither where HQ's rule does not, and says what merging takes", () => {
     const html = render(open, files, {
-      offers: { read: true, comment: true, merge: false, close: false, redeploy: false },
+      offers: { ...DEVELOPS, merge: false, close: false, redeploy: false },
     });
     expect(footOf(html)).not.toContain("<button");
     expect(textOf(html)).toContain(
@@ -444,7 +447,7 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     account.verbs.length = 0;
     account.answer = { ok: true };
     detail.readout = { kind: "reading" };
-    offers.held.current = { read: true, comment: true, merge: true, close: true, redeploy: true };
+    offers.held.current = DEVELOPS;
     vi.unstubAllGlobals();
   });
 
@@ -585,7 +588,7 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
   });
 
   it("offers no box where HQ's rule does not let the person comment on it", async () => {
-    offers.held.current = { read: true, comment: false, merge: true, close: true, redeploy: true };
+    offers.held.current = { ...DEVELOPS, comment: false };
     await reviewed((host) => {
       expect(host.textContent).toContain("Rebuild the full API on the new schema");
       expect(elementsOf(host, "textarea")).toHaveLength(0);

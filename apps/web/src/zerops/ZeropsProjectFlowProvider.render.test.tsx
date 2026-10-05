@@ -35,7 +35,6 @@ import { type InventoryServiceOutcome, HeldInventoryContext } from "./inventoryC
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import { useZeropsProjectFlow, type ZeropsProjectFlowValue } from "./projectFlowContext";
 import {
-  HELD_VERB_MS,
   HQ_CHANGES_UNANSWERED,
   VERB_ALREADY_RUNNING,
   ZeropsProjectFlowProvider,
@@ -333,6 +332,8 @@ function environment(projectId: string, tier: HqEnvironment["tier"]): HqEnvironm
     keyHeld: true,
     keyInvalid: false,
     jobs: [],
+    release: null,
+    birth: null,
   };
 }
 
@@ -1071,7 +1072,8 @@ describe("ZeropsProjectFlowProvider", () => {
       });
     });
 
-    it("stops being pending once the releases have not listed it in time", async () => {
+    // A clock is no answer: a second press while the first is not listed would roll back twice.
+    it("stays pending while the releases have not listed it, however long that takes", async () => {
       vi.useFakeTimers();
       try {
         const { seen, root } = await mountRollBack();
@@ -1079,13 +1081,9 @@ describe("ZeropsProjectFlowProvider", () => {
           await seen.at(-1)!.rollBack("g1", "v1.0.0");
         });
         await act(async () => {
-          vi.advanceTimersByTime(HELD_VERB_MS - 1);
+          vi.advanceTimersByTime(60 * 60_000);
         });
         expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(true);
-        await act(async () => {
-          vi.advanceTimersByTime(1);
-        });
-        expect(seen.at(-1)?.pending.has(ROLL_BACK)).toBe(false);
         await act(async () => {
           root.unmount();
         });
@@ -1303,11 +1301,21 @@ describe("merging and closing a change in HQ", () => {
       act(async () => {
         atoms.set(hqStructureAtom, streamed(changes));
       });
+    const stall = (refused: boolean) =>
+      act(async () => {
+        atoms.set(hqStructureAtom, {
+          ...streamed([open(7)]),
+          current: false,
+          unavailableSince: 2,
+          failure: refused ? "HQ refused the stream." : null,
+          reconnecting: refused ? null : { delayMs: 1_000, capped: false },
+        });
+      });
     const unmount = () =>
       act(async () => {
         root.unmount();
       });
-    return { seen, say, unmount };
+    return { seen, say, stall, unmount };
   }
 
   it("merges with the head its review showed, held until HQ's stream brings it merged", async () => {
@@ -1338,6 +1346,23 @@ describe("merging and closing a change in HQ", () => {
     expect(seen.at(-1)?.pending.has(CLOSE)).toBe(true);
     await say([{ ...open(7), state: "closed", closedAt: "2026-10-02T10:00:00Z" }]);
     expect(seen.at(-1)?.pending.has(CLOSE)).toBe(false);
+    await unmount();
+  });
+
+  // A stream that blinks reconnects and brings the change back: a second merge meanwhile would be
+  // a second ask. Only HQ refusing its stream leaves nothing to hold it.
+  it.each([
+    { case: "holds a merge while HQ's stream reconnects", refused: false, pending: true },
+    { case: "lets a merge go once HQ refuses its stream", refused: true, pending: false },
+  ])("$case", async ({ refused, pending }) => {
+    hq.answer = () => Promise.resolve({ made: {}, deploys: DEPLOYS });
+    const { seen, stall, unmount } = await mount();
+    await act(async () => {
+      await seen.at(-1)!.merge("g1", CHANGE, HEAD);
+    });
+    expect(seen.at(-1)?.pending.has(MERGE)).toBe(true);
+    await stall(refused);
+    expect(seen.at(-1)?.pending.has(MERGE)).toBe(pending);
     await unmount();
   });
 

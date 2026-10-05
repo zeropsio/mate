@@ -35,6 +35,7 @@ import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
 import { hqProjectAtom } from "../state/zerops";
 import {
+  hqNamedTarget,
   useAccountEnvironments,
   useDescriptorIndex,
   useEnvironmentMachines,
@@ -53,21 +54,6 @@ const NO_PROJECT = Atom.make<string | null>(null).pipe(Atom.withLabel("route-gat
 export type Machines = ReadonlyMap<TargetKey, EnvironmentMachine>;
 
 export type RouteOrganization = "chosen" | "choosing" | "not-chosen";
-
-/**
- * The listed Mate of the project HQ names for an environment: its service's target, never the
- * project's own row, whose key is the project alone.
- */
-export function hqNamedTarget(
-  machines: Machines,
-  projectId: string | null,
-): { readonly key: TargetKey; readonly machine: EnvironmentMachine } | undefined {
-  if (projectId === null) return undefined;
-  for (const [key, machine] of machines) {
-    if (key.startsWith(`${projectId}:`)) return { key, machine };
-  }
-  return undefined;
-}
 
 /**
  * The gate joins HQ, cached descriptor and installed credentials by id. An unknown route waits

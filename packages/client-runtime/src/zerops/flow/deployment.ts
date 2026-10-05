@@ -33,6 +33,8 @@ import type {
   InterestState,
   LeaseAdmissionError,
   ProcessRecord,
+  ProcessRef,
+  ProcessStatus,
   ServiceDeployInfo,
   ServiceRecord,
   ServiceRef,
@@ -50,12 +52,19 @@ import { knownPresentation, type KnownSurface } from "../knowledge/presentation.
 import { shortCommit } from "../release.ts";
 import { sameCommit } from "../versionName.ts";
 
+/** A build of a service that Zerops ended failed or canceled, by its process (`buildEnds`). */
+export interface FailedBuild {
+  readonly processId: string;
+  /** Zerops' end of it, in words. */
+  readonly reason: string;
+}
+
 export type Deployment =
   /**
-   * The deployment facet is observed and names no active deploy. `afterBuild`: a build of it was
-   * seen to end while it was demanded, and nothing it built runs — its first deploy failed.
+   * The deployment facet is observed and names no active deploy. `failedBuild`: the build of it
+   * followed while it was demanded, which Zerops ended failed — nothing it built runs.
    */
-  | { readonly kind: "none"; readonly afterBuild?: true }
+  | { readonly kind: "none"; readonly failedBuild?: FailedBuild }
   | {
       readonly kind: "running";
       /** When the active deploy was activated, as the platform pushed it. */
@@ -304,6 +313,7 @@ export interface ProcessRefusal {
 
 /** A `stack.build` the platform reports running, and the app version it builds (A11). */
 interface RunningBuild {
+  readonly process: ProcessRef;
   readonly serviceIds: ReadonlyArray<string>;
   readonly appVersionId: string | null;
   readonly name: string | null;
@@ -339,6 +349,7 @@ function runningBuilds(read: CollectionRead<ProcessRecord> | null): StopBuilds {
     const pipeline = knowledge.record.pipeline;
     const appVersion = pipeline.knowledge === "observed" ? pipeline.fields.appVersion : null;
     builds.push({
+      process: knowledge.record.ref,
       serviceIds: identity.fields.serviceIds,
       appVersionId: appVersion?.id ?? null,
       name: appVersion?.name ?? null,
@@ -346,11 +357,6 @@ function runningBuilds(read: CollectionRead<ProcessRecord> | null): StopBuilds {
     });
   }
   return { builds, complete };
-}
-
-/** Whether the processes listing is complete enough to prove that no build runs. */
-export function buildsListed(processes: CollectionRead<ProcessRecord> | null): boolean {
-  return processes !== null && runningBuilds(processes).complete;
 }
 
 /**
@@ -656,95 +662,63 @@ export function heldThroughRecheck(
   return held ? { ...next, value } : next;
 }
 
-/**
- * How long a build seen to end with nothing running keeps saying what it said while it built,
- * before it reads as the first deploy failing. The socket promises no order between a process's
- * end and its service's new version: run 4 saw the version 0.3 s before the build's end (app
- * ACTIVE +1481.7 s, build finished +1482.0 s), and the other order is a success that would flash
- * "its first deploy failed" — the worst false alarm. 20 s is some 60 times that margin, and a
- * failure still shows within half a minute.
- */
-export const AFTER_BUILD_GRACE_MS = 20_000;
-
-/** A service seen building while its stop is demanded. */
-export interface SeenBuild {
-  /** What it said while it built, kept through the grace. */
-  readonly building: Extract<Shown<Deployment>, { readonly state: "known" }>;
-  /** When it was first seen to run nothing after the build; `null` while it builds. */
-  readonly endedAtMs: number | null;
+/** Zerops' end of a build that deployed nothing, in words; none for any other status. */
+function failedWords(status: ProcessStatus | undefined): string | undefined {
+  switch (status) {
+    case "FAILED":
+      return "Zerops reports its build failed";
+    case "CANCELED":
+      return "Zerops reports its build was canceled";
+    default:
+      return undefined;
+  }
 }
 
 /**
- * A stop read again, over the services seen building: a service seen deploying and now known to
- * run nothing ran no build of its — its first deploy failed (`afterBuild`), which no running-process
- * listing keeps once the build is gone. Only after {@link AFTER_BUILD_GRACE_MS} with still nothing
- * running: until then it says what it said while it built, since its new version may be on its
- * way — and so does one whose answer is not known yet, its new version unstated or a listing read
- * again (run 5: "Checking what runs here…" for 1.2 s as a build ended). One running anything is
- * forgotten. Returns the services seen building, the stop as shown,
- * and when the store must read it again for a grace to run out (`null` for none).
+ * A stop read again, over the builds it follows: each service's build seen running while its stop
+ * was demanded, by the process Zerops runs it as. Once nothing of the service runs, the build's
+ * end is Zerops' to say (`status`, as the account's store holds that process): one Zerops ended
+ * failed or canceled failed (`failedBuild`), in its words; any other end — finished, or not said
+ * yet — says nothing more than the service does. A service running a version forgets its build.
+ * One that HQ made is HQ's job's to say (`stageFirstDeploy`). No clock waits on any of it.
  */
-export function afterBuilds(
-  built: ReadonlyMap<string, SeenBuild>,
+export function buildEnds(
+  followed: ReadonlyMap<string, ProcessRef>,
   next: Known<ReadonlyArray<StopService>>,
-  nowMs: number,
-  /** The processes listing is complete (`buildsListed`): a build it no longer shows has ended. */
-  listed: boolean,
+  processes: CollectionRead<ProcessRecord> | null,
+  status: (process: ProcessRef) => ProcessStatus | undefined,
 ): {
-  readonly built: ReadonlyMap<string, SeenBuild>;
+  readonly followed: ReadonlyMap<string, ProcessRef>;
   readonly shown: Known<ReadonlyArray<StopService>>;
-  readonly wakeAtMs: number | null;
 } {
-  if (next.state !== "known") {
-    // A re-check of the whole listing is no news of a build's end: a grace already running keeps
-    // its end, so the stop is read again as it runs out.
-    let wakeAtMs: number | null = null;
-    for (const { endedAtMs } of built.values()) {
-      if (endedAtMs === null) continue;
-      const graceEndsAtMs = endedAtMs + AFTER_BUILD_GRACE_MS;
-      if (nowMs < graceEndsAtMs && (wakeAtMs === null || graceEndsAtMs < wakeAtMs))
-        wakeAtMs = graceEndsAtMs;
-    }
-    return { built, shown: next, wakeAtMs };
+  const seen = new Map(followed);
+  for (const build of runningBuilds(processes).builds) {
+    for (const serviceId of build.serviceIds) seen.set(serviceId, build.process);
   }
-  const seen = new Map(built);
+  if (next.state !== "known") return { followed: seen, shown: next };
   let changed = false;
-  let wakeAtMs: number | null = null;
   const value = next.value.map((service): StopService => {
     const { deployment } = service;
     const id = service.service.serviceId;
-    if (deployment.state === "known" && deployment.value.kind === "deploying") {
-      seen.set(id, { building: deployment, endedAtMs: null });
-      return service;
-    }
-    if (deployment.state === "known" && deployment.value.kind === "running") {
+    const process = seen.get(id);
+    if (process === undefined || deployment.state !== "known") return service;
+    if (deployment.value.kind === "running") {
       seen.delete(id);
       return service;
     }
-    const build = seen.get(id);
-    if (build === undefined) return service;
-    // Its end is known only from a complete listing of the processes that no longer shows it: a
-    // re-check of them while it runs starts no grace. A source that failed says why instead.
-    if (build.endedAtMs === null && !listed) {
-      if (deployment.state === "failed") return service;
-      changed = true;
-      return { ...service, deployment: build.building };
-    }
-    const endedAtMs = build.endedAtMs ?? nowMs;
-    if (build.endedAtMs === null) seen.set(id, { ...build, endedAtMs });
-    const graceEndsAtMs = endedAtMs + AFTER_BUILD_GRACE_MS;
-    // Its new version not known yet, or nothing running yet: the deploy is still finishing.
-    if (nowMs < graceEndsAtMs) {
-      changed = true;
-      wakeAtMs = wakeAtMs === null ? graceEndsAtMs : Math.min(wakeAtMs, graceEndsAtMs);
-      return { ...service, deployment: build.building };
-    }
-    // Past the grace, what is not known reads as not known; only a known none failed.
-    if (deployment.state !== "known") return service;
+    if (deployment.value.kind !== "none") return service;
+    const reason = failedWords(status(process));
+    if (reason === undefined) return service;
     changed = true;
-    return { ...service, deployment: { ...deployment, value: { kind: "none", afterBuild: true } } };
+    return {
+      ...service,
+      deployment: {
+        ...deployment,
+        value: { kind: "none", failedBuild: { processId: process.processId, reason } },
+      },
+    };
   });
-  return { built: seen, shown: changed ? { ...next, value } : next, wakeAtMs };
+  return { followed: seen, shown: changed ? { ...next, value } : next };
 }
 
 /** What a stop's row draws: the badge, its word, and the line under the name. */

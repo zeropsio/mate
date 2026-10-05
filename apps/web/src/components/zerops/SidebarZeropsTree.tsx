@@ -147,7 +147,7 @@ import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { SidebarCrewLine, type SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { SidebarSelectedBand } from "./SidebarSelectedBand";
 import { KeyChip, MateFace } from "./primitives";
-import { groupNameIsPlaceholder } from "./ZeropsGroupTree.logic";
+import { groupNameUnread } from "./ZeropsGroupTree.logic";
 import { STOP_ARM_MS, stopArmStep, type StopArm, type StopArmEvent } from "./SidebarStopArm.logic";
 import { formatWorkingTime, isQuietMate, sidebarMateKey } from "./SidebarZeropsTree.logic";
 import { MateMenu, MateRenameField, type MateRowActions, type MenuPoint } from "./SidebarMateMenu";
@@ -838,12 +838,9 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     };
   }, [activeProjectId]);
   // What each stop runs, read once per render and handed to `groupFlow`, so
-  // the chip and the page never read two different answers for one project;
-  // and whether HQ's releases are coming at all — where no HQ is open, a chip
-  // settles on the platform's facts alone.
+  // the chip and the page never read two different answers for one project.
   const projectFlows = useZeropsProjectFlowOptional();
   const deployments = projectFlows?.deployments;
-  const releasesComing = projectFlows !== null && projectFlows.hqAddress !== undefined;
 
   // Until the rows below are drawn, the jump box finds nothing here, and the
   // memory learns nothing new.
@@ -1097,7 +1094,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             addsOffered: groupAddsOffered(entries, health),
           }),
         pending: group?.pending ?? [],
-        nowMs: minuteMs,
       }),
     );
     // Production and its stages are the chips on the heading (M2), never rows:
@@ -1120,12 +1116,11 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             routes: item.routes ?? [],
           });
     const downOf = (serving: StopServing) => (serving.kind === "down" ? serving.services : []);
+    // Until HQ's releases are read, a chip is only what the platform alone says: partial.
     const releases: ReleasesAnswer =
       flow !== undefined && flow.releasesKnown !== false
         ? { kind: "answered", failure: flow.releaseFailure }
-        : releasesComing
-          ? { kind: "waiting" }
-          : { kind: "absent" };
+        : { kind: "waiting" };
     const stopName = (stop: GroupFlowStop) => stopItem(stop.projectId)?.project.name ?? stop.name;
     const stages = projectFlow.stages.map((stop) => ({
       name: stopName(stop),
@@ -1306,14 +1301,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       return {
         stop,
         projectStatus: item?.project.status,
-        createdAt: item?.project.created,
         services: item?.services?.statuses,
         building: buildingOf(deployments?.get(stop.projectId)) !== undefined,
         routes: item?.routes?.length ?? 0,
       };
     };
     const comingOf = (tier: "stage" | "production", stop: GroupFlowStop): StopComing | undefined =>
-      listedStopComing(tier, listedOf(stop), minuteMs);
+      listedStopComing(tier, listedOf(stop));
     const PENDING: StopComing = { kind: "coming", step: "project" };
     const line: HeadingLineInput | undefined =
       group === undefined
@@ -1687,7 +1681,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           />
         ),
         getFlow?.(group.groupId),
-        groupNameIsPlaceholder(group) ? undefined : group.name,
+        groupNameUnread(group) ? undefined : group.name,
         group,
         lastProject(index),
       )}
@@ -1982,7 +1976,7 @@ export function ProjectHeader({
   /** A stop's own page, where one opens: the line's Details. */
   readonly openStop?: ((projectId: string) => (() => void) | undefined) | undefined;
 }) {
-  const placeholder = group !== undefined && groupNameIsPlaceholder(group);
+  const placeholder = group !== undefined && groupNameUnread(group);
   const { line: secondLine, landing } = useHeadingLine(line);
   const pillMotion = headingPillMotion(line, landing);
   const openReview = useOpenReview();
@@ -2578,6 +2572,9 @@ function MateRow<T extends RosterCandidate>({
   // Nothing on its menu is about a Mate still being made, or one going: it
   // offers none — until its setup stopped, when *Finish setup* is on it.
   const actions = !outsideHq && mateRowOffersMenu({ deleting, coming }) ? offered : undefined;
+  // Its container is read while the row is drawn with its menu (`useDrawnMates`).
+  const drawn = actions?.drawn;
+  useEffect(() => drawn?.(), [drawn]);
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
   const records = mateOwnerRecords(candidate.project);
@@ -3608,8 +3605,8 @@ function PullRequestList({
  * *Review* in blue at the right edge, the one door to merging it (R1). No
  * *Merge*, no *Ask* and no check dot on the row: the outlined pill repeated
  * on every change as the menu's only outlined control, and the verdict lives
- * in the review. The mark alone may say that something is wrong (S3): red
- * where its checks fail, amber where it fell behind `main`. A person's own
+ * in the review. The mark alone may say that something is wrong (S3): amber
+ * where it fell behind `main` and no longer merges (`changeMarkTone`). A person's own
  * pull request names them after the title — there is no room for a line.
  */
 function PullRequestRow({

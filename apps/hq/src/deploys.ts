@@ -31,9 +31,9 @@
  *   — Zerops not answering, git failing, the service not there, a key missing, dead or widened —
  *   ends it refused at once, in HQ's words, for a person's Run again.
  * - **A build is submitted once** (audit H6): Zerops takes no idempotency key, so the version HQ
- *   makes is recorded before its archive goes up, and its build's process once build-and-deploy
- *   answers. A lost answer is never submitted again: the job stays submitting and HQ reads the
- *   version it made. A build is followed by its process, else its version (`follow`) — Zerops'
+ *   makes is recorded before its archive goes up, its upload once it answered — only then is its
+ *   build asked for — and its build's process once build-and-deploy answers. A lost answer is
+ *   never submitted again: the job stays submitting and HQ reads the version it made. A build is followed by its process, else its version (`follow`) — Zerops'
  *   socket takes no token HQ holds (2026-10-03) — every 10 s for its first 20 min, then every
  *   minute, for at most 75 min — a build ends within Zerops' 1-hour limit — then HQ stops
  *   following it, refused.
@@ -74,7 +74,8 @@ import {
 } from "@t3tools/shared/hqDeploys";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { fromYaml } from "@t3tools/shared/schemaYaml";
-import { REASONS, can } from "@t3tools/shared/zeropsPermissions";
+import { REASONS } from "@t3tools/shared/zeropsPermissions";
+import { can } from "./permissions.ts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -107,7 +108,7 @@ import { Leader, type NotLeader } from "./leader.ts";
 import { type TierService, deltaImport, deployedByHq, tierServices } from "./recipeDeltas.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
 import { Releases } from "./releases.ts";
-import { Roles, confirmingRefusal } from "./roles.ts";
+import { Roles, decidedFresh } from "./roles.ts";
 import { type RolloutCause, Rollouts, rolloutOf } from "./rollouts.ts";
 import { tierRuntimes } from "./tierRuntimes.ts";
 import { versionName } from "./versionNames.ts";
@@ -129,8 +130,9 @@ export interface DeploysOptions {
   /** How long after its submission HQ follows a build at most; 75 min. */
   readonly followFor?: Duration.Duration;
   /**
-   * How long after its submission a version whose build-and-deploy went unanswered may still wait
-   * for its archive before HQ takes it that Zerops never took the submission; 1 min.
+   * How long after HQ's upload of its archive answered a version whose build-and-deploy went
+   * unanswered may still wait for its archive before HQ takes it that Zerops never took the build;
+   * 1 min. A delta's import, likewise, from its submission.
    */
   readonly untakenAfter?: Duration.Duration;
 }
@@ -265,6 +267,10 @@ interface Job {
   readonly by: string | null;
   /** How long ago its submission began, ms; none before. */
   readonly submitted_ms: number | null;
+  /** How long after its submission began HQ's upload of its archive answered, ms; none before. */
+  readonly uploaded_after_ms: number | null;
+  /** Whether `uploaded_after_ms` is HQ's record: not on a job made before HQ recorded uploads. */
+  readonly upload_recorded: boolean;
 }
 
 type DeployJob = Job & { readonly service: string; readonly repo: string; readonly sha: string };
@@ -374,7 +380,9 @@ const JOB_COLUMNS = `
   j.id::text AS id, j.rollout_id::text AS rollout_id, j.kind, j.project_id,
   e.app_id::text AS app_id, e.name AS env_name, e.tier, j.service, j.service_id, j.repo, j.sha,
   j.label, j.services, j.processes, j.state, j.app_version_id, j.process_id, r.cause, r.by,
-  (EXTRACT(EPOCH FROM (now() - j.submitted_at)) * 1000)::float8 AS submitted_ms`;
+  (EXTRACT(EPOCH FROM (now() - j.submitted_at)) * 1000)::float8 AS submitted_ms,
+  (EXTRACT(EPOCH FROM (j.uploaded_at - j.submitted_at)) * 1000)::float8 AS uploaded_after_ms,
+  j.upload_recorded`;
 const JOB_FROM = `
   hq_deploy_job j JOIN hq_environment e ON e.project_id = j.project_id
   JOIN hq_rollout r ON r.id = j.rollout_id`;
@@ -941,30 +949,61 @@ export const deploysLayer = (
             );
 
       /**
-       * After HQ's own verified deploy: an HTTP service's subdomain, which never fails the deploy
-       * (B17).
+       * After HQ's own verified deploy: an HTTP service's subdomain, its process followed to its
+       * end on its own cadence, from its start — none where it came on or was on already, else why
+       * it did not, in HQ's words. It never fails the deploy (B17); the live job says it.
        */
-      const openSubdomain = (service: ZeropsService, token: Redacted.Redacted) =>
-        service.http && !service.subdomainAccess
-          ? deploy
+      const openSubdomain = (job: Job, service: ZeropsService, token: Redacted.Redacted) =>
+        !service.http || service.subdomainAccess
+          ? Effect.succeed(undefined)
+          : deploy
               .enableSubdomainAccess(service.id)(token)
               .pipe(
-                Effect.catch((error) =>
-                  Effect.logWarning("subdomain access not turned on", {
-                    service: service.name,
-                    error,
-                  }),
+                Effect.flatMap(({ processId }) =>
+                  // Its own clock, from its start: never what is left of the build's.
+                  onCadence(
+                    0,
+                    () =>
+                      deploy
+                        .process(processId)(token)
+                        .pipe(
+                          Effect.map((process) =>
+                            process.status === "FINISHED"
+                              ? ({ state: "on" } as const)
+                              : process.status === "FAILED" || process.status === "CANCELED"
+                                ? ({
+                                    state: "refused",
+                                    reason: process.failure ?? "Zerops gave no reason",
+                                  } as const)
+                                : undefined,
+                          ),
+                          // What cannot be read now says nothing of it: it is read again.
+                          Effect.catch((error) =>
+                            Effect.as(
+                              Effect.logWarning("a subdomain's process not read", {
+                                service: service.name,
+                                error,
+                              }),
+                              undefined,
+                            ),
+                          ),
+                        ),
+                    `HQ stopped following it ${Math.round(followFor / 60_000)} min after it was asked`,
+                  ),
                 ),
-                Effect.asVoid,
-              )
-          : Effect.void;
+                Effect.map((ended) => (ended.state === "on" ? undefined : ended.reason)),
+                Effect.catch((error) => Effect.succeed(zeropsEnd(job.env_name, error).reason)),
+                Effect.map((why) =>
+                  why === undefined ? undefined : `its subdomain was not turned on: ${why}`,
+                ),
+              );
 
       /**
        * HQ's own deploy of `job`, live: its subdomain turned on where it was intended — its service
        * created for HQ to deploy (`hq_subdomain_intent`: its project's attach said so, or HQ's
        * recipe delta imported it), and this its first deploy HQ sees live (audit R1, D6) — and its
-       * service's intent spent. A project's own row stays, for each of its services is first
-       * deployed once. Never fails the deploy.
+       * service's intent spent. None where it came on or was not intended, else why it did not.
+       * Never fails the deploy.
        */
       const openIfIntended = (job: Job, service: ZeropsService, token: Redacted.Redacted) =>
         Effect.gen(function* () {
@@ -977,30 +1016,35 @@ export const deploysLayer = (
                 WHERE project_id = ${job.project_id} AND service = ${job.service}
                   AND state = 'live' AND sha <> ${job.sha}
               )`;
-          if (intended.length === 0) return;
-          yield* openSubdomain(service, token);
+          if (intended.length === 0) return undefined;
+          const why = yield* openSubdomain(job, service, token);
           yield* leader.write(sql`
             DELETE FROM hq_subdomain_intent
             WHERE project_id = ${job.project_id} AND service = ${job.service}`);
+          return why;
         }).pipe(
           Effect.catch((error) =>
-            Effect.logWarning("subdomain intent not read", { service: service.name, error }),
+            Effect.as(
+              Effect.logWarning("subdomain intent not read", { service: service.name, error }),
+              undefined,
+            ),
           ),
         );
 
       /**
        * A handle HQ made, read on its cadence until `read` says how it ended: every `pollEvery`
-       * while it is younger than `slowAfter`, then every `slowPollEvery`, counted from the job's
-       * submission, so a takeover resumes the same clock — and past `followFor`, refused as
+       * while it is younger than `slowAfter`, then every `slowPollEvery`, counted from when it was
+       * asked for — `ageMs` old as the follow starts: a build's from its submission, so a takeover
+       * resumes the same clock, a subdomain's from its own start — and past `followFor`, refused as
        * `stopped` says. A read again on this cadence is following, never a retry.
        */
       const onCadence = <A>(
-        job: Job,
+        ageMs: number,
         read: (ageMs: number) => Effect.Effect<A | undefined>,
         stopped: string,
       ): Effect.Effect<A | { readonly state: "refused"; readonly reason: string }> =>
         Effect.gen(function* () {
-          const started = (yield* Clock.currentTimeMillis) - (job.submitted_ms ?? 0);
+          const started = (yield* Clock.currentTimeMillis) - ageMs;
           for (;;) {
             const answer = yield* read((yield* Clock.currentTimeMillis) - started);
             if (answer !== undefined) return answer;
@@ -1015,9 +1059,10 @@ export const deploysLayer = (
        * build's process where HQ heard it, else by its version — every `pollEvery` while it is
        * younger than `slowAfter`, then every `slowPollEvery`, counted from its submission, so a
        * takeover resumes the same clock. Live once the service runs the version; the build's own
-       * failure; refused where Zerops never took the submission — its version still waits for its
-       * archive past `untakenAfter` — where Zerops no longer has the version, or, past `followFor`,
-       * where HQ stops. What cannot be read now is read again. It records nothing: its caller does.
+       * failure; refused where HQ asked for no build — its upload went unanswered — or Zerops never
+       * took it — its version still waits for its archive `untakenAfter` past HQ's upload — where
+       * Zerops no longer has the version, or, past `followFor`, where HQ stops. What cannot be read
+       * now is read again. It records nothing: its caller does.
        */
       const follow = (
         job: Job,
@@ -1049,16 +1094,37 @@ export const deploysLayer = (
               reason: `the deploy finished, but ${job.service ?? ""} runs ${other}`,
             } as const;
           });
-          /** Where it stands by its version's own status. */
+          /**
+           * Where it stands by its version's own status. One still waiting for its archive whose
+           * upload HQ never heard answer was never asked to build; one HQ uploaded is given
+           * `untakenAfter` from the upload to show its build taken; one made before HQ recorded
+           * uploads, `untakenAfter` from its submission.
+           */
           const byVersion = (age: number) =>
             Effect.gen(function* () {
               const { status } = yield* deploy.appVersion(versionId)(token);
               if (status === "UPLOADING") {
-                return age < untakenAfter
+                // Made before HQ recorded uploads: the window from its submission, as then.
+                if (!job.upload_recorded) {
+                  return age < untakenAfter
+                    ? undefined
+                    : ({
+                        state: "refused",
+                        reason: "Zerops did not take the deploy's submission",
+                      } as const);
+                }
+                if (job.uploaded_after_ms === null) {
+                  return {
+                    state: "refused",
+                    reason:
+                      "HQ's upload of the deploy's archive went unanswered: no build was asked for",
+                  } as const;
+                }
+                return age - job.uploaded_after_ms < untakenAfter
                   ? undefined
                   : ({
                       state: "refused",
-                      reason: "Zerops did not take the deploy's submission",
+                      reason: "Zerops did not take the deploy's build",
                     } as const);
               }
               if (status === "ACTIVE" || status === "BACKUP") return yield* landed;
@@ -1112,7 +1178,7 @@ export const deploysLayer = (
               ),
             );
           return yield* onCadence(
-            job,
+            job.submitted_ms ?? 0,
             once,
             `HQ stopped following the build ${Math.round(followFor / 60_000)} min after it was submitted; Zerops still reports it running`,
           );
@@ -1161,8 +1227,8 @@ export const deploysLayer = (
       /**
        * A deploy job submitted, once: the key checked, the service read — one that runs what HQ
        * last made it run there is live at once — the commit read, and then its version made and
-       * recorded before anything is submitted with it, its archive uploaded and its build asked
-       * for, the build's process recorded. Whatever does not go through ends the job; an answer
+       * recorded before anything is submitted with it, its archive uploaded and the upload
+       * recorded, its build asked for, the build's process recorded. Whatever does not go through ends the job; an answer
        * lost after the version was made leaves it submitting, for its version tells (`follow`).
        */
       const submitDeploy = (job: DeployJob) =>
@@ -1205,22 +1271,27 @@ export const deploysLayer = (
             // Kept before anything is submitted with it: whatever answer is lost from here on,
             // HQ reads this version instead of making another (audit H6).
             yield* update(job, sql`app_version_id = ${version.id}`);
-            const started = yield* Effect.andThen(
-              deploy.upload(version.id, commit.archive)(token),
-              deploy.buildAndDeploy(version.id, commit.zeropsYaml, setup)(token),
-            ).pipe(
-              Effect.map(Option.some),
-              Effect.catchTag("ZeropsUnavailable", (error) =>
-                Effect.as(
-                  Effect.logWarning("a deploy's submission went unanswered", {
-                    environment: job.env_name,
-                    service: job.service,
-                    error,
-                  }),
-                  Option.none(),
+            const started = yield* deploy
+              .upload(
+                version.id,
+                commit.archive,
+              )(token)
+              .pipe(
+                // Its upload answered: from here on its build is asked for.
+                Effect.andThen(update(job, sql`uploaded_at = now()`)),
+                Effect.andThen(deploy.buildAndDeploy(version.id, commit.zeropsYaml, setup)(token)),
+                Effect.map(Option.some),
+                Effect.catchTag("ZeropsUnavailable", (error) =>
+                  Effect.as(
+                    Effect.logWarning("a deploy's submission went unanswered", {
+                      environment: job.env_name,
+                      service: job.service,
+                      error,
+                    }),
+                    Option.none(),
+                  ),
                 ),
-              ),
-            );
+              );
             if (Option.isSome(started)) {
               yield* update(job, sql`state = 'building', process_id = ${started.value.processId}`);
             }
@@ -1384,7 +1455,7 @@ export const deploysLayer = (
               ),
             );
           const ended = yield* onCadence(
-            job,
+            job.submitted_ms ?? 0,
             (age) =>
               ((job.processes ?? []).length === 0 ? byListing(age) : byProcesses(age)).pipe(
                 // What cannot be read now says nothing of the import: it is read again.
@@ -1489,8 +1560,12 @@ export const deploysLayer = (
             job.app_version_id,
             job.process_id,
           );
-          if (followed.state === "live") yield* openIfIntended(job, followed.service, key.token);
-          yield* end(job, followed.state === "live" ? { state: "live" } : followed);
+          if (followed.state !== "live") return yield* end(job, followed);
+          const subdomain = yield* openIfIntended(job, followed.service, key.token);
+          yield* end(
+            job,
+            subdomain === undefined ? { state: "live" } : { state: "live", reason: subdomain },
+          );
         });
 
       /** The leading Core's scope, where each environment's worker runs; none while it leads not. */
@@ -1733,8 +1808,9 @@ export const deploysLayer = (
             id === undefined ? Effect.succeed(NO_DEPLOYS) : run(id),
           ),
         changes: SubscriptionRef.changes(ticks),
+        // A deploy cannot be taken back: each is asked over roles read for it alone.
         redeploy: (userId, appId, name, service, sha) =>
-          confirmingRefusal(
+          decidedFresh(
             Effect.gen(function* () {
               const log = { userId, appId, name, service };
               const environment = yield* personsEnvironment(userId, appId, name, log);
@@ -1794,7 +1870,7 @@ export const deploysLayer = (
             }),
           ),
         addService: (userId, appId, name, service) =>
-          confirmingRefusal(
+          decidedFresh(
             Effect.gen(function* () {
               const log = { userId, appId, name, service };
               const environment = yield* personsEnvironment(userId, appId, name, log);

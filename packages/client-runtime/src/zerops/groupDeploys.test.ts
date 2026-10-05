@@ -29,9 +29,16 @@ const services = [
 ];
 
 let jobs = 0;
+/** What a job the rollout of release v1.0.1 asked for names. */
+const RELEASED = { cause: "release", ref: "v1.0.1" } as const;
 
 /** HQ's job of a deploy of `service` at `sha`, in `state`; each newer than the one made before. */
-function record(state: HqJob["state"], sha: string, service = "api"): HqJob {
+function record(
+  state: HqJob["state"],
+  sha: string,
+  service = "api",
+  asked: Pick<HqJob, "cause" | "ref"> = { cause: "merge", ref: sha },
+): HqJob {
   jobs += 1;
   return {
     id: String(jobs),
@@ -39,8 +46,7 @@ function record(state: HqJob["state"], sha: string, service = "api"): HqJob {
     service,
     sha,
     state,
-    cause: "merge",
-    ref: sha,
+    ...asked,
     reason: null,
     appVersionId: null,
     processId: null,
@@ -60,6 +66,8 @@ function environment(
     keyHeld: true,
     keyInvalid: false,
     jobs: [],
+    release: null,
+    birth: null,
     ...overrides,
   };
 }
@@ -94,6 +102,8 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
         environment: "stage",
         keyHeld: true,
         keyInvalid: true,
+        release: null,
+        birth: null,
         services: [
           {
             hostname: "api",
@@ -113,6 +123,8 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
         environment: "production",
         keyHeld: true,
         keyInvalid: false,
+        release: null,
+        birth: null,
         services: [{ hostname: "api", repository: "apidev", serviceId: "s3" }],
       },
     ]);
@@ -190,7 +202,7 @@ describe("what a release compares, from HQ's records", () => {
           tier: "production",
           name: "production",
           order: 2,
-          jobs: [record("failed", API), record("live", OLD)],
+          jobs: [record("failed", API, "api", RELEASED), record("live", OLD)],
         }),
       ],
       projectNames: new Map(),
@@ -198,8 +210,101 @@ describe("what a release compares, from HQ's records", () => {
       versions: new Map([["s3", `v1.0.0 ${OLD.slice(0, 7)}`]]),
     });
     const { failed, production } = releaseDeploys(inputs);
-    expect([...failed]).toEqual([[`api@${API}`, "2026-10-02T10:04:00.000Z"]]);
+    expect(failed).toEqual([{ tag: "v1.0.1", service: "api", sha: API }]);
     expect([...production]).toEqual([["api", OLD.slice(0, 7)]]);
+  });
+
+  // A failure is a release's by HQ's own link: its rollout asked for the job, or left the service
+  // out for that job of the commit — never by when it failed.
+  it.each([
+    {
+      name: "the release's own job",
+      job: () => record("failed", API, "api", RELEASED),
+      owned: true,
+    },
+    {
+      name: "a merge's job the release left the service out for",
+      job: () => record("failed", API),
+      owned: "left out",
+    },
+    {
+      name: "a merge's job the release did not wait for",
+      job: () => record("failed", API),
+      owned: false,
+    },
+    {
+      name: "another release's job",
+      job: () => record("failed", API, "api", { cause: "release", ref: "v1.0.0" }),
+      owned: false,
+    },
+  ] as const)("holds a failed $name as the release's: $owned", ({ job, owned }) => {
+    const latest = job();
+    const { failed } = releaseDeploys(
+      environmentRowInputsOf({
+        environments: [
+          environment({
+            projectId: "p-prod",
+            tier: "production",
+            name: "production",
+            jobs: [latest],
+            release: {
+              id: "9",
+              tag: "v1.0.1",
+              planned: true,
+              ended: true,
+              endedAt: "2026-10-02T10:04:00.000Z",
+              landed: false,
+              leftOut:
+                owned === "left out"
+                  ? [
+                      {
+                        service: "api",
+                        sha: API,
+                        job: latest.id,
+                        reason: "a job of it is under way",
+                      },
+                    ]
+                  : [],
+            },
+          }),
+        ],
+        projectNames: new Map(),
+        services,
+        versions: new Map(),
+      }),
+    );
+    expect(failed.some((failure) => failure.tag === "v1.0.1")).toBe(owned !== false);
+  });
+
+  it("carries each production's newest release rollout, as HQ told it, and no stage's", () => {
+    const rollout = {
+      id: "7",
+      tag: "v0.1.3",
+      planned: true,
+      ended: false,
+      endedAt: null,
+      landed: false,
+      leftOut: [],
+    };
+    const { rollouts } = releaseDeploys(
+      environmentRowInputsOf({
+        environments: [
+          environment({ projectId: "p-stage", tier: "stage", name: "stage" }),
+          environment({
+            projectId: "p-prod",
+            tier: "production",
+            name: "production",
+            order: 2,
+            release: rollout,
+          }),
+          environment({ projectId: "p-prod2", tier: "production", name: "unreleased", order: 3 }),
+        ],
+        projectNames: new Map(),
+        services,
+        versions: new Map(),
+      }),
+    );
+    expect(rollouts).toEqual([rollout, null]);
   });
 
   it.each([
@@ -216,7 +321,7 @@ describe("what a release compares, from HQ's records", () => {
             projectId: "p-prod",
             tier: "production",
             name: "production",
-            jobs: [record(state, API)],
+            jobs: [record(state, API, "api", RELEASED)],
           }),
         ],
         projectNames: new Map(),
@@ -224,7 +329,7 @@ describe("what a release compares, from HQ's records", () => {
         versions: new Map(),
       }),
     );
-    expect(held.has(`api@${API}`)).toBe(failed);
+    expect(held.length > 0).toBe(failed);
   });
 });
 

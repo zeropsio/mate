@@ -15,8 +15,9 @@
  *   Delete a project in Zerops and HQ lets it go.
  * - **A Mate's name** is its project's in Zerops (D3): renamed there, or by
  *   Mate through the project's own record, and never held anywhere else.
- * - **That a Mate lives here** is the project's own `mate` marker, for the
- *   Zerops GUI too, and a Mate HQ places is one whatever its tags say.
+ * - **That a Mate lives here** is HQ's too: it places the project as a Mate.
+ *   The project's `mate` marker is written for the Zerops GUI and read by
+ *   nothing here.
  * - **Who asked for the project's development to be stood up** is the Mate's
  *   birth record at HQ (`standupRequestedBy`), placed with the rest of it.
  *
@@ -54,11 +55,10 @@ import type { RandomBytes } from "./newProject.ts";
 export const MATE_TAG_NAMESPACE = "mate";
 
 /**
- * The marker: this project has a Mate. The bare namespace word, so the Zerops
- * GUI shows a project's one-word answer beside its longer tags and a tag
- * filter on `mate` lists exactly the Mates. It is the declared fact, written
- * when a Mate is set up and kept when its container is rebuilt or lost — the
- * container is the Mate's body, the tag is its existence.
+ * The marker: this project has a Mate, for the Zerops GUI. The bare namespace
+ * word, so the GUI shows a project's one-word answer beside its longer tags and
+ * a tag filter on `mate` lists the Mates. Written when a Mate is set up; Mate
+ * itself reads a Mate's existence from HQ's placement, never from the tag.
  */
 export const MATE_MARKER_TAG = MATE_TAG_NAMESPACE;
 
@@ -74,9 +74,9 @@ const ROLE_ORDER: ReadonlyArray<ZeropsEnvironmentRole> = ["dev", "devstage", "st
 /** The longest name a Mate goes by: it is read in a menu row. */
 export const ZEROPS_BOT_NAME_MAX_LENGTH = 24;
 
-/** Where a project belongs and who lives in it: HQ's placement, and the project's own tags. */
+/** Where a project belongs and who lives in it: HQ's placement. */
 export interface ZeropsMembership {
-  /** A Mate lives here: HQ places it as one — dev/stage included — or it carries the `mate` marker. */
+  /** A Mate lives here: HQ places it as one, dev/stage included. */
   readonly mate: boolean;
   /** Its application in HQ. */
   readonly groupId: string | undefined;
@@ -116,18 +116,12 @@ export function kindOfRole(role: ZeropsEnvironmentRole): RoleProjectKind {
 }
 
 /**
- * Where a project belongs and who lives in it, from where HQ places it (`hq`) and its marker tag.
- * Permissive on read: a face part this client does not know is left out, never guessed at.
+ * Where a project belongs and who lives in it, from where HQ places it (`hq`). Permissive on
+ * read: a face part this client does not know is left out, never guessed at.
  */
 export function readZeropsMembership(
-  project:
-    | {
-        readonly tagList?: ReadonlyArray<string> | undefined;
-        readonly hq?: HqPlacement | undefined;
-      }
-    | undefined,
+  project: { readonly hq?: HqPlacement | undefined } | undefined,
 ): ZeropsMembership {
-  const marker = (project?.tagList ?? []).includes(MATE_MARKER_TAG);
   const placed = project?.hq;
   const asker = placed?.mate?.standupRequestedBy?.trim();
   const maker = placed?.mate?.madeBy?.trim();
@@ -136,7 +130,7 @@ export function readZeropsMembership(
   const label = app?.appName.trim();
   return {
     // A dev/stage is a Mate too: its project also serves as its application's stage.
-    mate: marker || placed?.kind === "mate" || placed?.kind === "devstage",
+    mate: placed?.kind === "mate" || placed?.kind === "devstage",
     groupId: app?.appId,
     role: app === undefined ? undefined : ROLE_OF_KIND[app.kind],
     label: label === undefined || label === "" ? undefined : label,
@@ -159,7 +153,7 @@ export function changedMateFace(worn: ZeropsMateFaceTag | undefined, face: Zerop
 }
 
 /**
- * Declares the Mate: the marker alone. Idempotent, so
+ * Declares the Mate for the Zerops GUI: the marker alone. Idempotent, so
  * every path that stands a Mate up — the wizard, "Add dev" with an agent,
  * "Set up Mate" — can write it without checking first.
  */
@@ -173,7 +167,7 @@ export const ZEROPS_GROUP_ID_LENGTH = 12;
 
 /**
  * Crockford base32 — no `i`, `l`, `o` or `u`, so an id read aloud or retyped
- * from a tag in the Zerops GUI cannot become a different id.
+ * cannot become a different id.
  */
 const GROUP_ID_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
 
@@ -200,11 +194,12 @@ export interface ZeropsGroupEnvironment {
 }
 
 /**
- * Where a group's displayed name came from — its application in HQ, the creation under way in it,
- * or nothing at all. The UI wants this: a group named `"id"` is one the user should be invited to
- * name, and a group named `"birth"` is one HQ has not placed a project of yet.
+ * Where a group's displayed name came from — its application in HQ, or the creation under way in
+ * it — or that it could not be read. HQ holds no application without a name, so a group whose
+ * name reads blank is a read problem, drawn as one with its id as the handle, never an invitation
+ * to name it; a group named from its `"birth"` is one HQ has not placed a project of yet.
  */
-export type ZeropsGroupNameSource = "hq" | "birth" | "id";
+export type ZeropsGroupNameSource = "hq" | "birth" | "unread";
 
 /**
  * Where an environment being created stands in the account's projects, as the press that made it
@@ -259,7 +254,7 @@ export interface ZeropsGroupPendingMember {
 
 export interface ZeropsGroup {
   readonly groupId: string;
-  /** Its application's name in HQ, else the creation's under way, else the id. */
+  /** Its application's name in HQ, else the creation's under way, else — unread — its id. */
   readonly name: string;
   readonly nameSource: ZeropsGroupNameSource;
   readonly environments: ReadonlyArray<ZeropsGroupEnvironment>;
@@ -476,7 +471,7 @@ export function deriveZeropsGroups(
         ? [named, "hq"]
         : created !== undefined
           ? [created, "birth"]
-          : [groupId, "id"];
+          : [groupId, "unread"];
     return {
       groupId,
       name,

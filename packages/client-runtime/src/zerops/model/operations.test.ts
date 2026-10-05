@@ -13,10 +13,10 @@ import { collectZeropsCalls } from "./calls.ts";
 import { reduceZeropsOperations } from "./operations.ts";
 import type { ZeropsOperation } from "./types.ts";
 
-/** The clock at the synthetic calls' own moment, no project known — a triggered build is still running. */
+/** No project known; every build a result names still runs. */
 const CONTEXT: OperationBuildContext = {
-  nowMs: Date.parse("2026-09-01T00:00:00.000Z"),
   projectId: undefined,
+  builds: () => "running",
 };
 
 // ---- a hand-built call, as one activity row (RAW, R1-R4 fold degenerately
@@ -244,6 +244,7 @@ describe("reduceZeropsOperations — pending states", () => {
           status: "BUILD_TRIGGERED",
           targetService: "weatherdash",
           message: "Build triggered.",
+          appVersionId: "av-1",
         }),
       },
     ]);

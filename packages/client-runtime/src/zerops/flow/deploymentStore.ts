@@ -20,6 +20,8 @@ import {
   type CollectionRead,
   type LeaseAdmissionError,
   type ProcessRecord,
+  type ProcessRef,
+  type ProcessStatus,
   type ProjectRef,
   type ServiceRecord,
   type ServiceRef,
@@ -28,14 +30,12 @@ import type { ZeropsServiceDeployedVersion } from "../data/deployedVersion.ts";
 import type { Invalidation } from "../knowledge/invalidation.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
 import {
-  afterBuilds,
+  buildEnds,
   buildNames,
-  buildsListed,
   heldThroughRecheck,
   stopServices,
   unnamedVersions,
   type ProcessRefusal,
-  type SeenBuild,
   type StopService,
 } from "./deployment.ts";
 
@@ -59,9 +59,9 @@ export interface DeploymentStorePorts {
     refused: (reason: LeaseAdmissionError["reason"]) => void,
     scope: "summary" | "detail",
   ) => () => void;
+  /** Where a process stands as the account's store holds it: how a build it followed ended. */
+  readonly buildStatus: (process: ProcessRef) => ProcessStatus | undefined;
   readonly nowMs: () => number;
-  /** Arms a timer; the returned function disarms it. */
-  readonly setTimer: (delayMs: number, fire: () => void) => () => void;
 }
 
 export interface DeploymentStore {
@@ -91,10 +91,8 @@ interface Entry {
   /** How often the platform refused the demand; it keeps a demand it admitted. */
   refusals: number;
   shown: Known<ReadonlyArray<StopService>>;
-  /** The services seen building while demanded and not seen running since (`afterBuilds`). */
-  built: ReadonlyMap<string, SeenBuild>;
-  /** Disarms the read again that ends a build's grace (`AFTER_BUILD_GRACE_MS`). */
-  disarmGrace: () => void;
+  /** Each service's build seen running while demanded, by its process (`buildEnds`). */
+  builds: ReadonlyMap<string, ProcessRef>;
   unfollow: () => void;
 }
 
@@ -125,19 +123,11 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
       },
       ports.nowMs(),
     );
-    // A build seen to end with nothing running is the first deploy failing; no listing keeps it.
-    const after = afterBuilds(entry.built, next, ports.nowMs(), buildsListed(processes));
-    entry.built = after.built;
-    // A grace running: read the stop again as it ends, so a failure shows without a push.
-    entry.disarmGrace();
-    entry.disarmGrace = () => undefined;
-    if (after.wakeAtMs !== null) {
-      entry.disarmGrace = ports.setTimer(after.wakeAtMs - ports.nowMs(), () => {
-        if (!disposed && entries.get(projectKeyOf(entry.project)) === entry) publish(entry);
-      });
-    }
+    // A build that ended with nothing running ended as Zerops says its process did.
+    const ended = buildEnds(entry.builds, next, processes, ports.buildStatus);
+    entry.builds = ended.followed;
     // A stop read again keeps its last answer while nothing new is known (F5).
-    entry.shown = heldThroughRecheck(entry.shown, after.shown, ports.nowMs());
+    entry.shown = heldThroughRecheck(entry.shown, ended.shown, ports.nowMs());
   };
 
   const publish = (entry: Entry): void => {
@@ -184,8 +174,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
           refused: null,
           refusals: 0,
           shown: UNREAD,
-          built: new Map(),
-          disarmGrace: () => undefined,
+          builds: new Map(),
           unfollow: () => undefined,
         };
         // Held before it is followed: a demand refused as it is taken reaches the entry.
@@ -218,7 +207,6 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
           }
           return;
         }
-        held.disarmGrace();
         held.unfollow();
         entries.delete(key);
       };
@@ -244,10 +232,7 @@ export function makeDeploymentStore(ports: DeploymentStorePorts): DeploymentStor
     dispose: () => {
       if (disposed) return;
       disposed = true;
-      for (const entry of entries.values()) {
-        entry.disarmGrace();
-        entry.unfollow();
-      }
+      for (const entry of entries.values()) entry.unfollow();
       entries.clear();
       listeners.clear();
     },

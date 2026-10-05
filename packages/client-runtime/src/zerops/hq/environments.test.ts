@@ -37,6 +37,8 @@ const STAGE: HqEnvironment = {
   keyHeld: true,
   keyInvalid: false,
   jobs: [],
+  release: null,
+  birth: null,
 };
 
 describe("jobsByService — each service's newest job and newest live one, from HQ's newest first", () => {
@@ -100,6 +102,49 @@ describe("environmentsOf", () => {
   it("reads an environment with its jobs", () => {
     const environment = { ...STAGE, jobs: [job("1", "app", "live")] };
     expect(environmentsOf([environment])).toEqual([environment]);
+  });
+
+  it("reads a production with where its newest release stands", () => {
+    const production: HqEnvironment = {
+      ...STAGE,
+      projectId: "p-prod",
+      tier: "production",
+      sources: ["release"],
+      release: {
+        id: "7",
+        tag: "v0.1.3",
+        planned: true,
+        ended: false,
+        endedAt: null,
+        landed: false,
+        leftOut: [{ service: "api", sha: A, job: "5", reason: "a job of aaaaaaa is under way" }],
+      },
+    };
+    expect(environmentsOf([production])).toEqual([production]);
+  });
+
+  // Review (client #4): a Core older than this client tells neither where a release stands nor
+  // whether it is bringing an environment up. Its environments are still read — what it does not
+  // say is not known, never on its way and never coming up.
+  it("reads an environment from a Core that tells no release and no birth", () => {
+    const { release: _release, birth: _birth, ...older } = STAGE;
+    expect(environmentsOf([older])).toEqual([older]);
+  });
+
+  // Review (delta #9): a Core from before `landed` names a release's end without saying whether it
+  // landed: its environments are still read, and nothing is said to have landed.
+  it("reads a production's release from a Core that tells no landing", () => {
+    const { landed: _landed, ...release } = {
+      id: "7",
+      tag: "v0.1.3",
+      planned: true,
+      ended: true,
+      endedAt: "2026-10-03T10:00:00.000Z",
+      landed: false,
+      leftOut: [],
+    };
+    const production = { ...STAGE, projectId: "p-prod", tier: "production" as const, release };
+    expect(environmentsOf([production])?.[0]?.release).toEqual(release);
   });
 
   // HQ and the client ship together: a set in the shape before jobs is one this build cannot read.

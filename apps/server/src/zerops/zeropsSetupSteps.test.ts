@@ -3,6 +3,8 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   STAND_UP_MESSAGE,
   parseZcpStatus,
+  procStartTime,
+  sectionCall,
   setupDocument,
   standUpCommandIds,
   standUpDecision,
@@ -33,6 +35,8 @@ const facts = (overrides: Partial<SetupFacts> = {}): SetupFacts => ({
   signinAt: undefined,
   record: undefined,
   standUpTurn: undefined,
+  standUpProcessGone: false,
+  sectionTurn: undefined,
   ...overrides,
 });
 
@@ -101,6 +105,86 @@ describe("parseZcpStatus", () => {
       { hostname: "api", step: "deploy", state: "running", processId: "p-1", at: NOW, error: "" },
     ]);
   });
+
+  const processes: ReadonlyArray<[string, unknown, { pid: number; start: string } | undefined]> = [
+    ["its PID and start time", { pid: 4242, start: "98765" }, { pid: 4242, start: "98765" }],
+    ["a PID whose start zcp could not read", { pid: 4242, start: "" }, { pid: 4242, start: "" }],
+    ["none: a zcp that names no process", undefined, undefined],
+    ["a PID that is no process", { pid: 0, start: "1" }, undefined],
+    ["a PID that is not a number", { pid: "4242", start: "1" }, undefined],
+  ];
+  for (const [name, process, expected] of processes) {
+    it(`keeps the stand-up's process — ${name}`, () =>
+      assert.deepStrictEqual(
+        parseZcpStatus(status({ standup: { state: "running", process } }))?.standup?.process,
+        expected,
+      ));
+  }
+
+  const callStarts: ReadonlyArray<[string, Record<string, unknown>, string]> = [
+    [
+      "the stamp of the call now running it",
+      { startedAt: "2026-10-01T10:00:00Z", callStartedAt: "2026-10-01T10:20:00Z" },
+      "2026-10-01T10:20:00Z",
+    ],
+    ["the section's own start from a zcp that stamps none", { startedAt: NOW }, NOW],
+  ];
+  for (const [name, section, expected] of callStarts) {
+    it(`reads the call's start — ${name}`, () =>
+      assert.strictEqual(
+        parseZcpStatus(status({ standup: { state: "running", ...section } }))?.standup
+          ?.callStartedAt,
+        expected,
+      ));
+  }
+});
+
+describe("sectionCall", () => {
+  const SECTION = "2026-10-01T10:00:10Z";
+  const sectionOf = (startedAt: string) =>
+    parseZcpStatus(status({ standup: { state: "running", phase: "stage", startedAt } }));
+  const call = (turnId: string, startedAt: string) => ({
+    threadId: "thread-main",
+    turnId,
+    startedAt,
+  });
+  const cases: ReadonlyArray<[string, ReadonlyArray<ReturnType<typeof call>>, string | undefined]> =
+    [
+      ["the call that wrote it", [call("turn-1", "2026-10-01T10:00:09.500Z")], "turn-1"],
+      [
+        "a later call goes on with it: the carry's",
+        [call("turn-1", "2026-10-01T10:00:09.500Z"), call("turn-2", "2026-10-01T10:30:00.000Z")],
+        "turn-2",
+      ],
+      [
+        "an earlier stand-up's call is not its",
+        [call("turn-0", "2026-10-01T09:00:00.000Z"), call("turn-1", "2026-10-01T10:00:09.500Z")],
+        "turn-1",
+      ],
+      ["no call of the server's wrote it", [call("turn-0", "2026-10-01T09:00:00.000Z")], undefined],
+      ["no calls at all", [], undefined],
+    ];
+  for (const [name, calls, turnId] of cases) {
+    it(`finds the call whose turn the section waits on — ${name}`, () =>
+      assert.strictEqual(sectionCall(sectionOf(SECTION), calls)?.turnId, turnId));
+  }
+  it("is none without a section", () =>
+    assert.isUndefined(sectionCall(undefined, [call("turn-1", SECTION)])));
+});
+
+describe("procStartTime", () => {
+  const stat = (comm: string, start: string) =>
+    `4242 (${comm}) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 2 0 0 20 0 9 0 ${start} 1000 50 18446744073709551615`;
+  const reads: ReadonlyArray<[string, string, string | undefined]> = [
+    ["a plain command", stat("zcp", "98765"), "98765"],
+    ["a command with spaces and a parenthesis", stat("zcp (mcp) x", "123"), "123"],
+    ["a line cut short", "4242 (zcp) S 1 2", undefined],
+    ["no command", "", undefined],
+  ];
+  for (const [name, line, expected] of reads) {
+    it(`reads /proc's start time — ${name}`, () =>
+      assert.strictEqual(procStartTime(line), expected));
+  }
 });
 
 describe("standUpSigners", () => {
@@ -362,21 +446,117 @@ describe("setupDocument", () => {
       "failed",
     ],
     [
-      "started, zcp says running but stopped refreshing its file: its MCP server died",
+      "started, zcp running, its file not written for an hour: a quiet build still runs",
       {
         record: { startedAt: NOW, ran: true },
         status: parseZcpStatus(
-          status({ updatedAt: "2026-10-01T11:57:59Z", standup: { state: "running" } }),
+          status({ updatedAt: "2026-10-01T11:00:00Z", standup: { state: "running" } }),
+        ),
+      },
+      "running",
+    ],
+    [
+      "started, zcp running, its MCP process gone",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpProcessGone: true,
+        status: parseZcpStatus(status({ standup: { state: "running" } })),
+      },
+      "failed",
+    ],
+    [
+      "zcp says it ended: its word, whatever became of its process",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpProcessGone: true,
+        status: parseZcpStatus(status({ standup: { state: "done", services: halvesStood } })),
+      },
+      "done",
+    ],
+    [
+      "its turn ended without the stage call: the stages were not built",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "done",
+        sectionTurn: "done",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
         ),
       },
       "failed",
     ],
     [
-      "started, zcp running and refreshed two minutes ago: still running",
+      "its turn failed before the stage call: the stages were not built",
       {
         record: { startedAt: NOW, ran: true },
+        standUpTurn: "failed",
+        sectionTurn: "failed",
         status: parseZcpStatus(
-          status({ updatedAt: "2026-10-01T11:58:00Z", standup: { state: "running" } }),
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "failed",
+    ],
+    [
+      "its turn over, a later call building the stages",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "done",
+        sectionTurn: "done",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesStaging } }),
+        ),
+      },
+      "running",
+    ],
+    [
+      "its turn over, zcp in the development phase: zcp's word",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "done",
+        sectionTurn: "done",
+        status: parseZcpStatus(status({ standup: { state: "running", services: halvesStaging } })),
+      },
+      "running",
+    ],
+    [
+      "a re-run in a later turn waits for its stage call: the recorded turn's end is not its",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "done",
+        sectionTurn: "running",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "running",
+    ],
+    [
+      "nothing recorded, its turn ended without the stage call: the stages were not built",
+      {
+        sectionTurn: "done",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "failed",
+    ],
+    [
+      "settled as never due, zcp's own run's turn ended without the stage call",
+      {
+        record: { startedAt: NOW, ran: false },
+        sectionTurn: "done",
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
+        ),
+      },
+      "failed",
+    ],
+    [
+      "nothing recorded, no call of the section seen (an agent outside the server): running",
+      {
+        status: parseZcpStatus(
+          status({ standup: { state: "running", phase: "stage", services: halvesAfterDev } }),
         ),
       },
       "running",
@@ -466,6 +646,45 @@ describe("setupDocument", () => {
   for (const [name, overrides, state] of standups) {
     it(`standup: ${name}`, () =>
       assert.strictEqual(stepOf(setupDocument(facts(overrides)), "standup")?.state, state));
+  }
+
+  // A stand-up that ended short says why: the client words it.
+  const endings: ReadonlyArray<[string, Partial<SetupFacts>, SetupStep]> = [
+    [
+      "its MCP process gone",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "running",
+        standUpProcessGone: true,
+        status: parseZcpStatus(
+          status({ standup: { state: "running", startedAt: "2026-10-01T11:58:00Z" } }),
+        ),
+      },
+      { id: "standup", state: "failed", at: "", reason: "process_gone" },
+    ],
+    [
+      "its turn over without the stage call",
+      {
+        record: { startedAt: NOW, ran: true },
+        standUpTurn: "done",
+        sectionTurn: "done",
+        status: parseZcpStatus(
+          status({
+            standup: {
+              state: "running",
+              phase: "stage",
+              startedAt: "2026-10-01T11:58:00Z",
+              services: halvesAfterDev,
+            },
+          }),
+        ),
+      },
+      { id: "standup", state: "failed", at: "", reason: "stage_not_built" },
+    ],
+  ];
+  for (const [name, overrides, step] of endings) {
+    it(`a stand-up that ended short says why — ${name}`, () =>
+      assert.deepStrictEqual(stepOf(setupDocument(facts(overrides)), "standup"), step));
   }
 
   // A stand-up nothing started waits, and says why where the server knows: the client words it.

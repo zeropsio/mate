@@ -204,12 +204,32 @@ const keyOf = ({ machine, nowMs }: ModelState): string =>
   });
 
 /** Every violation of I5, I7 and I9 in one transition, as readable strings. */
+/**
+ * What never starts another attempt after a definitive refusal: time, a wake, the network, the
+ * link. An access refusal waits on the mint capability, which arrives as guards.
+ */
+const NEVER_ASKS_AGAIN: ReadonlySet<EnvironmentEvent["type"]> = new Set([
+  "TICK",
+  "WAKE",
+  "ONLINE",
+  "LINK",
+]);
+
 const violations = (
   before: ModelState,
+  event: EnvironmentEvent,
   effects: ReadonlyArray<EnvironmentEffect>,
   after: ModelState,
 ): ReadonlyArray<string> => {
   const found: Array<string> = [];
+  // The owner, 2026-10-05: a definitive refusal is never retried on its own.
+  if (
+    before.machine.credential.kind === "refused" &&
+    NEVER_ASKS_AGAIN.has(event.type) &&
+    after.machine.credential.kind === "exchanging"
+  ) {
+    found.push(`no-retry: a refusal started another attempt on ${event.type}`);
+  }
   const machine = after.machine;
   const credential = machine.credential;
   const exchanges = effects.filter(
@@ -319,7 +339,7 @@ const violations = (
   return found;
 };
 
-describe("environment invariants (DESIGN §11.3 I5, I7, I9) over enumerated event sequences", () => {
+describe("environment invariants (DESIGN §11.3 I5, I7, I9, no retry of a refusal) over enumerated event sequences", () => {
   it(`holds for every sequence to depth ${DEPTH}`, { timeout: EXHAUSTIVE_TIMEOUT_MS }, () => {
     const report = explore({
       roots: [{ machine: initialEnvironment({ record: ENV_A }), nowMs: 100_000 }],
@@ -327,7 +347,8 @@ describe("environment invariants (DESIGN §11.3 I5, I7, I9) over enumerated even
       events: eventsFrom,
       step,
       key: keyOf,
-      check: (before, _event, { state: after, effects }) => violations(before, effects, after),
+      check: (before, event, { state: after, effects }) =>
+        violations(before, event, effects, after),
     });
     expect(report.violations.slice(0, 3)).toEqual([]);
     expect(report.transitions).toBeGreaterThan(10_000);

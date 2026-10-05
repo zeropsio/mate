@@ -100,6 +100,44 @@ describe("HQ's failures", () => {
   );
 });
 
+const ALLOW = { allow: true } as const;
+const refusedFor = (reason: string) => ({ allow: false, reason }) as const;
+/** Each of `verbs` decided as `decision`. */
+const each = (verbs: ReadonlyArray<string>, decision: object) =>
+  Object.fromEntries(verbs.map((verb) => [verb, decision]));
+const ORG_VERBS = ["create_app", "rename_app", "delete_app"];
+/** What an org owner may do with the organization, and with each application. */
+const ORG_ALLOWED = each(ORG_VERBS, ALLOW);
+const ORG_REFUSED = each(ORG_VERBS, refusedFor("not_structure_writer"));
+const APP_ALLOWED = each(
+  ["read_change", "comment_change", "merge_change", "close_change", "redeploy", "release"],
+  ALLOW,
+);
+const KINDS = ["mate", "devstage", "stage", "production"];
+/** What an org owner may do with a Mate, and where they may move it: anywhere, as anything. */
+const MATE_OWNED = (...appIds: ReadonlyArray<string>) => ({
+  can: { observe_mate: ALLOW, edit_mate_record: ALLOW, detach: ALLOW },
+  moveTo: Object.fromEntries([...appIds, "new"].map((id) => [id, KINDS])),
+});
+/** What an org owner may do with an application that holds no project: nobody develops it. */
+const OWNER_EMPTY_APP = {
+  ...APP_ALLOWED,
+  merge_change: refusedFor("not_app_developer"),
+  redeploy: refusedFor("not_app_developer"),
+};
+/** What a socket sent but when Zerops answered each view, which moves with every view HQ reads. */
+const besidesRoles = (messages: ReadonlyArray<{ readonly type: string }>) =>
+  messages.filter((message) => message.type !== "roles");
+/**
+ * A snapshot without when Zerops answered the view its offers are decided over: a time, or none
+ * before HQ's first view lands (its `org` message follows).
+ */
+const timeless = (snapshot: unknown) => {
+  const { rolesAnsweredAt, ...rest } = snapshot as Record<string, unknown>;
+  assert.isTrue(rolesAnsweredAt === null || typeof rolesAnsweredAt === "string");
+  return rest;
+};
+
 describe("HQ API", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
     it.effect("explicit deletion completion checks one project and publishes empty contents", () =>
@@ -159,11 +197,15 @@ describe("HQ API", () => {
           });
           assert.strictEqual(attached.status, 201);
           assert.deepStrictEqual((yield* call("GET", "/api/structure", { session })).body, {
+            can: ORG_ALLOWED,
+            unheld: {},
+            presses: {},
             ungrouped: [],
             apps: [
               {
                 id: appId,
                 name: "Shop",
+                can: APP_ALLOWED,
                 contents: { empty: false, deletingProjectIds: [] },
                 projects: [
                   {
@@ -171,12 +213,12 @@ describe("HQ API", () => {
                     name: "P_MATE",
                     kind: "mate",
                     mate: {
-                      name: "P_MATE",
                       face: "face-3",
                       madeBy: "owner",
                       standupRequestedBy: null,
                       closedOff: false,
                     },
+                    ...MATE_OWNED(appId),
                   },
                 ],
                 environments: [],
@@ -347,9 +389,12 @@ describe("HQ API", () => {
                 name: "live",
                 sources: ["release"],
                 order: 1,
+                can: { keep_deploy_token: ALLOW },
                 keyHeld: false,
                 keyInvalid: false,
                 jobs: [],
+                release: null,
+                birth: { ended: false },
               },
             ],
           ],
@@ -450,9 +495,12 @@ describe("HQ API", () => {
               name: "stage",
               sources: ["main"],
               order: 1,
+              can: { keep_deploy_token: ALLOW },
               keyHeld: true,
               keyInvalid: false,
               jobs: [],
+              release: null,
+              birth: { ended: true },
             },
           ],
         );
@@ -489,12 +537,13 @@ describe("HQ API", () => {
                 `/api/structure/ws?ticket=${yield* ticketFor(call, dev)}`,
               );
               const snapshot = (yield* watching.next("snapshot")) as {
-                readonly apps: ReadonlyArray<{ readonly environments: ReadonlyArray<unknown> }>;
+                readonly apps: ReadonlyArray<{ readonly environments: unknown }>;
               };
               yield* watching.close;
               return snapshot.apps.map((app) => app.environments);
             });
-          assert.deepStrictEqual(yield* snapshotAs("READ_ONLY"), [[]]);
+          // Refused, and said so: never an empty list that reads as "no environments".
+          assert.deepStrictEqual(yield* snapshotAs("READ_ONLY"), [{ refused: "changes_not_seen" }]);
           assert.deepStrictEqual(yield* snapshotAs("BASIC_USER"), [
             [
               {
@@ -503,9 +552,12 @@ describe("HQ API", () => {
                 name: "stage",
                 sources: ["main"],
                 order: 1,
+                can: { keep_deploy_token: refusedFor("not_project_admin") },
                 keyHeld: false,
                 keyInvalid: false,
                 jobs: [],
+                release: null,
+                birth: { ended: false },
               },
             ],
           ]);
@@ -618,6 +670,9 @@ describe("HQ API", () => {
             [403, { code: "forbidden", reason: "not_structure_writer" }],
           );
           assert.deepStrictEqual((yield* call("GET", "/api/structure", { session: dev })).body, {
+            can: ORG_REFUSED,
+            unheld: {},
+            presses: {},
             ungrouped: [],
             apps: [],
           });
@@ -683,6 +738,47 @@ describe("HQ API", () => {
               [201, "made"],
               [503, "zerops_unavailable"],
             ],
+          );
+        }),
+    );
+
+    // The owner, 2026-10-05: a write that cannot be taken back is never decided over the last good
+    // view; while Zerops does not answer it is refused, said so, and nothing is written.
+    it.effect(
+      "refuses a write that cannot be undone while Zerops does not answer, one that can goes on",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const session = yield* sessionFor(call, "door-owner");
+          const appId = (
+            (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
+              readonly id: string;
+            }
+          ).id;
+          fake.members.set("ORG", []);
+          yield* Effect.sleep(Duration.millis(400));
+          const renamed = yield* call("PATCH", `/api/apps/${appId}`, {
+            session,
+            body: { name: "Store" },
+          });
+          const deleted = yield* call("DELETE", `/api/apps/${appId}`, { session });
+          assert.deepStrictEqual(
+            [
+              [renamed.status, (renamed.body as { readonly name?: string }).name],
+              [deleted.status, (deleted.body as { readonly code?: string }).code],
+            ],
+            [
+              [200, "Store"],
+              [503, "zerops_unanswered"],
+            ],
+          );
+          const read = yield* call("GET", "/api/structure", { session });
+          assert.deepStrictEqual(
+            (read.body as { readonly apps: ReadonlyArray<{ readonly id: string }> }).apps.map(
+              (app) => app.id,
+            ),
+            [appId],
           );
         }),
     );
@@ -855,7 +951,7 @@ describe("HQ API", () => {
           );
           // What `GET /api/structure` answers, and beside it the changes of what the caller reads,
           // the Mates they observe and the people the view names.
-          assert.deepStrictEqual(yield* owner.next("snapshot"), {
+          assert.deepStrictEqual(timeless(yield* owner.next("snapshot")), {
             ...((yield* call("GET", "/api/structure", { session })).body as object),
             changes: {},
             appReads: {},
@@ -872,6 +968,7 @@ describe("HQ API", () => {
             value: {
               id: appId,
               name: "Shop",
+              can: OWNER_EMPTY_APP,
               contents: { empty: true, deletingProjectIds: [] },
               projects: [],
               environments: [],
@@ -897,6 +994,7 @@ describe("HQ API", () => {
             value: {
               id: appId,
               name: "Shop",
+              can: APP_ALLOWED,
               contents: { empty: false, deletingProjectIds: [] },
               projects: [
                 {
@@ -904,12 +1002,12 @@ describe("HQ API", () => {
                   name: "P_MATE",
                   kind: "mate",
                   mate: {
-                    name: "P_MATE",
                     face,
                     madeBy: "owner",
                     standupRequestedBy: null,
                     closedOff: false,
                   },
+                  ...MATE_OWNED(appId),
                 },
               ],
               environments: [],
@@ -943,6 +1041,7 @@ describe("HQ API", () => {
             value: {
               id: appId,
               name: "Shop",
+              can: OWNER_EMPTY_APP,
               contents: { empty: true, deletingProjectIds: [] },
               projects: [],
               environments: [],
@@ -954,7 +1053,13 @@ describe("HQ API", () => {
           // Three pings answered: still open.
           yield* Effect.sleep(Duration.millis(1100));
           assert.isAtLeast(owner.pings.seen, 3);
-          assert.deepStrictEqual(yield* owner.quiet("1 millis"), []);
+          // Beyond the organization's offers, which moved as P_MATE went from held nowhere to Shop.
+          assert.deepStrictEqual(
+            besidesRoles(yield* owner.quiet("1 millis")).filter(
+              (message) => message.type !== "org",
+            ),
+            [],
+          );
           yield* owner.close;
         }),
     );
@@ -1055,10 +1160,10 @@ describe("HQ API", () => {
           );
           const read = (yield* call("GET", "/api/structure", { session })).body as {
             readonly apps: ReadonlyArray<{
-              readonly projects: ReadonlyArray<{ readonly mate: { readonly name: string } | null }>;
+              readonly projects: ReadonlyArray<{ readonly name: string }>;
             }>;
           };
-          assert.strictEqual(read.apps[0]?.projects[0]?.mate?.name, "P_MATE");
+          assert.strictEqual(read.apps[0]?.projects[0]?.name, "P_MATE");
         }),
     );
 
@@ -1088,7 +1193,7 @@ describe("HQ API", () => {
         });
         const { id } = recorded.body as { readonly id: string };
         assert.deepStrictEqual([recorded.status, recorded.body], [201, { id, face: "rose:seal" }]);
-        assert.deepStrictEqual(yield* birthsOf, [{ id, name: "", face: "rose:seal" }]);
+        assert.deepStrictEqual(yield* birthsOf, [{ id, face: "rose:seal" }]);
 
         const attached = yield* call("POST", `/api/apps/${appId}/projects`, {
           session,
@@ -1114,7 +1219,11 @@ describe("HQ API", () => {
           const owner = yield* socket(
             `/api/structure/ws?ticket=${yield* ticketFor(call, session)}`,
           );
-          assert.deepStrictEqual(yield* owner.next("snapshot"), {
+          assert.deepStrictEqual(timeless(yield* owner.next("snapshot")), {
+            can: ORG_ALLOWED,
+            // P_MATE is HQ's nowhere yet: its owner may set its Mate up.
+            unheld: { P_MATE: { create_mate_record: ALLOW } },
+            presses: {},
             ungrouped: [],
             apps: [],
             changes: {},
@@ -1125,13 +1234,15 @@ describe("HQ API", () => {
           const ada = { face: "sky:flower" };
           // Who made it is the session that set it up, never a field the client sends.
           const adaView = {
-            name: "P_MATE",
             ...ada,
             madeBy: "owner",
             standupRequestedBy: null,
             closedOff: false,
           };
-          const lone = [{ projectId: "P_MATE", name: "P_MATE", mate: adaView }];
+          /** The Mate in no application, movable into each of `appIds` or a new one. */
+          const lone = (...appIds: ReadonlyArray<string>) => [
+            { projectId: "P_MATE", name: "P_MATE", mate: adaView, ...MATE_OWNED(...appIds) },
+          ];
 
           const setUp = yield* call("POST", "/api/mates", {
             session,
@@ -1141,14 +1252,23 @@ describe("HQ API", () => {
             [setUp.status, setUp.body],
             [201, { projectId: "P_MATE", ...ada }],
           );
-          assert.deepStrictEqual(yield* owner.next("change"), { key: "ungrouped", value: lone });
+          assert.deepStrictEqual(yield* owner.next("change"), {
+            key: "ungrouped",
+            value: lone(),
+          });
 
           const appId = (
             (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
               readonly id: string;
             }
           ).id;
-          yield* owner.next("change");
+          // The new application, and the Mate's way into it.
+          assert.sameDeepMembers(
+            [yield* owner.next("change"), yield* owner.next("change")].map(
+              (message) => (message as { readonly key: string }).key,
+            ),
+            ["ungrouped", appId],
+          );
           const renamed = yield* call("PATCH", `/api/apps/${appId}`, {
             session,
             body: { name: "Store" },
@@ -1162,6 +1282,7 @@ describe("HQ API", () => {
             value: {
               id: appId,
               name: "Store",
+              can: OWNER_EMPTY_APP,
               contents: { empty: true, deletingProjectIds: [] },
               projects: [],
               environments: [],
@@ -1186,8 +1307,17 @@ describe("HQ API", () => {
                 value: {
                   id: appId,
                   name: "Store",
+                  can: APP_ALLOWED,
                   contents: { empty: false, deletingProjectIds: [] },
-                  projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "mate", mate: adaView }],
+                  projects: [
+                    {
+                      projectId: "P_MATE",
+                      name: "P_MATE",
+                      kind: "mate",
+                      mate: adaView,
+                      ...MATE_OWNED(appId),
+                    },
+                  ],
                   environments: [],
                   births: [],
                 },
@@ -1205,12 +1335,13 @@ describe("HQ API", () => {
           assert.sameDeepMembers(
             [yield* owner.next("change"), yield* owner.next("change")] as Array<object>,
             [
-              { key: "ungrouped", value: lone },
+              { key: "ungrouped", value: lone(appId) },
               {
                 key: appId,
                 value: {
                   id: appId,
                   name: "Store",
+                  can: OWNER_EMPTY_APP,
                   contents: { empty: true, deletingProjectIds: [] },
                   projects: [],
                   environments: [],
@@ -1230,7 +1361,10 @@ describe("HQ API", () => {
         const owner = yield* sessionFor(call, "door-owner");
         const dev = yield* sessionFor(call, "door-dev");
         const devSocket = yield* socket(`/api/structure/ws?ticket=${yield* ticketFor(call, dev)}`);
-        assert.deepStrictEqual(yield* devSocket.next("snapshot"), {
+        assert.deepStrictEqual(timeless(yield* devSocket.next("snapshot")), {
+          can: ORG_REFUSED,
+          unheld: {},
+          presses: {},
           ungrouped: [],
           apps: [],
           changes: {},
@@ -1247,7 +1381,7 @@ describe("HQ API", () => {
           session: owner,
           body: { projectId: "P_MATE", kind: "stage" },
         });
-        assert.deepStrictEqual(yield* devSocket.quiet("700 millis"), []);
+        assert.deepStrictEqual(besidesRoles(yield* devSocket.quiet("700 millis")), []);
 
         // Zerops grants dev the project: the open socket shows the application within its recheck.
         const project = fake.projects.find((candidate) => candidate.id === "P_MATE")!;
@@ -1259,6 +1393,8 @@ describe("HQ API", () => {
           value: {
             id: appId,
             name: "Shop",
+            // A developer of it, before it has a production to release.
+            can: { ...APP_ALLOWED, release: refusedFor("no_production") },
             contents: { empty: false, deletingProjectIds: [] },
             projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "stage", mate: null }],
             environments: [
@@ -1268,9 +1404,12 @@ describe("HQ API", () => {
                 name: "p-mate",
                 sources: ["main"],
                 order: 1,
+                can: { keep_deploy_token: refusedFor("not_project_admin") },
                 keyHeld: false,
                 keyInvalid: false,
                 jobs: [],
+                release: null,
+                birth: { ended: false },
               },
             ],
             births: [],
@@ -1325,12 +1464,25 @@ describe("HQ API", () => {
             })).body,
           },
         });
-        assert.deepStrictEqual(snapshot, {
+        assert.deepStrictEqual(timeless(snapshot), {
+          can: ORG_REFUSED,
+          // The org reader reads P_MATE, held nowhere, and may not write its Mate's record.
+          unheld: { P_MATE: { create_mate_record: refusedFor("not_project_admin") } },
+          presses: {},
           ungrouped: [],
           apps: [
             {
               id: appId,
               name: "Shop",
+              // An org reader reads and comments; nobody develops it.
+              can: {
+                read_change: ALLOW,
+                comment_change: ALLOW,
+                merge_change: refusedFor("not_app_developer"),
+                close_change: refusedFor("not_app_developer"),
+                redeploy: refusedFor("not_app_developer"),
+                release: refusedFor("no_production"),
+              },
               contents: { empty: true, deletingProjectIds: [] },
               projects: [],
               environments: [],
@@ -1390,7 +1542,10 @@ describe("HQ API", () => {
           const session = yield* sessionFor(call, "door-owner");
           const ticket = yield* ticketFor(call, session);
           const opened = yield* socket(`/api/structure/ws?ticket=${ticket}`);
-          assert.deepStrictEqual(yield* opened.next("snapshot"), {
+          assert.deepStrictEqual(timeless(yield* opened.next("snapshot")), {
+            can: ORG_ALLOWED,
+            unheld: { P_MATE: { create_mate_record: ALLOW } },
+            presses: {},
             ungrouped: [],
             apps: [],
             changes: {},
@@ -1746,6 +1901,30 @@ describe("HQ API", () => {
             200,
             { ...born, standupRequestedBy: "owner", closedOff: true, signers: {}, ...none },
           ]);
+
+          // B5: its press held by the browser running it, read by another, and let go at its end.
+          const pressed = yield* call("PUT", "/api/presses/P_MATE", {
+            session: owner,
+            body: { owner: "press-a", kind: "mate", importProcessId: "imp-1" },
+          });
+          assert.deepStrictEqual(
+            [pressed.status, (pressed.body as { importProcessId?: string }).importProcessId],
+            [200, "imp-1"],
+          );
+          const taken = yield* call("PUT", "/api/presses/P_MATE", {
+            session: owner,
+            body: { owner: "press-b", kind: "mate" },
+          });
+          assert.deepStrictEqual(
+            [taken.status, taken.body],
+            [409, { code: "conflict", reason: "press_held" }],
+          );
+          const stopped = yield* call("POST", "/api/presses/P_MATE/press-a/stopped", {
+            session: owner,
+          });
+          assert.strictEqual(stopped.status, 200);
+          const finished = yield* call("DELETE", "/api/presses/P_MATE/press-a", { session: owner });
+          assert.strictEqual(finished.status, 200);
 
           const dev = yield* sessionFor(call, "door-dev");
           const refused = yield* call("POST", "/api/mates/P_MATE/closed-off", { session: dev });

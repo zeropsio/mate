@@ -1,14 +1,15 @@
-import { it as effectIt } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as TestClock from "effect/testing/TestClock";
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { project, service } from "../data/__fixtures__/index.ts";
+import { process, project, service } from "../data/__fixtures__/index.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
-import type { LeaseAdmissionError } from "../data/types.ts";
+import { processKeyOf, type LeaseAdmissionError } from "../data/types.ts";
 import { deploymentStorePorts } from "./flow.ts";
+
+const observed = (status: string) => ({ knowledge: "observed", fields: { status } });
+const UNREAD = { knowledge: "unresolved", fields: {} };
 
 describe("the deployment store's ports (DESIGN §2.D D6)", () => {
   it("tells the store why the platform took no demand for a stop's processes", () => {
@@ -90,22 +91,23 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
     expect(changes).toBe(1);
   });
 
-  effectIt.effect("arms the store's timers on the account's clock, and disarms them", () =>
-    Effect.gen(function* () {
-      const listing = Atom.make(null);
-      const data = {
-        reads: { servicesOf: () => listing, runningProcessesOf: () => listing },
-      } as unknown as ManagedZeropsDataRuntime;
-      const ports = deploymentStorePorts(data, AtomRegistry.make(), yield* Effect.context<never>());
-      const fired: Array<string> = [];
-      ports.setTimer(2_000, () => fired.push("kept"));
-      const disarm = ports.setTimer(2_000, () => fired.push("disarmed"));
-
-      disarm();
-      yield* TestClock.adjust(1_999);
-      expect(fired).toEqual([]);
-      yield* TestClock.adjust(1);
-      expect(fired).toEqual(["kept"]);
-    }),
-  );
+  it.each([
+    { name: "a build Zerops ended failed", lifecycle: observed("FAILED"), status: "FAILED" },
+    { name: "a build still running", lifecycle: observed("RUNNING"), status: "RUNNING" },
+    { name: "a process whose status was never read", lifecycle: UNREAD, status: undefined },
+    { name: "a process the account does not hold", lifecycle: undefined, status: undefined },
+  ])("reads $name's status off the account's store", ({ lifecycle, status }) => {
+    const build = process("build-1", project("project-stage"));
+    const data = {
+      stateAtom: Atom.make({
+        activity: {
+          processes: new Map(
+            lifecycle === undefined ? [] : [[processKeyOf(build), { ref: build, lifecycle }]],
+          ),
+        },
+      }),
+    } as unknown as ManagedZeropsDataRuntime;
+    const ports = deploymentStorePorts(data, AtomRegistry.make(), Context.empty());
+    expect(ports.buildStatus(build)).toBe(status);
+  });
 });

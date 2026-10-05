@@ -6,7 +6,7 @@ import {
   creatableRoles,
   environmentRoleLabel,
   environmentRoleTag,
-  groupNameIsPlaceholder,
+  groupNameUnread,
 } from "./ZeropsGroupTree.logic";
 
 /** A project HQ places in application `appId`, named `appName`, as `kind`. */
@@ -55,15 +55,15 @@ describe("environmentRoleTag", () => {
   });
 });
 
-describe("groupNameIsPlaceholder", () => {
-  it("is true for a group HQ holds no name for", () => {
+describe("groupNameUnread", () => {
+  it("is true for a group whose name reads blank: a read problem, HQ holding none blank", () => {
     const [group] = buildZeropsGroupTree([item("x", "zzz", "", "mate")], { order: "name" }).groups;
-    expect(groupNameIsPlaceholder(group!.group)).toBe(true);
+    expect(groupNameUnread(group!.group)).toBe(true);
   });
 
   it("is false once HQ names it", () => {
     const [group] = buildZeropsGroupTree([CRM_DEV], { order: "name" }).groups;
-    expect(groupNameIsPlaceholder(group!.group)).toBe(false);
+    expect(groupNameUnread(group!.group)).toBe(false);
   });
 });
 

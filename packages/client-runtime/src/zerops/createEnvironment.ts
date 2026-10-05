@@ -90,11 +90,6 @@ export interface EnvironmentCreationInput {
    */
   readonly agents?: ReadonlyArray<ZeropsAgentType>;
   /**
-   * The press writes the environment's registration in the organization's HQ (`register`), which
-   * decides who may: an owner or an admin, or a member attaching their own new Mate.
-   */
-  readonly register?: boolean;
-  /**
    * The birth intent HQ holds of the Mate (`recordBirth`), recorded before its project: the
    * project handle is bound to it at HQ before its attach.
    */
@@ -102,7 +97,7 @@ export interface EnvironmentCreationInput {
 }
 
 export type EnvironmentCreationStep =
-  /** `POST /client/{clientId}/project`, tags included so it is never briefly ungrouped. */
+  /** `POST /client/{clientId}/project`, born with its one tag where it gets an agent. */
   | {
       readonly kind: "create-project";
       readonly name: string;
@@ -145,9 +140,9 @@ export type EnvironmentCreationStep =
       readonly isolated?: true;
     }
   /**
-   * The environment's group registration: its registry entry, and for a stage
-   * or a production its deploy token and its declaration. Each write is safe to
-   * make again.
+   * The environment's registration in the organization's HQ: a Mate's record
+   * in its application, and for a stage or a production its attachment and its
+   * deploy key. Each write is safe to make again.
    */
   | { readonly kind: "register" }
   /**
@@ -195,11 +190,11 @@ export type EnvironmentCreationPlan =
  * The ordered platform calls that stand up one environment, or the reason
  * there are none.
  *
- * Order is not arbitrary. The project is created **with its tags already on
- * it**, so it never exists as an untagged project that the group tree would
- * miss — and since the group tree is derived from the lag-free project list
- * rather than the trailing search index, the new environment appears in its
- * group immediately.
+ * Order is not arbitrary. Where the project belongs is HQ's record: a Mate's
+ * project is created under the birth intent HQ already holds (`birth`), and the
+ * press registers every environment in its application. The one tag it is born
+ * with, where it gets an agent, is the Zerops GUI's `mate` marker, which
+ * nothing here reads.
  *
  * The container is imported before the application's runtimes: it is the part
  * the user can start talking to, and on the roles that get one it is what
@@ -244,8 +239,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     };
   }
 
-  // Membership first, then the name: naming is not a membership write, and
-  // routing it through one clears the group (`groups.ts`).
+  // The Zerops GUI's marker on a project with an agent; where it belongs is HQ's.
   const tagList = withAgent ? withZeropsMateTag([]) : [];
 
   // A recipe that describes a whole project creates one in a single call. Not
@@ -285,11 +279,11 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     );
   }
 
-  // A Mate's record in its application before its container (F6b, 2026-10-03): a press that
-  // stops after it leaves a Mate HQ holds there, which any browser finishes under its name. A
-  // registration refused — a member who may not write the registry — stops nothing: the
-  // container and the close-off still run, and the Mate waits for an owner, bare.
-  if (withAgent && input.register === true) steps.push({ kind: "register" });
+  // Every environment is registered in the organization's HQ, which decides who may: an owner or
+  // an admin, or a member attaching their own new Mate. A Mate's record in its application comes
+  // before its container (F6b, 2026-10-03): a press that stops after it leaves a Mate HQ holds
+  // there, which any browser finishes under its name. A registration HQ refuses stops the press.
+  if (withAgent) steps.push({ kind: "register" });
   if (withAgent) {
     steps.push({
       kind: "import-container",
@@ -299,7 +293,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
   }
   // The close-off after the container: it is what makes the Mate need no browser.
   if (withAgent) steps.push({ kind: "close-off" });
-  if (!withAgent && input.register === true) steps.push({ kind: "register" });
+  if (!withAgent) steps.push({ kind: "register" });
   // Last, and the only step that waits on anything: everything the person's rights are needed
   // for is done before it.
   steps.push({ kind: "await-ready", withAgent });

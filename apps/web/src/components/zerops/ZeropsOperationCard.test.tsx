@@ -49,12 +49,12 @@ vi.mock("../../rightPanelStore", () => ({
 import { formatWorkDuration } from "../chat/conversation.logic";
 import { ZeropsOperationCard, type ObservedRegion } from "./ZeropsOperationCard";
 
-/** The clock at the hand-built calls' own moment, no project known — a triggered build is still running. */
-const CONTEXT = { nowMs: Date.parse("2026-09-01T00:00:00.000Z"), projectId: undefined };
+/** No project known; every build a result names still runs. */
+const CONTEXT = { projectId: undefined, builds: () => "running" as const };
 
 /** Every `ZeropsOperation` (card kind) a real captured thread's activities fold into. */
 function operationsFor(thread: ZeropsShowcaseThread): ReadonlyArray<ZeropsOperation> {
-  return deriveZeropsThreadModel({ activities: thread.activities, nowMs: CONTEXT.nowMs })
+  return deriveZeropsThreadModel({ activities: thread.activities, builds: CONTEXT.builds })
     .entries.filter(
       (entry): entry is Extract<typeof entry, { kind: "operation" }> => entry.kind === "operation",
     )
@@ -605,7 +605,7 @@ describe("ZeropsOperationCard — the pipeline row", () => {
   });
 });
 
-describe("ZeropsOperationCard — a triggered build past its cap", () => {
+describe("ZeropsOperationCard — a triggered build it cannot read", () => {
   it("reads attention, not busy, and links the project in Zerops", () => {
     const [uncertain] = reduceZeropsOperations(
       [
@@ -620,7 +620,7 @@ describe("ZeropsOperationCard — a triggered build past its cap", () => {
           resultText: JSON.stringify({ status: "BUILD_TRIGGERED", targetService: "weatherdash" }),
         }),
       ],
-      { nowMs: Date.parse("2026-09-01T00:10:05.000Z"), projectId: "proj-1" },
+      { projectId: "proj-1", builds: () => "unobservable" as const },
     ).operations;
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={uncertain!} />);
 
@@ -1749,6 +1749,7 @@ describe("ZeropsOperationCard — the version a settled deploy shipped", () => {
     const triggered = deploy({
       status: "BUILD_TRIGGERED",
       targetService: "weatherdash",
+      appVersionId: "av-abc",
       versionName: "abc123",
     });
     const html = renderToStaticMarkup(

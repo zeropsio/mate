@@ -18,7 +18,11 @@
  */
 import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
 import { enrollmentRefusalWords, NO_HQ_WORDS } from "@t3tools/client-runtime/zerops/hq";
-import type { MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
+import {
+  standUpFailureWords,
+  type MateSetup,
+  type MateSetupFailure,
+} from "@t3tools/client-runtime/zerops/mateSetup";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
 import {
@@ -359,7 +363,11 @@ export function arrivalSteps(
     /** The tier's runtimes, imported once the project is closed off (`birthRuntimesFacts`). */
     readonly runtimes?: { readonly runtimes: ReadonlyArray<BirthService> };
     /** What the Mate's own setup says (`/mate/setup.json`); absent before it answers, or ever. */
-    readonly setup?: Pick<MateSetup, "git" | "gitFailure" | "signin" | "standup"> | undefined;
+    readonly setup?:
+      | Pick<MateSetup, "git" | "gitFailure" | "signin" | "standup" | "standupFailure">
+      | undefined;
+    /** Why its setup can't be read, where its container serves one (`useMateSetup`). */
+    readonly setupFailure?: MateSetupFailure | undefined;
     /** The steps this tab runs for it, while it holds them. */
     readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
     /**
@@ -464,6 +472,14 @@ export function arrivalSteps(
       ),
     });
   }
+  if (progress.setupFailure !== undefined) {
+    steps.push({
+      id: "setup",
+      label: `${mate.name}'s setup`,
+      state: "failed",
+      why: SETUP_FAILURE_WORDS[progress.setupFailure],
+    });
+  }
   if (progress.agentReady === true) {
     steps.push({ id: "you", label: `${mate.name}'s agent is ready`, state: "done" });
   } else {
@@ -481,10 +497,20 @@ export function arrivalSteps(
       id: "standup",
       label: `${mate.name} stands up development`,
       state: STANDUP_STATES[setup.standup],
+      ...optional(
+        "why",
+        setup.standup === "failed" ? standUpFailureWords(setup.standupFailure) : undefined,
+      ),
     });
   }
   return steps;
 }
+
+/** Why a Mate's setup can't be read: the setup step's reason, read whole under the steps. */
+export const SETUP_FAILURE_WORDS: Readonly<Record<MateSetupFailure, string>> = {
+  refused: "Its container turned the read of its setup away.",
+  invalid: "Its container answered with something that isn't its setup.",
+};
 
 /** The stand-up as the Mate's setup says it, as a step. */
 const STANDUP_STATES: Readonly<

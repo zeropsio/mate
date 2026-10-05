@@ -50,8 +50,11 @@ const NONE_RECHECKED: Shown<Deployment> = {
   ...NONE,
   ...(NONE.state === "known" ? { freshness: { kind: "revalidating", sinceMs: 0 } } : {}),
 } as Shown<Deployment>;
-/** A build was seen to end and nothing it built runs (`afterBuild`). */
-const FAILED_BUILD = known({ kind: "none", afterBuild: true });
+/** A build HQ did not make that Zerops ended failed: nothing it built runs (`failedBuild`). */
+const FAILED_BUILD = known({
+  kind: "none",
+  failedBuild: { processId: "process-manual", reason: "Zerops reports its build failed" },
+});
 const DEPLOYING = known({ kind: "deploying", version: deployedVersion(SHA), previous: null });
 const RUNNING = known({ kind: "running", activatedAt: null, version: deployedVersion(SHA) });
 
@@ -108,6 +111,8 @@ interface Moment {
   readonly declared: boolean;
   /** HQ holds no deploy key that works for the stage. */
   readonly keyless?: boolean;
+  /** Whether HQ ended bringing it up (`HqEnvironment.birth`); still bringing it up unless said. */
+  readonly born?: boolean;
 }
 
 function record({ id, state, reason, ended, t }: HqRecord): HqJob {
@@ -131,7 +136,6 @@ function record({ id, state, reason, ended, t }: HqRecord): HqJob {
 
 /** What the menu's line and the page's cell say at one moment. */
 function said(moment: Moment) {
-  const nowMs = at(moment.t);
   const latest = moment.hq === undefined ? undefined : record(moment.hq);
   const input: GroupFlowInput = {
     groupId: "g-brine",
@@ -142,7 +146,6 @@ function said(moment: Moment) {
       {
         projectId: STAGE_ID,
         name: "Brine - stage",
-        createdAt: iso(1061),
         projectStatus: moment.projectStatus ?? "ACTIVE",
         services: moment.services ?? [app("ACTIVE")],
         tier: "stage",
@@ -158,6 +161,7 @@ function said(moment: Moment) {
                   : { hostname: "app", deploy: { latest, live: null } },
               ],
               keyHeld: moment.keyless !== true,
+              birth: { ended: moment.born === true },
             })
           : undefined,
         deployment: moment.deployment,
@@ -176,14 +180,12 @@ function said(moment: Moment) {
     mainHead: undefined,
     productionAddable: false,
     pending: [],
-    nowMs,
   };
   const stop = groupFlow(input).stages[0];
   if (stop === undefined) throw new Error("the stage is listed");
   const listed = {
     stop,
     projectStatus: moment.projectStatus ?? "ACTIVE",
-    createdAt: iso(1061),
     services: moment.services ?? [db("ACTIVE"), app("ACTIVE")],
     building: moment.deployment?.state === "known" && moment.deployment.value.kind === "deploying",
     routes: moment.routes ?? 0,
@@ -194,7 +196,7 @@ function said(moment: Moment) {
       {
         projectId: STAGE_ID,
         name: "Brine - stage",
-        coming: listedStopComing("stage", listed, nowMs),
+        coming: listedStopComing("stage", listed),
         serves: stopServes(listed),
       },
     ],
@@ -333,15 +335,15 @@ describe("a stage coming up, replayed on run 4's clock with HQ deploying it", ()
 
 describe("a stage whose first build failed", () => {
   // The build ended and the app keeps the import's no-code version: nothing it built runs.
-  it("says so on the line and the cell, at once and after the window", () => {
-    for (const t of [1500, 1061 + 15 * 60 - 1]) {
+  it("says so on the line and the cell, at once and after HQ ended bringing it up", () => {
+    for (const t of [1500, 1061 + 60 * 60]) {
       expect(said({ t, deployment: FAILED_BUILD, hq: HQ_DEPLOYING, declared: true })).toMatchObject(
         { line: "Stage didn’t come up · its first deploy failed", cell: "First deploy failed" },
       );
     }
-    expect(said({ t: 86_400, deployment: FAILED_BUILD, hq: undefined, declared: true }).cell).toBe(
-      "First deploy failed",
-    );
+    expect(
+      said({ t: 86_400, deployment: FAILED_BUILD, hq: undefined, declared: true, born: true }).cell,
+    ).toBe("First deploy failed");
   });
 
   it("says so where HQ records its build failing, however long ago", () => {
@@ -350,7 +352,7 @@ describe("a stage whose first build failed", () => {
       line: "Stage didn’t come up · its first deploy failed",
       cell: "First deploy failed",
     });
-    expect(said({ t: 86_400, deployment: NONE, hq: failed, declared: true }).cell).toBe(
+    expect(said({ t: 86_400, deployment: NONE, hq: failed, declared: true, born: true }).cell).toBe(
       "First deploy failed",
     );
   });
@@ -377,8 +379,8 @@ describe("a stage whose first deploy Zerops did not answer", () => {
 describe("a stage whose first deploy HQ still follows", () => {
   // HQ queued it; no build of it was seen yet, and HQ has not ended its job.
   const waiting: Moment = { t: 1500, deployment: NONE, hq: QUEUED, declared: true };
-  // The stage's own coming-up window ran out (+1061 s made, 15 min).
-  const past: Moment = { ...waiting, t: 1061 + 15 * 60 };
+  // An hour on (+1061 s made), HQ still bringing it up: no age ends its coming up (H2).
+  const past: Moment = { ...waiting, t: 1061 + 60 * 60 };
 
   it("is on its way while HQ's job is, however long ago it was asked", () => {
     expect(said(waiting)).toMatchObject({
@@ -399,17 +401,21 @@ describe("a stage whose first deploy HQ still follows", () => {
     expect(said({ ...past, hq: stopped }).cell).toBe("First deploy failed");
   });
 
-  it("never lands up as its window runs out", () => {
+  it("never lands up while HQ still brings it up, however long it takes", () => {
     expect(headingLanding(said({ ...past, t: past.t - 1 }).heading, said(past).heading)).toBe(
       undefined,
     );
   });
 
-  it("says the neutral wait, never on its way, where HQ does not declare it yet", () => {
+  it("says nothing of coming up where HQ does not declare it yet: its cell says what it lacks", () => {
     expect(said({ ...waiting, declared: false })).toMatchObject({
-      line: "Stage coming up · awaiting a first deploy",
+      line: null,
       cell: "Nothing deployed yet",
     });
+  });
+
+  it("stops coming up at once when HQ ends bringing it up", () => {
+    expect(said({ ...waiting, born: true }).line).toBeNull();
   });
 });
 

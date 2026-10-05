@@ -12,6 +12,7 @@
  */
 import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { changeUrl, parseChangeUrl } from "@t3tools/shared/hqChanges";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -38,10 +39,13 @@ const services: ZeropsTopologyService[] = [
   },
 ];
 
-const GITEA = "https://forge-7c1d-3000.prg1.zerops.app";
+/** The organization's HQ, and change #7 of the group's site repository at it. */
+const HQ = "https://hq.example.test";
+const CHANGE = changeUrl(HQ, "group-1", "site", 7);
 
 /** The person's group, with change #7 open on its site repository. */
 const FLOW = {
+  hqAddress: HQ,
   flows: new Map([
     [
       "group-1",
@@ -53,17 +57,17 @@ const FLOW = {
             line: "Screenshots of the new landing page",
             merged: false,
             mergeability: "mergeable",
-            checks: "passing",
           },
         ],
+        merged: [],
       },
     ],
   ]),
 } as unknown as ZeropsProjectFlowValue;
 
-/** A change opened in the app, as the conversation's own resolver would. */
+/** A change opened in the app, as the conversation's own resolver would (`useOpenZeropsChange`). */
 const openChange = (href: string) =>
-  href.startsWith(GITEA) ? () => console.info("open change", href) : null;
+  parseChangeUrl(href, HQ) === null ? null : () => console.info("open change", href);
 
 const ANSWER = [
   `The guestbook is live on the dev service: https://${host}/app. I added an entry through the form and it listed it at once.`,
@@ -72,7 +76,7 @@ const ANSWER = [
   "",
   "It follows the pattern in https://github.com/zeropsio/recipes/blob/main/nodejs.md, and the [Zerops docs](https://docs.zerops.io/nodejs/overview) explain the ports.",
   "",
-  `The changes are in the [site pull request](${GITEA}/orchard/site/pulls/7), with screenshots in its description; the files are at ${GITEA}/orchard/site/pulls/7/files.`,
+  `The changes are in the [site change](${CHANGE}), with screenshots in its description; it is at ${CHANGE}.`,
   "",
   `- dev: https://${host}/`,
   "- docs: https://docs.zerops.io/",

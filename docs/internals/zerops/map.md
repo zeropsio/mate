@@ -41,15 +41,18 @@ reads and discards it (spec §3). The three boundary rules and the ownership of 
 
 ## Channels
 
-| From → To                | Carries                           | Auth                                                | Needs VPN           | Verified                                     |
-| ------------------------ | --------------------------------- | --------------------------------------------------- | ------------------- | -------------------------------------------- |
-| client → Zerops API      | orgs, projects, services, env     | `Authorization: Bearer`                             | no                  | yes — CORS is `*`                            |
-| client → zcp public URL  | everything the container serves   | cookie `__zcp_auth`                                 | no                  | yes — HTTP/2, ~86 ms, WS upgrade in template |
-| client → mate server     | threads, agent, git, browser view | Zerops token once at the door (§3.2) → session → WS | no                  | yes — live on `z3-eval`                      |
-| laptop → project VXLAN   | SSH, direct service ports         | WireGuard                                           | **yes**             | yes                                          |
-| zcp → siblings           | sshfs mounts, `zcli push` deploys | SSH keys, pre-trusted VXLAN-wide                    | no (inside project) | yes                                          |
-| agent in container → zcp | the `zerops_*` MCP tools          | none — stdio child process                          | no                  | yes                                          |
-| zcp → Zerops API         | what the MCP tools act on         | Bearer (`ZCP_API_KEY` / zcli token)                 | no                  | yes                                          |
+| From → To                | Carries                                           | Auth                                                | Needs VPN           | Verified                                     |
+| ------------------------ | ------------------------------------------------- | --------------------------------------------------- | ------------------- | -------------------------------------------- |
+| client → Zerops API      | orgs, projects, services, env                     | `Authorization: Bearer`                             | no                  | yes — CORS is `*`                            |
+| client → zcp public URL  | everything the container serves                   | cookie `__zcp_auth`                                 | no                  | yes — HTTP/2, ~86 ms, WS upgrade in template |
+| client → mate server     | threads, agent, git, browser view                 | Zerops token once at the door (§3.2) → session → WS | no                  | yes — live on `z3-eval`                      |
+| laptop → project VXLAN   | SSH, direct service ports                         | WireGuard                                           | **yes**             | yes                                          |
+| zcp → siblings           | sshfs mounts, `zcli push` deploys                 | SSH keys, pre-trusted VXLAN-wide                    | no (inside project) | yes                                          |
+| client → HQ Core         | structure, offers, changes, releases (one stream) | Zerops door token once → HQ session → WS            | no                  | yes — live, KRLS and Mate s.r.o. (0.13)      |
+| mate server → HQ Core    | its overview, signers, changes                    | the Mate's HQ credential (enrollment) → WS link     | no                  | yes — live, the fleet (0.13)                 |
+| zcp → HQ Core            | git over HTTPS, enrollment, `zerops_observe`      | the Mate's HQ credential                            | no                  | yes — live, the fleet (zcp v9.19x)           |
+| agent in container → zcp | the `zerops_*` MCP tools                          | none — stdio child process                          | no                  | yes                                          |
+| zcp → Zerops API         | what the MCP tools act on                         | Bearer (`ZCP_API_KEY` / zcli token)                 | no                  | yes                                          |
 
 **SSH over VPN is the only way to run a command inside a container from outside.** There is no API,
 webhook, or network-reachable MCP endpoint. Anything else has to be built.

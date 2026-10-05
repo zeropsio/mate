@@ -599,13 +599,16 @@ export function gitPushVoice(subject: string): string {
 
 export interface GitPushClosingContext {
   readonly branch?: string | undefined;
-  /** The pull request the pushed branch lands through, when zcp opened or found one. */
+  /**
+   * The HQ change the pushed branch lands through, when zcp opened or found one — zcp's wire still
+   * calls it `pullRequest`.
+   */
   readonly pullRequest?: number | undefined;
 }
 
 /**
  * A git push that settled without a build of its own: where its commits went
- * — the pull request that carries them when there is one, since a Mate's own
+ * — the HQ change that carries them when there is one, since a Mate's own
  * branch name is long and says less than its number — or that it had none
  * to send.
  */

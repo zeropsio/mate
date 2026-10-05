@@ -3,7 +3,10 @@
 The hosted client has one account boundary, outside the router and connection runtime. Only the
 Zerops callback can run before verification. A saved credential is not verification: Mate checks
 `user/info` before mounting the product. HQ menu memory can paint earlier. Navigation reads only
-the selected organization; project roles and services are demanded when a project opens. Registration and second factors belong to the Zerops account application.
+the selected organization; project roles and services are demanded when a project opens, and for
+each Mate a surface draws with its menu — the projects page's, a project page's, the left menu's
+rows as they are mounted — so its container is known (`useMatesInventory`). Drawing a Mate never
+connects to it. Registration and second factors belong to the Zerops account application.
 
 ## Ownership and authority
 
@@ -98,7 +101,8 @@ The rules in this section hold from slice 0.6 of the
 [client state model](client-state-model.md#status-by-phase).
 
 Access is verified by REST alone. A round reads `user/info` (or reuses its recent answer), then
-only projects demanded by a route or explicit action through `GET /project/{id}`, four at a time.
+only projects demanded by a route, an explicit action or a drawn Mate through `GET /project/{id}`,
+four at a time.
 It never enumerates organization project lists. Navigation and inventory completeness are not
 admission evidence. The runtime shares the direct project result with access classification,
 including `userRoles`, and ingests its platform observations before completing the read. An

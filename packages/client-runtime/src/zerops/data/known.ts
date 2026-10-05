@@ -11,12 +11,10 @@
  * stale since it was read. A read with no value yet takes the caller's `nowMs` for a failed
  * feeder's `failed.atMs`, because the runtime keeps no time for that transition.
  */
-import type { AbsenceEvidence, Freshness, Known, Stamp } from "../knowledge/known.ts";
+import type { Freshness, Known, Stamp } from "../knowledge/known.ts";
 import { interestKeyOf } from "./runtime.ts";
 import type {
   CollectionRead,
-  EntityKnowledge,
-  EntityRead,
   IngestionStamp,
   InterestKey,
   InterestState,
@@ -247,54 +245,4 @@ export function knownServicesOf(
   nowMs: number,
 ): Known<ReadonlyArray<ServiceRecord>> {
   return knownCollection(read, servicesSourceOf(read), nowMs);
-}
-
-type Unavailable = Extract<
-  EntityKnowledge<ProjectRecord>,
-  { readonly knowledge: "unavailable" }
->["reason"];
-
-/**
- * A direct read that was refused or found nothing is absence (§3.5). A revoked access is the
- * grant machine's denial of a scope, often the whole account, so no read of this project said it
- * is gone: the value waits for the grant, and the withheld layer names the cause (§3.4).
- */
-function unavailable<T>(reason: Unavailable, stamp: IngestionStamp): Known<T> {
-  if (reason === "access-revoked") return { state: "unread", waitingFor: "access-grant" };
-  const evidence: AbsenceEvidence =
-    reason === "forbidden" ? "direct-forbidden" : "direct-not-found";
-  return { state: "gone", evidence, asOf: stampOf(stamp) };
-}
-
-/** The interests that read a project's tags: its organization's list and its own reads. */
-const tagFeeders = feedersOnce(
-  (project: ProjectRef): ReadonlySet<InterestKey> =>
-    new Set([...organizationFeeders(project.organization), ...projectFeeders(project)]),
-);
-
-/**
- * A project's tags (B2): fed by its organization's list and by the project's own reads. A
- * presentation read that did not carry the tags leaves them unread.
- */
-export function knownProjectTags(
-  read: EntityRead<ProjectRecord>,
-  nowMs: number,
-): Known<ReadonlyArray<string>> {
-  const entity = read.value;
-  const ref = entity.knowledge === "observed" ? entity.record.ref : entity.ref;
-  const source = sourceOf(read.observation, tagFeeders(ref));
-  if (entity.knowledge === "unavailable") return unavailable(entity.reason, entity.since);
-  if (entity.knowledge === "unresolved") return notYetKnown(source, nowMs);
-  const facet = entity.record.presentation;
-  if (facet.knowledge === "unavailable") return unavailable(facet.reason, facet.stamp);
-  if (facet.knowledge === "unresolved" || facet.fields.tags === undefined)
-    return notYetKnown(source, nowMs);
-  const asOf = stampOf(facet.stamp);
-  return {
-    state: "known",
-    value: facet.fields.tags,
-    asOf,
-    coverage: "complete",
-    freshness: freshnessOf(source, asOf),
-  };
 }

@@ -27,7 +27,6 @@ import {
   type SpiEvent,
   type TurnId,
 } from "@t3tools/contracts";
-import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -39,7 +38,7 @@ import * as Stream from "effect/Stream";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsSetup } from "./ZeropsSetup.ts";
-import { isStaleStandUp, type ZcpStatus } from "./zeropsSetupSteps.ts";
+import { SECTION_SKEW_MS, type ZcpStatus } from "./zeropsSetupSteps.ts";
 
 /** The stand-up tool, as the event's tool call names it (its `mcp__…__` prefix stripped). */
 export const STAND_UP_TOOL_NAME = "zerops_standup";
@@ -49,9 +48,6 @@ export const STAND_UP_RELAY_INTERVAL = Duration.seconds(2);
 
 /** The longest a call is followed: past zcp's own limit for a stand-up. */
 export const STAND_UP_RELAY_LIMIT = Duration.hours(2);
-
-/** A section a call started before is the previous call's: this much clock skew is forgiven. */
-const SECTION_SKEW_MS = 5_000;
 
 /** A service's error, cut: a card line, not a log. */
 const MAX_ERROR_LENGTH = 300;
@@ -72,8 +68,11 @@ export interface StandUpProgress {
 
 /**
  * The stand-up section as this call's progress, or `undefined` while it is
- * none of this call's: absent, idle, or started before the call did (the
- * previous call's, until zcp writes this one's).
+ * none of this call's: absent, idle, or run by a call that began before this
+ * one did (the previous call's, until zcp writes this one's). A section is
+ * matched by the start of the call now running it — a stage call's, for the
+ * section its first call left waiting — else, from a zcp that stamps none,
+ * by its own start.
  */
 export const standUpProgressOf = (
   status: ZcpStatus | undefined,
@@ -83,7 +82,7 @@ export const standUpProgressOf = (
   if (section === undefined || section.state === undefined || section.state === "idle") {
     return undefined;
   }
-  const started = Date.parse(section.startedAt);
+  const started = Date.parse(section.callStartedAt);
   const callStarted = Date.parse(callStartedAt);
   if (!Number.isFinite(started) || started < callStarted - SECTION_SKEW_MS) return undefined;
   return {
@@ -169,7 +168,9 @@ export const make = Effect.gen(function* () {
 
   /**
    * Writes the call's progress when it changed since the last write; whether
-   * the file went stale (its MCP server died), which leaves the last write.
+   * the stand-up's MCP process is provably gone, which leaves the last write.
+   * Only this call's section is judged: until zcp writes it, the file holds
+   * the previous call's, whose process may be gone without this one's being.
    */
   const relayOnce = (
     event: SpiEvent,
@@ -177,9 +178,9 @@ export const make = Effect.gen(function* () {
   ) =>
     Effect.gen(function* () {
       const status = yield* setup.status;
-      if (isStaleStandUp(status, yield* Clock.currentTimeMillis)) return true;
       const progress = standUpProgressOf(status, call.startedAt);
       if (progress === undefined) return false;
+      if (yield* setup.standUpGone(status)) return true;
       const written = progressKey(progress);
       if (written === call.last) return false;
       const at = DateTime.formatIso(yield* DateTime.now);
@@ -230,6 +231,11 @@ export const make = Effect.gen(function* () {
           fiber?: Fiber.Fiber<void>;
         } = { callId: event.itemId!, startedAt: event.createdAt, last: undefined };
         following.set(event.threadId, call);
+        yield* setup.noteStandUpCall({
+          threadId: event.threadId,
+          turnId: event.turnId ?? undefined,
+          startedAt: event.createdAt,
+        });
         call.fiber = yield* Effect.forkIn(follow(event, call), scope);
         return;
       }

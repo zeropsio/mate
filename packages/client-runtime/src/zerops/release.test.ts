@@ -14,6 +14,7 @@ import {
   releaseInFlightReason,
   releaseOffer,
   releaseRow,
+  releaseStalled,
   releaseWord,
   RELEASE_CHECKING,
   RELEASE_NOTHING_MERGED,
@@ -22,7 +23,9 @@ import {
   type FlowRelease,
   type FlowReleaseRow,
 } from "./release.ts";
+import type { ReleaseDeployFailure } from "./groupDeploys.ts";
 import type { MovedCommits } from "./releaseCompare.ts";
+import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
 
 const API = "3f9c1b2e5d7a4c6f8e0b1d2a3c4f5e6d7a8b9c0d";
 /** What goes live, compared: nothing beyond what each case's own entries say. */
@@ -399,8 +402,6 @@ describe("shortCommit", () => {
 
 describe("a release's row", () => {
   const TAGGED = "2026-09-25T07:00:00Z";
-  const EARLIER = "2026-09-25T06:00:00Z";
-  const EARLIEST = "2026-09-25T05:00:00Z";
   const release = (
     tag: string,
     over: Partial<FlowRelease> & { readonly api?: string; readonly web?: string } = {},
@@ -424,13 +425,19 @@ describe("a release's row", () => {
       ["api", api],
       ["web", web],
     ]);
-  const NONE_FAILED = new Map<string, string>();
+  const NONE_FAILED: ReadonlyArray<ReleaseDeployFailure> = [];
+  /** HQ's failed job of `service` at `sha`, as the rollout of release `tag` asked for it. */
+  const failure = (tag: string, service: string, sha: string): ReleaseDeployFailure => ({
+    tag,
+    service,
+    sha,
+  });
 
   /** The newest-first list's rows, each told whether it is the one `releaseRunBy` names. */
   const rows = (
     releases: ReadonlyArray<FlowRelease>,
     production: ReadonlyMap<string, string>,
-    failed: ReadonlyMap<string, string> = NONE_FAILED,
+    failed: ReadonlyArray<ReleaseDeployFailure> = NONE_FAILED,
   ) => {
     const live = releaseRunBy(releases, production);
     return releases.map((entry, index) =>
@@ -438,7 +445,6 @@ describe("a release's row", () => {
         production,
         failed,
         live: entry.tag === live,
-        newer: releases.slice(0, index),
       }),
     );
   };
@@ -487,26 +493,22 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "a commit it lists failed its production deploy after it was made: Deploy failed",
-      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
+      name: "a commit it lists failed the production deploy its rollout asked for: Deploy failed",
+      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD })],
       production: runs(API, OLD),
-      failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
+      failed: [failure("v1.3.0", "web", WEB)],
       expected: [
         { tag: "v1.3.0", standing: "deploy-failed", word: "Deploy failed", rollBack: false },
         { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
       ],
     },
     {
-      // HQ deploys production to the newest release only: an older one listing the same commit
-      // did not fail with it.
-      name: "an older release lists the failed commit: its failure is the newest's that lists it",
-      releases: [
-        release("v1.4.0"),
-        release("v1.3.0", { web: OLD, taggedAt: EARLIER }),
-        release("v1.2.0", { taggedAt: EARLIEST }),
-      ],
+      // A failure is the release's whose rollout asked for the job: an older one listing the same
+      // commit did not fail with it.
+      name: "an older release lists the failed commit: the failure is the rollout's that asked",
+      releases: [release("v1.4.0"), release("v1.3.0", { web: OLD }), release("v1.2.0")],
       production: runs(API, OLD),
-      failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
+      failed: [failure("v1.4.0", "web", WEB)],
       expected: [
         { tag: "v1.4.0", standing: "deploy-failed", word: "Deploy failed", rollBack: false },
         { tag: "v1.3.0", standing: "live", word: "Live", rollBack: false },
@@ -514,10 +516,10 @@ describe("a release's row", () => {
       ],
     },
     {
-      name: "a failure posted before it was made belongs to an earlier release of the commit",
-      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
+      name: "a failure another release's rollout asked for is not this one's, whatever it lists",
+      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD })],
       production: runs(API, OLD),
-      failed: new Map([[`web@${WEB}`, "2026-09-25T06:55:00Z"]]),
+      failed: [failure("v1.1.0", "web", WEB)],
       expected: [
         { tag: "v1.3.0", standing: undefined, word: "Approved", rollBack: false },
         { tag: "v1.2.0", standing: "live", word: "Live", rollBack: false },
@@ -525,9 +527,9 @@ describe("a release's row", () => {
     },
     {
       name: "a failed commit production runs anyway is not what failed",
-      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
+      releases: [release("v1.3.0"), release("v1.2.0", { web: OLD })],
       production: runs(OLD, WEB),
-      failed: new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
+      failed: [failure("v1.3.0", "web", WEB)],
       expected: [
         { tag: "v1.3.0", standing: undefined, word: "Approved", rollBack: false },
         { tag: "v1.2.0", standing: undefined, word: "Approved", rollBack: true },
@@ -541,7 +543,7 @@ describe("a release's row", () => {
         release("v1.2.0"),
       ],
       production: runs(API, WEB),
-      failed: new Map([[`web@${OLD}`, "2026-09-25T07:05:00Z"]]),
+      failed: [failure("v1.3.0", "web", OLD)],
       expected: [
         { tag: "v1.4.0", standing: undefined, word: "Refused", rollBack: false },
         { tag: "v1.3.0", standing: undefined, word: "Refused", rollBack: false },
@@ -564,9 +566,9 @@ describe("a release's row", () => {
 
   it("says which of its commits failed, on which service, and nothing for any other row", () => {
     const [failed, live] = rows(
-      [release("v1.3.0"), release("v1.2.0", { web: OLD, taggedAt: EARLIER })],
+      [release("v1.3.0"), release("v1.2.0", { web: OLD })],
       runs(API, OLD),
-      new Map([[`web@${WEB}`, "2026-09-25T07:05:00Z"]]),
+      [failure("v1.3.0", "web", WEB)],
     );
     expect(failed!.failedEntry).toEqual({ service: "web", commit: WEB });
     expect(live!.failedEntry).toBeUndefined();
@@ -689,8 +691,6 @@ describe("the release a stop is named by", () => {
 });
 
 describe("a release in flight", () => {
-  const TAGGED = "2026-09-24T10:00:00Z";
-  const at = (minutes: number) => Date.parse(TAGGED) + minutes * 60_000;
   const newest = {
     tag: "v0.1.3",
     verdict: "approved" as const,
@@ -698,56 +698,131 @@ describe("a release in flight", () => {
       { service: "api", commit: API },
       { service: "web", commit: WEB },
     ],
-    taggedAt: TAGGED,
+    taggedAt: "2026-09-24T10:00:00Z",
   };
-  const notYet = new Map([
-    ["api", OLD],
-    ["web", WEB],
-  ]);
+  const rollout = (
+    tag: string,
+    ended: boolean,
+    over: Partial<ReleaseRollout> = {},
+  ): ReleaseRollout => ({
+    id: "7",
+    tag,
+    planned: true,
+    ended,
+    endedAt: ended ? "2026-09-24T11:20:00Z" : null,
+    landed: false,
+    leftOut: [],
+    ...over,
+  });
 
+  // HQ's rollout of the newest release says when it ends, in each production; no clock does, and
+  // nothing it has not said is read as on its way.
   it.each([
     {
-      name: "Release is not offered while production does not run the newest release yet",
+      name: "on its way while HQ's rollout of it has not ended",
       release: newest,
-      production: notYet,
-      nowMs: at(2),
+      rollouts: [rollout("v0.1.3", false)],
       inFlight: "v0.1.3",
+      stalled: undefined,
     },
     {
-      name: "a release production runs is done",
+      name: "on its way before HQ planned it",
       release: newest,
-      production: new Map([
-        ["api", API],
-        ["web", WEB],
-      ]),
-      nowMs: at(2),
-      inFlight: undefined,
+      rollouts: [rollout("v0.1.3", false, { planned: false })],
+      inFlight: "v0.1.3",
+      stalled: undefined,
     },
     {
-      name: "Release is offered again over a release HQ refused",
+      name: "on its way while any production's rollout of it has not ended",
+      release: newest,
+      rollouts: [rollout("v0.1.3", true), rollout("v0.1.3", false)],
+      inFlight: "v0.1.3",
+      stalled: undefined,
+    },
+    {
+      name: "ended with something of it not live: stalled",
+      release: newest,
+      rollouts: [rollout("v0.1.3", true)],
+      inFlight: undefined,
+      stalled: "v0.1.3",
+    },
+    {
+      // Review #6: HQ says it landed before production's version is read — never stalled.
+      name: "ended with all of it live: landed, never stalled",
+      release: newest,
+      rollouts: [rollout("v0.1.3", true, { landed: true })],
+      inFlight: undefined,
+      stalled: undefined,
+    },
+    {
+      // Review (delta #9): a Core from before `landed` says nothing of whether it landed — ended,
+      // and never stalled without the owner's word: what production runs says the rest.
+      name: "ended where HQ tells no landing: neither in flight nor stalled",
+      release: newest,
+      rollouts: [(({ landed: _landed, ...rest }) => rest)(rollout("v0.1.3", true))],
+      inFlight: undefined,
+      stalled: undefined,
+    },
+    {
+      // Review #2: made before rollouts were, or recorded from git — HQ says it ended.
+      name: "a release HQ ended with no rollout of its own: never on its way",
+      release: newest,
+      rollouts: [rollout("v0.1.3", true, { id: null })],
+      inFlight: undefined,
+      stalled: "v0.1.3",
+    },
+    {
+      name: "neither where HQ's rollout names another release: nothing said of this one",
+      release: newest,
+      rollouts: [rollout("v0.1.2", false)],
+      inFlight: undefined,
+      stalled: undefined,
+    },
+    {
+      name: "neither where HQ names no release there",
+      release: newest,
+      rollouts: [null],
+      inFlight: undefined,
+      stalled: undefined,
+    },
+    {
+      name: "neither where the project has no production environment to deploy it to",
+      release: newest,
+      rollouts: [],
+      inFlight: undefined,
+      stalled: undefined,
+    },
+    {
+      name: "neither where HQ tells no release's end (a Core older than this client)",
+      release: newest,
+      rollouts: [undefined],
+      inFlight: undefined,
+      stalled: undefined,
+    },
+    {
+      name: "neither for a release HQ refused",
       release: { ...newest, verdict: "refused" as const },
-      production: notYet,
-      nowMs: at(2),
+      rollouts: [rollout("v0.1.3", false)],
       inFlight: undefined,
+      stalled: undefined,
     },
     {
-      name: "a release older than 30 minutes production still does not run stops counting",
-      release: newest,
-      production: notYet,
-      nowMs: at(31),
+      name: "neither for a snapshot, which deploys nothing",
+      release: { ...newest, snapshot: true },
+      rollouts: [rollout("v0.1.3", true, { id: null })],
       inFlight: undefined,
+      stalled: undefined,
     },
     {
-      name: "no release at all",
+      name: "neither without a release",
       release: undefined,
-      production: notYet,
-      nowMs: at(2),
+      rollouts: [rollout("v0.1.3", false)],
       inFlight: undefined,
+      stalled: undefined,
     },
-  ])("$name", ({ release, production, nowMs, inFlight }) => {
-    expect(releaseInFlight({ newest: release, production, failed: new Map(), nowMs })).toBe(
-      inFlight,
-    );
+  ])("$name", ({ release, rollouts, inFlight, stalled }) => {
+    expect(releaseInFlight({ newest: release, rollouts })).toBe(inFlight);
+    expect(releaseStalled({ newest: release, rollouts })).toBe(stalled);
   });
 
   it("keeps Release from being offered, and says which tag is on its way", () => {
@@ -797,53 +872,13 @@ describe("a production whose version names spell short shas", () => {
     expect(releaseRunBy([listing("v1.1.0", OLD), listing("v1.0.0")], RUNS)).toBe("v1.0.0");
   });
 
-  it("holds no release in flight once production runs every commit it lists", () => {
-    expect(
-      releaseInFlight({
-        newest: listing("v1.0.0"),
-        production: RUNS,
-        failed: new Map(),
-        nowMs: Date.parse(TAGGED) + 60_000,
-      }),
-    ).toBeUndefined();
-  });
-
-  it("ends the hold when a listed commit's short name failed after the tag", () => {
-    expect(
-      releaseInFlight({
-        newest: listing("v1.1.0", OLD),
-        production: RUNS,
-        failed: new Map([[`api@${short(OLD)}`, "2026-09-30T10:05:00Z"]]),
-        nowMs: Date.parse(TAGGED) + 60_000,
-      }),
-    ).toBeUndefined();
-  });
-
   it("reads a failure under the short name as the listed commit's", () => {
     const release = listing("v1.1.0", OLD);
     const row = releaseRow(release, 0, {
       production: RUNS,
-      failed: new Map([[`api@${short(OLD)}`, "2026-09-30T10:05:00Z"]]),
+      failed: [{ tag: "v1.1.0", service: "api", sha: short(OLD) }],
       live: false,
-      newer: [],
     });
     expect(row.standing).toBe("deploy-failed");
   });
-});
-
-it("a snapshot never waits for a production deployment", () => {
-  expect(
-    releaseInFlight({
-      newest: {
-        tag: "v0.1.0",
-        verdict: "approved",
-        entries: [{ service: "api", commit: API }],
-        taggedAt: "2026-09-29T10:00:00Z",
-        snapshot: true,
-      },
-      production: new Map(),
-      failed: new Map(),
-      nowMs: Date.parse("2026-09-29T10:00:01Z"),
-    }),
-  ).toBeUndefined();
 });

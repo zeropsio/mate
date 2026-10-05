@@ -43,36 +43,40 @@ function clientFor(body: unknown): ZeropsApiClient {
 }
 
 describe("makeZeropsCellReads", () => {
-  it.effect("projects integration tokens to grant metadata without credential fields", () =>
-    Effect.gen(function* () {
-      const adapter = makeZeropsCellReads(
-        clientFor({
-          list: [
-            {
-              id: "token-id",
-              name: "zcp-project",
-              token: "must-not-leave-adapter",
-              roleCode: "READ_ONLY",
-              projects: [{ projectId: "project", roleCode: "ADMIN" }],
-            },
-          ],
-        }),
-      );
-      const value = yield* adapter.readOrganizationIntegrationTokenGrants(
-        { kind: "tokens", account: scope, organization },
-        { abortSignal: new AbortController().signal },
-      );
+  it.effect(
+    "projects integration tokens to what the door's sweep reads, without credential or grants",
+    () =>
+      Effect.gen(function* () {
+        const adapter = makeZeropsCellReads(
+          clientFor({
+            list: [
+              {
+                id: "token-id",
+                name: "zcp-project",
+                token: "must-not-leave-adapter",
+                roleCode: "READ_ONLY",
+                projects: [{ projectId: "project", roleCode: "ADMIN" }],
+                created: "2026-10-01T10:00:00Z",
+                createdByUser: "user-ada",
+              },
+            ],
+          }),
+        );
+        const value = yield* adapter.readOrganizationIntegrationTokens(
+          { kind: "tokens", account: scope, organization },
+          { abortSignal: new AbortController().signal },
+        );
 
-      expect(value).toEqual([
-        {
-          tokenId: "token-id",
-          name: "zcp-project",
-          grants: [{ projectId: "project", roleCode: "ADMIN" }],
-          roleCode: "READ_ONLY",
-        },
-      ]);
-      expect(Object.keys(value[0] ?? {})).not.toContain("token");
-    }),
+        expect(value).toEqual([
+          {
+            tokenId: "token-id",
+            name: "zcp-project",
+            created: "2026-10-01T10:00:00Z",
+            createdByUser: "user-ada",
+          },
+        ]);
+        expect(Object.keys(value[0] ?? {})).not.toContain("token");
+      }),
   );
 
   it.effect("reads ZCP_MATE_ENABLED as the flag it is, never an inference", () =>

@@ -19,7 +19,6 @@ import * as ServerConfig from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
 import { type ZeropsPolicy, zeropsPolicy } from "../zerops/ZeropsPolicy.ts";
-import { readSetupMarker } from "../zerops/zeropsSetupMarker.ts";
 import { isZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import { ZeropsIdentityStatus } from "../zerops/ZeropsIdentityStatus.ts";
 import { ZeropsMateUpdate } from "../zerops/ZeropsMateUpdate.ts";
@@ -87,7 +86,6 @@ export const makeServerEnvironmentCapabilities = (
     readonly agentLoginCode?: boolean;
     readonly agentSignOut?: boolean;
     readonly mateLogins?: boolean;
-    readonly serverStandUp?: boolean;
   },
 ): ExecutionEnvironmentDescriptor["capabilities"] => {
   return {
@@ -118,7 +116,6 @@ export const makeServerEnvironmentCapabilities = (
     ...(options?.agentLoginCode === undefined ? {} : { agentLoginCode: options.agentLoginCode }),
     ...(options?.agentSignOut === undefined ? {} : { agentSignOut: options.agentSignOut }),
     ...(options?.mateLogins === undefined ? {} : { mateLogins: options.mateLogins }),
-    ...(options?.serverStandUp === true ? { setup: { serverStandUp: true } } : {}),
   };
 };
 
@@ -187,6 +184,8 @@ export const make = Effect.gen(function* () {
   const environmentId = EnvironmentId.make(environmentIdRaw);
   const cwdBaseName = path.basename(serverConfig.cwd).trim();
   const label = yield* resolveServerEnvironmentLabel({ cwdBaseName });
+  // This process: never persisted, so every start names a boot of its own.
+  const bootId = yield* crypto.randomUUIDv4;
   const descriptor: ExecutionEnvironmentDescriptor = {
     environmentId,
     label,
@@ -195,6 +194,7 @@ export const make = Effect.gen(function* () {
       arch: platformArch(hostArchitecture),
     },
     serverVersion: packageJson.version,
+    bootId,
     ...(serverConfig.basePath === "" ? {} : { basePath: serverConfig.basePath }),
     ...(serverConfig.zerops === undefined
       ? {}
@@ -206,10 +206,6 @@ export const make = Effect.gen(function* () {
       agentLoginCode: isZeropsEnvironment(serverConfig),
       agentSignOut: isZeropsEnvironment(serverConfig),
       mateLogins: isZeropsEnvironment(serverConfig),
-      // Only a Mate the new press made stands itself up (`zeropsSetupMarker`).
-      serverStandUp:
-        isZeropsEnvironment(serverConfig) &&
-        (yield* readSetupMarker.pipe(Effect.provideService(FileSystem.FileSystem, fileSystem))),
     }),
   };
 

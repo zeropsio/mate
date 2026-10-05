@@ -19,14 +19,14 @@ import type {
 export type KnowledgeSource = "zerops" | "mate";
 
 export interface KnownSurface<T> {
-  /** What the region reads, as the object of "Couldn't read …": "pull requests", "this project". */
+  /** What the region reads, as the object of "Couldn't read …": "what runs here", "this project". */
   readonly subject: string;
   /** What `gone` proves absent, as "This … is no longer available": "project", "service". */
   readonly entity: string;
   readonly source: KnowledgeSource;
   /** The region's own checking phrase, e.g. "Checking what runs here…"; `null` for "Checking…". */
   readonly checking: string | null;
-  /** The domain-negative copy for a value, e.g. "No open pull requests"; `null` when it has none. */
+  /** The domain-negative copy for a value, e.g. "No open changes"; `null` when it has none. */
   readonly negative: ((value: T) => string | null) | null;
 }
 

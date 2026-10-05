@@ -29,8 +29,11 @@ import {
   runPress,
   settlePress,
   mateFinishRegistration,
-  PRESS_CALL_CAP_MS,
-  PRESS_CALL_SILENT,
+  PRESS_MAY_HAVE_LANDED,
+  PRESS_RENEW_MS,
+  PRESS_STEP_RENEW_MS,
+  PRESSED_IN_ANOTHER_BROWSER,
+  pressHold,
   pressPlatform,
   whilePressing,
   type MatePress,
@@ -342,63 +345,299 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
 
 // A pool-claimed Mate's harden ran once and was never tried again (pass 28 review).
 // F6b (e2e, 2026-10-03): Dan's press stood "pressing" for two hours, his workspace's clock running
-// on: a call of the press that never answered held it, and nothing bounded a try.
-describe("a press whose platform never answers", () => {
-  /** The account's command layer, whose container import never answers; whether it was ended. */
-  const silentImport = () => {
-    const seen = { interrupted: false };
-    const inputs = {
-      client: {} as never,
-      organizationId: "org-acme",
-      data: {
-        organizationRef: (organizationId: string) => ({ organizationId }),
-        projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
-        runtime: {
-          commands: {
-            importDevelopmentContainer: () =>
-              Effect.never.pipe(
-                Effect.onInterrupt(() =>
-                  Effect.sync(() => {
-                    seen.interrupted = true;
-                  }),
-                ),
-              ),
+// on. The account's command layer bounds every command by its own deadline, and one past it may
+// have landed: it says so (`uncertain`), and no clock of the press calls it stopped first.
+// B5: two browsers, one Mate. Its press holds it at HQ while it runs — however slow — and lets it
+// go at its end; a second press of it, in another browser, is refused before it writes anything.
+describe("a press's hold at HQ", () => {
+  const api = () => {
+    const calls: Array<string> = [];
+    let heldBy: string | null = null;
+    /** What each hold waits on before HQ answers it: nothing, unless a test holds it back. */
+    let gate: () => Promise<void> = async () => {};
+    return {
+      calls,
+      /** Holds every hold sent from now on until the returned function lets them through. */
+      slow: () => {
+        let open: () => void = () => {};
+        const opened = new Promise<void>((resolve) => {
+          open = resolve;
+        });
+        gate = () => opened;
+        return open;
+      },
+      api: {
+        holdPress: async (
+          projectId: string,
+          press: {
+            readonly owner: string;
+            readonly kind: string;
+            readonly appId?: string;
+            readonly importProcessId?: string;
+            readonly renew?: boolean;
           },
+        ) => {
+          await gate();
+          if (heldBy !== null && heldBy !== press.owner) {
+            throw new HqError({
+              kind: "refused",
+              code: "conflict",
+              reason: "press_held",
+              status: 409,
+              message: "held",
+            });
+          }
+          heldBy = press.owner;
+          calls.push(
+            `${press.renew === true ? "renew" : "hold"} ${projectId} ${press.kind}${press.appId ? `@${press.appId}` : ""} ${press.owner}${press.importProcessId ? ` ${press.importProcessId}` : ""}`,
+          );
         },
-      } as never,
+        endPress: async (projectId: string, owner: string, finished: boolean) => {
+          if (heldBy === owner) heldBy = null;
+          calls.push(`${finished ? "finished" : "stopped"} ${projectId} ${owner}`);
+        },
+      },
     };
-    return { inputs, seen };
   };
 
-  it("gives a call a minute, then ends it where it stands and says it did not answer", async () => {
+  it("is taken, renewed while its press runs, given its import, and let go at its end", async () => {
     vi.useFakeTimers();
     try {
-      const { inputs, seen } = silentImport();
-      const platform = pressPlatform(inputs, {
-        register: null,
-        hq: null,
-        readObservedServices: async () => [],
-      });
-      const answer = platform
-        .importDevelopmentContainer({ projectId: "p-1", projectName: "Acme - Dan", agents: [] })
-        .then(
-          () => "answered",
-          (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)),
-        );
-      await vi.advanceTimersByTimeAsync(PRESS_CALL_CAP_MS - 1);
-      expect(seen.interrupted).toBe(false);
-      await vi.advanceTimersByTimeAsync(1);
-      expect(await answer).toBe(PRESS_CALL_SILENT);
-      expect(seen.interrupted).toBe(true);
+      const hq = api();
+      const hold = pressHold(hq.api, { kind: "mate", appId: "app-1" }, "press-a");
+      expect(await hold.take("p-1")).toBe("held");
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS);
+      await hold.imported("imp-1");
+      // A step that moves renews it, whatever its timer is let do in a hidden tab — not twice
+      // within its least gap.
+      hold.renew();
+      await vi.advanceTimersByTimeAsync(PRESS_STEP_RENEW_MS);
+      hold.renew();
+      hold.renew();
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS - PRESS_STEP_RENEW_MS);
+      await hold.end(true);
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
+      expect(hq.calls).toEqual([
+        "hold p-1 mate@app-1 press-a",
+        "renew p-1 mate@app-1 press-a",
+        "renew p-1 mate@app-1 press-a imp-1",
+        "renew p-1 mate@app-1 press-a imp-1",
+        "renew p-1 mate@app-1 press-a imp-1",
+        "finished p-1 press-a",
+      ]);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("stops the press at its container, for its view to say so and Finish setup to resume it", async () => {
+  // A renewal in flight when its press ends must not land after the end: it would hold the
+  // project five more minutes, or bring back the record a finished press let go.
+  it("ends only after a renewal in flight has landed, and renews nothing after its end", async () => {
     vi.useFakeTimers();
     try {
-      const { inputs } = silentImport();
+      const hq = api();
+      const hold = pressHold(hq.api, { kind: "mate" }, "press-a");
+      await hold.take("p-1");
+      await vi.advanceTimersByTimeAsync(PRESS_STEP_RENEW_MS);
+      const open = hq.slow();
+      hold.renew();
+      // On its way to HQ, unanswered, as the press ends.
+      await vi.advanceTimersByTimeAsync(0);
+      const ended = hold.end(false);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(hq.calls).toEqual(["hold p-1 mate press-a"]);
+      open();
+      await ended;
+      hold.renew();
+      await hold.imported("imp-1");
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
+      expect(hq.calls).toEqual([
+        "hold p-1 mate press-a",
+        "renew p-1 mate press-a",
+        "stopped p-1 press-a",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("takes its hold again, not as a renewal, where HQ never answered the first", async () => {
+    vi.useFakeTimers();
+    try {
+      const sent: Array<boolean> = [];
+      let answered = false;
+      const hold = pressHold(
+        {
+          holdPress: async (_projectId, press) => {
+            sent.push(press.renew === true);
+            if (!answered) {
+              answered = true;
+              throw new Error("HQ did not answer");
+            }
+          },
+          endPress: async () => {},
+        },
+        { kind: "mate" },
+        "press-a",
+      );
+      expect(await hold.take("p-1")).toBe("held");
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 2);
+      expect(sent).toEqual([false, false, true]);
+      await hold.end(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("goes on unheld where HQ refuses this person's hold, never asking it again", async () => {
+    vi.useFakeTimers();
+    try {
+      const asked: Array<string> = [];
+      const hold = pressHold(
+        {
+          holdPress: async () => {
+            asked.push("hold");
+            throw new HqError({
+              kind: "refused",
+              code: "forbidden",
+              reason: "not_project_reader",
+              status: 403,
+              message: "refused",
+            });
+          },
+          endPress: async () => {
+            asked.push("end");
+          },
+        },
+        { kind: "mate" },
+        "press-a",
+      );
+      expect(await hold.take("p-1")).toBe("held");
+      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
+      await hold.end(false);
+      expect(asked).toEqual(["hold"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops a press of a Mate another browser's press holds, before it writes anything", async () => {
+    const hq = api();
+    await pressHold(hq.api, { kind: "mate" }, "press-a").take("p-1");
+    const written: Array<string> = [];
+    const platform = {
+      importDevelopmentContainer: async () => {
+        written.push("import");
+        return { serviceName: "zcp", imported: true };
+      },
+    } as unknown as EnvironmentCreationPlatform;
+    try {
+      const outcome = await runPress({
+        organizationId: "org-acme",
+        steps: [{ kind: "import-container", agents: [] }],
+        platform,
+        isCurrent: () => true,
+        resume: { from: 0, projectId: "p-1", projectName: "Acme - Una" },
+        locks: undefined,
+        hold: pressHold(hq.api, { kind: "mate" }, "press-b"),
+      });
+      expect(outcome).toMatchObject({ ok: false, error: PRESSED_IN_ANOTHER_BROWSER });
+      expect(written).toEqual([]);
+    } finally {
+      forgetPress("p-1");
+    }
+  });
+
+  it("names the container import's process to its hold once Zerops answered it", async () => {
+    const hq = api();
+    const hold = pressHold(hq.api, { kind: "mate" }, "press-a");
+    await hold.take("p-1");
+    const platform = pressPlatform(
+      {
+        client: {} as never,
+        organizationId: "org-acme",
+        data: {
+          organizationRef: (organizationId: string) => ({ organizationId }),
+          projectRef: (organizationId: string, projectId: string) => ({
+            organizationId,
+            projectId,
+          }),
+          runtime: {
+            commands: {
+              importDevelopmentContainer: () =>
+                Effect.succeed({
+                  value: { serviceName: "zcp", imported: true, processId: "imp-9" },
+                }),
+            },
+          },
+        } as never,
+      },
+      { register: null, hq: null, readObservedServices: async () => [], hold },
+    );
+    await platform.importDevelopmentContainer({
+      projectId: "p-1",
+      projectName: "Acme - Una",
+      agents: [],
+    });
+    expect(hq.calls.at(-1)).toBe("renew p-1 mate press-a imp-9");
+    await hold.end(true);
+  });
+
+  // B5: a stage's press imports first and registers last; cut short between them, its record stays
+  // with its hold ended, for its setup to be finished as a stage of its application.
+  it("ends a stage's press that stopped, keeping its record; one that went through leaves none", async () => {
+    const hq = api();
+    const platform = {
+      importServices: async () => undefined,
+      register: async () => {
+        throw new Error("HQ could not be reached.");
+      },
+    } as unknown as EnvironmentCreationPlatform;
+    const stopped = await runPress({
+      organizationId: "org-acme",
+      steps: [{ kind: "import-recipe", role: "stage", yaml: "services: []" }, { kind: "register" }],
+      platform,
+      isCurrent: () => true,
+      resume: { from: 0, projectId: "p-stage", projectName: "Acme - stage" },
+      locks: undefined,
+      hold: pressHold(hq.api, { kind: "stage", appId: "app-1" }, "press-s"),
+    });
+    await Promise.resolve();
+    expect(stopped.ok).toBe(false);
+    expect(hq.calls).toEqual(["hold p-stage stage@app-1 press-s", "stopped p-stage press-s"]);
+    forgetPress("p-stage");
+  });
+});
+
+describe("a press whose platform does not answer in time", () => {
+  /** The account's command layer, whose container import reaches its deadline after `ms`. */
+  const lateImport = (ms: number) => ({
+    client: {} as never,
+    organizationId: "org-acme",
+    data: {
+      organizationRef: (organizationId: string) => ({ organizationId }),
+      projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
+      runtime: {
+        commands: {
+          importDevelopmentContainer: () =>
+            Effect.sleep(ms).pipe(
+              Effect.andThen(
+                Effect.fail({
+                  _tag: "ZeropsDataAdapterError",
+                  kind: "uncertain",
+                  message: "Zerops command exceeded its deadline.",
+                  retryable: false,
+                }),
+              ),
+            ),
+        },
+      },
+    } as never,
+  });
+
+  it("says a command past its deadline may have landed, and Try again reads before it writes", async () => {
+    vi.useFakeTimers();
+    try {
       beginPress({
         projectId: "p-1",
         organizationId: "org-acme",
@@ -409,7 +648,7 @@ describe("a press whose platform never answers", () => {
       const outcome = runPress({
         organizationId: "org-acme",
         steps: [{ kind: "import-container", agents: [] }, { kind: "close-off" }],
-        platform: pressPlatform(inputs, {
+        platform: pressPlatform(lateImport(90_000), {
           register: null,
           hq: null,
           readObservedServices: async () => [],
@@ -418,17 +657,19 @@ describe("a press whose platform never answers", () => {
         resume: { from: 0, projectId: "p-1", projectName: "Acme - Dan" },
         locks: undefined,
       });
-      await vi.advanceTimersByTimeAsync(PRESS_CALL_CAP_MS);
+      await vi.advanceTimersByTimeAsync(90_000);
       expect(await outcome).toMatchObject({
         ok: false,
         failedStep: { kind: "import-container" },
-        error: PRESS_CALL_SILENT,
+        uncertain: true,
       });
-      expect(readMatePress("p-1")?.state).toMatchObject({
+      const state = readMatePress("p-1")?.state;
+      expect(state).toMatchObject({
         kind: "failed",
         step: "import-container",
-        reason: PRESS_CALL_SILENT,
+        reason: `Zerops command exceeded its deadline. ${PRESS_MAY_HAVE_LANDED}`,
       });
+      expect(state?.kind === "failed" ? state.retry : null).not.toBeNull();
     } finally {
       forgetPress("p-1");
       vi.useRealTimers();
@@ -845,8 +1086,8 @@ describe("finishMateSetup — the harden path", () => {
     expect(calls).toEqual(["attach failed"]);
     forgetPress("gus-project");
 
-    // Another browser, with no press of its own, once the grace a running press has is past: HQ
-    // holds no record of Gus, and still holds the birth intent no attach closed.
+    // Another browser, with no press of its own, where no press holds Gus at HQ any more: HQ holds
+    // no record of Gus, and still holds the birth intent no attach closed.
     hq.attachFailure = null;
     calls.length = 0;
     expect(
@@ -855,7 +1096,7 @@ describe("finishMateSetup — the harden path", () => {
         containerMissing: false,
         closedOffMissing: false,
         pressStopped: false,
-        pastGrace: true,
+        pressedElsewhere: false,
         viewerIsAdder: false,
         hasContainer: true,
         writer: false,

@@ -1,7 +1,6 @@
 /**
  * The store's cells: the reads no organization stream carries, one keyed cell each —
- * `tokens:{org}`, `members:{org}`, `locations:{org}`, `env:{service}`, `agents:{service}` and
- * `mate-flag:{service}`. Every caller of a key shares its one read; a value stays fresh for its
+ * `tokens:{org}`, `members:{org}`, `locations:{org}`, `agents:{service}` and `mate-flag:{service}`. Every caller of a key shares its one read; a value stays fresh for its
  * kind's while (`CELL_FRESH_MS`), our own writes invalidate it, an idle cell is kept
  * `CELL_IDLE_RETENTION_MS`, and access withholds what it no longer covers. The data adapter's
  * `cells` read them (`restAdapter.ts`).
@@ -18,7 +17,7 @@ import { Atom } from "effect/unstable/reactivity";
 
 import type { ZeropsPublicAccess } from "../publicRoutes.ts";
 import type { ZeropsLocation, ZeropsOrganizationMember } from "../api.ts";
-import type { ZeropsIntegrationToken, ZeropsProjectGrant } from "../groupReach.ts";
+import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import {
   advance,
   newCell,
@@ -63,13 +62,6 @@ export interface MembersCellRequest {
   readonly organization: OrganizationRef;
 }
 
-/** A service's variable names (`GET /service-stack/{id}/env`), never a value. */
-export interface EnvCellRequest {
-  readonly kind: "env";
-  readonly account: AccountScope;
-  readonly service: ServiceRef;
-}
-
 export interface TokensCellRequest {
   readonly kind: "tokens";
   readonly account: AccountScope;
@@ -101,20 +93,16 @@ export type ZeropsCellRequest =
   | AgentsCellRequest
   | MateFlagCellRequest
   | TokensCellRequest
-  | MembersCellRequest
-  | EnvCellRequest;
+  | MembersCellRequest;
 
 export type ZeropsCellKind = ZeropsCellRequest["kind"];
 
-/** Grant metadata contains no integration-token credential. */
-export interface ZeropsIntegrationTokenGrantMetadata {
+/** A token as the door's throwaway sweep reads it: no credential, no grant. */
+export interface ZeropsIntegrationTokenMetadata {
   readonly tokenId: ZeropsIntegrationToken["id"];
   readonly name: ZeropsIntegrationToken["name"];
-  readonly grants: ReadonlyArray<ZeropsProjectGrant>;
   /** When the platform minted it: the start-up throwaway sweep dates rows by it. */
   readonly created?: string | undefined;
-  /** The token's own org role, written back unchanged with its projects. */
-  readonly roleCode?: string | undefined;
   /** Who minted it: besides an org owner, the one person who may write it. */
   readonly createdByUser?: string | undefined;
 }
@@ -129,9 +117,8 @@ export interface ZeropsCellValues {
    * offering Enable off an `"unknown"` flag would be back to inferring.
    */
   readonly "mate-flag": { readonly enabled: boolean | "unknown" };
-  readonly tokens: ReadonlyArray<ZeropsIntegrationTokenGrantMetadata>;
+  readonly tokens: ReadonlyArray<ZeropsIntegrationTokenMetadata>;
   readonly members: ReadonlyArray<ZeropsOrganizationMember>;
-  readonly env: ReadonlyArray<string>;
 }
 
 /**
@@ -146,7 +133,6 @@ export const CELL_FRESH_MS: Readonly<Record<ZeropsCellKind, number>> = {
   "mate-flag": 0,
   tokens: 60_000,
   members: 5 * 60_000,
-  env: 60_000,
 };
 
 /**
@@ -209,7 +195,7 @@ export interface ZeropsCellAdapter {
     request: MateFlagCellRequest,
     context: ZeropsCellReadContext,
   ) => Effect.Effect<ZeropsCellValues["mate-flag"], ZeropsCellSourceError>;
-  readonly readOrganizationIntegrationTokenGrants: (
+  readonly readOrganizationIntegrationTokens: (
     request: TokensCellRequest,
     context: ZeropsCellReadContext,
   ) => Effect.Effect<ZeropsCellValues["tokens"], ZeropsCellSourceError>;
@@ -217,10 +203,6 @@ export interface ZeropsCellAdapter {
     request: MembersCellRequest,
     context: ZeropsCellReadContext,
   ) => Effect.Effect<ZeropsCellValues["members"], ZeropsCellSourceError>;
-  readonly readServiceVariableNames: (
-    request: EnvCellRequest,
-    context: ZeropsCellReadContext,
-  ) => Effect.Effect<ZeropsCellValues["env"], ZeropsCellSourceError>;
 }
 
 /** Why the broker takes no demand at all; access never refuses demand, it withholds (§9 C4). */
@@ -372,7 +354,6 @@ const organizationOf = (request: ZeropsCellRequest): OrganizationRef => {
       return request.organization;
     case "agents":
     case "mate-flag":
-    case "env":
       return request.service.project.organization;
   }
 };
@@ -388,7 +369,6 @@ const projectOf = (request: ZeropsCellRequest): ProjectRef | null => {
       return null;
     case "agents":
     case "mate-flag":
-    case "env":
       return request.service.project;
   }
 };
@@ -414,7 +394,6 @@ export function zeropsCellKeyOf(request: ZeropsCellRequest): ZeropsCellKey {
       return `${request.kind}:${request.organization.organizationId}` as ZeropsCellKey;
     case "agents":
     case "mate-flag":
-    case "env":
       return `${request.kind}:${request.service.serviceId}` as ZeropsCellKey;
   }
 }
@@ -494,11 +473,9 @@ function readCell(
     case "mate-flag":
       return adapter.readServiceMateFlag(request, context);
     case "tokens":
-      return adapter.readOrganizationIntegrationTokenGrants(request, context);
+      return adapter.readOrganizationIntegrationTokens(request, context);
     case "members":
       return adapter.readOrganizationMembers(request, context);
-    case "env":
-      return adapter.readServiceVariableNames(request, context);
   }
 }
 
@@ -1038,7 +1015,6 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
       "mate-flag": 0,
       tokens: 0,
       members: 0,
-      env: 0,
     };
     const counts = { leases: 0, reading: 0, waiting: 0, known: 0, failed: 0, withheld: 0 };
     for (const entry of [...entries.values(), ...pending.values()]) {

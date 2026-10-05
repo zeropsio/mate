@@ -113,7 +113,13 @@ export function mateVoice(input: MateVoiceInput): MateVoice {
     }
     case "reconnecting":
       if (quiet) return conversationShown ? NONE : speak(null);
-      return speak(`Reconnecting to ${mateName}…`, ["try-now"]);
+      // Where its link said when it tries again, the wait is its server not answering.
+      return reachability.retryAtMs === undefined
+        ? speak(`Reconnecting to ${mateName}…`, ["try-now"])
+        : speak(
+            `${mateName} isn't answering. Trying again in ${Math.max(1, Math.ceil((reachability.retryAtMs - nowMs) / 1_000))} s.`,
+            ["try-now"],
+          );
     default: {
       const phrase = reachabilityPhrase(reachability, { nowMs, mateName });
       return speak(phrase.text, phrase.actions);

@@ -202,9 +202,12 @@ export const containerVerdict = (machine: ContainerMachine): ContainerVerdict =>
       return { level: state.level };
     case "inactive":
       return { level: "inactive", status: state.status };
+    case "booting":
+      return state.guessed
+        ? { level: "booting", overdue, guessed: true }
+        : { level: "booting", overdue };
     case "creating":
     case "provisioning":
-    case "booting":
     case "updating":
       return { level: state.level, overdue };
     case "restarting":
@@ -262,7 +265,8 @@ export const platformSaysDown = (machine: ContainerMachine): boolean => {
 
 /** The held reading is an unanswered probe sent since the container was last known up. */
 export const unansweredSinceUp = (machine: ContainerMachine): boolean =>
-  machine.reading?.reading.kind === "unreachable" &&
+  (machine.reading?.reading.kind === "unreachable" ||
+    machine.reading?.reading.kind === "not-answering") &&
   (machine.upAt === null || notBefore(machine.reading.sentAt, machine.upAt));
 
 // ── Transition ────────────────────────────────────────────────────────────────────────────────
@@ -354,7 +358,10 @@ const readingSince = (machine: ContainerMachine, since: Instant): ProbeReading |
 const baselineOf = (machine: ContainerMachine): InitAtBaseline => {
   const reading = machine.reading?.reading;
   if (reading?.kind === "predates-mate") return { kind: "absent" };
-  return (reading?.kind === "ready" || reading?.kind === "initializing") && reading.initAt !== null
+  return (reading?.kind === "ready" ||
+    reading?.kind === "initializing" ||
+    reading?.kind === "not-answering") &&
+    reading.initAt !== null
     ? { kind: "held", initAt: reading.initAt }
     : { kind: "unread" };
 };
@@ -376,6 +383,16 @@ const fromReading = (machine: ContainerMachine, reading: ProbeReading | null): C
       // A container that was up is given `READY_SILENCE_MS` for the platform's status to say
       // why; the link meanwhile says it reconnects (§4.4 row 10).
       return current.level === "ready" && !silent(machine) ? current : booting(machine, true);
+    case "not-answering": {
+      if (current.level === "ready" && !silent(machine)) return current;
+      // zcp's init is complete and its Mate does not answer: whatever vouched for a boot (its
+      // init running) is over, and only the Mate's silence is left — a guess, which its link's
+      // words speak for, never a start. A process the platform runs still says it starts.
+      const level = booting(machine, true);
+      return level.level === "booting" && !machine.processRunning
+        ? { ...level, guessed: true }
+        : level;
+    }
     case "predates-mate":
       // A restart of ours already came back to this: the zcp release there does not carry Mate.
       if (machine.restartTried) return { level: "not-yet-available" };
@@ -423,7 +440,9 @@ const restartOver = (
 };
 
 const readInitAt = (reading: ProbeReading): string | null =>
-  reading.kind === "ready" || reading.kind === "initializing" ? reading.initAt : null;
+  reading.kind === "ready" || reading.kind === "initializing" || reading.kind === "not-answering"
+    ? reading.initAt
+    : null;
 
 const updateOver = (
   machine: ContainerMachine,
