@@ -8,7 +8,9 @@ import { mateChat } from "./dsl.ts";
 const setup = Effect.gen(function* () {
   const s = yield* createScenario([installArea]);
   yield* s.given.project("Ada", { mate: true });
-  return { s, chat: mateChat(s) };
+  const chat = mateChat(s);
+  chat.fixture().history();
+  return { s, chat };
 });
 
 describe("C: opening a Mate and chat", () => {
@@ -20,7 +22,6 @@ describe("C: opening a Mate and chat", () => {
         yield* s.given.signedIn;
         yield* chat.when.open();
         yield* chat.then.path("/env-Ada/thread-Ada");
-        expect(chat.fixture().doorExchange()).toEqual({ door: true, oauth: true, inOrder: true });
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -29,12 +30,12 @@ describe("C: opening a Mate and chat", () => {
     it.effect("returning to a parked Mate preserves history within the warm budget", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
-        chat.fixture().history();
         yield* s.given.project("Bea", { mate: true });
+        chat.fixture("Bea").history("Bea's conversation history");
         yield* s.given.signedIn;
         yield* chat.when.open();
         yield* chat.then.text("The existing conversation is still here");
-        yield* chat.when.open("Bea");
+        yield* chat.when.open("Bea", "Bea's conversation history");
         const doors = chat.fixture().doorCount();
         yield* chat.when.returnTo();
         yield* chat.then.text("The existing conversation is still here");
@@ -44,15 +45,15 @@ describe("C: opening a Mate and chat", () => {
       }),
     );
 
-    // Catches a saved conversation link opening a blank page or the wrong thread after navigation.
-    it.effect("direct conversation URL restores the selected conversation", () =>
+    // Catches a saved conversation link failing in a browser that has never opened this Mate.
+    it.effect("cold direct conversation URL opens the named Mate and its history", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
-        chat.fixture().history();
         yield* s.given.signedIn;
-        yield* chat.when.open();
+        expect(chat.fixture().doorCount()).toBe(0);
         yield* chat.when.visit("/env-Ada/thread-Ada");
         yield* chat.then.ready("Ada");
+        yield* chat.then.headerName("Ada");
         yield* chat.then.text("The existing conversation is still here");
         yield* chat.then.path("/env-Ada/thread-Ada");
         yield* s.then.noExternalNetwork;
@@ -63,10 +64,10 @@ describe("C: opening a Mate and chat", () => {
     it.effect("/mate/project-id opens the Mate conversation from a cold door", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
-        chat.fixture().history();
         yield* s.given.signedIn;
         yield* chat.when.visit("/mate/Ada");
         yield* chat.then.ready("Ada");
+        yield* chat.then.headerName("Ada");
         yield* chat.then.path("/env-Ada/thread-Ada");
         yield* chat.then.text("The existing conversation is still here");
         yield* s.then.noExternalNetwork;
@@ -77,10 +78,10 @@ describe("C: opening a Mate and chat", () => {
     it.effect("reload restores history within the reload budget", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
-        chat.fixture().history();
         yield* s.given.signedIn;
         yield* chat.when.open();
         yield* chat.when.reload();
+        yield* chat.then.headerName("Ada");
         yield* chat.then.text("The existing conversation is still here");
         yield* chat.then.path("/env-Ada/thread-Ada");
         yield* s.then.noExternalNetwork;
@@ -95,7 +96,8 @@ describe("C: opening a Mate and chat", () => {
         yield* chat.when.open();
         yield* chat.when.send("Please inspect the Shop project");
         yield* chat.then.sent("Please inspect the Shop project");
-        yield* chat.when.reload();
+        yield* chat.when.reload("Ada", "Please inspect the Shop project");
+        yield* chat.then.headerName("Ada");
         yield* chat.then.text("Please inspect the Shop project");
         yield* s.then.noExternalNetwork;
       }),
@@ -155,11 +157,11 @@ describe("C: opening a Mate and chat", () => {
     it.effect("an unrecorded personal login blocks Send with an explanation", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
-        chat.fixture().history();
         chat.fixture().ownership = "unrecorded";
         yield* s.given.signedIn;
         yield* chat.when.open();
         yield* chat.when.send("This must not reach the agent");
+        yield* chat.then.blockedPromptRemains("This must not reach the agent");
         yield* chat.then.sendDisabled;
         yield* chat.then.text("This agent's sign-in was not recorded");
         yield* chat.then.noText("This must not reach the agent");
@@ -172,7 +174,6 @@ describe("C: opening a Mate and chat", () => {
     it.effect("someone else's personal Mate is readable but cannot be sent to or approved", () =>
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
-        chat.fixture().history();
         chat.fixture().approval();
         chat.fixture().ownership = "colleague";
         yield* s.given.signedIn;

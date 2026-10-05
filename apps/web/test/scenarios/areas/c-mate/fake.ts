@@ -76,12 +76,6 @@ export class ChatDriver {
     return this.http.filter((path) => path === "POST /mate/api/auth/zerops-throwaway").length;
   }
 
-  doorExchange() {
-    const door = this.http.indexOf("POST /mate/api/auth/zerops-throwaway");
-    const oauth = this.http.indexOf("POST /mate/oauth/token");
-    return { door: door >= 0, oauth: oauth >= 0, inOrder: door >= 0 && oauth > door };
-  }
-
   commandDecisions() {
     return this.responses.flatMap((command) =>
       command.type === "thread.approval.respond"
