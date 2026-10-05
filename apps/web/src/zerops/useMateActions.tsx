@@ -141,6 +141,8 @@ import {
 } from "./matePress";
 import { mateRestartPorts, restartMateContainer } from "./mateRestart";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
+import { planProjectMove, projectRenameTrouble, type ProjectRename } from "./projectRenames.logic";
+import { useRenameProjects } from "./useRenameProjects";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -556,23 +558,80 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     [activeOrganization, projectRef, runtime.commands, setDialog],
   );
 
-  /** Into another application as what the person picked, a new one made first, or out of all. */
+  /**
+   * The renames Zerops has not taken after a move, by project: HQ has the Mate in its new
+   * application, its project still carries the old name. Finished by *Finish renaming*, with the
+   * targets planned before the move.
+   */
+  const [unrenamed, setUnrenamed] = useState<ReadonlyMap<string, ProjectRename>>(new Map());
+  const renameProjects = useRenameProjects();
+  const settleRenames = useCallback(
+    async (renames: ReadonlyArray<ProjectRename>, lead: string) => {
+      const failures = await renameProjects(renames);
+      setUnrenamed((held) => {
+        const next = new Map(held);
+        for (const { projectId } of renames) next.delete(projectId);
+        for (const { rename } of failures) next.set(rename.projectId, rename);
+        return next;
+      });
+      if (failures.length > 0) throw new Error(`${lead}${projectRenameTrouble(failures)}`);
+    },
+    [renameProjects],
+  );
+
+  /**
+   * Into another application as what the person picked, a new one made first, or out of all. HQ's
+   * move first; then the project is renamed in Zerops, which names it in full after its
+   * application (`planProjectMove`), the targets planned before anything is written.
+   */
   const move = useCallback(
     (candidate: ZeropsCandidatePresentation, membership: MoveMembership) => {
-      void write(candidate.key, async () => {
-        const api = hqApi();
-        if (membership.kind === "none") {
-          return api.moveProject(candidate.project.id, { appId: null, kind: "mate" });
-        }
-        const appId =
-          membership.kind === "new" ? (await api.createApp(membership.name)).id : membership.appId;
-        return api.moveProject(candidate.project.id, {
-          appId,
-          kind: kindOfRole(membership.role),
-        });
-      });
+      const newApp =
+        membership.kind === "none"
+          ? undefined
+          : membership.kind === "new"
+            ? membership.name
+            : groupTree.groups.find(({ group }) => group.groupId === membership.appId)?.group.name;
+      const plan =
+        newApp === undefined
+          ? []
+          : planProjectMove(
+              { id: candidate.project.id, name: candidate.project.name },
+              readZeropsMembership(candidate.project).label,
+              newApp,
+            );
+      void write(
+        candidate.key,
+        async () => {
+          const api = hqApi();
+          if (membership.kind === "none") {
+            await api.moveProject(candidate.project.id, { appId: null, kind: "mate" });
+            return;
+          }
+          const appId =
+            membership.kind === "new"
+              ? (await api.createApp(membership.name)).id
+              : membership.appId;
+          await api.moveProject(candidate.project.id, {
+            appId,
+            kind: kindOfRole(membership.role),
+          });
+          await settleRenames(plan, "Moved, but not renamed in Zerops. ");
+        },
+        refresh,
+      );
     },
-    [hqApi, write],
+    [groupTree.groups, hqApi, refresh, settleRenames, write],
+  );
+
+  /** Sends the renames a move left, as they were planned. */
+  const finishRename = useCallback(
+    (candidate: ZeropsCandidatePresentation) => {
+      const left = unrenamed.get(candidate.project.id);
+      if (left === undefined) return;
+      void write(candidate.key, () => settleRenames([left], ""), refresh);
+    },
+    [refresh, settleRenames, unrenamed, write],
   );
 
   /**
@@ -1048,6 +1107,16 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               },
             ]
           : []),
+        ...(unrenamed.has(candidate.project.id)
+          ? [
+              {
+                id: "finish-rename",
+                label: "Finish renaming in Zerops",
+                disabled: busy,
+                onSelect: () => finishRename(candidate),
+              },
+            ]
+          : []),
         ...(hqVerbs.leave !== "no" && tags.groupId !== undefined
           ? [
               {
@@ -1094,6 +1163,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       changeFace,
       deleting,
       move,
+      finishRename,
+      unrenamed,
       finishSetup,
       finishSetupVerbFor,
       mayEditRecord,

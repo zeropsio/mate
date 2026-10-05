@@ -33,14 +33,32 @@ export function planProjectRenames(
 ): ReadonlyArray<ProjectRename> {
   const old = oldApp?.trim();
   if (old === undefined || old === "" || old === newApp.trim()) return [];
-  return projects.flatMap(({ id, name }) => {
-    const whole = name.trim();
-    const own = nameUnderApp(whole, old);
-    // Already the new application's, and not the old one's: it stands.
-    if (own === whole && nameUnderApp(whole, newApp) !== whole) return [];
-    const to = appProjectName(newApp, own);
-    return to === whole ? [] : [{ projectId: id, from: name, to }];
-  });
+  return projects.flatMap((project) => planOne(project, old, newApp));
+}
+
+/**
+ * The rename of one project moved into another application: from `<old> - X`, or from its whole
+ * name where it has no old prefix — a Mate in no application included — to `<new> - X`.
+ */
+export function planProjectMove(
+  project: { readonly id: string; readonly name: string },
+  oldApp: string | undefined,
+  newApp: string,
+): ReadonlyArray<ProjectRename> {
+  return planOne(project, oldApp?.trim(), newApp);
+}
+
+function planOne(
+  { id, name }: { readonly id: string; readonly name: string },
+  oldApp: string | undefined,
+  newApp: string,
+): ReadonlyArray<ProjectRename> {
+  const whole = name.trim();
+  const own = nameUnderApp(whole, oldApp);
+  // Already the new application's, and not the old one's: it stands.
+  if (own === whole && nameUnderApp(whole, newApp) !== whole) return [];
+  const to = appProjectName(newApp, own);
+  return to === whole ? [] : [{ projectId: id, from: name, to }];
 }
 
 /** Renames every project through `apply`; a refusal is kept with its reason, the rest still run. */

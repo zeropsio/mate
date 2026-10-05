@@ -68,6 +68,9 @@ const mock = vi.hoisted(() => ({
   mateOffers: (_projectId: string): unknown => undefined,
   /** HQ's `PATCH /api/mates/{projectId}`, a write here being the promise the test answers. */
   updateMate: vi.fn(),
+  /** HQ's move of a project, and its creation of an application a Mate is moved into. */
+  moveProject: vi.fn(),
+  createApp: vi.fn(),
   restartContainer: vi.fn(),
   threads: [] as Array<{
     environmentId: string;
@@ -134,6 +137,7 @@ const mock = vi.hoisted(() => ({
       readonly choices: {
         readonly apps: ReadonlyArray<{ readonly id: string; readonly name: string }>;
       };
+      readonly onSubmit: (membership: unknown) => void;
     } | null,
   },
 }));
@@ -263,6 +267,8 @@ vi.mock("./accountHq", async (original) => ({
   }),
   accountHqApi: () => ({
     updateMate: mock.updateMate,
+    moveProject: mock.moveProject,
+    createApp: mock.createApp,
     prepareProjectDeletion: mock.prepareProjectDeletion,
     completeProjectDeletion: mock.completeProjectDeletion,
     mateKey: async () => {
@@ -383,6 +389,8 @@ beforeEach(() => {
   mock.deleteDialog.current = null;
   mock.moveDialog.current = null;
   mock.updateMate.mockReset();
+  mock.moveProject.mockReset();
+  mock.createApp.mockReset();
   mock.renameProject.mockReset();
   mock.finishMateSetup.mockReset();
   seen.length = 0;
@@ -1352,6 +1360,60 @@ describe("useMateActions — Rename Mate", () => {
     mount();
     expect(verbs(owned).map((verb) => verb.id)).toContain("rename-agent");
     expect(actions().renameInPlace(owned)).toBeDefined();
+  });
+});
+
+// Every project of an application is named in full in Zerops: a Mate moved into another
+// application is renamed there after HQ's move, and the person is told where that did not happen.
+describe("useMateActions — Move renames the Mate's project in Zerops", () => {
+  const named = mate("Acme Docs - Fen");
+  const written = { value: { kind: "written" } };
+  const pressMove = async (membership: unknown) => {
+    mock.moveProject.mockResolvedValue(undefined);
+    mock.createApp.mockResolvedValue({ id: "app-shop" });
+    mount();
+    act(() => {
+      verbs(named)
+        .find((verb) => verb.id === "move")!
+        .onSelect();
+    });
+    await act(async () => {
+      mock.moveDialog.current!.onSubmit(membership);
+    });
+  };
+  const SHOP = { kind: "new", name: "Shop", role: "dev" };
+
+  it("renames it to its own name under the new application, after HQ moved it", async () => {
+    mock.renameProject.mockReturnValue(Promise.resolve(written));
+    await pressMove(SHOP);
+    expect(mock.moveProject).toHaveBeenCalledTimes(1);
+    expect(mock.renameProject).toHaveBeenCalledWith(
+      { organizationId: "org-acme", projectId: named.project.id },
+      "Shop - Fen",
+    );
+  });
+
+  it("renames nothing where it goes out of every application", async () => {
+    await pressMove({ kind: "none" });
+    expect(mock.moveProject).toHaveBeenCalledTimes(1);
+    expect(mock.renameProject).not.toHaveBeenCalled();
+  });
+
+  it("says the Mate is moved and its name is not, and offers to finish it with the same target", async () => {
+    mock.renameProject.mockRejectedValueOnce(new Error("No access."));
+    await pressMove(SHOP);
+    expect(actions().trouble).toContain("Acme Docs - Fen was not renamed to Shop - Fen in Zerops");
+    mock.renameProject.mockReturnValue(Promise.resolve(written));
+    const finish = verbs(named).find((verb) => verb.id === "finish-rename");
+    expect(finish).toBeDefined();
+    await act(async () => {
+      finish!.onSelect();
+    });
+    expect(mock.renameProject).toHaveBeenLastCalledWith(
+      { organizationId: "org-acme", projectId: named.project.id },
+      "Shop - Fen",
+    );
+    expect(verbs(named).find((verb) => verb.id === "finish-rename")).toBeUndefined();
   });
 });
 
