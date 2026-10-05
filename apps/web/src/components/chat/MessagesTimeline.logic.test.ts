@@ -1174,7 +1174,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(shape(list).slice(-3)).toEqual([
       "message:m0",
       "record:record:msg:m0",
-      "working:working:turn:t2",
+      "working:working:msg:m0",
     ]);
     expect(recordOf(list)?.items.map((item) => item.key)).toEqual(["note:a1", "woke:turn:t2"]);
     expect(recordOf(list)).toMatchObject({ now: { kind: "thinking", messages: [] } });

@@ -2472,7 +2472,10 @@ export function deriveMessagesTimelineRows(input: {
         };
         rows.push({
           kind: "working",
-          id: `working:${last.key}`,
+          // The card's own: keyed by its last stretch, it moved to the next
+          // card when the person's message became that run's opener, and
+          // the list drew rows twice and lost the card's edge (Rhea, run 11).
+          id: `working:${first.key}`,
           createdAt: last.startedAt,
           stretchKey: last.key,
           turnKey: turn.key,

@@ -1505,6 +1505,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <LegendList<MessagesTimelineRow>
               ref={listRef}
               data={rows}
+              // Each container reads its row again whenever the rows change.
+              // LegendList (3.3.5) draws `data[indexByKey(key)]` once per
+              // container and keeps it until that container's own data
+              // changes: read while a row was being inserted, the index was
+              // the old one, and the container went on drawing the row that
+              // slid into it — a row twice, a card's edge gone (Rhea, run 11).
+              extraData={rows}
               keyExtractor={keyExtractor}
               getItemType={getItemType}
               renderItem={renderItem}
