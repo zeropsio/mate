@@ -755,6 +755,15 @@ describe("a release in flight", () => {
       stalled: undefined,
     },
     {
+      // Review (delta #9): a Core from before `landed` says nothing of whether it landed — ended,
+      // and never stalled without the owner's word: what production runs says the rest.
+      name: "ended where HQ tells no landing: neither in flight nor stalled",
+      release: newest,
+      rollouts: [(({ landed: _landed, ...rest }) => rest)(rollout("v0.1.3", true))],
+      inFlight: undefined,
+      stalled: undefined,
+    },
+    {
       // Review #2: made before rollouts were, or recorded from git — HQ says it ended.
       name: "a release HQ ended with no rollout of its own: never on its way",
       release: newest,

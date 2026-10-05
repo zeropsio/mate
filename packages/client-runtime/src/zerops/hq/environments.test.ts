@@ -131,6 +131,22 @@ describe("environmentsOf", () => {
     expect(environmentsOf([older])).toEqual([older]);
   });
 
+  // Review (delta #9): a Core from before `landed` names a release's end without saying whether it
+  // landed: its environments are still read, and nothing is said to have landed.
+  it("reads a production's release from a Core that tells no landing", () => {
+    const { landed: _landed, ...release } = {
+      id: "7",
+      tag: "v0.1.3",
+      planned: true,
+      ended: true,
+      endedAt: "2026-10-03T10:00:00.000Z",
+      landed: false,
+      leftOut: [],
+    };
+    const production = { ...STAGE, projectId: "p-prod", tier: "production" as const, release };
+    expect(environmentsOf([production])?.[0]?.release).toEqual(release);
+  });
+
   // HQ and the client ship together: a set in the shape before jobs is one this build cannot read.
   it("does not read an environment HQ sent with deploys and no jobs", () => {
     const { jobs: _, ...before } = STAGE;
