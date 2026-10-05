@@ -1206,6 +1206,42 @@ describe("structure", () => {
       ),
     );
 
+    // A renewal in flight when its press ends lands after the end: it extends only a live hold of
+    // its own press, so it never revives a press that stopped or re-creates one that finished.
+    it.effect("never lets a renewal outlive its press's end", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const MATE = { kind: "mate" } as const;
+          const pressOf = Effect.map(structure.read("owner"), (read) => read.presses["P_OWN"]);
+          const renew = (owner: string) =>
+            reasonOf(structure.holdPress("maker", "P_OWN", { ...MATE, owner, renew: true }));
+          // Nothing to renew before the first hold, which alone creates.
+          assert.strictEqual(yield* renew("press-a"), "press_not_held");
+          assert.isUndefined(yield* pressOf);
+          yield* structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-a" });
+          // Its own live hold renews, with the import Zerops answered; another press's does not.
+          yield* structure.holdPress("maker", "P_OWN", {
+            ...MATE,
+            owner: "press-a",
+            importProcessId: "imp-1",
+            renew: true,
+          });
+          assert.strictEqual((yield* pressOf)?.importProcessId, "imp-1");
+          assert.strictEqual(yield* renew("press-b"), "press_not_held");
+          // Stopped: a renewal after it leaves its hold ended.
+          yield* structure.endPress("maker", "P_OWN", { owner: "press-a", finished: false });
+          assert.strictEqual(yield* renew("press-a"), "press_not_held");
+          assert.strictEqual((yield* pressOf)?.heldForMs, 0);
+          // Finished: a renewal after it leaves no record.
+          yield* structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-c" });
+          yield* structure.endPress("maker", "P_OWN", { owner: "press-c", finished: true });
+          assert.strictEqual(yield* renew("press-c"), "press_not_held");
+          assert.isUndefined(yield* pressOf);
+        }),
+      ),
+    );
+
     // B5: a stage's press imports first and registers last; one cut short between them leaves a
     // project HQ holds nowhere, whose press record says what it is and where it goes.
     it.effect("keeps a stopped stage press's record, its hold ended, until its project goes", () =>
