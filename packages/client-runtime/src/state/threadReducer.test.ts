@@ -944,6 +944,121 @@ describe("applyThreadDetailEvent", () => {
   });
 
   describe("thread.activity-appended", () => {
+    // A provider sends a call's last update with its completion: the same
+    // instant, the same payload but its status (`isToolCallEcho`). With no
+    // sequence, rows of one instant sort by their random ids, so the echo
+    // lands before or after the completion. Run 12: every browser check's
+    // screenshot rode in both, and a live page held each picture twice.
+    describe("a call's echoed update is dropped wherever it sorts", () => {
+      const AT = "2026-04-01T11:00:09.000Z";
+      const payloadOf = (status: string, output = "screenshot") => ({
+        itemType: "mcp_tool_call",
+        toolCallId: "call-1",
+        status,
+        data: { toolName: "mcp__zerops__zerops_browser", zerops: { resultText: output } },
+      });
+      type Row = readonly [id: string, kind: string, createdAt?: string, output?: string];
+      const rowOf = ([id, kind, createdAt = AT, output]: Row) => ({
+        id: EventId.make(id),
+        tone: "tool" as const,
+        kind,
+        summary: "MCP tool call",
+        payload: payloadOf(kind === "tool.completed" ? "completed" : "inProgress", output),
+        turnId: TurnId.make("turn-1"),
+        createdAt,
+      });
+      const START: Row = ["m-start", "tool.started", "2026-04-01T11:00:00.000Z"];
+      const appendAll = (rows: ReadonlyArray<Row>) =>
+        rows.reduce<OrchestrationThread>((thread, row, index) => {
+          const result = applyThreadDetailEvent(thread, {
+            ...baseEventFields,
+            sequence: 100 + index,
+            occurredAt: AT,
+            aggregateKind: "thread",
+            aggregateId: ThreadId.make("thread-1"),
+            type: "thread.activity-appended",
+            payload: { threadId: ThreadId.make("thread-1"), activity: rowOf(row) },
+          });
+          return result.kind === "updated" ? result.thread : thread;
+        }, baseThread);
+
+      it.each<{ name: string; rows: ReadonlyArray<Row>; kept: ReadonlyArray<string> }>([
+        {
+          name: "the echo first, sorting before its completion",
+          rows: [START, ["b-echo", "tool.updated"], ["c-done", "tool.completed"]],
+          kept: ["m-start", "c-done"],
+        },
+        {
+          name: "the echo first, its completion sorting before it",
+          rows: [START, ["u-echo", "tool.updated"], ["c-done", "tool.completed"]],
+          kept: ["m-start", "c-done"],
+        },
+        {
+          name: "the completion first, the echo sorting after it",
+          rows: [START, ["c-done", "tool.completed"], ["u-echo", "tool.updated"]],
+          kept: ["m-start", "c-done"],
+        },
+        {
+          name: "the completion first, the echo sorting before it",
+          rows: [START, ["c-done", "tool.completed"], ["b-echo", "tool.updated"]],
+          kept: ["m-start", "c-done"],
+        },
+        {
+          name: "a call with no start, its completion first",
+          rows: [
+            ["c-done", "tool.completed"],
+            ["b-echo", "tool.updated"],
+          ],
+          kept: ["c-done"],
+        },
+        {
+          name: "a call with no start, its echo first",
+          rows: [
+            ["u-echo", "tool.updated"],
+            ["c-done", "tool.completed"],
+          ],
+          kept: ["c-done"],
+        },
+        {
+          name: "an update after the completion with new output stays",
+          rows: [
+            START,
+            ["c-done", "tool.completed"],
+            ["u-late", "tool.updated", "2026-04-01T11:00:10.000Z", "the rest of its output"],
+          ],
+          kept: ["m-start", "c-done", "u-late"],
+        },
+        {
+          name: "an in-flight update at the completion's instant with other output stays",
+          rows: [
+            START,
+            ["b-flight", "tool.updated", AT, "half of it"],
+            ["c-done", "tool.completed"],
+          ],
+          kept: ["m-start", "b-flight", "c-done"],
+        },
+      ])("$name", ({ rows, kept }) => {
+        expect(appendAll(rows).activities.map((activity) => activity.id)).toEqual(kept);
+      });
+
+      it("an echo landing after its completion changes nothing", () => {
+        const done = appendAll([START, ["c-done", "tool.completed"]]);
+        const result = applyThreadDetailEvent(done, {
+          ...baseEventFields,
+          sequence: 200,
+          occurredAt: AT,
+          aggregateKind: "thread",
+          aggregateId: ThreadId.make("thread-1"),
+          type: "thread.activity-appended",
+          payload: {
+            threadId: ThreadId.make("thread-1"),
+            activity: rowOf(["u-echo", "tool.updated"]),
+          },
+        });
+        expect(result.kind).toBe("unchanged");
+      });
+    });
+
     it("adds an activity", () => {
       const result = applyThreadDetailEvent(baseThread, {
         ...baseEventFields,
