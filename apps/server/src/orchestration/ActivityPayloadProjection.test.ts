@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 import type {
   OrchestrationEvent,
+  OrchestrationThread,
   OrchestrationThreadActivity,
   OrchestrationThreadDetailSnapshot,
 } from "@t3tools/contracts";
+
+// The live half of the parity check below: the client's own reducer, which a
+// reload's snapshot must agree with.
+import { applyThreadDetailEvent } from "../../../../packages/client-runtime/src/state/threadReducer.ts";
 import {
   projectActivityEvent,
   projectActivityPayload,
@@ -975,5 +980,135 @@ describe("every driver's call reaches the client in one form", () => {
       }),
     );
     expect(data.toolName).toBeUndefined();
+  });
+});
+
+/**
+ * A provider sends a call's last update with its completion: the same instant,
+ * the same payload but its status. With no sequence, rows of one instant sort
+ * by their random ids, so the echo lands before or after the completion — in
+ * the live stream and in the stored history alike. Run 12: every browser
+ * check's screenshot rode in both, and Sage's thread held 22 pictures twice on
+ * reload and 55 live. A reload drops the echo wherever it sorts, the live
+ * reducer drops it in whatever order it arrives, and the two agree.
+ */
+describe("a call's echoed update goes, live and on reload alike", () => {
+  const AT = "2026-10-05T21:54:17.030Z";
+  const payloadOf = (status: string, output: string) => ({
+    itemType: "mcp_tool_call",
+    toolCallId: "toolu_1",
+    status,
+    data: {
+      toolName: "mcp__zerops__zerops_browser",
+      zerops: {
+        toolName: "zerops_browser",
+        resultText: output,
+        images: [{ mimeType: "image/png", data: "iVBORw0KGgo=" }],
+      },
+    },
+  });
+  type Row = readonly [id: string, kind: string, createdAt?: string, output?: string];
+  const rowOf = ([id, kind, createdAt = AT, output = '{"status":"ok"}']: Row) =>
+    ({
+      id,
+      tone: "tool",
+      kind,
+      summary: "MCP tool call",
+      payload: payloadOf(kind === "tool.completed" ? "completed" : "inProgress", output),
+      turnId: "turn-1",
+      createdAt,
+    }) as unknown as OrchestrationThreadActivity;
+
+  /** What a reload shows: the stored rows in their order (instant, then id), as the snapshot projects them. */
+  const reload = (rows: ReadonlyArray<Row>) =>
+    (
+      projectThreadDetailSnapshot({
+        thread: {
+          messages: [],
+          activities: rows
+            .map(rowOf)
+            .toSorted((a, b) =>
+              a.createdAt === b.createdAt
+                ? a.id.localeCompare(b.id)
+                : a.createdAt.localeCompare(b.createdAt),
+            ),
+        },
+      } as unknown as OrchestrationThreadDetailSnapshot) as unknown as {
+        thread: { activities: OrchestrationThreadActivity[] };
+      }
+    ).thread.activities.map((activity) => activity.id);
+
+  /** What a live page shows: each row folded by the client's reducer in the order it arrived. */
+  const live = (rows: ReadonlyArray<Row>) =>
+    rows
+      .reduce<OrchestrationThread>(
+        (thread, row, index) => {
+          const result = applyThreadDetailEvent(thread, {
+            sequence: index + 1,
+            eventId: `event-${index}`,
+            commandId: null,
+            causationEventId: null,
+            correlationId: null,
+            metadata: {},
+            occurredAt: AT,
+            aggregateKind: "thread",
+            aggregateId: "thread-1",
+            type: "thread.activity-appended",
+            payload: { threadId: "thread-1", activity: rowOf(row) },
+          } as unknown as OrchestrationEvent);
+          return result.kind === "updated" ? result.thread : thread;
+        },
+        { id: "thread-1", activities: [], messages: [] } as unknown as OrchestrationThread,
+      )
+      .activities.map((activity) => activity.id);
+
+  const START: Row = ["m-start", "tool.started", "2026-10-05T21:54:00.000Z"];
+  const permutations = <T>(items: ReadonlyArray<T>): T[][] =>
+    items.length <= 1
+      ? [[...items]]
+      : items.flatMap((item, index) =>
+          permutations(items.filter((_, other) => other !== index)).map((rest) => [item, ...rest]),
+        );
+
+  it.each([
+    { name: "a started call, its echo sorting before the completion", echo: "b-echo", start: true },
+    { name: "a started call, its echo sorting after the completion", echo: "x-echo", start: true },
+    { name: "a call with no start, its echo sorting before", echo: "b-echo", start: false },
+    { name: "a call with no start, its echo sorting after", echo: "x-echo", start: false },
+  ])("$name, in every order it arrives", ({ echo, start }) => {
+    const rows: Row[] = [
+      ...(start ? [START] : []),
+      [echo, "tool.updated"],
+      ["c-done", "tool.completed"],
+    ];
+    const expected = start ? ["m-start", "c-done"] : ["c-done"];
+    expect(reload(rows)).toEqual(expected);
+    for (const arrival of permutations(rows)) {
+      expect(live(arrival)).toEqual(expected);
+    }
+  });
+
+  it.each([
+    {
+      name: "an update with new output after the completion stays (an ACP agent's late output)",
+      rows: [
+        START,
+        ["c-done", "tool.completed"],
+        ["u-late", "tool.updated", "2026-10-05T21:54:18.000Z", '{"status":"ok","more":true}'],
+      ] satisfies Row[],
+      kept: ["m-start", "c-done", "u-late"],
+    },
+    {
+      name: "an update with other output at the completion's instant, after it, stays",
+      rows: [
+        START,
+        ["c-done", "tool.completed"],
+        ["x-other", "tool.updated", AT, '{"status":"partial"}'],
+      ] satisfies Row[],
+      kept: ["m-start", "c-done", "x-other"],
+    },
+  ])("$name", ({ rows, kept }) => {
+    expect(reload(rows)).toEqual(kept);
+    expect(live(rows)).toEqual(kept);
   });
 });
