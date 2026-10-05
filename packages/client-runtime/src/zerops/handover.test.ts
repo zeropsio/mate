@@ -11,7 +11,7 @@ import {
 const here = { origin: "https://mate.zerops.io", path: "" } as const;
 
 describe("buildZeropsAuthorizeUrl", () => {
-  it("names its own origin, base path and a nonce", () => {
+  it("names its own origin, base path and nonce", () => {
     const url = new URL(
       buildZeropsAuthorizeUrl({
         nonce: "nonce-1",
@@ -25,29 +25,16 @@ describe("buildZeropsAuthorizeUrl", () => {
     expect(url.searchParams.get("app")).toBe(ZEROPS_HANDOVER_APP_MODE);
     expect(url.searchParams.get("origin")).toBe("https://app-1abc.prg1.zerops.app");
     expect(url.searchParams.get("path")).toBe("/mate");
-    expect(url.searchParams.get("nonce")).toBe("nonce-1");
+    expect(url.searchParams.get("state")).toBe("nonce-1");
     expect(url.searchParams.get("port")).toBeNull();
     expect(url.searchParams.get("project")).toBeNull();
     expect(url.searchParams.get("intent")).toBeNull();
   });
 
-  // Transition: until the new FL is live on app.zerops.io, the old one reads
-  // only `state` (and `port`), so the request carries both forms.
-  it("carries the same nonce as the old `state`, for the app.zerops.io still live", () => {
+  it("carries the nonce as `state`, the one name the platform reads it by", () => {
     const url = new URL(buildZeropsAuthorizeUrl({ ...here, nonce: "nonce-1" }));
     expect(url.searchParams.get("state")).toBe("nonce-1");
-  });
-
-  it("names the project a dev instance belongs to, when it was built with one", () => {
-    const url = new URL(
-      buildZeropsAuthorizeUrl({
-        nonce: "n",
-        origin: "https://app-1abc.prg1.zerops.app",
-        path: "",
-        project: "proj-1",
-      }),
-    );
-    expect(url.searchParams.get("project")).toBe("proj-1");
+    expect(url.searchParams.has("nonce")).toBe(false);
   });
 
   it("asks for the sign-up entry when that is what the user pressed", () => {
@@ -72,7 +59,7 @@ describe("readZeropsHandover", () => {
   const session = (over: Record<string, string> = {}) =>
     new URLSearchParams({
       token: "rt-abc",
-      nonce: "nonce-1",
+      state: "nonce-1",
       clientId: "org-1",
       ...over,
     }).toString();
@@ -111,12 +98,12 @@ describe("readZeropsHandover", () => {
       { name: "no nonce echoed back", fragment: "#token=rt-abc", expected: "nonce-1" },
       {
         name: "an empty echoed nonce",
-        fragment: `#${session({ nonce: "" })}`,
+        fragment: `#${session({ state: "" })}`,
         expected: "nonce-1",
       },
       {
         name: "an error carrying the wrong nonce",
-        fragment: "#error=access_denied&nonce=other",
+        fragment: "#error=access_denied&state=other",
         expected: "nonce-1",
       },
     ];
@@ -131,7 +118,7 @@ describe("readZeropsHandover", () => {
   });
 
   it("reports a refusal the user made, once the nonce proves it is ours", () => {
-    expect(readZeropsHandover("#error=access_denied&nonce=nonce-1", "nonce-1")).toEqual({
+    expect(readZeropsHandover("#error=access_denied&state=nonce-1", "nonce-1")).toEqual({
       kind: "declined",
       code: "access_denied",
     });
@@ -140,25 +127,16 @@ describe("readZeropsHandover", () => {
   it("treats a nonce-matched but tokenless response as a refusal, never as a session", () => {
     // A response that echoes our nonce but carries nothing usable is a failed
     // hand-over, not something to hand to the API client.
-    expect(readZeropsHandover("#nonce=nonce-1", "nonce-1")).toEqual({
+    expect(readZeropsHandover("#state=nonce-1", "nonce-1")).toEqual({
       kind: "declined",
       code: "invalid_response",
     });
   });
 
-  // Transition: the app.zerops.io still live echoes `state` with a personal
-  // token; the new one echoes `nonce` with its session's access token. Both are
-  // bearers, so either is a session once the nonce checks out.
-  it("accepts the old `state` echo as well as the new `nonce`", () => {
-    expect(readZeropsHandover("#token=rt-abc&state=nonce-1", "nonce-1")).toMatchObject({
-      kind: "session",
-      token: "rt-abc",
-    });
-    expect(readZeropsHandover("#error=access_denied&state=nonce-1", "nonce-1")).toEqual({
-      kind: "declined",
-      code: "access_denied",
-    });
-    expect(readZeropsHandover("#token=rt-abc&state=other", "nonce-1")).toEqual({
+  // The platform echoes the nonce as `state` and nothing else: a fragment that
+  // names it any other way did not come from a request this tab made.
+  it("reads the echoed nonce only from `state`", () => {
+    expect(readZeropsHandover("#token=rt-abc&nonce=nonce-1", "nonce-1")).toEqual({
       kind: "mismatched",
     });
   });
@@ -209,37 +187,6 @@ describe("buildZeropsAuthorizeUrl refuses a destination the platform would refus
       it(JSON.stringify(path), () => {
         expect(() =>
           buildZeropsAuthorizeUrl({ nonce: "n", origin: "https://mate.zerops.io", path }),
-        ).toThrow();
-      });
-    }
-  });
-});
-
-describe("buildZeropsAuthorizeUrl for the old loopback port", () => {
-  // Transition: the app.zerops.io still live finds a dev server only by `port`.
-  it("names the loopback port beside the origin", () => {
-    const url = new URL(
-      buildZeropsAuthorizeUrl({
-        nonce: "n",
-        origin: "http://localhost:5173",
-        path: "",
-        loopbackPort: 5173,
-      }),
-    );
-    expect(url.searchParams.get("port")).toBe("5173");
-    expect(url.searchParams.get("origin")).toBe("http://localhost:5173");
-  });
-
-  describe("refuses a port that is not one", () => {
-    for (const port of [0, -1, 65_536, 1.5, Number.NaN]) {
-      it(String(port), () => {
-        expect(() =>
-          buildZeropsAuthorizeUrl({
-            nonce: "n",
-            origin: "http://localhost",
-            path: "",
-            loopbackPort: port,
-          }),
         ).toThrow();
       });
     }

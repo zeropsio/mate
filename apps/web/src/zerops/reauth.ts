@@ -1,11 +1,10 @@
 /**
  * The way back to a fresh hand-over when the platform refuses this tab's session.
  *
- * The hand-over delivers the Zerops app's own access token with no refresh
- * token: it dies after its five days, or the moment app.zerops.io logs out or
- * refreshes. A 401 then sends the tab back to the Zerops app, which hands over
- * its current token, and the callback returns the person to the route they
- * were on (`navigationStorage.ts`).
+ * The hand-over delivers a personal access token with no refresh token and no
+ * expiry: it ends only when the person revokes it. A 401 then sends the tab
+ * back to the Zerops app, which mints a fresh one, and the callback returns
+ * the person to the route they were on (`navigationStorage.ts`).
  */
 import { startZeropsHandover } from "./handover";
 import { readZeropsNativeSignInBridge } from "./nativeSignIn";

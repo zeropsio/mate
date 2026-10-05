@@ -32,7 +32,7 @@ vi.mock("./ZeropsSessionProvider", () => {
     session: { userId: "ada" },
     deleteIntegrationToken: (...args: unknown[]) => mocks.remove(...args),
   };
-  return { useZeropsSession: () => ({ client }) };
+  return { useZeropsSession: () => ({ client, user: { id: "ada" } }) };
 });
 
 let tree: ReactTestRenderer | undefined;
@@ -217,11 +217,33 @@ describe("inventory throwaway cleanup", () => {
     expect(shown.state).toBe("done");
   });
 
-  it("does not list tokens without debt, and an explicit cleanup owing nothing deletes nothing", async () => {
+  it("does not list tokens without debt; an explicit cleanup deletes the person's own expired throwaways", async () => {
+    mocks.read.mockResolvedValue([
+      ...tokens,
+      {
+        tokenId: "own-expired",
+        name: "mate-door:p:n4",
+        createdByUser: "ada",
+        created: new Date(NOW - THROWAWAY_SWEEP_AGE_MS - 1).toISOString(),
+      },
+      {
+        tokenId: "own-live",
+        name: "mate-door:p:n5",
+        createdByUser: "ada",
+        created: new Date(NOW - 60_000).toISOString(),
+      },
+      {
+        tokenId: "someone-elses",
+        name: "mate-door:p:n6",
+        createdByUser: "bob",
+        created: new Date(0).toISOString(),
+      },
+    ]);
     await mount();
     expect(mocks.read).not.toHaveBeenCalled();
     await again();
-    expect(mocks.remove).not.toHaveBeenCalled();
+    expect(mocks.read).toHaveBeenCalledTimes(1);
+    expect(mocks.remove.mock.calls.map(([input]) => input.tokenId)).toEqual(["own-expired"]);
     expect(shown.state).toBe("done");
   });
 

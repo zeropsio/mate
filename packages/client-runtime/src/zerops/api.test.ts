@@ -2204,10 +2204,9 @@ describe("a project write's admission", () => {
 });
 
 describe("ZeropsApiClient.adoptSession", () => {
-  // A hand-over delivers a bearer with no refresh token — the access token of
-  // the user's app.zerops.io session (or, in the transition, a personal token).
-  // Nothing is exchanged; it is proven before it is stored, so a dead token
-  // never becomes a signed-in-looking UI.
+  // A hand-over delivers a personal access token, a bearer with no refresh
+  // token. Nothing is exchanged; it is proven before it is stored, so a dead
+  // token never becomes a signed-in-looking UI.
   it("proves the token before storing it, and stores exactly it", async () => {
     const stored: Array<ZeropsSession | null> = [];
     const stub = recordingFetch(() => jsonResponse(200, { id: "user-9", email: "a@b.c" }));

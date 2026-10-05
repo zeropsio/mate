@@ -13,8 +13,6 @@ interface ImportMetaEnv {
   readonly VITE_ZEROPS_TURNSTILE_SITE_KEY: string;
   /** The Zerops app the sign-in hand-over goes to; `https://app.zerops.io` when unset. */
   readonly VITE_ZEROPS_APP_URL?: string;
-  /** A dev instance's project id, sent as the hand-over's project hint. */
-  readonly VITE_MATE_SIGNIN_PROJECT?: string;
   readonly APP_VERSION: string;
 }
 

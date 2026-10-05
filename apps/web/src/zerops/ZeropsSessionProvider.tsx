@@ -83,7 +83,7 @@ export interface ZeropsSessionValue {
    * cannot leave this client looking signed in.
    */
   readonly adoptHandover: (input: {
-    /** The session access token (or, TRANSITION, personal token) handed over. */
+    /** The personal access token handed over. */
     readonly token: string;
     /** True when the account just claimed a pool project, so the picker is skipped. */
     readonly zcpClaimed: boolean;
@@ -416,8 +416,9 @@ export function ZeropsSessionProvider({
       },
       signOut: async () => {
         setLastRegistration(null);
-        // Local only: the token is the Zerops app's own session, and logging
-        // it out would sign the person out there too.
+        // Local only: `/auth/logout` answers a personal token 200 and revokes
+        // nothing, and the token cannot delete itself. It stays in the
+        // person's Settings › Token management until they revoke it there.
         await signOutLocally();
       },
       lastRegistration,

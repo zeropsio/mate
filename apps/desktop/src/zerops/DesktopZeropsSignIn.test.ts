@@ -87,10 +87,9 @@ describe("DesktopZeropsSignIn", () => {
       assert.equal(url.searchParams.get("app"), "zerops-code");
       assert.equal(url.searchParams.get("origin"), "http://localhost:4242");
       assert.equal(url.searchParams.get("path"), "");
-      assert.equal(url.searchParams.get("nonce"), "nonce-1");
-      // TRANSITION: the app.zerops.io still live reads `state` and `port`.
       assert.equal(url.searchParams.get("state"), "nonce-1");
-      assert.equal(url.searchParams.get("port"), "4242");
+      assert.isNull(url.searchParams.get("nonce"));
+      assert.isNull(url.searchParams.get("port"));
       assert.isNull(url.searchParams.get("intent"));
 
       fake.deliver("#token=rt-1&state=nonce-1");

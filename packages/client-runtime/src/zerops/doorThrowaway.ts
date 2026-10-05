@@ -35,7 +35,10 @@
  * where the mint's answer was lost ({@link planThrowawaySweep}); never another tab's or
  * device's by its look or its age. It waits five minutes past the newest owed mint, the
  * same window the door itself allows, so a throwaway another tab of this browser is
- * mid-flight with is never swept out from under it.
+ * mid-flight with is never swept out from under it. Only when the person asks does it also
+ * delete their own throwaways older than that window by the platform's `created`
+ * ({@link planExpiredThrowaways}): no door admits one any more, whichever tab or device
+ * minted it, and nothing else ever takes one back.
  *
  * @module doorThrowaway
  */
@@ -634,6 +637,31 @@ export function connectThroughThrowaway<T>(input: ConnectThroughThrowawayInput<T
 export interface AccountTokenRow {
   readonly id: string;
   readonly name?: string | undefined;
+  /** When the platform minted it, by the platform's clock. */
+  readonly created?: string | undefined;
+  /** The user who minted it. */
+  readonly createdByUser?: string | undefined;
+}
+
+/**
+ * The person's own throwaways that no door admits any more, as the ids to delete: named as a
+ * throwaway, minted by `userId`, and older than the door's window by the platform's `created`.
+ * Whichever tab or device minted one, it can open nothing now; a row missing its creator or its
+ * mint time is left.
+ */
+export function planExpiredThrowaways(input: {
+  readonly tokens: ReadonlyArray<AccountTokenRow>;
+  readonly userId: string;
+  readonly nowEpochMs: number;
+}): ReadonlyArray<string> {
+  return input.tokens.flatMap((token) => {
+    if (token.name === undefined || !isThrowawayName(token.name)) return [];
+    if (token.createdByUser !== input.userId || token.created === undefined) return [];
+    const createdMs = Date.parse(token.created);
+    return Number.isFinite(createdMs) && input.nowEpochMs - createdMs > THROWAWAY_SWEEP_AGE_MS
+      ? [token.id]
+      : [];
+  });
 }
 
 /**

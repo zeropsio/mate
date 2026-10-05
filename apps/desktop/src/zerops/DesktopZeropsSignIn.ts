@@ -83,8 +83,6 @@ export const make = (startCallbackServer: StartZeropsCallbackServer = startZerop
         nonce: input.state,
         origin: `http://localhost:${server.port}`,
         path: "",
-        // TRANSITION: the app.zerops.io still live finds this server by port.
-        loopbackPort: server.port,
         ...(input.intent === undefined ? {} : { intent: input.intent }),
       });
       const opened = yield* electronShell.openExternal(authorizeUrl);
