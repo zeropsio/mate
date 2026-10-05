@@ -11,11 +11,14 @@ import {
   PROBE_PROJECT_ID,
   RECORDED_PROCESS_TRAFFIC,
 } from "../__fixtures__/zeropsOrg.ts";
-import { scopeKeys } from "../model.ts";
 import { makeAccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
 import { zeropsNavigationLink } from "./zerops.ts";
+import { projectsScope } from "../families/project.ts";
+import { runningScope } from "../families/process.ts";
+import { factOf, indexOf } from "../reducer.ts";
+import { linkKeys } from "../model.ts";
 
 const PROCESS_SEARCH = "/process/search";
 const PROJECT_SEARCH = "/project/search";
@@ -69,7 +72,7 @@ describe("zeropsNavigationLink", () => {
       const store = makeAccountStore(AtomRegistry.make());
       const fixture = fixtureWire(answers({ projects: [PROBE_PROJECT], running: () => [] }));
       const fiber = yield* run(store, fixture);
-      const running = () => store.state().running.get(PROBE_PROJECT_ID) ?? new Set();
+      const running = () => indexOf(store.state(), "running", PROBE_PROJECT_ID) ?? new Set();
       const replay = (from: number, to: number) =>
         Effect.gen(function* () {
           for (let index = from; index <= to; index += 1) {
@@ -86,7 +89,7 @@ describe("zeropsNavigationLink", () => {
           }
         });
 
-      expect(store.state().streams.get(scopeKeys.running(ORG))?.phase).toBe("live");
+      expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("live");
 
       // Rows of the new project's three processes come 140 ms before their membership.
       yield* replay(1, 1);
@@ -106,7 +109,7 @@ describe("zeropsNavigationLink", () => {
       expect(running()).toEqual(new Set(["OOlnYMslSg6Hjbgt9ZKlFQ"]));
       yield* replay(16, 18);
       expect(running().size).toBe(0);
-      expect(store.state().process.get("OOlnYMslSg6Hjbgt9ZKlFQ")?.content).toMatchObject({
+      expect(factOf(store.state(), "process", "OOlnYMslSg6Hjbgt9ZKlFQ")?.content).toMatchObject({
         value: { status: "FINISHED" },
       });
       yield* Fiber.interrupt(fiber);
@@ -127,7 +130,7 @@ describe("zeropsNavigationLink", () => {
           : baselines(request),
       );
       const fiber = yield* run(store, fixture);
-      expect(store.state().streams.get(scopeKeys.running(ORG))?.phase).toBe("baselining");
+      expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("baselining");
 
       // The rows (older than the answer's) and the membership both arrive before the answer.
       yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "updateStream"), frameOf(1));
@@ -136,19 +139,19 @@ describe("zeropsNavigationLink", () => {
         delete: ["8OBjlA8pQbuaDGH7nYvggg"],
       });
       yield* settle;
-      expect(store.state().memberships.get(scopeKeys.running(ORG))?.coverage).toBe("unknown");
+      expect(store.state().memberships.get(runningScope(ORG))?.coverage).toBe("unknown");
 
       yield* Deferred.succeed(answered, undefined);
       yield* settle;
-      const membership = store.state().memberships.get(scopeKeys.running(ORG));
+      const membership = store.state().memberships.get(runningScope(ORG));
       expect(membership?.coverage).toBe("complete");
       expect(membership?.members.get("8OBjlA8pQbuaDGH7nYvggg")).toBe("removed");
-      expect(store.state().running.get(PROBE_PROJECT_ID)?.size).toBe(2);
-      expect(store.state().process.get("J3TU3gE0SvCFrPDutSacqw")).toMatchObject({
+      expect(indexOf(store.state(), "running", PROBE_PROJECT_ID)?.size).toBe(2);
+      expect(factOf(store.state(), "process", "J3TU3gE0SvCFrPDutSacqw")).toMatchObject({
         revision: { version: 2 },
         method: "baseline",
       });
-      expect(store.state().streams.get(scopeKeys.running(ORG))?.phase).toBe("live");
+      expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("live");
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -170,7 +173,7 @@ describe("zeropsNavigationLink", () => {
         delete: ["quick"],
       });
       yield* settle;
-      expect(store.state().running.get(PROBE_PROJECT_ID) ?? new Set()).toEqual(new Set());
+      expect(indexOf(store.state(), "running", PROBE_PROJECT_ID) ?? new Set()).toEqual(new Set());
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -199,18 +202,18 @@ describe("zeropsNavigationLink", () => {
           frameOf(index),
         );
       yield* settle;
-      expect([...(store.state().running.get(PROBE_PROJECT_ID) ?? [])]).toEqual([
+      expect([...(indexOf(store.state(), "running", PROBE_PROJECT_ID) ?? [])]).toEqual([
         "K1bQIB8AQBeQGHaAe8mneg",
       ]);
 
       outage = true;
       yield* fixture.drop({ outcome: "transient", message: "socket closed" });
       yield* settle;
-      const link = store.state().streams.get(scopeKeys.zeropsLink(ORG));
+      const link = store.state().streams.get(linkKeys.zerops(ORG));
       expect(link?.phase).toBe("recovering");
-      expect(store.state().streams.get(scopeKeys.projects(ORG))?.phase).toBe("stale");
-      expect(store.state().project.get("deleted")?.content.kind).toBe("value");
-      expect(store.state().running.get(PROBE_PROJECT_ID)?.size).toBe(1);
+      expect(store.state().streams.get(projectsScope(ORG))?.phase).toBe("stale");
+      expect(factOf(store.state(), "project", "deleted")?.content.kind).toBe("value");
+      expect(indexOf(store.state(), "running", PROBE_PROJECT_ID)?.size).toBe(1);
 
       yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
       yield* settle;
@@ -218,17 +221,17 @@ describe("zeropsNavigationLink", () => {
       expect(
         fixture.requests.filter((request) => request.body?.receiverId === "receiver-2"),
       ).toHaveLength(4);
-      expect(store.state().streams.get(scopeKeys.running(ORG))?.phase).toBe("live");
-      expect(store.state().running.get(PROBE_PROJECT_ID)?.size).toBe(0);
-      expect(store.state().process.get("K1bQIB8AQBeQGHaAe8mneg")?.content).toMatchObject({
+      expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("live");
+      expect(indexOf(store.state(), "running", PROBE_PROJECT_ID)?.size).toBe(0);
+      expect(factOf(store.state(), "process", "K1bQIB8AQBeQGHaAe8mneg")?.content).toMatchObject({
         value: { status: "RUNNING" },
       });
-      expect(store.state().project.get("kept")?.content.kind).toBe("value");
-      expect(store.state().project.get("deleted")?.content).toEqual({
+      expect(factOf(store.state(), "project", "kept")?.content.kind).toBe("value");
+      expect(factOf(store.state(), "project", "deleted")?.content).toEqual({
         kind: "deleted",
         evidence: "GET /project/deleted answered 404",
       });
-      expect(store.state().project.get("denied")).toMatchObject({
+      expect(factOf(store.state(), "project", "denied")).toMatchObject({
         content: { kind: "purged" },
         access: "denied",
       });
@@ -251,19 +254,19 @@ describe("zeropsNavigationLink", () => {
         }),
       );
       const fiber = yield* run(store, fixture);
-      expect(store.state().running.get(PROBE_PROJECT_ID)).toEqual(new Set(["deploy"]));
+      expect(indexOf(store.state(), "running", PROBE_PROJECT_ID)).toEqual(new Set(["deploy"]));
 
       reconnected = true;
       yield* fixture.drop({ outcome: "transient", message: "socket closed" });
       yield* settle;
-      const link = store.state().streams.get(scopeKeys.zeropsLink(ORG));
+      const link = store.state().streams.get(linkKeys.zerops(ORG));
       yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
       yield* settle;
-      expect(store.state().streams.get(scopeKeys.running(ORG))?.phase).toBe("live");
-      expect(store.state().memberships.get(scopeKeys.running(ORG))?.members.get("deploy")).toBe(
+      expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("live");
+      expect(store.state().memberships.get(runningScope(ORG))?.members.get("deploy")).toBe(
         "member",
       );
-      expect(store.state().running.get(PROBE_PROJECT_ID)).toEqual(new Set(["deploy"]));
+      expect(indexOf(store.state(), "running", PROBE_PROJECT_ID)).toEqual(new Set(["deploy"]));
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -273,14 +276,14 @@ describe("zeropsNavigationLink", () => {
       const store = makeAccountStore(AtomRegistry.make());
       const fixture = fixtureWire(answers({ projects: [PROBE_PROJECT], running: () => [] }));
       const fiber = yield* run(store, fixture);
-      const running = scopeKeys.running(ORG);
+      const running = runningScope(ORG);
       // Another attempt takes the scope over; this receiver's registration is now superseded.
       for (const event of [{ kind: "parent-lost" }, { kind: "attempt" }] as const)
         store.dispatch({ kind: "stream", key: running, now: 0, event });
 
       yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "updateStream"), frameOf(1));
       yield* settle;
-      expect(store.state().process.size).toBe(0);
+      expect(factOf(store.state(), "process", "J3TU3gE0SvCFrPDutSacqw")).toBeUndefined();
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -302,26 +305,24 @@ describe("zeropsNavigationLink", () => {
           delete: ["p"],
         });
         yield* settle;
-        expect(store.state().project.get("p")?.content.kind).toBe("purged");
+        expect(factOf(store.state(), "project", "p")?.content.kind).toBe("purged");
 
         yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "updateStream"), {
           update: [project],
         });
         yield* settle;
-        expect(store.state().project.get("p")?.content.kind).toBe("purged");
+        expect(factOf(store.state(), "project", "p")?.content.kind).toBe("purged");
 
         yield* fixture.drop({ outcome: "transient", message: "socket closed" });
         yield* settle;
-        const link = store.state().streams.get(scopeKeys.zeropsLink(ORG));
+        const link = store.state().streams.get(linkKeys.zerops(ORG));
         yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
         yield* settle;
-        expect(store.state().project.get("p")).toMatchObject({
+        expect(factOf(store.state(), "project", "p")).toMatchObject({
           content: { kind: "value", value: { name: "p" } },
           access: "allowed",
         });
-        expect(store.state().memberships.get(scopeKeys.projects(ORG))?.members.get("p")).toBe(
-          "member",
-        );
+        expect(store.state().memberships.get(projectsScope(ORG))?.members.get("p")).toBe("member");
         yield* Fiber.interrupt(fiber);
       }),
   );

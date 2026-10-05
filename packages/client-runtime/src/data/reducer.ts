@@ -8,22 +8,23 @@
  *
  * @module data/reducer
  */
-import { RUNNING_PROCESS_STATUSES } from "./demand.ts";
-import type {
-  Access,
-  AccountState,
-  Authority,
-  Delivery,
-  Fact,
-  Family,
-  FamilyValues,
-  MemberState,
-  Membership,
-  MembershipDelta,
-  ReadKey,
-  Revision,
-  ScopeKey,
-  StreamKey,
+import { FAMILIES, familySpec, scopeSpec } from "./families/index.ts";
+import {
+  factKey,
+  type Access,
+  type AccountState,
+  type Delivery,
+  type Fact,
+  type FactKey,
+  type Family,
+  type FamilyValues,
+  type MemberState,
+  type Membership,
+  type MembershipDelta,
+  type ReadKey,
+  type Revision,
+  type ScopeKey,
+  type StreamKey,
 } from "./model.ts";
 import {
   isOperationInput,
@@ -113,14 +114,6 @@ export interface Reduction {
   readonly directives: ReadonlyArray<RuntimeDirective>;
 }
 
-/** Who owns each family, whichever path delivered it: HQ's relay of attention stays the Mate's. */
-const AUTHORITY: Readonly<Record<Family, Authority>> = {
-  project: "zerops",
-  process: "zerops",
-  placement: "hq",
-  attention: "mate",
-};
-
 /** A scope's stream is the child of its link's: `zerops:org:projects` of `zerops:org`. */
 function parentOf(key: StreamKey): string | null {
   const parts = key.split(":");
@@ -191,17 +184,17 @@ function reduceRows(
   >,
   changed: Set<ReadKey>,
 ): AccountState {
-  // One copy per family a reduction writes, never one per row.
-  const drafts = new Map<Family, Map<string, Fact<unknown>>>();
+  // One copy of the facts a reduction writes, never one per row.
+  let draft: Map<FactKey, Fact<unknown>> | null = null;
   for (const row of input.rows) {
-    const facts =
-      drafts.get(row.family) ?? (state[row.family] as ReadonlyMap<string, Fact<unknown>>);
-    const current = facts.get(row.id);
+    const key = factKey(row.family, row.id);
+    const current = (draft ?? state.facts).get(key);
     if (current !== undefined && !admits(state, input, current, row)) continue;
     const fact: Fact<unknown> = {
       content: { kind: "value", value: row.value },
       revision: row.revision,
-      authority: AUTHORITY[row.family],
+      // The family's owner, whichever path delivered it: HQ's relay of attention stays the Mate's.
+      authority: familySpec(row.family).authority,
       via: input.via,
       method: input.method,
       scope: input.scope,
@@ -209,23 +202,12 @@ function reduceRows(
       access: current?.access === "unverified" ? "unverified" : "allowed",
       ...(row.producer === undefined ? {} : { producer: row.producer }),
     };
-    const draft = drafts.get(row.family) ?? new Map(facts);
-    drafts.set(row.family, draft.set(row.id, fact));
-    changed.add(`${row.family}:${row.id}`);
+    draft ??= new Map(state.facts);
+    draft.set(key, fact);
+    changed.add(key);
   }
-  return drafts.size === 0 ? state : { ...state, ...Object.fromEntries(drafts) };
+  return draft === null ? state : { ...state, facts: draft };
 }
-
-/** The family a scope's members are, and what leaving it says of them. */
-const SCOPE_FAMILY = {
-  projects: { family: "project", leaving: "absent-unverified" },
-  running: { family: "process", leaving: "removed" },
-  navigation: { family: "placement", leaving: "removed" },
-  attention: { family: "attention", leaving: "removed" },
-} as const satisfies Record<string, { family: Family; leaving: MemberState }>;
-
-const scopeFamily = (scope: ScopeKey) =>
-  SCOPE_FAMILY[scope.split(":")[2] as keyof typeof SCOPE_FAMILY];
 
 const EMPTY_MEMBERSHIP: Membership = { coverage: "unknown", members: new Map(), baseline: null };
 
@@ -236,7 +218,10 @@ function reduceMembership(
   changed: Set<ReadKey>,
   directives: RuntimeDirective[],
 ): AccountState {
-  const { family, leaving } = scopeFamily(scope);
+  const {
+    family,
+    scope: { leaving },
+  } = scopeSpec(scope);
   const membership = state.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
   changed.add(`members:${scope}`);
   // While a baseline is read, a delta may be older or newer than its answer: replay it after.
@@ -248,8 +233,7 @@ function reduceMembership(
   const members = new Map(membership.members);
   for (const id of delta.add) members.set(id, "member");
   for (const id of delta.remove) members.set(id, leaving);
-  const facts = state[family] as ReadonlyMap<string, unknown>;
-  const unresolved = delta.add.filter((id) => !facts.has(id));
+  const unresolved = delta.add.filter((id) => !state.facts.has(factKey(family, id)));
   if (unresolved.length > 0) directives.push({ kind: "resolve-rows", key: scope, ids: unresolved });
   if (leaving === "absent-unverified" && delta.remove.length > 0)
     directives.push({ kind: "verify-absence", key: scope, ids: delta.remove });
@@ -263,12 +247,12 @@ const withMembership = (
 ): AccountState => ({ ...state, memberships: new Map(state.memberships).set(scope, membership) });
 
 function beginBaseline(state: AccountState, scope: ScopeKey, changed: Set<ReadKey>): AccountState {
-  const { family } = scopeFamily(scope);
+  const prefix = `${scopeSpec(scope).family}:`;
   const membership = state.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
   const knownAtBegin = new Set<string>();
   for (const [id, member] of membership.members) if (member === "member") knownAtBegin.add(id);
-  for (const [id, fact] of state[family] as ReadonlyMap<string, Fact<unknown>>)
-    if (fact.scope === scope) knownAtBegin.add(id);
+  for (const [key, fact] of state.facts)
+    if (fact.scope === scope && key.startsWith(prefix)) knownAtBegin.add(key.slice(prefix.length));
   changed.add(`members:${scope}`);
   return withMembership(state, scope, { ...membership, baseline: { knownAtBegin, staged: [] } });
 }
@@ -310,7 +294,7 @@ function commitBaseline(
 function unlist(state: AccountState, family: Family, id: string, changed: Set<ReadKey>) {
   let memberships = state.memberships;
   for (const [scope, membership] of state.memberships) {
-    if (scopeFamily(scope).family !== family || !membership.members.has(id)) continue;
+    if (scopeSpec(scope).family !== family || !membership.members.has(id)) continue;
     const members = new Map(membership.members);
     members.delete(id);
     memberships = new Map(memberships).set(scope, { ...membership, members });
@@ -324,8 +308,8 @@ function reduceEvidence(
   input: Extract<AccountInput, { readonly kind: "proven-deletion" | "access" }>,
   changed: Set<ReadKey>,
 ): AccountState {
-  const facts = state[input.family] as ReadonlyMap<string, Fact<unknown>>;
-  const current = facts.get(input.id);
+  const key = factKey(input.family, input.id);
+  const current = state.facts.get(key);
   if (current === undefined) return state;
   const fact: Fact<unknown> =
     input.kind === "proven-deletion"
@@ -333,92 +317,57 @@ function reduceEvidence(
       : input.access === "denied"
         ? { ...current, content: { kind: "purged" }, access: "denied" }
         : { ...current, access: input.access };
-  changed.add(`${input.family}:${input.id}`);
+  changed.add(key);
   const unlisted = input.kind === "proven-deletion" || input.access === "denied";
   return {
     ...state,
-    [input.family]: new Map(facts).set(input.id, fact),
+    facts: new Map(state.facts).set(key, fact),
     memberships: unlisted ? unlist(state, input.family, input.id, changed) : state.memberships,
   };
 }
 
-const RUNNING_STATUSES: ReadonlySet<string> = new Set(RUNNING_PROCESS_STATUSES);
+/** Where a fact counts in its family's index now: its value and how its scope lists it. */
+function indexKey(state: AccountState, family: Family, id: string): string | null {
+  const spec = familySpec(family);
+  const fact = state.facts.get(factKey(family, id));
+  if (spec.index === undefined || fact?.content.kind !== "value") return null;
+  const listed = state.memberships.get(fact.scope)?.members.get(id);
+  return (spec.index.keyOf as (value: unknown, listed: MemberState | undefined) => string | null)(
+    fact.content.value,
+    listed,
+  );
+}
 
 /**
- * The running index for these processes: a process runs while its newest row is not terminal and
- * its running scope has not let it go. A terminal row clears it without saying how it ended beyond
- * that row; leaving the scope clears it without inventing any end at all.
+ * Each indexed family's index for the ids a reduction touched: moved out of the key it counted
+ * under, into the one it counts under now. A deleted or withheld fact counts under none.
  */
-function reindexRunning(
-  before: AccountState,
-  state: AccountState,
-  ids: ReadonlySet<string>,
-  changed: Set<ReadKey>,
-): AccountState {
-  // One copy of the index and of each project's set a reduction moves, never one per process.
+function reindex(before: AccountState, after: AccountState, changed: Set<ReadKey>): AccountState {
+  // One copy of the index map and of each moved set, never one per id.
   const drafts = new Map<string, Set<string>>();
-  for (const id of ids) {
-    const fact = state.process.get(id);
-    const was = before.process.get(id)?.content;
-    const value = fact?.content.kind === "value" ? fact.content.value : undefined;
-    // A deleted or withheld process keeps the project its last value named, to leave it.
-    const projectId = value?.projectId ?? (was?.kind === "value" ? was.value.projectId : null);
-    if (fact === undefined || projectId === null) continue;
-    const runs =
-      value !== undefined &&
-      RUNNING_STATUSES.has(value.status) &&
-      state.memberships.get(fact.scope)?.members.get(id) !== "removed";
-    const current = drafts.get(projectId) ?? state.running.get(projectId) ?? new Set<string>();
-    if (current.has(id) === runs) continue;
-    const draft = drafts.get(projectId) ?? new Set(current);
-    if (runs) draft.add(id);
-    else draft.delete(id);
-    drafts.set(projectId, draft);
-    changed.add(`running:${projectId}`);
-  }
-  if (drafts.size === 0) return state;
-  const running = new Map(state.running);
-  for (const [projectId, draft] of drafts) running.set(projectId, draft);
-  return { ...state, running };
-}
-
-/** The application a project is placed in, while its navigation scope still lists it. */
-function appOf(state: AccountState, projectId: string): string | null {
-  const fact = state.placement.get(projectId);
-  if (fact?.content.kind !== "value" || fact.content.value.kind !== "app") return null;
-  return state.memberships.get(fact.scope)?.members.get(projectId) === "member"
-    ? fact.content.value.appId
-    : null;
-}
-
-/** The application index for these projects: moved out of where they were, into where they are. */
-function reindexApps(
-  before: AccountState,
-  after: AccountState,
-  ids: ReadonlySet<string>,
-  changed: Set<ReadKey>,
-): AccountState {
-  const drafts = new Map<string, Set<string>>();
-  const draftOf = (appId: string) => {
-    let draft = drafts.get(appId);
+  const draftOf = (key: string) => {
+    let draft = drafts.get(key);
     if (draft === undefined) {
-      draft = new Set(after.apps.get(appId));
-      drafts.set(appId, draft);
+      draft = new Set(after.indexes.get(key));
+      drafts.set(key, draft);
     }
-    changed.add(`app:${appId}`);
+    changed.add(`index:${key}`);
     return draft;
   };
-  for (const id of ids) {
-    const was = appOf(before, id);
-    const is = appOf(after, id);
-    if (was === is) continue;
-    if (was !== null) draftOf(was).delete(id);
-    if (is !== null) draftOf(is).add(id);
+  for (const spec of FAMILIES) {
+    if (spec.index === undefined) continue;
+    for (const id of touched(spec.family, before, after, changed)) {
+      const was = indexKey(before, spec.family, id);
+      const is = indexKey(after, spec.family, id);
+      if (was === is) continue;
+      if (was !== null) draftOf(`${spec.index.name}:${was}`).delete(id);
+      if (is !== null) draftOf(`${spec.index.name}:${is}`).add(id);
+    }
   }
   if (drafts.size === 0) return after;
-  const apps = new Map(after.apps);
-  for (const [appId, draft] of drafts) apps.set(appId, draft);
-  return { ...after, apps };
+  const indexes = new Map(after.indexes);
+  for (const [key, draft] of drafts) indexes.set(key, draft);
+  return { ...after, indexes };
 }
 
 /** The ids of `family` a reduction touched: their facts, or their place in one of its scopes. */
@@ -433,7 +382,7 @@ function touched(
     if (key.startsWith(`${family}:`)) ids.add(key.slice(family.length + 1));
     if (!key.startsWith("members:")) continue;
     const scope = key.slice("members:".length) as ScopeKey;
-    if (scopeFamily(scope).family !== family) continue;
+    if (scopeSpec(scope).family !== family) continue;
     const old = before.memberships.get(scope)?.members;
     for (const [id, member] of after.memberships.get(scope)?.members ?? [])
       if (old?.get(id) !== member) ids.add(id);
@@ -482,10 +431,15 @@ export function reduceAccount(state: AccountState, input: AccountInput): Reducti
           : input.kind === "membership"
             ? reduceMembership(state, input.scope, input.delta, changed, directives)
             : reduceRows(state, input, changed);
-  const indexed = reindexRunning(state, next, touched("process", state, next, changed), changed);
-  return {
-    state: reindexApps(state, indexed, touched("placement", state, next, changed), changed),
-    changed,
-    directives,
-  };
+  return { state: reindex(state, next, changed), changed, directives };
 }
+
+/** A fact as the store holds it: for the store's reads and for tests, never for components. */
+export const factOf = (state: AccountState, family: Family, id: string) =>
+  state.facts.get(factKey(family, id));
+
+/** The ids an index counts under a key; empty when none does. */
+export const indexOf = (state: AccountState, name: string, key: string): ReadonlySet<string> =>
+  state.indexes.get(`${name}:${key}`) ?? EMPTY_IDS;
+
+const EMPTY_IDS: ReadonlySet<string> = new Set();

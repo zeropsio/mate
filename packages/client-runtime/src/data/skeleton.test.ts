@@ -16,11 +16,15 @@ import { attentionOf, liveMate } from "./__fixtures__/account.ts";
 import { fixtureWire, settle, type WireRequest } from "./__fixtures__/zeropsWire.ts";
 import { hqNavigationLink, type HqStructureSource } from "./adapters/hq.ts";
 import { classifyHttp, zeropsNavigationLink } from "./adapters/zerops.ts";
-import { scopeKeys } from "./model.ts";
 import { menuRow, menuRowKeys, type MenuRow } from "./projections/navigation.ts";
 import { makeAccountStore, type AccountStore } from "./store.ts";
 import { STREAM_POLICY } from "./streamMachine.ts";
 import { superviseLink, type LinkSupervisor } from "./supervisor.ts";
+import { projectsScope } from "./families/project.ts";
+import { runningScope } from "./families/process.ts";
+import { navigationScope } from "./families/placement.ts";
+import { attentionScope } from "./families/attention.ts";
+import { linkKeys } from "./model.ts";
 
 const ORG = "org";
 const SHOP = { orgId: ORG, row: { kind: "app", appId: "shop" } } as const;
@@ -192,9 +196,9 @@ describe("the walking skeleton", () => {
       ]);
       expect(row.status).toEqual({
         display: "catching-up",
-        lagging: [{ input: scopeKeys.navigation(ORG), phase: "stale" }],
+        lagging: [{ input: navigationScope(ORG), phase: "stale" }],
       });
-      expect(store.state().streams.get(scopeKeys.hqLink(ORG))?.phase).toBe("recovering");
+      expect(store.state().streams.get(linkKeys.hq(ORG))?.phase).toBe("recovering");
       for (const fiber of fibers) yield* Fiber.interrupt(fiber);
     }),
   );
@@ -217,7 +221,7 @@ describe("the walking skeleton", () => {
       liveMate("m1", attentionOf({ working: 1, latestChatId: "c2" }), 7).forEach(store.dispatch);
       store.dispatch({
         kind: "rows",
-        scope: scopeKeys.attention("m1"),
+        scope: attentionScope("m1"),
         generation: 1,
         method: "push",
         via: "mate-direct",
@@ -257,23 +261,23 @@ describe("the walking skeleton", () => {
         refuse = true;
         yield* wire.drop({ outcome: "transient", message: "socket closed" });
         yield* settle;
-        const link = store.state().streams.get(scopeKeys.zeropsLink(ORG));
+        const link = store.state().streams.get(linkKeys.zerops(ORG));
         yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
         yield* settle;
 
-        expect(store.state().streams.get(scopeKeys.zeropsLink(ORG))?.phase).toBe("refused");
-        expect(store.state().streams.get(scopeKeys.projects(ORG))?.phase).toBe("refused");
+        expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("refused");
+        expect(store.state().streams.get(projectsScope(ORG))?.phase).toBe("refused");
         expect(shop.latest().status.display).toBe("refused");
         expect(shop.latest().projects[0]?.name).toMatchObject({ kind: "ready", value: "m1 name" });
 
         // Time and the link's own attempts revive nothing; the person's try-now revives it all.
         yield* TestClock.adjust("1 hour");
-        expect(store.state().streams.get(scopeKeys.projects(ORG))?.phase).toBe("refused");
+        expect(store.state().streams.get(projectsScope(ORG))?.phase).toBe("refused");
         refuse = false;
         yield* supervisors[0]!.signal("manual-retry");
         yield* settle;
-        expect(store.state().streams.get(scopeKeys.projects(ORG))?.phase).toBe("live");
-        expect(store.state().streams.get(scopeKeys.running(ORG))?.phase).toBe("live");
+        expect(store.state().streams.get(projectsScope(ORG))?.phase).toBe("live");
+        expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("live");
         expect(shop.latest().status.display).toBe("live");
         for (const fiber of fibers) yield* Fiber.interrupt(fiber);
       }),
@@ -293,7 +297,7 @@ describe("the walking skeleton", () => {
         registry,
         store.data.project(menuRow, { orgId: ORG, row: { kind: "project", projectId: "p9" } }),
       );
-      expect(store.state().streams.get(scopeKeys.navigation(ORG))?.phase).toBe("refused");
+      expect(store.state().streams.get(navigationScope(ORG))?.phase).toBe("refused");
       expect(row.latest().title).toEqual({ kind: "ready", value: "p9 name", fresh: true });
       expect(row.latest().status.display).toBe("partial");
       for (const fiber of fibers) yield* Fiber.interrupt(fiber);
@@ -321,12 +325,12 @@ describe("the walking skeleton", () => {
         });
         const fiber = yield* Effect.forkChild(supervisor.run);
         yield* settle;
-        expect(store.state().streams.get(scopeKeys.navigation(ORG))?.phase).toBe("baselining");
+        expect(store.state().streams.get(navigationScope(ORG))?.phase).toBe("baselining");
         yield* TestClock.adjust(STREAM_POLICY.baselineTimeoutMs);
         yield* settle;
-        expect(store.state().streams.get(scopeKeys.hqLink(ORG))?.phase).toBe("recovering");
-        expect(store.state().streams.get(scopeKeys.navigation(ORG))?.phase).toBe("stale");
-        const link = store.state().streams.get(scopeKeys.hqLink(ORG));
+        expect(store.state().streams.get(linkKeys.hq(ORG))?.phase).toBe("recovering");
+        expect(store.state().streams.get(navigationScope(ORG))?.phase).toBe("stale");
+        const link = store.state().streams.get(linkKeys.hq(ORG));
         yield* TestClock.adjust(
           link?.next.kind === "retry" ? link.next.at - STREAM_POLICY.baselineTimeoutMs : 0,
         );
@@ -355,12 +359,12 @@ describe("the walking skeleton", () => {
         });
         const fiber = yield* Effect.forkChild(supervisor.run);
         yield* settle;
-        expect(store.state().streams.get(scopeKeys.running(ORG))?.phase).toBe("baselining");
+        expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("baselining");
 
         yield* TestClock.adjust(STREAM_POLICY.baselineTimeoutMs);
         yield* settle;
-        expect(store.state().streams.get(scopeKeys.zeropsLink(ORG))?.phase).toBe("recovering");
-        expect(store.state().streams.get(scopeKeys.running(ORG))?.phase).toBe("stale");
+        expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("recovering");
+        expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("stale");
         yield* Fiber.interrupt(fiber);
       }),
   );

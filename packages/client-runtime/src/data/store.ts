@@ -15,6 +15,7 @@ import {
   emptyAccount,
   type AccountState,
   type Fact,
+  type FactKey,
   type Family,
   type FamilyValues,
   type OperationRecord,
@@ -39,9 +40,8 @@ export interface ProjectionReads {
   readonly members: (scope: ScopeKey) => MembershipRead;
   /** Whether a scope ever committed a baseline: what earns an empty answer. */
   readonly coverage: (scope: ScopeKey) => "unknown" | "complete";
-  readonly running: (projectId: string) => ReadonlySet<string>;
-  /** The projects HQ places in an application. */
-  readonly app: (appId: string) => ReadonlySet<string>;
+  /** The ids a family index counts under a key: `index("running", projectId)`. */
+  readonly index: (name: string, key: string) => ReadonlySet<string>;
   readonly stream: (key: StreamKey) => StreamState;
   readonly operation: (requestId: string) => OperationRecord | undefined;
 }
@@ -115,14 +115,12 @@ function valueOf(state: AccountState, key: ReadKey): unknown {
     }
     case "coverage":
       return state.memberships.get(rest as ScopeKey)?.coverage ?? "unknown";
-    case "running":
-      return state.running.get(rest) ?? EMPTY_IDS;
-    case "app":
-      return state.apps.get(rest) ?? EMPTY_IDS;
+    case "index":
+      return state.indexes.get(rest) ?? EMPTY_IDS;
     case "operation":
       return state.operations.get(rest);
     default:
-      return publicRead((state[head as Family] as ReadonlyMap<string, Fact<unknown>>).get(rest));
+      return publicRead(state.facts.get(key as FactKey));
   }
 }
 
@@ -132,8 +130,7 @@ export function readsOf(read: <T>(key: ReadKey) => T): ProjectionReads {
     fact: (family, id) => read(`${family}:${id}`),
     members: (scope) => read(`members:${scope}`),
     coverage: (scope) => read(`coverage:${scope}`),
-    running: (projectId) => read(`running:${projectId}`),
-    app: (appId) => read(`app:${appId}`),
+    index: (name, key) => read(`index:${name}:${key}`),
     stream: (key) => read(`stream:${key}`),
     operation: (requestId) => read(`operation:${requestId}`),
   };

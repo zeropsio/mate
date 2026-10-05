@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { emptyAccount, scopeKeys, type AccountState } from "./model.ts";
+import { linkKeys, emptyAccount, type AccountState } from "./model.ts";
 import type { Revision } from "./model.ts";
 import { reduceAccount, supersedes, type AccountInput } from "./reducer.ts";
+import { projectsScope } from "./families/project.ts";
+import { runningScope } from "./families/process.ts";
+import { navigationScope } from "./families/placement.ts";
+import { factOf, indexOf } from "./reducer.ts";
 
 const ORG = "org";
-const projects = scopeKeys.projects(ORG);
+const projects = projectsScope(ORG);
 
 const projectRow = (id: string, version: number, name = id) => ({
   family: "project" as const,
@@ -50,7 +54,7 @@ function attached(): AccountState {
   return apply(emptyAccount, [
     {
       kind: "stream",
-      key: scopeKeys.zeropsLink(ORG),
+      key: linkKeys.zerops(ORG),
       now: 0,
       event: { kind: "demand", demanded: true },
     },
@@ -76,7 +80,10 @@ describe("reduceAccount", () => {
         attached(),
         order.map((row) => pushRows([row])),
       );
-      expect(state.project.get("p1")?.content).toEqual({ kind: "value", value: newer.value });
+      expect(factOf(state, "project", "p1")?.content).toEqual({
+        kind: "value",
+        value: newer.value,
+      });
     }
   });
 
@@ -125,7 +132,7 @@ describe("reduceAccount", () => {
       ["p2", "member"],
       ["p9", "member"],
     ]);
-    expect(committed.state.project.get("p1")?.content).toEqual({
+    expect(factOf(committed.state, "project", "p1")?.content).toEqual({
       kind: "value",
       value: projectRow("p1", 7, "pushed").value,
     });
@@ -144,22 +151,22 @@ describe("reduceAccount", () => {
       { kind: "stream", key: projects, now: 0, event: { kind: "parent-lost" } },
       {
         kind: "stream",
-        key: scopeKeys.zeropsLink(ORG),
+        key: linkKeys.zerops(ORG),
         now: 0,
         event: { kind: "fault", jitter: 0, fault: { outcome: "transient", message: "closed" } },
       },
       { kind: "stream", key: projects, now: 0, event: { kind: "close" } },
     ]);
-    expect(transport.project).toBe(held.project);
+    expect(transport.facts).toBe(held.facts);
     expect(transport.memberships).toBe(held.memberships);
 
     const absent = apply(held, [delta({ add: [], remove: ["p1"] })]);
-    expect(absent.project.get("p1")?.content.kind).toBe("value");
+    expect(factOf(absent, "project", "p1")?.content.kind).toBe("value");
 
     const deleted = apply(absent, [
       { kind: "proven-deletion", family: "project", id: "p1", evidence: "GET /project/p1 404" },
     ]);
-    expect(deleted.project.get("p1")?.content).toEqual({
+    expect(factOf(deleted, "project", "p1")?.content).toEqual({
       kind: "deleted",
       evidence: "GET /project/p1 404",
     });
@@ -168,7 +175,7 @@ describe("reduceAccount", () => {
     const denied = apply(absent, [
       { kind: "access", family: "project", id: "p1", access: "denied" },
     ]);
-    expect(denied.project.get("p1")).toMatchObject({
+    expect(factOf(denied, "project", "p1")).toMatchObject({
       content: { kind: "purged" },
       access: "denied",
     });
@@ -176,7 +183,7 @@ describe("reduceAccount", () => {
   });
 
   describe("running work", () => {
-    const running = scopeKeys.running(ORG);
+    const running = runningScope(ORG);
     const processRow = (id: string, version: number, status: string, projectId = "x") => ({
       family: "process" as const,
       id,
@@ -187,7 +194,7 @@ describe("reduceAccount", () => {
       apply(emptyAccount, [
         {
           kind: "stream",
-          key: scopeKeys.zeropsLink(ORG),
+          key: linkKeys.zerops(ORG),
           now: 0,
           event: { kind: "demand", demanded: true },
         },
@@ -223,35 +230,35 @@ describe("reduceAccount", () => {
         live(),
         rows(processRow("q", 1, "RUNNING"), processRow("q", 2, "FINISHED")),
       );
-      expect(reduction.state.running.get("x") ?? new Set()).toEqual(new Set());
-      expect(reduction.state.process.get("q")?.content).toMatchObject({
+      expect(indexOf(reduction.state, "running", "x") ?? new Set()).toEqual(new Set());
+      expect(factOf(reduction.state, "process", "q")?.content).toMatchObject({
         value: { status: "FINISHED" },
       });
     });
 
     it("lights a running row before its membership and clears it on the terminal row", () => {
       const lit = apply(live(), [rows(processRow("q", 1, "RUNNING"))]);
-      expect(lit.running.get("x")).toEqual(new Set(["q"]));
+      expect(indexOf(lit, "running", "x")).toEqual(new Set(["q"]));
 
       const joined = reduceAccount(lit, members(["q"], []));
       expect(joined.directives).toEqual([]);
-      expect(joined.state.running.get("x")).toEqual(new Set(["q"]));
+      expect(indexOf(joined.state, "running", "x")).toEqual(new Set(["q"]));
 
       const ended = reduceAccount(joined.state, rows(processRow("q", 2, "FINISHED")));
-      expect(ended.state.running.get("x")).toEqual(new Set());
-      expect(ended.changed.has("running:x")).toBe(true);
+      expect(indexOf(ended.state, "running", "x")).toEqual(new Set());
+      expect(ended.changed.has("index:running:x")).toBe(true);
     });
 
     it("clears a process that finished during an outage without inventing how it ended", () => {
       const lit = apply(live(), [members(["q"], []), rows(processRow("q", 1, "RUNNING"))]);
-      expect(lit.running.get("x")).toEqual(new Set(["q"]));
+      expect(indexOf(lit, "running", "x")).toEqual(new Set(["q"]));
 
       const recovered = apply(lit, [
         { kind: "stream", key: running, now: 0, event: { kind: "parent-lost" } },
         { kind: "stream", key: running, now: 0, event: { kind: "attempt" } },
         { kind: "baseline-begin", scope: running, generation: 2 },
       ]);
-      expect(recovered.running.get("x")).toEqual(new Set(["q"]));
+      expect(indexOf(recovered, "running", "x")).toEqual(new Set(["q"]));
 
       const rebaselined = reduceAccount(recovered, {
         kind: "baseline-commit",
@@ -261,9 +268,9 @@ describe("reduceAccount", () => {
         members: [],
         rows: [],
       });
-      expect(rebaselined.state.running.get("x")).toEqual(new Set());
+      expect(indexOf(rebaselined.state, "running", "x")).toEqual(new Set());
       expect(rebaselined.state.memberships.get(running)?.members.get("q")).toBe("removed");
-      expect(rebaselined.state.process.get("q")?.content).toMatchObject({
+      expect(factOf(rebaselined.state, "process", "q")?.content).toMatchObject({
         value: { status: "RUNNING" },
       });
       expect(rebaselined.directives).toEqual([]);
@@ -271,7 +278,7 @@ describe("reduceAccount", () => {
   });
 
   describe("application index", () => {
-    const navigation = scopeKeys.navigation(ORG);
+    const navigation = navigationScope(ORG);
     const placed = (id: string, sequence: number, appId: string | null) => ({
       family: "placement" as const,
       id,
@@ -286,7 +293,7 @@ describe("reduceAccount", () => {
       const state = apply(emptyAccount, [
         {
           kind: "stream",
-          key: scopeKeys.hqLink(ORG),
+          key: linkKeys.hq(ORG),
           now: 0,
           event: { kind: "demand", demanded: true },
         },
@@ -302,7 +309,7 @@ describe("reduceAccount", () => {
           rows: [placed("m1", 1, "a"), placed("m2", 1, "a"), placed("m3", 1, null)],
         },
       ]);
-      expect(state.apps.get("a")).toEqual(new Set(["m1", "m2"]));
+      expect(indexOf(state, "apps", "a")).toEqual(new Set(["m1", "m2"]));
 
       const moved = reduceAccount(state, {
         kind: "rows",
@@ -312,11 +319,11 @@ describe("reduceAccount", () => {
         via: "hq-stream",
         rows: [placed("m2", 2, "b")],
       });
-      expect(moved.state.apps.get("a")).toEqual(new Set(["m1"]));
-      expect(moved.state.apps.get("b")).toEqual(new Set(["m2"]));
-      expect([...moved.changed].filter((key) => key.startsWith("app:")).sort()).toEqual([
-        "app:a",
-        "app:b",
+      expect(indexOf(moved.state, "apps", "a")).toEqual(new Set(["m1"]));
+      expect(indexOf(moved.state, "apps", "b")).toEqual(new Set(["m2"]));
+      expect([...moved.changed].filter((key) => key.startsWith("index:")).sort()).toEqual([
+        "index:apps:a",
+        "index:apps:b",
       ]);
 
       const withdrawn = reduceAccount(moved.state, {
@@ -325,12 +332,12 @@ describe("reduceAccount", () => {
         generation: 1,
         delta: { add: [], remove: ["m1"] },
       });
-      expect(withdrawn.state.apps.get("a")).toEqual(new Set());
+      expect(indexOf(withdrawn.state, "apps", "a")).toEqual(new Set());
     });
   });
 
   it("keeps a relayed attention the Mate's, and reads a value again once its owner sends one", () => {
-    const navigation = scopeKeys.navigation(ORG);
+    const navigation = navigationScope(ORG);
     const relayed = (sequence: number): AccountInput => ({
       kind: "rows",
       scope: navigation,
@@ -357,7 +364,7 @@ describe("reduceAccount", () => {
     const state = apply(emptyAccount, [
       {
         kind: "stream",
-        key: scopeKeys.hqLink(ORG),
+        key: linkKeys.hq(ORG),
         now: 0,
         event: { kind: "demand", demanded: true },
       },
@@ -365,13 +372,13 @@ describe("reduceAccount", () => {
       { kind: "stream", key: navigation, now: 0, event: { kind: "attempt" } },
       relayed(1),
     ]);
-    expect(state.attention.get("m1")).toMatchObject({ authority: "mate", via: "hq-stream" });
+    expect(factOf(state, "attention", "m1")).toMatchObject({ authority: "mate", via: "hq-stream" });
 
     const denied = apply(state, [
       { kind: "access", family: "attention", id: "m1", access: "denied" },
     ]);
-    expect(denied.attention.get("m1")?.content.kind).toBe("purged");
-    expect(apply(denied, [relayed(2)]).attention.get("m1")).toMatchObject({
+    expect(factOf(denied, "attention", "m1")?.content.kind).toBe("purged");
+    expect(factOf(apply(denied, [relayed(2)]), "attention", "m1")).toMatchObject({
       content: { kind: "value" },
       access: "allowed",
     });

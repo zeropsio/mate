@@ -19,11 +19,13 @@ import type * as Scope from "effect/Scope";
 
 import { HqError, type HqApi, type HqStructure } from "../../zerops/hq/client.ts";
 import type { HqStructureEvent } from "../../zerops/hq/stream.ts";
-import { scopeKeys, type AttentionValue, type LinkKey, type ScopeKey } from "../model.ts";
+import { linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
 import { streamOf, type AccountInput, type Row } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import type { LinkOptions } from "../supervisor.ts";
+import { navigationScope } from "../families/placement.ts";
+import { type AttentionValue } from "../families/attention.ts";
 
 /** Today's HQ client, as much of it as the navigation scope reads. */
 export type HqStructureSource = Pick<HqApi, "streamStructure">;
@@ -69,8 +71,8 @@ export function hqNavigationLink(options: {
   readonly store: AccountStore;
 }): Pick<LinkOptions, "key" | "scopes" | "attempt"> {
   const { orgId, store } = options;
-  const key: LinkKey = scopeKeys.hqLink(orgId);
-  const navigation: ScopeKey = scopeKeys.navigation(orgId);
+  const key: LinkKey = linkKeys.hq(orgId);
+  const navigation: ScopeKey = navigationScope(orgId);
 
   const attempt = (): Effect.Effect<never, StreamFault, Scope.Scope> =>
     Effect.gen(function* () {

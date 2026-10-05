@@ -4,13 +4,14 @@ import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
-import { scopeKeys } from "./model.ts";
 import { makeAccountStore } from "./store.ts";
 import { STREAM_POLICY, type StreamFault } from "./streamMachine.ts";
 import { superviseLink } from "./supervisor.ts";
+import { projectsScope } from "./families/project.ts";
+import { linkKeys } from "./model.ts";
 
-const LINK = scopeKeys.zeropsLink("org");
-const SCOPE = scopeKeys.projects("org");
+const LINK = linkKeys.zerops("org");
+const SCOPE = projectsScope("org");
 
 const transient: StreamFault = { outcome: "transient", message: "socket closed" };
 

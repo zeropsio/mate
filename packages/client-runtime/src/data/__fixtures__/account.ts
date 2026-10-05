@@ -2,9 +2,13 @@
  * Inputs that bring an account's streams up and its scopes to a committed baseline, the way the
  * adapters would: for projection and publication tests that start from a known account.
  */
-import { scopeKeys, type AttentionValue, type LinkKey, type ScopeKey } from "../model.ts";
+import { linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
 import type { AccountInput, Row } from "../reducer.ts";
 import type { StreamEvent } from "../streamMachine.ts";
+import { projectsScope } from "../families/project.ts";
+import { runningScope } from "../families/process.ts";
+import { navigationScope } from "../families/placement.ts";
+import { type AttentionValue, attentionScope } from "../families/attention.ts";
 
 export const ORG = "org";
 
@@ -47,9 +51,9 @@ export function liveZerops(input: {
   readonly running?: ReadonlyArray<{ readonly id: string; readonly projectId: string }>;
 }): ReadonlyArray<AccountInput> {
   const running = input.running ?? [];
-  return liveScopes(scopeKeys.zeropsLink(ORG), [
+  return liveScopes(linkKeys.zerops(ORG), [
     {
-      scope: scopeKeys.projects(ORG),
+      scope: projectsScope(ORG),
       via: "zerops-realtime",
       members: input.projects.map((project) => project.id),
       rows: input.projects.map((project) => ({
@@ -60,7 +64,7 @@ export function liveZerops(input: {
       })),
     },
     {
-      scope: scopeKeys.running(ORG),
+      scope: runningScope(ORG),
       via: "zerops-realtime",
       members: running.map((process) => process.id),
       rows: running.map((process) => ({
@@ -103,9 +107,9 @@ export function liveHq(input: {
   }>;
 }): ReadonlyArray<AccountInput> {
   const attention = input.attention ?? [];
-  return liveScopes(scopeKeys.hqLink(ORG), [
+  return liveScopes(linkKeys.hq(ORG), [
     {
-      scope: scopeKeys.navigation(ORG),
+      scope: navigationScope(ORG),
       via: "hq-stream",
       members: input.placements.map((placement) => placement.projectId),
       rows: [
@@ -137,9 +141,9 @@ export function liveMate(
   revision: number,
   incarnation = "inc-1",
 ): ReadonlyArray<AccountInput> {
-  return liveScopes(scopeKeys.mateLink(projectId), [
+  return liveScopes(linkKeys.mate(projectId), [
     {
-      scope: scopeKeys.attention(projectId),
+      scope: attentionScope(projectId),
       via: "mate-direct",
       members: [projectId],
       rows: [

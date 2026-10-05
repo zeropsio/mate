@@ -2,17 +2,20 @@ import { AtomRegistry, type Atom } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
 import { attentionOf, liveHq, liveMate, liveZerops, ORG } from "./__fixtures__/account.ts";
-import { scopeKeys } from "./model.ts";
 import { menuRow, menuRowKeys } from "./projections/navigation.ts";
 import type { AccountInput } from "./reducer.ts";
 import { makeAccountStore, type Projection } from "./store.ts";
+import { projectsScope } from "./families/project.ts";
+import { runningScope } from "./families/process.ts";
+import { attentionScope } from "./families/attention.ts";
+import { linkKeys } from "./model.ts";
 
-const projects = scopeKeys.projects(ORG);
+const projects = projectsScope(ORG);
 
 const attach: ReadonlyArray<AccountInput> = [
   {
     kind: "stream",
-    key: scopeKeys.zeropsLink(ORG),
+    key: linkKeys.zerops(ORG),
     now: 0,
     event: { kind: "demand", demanded: true },
   },
@@ -100,7 +103,7 @@ describe("makeAccountStore", () => {
     for (let revision = 2; revision <= 51; revision += 1)
       store.dispatch({
         kind: "rows",
-        scope: scopeKeys.attention("app-0-mate"),
+        scope: attentionScope("app-0-mate"),
         generation: 1,
         method: "push",
         via: "mate-direct",
@@ -115,7 +118,7 @@ describe("makeAccountStore", () => {
       });
     store.dispatch({
       kind: "rows",
-      scope: scopeKeys.running(ORG),
+      scope: runningScope(ORG),
       generation: 1,
       method: "push",
       via: "zerops-realtime",

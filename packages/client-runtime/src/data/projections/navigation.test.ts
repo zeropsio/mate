@@ -8,10 +8,13 @@ import {
   ORG,
   streamEvent,
 } from "../__fixtures__/account.ts";
-import { emptyAccount, scopeKeys, type AccountState } from "../model.ts";
+import { linkKeys, emptyAccount, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import { menuRow, type RowKey } from "./navigation.ts";
+import { projectsScope } from "../families/project.ts";
+import { runningScope } from "../families/process.ts";
+import { navigationScope } from "../families/placement.ts";
 
 function account(...inputs: ReadonlyArray<ReadonlyArray<AccountInput>>): AccountState {
   return inputs.flat().reduce((state, input) => reduceAccount(state, input).state, emptyAccount);
@@ -77,7 +80,7 @@ describe("menuRow", () => {
         [
           {
             kind: "membership",
-            scope: scopeKeys.projects(ORG),
+            scope: projectsScope(ORG),
             generation: 1,
             delta: { add: ["p-new"], remove: [] },
           },
@@ -94,12 +97,12 @@ describe("menuRow", () => {
         hq,
         liveMate("m1", attentionOf({ working: 2 }), 3),
         [
-          streamEvent(scopeKeys.hqLink(ORG), {
+          streamEvent(linkKeys.hq(ORG), {
             kind: "fault",
             jitter: 0,
             fault: { outcome: "transient", message: "HQ's stream broke." },
           }),
-          streamEvent(scopeKeys.navigation(ORG), { kind: "parent-lost" }),
+          streamEvent(navigationScope(ORG), { kind: "parent-lost" }),
         ],
       ],
       key: shop,
@@ -123,7 +126,7 @@ describe("menuRow", () => {
         ],
         status: {
           display: "catching-up",
-          lagging: [{ input: scopeKeys.navigation(ORG), phase: "stale" }],
+          lagging: [{ input: navigationScope(ORG), phase: "stale" }],
         },
       },
       display: "catching-up",
@@ -183,8 +186,8 @@ describe("menuRow", () => {
       inputs: [
         liveZerops({ projects: [{ id: "m1", name: "shop-mate" }] }).filter(
           (input) =>
-            !("scope" in input && input.scope === scopeKeys.running(ORG)) &&
-            !("key" in input && input.key === scopeKeys.running(ORG)),
+            !("scope" in input && input.scope === runningScope(ORG)) &&
+            !("key" in input && input.key === runningScope(ORG)),
         ),
       ],
       key: { kind: "project", projectId: "m1" },

@@ -21,7 +21,8 @@ import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
 import { ORGANIZATION_SEARCH_LIMIT, zeropsNavigation, type Registration } from "../demand.ts";
-import { scopeKeys, type LinkKey, type ScopeKey } from "../model.ts";
+import { familySpec, scopeSpec } from "../families/index.ts";
+import { linkKeys, type Family, type LinkKey, type ScopeKey } from "../model.ts";
 import { streamOf, type Row, type RuntimeDirective } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
@@ -60,19 +61,6 @@ export function classifyHttp(status: number, retryAfterMs?: number): StreamFault
   return { outcome: "definitive-refusal", message };
 }
 
-const ProjectRow = Schema.Struct({
-  id: Schema.String,
-  name: Schema.optionalKey(Schema.String),
-  status: Schema.optionalKey(Schema.String),
-  _version: Schema.optionalKey(Schema.Number),
-});
-const ProcessRow = Schema.Struct({
-  id: Schema.String,
-  projectId: Schema.String,
-  status: Schema.String,
-  actionName: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  _version: Schema.optionalKey(Schema.Number),
-});
 const Frame = Schema.Struct({
   type: Schema.String,
   subscriptionName: Schema.optionalKey(Schema.String),
@@ -87,45 +75,28 @@ const ListAnswer = Schema.Struct({ items: Schema.Array(Schema.Unknown) });
 /** A member's identity alone: a row too damaged to read still names its id. */
 const Identified = Schema.Struct({ id: Schema.String });
 
-const decodeProjectRow = Schema.decodeUnknownOption(ProjectRow);
-const decodeProcessRow = Schema.decodeUnknownOption(ProcessRow);
 const decodeFrame = Schema.decodeUnknownOption(Schema.fromJsonString(Frame));
 const decodeMembership = Schema.decodeUnknownOption(MembershipData);
 const decodeUpdates = Schema.decodeUnknownOption(UpdateData);
 const decodeList = Schema.decodeUnknownOption(ListAnswer);
 const decodeIdentified = Schema.decodeUnknownOption(Identified);
 
-/** Each row that decodes; a damaged row is refused alone, its neighbours admitted (corrupt data). */
-function rowsOf(family: Registration["family"], raw: ReadonlyArray<unknown>): ReadonlyArray<Row> {
+/** Each row its family decodes; a damaged row is refused alone, its neighbours admitted. */
+function rowsOf(family: Family, raw: ReadonlyArray<unknown>): ReadonlyArray<Row> {
+  const decode = familySpec(family).zerops?.decode;
+  if (decode === undefined) return [];
   return raw.flatMap((input): Row[] => {
-    if (family === "project")
-      return Option.match(decodeProjectRow(input), {
-        onNone: () => [],
-        onSome: (row) => [
+    const row = decode(input);
+    return row === null
+      ? []
+      : [
           {
-            family: "project",
+            family,
             id: row.id,
-            value: { id: row.id, name: row.name ?? "", status: row.status ?? "" },
-            revision: { kind: "zerops", version: row._version ?? null },
-          },
-        ],
-      });
-    return Option.match(decodeProcessRow(input), {
-      onNone: () => [],
-      onSome: (row) => [
-        {
-          family: "process",
-          id: row.id,
-          value: {
-            id: row.id,
-            projectId: row.projectId,
-            status: row.status,
-            actionName: row.actionName ?? null,
-          },
-          revision: { kind: "zerops", version: row._version ?? null },
-        },
-      ],
-    });
+            value: row.value,
+            revision: { kind: "zerops", version: row.version },
+          } as Row,
+        ];
   });
 }
 
@@ -139,11 +110,10 @@ export function zeropsNavigationLink(options: {
   readonly makeId: () => string;
 }): Pick<LinkOptions, "key" | "scopes" | "attempt"> {
   const { orgId, store } = options;
-  const key: LinkKey = scopeKeys.zeropsLink(orgId);
+  const key: LinkKey = linkKeys.zerops(orgId);
   const registrations = zeropsNavigation(orgId);
-  const scopes: ReadonlyArray<ScopeKey> = [scopeKeys.projects(orgId), scopeKeys.running(orgId)];
-  const familyOf = (scope: ScopeKey) =>
-    registrations.find((registration) => registration.scope === scope)?.family ?? "project";
+  const scopes = [...new Set(registrations.map((registration) => registration.scope))];
+  const familyOf = (scope: ScopeKey) => scopeSpec(scope).family;
 
   const attempt = (): Effect.Effect<never, StreamFault, Scope.Scope> =>
     Effect.gen(function* () {
@@ -163,7 +133,11 @@ export function zeropsNavigationLink(options: {
         Effect.forEach(directives, (directive) => {
           if (directive.kind === "resolve-rows") return resolveRows(directive.key, directive.ids);
           if (directive.kind === "verify-absence")
-            return Effect.forEach(directive.ids, verifyAbsence, { discard: true });
+            return Effect.forEach(
+              directive.ids,
+              (id) => verifyAbsence(familyOf(directive.key), id),
+              { discard: true },
+            );
           return Effect.void;
         }).pipe(Effect.ignore, Effect.forkIn(attemptScope), Effect.asVoid);
 
@@ -173,7 +147,9 @@ export function zeropsNavigationLink(options: {
       ): Effect.Effect<void, StreamFault> =>
         Effect.gen(function* () {
           const family = familyOf(scope);
-          const answer = yield* link.post(`/${family}/search`, {
+          const entity = familySpec(family).zerops?.entity;
+          if (entity === undefined) return;
+          const answer = yield* link.post(`/${entity}/search`, {
             search: [
               { name: "clientId", operator: "eq", value: orgId },
               { name: "id", operator: "in", value: ids },
@@ -194,19 +170,20 @@ export function zeropsNavigationLink(options: {
           );
         });
 
-      /** A project gone from the roster: deleted, or no longer the viewer's — the owner says. */
-      const verifyAbsence = (id: string): Effect.Effect<void, StreamFault> =>
+      /** A member gone from its scope: deleted, or no longer the viewer's — the owner says. */
+      const verifyAbsence = (family: Family, id: string): Effect.Effect<void, StreamFault> =>
         Effect.gen(function* () {
-          const { status } = yield* link.get(`/project/${encodeURIComponent(id)}`);
+          const path = familySpec(family).zerops?.verifyPath?.(id);
+          if (path === undefined) return;
+          const { status } = yield* link.get(path);
           if (status === 404)
             store.dispatch({
               kind: "proven-deletion",
-              family: "project",
+              family,
               id,
-              evidence: `GET /project/${id} answered 404`,
+              evidence: `GET ${path} answered 404`,
             });
-          else if (status === 403)
-            store.dispatch({ kind: "access", family: "project", id, access: "denied" });
+          else if (status === 403) store.dispatch({ kind: "access", family, id, access: "denied" });
         });
 
       const subscriptions = new Map<string, Registration>();

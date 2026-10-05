@@ -6,9 +6,9 @@
  *
  * @module data/projections/operation
  */
-import type { OperationRecord } from "../model.ts";
+import { operationKind } from "../operations/kinds.ts";
+import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
-import type { Projection, ProjectionReads } from "../store.ts";
 
 export type OperationProgress =
   | { readonly stage: "unknown" }
@@ -27,16 +27,6 @@ export type OperationProgress =
       readonly operationId: string | null;
       readonly nextActor: string;
     };
-
-/** Whether the scope the intent changes shows it now: the move's project sits where it asked. */
-function reflected(read: ProjectionReads, record: OperationRecord): boolean {
-  const placement = read.fact("placement", record.intent.projectId);
-  return (
-    placement.kind === "known" &&
-    placement.value.kind === "app" &&
-    placement.value.appId === record.intent.to.appId
-  );
-}
 
 export const operationProgress: Projection<string, OperationProgress> = {
   name: "operationProgress",
@@ -68,7 +58,7 @@ export const operationProgress: Projection<string, OperationProgress> = {
     if (receipt.acceptance.kind === "refused")
       return { stage: "refused", reason: receipt.acceptance.reason };
     return {
-      stage: reflected(read, record) ? "reflected" : "accepted",
+      stage: operationKind(record.intent).reflected(read, record.intent) ? "reflected" : "accepted",
       operationId: receipt.operationId,
     };
   },

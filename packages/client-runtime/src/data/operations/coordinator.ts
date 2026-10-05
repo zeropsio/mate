@@ -8,9 +8,10 @@
  */
 import * as Effect from "effect/Effect";
 
-import type { OperationIntent, OperationReceipt } from "../model.ts";
+import type { Authority, OperationIntent, OperationReceipt } from "../model.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
+import { operationKind } from "./kinds.ts";
 
 /** The owner's answer was lost on the way: it may or may not have taken the request. */
 export interface UncertainAcceptance {
@@ -42,13 +43,20 @@ export interface Operations {
 
 export function makeOperations(options: {
   readonly store: AccountStore;
-  readonly executor: OperationExecutor;
+  /** Each owner's executor; an intent goes to the one its kind names. */
+  readonly executors: Partial<Readonly<Record<Authority, OperationExecutor>>>;
   readonly makeId: () => string;
 }): Operations {
-  const { store, executor } = options;
+  const { store } = options;
+  const executorOf = (intent: OperationIntent) => {
+    const owner = operationKind(intent).executor;
+    const executor = options.executors[owner];
+    if (executor === undefined) throw new Error(`No executor for ${owner} is wired.`);
+    return { owner, executor };
+  };
 
   const send = (requestId: string, intent: OperationIntent, resend: boolean): Effect.Effect<void> =>
-    Effect.matchEffect(executor.submit(requestId, intent), {
+    Effect.matchEffect(executorOf(intent).executor.submit(requestId, intent), {
       onSuccess: (receipt) =>
         Effect.sync(() => store.dispatch({ kind: "operation-receipt", receipt })),
       onFailure: (fault) => {
@@ -63,7 +71,7 @@ export function makeOperations(options: {
               receipt: {
                 requestId,
                 operationId: requestId,
-                executor: "hq",
+                executor: executorOf(intent).owner,
                 affected: [],
                 acceptance: { kind: "refused", reason: fault.message },
                 outcome: { kind: "pending" },
@@ -77,7 +85,7 @@ export function makeOperations(options: {
 
   /** Asks the owner by the original id; sends again, once, only to an owner that holds none. */
   const reconcile = (requestId: string, intent: OperationIntent, resend: boolean) =>
-    Effect.matchEffect(executor.lookup(requestId), {
+    Effect.matchEffect(executorOf(intent).executor.lookup(requestId), {
       onSuccess: (receipt) => {
         if (receipt !== null)
           return Effect.sync(() => store.dispatch({ kind: "operation-receipt", receipt }));

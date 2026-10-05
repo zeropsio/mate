@@ -4,10 +4,11 @@ import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
 import { liveHq, liveZerops, ORG } from "../__fixtures__/account.ts";
-import { scopeKeys, type OperationReceipt } from "../model.ts";
+import { type OperationReceipt } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { makeOperations, type OperationExecutor } from "./coordinator.ts";
+import { navigationScope } from "../families/placement.ts";
 
 const MOVE = {
   kind: "move-project",
@@ -89,7 +90,7 @@ const progress = (store: AccountStore, requestId: string) =>
 const reflect = (store: AccountStore) =>
   store.dispatch({
     kind: "rows",
-    scope: scopeKeys.navigation(ORG),
+    scope: navigationScope(ORG),
     generation: 1,
     method: "push",
     via: "hq-stream",
@@ -108,7 +109,11 @@ describe("makeOperations", () => {
     Effect.gen(function* () {
       const store = account();
       const owner = fixtureOwner({ loseAnswers: 0 });
-      const operations = makeOperations({ store, executor: owner.executor, makeId: ids() });
+      const operations = makeOperations({
+        store,
+        executors: { hq: owner.executor },
+        makeId: ids(),
+      });
 
       const requestId = yield* operations.submit(MOVE);
       expect(progress(store, requestId)).toEqual({ stage: "accepted", operationId: "op-1" });
@@ -138,7 +143,11 @@ describe("makeOperations", () => {
     Effect.gen(function* () {
       const store = account();
       const owner = fixtureOwner({ loseAnswers: 1 });
-      const operations = makeOperations({ store, executor: owner.executor, makeId: ids() });
+      const operations = makeOperations({
+        store,
+        executors: { hq: owner.executor },
+        makeId: ids(),
+      });
 
       const requestId = yield* operations.submit(MOVE);
       expect(owner.submitted).toEqual([requestId]);
@@ -151,7 +160,11 @@ describe("makeOperations", () => {
     Effect.gen(function* () {
       const store = account();
       const owner = fixtureOwner({ loseAnswers: 0, loseRequests: 1 });
-      const operations = makeOperations({ store, executor: owner.executor, makeId: ids() });
+      const operations = makeOperations({
+        store,
+        executors: { hq: owner.executor },
+        makeId: ids(),
+      });
 
       const requestId = yield* operations.submit(MOVE);
       expect(owner.submitted).toEqual([requestId, requestId]);
@@ -169,7 +182,7 @@ describe("makeOperations", () => {
         const before = account();
         const requestId = yield* makeOperations({
           store: before,
-          executor: owner.executor,
+          executors: { hq: owner.executor },
           makeId: ids(),
         }).submit(MOVE);
         expect(progress(before, requestId)).toEqual({
@@ -181,10 +194,11 @@ describe("makeOperations", () => {
         // The tab restarts: its memory is gone, the request id is what it resumes by.
         unreachable = false;
         const after = account();
-        yield* makeOperations({ store: after, executor: owner.executor, makeId: ids() }).resume(
-          requestId,
-          MOVE,
-        );
+        yield* makeOperations({
+          store: after,
+          executors: { hq: owner.executor },
+          makeId: ids(),
+        }).resume(requestId, MOVE);
         expect(owner.submitted).toEqual([requestId]);
         expect(owner.effects).toEqual([requestId]);
         expect(progress(after, requestId)).toEqual({ stage: "accepted", operationId: "op-1" });
@@ -195,7 +209,11 @@ describe("makeOperations", () => {
     Effect.gen(function* () {
       const store = account();
       const owner = fixtureOwner({ loseAnswers: 0, unavailable: 1 });
-      const operations = makeOperations({ store, executor: owner.executor, makeId: ids() });
+      const operations = makeOperations({
+        store,
+        executors: { hq: owner.executor },
+        makeId: ids(),
+      });
 
       const requestId = yield* operations.submit(MOVE);
       expect(progress(store, requestId)).toEqual({ stage: "unsent", next: "send-again" });
@@ -213,7 +231,11 @@ describe("makeOperations", () => {
       let unreachable = true;
       const owner = fixtureOwner({ loseAnswers: 1, unreachable: () => unreachable });
       const store = account();
-      const operations = makeOperations({ store, executor: owner.executor, makeId: ids() });
+      const operations = makeOperations({
+        store,
+        executors: { hq: owner.executor },
+        makeId: ids(),
+      });
       const requestId = yield* operations.submit(MOVE);
 
       unreachable = false;

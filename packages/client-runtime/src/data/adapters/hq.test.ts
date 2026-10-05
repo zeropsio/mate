@@ -8,13 +8,14 @@ import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { settle } from "../__fixtures__/zeropsWire.ts";
 import { HqError, type HqStructure } from "../../zerops/hq/client.ts";
 import type { HqStructureEvent } from "../../zerops/hq/stream.ts";
-import { scopeKeys } from "../model.ts";
 import { makeAccountStore, type AccountStore } from "../store.ts";
 import { superviseLink } from "../supervisor.ts";
 import { hqNavigationLink, type HqStructureSource } from "./hq.ts";
+import { navigationScope } from "../families/placement.ts";
+import { factOf, indexOf } from "../reducer.ts";
 
 const ORG = "org";
-const NAVIGATION = scopeKeys.navigation(ORG);
+const NAVIGATION = navigationScope(ORG);
 
 /** Today's HQ stream, driven by the test: one call per socket, ended by the test. */
 function fixtureHq() {
@@ -100,8 +101,8 @@ describe("hqNavigationLink", () => {
         ]),
       );
       expect(store.state().streams.get(NAVIGATION)?.phase).toBe("live");
-      expect(store.state().apps.get("shop")).toEqual(new Set(["m1", "s1"]));
-      expect(store.state().placement.get("s1")?.content).toEqual({
+      expect(indexOf(store.state(), "apps", "shop")).toEqual(new Set(["m1", "s1"]));
+      expect(factOf(store.state(), "placement", "s1")?.content).toEqual({
         kind: "value",
         value: { kind: "app", appId: "shop", appName: "Shop", role: "stage" },
       });
@@ -111,11 +112,11 @@ describe("hqNavigationLink", () => {
         appId: "shop",
         app: { id: "shop", name: "Shop", projects: [mate("m1")] },
       });
-      expect(store.state().apps.get("shop")).toEqual(new Set(["m1"]));
-      expect(store.state().placement.get("s1")?.content.kind).toBe("value");
+      expect(indexOf(store.state(), "apps", "shop")).toEqual(new Set(["m1"]));
+      expect(factOf(store.state(), "placement", "s1")?.content.kind).toBe("value");
 
       yield* hq.emit({ kind: "change", appId: "shop", app: null });
-      expect(store.state().apps.get("shop")).toEqual(new Set());
+      expect(indexOf(store.state(), "apps", "shop")).toEqual(new Set());
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -140,7 +141,7 @@ describe("hqNavigationLink", () => {
       expect(repairs.count).toBe(1);
       expect(hq.calls).toHaveLength(2);
       expect(store.state().streams.get(NAVIGATION)?.phase).toBe("baselining");
-      expect(store.state().apps.get("shop")).toEqual(new Set(["m1"]));
+      expect(indexOf(store.state(), "apps", "shop")).toEqual(new Set(["m1"]));
       yield* Fiber.interrupt(fiber);
     }),
   );
@@ -158,7 +159,7 @@ describe("hqNavigationLink", () => {
             new Map([["m1", view({ online: true, threads: [thread("c1", "working")] })]]),
           ),
         );
-        expect(store.state().attention.get("m1")).toMatchObject({
+        expect(factOf(store.state(), "attention", "m1")).toMatchObject({
           content: { value: { working: 1, waiting: 0, latestChatId: "c1" } },
           producer: "up",
         });
@@ -169,7 +170,7 @@ describe("hqNavigationLink", () => {
           projectId: "m1",
           value: { threads: { list: [thread("c2", "idle"), thread("c1", "working")], omitted: 0 } },
         });
-        expect(store.state().attention.get("m1")).toMatchObject({
+        expect(factOf(store.state(), "attention", "m1")).toMatchObject({
           content: { value: { working: 1, latestChatId: "c2" } },
           revision: { sequence: 3 },
         });
@@ -179,10 +180,10 @@ describe("hqNavigationLink", () => {
           projectId: "m1",
           value: { presence: { online: false, since: "2026-10-05T20:00:00Z", overview: "stored" } },
         });
-        expect(store.state().attention.get("m1")?.producer).toBe("down");
+        expect(factOf(store.state(), "attention", "m1")?.producer).toBe("down");
 
         yield* hq.emit({ kind: "mate", projectId: "m1", value: null });
-        expect(store.state().attention.get("m1")).toMatchObject({
+        expect(factOf(store.state(), "attention", "m1")).toMatchObject({
           content: { kind: "purged" },
           access: "denied",
         });
@@ -214,8 +215,8 @@ describe("hqNavigationLink", () => {
         app: { id: "shop", name: "Shop", projects: [mate("m2")] },
       });
       expect(store.state().memberships.get(NAVIGATION)?.members.get("m1")).toBe("member");
-      expect(store.state().apps.get("blog")).toEqual(new Set(["m1"]));
-      expect(store.state().apps.get("shop")).toEqual(new Set(["m2"]));
+      expect(indexOf(store.state(), "apps", "blog")).toEqual(new Set(["m1"]));
+      expect(indexOf(store.state(), "apps", "shop")).toEqual(new Set(["m2"]));
 
       // Out of every application into none, the ungrouped list first.
       yield* hq.emit({ kind: "ungrouped", mates: [{ ...mate("m2"), mate: { face: "" } }] });
@@ -225,7 +226,7 @@ describe("hqNavigationLink", () => {
         app: { id: "shop", name: "Shop", projects: [] },
       });
       expect(store.state().memberships.get(NAVIGATION)?.members.get("m2")).toBe("member");
-      expect(store.state().placement.get("m2")?.content).toMatchObject({
+      expect(factOf(store.state(), "placement", "m2")?.content).toMatchObject({
         value: { kind: "outside" },
       });
       yield* Fiber.interrupt(fiber);

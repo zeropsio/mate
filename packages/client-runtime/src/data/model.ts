@@ -4,32 +4,28 @@
  * observed it (its coverage, and through that scope's stream its freshness) and its access state,
  * each apart. Memberships say which ids a scope admits; they never say an entity exists.
  *
- * Types only. The writers are the family reducers (`reducer.ts`); readers get {@link PublicRead}.
+ * Types only. The one writer is `reducer.ts`, looping over the families `families/` registers;
+ * readers get {@link PublicRead}.
  *
  * @module data/model
  */
 import type { StreamState } from "./streamMachine.ts";
 
-/** A connection: one per source, organization and renderer. */
-export type LinkKey = `zerops:${string}` | `hq:${string}` | `mate:${string}`;
+/** The sources the account reads, each the owner of its families. */
+export type Source = "zerops" | "hq" | "mate";
 
-/** A logical scope one connection serves; its stream is a child of the link's. */
-export type ScopeKey =
-  | `zerops:${string}:projects`
-  | `zerops:${string}:running`
-  | `hq:${string}:navigation`
-  | `mate:${string}:attention`;
+/** A connection: one per source, organization (or Mate) and renderer. */
+export type LinkKey = `${Source}:${string}`;
+
+/** A logical scope one connection serves, named by its family's suffix; a child of the link's. */
+export type ScopeKey = `${Source}:${string}:${string}`;
 
 export type StreamKey = LinkKey | ScopeKey;
 
-export const scopeKeys = {
-  zeropsLink: (orgId: string): LinkKey => `zerops:${orgId}`,
-  projects: (orgId: string): ScopeKey => `zerops:${orgId}:projects`,
-  running: (orgId: string): ScopeKey => `zerops:${orgId}:running`,
-  hqLink: (orgId: string): LinkKey => `hq:${orgId}`,
-  navigation: (orgId: string): ScopeKey => `hq:${orgId}:navigation`,
-  mateLink: (projectId: string): LinkKey => `mate:${projectId}`,
-  attention: (projectId: string): ScopeKey => `mate:${projectId}:attention`,
+export const linkKeys = {
+  zerops: (orgId: string): LinkKey => `zerops:${orgId}`,
+  hq: (orgId: string): LinkKey => `hq:${orgId}`,
+  mate: (projectId: string): LinkKey => `mate:${projectId}`,
 } as const;
 
 /** An owner's ordering of its own values. Revisions of different kinds never compare. */
@@ -44,55 +40,16 @@ export type Revision =
   /** A Mate's own attention revision, inside one incarnation of its store. */
   | { readonly kind: "mate-attention"; readonly incarnation: string; readonly revision: number };
 
-export type Authority = "zerops" | "hq" | "mate";
+export type Authority = Source;
 export type Delivery = "zerops-realtime" | "zerops-read" | "hq-stream" | "mate-direct";
 export type Access = "allowed" | "unverified" | "denied";
 
-export interface ProjectValue {
-  readonly id: string;
-  readonly name: string;
-  readonly status: string;
-}
-
-export interface ProcessValue {
-  readonly id: string;
-  readonly projectId: string;
-  readonly status: string;
-  readonly actionName: string | null;
-}
-
-/** Where HQ places a project: in an application as one of its kinds, or a Mate in none. */
-export type PlacementValue =
-  | {
-      readonly kind: "app";
-      readonly appId: string;
-      readonly appName: string;
-      readonly role: string;
-    }
-  | { readonly kind: "outside" };
-
 /**
- * One Mate's attention, the value its Mate authors (HANDOFF §4.2): main and latest chat, how many
- * chats work and wait, the ids of results and questions to react to, and whether the list was cut.
- * Whether the viewer saw them is the viewer's own fact, computed by HQ (§5 invariant 11).
+ * Each fact family's value, by its name. Empty here: every family module adds its own entry
+ * (`declare module "../model.ts"`), so a new family touches no shared type.
  */
-export interface AttentionValue {
-  readonly mainChatId: string | null;
-  readonly latestChatId: string | null;
-  readonly working: number;
-  readonly waiting: number;
-  readonly resultIds: ReadonlyArray<string>;
-  readonly questionIds: ReadonlyArray<string>;
-  readonly truncated: boolean;
-}
-
-export interface FamilyValues {
-  readonly project: ProjectValue;
-  readonly process: ProcessValue;
-  readonly placement: PlacementValue;
-  readonly attention: AttentionValue;
-}
-export type Family = keyof FamilyValues;
+export interface FamilyValues {}
+export type Family = keyof FamilyValues & string;
 
 export type FactContent<T> =
   | { readonly kind: "value"; readonly value: T }
@@ -139,12 +96,16 @@ export interface Membership {
   } | null;
 }
 
-/** What the person asked an owner to do; the skeleton's one operation moves a project. */
-export interface OperationIntent {
-  readonly kind: "move-project";
-  readonly projectId: string;
-  readonly to: { readonly appId: string; readonly role: string };
-}
+/**
+ * Each operation's intent, by its kind. Empty here: every operation module adds its own entry
+ * (`declare module "../model.ts"`).
+ */
+export interface OperationIntents {}
+export type OperationIntent = {
+  readonly [Kind in keyof OperationIntents & string]: {
+    readonly kind: Kind;
+  } & OperationIntents[Kind];
+}[keyof OperationIntents & string];
 
 /** The owner's word on a request: accepted or refused, and later how it ended. */
 export interface OperationReceipt {
@@ -183,29 +144,24 @@ export interface OperationRecord {
   readonly unresolved: { readonly nextActor: string } | null;
 }
 
+/** A fact's key in the one facts map: its family and its domain id. */
+export type FactKey = `${Family}:${string}`;
+export const factKey = (family: Family, id: string): FactKey => `${family}:${id}`;
+
 export interface AccountState {
   readonly streams: ReadonlyMap<StreamKey, StreamState>;
-  readonly project: ReadonlyMap<string, Fact<ProjectValue>>;
-  readonly process: ReadonlyMap<string, Fact<ProcessValue>>;
-  readonly placement: ReadonlyMap<string, Fact<PlacementValue>>;
-  readonly attention: ReadonlyMap<string, Fact<AttentionValue>>;
+  readonly facts: ReadonlyMap<FactKey, Fact<unknown>>;
   readonly memberships: ReadonlyMap<ScopeKey, Membership>;
-  /** Running process ids by project, maintained by the process reducer. */
-  readonly running: ReadonlyMap<string, ReadonlySet<string>>;
-  /** Project ids by the application HQ currently places them in, maintained by the same. */
-  readonly apps: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Every family index, by `name:key`: the ids counted under that key, kept by the reducer. */
+  readonly indexes: ReadonlyMap<string, ReadonlySet<string>>;
   readonly operations: ReadonlyMap<string, OperationRecord>;
 }
 
 export const emptyAccount: AccountState = {
   streams: new Map(),
-  project: new Map(),
-  process: new Map(),
-  placement: new Map(),
-  attention: new Map(),
+  facts: new Map(),
   memberships: new Map(),
-  running: new Map(),
-  apps: new Map(),
+  indexes: new Map(),
   operations: new Map(),
 };
 
@@ -227,7 +183,6 @@ export type ReadKey =
   | `${Family}:${string}`
   | `members:${ScopeKey}`
   | `coverage:${ScopeKey}`
-  | `running:${string}`
-  | `app:${string}`
+  | `index:${string}`
   | `stream:${StreamKey}`
   | `operation:${string}`;

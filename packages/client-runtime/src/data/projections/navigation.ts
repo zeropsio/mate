@@ -10,7 +10,11 @@
  *
  * @module data/projections/navigation
  */
-import { scopeKeys, type AttentionValue, type PublicRead, type StreamKey } from "../model.ts";
+import type { AttentionValue } from "../families/attention.ts";
+import { navigationScope } from "../families/placement.ts";
+import { runningScope } from "../families/process.ts";
+import { projectsScope } from "../families/project.ts";
+import type { PublicRead, StreamKey } from "../model.ts";
 import { sameValue } from "./equal.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { Phase } from "../streamMachine.ts";
@@ -86,15 +90,15 @@ export const menuRow: Projection<MenuRowKey, MenuRow> = {
     `${orgId}/${row.kind}/${row.kind === "app" ? row.appId : row.projectId}`,
   equals: sameValue,
   derive: (read, { orgId, row }) => {
-    const projectsScope = scopeKeys.projects(orgId);
-    const runningScope = scopeKeys.running(orgId);
-    const navigation = scopeKeys.navigation(orgId);
+    const roster = projectsScope(orgId);
+    const work = runningScope(orgId);
+    const navigation = navigationScope(orgId);
     const { streams, producersDown, field } = tracked(read);
-    streams.add(projectsScope);
-    streams.add(runningScope);
+    streams.add(roster);
+    streams.add(work);
     streams.add(navigation);
 
-    const ids = row.kind === "app" ? [...read.app(row.appId)].sort() : [row.projectId];
+    const ids = row.kind === "app" ? [...read.index("apps", row.appId)].sort() : [row.projectId];
     const projects = ids.map((projectId): MenuRowProject => {
       const placement = read.fact("placement", projectId);
       const role =
@@ -108,7 +112,7 @@ export const menuRow: Projection<MenuRowKey, MenuRow> = {
         projectId,
         name: field(read.fact("project", projectId), (project) => project.name, projectId),
         role,
-        running: read.running(projectId).size > 0,
+        running: read.index("running", projectId).size > 0,
         attention:
           role === "mate" || attention.kind === "known"
             ? field(attention, (value) => value, projectId)
@@ -128,16 +132,15 @@ export const menuRow: Projection<MenuRowKey, MenuRow> = {
               first,
             );
     const running: Field<boolean> =
-      read.coverage(runningScope) === "complete"
+      read.coverage(work) === "complete"
         ? {
             kind: "ready",
             value: projects.some((project) => project.running),
-            fresh: read.stream(runningScope).phase === "live",
+            fresh: read.stream(work).phase === "live",
           }
         : PENDING;
 
-    const required: ReadonlyArray<StreamKey> =
-      row.kind === "app" ? [projectsScope, navigation] : [projectsScope];
+    const required: ReadonlyArray<StreamKey> = row.kind === "app" ? [roster, navigation] : [roster];
     const lagging: Lagging[] = [];
     for (const key of streams) {
       const { phase } = read.stream(key);
@@ -168,8 +171,8 @@ export const menuRowKeys: Projection<string, ReadonlyArray<RowKey>> = {
   keyOf: (orgId) => orgId,
   equals: sameValue,
   derive: (read, orgId) => {
-    const roster = read.members(scopeKeys.projects(orgId));
-    const placed = new Set(read.members(scopeKeys.navigation(orgId)).ids);
+    const roster = read.members(projectsScope(orgId));
+    const placed = new Set(read.members(navigationScope(orgId)).ids);
     const rows: RowKey[] = [];
     const apps = new Set<string>();
     for (const projectId of [...roster.ids, ...roster.unverified]) {
