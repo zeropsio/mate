@@ -2,10 +2,15 @@
 
 > For maintainers. Using Zerops Mate? See [docs/user](../user/).
 
-The released hosted web client reaches Zerops environments directly through the identity door and
-standalone environments through bearer pairing. Shared client source still retains other connection
-target shapes for compatibility, but this fork does not publish a client that provisions SSH
-tunnels. For the user-facing setup guide see [remote access](../user/remote-access.md).
+The released web client reaches a Mate only through a Zerops account: a person signs in, the
+organization's HQ stands in front of the product (ADR 0001: HQ is mandatory, with no mode without
+it), and each Mate is entered through its identity door with a throwaway token. There is no
+standalone server, pairing code or manually entered endpoint in the product: the retired `/pair`
+bookmark discards its credential and redirects to `/zerops` (`apps/web/src/routes/pair.tsx`).
+Shared client source still retains upstream's other connection target shapes and its pairing
+helpers, which the web client never offers (mobile keeps a dormant native pairing screen, below),
+and this fork publishes no client that provisions SSH
+tunnels. For the user-facing guide see [your Zerops account](../user/zerops-account.md).
 
 ## The model
 
@@ -44,22 +49,23 @@ and web all reason about the same concept.
 
 A saved client-side entry for an environment the client knows how to reach. It is not
 server-authored; it is local to a device or client profile. In the hosted web app these entries are
-browser-local. A hosted pairing URL can create one, but it does not give the hosted app a server-side
-control plane or a copy of session state.
+browser-local, and only a Mate's identity door creates one; the hosted app keeps no server-side
+control plane or copy of session state.
 
 [`connection/model.ts`][model] defines four target tags, which are the real access taxonomy:
 
 | Target                    | Used for                                                                     |
 | ------------------------- | ---------------------------------------------------------------------------- |
 | `PrimaryConnectionTarget` | The environment selected by the current platform.                            |
-| `BearerConnectionTarget`  | Any manually paired endpoint reached over direct HTTP/WebSocket.             |
+| `BearerConnectionTarget`  | A Mate entered through its identity door, over direct HTTP/WebSocket.        |
 | `RelayConnectionTarget`   | Persisted compatibility records; relay resolution is unsupported.            |
 | `SshConnectionTarget`     | Persisted compatibility records; the released web client has no SSH gateway. |
 
-Bearer and SSH are persisted; primary is platform-managed. Any manually paired endpoint,
-regardless of what private network it is reached over, is paired through the ordinary bearer path in
-[`onboarding.ts`][onboarding] (`preparePairingRegistration`), which accepts either a pairing URL or a
-host plus pairing code.
+Bearer and SSH are persisted; primary is platform-managed. A Mate's bearer registration comes from
+its door's exchange in [`onboarding.ts`][onboarding]. The upstream pairing path beside it
+(`preparePairingRegistration`, a pairing URL or a host plus pairing code) is never called by the
+web client; mobile still reaches it through its native pairing screen (`ConnectionsPairing`,
+`connectPairingUrl`), kept as dormant source (`mobile-zerops-integration-source.test.ts`).
 
 ### AdvertisedEndpoint
 
@@ -70,20 +76,8 @@ public, tunnel), and compatibility hints such as whether the hosted HTTPS app ca
 Clients treat advertised endpoints as hints, not proof that a route works from the current device.
 The connection attempt decides.
 
-The UI shows one default endpoint in the network-access summary and keeps the rest behind an advanced
-list. `selectPairingEndpoint` in
-[`ConnectionsSettings.tsx`](../../apps/web/src/components/settings/ConnectionsSettings.tsx) excludes
-unavailable endpoints and then picks, in order:
-
-1. the saved `defaultEndpointKey` override;
-2. the first endpoint marked `isDefault`;
-3. the first endpoint whose reachability is not `loopback`;
-4. the first endpoint compatible with the hosted HTTPS app;
-5. otherwise nothing.
-
-There is no unconditional loopback fallback. A loopback endpoint only wins through an explicit saved
-override or `isDefault`. Persist the override by stable endpoint kind rather than raw URL where
-possible, since LAN addresses change with networks.
+The released web client shows no endpoint to pair with: the connections settings point to the Zerops
+projects (`ConnectionsSettings.tsx`), and a Mate's address comes from its Zerops project.
 
 ### Endpoint providers
 
@@ -91,9 +85,11 @@ Endpoint providers contribute advertised endpoints without becoming part of the 
 model: core owns environments, pairing, and connection lifecycle, and providers return normalized
 `AdvertisedEndpoint` records. No third-party provider is built in today — see Future work.
 
-### Hosted pairing request
+### Hosted pairing request (retained source, not a product entry)
 
-A hosted pairing request is a bootstrap URL for the static web app, not a transport:
+Upstream's hosted pairing request is a bootstrap URL for the static web app, not a transport. The
+released web app no longer honours it — `/pair` redirects to `/zerops` without exchanging the token —
+and the helpers below remain in source only:
 
 ```text
 https://app.t3.codes/pair?host=https://backend.example.com:3773#token=PAIRCODE
@@ -126,7 +122,7 @@ how the server got started or who manages the process.
 
 ### Direct WebSocket access
 
-`wss://t3.example.com` or `ws://10.0.0.15:3773`, paired as a bearer target. This is the base model.
+`wss://t3.example.com` or `ws://10.0.0.15:3773`, reached as a bearer target. This is the base model.
 It works for desktop, mobile, and web with no client-side process management. Browser security rules
 are part of it: a hosted HTTPS client cannot connect to plain `ws://` or `http://` LAN backends.
 
@@ -143,9 +139,9 @@ The deleted desktop SSH implementation has no live documentation link.
 Launch answers a different question: how does a T3 server come to exist on the target machine? Keep
 it separate from access.
 
-- **Zerops environment.** zcp installs and supervises the pinned release in the project container.
-- **Standalone server.** The operator installs a GitHub release tarball and starts `mate serve`; the
-  client connects to that pre-existing server through its reachable endpoint.
+- **Zerops environment.** zcp installs and supervises the Mate server release in the project
+  container. It is the only launch the product serves; a standalone `mate serve` outside a Zerops
+  project has no entry in the released web client.
 
 ## Security model
 
@@ -162,8 +158,8 @@ five-minute TTL (`DEFAULT_WEBSOCKET_TOKEN_TTL` in `apps/server/src/auth/SessionS
 handshake verifies the ticket, and each RPC method still enforces its own scope. See
 [environment-auth.md](./environment-auth.md).
 
-Hosted pairing is a client-side convenience only. The hosted app must not receive pairing tokens
-through query parameters, must not store pairing state server-side, and must not imply that an HTTP
+The hosted app takes no pairing token: a retired `/pair` link's token is dropped from the URL and
+never exchanged. The hosted app stores no pairing state server-side and must not imply that an HTTP
 backend is reachable from an HTTPS browser context.
 
 ## Version coordination

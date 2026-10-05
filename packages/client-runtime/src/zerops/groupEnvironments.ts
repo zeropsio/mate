@@ -27,8 +27,8 @@ import { environmentKeyed } from "./deployToken.ts";
 export type GroupEnvironmentTier = "stage" | "production";
 
 /**
- * The tier a project's role tag puts it in, or `undefined` for a role that is
- * not an environment of the group — a Mate's own project holds `dev`.
+ * The tier a project's role puts it in, as HQ places it (`readZeropsMembership`), or `undefined`
+ * for a role that is not an environment of the group — a Mate's own project is `dev`.
  */
 export function environmentTierForRole(
   role: ZeropsEnvironmentRole | undefined,

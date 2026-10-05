@@ -176,7 +176,7 @@ export interface HqAttach {
   readonly projectId: string;
   readonly kind: RoleProjectKind;
   /**
-   * The Mate's name, face and stand-up ask, and its zcp service where its project holds it; with
+   * The Mate's face and stand-up ask, and its zcp service where its project holds it; with
    * kind `mate`, and only with it. An attach that closes a birth intent takes the intent's ask
    * instead.
    */

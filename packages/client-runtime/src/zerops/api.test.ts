@@ -1583,12 +1583,11 @@ describe("ZeropsApiClient project reads", () => {
  * Which key a list comes back under is the platform's to say, and it is not one
  * key. Measured against the live API on 2026-09-18, as the org's owner: a
  * project's services and an org's members each answered under a name this
- * client did not read, so both came back empty and said nothing about it — the
- * deploy token of every environment (D27) waited on a broker the page could not
- * see. The server half already knew (`ZeropsThrowawayIdentity.ts`).
+ * client did not read, so both came back empty and said nothing about it. The
+ * server half already knew (`ZeropsThrowawayIdentity.ts`).
  */
 describe("the key a list answers under", () => {
-  const SERVICE = { id: "svc-broker", name: "broker", status: "ACTIVE" };
+  const SERVICE = { id: "svc-api", name: "api", status: "ACTIVE" };
   const MEMBER = { id: "cu-1", userId: "u-1", roleCode: "OWNER", user: { fullName: "Ada" } };
 
   it.each([
@@ -1602,7 +1601,7 @@ describe("the key a list answers under", () => {
 
     const services = await client.listProjectServices("prj-1");
 
-    expect(services.map((service) => service.name)).toEqual(empty === true ? [] : ["broker"]);
+    expect(services.map((service) => service.name)).toEqual(empty === true ? [] : ["api"]);
     expect(stub.requests[0]?.url).toBe(
       `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/project/prj-1/service-stack?limit=500`,
     );

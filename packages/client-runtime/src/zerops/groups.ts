@@ -167,7 +167,7 @@ export const ZEROPS_GROUP_ID_LENGTH = 12;
 
 /**
  * Crockford base32 — no `i`, `l`, `o` or `u`, so an id read aloud or retyped
- * from a tag in the Zerops GUI cannot become a different id.
+ * cannot become a different id.
  */
 const GROUP_ID_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
 

@@ -299,7 +299,7 @@ describe("the recipe choice", () => {
       ...BASE,
       recipe: {
         ...TIER,
-        yaml: "services:\n  - hostname: api\n    buildFromGit: https://gitea.test/acme/api\n    zeropsSetup: api\n",
+        yaml: "services:\n  - hostname: api\n    buildFromGit: https://hq.test/git/acme/api.git\n    zeropsSetup: api\n",
       },
     });
     if (!plan.ok) throw new Error(plan.reason);
@@ -348,11 +348,11 @@ project:
 services:
   - hostname: appdev
     type: nodejs@22
-    buildFromGit: https://gitea.test/acme/app
+    buildFromGit: https://hq.test/git/acme/app.git
     zeropsSetup: dev
   - hostname: appstage
     type: nodejs@22
-    buildFromGit: https://gitea.test/acme/app
+    buildFromGit: https://hq.test/git/acme/app.git
     zeropsSetup: prod
     priority: 5
   - hostname: db
@@ -395,7 +395,7 @@ services:
     },
     {
       case: "a tier of runtimes alone",
-      yaml: "services:\n  - hostname: appdev\n    buildFromGit: https://gitea.test/acme/app\n",
+      yaml: "services:\n  - hostname: appdev\n    buildFromGit: https://hq.test/git/acme/app.git\n",
       extra: {},
       steps: ["create-project", ...CONTAINER_STEPS, "await-ready"],
     },
