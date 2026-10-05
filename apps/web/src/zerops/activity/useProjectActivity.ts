@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import {
+  type InterestState,
   processRecordToActivityProcess,
   type ProcessHistoryRead,
   type ProjectActivityRead,
@@ -40,7 +41,13 @@ const EMPTY_PROJECT_ACTIVITY_READ_ATOM = Atom.make<ProjectActivityRead | null>(n
 export function projectActivitySnapshotFromRead(
   read: ProjectActivityRead,
 ): ProjectActivitySnapshot {
-  const failed = read.observation.required.find((interest) => interest.status === "failed");
+  // A failure the runtime retries — the socket's routine reconnect — is no
+  // error of the feed: the read is just not live, and ages as one that stopped
+  // observing does. Only one it gives up on makes the read unavailable.
+  const failed = read.observation.required.find(
+    (interest): interest is Extract<InterestState, { readonly status: "failed" }> =>
+      interest.status === "failed" && !interest.retryable,
+  );
   const access = read.observation.access;
   const unavailableReason =
     access.status === "expired"
