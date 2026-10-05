@@ -1536,7 +1536,7 @@ export const structureLayer = (options: {
               ORDER BY j.project_id, j.id DESC`;
             // Each production's newest release, as its rollout stands there: ended once every job
             // it asked for there ended, and every job of a commit it left out as under way there.
-            // Each production's newest release by version, as its rollout stands there: ended once
+            // Each production's newest release by version made since its release floor, as its rollout stands there: ended once
             // every job it asked for there ended, and every job of a commit it left out as under way
             // there; landed where each of those went live and its plan said nothing it could not do.
             // A release with no rollout of its own — made before rollouts were, recorded from git,
@@ -1552,15 +1552,21 @@ export const structureLayer = (options: {
               readonly left_out: ReleaseRollout["leftOut"];
             }>`
               WITH newest AS (
-                SELECT DISTINCT ON (h.app_id) h.app_id, h.tag, h.released_at
-                FROM hq_release h WHERE h.state = 'approved'
-                ORDER BY h.app_id, string_to_array(substr(h.tag, 2), '.')::numeric[] DESC
+                SELECT DISTINCT ON (e.project_id) e.project_id, h.app_id, h.tag, h.released_at
+                FROM hq_environment e
+                JOIN hq_release h ON h.app_id = e.app_id AND h.state = 'approved'
+                  AND (e.release_floor IS NULL OR h.released_at >= e.release_floor)
+                WHERE e.tier = 'production'
+                ORDER BY e.project_id,
+                  string_to_array(substr(h.tag, 2), '.')::numeric[] DESC
               ),
               rollout AS (
-                SELECT DISTINCT ON (r.app_id) r.app_id, r.id, r.planned_at, r.note, r.left_out
-                FROM newest n JOIN hq_rollout r
-                  ON r.app_id = n.app_id AND r.cause = 'release' AND r.tag = n.tag
-                ORDER BY r.app_id, r.id DESC
+                SELECT DISTINCT ON (r.app_id, r.tag)
+                  r.app_id, r.tag, r.id, r.planned_at, r.note, r.left_out
+                FROM hq_rollout r
+                WHERE r.cause = 'release' AND EXISTS (
+                  SELECT 1 FROM newest n WHERE n.app_id = r.app_id AND n.tag = r.tag)
+                ORDER BY r.app_id, r.tag, r.id DESC
               ),
               left_out AS (
                 SELECT r.id AS rollout_id, l.project_id, l.service, l.sha, l.job, l.reason
@@ -1588,10 +1594,9 @@ export const structureLayer = (options: {
                              AND x.state <> 'live') AS landed,
                        (SELECT max(x.ended_at) FROM ends x
                         WHERE x.rollout_id = r.id AND x.project_id = e.project_id) AS last_ended
-                FROM hq_environment e
-                JOIN newest n ON n.app_id = e.app_id
-                LEFT JOIN rollout r ON r.app_id = n.app_id
-                WHERE e.tier = 'production'
+                FROM newest n
+                JOIN hq_environment e ON e.project_id = n.project_id
+                LEFT JOIN rollout r ON r.app_id = n.app_id AND r.tag = n.tag
               )
               SELECT s.project_id, s.id::text AS id, s.tag,
                      s.id IS NULL OR s.planned_at IS NOT NULL AS planned,

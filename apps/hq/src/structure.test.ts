@@ -2040,6 +2040,48 @@ describe("structure", () => {
       ),
     );
 
+    // A production attached after a release carries none of it, however old; a production with no
+    // floor (made before it existed) carries the newest approved release as it always did.
+    it.effect("carries no release made before the production was attached", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const shop = yield* structure.createApp("owner", "Shop");
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_MATE",
+            kind: "mate",
+            mate: { face: "face-1" },
+          });
+          const sha = "4".repeat(40);
+          const releaseAt = (tag: string, ago: string) => sql`
+            INSERT INTO hq_release (app_id, tag, sha, entries, released_by, state, released_at)
+            VALUES (${shop.id}::uuid, ${tag}, ${sha}, '[]'::jsonb, 'owner', 'approved',
+              now() - ${ago}::interval)`;
+          const production = Effect.map(structure.read("dev"), (read) =>
+            read.apps
+              .flatMap((app) => shown(app.environments))
+              .flatMap(({ tier, release }) =>
+                tier === "production" ? [release?.tag ?? null] : [],
+              ),
+          );
+          yield* releaseAt("v0.1.0", "1 hour");
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_PROD",
+            kind: "production",
+            environment: { name: "production" },
+          });
+          assert.deepStrictEqual(yield* production, [null]);
+          yield* releaseAt("v0.1.1", "0 seconds");
+          assert.deepStrictEqual(yield* production, ["v0.1.1"]);
+          // One that existed before the floor did follows the older release too.
+          yield* sql`UPDATE hq_environment SET release_floor = NULL WHERE project_id = 'P_PROD'`;
+          yield* sql`DELETE FROM hq_release WHERE tag = 'v0.1.1'`;
+          assert.deepStrictEqual(yield* production, ["v0.1.0"]);
+        }),
+      ),
+    );
+
     // Release end (H2): each production carries where its newest release's rollout stands —
     // planned, ended once every job it asked for there ended and every job of a commit it left out
     // as under way ended too — however many jobs came after; a stage carries none.
