@@ -120,29 +120,56 @@ describe("the live slot's schedule", () => {
     {
       // Run 12: seven times the line read "Thinking" 0.8 s, a short command
       // already finished 1.2 s, "Thinking" again — the command had waited out
-      // Thinking's minimum and ended meanwhile. What the Mate's hands are on
-      // shows as it runs.
-      name: "past its hold the slot says Thinking, and a call going live takes its place at once",
+      // Thinking's minimum and ended meanwhile. A call takes Thinking's place
+      // once Thinking has stood the pace, so it shows as it runs.
+      name: "past its hold the slot says Thinking, and a call going live takes its place after the pace",
       moments: [
         { at: 0, live: ["step:a"], record: [] },
         { at: 300, live: [], record: ["step:a"] },
         { at: 1600, live: ["step:b"], record: ["step:a"] },
-        { at: 2100, live: [], record: ["step:a", "step:b"] },
+        { at: 2400, live: [], record: ["step:a", "step:b"] },
       ],
       until: 5000,
-      shown: { "step:a": 0, "step:b": 1600 },
-      plopped: { "step:a": 300 + SLOT_HOLD_MS, "step:b": 2100 + SLOT_HOLD_MS },
+      shown: { "step:a": 0, "step:b": 300 + SLOT_HOLD_MS + SLOT_BUSY_SHOW_MS },
+      plopped: { "step:a": 300 + SLOT_HOLD_MS, "step:b": 2400 + SLOT_HOLD_MS },
     },
     {
-      name: "a call first seen ended never waits behind a fresh Thinking",
+      name: "a call going live once Thinking stood the pace takes its place at once",
+      moments: [
+        { at: 0, live: ["step:a"], record: [] },
+        { at: 300, live: [], record: ["step:a"] },
+        { at: 1900, live: ["step:b"], record: ["step:a"] },
+        { at: 2400, live: [], record: ["step:a", "step:b"] },
+      ],
+      until: 5000,
+      shown: { "step:a": 0, "step:b": 1900 },
+      plopped: { "step:a": 300 + SLOT_HOLD_MS, "step:b": 2400 + SLOT_HOLD_MS },
+    },
+    {
+      // Review of pass 43: a call 10 ms after Thinking showed it for 10 ms.
+      name: "Thinking stands the pace before even a call takes its place",
+      moments: [
+        { at: 0, live: ["step:a"], record: [] },
+        { at: 300, live: [], record: ["step:a"] },
+        { at: 1510, live: ["step:b"], record: ["step:a"] },
+      ],
+      until: 3000,
+      shown: { "step:a": 0, "step:b": 300 + SLOT_HOLD_MS + SLOT_BUSY_SHOW_MS },
+      plopped: { "step:a": 300 + SLOT_HOLD_MS },
+    },
+    {
+      name: "a call first seen ended never waits out Thinking's minimum",
       moments: [
         { at: 0, live: ["step:a"], record: [] },
         { at: 300, live: [], record: ["step:a"] },
         { at: 1600, live: [], record: ["step:a", "call:c"] },
       ],
       until: 5000,
-      shown: { "step:a": 0, "call:c": 1600 },
-      plopped: { "step:a": 300 + SLOT_HOLD_MS, "call:c": 1600 + SLOT_HOLD_MS },
+      shown: { "step:a": 0, "call:c": 300 + SLOT_HOLD_MS + SLOT_BUSY_SHOW_MS },
+      plopped: {
+        "step:a": 300 + SLOT_HOLD_MS,
+        "call:c": 300 + SLOT_HOLD_MS + SLOT_BUSY_SHOW_MS + SLOT_HOLD_MS,
+      },
     },
     {
       // Run 11: "one plop and 5 messages". A burst no longer rides along with
