@@ -294,7 +294,7 @@ function releaseDeploy(input: {
   return {
     tag: newest.tag,
     ended: its.every((rollout) => rollout.ended),
-    landed: its.every((rollout) => rollout.landed),
+    landed: its.every((rollout) => rollout.landed === true),
   };
 }
 
