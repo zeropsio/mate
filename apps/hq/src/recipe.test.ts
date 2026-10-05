@@ -158,6 +158,14 @@ describe("an application's recipe in HQ", () => {
           `SELECT head FROM hq_change WHERE repo = '${RECIPE_REPO}' AND number = ${String(second)}`,
           (rows) => rows[0]?.["head"] === head,
         );
+        // Whole as proposed, never a draft: it asks a person for review undescribed (review of
+        // pass 42: drafts until described, recipe changes waited on nobody).
+        const shown = yield* call(
+          "GET",
+          `/api/apps/${appId}/changes/${RECIPE_REPO}/${String(second)}`,
+          { session: owner },
+        );
+        assert.isTrue((shown.body as { change: { ready: boolean } }).change.ready);
 
         const merged = yield* call(
           "POST",

@@ -345,7 +345,9 @@ const CHANGE_COLUMNS = [
   instant("updated_at"),
   "mergeability",
   "behind",
-  "COALESCE(ready_head = head, false) AS ready",
+  // A recipe change is whole as proposed: it asks for review undescribed. A Mate's delivery
+  // asks at the head it last described.
+  `(repo = '${RECIPE_REPO}' OR COALESCE(ready_head = head, false)) AS ready`,
   // Every read of a change is of `hq_change` by that name, its writes' `RETURNING` included.
   `(SELECT count(*)::int FROM hq_change_comment c
     WHERE c.app_id = hq_change.app_id AND c.repo = hq_change.repo
