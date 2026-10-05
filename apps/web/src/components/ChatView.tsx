@@ -1,4 +1,5 @@
 import { useStandupsDone } from "../zerops/activity/useStandupReading";
+import { useThreadModelSelection } from "../zerops/useThreadModelSelection";
 import type {
   ChatAttachment as ContractChatAttachment,
   UploadChatAttachment,
@@ -1424,6 +1425,22 @@ export default function ChatView(props: ChatViewProps) {
     [routeServerThreadShell, threadDetailLoading],
   );
   const activeServerThread = serverThread ?? loadingServerThread;
+  // One model selection per thread: the composer shows and sends the thread's,
+  // and a pick goes to the thread at once.
+  const writeThreadModelSelection = useCallback(
+    (modelSelection: ModelSelection) => {
+      void updateThreadMetadata({
+        environmentId,
+        input: { threadId: routeThreadRef.threadId, modelSelection },
+      });
+    },
+    [environmentId, routeThreadRef, updateThreadMetadata],
+  );
+  useThreadModelSelection({
+    threadRef: routeKind === "server" && serverThread ? routeThreadRef : null,
+    threadSelection: serverThread?.modelSelection ?? null,
+    write: writeThreadModelSelection,
+  });
   // Pagination window state for the routed server thread: drives the
   // "load earlier turns" header when the loaded window has older history.
   const routeThreadState = useEnvironmentThread(
