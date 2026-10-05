@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  planProjectLeave,
   planProjectMove,
   planProjectRenames,
   projectRenameTrouble,
@@ -82,6 +83,24 @@ describe("planProjectMove — the rename of a Mate moved into another applicatio
     },
   ])("renames $name $case", ({ name, old, to }) => {
     expect(planProjectMove({ id: "p1", name }, old, "Shop")).toEqual(
+      to === undefined ? [] : [{ projectId: "p1", from: name, to }],
+    );
+  });
+});
+
+describe("planProjectLeave — the rename of a Mate that leaves every application", () => {
+  it.each([
+    { case: "named in full: its own name alone", name: "SPN - Rune", old: "SPN", to: "Rune" },
+    { case: "without its application's prefix: as it is", name: "Rune", old: "SPN", to: undefined },
+    { case: "in no application: as it is", name: "SPN - Rune", old: undefined, to: undefined },
+    {
+      case: "a prefix that is not its application's",
+      name: "Old - Rune",
+      old: "SPN",
+      to: undefined,
+    },
+  ])("renames $name $case", ({ name, old, to }) => {
+    expect(planProjectLeave({ id: "p1", name }, old)).toEqual(
       to === undefined ? [] : [{ projectId: "p1", from: name, to }],
     );
   });

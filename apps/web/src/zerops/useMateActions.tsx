@@ -141,7 +141,12 @@ import {
 } from "./matePress";
 import { mateRestartPorts, restartMateContainer } from "./mateRestart";
 import { intendContainer, readContainerInitAt } from "./zeropsContainers";
-import { planProjectMove, projectRenameTrouble, type ProjectRename } from "./projectRenames.logic";
+import {
+  planProjectLeave,
+  planProjectMove,
+  projectRenameTrouble,
+  type ProjectRename,
+} from "./projectRenames.logic";
 import { useRenameProjects } from "./useRenameProjects";
 import { runZeropsCommand, useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -592,20 +597,21 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           : membership.kind === "new"
             ? membership.name
             : groupTree.groups.find(({ group }) => group.groupId === membership.appId)?.group.name;
+      const project = { id: candidate.project.id, name: candidate.project.name };
+      const oldApp = readZeropsMembership(candidate.project).label;
       const plan =
-        newApp === undefined
-          ? []
-          : planProjectMove(
-              { id: candidate.project.id, name: candidate.project.name },
-              readZeropsMembership(candidate.project).label,
-              newApp,
-            );
+        membership.kind === "none"
+          ? planProjectLeave(project, oldApp)
+          : newApp === undefined
+            ? []
+            : planProjectMove(project, oldApp, newApp);
       void write(
         candidate.key,
         async () => {
           const api = hqApi();
           if (membership.kind === "none") {
             await api.moveProject(candidate.project.id, { appId: null, kind: "mate" });
+            await settleRenames(plan, "Left the project, but not renamed in Zerops. ");
             return;
           }
           const appId =

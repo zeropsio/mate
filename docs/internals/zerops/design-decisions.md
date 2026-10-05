@@ -4100,6 +4100,7 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
     then HQ's write goes first — refused, nothing else happens — and the projects follow, the
     dialog or the move waiting for all of them. A project Zerops refuses is said with why and
     retried with the same targets, never planned again from the new name (`New - Old - Rune`).
-    Leaving every application renames nothing.
+    Leaving every application renames the project to the Mate's own name (`SPN - Rune` becomes
+    `Rune`): in an application a project is `<application> - <Mate>`, outside any just `<Mate>`.
   - _Why:_ the organization's project list in Zerops is where the projects of every application
     stand side by side; without the prefix a Mate's project says nothing of whose it is.

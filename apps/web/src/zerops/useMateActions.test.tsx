@@ -1393,10 +1393,14 @@ describe("useMateActions — Move renames the Mate's project in Zerops", () => {
     );
   });
 
-  it("renames nothing where it goes out of every application", async () => {
+  it("renames it to its own name alone where it goes out of every application", async () => {
+    mock.renameProject.mockReturnValue(Promise.resolve(written));
     await pressMove({ kind: "none" });
     expect(mock.moveProject).toHaveBeenCalledTimes(1);
-    expect(mock.renameProject).not.toHaveBeenCalled();
+    expect(mock.renameProject).toHaveBeenCalledWith(
+      { organizationId: "org-acme", projectId: named.project.id },
+      "Fen",
+    );
   });
 
   it("says the Mate is moved and its name is not, and offers to finish it with the same target", async () => {

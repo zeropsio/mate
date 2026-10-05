@@ -48,6 +48,18 @@ export function planProjectMove(
   return planOne(project, oldApp?.trim(), newApp);
 }
 
+/**
+ * The rename of a Mate that leaves every application: `<old> - X` becomes `X`. A name without the
+ * old prefix, or a Mate in no application, stands.
+ */
+export function planProjectLeave(
+  project: { readonly id: string; readonly name: string },
+  oldApp: string | undefined,
+): ReadonlyArray<ProjectRename> {
+  const to = nameUnderApp(project.name, oldApp);
+  return to === project.name.trim() ? [] : [{ projectId: project.id, from: project.name, to }];
+}
+
 function planOne(
   { id, name }: { readonly id: string; readonly name: string },
   oldApp: string | undefined,
