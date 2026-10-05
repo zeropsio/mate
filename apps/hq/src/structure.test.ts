@@ -2111,6 +2111,13 @@ describe("structure", () => {
             ({ release: rollout }) => (rollout === null ? [] : [rollout]),
           );
           assert.strictEqual(legacy?.id, null);
+          // Review (delta #4): a tag recorded from git may carry any number of digits — one past
+          // what an integer holds is still ordered, newest by version, and nobody's read fails.
+          yield* recorded("v1.99999999999.0");
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v1.99999999999.0", true, true, "string", false, []],
+          ]);
         }),
       ),
     );

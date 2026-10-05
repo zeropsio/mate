@@ -1519,7 +1519,7 @@ export const structureLayer = (options: {
               WITH newest AS (
                 SELECT DISTINCT ON (h.app_id) h.app_id, h.tag, h.released_at
                 FROM hq_release h WHERE h.state = 'approved'
-                ORDER BY h.app_id, string_to_array(substr(h.tag, 2), '.')::int[] DESC
+                ORDER BY h.app_id, string_to_array(substr(h.tag, 2), '.')::numeric[] DESC
               ),
               rollout AS (
                 SELECT DISTINCT ON (r.app_id) r.app_id, r.id, r.planned_at, r.note, r.left_out
