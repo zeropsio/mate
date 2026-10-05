@@ -79,13 +79,18 @@ export function buildSimpleFields(
   const summary = decoded.document !== undefined ? readString(decoded.document.summary) : undefined;
   const messageFirstParagraph = rawMessage !== undefined ? firstParagraph(rawMessage) : undefined;
 
+  // An env call's failure never carries an entry it was given: values can be secrets.
+  const failure =
+    errorInfo === undefined
+      ? undefined
+      : kind === "env"
+        ? envFailureLine(firstLine(errorInfo.message), decoded.document, call.input)
+        : firstLine(errorInfo.message);
   const closing =
     phase === "running"
       ? undefined
       : phase === "failed"
-        ? operationClosing(kind, "failed", {
-            errorFirstLine: errorInfo !== undefined ? firstLine(errorInfo.message) : undefined,
-          })
+        ? operationClosing(kind, "failed", { errorFirstLine: failure })
         : phase === "done"
           ? operationClosing(kind, "done", { message: messageFirstParagraph, summary })
           : operationClosing(kind, phase, {});
@@ -115,7 +120,7 @@ export function buildSimpleFields(
     ...(envChange !== undefined ? { envChange } : {}),
     hasResult: decoded.document !== undefined,
     ...(errorInfo !== undefined
-      ? explanationField(failedCallReason(decoded, errorInfo))
+      ? explanationField(kind === "env" ? failure : failedCallReason(decoded, errorInfo))
       : explanationField(outcomeReason(decoded.document, outcome))),
   };
 }
@@ -202,4 +207,26 @@ function variablesCount(input: Record<string, unknown> | undefined): number | un
   if (Array.isArray(variables)) return variables.length;
   const relayed = readInputString(input, "variablesCount");
   return relayed !== undefined && /^\d+$/u.test(relayed) ? Number(relayed) : undefined;
+}
+
+/**
+ * An env call's failure in words that never carry an entry it was given:
+ * zcp's error for an entry with no "=" repeats it whole
+ * (`internal/ops/helpers.go` `parseEnvPairs`), and an agent may pass a bare
+ * secret. That error reads as what was wrong; any other line that repeats an
+ * entry or its value reads as a refusal.
+ */
+function envFailureLine(
+  line: string,
+  document: Record<string, unknown> | undefined,
+  input: Record<string, unknown> | undefined,
+): string {
+  if (readString(document?.code) === "INVALID_ENV_FORMAT") return "An entry wasn't KEY=value";
+  const variables = Array.isArray(input?.variables) ? input.variables : [];
+  const repeats = variables.some((entry) => {
+    if (typeof entry !== "string") return false;
+    const value = entry.includes("=") ? entry.slice(entry.indexOf("=") + 1) : entry;
+    return (entry.length > 0 && line.includes(entry)) || (value.length > 0 && line.includes(value));
+  });
+  return repeats ? "Its variables were refused" : line;
 }

@@ -223,3 +223,41 @@ describe("buildSimpleFields — a call that names no service observes none", () 
     expect(fields.target).toBeUndefined();
   });
 });
+
+// zcp's error for an entry with no "=" repeats the entry whole
+// (`internal/ops/helpers.go`): a bare secret an agent passed would reach the
+// line and the card. An env call's failure never carries an entry's text.
+describe("buildSimpleFields — an env call's failure never carries an entry", () => {
+  const secret = ["sk", "_live_", "abc123xyz"].join("");
+  const failed = (variables: ReadonlyArray<string>, result: Record<string, unknown>) => ({
+    ...simpleCall("zerops_env", "failed", result),
+    input: { action: "set", project: true, variables },
+  });
+  it.each([
+    {
+      name: "an entry with no '='",
+      call: failed([secret], {
+        code: "INVALID_ENV_FORMAT",
+        error: `Invalid format '${secret}', expected KEY=value`,
+      }),
+      reason: "An entry wasn't KEY=value",
+    },
+    {
+      name: "any other error that repeats a value",
+      call: failed([`TOKEN=${secret}`], {
+        code: "API_ERROR",
+        error: `The platform rejected ${secret}\nmore`,
+      }),
+      reason: "Its variables were refused",
+    },
+    {
+      name: "an error that repeats none keeps its own line",
+      call: failed([`TOKEN=${secret}`], { code: "API_ERROR", error: "Project not found\nmore" }),
+      reason: "Project not found",
+    },
+  ])("$name", ({ call, reason }) => {
+    const fields = buildSimpleFields("env", call);
+    expect(fields.explanation?.reason).toBe(reason);
+    expect(JSON.stringify(fields)).not.toContain(secret);
+  });
+});
