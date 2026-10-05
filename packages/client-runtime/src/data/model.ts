@@ -148,6 +148,8 @@ export interface AccountState {
   readonly memberships: ReadonlyMap<ScopeKey, Membership>;
   /** Running process ids by project, maintained by the process reducer. */
   readonly running: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Project ids by the application HQ currently places them in, maintained by the same. */
+  readonly apps: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 export const emptyAccount: AccountState = {
@@ -158,6 +160,7 @@ export const emptyAccount: AccountState = {
   attention: new Map(),
   memberships: new Map(),
   running: new Map(),
+  apps: new Map(),
 };
 
 /** What a reader gets for one fact: never a raw record, never a withheld payload. */
@@ -177,6 +180,8 @@ export type PublicRead<T> =
 export type ReadKey =
   | `${Family}:${string}`
   | `members:${ScopeKey}`
+  | `coverage:${ScopeKey}`
   | `running:${string}`
+  | `app:${string}`
   | `stream:${StreamKey}`
   | `operation:${string}`;

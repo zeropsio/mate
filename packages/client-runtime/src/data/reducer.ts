@@ -252,6 +252,7 @@ function commitBaseline(
   const staged = membership.baseline?.staged ?? [];
   const knownAtBegin = membership.baseline?.knownAtBegin ?? new Set<string>();
   let next = reduceRows(state, { ...input, method: "baseline" }, changed);
+  if (membership.coverage !== "complete") changed.add(`coverage:${scope}`);
   next = withMembership(next, scope, {
     coverage: "complete",
     members: new Map(membership.members),
@@ -319,6 +320,7 @@ const RUNNING_STATUSES: ReadonlySet<string> = new Set([
  * that row; leaving the scope clears it without inventing any end at all.
  */
 function reindexRunning(
+  before: AccountState,
   state: AccountState,
   ids: ReadonlySet<string>,
   changed: Set<ReadKey>,
@@ -327,10 +329,14 @@ function reindexRunning(
   const drafts = new Map<string, Set<string>>();
   for (const id of ids) {
     const fact = state.process.get(id);
-    if (fact?.content.kind !== "value") continue;
-    const { projectId, status } = fact.content.value;
+    const was = before.process.get(id)?.content;
+    const value = fact?.content.kind === "value" ? fact.content.value : undefined;
+    // A deleted or withheld process keeps the project its last value named, to leave it.
+    const projectId = value?.projectId ?? (was?.kind === "value" ? was.value.projectId : null);
+    if (fact === undefined || projectId === null) continue;
     const runs =
-      RUNNING_STATUSES.has(status) &&
+      value !== undefined &&
+      RUNNING_STATUSES.has(value.status) &&
       state.memberships.get(fact.scope)?.members.get(id) !== "removed";
     const current = drafts.get(projectId) ?? state.running.get(projectId) ?? new Set<string>();
     if (current.has(id) === runs) continue;
@@ -346,18 +352,58 @@ function reindexRunning(
   return { ...state, running };
 }
 
-/** The processes a reduction touched: their rows, or their place in a running scope. */
-function touchedProcesses(
+/** The application a project is placed in, while its navigation scope still lists it. */
+function appOf(state: AccountState, projectId: string): string | null {
+  const fact = state.placement.get(projectId);
+  if (fact?.content.kind !== "value" || fact.content.value.kind !== "app") return null;
+  return state.memberships.get(fact.scope)?.members.get(projectId) === "member"
+    ? fact.content.value.appId
+    : null;
+}
+
+/** The application index for these projects: moved out of where they were, into where they are. */
+function reindexApps(
+  before: AccountState,
+  after: AccountState,
+  ids: ReadonlySet<string>,
+  changed: Set<ReadKey>,
+): AccountState {
+  const drafts = new Map<string, Set<string>>();
+  const draftOf = (appId: string) => {
+    let draft = drafts.get(appId);
+    if (draft === undefined) {
+      draft = new Set(after.apps.get(appId));
+      drafts.set(appId, draft);
+    }
+    changed.add(`app:${appId}`);
+    return draft;
+  };
+  for (const id of ids) {
+    const was = appOf(before, id);
+    const is = appOf(after, id);
+    if (was === is) continue;
+    if (was !== null) draftOf(was).delete(id);
+    if (is !== null) draftOf(is).add(id);
+  }
+  if (drafts.size === 0) return after;
+  const apps = new Map(after.apps);
+  for (const [appId, draft] of drafts) apps.set(appId, draft);
+  return { ...after, apps };
+}
+
+/** The ids of `family` a reduction touched: their facts, or their place in one of its scopes. */
+function touched(
+  family: Family,
   before: AccountState,
   after: AccountState,
   changed: ReadonlySet<ReadKey>,
 ): ReadonlySet<string> {
   const ids = new Set<string>();
   for (const key of changed) {
-    if (key.startsWith("process:")) ids.add(key.slice("process:".length));
+    if (key.startsWith(`${family}:`)) ids.add(key.slice(family.length + 1));
     if (!key.startsWith("members:")) continue;
     const scope = key.slice("members:".length) as ScopeKey;
-    if (scopeFamily(scope).family !== "process") continue;
+    if (scopeFamily(scope).family !== family) continue;
     const old = before.memberships.get(scope)?.members;
     for (const [id, member] of after.memberships.get(scope)?.members ?? [])
       if (old?.get(id) !== member) ids.add(id);
@@ -380,22 +426,23 @@ export function reduceAccount(state: AccountState, input: AccountInput): Reducti
       directives: directives.map((directive) => ({ ...directive, key: input.key })),
     };
   }
-  if (input.kind === "proven-deletion" || input.kind === "access")
-    return { state: reduceEvidence(state, input, changed), changed, directives: [] };
   // A superseded attempt's input is late: its scope already re-registered.
-  if (input.generation !== streamOf(state, input.scope).generation)
+  if ("generation" in input && input.generation !== streamOf(state, input.scope).generation)
     return { state, changed, directives: [] };
   const directives: RuntimeDirective[] = [];
   const next =
-    input.kind === "baseline-begin"
-      ? beginBaseline(state, input.scope, changed)
-      : input.kind === "baseline-commit"
-        ? commitBaseline(state, input, changed, directives)
-        : input.kind === "membership"
-          ? reduceMembership(state, input.scope, input.delta, changed, directives)
-          : reduceRows(state, input, changed);
+    input.kind === "proven-deletion" || input.kind === "access"
+      ? reduceEvidence(state, input, changed)
+      : input.kind === "baseline-begin"
+        ? beginBaseline(state, input.scope, changed)
+        : input.kind === "baseline-commit"
+          ? commitBaseline(state, input, changed, directives)
+          : input.kind === "membership"
+            ? reduceMembership(state, input.scope, input.delta, changed, directives)
+            : reduceRows(state, input, changed);
+  const indexed = reindexRunning(state, next, touched("process", state, next, changed), changed);
   return {
-    state: reindexRunning(next, touchedProcesses(state, next, changed), changed),
+    state: reindexApps(state, indexed, touched("placement", state, next, changed), changed),
     changed,
     directives,
   };

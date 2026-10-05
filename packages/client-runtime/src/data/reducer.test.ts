@@ -270,6 +270,65 @@ describe("reduceAccount", () => {
     });
   });
 
+  describe("application index", () => {
+    const navigation = scopeKeys.navigation(ORG);
+    const placed = (id: string, sequence: number, appId: string | null) => ({
+      family: "placement" as const,
+      id,
+      value:
+        appId === null
+          ? { kind: "outside" as const }
+          : { kind: "app" as const, appId, appName: appId.toUpperCase(), role: "mate" },
+      revision: { kind: "hq-observation" as const, generation: 1, sequence },
+    });
+
+    it("indexes projects by the application HQ places them in, and lets go of unplaced ones", () => {
+      const state = apply(emptyAccount, [
+        {
+          kind: "stream",
+          key: scopeKeys.hqLink(ORG),
+          now: 0,
+          event: { kind: "demand", demanded: true },
+        },
+        { kind: "stream", key: navigation, now: 0, event: { kind: "demand", demanded: true } },
+        { kind: "stream", key: navigation, now: 0, event: { kind: "attempt" } },
+        { kind: "baseline-begin", scope: navigation, generation: 1 },
+        {
+          kind: "baseline-commit",
+          scope: navigation,
+          generation: 1,
+          via: "hq-stream",
+          members: ["m1", "m2", "m3"],
+          rows: [placed("m1", 1, "a"), placed("m2", 1, "a"), placed("m3", 1, null)],
+        },
+      ]);
+      expect(state.apps.get("a")).toEqual(new Set(["m1", "m2"]));
+
+      const moved = reduceAccount(state, {
+        kind: "rows",
+        scope: navigation,
+        generation: 1,
+        method: "push",
+        via: "hq-stream",
+        rows: [placed("m2", 2, "b")],
+      });
+      expect(moved.state.apps.get("a")).toEqual(new Set(["m1"]));
+      expect(moved.state.apps.get("b")).toEqual(new Set(["m2"]));
+      expect([...moved.changed].filter((key) => key.startsWith("app:")).sort()).toEqual([
+        "app:a",
+        "app:b",
+      ]);
+
+      const withdrawn = reduceAccount(moved.state, {
+        kind: "membership",
+        scope: navigation,
+        generation: 1,
+        delta: { add: [], remove: ["m1"] },
+      });
+      expect(withdrawn.state.apps.get("a")).toEqual(new Set());
+    });
+  });
+
   describe("supersedes", () => {
     const zerops = (version: number | null): Revision => ({ kind: "zerops", version });
     const hq = (generation: number, sequence: number): Revision => ({
