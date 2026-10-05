@@ -5622,18 +5622,27 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           resolveClaudeCatalogEffort(modelCatalog, modelSelection.model, previousRawEffort) ?? null,
         );
       // Effort is a flag setting: the live session takes it on its next
-      // request, so a change never needs a new session.
+      // request, so a change never needs a new session. A CLI that refuses it
+      // never costs the message: the effort is tried again on the next send.
       if (nextEffort !== context.currentEffort || ultracodeChanged) {
         const settings = {
           effortLevel: (nextEffort ?? null) as ClaudeSdkEffort | null,
           ...(ultracodeChanged ? { ultracode: ultracode ? true : null } : {}),
         };
-        yield* Effect.tryPromise({
-          try: () => context.query.applyFlagSettings(settings),
-          catch: (cause) => toRequestError(input.threadId, "turn/applyFlagSettings", cause),
-        });
+        const applied = yield* Effect.tryPromise(() =>
+          context.query.applyFlagSettings(settings),
+        ).pipe(
+          Effect.as(true),
+          Effect.catch((cause) =>
+            Effect.logWarning("claude.effort.apply-failed", {
+              threadId: input.threadId,
+              effort: nextEffort ?? null,
+              cause: toMessage(cause, "applyFlagSettings failed"),
+            }).pipe(Effect.as(false)),
+          ),
+        );
+        if (applied) context.currentEffort = nextEffort;
       }
-      context.currentEffort = nextEffort;
     }
 
     // Apply interaction mode by switching the SDK's permission mode.

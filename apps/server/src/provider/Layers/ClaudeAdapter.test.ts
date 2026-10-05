@@ -125,8 +125,10 @@ class FakeClaudeQuery implements AsyncIterable<SDKMessage> {
   };
 
   public readonly applyFlagSettingsCalls: Array<Record<string, unknown>> = [];
+  public applyFlagSettingsError: unknown | undefined;
   readonly applyFlagSettings = async (settings: Record<string, unknown>): Promise<void> => {
     this.applyFlagSettingsCalls.push(settings);
+    if (this.applyFlagSettingsError !== undefined) throw this.applyFlagSettingsError;
   };
 
   readonly close = (): void => {
@@ -612,6 +614,48 @@ describe("ClaudeAdapterLive", () => {
 
       const createInput = harness.getLastCreateQueryInput();
       assert.equal(createInput?.options.effort, "max");
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("delivers a message whose effort the live session refuses, and tries again", () => {
+    const harness = makeHarness();
+    const withEffort = (effort: string) =>
+      createModelSelection(ProviderInstanceId.make("claudeAgent"), SYNTHETIC_CLAUDE_CAPABLE_MODEL, [
+        { id: "effort", value: effort },
+      ]);
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        modelSelection: withEffort("xhigh"),
+        runtimeMode: "full-access",
+      });
+      harness.query.applyFlagSettingsError = new Error("Unknown control request");
+      const sent = yield* adapter
+        .sendTurn({
+          threadId: session.threadId,
+          input: "hello",
+          modelSelection: withEffort("max"),
+          attachments: [],
+        })
+        .pipe(Effect.result);
+      assert.equal(sent._tag, "Success");
+
+      harness.query.applyFlagSettingsError = undefined;
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "again",
+        modelSelection: withEffort("max"),
+        attachments: [],
+      });
+      assert.deepEqual(harness.query.applyFlagSettingsCalls, [
+        { effortLevel: "max" },
+        { effortLevel: "max" },
+      ]);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
