@@ -46,7 +46,7 @@ import { ProjectFavicon } from "../ProjectFavicon";
 import { useThreadShell } from "../../state/entities";
 import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import type { ZeropsMateAt } from "~/zerops/mateIdentities";
-import { useKnownMate, useZeropsMate } from "~/zerops/useZeropsMates";
+import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsMark } from "../ZeropsMark";
 import { ChatHeaderLinks } from "./ChatHeaderLinks";
 import { ConversationStrip } from "./ConversationStrip";
@@ -181,6 +181,24 @@ function StartFreshMenuItem({ onStartFresh }: { readonly onStartFresh: () => voi
   );
 }
 
+/**
+ * Who heads a conversation's header: a Mate's line of conversations once the directory names the
+ * Mate; upstream's breadcrumb where nobody lives; until the directory says, the strip's place held
+ * empty — never the breadcrumb, to flip from (HANDOFF §4.4).
+ */
+export function headerLead(
+  whoLivesHere: ZeropsMateAt["kind"],
+): "strip" | "reserved" | "breadcrumb" {
+  switch (whoLivesHere) {
+    case "mate":
+      return "strip";
+    case "unknown":
+      return "reserved";
+    case "nobody":
+      return "breadcrumb";
+  }
+}
+
 export const ChatHeader = memo(function ChatHeader({
   activeThreadEnvironmentId,
   activeThreadId,
@@ -262,8 +280,8 @@ export const ChatHeader = memo(function ChatHeader({
   // While who lives here is not known, the header shows what both looks
   // share and leaves out what only one of them has.
   const whoLivesHere = useZeropsMate(activeThreadEnvironmentId);
-  // The Mate once the directory names it; until then the header leaves its place out.
-  const mate = useKnownMate(activeThreadEnvironmentId);
+  const lead = headerLead(whoLivesHere.kind);
+  const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined;
   const showOpenInPicker = shouldShowOpenInPicker({
     activeProjectName,
     activeThreadEnvironmentId,
@@ -559,7 +577,9 @@ export const ChatHeader = memo(function ChatHeader({
       className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3"
       onContextMenu={handleHeaderContextMenu}
     >
-      {mate !== undefined ? (
+      {lead === "reserved" ? (
+        <div aria-hidden="true" className="min-w-0 flex-1" data-header-lead-reserved />
+      ) : lead === "strip" ? (
         // The line of the Mate's conversations: the Mate, then its crew. What
         // the chat is about is the Mate's hover, never words on the line.
         <ConversationStrip
@@ -633,8 +653,8 @@ export const ChatHeader = memo(function ChatHeader({
         className={cn(
           "flex shrink-0 items-center justify-end",
           // A Mate's header is a row of borderless buttons, 4 px apart like
-          // the panel toggles beside it.
-          mate === undefined ? "gap-2 @3xl/header-actions:gap-3" : "gap-1",
+          // the panel toggles beside it — held so while its Mate is not named yet.
+          lead === "breadcrumb" ? "gap-2 @3xl/header-actions:gap-3" : "gap-1",
           // Reserve two panel toggles plus their 4px gaps and 1px edge inset.
           // The page header adds 8px more right padding at sm.
           rightPanelOpen ? "pr-0" : "pr-18.25 sm:pr-14.25",

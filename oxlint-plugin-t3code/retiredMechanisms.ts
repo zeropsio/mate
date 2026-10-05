@@ -413,7 +413,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
       "apps/web/src/components/Sidebar.tsx",
       "apps/web/src/design/sidebarHarness.tsx",
       "apps/web/src/zerops/hqStructure.ts",
-      "apps/web/src/zerops/lastConversationMemory.ts",
       "apps/web/src/zerops/menuMemory.ts",
       "apps/web/src/zerops/useZeropsMateOwners.ts",
       "apps/web/src/zerops/useZeropsMenu.tsx",

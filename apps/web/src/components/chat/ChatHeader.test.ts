@@ -1,7 +1,7 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveRenameCommit, shouldShowOpenInPicker } from "./ChatHeader";
+import { headerLead, resolveRenameCommit, shouldShowOpenInPicker } from "./ChatHeader";
 
 describe("shouldShowOpenInPicker", () => {
   const primaryEnvironmentId = EnvironmentId.make("environment-primary");
@@ -109,5 +109,16 @@ describe("resolveRenameCommit", () => {
     expect(resolveRenameCommit({ title: " Old ", originalTitle: "Old" })).toEqual({
       action: "noop",
     });
+  });
+});
+
+describe("headerLead: who heads a conversation's header", () => {
+  it.each([
+    ["a Mate named", "mate", "strip"],
+    // Not named yet: the strip's place held, never upstream's breadcrumb to flip from.
+    ["who lives here not known yet", "unknown", "reserved"],
+    ["nobody: upstream's breadcrumb", "nobody", "breadcrumb"],
+  ] as const)("%s", (_case, kind, lead) => {
+    expect(headerLead(kind)).toBe(lead);
   });
 });

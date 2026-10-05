@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import {
   computeStableMessagesTimelineRows,
+  conversationSpeaker,
   deriveMessagesTimelineRows,
   earlierTurnsAnchor,
   rowGap,
@@ -3580,5 +3581,36 @@ describe("rowGap: a turn is one group, 24 px inside and 64 px between turns", ()
       "record:part",
       "message:part-words",
     ]);
+  });
+});
+
+describe("conversationSpeaker: who speaks in a conversation", () => {
+  const ivy = { name: "Ivy", tint: "amber", shape: "squircle" } as const;
+  it.each([
+    [
+      "a crewmate's conversation: the crewmate",
+      { crewmate: { handle: "rex", profile: { displayName: "Rex", tint: "sky" } }, at: "mate" },
+      { name: "Rex", tint: "sky" },
+    ],
+    ["a Mate named: the Mate", { crewmate: null, at: "mate" }, ivy],
+    // Not named yet: a neutral speaker, never upstream's "Assistant" to flip from.
+    [
+      "who lives here not known yet",
+      { crewmate: null, at: "unknown" },
+      { name: "This Mate", tint: "slate" },
+    ],
+    [
+      "nobody: upstream's assistant",
+      { crewmate: null, at: "nobody" },
+      { name: "Assistant", tint: "slate" },
+    ],
+  ] as const)("%s", (_case, input, speaker) => {
+    expect(
+      conversationSpeaker({
+        crewmate: input.crewmate,
+        mate: input.at === "mate" ? ivy : null,
+        nobody: input.at === "nobody",
+      }),
+    ).toEqual(speaker);
   });
 });

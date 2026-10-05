@@ -127,6 +127,7 @@ import {
 import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
+  conversationSpeaker,
   deriveMessagesTimelineRows,
   earlierTurnsAnchor,
   helperFinishesOf,
@@ -159,7 +160,7 @@ import {
 } from "~/lib/terminalContext";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
-import { useKnownMate, useZeropsMate } from "~/zerops/useZeropsMates";
+import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { OPENING_WAIT_LINE_MS, openingConversationLine } from "~/zerops/waitLine.logic";
 import { isMateStandUpAsk } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
@@ -204,7 +205,6 @@ import {
   PauseBlock,
   Seam,
   StandUpAskLine,
-  type ConversationSpeaker,
   type ServerUsagePause,
 } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
@@ -1134,22 +1134,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [timelineViewportElement, rows.length]);
 
-  // The Mate once the directory names it: the conversation speaks in its name from then on.
-  const mate = useKnownMate(activeThreadEnvironmentId);
-  // A crewmate's conversation is the crewmate's: its name and its face speak
-  // on every line — the work line too (ARCHITECTURE §6).
+  // The Mate once the directory names it, a neutral speaker before; a crewmate's conversation is
+  // the crewmate's: its name and its face speak on every line — the work line too (ARCHITECTURE §6).
+  const whoLivesHere = useZeropsMate(activeThreadEnvironmentId);
+  const mate = whoLivesHere.kind === "mate" ? whoLivesHere.mate : undefined;
   const crewmate = crew?.crewmate ?? null;
-  const speaker = useMemo<ConversationSpeaker>(
-    () =>
-      crewmate !== null
-        ? {
-            name: crewmate.profile?.displayName ?? `@${crewmate.handle}`,
-            tint: crewmate.profile?.tint ?? "slate",
-          }
-        : mate !== undefined
-          ? { name: mate.name, tint: mate.tint, shape: mate.shape }
-          : { name: "Assistant", tint: "slate" },
-    [crewmate, mate],
+  const nobody = whoLivesHere.kind === "nobody";
+  const speaker = useMemo(
+    () => conversationSpeaker({ crewmate, mate: mate ?? null, nobody }),
+    [crewmate, mate, nobody],
   );
   const openingName = crewmate !== null ? speaker.name : mate?.name;
   // What the conversation held when it opened, on the server's clock: a

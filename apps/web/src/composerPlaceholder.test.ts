@@ -11,7 +11,7 @@ describe("resolveComposerPlaceholders", () => {
   it.each([
     {
       name: "a Mate's conversation, its link still being made",
-      mateHere: true,
+      whoLivesHere: "mate",
       zeropsAvailable: false,
       placeholders: {
         connected: ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER,
@@ -20,7 +20,7 @@ describe("resolveComposerPlaceholders", () => {
     },
     {
       name: "a Mate's conversation, its project read",
-      mateHere: true,
+      whoLivesHere: "mate",
       zeropsAvailable: true,
       placeholders: {
         connected: ZEROPS_CONNECTED_COMPOSER_PLACEHOLDER,
@@ -29,17 +29,24 @@ describe("resolveComposerPlaceholders", () => {
     },
     {
       name: "a thread with no Mate",
-      mateHere: false,
+      whoLivesHere: "nobody",
       zeropsAvailable: false,
       placeholders: {
         connected: DEFAULT_CONNECTED_COMPOSER_PLACEHOLDER,
         idle: DISCONNECTED_COMPOSER_PLACEHOLDER,
       },
     },
-  ])(
+    // Nobody named yet: no upstream words, nothing guessed; the Mate's words arrive in place.
+    {
+      name: "a conversation whose Mate is not named yet",
+      whoLivesHere: "unknown",
+      zeropsAvailable: false,
+      placeholders: { connected: "", idle: "" },
+    },
+  ] as const)(
     "says one thing from the first frame in $name",
-    ({ mateHere, zeropsAvailable, placeholders }) => {
-      expect(resolveComposerPlaceholders({ mateHere, zeropsAvailable })).toEqual(placeholders);
+    ({ whoLivesHere, zeropsAvailable, placeholders }) => {
+      expect(resolveComposerPlaceholders({ whoLivesHere, zeropsAvailable })).toEqual(placeholders);
     },
   );
 });

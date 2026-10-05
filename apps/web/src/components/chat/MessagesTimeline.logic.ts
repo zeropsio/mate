@@ -1,4 +1,5 @@
 import * as Equal from "effect/Equal";
+import type { MateTintId } from "@t3tools/shared/brand";
 import {
   batchesByTiming,
   liveBatch,
@@ -24,6 +25,8 @@ import {
   type WorkLogEntry,
 } from "../../session-logic";
 import { type ChatMessage, type ProposedPlan, type TurnDiffSummary } from "../../types";
+import type { ZeropsMateIdentity } from "../../zerops/mateIdentities";
+import type { ConversationSpeaker } from "./ConversationRows";
 import type { QueuedComposerMessage } from "../../queuedMessageStore";
 import {
   activityCounts,
@@ -2846,4 +2849,30 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       // work entries, landings): compare what they hold, not their identity.
       return Equal.equals(a, b);
   }
+}
+
+/**
+ * Who speaks in a conversation: a crewmate's conversation is the crewmate's, a Mate's the Mate's
+ * once the directory names it. Before that a neutral speaker — never upstream's "Assistant", which
+ * is the speaker only where nobody lives — so nothing guessed shows and the name arrives in place.
+ */
+export function conversationSpeaker(input: {
+  readonly crewmate: {
+    readonly handle: string;
+    readonly profile?: { readonly displayName?: string; readonly tint?: MateTintId } | null;
+  } | null;
+  /** The Mate the directory names here; null while it names none. */
+  readonly mate: Pick<ZeropsMateIdentity, "name" | "tint" | "shape"> | null;
+  /** The directory says nobody lives here: upstream's assistant speaks. */
+  readonly nobody: boolean;
+}): ConversationSpeaker {
+  const { crewmate, mate } = input;
+  if (crewmate !== null) {
+    return {
+      name: crewmate.profile?.displayName ?? `@${crewmate.handle}`,
+      tint: crewmate.profile?.tint ?? "slate",
+    };
+  }
+  if (mate !== null) return { name: mate.name, tint: mate.tint, shape: mate.shape };
+  return input.nobody ? { name: "Assistant", tint: "slate" } : { name: "This Mate", tint: "slate" };
 }

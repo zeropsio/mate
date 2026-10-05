@@ -187,7 +187,7 @@ import { zeropsMateAt } from "../zerops/mateIdentities";
 import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
-import { useKnownMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
+import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { ZeropsPanel } from "./zerops/ZeropsPanel";
 import { ZeropsLifecycleStrip } from "./zerops/ZeropsLifecycleStrip";
 import { ZeropsReadOnlyConversationFooter } from "./zerops/ZeropsReadOnlyConversationFooter";
@@ -2370,8 +2370,8 @@ export default function ChatView(props: ChatViewProps) {
   // The banner names the Mate, never the environment's label: on a Mate that
   // is the container's internal host.
   const zeropsMates = useZeropsMateDirectory();
-  // The Mate once the directory names it: the composer of a Mate's conversation says one thing.
-  const knownMateHere = useKnownMate(environmentId);
+  // Who lives here as the directory reads it: the composer says nothing until it is known.
+  const whoLivesHereKind = useZeropsMate(environmentId).kind;
   const mateLinkVoice = useMateVoice();
   const reviveFailedMate = useReviveFailedMate();
   const tryMateAgain = useTryMateAgain();
@@ -3979,7 +3979,7 @@ export default function ChatView(props: ChatViewProps) {
     [activeThread?.environmentId, logicalProjectEnvironments, zeropsChrome.projectName],
   );
   const composerPlaceholders = resolveComposerPlaceholders({
-    mateHere: knownMateHere !== undefined,
+    whoLivesHere: whoLivesHereKind,
     zeropsAvailable: zeropsChrome.panel === "available",
   });
   const openFileSurface = useCallback(
