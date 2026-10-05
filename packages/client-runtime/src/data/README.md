@@ -30,9 +30,13 @@ equals: sameValue }`. `derive` reads keyed facts, memberships, coverage, indexes
 `store.data.project(projection, key)`; test it with a table of inputs through `readsOfState`.
 
 **An operation kind.** Add `operations/<kind>.ts`: declare its intent
-(`interface OperationIntents { readonly "<kind>": … }`) and export `{ kind, executor, reflected }`.
-Add one line to `OPERATION_KINDS`, and wire the owner's executor into
-`makeOperations({ executors })`.
+(`interface OperationIntents { readonly "<kind>": … }`) and export `{ kind, executor,
+reflected(read, intent, receipt) }`, plus, where they apply, `settledBy(read, intent, receipt)` —
+how the owner's facts end it (a process row going terminal) — and `acceptedBy(read, intent)` — how
+its facts show it began, for an owner that keeps no request ids. Add one line to
+`OPERATION_KINDS`. Wire the owner's executor into `makeOperations({ executors })`: `submit`, and
+whichever of `lookup(requestId)` (HQ) and `lookupHandle(handle)` the owner answers. The executor
+lives in `operations/`, the one place besides `adapters/` that may reach a remote.
 
 **Mounting.** An app makes one store per account (`makeAccountStore`) and starts the active
 organization's navigation with `startZeropsNavigation`, over `makeZeropsWire` (today's receiver
@@ -64,9 +68,10 @@ baseline, and ends only by failing with a classified fault. Run it under
 - Projections are pure and read keyed facts only. A change recomputes only the projections that
   read it.
 - Navigation never starts a detail read. Detail is registered only while demanded.
-- An operation is recorded before it is sent. A lost answer is asked about by the original id and
-  never sent again blindly. Its end comes from its owner, never from a clock. A watch that runs
-  out is unresolved and names who acts next.
+- An operation is recorded before it is sent. A lost answer is resolved by the owner — by a known
+  handle, by the original id where the owner keeps ids, else by its facts showing the effect — and
+  never sent again blindly. Its end comes from the owner's receipt or its facts, never from a
+  clock. A watch that runs out is unresolved and names who acts next.
 - Source data lives in memory only, never in browser storage.
 - Facts about a person — role, may write, unseen — are computed by HQ, not here.
 

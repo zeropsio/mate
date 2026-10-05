@@ -96,8 +96,8 @@ function zerops(options: { readonly loseAnswer: boolean }) {
           ? Effect.fail({ outcome: "uncertain-acceptance", message: "No answer." })
           : Effect.succeed(receiptOf(requestId));
       }),
-    // Zerops keeps no request ids: asked by one, it never holds it.
-    lookup: () => Effect.succeed(null),
+    lookupHandle: (handle) =>
+      Effect.sync(() => (handle === "proc-1" ? receiptOf("request-1") : null)),
   };
   return { executor, submitted };
 }
@@ -141,6 +141,44 @@ describe("an operation Zerops executes", () => {
         processRow(store, "proc-1", status, 2);
         expect(progress(store, requestId)).toEqual(outcome);
       }
+    }),
+  );
+
+  it.effect("resolves a lost answer by the owner's facts, and never sends it again", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const owner = zerops({ loseAnswer: true });
+      const operations = makeOperations({
+        store,
+        kinds,
+        executors: { zerops: owner.executor },
+        makeId: ids(),
+      });
+
+      // The facts do not show the restart yet: uncertain, with checking again as the next step.
+      const requestId = yield* operations.submit(RESTART);
+      expect(progress(store, requestId)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+
+      // They do now: the person's retry checks them and finds the restart's process.
+      processRow(store, "proc-1", "RUNNING", 1);
+      yield* operations.retry(requestId);
+      expect(progress(store, requestId)).toEqual({ stage: "reflected", operationId: "proc-1" });
+      expect(owner.submitted).toEqual([requestId]);
+    }),
+  );
+
+  it.effect("resumes after a restart by the handle it was accepted with", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const owner = zerops({ loseAnswer: false });
+      yield* makeOperations({
+        store,
+        kinds,
+        executors: { zerops: owner.executor },
+        makeId: ids(),
+      }).resume("request-1", RESTART, ["proc-1"]);
+      expect(owner.submitted).toEqual([]);
+      expect(progress(store, "request-1")).toEqual({ stage: "accepted", operationId: "proc-1" });
     }),
   );
 });

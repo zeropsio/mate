@@ -35,6 +35,20 @@ export interface OperationKind<Kind extends keyof OperationIntents & string> {
     intent: IntentOf<Kind>,
     receipt: OperationReceipt,
   ) => Settlement | null;
+  /**
+   * For an owner that keeps no request ids (Zerops, a Mate): whether its facts show the intended
+   * effect began, after an answer was lost; `null` while they do not. Never a reason to resend.
+   */
+  readonly acceptedBy?: (
+    read: ProjectionReads,
+    intent: IntentOf<Kind>,
+  ) => ObservedAcceptance | null;
+}
+
+/** The owner's facts showing an intended effect began, and the handles it began under. */
+export interface ObservedAcceptance {
+  readonly operationId: string;
+  readonly handles: ReadonlyArray<string>;
 }
 
 export type Settlement =
@@ -55,4 +69,5 @@ export interface RegisteredOperationKind {
     intent: OperationIntent,
     receipt: OperationReceipt,
   ): Settlement | null;
+  acceptedBy?(read: ProjectionReads, intent: OperationIntent): ObservedAcceptance | null;
 }

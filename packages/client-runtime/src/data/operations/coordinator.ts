@@ -9,7 +9,7 @@
 import * as Effect from "effect/Effect";
 
 import type { Authority, OperationIntent, OperationReceipt } from "../model.ts";
-import type { AccountStore } from "../store.ts";
+import { readsOfState, type AccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { OPERATION_KINDS, operationKind } from "./kinds.ts";
@@ -20,14 +20,20 @@ export interface UncertainAcceptance {
   readonly message: string;
 }
 
-/** The operation's owner: it applies a request id once, and answers for it later by that id. */
+/**
+ * The operation's owner. A lost answer is resolved by what the owner can be asked: by the request
+ * id where it keeps one (HQ), by an external handle where one is known (a Zerops process), or else
+ * by the intended effect in the owner's facts (the kind's `acceptedBy`) — never by sending again.
+ */
 export interface OperationExecutor {
   readonly submit: (
     requestId: string,
     intent: OperationIntent,
   ) => Effect.Effect<OperationReceipt, StreamFault | UncertainAcceptance>;
   /** The receipt the owner holds for this request id; `null` when it never took it. */
-  readonly lookup: (requestId: string) => Effect.Effect<OperationReceipt | null, StreamFault>;
+  readonly lookup?: (requestId: string) => Effect.Effect<OperationReceipt | null, StreamFault>;
+  /** The receipt behind an external handle; `null` when the owner holds none for it. */
+  readonly lookupHandle?: (handle: string) => Effect.Effect<OperationReceipt | null, StreamFault>;
 }
 
 export interface Operations {
@@ -38,8 +44,15 @@ export interface Operations {
    * under the original id. Anything else is left as it stands.
    */
   readonly retry: (requestId: string) => Effect.Effect<void>;
-  /** Picks up a request this account sent before — after a restart — by its original id. */
-  readonly resume: (requestId: string, intent: OperationIntent) => Effect.Effect<void>;
+  /**
+   * Picks up a request this account sent before — after a restart — by its original id, or by the
+   * external handles it was accepted with where they are known.
+   */
+  readonly resume: (
+    requestId: string,
+    intent: OperationIntent,
+    handles?: ReadonlyArray<string>,
+  ) => Effect.Effect<void>;
 }
 
 export function makeOperations(options: {
@@ -87,9 +100,54 @@ export function makeOperations(options: {
       },
     });
 
-  /** Asks the owner by the original id; sends again, once, only to an owner that holds none. */
-  const reconcile = (requestId: string, intent: OperationIntent, resend: boolean) =>
-    Effect.matchEffect(executorOf(intent).executor.lookup(requestId), {
+  const admit = (receipt: OperationReceipt | null, requestId: string) =>
+    Effect.sync(() =>
+      store.dispatch(
+        receipt === null
+          ? { kind: "operation-lookup-failed", requestId }
+          : { kind: "operation-receipt", receipt },
+      ),
+    );
+
+  /**
+   * Resolves a lost answer. By a known handle; else by the request id, sending again — once, under
+   * that id — only to an owner that holds none; else by the intended effect in the owner's facts.
+   * What none of these settles stays uncertain, with asking again as the person's next step.
+   */
+  const reconcile = (
+    requestId: string,
+    intent: OperationIntent,
+    resend: boolean,
+    handles: ReadonlyArray<string> = [],
+  ): Effect.Effect<void> => {
+    const { owner, executor } = executorOf(intent);
+    const handle = handles[0];
+    if (handle !== undefined && executor.lookupHandle !== undefined)
+      return Effect.matchEffect(executor.lookupHandle(handle), {
+        onSuccess: (receipt) => admit(receipt, requestId),
+        onFailure: () => admit(null, requestId),
+      });
+    if (executor.lookup === undefined) {
+      const effect = operationKind(options.kinds ?? OPERATION_KINDS, intent).acceptedBy?.(
+        readsOfState(store.state()),
+        intent,
+      );
+      return admit(
+        effect === null || effect === undefined
+          ? null
+          : {
+              requestId,
+              operationId: effect.operationId,
+              executor: owner,
+              affected: [],
+              handles: effect.handles,
+              acceptance: { kind: "accepted" },
+              outcome: { kind: "pending" },
+            },
+        requestId,
+      );
+    }
+    return Effect.matchEffect(executor.lookup(requestId), {
       onSuccess: (receipt) => {
         if (receipt !== null)
           return Effect.sync(() => store.dispatch({ kind: "operation-receipt", receipt }));
@@ -100,9 +158,9 @@ export function makeOperations(options: {
         return send(requestId, intent, false);
       },
       // The owner could not be asked: uncertain, with asking again as the next step.
-      onFailure: () =>
-        Effect.sync(() => store.dispatch({ kind: "operation-lookup-failed", requestId })),
+      onFailure: () => admit(null, requestId),
     });
+  };
 
   return {
     submit: (intent) =>
@@ -121,10 +179,10 @@ export function makeOperations(options: {
           return reconcile(requestId, record.intent, true);
         return Effect.void;
       }),
-    resume: (requestId, intent) =>
+    resume: (requestId, intent, handles) =>
       Effect.gen(function* () {
         store.dispatch({ kind: "operation-recorded", requestId, intent });
-        yield* reconcile(requestId, intent, true);
+        yield* reconcile(requestId, intent, true, handles);
       }),
   };
 }
