@@ -1,4 +1,5 @@
 import { useStopPublicAccess } from "~/zerops/useStopPublicAccess";
+import { useMatesInventory } from "~/zerops/useMatesInventory";
 import { RuntimeStopPublicAccess, StopPublicAccessStatus } from "./StopPublicAccess";
 /**
  * A project group's page, and one stop's, in place of the thread.
@@ -673,6 +674,8 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const crumbs = useCrumbs();
   const names = useHistoryNames();
   const { mates, notice: matesNotice, refresh: rereadMates } = useGroupMates(groupId);
+  // Each Mate drawn here has its project read: its menu's Restart stands on its container.
+  useMatesInventory(useMemo(() => mates.map((mate) => mate.projectId), [mates]));
   const openMate = useOpenMateOf();
   const { withheldNotice, shown } = useWithheldStops(environments);
   const firstDeployOf = useStageFirstDeploys(groupId);

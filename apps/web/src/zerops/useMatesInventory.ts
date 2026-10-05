@@ -1,14 +1,15 @@
 /**
- * The project inventories of the Mates a page draws, held while it stands (R7: the drawn stop owns
- * its service demand). Access is verified and services read only for a project some surface
- * demands, so a page that lists Mates by HQ's placement demands each one's: without it, a Mate's
- * container stays unread — no service to restart, nothing up to add an environment beside. Its
- * project is read as a route's is, and nothing connects to it.
+ * The project inventories of the Mates a surface draws, held while it draws them (R7: the drawn
+ * stop owns its service demand). Access is verified and services read only for a project some
+ * surface demands, so whatever draws a Mate with its menu demands its project: without it, the
+ * Mate's container stays unread — no service to restart, nothing up to add an environment beside.
+ * Its project is read as a route's is, and nothing connects to it. Only the Mates drawn are read:
+ * the projects page's, a project page's own, the left menu's rows as they are mounted.
  */
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { isMateKind } from "@t3tools/shared/zeropsRoles";
 import * as Effect from "effect/Effect";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { findInventoryProjectRef, projectAuthority, useZeropsInventory } from "./inventoryContext";
 import { useZeropsData } from "./zeropsDataContext";
@@ -28,19 +29,19 @@ export function drawnMateProjects(
   ];
 }
 
-export function useMatesInventory(candidates: ReadonlyArray<Pick<ZeropsCandidate, "project">>) {
+export function useMatesInventory(projectIds: ReadonlyArray<string>): void {
   const { runtime } = useZeropsData();
   const inventory = useZeropsInventory();
   const projects = useMemo(
     () =>
-      drawnMateProjects(candidates).flatMap((projectId) => {
+      [...new Set(projectIds)].flatMap((projectId) => {
         // A refused project is not asked again by drawing it; one still being verified is.
         const authority = projectAuthority(inventory, projectId);
         if (authority.kind === "withheld" && authority.reason === "access-denied") return [];
         const ref = findInventoryProjectRef(inventory, projectId);
         return ref === null ? [] : [ref];
       }),
-    [candidates, inventory],
+    [projectIds, inventory],
   );
   // The projects' ids say what is demanded: a new list of the same ones demands nothing new.
   const identity = projects
@@ -64,4 +65,35 @@ export function useMatesInventory(candidates: ReadonlyArray<Pick<ZeropsCandidate
       controller.abort();
     };
   }, [runtime, identity]);
+}
+
+/**
+ * For a surface whose Mates are drawn row by row, each mounted on its own: `drawn(projectId)`
+ * says a row of that Mate is drawn, until the function it returns is called. Each Mate's project
+ * is read while any row of it is drawn. The same function for a Mate on every render, so a row's
+ * effect keyed by it runs once.
+ */
+export function useDrawnMates(): (projectId: string) => () => () => void {
+  const [rows, setRows] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const projectIds = useMemo(() => [...rows.keys()], [rows]);
+  useMatesInventory(projectIds);
+  const byProject = useRef(new Map<string, () => () => void>());
+  return useCallback((projectId: string) => {
+    const known = byProject.current.get(projectId);
+    if (known !== undefined) return known;
+    const drawn = () => {
+      setRows((held) => new Map(held).set(projectId, (held.get(projectId) ?? 0) + 1));
+      return () => {
+        setRows((held) => {
+          const next = new Map(held);
+          const left = (held.get(projectId) ?? 1) - 1;
+          if (left > 0) next.set(projectId, left);
+          else next.delete(projectId);
+          return next;
+        });
+      };
+    };
+    byProject.current.set(projectId, drawn);
+    return drawn;
+  }, []);
 }
