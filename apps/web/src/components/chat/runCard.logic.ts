@@ -318,6 +318,8 @@ export type NowLine =
   | { readonly kind: "several"; readonly calls: ReadonlyArray<LiveCall> }
   /** It waits on the person: their answer to its question, or their approval. */
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
+  /** Its turns are over, and what it started goes on: its helpers, or its background work. */
+  | { readonly kind: "after"; readonly on: "helpers" | "background" }
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
   /** Over: who, what it did and for how long, and what the effort came to. */
@@ -339,6 +341,10 @@ function workedMs(status: RunStatus): number {
 export function workedWords(speaker: string, status: RunStatus): string {
   const took = formatWorkDuration(workedMs(status));
   if (status.face === "stopped") return `${speaker} stopped after ${took}`;
+  // Its turn ended for the person's message, not by their Stop (run 11).
+  if (status.face === "interrupted") {
+    return `${speaker} ${status.worked ? "worked" : "thought"} ${took} until your message`;
+  }
   if (status.face === "paused") return `${speaker} stopped at the usage limit after ${took}`;
   return `${speaker} ${status.worked ? "worked" : "thought"} ${took}`;
 }
@@ -366,6 +372,8 @@ export function nowLineOf(input: {
   switch (now.kind) {
     case "waiting":
       return { kind: "waiting", on: now.on };
+    case "after":
+      return { kind: "after", on: now.on };
     case "writing":
       return { kind: "writing" };
     case "thinking":
@@ -393,7 +401,8 @@ export type SlotFiller =
   | { readonly kind: "thinking" }
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
-  | { readonly kind: "waiting"; readonly on: "answer" | "approval" };
+  | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
+  | { readonly kind: "after"; readonly on: "helpers" | "background" };
 
 /**
  * What the live slot holds (pass 35): what the Mate is doing this moment,
@@ -414,10 +423,30 @@ export function slotModelOf(input: {
 }): SlotModel {
   const { now } = input;
   if (input.compacting) return { live: [], filler: { kind: "condensing" } };
-  if (input.answering || now?.kind === "writing") return { live: [], filler: { kind: "writing" } };
   const thinking: SlotModel = { live: [], filler: { kind: "thinking" } };
+  // Its words as they come stand in the slot as the note they become (D4).
+  if (
+    now?.kind === "writing" &&
+    now.note !== undefined &&
+    now.note.message.text.trim().length > 0
+  ) {
+    return {
+      live: [
+        {
+          kind: "note",
+          key: now.note.key,
+          at: now.note.message.createdAt,
+          message: now.note.message,
+        },
+      ],
+      filler: thinking.filler,
+    };
+  }
+  if (input.answering || now?.kind === "writing") return { live: [], filler: { kind: "writing" } };
   if (now === null) return thinking;
   switch (now.kind) {
+    case "after":
+      return { live: [], filler: { kind: "after", on: now.on } };
     case "thinking":
       return now.key !== null && now.messages.some((message) => message.text.trim().length > 0)
         ? {
@@ -517,6 +546,8 @@ export function nowLineWords(line: NowLine): string {
       return severalCallsWords(line.calls);
     case "waiting":
       return line.on === "approval" ? "Waiting for your approval" : "Waiting for your answer";
+    case "after":
+      return line.on === "helpers" ? "Waiting for its helpers" : "Waiting for its background work";
     case "writing":
       return "Writing";
     case "condensing":
@@ -536,6 +567,8 @@ export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
     switch (filler.kind) {
       case "waiting":
         return nowLineWords({ kind: "waiting", on: filler.on });
+      case "after":
+        return nowLineWords({ kind: "after", on: filler.on });
       case "thinking":
         return nowLineWords({ kind: "thinking", thought: null });
       default:
@@ -586,6 +619,7 @@ const SETTLED_FACE: Record<RunStatus["face"], MateMarkState> = {
   failed: "idle",
   paused: "sleep",
   stopped: "idle",
+  interrupted: "idle",
 };
 
 /**

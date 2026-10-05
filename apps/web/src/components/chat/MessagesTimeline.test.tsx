@@ -1567,14 +1567,15 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).toContain("data-conversation-working");
   });
 
-  it("says the Mate is writing, and shows none of its words, until they are known", () => {
+  // D4 (run 11): its words stream in the working row as the note they become.
+  it("streams the words the Mate is writing in its working row", () => {
     const writing = assistant("a1", 8, "Checking /status next.");
     const markup = liveTimeline([
       tool("w1", 5),
       { ...writing, message: { ...writing.message, streaming: true } },
     ]);
-    expect(markup).toContain(">Writing<");
-    expect(markup).not.toContain("Checking /status next.");
+    expect(markup).toContain('data-chat-kind="note"');
+    expect(markup).toContain("Checking /status next.");
   });
 
   it("shows the Mate composing before it said anything", () => {
@@ -1745,18 +1746,21 @@ describe("MessagesTimeline — the conversation", () => {
         }
       />,
     );
-    const line = markup.indexOf("Review the endpoint finished");
-    expect(line).toBeGreaterThan(markup.indexOf("It reports back when done."));
-    expect(line).toBeLessThan(markup.indexOf("The review came back clean."));
-    expect(markup).toContain("helper · No issues found.");
+    // The run went on over the turn the helper woke: one card, what woke it
+    // inside its work, nothing loose between cards (run 11).
+    expect(markup.match(/data-timeline-row-kind="record"/g)).toHaveLength(1);
+    expect(markup).not.toContain('data-timeline-row-kind="background"');
+    expect(markup).toContain("The review came back clean.");
   });
 
   it.each([
     { watch: true, words: "Watching in the background", title: "Watch the pull request" },
     { watch: false, words: "Still working in the background", title: "Typecheck appdev" },
   ])(
-    "keeps the Mate at work at the bottom after its answer while work runs on, with a stop ($words)",
-    ({ watch, words, title }) => {
+    // Run 11, "finished, but background running": the run's own card waits
+    // on what it started, with the way to stop it — nothing at the bottom.
+    "keeps the run's card waiting on what it started, with a stop ($title)",
+    ({ watch, title }) => {
       const markup = renderToStaticMarkup(
         <MessagesTimeline
           {...buildProps()}
@@ -1792,12 +1796,10 @@ describe("MessagesTimeline — the conversation", () => {
           ]}
         />,
       );
-      expect(markup).toContain('data-conversation-after-work="monitoring"');
-      expect(markup).toContain(words);
+      expect(markup).not.toContain("data-conversation-after-work");
+      expect(markup).toContain("Waiting for its background work");
       expect(markup).toContain(title);
       expect(markup).toContain(">Stop<");
-      // The answer stays where it was: the panel comes after it.
-      expect(markup.indexOf("On it.")).toBeLessThan(markup.indexOf(words));
     },
   );
 

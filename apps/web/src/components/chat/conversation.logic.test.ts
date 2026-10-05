@@ -51,6 +51,7 @@ function structure(
     latest?: { id: string; state: string; completed: boolean };
     working?: boolean;
     nowMs?: number;
+    workGoesOn?: boolean;
   } = {},
 ) {
   const latestTurn = options.latest
@@ -68,6 +69,7 @@ function structure(
     isWorking: options.working ?? options.live !== undefined,
     activeTurnStartedAt: options.live ? at(0) : null,
     ...(options.nowMs === undefined ? {} : { nowMs: options.nowMs }),
+    ...(options.workGoesOn === undefined ? {} : { workGoesOn: options.workGoesOn }),
   });
 }
 
@@ -248,8 +250,10 @@ describe("readsAsAnswer", () => {
 });
 
 describe("deriveConversationStructure", () => {
-  // The answer streams where it will stand: a running turn's last words are
-  // its answer once they read as one and nothing came after them.
+  // D4 (run 11): the answer is decided when the run ends. A running turn's
+  // words are the working row's, however much they read as an answer: under
+  // a live card an answer streamed "below while still writing", then turned
+  // back into a note when a question followed.
   it.each([
     {
       case: "a note on the way",
@@ -263,7 +267,7 @@ describe("deriveConversationStructure", () => {
         tool("w1", "t1", 1),
         assistant("a1", "t1", 2, "It is live.\n\n**What changed**"),
       ],
-      answer: "a1",
+      answer: undefined,
     },
     {
       case: "words that read as an answer, then more work: a note after all",
@@ -282,7 +286,7 @@ describe("deriveConversationStructure", () => {
         assistant("a1", "t1", 2, "It is live.\n\n**What changed**"),
         reasoning("r1", "t1", 3),
       ],
-      answer: "a1",
+      answer: undefined,
     },
   ])("a running turn: $case", ({ entries, answer }) => {
     const [only] = structure(entries, { live: "t1" }).turns;
@@ -472,9 +476,10 @@ describe("deriveConversationStructure", () => {
       ],
       { latest: { id: "t1", state: "completed", completed: true }, working: true },
     );
-    const last = result.turns.at(-1)!;
-    expect(last).toMatchObject({ turnId: turn("t2"), live: true, answer: null });
-    expect(result.turns[0]).toMatchObject({ live: false });
+    // Nobody wrote to start it: it is the run before it, going on (run 11).
+    expect(result.turns).toHaveLength(1);
+    expect(result.turns[0]).toMatchObject({ live: true, answer: null });
+    expect(result.turns[0]!.span.turnIds).toEqual([turn("t1"), turn("t2")]);
 
     // Working right after the person wrote is their message's turn, never the
     // one that finished before it.
@@ -566,14 +571,15 @@ describe("deriveConversationStructure", () => {
           taskId: "task-9",
         }),
       ],
-      writing: null,
-      answer: "a1",
+      // D4: the working row's while the run goes on.
+      writing: "a1",
+      answer: null,
     },
     {
       name: "words that read as its answer",
       tail: [assistant("a1", "t1", 1, "Done.\n\nThe routes are:")],
       writing: null,
-      answer: "a1",
+      answer: null,
     },
     {
       name: "a line it moved on from",
@@ -3205,5 +3211,91 @@ describe("deriveOutcome: a service's standing is the latest word on it", () => {
     expect(
       Object.fromEntries((outcome?.live ?? []).map((service) => [service.hostname, service.tone])),
     ).toEqual(standing);
+  });
+});
+
+// Run 11 (2026-10-05): a run is what the Mate did for one message of the
+// person's, the turns its helpers and background work woke included — one
+// card, live while anything it started runs, its answer decided as it ends.
+describe("a run, its woken turns and its work", () => {
+  const ANSWER = "All four sites are live.\n\nEach one has its ten pages, and the switcher works.";
+  // A helper's finish reaches the thread under no turn.
+  const finished = (id: string, minute: number): TimelineEntry => {
+    const base = tool(`done-${id}`, "unused", minute, {
+      label: "Task completed",
+      sourceActivityKind: "task.completed",
+      taskId: `task-${id}`,
+    });
+    if (base.kind !== "work") return base;
+    const { turnId: _turnId, command: _command, toolCallId: _call, ...entry } = base.entry;
+    return { ...base, entry };
+  };
+
+  it("draws a turn nobody wrote to start as the run before it going on", () => {
+    const entries = [
+      user("u1", 0),
+      tool("w1", "t1", 1),
+      assistant("a1", "t1", 2, "Fresh screenshots are being captured now."),
+      finished("h1", 4),
+      tool("w2", "t2", 5),
+      assistant("a2", "t2", 6, ANSWER),
+    ];
+    const built = structure(entries, { latest: { id: "t2", state: "completed", completed: true } });
+    expect(built.turns).toHaveLength(1);
+    const [run] = built.turns;
+    expect(run!.stretches.map((stretch) => stretch.lead?.id ?? null)).toEqual(["u1", null]);
+    expect(run!.answer?.id).toBe("a2");
+    // What woke it is the run's: never a loose line between two cards.
+    expect([...built.looseIndexes]).toEqual([]);
+  });
+
+  it("keeps a run whose work goes on waiting, its last words no answer yet", () => {
+    const entries = [user("u1", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, ANSWER)];
+    const settled = structure(entries, {
+      latest: { id: "t1", state: "completed", completed: true },
+    });
+    expect(settled.turns[0]!.waiting).toBe(false);
+    expect(settled.turns[0]!.answer?.id).toBe("a1");
+    const waiting = structure(entries, {
+      latest: { id: "t1", state: "completed", completed: true },
+      workGoesOn: true,
+    });
+    expect(waiting.turns[0]!.waiting).toBe(true);
+    expect(waiting.turns[0]!.live).toBe(false);
+    expect(waiting.turns[0]!.answer).toBeNull();
+  });
+
+  // D4: the answer is decided when the run ends. While it runs, its words
+  // are the working row's, however much they read as an answer.
+  it("decides no answer while the run goes on", () => {
+    const entries = [user("u1", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, ANSWER)];
+    expect(structure(entries, { live: "t1" }).turns[0]!.answer).toBeNull();
+    expect(
+      structure(entries, { latest: { id: "t1", state: "completed", completed: true } }).turns[0]!
+        .answer?.id,
+    ).toBe("a1");
+  });
+
+  // "Stopped" is said only after the person's Stop: a run their message
+  // interrupted says so.
+  it("tells a run the person's message interrupted from one they stopped", () => {
+    const interrupted = structure(
+      // Their message came while the step ran: the run stopped for it.
+      [
+        user("u1", 0),
+        tool("w1", "t1", 1, { toolLifecycleStatus: "inProgress" }),
+        user("u2", 1),
+        tool("w2", "t2", 3),
+        assistant("a2", "t2", 4),
+      ],
+      { latest: { id: "t2", state: "completed", completed: true } },
+    );
+    expect(interrupted.turns[0]!.interrupted).toBe(true);
+    expect(interrupted.turns[0]!.byMessage).toBe(true);
+    const stopped = structure([user("u1", 0), tool("w1", "t1", 1)], {
+      latest: { id: "t1", state: "interrupted", completed: true },
+    });
+    expect(stopped.turns[0]!.interrupted).toBe(true);
+    expect(stopped.turns[0]!.byMessage).toBe(false);
   });
 });

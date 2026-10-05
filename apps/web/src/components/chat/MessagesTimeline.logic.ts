@@ -396,8 +396,19 @@ export type TurnHeaderActivity =
       readonly key: string | null;
       readonly messages: ReadonlyArray<ChatMessage>;
     }
-  /** It writes words that cannot be placed yet: a note or its answer. */
-  | { readonly kind: "writing" }
+  /**
+   * It writes: its words as they come, the working row's until the run ends
+   * (D4) — keyed as the record will key the note they become.
+   */
+  | {
+      readonly kind: "writing";
+      readonly note?: { readonly key: string; readonly message: ChatMessage };
+    }
+  /**
+   * Its turns are over and what it started goes on — its helpers, or work it
+   * sent to the background: the run waits on it (run 11).
+   */
+  | { readonly kind: "after"; readonly on: "helpers" | "background" }
   /**
    * It asked the person something — a question, an approval — and waits; a
    * question it asked in its own words is the record's item `key` too.
@@ -444,7 +455,18 @@ export type ConversationEvent =
   | { readonly type: "compaction"; readonly label: string }
   | { readonly type: "command"; readonly command: SlashCommand; readonly done: boolean }
   /** The server resumed the thread itself after a usage limit reset. */
-  | { readonly type: "resumed" };
+  | { readonly type: "resumed" }
+  /**
+   * What woke the Mate as the run went on: a helper, or work it sent to the
+   * background, finishing (run 11) — said where the run took it in.
+   */
+  | {
+      readonly type: "woke";
+      readonly tasks: number;
+      readonly failed: number;
+      readonly helpers: boolean;
+      readonly title: string | null;
+    };
 
 /** A run as its status says it: who, whether it still works, and for how long. */
 export interface RunStatus {
@@ -540,6 +562,8 @@ type MessagesTimelineRowBody =
       /** The card it stands in: its line and edge are keyed by it. */
       cardKey: string;
       incidents: ReadonlyArray<IncidentModel>;
+      /** The run's turns are over and what it started runs on: it carries the way to stop it. */
+      waiting?: boolean;
     }
   | {
       /**
@@ -1219,7 +1243,9 @@ function liveActivity(
       ? { kind: "waiting", on: "approval", asked: asking }
       : { kind: "waiting", on: "approval" };
   }
-  if (writing !== null && stretch.entries.includes(writing)) return { kind: "writing" };
+  if (writing !== null && stretch.entries.includes(writing)) {
+    return { kind: "writing", note: { key: `note:${writing.id}`, message: writing.message } };
+  }
   let passed = false;
   for (let index = stretch.entries.length - 1; index >= 0; index -= 1) {
     const entry = stretch.entries[index]!;
@@ -1845,6 +1871,8 @@ export function deriveMessagesTimelineRows(input: {
     isWorking: input.isWorking,
     activeTurnStartedAt: input.activeTurnStartedAt,
     ...(input.nowMs === undefined ? {} : { nowMs: input.nowMs }),
+    // What the Mate started goes on with no turn running: the latest run waits on it.
+    workGoesOn: !input.isWorking && input.afterTurnWork != null,
   });
   const turnByKey = new Map(structure.turns.map((turn) => [turn.key, turn]));
   // Which tasks are the commands they track: a command's words, and no row of their own.
@@ -2061,13 +2089,17 @@ export function deriveMessagesTimelineRows(input: {
   // One that finished while a run worked was that run's to take in, never
   // what woke a later one (run 9: a helper done mid-run woke a run twenty
   // minutes on, as a line of its own).
-  const working = structure.turns.map((turn) => {
-    const end = turn.stretches.at(-1)?.endedAt ?? null;
-    return [
-      Date.parse(turn.stretches[0]?.startedAt ?? ""),
-      end === null ? Number.POSITIVE_INFINITY : Date.parse(end),
-    ] as const;
-  });
+  // Each stretch on its own: a run that went on over several turns did not
+  // work between them, while its helpers did (run 11).
+  const working = structure.turns.flatMap((turn) =>
+    turn.stretches.map((stretch) => {
+      const end = stretch.endedAt;
+      return [
+        Date.parse(stretch.startedAt),
+        end === null ? Number.POSITIVE_INFINITY : Date.parse(end),
+      ] as const;
+    }),
+  );
   const takenIn = (finishedMs: number) =>
     working.some(([from, to]) => finishedMs >= from && finishedMs <= to);
   const helperQueue = (input.helperFinishes ?? [])
@@ -2104,9 +2136,19 @@ export function deriveMessagesTimelineRows(input: {
    * panel's to say (`helperWoke`). Work no turn owns says itself in its own
    * line, and is never said again here.
    */
-  const wokeBy = (turn: ConversationTurn, lagging: boolean): WorkLogEntry[] => {
-    const startMs = Date.parse(turn.stretches[0]?.startedAt ?? "");
-    const fromMs = lagging ? startMs : previousEndMs(turn);
+  const wokeBy = (turn: ConversationTurn, lagging: boolean): WorkLogEntry[] =>
+    wokeBetween(Date.parse(turn.stretches[0]?.startedAt ?? ""), previousEndMs(turn), lagging);
+  /**
+   * What finished after `fromMs` and before a run — or one of its turns
+   * nobody wrote to start — began at `startMs`; `lagging`, in its first
+   * moments instead (`WOKE_LAG_MS`).
+   */
+  const wokeBetween = (
+    startMs: number,
+    previousEndMs: number,
+    lagging: boolean,
+  ): WorkLogEntry[] => {
+    const fromMs = lagging ? startMs : previousEndMs;
     const untilMs = lagging ? startMs + WOKE_LAG_MS : startMs;
     if (!Number.isFinite(untilMs) || Number.isNaN(fromMs)) return [];
     return entries
@@ -2188,7 +2230,27 @@ export function deriveMessagesTimelineRows(input: {
         if (woke.length === 0) helper = helperWoke(first.startedAt, true);
       }
     }
-    const wokeIds = new Set(woke.map((entry) => entry.id));
+    // Where a turn nobody wrote to start took the run on, what woke it is
+    // said there, inside the card, once (run 11: "in the background" and
+    // "helper" lines between cards, connected to nothing).
+    const wakes = new Map<string, { woke: WorkLogEntry[]; helper: HelperFinish | null }>();
+    turn.stretches.forEach((stretch, index) => {
+      if (index === 0 || stretch.lead !== null) return;
+      const startMs = Date.parse(stretch.startedAt);
+      const fromMs = Date.parse(turn.stretches[index - 1]?.endedAt ?? "") || -Infinity;
+      let found = wokeBetween(startMs, fromMs, false);
+      let finish: HelperFinish | null = null;
+      if (found.length === 0) finish = helperWoke(stretch.startedAt, false);
+      if (found.length === 0 && finish === null) {
+        found = wokeBetween(startMs, fromMs, true);
+        if (found.length === 0) finish = helperWoke(stretch.startedAt, true);
+      }
+      wakes.set(stretch.key, { woke: found, helper: finish });
+    });
+    const wokeIds = new Set([
+      ...woke.map((entry) => entry.id),
+      ...[...wakes.values()].flatMap((wake) => wake.woke.map((entry) => entry.id)),
+    ]);
     const exchanges: MessagesTimelineRow[] = [];
     // What the card holds besides its record: a plan to approve, a pause.
     const extras: MessagesTimelineRow[] = [];
@@ -2200,6 +2262,25 @@ export function deriveMessagesTimelineRows(input: {
       reading,
     );
     turn.stretches.forEach((stretch, index) => {
+      const wake = wakes.get(stretch.key);
+      if (wake !== undefined && (wake.woke.length > 0 || wake.helper !== null)) {
+        items.push({
+          kind: "event",
+          key: `woke:${stretch.key}`,
+          at: stretch.startedAt,
+          event: {
+            type: "woke",
+            ...(wake.woke.length > 0
+              ? backgroundRunSummary(wake.woke)
+              : {
+                  tasks: 1,
+                  failed: wake.helper!.failed ? 1 : 0,
+                  helpers: true,
+                  title: wake.helper!.title,
+                }),
+          },
+        });
+      }
       if (index > 0 && stretch.lead !== null && stretch.leadIndex !== null) {
         const person = personRow(stretch.lead, stretch.leadIndex, stretch.aside);
         exchanges.push(person);
@@ -2233,18 +2314,22 @@ export function deriveMessagesTimelineRows(input: {
     // one breath flashed a card for a frame, and the answer jumped up as it
     // went (Nova, 2026-09-26).
     const answeredAlone = turn.live && !hasRecord && answer !== null;
-    const working = last.live && !answeredAlone;
-    const carded = (turn.live && !answeredAlone) || hasRecord || pausedHere || extras.length > 0;
+    // Its turns over, what it started goes on: the card stays open on it.
+    const waiting = turn.waiting;
+    const working = (last.live && !answeredAlone) || waiting;
+    const carded =
+      (turn.live && !answeredAlone) || waiting || hasRecord || pausedHere || extras.length > 0;
     const diff = turn.turnId === null ? null : (diffByTurnId.get(turn.turnId) ?? null);
-    const outcome = turn.live
-      ? null
-      : deriveOutcome({
-          turn,
-          landed: landedByTurnKey.get(turn.key) ?? [],
-          diff,
-          activity: turnActivity(turn),
-          later: turnsAfter(structure, turn.key),
-        });
+    const outcome =
+      turn.live || waiting
+        ? null
+        : deriveOutcome({
+            turn,
+            landed: landedByTurnKey.get(turn.key) ?? [],
+            diff,
+            activity: turnActivity(turn),
+            later: turnsAfter(structure, turn.key),
+          });
     // What the result draws under the line: an outcome of what its calls came
     // to alone is said on the line (`outcomeDraws`).
     const result = outcome !== null && outcomeDraws(outcome) ? outcome : null;
@@ -2285,10 +2370,11 @@ export function deriveMessagesTimelineRows(input: {
     }
     rows.push(...exchanges);
     const status: RunStatus = {
-      live: turn.live,
-      face: stretchFace({ stretch: last, turn, pausedHere }),
+      // A run that waits on what it started is not over: its clock runs on.
+      live: turn.live || waiting,
+      face: waiting ? "working" : stretchFace({ stretch: last, turn, pausedHere }),
       startedAt: first.startedAt,
-      endedAt: last.endedAt,
+      endedAt: waiting ? null : last.endedAt,
       ...waitedOnPerson(turn),
       // A question it asked is work too: a run that only asked read "thought".
       worked:
@@ -2328,9 +2414,13 @@ export function deriveMessagesTimelineRows(input: {
           id: `record:${first.key}`,
           createdAt: first.startedAt,
           turnKey: turn.key,
-          live: turn.live,
+          live: turn.live || waiting,
           items,
-          now: working && answer === null ? liveActivity(last, turn.writing, tracked, batch) : null,
+          now: waiting
+            ? { kind: "after", on: input.afterTurnWork === "monitoring" ? "background" : "helpers" }
+            : working && answer === null
+              ? liveActivity(last, turn.writing, tracked, batch)
+              : null,
           answering: answer !== null,
           status,
           outcome,
@@ -2351,6 +2441,7 @@ export function deriveMessagesTimelineRows(input: {
           turnKey: turn.key,
           cardKey: first.key,
           incidents: standingIncidents(wholeRun),
+          ...(waiting ? { waiting: true } : {}),
         });
       }
       // Settled, what runs alongside becomes the run's result, where it was —
@@ -2365,8 +2456,9 @@ export function deriveMessagesTimelineRows(input: {
         });
       }
       // What it sent to the background, on its own card: one line, the jobs
-      // as they stand now — running past the turn, or reported since.
-      if (!turn.live) {
+      // as they stand now — reported since. While they run, the card waits
+      // on them, and what runs alongside says them.
+      if (!turn.live && !waiting) {
         const jobs = turn.stretches.flatMap((stretch) =>
           stretch.entries.flatMap((candidate) => {
             if (candidate.kind !== "work") return [];
@@ -2524,7 +2616,9 @@ export function deriveMessagesTimelineRows(input: {
     emitTurn(turn);
   }
 
-  if (!input.isWorking && input.afterTurnWork) {
+  // Work that outlived its run is that run's card's to say, waiting on it;
+  // only work no run waits on stands at the bottom on its own.
+  if (!input.isWorking && input.afterTurnWork && !structure.turns.some((turn) => turn.waiting)) {
     rows.push({
       kind: "after-work",
       id: "after-work",

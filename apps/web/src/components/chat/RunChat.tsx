@@ -2160,6 +2160,18 @@ export function recordEventWords(
         words: `You ran /${event.command.name}`,
         detail: event.command.args || null,
       };
+    case "woke": {
+      const what =
+        event.title === null
+          ? `${event.tasks} ${event.helpers ? "helpers" : "background jobs"}`
+          : event.tasks === 1
+            ? event.title
+            : `${event.title} and ${event.tasks - 1} more`;
+      return {
+        words: `${what} ${event.failed > 0 ? "failed" : "finished"}`,
+        detail: `${speaker} went on`,
+      };
+    }
   }
 }
 
@@ -2633,6 +2645,13 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
       return <span className="run-now-verb">{severalCallsWords(line.calls)}</span>;
     case "waiting":
       return <span className="run-now-verb">{nowLineWords(line)}</span>;
+    case "after":
+      return (
+        <>
+          <span className="run-now-verb">{nowLineWords(line)}</span>
+          <TypingDots className="run-now-dots" />
+        </>
+      );
     case "writing":
       return (
         <>
@@ -2949,6 +2968,13 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
       return (
         <span className="run-slot-word">{nowLineWords({ kind: "waiting", on: filler.on })}</span>
       );
+    case "after":
+      return (
+        <>
+          <span className="run-slot-word">{nowLineWords({ kind: "after", on: filler.on })}</span>
+          <TypingDots className="run-now-dots" />
+        </>
+      );
   }
 }
 
@@ -2966,7 +2992,9 @@ const NO_ITEMS: ReadonlyMap<string, RecordItem> = new Map();
 
 /** What the empty slot says, as a key: the same words are no change. */
 function fillerKey(filler: SlotFiller): string {
-  return filler.kind === "waiting" ? `waiting:${filler.on}` : filler.kind;
+  return filler.kind === "waiting" || filler.kind === "after"
+    ? `${filler.kind}:${filler.on}`
+    : filler.kind;
 }
 
 function LiveSlot({
