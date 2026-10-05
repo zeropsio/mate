@@ -7,13 +7,11 @@
  * the projects page's, a project page's own, the left menu's rows as they are mounted.
  */
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { projectKeyOf, type ProjectRef } from "@t3tools/client-runtime/zerops/data";
 import { isMateKind } from "@t3tools/shared/zeropsRoles";
-import * as Effect from "effect/Effect";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import { findInventoryProjectRef, projectAuthority, useZeropsInventory } from "./inventoryContext";
-import { useZeropsData } from "./zeropsDataContext";
+import { useInterestLeases } from "./useInterestLeases";
 
 /** The projects HQ places a Mate in, once each. */
 export function drawnMateProjects(
@@ -31,7 +29,6 @@ export function drawnMateProjects(
 }
 
 export function useMatesInventory(projectIds: ReadonlyArray<string>): void {
-  const { runtime } = useZeropsData();
   const inventory = useZeropsInventory();
   const projects = useMemo(
     () =>
@@ -44,50 +41,12 @@ export function useMatesInventory(projectIds: ReadonlyArray<string>): void {
       }),
     [projectIds, inventory],
   );
-  // Each lease held, by its project's key, and the account's runtime they were taken from: a
-  // change in what is drawn takes only the new ones and lets go only those no longer drawn, so the
-  // others are never read again for it.
-  const held = useRef({ runtime, leases: new Map<string, AbortController>() });
-  useEffect(() => {
-    const { leases } = held.current;
-    if (held.current.runtime !== runtime) {
-      for (const lease of leases.values()) lease.abort();
-      leases.clear();
-      held.current.runtime = runtime;
-    }
-    const wanted = new Map<string, ProjectRef>(
-      projects.map((project) => [projectKeyOf(project), project]),
-    );
-    for (const [key, lease] of leases) {
-      if (wanted.has(key)) continue;
-      lease.abort();
-      leases.delete(key);
-    }
-    for (const [key, project] of wanted) {
-      if (leases.has(key)) continue;
-      const lease = new AbortController();
-      leases.set(key, lease);
-      void Effect.runPromise(
-        Effect.scoped(
-          runtime
-            .acquire({ kind: "project-inventory", project })
-            .pipe(Effect.andThen(Effect.never)),
-        ),
-        { signal: lease.signal },
-      ).catch(() => {
-        // A refused lease is asked for again when what is drawn next changes.
-        if (leases.get(key) === lease) leases.delete(key);
-      });
-    }
-  }, [projects, runtime]);
-  // Every lease goes with the surface.
-  useEffect(() => {
-    const { leases } = held.current;
-    return () => {
-      for (const lease of leases.values()) lease.abort();
-      leases.clear();
-    };
-  }, []);
+  useInterestLeases(
+    useMemo(
+      () => projects.map((project) => ({ kind: "project-inventory" as const, project })),
+      [projects],
+    ),
+  );
 }
 
 /**
