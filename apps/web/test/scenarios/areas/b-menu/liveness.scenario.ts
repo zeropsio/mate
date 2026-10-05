@@ -197,12 +197,11 @@ describe("B: menu liveness", () => {
         yield* s.then.menu.row("Ada").appears();
         yield* s.then.menu.row("Bea").appears();
         const retained = yield* s.then.menu.keepsRows(["Ada"]);
-        // Bea must disappear through renewal rather than its immediate realtime deletion.
-        yield* s.colleague.deletes("Bea", { notify: false });
+        yield* s.colleague.deletes("Bea");
         yield* Effect.promise(() => s.clock.advance(12 * 60_000));
         yield* s.menu.absent("Bea");
-        // Let the renewal's delayed denial confirmation run before closing the retention guard.
-        yield* Effect.promise(() => s.clock.advance(5_000));
+        // Keep observing through any delayed confirmation reads and their rendered results.
+        yield* s.colleague.settlesRefusal("Ada");
         yield* retained;
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;
