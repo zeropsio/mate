@@ -4030,6 +4030,12 @@ backs is `../zcp/plans/research/zerops-auth-backbone-2026-09-15.md`.
   integration tokens get `403 notAllowedForApplicationToken`) and an integration token. `GET
 /auth/info` refuses both application kinds with the same code.
   - _Evidence:_ `/auth/info`, `POST /user-token` with each kind
+- **2026-10-05: a personal token deletes no personal token, not even itself; a session deletes
+  both.** `DELETE /user-token/{id}` with a personal token answered `403
+notAllowedForApplicationToken` for another personal token and for its own id; the session that
+  minted them deleted both (`200`).
+  - _Evidence:_ two probe personal tokens minted from a session on the owner's account, deleted
+    after
 - **An integration token is an org member with an identity of its own.** Each appears in `GET
 /client/{id}/user/list` as `token-<id lowercased>@zerops.io` with its org role; its project grants
   are ordinary `userRoles` entries on the project; `/user/info` answers with `id` = the token id and
