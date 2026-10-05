@@ -5,10 +5,10 @@
  */
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { ProjectActivityRead, ProjectRef } from "@t3tools/client-runtime/zerops/data";
-import * as Effect from "effect/Effect";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
 import { findInventoryProjectRef, projectAuthority, useZeropsInventory } from "../inventoryContext";
+import { useInterestLeases } from "../useInterestLeases";
 import {
   useZeropsAtomSelections,
   useZeropsData,
@@ -31,26 +31,16 @@ export function useProjectsProcesses(
     }
     return refs;
   }, [inventory, projectIds]);
-  // The projects' ids say what is demanded: a new map of the same ones demands nothing new.
-  const identity = [...projects.keys()].sort().join(",");
-  useEffect(() => {
-    if (projects.size === 0) return;
-    const controller = new AbortController();
-    for (const project of projects.values()) {
-      for (const descriptor of [
-        { kind: "project-activity", project } as const,
-        { kind: "project-process-history", project, before: null, limit: 100 } as const,
-      ]) {
-        void Effect.runPromise(
-          Effect.scoped(runtime.acquire(descriptor).pipe(Effect.andThen(Effect.never))),
-          { signal: controller.signal },
-        ).catch(() => undefined);
-      }
-    }
-    return () => {
-      controller.abort();
-    };
-  }, [runtime, identity]);
+  useInterestLeases(
+    useMemo(
+      () =>
+        [...projects.values()].flatMap((project) => [
+          { kind: "project-activity", project } as const,
+          { kind: "project-process-history", project, before: null, limit: 100 } as const,
+        ]),
+      [projects],
+    ),
+  );
 
   const entries = useMemo(
     (): ReadonlyArray<ZeropsAtomSelection<ProjectActivityRead>> =>
