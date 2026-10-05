@@ -1,0 +1,282 @@
+[
+  {
+    "path": "apps/web/src/components/chat/composerControlMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "window.localStorage.getItem(STORAGE_KEY)",
+    "owner": "invariant 9: Mate identity/connection",
+    "reason": "the composer's model label copied from a Mate's provider catalog, in raw storage no account owns; the catalog's projection replaces it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/composerControlMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "window.localStorage.setItem(STORAGE_KEY)",
+    "owner": "invariant 9: Mate identity/connection",
+    "reason": "the composer's model label copied from a Mate's provider catalog, in raw storage no account owns; the catalog's projection replaces it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/rowRiseMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.getItem(RISEN_MEMORY_KEY)",
+    "owner": "invariant 9: Mate attention/overview",
+    "reason": "remembers which project rows last rose as a verdict; the attention projection decides on every load",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/rowRiseMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.removeItem(RISEN_MEMORY_KEY)",
+    "owner": "invariant 9: Mate attention/overview",
+    "reason": "remembers which project rows last rose as a verdict; the attention projection decides on every load",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/projects/rowRiseMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.setItem(RISEN_MEMORY_KEY)",
+    "owner": "invariant 9: Mate attention/overview",
+    "reason": "remembers which project rows last rose as a verdict; the attention projection decides on every load",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/bootFrame.ts",
+    "kind": "CallExpression",
+    "fingerprint": "getLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY)",
+    "owner": "invariant 9: sign-in/session",
+    "reason": "reads the menu-width preference inside the boot-frame module; stays when the module moves to the allowlist without its verdict",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/bootFrame.ts",
+    "kind": "CallExpression",
+    "fingerprint": "window.localStorage.removeItem(BOOT_FRAME_STORAGE_KEY)",
+    "owner": "invariant 9: sign-in/session",
+    "reason": "remembers that the last load was signed in to choose the first frame; derived from the local session, so it may join the allowlist instead of going",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/bootFrame.ts",
+    "kind": "CallExpression",
+    "fingerprint": "window.localStorage.setItem(BOOT_FRAME_STORAGE_KEY)",
+    "owner": "invariant 9: sign-in/session",
+    "reason": "remembers that the last load was signed in to choose the first frame; derived from the local session, so it may join the allowlist instead of going",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/composerTopMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.getItem(COMPOSER_TOP_MEMORY_STORAGE_KEY)",
+    "owner": "invariant 9: changes/review",
+    "reason": "copies the composer's change strip (repo, number, title) from HQ; the change projection paints it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/composerTopMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.removeItem(COMPOSER_TOP_MEMORY_STORAGE_KEY)",
+    "owner": "invariant 9: changes/review",
+    "reason": "copies the composer's change strip (repo, number, title) from HQ; the change projection paints it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/composerTopMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.setItem(COMPOSER_TOP_MEMORY_STORAGE_KEY)",
+    "owner": "invariant 9: changes/review",
+    "reason": "copies the composer's change strip (repo, number, title) from HQ; the change projection paints it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/environmentPorts.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.getItem(key)",
+    "owner": "invariant 9: Mate identity/connection",
+    "reason": "registration records (Mate origin, project, name) kept across loads and tabs; the listing's projection replaces them",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/environmentPorts.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.setItem(key)",
+    "owner": "invariant 9: Mate identity/connection",
+    "reason": "registration records (Mate origin, project, name) kept across loads and tabs; the listing's projection replaces them",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/environmentPorts.ts",
+    "kind": "CallExpression",
+    "fingerprint": "window.addEventListener(\"storage\")",
+    "owner": "invariant 9: Mate identity/connection",
+    "reason": "registration records (Mate origin, project, name) kept across loads and tabs; the listing's projection replaces them",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/environmentPorts.ts",
+    "kind": "CallExpression",
+    "fingerprint": "window.sessionStorage.getItem(key)",
+    "owner": "invariant 9: operations",
+    "reason": "this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/environmentPorts.ts",
+    "kind": "CallExpression",
+    "fingerprint": "window.sessionStorage.removeItem(key)",
+    "owner": "invariant 9: operations",
+    "reason": "this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/environmentPorts.ts",
+    "kind": "CallExpression",
+    "fingerprint": "window.sessionStorage.setItem(key)",
+    "owner": "invariant 9: operations",
+    "reason": "this tab's own container intents (restart, update it started), not a source's answer; moves to an allowlisted module",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/hqVerdict.ts",
+    "kind": "CallExpression",
+    "fingerprint": "localStorage.getItem(STORAGE_KEY)",
+    "owner": "invariant 9: HQ structure/apps",
+    "reason": "remembers which HQ is official, or that none is, for a day; HQ's own answer replaces the verdict",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/hqVerdict.ts",
+    "kind": "CallExpression",
+    "fingerprint": "localStorage.setItem(STORAGE_KEY)",
+    "owner": "invariant 9: HQ structure/apps",
+    "reason": "remembers which HQ is official, or that none is, for a day; HQ's own answer replaces the verdict",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/lastConversationMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.getItem(LAST_CONVERSATION_MEMORY_KEY)",
+    "owner": "invariant 9: Mate identity/connection",
+    "reason": "remembers the last conversation so a cold load guesses where to land; the home waits for a source",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/lastConversationMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.removeItem(LAST_CONVERSATION_MEMORY_KEY)",
+    "owner": "invariant 9: Mate identity/connection",
+    "reason": "remembers the last conversation so a cold load guesses where to land; the home waits for a source",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/lastConversationMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.setItem(LAST_CONVERSATION_MEMORY_KEY)",
+    "owner": "invariant 9: Mate identity/connection",
+    "reason": "remembers the last conversation so a cold load guesses where to land; the home waits for a source",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/mateIdentityMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.getItem(MATE_IDENTITY_MEMORY_KEY)",
+    "owner": "invariant 9: Mate identity/connection",
+    "reason": "copies each Mate's name, face and project from the listing; the identity projection draws the first frame",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/mateIdentityMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.removeItem(MATE_IDENTITY_MEMORY_KEY)",
+    "owner": "invariant 9: Mate identity/connection",
+    "reason": "copies each Mate's name, face and project from the listing; the identity projection draws the first frame",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/mateIdentityMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.setItem(MATE_IDENTITY_MEMORY_KEY)",
+    "owner": "invariant 9: Mate identity/connection",
+    "reason": "copies each Mate's name, face and project from the listing; the identity projection draws the first frame",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/menuMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.getItem(MENU_MEMORY_STORAGE_KEY)",
+    "owner": "invariant 9: HQ structure/apps",
+    "reason": "copies HQ's structure, Mates, members, change rows and chips to draw the menu before HQ answers; the store holds them in memory",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/menuMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.removeItem(MENU_MEMORY_STORAGE_KEY)",
+    "owner": "invariant 9: HQ structure/apps",
+    "reason": "copies HQ's structure, Mates, members, change rows and chips to draw the menu before HQ answers; the store holds them in memory",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/menuMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.setItem(MENU_MEMORY_STORAGE_KEY)",
+    "owner": "invariant 9: HQ structure/apps",
+    "reason": "copies HQ's structure, Mates, members, change rows and chips to draw the menu before HQ answers; the store holds them in memory",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/menuSkeleton.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.getItem(MENU_SKELETON_STORAGE_KEY)",
+    "owner": "invariant 9: projects",
+    "reason": "copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/menuSkeleton.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.removeItem(MENU_SKELETON_STORAGE_KEY)",
+    "owner": "invariant 9: projects",
+    "reason": "copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/menuSkeleton.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.removeItem(MENU_SKELETON_STORAGE_KEY)",
+    "owner": "invariant 9: projects",
+    "reason": "copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/menuSkeleton.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.setItem(MENU_SKELETON_STORAGE_KEY)",
+    "owner": "invariant 9: projects",
+    "reason": "copies the project listing (names, status, roles) to draw the menu tree before it is listed; the store holds it in memory",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/writerMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.getItem(WRITER_MEMORY_KEY)",
+    "owner": "invariant 9: permissions/members",
+    "reason": "remembers who may write in each conversation as a verdict; the footer waits for the live answer",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/writerMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.removeItem(WRITER_MEMORY_KEY)",
+    "owner": "invariant 9: permissions/members",
+    "reason": "remembers who may write in each conversation as a verdict; the footer waits for the live answer",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/writerMemory.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountLocalStorage.setItem(WRITER_MEMORY_KEY)",
+    "owner": "invariant 9: permissions/members",
+    "reason": "remembers who may write in each conversation as a verdict; the footer waits for the live answer",
+    "expires": "never"
+  }
+]
