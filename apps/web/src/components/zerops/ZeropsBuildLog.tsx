@@ -16,8 +16,6 @@
 import { ChevronRightIcon } from "lucide-react";
 import { useLayoutEffect, useRef, type JSX } from "react";
 
-import { foldBuildLogLines } from "@t3tools/client-runtime/zerops/activity/buildLog";
-
 import { cn } from "~/lib/utils";
 import {
   Dialog,
@@ -47,26 +45,10 @@ export interface ZeropsBuildLogProps {
   readonly subject?: string | undefined;
   /** A settled build's: the way to its log stands before its lines are read. */
   readonly stands?: boolean;
-  /**
-   * A running build's room says it waits for the build's first line — the
-   * caller's reading (`buildLogWaitsForFirstLine`): only while the build step
-   * itself runs and the stream stands open with no line.
-   */
-  readonly waiting?: boolean;
 }
 
 /** zcp's `mapSeverityToNumeric`: 0 (emergency) through 3 (error) are the tones worth flagging red. */
 const FAILED_SEVERITY_MAX = 3;
-
-/** The newest lines shown under the build step while it runs. */
-const GLANCE_ROWS = 2;
-
-/**
- * What a running build's room says until its first line: words, not an empty
- * band (which read as the log being gone) and not a room that collapses (the
- * card's height would move under the reader when the first line lands).
- */
-const WAITING_WORDS = "Waiting for the build's first line…";
 
 /** What a log with no line to draw says in its dialog: read failed, still reading, or gone. */
 export function emptyLogWords(status: ZeropsBuildLogStatus): string {
@@ -91,53 +73,28 @@ export function ZeropsBuildLog({
   stands = false,
   status,
   subject,
-  waiting = false,
 }: ZeropsBuildLogProps): JSX.Element | null {
-  // While the build runs its newest lines' room stands from the first draw,
-  // so the card's height is final when it opens; once it ended, no glance.
-  const glancing = !stands && status !== "ended" && status !== "error";
-  if (lines.length === 0 && !stands && !glancing) return null;
-  // Nothing to open until a running build writes its first line: before that
-  // the log is empty, and its container may not even run yet. Its row stands.
+  // A running build's way to its log stands from the first draw, so its row
+  // never moves when the first line lands; a settled one's stands while its
+  // lines are read. No room is held for lines under the step (the owner,
+  // 2026-10-05: "a premade space for … logs").
+  const live = !stands && status !== "ended" && status !== "error";
+  if (lines.length === 0 && !stands && !live) return null;
+  // Nothing to open until a running build writes its first line.
   const openable = stands || lines.length > 0;
   const count = lineCount(lines.length);
-  const glance = glancing ? foldBuildLogLines(lines).slice(-GLANCE_ROWS) : [];
   return (
-    <div className="mt-1" data-zerops-build-log data-zerops-build-log-status={status}>
-      {glancing ? (
-        <ol
-          aria-label="The build's newest lines"
-          className="h-10 font-mono text-muted-foreground text-xs leading-5"
-          data-zerops-build-log-glance
-        >
-          {waiting && glance.length === 0 ? (
-            <li data-zerops-build-log-waiting>{WAITING_WORDS}</li>
-          ) : null}
-          {glance.map((row) => (
-            <li
-              className={cn(
-                "flex min-w-0 gap-1.5",
-                row.severity <= FAILED_SEVERITY_MAX && "text-destructive-foreground",
-              )}
-              data-zerops-build-log-line
-              data-zerops-build-log-severity={row.severity}
-              key={row.id}
-            >
-              <span className="min-w-0 truncate">{row.text}</span>
-              {row.count > 1 ? (
-                <span className="shrink-0" data-zerops-build-log-repeat>
-                  ×{row.count}
-                </span>
-              ) : null}
-            </li>
-          ))}
-        </ol>
-      ) : null}
+    <span
+      className="inline-flex shrink-0"
+      data-zerops-build-log
+      data-zerops-build-log-status={status}
+    >
       <button
         aria-haspopup="dialog"
         aria-hidden={openable ? undefined : true}
+        aria-label={count === undefined ? "Open the build's log" : `Open the build's log, ${count}`}
         className={cn(
-          "group/log inline-flex items-center gap-1.5 text-muted-foreground text-xs transition-colors hover:text-foreground",
+          "group/log inline-flex h-5 items-center gap-0.5 text-muted-foreground text-xs transition-colors hover:text-foreground",
           !openable && "invisible",
         )}
         data-zerops-build-log-toggle
@@ -146,12 +103,7 @@ export function ZeropsBuildLog({
         tabIndex={openable ? undefined : -1}
         type="button"
       >
-        <span className="text-foreground">Build log</span>
-        {count !== undefined ? (
-          <span className="tabular-nums" data-zerops-build-log-count>
-            {count}
-          </span>
-        ) : null}
+        Log
         <ChevronRightIcon aria-hidden="true" className="size-3 shrink-0" />
       </button>
       <Dialog
@@ -180,7 +132,7 @@ export function ZeropsBuildLog({
           </DialogPanel>
         </DialogPopup>
       </Dialog>
-    </div>
+    </span>
   );
 }
 

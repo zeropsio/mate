@@ -14,10 +14,7 @@
 import { createElement, useEffect, useRef, useState, type ReactElement } from "react";
 
 import type { ObservedKind } from "@t3tools/client-runtime/zerops/activity/attribution";
-import {
-  buildLogWaitsForFirstLine,
-  type BuildLogQuery,
-} from "@t3tools/client-runtime/zerops/activity/buildLog";
+import { type BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import type {
   Observation,
   ObservationState,
@@ -510,11 +507,6 @@ export function useOperationCard(
     stands,
     status: buildLog.status,
     subject: service ?? operation.subject,
-    waiting: buildLogWaitsForFirstLine({
-      buildStep: region.pipeline?.steps.find(({ id }) => id === "RUN_BUILD_COMMANDS")?.state,
-      status: buildLog.status,
-      lineCount: buildLog.lines.length,
-    }),
   });
   return { observed: { ...observed, log }, ...fields };
 }

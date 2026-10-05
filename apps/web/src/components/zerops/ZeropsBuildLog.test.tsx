@@ -33,16 +33,9 @@ const LINES: ReadonlyArray<ZeropsBuildLogLine> = [
 const render = (
   lines: ReadonlyArray<ZeropsBuildLogLine>,
   status: "loading" | "live" | "ended" = "live",
-  waiting = false,
 ) =>
   renderToStaticMarkup(
-    <ZeropsBuildLog
-      lines={lines}
-      onToggle={vi.fn()}
-      open={false}
-      status={status}
-      waiting={waiting}
-    />,
+    <ZeropsBuildLog lines={lines} onToggle={vi.fn()} open={false} status={status} />,
   );
 
 const rowsOf = (html: string) =>
@@ -50,49 +43,22 @@ const rowsOf = (html: string) =>
     ([row]) => row,
   );
 
+const toggleOf = (html: string) =>
+  html.match(/<button[^>]*data-zerops-build-log-toggle[\s\S]*?<\/button>/)?.[0] ?? "";
+
 describe("ZeropsBuildLog", () => {
-  // Under the build step, only a glance while it runs; the whole log opens
-  // in a dialog (the owner, 2026-09-26: "it should be opened in like a live
-  // dialog or something instead of inline").
-  it("glances at the build's newest two lines while it runs", () => {
+  // At the end of the build's line, the way to its log and nothing more: no
+  // room under the step held for lines that may come (the owner, 2026-10-05:
+  // "a premade space for … logs"); the whole log opens in a dialog (the
+  // owner, 2026-09-26: "it should be opened in like a live dialog").
+  it("holds no room for lines under the build: only the way to its log", () => {
     const lines = Array.from({ length: 12 }, (_, index) =>
       lineOf(index + 1, `step ${index + 1} ok`),
     );
-    const rows = rowsOf(render(lines));
-
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toContain("step 11 ok");
-    expect(rows[1]).toContain("step 12 ok");
-  });
-
-  it("glances at nothing once the build ended, and draws no log inline", () => {
-    const html = render(LINES, "ended");
-    expect(rowsOf(html)).toHaveLength(0);
-    expect(html).not.toContain("data-zerops-build-log-body");
-  });
-
-  it("folds lines alike but for one package into their newest line, counted", () => {
-    const html = render([
-      lineOf(1, "➤ YN0000: ┌ Fetch step"),
-      lineOf(2, "➤ YN0013: │ cssesc@npm:3.0.0 can't be found in the cache"),
-      lineOf(3, "➤ YN0013: │ csstype@npm:3.1.3 can't be found in the cache"),
-      lineOf(4, "➤ YN0013: │ lodash@npm:4.17.21 can't be found in the cache"),
-    ]);
-    const rows = rowsOf(html);
-
-    expect(rows).toHaveLength(2);
-    expect(rows[1]).toContain("lodash@npm:4.17.21");
-    expect(rows[1]).toMatch(/data-zerops-build-log-repeat[^>]*>×3</);
-    expect(rows[0]).not.toContain("data-zerops-build-log-repeat");
-  });
-
-  it("puts an error line in the failure tone, and leaves a higher-severity line alone", () => {
-    const [plain, error] = rowsOf(render(LINES));
-
-    expect(error).toContain('data-zerops-build-log-severity="3"');
-    expect(error).toContain("text-destructive-foreground");
-    expect(plain).toContain('data-zerops-build-log-severity="6"');
-    expect(plain).not.toContain("text-destructive-foreground");
+    const html = render(lines);
+    expect(html).not.toContain("data-zerops-build-log-line");
+    expect(html).not.toContain("step 12 ok");
+    expect(toggleOf(html)).not.toContain("disabled");
   });
 
   // A log the build has not written a line of is nothing to open: the
@@ -102,45 +68,31 @@ describe("ZeropsBuildLog", () => {
     expect(render([], "ended")).toBe("");
   });
 
-  // Its room stands from the first draw while the build runs, so the card's
-  // height is final when it opens; the way to the log is there but not open
-  // to anyone until the first line (pass 36). The room says it waits for the
-  // first line when its caller reads so (`buildLogWaitsForFirstLine`, pass 37),
-  // and a line, once there, is what it shows.
+  // While the build runs, its way stands from the first draw, so the line
+  // never moves when the first line lands; it opens once there is a line.
   it.each([
-    { name: "no line, waiting", lines: [], waiting: true, rows: 0, openable: false, waits: true },
-    { name: "no line, silent", lines: [], waiting: false, rows: 0, openable: false, waits: false },
-    { name: "its first lines", lines: LINES, waiting: true, rows: 2, openable: true, waits: false },
-  ] as const)("while it runs, its newest lines' room stands: $name", (row) => {
-    const { lines, waiting, rows, openable, waits } = row;
-    const html = render(lines, "live", waiting);
-    const glance = html.match(/<ol[^>]*data-zerops-build-log-glance[\s\S]*?<\/ol>/)?.[0] ?? "";
-    expect(glance).not.toBe("");
-    expect(rowsOf(html)).toHaveLength(rows);
-    expect(glance.includes("Waiting for the build&#x27;s first line…")).toBe(waits);
-    const toggle = html.match(/<button[^>]*data-zerops-build-log-toggle[^>]*>/)?.[0] ?? "";
+    { name: "no line yet", lines: [], openable: false },
+    { name: "its first lines", lines: LINES, openable: true },
+  ] as const)("while it runs, its way to the log stands: $name", ({ lines, openable }) => {
+    const toggle = toggleOf(render(lines, "live"));
+    expect(toggle).not.toBe("");
     expect(toggle.includes("disabled")).toBe(!openable);
   });
 
   it.each([
     { name: "one", lines: 1, count: "1 line" },
     { name: "a build's worth", lines: 1_229, count: "1,229 lines" },
-  ])(
-    "labels its link Build log in sentence case, with its line count: $name",
-    ({ lines, count }) => {
-      const html = render(
+  ])("says Log, and its line count to a reader: $name", ({ lines, count }) => {
+    const toggle = toggleOf(
+      render(
         Array.from({ length: lines }, (_, index) => lineOf(index, `line ${index}`)),
         "ended",
-      );
-      const toggle =
-        html.match(/<button[^>]*data-zerops-build-log-toggle[\s\S]*?<\/button>/)?.[0] ?? "";
-
-      expect(toggle).toContain('aria-haspopup="dialog"');
-      expect(toggle).toContain(">Build log<");
-      expect(toggle).not.toContain("uppercase");
-      expect(toggle.match(/data-zerops-build-log-count[^>]*>([^<]*)</)?.[1]).toBe(count);
-    },
-  );
+      ),
+    );
+    expect(toggle).toContain('aria-haspopup="dialog"');
+    expect(toggle).toContain(">Log<");
+    expect(toggle).toContain(`aria-label="Open the build&#x27;s log, ${count}"`);
+  });
 });
 
 describe("BuildLogLines", () => {
