@@ -61,7 +61,9 @@ import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
 import * as ThreadLiveStep from "../ThreadLiveStep.ts";
 import {
   ProviderRuntimeIngestionLive,
+  THOUGHT_DELIVERY_INTERVAL_MS,
   splitBufferedAssistantText,
+  splitBufferedThoughtText,
 } from "./ProviderRuntimeIngestion.ts";
 import { DEFAULT_THREAD_TITLE } from "../threadTitles.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
@@ -272,6 +274,7 @@ describe("ProviderRuntimeIngestion", () => {
 
   async function createHarness(options?: {
     serverSettings?: Partial<ServerSettings>;
+    manualClock?: boolean;
     threadTitle?: string;
     workspaceSubdirectory?: string;
     isGitRepository?: CheckpointStore.CheckpointStore["Service"]["isGitRepository"];
@@ -309,17 +312,19 @@ describe("ProviderRuntimeIngestion", () => {
       }),
     ).pipe(Layer.provide(projectionSnapshotLayer));
     // Real clock plus an offset the test can advance, so delivery pacing in
-    // ingestion can be driven without sleeping. Sleeps stay real.
+    // ingestion can be driven without sleeping. Sleeps stay real. A manual
+    // clock stands still between advances, so a test can measure pacing on
+    // the clock ingestion reads.
     let clockOffsetMs = 0;
     const realClock = Effect.runSync(Effect.service(Clock.Clock));
+    const startedAtMs = realClock.currentTimeMillisUnsafe();
+    const nowMs = () =>
+      (options?.manualClock ? startedAtMs : realClock.currentTimeMillisUnsafe()) + clockOffsetMs;
     const shiftedClock: Clock.Clock = {
-      currentTimeMillisUnsafe: () => realClock.currentTimeMillisUnsafe() + clockOffsetMs,
-      currentTimeMillis: Effect.sync(() => realClock.currentTimeMillisUnsafe() + clockOffsetMs),
-      currentTimeNanosUnsafe: () =>
-        realClock.currentTimeNanosUnsafe() + BigInt(clockOffsetMs) * 1_000_000n,
-      currentTimeNanos: Effect.sync(
-        () => realClock.currentTimeNanosUnsafe() + BigInt(clockOffsetMs) * 1_000_000n,
-      ),
+      currentTimeMillisUnsafe: nowMs,
+      currentTimeMillis: Effect.sync(nowMs),
+      currentTimeNanosUnsafe: () => BigInt(nowMs()) * 1_000_000n,
+      currentTimeNanos: Effect.sync(() => BigInt(nowMs()) * 1_000_000n),
       monotonicTimeNanosUnsafe: () => realClock.monotonicTimeNanosUnsafe(),
       monotonicTimeNanos: realClock.monotonicTimeNanos,
       sleep: (duration) => realClock.sleep(duration),
@@ -1848,6 +1853,252 @@ describe("ProviderRuntimeIngestion", () => {
     expect(
       messages.filter((entry: ProviderRuntimeTestMessage) => entry.role === "assistant"),
     ).toEqual([]);
+  });
+
+  describe("a thought flows in words", () => {
+    // A realistic thought: one ~300-character paragraph, as run 11 measured them.
+    const THOUGHT =
+      "I need to check how the config file is loaded before changing the port. " +
+      "The service reads its settings at startup, so a restart is needed after " +
+      "the edit. Let me look at the deploy log first, then the runtime log, and " +
+      "compare the port the app binds with the one the router expects to reach.";
+    // Provider deltas are a few characters each and cut words anywhere.
+    const DELTA_CHARS = [3, 5, 2, 7, 4, 6];
+    const DELTA_SPACING_MS = 40;
+    const toDeltas = (text: string) => {
+      const deltas: string[] = [];
+      for (let at = 0, index = 0; at < text.length; index += 1) {
+        const size = DELTA_CHARS[index % DELTA_CHARS.length]!;
+        deltas.push(text.slice(at, at + size));
+        at += size;
+      }
+      return deltas;
+    };
+
+    const streamThought = async (input: {
+      readonly provider: string;
+      readonly responseStreamingMode: "turn" | "paragraph" | "token";
+    }) => {
+      const harness = await createHarness({
+        serverSettings: { responseStreamingMode: input.responseStreamingMode },
+        manualClock: true,
+      });
+      const provider = ProviderDriverKind.make(input.provider);
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId(`turn-thought-${input.provider}`);
+      const itemId = asItemId(`item-thought-${input.provider}`);
+      const now = "2026-01-01T00:00:00.000Z";
+      await harness.emitAndDrain([
+        {
+          type: "turn.started",
+          eventId: asEventId("evt-thought-started"),
+          provider,
+          createdAt: now,
+          threadId,
+          turnId,
+        },
+      ]);
+      const thoughtText = async () =>
+        (await harness.readModel()).threads
+          .find((thread) => thread.id === threadId)
+          ?.messages.find((message: ProviderRuntimeTestMessage) => message.role === "reasoning")
+          ?.text ?? "";
+
+      // What the page holds after each provider delta, and when it changed.
+      const shown: Array<{ readonly atMs: number; readonly text: string }> = [];
+      const deltas = toDeltas(THOUGHT);
+      for (const [index, delta] of deltas.entries()) {
+        if (index > 0) harness.advanceClock(DELTA_SPACING_MS);
+        await harness.emitAndDrain([
+          {
+            type: "content.delta",
+            eventId: asEventId(`evt-thought-delta-${index}`),
+            provider,
+            createdAt: now,
+            threadId,
+            turnId,
+            itemId,
+            payload: { streamKind: "reasoning_text", delta },
+          },
+        ]);
+        const text = await thoughtText();
+        if (text !== (shown.at(-1)?.text ?? "")) {
+          shown.push({ atMs: index * DELTA_SPACING_MS, text });
+        }
+      }
+      const streamedMs = (deltas.length - 1) * DELTA_SPACING_MS;
+
+      await harness.emitAndDrain([
+        {
+          type: "item.completed",
+          eventId: asEventId("evt-thought-completed"),
+          provider,
+          createdAt: now,
+          threadId,
+          turnId,
+          itemId,
+          payload: { itemType: "reasoning", status: "completed" },
+        },
+      ]);
+      const settled = (await harness.readModel()).threads
+        .find((thread) => thread.id === threadId)
+        ?.messages.find((message: ProviderRuntimeTestMessage) => message.role === "reasoning");
+      const persisted = (
+        await Effect.runPromise(
+          Stream.runCollect(harness.engine.readEvents(0)).pipe(
+            Effect.map((chunk) => Array.from(chunk)),
+          ),
+        )
+      ).flatMap((event) =>
+        event.type === "thread.message-sent" && event.payload.role === "reasoning"
+          ? [event.payload]
+          : [],
+      );
+      return { shown, streamedMs, settled, persisted };
+    };
+
+    it.each(["codex", "claude", "cursor", "grok", "opencode", "antigravity"])(
+      "%s: the words land while it thinks, cut between words, no faster than the pace",
+      async (provider) => {
+        const { shown, streamedMs } = await streamThought({
+          provider,
+          responseStreamingMode: "paragraph",
+        });
+
+        // It flows: about one delivery per pace, not one per paragraph.
+        expect(shown.length).toBeGreaterThanOrEqual(
+          Math.floor(streamedMs / (THOUGHT_DELIVERY_INTERVAL_MS + DELTA_SPACING_MS)),
+        );
+        for (const [index, step] of shown.entries()) {
+          // Each step is the thought so far, ending between two words.
+          expect(THOUGHT.startsWith(step.text)).toBe(true);
+          expect(step.text).toMatch(/\s$/);
+          if (index > 0) {
+            expect(step.atMs - shown[index - 1]!.atMs).toBeGreaterThanOrEqual(
+              THOUGHT_DELIVERY_INTERVAL_MS,
+            );
+          }
+        }
+      },
+    );
+
+    it.each([
+      { responseStreamingMode: "paragraph" as const, flows: true },
+      { responseStreamingMode: "token" as const, flows: true },
+      { responseStreamingMode: "turn" as const, flows: false },
+    ])(
+      "$responseStreamingMode mode: nothing is lost and a reload reads what was streamed",
+      async ({ responseStreamingMode, flows }) => {
+        const { shown, settled, persisted } = await streamThought({
+          provider: "codex",
+          responseStreamingMode,
+        });
+
+        expect(shown.length > 0).toBe(flows);
+        expect(settled?.text).toBe(THOUGHT);
+        expect(settled?.streaming).toBe(false);
+        // The snapshot is the persisted deltas, in order: the live page's text.
+        const deltas = persisted.filter((payload) => payload.streaming);
+        expect(deltas.map((payload) => payload.text).join("")).toBe(THOUGHT);
+        // One write per delivery, plus the last word at the end.
+        expect(deltas.length).toBe(shown.length + 1);
+      },
+    );
+
+    it.each([
+      {
+        ending: "its block completes",
+        end: { type: "item.completed", payload: { itemType: "reasoning", status: "completed" } },
+      },
+      { ending: "the turn ends", end: { type: "turn.completed", status: "completed" } },
+      {
+        ending: "the answer starts",
+        end: {
+          type: "content.delta",
+          itemId: asItemId("item-thought-answer"),
+          payload: { streamKind: "assistant_text", delta: "Done." },
+        },
+      },
+      {
+        ending: "a tool starts",
+        end: {
+          type: "item.started",
+          itemId: asItemId("item-thought-tool"),
+          payload: { itemType: "command_execution", status: "inProgress", title: "ls" },
+        },
+      },
+    ] as const)("the words still buffered land when $ending", async ({ end }) => {
+      const harness = await createHarness();
+      const provider = ProviderDriverKind.make("claude");
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId("turn-thought-ending");
+      const now = "2026-01-01T00:00:00.000Z";
+      const base = { provider, createdAt: now, threadId, turnId };
+      await harness.emitAndDrain([
+        { ...base, type: "turn.started", eventId: asEventId("evt-ending-started") },
+        {
+          ...base,
+          type: "content.delta",
+          eventId: asEventId("evt-ending-1"),
+          itemId: asItemId("item-thought-ending"),
+          payload: { streamKind: "reasoning_text", delta: "Checking the con" },
+        },
+        {
+          ...base,
+          type: "content.delta",
+          eventId: asEventId("evt-ending-2"),
+          itemId: asItemId("item-thought-ending"),
+          payload: { streamKind: "reasoning_text", delta: "fig file" },
+        },
+        {
+          itemId: asItemId("item-thought-ending"),
+          ...base,
+          ...end,
+          eventId: asEventId("evt-ending-end"),
+        } as LegacyProviderRuntimeEvent,
+      ]);
+
+      const reasoning = (await harness.readModel()).threads
+        .find((thread) => thread.id === threadId)
+        ?.messages.filter((message: ProviderRuntimeTestMessage) => message.role === "reasoning");
+      expect(reasoning?.map((message) => [message.text, message.streaming])).toEqual([
+        ["Checking the config file", false],
+      ]);
+    });
+
+    it("leaves the answer's paragraph streaming as it was", async () => {
+      const harness = await createHarness();
+      const provider = ProviderDriverKind.make("codex");
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId("turn-answer-unchanged");
+      const itemId = asItemId("item-answer-unchanged");
+      const now = "2026-01-01T00:00:00.000Z";
+      const base = { provider, createdAt: now, threadId, turnId, itemId };
+      await harness.emitAndDrain([
+        { ...base, type: "turn.started", eventId: asEventId("evt-answer-started") },
+        {
+          ...base,
+          type: "content.delta",
+          eventId: asEventId("evt-answer-1"),
+          payload: { streamKind: "assistant_text", delta: "The port is wrong in the " },
+        },
+      ]);
+      harness.advanceClock(1_000);
+      await harness.emitAndDrain([
+        {
+          ...base,
+          type: "content.delta",
+          eventId: asEventId("evt-answer-2"),
+          payload: { streamKind: "assistant_text", delta: "config file, so " },
+        },
+      ]);
+      // An answer still lands a paragraph at a time: words alone wait.
+      expect(
+        (await harness.readModel()).threads
+          .find((thread) => thread.id === threadId)
+          ?.messages.some((message: ProviderRuntimeTestMessage) => message.role === "assistant"),
+      ).toBe(false);
+    });
   });
 
   it("uses assistant item completion detail when no assistant deltas were streamed", async () => {
@@ -5465,6 +5716,36 @@ describe("ProviderRuntimeIngestion", () => {
         calls: [building],
       });
     });
+  });
+});
+
+describe("splitBufferedThoughtText", () => {
+  it.each([
+    { text: "Checking the con", ready: "Checking the ", rest: "con" },
+    { text: "Checking", ready: "", rest: "Checking" },
+    { text: "the end. ", ready: "the end. ", rest: "" },
+    { text: "one line\nnext", ready: "one line\n", rest: "next" },
+    { text: "two\n\n", ready: "two\n\n", rest: "" },
+    // Scripts written without spaces flow a character at a time.
+    { text: "設定を確認", ready: "設定を確認", rest: "" },
+    // A bold title or a code span waits until it closes, so its marks never
+    // show as literal characters for a moment.
+    { text: "**Checking the", ready: "", rest: "**Checking the" },
+    { text: "**Checking the port** now", ready: "**Checking the port** ", rest: "now" },
+    { text: "Read `src/app config", ready: "Read ", rest: "`src/app config" },
+    { text: "Read `src/app.ts` and the", ready: "Read `src/app.ts` and ", rest: "the" },
+    { text: "a `` ` `` tick and", ready: "a `` ` `` tick ", rest: "and" },
+    // A fence's opening line lands whole, and its code a line at a time.
+    { text: "Like this:\n```ts title", ready: "Like this:\n", rest: "```ts title" },
+    { text: "```ts\nconst port = ", ready: "```ts\nconst port = ", rest: "" },
+    // A marker that never closed is literal past the span bound.
+    {
+      text: `2**3 ${"word ".repeat(40)}tail`,
+      ready: `2**3 ${"word ".repeat(40)}`,
+      rest: "tail",
+    },
+  ])("splits $text", ({ text, ready, rest }) => {
+    expect(splitBufferedThoughtText(text)).toEqual({ ready, rest });
   });
 });
 
