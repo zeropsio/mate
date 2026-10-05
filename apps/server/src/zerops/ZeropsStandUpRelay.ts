@@ -68,8 +68,11 @@ export interface StandUpProgress {
 
 /**
  * The stand-up section as this call's progress, or `undefined` while it is
- * none of this call's: absent, idle, or started before the call did (the
- * previous call's, until zcp writes this one's).
+ * none of this call's: absent, idle, or run by a call that began before this
+ * one did (the previous call's, until zcp writes this one's). A section is
+ * matched by the start of the call now running it — a stage call's, for the
+ * section its first call left waiting — else, from a zcp that stamps none,
+ * by its own start.
  */
 export const standUpProgressOf = (
   status: ZcpStatus | undefined,
@@ -79,7 +82,7 @@ export const standUpProgressOf = (
   if (section === undefined || section.state === undefined || section.state === "idle") {
     return undefined;
   }
-  const started = Date.parse(section.startedAt);
+  const started = Date.parse(section.callStartedAt);
   const callStarted = Date.parse(callStartedAt);
   if (!Number.isFinite(started) || started < callStarted - SECTION_SKEW_MS) return undefined;
   return {

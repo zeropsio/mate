@@ -56,10 +56,23 @@ describe("standUpProgressOf", () => {
     ["no status file", undefined],
     ["an idle stand-up", section({ state: "idle" })],
     ["the previous call's section", section({ startedAt: "2026-10-01T09:40:00Z" })],
+    [
+      "a section an earlier call goes on with",
+      section({ startedAt: "2026-10-01T09:40:00Z", callStartedAt: "2026-10-01T09:50:00Z" }),
+    ],
   ];
   for (const [name, status] of none) {
     it(`is nothing for ${name}`, () => assert.isUndefined(standUpProgressOf(status, CALL_AT)));
   }
+
+  it("is the stage call's, going on with the section its first call left waiting", () => {
+    const carried = section({
+      phase: "stage",
+      startedAt: "2026-10-01T09:40:00Z",
+      callStartedAt: "2026-10-01T10:00:01Z",
+    });
+    assert.strictEqual(standUpProgressOf(carried, CALL_AT)?.phase, "stage");
+  });
 
   it("cuts a service's error to a card line", () => {
     const progress = standUpProgressOf(
@@ -255,6 +268,33 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
           1,
           "a dead stand-up's section is never written",
         );
+      }).pipe(Effect.provide(layer), Effect.scoped);
+    }),
+  );
+
+  it.live("a stage call going on with its first call's section is followed, and judged", () =>
+    Effect.gen(function* () {
+      const events = yield* Queue.unbounded<SpiEvent>();
+      const carried = (state: string) =>
+        section({
+          phase: "stage",
+          startedAt: "2026-10-01T09:40:00Z",
+          callStartedAt: "2026-10-01T10:00:01Z",
+          services: [{ hostname: "apistage", step: "build", state }],
+        });
+      const status = yield* Ref.make<ZcpStatus | undefined>(carried("running"));
+      const gone = yield* Ref.make(false);
+      const noted = yield* Ref.make<ReadonlyArray<unknown>>([]);
+      const appended = yield* Ref.make(0);
+      const layer = deadLayer(events, status, gone, noted, appended, "2026-10-01T09:40:00Z");
+      yield* Effect.gen(function* () {
+        yield* Queue.offer(events, standUpEvent("item.started", CALL_AT));
+        yield* Effect.sleep(Duration.millis(200));
+        assert.strictEqual(yield* Ref.get(appended), 1, "the stage phase reaches the stage call");
+        yield* Ref.set(gone, true);
+        yield* Ref.set(status, carried("done"));
+        yield* Effect.sleep(Duration.millis(2_500));
+        assert.strictEqual(yield* Ref.get(appended), 1, "its process gone, it is followed no more");
       }).pipe(Effect.provide(layer), Effect.scoped);
     }),
   );

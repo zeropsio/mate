@@ -120,6 +120,11 @@ export interface ZcpStatus {
         readonly state: StandUpState | undefined;
         readonly phase: string;
         readonly startedAt: string;
+        /**
+         * When the call now running it began: a later call's start for a section it goes on
+         * with (the stage call's); `startedAt` from a zcp that stamps none.
+         */
+        readonly callStartedAt: string;
         readonly endedAt: string;
         readonly services: ReadonlyArray<StandUpService>;
         /** Its process; `undefined` from a zcp that names none. */
@@ -198,6 +203,7 @@ export const parseZcpStatus = (raw: unknown): ZcpStatus | undefined => {
             state: oneOf(STAND_UP_STATES, standup["state"]),
             phase: text(standup["phase"]),
             startedAt: text(standup["startedAt"]),
+            callStartedAt: text(standup["callStartedAt"]) || text(standup["startedAt"]),
             endedAt: text(standup["endedAt"]),
             services: (Array.isArray(standup["services"]) ? standup["services"] : []).flatMap(
               (service) => {
