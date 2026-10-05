@@ -1800,7 +1800,7 @@ function OperationLine({
         )
       : null;
   // Settled, a bar only where it says what the line does not (`settledOperationBar`).
-  const settled = settledOperationBar(operation, undone);
+  const settled = settledOperationBar(operation, undone, inSlot ? "slot" : "log");
   const words =
     noResult === undefined ? operationLineWords(operation) : operationUnreturnedWords(operation);
   // A deploy's steps are its progress, under its name: the line holds its

@@ -165,13 +165,16 @@ export function processReasons(
  * through — amber; a call that failed cut where it failed, red while that
  * still stands and quiet once a later one undid it (K9). Its segments are its
  * services where they mean services — a batch, an import, a mount, a
- * stand-up, a check of every service — and kept however they went. Empty —
- * no bar — where it would say nothing its mark, its words and its time do
- * not: one segment, or every one only done (pass 43).
+ * stand-up, a check of every service — and kept however they went. In the
+ * log, empty — no bar — where it would say nothing its mark, its words and
+ * its time do not: one segment, or every one only done (pass 43). In the live
+ * slot it keeps the bar it wore while it ran, so nothing beside it moves as
+ * it settles; the rule applies once it stands in the log.
  */
 export function settledOperationBar(
   operation: ZeropsOperation,
   undone: boolean,
+  where: "slot" | "log" = "log",
 ): ReadonlyArray<{ readonly key: string; readonly tone: BarTone }> {
   const failed = operation.phase === "failed";
   const cut: BarTone = undone ? "waiting" : "failed";
@@ -180,7 +183,9 @@ export function settledOperationBar(
     operation.kind === "standup"
       ? operation.steps.filter((step) => standupStepRole(step) === "own")
       : operation.steps;
-  if (steps.length < 2) return [];
+  if (steps.length === 0)
+    return where === "slot" ? [{ key: "whole", tone: failed ? cut : "done" }] : [];
+  if (steps.length < 2 && where === "log") return [];
   const segments = steps.map((step): { readonly key: string; readonly tone: BarTone } => ({
     key: step.id,
     tone: failed
@@ -195,7 +200,7 @@ export function settledOperationBar(
           : "attention"
         : "done",
   }));
-  if (segmentsAreServices(operation)) return segments;
+  if (where === "slot" || segmentsAreServices(operation)) return segments;
   return segments.every((segment) => segment.tone === "done") ? [] : segments;
 }
 

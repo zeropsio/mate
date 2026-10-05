@@ -289,6 +289,33 @@ describe("settledOperationBar — a settled operation's bar carries what it foun
   });
 });
 
+// Nothing moves while an item stands in the live slot (pass 43): a call that
+// wore a bar while it ran keeps a bar as it settles there, so its reason or
+// detail never jumps left by the bar's width. The rule that drops a bar
+// saying nothing applies once it stands in the log.
+describe("settledOperationBar — the slot's line keeps its parts from live to settled", () => {
+  const settled = (overrides: Partial<ZeropsOperation>) =>
+    operation({ phase: "done", ...overrides });
+  it.each([
+    { name: "a call of one step", op: { kind: "env", steps: [step("env", "done")] } },
+    { name: "a call with no steps", op: { kind: "discover", steps: [] } },
+    {
+      name: "a failed call of one step",
+      op: { kind: "manage", phase: "failed", steps: [step("x", "failed")] },
+    },
+    {
+      name: "checks that all passed",
+      op: { kind: "verify", steps: [step("a", "done"), step("b", "done")] },
+    },
+  ] as const)("$name", ({ op }) => {
+    const running = operation({ ...(op as Partial<ZeropsOperation>), phase: "running" });
+    const ended = settled(op as Partial<ZeropsOperation>);
+    expect(liveOperationBar(running).segments.length).toBeGreaterThan(0);
+    expect(settledOperationBar(ended, false, "slot").length).toBeGreaterThan(0);
+    expect(settledOperationBar(ended, false, "log")).toEqual([]);
+  });
+});
+
 describe("detailLines — how much an operation opens to", () => {
   it.each([
     {
