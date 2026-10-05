@@ -287,10 +287,23 @@ still to come says so.
     and reconciles every 60 s. The client writes no structure tag: its one tag is the `mate` marker
     (`tagPatch.ts`), written for the Zerops GUI and read by nothing — a Mate exists where HQ places
     it, its container the only other evidence (`groups.ts`); a project carrying only the marker is
-    no Mate row, no _Set up Mate_ and no taken name
-  - _Built in:_ `85c663ae23`, `00836084d9`; existence by placement `eb8a681c13`
-  - _Proven by:_ `structure.test.ts`; `hq/stream.test.ts`, `hq/registry.test.ts`,
-    `hq/placement.test.ts`; `hqStructure.test.ts`, `useZeropsRegistry.test.tsx`
+    no Mate row, no _Set up Mate_ and no taken name. Every press — a Mate's, a stage's or a
+    production's — holds its project at HQ while it runs (`hq_press`, migration `0041`): taken
+    once Zerops accepts the project, by a person who is a Basic user or above there, renewed every
+    60 s and at its steps (at most every 20 s) for a 300 s hold, and given its container import's
+    Zerops process once Zerops answers; a second press of the project is refused before it writes,
+    and a hold HQ refuses this person is never asked again. A press that finishes deletes its record
+    (an environment's with its registration); one that stops ends its hold and keeps it. Another
+    browser reads a held press as still on its way and one that stopped as half made — _Finish
+    setup_ for its kind — never by the project's age; a stage or a production cut short before its
+    registration is placed in its application by its press's record, never offered as a Mate
+  - _Built in:_ `85c663ae23`, `00836084d9`; existence by placement `eb8a681c13`; the press hold
+    `1fcde9dacb`, `d6e7485483`, `4fa50db240`, `abac4d3da8`, `246c6c49ab`, `89078e24cc`,
+    `081ee073c4`, `d4bb69191e`, `5944268673`
+  - _Proven by:_ `structure.test.ts`, `api.test.ts`; `hq/stream.test.ts`, `hq/registry.test.ts`,
+    `hq/placement.test.ts`, `hq/pressElsewhere.test.ts`; `hqStructure.test.ts`,
+    `useZeropsRegistry.test.tsx`, `matePress.test.ts`, `usePressesElsewhere.test.tsx`,
+    `finishSetup.logic.test.ts`
 - **TP** — Who may: one pure rule, `can`, HQ's alone, and what HQ offers by it
   - _State:_ built — HQ asks `can` (`apps/hq/src/permissions.ts`) for every structure, change,
     deploy and release verb, and streams what each reader may do beside its structure
