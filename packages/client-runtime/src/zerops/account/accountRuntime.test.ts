@@ -325,6 +325,9 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     hqIndex: { projectOf: () => null, subscribe: () => () => undefined },
     online: { read: () => new Set(), subscribe: () => () => undefined },
     hqOrganization: { read: () => null, subscribe: () => () => undefined },
+    // No word on any close-off, and none pending here: nothing is held.
+    closeOff: { read: () => null, subscribe: () => () => undefined },
+    closeOffPending: { read: () => new Set(), subscribe: () => () => undefined },
   };
   return {
     ports,

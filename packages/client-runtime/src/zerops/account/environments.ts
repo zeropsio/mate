@@ -214,10 +214,10 @@ export interface AccountEnvironmentPorts {
     readonly subscribe: (listener: () => void) => () => void;
   };
   /**
-   * HQ's word on which Mates' projects are closed off (`closeOff.ts`); null while none is known.
-   * The close-off gate reads it: absent, on a surface with no HQ's word, nothing is held.
+   * HQ's word on which Mates' projects are closed off (`closeOff.ts`); null while none is known,
+   * and always on a surface no HQ answers: then only `closeOffPending` holds a Mate.
    */
-  readonly closeOff?: {
+  readonly closeOff: {
     readonly read: () => CloseOffWord | null;
     readonly subscribe: (listener: () => void) => () => void;
   };
@@ -225,7 +225,7 @@ export interface AccountEnvironmentPorts {
    * The projects this browser knows are not closed off yet — a press here that runs, or stopped
    * before its close-off: where HQ says nothing, only these are held (`closeOffGate`).
    */
-  readonly closeOffPending?: {
+  readonly closeOffPending: {
     readonly read: () => ReadonlySet<string>;
     readonly subscribe: (listener: () => void) => () => void;
   };
@@ -925,9 +925,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
    */
   const updateCloseOff = () => {
     if (stores === null || closed) return;
-    if (ports.closeOff === undefined && ports.closeOffPending === undefined) return;
-    const word = ports.closeOff?.read() ?? null;
-    const pending = ports.closeOffPending?.read() ?? new Set<string>();
+    const word = ports.closeOff.read();
+    const pending = ports.closeOffPending.read();
     const followed = new Set<string>();
     const holds = new Map<string, CloseOffHold>();
     for (const row of rows) {
@@ -1169,8 +1168,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       }),
       ports.online.subscribe(updateOnline),
       ports.hqOrganization.subscribe(updateOnline),
-      ports.closeOff?.subscribe(updateCloseOff) ?? (() => undefined),
-      ports.closeOffPending?.subscribe(updateCloseOff) ?? (() => undefined),
+      ports.closeOff.subscribe(updateCloseOff),
+      ports.closeOffPending.subscribe(updateCloseOff),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;

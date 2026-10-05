@@ -342,7 +342,7 @@ export function hqOrganizationPort(
  */
 export function closeOffPort(
   registry: AtomRegistry.AtomRegistry,
-): NonNullable<AccountEnvironmentPorts["closeOff"]> {
+): AccountEnvironmentPorts["closeOff"] {
   let last: { readonly view: HqStructureView; readonly word: CloseOffWord } | null = null;
   return {
     read: () => {

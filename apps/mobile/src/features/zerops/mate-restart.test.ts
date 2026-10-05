@@ -265,6 +265,7 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
       },
     },
     route: openMateRoute,
+    closeOffPending: { read: () => new Set(), subscribe: () => () => undefined },
     ...hqAbsent(),
   };
   const built = yield* Effect.gen(function* () {

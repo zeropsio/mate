@@ -56,11 +56,15 @@ export function memoryIntents(): AccountEnvironmentPorts["intents"] {
  * environment's project named, no organization spoken for — and the runtime reads the listing's
  * containers at once rather than waiting for a word that never comes.
  */
-export function hqAbsent(): Pick<AccountEnvironmentPorts, "hqIndex" | "online" | "hqOrganization"> {
+export function hqAbsent(): Pick<
+  AccountEnvironmentPorts,
+  "hqIndex" | "online" | "hqOrganization" | "closeOff"
+> {
   const quiet = () => () => undefined;
   return {
     hqIndex: { projectOf: () => null, subscribe: quiet },
     online: { read: () => "absent", subscribe: quiet },
     hqOrganization: { read: () => null, subscribe: quiet },
+    closeOff: { read: () => null, subscribe: quiet },
   };
 }
