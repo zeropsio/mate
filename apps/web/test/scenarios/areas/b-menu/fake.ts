@@ -76,22 +76,60 @@ export const moveMate = Effect.fn("menu.moveMate")(function* (
     return yield* Effect.die(new Error(`Move refused: ${response.status}`));
 });
 
-export const removeProject = (drivers: ScenarioDrivers, name: string) =>
-  Effect.sync(() => drivers.zerops.remove("project", name));
+export const removeProject = (
+  drivers: ScenarioDrivers,
+  name: string,
+  options: { notify?: boolean } = {},
+) =>
+  Effect.sync(() => {
+    if (options.notify !== false) {
+      drivers.zerops.remove("project", name);
+      return;
+    }
+    const previous = drivers.zerops.faults.get("project:push");
+    drivers.zerops.faults.set("project:push", { ...previous, silence: true });
+    try {
+      drivers.zerops.remove("project", name);
+    } finally {
+      if (previous) drivers.zerops.faults.set("project:push", previous);
+      else drivers.zerops.faults.delete("project:push");
+    }
+  });
 export const denyProjectRead = (drivers: ScenarioDrivers, name: string) =>
   Effect.sync(() => {
     const key = `GET /project/${name}`;
-    const reads = drivers.zerops.requests.get(key) ?? 0;
     drivers.zerops.faults.set(key, {
       status: 403,
       code: "insufficientPermissions",
     });
-    return Effect.promise(() => drivers.zerops.waitForRequest(key, reads + 1));
   });
 export const startStageBuild = (drivers: ScenarioDrivers, name: string) =>
   Effect.sync(() => {
     drivers.zerops.writes.autoComplete = false;
-    drivers.zerops.writes.start(name, "stack.build", [`app-${name}`]);
+    const version = `building-${name}`;
+    drivers.zerops.world.appVersions.set(version, {
+      id: version,
+      serviceId: `app-${name}`,
+      name: "stage-next",
+      status: "BUILDING",
+      archive: undefined,
+      zeropsYaml: undefined,
+      setup: undefined,
+    });
+    drivers.zerops.put(
+      "app-version",
+      {
+        id: version,
+        clientId: "ORG",
+        projectId: name,
+        serviceStackId: `app-${name}`,
+        name: "stage-next",
+        status: "BUILDING",
+        created: "2026-10-05T12:00:00.000Z",
+      },
+      "membership-first",
+    );
+    drivers.zerops.writes.start(name, "stack.build", [`app-${name}`], version);
   });
 
 export const stageService = (drivers: ScenarioDrivers, name: string) =>

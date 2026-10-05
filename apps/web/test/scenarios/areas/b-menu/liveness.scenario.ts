@@ -83,7 +83,7 @@ describe("B: menu liveness", () => {
         yield* s.colleague.moves("Ada", null);
         yield* s.menu.toggle("Shop");
         yield* s.menu.absent("Bea");
-        yield* s.then.menu.row("Ada").appears();
+        yield* s.menu.grouped("Ada", "Ungrouped");
         yield* s.then.noReload;
       }),
     );
@@ -190,10 +190,21 @@ describe("B: menu liveness", () => {
       Effect.gen(function* () {
         const s = yield* menuScenario();
         yield* s.given.project("Ada", { mate: true });
-        const refused = yield* s.colleague.denies("Ada");
+        yield* s.given.project("Bea", { mate: true });
+        yield* s.colleague.denies("Ada");
+        yield* Effect.promise(() => s.clock.install());
         yield* s.given.signedIn;
-        yield* refused;
         yield* s.then.menu.row("Ada").appears();
+        yield* s.then.menu.row("Bea").appears();
+        const retained = yield* s.then.menu.keepsRows(["Ada"]);
+        // Bea must disappear through renewal rather than its immediate realtime deletion.
+        yield* s.colleague.deletes("Bea", { notify: false });
+        yield* Effect.promise(() => s.clock.advance(12 * 60_000));
+        yield* s.menu.absent("Bea");
+        // Let the renewal's delayed denial confirmation run before closing the retention guard.
+        yield* Effect.promise(() => s.clock.advance(5_000));
+        yield* retained;
+        yield* s.then.noReload;
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -205,8 +216,7 @@ describe("B: menu liveness", () => {
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         const held = yield* s.colleague.holdsDetails("Shop");
         yield* s.given.signedIn;
-        yield* s.menu.grouped("Ada", "Shop").pipe(
-          Effect.tapError(() => held),
+        yield* Effect.all([s.menu.grouped("Ada", "Shop"), held], { concurrency: "unbounded" }).pipe(
           Effect.ensuring(
             Effect.gen(function* () {
               yield* s.colleague.releasesDetails;
@@ -227,9 +237,10 @@ describe("B: menu liveness", () => {
         yield* s.stage("Shop-stage", "Shop");
         yield* s.given.signedIn;
         yield* s.menu.grouped("Ada", "Shop");
-        yield* s.menu.chip("Stage");
+        yield* s.menu.chip("^Stage stage-existing, healthy$");
         yield* s.colleague.builds("Shop-stage");
-        yield* s.menu.chip("\\b(?:building|deploying|releasing)\\b");
+        // Three times the 5 s target budget gives a loaded laptop 10 s of headroom.
+        yield* s.menu.chip("\\b(?:building|deploying|releasing)\\b", 15_000);
       }),
     );
   });

@@ -52,12 +52,23 @@ export async function applicationDetailsGate(origin: string) {
         const send = () => {
           if (client.readyState === WebSocket.OPEN) client.send(data, { binary });
         };
-        const frame = JSON.parse(String(data)) as {
+        let frame: {
           appReads?: Record<string, unknown>;
           type?: string;
           appId?: string;
           read?: unknown;
         };
+        try {
+          const parsed: unknown = JSON.parse(String(data));
+          if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+            send();
+            return;
+          }
+          frame = parsed as typeof frame;
+        } catch {
+          send();
+          return;
+        }
         const detail =
           appId !== undefined &&
           (frame.appReads?.[appId] !== undefined ||

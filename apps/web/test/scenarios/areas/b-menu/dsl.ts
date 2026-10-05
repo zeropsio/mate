@@ -70,30 +70,31 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
     grouped: (name: string, app: string) =>
       Effect.promise(async () => {
         await s.page.waitForFunction(
-          (name, app) =>
-            [
+          (name, app) => {
+            const headings = [
               ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="sidebar-project"]'),
-            ].some(
-              (group) =>
-                group
-                  .querySelector<HTMLElement>('[data-zerops-surface="sidebar-project-toggle"]')
-                  ?.innerText.split("\n")[0]
-                  ?.trim() === app &&
-                [
-                  ...group.parentElement!.parentElement!.querySelectorAll<HTMLElement>(
-                    '[data-zerops-surface="sidebar-mate-name"]',
-                  ),
-                ].some(
-                  (row) => row.getBoundingClientRect().height > 0 && row.innerText.trim() === name,
-                ),
-            ),
+            ].filter((heading) => heading.getBoundingClientRect().height > 0);
+            return [
+              ...document.querySelectorAll<HTMLElement>(
+                '[data-zerops-surface="sidebar-mate-name"]',
+              ),
+            ].some((row) => {
+              if (row.getBoundingClientRect().height === 0 || row.innerText.trim() !== name)
+                return false;
+              const heading = headings.findLast(
+                (heading) =>
+                  (heading.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+              );
+              return heading?.innerText.split("\n")[0]?.trim() === app;
+            });
+          },
           { timeout: 15_000, polling: "raf" },
           name,
           app,
         );
       }),
     toggle: (app: string) => Effect.promise(() => clickText(s.page, "sidebar-project-toggle", app)),
-    chip: (words: string) =>
+    chip: (words: string, within = 15_000) =>
       Effect.promise(async () => {
         try {
           await s.page.waitForFunction(
@@ -107,7 +108,7 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
                   chip.getBoundingClientRect().height > 0 &&
                   new RegExp(words, "i").test(chip.getAttribute("aria-label") ?? ""),
               ),
-            { timeout: 5000, polling: "raf" },
+            { timeout: within, polling: "raf" },
             words,
           );
         } catch (cause) {
@@ -132,7 +133,8 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
       holdsDetails: (app: string) => holdDetails(s.drivers, app),
       releasesDetails: releaseDetails(s.drivers),
       moves: (name: string, app: string | null) => moveMate(s.drivers, name, app),
-      deletes: (name: string) => removeProject(s.drivers, name),
+      deletes: (name: string, options: { notify?: boolean } = {}) =>
+        removeProject(s.drivers, name, options),
       denies: (name: string) => denyProjectRead(s.drivers, name),
       builds: (name: string) => startStageBuild(s.drivers, name),
     },

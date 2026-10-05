@@ -5,6 +5,7 @@ import { deadline, serve } from "../../harness/http.ts";
 
 // Catches a latency driver that invents HQ data, blocks summaries, or loses the held frame.
 it("passes summaries unchanged and releases actual detail frames unchanged", async () => {
+  const raw = "not JSON";
   const summary = JSON.stringify({ type: "summary", apps: [{ id: "shop", name: "Shop" }] });
   const detail = JSON.stringify({
     type: "snapshot",
@@ -13,6 +14,7 @@ it("passes summaries unchanged and releases actual detail frames unchanged", asy
   const core = await serve(
     () => undefined,
     (socket) => {
+      socket.send(raw, { binary: true });
       socket.send(summary);
       socket.send(detail);
     },
@@ -31,15 +33,15 @@ it("passes summaries unchanged and releases actual detail frames unchanged", asy
   });
   client.on("message", (data) => {
     frames.push(String(data));
-    if (frames.length === 1) summarySignal();
-    if (frames.length === 2) signal();
+    if (frames.includes(summary)) summarySignal();
+    if (frames.includes(detail)) signal();
   });
   try {
     await Promise.all([gate.waitForHeld(), deadline(receivedSummary, "summary delivered")]);
-    expect(frames).toEqual([summary]);
+    expect(frames).toEqual([raw, summary]);
     gate.release();
     await deadline(returned, "detail frame released");
-    expect(frames).toEqual([summary, detail]);
+    expect(frames).toEqual([raw, summary, detail]);
   } finally {
     client.terminate();
     await gate.close();
