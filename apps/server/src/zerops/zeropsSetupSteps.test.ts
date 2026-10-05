@@ -120,6 +120,23 @@ describe("parseZcpStatus", () => {
         expected,
       ));
   }
+
+  const callStarts: ReadonlyArray<[string, Record<string, unknown>, string]> = [
+    [
+      "the stamp of the call now running it",
+      { startedAt: "2026-10-01T10:00:00Z", callStartedAt: "2026-10-01T10:20:00Z" },
+      "2026-10-01T10:20:00Z",
+    ],
+    ["the section's own start from a zcp that stamps none", { startedAt: NOW }, NOW],
+  ];
+  for (const [name, section, expected] of callStarts) {
+    it(`reads the call's start — ${name}`, () =>
+      assert.strictEqual(
+        parseZcpStatus(status({ standup: { state: "running", ...section } }))?.standup
+          ?.callStartedAt,
+        expected,
+      ));
+  }
 });
 
 describe("sectionCall", () => {
