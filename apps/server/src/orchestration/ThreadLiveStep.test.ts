@@ -224,6 +224,35 @@ describe("ThreadLiveStep", () => {
       ],
       step: { kind: "thinking", since: at(7) },
     },
+    // Run 12: a note and a command's start stamped one instant; the note's
+    // words arriving after the start put the running command behind them.
+    {
+      name: "words stamped the instant a call started leave the call the step",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5) },
+        { type: "writing", at: at(5) },
+      ],
+      step: { kind: "calls", since: at(5), calls: [call("c1", 5)] },
+    },
+    {
+      name: "a thought stamped the instant a call started leaves the call the step",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5) },
+        { type: "thinking", at: at(5) },
+      ],
+      step: { kind: "calls", since: at(5), calls: [call("c1", 5)] },
+    },
+    {
+      name: "words after a call put the call behind them",
+      observations: [
+        started,
+        { type: "call-running", call: call("c1", 5) },
+        { type: "writing", at: at(6) },
+      ],
+      step: { kind: "writing", since: at(6) },
+    },
     {
       name: "a call put behind a thought that ends changes nothing",
       observations: [

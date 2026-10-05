@@ -119,9 +119,17 @@ function stateOf(
   return { calls, between, since, byTiming, returned: false, step: stepOf(calls, between, since) };
 }
 
-/** It turns to thinking or writing: a change of what it is on only if it was on something else. */
+/**
+ * It turns to thinking or writing: a change of what it is on only if it was on
+ * something else, and only from after its newest call started — words or a
+ * thought stamped at that instant came with the call, not after it (run 12:
+ * a note and a command's start at 14:40:20.255Z read "Thinking" through the
+ * whole command).
+ */
 function turnTo(state: LiveState, between: LiveState["between"], at: string): LiveState {
   if (state.calls.length === 0 && state.between === between) return state;
+  const newest = state.calls.at(-1);
+  if (newest !== undefined && Date.parse(at) <= Date.parse(newest.startedAt)) return state;
   return stateOf([], between, at, state.byTiming);
 }
 
