@@ -25,6 +25,7 @@
       }
     ]
   },
+  "exclude": ["test/scenarios"],
   "include": [
     "src",
     "vite.config.ts",

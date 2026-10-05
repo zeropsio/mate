@@ -254,7 +254,11 @@ export const startCore = (
           },
           ...(options.body === undefined
             ? {}
-            : { body: raw ? (options.body as Uint8Array) : encodeJson(options.body) }),
+            : {
+                body: raw
+                  ? new Uint8Array(options.body as Uint8Array).buffer
+                  : encodeJson(options.body),
+              }),
         });
         const bytes = new Uint8Array(await response.arrayBuffer());
         const text = new TextDecoder().decode(bytes);
