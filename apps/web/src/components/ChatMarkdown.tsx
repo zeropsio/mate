@@ -1084,7 +1084,12 @@ const KNOWN_IMAGE_SIZES_MAX = 256;
  * its content is no width at all. Only a first sight fades in — a row the
  * list draws again shows its picture as it was.
  */
-function useImageRoom(key: string, holdsPlace: boolean) {
+function useImageRoom(
+  key: string,
+  holdsPlace: boolean,
+  /** Its size as its Mate read it from the file's header: its box before its bytes. */
+  given?: { readonly width: number; readonly height: number },
+) {
   const fresh = () => ({
     key,
     size: knownImageSizes.get(key),
@@ -1095,7 +1100,10 @@ function useImageRoom(key: string, holdsPlace: boolean) {
   // Another picture in the same place starts from what is known of it.
   const current = room.key === key ? room : fresh();
   if (current !== room) setRoom(current);
-  const { size, firstSight, loaded } = current;
+  const { firstSight, loaded } = current;
+  const size =
+    current.size ??
+    (given !== undefined && given.width > 0 && given.height > 0 ? given : undefined);
   const placeholder = holdsPlace && size === undefined && !loaded;
   return {
     width: size?.width,
@@ -1106,6 +1114,8 @@ function useImageRoom(key: string, holdsPlace: boolean) {
         : { width: `min(${size.width}px, 30rem, calc(30rem * ${size.width / size.height}))` },
     className: cn(
       placeholder && "aspect-video w-full rounded-lg bg-muted/60",
+      // Its box stands at its size while its bytes come, a quiet fill in it.
+      holdsPlace && !loaded && "bg-muted/60",
       firstSight && loaded && "animate-zerops-appear motion-reduce:animate-none",
     ),
     openerClassName: placeholder ? "w-full max-w-[30rem]" : undefined,
@@ -1214,21 +1224,49 @@ function OpenableMarkdownImage({
   );
 }
 
-/** Markdown images whose src is a workspace file path load through a signed asset URL. */
+/** How long a picture whose bytes failed waits before it asks for them again, each time. */
+export const IMAGE_RETRY_DELAYS_MS: ReadonlyArray<number> = [1_500, 4_000];
+
+/**
+ * Markdown images whose src is a workspace file path load through a signed
+ * asset URL. A picture is unavailable only once its Mate says the file is not
+ * there, or the tries again run out: until then it is loading, in the box its
+ * size gives it (the owner, 2026-10-05: "image unavailable is a lot of the
+ * times just slow loading + it shifts layout").
+ */
 const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(props: {
   readonly threadRef: ScopedThreadRef;
   readonly path: string;
   readonly alt: string;
 }) {
-  const assetUrl = useAssetUrlState(props.threadRef.environmentId, {
-    _tag: "workspace-file",
-    threadId: props.threadRef.threadId,
-    path: props.path,
-  });
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const room = useImageRoom(props.path, true);
+  const assetUrl = useAssetUrlState(
+    props.threadRef.environmentId,
+    {
+      _tag: "workspace-file",
+      threadId: props.threadRef.threadId,
+      path: props.path,
+    },
+    { retry: true },
+  );
+  // Its bytes that failed: asked for again after a wait, then given up on.
+  const [failed, setFailed] = useState<{ readonly url: string; readonly times: number } | null>(
+    null,
+  );
+  const [asking, setAsking] = useState(0);
+  const room = useImageRoom(
+    props.path,
+    true,
+    assetUrl._tag === "Success" ? assetUrl.imageDimensions : undefined,
+  );
+  const failedTimes =
+    assetUrl._tag === "Success" && failed?.url === assetUrl.url ? failed.times : 0;
+  useEffect(() => {
+    if (failedTimes === 0 || failedTimes > IMAGE_RETRY_DELAYS_MS.length) return;
+    const timer = setTimeout(() => setAsking((n) => n + 1), IMAGE_RETRY_DELAYS_MS[failedTimes - 1]);
+    return () => clearTimeout(timer);
+  }, [failedTimes]);
 
-  if (assetUrl._tag === "Failure" || (assetUrl._tag === "Success" && failedUrl === assetUrl.url)) {
+  if (assetUrl._tag === "Failure" || failedTimes > IMAGE_RETRY_DELAYS_MS.length) {
     return <ChatMarkdownImageFallback alt={props.alt} />;
   }
   if (assetUrl._tag !== "Success") {
@@ -1253,6 +1291,8 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
   return (
     <OpenableMarkdownImage alt={props.alt} block className={room.openerClassName}>
       <img
+        // Asked for again, it is a new picture: the page fetches it anew.
+        key={asking}
         src={assetUrl.url}
         alt={props.alt}
         loading="lazy"
@@ -1260,7 +1300,7 @@ const ChatMarkdownWorkspaceImage = memo(function ChatMarkdownWorkspaceImage(prop
         className={cn(CHAT_MARKDOWN_WORKSPACE_IMAGE_CLASS_NAME, room.className)}
         data-markdown-image
         height={room.height}
-        onError={() => setFailedUrl(assetUrl.url)}
+        onError={() => setFailed({ url: assetUrl.url, times: failedTimes + 1 })}
         onLoad={room.onLoad}
         style={room.style}
         width={room.width}

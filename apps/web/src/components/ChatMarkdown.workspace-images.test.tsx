@@ -6,16 +6,21 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const testState = vi.hoisted(() => ({
   resources: [] as Array<unknown>,
-  assetState: "success" as "success" | "loading",
+  assetState: "success" as "success" | "loading" | "failure",
+  dimensions: undefined as { width: number; height: number } | undefined,
 }));
 
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
 vi.mock("../assets/assetUrls", () => ({
   useAssetUrlState: (_environmentId: unknown, resource: unknown) => {
     testState.resources.push(resource);
-    return testState.assetState === "loading"
-      ? { _tag: "Loading" }
-      : { _tag: "Success", url: "https://signed.test/workspace-image.svg" };
+    if (testState.assetState === "loading") return { _tag: "Loading" };
+    if (testState.assetState === "failure") return { _tag: "Failure" };
+    return {
+      _tag: "Success",
+      url: "https://signed.test/workspace-image.svg",
+      ...(testState.dimensions === undefined ? {} : { imageDimensions: testState.dimensions }),
+    };
   },
 }));
 vi.mock("../hooks/useTheme", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
@@ -149,6 +154,55 @@ describe("ChatMarkdown workspace images", () => {
 });
 
 describe("a picture's room before it loads", () => {
+  beforeEach(() => {
+    testState.assetState = "success";
+    testState.dimensions = undefined;
+  });
+
+  // The server reads a workspace picture's size from its header as it signs
+  // its address: the picture stands in its own box before a byte has come,
+  // and loading it moves nothing (the owner, 2026-10-05: "it shifts layout,
+  // because it only gets its size after its loaded").
+  it("stands at the size its Mate read from the file before a byte has come", () => {
+    testState.dimensions = { width: 1200, height: 800 };
+    const html = render("![shop](.t3/storefront-home.png)");
+    expect(html).toMatch(/<img[^>]*height="800"/);
+    expect(html).toMatch(/<img[^>]*width="1200"/);
+    expect(html).not.toContain("aspect-video");
+    expect(html).toMatch(/<img[^>]*style="width:min\(1200px, 30rem, calc\(30rem \* 1\.5\)\)"/);
+  });
+
+  // Slow bytes are not missing ones: a picture whose bytes failed asks for
+  // them again after a wait, and only then is said to be unavailable.
+  it("asks again for bytes that failed before it says the picture is unavailable", () => {
+    vi.useFakeTimers();
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    try {
+      let renderer: ReturnType<typeof create> | undefined;
+      act(() => {
+        renderer = create(
+          <ChatMarkdown cwd="/srv/app" threadRef={threadRef} text="![shop](.t3/slow.png)" />,
+        );
+      });
+      const image = () =>
+        renderer!.root.findAll(
+          (node) => node.type === "img" && node.props["data-markdown-image"] !== undefined,
+        );
+      const shown = () => JSON.stringify(renderer!.toJSON());
+      for (const wait of [1_500, 4_000]) {
+        act(() => image()[0]!.props.onError());
+        expect(shown()).not.toContain("Image unavailable");
+        act(() => vi.advanceTimersByTime(wait));
+        expect(image()).toHaveLength(1);
+      }
+      act(() => image()[0]!.props.onError());
+      expect(shown()).toContain("Image unavailable");
+      act(() => renderer!.unmount());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // A picture without a shape took no room until its bytes came, and the list
   // draws a row again whenever it recycles it: opening a conversation, its
   // pictures grew from nothing and everything in sight jumped (2026-09-29).
