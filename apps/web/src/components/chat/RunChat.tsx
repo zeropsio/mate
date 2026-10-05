@@ -1895,7 +1895,7 @@ function HelperFace() {
   );
 }
 
-/** The helpers a launch started, as the agents panel knows them. */
+/** The helpers a launch started, as the helpers panel knows them. */
 function spawnAgents(model: AgentPanelModel, spawn: NonNullable<WorkLogEntry["agentSpawn"]>) {
   const memberIds = new Set(spawn.agentTaskIds);
   const workflowGroup = spawn.workflowId

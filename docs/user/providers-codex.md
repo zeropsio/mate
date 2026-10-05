@@ -46,7 +46,7 @@ without sending anything to Codex. This works in the web, desktop, and mobile ap
 
 ## Sub-agent models
 
-The web and desktop Agents panel shows each sub-agent's model and reasoning effort when Codex
+The web and desktop Helpers panel shows each sub-agent's model and reasoning effort when Codex
 reports them. If Codex does not report either value, T3 Code leaves it out instead of using the
 parent agent's settings.
 

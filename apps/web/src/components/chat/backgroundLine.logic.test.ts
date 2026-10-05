@@ -71,7 +71,7 @@ describe("backgroundLineOf", () => {
         item("Outdated", "done"),
         item("Fails", "failed", "Exit code 3"),
       ],
-      words: "3 background tasks: 1 running, 1 finished, 1 failed",
+      words: "3 background jobs: 1 running, 1 finished, 1 failed",
       where: null,
       failed: true,
       opens: ["Fails", "Soak", "Outdated"],
@@ -79,7 +79,7 @@ describe("backgroundLineOf", () => {
     {
       name: "several, all finished",
       items: [item("Soak", "done"), item("Outdated", "done")],
-      words: "2 background tasks finished",
+      words: "2 background jobs finished",
       where: null,
       failed: false,
       opens: ["Soak", "Outdated"],
@@ -87,7 +87,7 @@ describe("backgroundLineOf", () => {
     {
       name: "several ended, one failed",
       items: [item("Soak", "done"), item("Fails", "failed")],
-      words: "2 background tasks: 1 finished, 1 failed",
+      words: "2 background jobs: 1 finished, 1 failed",
       where: null,
       failed: true,
       opens: ["Fails", "Soak"],
@@ -103,7 +103,7 @@ describe("backgroundLineOf", () => {
     {
       name: "several, one never reporting",
       items: [item("Soak", "lost"), item("Outdated", "done")],
-      words: "2 background tasks: 1 finished, 1 didn't report back",
+      words: "2 background jobs: 1 finished, 1 didn't report back",
       where: null,
       failed: false,
       opens: ["Soak", "Outdated"],
@@ -130,9 +130,9 @@ describe("backgroundLineOf", () => {
     });
     expect(ended).toEqual([
       "3 background tasks running",
-      "3 background tasks: 2 running, 1 finished",
-      "3 background tasks: 1 running, 1 finished, 1 failed",
-      "3 background tasks: 2 finished, 1 failed",
+      "3 background jobs: 2 running, 1 finished",
+      "3 background jobs: 1 running, 1 finished, 1 failed",
+      "3 background jobs: 2 finished, 1 failed",
     ]);
   });
 });

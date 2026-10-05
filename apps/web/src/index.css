@@ -4542,7 +4542,7 @@ button.run-bar:focus-visible {
   padding: 15px;
 }
 
-/* p39/helpers — the helpers map (the Agents panel) and a helper's own card.
+/* p39/helpers — the helpers map (the Helpers panel) and a helper's own card.
    A row: its mark in a 16 px column, its name wrapping beside it, its clock
    at the right edge inside the panel's gutter; what it does now (or what it
    came to) under its name, two lines at most; what it ran on and cost,
