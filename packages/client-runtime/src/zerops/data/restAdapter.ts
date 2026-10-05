@@ -1253,6 +1253,7 @@ export function makeZeropsDataAdapter(options: ZeropsDataAdapterOptions): Zerops
       case "rename-project":
         return executeApi(context, (signal) =>
           tags.rename(command.project.projectId, command.name, {
+            from: command.from,
             signal,
             beforeWrite: context.beforeProjectWrite,
           }),

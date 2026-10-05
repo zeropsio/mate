@@ -21,12 +21,14 @@ export function useRenameProjects(): RenameProjects {
   const { projectRef, runtime } = useZeropsData();
 
   return useCallback(
-    (renames) => {
+    async (renames) => {
       const organization = activeOrganization;
+      // A rejection, never a throw out of the caller's own frame: its dialog must not stay pending.
       if (organization === null) throw new Error("No organization is open.");
-      return runProjectRenames(renames, async ({ projectId, to }) => {
+      return runProjectRenames(renames, async ({ projectId, from, to }) => {
+        // Only a project still named as it was planned from: one renamed since is said, not written.
         await runZeropsCommand(
-          runtime.commands.renameProject(projectRef(organization.id, projectId), to),
+          runtime.commands.renameProject(projectRef(organization.id, projectId), to, from),
         );
       });
     },

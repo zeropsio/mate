@@ -1831,6 +1831,8 @@ export interface RenameProjectCommandIntent {
   readonly kind: "rename-project";
   readonly project: ProjectRef;
   readonly name: string;
+  /** The name the rename was planned from: a project renamed since is refused, nothing written. */
+  readonly from?: string | undefined;
 }
 
 /** The five roles a project override may carry (`groupReach.ts`'s vocabulary). */
@@ -2192,6 +2194,7 @@ export interface ZeropsDataCommands {
   readonly renameProject: (
     project: ProjectRef,
     name: string,
+    from?: string,
   ) => Effect.Effect<CommandExecution<ProjectTagWrite>, CommandAdmissionError | AdapterError>;
   /**
    * Hands a Mate to a person, or takes it away (guide 0.8, D11) — the one

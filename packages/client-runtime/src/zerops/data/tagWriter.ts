@@ -36,11 +36,14 @@ export interface ProjectTagWriter {
     patch: ProjectTagPatch,
     options?: ProjectWriteOptions,
   ) => Promise<ProjectTagWrite>;
-  /** Names the project `name`, its tags put back as a fresh read holds them. */
+  /**
+   * Names the project `name`, its tags put back as a fresh read holds them. With `from`, only a
+   * project that is still named so: one renamed since is refused before anything is written.
+   */
   readonly rename: (
     projectId: string,
     name: string,
-    options?: ProjectWriteOptions,
+    options?: ProjectWriteOptions & { readonly from?: string | undefined },
   ) => Promise<ProjectTagWrite>;
 }
 
@@ -54,6 +57,14 @@ const replacedTooOften = (what: "tags" | "name"): AdapterError => ({
   retryable: true,
   accountRevocationEvidence: false,
 });
+
+const renamedSince: AdapterError = {
+  _tag: "ZeropsDataAdapterError",
+  kind: "rejected",
+  message: "This project was renamed since. Nothing was changed.",
+  retryable: false,
+  accountRevocationEvidence: false,
+};
 
 export function makeProjectTagWriter(options: {
   readonly source: ProjectTagSource;
@@ -97,9 +108,10 @@ export function makeProjectTagWriter(options: {
       }),
     rename: (projectId, name, writeOptions = {}) =>
       serialized(projectId, async () => {
-        const { signal, beforeWrite } = writeOptions;
+        const { signal, beforeWrite, from } = writeOptions;
         const project = await source.fetchProject(projectId, signal);
         if (project.name === name) return { kind: "unchanged", project };
+        if (from !== undefined && project.name.trim() !== from.trim()) throw renamedSince;
         // Every tag the fresh read — under the lock, just before the PUT — holds goes back as it
         // is: a rename writes no tag.
         await source.writeProject(

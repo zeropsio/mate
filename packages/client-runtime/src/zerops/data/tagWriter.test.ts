@@ -176,6 +176,23 @@ describe("a project renamed by the project's one writer", () => {
     expect(rest.log).toEqual(["GET"]);
   });
 
+  it("renames from the name it was planned from, and refuses a project renamed since, writing nothing", async () => {
+    const rest = platform(["mate"]);
+    const writer = makeProjectTagWriter({ source: rest.source });
+
+    await expect(writer.rename("p1", "Nova", { from: "Other" })).rejects.toMatchObject({
+      kind: "rejected",
+      retryable: false,
+      message: expect.stringContaining("renamed since"),
+    });
+    expect(rest.log).toEqual(["GET"]);
+    expect(rest.name()).toBe("One");
+
+    expect((await writer.rename("p1", "Nova", { from: "One" })).kind).toBe("written");
+    // Already at the target: nothing to refuse, nothing to write.
+    expect((await writer.rename("p1", "Nova", { from: "One" })).kind).toBe("unchanged");
+  });
+
   it("a rename and a tag write to one project never undo each other", async () => {
     const rest = platform([]);
     const writer = makeProjectTagWriter({ source: rest.source });
