@@ -313,6 +313,40 @@ describe("Workspace history", () => {
     }).pipe(Effect.provide(testLayer)),
   );
 
+  it.effect("a steer joins the thread's live run even when no run carries its turn", () =>
+    Effect.gen(function* () {
+      const h = yield* harness();
+      yield* h.prepare();
+      yield* h.history.markDispatched(threadId, "request");
+      const steer = yield* h.history
+        .prepare({
+          threadId,
+          runId: "steer",
+          cwd: "/var/www",
+          continuationOf: TurnId.make("turn-the-run-never-heard-of"),
+        })
+        .pipe(Effect.timeout("1 second"), Effect.result, Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      expect(yield* Fiber.join(steer)).toMatchObject({ _tag: "Success" });
+      expect(yield* h.journal.get(threadId, "steer")).toBeUndefined();
+      expect(h.captures).toHaveLength(2);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("a new request waits for a running run only briefly, and says they overlap", () =>
+    Effect.gen(function* () {
+      const h = yield* harness();
+      yield* h.prepare();
+      yield* h.history.bindTurn(threadId, turnId);
+      const second = yield* h.prepare("request-2").pipe(Effect.forkChild);
+      yield* TestClock.adjust(History.PREVIOUS_RUN_WAIT);
+      yield* Fiber.join(second);
+      const run = yield* h.journal.get(threadId, "request-2");
+      expect(run?.phase).toBe("prepared");
+      expect(run?.history.overlappingRunIds).toEqual(["request"]);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect(
     "a superseded provider turn cannot capture an end for a still-running steered span",
     () =>
