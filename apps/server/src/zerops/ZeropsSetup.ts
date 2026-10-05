@@ -41,7 +41,6 @@ import {
 } from "@t3tools/contracts";
 import type { MateState } from "@t3tools/shared/mateLink";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
-import { selectionWithPreferredEffort } from "@t3tools/shared/zeropsEffort";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -63,6 +62,7 @@ import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { pickReadyAgentWithoutSignIn, resolveBootstrapModelSlug } from "./ZeropsBootstrapModel.ts";
+import { planFirstTurnEffort } from "./firstTurnEffort.ts";
 import { overlayZeropsAgentAuth } from "./zeropsAgentProviderOverlay.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
@@ -547,13 +547,11 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         } else {
           return false;
         }
-        // The stand-up is a new conversation's first turn: Extra High unless it has an effort (D10).
-        const modelSelection = selectionWithPreferredEffort(providers, chosen);
         const ids =
           resuming === undefined
             ? standUpCommandIds(threadId)
             : { commandId: resuming.commandId, messageId: resuming.commandId };
-        const turn = {
+        const standUpTurn = {
           type: "thread.turn.start",
           commandId: CommandId.make(ids.commandId),
           threadId,
@@ -563,11 +561,19 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
             text: STAND_UP_MESSAGE,
             attachments: [],
           },
-          modelSelection,
+          modelSelection: chosen,
           runtimeMode: main?.runtimeMode ?? "full-access",
           interactionMode: main?.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE,
           createdAt: now,
         } satisfies OrchestrationCommand;
+        // The stand-up is a new conversation's first turn: Extra High unless it names an effort,
+        // and the thread stores it, so a reload reads it back (D10).
+        const { turn, store } = planFirstTurnEffort({
+          turn: standUpTurn,
+          thread: main ?? { latestTurn: null, modelSelection: chosen },
+          providers,
+        });
+        const modelSelection = turn.modelSelection ?? chosen;
         // For the person who asked, with no session of theirs behind it: admitted while this
         // project opens for them, on an agent they signed in (D6, X3).
         const principal: TurnPrincipal = { kind: "standup", startedBy: decision.userId };
@@ -605,6 +611,13 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
               branch: null,
               worktreePath: null,
               createdAt: now,
+            });
+          } else if (store !== undefined) {
+            yield* orchestration.dispatch({
+              type: "thread.meta.update",
+              commandId: CommandId.make(`${ids.commandId}-effort`),
+              threadId,
+              modelSelection: store,
             });
           }
           yield* orchestration.dispatch(turn);

@@ -517,7 +517,13 @@ describe("ZeropsSetup: the stand-up", () => {
           const [turn] = yield* withServer(world, freshDatabase(), () =>
             eventually(turnsOf(world), (turns) => turns.length > 0),
           );
-          return turn!.modelSelection?.options;
+          // The thread stores what its first turn runs on, so a reload reads it back.
+          const stored = (yield* Ref.get(world.dispatched)).flatMap((command) =>
+            command.type === "thread.meta.update" && command.modelSelection !== undefined
+              ? [command.modelSelection.options]
+              : [],
+          );
+          return { turn: turn!.modelSelection?.options, stored };
         });
       const onCursor = (options?: ReadonlyArray<{ id: string; value: string }>) =>
         mainThread({
@@ -527,12 +533,13 @@ describe("ZeropsSetup: the stand-up", () => {
             ...(options ? { options } : {}),
           },
         });
-      assert.deepStrictEqual(yield* standUpSelection(onCursor()), [
-        { id: "reasoning", value: "high" },
-      ]);
+      assert.deepStrictEqual(yield* standUpSelection(onCursor()), {
+        turn: [{ id: "reasoning", value: "high" }],
+        stored: [[{ id: "reasoning", value: "high" }]],
+      });
       assert.deepStrictEqual(
         yield* standUpSelection(onCursor([{ id: "reasoning", value: "low" }])),
-        [{ id: "reasoning", value: "low" }],
+        { turn: [{ id: "reasoning", value: "low" }], stored: [] },
       );
     }),
   );
