@@ -198,6 +198,7 @@ import {
   type RunScrollPosition,
   standsAtFoot,
 } from "./runCard.logic";
+import { useRunScrollResettle } from "./useRunScrollResettle";
 import { keepInPlace, scrollerOf } from "./keepInPlace";
 import {
   TimelineRowActivityCtx,
@@ -4222,6 +4223,9 @@ function RunScroll({
       },
     };
   }, [readingRef]);
+  // Its node re-inserted puts it back at 0, silently: following, it stands at its foot again.
+  const endRef = useRef<HTMLDivElement>(null);
+  useRunScrollResettle({ scrollRef, endRef, followRef, positionOf, putAt: follow.putAt });
   useLayoutEffect(() => {
     if (keepRef === undefined) return;
     keepRef.current = follow.keep;
@@ -4346,6 +4350,7 @@ function RunScroll({
               ),
             )}
           </ol>
+          <div ref={endRef} aria-hidden="true" data-run-scroll-end="" />
         </div>
       </ChatShownContext>
     </RunScrollHoldContext>
