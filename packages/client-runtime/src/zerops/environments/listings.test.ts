@@ -178,14 +178,15 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
   } as unknown as ProjectRecord;
 
   /** The project's zcp service, ACTIVE, its address enabled or not yet. */
-  const zcp = (subdomainAccess: boolean): ServiceRecord =>
+  /** The project's zcp service, ACTIVE, its address enabled or not, its record last updated then. */
+  const zcp = (subdomainAccess: boolean, updatedAt: string | null = null): ServiceRecord =>
     ({
       ref: service("service-1", project()),
       identity: observed({
         hostname: "zcp",
         type: { versionName: "zcp@1", displayName: "Zerops Mate", category: "runtime" },
       }),
-      lifecycle: observed({ status: "ACTIVE", createdAt: CREATED_AT, updatedAt: null }),
+      lifecycle: observed({ status: "ACTIVE", createdAt: CREATED_AT, updatedAt }),
       routing: observed({
         subdomainAccess,
         ports: [{ port: 8080, protocol: "TCP", scheme: "http", httpSupport: true }],
@@ -195,21 +196,7 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
     }) as unknown as ServiceRecord;
 
   /** A read the platform answered whole. */
-  /** A direct read of the project's services, observing since this receipt ordinal. */
-  const checkedAt = (ordinal: number) => ({
-    status: "observing",
-    identity: {
-      ...identity(),
-      key: interestKeyOf({ kind: "project-services-check", project: project() }),
-    },
-    sinceReceiptOrdinal: ReceiptOrdinal.make(ordinal),
-  });
-
-  const read = <R>(
-    records: ReadonlyArray<R>,
-    slice?: ReturnType<typeof project>,
-    checked?: number,
-  ) =>
+  const read = <R>(records: ReadonlyArray<R>, slice?: ReturnType<typeof project>) =>
     ({
       value: records.map((record) => ({ knowledge: "observed", record })),
       query: {
@@ -219,10 +206,7 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
         coverage: { kind: "exhausted-traversal" },
         descriptor: { organization },
       },
-      observation: {
-        required: checked === undefined ? [] : [checkedAt(checked)],
-        optional: [],
-      },
+      observation: { required: [], optional: [] },
       ...(slice === undefined ? {} : { project: slice }),
     }) as unknown;
 
@@ -238,8 +222,11 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
     projects: yes ? [{ project: project(), role: "OWNER" }] : [],
   });
 
-  /** The project's `stack.enableSubdomainAccess` for its zcp service, in this status. */
-  const enable = (status: string) => ({
+  /**
+   * The project's `stack.enableSubdomainAccess` for its zcp service, in this status: one that
+   * finished ended at 12:01:45 on Zerops' clock, its end read at receipt `at`.
+   */
+  const enable = (status: string, at = 5) => ({
     knowledge: "observed",
     record: {
       ref: process("enable-1", project()),
@@ -248,20 +235,26 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
         serviceIds: ["service-1"],
         createdAt: "2026-10-02T12:01:40.000Z",
       }),
-      // Its end first read at receipt 5.
-      lifecycle: { ...observed({ status, startedAt: null, finishedAt: null }), stamp: stamp(5) },
+      lifecycle: {
+        ...observed({
+          status,
+          startedAt: null,
+          finishedAt: status === "RUNNING" ? null : "2026-10-02T12:01:45.000Z",
+        }),
+        stamp: stamp(at),
+      },
       pipeline: unresolved,
     },
   });
 
   /** The project's processes as read: running ones and the newest history, or not read yet. */
-  const activityOf = (enableStatus: string | null, read = true) => ({
+  const activityOf = (enableStatus: string | null, read = true, at = 5) => ({
     running: {
-      value: enableStatus === "RUNNING" ? [enable(enableStatus)] : [],
+      value: enableStatus === "RUNNING" ? [enable(enableStatus, at)] : [],
       query: { status: read ? "observed" : "pending" },
     },
     retainedHistory:
-      enableStatus !== null && enableStatus !== "RUNNING" ? [enable(enableStatus)] : [],
+      enableStatus !== null && enableStatus !== "RUNNING" ? [enable(enableStatus, at)] : [],
     processHistory: read ? "read" : "reading",
     observation: { required: [], optional: [] },
   });
@@ -303,12 +296,24 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
           case "address-off":
           case "address-on":
             return registry.set(servicesRead, read([zcp(event === "address-on")], project()));
-          case "checked-before-its-end":
-          case "checked-after-its-end":
+          case "updated-before-its-end":
+          case "updated-after-its-end":
             return registry.set(
               servicesRead,
-              read([zcp(false)], project(), event === "checked-before-its-end" ? 3 : 7),
+              read(
+                [
+                  zcp(
+                    false,
+                    event === "updated-before-its-end"
+                      ? "2026-10-02T12:01:44.000Z"
+                      : "2026-10-02T12:01:50.000Z",
+                  ),
+                ],
+                project(),
+              ),
             );
+          case "enabled-read-again":
+            return registry.set(activity, activityOf("FINISHED", true, 9));
           case "enabling":
             return registry.set(activity, activityOf("RUNNING"));
           case "enabled":
@@ -342,8 +347,10 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
     | "enabling"
     | "enabled"
     /** Its services read directly again, before or after its enable was read as finished. */
-    | "checked-before-its-end"
-    | "checked-after-its-end"
+    | "updated-before-its-end"
+    | "updated-after-its-end"
+    /** The same finished enable read again later — another history read, a reconnect. */
+    | "enabled-read-again"
     | "enable-failed"
     | "not-enabling"
     | "projects-unread"
@@ -391,13 +398,25 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
       ],
     },
     {
-      case: "no public address once a read of its services after its enable ended still lacks it",
+      // Client review #2: a services read that lands while the REST record still lags says
+      // nothing; Zerops' own times do — a record last updated after the enable ended.
+      case: "no public address once its record, updated after its enable ended, still lacks it",
       steps: [
         [110_000, "address-off", { group: "unavailable" }],
         [111_000, "enabled", { group: "provisioning" }],
-        [112_000, "checked-before-its-end", { group: "provisioning" }],
+        [112_000, "updated-before-its-end", { group: "provisioning" }],
         [HOUR, "tick", { group: "provisioning" }],
-        [HOUR + 1_000, "checked-after-its-end", { group: "unavailable" }],
+        [HOUR + 1_000, "updated-after-its-end", { group: "unavailable" }],
+      ],
+    },
+    {
+      // Client review #4a: the same finished enable read again later never flips a settled row.
+      case: "stays without a public address when its finished enable is read again later",
+      steps: [
+        [110_000, "address-off", { group: "unavailable" }],
+        [111_000, "enabled", { group: "provisioning" }],
+        [112_000, "updated-after-its-end", { group: "unavailable" }],
+        [113_000, "enabled-read-again", { group: "unavailable" }],
       ],
     },
     {

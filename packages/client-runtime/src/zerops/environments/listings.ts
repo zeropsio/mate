@@ -44,6 +44,7 @@ import {
   NO_ADDRESS_MEMORY,
   projectCandidates,
   rememberAddresses,
+  serviceUpdatedAtIn,
   subdomainEnableIn,
   type AddressMemory,
   type CandidateRow,
@@ -193,9 +194,8 @@ export function candidateListingsAtom(
         },
         addressFactsOf(addresses, nowMs, (_projectId, serviceId) => {
           activity = get(data.reads.activity(record.ref));
-          // A direct read of its services after its enable ended says whether the record caught up.
-          const checkedAt = services === null ? null : servicesCheckOrdinalOf(services);
-          return subdomainEnableIn(activity, serviceId, checkedAt);
+          // Its record, last updated after its enable ended on Zerops' clock, says it caught up.
+          return subdomainEnableIn(activity, serviceId, serviceUpdatedAtIn(services, serviceId));
         }),
       );
       addresses = rememberAddresses(addresses, rows ?? []);

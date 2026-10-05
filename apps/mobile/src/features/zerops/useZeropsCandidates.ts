@@ -2,7 +2,6 @@ import {
   knownProjectsOf,
   knownServicesOf,
   projectKeyOf,
-  servicesCheckOrdinalOf,
   ZeropsOrganizationId,
   type CollectionRead,
   type InterestLease,
@@ -18,6 +17,7 @@ import {
   NO_ADDRESS_MEMORY,
   learnAddresses,
   selectCandidates,
+  serviceUpdatedAtIn,
   subdomainEnableIn,
   type AddressMemory,
   type CandidateRow,
@@ -242,7 +242,7 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
         return subdomainEnableIn(
           registry.get(runtime.reads.activity(project)),
           serviceId,
-          services === undefined ? null : servicesCheckOrdinalOf(services.read),
+          serviceUpdatedAtIn(services?.read ?? null, serviceId),
         );
       });
       const listings = projectReads.map(({ read, atMs: projectsAtMs }) =>

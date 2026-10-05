@@ -909,18 +909,19 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           ]).pipe(Effect.andThen(Effect.never)),
         ).pipe(Effect.ignore),
       );
-      let checkedAfter: number | null = null;
+      // One direct read of its services after each enable read as finished: a fresher record.
+      let checkedAfter: string | null = null;
       let check: Fiber.Fiber<void> | null = null;
       const recheck = (read: ProjectActivityRead) => {
         if (closed) return;
-        let ended: number | null = null;
+        let ended: string | null = null;
         for (const row of rows) {
           if (row.project.id !== projectId || row.service === undefined) continue;
           if (row.containerOrigin !== undefined) continue;
           const at = finishedEnableAt(read, row.service.id);
           if (at !== null && (ended === null || at > ended)) ended = at;
         }
-        if (ended === null || (checkedAfter !== null && checkedAfter >= ended)) return;
+        if (ended === null || ended === checkedAfter) return;
         checkedAfter = ended;
         if (check !== null) run(Fiber.interrupt(check));
         check = run(

@@ -502,15 +502,27 @@ describe("subdomainEnableOf", () => {
     expect(subdomainEnableOf(processes, "s1")).toBe(said);
   });
 
-  // The record follows a finished enable seconds later; a direct read of the services taken after
-  // the enable's end that still lacks the address says it caught up — no clock decides it.
+  // The record follows a finished enable seconds later. Zerops' own times say when it caught up:
+  // a service record last updated after the enable's end that still lacks the address — never the
+  // order this browser happened to read them in (client review #2, #4a).
   it.each([
-    { case: "no read of its services since: on", checkedAt: null, said: "on" },
-    { case: "a read before its end: on", checkedAt: 3, said: "on" },
-    { case: "a read after its end: off", checkedAt: 7, said: "off" },
-  ] as const)("a finished enable, $case", ({ checkedAt, said }) => {
-    const finished = { ...process(ENABLE, "FINISHED", "2026-10-02T12:00:00Z"), endedAt: 5 };
-    expect(subdomainEnableOf([finished], "s1", checkedAt)).toBe(said);
+    { case: "its record's time not known: on", updatedAt: null, said: "on" },
+    {
+      case: "its record last updated before the enable ended: on",
+      updatedAt: "2026-10-02T12:00:04Z",
+      said: "on",
+    },
+    {
+      case: "its record last updated after the enable ended: off",
+      updatedAt: "2026-10-02T12:00:09Z",
+      said: "off",
+    },
+  ] as const)("a finished enable, $case", ({ updatedAt, said }) => {
+    const finished = {
+      ...process(ENABLE, "FINISHED", "2026-10-02T12:00:00Z"),
+      finished: "2026-10-02T12:00:05Z",
+    };
+    expect(subdomainEnableOf([finished], "s1", updatedAt)).toBe(said);
   });
 });
 
