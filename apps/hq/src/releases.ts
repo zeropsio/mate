@@ -85,8 +85,8 @@ export class Releases extends Context.Service<
       request: RollbackRequest,
     ) => Made;
     /**
-     * The newest approved release by version made since the production environment `projectId` was
-     * created, not before: what that production follows. None before one, whatever older releases
+     * The newest approved release by version made since the production environment `projectId`'s
+     * release floor, where it has one (`hq_environment.release_floor`): what that production follows. None before one, whatever older releases
      * the application has.
      */
     readonly newest: (
@@ -299,8 +299,9 @@ export const releasesLayer: Layer.Layer<
         Effect.map(
           sql<ReleaseRow>`
             SELECT ${sql.literal(RELEASE_COLUMNS)} FROM hq_release
-            WHERE app_id::text = ${appId} AND state = 'approved' AND released_at >= (
-              SELECT created_at FROM hq_environment WHERE project_id = ${projectId})`,
+            WHERE app_id::text = ${appId} AND state = 'approved' AND (
+              SELECT release_floor IS NULL OR released_at >= release_floor
+              FROM hq_environment WHERE project_id = ${projectId})`,
           (rows) => rows.map(releaseOf).sort((a, b) => compareReleaseTags(b.tag, a.tag))[0],
         ),
       changes: SubscriptionRef.changes(ticks),

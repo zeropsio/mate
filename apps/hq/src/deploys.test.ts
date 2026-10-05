@@ -2106,6 +2106,7 @@ describe("deploys", () => {
               ${`[{"service":"web","sha":"${old}"}]`}::jsonb, 'dev', 'approved', true,
               now() - interval '1 hour')`;
           yield* withProduction(appId, world);
+          yield* sql`UPDATE hq_environment SET release_floor = now() WHERE project_id = 'P_PROD'`;
           for (const cause of ["env_added", "key_kept"] as const) {
             yield* ask({ cause, projectId: "P_PROD", by: "owner" });
           }
@@ -2129,14 +2130,39 @@ describe("deploys", () => {
           // Replaced, it follows nothing again until the next release.
           yield* sql`DELETE FROM hq_environment WHERE project_id = 'P_PROD'`;
           yield* sql`
-            INSERT INTO hq_environment (project_id, app_id, tier, name, sources, created_by)
-            VALUES ('P_PROD', ${appId}::uuid, 'production', 'shop-production', '{release}', 'owner')`;
+            INSERT INTO hq_environment (project_id, app_id, tier, name, sources, created_by,
+              release_floor)
+            VALUES ('P_PROD', ${appId}::uuid, 'production', 'shop-production', '{release}', 'owner',
+              now())`;
           const before = (yield* deploys).filter((row) => row.project === "P_PROD").length;
           yield* ask({ cause: "env_added", projectId: "P_PROD", by: "owner" });
           yield* planned;
           assert.strictEqual(
             (yield* deploys).filter((row) => row.project === "P_PROD").length,
             before,
+          );
+        }),
+      ),
+    );
+
+    // A production that existed before releases had a floor keeps following the newest approved
+    // release, whenever it was made: tags recovered from git carry their own, older times.
+    it.effect("keeps an existing production following a release older than its record", () =>
+      withDeploys(({ appId, world, tiers, commit, until, ask }) =>
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const groupHead = yield* commit("group", { "README.md": "# Shop\n" });
+          tiers.set(`${appId}/production`, tierOf(...runtime(appId, "web")));
+          const old = yield* commit("web", { "zerops.yaml": ZEROPS_YAML, "index.js": "old\n" });
+          yield* sql`
+            INSERT INTO hq_release (app_id, tag, sha, entries, released_by, state, released_at)
+            VALUES (${appId}::uuid, 'v0.1.0', ${groupHead},
+              ${`[{"service":"web","sha":"${old}"}]`}::jsonb, 'dev', 'approved',
+              now() - interval '1 hour')`;
+          yield* withProduction(appId, world);
+          yield* ask({ cause: "key_kept", projectId: "P_PROD", by: "owner" });
+          yield* until((rows) =>
+            rows.some((row) => row.project === "P_PROD" && row.sha === old && row.state === "live"),
           );
         }),
       ),

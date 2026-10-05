@@ -476,8 +476,8 @@ export const deploysLayer = (
 
       /**
        * A production's: each runtime at the commit the release `tag` lists (C16), else the newest
-       * approved release's — only of a release made since the production environment was created,
-       * so attaching one deploys nothing: none before a release, which is no failure; a runtime it
+       * approved release's — only of a release made since the production's release floor, where
+       * it has one (set when an attach or a replacement creates it), so attaching one deploys nothing: none before a release, which is no failure; a runtime it
        * does not list, and a service it lists that production no longer builds, are reported, and
        * the rest deploy.
        */
@@ -514,7 +514,7 @@ export const deploysLayer = (
 
       /**
        * The release `tag` of the production's application, as its row holds it, if made since the
-       * production was created; none where it is not one.
+       * production's release floor, where it has one; none where it is not one.
        */
       const releaseOf = (environment: Environment, tag: string) =>
         Effect.map(
@@ -523,8 +523,9 @@ export const deploysLayer = (
             readonly entries: ReadonlyArray<{ readonly service: string; readonly sha: string }>;
           }>`
             SELECT tag, entries FROM hq_release
-            WHERE app_id::text = ${environment.app_id} AND tag = ${tag} AND released_at >= (
-              SELECT created_at FROM hq_environment WHERE project_id = ${environment.project_id})`,
+            WHERE app_id::text = ${environment.app_id} AND tag = ${tag} AND (
+              SELECT release_floor IS NULL OR released_at >= release_floor
+              FROM hq_environment WHERE project_id = ${environment.project_id})`,
           (rows) => rows[0],
         );
 

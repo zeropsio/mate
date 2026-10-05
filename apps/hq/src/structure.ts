@@ -735,12 +735,13 @@ export const structureLayer = (options: {
           const declared = environment.replaced?.declared_seq ?? null;
           yield* sql`
             INSERT INTO hq_environment (project_id, app_id, tier, name, sources, declared_seq,
-              created_by)
+              created_by, release_floor)
             VALUES (${environment.projectId}, ${environment.appId}::uuid, ${environment.tier},
               ${name}, ARRAY(SELECT jsonb_array_elements_text(${sources}::jsonb)),
               COALESCE(${declared}::bigint, nextval(pg_get_serial_sequence('hq_environment',
                 'declared_seq'))),
-              ${environment.userId})`;
+              ${environment.userId},
+              ${environment.tier === "production" ? sql`now()` : null})`;
           yield* addRollout(sql, {
             cause: "env_added",
             projectId: environment.projectId,
