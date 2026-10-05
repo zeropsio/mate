@@ -108,6 +108,17 @@ describe("userAskOf", () => {
       { kind: "attachments", images: 2, files: 1 },
     ],
     [
+      "a typed [File 1] stays the person's words when the only other attachment is a picture's original",
+      {
+        text: "[Picture 1]\n[File 1]",
+        attachments: [
+          { type: "image", mimeType: "image/png" },
+          { type: "file", mimeType: "image/png" },
+        ],
+      },
+      { kind: "text", text: "[File 1]" },
+    ],
+    [
       "a picture kept with its original asks as one picture",
       {
         text: "[Picture 1]",
