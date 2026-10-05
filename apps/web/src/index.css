@@ -4733,6 +4733,8 @@ button.run-bar:focus-visible {
   flex-direction: column;
   justify-content: flex-end;
   overflow: hidden;
+  /* The edge that takes the work is soft: lines pass under it, whole. */
+  mask-image: linear-gradient(to bottom, transparent, currentColor 24px);
 }
 .run-above[data-folding] > * {
   flex: none;

@@ -2725,6 +2725,7 @@ function NowLine({
   answering,
   outcome,
   end = null,
+  settledHere = false,
 }: {
   readonly status: RunStatus;
   readonly now: TurnHeaderActivity | null;
@@ -2733,6 +2734,12 @@ function NowLine({
   readonly outcome: OutcomeModel | null;
   /** What stands in the right column once the run is over. */
   readonly end?: ReactNode;
+  /**
+   * The person watched the run end here: its worked line takes the working
+   * row's place rising into it, as the line's words change in place — never a
+   * swap in one frame (run 11).
+   */
+  readonly settledHere?: boolean;
 }) {
   const ctx = use(TimelineRowCtx);
   const { isCompacting } = use(TimelineRowActivityCtx);
@@ -2754,9 +2761,14 @@ function NowLine({
   // where they stood as the new ones rise into it, so a change reads as the
   // same line saying something new.
   const wordsChanged = useChangedSinceShown(words);
+  const [risesIn] = useState(settledHere);
   const leaving = useLeavingLine(line, words);
   const head = (
-    <span key={words} className="run-now-head" data-run-now-change={wordsChanged ? "" : undefined}>
+    <span
+      key={words}
+      className="run-now-head"
+      data-run-now-change={wordsChanged || risesIn ? "" : undefined}
+    >
       <NowWords line={line} />
     </span>
   );
@@ -3299,6 +3311,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // worked line alone — the summary — and "Show work" opens the whole run
   // under it (K12).
   const settled = row.status !== null && !row.live;
+  // Watched live here, it ends under the person's eyes: its line rises in.
+  const [watchedLive, setWatchedLive] = useState(row.live && !ctx.syncing);
+  if (row.live && !ctx.syncing && !watchedLive) setWatchedLive(true);
   const shows = runCardShows(settled, fold);
   const folded = shows.toggle === "show";
   // The work stands over the line while the run goes on, while it stays open
@@ -3556,6 +3571,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               key="line"
               answering={false}
               outcome={row.outcome}
+              settledHere={watchedLive}
               end={
                 // A chat opens from its first thing the Mate did (`chatLines`),
                 // and only onto a line that shows something.

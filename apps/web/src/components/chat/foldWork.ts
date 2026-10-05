@@ -2,7 +2,8 @@
  * A settled run's work folding shut into its line (pass 39, replacing the
  * stepped fold of 2026-09-29). One motion at a time: the fold waits for the
  * conversation to finish gliding to what the settle brought (the answer, the
- * result), then eases the work's height to nothing on the run card's curve.
+ * result), then eases the work's height to nothing on the run card's curve —
+ * a clip: what it holds stays whole until the edge passes over it.
  *
  * In a conversation that follows its end, the line and everything under it
  * keep their place and what stands above comes down to meet it: each frame the
@@ -104,8 +105,9 @@ export function foldWork({
     last = now;
     const taken = height - next;
     height = next;
+    // A clip, never a fade (run 11: the work was gone by 40 % of the fold
+    // while the card still moved): it stays whole until the edge takes it.
     above.style.height = `${next}px`;
-    above.style.opacity = String(Math.max(0, 1 - (1 - next / from) / 0.6));
     if (scroller !== null && scroller.closest("[data-timeline-follows-end]") !== null) {
       // The page's own move: never read as the person leaving the end.
       scrollOwn(scroller, scroller.scrollTop - taken);
