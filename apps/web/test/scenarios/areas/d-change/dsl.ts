@@ -1,11 +1,12 @@
 import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
 import type { createScenario } from "../../harness/scenario.ts";
-export { changeFixture } from "../../fakes/d-change/changes.ts";
+export { changeFixture, anotherOrganization } from "../../fakes/d-change/changes.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 
 export function review(s: Pick<Scenario, "page" | "web">) {
+  let guardedDocument: number | undefined;
   const text = (words: string) =>
     Effect.promise(async () => {
       try {
@@ -52,13 +53,41 @@ export function review(s: Pick<Scenario, "page" | "web">) {
     text,
     mergeEnabled,
     waitUntilMergeEnabled,
+    chooseInitialOrganization: (name: string) =>
+      Effect.promise(async () => {
+        await s.page.locator("::-p-text(Choose an organization)").setTimeout(15_000).wait();
+        await s.page.locator(`::-p-text(${name})`).click();
+      }),
+    switchOrganization: (name: string) =>
+      Effect.promise(async () => {
+        await s.page.locator('[data-zerops-surface="sidebar-account"]').click();
+        await s.page.locator(`::-p-aria(${name}[role="menuitemradio"])`).click();
+        await s.page.waitForFunction(
+          (name) =>
+            [
+              ...document.querySelectorAll<HTMLElement>(
+                '[data-zerops-surface="sidebar-account-organization"]',
+              ),
+            ].some(
+              (node) => node.getBoundingClientRect().height > 0 && node.innerText.trim() === name,
+            ),
+          { timeout: 15_000, polling: "raf" },
+          name,
+        );
+      }),
     rememberUnknownPermission: Effect.promise(async () => {
-      await s.page.evaluateOnNewDocument(() => {
+      guardedDocument = await s.page.evaluate(() => {
         const history: string[] = [];
         Object.assign(window, { dChangeUnknownOffers: history });
         let visible = false;
         const check = () => {
-          const shown = document.body?.innerText.includes("HQ has not said yet") === true;
+          const shown = [
+            ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="review"]'),
+          ].some(
+            (node) =>
+              node.getBoundingClientRect().height > 0 &&
+              node.innerText.includes("HQ has not said yet"),
+          );
           if (shown && !visible) history.push("HQ has not said yet");
           visible = shown;
         };
@@ -69,7 +98,11 @@ export function review(s: Pick<Scenario, "page" | "web">) {
           attributes: true,
         });
         check();
+        return performance.timeOrigin;
       });
+    }),
+    sameDocument: Effect.promise(async () => {
+      expect(await s.page.evaluate(() => performance.timeOrigin)).toBe(guardedDocument);
     }),
     unknownPermissionHistory: Effect.promise(() =>
       s.page.evaluate(

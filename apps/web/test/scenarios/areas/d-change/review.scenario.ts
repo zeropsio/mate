@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea, mergeFor, hqFramesFor } from "./fake.ts";
-import { changeFixture, review } from "./dsl.ts";
+import { changeFixture, anotherOrganization, review } from "./dsl.ts";
 
 const setup = Effect.gen(function* () {
   const s = yield* createScenario([installArea]);
@@ -130,12 +130,15 @@ describe("D: change review, comments and merge", () => {
       }),
     );
 
-    // Catches a reload while HQ is slow hiding an offered Merge ('HQ has not said yet')
-    it.effect.fails("a slow HQ snapshot on reload preserves the offered Merge", () =>
+    // Catches switching organizations and back erasing an offered Merge ('HQ has not said yet').
+    it.effect("a same-tab organization round trip preserves the known Merge offer", () =>
       Effect.gen(function* () {
         const { s, change, r, area } = yield* setup;
+        const organizations = anotherOrganization(s);
         yield* Effect.promise(() => s.clock.install());
-        yield* s.given.signedIn;
+        yield* Effect.all([s.given.signedIn, r.chooseInitialOrganization(organizations.original)], {
+          concurrency: "unbounded",
+        });
         yield* r.direct(change.direct);
         yield* r.mergeEnabled;
         yield* Effect.promise(() =>
@@ -143,11 +146,13 @@ describe("D: change review, comments and merge", () => {
         );
         yield* r.rememberUnknownPermission;
         area.hqFrames.hold();
-        yield* Effect.promise(() => s.page.reload());
+        yield* r.switchOrganization(organizations.other);
+        yield* r.switchOrganization(organizations.original);
         yield* r.text("summary.txt");
         yield* Effect.promise(() => area.hqFrames.received());
         area.hqFrames.resume();
         yield* r.mergeEnabled;
+        yield* r.sameDocument;
         yield* s.then.noExternalNetwork;
         const guard = yield* r.unknownPermissionHistory;
         expect(guard).toEqual([]);

@@ -19,6 +19,12 @@ type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 export const TITLE = "Add the order summary";
 export const DESCRIPTION = "Shows the order total before checkout.";
 
+export function anotherOrganization(s: Scenario) {
+  s.drivers.zerops.world.organizations.set("OTHER", { name: "Second organization" });
+  s.given.person("owner", { orgId: "OTHER", role: "OWNER" });
+  return { original: s.drivers.zerops.orgName, other: "Second organization" };
+}
+
 /** zcp's actual git/HTTP boundary: real commits, change records, descriptions and merge receipts. */
 export const changeFixture = Effect.fn(function* (s: Scenario) {
   yield* s.given.project("Ada", { mate: true, app: "Shop" });
