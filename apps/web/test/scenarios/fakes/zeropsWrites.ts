@@ -1,5 +1,4 @@
 import { parse } from "yaml";
-import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import type { ZeropsFake, EntityRow } from "./zerops.ts";
 import type { WireRequest, WireResponse } from "../harness/http.ts";
 
@@ -122,20 +121,7 @@ export class ZeropsWrites {
   }
 
   private allowed(credential: string, projectId: string) {
-    const token = this.platform.world.tokens.get(credential)!;
-    const person = this.platform.people.get(credential);
-    const member = person
-      ? this.platform.world.members.get(token.orgId)?.find((m) => m.userId === person)
-      : undefined;
-    const role = member?.roleCode ?? token.roleCode;
-    const project = this.platform.world.projects.find((row) => row.id === projectId);
-    const grant = person
-      ? project?.userRoles.find((grant) => grant.clientUserId === member?.clientUserId)?.roleCode
-      : token.projects.find((grant) => grant.projectId === projectId)?.roleCode;
-    return (
-      project?.orgId === token.orgId &&
-      (roleAtLeast(role, "BASIC_USER") || roleAtLeast(grant, "BASIC_USER"))
-    );
+    return this.platform.canWrite(credential, projectId);
   }
 
   async handle(

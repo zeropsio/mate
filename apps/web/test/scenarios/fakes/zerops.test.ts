@@ -164,6 +164,51 @@ describe("Zerops fake: measured wire guarantees", () => {
     }
   });
 
+  it("reads/registers before opening a socket and delivers pre-bind and subsequent pushes", async () => {
+    const { fake, server, call } = await rig();
+    try {
+      fake.put("project", { id: "Ada", name: "Ada", clientId: "ORG" });
+      const response = await call("/project/search", {
+        receiverId: "parallel",
+        subscriptionName: "members",
+        wsOutputType: "listStream",
+        search: [{ name: "clientId", operator: "eq", value: "ORG" }],
+      });
+      expect(await response.json()).toMatchObject({ items: [{ id: "Ada" }] });
+      await call("/project/search", {
+        receiverId: "parallel",
+        subscriptionName: "rows",
+        wsOutputType: "updateStream",
+        search: [],
+      });
+      fake.put("project", { id: "Bea", name: "Bea", clientId: "ORG" });
+      fake.put("project", { id: "Dora", name: "Dora", clientId: "ORG" }, "entity-first");
+      const opened = await receiver(server.origin, "parallel");
+      expect(await opened.take()).toMatchObject({
+        subscriptionName: "members",
+        data: { add: ["Bea"] },
+      });
+      expect(await opened.take()).toMatchObject({
+        subscriptionName: "rows",
+        data: { update: [{ id: "Bea", _version: 2 }] },
+      });
+      expect(await opened.take()).toMatchObject({
+        subscriptionName: "rows",
+        data: { update: [{ id: "Dora" }] },
+      });
+      expect(await opened.take()).toMatchObject({
+        subscriptionName: "members",
+        data: { add: ["Dora"] },
+      });
+      fake.put("project", { id: "Cara", name: "Cara", clientId: "ORG" });
+      expect((await opened.take()).data).toEqual({ add: ["Cara"], delete: [] });
+      expect((await opened.take()).data).toMatchObject({ update: [{ id: "Cara" }] });
+      await opened.close();
+    } finally {
+      await server.close();
+    }
+  });
+
   it("closing an old socket cannot delete a replacement's registrations on the same receiver", async () => {
     const { fake, server, call } = await rig();
     try {

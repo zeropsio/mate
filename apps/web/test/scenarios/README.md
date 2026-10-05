@@ -27,6 +27,7 @@ an error. Uncaught page errors fail an `afterEach` hook outside expected-failure
 - `harness/clientClock.ts`: opt-in browser timers and Chrome lifecycle controls.
 - `fakes/zerops.ts`: REST, socket login, subscriptions, versioned entity tables, faults and budgets.
 - `fakes/zeropsWrites.ts`: shared HTTP deployment/import driver and process transitions.
+- `fakes/zeropsWorld.ts`: organization memberships, person presets and project grants.
 - `fakes/mate.ts`: contract-checked environment, door/OAuth, RPC, snapshots and sequence replay.
 - `fakes/hqConnection.ts`: interruptible, endpoint-agnostic proxy to real Core.
 - `areas/foundation/examples.scenario.ts`: B (known failure and HQ path), C and G.
@@ -70,7 +71,17 @@ yield * s.given.project("Cara", { mate: true, app: "Other" });
 const { owner, appIds } = s.drivers; // also s.owner / s.appIds
 
 s.given.person("colleague", { role: "Developer", grants: { Ada: "BASIC_USER" } });
-// OWNER, READ_ONLY and NO_ACCESS are supported too; Developer means NO_ACCESS + project grants.
+// Developer is the real preset: NO_ACCESS + canCreateProjects: true, with optional project grants.
+// All ZeropsOrgRole values are accepted; canCreateProjects and status can be overridden.
+s.given.person("reader", { role: "READ_ONLY", canCreateProjects: false });
+// Memberships are per organization; adding another preserves the person's existing memberships.
+s.drivers.zerops.world.organizations.set("OTHER", {
+  name: "Second",
+  settings: { locationList: [] },
+});
+s.given.person("colleague", { orgId: "OTHER", role: "READ_ONLY" });
+// Put platform-only inventory from an area driver; clientId scopes it to that organization.
+s.drivers.zerops.put("project", { id: "Dora", name: "Dora", clientId: "OTHER" });
 s.given.asPerson("colleague"); // choose BEFORE sign-in; defaults: owner, dev, reader
 // This is the real authorize-app hand-over, including nonce + production callback.
 yield * s.given.signedIn;
@@ -87,6 +98,17 @@ yield * Effect.promise(() => reader.clock.advance(30_000));
 yield * Effect.promise(() => reader.clock.sleep());
 yield * Effect.promise(() => reader.clock.wake(3_600_000));
 ```
+
+`world.organizations` maps ids to `{name, settings?}`; `world.members` contains per-organization
+memberships. `given.person(name, {orgId?, role?, canCreateProjects?, status?, grants?})` updates one
+membership without replacing other organizations. Grants override the organization role and are
+keyed by project id. `definePerson(world, name, options)` and `projectRoles(world, projectId, orgId?)`
+from `fakes/zeropsWorld.ts` expose the same APIs to independent area drivers (including future
+project grants). `/user/info` lists every membership; client settings, members, projects and
+integration tokens are scoped to the requested organization. Personal credentials can span
+organizations; integration credentials remain scoped to their own organization.
+`when.zerops.colleague.createsProject` mutates the world directly and returns without waiting for
+client subscriptions. Area scenarios assert visible outcomes in `then`.
 
 `advance(ms)` executes
 positive timers in deadline order, including chained backoff/Retry-After waits, and drains their
@@ -127,8 +149,10 @@ Measured revoked/gone error bodies are `{error:{code,message,meta}}`; a gone pro
 `projectNotFound`, a revoked token 401 `notAuthorized`. Search includes limit/offset/totalHits and
 slices items; sorting and unsupported operators are not modeled (unsupported operators fail).
 Login accepts a JSON API token without a Bearer header, mints distinct short-lived socket tokens,
-and rejects API tokens at the socket. Close removes only that socket's subscriptions. There is no
-replay: current state comes only from a fresh registration response. ACLs model org roles and
+and rejects API tokens at the socket. Current-state reads can register before socket setup;
+pre-bind pushes are delivered in their original order on the receiver's first bind. Subsequent
+pushes resolve the receiver's current socket. Close removes only that socket's subscriptions.
+There is no reconnect replay: current state comes only from a fresh registration response. ACLs model org roles and
 project grants, not the entire production platform. Schema validation, region routing, deployment
 YAML/build execution, all native process fields and signed-log storage are approximated.
 

@@ -15,6 +15,7 @@ import {
 } from "../../../../hq/test/harness/runningCore.ts";
 import { mateInApp } from "../../../../hq/test/harness/mates.ts";
 import { overviewOf, digest } from "../../../../hq/test/harness/overviews.ts";
+import { definePerson, projectRoles, type PersonOptions } from "../fakes/zeropsWorld.ts";
 import { ZeropsFake } from "../fakes/zerops.ts";
 import { MateFake } from "../fakes/mate.ts";
 import { hqConnection } from "../fakes/hqConnection.ts";
@@ -89,57 +90,13 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       await install(drivers);
     });
 
-  const persons = new Map<string, { token: string; grants: Record<string, string> }>();
-  const person = (
-    name: string,
-    options: {
-      role: "OWNER" | "Developer" | "NO_ACCESS" | "READ_ONLY";
-      grants?: Record<string, "OWNER" | "BASIC_USER" | "READ_ONLY">;
-    },
-  ) => {
-    const roleCode = options.role === "Developer" ? "NO_ACCESS" : options.role;
-    const token = name === "owner" ? "personal" : `personal-${name}`;
-    const members = zerops.world.members.get("ORG")!;
-    const existing = members.find((member) => member.userId === name);
-    const member = {
-      name,
-      kind: "person" as const,
-      userId: name,
-      clientUserId: `C-${name}`,
-      roleCode,
-      status: "ACTIVE",
-      canCreateProjects: roleCode === "OWNER",
-    };
-    if (existing) Object.assign(existing, member);
-    else members.push(member);
-    zerops.world.tokens.set(token, {
-      ...personal,
-      id: token,
-      name: `Scenario ${name}`,
-      roleCode,
-      createdByUser: name,
-    });
-    zerops.people.set(token, name);
-    persons.set(name, { token, grants: options.grants ?? {} });
-    zerops.world.projects = zerops.world.projects.map((project) => ({
-      ...project,
-      userRoles: [
-        ...project.userRoles.filter((grant) => grant.clientUserId !== member.clientUserId),
-        ...(options.grants?.[project.id]
-          ? [{ clientUserId: member.clientUserId, roleCode: options.grants[project.id]! }]
-          : []),
-      ],
-    }));
+  const persons = new Map<string, { token: string }>();
+  const person = (name: string, options: PersonOptions = {}) => {
+    persons.set(name, definePerson(zerops.world, name, options));
   };
   person("owner", { role: "OWNER" });
   person("dev", { role: "Developer" });
   person("reader", { role: "READ_ONLY" });
-  const projectRoles = (name: string) =>
-    [...persons].flatMap(([person, profile]) =>
-      profile.grants[name]
-        ? [{ clientUserId: `C-${person}`, roleCode: profile.grants[name]! }]
-        : [],
-    );
   const app = Effect.fn("scenarios.given.app")(function* (name: string) {
     if (appIds.has(name)) return appIds.get(name)!;
     const response = yield* core.call("POST", "/api/apps", { session: owner, body: { name } });
@@ -166,7 +123,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       clientId: "ORG",
       status: "ACTIVE",
       tags: [],
-      userRoles: projectRoles(name),
+      userRoles: projectRoles(zerops.world, name),
     });
     if (kind !== "mate") {
       if (options.app && kind && options.registered !== false) {
@@ -222,7 +179,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       clientId: "ORG",
       status: "ACTIVE",
       tags: [],
-      userRoles: projectRoles(name),
+      userRoles: projectRoles(zerops.world, name),
     });
     if (options.registered === false) return;
     let credential: string;
@@ -328,12 +285,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       zerops: {
         colleague: {
           createsProject: (name: string, options: { mate?: boolean; enroll?: boolean } = {}) =>
-            Effect.andThen(
-              Effect.promise(async () => {
-                await zerops.waitForRegistration("project");
-              }),
-              project(name, { ...options, registered: options.enroll ?? false }),
-            ),
+            project(name, { ...options, registered: options.enroll ?? false }),
         },
       },
       menu: {
