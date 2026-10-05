@@ -76,3 +76,44 @@ export function movesAsPerson({
   if ((!moving && !resized) || msSinceInput <= PERSON_INPUT_MS) return true;
   return atFoot && !follows;
 }
+
+/**
+ * How a run's scroll keeps to its foot as what it holds or its box changed:
+ * it `stays` where it is — scrolled up by the person, or a glide in flight
+ * carries it; it `waits` a frame while the card around it eases taller, which
+ * gives it the room it needs; it `puts` itself at its foot in the same frame,
+ * so its end never leaves its foot — a height that eases (a line landing, a
+ * bubble growing as its words stream) already moves on the room's curve, and
+ * gliding after it left the newest line cut for 200 ms (R12-17); it `glides`
+ * only after lines that grew at once in a run watched live, nothing easing
+ * them (a picture's bytes arriving).
+ */
+export function keepsFoot({
+  follows,
+  heldAbove,
+  grew,
+  below,
+  eases,
+  roomEases,
+  gliding,
+}: {
+  readonly follows: boolean;
+  /** A box holding it eases this moment: its height is that ease's. */
+  readonly heldAbove: boolean;
+  /** Its lines grew since it last kept to its foot. */
+  readonly grew: boolean;
+  /** Its foot stands below where it is. */
+  readonly below: boolean;
+  /** Its room eases as lines join it: a live run, watched. */
+  readonly eases: boolean;
+  /** A box in it eases this moment. */
+  readonly roomEases: boolean;
+  /** A glide to its foot is in flight. */
+  readonly gliding: boolean;
+}): "stays" | "waits" | "puts" | "glides" {
+  if (!follows) return "stays";
+  if (heldAbove) return "waits";
+  if (roomEases) return "puts";
+  if (grew && below && eases) return "glides";
+  return gliding ? "stays" : "puts";
+}

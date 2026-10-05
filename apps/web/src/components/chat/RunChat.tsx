@@ -139,7 +139,7 @@ import {
 } from "./backgroundLine.logic";
 import { useRunEffortWords } from "./runResultFacts";
 import { foldWork } from "./foldWork";
-import { FOLLOW_TAU_MS, ROOM_TAU_MS, approach, movesAsPerson } from "./runMotion.logic";
+import { FOLLOW_TAU_MS, ROOM_TAU_MS, approach, keepsFoot, movesAsPerson } from "./runMotion.logic";
 import { easeRooms, noteScrollTop, type Rooms } from "./runRoom";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
@@ -4292,20 +4292,27 @@ function RunScroll({
       read(position);
       const grew = laid.height !== null && position.scrollHeight > laid.height + 0.5;
       laid.height = position.scrollHeight;
+      const foot = footOf(position);
+      const keeps = keepsFoot({
+        follows: followRef.current.follows,
+        heldAbove: followRef.current.follows && heldAbove(),
+        grew,
+        below: foot > element.scrollTop + 0.5,
+        eases: easesRef.current,
+        roomEases: roomRef.current?.easing() ?? false,
+        gliding: gliding.frame !== 0,
+      });
       // The card around it easing taller gives it the room it needs: it
       // stays, and keeps to its foot again once that ease is over.
-      if (followRef.current.follows && heldAbove()) {
+      if (keeps === "waits") {
         if (laid.again === 0) {
           laid.again = requestAnimationFrame(() => {
             laid.again = 0;
             keep();
           });
         }
-      } else if (followRef.current.follows) {
-        const foot = footOf(position);
-        if (grew && foot > element.scrollTop + 0.5 && easesRef.current) glide();
-        else if (gliding.frame === 0) putAt(element, foot);
-      }
+      } else if (keeps === "glides") glide();
+      else if (keeps === "puts") putAt(element, foot);
       markEdges(element);
     };
     return {

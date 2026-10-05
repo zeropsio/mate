@@ -6,6 +6,7 @@ import {
   ROOM_TAU_MS,
   SETTLED_PX,
   approach,
+  keepsFoot,
   movesAsPerson,
 } from "./runMotion.logic";
 
@@ -171,5 +172,53 @@ describe("movesAsPerson", () => {
     expect(movesAsPerson({ moving, resized, msSinceInput: sinceInput, atFoot, follows })).toBe(
       person,
     );
+  });
+});
+
+// How a run's scroll that follows its foot keeps to it as what it holds
+// changes (R12-17: a line landing left it 10–28 px short of its foot for
+// 200 ms, the newest line cut, as it glided after a height that already eased).
+describe("keepsFoot", () => {
+  const at = {
+    follows: true,
+    heldAbove: false,
+    grew: false,
+    below: true,
+    eases: true,
+    roomEases: false,
+    gliding: false,
+  };
+  it.each([
+    { what: "scrolled up by the person", given: { follows: false }, keeps: "stays" },
+    { what: "the card around it easing taller", given: { heldAbove: true }, keeps: "waits" },
+    {
+      what: "a line landing whose room eases in",
+      given: { grew: true, roomEases: true },
+      keeps: "puts",
+    },
+    {
+      what: "a bubble easing taller as its words stream",
+      given: { roomEases: true },
+      keeps: "puts",
+    },
+    { what: "its box squeezed by the slot growing", given: {}, keeps: "puts" },
+    {
+      what: "lines that grew at once, nothing easing them",
+      given: { grew: true },
+      keeps: "glides",
+    },
+    {
+      what: "lines that grew at once in a run not watched live",
+      given: { grew: true, eases: false },
+      keeps: "puts",
+    },
+    { what: "a glide to the foot in flight", given: { gliding: true }, keeps: "stays" },
+    {
+      what: "a glide in flight as a room eases",
+      given: { gliding: true, roomEases: true, grew: true },
+      keeps: "puts",
+    },
+  ] as const)("$what: it $keeps", ({ given, keeps }) => {
+    expect(keepsFoot({ ...at, ...given })).toBe(keeps);
   });
 });
