@@ -55,7 +55,7 @@ export const processValue = (
 export const zeropsVersion = (version: number) => ({ kind: "zerops" as const, version });
 
 export function liveZerops(input: {
-  readonly running: ReadonlyArray<{ readonly id: string; readonly projectId: string }>;
+  readonly running: ReadonlyArray<Parameters<typeof processValue>[0]>;
 }): ReadonlyArray<AccountInput> {
   return liveScopes(linkKeys.zerops(ORG), [
     {

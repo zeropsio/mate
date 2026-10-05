@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { liveZerops, ORG, processValue } from "./__fixtures__/account.ts";
 import { runningScope } from "./families/process.ts";
 import { linkKeys } from "./model.ts";
+import { runningWork, type ProjectKey, type RunningWork } from "./projections/processes.ts";
 import type { AccountInput } from "./reducer.ts";
 import { makeAccountStore, type Projection } from "./store.ts";
 
@@ -36,14 +37,6 @@ const processRows = (
   })),
 });
 
-/** A project's running work, as a menu row would read it: by the index, never the table. */
-const runningOf: Projection<string, number> = {
-  name: "runningOf",
-  keyOf: (projectId) => projectId,
-  derive: (read, projectId) => read.index("running", projectId).size,
-  equals: (left, right) => left === right,
-};
-
 describe("makeAccountStore", () => {
   it("publishes a reduction to the keys it changed and to no other", () => {
     const registry = AtomRegistry.make();
@@ -71,17 +64,17 @@ describe("makeAccountStore", () => {
     liveZerops({ running: [] }).forEach(store.dispatch);
 
     const derived = new Map<string, number>();
-    const counted: Projection<string, number> = {
-      ...runningOf,
+    const counted: Projection<ProjectKey, RunningWork> = {
+      ...runningWork,
       derive: (read, key) => {
-        derived.set(key, (derived.get(key) ?? 0) + 1);
-        return runningOf.derive(read, key);
+        derived.set(key.projectId, (derived.get(key.projectId) ?? 0) + 1);
+        return runningWork.derive(read, key);
       },
     };
     // A render: every mounted atom is read again whenever it says it changed.
     const mount = <Value>(atom: Atom.Atom<Value>) =>
       registry.subscribe(atom, () => void registry.get(atom), { immediate: true });
-    for (const projectId of projects) mount(store.data.project(counted, projectId));
+    for (const projectId of projects) mount(store.data.project(counted, { orgId: ORG, projectId }));
     derived.clear();
 
     // A busy project: its deploy's row moves fifty times; one other project starts a build.
@@ -93,6 +86,8 @@ describe("makeAccountStore", () => {
       ["project-0", 1],
       ["project-7", 1],
     ]);
-    expect(registry.get(store.data.project(counted, "project-0"))).toBe(1);
+    expect(
+      registry.get(store.data.project(counted, { orgId: ORG, projectId: "project-0" })).kind,
+    ).toBe("running");
   });
 });

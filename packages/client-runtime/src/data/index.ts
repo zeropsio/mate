@@ -12,3 +12,12 @@ export {
   repairZeropsSession,
   type ZeropsWireClient,
 } from "../zerops/data/zeropsWire.ts";
+export { historyScope, runningScope, type ProcessValue } from "./families/process.ts";
+export {
+  projectProcesses,
+  runningWork,
+  type HistoryRead,
+  type ProjectKey,
+  type ProjectProcesses,
+  type RunningWork,
+} from "./projections/processes.ts";
