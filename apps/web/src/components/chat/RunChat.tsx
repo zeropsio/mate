@@ -3432,11 +3432,6 @@ function LiveSlot({
   useLayoutEffect(() => {
     shownRef.current = true;
   }, []);
-  // The face and the clock stand on the first line, whatever bubble it is in.
-  useLayoutEffect(() => {
-    placeSlot(listRef.current);
-    // Read when what it shows changed, never on every draw.
-  }, [slot, live, items, said, lines.length]);
   // Its room eases as rows come and go (`easeRooms`), uncovering a row that
   // joins at its foot; nothing eases on a resync.
   const syncingRef = useRef(ctx.syncing);
@@ -3462,6 +3457,14 @@ function LiveSlot({
   }, []);
   // Every commit, before the list's row measures it in its own.
   useLayoutEffect(() => slotRoomsRef.current?.flush());
+  // The face and the clock stand on the first line, whatever bubble it is in.
+  // Read once its room holds the height it showed: a slot read at its new
+  // height first lowered the card's cap at once, and the card bounced back
+  // the next frame as the slot eased (a phone's card, run 9).
+  useLayoutEffect(() => {
+    placeSlot(listRef.current);
+    // Read when what it shows changed, never on every draw.
+  }, [slot, live, items, said, lines.length]);
   // A row opened or shut in place, or the page resized: the room it takes
   // changes with no change of what it shows.
   useEffect(() => {
