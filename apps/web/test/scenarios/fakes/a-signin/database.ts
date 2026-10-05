@@ -2,6 +2,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodePath from "node:path";
 import * as NodeCrypto from "node:crypto";
+import { deadline } from "../../harness/http.ts";
 
 /** Keep real Core running while its session relation temporarily cannot be read. */
 export function sessionDatabase(databaseUrl: string, fixtureSession: string) {
@@ -12,17 +13,42 @@ export function sessionDatabase(databaseUrl: string, fixtureSession: string) {
   const bin =
     process.env.MATE_PG_BIN ?? (config.status === 0 ? config.stdout.trim() : "/opt/homebrew/bin");
   const query = (sql: string) =>
-    new Promise<void>((resolve, reject) => {
+    new Promise<string>((resolve, reject) => {
       NodeChildProcess.execFile(
         NodePath.join(bin, "psql"),
-        [databaseUrl, "-X", "-v", "ON_ERROR_STOP=1", "-c", sql],
+        [databaseUrl, "-X", "-tA", "-v", "ON_ERROR_STOP=1", "-c", sql],
         { timeout: 10_000 },
-        (error) => (error ? reject(error) : resolve()),
+        (error, stdout) => (error ? reject(error) : resolve(stdout.trim())),
       );
     });
+  let beforeFault: number | undefined;
+  const rollbacks = async () =>
+    Number(
+      await query("SELECT xact_rollback FROM pg_stat_database WHERE datname = current_database()"),
+    );
   return {
-    unavailable: () =>
-      query("ALTER TABLE public.hq_session RENAME TO scenario_unavailable_session"),
+    unavailable: async () => {
+      beforeFault = await rollbacks();
+      await query("ALTER TABLE public.hq_session RENAME TO scenario_unavailable_session");
+    },
+    sawSessionRead: async () => {
+      const baseline = beforeFault;
+      if (baseline === undefined) throw new Error("Start the session-read fault first");
+      let waiting = true;
+      try {
+        await deadline(
+          (async () => {
+            while (waiting) {
+              const observed = await rollbacks();
+              waiting = waiting && observed <= baseline;
+            }
+          })(),
+          "Core attempted a read while its session relation was unavailable",
+        );
+      } finally {
+        waiting = false;
+      }
+    },
     returns: () => query("ALTER TABLE public.scenario_unavailable_session RENAME TO hq_session"),
     expires: () =>
       query(

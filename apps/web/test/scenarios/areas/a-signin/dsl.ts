@@ -1,8 +1,9 @@
 import * as Effect from "effect/Effect";
+import { expect } from "@effect/vitest";
 import type { Page } from "puppeteer-core";
 import type { createScenario } from "../../harness/scenario.ts";
 import { visibleText } from "../../harness/browser.ts";
-import { secondOrganization, endSessionCheck } from "./fake.ts";
+import { secondOrganization, endSessionCheck, handoverCount } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
 
@@ -52,6 +53,19 @@ export function account(page: Page) {
         await page.locator(`::-p-aria(${name}[role="menuitemradio"])`).click();
         await visibleText(page, "sidebar-account", name);
       }),
+    signOut: Effect.promise(async () => {
+      await openMenu();
+      await page.locator('::-p-aria(Sign out[role="menuitem"])').setTimeout(10_000).click();
+    }),
+    signedOut: Effect.promise(async () => {
+      await page
+        .locator('::-p-aria(Continue with your Zerops account[role="button"])')
+        .setTimeout(10_000)
+        .wait();
+      expect(await page.$('[data-zerops-surface="sidebar-account"]')).toBeNull();
+      expect(await page.$('[data-zerops-surface="sidebar-environments"]')).toBeNull();
+      expect(await page.$('[role="textbox"]')).toBeNull();
+    }),
     needsAdministrator: Effect.promise(async () => {
       await page.waitForFunction(
         () => document.body.innerText.includes("An admin sets up Mate for this organization."),
@@ -94,9 +108,47 @@ export const sessionEnds = Effect.fn("signin.sessionEnds")(function* (
 ) {
   yield* Effect.promise(() => s.hq.ready());
   yield* Effect.promise(() => endSessionCheck(s.drivers, [...s.hq.links.values()], fault));
-  yield* s.then.hq.isUnavailable;
 });
 
 export const retryHq = Effect.fn("signin.retryHq")(function* (s: Scenario) {
-  yield* Effect.promise(() => s.page.locator('[data-zerops-surface="sidebar-hq-outage"]').click());
+  yield* Effect.promise(() =>
+    s.page
+      .locator('::-p-aria([role="button"])')
+      .filter(
+        (element) =>
+          element.textContent?.includes("HQ") === true && element.textContent.includes("Try again"),
+      )
+      .setTimeout(10_000)
+      .click(),
+  );
+});
+
+export function unchangedHandovers(s: Scenario) {
+  return Effect.sync(() => {
+    const before = handoverCount(s.drivers);
+    expect(before, "Initial sign-in must use the real account hand-over").toBe(1);
+    return () =>
+      Effect.sync(() =>
+        expect(handoverCount(s.drivers), "Account hand-over repeated without a user sign-in").toBe(
+          before,
+        ),
+      );
+  });
+}
+
+export const allowHqRetries = Effect.fn("signin.allowHqRetries")(function* (
+  s: Scenario,
+  name: string,
+) {
+  yield* Effect.promise(async () => {
+    for (let step = 0; step < 12; step++) {
+      await s.clock.advance(10_000);
+      try {
+        await visibleText(s.page, "sidebar-environments", name, 1_000);
+        return;
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "TimeoutError") throw error;
+      }
+    }
+  });
 });

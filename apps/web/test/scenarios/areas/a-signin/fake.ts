@@ -28,22 +28,25 @@ export async function endSessionCheck(
   sockets: WebSocket[],
   fault: "outage" | "expiry",
 ) {
+  const database = signInFaults(drivers);
+  if (fault === "outage") {
+    await database.unavailable();
+    try {
+      await database.sawSessionRead();
+    } finally {
+      await database.returns();
+    }
+    return;
+  }
   expect(sockets.length, "A live real-Core structure stream is required").toBeGreaterThan(0);
   const closed = Promise.all(
     sockets.map(
       (socket) => new Promise<number>((resolve) => socket.once("close", (code) => resolve(code))),
     ),
   );
-  const database = signInFaults(drivers);
-  if (fault === "outage") {
-    await database.unavailable();
-    try {
-      expect(await deadline(closed, "Core session-check outage")).toContain(4401);
-    } finally {
-      await database.returns();
-    }
-  } else {
-    await database.expires();
-    expect(await deadline(closed, "Core expired-session close")).toContain(4401);
-  }
+  await database.expires();
+  expect(await deadline(closed, "Core expired-session close")).toContain(4401);
 }
+
+export const handoverCount = (drivers: ScenarioDrivers) =>
+  drivers.zerops.requests.get("GET /authorize-app") ?? 0;

@@ -39,6 +39,7 @@ describe("A: disposable session database fault driver", () => {
         yield* Effect.promise(() => fault.unavailable());
         try {
           expect(read("SELECT count(*) FROM hq_session").status).not.toBe(0);
+          yield* Effect.promise(() => fault.sawSessionRead());
         } finally {
           yield* Effect.promise(() => fault.returns());
         }
