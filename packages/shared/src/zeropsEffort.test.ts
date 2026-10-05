@@ -128,9 +128,15 @@ describe("withPreferredEffort", () => {
 describe("selectionWithPreferredEffort", () => {
   const provider = {
     instanceId: ProviderInstanceId.make("claudeAgent"),
+    driver: "claudeAgent",
     models: [
-      { slug: "claude-opus-5-5", capabilities: caps("effort", "medium", "xhigh", "max") },
-      { slug: "claude-haiku", capabilities: { optionDescriptors: [] } },
+      {
+        slug: "claude-opus-5-5",
+        name: "Claude Opus 5.5",
+        aliases: ["opus"],
+        capabilities: caps("effort", "medium", "xhigh", "max"),
+      },
+      { slug: "claude-haiku", name: "Claude Haiku", capabilities: { optionDescriptors: [] } },
     ],
   } as unknown as ServerProvider;
   const selection = (model: string, instance = "claudeAgent"): ModelSelection => ({
@@ -148,6 +154,16 @@ describe("selectionWithPreferredEffort", () => {
       "a model with no effort is left as it is",
       selection("claude-haiku"),
       selection("claude-haiku"),
+    ],
+    [
+      "a model stored under its alias resolves as the composer reads it",
+      selection("opus"),
+      { ...selection("opus"), options: [{ id: "effort", value: "xhigh" }] },
+    ],
+    [
+      "a model stored under its name resolves too",
+      selection("Claude Opus 5.5"),
+      { ...selection("Claude Opus 5.5"), options: [{ id: "effort", value: "xhigh" }] },
     ],
     ["an unknown model is left as it is", selection("claude-next"), selection("claude-next")],
     ["an unknown instance is left as it is", selection("x", "codex"), selection("x", "codex")],

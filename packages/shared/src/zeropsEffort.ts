@@ -14,6 +14,8 @@ import type {
   ServerProvider,
 } from "@t3tools/contracts";
 
+import { resolveSelectableModel } from "./model.ts";
+
 /**
  * The model option each agent's effort is: Claude's `effort`, Codex's and
  * Grok's `reasoningEffort`, Cursor's `reasoning`, OpenCode's `variant`.
@@ -68,9 +70,12 @@ export function selectionWithPreferredEffort(
   providers: ReadonlyArray<ServerProvider>,
   selection: ModelSelection,
 ): ModelSelection {
-  const capabilities = providers
-    .find((provider) => provider.instanceId === selection.instanceId)
-    ?.models.find((model) => model.slug === selection.model)?.capabilities;
+  // The model as the composer reads it: by slug, name or alias (`resolveSelectableModel`).
+  const provider = providers.find((candidate) => candidate.instanceId === selection.instanceId);
+  const slug = provider
+    ? resolveSelectableModel(provider.driver, selection.model, provider.models)
+    : null;
+  const capabilities = provider?.models.find((model) => model.slug === slug)?.capabilities;
   const options = withPreferredEffort(capabilities, selection.options);
   return options === selection.options || options === undefined
     ? selection
