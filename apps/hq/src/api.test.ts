@@ -114,6 +114,8 @@ const APP_ALLOWED = each(
   ["read_change", "comment_change", "merge_change", "close_change", "redeploy", "release"],
   ALLOW,
 );
+/** The same where the application has no production: nobody releases it, an org owner neither. */
+const APP_NO_PRODUCTION = { ...APP_ALLOWED, release: refusedFor("no_production") };
 const KINDS = ["mate", "devstage", "stage", "production"];
 /** What an org owner may do with a Mate, and where they may move it: anywhere, as anything. */
 const MATE_OWNED = (...appIds: ReadonlyArray<string>) => ({
@@ -122,7 +124,7 @@ const MATE_OWNED = (...appIds: ReadonlyArray<string>) => ({
 });
 /** What an org owner may do with an application that holds no project: nobody develops it. */
 const OWNER_EMPTY_APP = {
-  ...APP_ALLOWED,
+  ...APP_NO_PRODUCTION,
   merge_change: refusedFor("not_app_developer"),
   redeploy: refusedFor("not_app_developer"),
 };
@@ -206,7 +208,7 @@ describe("HQ API", () => {
               {
                 id: appId,
                 name: "Shop",
-                can: APP_ALLOWED,
+                can: APP_NO_PRODUCTION,
                 contents: { empty: false, deletingProjectIds: [] },
                 projects: [
                   {
@@ -999,7 +1001,7 @@ describe("HQ API", () => {
             value: {
               id: appId,
               name: "Shop",
-              can: APP_ALLOWED,
+              can: APP_NO_PRODUCTION,
               contents: { empty: false, deletingProjectIds: [] },
               projects: [
                 {
@@ -1314,7 +1316,7 @@ describe("HQ API", () => {
           yield* changed("ungrouped", []);
           yield* changed(appId, {
             ...store,
-            can: APP_ALLOWED,
+            can: APP_NO_PRODUCTION,
             contents: { empty: false, deletingProjectIds: [] },
             projects: [
               {
@@ -1383,7 +1385,7 @@ describe("HQ API", () => {
             id: appId,
             name: "Shop",
             // A developer of it, before it has a production to release.
-            can: { ...APP_ALLOWED, release: refusedFor("no_production") },
+            can: APP_NO_PRODUCTION,
             contents: { empty: false, deletingProjectIds: [] },
             projects: [{ projectId: "P_MATE", name: "P_MATE", kind: "stage", mate: null }],
             environments: [

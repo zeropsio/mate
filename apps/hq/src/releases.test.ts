@@ -217,7 +217,7 @@ const refusal = <A, E, R>(asked: Effect.Effect<A, E, R>) =>
 
 describe("an application's releases in HQ", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    it.effect("saves a release snapshot before production exists without queuing a deploy", () =>
+    it.effect("makes no release without a production, whoever asks, and tags nothing", () =>
       withReleases(({ appId, commit, bare }) =>
         Effect.gen(function* () {
           const releases = yield* Releases;
@@ -225,23 +225,21 @@ describe("an application's releases in HQ", () => {
           yield* sql`DELETE FROM hq_app_project WHERE project_id = 'P_PROD'`;
           const groupHead = yield* commit("group", { "README.md": "# Shop\n" });
           const sha = yield* commit("appdev", { "index.js": "1\n" });
-          const made = yield* releases.release("admin", appId, {
-            tag: "v0.1.0",
-            groupHead,
-            entries: [{ service: "app", sha }],
-          });
-          assert.strictEqual(made.state, "approved");
-          assert.strictEqual(made.snapshot, true);
-          assert.strictEqual(bare("group", ["rev-parse", "v0.1.0^{commit}"]), groupHead);
-          assert.deepStrictEqual(yield* sql`SELECT id FROM hq_rollout WHERE cause = 'release'`, []);
-          assert.deepStrictEqual(
-            yield* sql`SELECT id FROM hq_deploy_job WHERE rollout_id IN (SELECT id FROM hq_rollout WHERE cause = 'release')`,
-            [],
-          );
-          assert.deepStrictEqual(yield* releases.list("admin", appId), [made]);
-          const rollback = yield* releases.rollback("admin", appId, made.tag, { groupHead });
-          assert.strictEqual(rollback.snapshot, true);
-          assert.strictEqual(rollback.tag, "v0.1.1");
+          const entries = [{ service: "app", sha }];
+          for (const userId of ["admin", "owner", "dev"]) {
+            assert.deepStrictEqual(
+              yield* refusal(
+                releases.release(userId, appId, { tag: "v0.1.0", groupHead, entries }),
+              ),
+              ["forbidden", "no_production"],
+            );
+            assert.deepStrictEqual(
+              yield* refusal(releases.rollback(userId, appId, "v0.1.0", { groupHead })),
+              ["forbidden", "no_production"],
+            );
+          }
+          assert.strictEqual(bare("group", ["tag", "-l"]), "");
+          assert.deepStrictEqual(yield* releases.list("admin", appId), []);
           assert.deepStrictEqual(yield* sql`SELECT id FROM hq_rollout WHERE cause = 'release'`, []);
         }),
       ),
@@ -376,12 +374,7 @@ describe("an application's releases in HQ", () => {
           // No production tier at all: no service is production's.
           tiers.delete(`${appId}/production`);
           assert.deepStrictEqual(yield* ask("dev"), ["conflict", "unknown_service"]);
-          // A snapshot still needs its declared services; without the recipe's main, nothing is tagged.
-          yield* sql`DELETE FROM hq_app_project WHERE project_id = 'P_PROD'`;
-          assert.deepStrictEqual(yield* ask("owner"), ["conflict", "unknown_service"]);
-          yield* sql`
-            INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
-            VALUES ('P_PROD', ${appId}::uuid, 'production', 'owner')`;
+          // Without the recipe's main, nothing is tagged.
           yield* sql`DELETE FROM hq_repo WHERE name = 'group'`;
           assert.deepStrictEqual(yield* ask("dev", { tag: "v9.0.0" }), [
             "conflict",
