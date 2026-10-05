@@ -919,6 +919,33 @@ describe("firstBuildState — a Mate's first build, as its project's processes s
       ],
       expected: { kind: "running" },
     },
+    // Review (web #5): a deploy that fails after its build — an init command, its runtime's
+    // prepare — leaves the build's process FINISHED and its version failed: the version's status is
+    // the platform's word, and ends the wait with Remove.
+    {
+      case: "built, its version's deploy failed",
+      processes: [
+        build("FINISHED", "2026-10-02T10:00:00Z", { appVersion: { status: "DEPLOY_FAILED" } }),
+      ],
+      expected: { kind: "failed", why: "Its container's first deploy failed: DEPLOY_FAILED" },
+    },
+    {
+      case: "its version's runtime prepare failed, with the platform's reason",
+      processes: [
+        build("FINISHED", "2026-10-02T10:00:00Z", {
+          failReason: "init command failed",
+          appVersion: { status: "PREPARING_RUNTIME_FAILED" },
+        }),
+      ],
+      expected: { kind: "failed", why: "init command failed" },
+    },
+    {
+      case: "built, its version still deploying",
+      processes: [
+        build("FINISHED", "2026-10-02T10:00:00Z", { appVersion: { status: "DEPLOYING" } }),
+      ],
+      expected: undefined,
+    },
     {
       case: "another service's build failed",
       processes: [{ ...build("FAILED", "2026-10-02T10:00:00Z"), serviceStackIds: ["appdev"] }],
