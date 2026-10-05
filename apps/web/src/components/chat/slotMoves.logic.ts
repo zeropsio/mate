@@ -33,40 +33,34 @@ export function landingHosts(
   return new Set(leaving.filter((key) => stood.has(key) || drawn.has(key)));
 }
 
+/** A row of a run's history as it was drawn: its key, and its top in what holds it. */
+export interface DrawnRow {
+  readonly key: string;
+  readonly top: number;
+}
+
 /**
  * How far each row that stays moved as the rows around it changed (F3, run
  * 9: a line joining between two pushed the lines under it down in one frame;
- * a call that returned moved past the ones still running): what joined above
- * it, less what left from above it, each by the room it takes (`step`). Only
- * a row that moved is said, and one is left out when something that left
- * from above it is no longer there to measure.
+ * a call that returned moved past the ones still running): where it stands
+ * now less where it stood, in one pass. Rows only joining at the foot move
+ * nothing: what stood keeps its place, and a height easing above is its ease.
  */
 export function rowShifts(
-  before: ReadonlyArray<string>,
-  after: ReadonlyArray<string>,
-  step: (key: string) => number | undefined,
+  before: ReadonlyArray<DrawnRow>,
+  after: ReadonlyArray<DrawnRow>,
 ): ReadonlyMap<string, number> {
   const shifts = new Map<string, number>();
-  const was = new Map(before.map((key, index) => [key, index] as const));
-  after.forEach((key, index) => {
-    const at = was.get(key);
-    if (at === undefined) return;
-    const above = new Set(after.slice(0, index));
-    const stoodAbove = new Set(before.slice(0, at));
-    let shift = 0;
-    for (const joined of above) {
-      if (stoodAbove.has(joined)) continue;
-      const room = step(joined);
-      if (room === undefined) return;
-      shift += room;
-    }
-    for (const left of stoodAbove) {
-      if (above.has(left)) continue;
-      const room = step(left);
-      if (room === undefined) return;
-      shift -= room;
-    }
-    if (Math.abs(shift) >= 0.5) shifts.set(key, shift);
-  });
+  if (
+    before.length <= after.length &&
+    before.every((row, index) => after[index]!.key === row.key)
+  ) {
+    return shifts;
+  }
+  const stood = new Map(before.map((row) => [row.key, row.top] as const));
+  for (const row of after) {
+    const top = stood.get(row.key);
+    if (top !== undefined && Math.abs(row.top - top) >= 0.5) shifts.set(row.key, row.top - top);
+  }
   return shifts;
 }
