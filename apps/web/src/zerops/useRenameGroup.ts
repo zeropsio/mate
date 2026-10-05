@@ -9,7 +9,7 @@
  */
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import { readZeropsMembership } from "@t3tools/client-runtime/zerops";
-import { useCallback } from "react";
+import { useCallback, useContext } from "react";
 
 import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import {
@@ -18,6 +18,7 @@ import {
   type ProjectRenameFailure,
 } from "./projectRenames.logic";
 import { useRenameProjects } from "./useRenameProjects";
+import { HeldInventoryContext } from "./inventoryContext";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -39,6 +40,9 @@ export function useRenameGroup(): GroupRenaming {
   const { activeOrganization, client } = useZeropsSession();
   const accountHq = useAccountHq(activeOrganization?.id);
   const inventory = useZeropsInventory();
+  // Every project the account holds, one the grant withholds included: it is a member still.
+  const held = useContext(HeldInventoryContext);
+  const projects = held?.projects ?? inventory.projects;
   const renameProjects = useRenameProjects();
 
   const rename = useCallback(
@@ -46,9 +50,7 @@ export function useRenameGroup(): GroupRenaming {
       if (activeOrganization === null) throw new Error("No organization is open.");
       // Before HQ's write, from the name the application has: the targets stay as planned.
       const plan = planProjectRenames(
-        inventory.projects.filter(
-          (project) => readZeropsMembership(project).groupId === group.groupId,
-        ),
+        projects.filter((project) => readZeropsMembership(project).groupId === group.groupId),
         group.nameSource === "unread" ? undefined : group.name,
         name.trim(),
       );
@@ -58,7 +60,7 @@ export function useRenameGroup(): GroupRenaming {
       );
       return renameProjects(plan);
     },
-    [accountHq, activeOrganization, client, inventory.projects, renameProjects],
+    [accountHq, activeOrganization, client, projects, renameProjects],
   );
 
   return { rename, retry: renameProjects };
