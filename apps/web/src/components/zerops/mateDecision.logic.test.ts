@@ -154,4 +154,11 @@ describe("mateDecision — what a Mate waits on, as a surface answers it", () =>
       message: "Kai is signed out of Claude. Sign in again to continue.",
     });
   });
+
+  it("leaves another failure that says it could not authenticate as it came", () => {
+    const failure = "mirror_error: Git could not authenticate with the remote.";
+    expect(
+      mateDecision({ ...base, kind: "failed", failure, failureDriver: "claudeAgent" }),
+    ).toEqual({ kind: "failure", message: failure });
+  });
 });

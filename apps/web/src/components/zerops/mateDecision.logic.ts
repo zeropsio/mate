@@ -81,6 +81,8 @@ export function mateDecision(input: {
   readonly userInputs: ReadonlyArray<PendingUserInput>;
   /** The session's or the turn's own words for a failure. */
   readonly failure: string | undefined;
+  /** The agent driver that said them (the session's `providerName`), where known. */
+  readonly failureDriver?: string | null | undefined;
 }): MateDecision | undefined {
   switch (input.kind) {
     case "approval": {
@@ -121,7 +123,9 @@ export function mateDecision(input: {
       return {
         kind: "failure",
         message:
-          input.failure === undefined ? undefined : mateErrorWords(input.failure, input.name),
+          input.failure === undefined
+            ? undefined
+            : mateErrorWords(input.failure, input.name, input.failureDriver),
       };
     default:
       return undefined;

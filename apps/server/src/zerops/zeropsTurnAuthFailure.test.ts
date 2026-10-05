@@ -100,6 +100,16 @@ describe("turnAuthFailureAgent", () => {
       }),
       undefined,
     ],
+    // Pass 43's review: Git's refusal says "could not authenticate" too.
+    [
+      "a Git refusal in a Claude turn",
+      event({
+        type: "runtime.error",
+        provider: "claudeAgent",
+        payload: { message: "mirror_error: Git could not authenticate with the remote." },
+      }),
+      undefined,
+    ],
     // A warning is retried by the agent itself; the turn has not failed.
     [
       "a warning carrying the same words",

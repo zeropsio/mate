@@ -19,25 +19,56 @@
  */
 
 /**
- * The agent a driver's words say is signed out, by the name the person signs in to; `null` where
- * they say nothing of the kind.
- *
- * Matched on the phrases the drivers share rather than on any one's full sentence, which carries a
- * configured path and a binary name that differ per environment: "could not authenticate" (Claude's
- * `claudeSignedOutMessage`, Antigravity's) and "'s sign-in has expired" (a Claude stream that died
- * signed out, `claudeStreamFailure`). The name is the one just before the phrase.
+ * Each agent driver's own sentence for a turn it refused for want of a sign-in, as it opens, and
+ * what the person signs in to. Whole sentences from their first word, never a phrase anywhere: Git
+ * "could not authenticate with the remote" too, and that is no agent signed out.
  */
-export function signedOutAgent(error: string | null | undefined): string | null {
+const SIGN_IN_FAILURES: ReadonlyArray<{
+  readonly driver: string;
+  readonly agent: string;
+  readonly opens: string;
+}> = [
+  // `claudeSignedOutMessage`.
+  {
+    driver: "claudeAgent",
+    agent: "Claude",
+    opens: "Claude could not authenticate. For subscription login",
+  },
+  // `claudeStreamFailure`: a stream that died signed out.
+  { driver: "claudeAgent", agent: "Claude", opens: "Claude's sign-in has expired." },
+  // `AntigravityAuth`'s refusal of configured credentials.
+  {
+    driver: "antigravity",
+    agent: "Antigravity",
+    opens: "Antigravity could not authenticate with the configured credentials.",
+  },
+];
+
+/**
+ * The agent an error says is signed out, by the name the person signs in to; `null` where it is
+ * no agent driver's own sign-in failure — or another driver's than `driver`, the conversation's
+ * driver (its session's `providerName`), where that is known.
+ */
+export function signedOutAgent(
+  error: string | null | undefined,
+  driver?: string | null,
+): string | null {
   if (error === null || error === undefined) return null;
-  return SIGNED_OUT.exec(error)?.[1] ?? null;
+  const said = error.trimStart();
+  const failure = SIGN_IN_FAILURES.find(
+    (entry) =>
+      (driver === undefined || driver === null || driver === entry.driver) &&
+      said.startsWith(entry.opens),
+  );
+  return failure?.agent ?? null;
 }
 
-const SIGNED_OUT =
-  /(?:^|\b)([A-Z][\w-]*(?: [A-Z][\w-]*)?)(?:'s sign-in has expired| could not authenticate)/u;
-
 /** Whether an error is an agent refusing for want of credentials (`signedOutAgent`). */
-export function agentNeedsSignIn(error: string | null | undefined): boolean {
-  return signedOutAgent(error) !== null;
+export function agentNeedsSignIn(
+  error: string | null | undefined,
+  driver?: string | null,
+): boolean {
+  return signedOutAgent(error, driver) !== null;
 }
 
 /** What the banner says in place of a command nobody here can run, where no Mate is named. */
@@ -50,8 +81,12 @@ export const AGENT_SIGN_IN_MESSAGE =
  * continue." (F7: the driver's words name Claude, and its adapter does not know the Mate). Any
  * other error as it was said.
  */
-export function mateErrorWords(error: string, mate: string | undefined): string {
-  const agent = signedOutAgent(error);
+export function mateErrorWords(
+  error: string,
+  mate: string | undefined,
+  driver?: string | null,
+): string {
+  const agent = signedOutAgent(error, driver);
   if (agent === null) return error;
   return `${mate === undefined ? "Signed" : `${mate} is signed`} out of ${agent}. Sign in again to continue.`;
 }

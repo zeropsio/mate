@@ -4119,9 +4119,11 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   sign-in failure reads "Sage is signed out of Claude. Sign in again to continue." — the Mate the
   subject, the agent only what the person signs in to; on the Mate's own menu row, under its name,
   "Signed out of Claude. Sign in again to continue." The driver's words stay the driver's
-  (`apps/server/src/provider` is ported): the client recognises them (`signedOutAgent`, on "could
-  not authenticate" and "'s sign-in has expired") and says them (`mateErrorWords`) in the
-  conversation's banner, the menu row and the jump box.
+  (`apps/server/src/provider` is ported): the client recognises them (`signedOutAgent`: each agent
+  driver's own sentence from its first word — Claude's "could not authenticate. For subscription
+  login" and "'s sign-in has expired.", Antigravity's — and only the conversation's own driver's
+  where it is known; Git's "could not authenticate with the remote" is no agent signed out) and
+  says them (`mateErrorWords`) in the conversation's banner, the menu row and the jump box.
   - _Why:_ the adapter does not know the Mate's name, and the client does wherever it draws one.
 - **2026-10-06** — **A helper is called what the Mate called it** (F6: the Mate's text said "the
   deep-sea builder", the card said the launch's task). Where a helper's launch gave it a name —

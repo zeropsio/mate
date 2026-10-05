@@ -255,6 +255,7 @@ function useJumpWrite(
           approvals: requests.approvals,
           userInputs: requests.userInputs,
           failure: detail?.session?.lastError ?? undefined,
+          failureDriver: detail?.session?.providerName ?? null,
         });
   const plan =
     target?.conversation === undefined

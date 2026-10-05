@@ -9,10 +9,11 @@
  * sign-in flag still decides whether it is signed in
  * (`packages/shared/src/zeropsAgentAuth.ts`).
  *
- * - Claude says it in words: `claudeSignedOutMessage` opens with "could not
- *   authenticate", and a stream that died signed out (`claudeStreamFailure`)
- *   with "Claude's sign-in has expired" — the phrases the client's
- *   `signedOutAgent` matches too.
+ * - Claude says it in words: `claudeSignedOutMessage` opens with "Claude could
+ *   not authenticate.", and a stream that died signed out (`claudeStreamFailure`)
+ *   with "Claude's sign-in has expired." — the openings the client's
+ *   `signedOutAgent` matches too; a Git refusal that says it "could not
+ *   authenticate" is none.
  * - Codex says it in its typed error info: `unauthorized`, or a connection
  *   refused with HTTP 401.
  *
@@ -20,7 +21,11 @@
  */
 import { agentIdForProviderInstance, type SpiEvent, type ZeropsAgentId } from "@t3tools/contracts";
 
-const CLAUDE_SIGNED_OUT_PHRASES = ["could not authenticate", "'s sign-in has expired"];
+/** Claude's own sentences for a refused sign-in, as they open: never a phrase anywhere. */
+const CLAUDE_SIGNED_OUT_OPENINGS = [
+  "Claude could not authenticate.",
+  "Claude's sign-in has expired.",
+];
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -40,7 +45,9 @@ export function turnAuthFailureAgent(event: SpiEvent): ZeropsAgentId | undefined
   const agentId = agentIdForProviderInstance(event.providerInstanceId ?? event.provider);
   switch (agentId) {
     case "claude-code":
-      return CLAUDE_SIGNED_OUT_PHRASES.some((phrase) => event.payload.message.includes(phrase))
+      return CLAUDE_SIGNED_OUT_OPENINGS.some((opening) =>
+        event.payload.message.trimStart().startsWith(opening),
+      )
         ? agentId
         : undefined;
     case "codex": {

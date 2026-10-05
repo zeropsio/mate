@@ -34,6 +34,22 @@ describe("the thread's error banner", () => {
     expect(html).toContain('data-zerops-primary-action="Authorize"');
   });
 
+  // Pass 43's review: Git saying it "could not authenticate" is no agent signed out.
+  it.each([
+    {
+      case: "Git refused by its remote",
+      error: "Git could not authenticate with the remote.",
+      driver: null,
+    },
+    { case: "Claude's words in another driver's conversation", error: SIGNED_OUT, driver: "codex" },
+  ])("leaves $case as it came, with nothing to authorize", ({ error, driver }) => {
+    const html = renderToStaticMarkup(
+      <ThreadErrorBanner driver={driver} error={error} mate="Sage" onAuthorize={() => {}} />,
+    );
+    expect(html).not.toContain('data-zerops-primary-action="Authorize"');
+    expect(html).not.toContain("signed out");
+  });
+
   it("keeps the driver's own words where there is nowhere to sign in", () => {
     const html = renderToStaticMarkup(<ThreadErrorBanner error={SIGNED_OUT} />);
     expect(html).not.toContain('data-zerops-primary-action="Authorize"');

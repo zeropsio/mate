@@ -43,10 +43,13 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   onDismiss,
   onAuthorize,
   mate,
+  driver,
 }: {
   error: string | null;
   /** The Mate whose conversation it is: a sign-in failure says it as the Mate's (`mateErrorWords`). */
   mate?: string | undefined;
+  /** The conversation's agent driver (its session's `providerName`): only its own sign-in failure is one. */
+  driver?: string | null | undefined;
   onDismiss?: () => void;
   /**
    * Opens the tray that signs the agent in, where the caller has one.
@@ -59,14 +62,14 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   onAuthorize?: (() => void) | undefined;
 }) {
   if (!error) return null;
-  const needsSignIn = onAuthorize !== undefined && agentNeedsSignIn(error);
+  const needsSignIn = onAuthorize !== undefined && agentNeedsSignIn(error, driver);
   if (needsSignIn) {
     return (
       <div className="mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))] pt-3">
         <Alert variant="error" controlAlignment="first-line">
           <CircleAlertIcon />
           <AlertDescription>
-            {mate === undefined ? AGENT_SIGN_IN_MESSAGE : mateErrorWords(error, mate)}
+            {mate === undefined ? AGENT_SIGN_IN_MESSAGE : mateErrorWords(error, mate, driver)}
           </AlertDescription>
           <AlertAction>
             <Button
