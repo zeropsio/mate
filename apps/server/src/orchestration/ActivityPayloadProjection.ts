@@ -6,6 +6,7 @@ import type {
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
 
 import { sniffToolCallShape } from "../spi/toolCall.ts";
+import { hasFileWrites } from "../zerops/fileWrites.ts";
 import {
   projectZeropsToolCall,
   type ZeropsActivityResult,
@@ -578,6 +579,12 @@ export function projectActivityPayload(
   if (changedFiles.length > 0) {
     // Both clients discover file names by walking objects with path-like keys.
     projectedData.files = changedFiles.map((path) => ({ path }));
+  }
+
+  // What a call wrote stays here; the mark says its row opens onto it
+  // (`threads.fileWrites`). A row stored projected keeps the mark it has.
+  if (data.wrote === true || hasFileWrites(data)) {
+    projectedData.wrote = true;
   }
 
   if ("toolCallId" in data) {

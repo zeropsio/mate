@@ -977,3 +977,68 @@ describe("every driver's call reaches the client in one form", () => {
     expect(data.toolName).toBeUndefined();
   });
 });
+
+describe("a call that wrote a file says so, and only then", () => {
+  const cases: ReadonlyArray<{
+    readonly name: string;
+    readonly payload: Record<string, unknown>;
+    readonly wrote: boolean;
+  }> = [
+    {
+      name: "Claude Write",
+      payload: {
+        itemType: "file_change",
+        data: { toolName: "Write", input: { file_path: "/srv/a.md", content: "# A" } },
+      },
+      wrote: true,
+    },
+    {
+      name: "Codex file change",
+      payload: {
+        itemType: "file_change",
+        data: {
+          item: {
+            type: "fileChange",
+            changes: [{ path: "/srv/a.ts", kind: { type: "add" }, diff: "x" }],
+          },
+        },
+      },
+      wrote: true,
+    },
+    {
+      name: "an ACP edit with a diff",
+      payload: {
+        itemType: "file_change",
+        data: {
+          kind: "edit",
+          content: [{ type: "diff", path: "/srv/a.ts", oldText: "a", newText: "b" }],
+        },
+      },
+      wrote: true,
+    },
+    {
+      name: "an ACP edit without one",
+      payload: { itemType: "file_change", data: { kind: "edit", locations: [{ path: "/a" }] } },
+      wrote: false,
+    },
+    {
+      name: "a read",
+      payload: {
+        itemType: "dynamic_tool_call",
+        data: { toolName: "Read", input: { file_path: "/srv/a.ts" } },
+      },
+      wrote: false,
+    },
+  ];
+
+  it.each(cases)("$name", ({ payload, wrote }) => {
+    const once = projectActivityPayload(activity(payload));
+    const data = (once.payload as { data: Record<string, unknown> }).data;
+    expect(data.wrote === true).toBe(wrote);
+    // What it wrote stays on the server: the row asks for it when it opens.
+    expect(JSON.stringify(data)).not.toMatch(/"content":"# A"|"newText"|"diff":"x"/u);
+    // A stored row already projected (a streamed update) keeps the mark.
+    const twice = projectActivityPayload(once);
+    expect((twice.payload as { data: Record<string, unknown> }).data.wrote === true).toBe(wrote);
+  });
+});
