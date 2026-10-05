@@ -72,6 +72,9 @@ const ZEROPS_CLIENT_LOCAL_METHODS: ReadonlySet<string> = new Set([
   "signOutLocally",
 ]);
 
+/** A class method's head, generic or not: `  async read(` or `  read<T>(`. */
+const METHOD_HEAD = /^ {2}(?:async )?([a-z][A-Za-z]*)(?:<[^>]*>)?\(/gmu;
+
 const sourceBlock = Effect.fnUntraced(function* (file: string, opening: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -82,15 +85,22 @@ const sourceBlock = Effect.fnUntraced(function* (file: string, opening: string) 
 });
 
 it.layer(NodeServices.layer)("client verbs", (it) => {
+  it("reads a generic method's name", () => {
+    assert.deepStrictEqual(
+      [..."  async readAll<T>(x: T) {\n  write<A, B>(a: A) {\n".matchAll(METHOD_HEAD)].map(
+        (match) => match[1],
+      ),
+      ["readAll", "write"],
+    );
+  });
+
   it.effect("names every remote method of the Zerops client", () =>
     Effect.gen(function* () {
       const block = yield* sourceBlock(
         "packages/client-runtime/src/zerops/api.ts",
         "export class ZeropsApiClient {",
       );
-      const methods = [...block.matchAll(/^ {2}(?:async )?([a-z][A-Za-z]*)\(/gmu)].map(
-        (match) => match[1]!,
-      );
+      const methods = [...block.matchAll(METHOD_HEAD)].map((match) => match[1]!);
       assert.deepStrictEqual(
         [...new Set(methods)]
           .filter((name) => name !== "constructor" && !ZEROPS_CLIENT_LOCAL_METHODS.has(name))
@@ -189,6 +199,17 @@ describe("t3code/no-remote-io-outside-data-layer", () => {
   webFile.valid(
     "leaves a fetch the module was handed, and a property named fetch, alone",
     `export const read = (options: { fetch: typeof fetch }) => ({ fetch: options.fetch });`,
+  );
+  webFile.valid(
+    "leaves fetch named in a type alone",
+    [
+      `export function f(g: typeof globalThis.fetch) { return g; }`,
+      `export interface D { fetch: typeof globalThis.fetch; other: typeof fetch }`,
+    ].join("\n"),
+  );
+  webFile.valid(
+    "leaves a check that fetch exists alone",
+    `export const can = typeof fetch === "function" && typeof globalThis.fetch === "function";`,
   );
   webFile.invalid(
     "reports Effect's socket module taken into the client",

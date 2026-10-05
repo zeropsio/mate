@@ -269,10 +269,33 @@ const isKeyName = (node: ESTree.Node): boolean => {
   return !("shorthand" in parent && parent.shorthand);
 };
 
-/** `fetch` read as a value rather than called: handed on, it reaches the network elsewhere. */
+/** Type positions: a name there is a type, never a value that reaches the network. */
+const TYPE_CONTEXTS: ReadonlySet<string> = new Set([
+  "TSTypeQuery",
+  "TSTypeAnnotation",
+  "TSTypeReference",
+  "TSQualifiedName",
+  "TSTypeLiteral",
+  "TSInterfaceBody",
+  "TSTypeAliasDeclaration",
+]);
+
+const inTypePosition = (node: ESTree.Node): boolean => {
+  for (let current = node.parent; current !== null; current = current.parent) {
+    if (TYPE_CONTEXTS.has(current.type)) return true;
+  }
+  return false;
+};
+
+/**
+ * `fetch` read as a value rather than called: handed on, it reaches the network elsewhere. A
+ * type that names it, or `typeof fetch` asking whether it exists, hands nothing on.
+ */
 const handsOnFetch = (node: ESTree.Node): boolean => {
   const parent = node.parent;
-  return !(parent?.type === "CallExpression" && parent.callee === node);
+  if (parent?.type === "CallExpression" && parent.callee === node) return false;
+  if (parent?.type === "UnaryExpression" && parent.operator === "typeof") return false;
+  return !inTypePosition(node);
 };
 
 const ADAPTERS_OWN_IO =
@@ -340,7 +363,7 @@ export default defineRule({
         const parent = node.parent;
         if (parent?.type === "MemberExpression" && parent.property === node) return;
         if (isKeyName(node)) return;
-        if (parent?.type === "TSTypeQuery" || parent?.type.startsWith("Import")) return;
+        if (parent?.type.startsWith("Import")) return;
         if (resolveVariable(context, node)?.defs.length) return;
         if (reported.has(node.start)) return;
         reported.add(node.start);
