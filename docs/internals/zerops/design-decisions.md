@@ -4064,4 +4064,11 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
     nothing; `max` never.
   - **What stays:** a conversation that has run keeps its effort, a person's own pick always wins,
     and crewmates keep their own rule (unset = the login's default).
+  - **The remembered selection carries no effort** (the lead, under the owner's delegation): the
+    last-used model and traits a new draft inherits drop the effort, since touching any trait
+    remembers every value, the default effort included. A pick inside a draft or a conversation
+    still wins there.
+  - **The server applies it too:** a non-crew thread's first turn naming no effort (a phone task
+    queued before the catalog arrived, the stand-up) runs on the preference, and the thread stores
+    what its first turn ran on, so a reload reads it back.
   - _Why:_ the owner runs real work on Extra High — "at least extra high effort".
