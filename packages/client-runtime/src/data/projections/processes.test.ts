@@ -5,7 +5,7 @@ import { historyScope, runningScope } from "../families/process.ts";
 import { emptyAccount, linkKeys, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
-import { projectProcesses, runningWork } from "./processes.ts";
+import { buildsUnderWay, projectProcesses, runningWork } from "./processes.ts";
 
 const KEY = { orgId: ORG, projectId: "p1" };
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
@@ -190,5 +190,24 @@ describe("runningWork", () => {
   it("says whether the organization's running work is live", () => {
     expect(runningWork.derive(readsOfState(live()), KEY).live).toBe(true);
     expect(runningWork.derive(readsOfState(outage(live())), KEY).live).toBe(false);
+  });
+});
+
+describe("buildsUnderWay", () => {
+  it("names the listed projects a build or deploy runs on, in their order", () => {
+    const state = apply(live(), [
+      pushed(
+        processValue({ id: "other", projectId: "p3", actionName: "stack.build" }),
+        processValue({ id: "build", projectId: "p1" }),
+        // Newer than the row it ended: its version is the batch's third.
+        processValue({ id: "elsewhere", projectId: "p2", status: "FINISHED" }),
+      ),
+    ]);
+    expect(
+      buildsUnderWay.derive(readsOfState(state), { orgId: ORG, projectIds: ["p3", "p2", "p1"] }),
+    ).toEqual(["p3", "p1"]);
+    expect(
+      buildsUnderWay.derive(readsOfState(emptyAccount), { orgId: ORG, projectIds: ["p1"] }),
+    ).toEqual([]);
   });
 });

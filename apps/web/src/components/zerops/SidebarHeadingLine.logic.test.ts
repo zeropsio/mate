@@ -25,6 +25,7 @@ const input = (over: Partial<HeadingLineInput> = {}): HeadingLineInput => ({
     chip: chip("ok", { version: "v2.3.0" }),
     coming: undefined,
     failure: undefined,
+    building: false,
   },
   stages: [],
   waiting: 0,
@@ -40,6 +41,7 @@ const prod = (
     chip: undefined,
     coming: undefined,
     failure: undefined,
+    building: false,
     ...production,
   },
 });
@@ -47,11 +49,13 @@ const stage = (
   coming: StopComing | undefined,
   projectId = "stage",
   serves = coming === undefined,
+  building = false,
 ) => ({
   projectId,
   name: projectId,
   coming,
   serves,
+  building,
 });
 
 /** The line as its words, its tone, its spinner and its door. */
@@ -194,6 +198,41 @@ describe("headingLine — the heading's second line, the board's D′ ladder", (
       case: "no production: nothing to release to",
       over: { production: undefined, waiting: 3 },
       line: null,
+    },
+  ])("$case", ({ over, line }) => {
+    expect(said(over)).toEqual(line);
+  });
+
+  it.each([
+    {
+      case: "a build or deploy runs on the stage",
+      over: { stages: [stage(undefined, "stage", true, true)] },
+      line: ["Stage is deploying…", "ink", "spinner", ""],
+    },
+    {
+      case: "one of several stages deploys: it is named",
+      over: { stages: [stage(undefined, "qa"), stage(undefined, "demo", true, true)] },
+      line: ["demo is deploying…", "ink", "spinner", ""],
+    },
+    {
+      case: "production deploys with no release on its way",
+      over: prod({ chip: chip("ok", { version: "v2.3.0" }), building: true }),
+      line: ["Production is deploying…", "ink", "spinner", ""],
+    },
+    {
+      case: "a release on its way says more than its deploy",
+      over: prod({ chip: chip("releasing", { next: "v2.4.0" }), building: true }),
+      line: ["Releasing v2.4.0…", "ink", "spinner", "review"],
+    },
+    {
+      case: "a stage coming up names its step, not its build",
+      over: { stages: [stage({ kind: "coming", step: "build" }, "stage", false, true)] },
+      line: ["Stage coming up · building the app", "ink", "", ""],
+    },
+    {
+      case: "a deploy under way before the changes waiting",
+      over: { waiting: 3, stages: [stage(undefined, "stage", true, true)] },
+      line: ["Stage is deploying…", "ink", "spinner", ""],
     },
   ])("$case", ({ over, line }) => {
     expect(said(over)).toEqual(line);

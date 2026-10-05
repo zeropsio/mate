@@ -14,6 +14,7 @@ export {
 } from "../zerops/data/zeropsWire.ts";
 export { historyScope, runningScope, type ProcessValue } from "./families/process.ts";
 export {
+  buildsUnderWay,
   projectProcesses,
   runningWork,
   type HistoryRead,

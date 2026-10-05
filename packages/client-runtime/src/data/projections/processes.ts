@@ -70,6 +70,20 @@ export const runningWork: Projection<ProjectKey, RunningWork> = {
   equals: sameValue,
 };
 
+/** Which of the listed projects a build or deploy runs on now, in the list's order. */
+export const buildsUnderWay: Projection<
+  { readonly orgId: string; readonly projectIds: ReadonlyArray<string> },
+  ReadonlyArray<string>
+> = {
+  name: "buildsUnderWay",
+  keyOf: ({ orgId, projectIds }) => `${orgId}/${projectIds.join(",")}`,
+  derive: (read, { orgId, projectIds }) =>
+    projectIds.filter(
+      (projectId) => runningWork.derive(read, { orgId, projectId }).kind === "running",
+    ),
+  equals: sameValue,
+};
+
 /** Where a project's history read stands: not demanded, under way, read, or refused. */
 export type HistoryRead = "unread" | "reading" | "read" | "failed";
 

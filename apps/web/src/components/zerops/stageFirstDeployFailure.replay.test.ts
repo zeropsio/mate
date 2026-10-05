@@ -87,7 +87,9 @@ function said(deploy: HqJob, status = "ACTIVE", born = false) {
     line: headingLine(
       {
         production: undefined,
-        stages: [{ projectId: "stage", name: "Acme - stage", coming, serves: false }],
+        stages: [
+          { projectId: "stage", name: "Acme - stage", coming, serves: false, building: false },
+        ],
         waiting: 0,
         waitingAtLeast: false,
         allOnStage: false,

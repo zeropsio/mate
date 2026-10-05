@@ -40,6 +40,7 @@ const production = (
   chip,
   coming: undefined,
   failure: undefined,
+  building: false,
   ...over,
 });
 const coming = (step: ComingStep): StopComing => ({
@@ -87,7 +88,9 @@ const RUNGS: ReadonlyArray<Rung> = [
     chips: [stageChip("ok"), HEALTHY],
     line: input({
       production: production(HEALTHY),
-      stages: [{ projectId: "stage", name: "stage", coming: undefined, serves: true }],
+      stages: [
+        { projectId: "stage", name: "stage", coming: undefined, serves: true, building: false },
+      ],
       waiting: 3,
       allOnStage: true,
     }),
@@ -157,7 +160,15 @@ const RUNGS: ReadonlyArray<Rung> = [
     name: "ZIT",
     chips: [stageChip("creating")],
     line: input({
-      stages: [{ projectId: "stage", name: "stage", coming: coming("build"), serves: false }],
+      stages: [
+        {
+          projectId: "stage",
+          name: "stage",
+          coming: coming("build"),
+          serves: false,
+          building: false,
+        },
+      ],
     }),
   },
   {
@@ -171,6 +182,7 @@ const RUNGS: ReadonlyArray<Rung> = [
           name: "stage",
           coming: coming("deploy-on-its-way"),
           serves: false,
+          building: false,
         },
       ],
     }),
@@ -180,10 +192,20 @@ const RUNGS: ReadonlyArray<Rung> = [
     name: "ZIT",
     chips: [stageChip("ok")],
     line: input({
-      stages: [{ projectId: "stage", name: "stage", coming: undefined, serves: true }],
+      stages: [
+        { projectId: "stage", name: "stage", coming: undefined, serves: true, building: false },
+      ],
     }),
     before: input({
-      stages: [{ projectId: "stage", name: "stage", coming: coming("address"), serves: false }],
+      stages: [
+        {
+          projectId: "stage",
+          name: "stage",
+          coming: coming("address"),
+          serves: false,
+          building: false,
+        },
+      ],
     }),
   },
   {
@@ -197,6 +219,7 @@ const RUNGS: ReadonlyArray<Rung> = [
           name: "stage",
           coming: { kind: "failed", reason: "the app’s build failed" },
           serves: false,
+          building: false,
         },
       ],
     }),

@@ -105,6 +105,7 @@ import {
 import {
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -131,6 +132,7 @@ import {
   mateReviewWaits,
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
+import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
 import type { MateComing } from "~/zerops/mateComing";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
@@ -611,6 +613,10 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     : mateEnvironmentsEmptyReason(candidates);
   const hqView = useAtomValue(hqMatesAtom);
   const hqMates = hqView?.current === true ? hqView.mates : null;
+  // Which projects a build or deploy runs on now, as Zerops says: the headings' indicator.
+  const building = useBuildsUnderWay(
+    useMemo(() => candidates.map((candidate) => candidate.project.id), [candidates]),
+  );
   const [openLists, setOpenLists] = useState<ReadonlySet<string>>(() => new Set());
   // Collapsed projects survive a reload: a person who collapsed one had a
   // reason, and a menu that expands everything on every boot makes them do it
@@ -1283,6 +1289,8 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                           ? undefined
                           : comingOf("production", productionStop),
                     failure: releases.kind === "answered" ? releases.failure : undefined,
+                    building:
+                      productionStop !== undefined && building.has(productionStop.projectId),
                   },
             stages: [
               ...stages.map(({ name, stop }) => ({
@@ -1290,12 +1298,14 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                 name,
                 coming: comingOf("stage", stop),
                 serves: stopServes(listedOf(stop)),
+                building: building.has(stop.projectId),
               })),
               ...projectFlow.creatingStages.map((creation) => ({
                 projectId: creation.projectId,
                 name: creation.name,
                 coming: PENDING,
                 serves: false,
+                building: false,
               })),
             ],
             waiting: projectFlow.main.notLive,

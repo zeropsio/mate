@@ -196,6 +196,7 @@ function said(moment: Moment) {
         name: "Brine - stage",
         coming: listedStopComing("stage", listed),
         serves: stopServes(listed),
+        building: false,
       },
     ],
     waiting: 0,

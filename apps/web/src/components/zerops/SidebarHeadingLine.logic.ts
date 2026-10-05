@@ -11,6 +11,9 @@
  * in amber with Details. Where an environment has got is client-runtime's rule (`stopComing`),
  * which a phone says too.
  *
+ * A build or deploy Zerops runs on an environment says so — "Stage is deploying…" — until Zerops
+ * says it ended.
+ *
  * One line at a time: trouble, then an environment coming up, then a release — nothing can
  * release to a place that does not serve yet, and the wait is two minutes. Down and stopped are
  * the pills' alone.
@@ -35,6 +38,8 @@ export interface HeadingLineInput {
         readonly coming: StopComing | undefined;
         /** The newest release that did not go out (`releaseFailureOf`). */
         readonly failure: ReleaseFailure | undefined;
+        /** A build or deploy of it runs now, as Zerops says (`runningWork`). */
+        readonly building: boolean;
       }
     | undefined;
   readonly stages: ReadonlyArray<{
@@ -43,6 +48,8 @@ export interface HeadingLineInput {
     readonly coming: StopComing | undefined;
     /** It serves: a deploy ran and it has a public address (`stopServes`). */
     readonly serves: boolean;
+    /** A build or deploy of it runs now, as Zerops says (`runningWork`). */
+    readonly building: boolean;
   }>;
   /** Changes merged and not live (`GroupFlowMain.notLive`). */
   readonly waiting: number;
@@ -180,6 +187,26 @@ export function headingLine(
       verb: chip.next === undefined ? undefined : { kind: "review" },
     };
   }
+  // A build or deploy under way, until Zerops says it ended: never on an estimate.
+  if (production?.building === true)
+    return {
+      fact: "Production is deploying…",
+      rest: undefined,
+      tone: "ink",
+      spinner: true,
+      release: false,
+      verb: undefined,
+    };
+  const deploying = stages.find((stage) => stage.building);
+  if (deploying !== undefined)
+    return {
+      fact: `${stageWord(stages, deploying)} is deploying…`,
+      rest: undefined,
+      tone: "ink",
+      spinner: true,
+      release: false,
+      verb: undefined,
+    };
   if (chip === undefined || chip.state === "creating" || input.waiting <= 0) return undefined;
   const served = RELEASED.has(chip.state) ? chip.version : undefined;
   return {

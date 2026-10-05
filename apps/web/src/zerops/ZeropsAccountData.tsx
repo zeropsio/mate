@@ -4,7 +4,9 @@
  * through projections only.
  */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { Atom } from "effect/unstable/reactivity";
 import {
+  buildsUnderWay,
   makeAccountStore,
   makeZeropsWire,
   repairZeropsSession,
@@ -47,6 +49,30 @@ export function useAccountData(): AccountData {
   const value = useContext(AccountDataContext);
   if (value === null) throw new Error("useAccountData must be used inside ZeropsAccountData.");
   return value;
+}
+
+const NO_BUILDS: ReadonlyArray<string> = [];
+const NOTHING_BUILDING = Atom.make(NO_BUILDS);
+
+/** The listed projects a build or deploy runs on now, as the menu's indicator reads them. */
+export function useBuildsUnderWay(projectIds: ReadonlyArray<string>): ReadonlySet<string> {
+  const data = useContext(AccountDataContext);
+  const store = data?.store;
+  const orgId = data?.orgId ?? null;
+  const key = projectIds.join(",");
+  const building = useAtomValue(
+    useMemo(
+      () =>
+        store === undefined || orgId === null
+          ? NOTHING_BUILDING
+          : store.data.project(buildsUnderWay, {
+              orgId,
+              projectIds: key === "" ? [] : key.split(","),
+            }),
+      [store, orgId, key],
+    ),
+  );
+  return useMemo(() => new Set(building), [building]);
 }
 
 /** What one projection derives for a key, recomputed only when the keys it read change. */
