@@ -286,7 +286,7 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
       });
     // Merged, as `main` holds their squash: recorded in the order main merged them, oldest first,
     // so each one's first-code-merge flag reads what the ones before it recorded.
-    const mergedFirst = [...squashes.keys()].reverse();
+    const mergedFirst = [...squashes.keys()].toReversed();
     const mergedAt = (mateId: string, number: number) =>
       mergedFirst.indexOf(`${mateId}/${String(number)}`);
     const merged = new Set<number>(
