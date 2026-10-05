@@ -953,7 +953,6 @@ describe("a deploy of a commit only moves forward", () => {
       stops: [
         { projectId: "p-stage", name: "stage", tier: "stage", row, deployment, route: undefined },
       ],
-      missing: [],
       release: {
         gate: { allowed: false, reason: "" },
         suggestion: "v0.1.0",
@@ -963,7 +962,6 @@ describe("a deploy of a commit only moves forward", () => {
       },
       mainHasCode: true,
       mainHead: undefined,
-      productionAddable: false,
       pending: [],
     }).stages[0]?.state;
 

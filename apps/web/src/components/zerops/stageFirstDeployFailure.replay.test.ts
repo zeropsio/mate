@@ -62,7 +62,6 @@ function said(deploy: HqJob, status = "ACTIVE", born = false) {
         services,
       },
     ],
-    missing: [],
     release: {
       gate: { allowed: false, reason: "Nothing merged" },
       suggestion: "v0.1.0",
@@ -72,7 +71,6 @@ function said(deploy: HqJob, status = "ACTIVE", born = false) {
     },
     mainHasCode: undefined,
     mainHead: undefined,
-    productionAddable: false,
     pending: [],
   };
   const stop = groupFlow(input).stages[0]!;

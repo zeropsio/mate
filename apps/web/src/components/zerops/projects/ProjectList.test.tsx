@@ -113,8 +113,6 @@ describe("a project's row", () => {
   it("never offers Add production in the row: the menu holds it", () => {
     const addable = entry([WREN], {
       mainHasCode: true,
-      productionAddable: true,
-      missing: [{ tier: "production" }],
     });
     const html = render({ groups: [addable] });
     expect(html).not.toContain("Add production");

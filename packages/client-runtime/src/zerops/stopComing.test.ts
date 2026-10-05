@@ -418,7 +418,6 @@ describe("listedStopComing — a production, read the way the menu reads it", ()
           route: undefined,
         },
       ],
-      missing: [],
       release: {
         gate: { allowed: false, reason: "" },
         suggestion: "v1.0.0",
@@ -428,7 +427,6 @@ describe("listedStopComing — a production, read the way the menu reads it", ()
       },
       mainHasCode: true,
       mainHead: undefined,
-      productionAddable: false,
       pending: [],
     });
     if (!("stop" in flow.production)) throw new Error("the production is listed");

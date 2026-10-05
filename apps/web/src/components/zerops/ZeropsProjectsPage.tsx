@@ -132,7 +132,6 @@ import {
   readZeropsToolKind,
   defaultAgentForRole,
   hasMate,
-  canCreateProjectsInOrganization,
   groupFlow,
   pullRequestLineWith,
   releaseContentsCommits,
@@ -200,11 +199,11 @@ import {
   changesUnknownOf,
   flowStepsAwaiting,
   groupFlowInputOf,
+  mayAddEnvironment,
   groupMemberFactsOf,
   lastMergedCode,
   parseProjectsSearch,
   matesKnownOf,
-  productionAddable,
   rowMateActivitiesOf,
   withoutOfficialHq,
   shownUngrouped,
@@ -1603,6 +1602,20 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [candidateHealth, groupTree.groups],
   );
 
+  // Whether this person may add a stage or a production to the group (`mayAddEnvironment`).
+  const mayAddFor = useCallback(
+    (group: ZeropsGroup) =>
+      activeOrganization !== null &&
+      mayAddEnvironment({
+        organization: activeOrganization,
+        projects: (
+          groupTree.groups.find((entry) => entry.group.groupId === group.groupId)?.environments ??
+          []
+        ).map(({ item }) => item.project),
+      }),
+    [activeOrganization, groupTree.groups],
+  );
+
   // "Add stage" opens the form; the form's answer is what gets created.
   const [creationRequest, setCreationRequest] = useState<{
     readonly groupId: string;
@@ -2292,20 +2305,11 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   };
 
   /**
-   * A project's own quiet actions: its name, the environments a person adds
-   * to it — another Mate, a stage, which is optional and never a step before
-   * production (D16, D28) — and, where the recipe still has room for one, a
-   * production.
-   *
-   * The flow's own `add-production` next step stays the usual way there: it
-   * needs `main` to have code, which today is read only from a merged code
-   * change still in the recent list (nothing fills `groupFlowInputOf`'s own
-   * `mainHasCode`/`mainHead`). That misses the code
-   * a recipe planted at birth and any merge that has since scrolled off, so
-   * the menu offers the same verb on the one thing this account can always
-   * answer — whether the role is still there to take (`creatableRoles`) and
-   * whether this person may create one at all — rather than only on a signal
-   * that is silent for most groups.
+   * A project's own quiet actions: its name, and the environments a person
+   * adds to it — another Mate, and a stage and a production as equals: neither
+   * is optional, neither comes before the other, and each is offered where the
+   * role is still there to take (`creatableRoles`) and this person may add one
+   * (`mayAddEnvironment`).
    */
   const renderGroupMenu = ({ group, flow }: ProjectsFlowGroup<ZeropsCandidatePresentation>) => {
     // Each Mate's preview, where its pair has one: a link out, so the menu's, not the row's.
@@ -2346,9 +2350,13 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                     requestEnvironment(group.groupId, "dev");
                   },
                 },
+              ]
+            : []),
+          ...(addsOfferedFor(group) && mayAddFor(group)
+            ? [
                 {
                   id: "add-stage",
-                  label: "Add stage — optional",
+                  label: "Add stage",
                   disabled: creationRunning,
                   onSelect: () => {
                     requestEnvironment(group.groupId, "stage");
@@ -2356,7 +2364,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
                 },
               ]
             : []),
-          ...(mayCreate && !groupIsEmpty(group) && creatableRoles(group).includes("prod")
+          ...(mayAddFor(group) && !groupIsEmpty(group) && creatableRoles(group).includes("prod")
             ? [
                 {
                   id: "add-production",
@@ -2460,10 +2468,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       case "release":
         // The door to the release's review, which names the version and tags it.
         return <ZeropsReleaseVerb groupId={group.groupId} label={step.verb} />;
-      case "add-production":
-        // Never a step that waits (`nextStepAwaitsSomebody`), so never a row's verb: adding
-        // production is the row's menu's offer.
-        return null;
       case "mate": {
         const mate = entry.mates.get(target.projectId);
         if (mate === undefined) return null;
@@ -2501,7 +2505,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 
   // Every group's flow, from the one derivation the thread and the left menu
   // read too (`groupFlow`): what each step holds and the one next step.
-  const mayCreate = canCreateProjectsInOrganization(activeOrganization);
   const flowGroups = groupTree.groups.map(
     ({ group, environments }): ProjectsFlowGroup<ZeropsCandidatePresentation> => {
       const reads = groupDeploys.get(group.groupId);
@@ -2531,11 +2534,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
             members,
             flow: reads,
             deployments: projectFlow.deployments,
-            productionAddable: productionAddable({
-              group,
-              mayCreate,
-              addsOffered: addsOfferedFor(group),
-            }),
             pending: group.pending,
           }),
         ),

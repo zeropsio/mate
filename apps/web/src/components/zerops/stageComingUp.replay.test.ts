@@ -168,7 +168,6 @@ function said(moment: Moment) {
         route: undefined,
       },
     ],
-    missing: [],
     release: {
       gate: { allowed: false, reason: "Nothing is merged to release." },
       suggestion: "v0.1.0",
@@ -178,7 +177,6 @@ function said(moment: Moment) {
     },
     mainHasCode: undefined,
     mainHead: undefined,
-    productionAddable: false,
     pending: [],
   };
   const stop = groupFlow(input).stages[0];

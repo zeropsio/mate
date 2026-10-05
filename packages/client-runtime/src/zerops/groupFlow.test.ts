@@ -101,11 +101,9 @@ function group(over: Partial<GroupFlowInput>): GroupFlowInput {
     pullRequests: [],
     merged: [],
     stops: [],
-    missing: [],
     release: { gate: CLOSED, suggestion: "v0.1.0", waiting: 0, waitingAtLeast: false, untold: [] },
     mainHasCode: undefined,
     mainHead: undefined,
-    productionAddable: true,
     pending: [],
     ...over,
   };
@@ -174,7 +172,6 @@ const SM_FIXTURE = group({
       route: "https://app-31f4-3000.prg1.zerops.app",
     },
   ],
-  missing: [{ tier: "production" }],
   mainHasCode: true,
 });
 
@@ -190,7 +187,6 @@ const TESTZCP = group({
       talked: true,
     },
   ],
-  missing: [{ tier: "stage" }, { tier: "production" }],
   mainHasCode: false,
 });
 
@@ -284,28 +280,21 @@ describe("groupFlow", () => {
         route: "https://app-31f4-3000.prg1.zerops.app",
       },
     ]);
-    expect(flow.production).toEqual({ kind: "absent", line: "Not set up", addable: true });
+    expect(flow.production).toEqual({ kind: "absent" });
 
     const merged = groupFlow({
       ...SM_FIXTURE,
       pullRequests: [],
       merged: [pull({ merged: true })],
     });
-    expect(merged.nextStep).toEqual({
-      kind: "add-production",
-      text: "main has code, no production yet",
-      verb: "Add production",
-      target: { kind: "add-production" },
-    });
+    // A merge with no production asks nothing: a missing environment is a slot, never a step.
+    expect(merged.production).toEqual({ kind: "absent" });
+    expect(merged.nextStep.kind).toBe("none");
   });
 
-  it("reads production as after the first merge while main is empty (testzcp)", () => {
+  it("says nothing of production while main is empty (testzcp)", () => {
     const flow = groupFlow(TESTZCP);
-    expect(flow.production).toEqual({
-      kind: "absent",
-      line: "After the first merge",
-      addable: false,
-    });
+    expect(flow.production).toEqual({ kind: "absent" });
     expect(flow.main).toEqual({
       head: undefined,
       hasCode: false,
@@ -342,11 +331,7 @@ describe("groupFlow", () => {
         route: undefined,
       },
     ]);
-    expect(flow.production).toEqual({
-      kind: "absent",
-      line: "After the first merge",
-      addable: false,
-    });
+    expect(flow.production).toEqual({ kind: "absent" });
     expect(flow.nextStep.kind).toBe("none");
   });
 
@@ -505,11 +490,11 @@ describe("groupFlow", () => {
   // Mate still works: the description would trail what it does.
   it.each([
     ["a change described at its head, its Mate at rest", SM_FIXTURE, "merge"],
-    ["a draft", { ...SM_FIXTURE, pullRequests: [pull({ ready: false })] }, "add-production"],
+    ["a draft", { ...SM_FIXTURE, pullRequests: [pull({ ready: false })] }, "none"],
     [
       "a described change whose Mate still works",
       { ...SM_FIXTURE, mates: SM_FIXTURE.mates.map((mate) => ({ ...mate, working: true })) },
-      "add-production",
+      "none",
     ],
     [
       "another Mate works",
@@ -828,41 +813,20 @@ describe("groupFlow", () => {
     pullRequests: [],
   };
 
+  // P2 (2026-10-05): an environment nobody added is a quiet slot, never a step, a dot or a count —
+  // whatever main holds.
   it.each([
-    { case: "main has code and the recipe's production is on main", input: LANDED, addable: true },
-    {
-      case: "the person may not add one",
-      input: { ...LANDED, productionAddable: false },
-      addable: false,
-    },
-    {
-      case: "the recipe's production tier is not on main yet",
-      input: { ...LANDED, missing: [] },
-      addable: false,
-    },
-    {
-      case: "main was not read and nothing landed",
-      input: { ...LANDED, mainHasCode: undefined },
-      addable: false,
-    },
+    { case: "main has code", input: LANDED },
     {
       case: "main was not read and a code change landed",
       input: { ...LANDED, mainHasCode: undefined, merged: [pull({ merged: true })] },
-      addable: true,
     },
-    {
-      case: "main was not read and only a recipe change landed",
-      input: {
-        ...LANDED,
-        mainHasCode: undefined,
-        merged: [pull({ repository: "group", kind: "recipe", merged: true })],
-      },
-      addable: false,
-    },
-  ])("offers Add production only where $case → $addable", ({ input, addable }) => {
+    { case: "main was not read and nothing landed", input: { ...LANDED, mainHasCode: undefined } },
+    { case: "main is empty", input: { ...LANDED, mainHasCode: false } },
+  ])("asks nothing about an absent production where $case", ({ input }) => {
     const flow = groupFlow(input);
-    expect(flow.production).toEqual({ kind: "absent", line: "Not set up", addable });
-    expect(flow.nextStep.kind).toBe(addable ? "add-production" : "none");
+    expect(flow.production).toEqual({ kind: "absent" });
+    expect(flow.nextStep.kind).toBe("none");
   });
 });
 
@@ -922,7 +886,7 @@ describe("groupFlow — creations under way", () => {
 
   it.each([
     {
-      case: "production being created is setting up, and Add production is not offered again",
+      case: "production being created is setting up",
       input: { ...LANDED, pending: [creating({ kind: "production", name: "Todo - production" })] },
       production: {
         kind: "creating",
@@ -941,10 +905,10 @@ describe("groupFlow — creations under way", () => {
       next: "release",
     },
     {
-      case: "a stage or a Mate being created leaves Add production offered",
+      case: "a stage or a Mate being created leaves production absent",
       input: { ...LANDED, pending: [creating(), creating({ projectId: "p-st", kind: "stage" })] },
-      production: { kind: "absent", addable: true },
-      next: "add-production",
+      production: { kind: "absent" },
+      next: "none",
     },
   ])("$case", ({ input, production, next }) => {
     const flow = groupFlow(input);

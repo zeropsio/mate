@@ -1,6 +1,6 @@
 /**
- * "Set up stage" and "Set up production", asked from a project's menu in the left menu: they open
- * the form the projects page's own ⋯ opens (*Add stage — optional*, *Add production*), on that
+ * "Add stage" and "Add production", asked from a project's menu in the left menu or from the
+ * project's own page: they open the form the projects page's own ⋯ opens, on that
  * page, where the creation's checklist runs. They only landed on the page once, leaving the person
  * to find the verb again (the owner, 2026-09-30: a menu item must open what it names).
  *

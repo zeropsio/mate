@@ -71,6 +71,7 @@ import {
   type GroupFlowStop,
   type ListedStop,
   type MissingEnvironmentRow,
+  type ZeropsOrganization,
   type StopComing,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -86,7 +87,6 @@ import { mateIsViewers, mateOwnerRecords } from "@t3tools/client-runtime/zerops/
 import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
@@ -238,10 +238,9 @@ import {
 import {
   groupFlowInputOf,
   groupMemberFactsOf,
-  productionAddable,
+  mayAddEnvironment,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
-import { groupAddsOffered } from "./ZeropsProjectRow.logic";
 import {
   HeadingReleaseMark,
   HeadingSubLine,
@@ -306,7 +305,6 @@ function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
     environments: [...flow.environments.values()],
     pullRequests: flow.pullRequests,
     merged: flow.merged ?? [],
-    missing: flow.missing ?? [],
     release: {
       gate: flow.releaseOffered ? { allowed: true } : { allowed: false, reason: "" },
       suggestion: flow.releaseTag ?? "",
@@ -317,7 +315,6 @@ function groupFlowReadsOf(flow: SidebarProjectFlow): GroupFlowReads {
   };
 }
 
-const NO_HEALTH: ReadonlyMap<string, ZeropsContainerHealth> = new Map();
 /** No production service whose commit cannot be told. */
 const NO_UNTOLD: ReadonlyArray<string> = [];
 const NO_BIRTHS: ReadonlyArray<ZeropsPlacedBirth> = [];
@@ -464,18 +461,11 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   /** What the menu drew of what it has read, after each draw, for the memory to keep. */
   readonly onDrawn?: ((drawn: SidebarDrawn) => void) | undefined;
   /**
-   * Whether this person may create a project at all
-   * (`canCreateProjectsInOrganization`) — one part of whether *Add
-   * production* is offered here (`productionAddable`, the page's own gate).
-   * Defaults to `false`, so the verb is never offered on a guess.
+   * The organization the person is signed in to: whether *Add stage* and *Add production* are
+   * offered in a project's menu is `mayAddEnvironment`'s answer over it. Absent, they are never
+   * offered on a guess.
    */
-  readonly mayCreate?: boolean | undefined;
-  /**
-   * Each container's health by candidate key (`useZeropsContainers`),
-   * for the gate's "some Mate in the group is up" part (`groupAddsOffered`).
-   * Absent, no Mate that is only ready counts as up.
-   */
-  readonly health?: ReadonlyMap<string, ZeropsContainerHealth> | undefined;
+  readonly organization?: ZeropsOrganization | null | undefined;
   readonly className?: string;
   /**
    * The listing is known and complete, and every row's presence is read
@@ -601,8 +591,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   getFlow,
   remembered,
   onDrawn,
-  mayCreate = false,
-  health = NO_HEALTH,
+  organization = null,
   complete,
   notice = null,
   onNoticeAct,
@@ -1062,8 +1051,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
     if (mateCount === 0 && (group === undefined || everyMate.length > 0)) return null;
     const others = entries.filter(({ item }) => !hasMate(item));
     // The one derivation the projects page draws from too (`groupFlow.ts`),
-    // fed through the page's own input (`groupFlowInputOf`) and gate
-    // (`productionAddable`): read once here, so the pull requests this tree
+    // fed through the page's own input (`groupFlowInputOf`): read once here, so the pull requests this tree
     // hangs under a Mate and the production
     // chip can never disagree with what the page says about the same project.
     //
@@ -1083,13 +1071,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         ),
         flow: flow === undefined ? undefined : groupFlowReadsOf(flow),
         deployments,
-        productionAddable:
-          group !== undefined &&
-          productionAddable({
-            group,
-            mayCreate,
-            addsOffered: groupAddsOffered(entries, health),
-          }),
         pending: group?.pending ?? [],
       }),
     );
@@ -1622,7 +1603,15 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             line={line}
             openStop={openStop}
             group={group}
-            missing={getFlow?.(group.groupId)?.missing ?? []}
+            missing={
+              organization !== null &&
+              mayAddEnvironment({
+                organization,
+                projects: environments.map(({ item }) => item.project),
+              })
+                ? (getFlow?.(group.groupId)?.missing ?? [])
+                : NO_MISSING_TIERS
+            }
             onAddMate={onAddMate}
             onSetUp={onSetUp}
             onBrowseProjects={onBrowseProjects}
@@ -2150,7 +2139,7 @@ export function ProjectHeader({
                           }
                     }
                   >
-                    {`Set up ${row.name.toLocaleLowerCase()}`}
+                    {`Add ${row.name.toLocaleLowerCase()}`}
                   </MenuItem>
                 ))}
                 {/* Where a project is added. */}

@@ -1,8 +1,7 @@
 /**
  * One project's flow, in the one order every surface draws it: Mates (with
- * their preview) → pull requests → `main` → production, a group stage as an
- * optional side branch of `main`, and the one next step (the owner,
- * 2026-09-23).
+ * their preview) → pull requests → `main` → production, a group stage as a
+ * side branch of `main`, and the one next step (the owner, 2026-09-23).
  *
  * The projects page, the left menu and a Mate's conversation each drew a leg
  * of this from the same reads and came to different answers: for one project
@@ -24,23 +23,22 @@
  *
  * Exactly one, worst first: a Mate waiting on an answer, then a deploy that
  * failed, then a pull request the person can merge, then one that cannot land,
- * then a release, then adding the production, then a first task for a Mate
- * nobody has spoken to. Everything `projectAttention` already decides — the
- * waiting Mate, the failed deploy, the blocked change, the release — is taken
- * from it, words and all; this adds only the steps it has no kind for.
+ * then a release, then a first task for a Mate nobody has spoken to.
+ * Everything `projectAttention` already decides — the waiting Mate, the failed
+ * deploy, the blocked change, the release — is taken from it, words and all;
+ * this adds only the steps it has no kind for.
  *
- * *Add production* is offered once `main` has code, the recipe's production
- * tier is on `main`, and the person may create one. Before that production
- * reads "After the first merge", with no button: a production made from an
- * empty `main` has nothing a release could put in it.
+ * An environment nobody added is never a step: a missing stage or production
+ * is a quiet slot with *Add* (`environmentSlots`), not a thing that waits on
+ * anybody (the owner, 2026-09-28 and 2026-10-05).
  *
  * ## Creations under way
  *
  * A Mate, a stage or a production the platform accepted and the listing does
  * not hold yet (the group tree's `pending`) is drawn from its birth: a Mate
- * after the listed ones, a production as being set up — so *Add production*
- * is never offered twice for one — and a stage beside the listed stages. Once
- * the listing holds the project, its listed member stands in its place.
+ * after the listed ones, a production as being set up, and a stage beside the
+ * listed stages. Once the listing holds the project, its listed member stands
+ * in its place.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -60,7 +58,7 @@ import {
   deploymentReadFailed,
 } from "./flow/deployment.ts";
 import { pullRequestBlocked, type PullRequestBlocked } from "./gitTab.ts";
-import type { GroupEnvironmentTier, MissingEnvironmentRow } from "./groupEnvironments.ts";
+import type { GroupEnvironmentTier } from "./groupEnvironments.ts";
 import type { ZeropsMateFace } from "./groups.ts";
 import type { DeployedVersion, EnvironmentRow, GroupRowTone } from "./groupRows.ts";
 import type { HqJob } from "./hq/environments.ts";
@@ -140,8 +138,6 @@ export interface GroupFlowInput {
   readonly merged: ReadonlyArray<FlowPullRequest>;
   /** Every group stage and the production the project holds, declared or not. */
   readonly stops: ReadonlyArray<GroupFlowStopInput>;
-  /** The tiers the recipe on `main` offers and the project lacks (`missingEnvironmentRows`). */
-  readonly missing: ReadonlyArray<Pick<MissingEnvironmentRow, "tier">>;
   readonly release: {
     /** The flow's own gate (`ZeropsReleaseOffer.gate`). */
     readonly gate: ReleaseGate;
@@ -163,12 +159,6 @@ export interface GroupFlowInput {
   readonly mainHasCode: boolean | undefined;
   /** The commit `main` is at; `undefined` where it was not read. */
   readonly mainHead: string | undefined;
-  /**
-   * Whether this person may add a production to this project now: the role is
-   * still creatable (`creatableRoles`), the project's adds are offered, and the
-   * account lets them create projects.
-   */
-  readonly productionAddable: boolean;
   /** Its creations under way the listing does not hold yet (the group tree's `pending`). */
   readonly pending: ReadonlyArray<GroupFlowPending>;
 }
@@ -217,8 +207,8 @@ export interface GroupFlowStop {
 }
 
 export type GroupFlowProduction =
-  /** No production yet: `addable` says whether *Add production* is offered. */
-  | { readonly kind: "absent"; readonly line: string; readonly addable: boolean }
+  /** No production: nothing is said of it, and nothing waits on it. */
+  | { readonly kind: "absent" }
   /** Its creation is under way and the listing does not hold it yet; nothing is offered. */
   | { readonly kind: "creating"; readonly line: string; readonly creation: GroupFlowPending }
   | {
@@ -259,14 +249,12 @@ export type GroupNextStepKind =
   | "merge"
   | "unblock"
   | "release"
-  | "add-production"
   | "first-task"
   | "none";
 
 export type GroupNextStepTarget =
   | NonNullable<ProjectAttentionItem["target"]>
-  | { readonly kind: "release"; readonly tag: string }
-  | { readonly kind: "add-production" };
+  | { readonly kind: "release"; readonly tag: string };
 
 export interface GroupNextStep {
   readonly kind: GroupNextStepKind;
@@ -290,20 +278,12 @@ export interface GroupFlow {
   readonly nextStep: GroupNextStep;
 }
 
-/** Production's line before `main` has anything in it. */
-export const PRODUCTION_AFTER_FIRST_MERGE = "After the first merge";
-/** Production's line once `main` has code and no production is there. */
-export const PRODUCTION_NOT_SET_UP = "Not set up";
 /** Production's line while its creation is under way. */
 export const PRODUCTION_SETTING_UP = "Setting up production…";
 /** Production's line while a deploy runs on it. */
 export const PRODUCTION_DEPLOYING = "Deploying…";
 /** A stage's line while its creation is under way (`stopComing.ts`). */
 export { STAGE_SETTING_UP } from "./stopComing.ts";
-/** The verb that adds it. */
-export const ADD_PRODUCTION_LABEL = "Add production";
-/** The step that asks for it. */
-export const MAIN_WITHOUT_PRODUCTION = "main has code, no production yet";
 
 /** Newest first — the one a person is most likely waiting on. */
 function byNewest(left: FlowPullRequest, right: FlowPullRequest): number {
@@ -441,25 +421,11 @@ function runningState(tone: GroupRowTone): GroupFlowStopState {
   }
 }
 
-function productionOf(
-  stop: GroupFlowStop | undefined,
-  input: GroupFlowInput,
-  main: GroupFlowMain,
-): GroupFlowProduction {
+function productionOf(stop: GroupFlowStop | undefined, input: GroupFlowInput): GroupFlowProduction {
   const creation = input.pending.find((entry) => entry.kind === "production");
   if (stop === undefined && creation !== undefined)
     return { kind: "creating", line: PRODUCTION_SETTING_UP, creation };
-  if (stop === undefined) {
-    const addable =
-      main.hasCode === true &&
-      input.productionAddable &&
-      input.missing.some((row) => row.tier === "production");
-    return {
-      kind: "absent",
-      line: main.hasCode === false ? PRODUCTION_AFTER_FIRST_MERGE : PRODUCTION_NOT_SET_UP,
-      addable,
-    };
-  }
+  if (stop === undefined) return { kind: "absent" };
   const line =
     stop.state === "checking"
       ? (stop.readLine ?? CHECKING_WHAT_RUNS)
@@ -550,14 +516,6 @@ function nextStepOf(
       target: { kind: "release", tag: input.release.suggestion },
     };
 
-  if (production.kind === "absent" && production.addable)
-    return {
-      kind: "add-production",
-      text: MAIN_WITHOUT_PRODUCTION,
-      verb: ADD_PRODUCTION_LABEL,
-      target: { kind: "add-production" },
-    };
-
   const untouched =
     input.pullRequests.length === 0 &&
     input.merged.length === 0 &&
@@ -592,7 +550,7 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
   const stops = input.stops.map((stop) => withFirstDeploy(stopOf(stop), stop));
   const stages = stops.filter((_, index) => input.stops[index]?.tier === "stage");
   const productionStop = stops.find((_, index) => input.stops[index]?.tier === "production");
-  const production = productionOf(productionStop, input, main);
+  const production = productionOf(productionStop, input);
   // The listed member wins: a creation the listing already holds is drawn from there.
   const listed = new Set([...input.mates, ...input.stops].map((entry) => entry.projectId));
   const pending = input.pending.filter((entry) => !listed.has(entry.projectId));

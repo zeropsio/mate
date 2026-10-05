@@ -5,7 +5,6 @@ import {
   type EnvironmentRow,
   type FlowPullRequest,
   type GroupNextStepKind,
-  type MissingEnvironmentRow,
   type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -14,7 +13,6 @@ import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing
 import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import * as NodeFS from "node:fs";
 import { act, act as act_, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -117,7 +115,6 @@ afterEach(() => {
 import {
   groupFlowInputOf,
   groupMemberFactsOf,
-  productionAddable,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import { useSidebarJump } from "~/zerops/sidebarJump";
@@ -133,7 +130,6 @@ import {
   type SidebarDrawn,
   type SidebarProjectFlow,
 } from "./SidebarZeropsTree";
-import { groupAddsOffered } from "./ZeropsProjectRow.logic";
 
 /** One comparison HQ answered for `appdev`: what a release would put live. */
 const compared = (commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>) => ({
@@ -1512,8 +1508,8 @@ describe("the project's flow under it", () => {
   });
 
   // A project needs no production (the owner, 2026-09-28: "production not
-  // required, this shouldn't be there"): the page may offer it, the menu
-  // never marks it as something waiting.
+  // required, this shouldn't be there"; 2026-10-05: an absent environment is a quiet slot): the
+  // menu never marks it as something waiting, whatever main holds.
   it("never dots a project for the production it does not have", () => {
     const missing = [
       {
@@ -1523,9 +1519,7 @@ describe("the project's flow under it", () => {
         line: "not set up yet",
       },
     ];
-    // The Mate has been spoken to, so an empty flow asks for no first task —
-    // isolating *Add production* as the only thing that could put a dot on
-    // the heading.
+    // The Mate has been spoken to, so an empty flow asks for no first task.
     const activity: ZeropsAgentActivity = {
       threadId: "thread-1" as ZeropsAgentActivity["threadId"],
       kind: "idle",
@@ -1539,29 +1533,12 @@ describe("the project's flow under it", () => {
       threadKey: "env:thread",
       task: undefined,
     };
-    const getActivity = () => activity;
-    const withMergedCode = flow({ pullRequests: [], merged: [pull(4, { merged: true })], missing });
-    // Neither half alone is enough: without `merged` this tree never sees
-    // main's code, and without `mayCreate` it never offers what it cannot
-    // check the person may create — the page's own gate, wired here too
-    // rather than only there.
-    expect(
-      render([CRM_DEV_CONNECTED], {
-        mayCreate: true,
-        getActivity,
-        getFlow: () => flow({ pullRequests: [], missing }),
-      }),
-    ).not.toContain("main has code, no production yet");
-    expect(
-      render([CRM_DEV_CONNECTED], { getActivity, getFlow: () => withMergedCode }),
-    ).not.toContain("main has code, no production yet");
     const html = render([CRM_DEV_CONNECTED], {
-      mayCreate: true,
-      getActivity,
-      getFlow: () => withMergedCode,
+      getActivity: () => activity,
+      getFlow: () => flow({ pullRequests: [], merged: [pull(4, { merged: true })], missing }),
     });
     expect(html).not.toContain('data-zerops-surface="sidebar-project-next-step"');
-    expect(html).not.toContain("main has code, no production yet");
+    expect(html).not.toContain("no production yet");
   });
 
   it("names the repository on each of a Mate's changes once they span two", () => {
@@ -2819,14 +2796,10 @@ describe("the Mate's card", () => {
 });
 
 describe("the sidebar and the projects page read one group the same way", () => {
-  const PRODUCTION_MISSING: ReadonlyArray<MissingEnvironmentRow> = [
-    { kind: "missing-environment", tier: "production", name: "Production", line: "not set up yet" },
-  ];
   const reads = (over: Partial<GroupFlowReads> = {}): GroupFlowReads => ({
     environments: [],
     pullRequests: [],
     merged: [],
-    missing: [],
     release: {
       gate: { allowed: false, reason: "Nothing to release." },
       suggestion: "",
@@ -2835,53 +2808,22 @@ describe("the sidebar and the projects page read one group the same way", () => 
     },
     ...over,
   });
-  const UP = new Map<string, ZeropsContainerHealth>([[CRM_DEV.key, "ready"]]);
   const cases: ReadonlyArray<{
     readonly name: string;
     readonly candidates: ReadonlyArray<ZeropsCandidate>;
     readonly reads: GroupFlowReads;
-    readonly health: ReadonlyMap<string, ZeropsContainerHealth>;
-    readonly mayCreate: boolean;
     readonly expected: GroupNextStepKind;
   }> = [
     {
       name: "a mergeable change asks for the merge",
       candidates: [CRM_DEV],
       reads: reads({ pullRequests: [pull(4)] }),
-      health: UP,
-      mayCreate: true,
       expected: "merge",
     },
     {
-      name: "merged code with no production, a Mate up, offers Add production",
+      name: "merged code with no production asks nothing: an absent environment is a slot",
       candidates: [CRM_DEV],
-      reads: reads({ merged: [pull(4, { merged: true })], missing: PRODUCTION_MISSING }),
-      health: UP,
-      mayCreate: true,
-      expected: "add-production",
-    },
-    {
-      name: "the same with no Mate up offers nothing yet",
-      candidates: [CRM_DEV],
-      reads: reads({ merged: [pull(4, { merged: true })], missing: PRODUCTION_MISSING }),
-      health: new Map(),
-      mayCreate: true,
-      expected: "none",
-    },
-    {
-      name: "the same for a viewer who may not create offers nothing",
-      candidates: [CRM_DEV],
-      reads: reads({ merged: [pull(4, { merged: true })], missing: PRODUCTION_MISSING }),
-      health: UP,
-      mayCreate: false,
-      expected: "none",
-    },
-    {
-      name: "a production the recipe does not declare is not added twice",
-      candidates: [CRM_DEV, CRM_PROD],
-      reads: reads({ merged: [pull(4, { merged: true })], missing: PRODUCTION_MISSING }),
-      health: UP,
-      mayCreate: true,
+      reads: reads({ merged: [pull(4, { merged: true })] }),
       expected: "none",
     },
     {
@@ -2897,13 +2839,11 @@ describe("the sidebar and the projects page read one group the same way", () => 
           untold: [],
         },
       }),
-      health: UP,
-      mayCreate: true,
       expected: "release",
     },
   ];
 
-  it.each(cases)("$name", ({ candidates, reads: groupReads, health, mayCreate, expected }) => {
+  it.each(cases)("$name", ({ candidates, reads: groupReads, expected }) => {
     const group = buildZeropsGroupTree(candidates, { order: "name" }).groups[0]!;
     const page = groupFlow(
       groupFlowInputOf({
@@ -2916,11 +2856,6 @@ describe("the sidebar and the projects page read one group the same way", () => 
         ),
         flow: groupReads,
         deployments: new Map(),
-        productionAddable: productionAddable({
-          group: group.group,
-          mayCreate,
-          addsOffered: groupAddsOffered(group.environments, health),
-        }),
         pending: group.group.pending,
       }),
     ).nextStep;
@@ -2932,12 +2867,11 @@ describe("the sidebar and the projects page read one group the same way", () => 
       environments: new Map(groupReads.environments.map((row) => [row.projectId, row])),
       releaseOffered: groupReads.release.gate.allowed,
       releaseContents: groupReads.release.contents,
-      missing: groupReads.missing,
       releaseTag: groupReads.release.suggestion,
     };
     // The heading carries no step of its own any more (M15): its rows, its
     // faces and its production chip say what waits, each where it is.
-    const html = render(candidates, { getFlow: () => sidebar, health, mayCreate });
+    const html = render(candidates, { getFlow: () => sidebar });
     expect(html).not.toContain("sidebar-project-next-step");
   });
 });

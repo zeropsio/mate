@@ -56,7 +56,7 @@ const live = (label: string): GroupFlowProduction => ({
   line: label,
 });
 
-const ABSENT: GroupFlowProduction = { kind: "absent", line: "Not set up", addable: false };
+const ABSENT: GroupFlowProduction = { kind: "absent" };
 const SERVING: StopServing = { kind: "serving" };
 const DOWN: StopServing = { kind: "down", services: ["web"] };
 const ANSWERED: ReleasesAnswer = { kind: "answered", failure: undefined };
@@ -273,9 +273,7 @@ describe("productionChip — production's chip: the word, its tone, its state in
   });
 
   it("draws no production chip where the project has no production", () => {
-    expect(
-      productionChip(input({ production: { kind: "absent", line: "Not set up", addable: true } })),
-    ).toEqual({ kind: "none" });
+    expect(productionChip(input({ production: { kind: "absent" } }))).toEqual({ kind: "none" });
   });
 
   // A reload must not paint a chip it then takes back: until what decides it

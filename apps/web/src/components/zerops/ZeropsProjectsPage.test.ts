@@ -999,10 +999,7 @@ describe("project rename permissions on the projects surfaces", () => {
     expect(projectsPageSource).toContain("...(groupIsEmpty(group)");
     expect(projectsPageSource).toContain("...(addsOfferedFor(group)");
     expect(projectsPageSource).toContain(
-      '...(mayCreate && !groupIsEmpty(group) && creatableRoles(group).includes("prod")',
-    );
-    expect(projectsPageSource).toContain(
-      "productionAddable({\n              group,\n              mayCreate,",
+      '...(mayAddFor(group) && !groupIsEmpty(group) && creatableRoles(group).includes("prod")',
     );
     expect(projectsPageSource).toContain("if (creationRunning) return;");
   });

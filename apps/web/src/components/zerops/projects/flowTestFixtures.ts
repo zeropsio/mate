@@ -153,7 +153,6 @@ function entryOf(
       pullRequests: [],
       merged: [],
       stops: [],
-      missing: [],
       release: {
         gate: { allowed: false, reason: "Nothing is merged to release." },
         suggestion: "v0.1.0",
@@ -163,7 +162,6 @@ function entryOf(
       },
       mainHasCode: undefined,
       mainHead: undefined,
-      productionAddable: false,
       pending: [],
       ...over,
     }),

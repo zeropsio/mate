@@ -30,13 +30,13 @@ import {
   type GroupFlowStopState,
   type GroupNextStepKind,
   type GroupRowTone,
-  type MissingEnvironmentRow,
   type PlatformService,
   type ReleaseGate,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
-  type ZeropsGroup,
   type ZeropsGroupPendingMember,
+  type ZeropsOrganization,
+  type ZeropsProject,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import {
@@ -46,10 +46,10 @@ import {
 } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { activityOfNow, mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
-import { creatableRoles } from "../ZeropsGroupTree.logic";
 import { COMING_UP_LINE, NOT_SET_UP_LINE, type ZeropsRowAction } from "../ZeropsProjectRow.logic";
 
 /** The page's URL: `/zerops?group=<groupId>` opens that project's row. */
@@ -96,7 +96,6 @@ const NEXT_STEP_TONE: Record<GroupNextStepKind, ServiceStatusToneId> = {
   merge: "attention",
   unblock: "attention",
   release: "busy",
-  "add-production": "busy",
   "first-task": "off",
   none: "off",
 };
@@ -431,18 +430,30 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
 }
 
 /**
- * Whether *Add production* is offered for a group: the viewer may create a
- * project (`canCreateProjectsInOrganization`), the group has no production
- * yet (`creatableRoles`), and the group is offered more at all
- * (`groupAddsOffered` — some Mate in it is up). Every surface that feeds
- * `groupFlow` asks this one question.
+ * Whether this person may add a stage or a production to an application: the people HQ's
+ * `attach` takes for a project made now - an organization owner or admin, or a member who may
+ * create projects (`canCreateProjects`) and develops the application, which is at least a Basic
+ * user on one of its projects (their own grant there, else their organization role). Every
+ * surface that offers an environment asks this one question.
  */
-export function productionAddable(input: {
-  readonly group: ZeropsGroup;
-  readonly mayCreate: boolean;
-  readonly addsOffered: boolean;
+export function mayAddEnvironment(input: {
+  readonly organization: Pick<
+    ZeropsOrganization,
+    "membershipId" | "roleCode" | "canCreateProjects"
+  >;
+  /** The application's projects as the account lists them. */
+  readonly projects: ReadonlyArray<Pick<ZeropsProject, "userRoles">>;
 }): boolean {
-  return input.mayCreate && input.addsOffered && creatableRoles(input.group).includes("prod");
+  const { organization } = input;
+  if (roleAtLeast(organization.roleCode, "ADMIN")) return true;
+  if (organization.canCreateProjects !== true) return false;
+  return input.projects.some((project) =>
+    roleAtLeast(
+      project.userRoles?.find((entry) => entry.clientUserId === organization.membershipId)
+        ?.roleCode ?? organization.roleCode,
+      "BASIC_USER",
+    ),
+  );
 }
 
 /** The part of a group's project flow `groupFlow` reads. */
@@ -450,7 +461,6 @@ export interface GroupFlowReads {
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;
   readonly merged: ReadonlyArray<FlowPullRequest>;
-  readonly missing: ReadonlyArray<MissingEnvironmentRow>;
   readonly release: {
     readonly gate: ReleaseGate;
     readonly suggestion: string;
@@ -502,7 +512,6 @@ export function groupFlowInputOf(input: {
   readonly flow: GroupFlowReads | undefined;
   /** `undefined` where the platform's pushed answer is not held at all: every stop unread. */
   readonly deployments: ReadonlyMap<string, Shown<Deployment>> | undefined;
-  readonly productionAddable: boolean;
   /** The group's creations under way (the group tree's `pending`). */
   readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
 }): GroupFlowInput {
@@ -545,14 +554,12 @@ export function groupFlowInputOf(input: {
         },
       ];
     }),
-    missing: flow?.missing ?? [],
     release:
       flow === undefined
         ? { gate: FLOW_NOT_READ, suggestion: "", waiting: 0, waitingAtLeast: false, untold: [] }
         : releaseInputOf(flow.release),
     mainHasCode: undefined,
     mainHead: undefined,
-    productionAddable: input.productionAddable,
     pending: input.pending,
   };
 }

@@ -25,6 +25,7 @@ import {
   nextStepAwaitsSomebody,
   parseProjectsSearch,
   matesKnownOf,
+  mayAddEnvironment,
   rowMateActivitiesOf,
   risenFirst,
   rowRise,
@@ -83,7 +84,6 @@ function flowOf(over: Partial<GroupFlowInput> = {}): GroupFlow {
     pullRequests: [],
     merged: [],
     stops: [],
-    missing: [],
     release: {
       gate: { allowed: false, reason: "Nothing is merged to release." },
       suggestion: "v0.1.0",
@@ -93,7 +93,6 @@ function flowOf(over: Partial<GroupFlowInput> = {}): GroupFlow {
     },
     mainHasCode: undefined,
     mainHead: undefined,
-    productionAddable: false,
     pending: [],
     ...over,
   });
@@ -276,9 +275,6 @@ describe("nextStepAwaitsSomebody", () => {
     merge: true,
     unblock: true,
     release: true,
-    // A project needs no production (the owner, 2026-09-28: "production not
-    // required, this shouldn't be there"): the page offers it, nothing nags.
-    "add-production": false,
     // The Mate is the way in to a first task; nothing waits on anybody.
     "first-task": false,
     none: false,
@@ -538,7 +534,6 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
       members,
       flow: undefined,
       deployments: new Map(),
-      productionAddable: false,
       pending: [],
     });
     expect(input.mates.map((entry) => entry.working)).toEqual(working);
@@ -556,7 +551,6 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
       members,
       flow: undefined,
       deployments: new Map(),
-      productionAddable: false,
       pending: [],
     });
     expect(input.mates.map((entry) => entry.talked)).toEqual([false]);
@@ -603,7 +597,6 @@ describe("groupFlowInputOf", () => {
       members,
       flow: undefined,
       deployments: new Map(),
-      productionAddable: false,
       pending: [],
     });
     expect(input.mates).toEqual([
@@ -653,9 +646,6 @@ describe("groupFlowInputOf", () => {
         environments: [row],
         pullRequests: [pull()],
         merged: [pull({ number: 4, merged: true })],
-        missing: [
-          { kind: "missing-environment", tier: "production", name: "Production", line: "" },
-        ],
         release: {
           gate: { allowed: true },
           suggestion: "v0.1.1",
@@ -670,16 +660,12 @@ describe("groupFlowInputOf", () => {
         },
       },
       deployments: new Map(),
-      productionAddable: true,
       pending: [],
     });
     expect(input.stops[0]?.row).toBe(row);
     expect(input.stops[0]?.name).toBe("stage");
     expect(input.pullRequests.map((entry) => entry.number)).toEqual([1]);
     expect(input.merged.map((entry) => entry.number)).toEqual([4]);
-    expect(input.missing).toEqual([
-      { kind: "missing-environment", tier: "production", name: "Production", line: "" },
-    ]);
     expect(input.release).toEqual({
       gate: { allowed: true },
       suggestion: "v0.1.1",
@@ -687,7 +673,6 @@ describe("groupFlowInputOf", () => {
       waitingAtLeast: false,
       untold: [],
     });
-    expect(input.productionAddable).toBe(true);
   });
 
   it("hands the group's creations under way to the flow as they are", () => {
@@ -704,7 +689,6 @@ describe("groupFlowInputOf", () => {
       members,
       flow: undefined,
       deployments: new Map(),
-      productionAddable: false,
       pending,
     });
     expect(input.pending).toEqual(pending);
@@ -876,8 +860,6 @@ describe("projectRowLine — a project row's second line", () => {
         flow: flowOf({
           merged: [MERGED],
           mainHasCode: true,
-          productionAddable: true,
-          missing: [{ tier: "production" }],
         }),
         lastMerged: MERGED,
       },
@@ -1058,5 +1040,59 @@ describe("a project row's Mates — what each is on, and whether each is known",
         () => read,
       ),
     ).toBe(expected);
+  });
+});
+
+// An application's environments are offered to the people HQ takes them from: an owner or admin of
+// the organization, or a member who may create projects and develops the application - at least a
+// Basic user on one of its projects. A project made for anybody else is one whose attachment is
+// then refused.
+describe("mayAddEnvironment", () => {
+  const ME = "member-1";
+  type Roles = ReadonlyArray<{ clientUserId: string; roleCode: string }>;
+  const on = (roleCode: string, clientUserId = ME): { userRoles: Roles } => ({
+    userRoles: [{ clientUserId, roleCode }],
+  });
+  it.each([
+    {
+      case: "an owner",
+      org: { roleCode: "OWNER" },
+      projects: [] as ReadonlyArray<{ userRoles?: Roles }>,
+      may: true,
+    },
+    { case: "an admin", org: { roleCode: "ADMIN" }, projects: [], may: true },
+    {
+      case: "a developer with a Basic user grant on one of its projects",
+      org: { roleCode: "NO_ACCESS", canCreateProjects: true },
+      projects: [{}, on("BASIC_USER")],
+      may: true,
+    },
+    {
+      case: "a developer whose org role already reaches Basic user",
+      org: { roleCode: "BASIC_USER", canCreateProjects: true },
+      projects: [{}],
+      may: true,
+    },
+    {
+      case: "a developer with no grant on its projects",
+      org: { roleCode: "NO_ACCESS", canCreateProjects: true },
+      projects: [{}, on("BASIC_USER", "somebody-else")],
+      may: false,
+    },
+    {
+      case: "a developer who only reads its projects",
+      org: { roleCode: "NO_ACCESS", canCreateProjects: true },
+      projects: [on("READ_ONLY")],
+      may: false,
+    },
+    {
+      case: "a Basic user who may not create projects",
+      org: { roleCode: "BASIC_USER", canCreateProjects: false },
+      projects: [on("ADMIN")],
+      may: false,
+    },
+    { case: "a reader", org: { roleCode: "READ_ONLY" }, projects: [], may: false },
+  ])("is $may for $case", ({ org, projects, may }) => {
+    expect(mayAddEnvironment({ organization: { membershipId: ME, ...org }, projects })).toBe(may);
   });
 });

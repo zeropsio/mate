@@ -236,7 +236,6 @@ import { AccountVoiceLine } from "./zerops/AccountVoiceLine";
 import { useListingPatience } from "../zerops/useListingPatience";
 import { hqOutageLine, requestHqSnapshot } from "../zerops/hqStructure";
 import { useNowMs } from "../zerops/useNowMs";
-import { useZeropsContainers } from "../zerops/zeropsContainers";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import {
   SidebarNewProject,
@@ -258,11 +257,7 @@ import { SidebarWaitingStack } from "./zerops/SidebarWaitingStack";
 
 import { useZeropsProjectFlowOptional } from "../zerops/projectFlowContext";
 import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
-import {
-  canCreateProjectsInOrganization,
-  readZeropsMembership,
-  type EnvironmentRow,
-} from "@t3tools/client-runtime/zerops";
+import { readZeropsMembership, type EnvironmentRow } from "@t3tools/client-runtime/zerops";
 import {
   menuMemory,
   rememberedChangeOf,
@@ -1802,13 +1797,6 @@ export default function Sidebar() {
   // neither a sleeping container nor unfinished inventory changes placement membership.
   const zeropsSession = useZeropsSession();
   const zeropsSignedIn = zeropsSession.status === "signed-in";
-  // Whether this person may create a project — the part of *Add production*'s
-  // gate the tree cannot check on its own, since it holds no session; the
-  // projects page and a Mate's conversation ask the same question.
-  const zeropsMayCreate =
-    zeropsSession.activeOrganization === null
-      ? false
-      : canCreateProjectsInOrganization(zeropsSession.activeOrganization);
   const { listing: zeropsListing, refresh: refreshZeropsCandidates } = useZeropsCandidates();
   const zeropsHeld = useMemo(() => heldCandidates(zeropsListing), [zeropsListing]);
   const zeropsCandidates = useZeropsMenu(zeropsHeld.rows);
@@ -1836,7 +1824,6 @@ export default function Sidebar() {
   const zeropsMateOwner = useZeropsMateOwners();
   // Each container's health, as the container store holds it — the tree's
   // "some Mate in the group is up" part of *Add production*'s gate.
-  const { health: zeropsHealth } = useZeropsContainers();
   // Until the listing may say "none", the tree says what it can instead. An
   // account still to choose its organization is asked on the projects screen,
   // and no listing is on its way to be waited on here.
@@ -1868,10 +1855,7 @@ export default function Sidebar() {
         // Until HQ tells them, the tree draws the change rows it remembers.
         changesKnown: flow.changesKnown,
         // The pull requests that have landed on `main`: without it `groupFlow`
-        // never sees a group's own merged code, so it read `main` as empty and
-        // *Add production* — `groupFlow.ts`'s own `add-production` case — could
-        // never be this tree's next step, disagreeing with the projects page
-        // for the same group.
+        // never sees a group's own merged code, so it read `main` as empty.
         merged: flow.merged,
         environments: new Map(flow.environments.map((entry) => [entry.projectId, entry])),
         releaseOffered: flow.release.gate.allowed,
@@ -1886,8 +1870,8 @@ export default function Sidebar() {
           releases: flow.releases,
           environmentInputs: flow.environmentInputs,
         }),
-        // The stops the recipe offers and nobody has added: a next step the
-        // timeline used not to mention at all.
+        // The stops the recipe offers and nobody has added: the project menu's
+        // *Add stage* and *Add production*.
         missing: flow.missing,
         // The version a release would tag.
         releaseTag: flow.release.suggestion,
@@ -2311,7 +2295,7 @@ export default function Sidebar() {
   // The left menu's add button asks for a Mate on a named project: the New Mate
   // dialog opens over whatever is on screen (`ZeropsNewMateHost`).
   const addMate = useAddMate();
-  // "Set up stage" / "Set up production": the projects page's own form, opened there.
+  // "Add stage" / "Add production": the projects page's own form, opened there.
   const askSetUp = useSetUpEnvironment((state) => state.ask);
   // A Mate still coming up opens its own view, where it comes up — a New
   // project's first Mate, before the platform has made its project, by the
@@ -4198,8 +4182,7 @@ export default function Sidebar() {
               activeProjectId={activeZeropsProjectId}
               births={zeropsPlacedBirths}
               candidates={zeropsCandidates}
-              health={zeropsHealth}
-              mayCreate={zeropsMayCreate}
+              organization={zeropsSession.activeOrganization}
               className="mb-2"
               complete={zeropsHeld.complete}
               notice={zeropsNotice}
