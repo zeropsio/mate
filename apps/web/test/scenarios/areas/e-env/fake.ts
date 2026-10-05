@@ -6,14 +6,16 @@ import { enrollMate, sessionFor } from "../../../../../hq/test/harness/runningCo
 import { gitClient } from "../../../../../hq/test/harness/gitClient.ts";
 import { groupCheckout, propose, stateBecomes } from "../../../../../hq/test/harness/recipe.ts";
 import { remoteOf } from "../../../../../hq/test/harness/mates.ts";
-import type { ScenarioExtension } from "../../harness/scenario.ts";
+import type { ScenarioExtension, ScenarioOptions } from "../../harness/scenario.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installBuildProtocol } from "../../fakes/e-env/builds.ts";
 
 export const installArea: ScenarioExtension = ({ zerops }) => installBuildProtocol(zerops);
 
-export const environmentFixture = Effect.gen(function* () {
-  const s = yield* createScenario([installArea]);
+export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
+  options: ScenarioOptions = {},
+) {
+  const s = yield* createScenario([installArea], options);
   s.given.person("colleague", {
     role: "Developer",
     grants: { Ada: "BASIC_USER", "Shop-stage": "BASIC_USER", "Shop-production": "BASIC_USER" },
@@ -138,3 +140,5 @@ export const environmentFixture = Effect.gen(function* () {
   });
   return { s, merge, release, appId };
 });
+
+export const environmentFixture = environmentFixtureWith();

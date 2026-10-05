@@ -139,10 +139,66 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
         s.drivers.zerops.rows("process").find((row) => row.id === process.id)?.finished,
       ).toBeNull();
     });
+  const followWindow = Effect.gen(function* () {
+    const process = yield* deployment("stage");
+    // Core's 5-second follow window stays native; allow another 5 seconds for its poll/stream.
+    yield* Effect.promise(() =>
+      page.waitForFunction(
+        (started) => Date.now() - Date.parse(started) >= 10_000,
+        { timeout: 30_000, polling: "raf" },
+        String(process.started),
+      ),
+    );
+  });
+  const keepsStageRunning = Effect.promise(async () => {
+    const guard = await page.evaluateHandle(() => {
+      const state = {
+        failures: [] as string[],
+        observer: undefined as MutationObserver | undefined,
+      };
+      const check = () => {
+        for (const row of document.querySelectorAll<HTMLElement>(
+          '[data-zerops-surface="stop-service-job"]',
+        )) {
+          const text = row.innerText;
+          if (/failed|refused/i.test(text) && !state.failures.includes(text))
+            state.failures.push(text);
+        }
+      };
+      check();
+      state.observer = new MutationObserver(check);
+      state.observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+      return state;
+    });
+    s.drivers.cleanup.push(() => guard.dispose());
+    return Effect.promise(async () => {
+      const failures = await guard.evaluate((state) => {
+        state.observer?.disconnect();
+        return state.failures;
+      });
+      expect(
+        failures,
+        "A RUNNING Zerops build must not be reported failed or refused by HQ's clock",
+      ).toEqual([]);
+    });
+  });
   return {
-    when: { open, finish, click, releaseFromReview, reload, rollBack, editVersion },
+    when: {
+      open,
+      followWindow,
+      finish,
+      click,
+      releaseFromReview,
+      reload,
+      rollBack,
+      editVersion,
+    },
     // oxlint-disable-next-line unicorn/no-thenable
-    then: { text, rowShows, running, releaseDisabled, keepsDocument, keepsWord },
+    then: { text, rowShows, running, releaseDisabled, keepsDocument, keepsWord, keepsStageRunning },
     deployment,
   };
 }

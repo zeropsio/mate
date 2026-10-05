@@ -1,5 +1,5 @@
 import { describe, it, expect } from "@effect/vitest";
-import { afterEach } from "vite-plus/test";
+import { afterAll } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
@@ -7,9 +7,7 @@ import { environmentFixture } from "./fake.ts";
 import { environmentActions } from "./dsl.ts";
 
 const setupFailures: string[] = [];
-afterEach(() =>
-  expect(setupFailures.splice(0), "Known failure must reach its target assertion").toEqual([]),
-);
+afterAll(() => expect(setupFailures, "Known failure must reach its target assertion").toEqual([]));
 
 describe("E: known release failures", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
