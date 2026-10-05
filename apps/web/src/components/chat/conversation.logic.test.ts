@@ -3297,5 +3297,24 @@ describe("a run, its woken turns and its work", () => {
     });
     expect(stopped.turns[0]!.interrupted).toBe(true);
     expect(stopped.turns[0]!.byMessage).toBe(false);
+    // The Stop ends the tasks the run started; a message leaves them running
+    // (Rhea, run 11: stopped, then "continue" a minute later).
+    const stoppedThenWritten = structure(
+      [
+        user("u1", 0),
+        tool("w1", "t1", 1, { toolLifecycleStatus: "inProgress" }),
+        tool("h1", "t1", 1, {
+          sourceActivityKind: "task.completed",
+          taskId: "task-h1",
+          toolLifecycleStatus: "stopped",
+        }),
+        user("u2", 2),
+        tool("w2", "t2", 3),
+        assistant("a2", "t2", 4),
+      ],
+      { latest: { id: "t2", state: "completed", completed: true } },
+    );
+    expect(stoppedThenWritten.turns[0]!.interrupted).toBe(true);
+    expect(stoppedThenWritten.turns[0]!.byMessage).toBe(false);
   });
 });

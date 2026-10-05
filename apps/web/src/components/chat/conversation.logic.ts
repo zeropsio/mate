@@ -375,10 +375,13 @@ function endsOnALimit(
 }
 
 /**
- * How soon after a run's last step the person's next message may come and
- * still be what interrupted it: sent while it ran, the run stopped for it.
+ * How soon after the last thing a run showed the person's next message may
+ * come and still be what interrupted it: a run thinks for minutes between
+ * the paragraphs it shows (Noibit, run 11: 79 s after its last one, the
+ * message that stopped it read "stopped"). Said wrongly, "until your
+ * message" stands for a Stop the person pressed just before writing.
  */
-const INTERRUPTING_MESSAGE_MS = 5_000;
+const INTERRUPTING_MESSAGE_MS = 180_000;
 
 /**
  * How far apart two of the person's messages may stand and still be one
@@ -861,8 +864,16 @@ export function deriveConversationStructure(given: {
     // it, never their Stop (Noibit, run 11: "stopped after 8m 11s").
     const next = spans[spans.indexOf(span) + 1];
     const lastOwn = turnEntries.at(-1);
+    // The person's Stop ends every task the run started (stop-everything);
+    // their message leaves them running.
+    const stoppedTasks = turnEntries.some(
+      (entry) =>
+        (entry.kind === "work" || entry.kind === "generic-call") &&
+        entry.entry.toolLifecycleStatus === "stopped",
+    );
     const byMessage =
       interrupted &&
+      !stoppedTasks &&
       next?.opener != null &&
       lastOwn !== undefined &&
       (parseMs(next.opener.createdAt) ?? Infinity) <=
