@@ -29,10 +29,6 @@ vi.mock("~/zerops/useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({ listing: { state: "unread", waitingFor: null } }),
   useTakenBotNames: () => ({ names: [], complete: true }),
 }));
-vi.mock("~/zerops/giteaProject", () => ({
-  useAccountGitea: () => undefined,
-  useAccountHoldsGitea: () => false,
-}));
 vi.mock("~/zerops/useZeropsRegistry", () => ({
   useZeropsRegistry: () => ({ registry: undefined, loading: false }),
   registryGroupSlug: () => undefined,

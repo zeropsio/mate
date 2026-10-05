@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsStorageAdapter } from "@t3tools/client-runtime/zerops";
 import { REGISTRATION_RECORDS_KEY } from "@t3tools/client-runtime/zerops/environments";
+import { EnvironmentId } from "@t3tools/contracts";
 
-import { loadAccountRecords, memoryIntents } from "./account-ports";
+import { hqAbsent, loadAccountRecords, memoryIntents } from "./account-ports";
 
 /** The device's keychain: what it holds, and whether it takes writes. */
 const deviceStorage = (options: { readonly refuses?: boolean } = {}) => {
@@ -62,5 +63,16 @@ describe("memoryIntents", () => {
 
     intents.write(null);
     expect(intents.read()).toBeNull();
+  });
+});
+
+describe("hqAbsent", () => {
+  // The device runs no HQ flow: HQ will not answer here, so nothing waits for its word — and it
+  // is never passed off as an empty word from HQ.
+  it("names no environment's project, says HQ will not answer and speaks for no organization", () => {
+    const hq = hqAbsent();
+    expect(hq.hqIndex.projectOf(EnvironmentId.make("env-a"))).toBeNull();
+    expect(hq.online.read()).toBe("absent");
+    expect(hq.hqOrganization.read()).toBeNull();
   });
 });

@@ -126,9 +126,8 @@ describe("Roll back to this opens the roll back's review, from the row pressed",
     const rows = [
       releaseRow(earlier, 1, {
         production: new Map([["app", "a".repeat(40)]]),
-        failed: new Map(),
+        failed: [],
         live: false,
-        newer: [],
       }),
     ];
     const onRollBack = vi.fn();

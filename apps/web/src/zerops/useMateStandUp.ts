@@ -78,7 +78,7 @@ export function useMateStandUp(input: {
     threadRef === null || !main ? "unknown" : messageCount === 0 ? "empty" : "started";
   const origin = useRegistrationRecord(environmentId)?.origin ?? undefined;
   const own = marker !== undefined && marker.by === viewer;
-  const setup = useMateSetup(
+  const { setup } = useMateSetup(
     own && (main || threadRef === null) && messageCount === 0 ? origin : undefined,
   );
   const failed =

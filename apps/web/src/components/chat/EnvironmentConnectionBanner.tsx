@@ -6,7 +6,7 @@ import {
   type AtomCommandResult,
   isAtomCommandInterrupted,
 } from "@t3tools/client-runtime/state/runtime";
-import type { MateVoice } from "@t3tools/client-runtime/zerops/environments";
+import { askAgainLabel, type MateVoice } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { WifiOffIcon } from "lucide-react";
 import type { ReactElement } from "react";
@@ -48,7 +48,7 @@ export function environmentConnectionBannerItem(input: {
 
 /**
  * The banner over a Mate's conversation (`mateVoice`): the link's one line, in the Mate's name,
- * and its verb once — *Try now* asks the supervisor again; the projects screen's verbs send the
+ * and its verb once — *Try now* (or *Try again*, after a refusal) asks its Mate again; the projects screen's verbs send the
  * person there. Nothing while the voice speaks elsewhere or not at all.
  */
 export function mateVoiceBannerItem(input: {
@@ -59,7 +59,7 @@ export function mateVoiceBannerItem(input: {
 }): ComposerBannerStackItem | null {
   const { voice } = input;
   if (voice.surface !== "banner" || voice.text === null) return null;
-  const tryNow = voice.actions.includes("try-now");
+  const askAgain = askAgainLabel(voice.actions);
   const toProjects = voice.actions.some(
     (action) =>
       action === "go-to-projects" ||
@@ -73,15 +73,15 @@ export function mateVoiceBannerItem(input: {
     variant: "warning",
     icon: <WifiOffIcon />,
     title: voice.text,
-    ...(tryNow || toProjects
+    ...(askAgain !== null || toProjects
       ? {
           actions: (
             <>
-              {tryNow ? (
+              {askAgain === null ? null : (
                 <Button size="xs" onClick={input.onRetry}>
-                  Try now
+                  {askAgain}
                 </Button>
-              ) : null}
+              )}
               {toProjects ? (
                 <Button render={input.projects} size="xs" variant="outline">
                   Go to projects

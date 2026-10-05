@@ -320,6 +320,11 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
         return () => void down.splice(down.indexOf(environmentId), 1);
       },
     },
+    // HQ's word, current: it names no environment's project, holds no Mate online and speaks for
+    // no organization. A test that needs another word says it.
+    hqIndex: { projectOf: () => null, subscribe: () => () => undefined },
+    online: { read: () => new Set(), subscribe: () => () => undefined },
+    hqOrganization: { read: () => null, subscribe: () => () => undefined },
   };
   return {
     ports,
@@ -991,9 +996,8 @@ describe("the account runtime", () => {
                   readProjectPublicAccess: () => Effect.never,
                   readOrganizationLocations: () => Effect.succeed([]),
                   readServiceAuthorizedAgents: () => Effect.succeed([]),
-                  readOrganizationIntegrationTokenGrants: () => Effect.succeed([]),
+                  readOrganizationIntegrationTokens: () => Effect.succeed([]),
                   readOrganizationMembers: () => Effect.succeed([]),
-                  readServiceVariableNames: () => Effect.succeed([]),
                   readServiceMateFlag: () =>
                     Effect.sync(() => {
                       ownReads += 1;
@@ -1857,6 +1861,38 @@ describe("the post-grant stage's Mate environments", () => {
 
   // A coming page left open on a Mate whose door fails minted a throwaway a minute as the route
   // (review, 2026-10-03): the Mate on screen is one the person asked for, capped as no route is.
+  // B6: whether a Mate's address is being turned on is its project's processes' word, so they are
+  // read for as long as its container is ACTIVE without one — and not for a Mate that has one.
+  it.effect.each([
+    { case: "its address off: its project's processes are read", address: false, read: true },
+    { case: "its address on: nothing more is read", address: true, read: false },
+  ])("a Mate ACTIVE, $case", ({ address, read }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const lacking = { ...A_MATE, service: { ...A_MATE.service, subdomainAccess: address } };
+        const opened = yield* granted([], [lacking]);
+        yield* settle;
+        const kinds = () =>
+          new Set(
+            [...opened.registry.get(opened.built.data.stateAtom).interests.values()]
+              .filter(
+                ({ descriptor, leases }) =>
+                  leases > 0 &&
+                  "project" in descriptor &&
+                  descriptor.project.projectId === A_MATE.projectId,
+              )
+              .map(({ descriptor }) => descriptor.kind),
+          );
+        expect(kinds().has("project-activity")).toBe(read);
+        expect(kinds().has("project-process-history")).toBe(read);
+        // Only the organization in view is read for.
+        opened.environments.setActiveOrganization("org-other");
+        yield* settle;
+        expect(kinds().has("project-activity")).toBe(false);
+      }),
+    ),
+  );
+
   it.effect("the Mate on screen is asked for, and capped as no route is", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -3034,6 +3070,25 @@ describe("the post-grant stage's Mate environments", () => {
           expect(rig.probes.map(({ input }) => input)).toContain(MATE_ORIGIN);
         }),
       ),
+  );
+
+  it.effect("a Mate listed where no HQ will answer is read at once, never waiting for HQ", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { rig, environments } = yield* granted(
+          [],
+          [A_MATE],
+          platformAdapter([A_MATE]),
+          [A_MATE],
+          {
+            online: { read: () => "absent", subscribe: () => () => undefined },
+          },
+        );
+        yield* settle;
+        expect([...environments.machines().keys()]).toContain(MATE);
+        expect(rig.probes.map(({ input }) => input)).toContain(MATE_ORIGIN);
+      }),
+    ),
   );
 
   it.effect(

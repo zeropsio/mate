@@ -11,9 +11,6 @@ const runtimeFile = createOxlintRuleHarness(RULE, {
   filename: "packages/client-runtime/src/zerops/barrel.ts",
 });
 const sharedFile = createOxlintRuleHarness(RULE, { filename: "packages/shared/src/index.ts" });
-const offersFile = createOxlintRuleHarness(RULE, {
-  filename: "packages/client-runtime/src/zerops/offers.ts",
-});
 const ruleItself = createOxlintRuleHarness(RULE, {
   filename: "packages/shared/src/zeropsPermissions.ts",
 });
@@ -22,18 +19,6 @@ const testFile = createOxlintRuleHarness(RULE, {
 });
 const hqFile = createOxlintRuleHarness(RULE, { filename: "apps/hq/src/api.ts" });
 
-/** The import offers.ts makes, as its ledger entry names it. */
-const OFFERS_IMPORT = `import {
-  can,
-  type Facts,
-  type FactsFor,
-  type Held,
-  type Principal,
-  type Reason,
-  type Targets,
-  type Verb,
-} from "@t3tools/shared/zeropsPermissions";`;
-
 describe("t3code/no-direct-permission-rule", () => {
   webFile.valid(
     "allows a type import",
@@ -41,7 +26,15 @@ describe("t3code/no-direct-permission-rule", () => {
   );
   webFile.valid(
     "allows an import of types alone",
-    `import { type Reason, type Verb } from '@t3tools/shared/zeropsPermissions';`,
+    `import { type Reason, type Decision } from '@t3tools/shared/zeropsPermissions';`,
+  );
+  webFile.valid(
+    "allows the reasons, the wire contract's one value",
+    `import { REASONS, type Decision } from "@t3tools/shared/zeropsPermissions";`,
+  );
+  runtimeFile.valid(
+    "allows the wire contract passed on by name",
+    `export { REASONS, type Reason } from "@t3tools/shared/zeropsPermissions";`,
   );
   webFile.valid(
     "allows a type re-export",
@@ -53,7 +46,6 @@ describe("t3code/no-direct-permission-rule", () => {
     `const listing = { freshness: { kind: "live" } };`,
   );
 
-  offersFile.valid("allows offers.ts the import its ledger lists", OFFERS_IMPORT);
   ruleItself.valid(
     "leaves the rule's own module alone",
     `export const facts = { freshness: "fresh" };`,
@@ -62,18 +54,15 @@ describe("t3code/no-direct-permission-rule", () => {
     "leaves tests alone",
     `import { REASONS } from "@t3tools/shared/zeropsPermissions";`,
   );
-  hqFile.valid(
-    "leaves HQ, which enforces the rule, alone",
-    `import { can } from "@t3tools/shared/zeropsPermissions";`,
-  );
+  hqFile.valid("leaves HQ, which runs the rule, alone", `import { can } from "./permissions.ts";`);
 
   webFile.invalid(
     "reports a named import of a value",
     `import { can } from "@t3tools/shared/zeropsPermissions";`,
   );
   webFile.invalid(
-    "reports one in single quotes",
-    `import { REASONS } from '@t3tools/shared/zeropsPermissions';`,
+    "reports a value beyond the wire contract",
+    `import { REASONS, decide } from '@t3tools/shared/zeropsPermissions';`,
   );
   webFile.invalid(
     "reports a namespace import",
@@ -102,6 +91,22 @@ describe("t3code/no-direct-permission-rule", () => {
   sharedFile.invalid(
     "reports a shared module passing it on",
     `export { can } from "./zeropsPermissions.ts";`,
+  );
+  webFile.invalid(
+    "reports HQ's rule by its package, even its types",
+    `import type { Verb } from "@t3tools/hq/permissions";`,
+  );
+  runtimeFile.invalid(
+    "reports HQ's rule by a path into HQ",
+    `import { can } from "../../../../apps/hq/src/permissions.ts";`,
+  );
+  sharedFile.invalid(
+    "reports a shared module passing HQ's rule on",
+    `export * from "../../../apps/hq/src/permissions.ts";`,
+  );
+  mobileFile.invalid(
+    "reports HQ's rule loaded at run time",
+    `const rule = await import("@t3tools/hq/permissions");`,
   );
   webFile.invalid(
     "reports a dynamic import",

@@ -1,4 +1,6 @@
-import { newMateTint, offerAsker } from "@t3tools/client-runtime/zerops";
+import { newMateTint } from "@t3tools/client-runtime/zerops";
+import type { HqMateOfferStates } from "@t3tools/client-runtime/zerops/hq";
+import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
@@ -259,27 +261,44 @@ describe("deriveZeropsRowAction", () => {
   });
 
   describe("Set up Mate", () => {
-    const bare: ZeropsRowCandidate = {
+    const unplaced: ZeropsRowCandidate = {
       key: "bare",
       project: { id: "bare", name: "bare", status: "ACTIVE", tagList: ["mate"] },
       group: "unavailable",
       reason: "no Zerops Mate container in this project",
       missingContainer: true,
     };
+    // A Mate HQ holds in no application: ungrouped, its container gone.
+    const bare: ZeropsRowCandidate = {
+      ...unplaced,
+      project: {
+        ...unplaced.project,
+        hq: { appId: null, appName: null, kind: "mate", mate: { face: "" } },
+      },
+    };
 
-    it("is offered on a declared Mate that has lost its container", () => {
+    it("is offered on a Mate HQ places that has lost its container", () => {
       expect(deriveZeropsRowAction(input(bare, undefined))).toEqual({
         kind: "set-up-mate",
         label: "Set up Mate",
       });
     });
 
+    it("is not offered on a project only the GUI marker calls a Mate", () => {
+      expect(deriveZeropsRowAction(input(unplaced, undefined))).toEqual({ kind: "none" });
+    });
+
     // The 09-05 offer (restored over 116a2c54c): an existing plain Zerops project — no Mate, no
     // place in HQ, no metadata of an earlier group — is offered Set up Mate, to whoever may write
-    // its Mate's record at HQ once HQ's structure is known (`setUpPlainProject`).
+    // its Mate's record at HQ, as HQ offers it (`setUpPlainProject`).
     const plain = (name: string, tagList: ReadonlyArray<string>): ZeropsRowCandidate => ({
-      ...bare,
-      project: { ...bare.project, name, tagList: [...tagList], created: "2026-01-10T10:00:00Z" },
+      ...unplaced,
+      project: {
+        ...unplaced.project,
+        name,
+        tagList: [...tagList],
+        created: "2026-01-10T10:00:00Z",
+      },
     });
     const PLAIN = { ...ALL, setUpPlainProject: true };
     /** Nothing at HQ of it. */
@@ -415,7 +434,8 @@ describe("deriveZeropsRowAction", () => {
     });
 
     it("is never offered to a tool, which has no container by design", () => {
-      const gitea = { ...bare, project: { ...bare.project, tagList: ["mate:tool:gitea"] } };
+      // The Mate it is offered on above, HQ classifying it as a tool.
+      const gitea = { ...bare, project: { ...bare.project, hqTool: "gitea" as const } };
       expect(deriveZeropsRowAction(input(gitea, undefined))).toEqual({ kind: "none" });
     });
 
@@ -836,6 +856,23 @@ describe("deriveZeropsRestartAction", () => {
     });
     expect(action.kind).toBe(kind);
   });
+
+  // A container still on its first build is the platform's to bring up: a restart would race it.
+  it.each([
+    ["ACTIVE", "restart"],
+    ["READY_TO_DEPLOY", "none"],
+    ["CREATING", "none"],
+    ["NEW", "none"],
+    ["RESTARTING", "none"],
+    ["STOPPED", "none"],
+  ] as const)("a container Zerops reports %s → %s", (serviceStatus, kind) => {
+    const action = deriveZeropsRestartAction({
+      candidate: { ...READY, service: { ...READY.service!, status: serviceStatus } },
+      health: "ready",
+      can: ALL,
+    });
+    expect(action.kind).toBe(kind);
+  });
 });
 
 describe("a Mate the person may see and not open (D5)", () => {
@@ -1079,51 +1116,42 @@ describe("releaseRowTone", () => {
   });
 });
 
-describe("mateRowCan — a row's verbs, where its Mate's door opens for this person", () => {
-  const PROJECTS = [{ id: "p1", userRoles: [{ clientUserId: "cu-ada", roleCode: "OWNER" }] }];
-  const asker = (roleCode: string) =>
-    offerAsker(
-      { userId: "u-ada", clientUserId: "cu-other", roleCode, canCreateProjects: false },
-      PROJECTS,
-    );
-  it.each([
-    ["a member", "BASIC_USER", true],
-    ["an org admin", "ADMIN", true],
-    ["a read-only member, whose row is listed", "READ_ONLY", false],
-    ["a member with no access", "NO_ACCESS", false],
-  ])("%s: %s", (_name, roleCode, opens) => {
-    expect(mateRowCan(asker(roleCode), "p1")).toEqual({
-      ...(opens ? ALL : NONE),
-      setUpPlainProject: false,
-    });
+// The web review, 2026-10-05: a row's verbs are the door's and Zerops', who refuse in their own
+// words; an HQ that has not said — one from before it streamed offers, or one being read again —
+// takes none of them away. Only HQ's refusal of following the Mate does.
+describe("mateRowCan — a row's verbs, unless HQ refuses following its Mate", () => {
+  const held = (kind: HqOfferState["kind"]): HqMateOfferStates => {
+    const observe: HqOfferState =
+      kind === "refused"
+        ? { kind, reason: "not_mate_operator" }
+        : kind === "unavailable"
+          ? { kind, since: 1 }
+          : { kind };
+    return { held: true, observe, edit: observe, detach: observe, moveTo: undefined };
+  };
+  it.each<[string, HqMateOfferStates | undefined, boolean]>([
+    ["offered", held("allowed"), true],
+    ["while HQ does not answer: the door and Zerops decide", held("unavailable"), true],
+    ["refused: the door would refuse it too", held("refused"), false],
+    ["not said: an HQ from before its offers", held("unknown"), true],
+    ["before HQ's structure is known", undefined, true],
+    [
+      "a project HQ holds as no Mate: the door and Zerops decide",
+      { held: false, createRecord: { kind: "unknown" } },
+      true,
+    ],
+  ])("%s", (_name, offers, offered) => {
+    expect(mateRowCan(offers)).toEqual({ ...(offered ? ALL : NONE), setUpPlainProject: false });
   });
 
-  // Set up Mate on a plain project writes its Mate's record at HQ first: only for whoever HQ's
-  // rule lets write it (an admin of the project), once HQ's structure is known.
-  it.each([
-    ["the project's owner, HQ known", "cu-ada", true, true],
-    ["the project's owner, HQ not known yet", "cu-ada", false, false],
-    ["a member with no role on the project", "cu-other", true, false],
-  ])("brings a Mate into a plain project: %s", (_name, clientUserId, hqKnown, want) => {
-    const viewer = offerAsker(
-      { userId: "u-ada", clientUserId, roleCode: "BASIC_USER", canCreateProjects: true },
-      PROJECTS,
-    );
-    expect(mateRowCan(viewer, "p1", hqKnown).setUpPlainProject).toBe(want);
-  });
-
-  it("offers a row's owner all of it through their grant on its project", () => {
-    const owner = offerAsker(
-      { userId: "u-ada", clientUserId: "cu-ada", roleCode: "NO_ACCESS", canCreateProjects: true },
-      PROJECTS,
-    );
-    expect(mateRowCan(owner, "p1").open).toBe(true);
-  });
-
-  it("offers nothing where the client knows no one: unknown is no", () => {
-    expect(mateRowCan(offerAsker(undefined, PROJECTS), "p1")).toEqual({
-      ...NONE,
-      setUpPlainProject: false,
-    });
+  // Set up Mate on a plain project writes its Mate's record at HQ first: only where HQ offers it
+  // (`create_mate_record`), never on what it has not said or while it does not answer.
+  it.each<[HqOfferState, boolean]>([
+    [{ kind: "allowed" }, true],
+    [{ kind: "refused", reason: "not_project_admin" }, false],
+    [{ kind: "unknown" }, false],
+    [{ kind: "unavailable", since: 1 }, false],
+  ])("brings a Mate into a plain project where HQ's word is %j: %s", (createRecord, want) => {
+    expect(mateRowCan({ held: false, createRecord }).setUpPlainProject).toBe(want);
   });
 });

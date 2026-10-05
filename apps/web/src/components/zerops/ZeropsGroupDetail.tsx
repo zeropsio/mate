@@ -1,4 +1,5 @@
 import { useStopPublicAccess } from "~/zerops/useStopPublicAccess";
+import { useMatesInventory } from "~/zerops/useMatesInventory";
 import { RuntimeStopPublicAccess, StopPublicAccessStatus } from "./StopPublicAccess";
 /**
  * A project group's page, and one stop's, in place of the thread.
@@ -545,27 +546,25 @@ export function ZeropsReleaseVerb({
 
 /**
  * Where each declared stage of the group that runs nothing stands on its first deploy
- * (`stageFirstDeploy`), as its cell on the projects page and the menu say it: on the minute clock
- * its setting up is read by, from what the platform runs and HQ's jobs of its deploys.
+ * (`stageFirstDeploy`), as its cell on the projects page and the menu say it: from what the
+ * platform runs, HQ's jobs of its deploys, and whether HQ is still bringing it up.
  */
 function useStageFirstDeploys(groupId: string): (projectId: string) => FirstDeploy | undefined {
   const { listing } = useZeropsCandidates();
   const flowValue = useZeropsProjectFlowOptional();
   const flow = flowValue?.flows.get(groupId);
-  const nowMs = useNowMs();
   return (projectId) => {
     const row = flow?.environments.find(
       (entry) => entry.projectId === projectId && entry.tier === "stage",
     );
     const candidate = heldCandidates(listing).rows.find((entry) => entry.project.id === projectId);
     return stageFirstDeploy({
-      createdAt: candidate?.project.created,
+      birth: row?.birth,
       projectStatus: candidate?.project.status,
       services: candidate?.services === undefined ? undefined : candidate.services.statuses,
       deployment: flowValue?.deployments.get(projectId),
       deploys: row?.deploys,
       keyGap: row?.keyGap ?? false,
-      nowMs,
     });
   };
 }
@@ -681,6 +680,8 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   const crumbs = useCrumbs();
   const names = useHistoryNames();
   const { mates, notice: matesNotice, refresh: rereadMates } = useGroupMates(groupId);
+  // Each Mate drawn here has its project read: its menu's Restart stands on its container.
+  useMatesInventory(useMemo(() => mates.map((mate) => mate.projectId), [mates]));
   const openMate = useOpenMateOf();
   const { withheldNotice, shown } = useWithheldStops(environments);
   const firstDeployOf = useStageFirstDeploys(groupId);

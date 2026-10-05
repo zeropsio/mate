@@ -203,14 +203,14 @@ import {
   crewMessagePlaceholder,
   crewRunsOnWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import { useMateCommand } from "../zerops/accountEnvironments";
+import { useMateCommand, useTryMateAgain } from "../zerops/accountEnvironments";
 import { crewCommands } from "../zerops/crew/crewCommands";
 import { openCrewView } from "../zerops/crew/crewTab";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
 import { resolveZeropsChatChrome } from "../zerops/chatChrome";
 import { resolveComposerPlaceholders } from "../composerPlaceholder";
 import { useZeropsAgentAuth, useZeropsLifecycle } from "../zerops/useZeropsFeeds";
-import { useNowMs } from "../zerops/useNowMs";
+import { useDeployBuilds, useRunningBuildDemand } from "../zerops/activity/useDeployBuilds";
 import {
   useZeropsChangeLandedEvents,
   useZeropsConversationLandings,
@@ -2345,6 +2345,7 @@ export default function ChatView(props: ChatViewProps) {
   const knownMateHere = useKnownMate(environmentId);
   const mateLinkVoice = useMateVoice();
   const reviveFailedMate = useReviveFailedMate();
+  const tryMateAgain = useTryMateAgain();
   const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const items: ComposerBannerStackItem[] = [];
     const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
@@ -2360,11 +2361,10 @@ export default function ChatView(props: ChatViewProps) {
       const banner = mateVoiceBannerItem({
         environmentId,
         voice: mateLinkVoice,
-        // A container that failed is stopped and started; any other link is asked again.
+        // A container that failed is stopped and started; any other Mate is asked again, its
+        // exchange as well as its link.
         onRetry: () => {
-          if (!reviveFailedMate(routeMateAt.mate.serviceId)) {
-            void handleReconnectActiveEnvironment(environmentId);
-          }
+          if (!reviveFailedMate(routeMateAt.mate.serviceId)) tryMateAgain(environmentId);
         },
         projects: <Link to="/zerops" />,
       });
@@ -2389,6 +2389,7 @@ export default function ChatView(props: ChatViewProps) {
     mateLinkVoice,
     reconnectWarningGraceElapsed,
     reviveFailedMate,
+    tryMateAgain,
     handleReconnectActiveEnvironment,
     zeropsMates,
   ]);
@@ -2484,17 +2485,18 @@ export default function ChatView(props: ChatViewProps) {
     [threadActivities],
   );
   const activeZeropsLifecycle = useZeropsLifecycle(activeThreadEnvironmentId, activeThreadId);
-  const nowMs = useNowMs();
+  const zeropsBuilds = useDeployBuilds(activeZeropsLifecycle);
   const zeropsThreadModel = useMemo(
     () =>
       deriveZeropsThreadModel({
         activities: threadActivities,
         lifecycle: activeZeropsLifecycle,
         runningTurnId: activeRunningTurnId,
-        nowMs,
+        builds: zeropsBuilds.builds,
       }),
-    [threadActivities, activeZeropsLifecycle, activeRunningTurnId, nowMs],
+    [threadActivities, activeZeropsLifecycle, activeRunningTurnId, zeropsBuilds.builds],
   );
+  useRunningBuildDemand(zeropsBuilds.projectId, zeropsThreadModel.running);
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(threadActivities, { exclude: zeropsThreadModel.zeropsActivityIds }),
     [threadActivities, zeropsThreadModel.zeropsActivityIds],

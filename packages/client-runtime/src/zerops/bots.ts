@@ -8,9 +8,9 @@
  * same thing three times; a name says the one thing the row is missing, and it
  * gives the user something to address ("ask Ada to take the migration").
  *
- * The name is HQ's record of the Mate (ADR 0002, `groups.ts`), beside its
- * application: it survives the container being rebuilt, and every surface reads
- * the one record.
+ * The name is its Zerops project's: HQ reads it from the project, never keeps
+ * one of its own, so it survives the container being rebuilt and every surface
+ * reads the one name.
  *
  * Names are assigned at creation and are the user's to change. Nothing here
  * decides what an agent is *doing* — that is `resolveThreadStatus`, the one

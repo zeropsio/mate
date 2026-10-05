@@ -7,9 +7,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 const detail = vi.hoisted(() => ({ failure: null as null | { message: string } }));
 vi.mock("~/zerops/accountEnvironments", () => ({
   useMateDetailRead: () => ({ failure: detail.failure, again: () => undefined }),
+  useTryMateAgain: () => () => undefined,
 }));
-vi.mock("~/connection/catalog", () => ({ environmentCatalog: { retryNow: {} } }));
-vi.mock("~/state/use-atom-command", () => ({ useAtomCommand: () => () => undefined }));
 vi.mock("~/zerops/useZeropsMates", () => ({ useZeropsMate: () => ({ kind: "unknown" }) }));
 vi.mock("~/zerops/mateVoiceContext", () => ({ useMateVoice: () => ({ surface: "none" }) }));
 vi.mock("~/zerops/mateIdentityMemory", () => ({

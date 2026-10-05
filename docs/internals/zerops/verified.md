@@ -7632,3 +7632,21 @@ mcp-disabled.json`, a JSON array of names (`cursor-agent mcp disable`, isolated 
   - The timeline lost its end 6 times and jumped +992 px at one settle.
   - A second window that only followed saw the same classes.
   - Recorded with `runprobe.js` and `runcard.py` (mate-captures rig).
+
+## The HQ pass, measured — 2026-10-05
+
+- **The Mate server sees zcp's processes** (container `mate-rig-e2e-a4 - Ada`, KRLS, zcp v9.19x, mate
+  0.13.8). `zerops@mate` runs as `zerops` with no `PrivatePIDs` and `ProtectProc=default`; its `node`
+  child and every `zcp service start …` process share one PID namespace, and `/proc/<pid>/stat` field
+  22 (start time) is readable for each. A stand-up's MCP process, a grandchild of the server, is
+  therefore judged alive or gone by PID + start time from the server. `ssh zerops@zcp.<zone>` +
+  `systemctl show zerops@mate -p MainPID -p User -p PrivatePIDs -p ProtectProc`, `ps --ppid`, `awk
+'{print $22}' /proc/<pid>/stat`.
+- **The fleet before the HQ pass** (both test accounts, `/client/{id}/project` + each zcp's
+  `/mate/.well-known/t3/environment`): 24 Mates on Mate server 0.13.8 and one (Rhea) on 0.13.0; 16 of
+  Mate s.r.o.'s Mates still carry `GITEA_TOKEN`, `GITEA_URL` and `MATE_BROKER_URL` in their zcp
+  service env; no project in KRLS or Mate s.r.o. carries a `mate:` structure tag (one `mate:bot:` on
+  the old eval project `amof-box`). The Zerops API does not say which zcp version a container runs.
+- **A process search no longer lists a weeks-old `stack.enableSubdomainAccess`**: on four KRLS Mates
+  made 2026-10-02/03, `POST /process/search` by project returned 8 recent processes and none of the
+  enable, so whether a service's `lastUpdate` moves when its subdomain access flips stays unmeasured.

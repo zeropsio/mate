@@ -96,11 +96,7 @@ function lineWords(line: CallLine): LiveStepWords {
 /** One running call as the card's now line has it; null for a call the card draws nothing for yet. */
 function callLine(call: ThreadLiveCall): CallLine | null {
   const activity = callActivity(call);
-  const zerops = deriveZeropsThreadModel({
-    activities: [activity],
-    runningTurnId: LIVE_TURN,
-    nowMs: Date.parse(call.startedAt),
-  });
+  const zerops = deriveZeropsThreadModel({ activities: [activity], runningTurnId: LIVE_TURN });
   if (zerops.zeropsActivityIds.has(activity.id)) {
     const entry = zerops.entries[0];
     if (entry === undefined) return null;

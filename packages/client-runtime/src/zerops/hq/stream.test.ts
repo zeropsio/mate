@@ -4,9 +4,15 @@ import type { MateLiveView } from "@t3tools/shared/hqMates";
 
 import type { HqStructure } from "./client.ts";
 import type { HqEnvironment } from "./environments.ts";
+import type { ZeropsCandidate } from "../candidates.ts";
+import { hasMate } from "../mateEnvironments.ts";
+import { partitionZeropsToolProjects, readZeropsToolKind } from "../tools.ts";
+import { placementsOf, placeProjects } from "./placement.ts";
+import { pressElsewhere } from "./pressElsewhere.ts";
 import {
   applyChangesEvent,
   applyAppReadsEvent,
+  applyPressesEvent,
   applyStructureEvent,
   structureEventOf,
 } from "./stream.ts";
@@ -68,6 +74,8 @@ const STAGE: HqEnvironment = {
       supersededBy: null,
     },
   ],
+  release: null,
+  birth: null,
 };
 const ACME_STAGED: HqStructure["apps"][number] = { ...ACME, environments: [STAGE] };
 const LONE: HqStructure["ungrouped"][number] = {
@@ -133,6 +141,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: {},
       },
     ],
     [
@@ -145,6 +154,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: {},
       },
     ],
     [
@@ -157,6 +167,7 @@ describe("structureEventOf", () => {
         changes: new Map([["app-1", [CHANGE]]]),
         mates: null,
         people: null,
+        presses: {},
       },
     ],
     [
@@ -169,6 +180,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: {},
       },
     ],
     // SPEC §3.2b: an application's stage and production with their jobs, to whoever reads its
@@ -183,6 +195,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: {},
       },
     ],
     [
@@ -195,6 +208,23 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: {},
+      },
+    ],
+    [
+      "an application whose environments HQ refused the reader has them refused, with why",
+      { type: "snapshot", apps: [{ ...ACME, environments: { refused: "changes_not_seen" } }] },
+      {
+        kind: "snapshot",
+        appReads: null,
+        structure: {
+          ungrouped: [],
+          apps: [{ ...ACME, environments: { refused: "changes_not_seen" } }],
+        },
+        changes: null,
+        mates: null,
+        people: null,
+        presses: {},
       },
     ],
     [
@@ -213,6 +243,7 @@ describe("structureEventOf", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: {},
       },
     ],
     [
@@ -314,6 +345,7 @@ describe("structureEventOf", () => {
       changes: null,
       mates: new Map([["p1", VERA_VIEW]]),
       people,
+      presses: {},
     });
     expect(
       structureEventOf({ type: "mate", projectId: "p1", value: { main: null, later: {} } }),
@@ -338,6 +370,41 @@ describe("structureEventOf", () => {
       people: {},
     });
     expect(event?.kind === "snapshot" ? event.mates : event).toEqual(new Map([["p1", VERA_VIEW]]));
+  });
+});
+
+// The docs sweep, 2026-10-05: HQ lists the old Gitea project as a tool, and the snapshot's reader
+// dropped the list — so the project read as a plain one, a Mate, offered Set up Mate.
+describe("a project HQ lists as a tool", () => {
+  const gitea = {
+    key: "p-gitea:zcp",
+    group: "unavailable",
+    reason: "no Zerops Mate container in this project",
+    missingContainer: true,
+    project: { id: "p-gitea", name: "gitea", status: "ACTIVE", clientId: "org-1" },
+    service: { id: "s-zcp", name: "zcp", status: "ACTIVE" },
+  } as ZeropsCandidate;
+  const snapshot = structureEventOf({
+    type: "snapshot",
+    ungrouped: [],
+    apps: [],
+    tools: [
+      { projectId: "p-gitea", kind: "gitea" },
+      { projectId: 7 },
+      { projectId: "p-x", kind: "x" },
+    ],
+  });
+  const structure = applyStructureEvent(null, snapshot!)!;
+
+  it("is read from the snapshot, each entry through its shape", () => {
+    expect(structure.tools).toEqual([{ projectId: "p-gitea", kind: "gitea" }]);
+  });
+
+  it("is a tool wherever its project is read: never plain, never a Mate", () => {
+    const [placed] = placeProjects([gitea.project], placementsOf(structure));
+    expect(readZeropsToolKind(placed!)).toBe("gitea");
+    expect(partitionZeropsToolProjects([placed!]).rest).toEqual([]);
+    expect(hasMate({ ...gitea, project: placed! })).toBe(false);
   });
 });
 
@@ -372,6 +439,7 @@ describe("applyStructureEvent", () => {
       changes: null,
       mates: null,
       people: null,
+      presses: {},
     });
     structure = applyStructureEvent(structure, { kind: "change", appId: "app-2", app: BETA });
     expect(structure).toEqual({ ungrouped: [LONE], apps: [ACME, BETA] });
@@ -397,8 +465,152 @@ describe("applyStructureEvent", () => {
     expect(applyStructureEvent(structure, { kind: "people", people: {} })).toBe(structure);
   });
 
+  it("carries what the reader may do: the organization's, each application's and environment's", () => {
+    const refused = { allow: false, reason: "not_structure_writer" };
+    const snapshot = structureEventOf({
+      type: "snapshot",
+      can: { create_app: refused },
+      rolesAnsweredAt: "2026-10-04T10:00:00.000Z",
+      apps: [
+        { ...ACME, can: { release: { allow: true } }, environments: [{ ...STAGE, can: {} }] },
+        // A record this build cannot read is not known; the application beside it still is.
+        { ...BETA, can: "everything" },
+      ],
+    });
+    let structure = applyStructureEvent(null, snapshot!);
+    expect([
+      structure?.can,
+      structure?.rolesAnsweredAt,
+      structure?.apps.map((app) => app.can),
+      (structure?.apps[0]?.environments as ReadonlyArray<HqEnvironment> | undefined)?.[0]?.can,
+    ]).toEqual([
+      { create_app: refused },
+      "2026-10-04T10:00:00.000Z",
+      [{ release: { allow: true } }, undefined],
+      {},
+    ]);
+    // The organization's move, the applications and the time as they were.
+    const org = structureEventOf({ type: "org", can: { create_app: { allow: true } } });
+    structure = applyStructureEvent(structure, org!);
+    expect([structure?.can, structure?.rolesAnsweredAt, structure?.apps.length]).toEqual([
+      { create_app: { allow: true } },
+      "2026-10-04T10:00:00.000Z",
+      2,
+    ]);
+    // Each view Zerops answers moves its time alone.
+    const roles = structureEventOf({ type: "roles", rolesAnsweredAt: "2026-10-04T10:00:30.000Z" });
+    structure = applyStructureEvent(structure, roles!);
+    expect([structure?.can, structure?.rolesAnsweredAt]).toEqual([
+      { create_app: { allow: true } },
+      "2026-10-04T10:00:30.000Z",
+    ]);
+    // A record this build cannot read leaves the organization's unknown.
+    structure = applyStructureEvent(structure, structureEventOf({ type: "org", can: 7 })!);
+    expect(structure?.can).toBeUndefined();
+  });
+
+  it("reads each Mate's offers and moves, and each project HQ holds nowhere, through their shapes", () => {
+    const can = { observe_mate: { allow: true } };
+    const snapshot = structureEventOf({
+      type: "snapshot",
+      unheld: { "p-free": { create_mate_record: { allow: true } }, "p-odd": "yes" },
+      ungrouped: [{ ...LONE, can, moveTo: { "app-1": ["mate"] } }],
+      // A move list this build cannot read is no move at all; the Mate beside it still is.
+      apps: [
+        {
+          ...ACME,
+          projects: [{ ...ACME.projects[0]!, can, moveTo: { "app-1": "mate" } }],
+        },
+      ],
+    });
+    const structure = applyStructureEvent(null, snapshot!);
+    expect([
+      structure?.unheld,
+      structure?.ungrouped[0]?.moveTo,
+      structure?.apps[0]?.projects[0]?.can,
+      structure?.apps[0]?.projects[0]?.moveTo,
+    ]).toEqual([
+      { "p-free": { create_mate_record: { allow: true } } },
+      { "app-1": ["mate"] },
+      can,
+      undefined,
+    ]);
+    const moved = structureEventOf({ type: "org", unheld: {} });
+    expect(applyStructureEvent(structure, moved!)?.unheld).toEqual({});
+  });
+
   it("knows nothing from a change before its snapshot", () => {
     expect(applyStructureEvent(null, { kind: "change", appId: "app-2", app: BETA })).toBeNull();
+  });
+});
+
+// B5: a Mate's press another browser holds, measured from when HQ's message arrived — never
+// against HQ's own clock — and replaced whole by each message that says them.
+describe("applyPressesEvent", () => {
+  const AT = Date.parse("2026-10-05T10:00:00.000Z");
+
+  it("reads a press HQ says, and leaves nothing of one it does not", () => {
+    expect(
+      structureEventOf({
+        type: "presses",
+        presses: {
+          p1: { kind: "mate", heldForMs: 60_000, until: "x", importProcessId: "imp-1" },
+          p2: { kind: "stage", appId: "app-1", heldForMs: 0, until: "x" },
+        },
+      }),
+    ).toEqual({
+      kind: "presses",
+      presses: {
+        p1: { kind: "mate", heldForMs: 60_000, importProcessId: "imp-1" },
+        p2: { kind: "stage", appId: "app-1", heldForMs: 0 },
+      },
+    });
+    expect(structureEventOf({ type: "presses", presses: { p1: { heldForMs: "soon" } } })).toBe(
+      undefined,
+    );
+  });
+
+  it("holds each press until its hold runs out on this browser's clock, from its message", () => {
+    const held = applyPressesEvent(
+      null,
+      {
+        kind: "presses",
+        presses: {
+          p1: { kind: "mate", heldForMs: 60_000 },
+          p2: { kind: "stage", appId: "app-1", heldForMs: 0 },
+        },
+      },
+      AT,
+    );
+    expect(held).toEqual(
+      new Map([
+        ["p1", { kind: "mate", expiresAtMs: AT + 60_000 }],
+        ["p2", { kind: "stage", appId: "app-1", expiresAtMs: AT }],
+      ]),
+    );
+    // Any other event leaves them; the next message replaces them whole.
+    expect(applyPressesEvent(held, { kind: "people", people: {} }, AT + 1)).toBe(held);
+    expect(applyPressesEvent(held, { kind: "presses", presses: {} }, AT + 1)).toEqual(new Map());
+  });
+
+  // A Core from before the presses sends no `presses` at all: it holds none, and a half-made
+  // Mate is finished against it as before.
+  it("reads a snapshot without presses as HQ holding none", () => {
+    const snapshot = structureEventOf({ type: "snapshot", ungrouped: [], apps: [] })!;
+    const presses = applyPressesEvent(null, snapshot, AT);
+    expect(presses).toEqual(new Map());
+    expect(pressElsewhere({ presses, projectId: "p1", nowMs: AT })).toBe("stopped");
+  });
+
+  it("says nothing either way before any snapshot, or of presses it cannot read", () => {
+    expect(pressElsewhere({ presses: null, projectId: "p1", nowMs: AT })).toBe("unknown");
+    const unreadable = structureEventOf({
+      type: "snapshot",
+      ungrouped: [],
+      apps: [],
+      presses: { p1: { heldForMs: "soon" } },
+    })!;
+    expect(applyPressesEvent(null, unreadable, AT)).toBeNull();
   });
 });
 
@@ -419,6 +631,7 @@ describe("applyChangesEvent", () => {
       changes: new Map([["app-1", [CHANGE]]]),
       mates: null,
       people: null,
+      presses: {},
     });
     changes = applyChangesEvent(changes, { kind: "changes", appId: "app-1", changes: [merged] });
     changes = applyChangesEvent(changes, { kind: "changes", appId: "app-2", changes: [] });

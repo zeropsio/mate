@@ -28,6 +28,10 @@ export function containerHealthOf(machine: ContainerMachine): ZeropsContainerHea
         ? "unreachable"
         : "ready";
     case "booting":
+      // A boot only failed probes suggest, its Mate not answering, is never a start running late.
+      if (machine.state.guessed && (reading === "unreachable" || reading === "not-answering")) {
+        return "unreachable";
+      }
       if (machine.overdue) return "stalled";
       return reading === "unreachable" ? "unreachable" : "initializing";
     case "restarting":
@@ -41,7 +45,7 @@ export function containerHealthOf(machine: ContainerMachine): ZeropsContainerHea
     case "creating":
     case "provisioning":
     case "inactive":
-      return reading;
+      return reading === "not-answering" ? "unreachable" : reading;
   }
 }
 

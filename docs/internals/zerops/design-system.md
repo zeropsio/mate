@@ -884,7 +884,7 @@ left.
 | pull request, PR                                                                        | **change** — "Change #4 waits for your merge", "2 open changes"; HQ's word for a Mate's work    |
 | rebase (a change behind or in conflict with `main`)                                     | **merge `main` into it** — "Conflicts with main"; HQ takes a Mate's push only forward           |
 | provider                                                                                | **coding agent**                                                                                |
-| pairing, pairing code                                                                   | **Sign in with Zerops**; the fallback: "Connect another device with a one-time link"            |
+| pairing, pairing code                                                                   | **Sign in with Zerops**; no pairing code or one-time link is offered                            |
 | Connections                                                                             | **Devices**                                                                                     |
 | worktree, Local checkout; a crewmate's worktree or lane                                 | gone — a crewmate's copy is "its own copy of Fen's code", in setup and under _Try its work_     |
 | T3 Connect, Tailscale, T3 Code                                                          | gone                                                                                            |
@@ -1041,7 +1041,7 @@ their tests are shared (`oxlint-plugin-t3code/exceptions.ts`, W1-EXC).
 | Rule | File                                      |                Entries | `never` | Notes                                                                                                                                  |
 | ---- | ----------------------------------------- | ---------------------: | ------: | -------------------------------------------------------------------------------------------------------------------------------------- |
 | R3   | `exceptions/no-theme-escape-hatches.json` | 385 (358 ast + 27 css) |     230 | baseline = the violations outside the Zerops dirs; the vendor provider colours (Claude, Cursor, OpenCode, Antigravity) are `never`     |
-| R4   | `exceptions/no-legacy-vocabulary.json`    |                     55 |      50 | the manual one-time-link fallback component's exact literals                                                                           |
+| R4   | `exceptions/no-legacy-vocabulary.json`    |                     55 |      50 | upstream surfaces' exact literals (the branch toolbar, settings panels, thread actions, mobile git sheets); 5 expire at F6             |
 | R6   | `exceptions/no-infinite-motion.json`      |    27 (18 ast + 9 css) |      27 | the known continuous uses; since 2026-09-29 a working Mate's face (its turn and glance), the composing dots and a running call's sweep |
 | R9   | `exceptions/no-restyle.json`              |                    306 |       0 | restyles that predate the ui-kit pass (65 in the Zerops dirs); all expire at F6                                                        |
 | R10  | `exceptions/no-unknown-classes.json`      |                      3 |       3 | the `MateMark.css` classes — `@shadcn/lint` reads only `index.css` and its imports                                                     |

@@ -66,12 +66,12 @@ describe("foldDataConsoleSessionEvent", () => {
     expect(next).toEqual({ status: "ready", reason: undefined });
   });
 
-  it("carries the unsupported reason through", () => {
+  it("carries the unavailable reason through", () => {
     const next = foldDataConsoleSessionEvent(INITIAL_DATA_CONSOLE_STATE, {
-      status: "unsupported",
-      reason: "zcp too old",
+      status: "unavailable",
+      reason: "zcp is not available",
     });
-    expect(next).toEqual({ status: "unsupported", reason: "zcp too old" });
+    expect(next).toEqual({ status: "unavailable", reason: "zcp is not available" });
   });
 });
 
@@ -691,7 +691,6 @@ describe("describeDataConsoleError", () => {
       "timeout",
       "internal",
       "session_unavailable",
-      "session_unsupported",
     ] as const;
     const sentences = codes.map((code) => describeDataConsoleError({ code }));
     expect(new Set(sentences).size).toBe(codes.length);
@@ -701,9 +700,6 @@ describe("describeDataConsoleError", () => {
   });
 
   it("calls the surface Data, never 'the Data console' (design-system glossary)", () => {
-    expect(describeDataConsoleError({ code: "session_unsupported" })).toBe(
-      "This project doesn't support Data yet.",
-    );
     expect(describeDataConsoleError({ code: "session_unavailable" })).toBe(
       "Data isn't available right now.",
     );

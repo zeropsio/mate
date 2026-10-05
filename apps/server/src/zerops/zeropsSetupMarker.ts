@@ -41,5 +41,3 @@ export const readServiceVariableKeys = Effect.gen(function* () {
 
 export const hasSetupMarker = (keys: ReadonlyArray<string>): boolean =>
   keys.includes(SETUP_MARKER_VARIABLE);
-
-export const readSetupMarker = Effect.map(readServiceVariableKeys, hasSetupMarker);

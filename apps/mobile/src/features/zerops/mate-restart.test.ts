@@ -45,7 +45,7 @@ import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
-import { loadAccountRecords, memoryIntents } from "./account-ports";
+import { hqAbsent, loadAccountRecords, memoryIntents } from "./account-ports";
 import { mobileCandidates } from "./candidate-listing";
 import { openMateRoute, openMateScreen } from "./open-mate";
 import { zeropsCandidatePresentation } from "./presentation";
@@ -265,6 +265,7 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
       },
     },
     route: openMateRoute,
+    ...hqAbsent(),
   };
   const built = yield* Effect.gen(function* () {
     const data: ManagedZeropsDataRuntime = yield* makeZeropsDataRuntime({

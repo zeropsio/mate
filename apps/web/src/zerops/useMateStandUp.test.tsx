@@ -22,9 +22,12 @@ vi.mock("./registrationRecords", () => ({
 }));
 vi.mock("./useMateSetup", () => ({
   useMateSetup: () => ({
-    at: "",
-    standup: world.failed ? "failed" : "waiting",
-    ...(world.failed ? { standupFailure: "send_failed" } : {}),
+    setup: {
+      at: "",
+      standup: world.failed ? "failed" : "waiting",
+      ...(world.failed ? { standupFailure: "send_failed" } : {}),
+    },
+    failure: undefined,
   }),
   refreshMateSetup: vi.fn(),
 }));

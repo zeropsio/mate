@@ -4,10 +4,11 @@
  * the head read with the offer, whose message lists the commit each production service runs:
  * {@link releaseMessage}, read strictly by {@link parseReleaseMessage}. HQ judges a release before
  * it tags: a release it refuses is only an answer, never a tag nor a record; one it makes, Core tags
- * for the person `can`'s `release` allows (`zeropsPermissions.ts`), so every release Core records
- * is approved. A refused record comes only from main's history, imported (T13), and stays refused
- * for ever. Releases are ordered by version everywhere ({@link compareReleaseTags}): a new one must
- * be newer than every release, and production follows the newest approved one.
+ * for the person `can`'s `release` allows (HQ's `permissions.ts`), so every release Core records
+ * is approved. A refused record is either main's history, imported (T13), or one tag-record
+ * recovery found refused (`apps/hq/src/reconcile.ts`); either stays refused for ever. Releases are
+ * ordered by version everywhere ({@link compareReleaseTags}): a new one must be newer than every
+ * release, and production follows the newest approved one.
  *
  * A person's side, `Authorization: Bearer <session>`:
  *
@@ -72,6 +73,39 @@ export type Release = typeof Release.Type;
 
 export const ReleaseListResponse = Schema.Struct({ releases: Schema.Array(Release) });
 export type ReleaseListResponse = typeof ReleaseListResponse.Type;
+
+/**
+ * Where HQ's deploy of an application's newest release — by version, approved — stands in one
+ * production environment, as its structure streams it beside the environment: derived from the
+ * release's rollout and its jobs there, never stored. Planned once a leading Core asked for its
+ * jobs; ended once every job it asked for there ended, and every job of a commit it found already
+ * under way there — what it left out, followed to that job — ended too; landed where each of those
+ * went live and its plan left nothing undone. A release with no rollout of its own — made before
+ * rollouts were, recorded from git, or a snapshot — deploys nothing more: ended as it was made, and
+ * never landed by HQ's word.
+ */
+export const ReleaseRollout = Schema.Struct({
+  /** Its rollout; none where the release has none of its own. */
+  id: Schema.NullOr(Schema.String),
+  /** The release it deploys. */
+  tag: Schema.String,
+  planned: Schema.Boolean,
+  ended: Schema.Boolean,
+  /** Absent from a Core before it said so: not known — never read as landed nor as stalled. */
+  landed: Schema.optionalKey(Schema.Boolean),
+  /** When its last job there ended, or when it was planned where it asked for none; ISO 8601. */
+  endedAt: Schema.NullOr(Schema.String),
+  /** Each service it asked nothing for there, and why: the job of the commit under way, if any. */
+  leftOut: Schema.Array(
+    Schema.Struct({
+      service: Schema.String,
+      sha: Schema.String,
+      job: Schema.NullOr(Schema.String),
+      reason: Schema.String,
+    }),
+  ),
+});
+export type ReleaseRollout = typeof ReleaseRollout.Type;
 
 /** At least one service, and each once: what a release message can carry. */
 const Entries = Schema.Array(ReleaseEntry).check(

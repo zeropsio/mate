@@ -3,8 +3,11 @@
  * A caller's structure over a WebSocket (KONCEPT §3 rule 4: the whole state, then changes by key;
  * after a break, the whole state again). JSON messages:
  *
- * - `{ type: "snapshot", ungrouped, apps, changes, appReads, mates, people, official, build }` — what
- *   `GET /api/structure` answers; beside it the changes of every application the caller may read
+ * - `{ type: "snapshot", can, unheld, ungrouped, apps, changes, appReads, mates, people,
+ *   rolesAnsweredAt, official, build, parts }` — what `GET /api/structure` answers, with what the caller may do with the
+ *   organization, each project HQ holds nowhere, each application, environment and Mate (`can`,
+ *   `moveTo`, `offers.ts`); beside it when Zerops answered the org
+ *   view those offers are decided over, and the changes of every application the caller may read
  *   them of, by application id (`@t3tools/shared/hqChanges` `ChangesSnapshot`), and where each of
  *   those applications' releases, repository heads and Mate/stage/production recipes (`hqAppReads`); and
  *   every Mate the caller may observe (`observe_mate`) as HQ holds it, by project, with the people
@@ -16,6 +19,14 @@
  * - `{ type: "change", key, value }` — one application by id as the caller now sees it (`value:
  *   null` once it is gone from their view), or, under the key `ungrouped`, the whole list of the
  *   Mates in no application;
+ * - `{ type: "org", can, unheld }` — what the caller may do with the organization and with each
+ *   project they read that HQ holds nowhere, whenever either moves;
+ * - `{ type: "roles", rolesAnsweredAt }` — when Zerops answered the org view the caller's offers
+ *   are decided over, with every view it answers (the snapshot carries it from the start);
+ * - `{ type: "presses", presses }` — each press HQ holds a record of, by project, for every
+ *   project the caller reads (`Structure.holdPress`), whenever one is taken, renewed, given its
+ *   import, stopped or finished: what it makes and where, how long its hold runs on from this
+ *   message, and its import;
  * - `{ type: "mate", projectId, value }` — what changed of one Mate the caller observes: its
  *   presence, or any section of its overview, each whole; `value: null` once they no longer may;
  * - `{ type: "people", people }` — the people the view names, whenever they differ: its Mates'
@@ -33,8 +44,8 @@
  *   three pings is closed (4408).
  *
  * The view is computed again after every change of the structure, of a change, of a release or of
- * a deploy, and every 30 s; with roles at most 30 s old (`roles.ts`), a role change reaches an open socket within
- * 60 s (SPEC §4). A Mate's overview moving reads no structure: its Mates are sent from what HQ
+ * a deploy, of the org's view as Zerops answers it (`Roles.views`), and every 30 s: a role change
+ * reaches an open socket as soon as HQ reads it, within 30 s (SPEC §4). A Mate's overview moving reads no structure: its Mates are sent from what HQ
  * holds (`mateOverviews.ts`), to the callers whose last view lets them observe it, at most once per
  * `MATES_BATCH`. The socket closes
  * with `4410` ("segment over") at 100 s: the client opens the next segment at once, keeping its
@@ -57,9 +68,9 @@ import type {
   HqPeople,
   MateLiveChange,
 } from "@t3tools/shared/hqMates";
-import { can } from "@t3tools/shared/zeropsPermissions";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -103,6 +114,8 @@ export type StructureMessage =
       readonly official: HqOfficialVerdict | null;
       readonly build?: string;
       readonly parts: StreamParts;
+      /** When Zerops answered the org view its offers are decided over (ISO 8601); none yet. */
+      readonly rolesAnsweredAt: string | null;
     } & StructureRead &
       HqMatesSnapshot)
   | { readonly type: "official"; readonly official: HqOfficialVerdict | null }
@@ -110,6 +123,13 @@ export type StructureMessage =
   | ChangesMessage
   | ReleaseRevisionMessage
   | { readonly type: "change"; readonly key: string; readonly value: unknown }
+  | {
+      readonly type: "org";
+      readonly can: StructureRead["can"];
+      readonly unheld: StructureRead["unheld"];
+    }
+  | { readonly type: "roles"; readonly rolesAnsweredAt: string | null }
+  | { readonly type: "presses"; readonly presses: StructureRead["presses"] }
   | HqMatesMessage;
 
 /**
@@ -149,11 +169,17 @@ const partsOf = (entry: MateOverviewEntry): Record<string, unknown> => ({
 const encodedParts = (entry: MateOverviewEntry) =>
   new Map(Object.entries(partsOf(entry)).map(([part, value]) => [part, toJson(value)]));
 
-/** Every Mate the view lists, by project, with its record. */
+/** Every Mate the view lists, by project, with its record and whether the reader may follow it. */
 const matesIn = (view: StructureRead) => [
-  ...view.ungrouped.map(({ projectId, mate }) => ({ projectId, mate })),
+  ...view.ungrouped.map(({ projectId, mate, can }) => ({
+    projectId,
+    mate,
+    observes: can.observe_mate.allow,
+  })),
   ...view.apps.flatMap((app) =>
-    app.projects.flatMap(({ projectId, mate }) => (mate === null ? [] : [{ projectId, mate }])),
+    app.projects.flatMap(({ projectId, mate, can }) =>
+      mate === null ? [] : [{ projectId, mate, observes: can?.observe_mate.allow === true }],
+    ),
   ),
 ];
 
@@ -193,6 +219,12 @@ const ownersIn = (view: StructureRead, facts: OrgView): ReadonlyArray<string> =>
 
 /** What a caller was last sent. */
 interface Sent {
+  /** What they may do with the organization and its projects held nowhere, encoded. */
+  readonly org: string;
+  /** When Zerops answered the view their offers are decided over (ISO 8601); none yet. */
+  readonly rolesAnsweredAt: string | null;
+  /** Each press's hold as its renewals move it, encoded: never how long it runs on, which ticks. */
+  readonly presses: string;
   readonly structure: ReadonlyMap<string, string>;
   readonly changes: ReadonlyMap<string, string>;
   /** Each readable application's release revision, encoded. */
@@ -248,7 +280,6 @@ export const structureMessages = <R>(
       const partsNow = healthParts.pipe(
         Effect.provideContext(yield* Effect.context<Effect.Services<typeof healthParts>>()),
       );
-      const person = { kind: "person", userId } as const;
       const one = yield* Semaphore.make(1);
       const sent = yield* Ref.make<Sent | undefined>(undefined);
       /** The keys whose value differs between what was sent and what is now. */
@@ -307,6 +338,10 @@ export const structureMessages = <R>(
         if (ends !== undefined) return [{ type: "end" as const, ending: ends }];
         yield* (yield* Recomputes).count;
         const view = yield* structure.read(userId);
+        // After the read: the view its offers were decided over, or one Zerops answered since.
+        const answeredAt = yield* roles.answeredAt;
+        const rolesAnsweredAt =
+          answeredAt === undefined ? null : DateTime.formatIso(DateTime.makeUnsafe(answeredAt));
         const readable = yield* changes.readable(userId);
         const moved = yield* changes.releaseRevisions;
         const before = yield* Ref.get(sent);
@@ -371,9 +406,7 @@ export const structureMessages = <R>(
         const facts = yield* roles.view;
         const listed = matesIn(view);
         const observable = new Set(
-          listed
-            .filter(({ projectId }) => can(person, "observe_mate", { projectId }, facts).allow)
-            .map(({ projectId }) => projectId),
+          listed.filter(({ observes }) => observes).map(({ projectId }) => projectId),
         );
         const mates = observed(observable, yield* overviews.all);
         const named = new Set([
@@ -384,6 +417,18 @@ export const structureMessages = <R>(
         ]);
         const people = peopleOf(namedBy(named, mates), facts.members);
         const now: Sent = {
+          org: toJson({ can: view.can, unheld: view.unheld }),
+          rolesAnsweredAt,
+          presses: toJson(
+            Object.fromEntries(
+              Object.entries(view.presses).map(
+                ([projectId, { kind, appId, until, importProcessId }]) => [
+                  projectId,
+                  { kind, appId, until, importProcessId },
+                ],
+              ),
+            ),
+          ),
           structure: new Map([
             [UNGROUPED, toJson(view.ungrouped)],
             ...view.apps.map((app): [string, string] => [app.id, toJson(app)]),
@@ -414,6 +459,7 @@ export const structureMessages = <R>(
             {
               type: "snapshot" as const,
               ...view,
+              rolesAnsweredAt,
               changes: readable,
               appReads,
               mates: Object.fromEntries(
@@ -449,6 +495,15 @@ export const structureMessages = <R>(
                 ? view.ungrouped
                 : (view.apps.find((app) => app.id === key) ?? null),
           })),
+          ...(now.org === before.org
+            ? []
+            : [{ type: "org" as const, can: view.can, unheld: view.unheld }]),
+          ...(now.rolesAnsweredAt === before.rolesAnsweredAt
+            ? []
+            : [{ type: "roles" as const, rolesAnsweredAt }]),
+          ...(now.presses === before.presses
+            ? []
+            : [{ type: "presses" as const, presses: view.presses }]),
           ...[...new Set([...before.mates.keys(), ...mates.keys()])].flatMap((projectId) => {
             const message = mateMessage(
               projectId,
@@ -498,7 +553,11 @@ export const structureMessages = <R>(
       return Stream.merge(
         Stream.merge(
           Stream.merge(structure.changes, Stream.merge(changes.changes, releases.changes)),
-          Stream.merge(deploys.changes, Stream.tick(recheck)),
+          Stream.merge(
+            Stream.merge(deploys.changes, Stream.tick(recheck)),
+            // A view Zerops answered moves the offers, and its time, at once, not on the recheck.
+            roles.views,
+          ),
         ).pipe(Stream.mapEffect(() => one.withPermits(1)(structureTick))),
         overviews.changes.pipe(
           Stream.groupedWithin(Number.MAX_SAFE_INTEGER, batch),

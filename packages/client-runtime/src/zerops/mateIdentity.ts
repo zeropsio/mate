@@ -30,11 +30,6 @@ const PROJECT_ID = /^[A-Za-z0-9_-]{22}$/u;
 /** HQ's branch of a Mate's change: its project id, then the change's number. */
 const CHANGE_BRANCH = /^([A-Za-z0-9_-]{22})\/\d+$/u;
 
-/** The bot login of a Mate's project — what main's broker registered it as. */
-export function mateBotLogin(projectId: string): string {
-  return `${BOT_LOGIN_PREFIX}${projectId}`;
-}
-
 /** The Mate's project behind a bot login, or `undefined` for a person. */
 export function mateProjectOfLogin(login: string | undefined): string | undefined {
   if (login === undefined || !login.startsWith(BOT_LOGIN_PREFIX)) return undefined;

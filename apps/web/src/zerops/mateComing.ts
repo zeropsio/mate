@@ -13,13 +13,14 @@
  * - this tab made it (`newMate.ts`'s creation) and it has not connected yet: its press ends in
  *   seconds, at its close-off, long before its container answers;
  * - or, where this browser made no press — another device, a reload — the listing reads its
- *   project or its container on the way up (`provisioning`, never a restart), or its address
- *   landed while this window watched it come up and its Mate does not answer yet
- *   (`arriving`, `arrivalAwaitsAnswer`).
+ *   project or its container on the way up (`provisioning`, never a restart), its press in
+ *   another browser is held at HQ (`pressElsewhere`), or its address landed while this window
+ *   watched it come up and its Mate does not answer yet (`arriving`, `arrivalAwaitsAnswer`).
  *
  * It did not come when the platform refused its creation (`creationFailed`, the page's verdict),
  * or when this tab's press stopped after the platform took the project: both say so — a press
  * that stopped at a step safe to ask again with *Try again*, any other with the page's *Remove*.
+ * A press elsewhere that stopped before its container leaves it half made, for *Finish setup*.
  * Connected, it is up, and nothing here speaks for it any more.
  *
  * Its own view (`mateComingPage`) is where every door opens a Mate whose conversation cannot be
@@ -29,10 +30,10 @@
  * Pure: the reading and the words; the menu, the view and the page draw them.
  */
 import {
-  FIRST_BUILD_GIVE_UP_MS,
   FIRST_BUILD_GRACE_MS,
   type ZeropsCandidateGroup,
 } from "@t3tools/client-runtime/zerops/candidates";
+import type { PressElsewhere } from "@t3tools/client-runtime/zerops/hq";
 import {
   isTerminalReachability,
   routeGatePhrase,
@@ -104,11 +105,15 @@ export interface MateComingInput {
         readonly missingContainer?: true | undefined;
         /** Its address landed where its reader watched it wait for it (`ZeropsCandidate.arriving`). */
         readonly arriving?: { readonly until: number } | undefined;
-        readonly project?: { readonly created?: string | undefined } | undefined;
       }
     | undefined;
-  /** Now, wall ms: how long a project without its container has stood. */
+  /** Now, wall ms: how long its first build has taken, and whether its arrival still shows. */
   readonly nowMs?: number | undefined;
+  /**
+   * Whether a press in another browser is still at it, as HQ holds it (`pressElsewhere`): what a
+   * project without its container is, where this browser made no press.
+   */
+  readonly pressElsewhere?: PressElsewhere | undefined;
   /** Why this tab's press stopped after the platform had taken the project. */
   readonly setUpFailed?: string | undefined;
   /** This tab made it, and it has not connected since (`newMate.ts`'s creation). */
@@ -138,9 +143,6 @@ function youngAt(at: string | undefined, nowMs: number | undefined, graceMs: num
   const ms = Date.parse(at ?? "");
   return nowMs === undefined || Number.isNaN(ms) || nowMs - ms < graceMs;
 }
-
-/** How long a Mate's project may stand without its container before that is no longer its press. */
-export const MATE_CONTAINER_GRACE_MS = 120_000;
 
 /** A Mate whose press stopped before its container: half-made, and *Finish setup* completes it. */
 export const HALF_MADE_LINE = "Its setup stopped before its container. Finish setup completes it.";
@@ -239,24 +241,20 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
     };
   }
   if (press === undefined && candidate?.missingContainer === true) {
-    // A press in another browser is still importing it a moment after the project; past that,
-    // the press stopped before its container — the tab closed — and nothing will bring it.
-    return youngAt(candidate.project?.created, input.nowMs, MATE_CONTAINER_GRACE_MS)
-      ? { kind: "coming", line: COMING_UP_LINE }
-      : { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" };
-  }
-  // Past its grace a first build is taking longer, whatever its build's state — a slow, queued or
-  // failed one look the same from its status — with no verb that cannot work on a service never
-  // deployed. Half an hour on, unless its build is known to run, it is not coming up at all.
-  if (firstBuild) {
-    const created = candidate?.service?.created;
-    if (
-      input.firstBuild?.kind !== "running" &&
-      !youngAt(created, input.nowMs, FIRST_BUILD_GIVE_UP_MS)
-    ) {
-      return undefined;
+    // A press in another browser that HQ still holds is importing it; one whose hold ran out — its
+    // tab closed — or whose import failed stopped before its container, and nothing will bring it.
+    // While HQ has said nothing of presses, neither is said.
+    if (input.pressElsewhere === "pressing") return { kind: "coming", line: COMING_UP_LINE };
+    if (input.pressElsewhere === "stopped") {
+      return { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" };
     }
-    const overdue = !youngAt(created, input.nowMs, FIRST_BUILD_GRACE_MS);
+    return undefined;
+  }
+  // Past its grace a first build is taking longer, however long — a slow or queued one looks the
+  // same from its status as one whose process is not read yet — with no verb that cannot work on a
+  // service never deployed. Only its build's process says it failed (above), never its age.
+  if (firstBuild) {
+    const overdue = !youngAt(candidate?.service?.created, input.nowMs, FIRST_BUILD_GRACE_MS);
     return { kind: "coming", line: overdue ? TAKING_LONGER_LINE : COMING_UP_LINE };
   }
   // Made here and not connected yet: its press is over and its container on its way — while
@@ -295,6 +293,18 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
 
 const FAILED_PROCESS_STATUSES: ReadonlySet<string> = new Set(["FAILED", "CANCELED"]);
 const LIVE_PROCESS_STATUSES: ReadonlySet<string> = new Set(["PENDING", "RUNNING"]);
+/**
+ * The statuses a build's version ends badly in (`AppVersionStatusEnum`): a deploy that fails after
+ * its build — an init command, its runtime's prepare — leaves the process FINISHED and says it
+ * here (zerops-docs, deployment lifecycle: "Diagnose via `appVersion.status`").
+ */
+const FAILED_VERSION_STATUSES: ReadonlySet<string> = new Set([
+  "BUILD_VALIDATION_FAILED",
+  "BUILD_FAILED",
+  "PREPARING_RUNTIME_FAILED",
+  "DEPLOY_FAILED",
+  "CANCELLED",
+]);
 
 /** A Mate's first build as its project's processes say it: still running, or failed and why. */
 export type FirstBuildState =
@@ -303,7 +313,8 @@ export type FirstBuildState =
 
 /**
  * Its container's first build, as its project's processes say it: its newest build for that
- * service queued or running, or ended failed or cancelled. `undefined` while nothing says either.
+ * service queued or running, or ended failed or cancelled — its process's, or its version's own
+ * failure once the process ended. `undefined` while nothing says either.
  */
 export function firstBuildState(
   processes:
@@ -313,6 +324,7 @@ export function firstBuildState(
         readonly status: string;
         readonly created: string;
         readonly failReason?: string | undefined;
+        readonly appVersion?: { readonly status?: string | undefined } | undefined;
       }>
     | undefined,
   serviceId: string | undefined,
@@ -326,8 +338,18 @@ export function firstBuildState(
     .toSorted((left, right) => Date.parse(right.created) - Date.parse(left.created))[0];
   if (newest === undefined) return undefined;
   if (LIVE_PROCESS_STATUSES.has(newest.status)) return { kind: "running" };
-  if (!FAILED_PROCESS_STATUSES.has(newest.status)) return undefined;
-  return { kind: "failed", why: newest.failReason ?? "Its container's first build did not finish" };
+  if (FAILED_PROCESS_STATUSES.has(newest.status)) {
+    return {
+      kind: "failed",
+      why: newest.failReason ?? "Its container's first build did not finish",
+    };
+  }
+  const version = newest.appVersion?.status;
+  if (version === undefined || !FAILED_VERSION_STATUSES.has(version)) return undefined;
+  return {
+    kind: "failed",
+    why: newest.failReason ?? `Its container's first deploy failed: ${version}`,
+  };
 }
 
 /**
@@ -483,6 +505,9 @@ export function arrivalHoldsThrough(
       return !failing;
     case "retrying":
       return !reachability.restart && !failing;
+    // Nothing but failed probes says it is coming up: as a boot on its way until its cap runs out.
+    case "not-answering":
+      return !reachability.overdue;
     case "container":
       return (
         ON_ITS_WAY_LEVELS.has(reachability.container.level) &&

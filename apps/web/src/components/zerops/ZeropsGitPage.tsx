@@ -222,7 +222,7 @@ export function ZeropsGitPage() {
           appId: group.groupId,
           name: group.name,
           read: offers?.read,
-          readReason: offers?.reason,
+          readReason: offers?.why.read,
           changes: groupFlow?.changesKnown === true ? groupFlow.pullRequests : undefined,
           repositories: groupFlow?.repos,
           failure: flow.releaseFailures.get(group.groupId) ?? groupFlow?.changesFailure,
@@ -267,7 +267,7 @@ export function ZeropsGitPage() {
         <ZeropsRepositoryBrowser
           key={`${activeOrganization?.id}:${search.appId}:${search.repo}`}
           allowed={offersOf(search.appId)?.read}
-          accessReason={offersOf(search.appId)?.reason}
+          accessReason={offersOf(search.appId)?.why.read}
           appId={search.appId}
           repo={search.repo}
           query={{

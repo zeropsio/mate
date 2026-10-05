@@ -776,18 +776,15 @@ export class ZeropsMateUpdateError extends Schema.TaggedError<ZeropsMateUpdateEr
 /**
  * `idle` — no console process spawned yet. `starting` — spawned, waiting on
  * its stdout ready-line. `ready` — ready-line read, requests can be brokered.
- * `unavailable` — the child exited before printing a ready-line for a reason
- * that isn't "unknown subcommand" (sanitized one-line `reason` rides along,
- * never the raw stderr). `unsupported` — the zcp build has no
- * `studio console serve` subcommand; a permanent state for this zcp version,
- * never retried into `starting`.
+ * `unavailable` — the child did not start: it exited or failed before
+ * printing a ready-line (sanitized one-line `reason` rides along, never the
+ * raw stderr). The next call starts it again from `starting`.
  */
 export const ZeropsDataConsoleStatus = Schema.Literals([
   "idle",
   "starting",
   "ready",
   "unavailable",
-  "unsupported",
 ]);
 export type ZeropsDataConsoleStatus = typeof ZeropsDataConsoleStatus.Type;
 
@@ -974,9 +971,8 @@ export type ZeropsDataConsoleResponse = typeof ZeropsDataConsoleResponse.Type;
 
 /**
  * Mirrors the console's error envelope (`dataconsole-api.md` §3 sentinel
- * table) verbatim, plus `session_unavailable`/`session_unsupported` for a
- * broker-side failure before any HTTP request reached the console (no
- * session spawned, or this zcp build lacks the subcommand).
+ * table) verbatim, plus `session_unavailable` for a broker-side failure
+ * before any HTTP request reached the console (no session started).
  */
 export const ZeropsDataConsoleErrorCode = Schema.Literals([
   "not_found",
@@ -992,7 +988,6 @@ export const ZeropsDataConsoleErrorCode = Schema.Literals([
   "timeout",
   "internal",
   "session_unavailable",
-  "session_unsupported",
 ]);
 export type ZeropsDataConsoleErrorCode = typeof ZeropsDataConsoleErrorCode.Type;
 
@@ -1014,8 +1009,8 @@ export class ZeropsDataConsoleError extends Schema.TaggedError<ZeropsDataConsole
  *
  * The Git tab may not infer this from the last push, from the presence of a
  * token or from a remote being configured at all: every one of those is true
- * of a Mate whose Gitea credential was never written, and a tab that mixes
- * them shows "configured" for a setup that cannot push.
+ * of a checkout whose remote refuses its credential, or that holds none, and
+ * a tab that mixes them shows "configured" for a setup that cannot push.
  */
 export const ZeropsGitRemoteProbeInput = Schema.Struct({
   /** The checkout, as every other `vcs.*` call names it. */

@@ -959,7 +959,6 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
     projectId: "p-pantry-stage",
     name: "Pantry - stage",
     tier: "stage",
-    createdAt: at(MINUTE),
     projectStatus: "ACTIVE",
     row: declared({ projectId: "p-pantry-stage", name: "Pantry - stage", tier: "stage" }),
     deployment: NOTHING_RUNS,
@@ -1036,7 +1035,7 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       first: undefined,
     },
   ])("$case", ({ row, first }) => {
-    const flow = groupFlow(group({ stops: [stageStop({ row })], nowMs: NOW }));
+    const flow = groupFlow(group({ stops: [stageStop({ row })] }));
     expect(flow.stages[0]?.firstDeploy).toEqual(first);
   });
 
@@ -1090,25 +1089,45 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
       first: undefined,
     },
   ])("$case", ({ over, first }) => {
-    const flow = groupFlow(group({ stops: [stageStop(over)], nowMs: NOW }));
+    const flow = groupFlow(group({ stops: [stageStop(over)] }));
     expect(flow.stages[0]?.firstDeploy).toEqual(first);
   });
 
-  it("says a first deploy failed where a build of it was seen to end with nothing running", () => {
-    const failedBuild: Shown<Deployment> = {
-      ...NOTHING_RUNS,
-      ...(NOTHING_RUNS.state === "known" ? { value: { kind: "none", afterBuild: true } } : {}),
-    } as Shown<Deployment>;
-    const flow = groupFlow(
-      group({ stops: [stageStop({ row: queued, deployment: failedBuild })], nowMs: NOW }),
-    );
-    expect(flow.stages[0]?.firstDeploy).toEqual({ kind: "failed" });
+  // A first deploy's end is its owner's to say: HQ's job for a build HQ made, Zerops' end of the
+  // process for one it did not — never how long nothing has run.
+  const failedBuild = (processId: string): Shown<Deployment> =>
+    known({
+      kind: "none",
+      failedBuild: { processId, reason: "Zerops reports its build failed" },
+    });
+  it.each([
+    {
+      case: "HQ says live and Zerops shows nothing running, however long: not failed",
+      over: { row: withDeploys({ state: "live", msAgo: 20 * 1_000 }), deployment: NOTHING_RUNS },
+      first: undefined,
+    },
+    {
+      case: "a build HQ did not make that Zerops ended failed: failed, in Zerops' words",
+      over: { row: queued, deployment: failedBuild("process-manual") },
+      first: { kind: "failed", reason: "Zerops reports its build failed" },
+    },
+    {
+      case: "a build HQ made that Zerops ended failed: HQ's job says where it stands",
+      over: {
+        row: withDeploys({ state: "building", msAgo: MINUTE, processId: "process-hq" }),
+        deployment: failedBuild("process-hq"),
+      },
+      first: { kind: "on-its-way" },
+    },
+  ])("$case", ({ over, first }) => {
+    const flow = groupFlow(group({ stops: [stageStop(over)] }));
+    expect(flow.stages[0]?.firstDeploy).toEqual(first);
   });
 
   it("reports HQ's failed job with its words after the import, and the import first", () => {
     const row = withDeploys({ state: "failed", reason: "the build exited with 1", msAgo: MINUTE });
     const first = (over: Partial<GroupFlowStopInput>) =>
-      groupFlow(group({ stops: [stageStop({ row, ...over })], nowMs: NOW })).stages[0]?.firstDeploy;
+      groupFlow(group({ stops: [stageStop({ row, ...over })] })).stages[0]?.firstDeploy;
     expect(first({})).toEqual({ kind: "failed", reason: "the build exited with 1" });
     expect(first({ services: [{ hostname: "app", status: "CREATING", runtime: true }] })).toEqual({
       kind: "setting-up",
@@ -1118,8 +1137,8 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
 
   it("is setting up while its own import runs, and only then", () => {
     const settingUp = (over: Partial<GroupFlowStopInput>) =>
-      groupFlow(group({ stops: [stageStop(over)], mainHasCode: true, nowMs: NOW })).stages[0]
-        ?.firstDeploy?.kind === "setting-up"
+      groupFlow(group({ stops: [stageStop(over)], mainHasCode: true })).stages[0]?.firstDeploy
+        ?.kind === "setting-up"
         ? true
         : undefined;
     const making = { hostname: "app", status: "NEW", runtime: true };
@@ -1132,7 +1151,14 @@ describe("groupFlow — a stage's first deploy, while it runs nothing (run 4)", 
     // Its project's own status first: one being made is set up whatever its services say.
     expect(settingUp({ projectStatus: "CREATING", services: undefined })).toBe(true);
     expect(settingUp({ projectStatus: "DELETING", services: [making] })).toBeUndefined();
-    expect(settingUp({ services: [making], createdAt: at(20 * MINUTE) })).toBeUndefined();
+    // Past what the platform says it makes, only while HQ still brings it up (H2) — never by age.
+    const born = (ended: boolean) => ({
+      ...declared({ projectId: "p-pantry-stage", name: "Pantry - stage", tier: "stage" }),
+      birth: { ended },
+    });
+    expect(settingUp({ services: [], row: born(false) })).toBe(true);
+    expect(settingUp({ services: [], row: born(true) })).toBeUndefined();
+    expect(settingUp({ services: [] })).toBeUndefined();
     // Something runs there: never setting up again.
     expect(settingUp({ services: [making], deployment: runs(STAGE_SHA) })).toBeUndefined();
   });

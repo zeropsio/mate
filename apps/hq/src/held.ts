@@ -1,6 +1,6 @@
 /**
  * What HQ holds a project as now — the target's current kind every permission is decided with
- * (`@t3tools/shared/zeropsPermissions`): its kind in an application, `mate` for a Mate in none,
+ * (`permissions.ts`): its kind in an application, `mate` for a Mate in none,
  * `none` otherwise.
  *
  * A write that decides on it and changes it takes {@link lockProject} first, in its fenced

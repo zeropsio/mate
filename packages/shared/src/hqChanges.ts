@@ -384,7 +384,8 @@ export const CommentBody = upTo(COMMENT_BODY_MAX).check(
 
 /**
  * A comment on a change, by exactly one author: a person, or a Mate whose words on main's Gitea were
- * brought over (T13). Only that import writes a Mate's; a person comments through HQ's API.
+ * brought over by the one-time import (T13). Nothing writes a Mate's any more; a person comments
+ * through HQ's API.
  */
 export const HqChangeComment = Schema.Struct({
   id: Schema.String,

@@ -27,7 +27,7 @@
 import * as NodeCrypto from "node:crypto";
 
 import { mateKeyReach } from "@t3tools/shared/mateKeyReach";
-import { can } from "@t3tools/shared/zeropsPermissions";
+import { can } from "./permissions.ts";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";

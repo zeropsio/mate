@@ -139,6 +139,7 @@ vi.mock("~/zerops/accountEnvironments", () => ({
 }));
 const environments = { setOnScreen: (projectId: string | null) => app.onScreen(projectId) };
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));
+vi.mock("~/zerops/usePressesElsewhere", () => ({ usePressesElsewhere: () => () => "stopped" }));
 vi.mock("~/zerops/useZeropsCandidates", () => ({
   useZeropsCandidates: () => ({
     listing: app.listing,
@@ -182,7 +183,10 @@ vi.mock("~/zerops/useZeropsBirthProgress", async () => {
           },
   };
 });
-vi.mock("~/zerops/useMateSetup", () => ({ useMateSetup: () => undefined }));
+vi.mock("~/zerops/useMateSetup", () => ({
+  useMateSetup: () => ({ setup: undefined, failure: undefined }),
+  refreshMateSetup: vi.fn(),
+}));
 vi.mock("~/zerops/useUsualAgent", () => ({
   useUsualAgent: () => ({ usual: null, settled: true }),
 }));
@@ -353,6 +357,27 @@ describe("a Mate's own view while its link is made", () => {
       tree?.root
         .findAllByType("button")
         .find((node) => node.children.join("") === "Try now")
+        ?.props.onClick(),
+    );
+    expect(app.connect).toHaveBeenCalledExactlyOnceWith({ key: KEY });
+  });
+
+  // The owner, 2026-10-05: a definitive refusal is never asked again on its own — its reason, and
+  // the person's Try again.
+  it("offers Try again where its Mate refused its credential, which asks it again", () => {
+    app.link = {
+      key: KEY,
+      environmentId: undefined,
+      reachability: { kind: "refused-credential" },
+    } satisfies MateLink;
+    openView();
+    expect(said()).toContain("This Mate didn't accept the sign-in.");
+    expect(buttons()).toEqual(["Try again"]);
+    app.connect.mockClear();
+    act(() =>
+      tree?.root
+        .findAllByType("button")
+        .find((node) => node.children.join("") === "Try again")
         ?.props.onClick(),
     );
     expect(app.connect).toHaveBeenCalledExactlyOnceWith({ key: KEY });
@@ -1016,6 +1041,53 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
     const rendered = render(undefined);
     expect(text(rendered)).toEqual(["Not registered: Its grant timed out."]);
     expect(rendered.root.findAllByType("button")).toHaveLength(0);
+  });
+});
+
+// Web review #4 (2026-10-05): a setup read turned away, or answered with something else, ended its
+// observation with nothing to read it again. Its reason is read under the steps, with Try again.
+describe("ComingBelow — a setup that can't be read", () => {
+  const COMING = { kind: "coming", line: "Coming up." } as const;
+  const progress = {
+    steps: [],
+    active: null,
+    failed: null,
+    doneCount: 0,
+    total: 0,
+    complete: false,
+    setupFailure: "refused",
+  } as const;
+  const render = (onSetupAgain: (() => void) | undefined) => {
+    let rendered: ReactTestRenderer | undefined;
+    act(() => {
+      rendered = create(
+        h(ComingBelow, {
+          coming: COMING,
+          progress,
+          nowMs: 0,
+          mate: { name: "Ida", project: "Acme" },
+          you: null,
+          ...(onSetupAgain === undefined ? {} : { onSetupAgain }),
+        }),
+      );
+    });
+    return rendered!;
+  };
+  const text = (rendered: ReactTestRenderer) =>
+    rendered.root
+      .findAll((node) => node.props["data-press-note"] !== undefined)
+      .map((node) => node.children.join(""));
+
+  it("says why under the steps, with Try again, which reads its setup again", () => {
+    let again = 0;
+    const rendered = render(() => {
+      again += 1;
+    });
+    expect(text(rendered)).toEqual(["Its container turned the read of its setup away."]);
+    const button = rendered.root.findByType("button");
+    expect(button.children).toEqual(["Try again"]);
+    act(() => button.props.onClick());
+    expect(again).toBe(1);
   });
 });
 

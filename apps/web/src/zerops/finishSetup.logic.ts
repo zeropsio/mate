@@ -1,29 +1,21 @@
 /**
- * *Finish setup*'s decisions, apart from the hook that runs it (`useMateActions.tsx`): when a
- * Mate's project is past the grace a press elsewhere has, and whether it imports a container.
+ * *Finish setup*'s decisions, apart from the hook that runs it (`useMateActions.tsx`): whether it
+ * imports a container.
  */
-import { MATE_CONTAINER_GRACE_MS } from "./mateComing";
-
-/** Its project is older than a press in another browser could still be working on it. */
-export function mateProjectPastGrace(
-  project: { readonly created?: string | undefined },
-  nowMs: number,
-): boolean {
-  const created = project.created === undefined ? Number.NaN : Date.parse(project.created);
-  return !Number.isNaN(created) && nowMs - created > MATE_CONTAINER_GRACE_MS;
-}
 
 /**
  * The container Finish setup imports — every agent, an empty selection omitting `ZCP_AGENTS` — or
- * none: never where the project has one, and never while a press elsewhere may still be importing
- * it, whose key a second import would regenerate under it. A press this tab saw stop is no press
- * elsewhere.
+ * none: only where a read of the project's services shows no zcp (`containerMissing`) — never
+ * where it has one, nor where its services are not read yet or could not be: unknown is not
+ * missing — and never while a press elsewhere may still be importing it (`pressElsewhere`: HQ
+ * holds it, or has not said), whose key a second import would regenerate under it. A press this
+ * tab saw stop is no press elsewhere.
  */
 export function finishSetupContainer(input: {
-  readonly hasService: boolean;
+  readonly containerMissing: boolean;
   readonly pressStopped: boolean;
-  readonly pastGrace: boolean;
+  readonly pressedElsewhere: boolean;
 }): { readonly agents: readonly [] } | null {
-  if (input.hasService) return null;
-  return input.pressStopped || input.pastGrace ? { agents: [] } : null;
+  if (!input.containerMissing) return null;
+  return input.pressStopped || !input.pressedElsewhere ? { agents: [] } : null;
 }

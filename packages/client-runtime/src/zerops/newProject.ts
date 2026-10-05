@@ -223,7 +223,7 @@ export function buildCreateProjectBody(input: {
   readonly name: string;
   readonly location?: string;
   readonly mode?: "LIGHT" | "SERIOUS";
-  /** Tags the project is born with — group membership and role (`groups.ts`). */
+  /** Tags the project is born with: the Zerops GUI's `mate` marker or none (`groups.ts`). */
   readonly tagList?: ReadonlyArray<string>;
 }): CreateProjectBody {
   return {

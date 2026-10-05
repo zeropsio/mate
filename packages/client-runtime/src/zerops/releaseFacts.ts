@@ -14,7 +14,7 @@
  * @module releaseFacts
  */
 
-import { RELEASE_IN_FLIGHT_MS, type FlowReleaseRow, type ReleaseComparison } from "./release.ts";
+import type { FlowReleaseRow, ReleaseComparison } from "./release.ts";
 import type { Moved } from "./releaseCompare.ts";
 import type { ReleaseOutcome, ReleaseReplaces, ReviewPress } from "./reviewVerdict.ts";
 import { stageMarks, type StageMark, type StageStandings } from "./stageMarks.ts";
@@ -110,18 +110,18 @@ export function releaseFollows(input: {
   readonly press: ReviewPress;
   /** The release tag on its way to production (`releaseInFlight`). */
   readonly inFlight: string | undefined;
+  /** The newest release, once HQ ended its deploy with some of it not live (`releaseStalled`). */
+  readonly stalled: string | undefined;
   /** The version offered next. */
   readonly suggestion: string;
   readonly releases: ReadonlyArray<FlowReleaseRow>;
-  /** The minute clock, for the cutoff. */
-  readonly nowMs: number;
 }): {
   readonly tag: string;
   readonly tagged: FlowReleaseRow | undefined;
   readonly releasing: boolean;
   /**
-   * On its way longer than {@link RELEASE_IN_FLIGHT_MS} and neither live nor failed: the wait is
-   * over, and the review says the tag hasn't landed.
+   * HQ ended its deploy and it is neither live nor failed: the wait is over, and the review says
+   * the tag hasn't landed.
    */
   readonly stalled: boolean;
   /**
@@ -149,7 +149,7 @@ export function releaseFollows(input: {
     newer === undefined
       ? undefined
       : { by: newer.tag, live: input.releases.find((entry) => entry.standing === "live")?.tag };
-  const stalled = releasing && superseded === undefined && releaseStalled(tagged, input.nowMs);
+  const stalled = releasing && superseded === undefined && stalledAt(tagged, input.stalled);
   return {
     tag,
     tagged,
@@ -166,11 +166,11 @@ export function releaseFollows(input: {
 }
 
 /**
- * Whether a tag on its way has waited out {@link RELEASE_IN_FLIGHT_MS} since HQ made it, with
- * neither a landing nor a failure — the cutoff `releaseInFlight` stops holding Release back at. A
- * release HQ has not listed yet has no age to measure.
+ * Whether HQ ended a tag's deploy to production with neither a landing nor a failure: a job of it
+ * refused, skipped or superseded, a service it left out never running its commit. One HQ says
+ * landed waits for production's own word, never stalls; a release HQ has not listed has not ended.
  */
-function releaseStalled(tagged: FlowReleaseRow | undefined, nowMs: number): boolean {
+function stalledAt(tagged: FlowReleaseRow | undefined, stalled: string | undefined): boolean {
   if (
     tagged === undefined ||
     tagged.snapshot === true ||
@@ -178,14 +178,14 @@ function releaseStalled(tagged: FlowReleaseRow | undefined, nowMs: number): bool
     tagged.verdict === "refused"
   )
     return false;
-  return nowMs - Date.parse(tagged.taggedAt) >= RELEASE_IN_FLIGHT_MS;
+  return tagged.tag === stalled;
 }
 
 /** Where the tag it made stands: on its way, live, or failed — `offered` before it was made. */
 export function releaseOutcomeOf(input: {
   readonly tagged: FlowReleaseRow | undefined;
   readonly releasing: boolean;
-  /** Past the cutoff with no landing and no failure (`releaseFollows`). */
+  /** HQ ended its deploy with no landing and no failure (`releaseFollows`). */
   readonly stalled?: boolean | undefined;
   /** A newer release above it (`releaseFollows`). */
   readonly superseded?: { readonly by: string; readonly live: string | undefined } | undefined;

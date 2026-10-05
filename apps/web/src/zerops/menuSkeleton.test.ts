@@ -1,11 +1,9 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import type { CandidateRow, HeldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
-  candidateOfSkeleton,
   decodeMenuSkeleton,
   EMPTY_MENU_SKELETON,
   encodeMenuSkeleton,
@@ -14,12 +12,9 @@ import {
   MENU_SKELETON_MAX_ROWS,
   MENU_SKELETON_STORAGE_KEY,
   MENU_SKELETON_VISIT_MS,
-  menuRowsOf,
   menuSkeletonSnapshot,
   onMenuSkeletonChange,
-  menuWiring,
   projectOpenedIn,
-  rememberedMenuCandidates,
   rememberMenuCandidates,
   skeletonRowOf,
   withOrganizationSkeleton,
@@ -41,7 +36,7 @@ const mate = (id: string, overrides: Partial<CandidateRow> = {}): CandidateRow =
     status: "ACTIVE",
     clientId: ORG,
     created: "2026-09-01T09:58:00Z",
-    tagList: ["mate", "mate:g:g-garden", `mate:bot:${id}`],
+    tagList: ["mate", "garden"],
   },
   ...overrides,
 });
@@ -59,51 +54,23 @@ const PROD: CandidateRow = {
     id: "garden-prod",
     name: "garden-prod",
     status: "ACTIVE",
-    tagList: ["mate:g:g-garden", "mate:role:production"],
+    tagList: ["garden"],
     userRoles: [{ clientUserId: "cu-ida", roleCode: "OWNER" }],
   },
 };
 
-const known = (
-  rows: ReadonlyArray<CandidateRow>,
-  coverage: "complete" | "partial",
-): Shown<ReadonlyArray<CandidateRow>> =>
-  ({
-    state: "known",
-    value: rows,
-    coverage,
-    asOf: { atMs: 0 },
-    freshness: { kind: "live" },
-  }) as unknown as Shown<ReadonlyArray<CandidateRow>>;
-
-const heldOf = (
-  rows: ReadonlyArray<CandidateRow>,
-  complete: boolean,
-): HeldCandidates<CandidateRow> => ({
-  rows,
-  complete,
-});
-const NOTHING_HELD = heldOf([], false);
-interface DrawCase {
-  readonly name: string;
-  readonly listing: unknown;
-  readonly held?: HeldCandidates<CandidateRow>;
-  readonly memory?: ReadonlyArray<CandidateRow> | null;
-  readonly current?: boolean;
-  readonly graceOver?: boolean;
-  readonly whole?: boolean;
-  readonly rows: ReadonlyArray<CandidateRow>;
-  readonly complete?: boolean;
-  readonly fromMemory?: boolean;
-  readonly toRemember?: ReadonlyArray<CandidateRow> | null;
-}
-const asRemembered = (row: CandidateRow) => candidateOfSkeleton(skeletonRowOf(row));
+/** The organization's rows as this browser remembers them, by key. */
+const rememberedKeys = (organizationId: string) =>
+  menuSkeletonSnapshot().organizations[organizationId]?.rows.map((row) => row.key);
 
 describe("a remembered row", () => {
   // A Mate linked when it was drawn is remembered as one whose link is not made yet: whether it
   // is linked now is its socket's to say, never the memory's.
-  it("remembers a connected Mate as not linked yet", () => {
-    expect(candidateOfSkeleton(skeletonRowOf(NOVA))).toEqual({ ...UNLINKED_NOVA, group: "ready" });
+  it("remembers a connected Mate as not linked yet, with the environment it opened in", () => {
+    const row = skeletonRowOf(NOVA);
+    expect(row.group).toBe("ready");
+    expect(row.openedIn).toBe("env-nova");
+    expect(row).not.toHaveProperty("environmentId");
   });
 
   it.each([
@@ -117,8 +84,9 @@ describe("a remembered row", () => {
         creationFailed: { message: "The platform said no." },
       },
     },
-  ])("paints $name as it was read", ({ row }) => {
-    expect(candidateOfSkeleton(skeletonRowOf(row))).toEqual(row);
+  ])("reads $name back as it was written", ({ row }) => {
+    const skeleton = withOrganizationSkeleton(EMPTY_MENU_SKELETON, ORG, [row], 1);
+    expect(decodeMenuSkeleton(encodeMenuSkeleton(skeleton))).toEqual(skeleton);
   });
 
   it("keeps nothing the row does not draw from", () => {
@@ -226,344 +194,6 @@ describe("the remembered tree, bounded", () => {
   });
 });
 
-describe("the rows the menu draws while it reads", () => {
-  const remembered = (row: CandidateRow) => candidateOfSkeleton(skeletonRowOf(row));
-  const [R_NOVA, R_KAI, R_PROD] = [NOVA, KAI, PROD].map(remembered) as [
-    CandidateRow,
-    CandidateRow,
-    CandidateRow,
-  ];
-  const REMEMBERED = [R_NOVA, R_KAI, R_PROD];
-  const LUNA = mate("luna", { group: "ready" });
-  const unknownKai: CandidateRow = {
-    key: "kai",
-    group: "unavailable",
-    presence: "unknown",
-    project: KAI.project,
-  };
-  const READING = { state: "reading", sinceMs: 0, attempt: 1 };
-  const FAILED = {
-    state: "failed",
-    failure: { kind: "offline" },
-    atMs: 0,
-    attempt: 1,
-    retryAtMs: 2_000,
-  };
-
-  const DRAWS: ReadonlyArray<DrawCase> = [
-    {
-      name: "unread, a tree remembered: the tree",
-      listing: { state: "unread", waitingFor: null },
-      rows: REMEMBERED,
-      fromMemory: true,
-    },
-    { name: "being read, a tree remembered: the tree", listing: READING, rows: REMEMBERED },
-    {
-      name: "waiting on the Zerops session, a tree remembered: the tree",
-      listing: { state: "unread", waitingFor: "zerops-session" },
-      rows: REMEMBERED,
-    },
-    {
-      name: "its access not verified yet, a tree remembered: the tree",
-      listing: { state: "withheld", reason: "access-unverified", cause: null },
-      rows: REMEMBERED,
-    },
-    // A first read that keeps failing never takes the tree back between its retries: its notice
-    // stands under the rows instead.
-    {
-      name: "its read failed, a tree remembered: the tree still",
-      listing: FAILED,
-      rows: REMEMBERED,
-    },
-    {
-      name: "being read, nothing remembered: nothing, as before",
-      listing: READING,
-      memory: null,
-      rows: [],
-      fromMemory: false,
-    },
-    {
-      name: "being read, an empty tree remembered: nothing",
-      listing: READING,
-      memory: [],
-      rows: [],
-      fromMemory: false,
-    },
-    {
-      name: "its access lapsed: as before, the app's banner speaks",
-      listing: { state: "withheld", reason: "access-lapsed", cause: null },
-      rows: [],
-      fromMemory: false,
-    },
-    {
-      name: "known and whole: the listing's own rows, the memory replaced",
-      listing: known([NOVA, PROD], "complete"),
-      held: heldOf([NOVA, PROD], true),
-      rows: [NOVA, PROD],
-      complete: true,
-      fromMemory: false,
-      toRemember: [NOVA, PROD],
-    },
-    {
-      name: "known whole, a container not read yet: that row as remembered",
-      listing: known([NOVA, unknownKai], "complete"),
-      held: heldOf([NOVA, unknownKai], false),
-      rows: [NOVA, R_KAI],
-      toRemember: [NOVA, R_KAI],
-    },
-    {
-      name: "known whole, a container never read past its grace: its own row, the rest remembered",
-      listing: known([NOVA, unknownKai], "complete"),
-      held: heldOf([NOVA, unknownKai], false),
-      graceOver: true,
-      rows: [NOVA, unknownKai],
-      fromMemory: false,
-      toRemember: [NOVA, R_KAI],
-    },
-    {
-      name: "known whole, a container not read and not remembered: its own row, not remembered",
-      listing: known([NOVA, unknownKai], "complete"),
-      held: heldOf([NOVA, unknownKai], false),
-      memory: [remembered(NOVA)],
-      rows: [NOVA, unknownKai],
-      fromMemory: false,
-      toRemember: [NOVA],
-    },
-    {
-      name: "known whole: a project it lacks is gone, never filled from memory",
-      listing: known([NOVA], "complete"),
-      held: heldOf([NOVA], true),
-      rows: [NOVA],
-      complete: true,
-      fromMemory: false,
-      toRemember: [NOVA],
-    },
-    // Known in part: what it holds, and the projects it does not hold yet as remembered — none
-    // vanishes to come back — and nothing remembered of a part.
-    {
-      name: "known in part, every row it holds read: its rows and the rest remembered",
-      listing: known([NOVA, LUNA], "partial"),
-      held: heldOf([NOVA, LUNA], false),
-      rows: [NOVA, LUNA, R_KAI, R_PROD],
-    },
-    {
-      name: "known in part, a container not read yet: that row as remembered",
-      listing: known([NOVA, unknownKai], "partial"),
-      held: heldOf([NOVA, unknownKai], false),
-      rows: [NOVA, R_KAI, R_PROD],
-    },
-    {
-      name: "known in part with no row yet: the tree",
-      listing: known([], "partial"),
-      held: heldOf([], false),
-      rows: REMEMBERED,
-    },
-    // Past its grace a part is what there is: a project withheld for good, or never read, is not
-    // painted from memory for ever.
-    {
-      name: "known in part with no row past its grace: nothing",
-      listing: known([], "partial"),
-      held: heldOf([], false),
-      graceOver: true,
-      rows: [],
-      fromMemory: false,
-    },
-    {
-      name: "known in part past its grace: its own rows only",
-      listing: known([NOVA, unknownKai], "partial"),
-      held: heldOf([NOVA, unknownKai], false),
-      graceOver: true,
-      rows: [NOVA, unknownKai],
-      fromMemory: false,
-    },
-    // An organization just switched to: the listing still holds the last one's rows for a
-    // moment. They are neither drawn as its nor remembered under it.
-    {
-      name: "the listing still the last organization's: this one's tree, nothing remembered",
-      listing: known([LUNA], "complete"),
-      held: heldOf([LUNA], true),
-      current: false,
-      rows: REMEMBERED,
-    },
-    {
-      name: "the listing still the last organization's, nothing remembered: nothing of it",
-      listing: known([LUNA], "complete"),
-      held: heldOf([LUNA], true),
-      current: false,
-      memory: null,
-      rows: [],
-      fromMemory: false,
-    },
-    // A failed read that will not run again on its own holds the tree for the grace, then gives
-    // way to its notice alone.
-    {
-      name: "its read failed for good, within its grace: the tree",
-      listing: { ...FAILED, retryAtMs: null },
-      rows: REMEMBERED,
-    },
-    {
-      name: "its read failed for good, past its grace: nothing, its notice speaks",
-      listing: { ...FAILED, retryAtMs: null },
-      graceOver: true,
-      rows: [],
-      fromMemory: false,
-    },
-    {
-      name: "its read failed and will retry, past any grace: the tree still",
-      listing: FAILED,
-      graceOver: true,
-      rows: REMEMBERED,
-    },
-    // Whole for this person though not complete — every project it lacks is one they can never
-    // see: remembered, and no project it lacks is filled from memory.
-    {
-      name: "known in part but whole for this person: its rows, remembered",
-      listing: known([NOVA], "partial"),
-      held: heldOf([NOVA], false),
-      whole: true,
-      rows: [NOVA],
-      fromMemory: false,
-      toRemember: [NOVA],
-    },
-    {
-      name: "whole for this person, a container not read yet: that row as remembered, remembered",
-      listing: known([NOVA, unknownKai], "partial"),
-      held: heldOf([NOVA, unknownKai], false),
-      whole: true,
-      rows: [NOVA, R_KAI],
-      toRemember: [NOVA, R_KAI],
-    },
-  ];
-
-  it.each(DRAWS)(
-    "$name",
-    ({
-      listing,
-      held = NOTHING_HELD,
-      memory = REMEMBERED,
-      current = true,
-      graceOver = false,
-      whole = false,
-      rows,
-      complete = false,
-      fromMemory = true,
-      toRemember = null,
-    }) => {
-      const drawn = menuRowsOf({
-        listing: listing as Shown<ReadonlyArray<CandidateRow>>,
-        held,
-        remembered: memory ?? undefined,
-        current,
-        graceOver,
-        whole,
-      });
-      expect(drawn.rows).toEqual(rows);
-      expect(drawn.complete).toBe(complete);
-      expect(drawn.fromMemory).toBe(fromMemory);
-      expect(drawn.toRemember).toEqual(toRemember);
-    },
-  );
-
-  it("holds the same rows through a failing first read's retries", () => {
-    const draws = [FAILED, READING, FAILED, READING].map(
-      (listing) =>
-        menuRowsOf({
-          listing: listing as Shown<ReadonlyArray<CandidateRow>>,
-          held: NOTHING_HELD,
-          remembered: REMEMBERED,
-          current: true,
-          graceOver: false,
-          whole: false,
-        }).rows,
-    );
-    for (const rows of draws) expect(rows).toBe(REMEMBERED);
-  });
-});
-
-describe("the menu's wiring: which organization the listing is, and its grace", () => {
-  const known = { state: "known" } as const;
-  const failedForGood = { state: "failed", retryAtMs: null } as const;
-  it.each([
-    {
-      name: "the listing the organization's in view, known in part: its own grace",
-      session: ORG,
-      listingOf: ORG,
-      listing: known,
-      complete: false,
-      wiring: { current: true, rememberUnder: ORG, graceKey: `${ORG}:known` },
-    },
-    {
-      name: "known whole: no grace",
-      session: ORG,
-      listingOf: ORG,
-      listing: known,
-      complete: true,
-      wiring: { current: true, rememberUnder: ORG, graceKey: null },
-    },
-    {
-      name: "switched, the listing still the last organization's: not current, nothing kept",
-      session: OTHER_ORG,
-      listingOf: ORG,
-      listing: known,
-      complete: false,
-      wiring: { current: false, rememberUnder: null, graceKey: null },
-    },
-    {
-      name: "switched, its own listing known in part: a grace of its own",
-      session: OTHER_ORG,
-      listingOf: OTHER_ORG,
-      listing: known,
-      complete: false,
-      wiring: { current: true, rememberUnder: OTHER_ORG, graceKey: `${OTHER_ORG}:known` },
-    },
-    {
-      name: "a read failed for good: its grace",
-      session: ORG,
-      listingOf: ORG,
-      listing: failedForGood,
-      complete: false,
-      wiring: { current: true, rememberUnder: ORG, graceKey: `${ORG}:failed` },
-    },
-    {
-      name: "a read failed that will retry: no grace",
-      session: ORG,
-      listingOf: ORG,
-      listing: { state: "failed", retryAtMs: 5_000 },
-      complete: false,
-      wiring: { current: true, rememberUnder: ORG, graceKey: null },
-    },
-    {
-      name: "nobody's organization yet",
-      session: undefined,
-      listingOf: undefined,
-      listing: { state: "reading" },
-      complete: false,
-      wiring: { current: false, rememberUnder: null, graceKey: null },
-    },
-  ])("$name", ({ session, listingOf, listing, complete, wiring }) => {
-    expect(
-      menuWiring({
-        organizationId: session,
-        listingOrganizationId: listingOf,
-        listing: listing as Shown<ReadonlyArray<CandidateRow>>,
-        complete,
-      }),
-    ).toEqual(wiring);
-  });
-
-  // Two known listings in part, one organization after the other: the second starts its own
-  // grace, never the first's carried over.
-  it("gives each organization's partial listing its own grace across a switch", () => {
-    const partial = { state: "known" } as unknown as Shown<ReadonlyArray<CandidateRow>>;
-    const keys = [
-      { organizationId: ORG, listingOrganizationId: ORG },
-      { organizationId: OTHER_ORG, listingOrganizationId: ORG },
-      { organizationId: OTHER_ORG, listingOrganizationId: OTHER_ORG },
-    ].map((ids) => menuWiring({ ...ids, listing: partial, complete: false }).graceKey);
-    expect(keys).toEqual([`${ORG}:known`, null, `${OTHER_ORG}:known`]);
-  });
-});
-
 describe("the tree in this browser", () => {
   const stored = new Map<string, string>();
 
@@ -593,9 +223,8 @@ describe("the tree in this browser", () => {
     expect(stored.size).toBe(0);
     vi.advanceTimersByTime(400);
     expect(stored.has(keyOf("user-ida"))).toBe(true);
-    expect(rememberedMenuCandidates(ORG)).toEqual([NOVA, KAI, PROD].map(asRemembered));
-    expect(rememberedMenuCandidates(OTHER_ORG)).toBeUndefined();
-    expect(rememberedMenuCandidates(undefined)).toBeUndefined();
+    expect(rememberedKeys(ORG)).toEqual([NOVA.key, KAI.key, PROD.key]);
+    expect(rememberedKeys(OTHER_ORG)).toBeUndefined();
   });
 
   it("reads back after a reload from what was stored", () => {
@@ -604,9 +233,9 @@ describe("the tree in this browser", () => {
       encodeMenuSkeleton(withOrganizationSkeleton(EMPTY_MENU_SKELETON, ORG, [NOVA, PROD], 1)) ?? "",
     );
     openAccountLifetime("user-ida");
-    expect(rememberedMenuCandidates(ORG)).toEqual([NOVA, PROD].map(asRemembered));
-    // The same rows each draw: nothing re-renders for a memory that did not change.
-    expect(rememberedMenuCandidates(ORG)).toBe(rememberedMenuCandidates(ORG));
+    expect(rememberedKeys(ORG)).toEqual([NOVA.key, PROD.key]);
+    // The same memory each read: nothing re-renders for a memory that did not change.
+    expect(menuSkeletonSnapshot()).toBe(menuSkeletonSnapshot());
   });
 
   it("knows which remembered Mate an environment opened", () => {
@@ -641,7 +270,7 @@ describe("the tree in this browser", () => {
       encodeMenuSkeleton(withOrganizationSkeleton(EMPTY_MENU_SKELETON, ORG, [NOVA], 1)) ?? "",
     );
     openAccountLifetime("user-oto");
-    expect(rememberedMenuCandidates(ORG)).toBeUndefined();
+    expect(rememberedKeys(ORG)).toBeUndefined();
   });
 
   it("reads nothing before anybody is signed in", () => {
@@ -649,15 +278,15 @@ describe("the tree in this browser", () => {
       keyOf("user-ida"),
       encodeMenuSkeleton(withOrganizationSkeleton(EMPTY_MENU_SKELETON, ORG, [NOVA], 1)) ?? "",
     );
-    expect(rememberedMenuCandidates(ORG)).toBeUndefined();
+    expect(rememberedKeys(ORG)).toBeUndefined();
     openAccountLifetime("user-ida");
-    expect(rememberedMenuCandidates(ORG)).toEqual([asRemembered(NOVA)]);
+    expect(rememberedKeys(ORG)).toEqual([NOVA.key]);
   });
 
   it("reads nothing from a corrupt entry", () => {
     stored.set(keyOf("user-ida"), "{not a tree");
     openAccountLifetime("user-ida");
-    expect(rememberedMenuCandidates(ORG)).toBeUndefined();
+    expect(rememberedKeys(ORG)).toBeUndefined();
   });
 
   it("writes every organization drawn within one settling moment", () => {
@@ -696,6 +325,6 @@ describe("the tree in this browser", () => {
     closeAccountLifetime();
     expect(stored.has(keyOf("user-ida"))).toBe(false);
     openAccountLifetime("user-ida");
-    expect(rememberedMenuCandidates(ORG)).toBeUndefined();
+    expect(rememberedKeys(ORG)).toBeUndefined();
   });
 });

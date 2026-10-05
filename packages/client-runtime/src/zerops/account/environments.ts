@@ -101,7 +101,7 @@ import {
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import type { InvalidationBus } from "../knowledge/invalidation.ts";
 import type { PlatformSignal } from "../knowledge/signals.ts";
-import { heldCandidates, type CandidateRow } from "../projections/candidates.ts";
+import { finishedEnableAt, heldCandidates, type CandidateRow } from "../projections/candidates.ts";
 
 // ── Ports ────────────────────────────────────────────────────────────────────────────────────
 
@@ -143,11 +143,6 @@ export interface AccountEnvironmentPorts {
      * (`keptSessions.ts`): it starts past the mint pace and spends none of it. Absent: none is.
      */
     readonly kept?: (key: TargetKey) => boolean;
-    /**
-     * Each Mate's backoff cap as loads keep it (`doorCaps.ts`). Absent: every load starts each
-     * ladder over.
-     */
-    readonly capped?: ExchangeDriverPorts<DoorCredential>["capped"];
     /** The supervisor's `retryNow` for a link in backoff. */
     readonly retryLink: (environmentId: EnvironmentId) => void;
     /** `catalog.remove`: the registration is released; drafts keep their keys (AL-13). */
@@ -183,9 +178,9 @@ export interface AccountEnvironmentPorts {
   /**
    * HQ's index of the Mates the reader observes: the project whose Mate serves an environment
    * (krok-a-hub §3). A route or an action no record or descriptor names finds its target through
-   * it, with no descriptor sweep. Absent: it names none.
+   * it, with no descriptor sweep. Null where HQ names none, or is not read.
    */
-  readonly hqIndex?: {
+  readonly hqIndex: {
     readonly projectOf: (environmentId: EnvironmentId) => string | null;
     readonly subscribe: (listener: () => void) => () => void;
   };
@@ -201,19 +196,20 @@ export interface AccountEnvironmentPorts {
   /**
    * The projects whose Mate HQ holds online now: each proves its container up without a probe
    * (`ContainerStore.setOnline`). Null while HQ's word is not current: a Mate first listed
-   * meanwhile waits for it, a bounded while. Without it, every container is read as before.
+   * meanwhile waits for it, a bounded while. `"absent"` where no HQ will answer at all: every
+   * container is read at once, as the listing says.
    */
-  readonly online?: {
-    readonly read: () => ReadonlySet<string> | null;
+  readonly online: {
+    readonly read: () => ReadonlySet<string> | null | "absent";
     readonly subscribe: (listener: () => void) => () => void;
   };
   /**
    * The organization whose official HQ's word on its Mates is current: a project it lists that HQ
    * does not hold online — no Mate of HQ's there, or one HQ holds offline — is read only once a
-   * lease waits on it (`ContainerStore.setHqScope`). Null while no official HQ's word is; absent,
-   * every listed container is read as the listing says.
+   * lease waits on it (`ContainerStore.setHqScope`). Null while no official HQ's word is: every
+   * listed container is read as the listing says.
    */
-  readonly hqOrganization?: {
+  readonly hqOrganization: {
     readonly read: () => string | null;
     readonly subscribe: (listener: () => void) => () => void;
   };
@@ -436,6 +432,13 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   >();
   const listeners = new Set<() => void>();
   const detailLeases = new Map<string, Fiber.Fiber<void>>();
+  /**
+   * The processes each project of the active organization is read for while a container of it is
+   * ACTIVE without its address — the listing reads from them whether the platform is turning its
+   * address on (`subdomainEnableIn`) — and, once its enable finished, a direct read of its services
+   * after that, which says whether the record caught up: what lets each go.
+   */
+  const addressWatch = new Map<string, () => void>();
   /** The project lease each drawn Mate's project holds, so its Mate is listed (`updateDrawn`). */
   const drawnLeases = new Map<string, Fiber.Fiber<void>>();
   const detailFailures = new Map<string, LeaseAdmissionError>();
@@ -573,7 +576,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
 
   /** The listed Mate of the project HQ's index names for an environment, once its services are read. */
   const hintedTarget = (environmentId: EnvironmentId): TargetKey | null => {
-    const projectId = ports.hqIndex?.projectOf(environmentId) ?? null;
+    const projectId = ports.hqIndex.projectOf(environmentId);
     if (projectId === null) return null;
     return (
       rows.find((row) => row.project.id === projectId && row.service !== undefined)?.key ?? null
@@ -613,9 +616,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       drawn.flatMap((environmentId) => {
         const projectId =
           stores!.records.list().find((record) => record.environmentId === environmentId)
-            ?.projectRef?.projectId ??
-          ports.hqIndex?.projectOf(environmentId) ??
-          null;
+            ?.projectRef?.projectId ?? ports.hqIndex.projectOf(environmentId);
         return projectId !== null &&
           projectRefOf(projectId)?.organization.organizationId === activeOrganization
           ? [projectId]
@@ -721,7 +722,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     install,
     readDescriptor: ports.door.readDescriptor,
     ...(ports.door.kept === undefined ? {} : { kept: ports.door.kept }),
-    ...(ports.door.capped === undefined ? {} : { capped: ports.door.capped }),
     retryLink: ports.door.retryLink,
     refreshPresence: (key) => {
       const organizationId = organizationOf(key) ?? activeOrganization;
@@ -810,15 +810,11 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       route === null
         ? null
         : (stores.records.list().find((record) => record.environmentId === route)?.projectRef
-            ?.projectId ??
-          ports.hqIndex?.projectOf(route) ??
-          null);
+            ?.projectId ?? ports.hqIndex.projectOf(route));
     const actionProjects = [...actions].map(
       ({ environmentId }) =>
         stores!.records.list().find((record) => record.environmentId === environmentId)?.projectRef
-          ?.projectId ??
-        ports.hqIndex?.projectOf(environmentId) ??
-        null,
+          ?.projectId ?? ports.hqIndex.projectOf(environmentId),
     );
     const wanted = new Set(
       [onScreen, routedProject, ...actionProjects].filter(
@@ -988,6 +984,72 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     notify();
   };
 
+  /**
+   * Reads the processes — running, and the newest history — of every listed project of the active
+   * organization with a container ACTIVE without its address, for as long as it lacks one: its
+   * address landing, the project leaving the listing or the organization leaving view lets the
+   * read go. Each time an enable of such a container is read as finished, its project's services
+   * are read again, directly, after it.
+   */
+  const updateAddressWatch = () => {
+    if (closed) return;
+    const lacking = new Map<string, ProjectRef>();
+    for (const row of rows) {
+      if (row.presence !== "known" || row.service?.status !== "ACTIVE") continue;
+      if (row.containerOrigin !== undefined || lacking.has(row.project.id)) continue;
+      const ref = projectRefOf(row.project.id);
+      if (ref !== undefined && ref.organization.organizationId === activeOrganization)
+        lacking.set(row.project.id, ref);
+    }
+    for (const [projectId, stop] of addressWatch) {
+      if (lacking.has(projectId)) continue;
+      addressWatch.delete(projectId);
+      stop();
+    }
+    for (const [projectId, project] of lacking) {
+      if (addressWatch.has(projectId)) continue;
+      const lease = run(
+        Effect.scoped(
+          Effect.all([
+            data.acquire({ kind: "project-activity", project }),
+            data.acquire({ kind: "project-process-history", project, before: null, limit: 100 }),
+          ]).pipe(Effect.andThen(Effect.never)),
+        ).pipe(Effect.ignore),
+      );
+      // One direct read of its services after each enable read as finished: a fresher record.
+      let checkedAfter: string | null = null;
+      let check: Fiber.Fiber<void> | null = null;
+      const recheck = (read: ProjectActivityRead) => {
+        if (closed) return;
+        let ended: string | null = null;
+        for (const row of rows) {
+          if (row.project.id !== projectId || row.service === undefined) continue;
+          if (row.containerOrigin !== undefined) continue;
+          const at = finishedEnableAt(read, row.service.id);
+          if (at !== null && (ended === null || at > ended)) ended = at;
+        }
+        if (ended === null || ended === checkedAfter) return;
+        checkedAfter = ended;
+        if (check !== null) run(Fiber.interrupt(check));
+        check = run(
+          Effect.scoped(
+            data
+              .acquire({ kind: "project-services-check", project })
+              .pipe(Effect.andThen(Effect.never)),
+          ).pipe(Effect.ignore),
+        );
+      };
+      const unsubscribe = atomRegistry.subscribe(data.reads.activity(project), recheck, {
+        immediate: true,
+      });
+      addressWatch.set(projectId, () => {
+        unsubscribe();
+        run(Fiber.interrupt(lease));
+        if (check !== null) run(Fiber.interrupt(check));
+      });
+    }
+  };
+
   // ── The index ──────────────────────────────────────────────────────────────────────────────
 
   let indexed: {
@@ -1063,7 +1125,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     // speaks for and does not — is read on sight; what it speaks for before what it holds online,
     // as HQ's answer reads what waited for it.
     const updateHqScope = () => {
-      const organizationId = ports.hqOrganization?.read() ?? null;
+      const organizationId = ports.hqOrganization.read();
       const spoken = listings.find((entry) => entry.organizationId === organizationId);
       containers.setHqScope(
         spoken === undefined
@@ -1073,7 +1135,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     };
     const updateOnline = () => {
       updateHqScope();
-      containers.setOnline(ports.online === undefined ? new Set() : ports.online.read());
+      containers.setOnline(ports.online.read());
     };
     updateOnline();
     const holdBackground = () => driver.holdBackground(ports.pressInFlight?.read() ?? false);
@@ -1100,13 +1162,13 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       }),
       ports.records.listen(registrationsChanged),
       ports.pressInFlight?.subscribe(holdBackground) ?? (() => undefined),
-      ports.hqIndex?.subscribe(() => {
+      ports.hqIndex.subscribe(() => {
         updateRoute();
         updateActions();
         updateDrawn();
-      }) ?? (() => undefined),
-      ports.online?.subscribe(updateOnline) ?? (() => undefined),
-      ports.hqOrganization?.subscribe(updateOnline) ?? (() => undefined),
+      }),
+      ports.online.subscribe(updateOnline),
+      ports.hqOrganization.subscribe(updateOnline),
       ports.closeOff?.subscribe(updateCloseOff) ?? (() => undefined),
       ports.closeOffPending?.subscribe(updateCloseOff) ?? (() => undefined),
       ports.catalog.listen({
@@ -1126,6 +1188,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           const listedRows = next.flatMap(({ listing }) => heldCandidates(listing).rows);
           const moved = !sameItems(rows, listedRows);
           if (moved) rows = listedRows;
+          updateAddressWatch();
           // The route's target first, so its container is read before any other's.
           updateRoute();
           updateActions();
@@ -1166,6 +1229,9 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       // the screen stays as the Mate left last.
       connect: (key, reason) => {
         const letGo = driver.hold(key, "user");
+        // The person's Try now asks its container too: a level it reads past its cap, or a server
+        // that stopped answering, is read again at once.
+        containers.request(key, { fresh: true });
         return driver.connect(key, reason).then((outcome) => {
           if (outcome._tag === "Connected" && !viewed.includes(key)) keepRecent(key);
           letGo();
@@ -1202,6 +1268,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         activeOrganization = organizationId;
         updateRoute();
         updateDrawn();
+        updateAddressWatch();
       },
       setOnScreen: (projectId) => {
         if (onScreen === projectId) return;
@@ -1262,6 +1329,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         checks.clear();
         for (const fiber of detailLeases.values()) run(Fiber.interrupt(fiber));
         detailLeases.clear();
+        for (const stop of addressWatch.values()) stop();
+        addressWatch.clear();
         for (const fiber of drawnLeases.values()) run(Fiber.interrupt(fiber));
         drawnLeases.clear();
         detailFailures.clear();

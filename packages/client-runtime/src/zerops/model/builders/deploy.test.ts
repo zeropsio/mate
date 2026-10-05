@@ -4,9 +4,10 @@ import type { ZeropsCall } from "../types.ts";
 import { buildDeployFields } from "./deploy.ts";
 import type { OperationBuildContext } from "./shared.ts";
 
+/** Every build a result names still runs. */
 const CONTEXT: OperationBuildContext = {
-  nowMs: Date.parse("2026-09-01T00:01:00.000Z"),
   projectId: undefined,
+  builds: () => "running",
 };
 
 function deployCall(overrides: Partial<ZeropsCall> & { readonly result?: unknown }): ZeropsCall {
@@ -67,7 +68,9 @@ describe("buildDeployFields — the five pipeline slots, from birth to settle", 
     { name: "queued while the call runs", overrides: {}, expected: five("queued", "Queued") },
     {
       name: "queued while the triggered build runs",
-      overrides: { result: { status: "BUILD_TRIGGERED", targetService: "apidev" } },
+      overrides: {
+        result: { status: "BUILD_TRIGGERED", targetService: "apidev", appVersionId: "av-1" },
+      },
       expected: five("queued", "Queued"),
     },
     {
@@ -695,5 +698,36 @@ describe("buildDeployFields — why a git push failed", () => {
     { call: "pushFailed", expected: { reason: "GIT_TOKEN rejected" } },
   ] as const)("$call", ({ call, expected }) => {
     expect(buildDeployFields(GIT_PUSH_CASES[call], CONTEXT).explanation).toEqual(expected);
+  });
+});
+
+describe("buildDeployFields — a batch whose builds zcp stopped following reads them", () => {
+  const input = {
+    targets: [
+      { sourceService: "apidev", targetService: "apistage" },
+      { sourceService: "webdev", targetService: "webstage" },
+    ],
+  };
+  const triggered = (target: string, appVersionId: string) => ({
+    target: { targetService: target },
+    result: { targetService: target, status: "BUILD_TRIGGERED", timedOut: true, appVersionId },
+    startedAt: "2026-09-01T00:00:00Z",
+    endedAt: "2026-09-01T00:00:40Z",
+  });
+  const call = deployCall({
+    toolName: "zerops_deploy_batch",
+    input,
+    result: { entries: [triggered("apistage", "av-api"), triggered("webstage", "av-web")] },
+  });
+
+  it.each([
+    { api: "finished", web: "finished", phase: "done" },
+    { api: "finished", web: "running", phase: "running" },
+    { api: "unread", web: "finished", phase: "running" },
+    { api: "failed", web: "running", phase: "failed" },
+    { api: "unobservable", web: "finished", phase: "uncertain" },
+  ] as const)("apistage $api, webstage $web: $phase", ({ api, web, phase }) => {
+    const builds = (appVersionId: string) => (appVersionId === "av-api" ? api : web);
+    expect(buildDeployFields(call, { projectId: undefined, builds }).phaseOverride).toBe(phase);
   });
 });

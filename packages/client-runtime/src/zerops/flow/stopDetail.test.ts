@@ -612,7 +612,7 @@ const PLATFORM: Shown<ReadonlyArray<StopService>> = {
   freshness: { kind: "live" },
 };
 
-const GITEA: ReadonlyArray<EnvironmentServiceState> = [
+const STAGE_SERVICES: ReadonlyArray<EnvironmentServiceState> = [
   {
     hostname: "web",
     repository: "web",
@@ -641,7 +641,7 @@ const OFFERS: ReadonlyArray<ZeropsRouteOffer> = [
 const rowsOf = (platform: Shown<ReadonlyArray<StopService>>) =>
   serviceRows({
     environment: "production",
-    services: GITEA,
+    services: STAGE_SERVICES,
     platform,
     mainHead: undefined,
     routes: ROUTES,
@@ -694,7 +694,7 @@ describe("serviceRows", () => {
   ])("leaves out $name", ({ hostname }) => {
     const rows = serviceRows({
       environment: "production",
-      services: [...GITEA, { hostname: "db", appVersionName: "v1" }],
+      services: [...STAGE_SERVICES, { hostname: "db", appVersionName: "v1" }],
       platform: PLATFORM,
       mainHead: undefined,
       routes: ROUTES,

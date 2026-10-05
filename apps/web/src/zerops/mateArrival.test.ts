@@ -102,6 +102,38 @@ describe("arrivalSteps — what the Mate's own setup says (`/mate/setup.json`)",
     expect(you).toEqual({ id: "you", label: "Wren's agent is ready", state: "done" });
   });
 });
+// Inside a Zerops project the Mate's setup is always served: a read turned away, or answered with
+// something else, is a failure the arrival says — never a Mate that has no setup to tell.
+describe("arrivalSteps — a setup that can't be read", () => {
+  it.each([
+    {
+      failure: "refused",
+      why: "Its container turned the read of its setup away.",
+    },
+    {
+      failure: "invalid",
+      why: "Its container answered with something that isn't its setup.",
+    },
+  ] as const)("says why where its setup was $failure", ({ failure, why }) => {
+    const steps = arrivalSteps(
+      { ...deriveBirthProgress(CREATING, NOW), setupFailure: failure },
+      WREN,
+      NOW,
+    );
+    expect(steps.map((step) => `${step.id}:${step.state}`)).toEqual([
+      "copy:done",
+      "workspace:active",
+      "setup:failed",
+      "you:you",
+    ]);
+    expect(steps.find((step) => step.id === "setup")).toEqual({
+      id: "setup",
+      label: "Wren's setup",
+      state: "failed",
+      why,
+    });
+  });
+});
 // A New project's first Mate has no stand-up, so its Git access is the one place its HQ says it
 // cannot come: failed, with why and what the person can do — and done once it is granted.
 describe("arrivalSteps — Git access that failed", () => {
@@ -147,6 +179,47 @@ describe("arrivalSteps — Git access that failed", () => {
       id: "git",
       label: "Wren's Git access",
       state: "done",
+    });
+  });
+});
+
+// A stand-up that ended short says why, where the Mate's own server says it.
+describe("arrivalSteps — a stand-up that failed", () => {
+  const standUpStep = (setup: Parameters<typeof arrivalSteps>[0]["setup"]) =>
+    arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN, NOW).find(
+      (step) => step.id === "standup",
+    );
+
+  it.each([
+    {
+      case: "its process stopped",
+      standupFailure: "process_gone",
+      why: "The stand-up's process stopped.",
+    },
+    {
+      case: "its turn ended before the previews were built",
+      standupFailure: "stage_not_built",
+      why: "Development is up; the previews were not built — ask the agent to build them, or deploy them by hand.",
+    },
+    {
+      case: "its ask never went out: the retry says it",
+      standupFailure: "send_failed",
+      why: undefined,
+    },
+    { case: "why not said", standupFailure: undefined, why: undefined },
+  ] as const)("$case", ({ standupFailure, why }) => {
+    expect(
+      standUpStep({
+        git: "done",
+        signin: "done",
+        standup: "failed",
+        ...(standupFailure === undefined ? {} : { standupFailure }),
+      }),
+    ).toEqual({
+      id: "standup",
+      label: "Wren stands up development",
+      state: "failed",
+      ...(why === undefined ? {} : { why }),
     });
   });
 });

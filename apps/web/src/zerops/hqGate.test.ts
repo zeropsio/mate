@@ -29,7 +29,7 @@ const gate = (
 ) =>
   resolveHqGate({
     organization: { id: "org-1" },
-    viewer: { userId: "u-1", clientUserId: "cu-1", roleCode, canCreateProjects: false },
+    membership: { roleCode, canCreateProjects: false },
     accountHq: { status, hq, admins: options.admins ?? [] },
     pathname: options.pathname ?? "/zerops",
   });
@@ -69,7 +69,7 @@ describe("resolveHqGate", () => {
     expect(
       resolveHqGate({
         organization: { id: "org-1" },
-        viewer: undefined,
+        membership: undefined,
         accountHq: { status: "ready", hq: NONE, admins: [] },
         pathname: "/zerops",
       }),
@@ -92,7 +92,7 @@ describe("resolveHqGate", () => {
     expect(
       resolveHqGate({
         organization: null,
-        viewer: undefined,
+        membership: undefined,
         accountHq: { status: "idle", hq: NONE, admins: [] },
         pathname: "/zerops",
       }),

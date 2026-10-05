@@ -1138,7 +1138,7 @@ const WsZeropsDataConsoleCallRpc = Rpc.make(WS_METHODS.zeropsDataConsoleCall, {
  *
  * A read, and the only party that can answer it: the checkout lives in the dev
  * container and its credential helper lives beside it, so neither the browser
- * nor Gitea can say whether this Mate can actually reach its remote. The Git
+ * nor the remote's host can say whether this Mate can actually reach it. The Git
  * tab asks it rather than inferring health from a remote being configured.
  */
 const WsZeropsGitProbeRemoteRpc = Rpc.make(WS_METHODS.zeropsGitProbeRemote, {
@@ -1147,7 +1147,7 @@ const WsZeropsGitProbeRemoteRpc = Rpc.make(WS_METHODS.zeropsGitProbeRemote, {
   error: Schema.Union([ZeropsGitRemoteProbeError, EnvironmentAuthorizationError]),
 });
 
-/** The console child process's own lifecycle — idle/starting/ready/unavailable/unsupported — so the panel can show a spawn/degrade state without polling. */
+/** The console child process's own lifecycle — idle/starting/ready/unavailable — so the panel can show a spawn/degrade state without polling. */
 const WsSubscribeZeropsDataConsoleRpc = Rpc.make(WS_METHODS.subscribeZeropsDataConsole, {
   payload: Schema.Struct({}),
   success: ZeropsDataConsoleSessionEvent,

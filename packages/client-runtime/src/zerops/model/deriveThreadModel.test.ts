@@ -3,16 +3,13 @@ import type { OrchestrationThreadActivity, ZeropsLifecycle } from "@t3tools/cont
 
 import type { Known } from "../knowledge/index.ts";
 import { weatherdashFirstDeploy } from "../operations/__fixtures__/index.ts";
+import type { DeployBuildRead } from "../activity/deployBuild.ts";
 import { deriveZeropsThreadModel } from "./deriveThreadModel.ts";
-
-/** No thread in this block holds a triggered build, so the clock never moves a card. */
-const NOW_MS = Date.parse("2026-09-23T00:00:00.000Z");
 
 describe("deriveZeropsThreadModel", () => {
   it("composes calls, entries, zeropsActivityIds, session and running from one real thread", () => {
     const model = deriveZeropsThreadModel({
       activities: weatherdashFirstDeploy.activities,
-      nowMs: NOW_MS,
     });
 
     expect(model.calls.length).toBeGreaterThan(0);
@@ -32,7 +29,6 @@ describe("deriveZeropsThreadModel", () => {
   it("entries are sorted by anchor order, matching the calls' own anchor order for per-call operations", () => {
     const model = deriveZeropsThreadModel({
       activities: weatherdashFirstDeploy.activities,
-      nowMs: NOW_MS,
     });
     const anchors = model.entries.map((e) => e.anchorAt);
     const sorted = [...anchors].sort();
@@ -56,7 +52,7 @@ describe("deriveZeropsThreadModel", () => {
         },
       },
     ] as never;
-    const model = deriveZeropsThreadModel({ activities, runningTurnId, nowMs: NOW_MS });
+    const model = deriveZeropsThreadModel({ activities, runningTurnId });
     expect(model.running?.kind).toBe("deploy");
     expect(model.running?.phase).toBe("running");
   });
@@ -93,8 +89,7 @@ describe("deriveZeropsThreadModel", () => {
       },
     });
     const derive = (activities: ReadonlyArray<unknown>) =>
-      deriveZeropsThreadModel({ activities: activities as never, runningTurnId, nowMs: NOW_MS })
-        .running;
+      deriveZeropsThreadModel({ activities: activities as never, runningTurnId }).running;
     expect(derive([started])?.standUpProgress).toBeUndefined();
     const running = derive([
       started,
@@ -127,12 +122,10 @@ describe("deriveZeropsThreadModel", () => {
 
     const live = deriveZeropsThreadModel({
       activities: [],
-      nowMs: NOW_MS,
       lifecycle: known({ kind: "live" }),
     });
     const stale = deriveZeropsThreadModel({
       activities: [],
-      nowMs: NOW_MS,
       lifecycle: known({
         kind: "stale",
         reason: { kind: "source-recovering", retryAtMs: null },
@@ -141,7 +134,6 @@ describe("deriveZeropsThreadModel", () => {
     });
     const unread = deriveZeropsThreadModel({
       activities: [],
-      nowMs: NOW_MS,
       lifecycle: { state: "unread", waitingFor: "mate-session" },
     });
 
@@ -151,10 +143,8 @@ describe("deriveZeropsThreadModel", () => {
   });
 });
 
-describe("deriveZeropsThreadModel — a deploy past its cap", () => {
+describe("deriveZeropsThreadModel — a triggered build reads its own end", () => {
   const SETTLED_AT = "2026-09-23T10:00:00.000Z";
-  const settledMs = Date.parse(SETTLED_AT);
-  const TEN_MINUTES_MS = 10 * 60 * 1000;
 
   const deployActivities = (
     status: "completed" | "failed",
@@ -202,31 +192,64 @@ describe("deriveZeropsThreadModel — a deploy past its cap", () => {
   };
 
   const deployAt = (
-    nowMs: number,
     activities: ReadonlyArray<OrchestrationThreadActivity>,
+    build?: DeployBuildRead,
     lifecycle?: Known<ZeropsLifecycle>,
   ) => {
+    const asked: string[] = [];
     const model = deriveZeropsThreadModel({
       activities,
       runningTurnId: null,
-      nowMs,
+      ...(build !== undefined
+        ? {
+            builds: (appVersionId: string) => {
+              asked.push(appVersionId);
+              return build;
+            },
+          }
+        : {}),
       ...(lifecycle !== undefined ? { lifecycle } : {}),
     });
     const entry = model.entries[0];
-    return { model, deploy: entry?.kind === "operation" ? entry.operation : undefined };
+    return { model, asked, deploy: entry?.kind === "operation" ? entry.operation : undefined };
   };
 
-  const buildTriggered = deployActivities("completed", { status: "BUILD_TRIGGERED" });
+  /** zcp's poll gave up on it while it builds, naming the build it followed. */
+  const gaveUp = deployActivities("completed", {
+    status: "BUILD_TRIGGERED",
+    timedOut: true,
+    appVersionId: "av-1",
+    message: "Build triggered from appdev to appdev via SSH",
+  });
 
-  it("a deploy call settled 10 min ago with no terminal process reads uncertain, with one affordance", () => {
-    const { model, deploy } = deployAt(
-      settledMs + TEN_MINUTES_MS,
-      buildTriggered,
-      lifecycleWithProject,
-    );
+  it.each([
+    { build: "unread", phase: "running", word: "Build triggered" },
+    { build: "running", phase: "running", word: "Build triggered" },
+    { build: "finished", phase: "done", word: "Deployed" },
+    { build: "failed", phase: "failed", word: "Failed" },
+    { build: "unobservable", phase: "uncertain", word: "Unconfirmed" },
+  ] as const)(
+    "its build $build: $phase, asked by the appVersion it named",
+    ({ build, phase, word }) => {
+      const { model, asked, deploy } = deployAt(gaveUp, build, lifecycleWithProject);
 
-    expect(deploy?.phase).toBe("uncertain");
-    expect(deploy?.statusWord).toBe("Unconfirmed");
+      expect([deploy?.phase, deploy?.statusWord]).toEqual([phase, word]);
+      expect(asked).toContain("av-1");
+      expect(model.running?.key).toBe(phase === "running" ? deploy?.key : undefined);
+    },
+  );
+
+  it("an ended build speaks for itself, not in zcp's words from before it ended", () => {
+    const failed = deployAt(gaveUp, "failed", lifecycleWithProject).deploy;
+    const done = deployAt(gaveUp, "finished", lifecycleWithProject).deploy;
+
+    expect(failed?.closing).toBe("Failed.");
+    expect(done?.explanation).toBeUndefined();
+  });
+
+  it("one it cannot ask about reads uncertain, with one affordance", () => {
+    const { model, deploy } = deployAt(gaveUp, "unobservable", lifecycleWithProject);
+
     expect(deploy?.closing).toBe("No result from the build. Check it in Zerops.");
     expect(deploy?.links).toEqual([
       { label: "Open in Zerops", url: "https://app.zerops.io/project/proj-1" },
@@ -236,7 +259,7 @@ describe("deriveZeropsThreadModel — a deploy past its cap", () => {
   });
 
   it("an uncertain deploy with no known envelope states the cause and offers no link", () => {
-    const { deploy } = deployAt(settledMs + TEN_MINUTES_MS, buildTriggered, {
+    const { deploy } = deployAt(gaveUp, "unobservable", {
       state: "unread",
       waitingFor: "mate-session",
     });
@@ -246,35 +269,53 @@ describe("deriveZeropsThreadModel — a deploy past its cap", () => {
     expect(deploy?.links).toEqual([]);
   });
 
-  it("a triggered build short of the cap is still running", () => {
-    const { model, deploy } = deployAt(
-      settledMs + TEN_MINUTES_MS - 1,
-      buildTriggered,
-      lifecycleWithProject,
-    );
+  it.each([
+    ["no read of the platform given", undefined],
+    ["a build read that would say it runs", "running"],
+  ] as const)(
+    "a triggered build that names no build has no handle: uncertain (%s)",
+    (_label, build) => {
+      const { deploy } = deployAt(
+        deployActivities("completed", { status: "BUILD_TRIGGERED", timedOut: true }),
+        build,
+        lifecycleWithProject,
+      );
 
-    expect(deploy?.phase).toBe("running");
-    expect(deploy?.statusWord).toBe("Build triggered");
-    expect(deploy?.links).toEqual([]);
-    expect(model.running?.key).toBe(deploy?.key);
+      expect(deploy?.phase).toBe("uncertain");
+    },
+  );
+
+  it("no read of the platform given, a build it named is not one it can ask about", () => {
+    expect(deployAt(gaveUp, undefined, lifecycleWithProject).deploy?.phase).toBe("uncertain");
   });
 
   it.each([
-    ["deployed", deployActivities("completed", { status: "DEPLOYED" })],
-    ["build failed", deployActivities("completed", { status: "BUILD_FAILED" })],
+    ["deployed", deployActivities("completed", { status: "DEPLOYED", appVersionId: "av-1" })],
+    [
+      "build failed",
+      deployActivities("completed", { status: "BUILD_FAILED", appVersionId: "av-1" }),
+    ],
     ["a failed call", deployActivities("failed", { error: "Build failed." })],
+    // An older zcp named no build on the results it ended itself: its terminal word stands.
+    [
+      "deployed, by a zcp that named no build",
+      deployActivities("completed", { status: "DEPLOYED" }),
+    ],
+    [
+      "build failed, by a zcp that named no build",
+      deployActivities("completed", { status: "BUILD_FAILED", failedPhase: "build" }),
+    ],
   ] as const)(
-    "a terminal process before the cap never reads uncertain (%s)",
+    "a result that settled its build is the verdict, whatever a read says (%s)",
     (_label, activities) => {
-      const atSettle = deployAt(settledMs, activities, lifecycleWithProject).deploy;
-      const hourLater = deployAt(
-        settledMs + 6 * TEN_MINUTES_MS,
-        activities,
-        lifecycleWithProject,
-      ).deploy;
+      const settled = deployAt(activities, "running", lifecycleWithProject);
+      const unobservable = deployAt(activities, "unobservable", lifecycleWithProject);
 
-      expect(hourLater?.phase).not.toBe("uncertain");
-      expect(hourLater).toEqual(atSettle);
+      expect(settled.deploy?.phase).not.toBe("running");
+      expect(settled.deploy?.phase).not.toBe("uncertain");
+      expect(deployAt(activities).deploy?.phase).toBe(settled.deploy?.phase);
+      expect(settled.asked).toEqual([]);
+      expect(settled.deploy).toEqual(unobservable.deploy);
     },
   );
 });

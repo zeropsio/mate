@@ -32,7 +32,7 @@ import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvir
 import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
-import { beginPress, pressPlatform, pressRegistration, runPress } from "./matePress";
+import { beginPress, pressHold, pressPlatform, pressRegistration, runPress } from "./matePress";
 import { readZeropsCellOnce } from "./readZeropsCell";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -198,7 +198,6 @@ export function useEnvironmentCreation(): (
         agents: await readGroupAgents(request.environments),
         recipe: choice.recipe,
         withAgent: choice.withAgent,
-        register: true,
         ...(intent === undefined ? {} : { birth: intent }),
       });
       if (!isCurrent()) return { kind: "refused", reason: null };
@@ -210,6 +209,16 @@ export function useEnvironmentCreation(): (
         data: { runtime, organizationRef, projectRef },
         organizationId: organization.id,
       };
+      // Every press is held at HQ while it runs, so another browser never takes it for one that
+      // stopped, and one cut short is read as what it was making, in its application (B5).
+      const pressKind = withAgent ? "mate" : tier;
+      const hold =
+        pressKind === null
+          ? undefined
+          : pressHold(accountHqApi(client, organization.id, hq), {
+              kind: pressKind,
+              appId: group.groupId,
+            });
       const platform = pressPlatform(inputs, {
         register: pressRegistration(
           inputs,
@@ -228,6 +237,7 @@ export function useEnvironmentCreation(): (
             : { hq, groupId: group.groupId, kind: tier },
         ),
         hq,
+        hold,
         // Reads the latest shared-model projection; no platform request.
         readObservedServices: async (projectId) => {
           const services = inventoryRef.current.services.get(projectId);
@@ -269,6 +279,7 @@ export function useEnvironmentCreation(): (
         onProgress: (progress) => {
           if (isCurrent()) request.onProgress?.(progress);
         },
+        hold,
       });
       return { kind: "ran", outcome, withAgent };
     },

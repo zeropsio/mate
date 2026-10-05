@@ -659,7 +659,7 @@ describe("newMateDoor — whether the project takes another Mate, and why not", 
   });
 });
 
-/** An open change on the project's repositories, as the forge read it. */
+/** An open change on the project's repositories, as HQ streams it. */
 function change(overrides: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {
     repository: "group",
@@ -667,7 +667,7 @@ function change(overrides: Partial<FlowPullRequest> = {}): FlowPullRequest {
     title: "Mate: the group's import files",
     kind: "recipe",
     mateProjectId: "cleo-project",
-    url: "https://gitea.example.test/beviro/group/pulls/11",
+    url: "https://hq.example.test/changes/beviro/group/11",
     mergeability: "mergeable",
     behind: false,
     merged: false,

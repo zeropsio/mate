@@ -52,7 +52,7 @@ import { environmentCatalog } from "../../connection/catalog";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { uuidv4 } from "../../lib/uuid";
 import { appAtomRegistry } from "../../state/atom-registry";
-import { loadAccountRecords, memoryIntents } from "./account-ports";
+import { hqAbsent, loadAccountRecords, memoryIntents } from "./account-ports";
 import { closeOffFacts } from "./close-off";
 import { mateDescriptors } from "./mate-descriptors";
 import { openMateRoute } from "./open-mate";
@@ -300,6 +300,7 @@ export async function mobileAccountPorts(input: {
       route: openMateRoute,
       // No HQ word on the phone: a Mate is held only on what its open read here (`close-off.ts`).
       closeOffPending: closeOffFacts,
+      ...hqAbsent(),
     },
   };
 }

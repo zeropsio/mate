@@ -9,6 +9,7 @@ import {
   type HqApi,
   type OpenHqSocket,
 } from "./client.ts";
+import { ZEROPS_UNANSWERED } from "./refusals.ts";
 
 /** No socket is opened by a call that is no structure stream. */
 const NO_SOCKET: OpenHqSocket = () => {
@@ -105,7 +106,7 @@ describe("makeHqApi — a connection that drops", () => {
     });
     await expect(api.structure()).rejects.toMatchObject({ kind: "unavailable", code: "network" });
     expect(hq.seen.filter((entry) => entry.path === "/api/structure")).toHaveLength(0);
-    await expect(api.structure()).resolves.toEqual({ apps: [] });
+    await expect(api.structure()).resolves.toEqual({ ungrouped: [], apps: [] });
     expect(hq.seen.filter((entry) => entry.path === "/api/structure")).toHaveLength(1);
   });
 
@@ -329,7 +330,7 @@ describe("makeHqApi", () => {
 
     await expect(api.structure()).rejects.toMatchObject({ code: "session_required" });
     expect(door.minted).toEqual(["door-1"]);
-    await expect(api.structure()).resolves.toEqual({ apps: [] });
+    await expect(api.structure()).resolves.toEqual({ ungrouped: [], apps: [] });
     expect(door.minted).toEqual(["door-1", "door-2"]);
 
     const stuck = makeHqApi({
@@ -378,7 +379,7 @@ describe("makeHqApi", () => {
       await vi.advanceTimersByTimeAsync(1);
       await expect(first).rejects.toMatchObject({ kind: "unavailable", code: "network" });
 
-      await expect(api.structure()).resolves.toEqual({ apps: [] });
+      await expect(api.structure()).resolves.toEqual({ ungrouped: [], apps: [] });
       expect(door.minted).toEqual(["door-1", "door-2"]);
     } finally {
       deadlines.mockRestore();
@@ -400,6 +401,13 @@ describe("makeHqApi", () => {
       "a standby is unavailable",
       json(503, { code: "not_active" }),
       { kind: "unavailable", code: "not_active" },
+    ],
+    // The owner, 2026-10-05: a write HQ refused because Zerops did not answer its roles wrote
+    // nothing — it is no write that may have landed, and says to try again.
+    [
+      "a write whose roles Zerops left unanswered is refused, not uncertain",
+      json(503, { code: "zerops_unanswered" }),
+      { kind: "unavailable", code: "zerops_unanswered", message: ZEROPS_UNANSWERED },
     ],
     // A read with no answer is HQ not answering (`a connection that drops`); a write may have landed.
     [
@@ -687,6 +695,7 @@ describe("makeHqApi — the structure socket", () => {
         changes: null,
         mates: null,
         people: null,
+        presses: {},
       },
       { kind: "change", appId: "app-1", app: { id: "app-1", name: "Acme", projects: [] } },
     ]);
@@ -1736,7 +1745,7 @@ describe("makeHqApi — a write HQ may have made", () => {
     const hq = fakeHq((seen) => {
       if (seen.path === "/api/apps/app-1") return json(503, { code: "internal_error" });
       if (seen.path === "/api/structure")
-        return json(200, { apps: [{ id: "app-1", name: "Harbor" }] });
+        return json(200, { apps: [{ id: "app-1", name: "Harbor", projects: [] }] });
       return undefined;
     });
     const api = makeHqApi({

@@ -3155,11 +3155,8 @@ function dropSupersededToolUpdatedActivitiesForTest(
   });
 }
 
-/** No vector thread holds a triggered build, so the clock never moves a card. */
-const VECTOR_NOW_MS = Date.parse("2026-09-23T00:00:00.000Z");
-
 function deriveVectorResult(activities: ReadonlyArray<OrchestrationThreadActivity>) {
-  const model = deriveZeropsThreadModel({ activities, nowMs: VECTOR_NOW_MS });
+  const model = deriveZeropsThreadModel({ activities });
   const workEntries = deriveWorkLogEntries(activities, { exclude: model.zeropsActivityIds });
   const timelineEntries = deriveTimelineEntries([], [], workEntries, [], model.entries);
   return { model, workEntries, timelineEntries };

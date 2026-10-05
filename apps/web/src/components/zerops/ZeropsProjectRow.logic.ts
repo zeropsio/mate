@@ -17,9 +17,7 @@ import {
   formatMateFace,
   hasMate,
   isGenericPlatformError,
-  mayOffer,
   newMateTint,
-  type OfferAsker,
   readZeropsToolKind,
   readZeropsMembership,
   type ZeropsEnvironmentRole,
@@ -30,6 +28,7 @@ import {
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   HQ_PROJECT_NAME,
+  type HqMateOfferStates,
   type HqStructure,
   type OfficialHq,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -114,9 +113,8 @@ export interface ZeropsRowInput {
     readonly enable: boolean;
     readonly setUpMate: boolean;
     /**
-     * *Set up Mate* on an existing plain project (`plainZeropsProject`): HQ's structure is known and
-     * its rule lets the viewer write the new Mate's record (`create_mate_record`), which the press
-     * registers before its container.
+     * *Set up Mate* on an existing plain project (`plainZeropsProject`): HQ offers the viewer writing
+     * the new Mate's record (`create_mate_record`), which the press registers before its container.
      */
     readonly setUpPlainProject?: boolean;
     readonly start: boolean;
@@ -126,26 +124,27 @@ export interface ZeropsRowInput {
   };
 }
 
+const ROW_VERBS = (offered: boolean): ZeropsRowInput["can"] => ({
+  open: offered,
+  enable: offered,
+  setUpMate: offered,
+  start: offered,
+  restart: offered,
+  remove: offered,
+});
+
 /**
- * A row's verbs for this person: every one where its Mate's door opens for them — HQ's rule
- * (`observe_mate`) over what the client holds — none where it does not, nor where the client knows
- * nobody.
+ * A row's verbs for this person, none of them HQ's to enforce: opening is its Mate's door's, the
+ * rest Zerops' — each refusal shown as they word it. None where HQ refuses following its Mate
+ * (`observe_mate`): the door would refuse them too. Every one otherwise — where HQ offers it, has
+ * not said (an HQ from before its offers, a structure not read yet), or does not answer, and on a
+ * project HQ holds as no Mate. *Set up Mate* on a plain project only where HQ offers writing its
+ * Mate's record (`create_mate_record`), which the press registers and HQ enforces.
  */
-export function mateRowCan(
-  asker: OfferAsker | null,
-  projectId: string,
-  hqKnown = false,
-): ZeropsRowInput["can"] {
-  const opens = mayOffer(asker, "observe_mate", { projectId });
+export function mateRowCan(offers: HqMateOfferStates | undefined): ZeropsRowInput["can"] {
   return {
-    open: opens,
-    enable: opens,
-    setUpMate: opens,
-    setUpPlainProject:
-      opens && hqKnown && mayOffer(asker, "create_mate_record", { projectId, held: "none" }),
-    start: opens,
-    restart: opens,
-    remove: opens,
+    ...ROW_VERBS(offers?.held !== true || offers.observe.kind !== "refused"),
+    setUpPlainProject: offers?.held === false && offers.createRecord.kind === "allowed",
   };
 }
 
@@ -409,7 +408,9 @@ export function hqRecordedProjects(structure: HqStructure): ReadonlySet<string> 
   for (const app of structure.apps) {
     for (const project of app.projects) recorded.add(project.projectId);
     for (const id of app.contents?.deletingProjectIds ?? []) recorded.add(id);
-    for (const environment of app.environments ?? []) recorded.add(environment.projectId);
+    // Environments HQ refused this reader are still among its projects above.
+    const environments = Array.isArray(app.environments) ? app.environments : [];
+    for (const environment of environments) recorded.add(environment.projectId);
     for (const birth of app.births ?? []) {
       if (birth.projectId != null) recorded.add(birth.projectId);
     }
@@ -614,15 +615,18 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
 
 /**
  * The menu's Restart, offered whenever the Mate's container can be bounced:
- * the project is up and the container is known. Not a row verb — a running
- * Mate's primary action is to open or connect, and a restart is a quiet
- * recovery for the menu.
+ * the project is up and Zerops reports its container ACTIVE. One still on its
+ * first build, or already restarting, is the platform's to bring up — a restart
+ * would race it. Not a row verb — a running Mate's primary action is to open or
+ * connect, and a restart is a quiet recovery for the menu.
  */
 export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, can } = input;
   if (isZeropsToolCandidate(candidate)) return { kind: "none" };
   if (input.visibility === "listed") return { kind: "none" };
-  return can.restart && candidate.project.status === "ACTIVE" && candidate.service?.id !== undefined
+  return can.restart &&
+    candidate.project.status === "ACTIVE" &&
+    candidate.service?.status === "ACTIVE"
     ? { kind: "restart", label: "Restart" }
     : { kind: "none" };
 }

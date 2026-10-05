@@ -65,18 +65,26 @@ export {
 } from "./update.ts";
 export {
   birthIntentOf,
+  heldOf,
+  hqMateOffers,
   menuRowsFromHq,
   placeListing,
   placeProject,
   placeProjects,
   placementsOf,
+  type HqMateOfferStates,
   type HqPlacement,
 } from "./placement.ts";
+export { nextPressExpiry, pressElsewhere, type PressElsewhere } from "./pressElsewhere.ts";
 export {
   applyChangesEvent,
   applyAppReadsEvent,
+  applyPressesEvent,
   applyStructureEvent,
   structureEventOf,
+  type HqPressHold,
+  type HqPresses,
+  type HqPressesSent,
   type HqChanges,
   type HqMates,
   type HqAppReads,
@@ -91,7 +99,13 @@ export {
   type HqJob,
   type ServiceJobs,
 } from "./environments.ts";
-export { enrollmentRefusalWords, HQ_NOT_OPEN, hqRefusalWords, NO_HQ_WORDS } from "./refusals.ts";
+export {
+  enrollmentRefusalWords,
+  HQ_NOT_OPEN,
+  hqOfferWords,
+  hqRefusalWords,
+  NO_HQ_WORDS,
+} from "./refusals.ts";
 export {
   EMPTY_REGISTRY,
   registryFromHq,

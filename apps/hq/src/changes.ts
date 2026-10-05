@@ -3,7 +3,7 @@
  * application and the changes Mates deliver into them, the replacement of a pull request.
  *
  * A Mate works only in the application HQ holds it in: it names a repository by its name, and HQ
- * finds it there. Whether it may is `can` (`@t3tools/shared/zeropsPermissions`), asked here and
+ * finds it there. Whether it may is `can` (`permissions.ts`), asked here and
  * nowhere else — a Mate's writes over the org as every write is decided (`mateApp`, `mateChange`:
  * `roles.ts` `confirmingRefusal`), its fetches
  * over the org's view as every read is decided (`roles.ts` `view`, `mateFetch`); a person's reads
@@ -43,7 +43,8 @@ import {
   type RecipeTierResponse,
   hasServices,
 } from "@t3tools/shared/hqRecipe";
-import { type Decision, type Facts, REASONS, can } from "@t3tools/shared/zeropsPermissions";
+import { type Decision, REASONS } from "@t3tools/shared/zeropsPermissions";
+import { type Facts, can } from "./permissions.ts";
 import {
   SOURCE_FILE_MAX_BYTES,
   type RepositoryQuery,
@@ -66,7 +67,8 @@ import { GitHost, type PushedChange, mainOf } from "./gitHost.ts";
 import { heldOf } from "./held.ts";
 import { Leader, type NotLeader } from "./leader.ts";
 import { madeRepo } from "./reconcile.ts";
-import { Roles, confirmingRefusal } from "./roles.ts";
+import { appTarget } from "./offers.ts";
+import { Roles, confirmingRefusal, decidedFresh } from "./roles.ts";
 import { addRollout } from "./rollouts.ts";
 import { squashesOnMain } from "./squashes.ts";
 import type { ZeropsError } from "./zerops/api.ts";
@@ -530,11 +532,11 @@ export const changesLayer: Layer.Layer<
       const check = Effect.gen(function* () {
         const projects = yield* sql<{ readonly project_id: string }>`
           SELECT project_id FROM hq_app_project WHERE app_id::text = ${appId}`;
-        const projectIds = projects.map((row) => row.project_id);
+        const target = appTarget(projects);
         const decision =
           verb === "read_change"
-            ? readsChanges(userId, projectIds, yield* roles.view)
-            : can({ kind: "person", userId }, verb, { projectIds }, yield* roles.forWrite);
+            ? readsChanges(userId, target.projectIds, yield* roles.view)
+            : can({ kind: "person", userId }, verb, target, yield* roles.forWrite);
         if (!decision.allow) {
           yield* Effect.logInfo("change refused", { userId, verb, appId, reason: decision.reason });
           return yield* refuse("forbidden", decision.reason);
@@ -542,8 +544,13 @@ export const changesLayer: Layer.Layer<
         const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
         if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
       });
-      // A read is decided over the cached view; a write as every write is (F22).
-      return verb === "read_change" ? check : confirmingRefusal(check);
+      // A read is decided over the cached view; a write that can be undone as every such write is
+      // (F22); a merge or a close, which cannot, over roles read for it alone.
+      return verb === "read_change"
+        ? check
+        : verb === "merge_change" || verb === "close_change"
+          ? decidedFresh(check)
+          : confirmingRefusal(check);
     };
 
     /** A change of the application, or `change_not_found`. */

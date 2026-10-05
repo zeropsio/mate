@@ -25,6 +25,9 @@
  * @module groupDeploys
  */
 
+import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
+import type { ReleaseRollout } from "@t3tools/shared/hqRelease";
+
 import {
   environmentTierForRole,
   missingEnvironmentRows,
@@ -65,6 +68,10 @@ export interface GroupEnvironmentRowInput {
    * not read (audit D2: a service the project lacks is a person's to add).
    */
   readonly recipeServices?: ReadonlyArray<string> | undefined;
+  /** A production's newest release as HQ's rollout of it stands there (`HqEnvironment.release`). */
+  readonly release?: ReleaseRollout | null | undefined;
+  /** HQ bringing it up (`HqEnvironment.birth`). */
+  readonly birth?: EnvironmentBirth | null | undefined;
 }
 
 /**
@@ -209,6 +216,8 @@ export function environmentRowInputsOf(input: {
           ...unlisted.map((hostname) => state(hostname)),
         ],
         ...(recipeServices === undefined ? {} : { recipeServices }),
+        ...(environment.release === undefined ? {} : { release: environment.release }),
+        birth: environment.birth,
       };
     });
 }
@@ -278,6 +287,18 @@ export function groupStopsOf(input: {
   };
 }
 
+/**
+ * A production deploy that failed — the build's own failure, or HQ's refusal — as a release's: the
+ * job its rollout asked for (`cause: "release"`, `ref` its tag), or the job of the commit under way
+ * it left the service out for (`ReleaseRollout.leftOut`).
+ */
+export interface ReleaseDeployFailure {
+  /** The release whose rollout asked for it, or waited on it. */
+  readonly tag: string;
+  readonly service: string;
+  readonly sha: string;
+}
+
 /** What production runs and where its deploys failed, as a release reads them. */
 export interface ReleaseDeploys {
   /**
@@ -285,8 +306,10 @@ export interface ReleaseDeploys {
    * the version's name spells it.
    */
   readonly production: ReadonlyMap<string, string>;
-  /** `{service}@{sha}` → when it failed, for each production service whose newest deploy failed. */
-  readonly failed: ReadonlyMap<string, string>;
+  /** Each production service whose newest deploy failed, with the release it was that of. */
+  readonly failed: ReadonlyArray<ReleaseDeployFailure>;
+  /** Each production's newest release rollout, as HQ told it (`releaseInFlight`). */
+  readonly rollouts: ReadonlyArray<ReleaseRollout | null | undefined>;
 }
 
 /**
@@ -302,20 +325,28 @@ export function releaseDeploys(
   environments: ReadonlyArray<GroupEnvironmentRowInput>,
 ): ReleaseDeploys {
   const production = new Map<string, string>();
-  const failed = new Map<string, string>();
+  const failed: Array<ReleaseDeployFailure> = [];
+  const rollouts: Array<ReleaseRollout | null | undefined> = [];
   for (const environment of environments) {
     if (environment.tier !== "production") continue;
+    rollouts.push(environment.release);
     for (const service of environment.services) {
       const latest = service.deploy?.latest;
       if (latest !== undefined && latest.sha !== null && jobFailed(latest)) {
-        failed.set(`${service.hostname}@${latest.sha}`, latest.endedAt ?? latest.at);
+        const tag =
+          latest.cause === "release"
+            ? latest.ref
+            : environment.release?.leftOut.some((left) => left.job === latest.id) === true
+              ? environment.release.tag
+              : null;
+        if (tag !== null) failed.push({ tag, service: service.hostname, sha: latest.sha });
       }
       const sha = deployedCommit(service.appVersionName);
       if (sha === undefined || production.has(service.hostname)) continue;
       production.set(service.hostname, sha);
     }
   }
-  return { production, failed };
+  return { production, failed, rollouts };
 }
 
 /**

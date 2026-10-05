@@ -11,11 +11,12 @@
  * - A read with no value yet is dated by the moment this listing first saw it wait that way
  *   (`known.ts`): a new read that still waits the same way keeps the date, so no clock derives
  *   the listing again.
- * - A young container ACTIVE before its address landed is on its way to it from the moment this
- *   listing first saw it so (`addressAwaited`), unless it saw it with its address. What it saw is
- *   kept for as long as the listing lives (`AddressMemory`), through every read and every blink,
- *   so a wait never begins again; the one clock that derives the listing again is a wait's end,
- *   when the same facts read as the platform leaves them.
+ * - A container ACTIVE before its address landed is on its way to it while the platform turns its
+ *   address on (`addressAwaited`): its project's processes are read for as long as it lacks one
+ *   (`account/environments.ts` holds that read), and their word ends the wait — never a clock.
+ *   What this listing saw of each address is kept for as long as it lives (`AddressMemory`),
+ *   through every read and every blink; the one clock that derives the listing again is an
+ *   arrival pose's end (`arriving`), a face's, never a verdict.
  */
 import { Atom } from "effect/unstable/reactivity";
 
@@ -31,17 +32,20 @@ import {
   projectKeyOf,
   type CollectionRead,
   type OrganizationRef,
+  type ProjectActivityRead,
   type ProjectRecord,
   type ServiceRecord,
 } from "../data/types.ts";
 import type { Known } from "../knowledge/known.ts";
 import {
-  addressClockOf,
-  addressWaitEnd,
+  addressFactsOf,
+  arrivalEnd,
   candidateListing,
   NO_ADDRESS_MEMORY,
   projectCandidates,
   rememberAddresses,
+  serviceUpdatedAtIn,
+  subdomainEnableIn,
   type AddressMemory,
   type CandidateRow,
 } from "../projections/candidates.ts";
@@ -72,10 +76,12 @@ interface ProjectEntry {
   readonly admitted: boolean;
   /** Its services read; null for a project whose status reads no services. */
   readonly services: CollectionRead<ServiceRecord> | null;
+  /** Its processes as read for a container lacking its address; null where none was asked. */
+  readonly activity: ProjectActivityRead | null;
   /** Null while its record does not name it yet. */
   readonly rows: ReadonlyArray<CandidateRow> | null;
-  /** When the first of its rows' address waits ends, wall ms; null when none waits. */
-  readonly waitEnds: number | null;
+  /** When the first of its rows' arrival poses ends, wall ms; null when none is shown. */
+  readonly arrivalEnds: number | null;
   readonly directRead: number | null;
 }
 
@@ -155,11 +161,13 @@ export function candidateListingsAtom(
       before: ProjectEntry | undefined,
     ): ProjectEntry => {
       const isAdmitted = admitted.has(projectKeyOf(record.ref));
-      const waitOver = before?.waitEnds != null && before.waitEnds <= nowMs;
-      if (before?.record === record && before.admitted === isAdmitted && !waitOver) {
+      const arrivalOver = before?.arrivalEnds != null && before.arrivalEnds <= nowMs;
+      if (before?.record === record && before.admitted === isAdmitted && !arrivalOver) {
         if (before.services === null) return before;
         const read = get(data.reads.servicesOf(record.ref));
-        if (read === before.services) return before;
+        const activityMoved =
+          before.activity !== null && get(data.reads.activity(record.ref)) !== before.activity;
+        if (read === before.services && !activityMoved) return before;
         return derive(record, before, read, isAdmitted);
       }
       return derive(record, before, null, isAdmitted);
@@ -173,6 +181,7 @@ export function candidateListingsAtom(
     ): ProjectEntry => {
       let services: CollectionRead<ServiceRecord> | null = null;
       let directRead: number | null = null;
+      let activity: ProjectActivityRead | null = null;
       const rows = projectCandidates(
         record,
         (ref) => {
@@ -183,7 +192,11 @@ export function candidateListingsAtom(
           directRead = directReadOf(read, value);
           return value;
         },
-        addressClockOf(addresses, nowMs),
+        addressFactsOf(addresses, nowMs, (_projectId, serviceId) => {
+          activity = get(data.reads.activity(record.ref));
+          // Its record, last updated after its enable ended on Zerops' clock, says it caught up.
+          return subdomainEnableIn(activity, serviceId, serviceUpdatedAtIn(services, serviceId));
+        }),
       );
       addresses = rememberAddresses(addresses, rows ?? []);
       const same = before?.rows != null && rows !== null && sameJson(before.rows, rows);
@@ -191,9 +204,10 @@ export function candidateListingsAtom(
         record,
         admitted: isAdmitted,
         services,
+        activity,
         rows: same ? before.rows : rows,
         directRead,
-        waitEnds: addressWaitEnd(rows ?? []),
+        arrivalEnds: arrivalEnd(rows ?? []),
       };
     };
 
@@ -249,16 +263,16 @@ export function candidateListingsAtom(
       ]),
     );
     organizations = next;
-    // A young container's wait for its address ends on a clock, not on a read: the listing is
-    // derived again then, so it never says "on its way" past its wait.
-    const waitEnds = [...next.values()].flatMap((organization) =>
+    // An arrival pose ends on a clock, a face's, not a verdict's: the listing is derived again
+    // then, so a Mate that never answered stops being shown on its way.
+    const arrivalEnds = [...next.values()].flatMap((organization) =>
       [...organization.entries.values()].flatMap((entry) =>
-        entry.waitEnds === null ? [] : [entry.waitEnds],
+        entry.arrivalEnds === null ? [] : [entry.arrivalEnds],
       ),
     );
-    if (waitEnds.length > 0) {
+    if (arrivalEnds.length > 0) {
       get.addFinalizer(
-        systemExchangeClock.setTimer(Math.max(0, Math.min(...waitEnds) - nowMs), () =>
+        systemExchangeClock.setTimer(Math.max(0, Math.min(...arrivalEnds) - nowMs), () =>
           get.refreshSelf(),
         ),
       );

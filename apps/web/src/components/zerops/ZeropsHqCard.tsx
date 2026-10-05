@@ -14,9 +14,10 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
-import { canWriteRegistry, type ZeropsService } from "@t3tools/client-runtime/zerops";
+import { type ZeropsService } from "@t3tools/client-runtime/zerops";
 import { HQ_SERVICE, hqUpdateState } from "@t3tools/client-runtime/zerops/hq";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { mayBearHq } from "@t3tools/shared/zeropsRoles";
 import { Atom } from "effect/unstable/reactivity";
 import { ChevronRightIcon } from "lucide-react";
 import { useCallback, useRef, useState, type ReactNode } from "react";
@@ -26,7 +27,6 @@ import { cn } from "~/lib/utils";
 import { hqMatesViewAtom, hqStandingAtom, hqStructureAtom } from "~/state/zerops";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
-import { sessionOfferViewer } from "~/zerops/offerViewer";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Button } from "../ui/button";
@@ -68,7 +68,8 @@ export function ZeropsHqCard() {
   const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
   const standing = useAtomValue(hqStandingAtom);
   const carried = useCarriedCoreBuild();
-  const admin = canWriteRegistry(sessionOfferViewer(user, activeOrganization ?? null));
+  // Who looks after HQ — its Core, its backups, its updates — is who bears it (`mayBearHq`).
+  const admin = user !== null && mayBearHq(activeOrganization ?? undefined);
   const structureView = useAtomValue(hqStructureAtom);
   const structure =
     structureView !== null && structureView.organizationId === organizationId

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsCall, ZeropsOperation, ZeropsOperationStep } from "../types.ts";
 import { buildStandupFields, standupRunsOn } from "./standup.ts";
 
-const CONTEXT = { nowMs: Date.parse("2026-09-01T00:30:00.000Z"), projectId: "proj" };
+const CONTEXT = { projectId: "proj", builds: () => "unobservable" as const };
 
 function standupCall(
   id: string,

@@ -86,9 +86,15 @@ describe("readZeropsMembership", () => {
       expected: { groupId: "abc", role: "stage" },
     },
     {
-      name: "reads the bare marker as the Mate's existence, wherever it sits",
+      // The marker is the Zerops GUI's: HQ placing a Mate is its existence.
+      name: "reads no Mate from the bare marker HQ does not place",
       input: { tagList: ["billing:team-a", "mate", "internal"] },
-      expected: { mate: true },
+      expected: {},
+    },
+    {
+      name: "reads no Mate from the marker on a project HQ places as a stage",
+      input: { hq: placed("abc", "stage"), tagList: ["mate"] },
+      expected: { groupId: "abc", role: "stage" },
     },
     {
       name: "takes a Mate HQ places for one, whatever its tags say",
@@ -119,14 +125,9 @@ describe("readZeropsMembership", () => {
       expected: { mate: true, face: { tint: "sky", shape: "flower" } },
     },
     {
-      name: "reads the birth intent a Mate's project was created under, by its id",
+      name: "reads no birth intent from a tag",
       input: { tagList: ["mate", "mate:birth:b-1"] },
-      expected: { mate: true },
-    },
-    {
-      name: "takes a birth tag naming no intent for none",
-      input: { tagList: ["mate", "mate:birth:"] },
-      expected: { mate: true },
+      expected: {},
     },
   ])("$name", ({ input, expected }) => {
     expect(readZeropsMembership(input)).toEqual({
@@ -208,12 +209,6 @@ describe("who asked for a Mate's stand-up, as HQ's birth record names them", () 
   ])("$name", ({ hq, standUp }) => {
     expect(readZeropsMembership({ hq }).standUp).toEqual(standUp);
   });
-
-  it("is never read off the project's tags", () => {
-    expect(readZeropsMembership({ tagList: ["mate", "mate:standup:u-ada"] }).standUp).toBe(
-      undefined,
-    );
-  });
 });
 
 describe("who made a Mate, as HQ's record names them", () => {
@@ -229,10 +224,6 @@ describe("who made a Mate, as HQ's record names them", () => {
     { name: "is absent on a project HQ does not place", hq: undefined, madeBy: undefined },
   ])("$name", ({ hq, madeBy }) => {
     expect(readZeropsMembership({ hq }).madeBy).toEqual(madeBy);
-  });
-
-  it("is never read off the project's tags", () => {
-    expect(readZeropsMembership({ tagList: ["mate", "mate:by:u-ada"] }).madeBy).toBe(undefined);
   });
 });
 
@@ -351,12 +342,13 @@ describe("deriveZeropsGroups", () => {
     ]);
   });
 
-  it("falls back to the group id when its application has no name, and says so", () => {
+  // HQ refuses an application without a name: one read blank is a read problem, its id the handle.
+  it("says the name is unread when its application's name reads blank, the id as its handle", () => {
     const result = deriveZeropsGroups([project("crm-dev", { hq: placed("aaa", "mate") })], {
       order: "name",
     });
 
-    expect(result.groups[0]).toMatchObject({ name: "aaa", nameSource: "id" });
+    expect(result.groups[0]).toMatchObject({ name: "aaa", nameSource: "unread" });
   });
 
   it("orders groups by display name, case-insensitively", () => {

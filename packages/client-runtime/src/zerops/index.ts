@@ -236,6 +236,7 @@ export {
   makeTokenWriteLock,
   planMateKey,
   tokenWriteLockName,
+  type MateKeyPlan,
   TOKEN_WRITE_HOLD_MS,
   type TokenWriteHold,
   type TokenWriteLocks,
@@ -267,12 +268,7 @@ export {
   type PullRequestBlocked,
 } from "./gitTab.ts";
 export { linkedChanges, linksChange } from "./changeLinks.ts";
-export {
-  branchLabel,
-  mateBotLogin,
-  mateProjectOfBranch,
-  mateProjectOfLogin,
-} from "./mateIdentity.ts";
+export { branchLabel, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
   MATE_ARRIVAL_WINDOW_MS,
@@ -305,6 +301,7 @@ export {
   type ReleaseGate,
   type ReleaseVerdict,
   releaseRow,
+  releaseStalled,
   rolledBackTo,
   shortCommit,
   type FlowRelease,
@@ -329,6 +326,7 @@ export {
   type GroupEnvironmentService,
   type GroupStopProject,
   type GroupStops,
+  type ReleaseDeployFailure,
   type ReleaseDeploys,
 } from "./groupDeploys.ts";
 export { agentNeedsSignIn, AGENT_SIGN_IN_MESSAGE } from "./agentSignIn.ts";
@@ -391,7 +389,6 @@ export {
 } from "./groupFlow.ts";
 export {
   comingLine,
-  COMING_UP_WINDOW_MS,
   FIRST_DEPLOY_FAILED,
   FIRST_DEPLOY_ON_ITS_WAY,
   firstDeploy,
@@ -526,23 +523,12 @@ export {
   type GitOverviewRepository,
 } from "./gitOverview.ts";
 export {
-  changeOffers,
-  changeMergePermission,
-  heldOf,
-  mayOffer,
-  offerAsker,
-  releasePermission,
-  type OfferAsker,
-  type OfferViewer,
-} from "./offers.ts";
-export {
   grantListing,
   projectGrantsOf,
   withProjectGrants,
   type ProjectGrants,
 } from "./projectGrants.ts";
 export {
-  canWriteRegistry,
   onlyTheseCanAddAProject,
   FINISH_MATE_SETUP_VERB,
   finishMateSetupScope,

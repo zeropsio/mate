@@ -194,7 +194,7 @@ export function stopVerdict(input: {
       : null;
   if (view.version === undefined) {
     // Its own import still runs: set up first, as the menu and its cell say — never Checking, nor
-    // that a merge deploys it (the broker deploys main there as its import ends).
+    // that a merge deploys it (HQ queues its first deploy of main as the import ends, `firstDeploy`).
     if (tier === "stage" && input.firstDeploy?.kind === "setting-up")
       return { tone: "busy", text: STAGE_SETTING_UP, ...quiet };
     if (view.line !== NOTHING_DEPLOYED) return { tone: "off", text: view.line, ...quiet };

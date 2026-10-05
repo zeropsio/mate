@@ -22,7 +22,7 @@ import {
   runningProcess,
   servicesRead,
 } from "@t3tools/client-runtime/zerops/flow/fixtures";
-import type { ServiceDeployInfo } from "@t3tools/client-runtime/zerops/data";
+import type { ProcessStatus, ServiceDeployInfo } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsServiceDeployedVersion } from "@t3tools/client-runtime/zerops/data";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
@@ -38,7 +38,6 @@ const at = (seconds: number) => START + seconds * 1000;
 const iso = (seconds: number) => new Date(at(seconds)).toISOString();
 
 const STAGE_ID = "p-abacus-stage";
-const MADE = 670.4;
 const FIX = "5d0e7a19c4b2f83e6a1d09c7b5e4f3a2d1c0b9e8";
 
 const known = (value: Deployment): Shown<Deployment> => ({
@@ -88,6 +87,7 @@ function firstBuild() {
   let services = listed(IMPORTED);
   let processes = build;
   let stated: Shown<ZeropsServiceDeployedVersion> = { state: "unread", waitingFor: null };
+  let status: ProcessStatus | undefined;
   let changed = () => undefined as void;
   const clock = { ms: at(1033.9) };
   const store = makeDeploymentStore({
@@ -98,8 +98,8 @@ function firstBuild() {
       changed = listener;
       return () => undefined;
     },
+    buildStatus: () => status,
     nowMs: () => clock.ms,
-    setTimer: () => () => undefined,
   });
   store.demand(stage);
   const step = (t: number, change: () => void) => {
@@ -123,6 +123,7 @@ function firstBuild() {
   });
   const ended = step(1096.1, () => {
     processes = processesRead([], { project: stage });
+    status = "FINISHED";
   });
   const unstated = step(1096.4, () => {
     services = listed({ ...IMPORTED, id: "version-9", source: null });
@@ -194,12 +195,12 @@ interface Moment {
   readonly services?: ReadonlyArray<ReturnType<typeof app>>;
   readonly deployment: Shown<Deployment> | undefined;
   readonly routes?: number;
-  /** The runner's status in the Gitea project. */
-
   /** The code changes merged by then. */
   readonly merged?: ReadonlyArray<FlowPullRequest>;
-  /** `main`'s head of `appdev` and its statuses, as the deploy half last read them. */
+  /** HQ's deploy job of `main`'s head of `appdev`, as the deploy half last read it. */
   readonly deploy?: HqJob;
+  /** Whether HQ ended bringing it up (`HqEnvironment.birth`); still bringing it up unless said. */
+  readonly born?: boolean;
 }
 
 /** What the menu's line and the page's cell say at one moment. */
@@ -220,6 +221,7 @@ function said(moment: Moment) {
       },
     ],
     keyHeld: true,
+    birth: { ended: moment.born === true },
   });
   const input: GroupFlowInput = {
     groupId: "g-abacus",
@@ -234,7 +236,6 @@ function said(moment: Moment) {
         row,
         deployment: moment.deployment,
         route: undefined,
-        createdAt: iso(MADE),
         projectStatus,
         services,
       },
@@ -251,14 +252,12 @@ function said(moment: Moment) {
     mainHead: undefined,
     productionAddable: false,
     pending: [],
-    nowMs,
   };
   const stop = groupFlow(input).stages[0];
   if (stop === undefined) throw new Error("the stage is listed");
   const listed = {
     stop,
     projectStatus,
-    createdAt: iso(MADE),
     services,
     building: moment.deployment?.state === "known" && moment.deployment.value.kind === "deploying",
     routes: moment.routes ?? 0,
@@ -269,7 +268,7 @@ function said(moment: Moment) {
       {
         projectId: STAGE_ID,
         name: "Abacus - stage",
-        coming: listedStopComing("stage", listed, nowMs),
+        coming: listedStopComing("stage", listed),
         serves: stopServes(listed),
       },
     ],
@@ -329,8 +328,6 @@ function said(moment: Moment) {
 /** The phase another surface's words name, before the first build. */
 function otherPhase(words: string): string {
   if (words.startsWith("Setting up")) return "import";
-  if (words.startsWith("Waiting for the runner"))
-    return `runner: ${words.split(" · ")[1]?.replace(/\.$/u, "") ?? ""}`;
   if (words.startsWith("First deploy on its way")) return "on its way";
   if (words.startsWith("Nothing deployed yet") || words.startsWith("Not deployed yet"))
     return "awaited";
@@ -342,7 +339,6 @@ function otherPhase(words: string): string {
 function linePhase(line: string | null): string {
   if (line === null) return "up";
   if (/making the project|adding the database|adding the app/u.test(line)) return "import";
-  if (line.includes("awaits the runner")) return `runner: ${line.split(" · ")[1] ?? ""}`;
   if (line.includes("first deploy on its way")) return "on its way";
   if (line.includes("awaiting a first deploy")) return "awaited";
   if (line.includes("its first deploy failed")) return "failed";
@@ -354,7 +350,6 @@ function linePhase(line: string | null): string {
 /** The phase a cell names. */
 function cellPhase(cell: string): string {
   if (cell === "Setting up a stage…") return "import";
-  if (cell.startsWith("Waiting for the runner")) return `runner: ${cell.split(" · ")[1] ?? ""}`;
   if (cell === "First deploy on its way") return "on its way";
   if (cell === "Nothing deployed yet") return "awaited";
   if (cell === "First deploy failed") return "failed";
@@ -375,7 +370,7 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       cell: "Setting up a stage…",
     },
     {
-      // The project listed active, its app not listed yet: still being made, never the runner.
+      // The project listed active, its app not listed yet: still being made.
       t: 696.1,
       services: [],
       deployment: NONE,
@@ -384,7 +379,7 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       cell: "Setting up a stage…",
     },
     {
-      // The import's own no-code deploy runs (+699.5 → +710.5 s): the cell said the runner.
+      // The import's own no-code deploy runs (+699.5 → +710.5 s): still the import, not a first deploy.
       t: 700.8,
       services: [app("CREATING")],
       deployment: NONE,
@@ -451,14 +446,15 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       cell: "Deploying… 5d0e7a1",
     },
     {
-      // N3: the build's process left; its version not active yet.
+      // N3: the build's process left, Zerops ended it FINISHED, its version not active yet:
+      // nothing runs, and HQ's job of it has not ended — no clock holds the build's word.
       t: 1096.1,
       services: [app("UPGRADING")],
       deployment: BUILD.ended,
       merged: [pull(1, 642.3), pull(2, 1010.9)],
 
-      line: "Stage coming up · building the app",
-      cell: "Deploying… 5d0e7a1",
+      line: "Stage coming up · first deploy on its way",
+      cell: "First deploy on its way",
     },
     {
       // N3: read again, its new version active and stated by nothing yet.
@@ -466,8 +462,8 @@ describe("a stage's first deploy, replayed as run 5 measured it", () => {
       deployment: BUILD.unstated,
       merged: [pull(1, 642.3), pull(2, 1010.9)],
 
-      line: "Stage coming up · building the app",
-      cell: "Deploying… 5d0e7a1",
+      line: "Stage coming up · first deploy on its way",
+      cell: "First deploy on its way",
     },
     {
       t: 1097.6,

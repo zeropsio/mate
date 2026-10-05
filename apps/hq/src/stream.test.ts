@@ -37,8 +37,9 @@ import { GitHost } from "./gitHost.ts";
 import { Deploys } from "./deploys.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
 import { Official, type OfficialStatus } from "./official.ts";
+import { mateOffers } from "./offers.ts";
 import { Releases } from "./releases.ts";
-import { type OrgView, Roles } from "./roles.ts";
+import { type OrgSeen, type OrgView, Roles } from "./roles.ts";
 import { Structure, type StructureRead } from "./structure.ts";
 import {
   MATES_BATCH,
@@ -84,20 +85,35 @@ const org = (userRoles: OrgView["projects"][number]["userRoles"] = []): OrgView<
   ],
 });
 
-/** One Mate in no application, made by the owner. */
+/** What the owner may do with the organization. */
+const OWNER_CAN: StructureRead["can"] = {
+  create_app: { allow: true },
+  rename_app: { allow: true },
+  delete_app: { allow: true },
+};
+
+/** One Mate in no application, made by the owner; what each reader may do with it is read's. */
 const STRUCTURE: StructureRead = {
+  can: OWNER_CAN,
+  unheld: {},
+  presses: {},
   ungrouped: [
     {
       projectId: "P_MATE",
       name: "Ada's project",
       mate: {
-        name: "Ada's project",
         face: "face-1",
         madeBy: "owner",
         standupRequestedBy: "dev",
         closedOff: false,
         keyWider: false,
       },
+      can: {
+        observe_mate: { allow: false, reason: "not_mate_operator" },
+        edit_mate_record: { allow: false, reason: "not_project_admin" },
+        detach: { allow: false, reason: "not_project_admin" },
+      },
+      moveTo: {},
     },
   ],
   apps: [],
@@ -114,6 +130,8 @@ const streamFor = (
   ) => Effect.Effect<unknown, never, Scope.Scope> = () => Effect.void,
   /** The applications whose changes `userId` reads, by id. */
   readable: Readonly<Record<string, ReadonlyArray<never>>> = {},
+  /** When Zerops answered the view HQ holds as the stream opens, wall ms; none answered yet. */
+  answered?: number,
   /** Where this Core's check of Zerops stands as the stream opens. */
   start: { readonly official: OfficialStatus["official"]; readonly checked: boolean } = {
     official: "ok",
@@ -155,17 +173,34 @@ const streamFor = (
     /** Whether this Core's first check of Zerops has finished. */
     const checked = yield* Ref.make(start.checked);
     const view = yield* Ref.make(org([{ clientUserId: "C-dev", roleCode: "BASIC_USER" }]));
+    /** The org view as Zerops answers it (`Roles.views`); none until a test answers one. */
+    const seen = yield* SubscriptionRef.make<OrgSeen | undefined>(
+      answered === undefined ? undefined : { view: org(), answered },
+    );
+    /** What the read offers the reader of the organization. */
+    const orgCan = yield* Ref.make(OWNER_CAN);
+    /** Each Mate's press a browser holds, as the read says it. */
+    const presses = yield* Ref.make<StructureRead["presses"]>({});
     const overviews = yield* makeMateOverviews(memoryStore().store);
     yield* before(overviews);
     const services = Layer.mergeAll(
       Layer.succeed(
         Structure,
         Structure.of({
-          read: () =>
-            Effect.as(
-              Ref.update(reads, (n) => n + 1),
-              STRUCTURE,
-            ),
+          read: (reader: string) =>
+            Effect.gen(function* () {
+              yield* Ref.update(reads, (n) => n + 1);
+              const facts = yield* Ref.get(view);
+              return {
+                ...STRUCTURE,
+                can: yield* Ref.get(orgCan),
+                presses: yield* Ref.get(presses),
+                ungrouped: STRUCTURE.ungrouped.map((entry) => ({
+                  ...entry,
+                  can: mateOffers(reader, entry.projectId, "mate", facts),
+                })),
+              };
+            }),
           changes: SubscriptionRef.changes(version),
         } as unknown as Structure["Service"]),
       ),
@@ -205,7 +240,16 @@ const streamFor = (
         Deploys,
         Deploys.of({ changes: Stream.never } as unknown as Deploys["Service"]),
       ),
-      Layer.succeed(Roles, Roles.of({ view: Ref.get(view) } as unknown as Roles["Service"])),
+      Layer.succeed(
+        Roles,
+        Roles.of({
+          view: Ref.get(view),
+          answeredAt: Effect.map(SubscriptionRef.get(seen), (answer) => answer?.answered),
+          views: SubscriptionRef.changes(seen).pipe(
+            Stream.filter((answer) => answer !== undefined),
+          ),
+        } as unknown as Roles["Service"]),
+      ),
       Layer.succeed(MateOverviews, overviews),
       Layer.succeed(
         GitHost,
@@ -243,6 +287,9 @@ const streamFor = (
       reads,
       version,
       view,
+      seen,
+      orgCan,
+      presses,
       overviews,
       revisions,
       released,
@@ -256,6 +303,85 @@ const streamFor = (
   });
 
 describe("the structure stream", () => {
+  it.effect(
+    "says when Zerops answered the view from the snapshot on, and moves with each view",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const at = (time: string) => Date.parse(`2026-10-04T${time}.000Z`);
+          const h = yield* streamFor("owner", undefined, {}, at("10:00:00"));
+          assert.deepStrictEqual(
+            [h.sent[0]?.["can"], h.sent[0]?.["rolesAnsweredAt"]],
+            [OWNER_CAN, "2026-10-04T10:00:00.000Z"],
+          );
+          // A later view that decides the same moves only its time.
+          yield* SubscriptionRef.set(h.seen, {
+            view: yield* Ref.get(h.view),
+            answered: at("10:00:30"),
+          });
+          yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+          assert.deepStrictEqual(h.sent.slice(1), [
+            { type: "roles", rolesAnsweredAt: "2026-10-04T10:00:30.000Z" },
+          ]);
+          // One that decides otherwise moves the organization's offers at once, its time beside.
+          const demoted = {
+            create_app: { allow: false, reason: "not_structure_writer" },
+            rename_app: { allow: false, reason: "not_structure_writer" },
+            delete_app: { allow: false, reason: "not_structure_writer" },
+          } as const;
+          yield* Ref.set(h.orgCan, demoted);
+          yield* SubscriptionRef.set(h.seen, {
+            view: yield* Ref.get(h.view),
+            answered: at("10:01:00"),
+          });
+          yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+          assert.deepStrictEqual(h.sent.slice(2), [
+            { type: "org", can: demoted, unheld: {} },
+            { type: "roles", rolesAnsweredAt: "2026-10-04T10:01:00.000Z" },
+          ]);
+        }),
+      ),
+  );
+
+  // B5: a press another browser holds, said when it is taken, renewed or let go — never because
+  // how long it runs on ticked down between two reads.
+  it.effect("says each Mate's press as its holder moves it, never as its hold ticks", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner");
+        assert.deepStrictEqual(h.sent[0]?.["presses"], {});
+        const held = {
+          kind: "mate",
+          heldForMs: 60_000,
+          until: "2026-10-05T10:01:00.000Z",
+        } as const;
+        const tick = (next: StructureRead["presses"]) =>
+          Effect.gen(function* () {
+            yield* Ref.set(h.presses, next);
+            yield* SubscriptionRef.update(h.version, (n) => n + 1);
+            yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+          });
+        yield* tick({ P_MATE: held });
+        // The same hold read a moment later, its time ticked down: nothing to say.
+        yield* tick({ P_MATE: { ...held, heldForMs: 40_000 } });
+        // Its import, once Zerops answered it.
+        yield* tick({ P_MATE: { ...held, heldForMs: 30_000, importProcessId: "imp-1" } });
+        yield* tick({});
+        assert.deepStrictEqual(
+          h.sent.slice(1).filter((message) => message.type === "presses"),
+          [
+            { type: "presses", presses: { P_MATE: held } },
+            {
+              type: "presses",
+              presses: { P_MATE: { ...held, heldForMs: 30_000, importProcessId: "imp-1" } },
+            },
+            { type: "presses", presses: {} },
+          ],
+        );
+      }),
+    ),
+  );
+
   it.effect("carries the five load reads for readable apps, and re-reads only the moved app", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -396,7 +522,10 @@ describe("the structure stream", () => {
   it.effect("says no verdict before HQ's first check of Zerops, then the check's", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const h = yield* streamFor("owner", undefined, {}, { official: "unknown", checked: false });
+        const h = yield* streamFor("owner", undefined, {}, undefined, {
+          official: "unknown",
+          checked: false,
+        });
         assert.strictEqual(h.sent[0]?.["official"], null);
         yield* Ref.set(h.checked, true);
         yield* Ref.set(h.official, verdict("ok"));

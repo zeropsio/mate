@@ -1177,7 +1177,11 @@ describe("a Mate's changes in HQ", () => {
               .changes,
             [own(head, "Add a login page")],
           );
-          assert.deepStrictEqual(yield* devSocket.quiet("1 millis"), []);
+          // Nothing of the owner's changes; when Zerops answered each view moves on its own.
+          assert.deepStrictEqual(
+            (yield* devSocket.quiet("1 millis")).filter((message) => message.type !== "roles"),
+            [],
+          );
         }),
     );
 

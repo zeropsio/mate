@@ -8,7 +8,6 @@
 import type { OfficialHq } from "@t3tools/client-runtime/zerops/hq";
 import { mateIsViewers } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
-  changesNotLive,
   deployWord,
   firstDeployLine,
   STAGE_SETTING_UP,
@@ -247,16 +246,16 @@ export function flowStepsAwaiting(input: {
 }
 
 /**
- * Why a project's changes are not known, where they are not: HQ's rule first — what this person
- * may not see is unseen however HQ answered — and nothing while its rule has not been asked.
+ * Why a project's changes are not known, where they are not: HQ's refusal first — what this person
+ * may not see is unseen however HQ answered — and nothing while HQ has not said.
  */
 export function changesUnknownOf(input: {
-  /** What `useChangeOffers` offers of the project's changes; `undefined` while not asked. */
-  readonly offers: { readonly read: boolean } | undefined;
+  /** What HQ offers of the project's changes (`useChangeOffers`); `undefined` while unsaid. */
+  readonly offers: { readonly readRefused: boolean } | undefined;
   /** Why HQ never told its changes (`ZeropsProjectFlow.changesFailure`). */
   readonly changesFailure: string | undefined;
 }): ChangesUnknown | undefined {
-  if (input.offers?.read === false) return "unseen";
+  if (input.offers?.readRefused === true) return "unseen";
   return input.changesFailure === undefined ? undefined : "failed";
 }
 
@@ -341,7 +340,6 @@ export function stopLine(stop: GroupFlowStop): {
 
 /** One Zerops project of a group, as the page already holds it. */
 export interface GroupMemberFacts {
-  readonly createdAt?: string | undefined;
   readonly projectStatus?: string | undefined;
   readonly services?: ReadonlyArray<PlatformService> | undefined;
   readonly projectId: string;
@@ -400,7 +398,6 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
     const connected =
       (item.group === "connected" && item.environmentId !== undefined) || activity !== undefined;
     return {
-      createdAt: item.project.created,
       projectStatus: item.project.status,
       services: item.services?.statuses,
       projectId: item.project.id,
@@ -493,8 +490,8 @@ function releaseInputOf(release: GroupFlowReads["release"]): GroupFlowInput["rel
  * unread) and the platform's pushed deployments.
  *
  * What `main` holds is not read here (`mainHasCode`, `mainHead` stay
- * `undefined`): the default-branch read runs only for a group with a
- * production, so a merged code change is the page's one proof of code.
+ * `undefined`), nor anywhere else: a merged code change is the page's one
+ * proof of code.
  */
 export function groupFlowInputOf(input: {
   readonly groupId: string;
@@ -505,8 +502,6 @@ export function groupFlowInputOf(input: {
   readonly productionAddable: boolean;
   /** The group's creations under way (the group tree's `pending`). */
   readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
-  /** The clock a stage's first deploy on its way is bounded by. */
-  readonly nowMs?: number | undefined;
 }): GroupFlowInput {
   const { flow } = input;
   return {
@@ -536,7 +531,6 @@ export function groupFlowInputOf(input: {
       return [
         {
           projectId: member.projectId,
-          createdAt: member.createdAt,
           projectStatus: member.projectStatus,
           services: member.services,
           name: row?.name ?? member.name,
@@ -556,7 +550,6 @@ export function groupFlowInputOf(input: {
     mainHead: undefined,
     productionAddable: input.productionAddable,
     pending: input.pending,
-    nowMs: input.nowMs,
   };
 }
 

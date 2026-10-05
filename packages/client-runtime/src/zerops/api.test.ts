@@ -265,6 +265,56 @@ describe("ZeropsApiClient authentication", () => {
     expect(heard).toEqual(["org-1"]);
   });
 
+  // A Mate's deletion takes its project first, and the key that held only that project is gone with
+  // it: the platform answers its delete `400 clientUserConnectionNotFound` (measured live 4/4,
+  // 2026-10-05), as it answers a read of any token already deleted. That answer is the delete done;
+  // every other refusal stays the caller's failure.
+  it.each([
+    {
+      case: "a token the platform no longer has is deleted already",
+      status: 400,
+      body: {
+        error: {
+          code: "clientUserConnectionNotFound",
+          message: "Client user connection not found.",
+        },
+      },
+      deleted: true,
+    },
+    {
+      case: "another not-found is not taken for the token's",
+      status: 400,
+      body: { error: { code: "projectNotFound", message: "Project not found." } },
+      deleted: false,
+    },
+    {
+      case: "a malformed request stays a failure",
+      status: 400,
+      body: { error: { code: "invalidUserInput", message: "Invalid user input." } },
+      deleted: false,
+    },
+    {
+      case: "a refusal stays a failure",
+      status: 403,
+      body: {
+        error: {
+          code: "clientUserConnectionNotFound",
+          message: "Client user connection not found.",
+        },
+      },
+      deleted: false,
+    },
+  ])("deleting a token: $case", async ({ status, body, deleted }) => {
+    const stub = recordingFetch(() => jsonResponse(status, body));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const outcome = client.deleteIntegrationToken({ clientId: "org-1", tokenId: "token-1" });
+
+    if (deleted) await expect(outcome).resolves.toBeUndefined();
+    else await expect(outcome).rejects.toBeInstanceOf(ZeropsApiError);
+  });
+
   it("remembers the user it last read for this session, and forgets it with the session", async () => {
     vi.useFakeTimers({ now: 5_000 });
     try {
@@ -1055,15 +1105,15 @@ describe("ZeropsApiClient project reads", () => {
       grants: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
       written: null,
     },
-    // ADR 0003's fallout: a Mate's key an earlier client widened to its group with READ_ONLY on
-    // siblings is found by Finish setup's harden alone, and reaches only its own project after.
+    // Found by its name alone, a key an earlier client widened to its group is not taken for the
+    // Mate's (`planMateKey`): only the id HQ holds narrows it.
     {
-      case: "a key widened to the group: its siblings taken off",
+      case: "a key widened to the group, found by its name: left as it is",
       grants: [
         { projectId: "project-1", roleCode: "ADMIN" },
         { projectId: "project-stage", roleCode: "READ_ONLY" },
       ],
-      written: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+      written: null,
     },
     {
       case: "a key that writes another project too, left as it is",
@@ -1187,6 +1237,110 @@ describe("ZeropsApiClient project reads", () => {
     expect(stub.requests.some((request) => request.url.endsWith("/integration-token/list"))).toBe(
       false,
     );
+  });
+
+  // ADR 0003: the key HQ holds for the Mate is the Mate's, whatever else it reaches; it is written
+  // down to its own project alone, foreign grants removed, even where its own grant is lowered.
+  it.each([
+    {
+      case: "ADMIN on its own project and a sibling's reader",
+      grants: [
+        { projectId: "project-1", roleCode: "ADMIN" },
+        { projectId: "project-stage", roleCode: "READ_ONLY" },
+      ],
+      written: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+    },
+    {
+      case: "already lowered, still reading a sibling",
+      grants: [
+        { projectId: "project-stage", roleCode: "READ_ONLY" },
+        { projectId: "project-1", roleCode: "BASIC_USER" },
+      ],
+      written: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+    },
+    {
+      case: "exactly its own project",
+      grants: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
+      written: null,
+    },
+  ])(
+    "hardens the key its Mate named by id to its own project: $case",
+    async ({ grants, written }) => {
+      const token = {
+        id: "token-7",
+        name: "zerops-zcp-zcp",
+        roleCode: "NO_ACCESS",
+        projects: grants,
+      };
+      const stub = recordingFetch((request) => {
+        if (request.method === "GET" && request.url.endsWith("/integration-token/token-7"))
+          return jsonResponse(200, token);
+        if (request.url.includes("/delegation") && request.method === "GET")
+          return jsonResponse(200, { list: [] });
+        if (request.url.endsWith("/project/search"))
+          return jsonResponse(200, {
+            items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
+          });
+        if (request.url.includes("/service-stack"))
+          return jsonResponse(200, {
+            list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+          });
+        return jsonResponse(200, {});
+      });
+      const client = new ZeropsApiClient({ fetch: stub.fetch });
+      client.restoreSession(SESSION);
+
+      const result = await client.hardenMate("org-1", "project-1", undefined, undefined, "token-7");
+
+      const write = stub.requests.find(
+        (request) => request.method === "PUT" && request.url.endsWith("/integration-token/token-7"),
+      );
+      expect(result.tokenLowered).toBe(written !== null);
+      expect(write === undefined ? null : JSON.parse(write.body ?? "{}").projects).toEqual(written);
+    },
+  );
+
+  // A key found by its name is the Mate's only while it holds its own project alone: one widened
+  // between the organization's list and the read under its lock is left as it is, never narrowed.
+  it("leaves a key found by its name that reads another project by the time it is read", async () => {
+    const listed = {
+      id: "token-1",
+      name: "zcp-project-1",
+      roleCode: "NO_ACCESS",
+      projects: [{ projectId: "project-1", roleCode: "ADMIN" }],
+    };
+    const read = {
+      ...listed,
+      projects: [...listed.projects, { projectId: "project-stage", roleCode: "READ_ONLY" }],
+    };
+    const stub = recordingFetch((request) => {
+      if (request.url.endsWith("/integration-token/list"))
+        return jsonResponse(200, { list: [listed] });
+      if (request.method === "GET" && request.url.endsWith("/integration-token/token-1"))
+        return jsonResponse(200, read);
+      if (request.url.includes("/delegation") && request.method === "GET")
+        return jsonResponse(200, { list: [{ id: "del-1", tokenId: "token-1" }] });
+      if (request.url.endsWith("/project/search"))
+        return jsonResponse(200, {
+          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
+        });
+      if (request.url.includes("/service-stack"))
+        return jsonResponse(200, {
+          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
+        });
+      return jsonResponse(200, {});
+    });
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const result = await client.hardenMate("org-1", "project-1");
+
+    expect(result).toMatchObject({ tokenLowered: false, delegationsDropped: 0 });
+    expect(
+      stub.requests.some(
+        (request) => request.url.includes("/integration-token/token-1") && request.method !== "GET",
+      ),
+    ).toBe(false);
   });
 
   // Step A, A11: an admin adopting a Mate whose key an owner made may not write that key. The
@@ -1490,12 +1644,11 @@ describe("ZeropsApiClient project reads", () => {
  * Which key a list comes back under is the platform's to say, and it is not one
  * key. Measured against the live API on 2026-09-18, as the org's owner: a
  * project's services and an org's members each answered under a name this
- * client did not read, so both came back empty and said nothing about it — the
- * deploy token of every environment (D27) waited on a broker the page could not
- * see. The server half already knew (`ZeropsThrowawayIdentity.ts`).
+ * client did not read, so both came back empty and said nothing about it. The
+ * server half already knew (`ZeropsThrowawayIdentity.ts`).
  */
 describe("the key a list answers under", () => {
-  const SERVICE = { id: "svc-broker", name: "broker", status: "ACTIVE" };
+  const SERVICE = { id: "svc-api", name: "api", status: "ACTIVE" };
   const MEMBER = { id: "cu-1", userId: "u-1", roleCode: "OWNER", user: { fullName: "Ada" } };
 
   it.each([
@@ -1509,7 +1662,7 @@ describe("the key a list answers under", () => {
 
     const services = await client.listProjectServices("prj-1");
 
-    expect(services.map((service) => service.name)).toEqual(empty === true ? [] : ["broker"]);
+    expect(services.map((service) => service.name)).toEqual(empty === true ? [] : ["api"]);
     expect(stub.requests[0]?.url).toBe(
       `${DEFAULT_ZEROPS_API_BASE}/api/rest/public/project/prj-1/service-stack?limit=500`,
     );

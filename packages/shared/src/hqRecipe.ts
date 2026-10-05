@@ -5,7 +5,7 @@
  * top. HQ keeps no `environments.yaml`: it holds the environments itself.
  *
  * A Mate proposes the tiers `main` lacks as a change of its own titled {@link RECIPE_PROPOSAL_TITLE};
- * Core lands one that only adds files by itself (`zeropsPermissions.ts` `land_recipe`), a person
+ * Core lands one that only adds files by itself (HQ's `permissions.ts` `land_recipe`), a person
  * merges one that edits a file, and Core closes an empty one.
  *
  * Reading a tier, on `main`, bounded:

@@ -73,7 +73,9 @@ interface Step {
   readonly inFlight: string | undefined;
   readonly suggestion: string;
   readonly releases: ReadonlyArray<FlowReleaseRow>;
-  /** The minute clock; `NOW` unless the step is later. */
+  /** The release HQ ended its deploy of with some of it not live (`releaseStalled`). */
+  readonly stalled?: string;
+  /** The minute clock the review's words are read by; `NOW` unless the step is later. */
   readonly nowMs?: number;
 }
 
@@ -106,9 +108,9 @@ function walk(steps: ReadonlyArray<Step>) {
       held,
       press: step.press,
       inFlight: step.inFlight,
+      stalled: step.stalled,
       suggestion: step.suggestion,
       releases: step.releases,
-      nowMs: step.nowMs ?? NOW,
     });
     const shown = releaseStep({
       follows,
@@ -315,27 +317,38 @@ describe("a held release's changes follow the stage as it stands now", () => {
   });
 });
 
-describe("a release that never lands ends: past the cutoff it says so", () => {
+describe("a release HQ ended without landing says so: no clock ends it", () => {
   const before: Moment = { live: "v0.1.0", contents: ONE_CHANGE, production: "4c3b2a1" };
   const after: Moment = { live: "v0.1.1", contents: [], production: HEAD };
   const [, tagging, onItsWay] = release("v0.1.1", "v0.1.2", before, after, [row("v0.1.0", "live")]);
   if (tagging === undefined || onItsWay === undefined) throw new Error("no steps");
-  const later = (minutes: number, tagged: FlowReleaseRow): Step => ({
+  const later = (minutes: number, tagged: FlowReleaseRow, ended: boolean): Step => ({
     ...onItsWay,
     name: `${String(minutes)} minutes on`,
     nowMs: NOW + minutes * 60_000,
-    // Past the cutoff the tag is no longer on its way (`releaseInFlight`).
-    inFlight: minutes >= 30 ? undefined : "v0.1.1",
+    // HQ's rollout of it says whether it is on its way (`releaseInFlight`, `releaseEnded`).
+    inFlight: ended ? undefined : "v0.1.1",
+    ...(ended ? { stalled: "v0.1.1" } : {}),
     moment: tagged.standing === "live" ? after : before,
     releases: [tagged, row("v0.1.0", tagged.standing === "live" ? undefined : "live")],
   });
 
-  it("pressed, on its way, 31 minutes with no landing: the tag hasn't landed, and the clock stops", () => {
+  it("on its way 70 minutes while HQ follows its build: still releasing, the clock running", () => {
+    const steps = walk([tagging, onItsWay, later(70, row("v0.1.1", undefined), false)]);
+    expect(steps.map((step) => step.model.verdict.state)).toEqual([
+      "releasing",
+      "releasing",
+      "releasing",
+    ]);
+    expect(steps.at(-1)?.follows.ticking).toBe(true);
+  });
+
+  it("pressed, on its way, HQ ends its deploy with no landing: the tag hasn't landed, the clock stops", () => {
     const steps = walk([
       tagging,
       onItsWay,
-      later(10, row("v0.1.1", undefined)),
-      later(31, row("v0.1.1", undefined)),
+      later(10, row("v0.1.1", undefined), false),
+      later(31, row("v0.1.1", undefined), true),
     ]);
     expect(steps.map((step) => step.model.verdict.state)).toEqual([
       "releasing",
@@ -365,12 +378,12 @@ describe("a release that never lands ends: past the cutoff it says so", () => {
     expect(last?.model.meta.join(" · ")).toBe("replaces v0.1.0 · 1 change");
   });
 
-  it("a landing after the cutoff still reads Released", () => {
+  it("a landing after HQ ended its deploy still reads Released", () => {
     const steps = walk([
       tagging,
       onItsWay,
-      later(31, row("v0.1.1", undefined)),
-      later(40, row("v0.1.1", "live")),
+      later(31, row("v0.1.1", undefined), true),
+      later(40, row("v0.1.1", "live"), true),
     ]);
     // The age is the tag's, not the landing's.
     expect(steps.at(-1)?.model.verdict).toMatchObject({
@@ -384,7 +397,7 @@ describe("a release that never lands ends: past the cutoff it says so", () => {
     const failed = row("v0.1.1", "deploy-failed", {
       failedEntry: { service: "app", commit: HEAD },
     });
-    const still = walk([tagging, onItsWay, later(5, failed)]).at(-1);
+    const still = walk([tagging, onItsWay, later(5, failed, true)]).at(-1);
     expect(still?.model.verdict.state).toBe("release-failed");
     expect(still?.model.ifWrong).toBeUndefined();
     // Production moved: no release runs in full now.
@@ -392,7 +405,7 @@ describe("a release that never lands ends: past the cutoff it says so", () => {
       tagging,
       onItsWay,
       {
-        ...later(5, failed),
+        ...later(5, failed, true),
         moment: { ...before, live: undefined },
         releases: [failed, row("v0.1.0", undefined)],
       },
@@ -431,7 +444,7 @@ describe("a followed release ends when a newer one sits above it", () => {
     const steps = walk([
       tagging,
       onItsWay,
-      { ...onItsWay, nowMs: NOW + 31 * 60_000, inFlight: undefined },
+      { ...onItsWay, nowMs: NOW + 31 * 60_000, inFlight: undefined, stalled: "v0.1.1" },
       above(33, row("v0.1.2", undefined), [v011, row("v0.1.0", "live")], "v0.1.0"),
       above(40, row("v0.1.2", "live"), [v011, row("v0.1.0", undefined)], "v0.1.2"),
       above(120, row("v0.1.2", "live"), [v011, row("v0.1.0", undefined)], "v0.1.2"),
@@ -654,9 +667,9 @@ it("ends a saved snapshot without waiting for production or starting a clock", (
     held: undefined,
     press: { kind: "done" },
     inFlight: undefined,
+    stalled: undefined,
     suggestion: "v0.1.1",
     releases: [tagged],
-    nowMs: NOW,
   });
   expect(follows.ticking).toBe(false);
   const outcome = releaseOutcomeOf({

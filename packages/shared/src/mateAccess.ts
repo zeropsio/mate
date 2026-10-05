@@ -97,7 +97,6 @@ export function resolveDoorVisibility(input: {
       groups: [
         {
           id: input.projectId,
-          slug: input.projectId,
           projects: [{ id: input.projectId, kind: "mate" as const }],
         },
       ],

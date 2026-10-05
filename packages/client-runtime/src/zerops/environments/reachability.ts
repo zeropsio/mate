@@ -42,6 +42,8 @@ export type Reachability =
   | { readonly kind: "refused-role" }
   /** The link kept refusing its configuration; waits for the user or an input change. */
   | { readonly kind: "refused-configuration" }
+  /** The Mate refused its credential; waits for the user or an input change. */
+  | { readonly kind: "refused-credential" }
   | { readonly kind: "update-required"; readonly actual: string; readonly minimum: string }
   | { readonly kind: "update-unavailable" }
   | { readonly kind: "connecting"; readonly waitingOn: ConnectingOn }
@@ -56,7 +58,13 @@ export type Reachability =
       /** Restart is offered only for identity `failed`, under its rule (`identityRestartOffered`). */
       readonly restart: boolean;
     }
-  | { readonly kind: "reconnecting" }
+  /**
+   * Its server stopped answering while the platform says nothing of a start (a guessed boot): its
+   * link is what fails. `overdue` once that has lasted past a boot's cap.
+   */
+  | { readonly kind: "not-answering"; readonly overdue: boolean }
+  /** `retryAtMs`: when its link tries again, where the supervisor said. */
+  | { readonly kind: "reconnecting"; readonly retryAtMs?: number }
   | { readonly kind: "resolving" };
 
 const TERMINAL: ReadonlySet<Reachability["kind"]> = new Set([
@@ -65,6 +73,11 @@ const TERMINAL: ReadonlySet<Reachability["kind"]> = new Set([
   "refused-role",
   "update-unavailable",
 ]);
+
+/** Whether the verdict's words count seconds down to its next try, so its surface ticks. */
+export const reachabilityCountsDown = (verdict: Reachability | null): boolean =>
+  verdict?.kind === "retrying" ||
+  (verdict?.kind === "reconnecting" && verdict.retryAtMs !== undefined);
 
 export const isTerminalReachability = (verdict: Reachability): boolean =>
   TERMINAL.has(verdict.kind);
@@ -136,6 +149,8 @@ export function selectReachability(
         return { kind: "connecting", waitingOn: "access" };
       case "configuration":
         return { kind: "refused-configuration" };
+      case "credential":
+        return { kind: "refused-credential" };
     }
   }
   const held = credential.kind === "held";
@@ -149,8 +164,15 @@ export function selectReachability(
   }
   // 6
   if (presence.kind === "no-origin") return { kind: "no-address", reason: presence.reason };
-  // 7
-  if (isContainerReachability(container)) return { kind: "container", container };
+  // 7 — a boot only failed probes suggest is a link failing, never a start: a reconnect where its
+  // link was lost (row 10), its server not answering otherwise.
+  if (container.level === "booting" && container.guessed === true) {
+    if (!(held && machine.linkLostAt !== null)) {
+      return { kind: "not-answering", overdue: container.overdue };
+    }
+  } else if (isContainerReachability(container)) {
+    return { kind: "container", container };
+  }
   // 8
   if (credential.kind === "waiting" && credential.on === "zerops") {
     return { kind: "waiting-for-zerops" };
@@ -173,7 +195,9 @@ export function selectReachability(
       credential.kind === "exchanging") &&
       credential.reconnect)
   ) {
-    return { kind: "reconnecting" };
+    return held && link.phase === "backoff" && link.retryAtMs !== null
+      ? { kind: "reconnecting", retryAtMs: link.retryAtMs }
+      : { kind: "reconnecting" };
   }
   // 11
   if (presence.kind === "unknown") return { kind: "resolving" };
@@ -188,14 +212,23 @@ export function selectReachability(
 
 // ── Copy ──────────────────────────────────────────────────────────────────────────────────────
 
-/** A verb the surface renders exactly once beside the verdict's message. */
+/**
+ * A verb the surface renders exactly once beside the verdict's message. `try-now` asks again before
+ * the next automatic attempt would; `try-again` follows a definitive refusal, which nothing asks
+ * again on its own.
+ */
 export type ReachabilityAction =
   | "go-to-projects"
   | "restart"
   | "try-now"
+  | "try-again"
   | "open-in-zerops"
   | "enable"
   | "start";
+
+/** The words of a verdict's ask-again verb, where it offers one: `try-again` over `try-now`. */
+export const askAgainLabel = (actions: ReadonlyArray<string>): "Try again" | "Try now" | null =>
+  actions.includes("try-again") ? "Try again" : actions.includes("try-now") ? "Try now" : null;
 
 export interface ReachabilityPhrase {
   /** The cause only; null when the verdict needs no words (a ready Mate). */
@@ -216,7 +249,6 @@ const CAUSE: Record<ExchangeCause["kind"], string> = {
   mint: "Zerops isn't answering.",
   "identity-unavailable": "This Mate can't reach Zerops to check who you are.",
   "identity-failed": "This Mate can't reach Zerops to check who you are.",
-  rejected: "This Mate didn't accept the sign-in.",
   install: "This tab couldn't set up the connection to this Mate.",
 };
 
@@ -252,8 +284,10 @@ const containerPhrase = (
   container: ContainerReachability,
   mateName: string,
 ): ReachabilityPhrase => {
+  // A container down, or past its cap, is asked again with Try now beside its own verb: never
+  // only the way to the projects.
   if ("overdue" in container && container.overdue) {
-    return phrase(`${mateName} is taking longer than usual to start.`, ["restart"]);
+    return phrase(`${mateName} is taking longer than usual to start.`, ["try-now", "restart"]);
   }
   switch (container.level) {
     case "creating":
@@ -265,13 +299,13 @@ const containerPhrase = (
     case "updating":
       return phrase(noticePhrase(container));
     case "inactive":
-      return phrase("This Mate isn't running.", ["start"]);
+      return phrase("This Mate isn't running.", ["try-now", "start"]);
     case "needs-enable":
-      return phrase("Zerops Mate is not enabled on this container yet.", ["enable"]);
+      return phrase("Zerops Mate is not enabled on this container yet.", ["try-now", "enable"]);
     case "needs-update":
-      return phrase("This Mate needs an update before it can start.", ["restart"]);
+      return phrase("This Mate needs an update before it can start.", ["try-now", "restart"]);
     case "not-yet-available":
-      return phrase("Zerops Mate is not part of this container's zcp release yet.");
+      return phrase("Zerops Mate is not part of this container's zcp release yet.", ["try-now"]);
   }
 };
 
@@ -294,9 +328,13 @@ export function reachabilityPhrase(
         "go-to-projects",
       ]);
     case "refused-role":
-      return phrase("You can see this project in Zerops but can't operate its Mate.");
+      return phrase("You can see this project in Zerops but can't operate its Mate.", [
+        "try-again",
+      ]);
     case "refused-configuration":
-      return phrase("This Mate keeps refusing its connection settings.", ["try-now"]);
+      return phrase("This Mate keeps refusing its connection settings.", ["try-again"]);
+    case "refused-credential":
+      return phrase("This Mate didn't accept the sign-in.", ["try-again"]);
     case "update-required":
       return phrase(
         `This Mate runs ${verdict.actual}; this app needs ${verdict.minimum} or newer. Restarting it installs a newer one.`,
@@ -319,8 +357,18 @@ export function reachabilityPhrase(
         `${CAUSE[verdict.last.kind]} Trying again in ${secondsUntil(verdict.retryAtMs, context.nowMs)} s.`,
         verdict.restart ? ["try-now", "restart"] : ["try-now"],
       );
+    case "not-answering":
+      return phrase(
+        "This Mate isn't answering.",
+        verdict.overdue ? ["try-now", "restart"] : ["try-now"],
+      );
     case "reconnecting":
-      return phrase("Reconnecting…");
+      return verdict.retryAtMs === undefined
+        ? phrase("Reconnecting…", ["try-now"])
+        : phrase(
+            `This Mate isn't answering. Trying again in ${secondsUntil(verdict.retryAtMs, context.nowMs)} s.`,
+            ["try-now"],
+          );
     case "resolving":
       return phrase("Looking for this Mate…");
   }

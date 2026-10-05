@@ -1,5 +1,4 @@
 // @effect-diagnostics globalDate:off -- fake timers own `Date.now()`; the clients under test read it.
-import * as DateTime from "effect/DateTime";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsThrowawayPlatform } from "../authorization/zeropsThrowaway.ts";
@@ -21,70 +20,61 @@ import {
   makeThrowawayMintBudgets,
   planThrowawaySweep,
   THROWAWAY_REUSE_MS,
-  THROWAWAY_SWEEP_AGE_MS,
   zeropsThrowawayPlatform,
 } from "./doorThrowaway.ts";
 import type { ZeropsSession } from "./session.ts";
 import { makeFakeZeropsRest } from "./testing/fakeZeropsRest.ts";
 
 const NOW = Date.parse("2026-09-16T10:00:00.000Z");
-const at = (msAgo: number) => DateTime.formatIso(DateTime.makeUnsafe(NOW - msAgo));
 
 describe("planThrowawaySweep", () => {
-  // Only ours, only stale. Everything else on the account's token list is
-  // somebody's working credential.
-  for (const [name, token, swept] of [
-    [
-      "a door throwaway older than five minutes",
-      { id: "a", name: "mate-door:p1:n", created: at(THROWAWAY_SWEEP_AGE_MS + 1_000) },
-      true,
-    ],
-    [
-      "a token named like main's Gitea sign-in, whatever its age",
-      { id: "b", name: "gitea-signin:git.example.com:n", created: at(600_000) },
-      false,
-    ],
-    [
-      "a throwaway another tab may still be mid-flight with",
-      { id: "c", name: "mate-door:p1:n", created: at(30_000) },
-      false,
-    ],
-    [
-      "a Mate's own key, whatever its age",
-      { id: "d", name: "zcp-acme", created: at(90 * 24 * 60 * 60 * 1000) },
-      false,
-    ],
-    [
-      "something merely named like one",
-      { id: "e", name: "mate-doorstop", created: at(600_000) },
-      false,
-    ],
-    ["a token with no name at all", { id: "f", created: at(600_000) }, false],
-    // A token nobody can date is a token nobody can call stale.
-    [
-      "a throwaway whose created stamp does not parse",
-      { id: "g", name: "mate-door:p1:n", created: "recently" },
-      false,
-    ],
-    ["a throwaway with no created stamp", { id: "h", name: "mate-door:p1:n" }, false],
-  ] as const) {
-    it(`${swept ? "sweeps" : "leaves"} ${name}`, () => {
-      expect(planThrowawaySweep({ tokens: [token], nowEpochMs: NOW })).toEqual(
-        swept ? [token.id] : [],
-      );
-    });
-  }
-
-  it("sweeps every stale throwaway in one pass", () => {
-    const stale = planThrowawaySweep({
-      tokens: [
-        { id: "a", name: "mate-door:p1:n", created: at(600_000) },
-        { id: "b", name: "zcp-acme", created: at(600_000) },
-        { id: "c", name: "mate-door:p2:n", created: at(600_000) },
-      ],
-      nowEpochMs: NOW,
-    });
-    expect(stale).toEqual(["a", "c"]);
+  // Exactly what this browser owes, by its handle: everything else on the account's token list is
+  // somebody's — another tab's, another device's, a working credential — however old.
+  it.each([
+    {
+      case: "an owed throwaway, by the id its mint answered, listed or not",
+      tokens: [],
+      owed: [{ attempt: "mate-door:p1:n1", tokenId: "a" }],
+      swept: ["a"],
+    },
+    {
+      case: "an owed throwaway whose mint answer was lost, by its name",
+      tokens: [{ id: "b", name: "mate-door:p1:n2" }],
+      owed: [{ attempt: "mate-door:p1:n2" }],
+      swept: ["b"],
+    },
+    {
+      case: "never another tab's or device's throwaway",
+      tokens: [{ id: "c", name: "mate-door:p1:n3" }],
+      owed: [{ attempt: "mate-door:p1:n1", tokenId: "a" }],
+      swept: ["a"],
+    },
+    {
+      case: "never a throwaway named like an owed one, but not it",
+      tokens: [{ id: "d", name: "mate-door:p1:n4" }],
+      owed: [{ attempt: "mate-door:p1:n44" }],
+      swept: [],
+    },
+    {
+      case: "never a token named as an owed id's mint was, under another id",
+      tokens: [{ id: "e2", name: "mate-door:p1:n5" }],
+      owed: [{ attempt: "mate-door:p1:n5", tokenId: "e" }],
+      swept: ["e"],
+    },
+    {
+      case: "never a Mate's own key, whatever is owed",
+      tokens: [{ id: "f", name: "zcp-acme" }],
+      owed: [{ attempt: "zcp-acme" }],
+      swept: [],
+    },
+    {
+      case: "never a token with no name at all",
+      tokens: [{ id: "g" }],
+      owed: [{ attempt: "mate-door:p1:n7" }],
+      swept: [],
+    },
+  ])("$case", ({ tokens, owed, swept }) => {
+    expect(planThrowawaySweep({ tokens, owed })).toEqual(swept);
   });
 });
 
@@ -319,6 +309,37 @@ describe("zeropsThrowawayPlatform's debt", () => {
       name: "mate-door:crash:n1",
     });
     expect(debt.failedAt("org-1")).toBe(NOW);
+  });
+
+  it("keeps the id its mint answered with its debt, through a reload", async () => {
+    vi.useFakeTimers({ now: NOW });
+    const entries = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => entries.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        entries.set(key, value);
+      },
+      removeItem: (key: string) => {
+        entries.delete(key);
+      },
+    };
+    const debt = makeThrowawayDebt(storage);
+    const client = {
+      mintThrowaway: async () => ({ id: "door-1", token: "throwaway", mintingToken: "minting" }),
+    } as unknown as ZeropsApiClient;
+    debt.owe("org-1", NOW - 1, "mate-door:lost:n0");
+    await zeropsThrowawayPlatform(client, { debt }).mint({
+      clientId: "org-1",
+      name: "mate-door:p1:n1",
+    });
+    const owed = [
+      { attempt: "mate-door:lost:n0" },
+      { attempt: "mate-door:p1:n1", tokenId: "door-1" },
+    ];
+    expect(debt.owed("org-1", NOW)).toEqual(owed);
+    expect(makeThrowawayDebt(storage).owed("org-1", NOW)).toEqual(owed);
+    // Only what was owed by then: a mint since is another door's, still in its window.
+    expect(debt.owed("org-1", NOW - 1)).toEqual([{ attempt: "mate-door:lost:n0" }]);
   });
 
   it("successful cleanup never settles another door's outstanding token", async () => {
@@ -622,7 +643,7 @@ describe("throwaway hygiene", () => {
   }
 
   // CM-3: the organization's write flag would lock these members out, and
-  // the door and the broker are what decide their roles.
+  // the door and HQ are what decide their roles.
   for (const row of [
     { member: "a BASIC_USER", roleCode: "BASIC_USER", override: null },
     { member: "a READ_ONLY-with-override", roleCode: "READ_ONLY", override: "ADMIN" },

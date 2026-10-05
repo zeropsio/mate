@@ -24,6 +24,8 @@ const RECORDED: HqEnvironment = {
   keyHeld: false,
   keyInvalid: false,
   jobs: [],
+  release: null,
+  birth: null,
 };
 
 /** HQ, taking every attachment and every key, its structure holding `environments` for `g-1`. */

@@ -26,14 +26,16 @@
  *
  * `withThrowaway` deletes in `finally`, but a delete can fail — and Zerops
  * refuses to remove a member who still holds tokens (measured 2026-09-15), so
- * the rows are not harmless. Cleanup is owed before every mint ({@link ThrowawayDebt})
- * and settled only after its token is deleted or Zerops refused the mint. A delete
+ * the rows are not harmless. Cleanup is owed before every mint ({@link ThrowawayDebt}),
+ * by the throwaway's own name, and the id its mint answered with is kept beside it; it is
+ * settled only after its token is deleted or Zerops refused the mint. A delete
  * is attempted once; a failed delete keeps its exact target and failed/unknown reason
  * until the person asks to delete again. A crash stays owed, and only then does the app
- * list the organization's tokens and delete the person's own `mate-door:*`
- * tokens older than five minutes. {@link planThrowawaySweep}
- * decides which; five minutes is the same window the door itself allows, so a
- * throwaway another tab is mid-flight with is never swept out from under it.
+ * list the organization's tokens and delete exactly the ones it owes — by id, or by name
+ * where the mint's answer was lost ({@link planThrowawaySweep}); never another tab's or
+ * device's by its look or its age. It waits five minutes past the newest owed mint, the
+ * same window the door itself allows, so a throwaway another tab of this browser is
+ * mid-flight with is never swept out from under it.
  *
  * @module doorThrowaway
  */
@@ -48,7 +50,7 @@ import {
 import { ZeropsApiError, type ZeropsApiClient } from "./api.ts";
 import { diagnosticFailure, mateDiagnostics } from "./diagnostics.ts";
 
-/** Nothing older than this is still anybody's live throwaway. */
+/** Nothing owed older than this is still a door's live throwaway. */
 export const THROWAWAY_SWEEP_AGE_MS = 5 * 60 * 1000;
 
 /** The terminal result of one cleanup attempt; no credential values. */
@@ -74,11 +76,26 @@ interface ThrowawayDebtEntry {
   readonly attempt: string;
   readonly at: number;
   readonly failure?: ThrowawayCleanupFailure;
+  /** The id its mint answered with; absent while it is not known — its answer lost. */
+  readonly tokenId?: string;
 }
+
+/** One owed throwaway as a sweep finds it: its name, and its id where its mint answered. */
+export interface OwedThrowaway {
+  readonly attempt: string;
+  readonly tokenId?: string;
+}
+
+/** The debt's own marker of a failed sweep, never a throwaway's name. */
+const SWEEP_FAILED = "sweep-failed";
 
 /** The account's outstanding cleanup, by organization and mint attempt; no token values. */
 export interface ThrowawayDebt {
   readonly owe: (clientId: string, atMs: number, attempt?: string) => void;
+  /** Its mint answered: the id it is deleted by is kept with what is owed for it. */
+  readonly minted: (clientId: string, attempt: string, tokenId: string) => void;
+  /** The throwaways this organization owes from at or before `upToMs`, by their handles. */
+  readonly owed: (clientId: string, upToMs: number) => ReadonlyArray<OwedThrowaway>;
   /** The newest outstanding attempt; null when this organization owes none. */
   readonly failedAt: (clientId: string) => number | null;
   readonly cleanupFailures: (clientId: string) => ReadonlyArray<ThrowawayCleanupFailure>;
@@ -113,8 +130,8 @@ export function makeThrowawayDebt(storage?: ThrowawayDebtStorage): ThrowawayDebt
       if (!Array.isArray(value)) return;
       const read = new Map<string, ThrowawayDebtEntry>();
       for (const entry of value) {
-        if (!Array.isArray(entry) || (entry.length !== 3 && entry.length !== 4)) continue;
-        const [clientId, attempt, at, result] = entry as unknown[];
+        if (!Array.isArray(entry) || entry.length < 3 || entry.length > 5) continue;
+        const [clientId, attempt, at, result, tokenId] = entry as unknown[];
         if (
           typeof clientId !== "string" ||
           typeof attempt !== "string" ||
@@ -139,6 +156,7 @@ export function makeThrowawayDebt(storage?: ThrowawayDebtStorage): ThrowawayDebt
           attempt,
           at,
           ...(failure === undefined ? {} : { failure }),
+          ...(typeof tokenId === "string" ? { tokenId } : {}),
         });
       }
       owed = read;
@@ -153,11 +171,14 @@ export function makeThrowawayDebt(storage?: ThrowawayDebtStorage): ThrowawayDebt
         storage?.setItem(
           THROWAWAY_DEBT_KEY,
           JSON.stringify(
-            [...owed.values()].map(({ clientId, attempt, at, failure }) =>
-              failure === undefined
-                ? [clientId, attempt, at]
-                : [clientId, attempt, at, [failure.state, failure.reason, failure.tokenId ?? null]],
-            ),
+            [...owed.values()].map(({ clientId, attempt, at, failure, tokenId }) => {
+              const result =
+                failure === undefined
+                  ? null
+                  : [failure.state, failure.reason, failure.tokenId ?? null];
+              if (tokenId !== undefined) return [clientId, attempt, at, result, tokenId];
+              return result === null ? [clientId, attempt, at] : [clientId, attempt, at, result];
+            }),
           ),
         );
     } catch {
@@ -171,6 +192,30 @@ export function makeThrowawayDebt(storage?: ThrowawayDebtStorage): ThrowawayDebt
       const key = JSON.stringify([clientId, attempt]);
       owed.set(key, { clientId, attempt, at: Math.max(atMs, owed.get(key)?.at ?? atMs) });
       told();
+    },
+    minted: (clientId, attempt, tokenId) => {
+      read();
+      const key = JSON.stringify([clientId, attempt]);
+      const entry = owed.get(key);
+      if (entry === undefined) return;
+      owed.set(key, { ...entry, tokenId });
+      told();
+    },
+    owed: (clientId, upToMs) => {
+      read();
+      return [...owed.values()].flatMap((entry) =>
+        entry.clientId !== clientId ||
+        entry.at > upToMs ||
+        entry.attempt === "" ||
+        entry.attempt === SWEEP_FAILED
+          ? []
+          : [
+              {
+                attempt: entry.attempt,
+                ...(entry.tokenId === undefined ? {} : { tokenId: entry.tokenId }),
+              },
+            ],
+      );
     },
     failedAt: (clientId) => {
       read();
@@ -200,13 +245,12 @@ export function makeThrowawayDebt(storage?: ThrowawayDebtStorage): ThrowawayDebt
       return [...owed.values()].some(
         (entry) =>
           entry.clientId === clientId &&
-          (entry.attempt === "sweep-failed" || entry.failure !== undefined),
+          (entry.attempt === SWEEP_FAILED || entry.failure !== undefined),
       );
     },
     failSweep: (clientId, at) => {
       read();
-      const attempt = "sweep-failed";
-      owed.set(JSON.stringify([clientId, attempt]), { clientId, attempt, at });
+      owed.set(JSON.stringify([clientId, SWEEP_FAILED]), { clientId, attempt: SWEEP_FAILED, at });
       told();
     },
     finish: (clientId, attempt) => {
@@ -499,6 +543,7 @@ export function zeropsThrowawayPlatform(
               mintedAtMs: nowMs(),
               debt,
             });
+            debt.minted(input.clientId, input.name, throwaway.id);
             mateDiagnostics.record({ ...diagnostic, outcome: "ok", tokenId: throwaway.id });
             return { id: throwaway.id, token: throwaway.token };
           },
@@ -589,29 +634,26 @@ export function connectThroughThrowaway<T>(input: ConnectThroughThrowawayInput<T
 export interface AccountTokenRow {
   readonly id: string;
   readonly name?: string | undefined;
-  readonly created?: string | undefined;
 }
 
 /**
- * Which of the account's tokens are throwaways left behind by a crash.
- *
- * A row whose `created` does not parse is left alone: a token nobody can date
- * is a token nobody can call stale, and deleting one on a guess would take out
- * a live sign-in.
+ * The throwaways this browser owes, as the ids to delete: the one its mint answered with, by that
+ * id — listed or not, a token that is gone is gone — or, its answer lost, the one the token list
+ * names as minted under its name. A token merely named like a throwaway, or old, is somebody
+ * else's — another tab's, another device's — and left.
  */
 export function planThrowawaySweep(input: {
   readonly tokens: ReadonlyArray<AccountTokenRow>;
-  readonly nowEpochMs: number;
-  readonly maxAgeMs?: number;
+  readonly owed: ReadonlyArray<OwedThrowaway>;
 }): ReadonlyArray<string> {
-  const maxAgeMs = input.maxAgeMs ?? THROWAWAY_SWEEP_AGE_MS;
-  const stale: Array<string> = [];
-  for (const token of input.tokens) {
-    if (token.name === undefined || !isThrowawayName(token.name)) continue;
-    if (token.created === undefined) continue;
-    const createdMs = Date.parse(token.created);
-    if (!Number.isFinite(createdMs)) continue;
-    if (input.nowEpochMs - createdMs > maxAgeMs) stale.push(token.id);
-  }
-  return stale;
+  const ids = input.owed.flatMap((owed) => (owed.tokenId === undefined ? [] : [owed.tokenId]));
+  const names = new Set(
+    input.owed.flatMap((owed) => (owed.tokenId === undefined ? [owed.attempt] : [])),
+  );
+  const named = input.tokens.flatMap((token) =>
+    token.name !== undefined && isThrowawayName(token.name) && names.has(token.name)
+      ? [token.id]
+      : [],
+  );
+  return [...new Set([...ids, ...named])];
 }

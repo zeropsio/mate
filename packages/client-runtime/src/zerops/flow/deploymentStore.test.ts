@@ -6,6 +6,8 @@ import {
   type CollectionRead,
   type LeaseAdmissionError,
   type ProcessRecord,
+  type ProcessRef,
+  type ProcessStatus,
   type ProjectRef,
   type ServiceDeployInfo,
   type ServiceRecord,
@@ -16,7 +18,6 @@ import type { Shown } from "../knowledge/known.ts";
 import type { StopService } from "./deployment.ts";
 import { processesRead, runningProcess } from "./__fixtures__/processes.ts";
 import { deployed, record, servicesRead } from "./__fixtures__/services.ts";
-import { AFTER_BUILD_GRACE_MS } from "./deployment.ts";
 import { makeDeploymentStore } from "./deploymentStore.ts";
 
 const NOW = 100_000;
@@ -29,7 +30,8 @@ function listings() {
   const processReads = new Map<string, CollectionRead<ProcessRecord>>();
   const watchers = new Map<string, Set<() => void>>();
   const refusals = new Map<string, (reason: LeaseAdmissionError["reason"]) => void>();
-  const timers: Array<{ readonly delayMs: number; readonly fire: () => void; armed: boolean }> = [];
+  /** Each process's status as the account's store holds it, by process id. */
+  const statuses = new Map<string, ProcessStatus>();
   let follows = 0;
   /** What the account's store states of each service's version, by service id. */
   const versions = new Map<string, Shown<ZeropsServiceDeployedVersion>>();
@@ -62,15 +64,8 @@ function listings() {
         asked.push(ref.serviceId);
         return versions.get(ref.serviceId) ?? { state: "unread", waitingFor: null };
       },
+      buildStatus: (ref: ProcessRef) => statuses.get(ref.processId),
       nowMs: () => NOW,
-      random: () => 0.5,
-      setTimer: (delayMs: number, fire: () => void) => {
-        const timer = { delayMs, fire, armed: true };
-        timers.push(timer);
-        return () => {
-          timer.armed = false;
-        };
-      },
     },
     publish: (ref: ProjectRef, read: CollectionRead<ServiceRecord>) => {
       reads.set(projectKeyOf(ref), read);
@@ -93,14 +88,11 @@ function listings() {
     },
     /** How often a stop's demand was taken. */
     follows: () => follows,
-    /** The armed timers' delays. */
-    armed: () => timers.filter(({ armed }) => armed).map(({ delayMs }) => delayMs),
-    /** Fires every armed timer. */
-    fire: () => {
-      for (const timer of timers.filter(({ armed }) => armed)) {
-        timer.armed = false;
-        timer.fire();
-      }
+    /** The stage's build `processId` ended `status`: it leaves the running processes. */
+    end: (processId: string, status: ProcessStatus | undefined) => {
+      if (status !== undefined) statuses.set(processId, status);
+      processReads.set(projectKeyOf(STAGE), processesRead([], { project: STAGE }));
+      changed(STAGE);
     },
   };
 }
@@ -223,153 +215,69 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     expect(heard).toEqual(["project-stage"]);
   });
 
-  describe("a build seen to end with nothing running (the first deploy failing)", () => {
-    /** The store on a clock the test moves. */
-    const clocked = () => {
+  // A build is followed by its Zerops process to the end Zerops gives it: no clock, no grace.
+  describe("a build followed by its process to its end", () => {
+    const followed = () => {
       const platform = listings();
-      const clock = { ms: NOW };
-      const store = makeDeploymentStore({ ...platform.ports, nowMs: () => clock.ms });
+      const store = makeDeploymentStore(platform.ports);
       store.demand(STAGE);
       platform.publish(STAGE, stage(NEVER_DEPLOYED));
       platform.publishProcesses(STAGE, building({ id: "version-2", name: SHA }));
-      return { platform, clock, store };
+      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
+        value: { kind: "deploying" },
+      });
+      return { platform, store };
     };
 
-    it("a success whose build's end arrives before its version: never failed", () => {
-      const { platform, clock, store } = clocked();
-      // The build's process leaves first; the service still names its NONE version.
-      platform.publishProcesses(STAGE, building());
-      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
-        value: { kind: "deploying" },
-      });
-      clock.ms += 300;
-      platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: null }));
-      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "running" } });
-      // The grace runs out with the version running: nothing turns it into a failure.
-      clock.ms += AFTER_BUILD_GRACE_MS;
-      platform.fire();
-      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "running" } });
+    it.each([
+      {
+        name: "Zerops ended it FAILED with nothing running: it failed, in Zerops' words",
+        status: "FAILED" as const,
+        value: {
+          kind: "none",
+          failedBuild: { processId: "build-0", reason: "Zerops reports its build failed" },
+        },
+      },
+      {
+        name: "Zerops ended it CANCELED with nothing running: it failed, in Zerops' words",
+        status: "CANCELED" as const,
+        value: {
+          kind: "none",
+          failedBuild: { processId: "build-0", reason: "Zerops reports its build was canceled" },
+        },
+      },
+      {
+        name: "Zerops ended it FINISHED, its version not here yet: nothing failed",
+        status: "FINISHED" as const,
+        value: { kind: "none" },
+      },
+      {
+        name: "its end not said yet, the listing read without it: nothing failed",
+        status: undefined,
+        value: { kind: "none" },
+      },
+    ])("$name", ({ status, value }) => {
+      const { platform, store } = followed();
+      platform.end("build-0", status);
+      expect(deploymentOf(store.stop(STAGE), "app")).toEqual(
+        expect.objectContaining({ state: "known", value }),
+      );
     });
 
-    it("a real failure reads failed once the grace ran out with nothing running", () => {
-      const { platform, clock, store } = clocked();
-      platform.publishProcesses(STAGE, building());
-      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
-        value: { kind: "deploying" },
-      });
-      expect(platform.armed()).toEqual([AFTER_BUILD_GRACE_MS]);
-
-      clock.ms += AFTER_BUILD_GRACE_MS;
-      platform.fire();
-      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
-        state: "known",
-        value: { kind: "none", afterBuild: true },
-      });
-
-      // The next build activates: it runs, and the failure is forgotten.
+    it("a failed build is forgotten once a version runs", () => {
+      const { platform, store } = followed();
+      platform.end("build-0", "FAILED");
       platform.publishProcesses(STAGE, building({ id: "version-3", name: SHA }));
-      platform.publishProcesses(STAGE, building());
+      platform.end("build-0", "FINISHED");
       platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-3", source: null }));
       expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "running" } });
     });
 
-    // Run 5 (window B): the build's process left, the stop was read again, then its version was
-    // known — and for a moment the menu said "awaiting a first deploy" and the cell "Checking…".
-    it.each([
-      {
-        case: "its new version active and stated by nothing yet (A14)",
-        between: (platform: ReturnType<typeof listings>) =>
-          platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-9", source: null })),
-      },
-      {
-        case: "its listing read again",
-        between: (platform: ReturnType<typeof listings>) =>
-          platform.publish(
-            STAGE,
-            servicesRead([record("app-id", "app", deployed(NEVER_DEPLOYED), { project: STAGE })], {
-              project: STAGE,
-              coverage: { kind: "none" },
-            }),
-          ),
-      },
-      {
-        case: "its processes read again",
-        between: (platform: ReturnType<typeof listings>) =>
-          platform.publishProcesses(STAGE, processesRead([], { coverage: { kind: "none" } })),
-      },
-    ])("a build's end, then $case, then its version: deploying throughout", ({ between }) => {
-      const { platform, clock, store } = clocked();
-      platform.publishProcesses(STAGE, building());
-      clock.ms += 400;
-      between(platform);
-      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
-        state: "known",
-        value: { kind: "deploying", version: { sha: SHA } },
-      });
-      clock.ms += 1_200;
-      platform.publishProcesses(STAGE, building());
+    it("a version active before its build's end: running, whatever the build's end says", () => {
+      const { platform, store } = followed();
       platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-2", source: null }));
+      platform.end("build-0", "FINISHED");
       expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({ value: { kind: "running" } });
-    });
-
-    it("a long re-check of the processes while the build runs starts no grace: its end does", () => {
-      const { platform, clock, store } = clocked();
-      // The processes listing is read again for 30 s; the build still runs, then ends.
-      platform.publishProcesses(STAGE, processesRead([], { coverage: { kind: "none" } }));
-      expect(platform.armed()).toEqual([]);
-      clock.ms += 30_000;
-      platform.publishProcesses(STAGE, building());
-      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
-        value: { kind: "deploying" },
-      });
-      expect(platform.armed()).toEqual([AFTER_BUILD_GRACE_MS]);
-    });
-
-    it("a re-check of the whole listing keeps the grace's timer armed", () => {
-      const { platform, clock, store } = clocked();
-      platform.publishProcesses(STAGE, building());
-      expect(platform.armed()).toEqual([AFTER_BUILD_GRACE_MS]);
-      clock.ms += 5_000;
-      platform.publish(
-        STAGE,
-        servicesRead([record("app-id", "app", deployed(NEVER_DEPLOYED), { project: STAGE })], {
-          project: STAGE,
-          coverage: { kind: "none" },
-        }),
-      );
-      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
-        value: { kind: "deploying" },
-      });
-      expect(platform.armed()).toEqual([AFTER_BUILD_GRACE_MS - 5_000]);
-      // The listing lands with nothing running once the grace ran out: the first deploy failed.
-      clock.ms += AFTER_BUILD_GRACE_MS;
-      platform.publish(STAGE, stage(NEVER_DEPLOYED));
-      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
-        value: { kind: "none", afterBuild: true },
-      });
-    });
-
-    it("a version still unknown when the grace runs out: Checking, never deploying for ever", () => {
-      const { platform, clock, store } = clocked();
-      platform.publishProcesses(STAGE, building());
-      platform.publish(STAGE, stage({ ...NEVER_DEPLOYED, id: "version-9", source: null }));
-      expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject({
-        value: { kind: "deploying" },
-      });
-      clock.ms += AFTER_BUILD_GRACE_MS;
-      platform.fire();
-      expect(deploymentOf(store.stop(STAGE), "app")?.state).not.toBe("known");
-    });
-
-    it("a stop let go stops the grace's timer", () => {
-      const platform = listings();
-      const store = makeDeploymentStore(platform.ports);
-      const release = store.demand(STAGE);
-      platform.publish(STAGE, stage(NEVER_DEPLOYED));
-      platform.publishProcesses(STAGE, building({ id: "version-2", name: SHA }));
-      platform.publishProcesses(STAGE, building());
-      release();
-      expect(platform.armed()).toEqual([]);
     });
   });
 
@@ -497,8 +405,6 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
       platform.answer(answer);
 
       expect(deploymentOf(store.stop(STAGE), "app")).toMatchObject(deployment);
-      // Nothing is read for it, so nothing is asked for again either.
-      expect(platform.armed()).toEqual([]);
     });
   });
 
@@ -584,8 +490,6 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
     store.demand(STAGE);
     platform.refuse(STAGE, "account-capacity");
     expect(store.stop(STAGE)).toMatchObject({ state: "failed", retryAtMs: null });
-    expect(platform.armed()).toEqual([]);
-    platform.fire();
     expect(platform.follows()).toBe(1);
     store.again(STAGE);
     expect(platform.follows()).toBe(2);
@@ -605,7 +509,7 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
 
     release();
 
-    expect(platform.armed()).toEqual([]);
+    expect(platform.watching()).toBe(0);
   });
 
   it("a process demand refused as it is taken fails the none too", () => {
@@ -626,8 +530,6 @@ describe("the deployment store (DESIGN §2.D D6)", () => {
       failure: { kind: "refused", code: "account-mismatch" },
       retryAtMs: null,
     });
-    // A demand for another account is never admitted: nothing asks again.
-    expect(platform.armed()).toEqual([]);
   });
 
   it("a disposed store watches nothing and publishes nothing", () => {

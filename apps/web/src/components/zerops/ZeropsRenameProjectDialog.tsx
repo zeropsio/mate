@@ -1,5 +1,5 @@
 /**
- * Naming a project, wherever it is offered — the projects screen's row and the project's own page.
+ * Renaming a project, wherever it is offered — the projects screen's row and the project's own page.
  *
  * The dialog stays until HQ answers (M04, e2e 2026-10-03: closing at once left a slow rename
  * unseen and a refused one unsaid): it closes once HQ takes the name and keeps HQ's refusal for
@@ -22,13 +22,13 @@ export function ZeropsRenameProjectDialog({
   const rename = useRenameGroup();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const unnamed = group.nameSource === "id";
 
   return (
     <ZeropsRenameDialog
       description="Mate shows the new name. Its environments in Zerops keep the names they have."
       error={error}
-      initialValue={unnamed ? "" : group.name}
+      // An unread name's id is a handle, not a name to edit.
+      initialValue={group.nameSource === "unread" ? "" : group.name}
       label="Project name"
       onCancel={onClose}
       onOpenChange={(open) => {
@@ -46,7 +46,7 @@ export function ZeropsRenameProjectDialog({
       open
       pending={pending}
       submitLabel="Rename"
-      title={unnamed ? "Name this project" : "Rename the project"}
+      title="Rename the project"
       validate={(value) => (value.trim().length === 0 ? "Give the project a name." : undefined)}
     />
   );

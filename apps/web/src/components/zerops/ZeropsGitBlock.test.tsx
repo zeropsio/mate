@@ -4,6 +4,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { ZeropsGitBlock } from "./ZeropsGitBlock";
 
+/** The change's own address at its HQ (`changeUrl`). */
+const CHANGE_URL = "https://hq.example.test/changes/acme/api/12";
+
 function blockOf(overrides: Partial<GitBlock> = {}): GitBlock {
   return {
     repository: "api",
@@ -15,7 +18,7 @@ function blockOf(overrides: Partial<GitBlock> = {}): GitBlock {
     changed: [{ path: "server.js", insertions: 12, deletions: 1 }],
     pullRequestNumber: 12,
     pullRequestHead: "c0ffee",
-    pullRequestUrl: "https://gitea.example/acme/api/pulls/12",
+    pullRequestUrl: CHANGE_URL,
     destination: "stage picks it up on merge",
     action: undefined,
     trouble: "",
@@ -60,12 +63,12 @@ describe("ZeropsGitBlock", () => {
   it("says what was proved wrong as the answer, not as a footnote to a greener one", () => {
     const html = render({
       block: blockOf({
-        trouble: "This Mate has no Gitea access yet.",
-        verdict: { tone: "failed", text: "This Mate has no Gitea access yet.", ask: undefined },
+        trouble: "HQ did not answer for this repository.",
+        verdict: { tone: "failed", text: "HQ did not answer for this repository.", ask: undefined },
       }),
     });
     expect(html).toContain('data-zerops-status-tone="failed"');
-    expect(html).toContain("This Mate has no Gitea access yet.");
+    expect(html).toContain("HQ did not answer for this repository.");
   });
 
   it("says nothing about a pull request there is none of", () => {
@@ -91,12 +94,12 @@ describe("ZeropsGitBlock", () => {
     expect(render()).not.toContain(">Merge</button>");
   });
 
-  it("makes the change's number the way to its own page, never to a forge", () => {
+  it("makes the change's number the way to its own page, never a link out", () => {
     const html = render({ onOpenChange: () => {} });
     expect(html).toContain('data-zerops-surface="git-change"');
     // The url is still on the block — the change's page uses it — but nothing
     // here links out to it.
-    expect(html).not.toContain("gitea.example");
+    expect(html).not.toContain(CHANGE_URL);
     expect(render()).not.toContain('data-zerops-surface="git-change"');
   });
 

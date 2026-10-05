@@ -1,9 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { EMPTY_ADMISSION, makeUnresolvedProject, makeUnresolvedService } from "./inventory.ts";
+import { EMPTY_ADMISSION, makeUnresolvedService } from "./inventory.ts";
 import {
   knownProjectsOf,
-  knownProjectTags,
   knownServicesOf,
   projectsSourceOf,
   servicesCheckOrdinalOf,
@@ -15,13 +14,11 @@ import { makeInitialZeropsDataState } from "./state.ts";
 import type {
   CollectionRead,
   EntityKnowledge,
-  EntityRead,
   InterestState,
-  ProjectRecord,
   QueryCoverage,
   ServiceRecord,
 } from "./types.ts";
-import { DispatchOrdinal, ReadStartOrdinal } from "./types.ts";
+import { ReadStartOrdinal } from "./types.ts";
 import { identity, organization, project, scope, service, stamp } from "./__fixtures__/index.ts";
 
 const NOW = 5_000;
@@ -41,27 +38,6 @@ const organizationObserving = (): InterestState => ({
   guarantee: "source-order-unverified",
   sinceReceiptOrdinal: stamp(1).receiptOrdinal,
 });
-
-/** A project whose name and status are read; its presentation is whatever the test gives it. */
-const projectRead = (presentation: ProjectRecord["presentation"]): EntityRead<ProjectRecord> => {
-  const unresolved = makeUnresolvedProject(project());
-  return {
-    value: {
-      knowledge: "observed",
-      record: {
-        ...unresolved,
-        identity: observedFacet({ name: "Wren", createdAt: null }, 2),
-        lifecycle: observedFacet({ status: "ACTIVE" }, 2),
-        presentation,
-      },
-    },
-    observation: {
-      required: [organizationObserving()],
-      optional: [],
-      access: { status: "unverified" },
-    },
-  };
-};
 
 describe("inventory knowledge", () => {
   it("an unread organization's projects are unread, never []", () => {
@@ -93,111 +69,6 @@ describe("inventory knowledge", () => {
       attempt: 3,
       retryAtMs: 9_000,
     });
-  });
-
-  it("a project's tags the inventory has not read are unread, never []", () => {
-    const read = projectRead(makeUnresolvedProject(project()).presentation);
-
-    expect(knownProjectTags(read, NOW)).toEqual({ state: "unread", waitingFor: null });
-  });
-
-  it.each<{
-    readonly name: string;
-    readonly presentation: ProjectRecord["presentation"];
-    readonly tags: unknown;
-  }>([
-    {
-      name: "a presentation read without tags leaves them unread",
-      presentation: observedFacet({ description: "shop" }, 3),
-      tags: { state: "unread", waitingFor: null },
-    },
-    {
-      name: "tags read as none are a known, complete none",
-      presentation: observedFacet({ tags: [] }, 3),
-      tags: {
-        state: "known",
-        value: [],
-        asOf: { ordinal: 3, atMs: 30 },
-        coverage: "complete",
-        freshness: { kind: "live" },
-      },
-    },
-    {
-      name: "a confirmed denial is gone, never an empty list",
-      presentation: {
-        knowledge: "unavailable",
-        reason: "forbidden",
-        previousFields: { tags: ["group:shop"] },
-        stamp: stamp(5),
-        fence: {
-          accountEpoch: scope().epoch,
-          readStartOrdinal: ReadStartOrdinal.make(1),
-          dispatchOrdinal: DispatchOrdinal.make(1),
-          verifiedAccessDeadlineMs: 10_000,
-        },
-        admission: EMPTY_ADMISSION,
-      },
-      tags: { state: "gone", evidence: "direct-forbidden", asOf: { ordinal: 5, atMs: 50 } },
-    },
-  ])("project tags: $name", ({ presentation, tags }) => {
-    expect(knownProjectTags(projectRead(presentation), NOW)).toEqual(tags);
-  });
-
-  it.each<{
-    readonly reason: Extract<
-      EntityKnowledge<ProjectRecord>,
-      { readonly knowledge: "unavailable" }
-    >["reason"];
-    readonly evidence: string;
-  }>([
-    { reason: "forbidden", evidence: "direct-forbidden" },
-    { reason: "not-found", evidence: "direct-not-found" },
-  ])("an unavailable project ($reason) has tags gone ($evidence)", ({ reason, evidence }) => {
-    const read: EntityRead<ProjectRecord> = {
-      ...projectRead(makeUnresolvedProject(project()).presentation),
-      value: { knowledge: "unavailable", ref: project(), reason, since: stamp(6) },
-    };
-
-    expect(knownProjectTags(read, NOW)).toEqual({
-      state: "gone",
-      evidence,
-      asOf: { ordinal: 6, atMs: 60 },
-    });
-  });
-
-  // The grant machine's denial covers a scope, often the whole account: no read of this project
-  // said it is gone, so its tags wait for the grant (§3.4 withheld(access-denied), not gone).
-  it.each<{ readonly name: string; readonly read: EntityRead<ProjectRecord> }>([
-    {
-      name: "the project",
-      read: {
-        ...projectRead(makeUnresolvedProject(project()).presentation),
-        value: {
-          knowledge: "unavailable",
-          ref: project(),
-          reason: "access-revoked",
-          since: stamp(6),
-        },
-      },
-    },
-    {
-      name: "its presentation",
-      read: projectRead({
-        knowledge: "unavailable",
-        reason: "access-revoked",
-        previousFields: { tags: ["group:shop"] },
-        stamp: stamp(5),
-        fence: {
-          accountEpoch: scope().epoch,
-          readStartOrdinal: ReadStartOrdinal.make(0),
-          dispatchOrdinal: DispatchOrdinal.make(1),
-          verifiedAccessDeadlineMs: 50,
-        },
-        admission: EMPTY_ADMISSION,
-      }),
-    },
-  ])("a revoked access to $name leaves the tags waiting for the grant, never gone", ({ read }) => {
-    expect(knownProjectTags(read, NOW)).toEqual({ state: "unread", waitingFor: "access-grant" });
   });
 
   describe("a services listing", () => {

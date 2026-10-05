@@ -43,6 +43,7 @@ import {
   type CreateReleaseRequest,
   type RollbackRequest,
 } from "@t3tools/shared/hqRelease";
+import type { HqMoveTo, HqOffers } from "@t3tools/shared/hqOffers";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
@@ -50,8 +51,8 @@ import * as Schema from "effect/Schema";
 
 import { type FetchImplementation } from "../api.ts";
 import type { HqEnvironment } from "./environments.ts";
-import { hqRefusalWords } from "./refusals.ts";
-import { structureEventOf, type HqStructureEvent } from "./stream.ts";
+import { hqRefusalWords, ZEROPS_UNANSWERED } from "./refusals.ts";
+import { hqStructureOf, structureEventOf, type HqStructureEvent } from "./stream.ts";
 
 /** An organization's HQ: its project, and the address its anchor names. */
 export interface HqEndpoint {
@@ -89,7 +90,6 @@ export interface HqMateSetUp extends HqNewMate {
  */
 export interface HqMate extends HqMateRecord {
   readonly birthId?: string | null;
-  readonly nameSource?: string;
   readonly signers?: Readonly<Record<string, string>>;
   /**
    * Who made it — whoever set its record up: a Mate recorded before HQ kept it is null; an older
@@ -112,6 +112,15 @@ export interface HqMate extends HqMateRecord {
   readonly runsWithoutSignIn?: boolean;
 }
 
+/**
+ * What the reader may do with a Mate (`observe_mate`, `edit_mate_record`, `detach`) and where it
+ * may go; absent where HQ sent none, or none this build can read.
+ */
+export interface HqMateOffers {
+  readonly can?: HqOffers;
+  readonly moveTo?: HqMoveTo;
+}
+
 /** HQ's held records, including projects whose removal has not finished at HQ. */
 export interface HqAppContents {
   /** The same project, change, release and code repository records that guard Delete. */
@@ -122,29 +131,48 @@ export interface HqAppContents {
 
 /** What `GET /api/structure` answers: the applications as the reader sees them in Zerops. */
 export interface HqStructure {
+  /** What the reader may do with the organization's applications; absent where HQ sent none. */
+  readonly can?: HqOffers;
+  /**
+   * Each project the reader reads that HQ holds nowhere, by id, with whether they may write its
+   * Mate's record (`create_mate_record`); absent where HQ sent none.
+   */
+  readonly unheld?: Readonly<Record<string, HqOffers>>;
+  /**
+   * When Zerops answered the org view HQ decides its offers over (ISO 8601): shown, never compared
+   * with now. None until HQ's stream names one.
+   */
+  readonly rolesAnsweredAt?: string | null;
   readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
   /** The Mates HQ holds in no application: their project's name in Zerops, and their record. */
-  readonly ungrouped: ReadonlyArray<{
-    readonly projectId: string;
-    readonly name: string;
-    readonly mate: HqMate;
-  }>;
+  readonly ungrouped: ReadonlyArray<
+    {
+      readonly projectId: string;
+      readonly name: string;
+      readonly mate: HqMate;
+    } & HqMateOffers
+  >;
   readonly apps: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
-    readonly projects: ReadonlyArray<{
-      readonly projectId: string;
-      readonly name: string;
-      readonly kind: string;
-      readonly mate: HqMate | null;
-    }>;
+    readonly projects: ReadonlyArray<
+      {
+        readonly projectId: string;
+        readonly name: string;
+        readonly kind: string;
+        readonly mate: HqMate | null;
+      } & HqMateOffers
+    >;
+    /** What the reader may do with it: its changes, its deploys, its release; absent where none. */
+    readonly can?: HqOffers;
     /** Absent from an older HQ: projected projects cannot establish emptiness. */
     readonly contents?: HqAppContents;
     /**
      * Its stage and production with their deploys (`hq/environments.ts`), to whoever reads its
-     * changes — none to one who only sees it; absent where HQ sent none this build can read.
+     * changes; refused, with HQ's reason, to one who only sees it — never an empty list; absent
+     * where HQ sent none this build can read.
      */
-    readonly environments?: ReadonlyArray<HqEnvironment>;
+    readonly environments?: ReadonlyArray<HqEnvironment> | { readonly refused: string };
     /** The Mates on their way into it whose attach has not landed; absent from an older HQ. */
     readonly births?: ReadonlyArray<HqBirth>;
   }>;
@@ -154,7 +182,7 @@ export interface HqAttach {
   readonly projectId: string;
   readonly kind: RoleProjectKind;
   /**
-   * The Mate's name, face and stand-up ask, and its zcp service where its project holds it; with
+   * The Mate's face and stand-up ask, and its zcp service where its project holds it; with
    * kind `mate`, and only with it. An attach that closes a birth intent takes the intent's ask
    * instead.
    */
@@ -279,6 +307,29 @@ export interface HqApi {
    * the attach that closes it records the caller as its stand-up's asker where `standUp` says so.
    */
   readonly recordBirth: (birth: { readonly appId: string } & HqNewMate) => Promise<HqBirth>;
+  /**
+   * Holds, or renews, a press for this browser's press `owner` (`PUT /api/presses/{projectId}`):
+   * what it makes and into which application, with its container import's Zerops process once
+   * Zerops answered it — another browser takes it for a press still running. Another press's hold
+   * refuses it (`press_held`). A `renew` extends only this press's own live hold, never one its
+   * end let go (`press_not_held`).
+   */
+  readonly holdPress: (
+    projectId: string,
+    press: {
+      readonly owner: string;
+      readonly kind: "mate" | "stage" | "production";
+      readonly appId?: string;
+      readonly importProcessId?: string;
+      readonly renew?: boolean;
+    },
+  ) => Promise<void>;
+  /**
+   * This browser's press's end: one that `finished` leaves no record (`DELETE
+   * /api/presses/{projectId}/{owner}`); one that stopped ends its hold and keeps its record, for its
+   * setup to be finished for its kind (`POST …/stopped`).
+   */
+  readonly endPress: (projectId: string, owner: string, finished: boolean) => Promise<void>;
   readonly bindBirth: (birthId: string, projectId: string) => Promise<void>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
   /**
@@ -417,6 +468,9 @@ function said(text: string): { readonly code?: unknown; readonly reason?: unknow
   }
 }
 
+/** HQ's code for a write refused because Zerops did not answer its roles: nothing was written. */
+const WROTE_NOTHING_ZEROPS = "zerops_unanswered";
+
 async function errorOf(response: Response): Promise<HqError> {
   const body = said(await response.text());
   const code = typeof body.code === "string" ? body.code : `http_${response.status}`;
@@ -425,7 +479,7 @@ async function errorOf(response: Response): Promise<HqError> {
       kind: "unavailable",
       code,
       status: response.status,
-      message: "HQ is not answering right now.",
+      message: code === WROTE_NOTHING_ZEROPS ? ZEROPS_UNANSWERED : "HQ is not answering right now.",
     });
   }
   const reason = typeof body.reason === "string" ? body.reason : undefined;
@@ -440,12 +494,18 @@ async function errorOf(response: Response): Promise<HqError> {
 
 /**
  * HQ's answer as the call's outcome. A write HQ failed on its way (`5xx`) may have landed — but
- * for a Core that does not lead (`not_active`), which writes nothing.
+ * for a Core that does not lead (`not_active`), and one refused because Zerops did not answer its
+ * roles (`zerops_unanswered`): neither writes anything.
  */
 async function answered(response: Response, write: boolean): Promise<Response> {
   if (response.ok) return response;
   const error = await errorOf(response);
-  if (write && response.status >= 500 && error.code !== "not_active") {
+  if (
+    write &&
+    response.status >= 500 &&
+    error.code !== "not_active" &&
+    error.code !== WROTE_NOTHING_ZEROPS
+  ) {
     throw uncertain();
   }
   throw error;
@@ -860,7 +920,14 @@ export function makeHqApi(input: {
   };
 
   const structureOf = async (signal?: AbortSignal) =>
-    json<HqStructure>(await authorized("/api/structure", signal === undefined ? {} : { signal }));
+    Option.getOrThrowWith(
+      Option.fromUndefinedOr(
+        hqStructureOf(
+          await bodyOf(await authorized("/api/structure", signal === undefined ? {} : { signal })),
+        ),
+      ),
+      unreadable,
+    );
   const appOf = async (appId: string) => (await structureOf()).apps.find((app) => app.id === appId);
   // Only a lost release/rollback write answer needs this direct confirmation, never a load.
   const releasesOf = async (appId: string) =>
@@ -971,6 +1038,21 @@ export function makeHqApi(input: {
       json<HqBirth>(
         await authorized("/api/births", { method: "POST", body: JSON.stringify(birth) }, true),
       ),
+    holdPress: async (projectId, press) => {
+      await authorized(
+        `/api/presses/${encodeURIComponent(projectId)}`,
+        { method: "PUT", body: JSON.stringify(press) },
+        true,
+      );
+    },
+    endPress: async (projectId, owner, finished) => {
+      const path = `/api/presses/${encodeURIComponent(projectId)}/${encodeURIComponent(owner)}`;
+      await authorized(
+        finished ? path : `${path}/stopped`,
+        { method: finished ? "DELETE" : "POST" },
+        true,
+      );
+    },
     bindBirth: async (birthId, projectId) => {
       await authorized(
         `/api/births/${encodeURIComponent(birthId)}/project`,

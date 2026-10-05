@@ -19,9 +19,8 @@
  *   mints nothing while its Mate still holds it, so it neither waits on the pace nor spends it.
  *   A mint the platform answers 429 holds the background a while.
  * - An exchange whose attempt ends without it (its deadline, a retirement) is aborted.
- * - A Mate's backoff cap (`RETRY_CAP`) is kept across loads (`capped`): until it ends, the
- *   background asks that Mate nothing, and one that fails again once it ends is capped again at
- *   once — a load no longer starts its ladder over with five exchanges in its first minute.
+ * - A transient failure keeps being retried, its rate bounded by the machine's ladder and cap, in
+ *   this load only: a load starts each Mate's ladder over.
  * - While a press is in flight in this browser (`holdBackground`), the background starts no
  *   exchange that mints: the press reads the token list every throwaway is written to.
  */
@@ -32,9 +31,7 @@ import type { IdentityExchangeReason } from "../diagnostics.ts";
 import { DOOR_MINT_PACE, makeMintPace } from "../doorThrowaway.ts";
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import {
-  CAPPED_RETRY_MS,
   initialEnvironment,
-  RETRY_CAP,
   transitionEnvironment,
   type ContainerVerdict,
   type DescriptorFacts,
@@ -146,14 +143,6 @@ export interface ExchangeDriverPorts<C> {
    * (`keptSessions.ts`): it starts past the mint pace and spends none of it.
    */
   readonly kept?: (key: TargetKey) => boolean;
-  /**
-   * Each target's backoff cap as loads keep it: until when, wall ms, the background asks its Mate
-   * nothing. Absent: every load starts each ladder over.
-   */
-  readonly capped?: {
-    readonly until: (key: TargetKey) => number | null;
-    readonly remember: (key: TargetKey, until: number | null) => void;
-  };
   /** The supervisor's `retryNow` for a link in backoff. */
   readonly retryLink: (environmentId: EnvironmentId) => void;
   /** The inventory re-reads this target's presence. */
@@ -232,10 +221,6 @@ interface Entry {
   installing: number | null;
   /** The reason the user's last Connect gave; the target's exchanges carry it. */
   userReason: IdentityExchangeReason | null;
-  /** Until when its backoff cap holds, wall ms, as loads keep it (`capped`); null: none. */
-  capUntil: number | null;
-  /** It was capped in this load or an earlier one, and has not connected since. */
-  capped: boolean;
 }
 
 /** The demands in priority order (§4.4): the user's Connect ranks after the route's and the screen's. */
@@ -309,15 +294,12 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
   const entryFor = (key: TargetKey, record: EnvironmentId | null): Entry => {
     const existing = entries.get(key);
     if (existing !== undefined) return existing;
-    const capUntil = ports.capped?.until(key) ?? null;
     const created: Entry = {
       machine: initialEnvironment({ record }),
       cancelTimer: null,
       inFlight: new Map(),
       installing: null,
       userReason: null,
-      capUntil,
-      capped: capUntil !== null,
     };
     entries.set(key, created);
     return created;
@@ -443,35 +425,10 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     }
   };
 
-  /**
-   * Keeps the target's cap as its machine moved: the cap its ladder reached, five minutes from a
-   * failure once it was capped, none once it holds a credential. The route's Mate is never capped.
-   */
-  const keepCap = (key: TargetKey, entry: Entry, before: EnvironmentMachine): void => {
-    if (ports.capped === undefined) return;
-    const { credential, failures, guards } = entry.machine;
-    let until = entry.capUntil;
-    if (credential.kind === "held") {
-      until = null;
-      entry.capped = false;
-    } else if (credential.kind === "backoff" && !guards.routeTarget && failures > before.failures) {
-      if (failures >= RETRY_CAP) {
-        until = credential.retryAt.wall;
-        entry.capped = true;
-      } else if (entry.capped) {
-        until = clock.now().wall + CAPPED_RETRY_MS;
-      }
-    }
-    if (until === entry.capUntil) return;
-    entry.capUntil = until;
-    ports.capped.remember(key, until);
-  };
-
   /** Feeds one event to one target's machine, publishes its state, then runs its effects. */
   const step = (key: TargetKey, event: EnvironmentEvent): void => {
     const entry = entries.get(key);
     if (entry === undefined) return;
-    const before = entry.machine;
     let { state, effects } = transitionEnvironment(entry.machine, event, context());
     // A slot is held only by the exchange it started: one that ended gives it back at once.
     if (state.credential.kind !== "exchanging" && state.guards.budget) {
@@ -484,7 +441,6 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       effects = [...effects, ...returned.effects];
     }
     entry.machine = state;
-    keepCap(key, entry, before);
     // An op whose attempt ended without its answer is abandoned.
     const current = inFlightAttempt(state);
     for (const [attempt, controller] of entry.inFlight) {
@@ -588,15 +544,12 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
    * budget back from every other one — so a slot is never held by a target that waits on
    * something else. An asked-for target is handed one whenever it would start; the background
    * starts nothing past the concurrency or the mint pace, counting the mint each descriptor
-   * probe in flight may still spend, nothing for a Mate whose cap holds, and nothing that mints
-   * while a press is in flight.
+   * probe in flight may still spend, and nothing that mints while a press is in flight.
    */
   const allocate = (): void => {
     const now = clock.now();
     const ordered = [...entries.keys()].sort((left, right) => rank(left) - rank(right));
     let paceBound = false;
-    /** When the first cap holding a wanted target ends, wall ms. */
-    let capEnds: number | null = null;
     for (const key of ordered) {
       const entry = entries.get(key)!;
       const running = [...entries.values()].map((other) => other.machine);
@@ -604,11 +557,7 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
       const owed = owedMints();
       const paced = pace.readyAt(now.mono, owed) <= now.mono;
       let budget = false;
-      const capHolds = !asked(key) && entry.capUntil !== null && entry.capUntil > now.wall;
-      if (capHolds && wantedBy(key).length > 0) {
-        capEnds = Math.min(capEnds ?? entry.capUntil!, entry.capUntil!);
-      }
-      const held = capHolds || (holding && !asked(key) && !kept(key));
+      const held = holding && !asked(key) && !kept(key);
       if (entry.machine.credential.kind === "exchanging") {
         budget = entry.machine.guards.budget;
       } else if (
@@ -629,14 +578,11 @@ export function makeExchangeDriver<C>(ports: ExchangeDriverPorts<C>): ExchangeDr
     }
     cancelMintTimer?.();
     cancelMintTimer = null;
-    // A target held back by the pace gets its slot back when the pace has a mint for it, and one
-    // held by its cap when the cap ends.
-    const waits = [
-      ...(paceBound ? [pace.readyAt(now.mono, owedMints()) - now.mono] : []),
-      ...(capEnds === null ? [] : [capEnds - now.wall]),
-    ];
-    if (waits.length > 0) {
-      cancelMintTimer = clock.setTimer(Math.min(...waits), () => enqueue(() => undefined));
+    // A target held back by the pace gets its slot back when the pace has a mint for it.
+    if (paceBound) {
+      cancelMintTimer = clock.setTimer(pace.readyAt(now.mono, owedMints()) - now.mono, () =>
+        enqueue(() => undefined),
+      );
     }
   };
 

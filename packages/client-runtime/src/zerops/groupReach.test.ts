@@ -142,58 +142,84 @@ describe("findHeldMateKey — a key the platform made, by either of its names", 
   });
 });
 
-// ADR 0003: a Mate's key holds its own project and nothing this client adds beside it. The plan
-// lowers a key the platform minted with ADMIN, and keeps every other grant it holds exactly as it
-// is — a grant on a sibling is neither added nor taken away here.
-// ADR 0003: a Mate's key reaches only its own project. The harden Finish setup runs takes off the
-// READ_ONLY grants on siblings — production included — an earlier client gave a Mate's key.
+// ADR 0003: a Mate's key holds its own project at BASIC_USER and nothing else. A key known for the
+// Mate's by the id HQ holds is written to exactly that; a key found by its name and grant alone is
+// lowered only while it is still that shape, and never narrowed: a key that reaches another project
+// beside its own is not taken for a Mate's.
 describe("planMateKey", () => {
+  const OWN = { projectId: DEV, roleCode: "BASIC_USER" } as const;
   it.each([
     {
-      case: "a key the platform minted with ADMIN is lowered in place",
+      case: "by id: a key the platform minted with ADMIN is lowered in place",
+      foundBy: "id",
       projects: [{ projectId: DEV, roleCode: "ADMIN" }],
-      written: [{ projectId: DEV, roleCode: "BASIC_USER" }],
+      plan: { kind: "write", tokenId: "tok-mate", projects: [OWN] },
     },
     {
-      case: "a key that reads a sibling has it taken off",
+      case: "by id: a key that reads a sibling loses it",
+      foundBy: "id",
       projects: [
         { projectId: DEV, roleCode: "ADMIN" },
         { projectId: PROD, roleCode: "READ_ONLY" },
       ],
-      written: [{ projectId: DEV, roleCode: "BASIC_USER" }],
+      plan: { kind: "write", tokenId: "tok-mate", projects: [OWN] },
     },
     {
-      case: "a key already lowered still has its siblings taken off",
+      case: "by id: a key already lowered loses a sibling it still reads",
+      foundBy: "id",
       projects: [
         { projectId: PROD, roleCode: "READ_ONLY" },
         { projectId: DEV, roleCode: "BASIC_USER" },
       ],
-      written: [{ projectId: DEV, roleCode: "BASIC_USER" }],
-    },
-    {
-      case: "a key lowered and on its own project alone plans nothing",
-      projects: [{ projectId: DEV, roleCode: "BASIC_USER" }],
-      written: null,
+      plan: { kind: "write", tokenId: "tok-mate", projects: [OWN] },
     },
     // Security review 7: only a Mate's key is ever written (`mateKeyReach`).
     {
-      case: "a key with no grant on its own project is left as it is",
+      case: "by id: a key with no grant on its own project is given exactly that one",
+      foundBy: "id",
       projects: [{ projectId: STAGE, roleCode: "READ_ONLY" }],
-      written: null,
+      plan: { kind: "write", tokenId: "tok-mate", projects: [OWN] },
     },
     {
-      case: "a key that may write a sibling is left as it is",
-      projects: [
-        { projectId: DEV, roleCode: "ADMIN" },
-        { projectId: PROD, roleCode: "BASIC_USER" },
-      ],
-      written: null,
+      case: "by id: a key holding exactly its own project plans nothing",
+      foundBy: "id",
+      projects: [OWN],
+      plan: { kind: "held" },
     },
-  ] as const)("$case", ({ projects, written }) => {
+    {
+      case: "by name: a key the platform minted with ADMIN is lowered in place",
+      foundBy: "name",
+      projects: [{ projectId: DEV, roleCode: "ADMIN" }],
+      plan: { kind: "write", tokenId: "tok-mate", projects: [OWN] },
+    },
+    {
+      case: "by name: a key holding exactly its own project plans nothing",
+      foundBy: "name",
+      projects: [OWN],
+      plan: { kind: "held" },
+    },
+    {
+      case: "by name: a key that reads a sibling is not the Mate's, and is not narrowed",
+      foundBy: "name",
+      projects: [OWN, { projectId: PROD, roleCode: "READ_ONLY" }],
+      plan: { kind: "not-its-key" },
+    },
+    {
+      case: "by name: a key with no grant on its own project is not the Mate's",
+      foundBy: "name",
+      projects: [{ projectId: STAGE, roleCode: "BASIC_USER" }],
+      plan: { kind: "not-its-key" },
+    },
+  ] as const)("$case", ({ foundBy, projects, plan }) => {
     const token: ZeropsIntegrationToken = { ...MATE_TOKEN, projects };
-    expect(planMateKey({ token, selfProjectId: DEV })).toEqual(
-      written === null ? undefined : { tokenId: "tok-mate", projects: written },
-    );
+    expect(planMateKey({ token, selfProjectId: DEV, foundBy })).toEqual(plan);
+  });
+
+  it("by name: a key no Mate's name carries is not the Mate's", () => {
+    const token: ZeropsIntegrationToken = { ...DEPLOY_TOKEN, projects: [OWN] };
+    expect(planMateKey({ token, selfProjectId: DEV, foundBy: "name" })).toEqual({
+      kind: "not-its-key",
+    });
   });
 });
 
@@ -355,6 +381,17 @@ describe("findHeldMateKey — the key a Mate's container holds", () => {
     expect(findHeldMateKey(tokens, "p-1", container)?.id).toBe(want);
   });
 
+  it("never reuses a key that reaches another project beside its own", () => {
+    const widened: ZeropsIntegrationToken = {
+      ...key("k-wide", "2026-10-01T10:00:00Z"),
+      projects: [
+        { projectId: "p-1", roleCode: "BASIC_USER" },
+        { projectId: "p-stage", roleCode: "READ_ONLY" },
+      ],
+    };
+    expect(newestMateKey([widened], "p-1")).toBeUndefined();
+  });
+
   it("reuses the newest key where no container holds one", () => {
     expect(
       newestMateKey(
@@ -365,13 +402,13 @@ describe("findHeldMateKey — the key a Mate's container holds", () => {
   });
 
   // Security review 7: a press reuses only a key that is its Mate's (`mateKeyReach`): its own
-  // project alone, or READ_ONLY siblings its reuse takes off. A `zcp-` key that holds more
-  // elsewhere is never reused — and so never stripped: the press mints a new one.
+  // project alone. A `zcp-` key that reaches anything else is never reused — and so never
+  // stripped: the press mints a new one.
   it.each([
     {
-      case: "READ_ONLY on a sibling: reused",
+      case: "READ_ONLY on a sibling: never reused",
       grants: [{ projectId: "prod", roleCode: "READ_ONLY" as const }],
-      want: "k-1",
+      want: undefined,
     },
     {
       case: "a sibling it may write: never reused",

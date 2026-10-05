@@ -27,6 +27,7 @@ import {
   bindAccountEnvironments,
   connectMate,
   connectResult,
+  tryAgainTarget,
   useMateCommand,
   MATE_HOLD_WAIT_MS,
   useMateHeld,
@@ -405,5 +406,61 @@ describe("useMateHeld: an action's lease for as long as a surface names its Mate
 
     expect(sent.log).toEqual(["hold env-1", "release env-1", "hold env-2", "release env-2"]);
     unbind();
+  });
+});
+// A Mate link's Try now asks the exchange machine itself, not only the socket: it reaches the target
+// its verdict speaks for, however the route gate found it — by a machine or a descriptor, or by the
+// project HQ names when neither does.
+describe("tryAgainTarget — the target a Mate link's Try again asks", () => {
+  const ENV = "env-wren" as EnvironmentId;
+  const HELD = {
+    ...initialEnvironment({ record: ENV }),
+    credential: {
+      kind: "held",
+      environmentId: ENV,
+      installed: true,
+      staleBlock: false,
+      rereading: null,
+    },
+  } as EnvironmentMachine;
+  const BACKING_OFF = {
+    ...initialEnvironment({ record: null }),
+    credential: {
+      kind: "backoff",
+      retryAt: { wall: 5_000, mono: 5_000 },
+      last: { kind: "network" },
+      reconnect: false,
+    },
+  } as EnvironmentMachine;
+  const NO_INDEX = { serving: new Map(), reported: new Map() };
+  it.each<{
+    readonly case: string;
+    readonly machines: ReadonlyMap<TargetKey, EnvironmentMachine>;
+    readonly hqProject: string | null;
+    readonly key: TargetKey | undefined;
+  }>([
+    {
+      case: "a machine that names the environment",
+      machines: new Map([["project-wren:zcp", HELD]]),
+      hqProject: null,
+      key: "project-wren:zcp",
+    },
+    {
+      case: "a backing-off Mate only HQ's index names",
+      machines: new Map([
+        ["project-other:zcp", BACKING_OFF],
+        ["project-wren:zcp", BACKING_OFF],
+      ]),
+      hqProject: "project-wren",
+      key: "project-wren:zcp",
+    },
+    {
+      case: "nothing that names it",
+      machines: new Map([["project-other:zcp", BACKING_OFF]]),
+      hqProject: null,
+      key: undefined,
+    },
+  ])("$case", ({ machines, hqProject, key }) => {
+    expect(tryAgainTarget({ machines, index: NO_INDEX, environmentId: ENV, hqProject })).toBe(key);
   });
 });

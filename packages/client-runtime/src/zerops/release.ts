@@ -22,9 +22,9 @@
  * ## Who may
  *
  * HQ's rule (SPEC §3.3a): Basic user or above on production, or an organization owner/admin
- * saving a snapshot before production exists. The client asks it
- * over what it holds only to offer the button (`releasePermission`); HQ asks it again at the
- * press, and a refusal that arrives anyway is shown in HQ's words.
+ * saving a snapshot before production exists. HQ streams its decision beside the application
+ * (`can`'s `release`), and the button is offered by it; HQ asks it again at the press, and a
+ * refusal that arrives anyway is shown in HQ's words.
  *
  * ## Rollback
  *
@@ -39,8 +39,14 @@
 
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
-import { compareReleaseTags, nextPatch, type Release } from "@t3tools/shared/hqRelease";
+import {
+  compareReleaseTags,
+  nextPatch,
+  type Release,
+  type ReleaseRollout,
+} from "@t3tools/shared/hqRelease";
 
+import type { ReleaseDeployFailure } from "./groupDeploys.ts";
 import type { Moved, MovedCommits } from "./releaseCompare.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
 import { sameCommit } from "./versionName.ts";
@@ -170,7 +176,7 @@ export function releaseInFlightReason(tag: string): string {
 /**
  * Whether to offer *Release* at all.
  *
- * Who may is HQ's rule (`releasePermission`), in its words; HQ asks it again at the press. Then a
+ * Who may is HQ's offer (`can`'s `release`), in its words; HQ asks it again at the press. Then a
  * release in flight, nothing merged, and nothing that would move hold it, in that order; and last
  * what goes live while it is read, or could not be (main C05).
  */
@@ -261,49 +267,60 @@ export interface ReleaseAttempt {
   readonly snapshot?: boolean;
   readonly tag: string;
   readonly verdict: ReleaseVerdict;
-  /** What it lists. */
-  readonly entries: ReadonlyArray<ReleaseEntry>;
-  /** When HQ made it. */
-  readonly taggedAt: string;
 }
 
 /**
- * How long a release production does not run yet holds Release back. A build and deploy take
- * minutes; a deploy that never ends must not hold it for ever.
+ * Where HQ's deploy of the newest release to production stands, by what HQ streams of it in each
+ * production environment (`HqEnvironment.release`, one per production): on its way until every
+ * production's word on it says it ended; ended then — landed where every one says all of it went
+ * live. A release HQ ended with no rollout of its own (made before rollouts were, or recorded from
+ * git) is ended. Nothing where HQ says nothing of this release — a production naming another, or
+ * none, an HQ that tells no release's end, no production at all — and nothing for a release HQ
+ * refused or a snapshot, which deploy nothing: what HQ has not said is never on its way. HQ follows
+ * each build to its end, so nothing here waits on a clock.
  */
-export const RELEASE_IN_FLIGHT_MS = 30 * 60_000;
-
-/**
- * The release tag on its way to production, or `undefined`.
- *
- * In flight: the newest release is not refused, no commit it lists failed its production deploy
- * after it was made, production does not run every commit it lists yet, and it was made less than
- * {@link RELEASE_IN_FLIGHT_MS} ago. A failure posted before it belongs to an earlier release of the
- * same commit and does not end the hold. Pure: the caller passes the clock (rule R1).
- */
-export function releaseInFlight(input: {
+function releaseDeploy(input: {
   readonly newest: ReleaseAttempt | undefined;
-  /** `{service: sha}` production runs, whole or short (`deployedCommit`). */
-  readonly production: ReadonlyMap<string, string>;
-  /** `{service}@{sha}` → when its production deploy failed (`ReleaseDeploys.failed`). */
-  readonly failed: ReadonlyMap<string, string>;
-  readonly nowMs: number;
-}): string | undefined {
+  /** Each production environment's newest release; `undefined` where HQ tells none. */
+  readonly rollouts: ReadonlyArray<ReleaseRollout | null | undefined>;
+}):
+  | {
+      readonly tag: string;
+      readonly ended: boolean;
+      /** Whether all of it went live; `undefined` where a Core does not say. */
+      readonly landed: boolean | undefined;
+    }
+  | undefined {
   const { newest } = input;
   if (newest === undefined || newest.verdict === "refused" || newest.snapshot === true)
     return undefined;
-  const taggedMs = Date.parse(newest.taggedAt);
-  if (input.nowMs - taggedMs >= RELEASE_IN_FLIGHT_MS) return undefined;
-  const failedAfterTag = newest.entries.some((entry) => {
-    const key = failedKeyOf(input.failed, entry.service, entry.commit);
-    const failedAt = key === undefined ? undefined : input.failed.get(key);
-    return failedAt !== undefined && Date.parse(failedAt) >= taggedMs;
-  });
-  if (failedAfterTag) return undefined;
-  const running = newest.entries.every((entry) =>
-    sameCommit(input.production.get(entry.service), entry.commit),
+  const its = input.rollouts.filter(
+    (rollout): rollout is ReleaseRollout => rollout != null && rollout.tag === newest.tag,
   );
-  return running ? undefined : newest.tag;
+  if (its.length === 0) return undefined;
+  return {
+    tag: newest.tag,
+    ended: its.every((rollout) => rollout.ended),
+    landed: its.some((rollout) => rollout.landed === undefined)
+      ? undefined
+      : its.every((rollout) => rollout.landed === true),
+  };
+}
+
+/** The release tag on its way to production (`releaseDeploy`), or `undefined`. */
+export function releaseInFlight(input: Parameters<typeof releaseDeploy>[0]): string | undefined {
+  const deploy = releaseDeploy(input);
+  return deploy === undefined || deploy.ended ? undefined : deploy.tag;
+}
+
+/**
+ * The newest release, once HQ ended its deploy to production saying some of it did not go live
+ * (`releaseDeploy`), or `undefined`: one that landed waits for production's own word that it runs
+ * it, and one a Core says nothing of landing of is never called stalled.
+ */
+export function releaseStalled(input: Parameters<typeof releaseDeploy>[0]): string | undefined {
+  const deploy = releaseDeploy(input);
+  return deploy?.ended === true && deploy.landed === false ? deploy.tag : undefined;
 }
 
 /** The one word beside a release's dot (R5). */
@@ -406,52 +423,25 @@ export function nameStopByRelease(row: EnvironmentRow, tag: string): Environment
 }
 
 /**
- * The key `failed` (`ReleaseDeploys.failed`) holds a service's failure of `commit` under: the
- * version name spelled the commit whole or short, and either is the same commit.
- */
-function failedKeyOf(
-  failed: ReadonlyMap<string, string>,
-  service: string,
-  commit: string,
-): string | undefined {
-  const exact = `${service}@${commit}`;
-  if (failed.has(exact)) return exact;
-  for (const key of failed.keys()) {
-    const at = key.lastIndexOf("@");
-    if (key.slice(0, at) === service && sameCommit(key.slice(at + 1), commit)) return key;
-  }
-  return undefined;
-}
-
-/**
- * The commit the release lists, and production does not run, that failed its production deploy
- * after the release was made; `undefined` for none. A failure posted before it belongs to an
- * earlier release of the same commit — as {@link releaseInFlight} reads it — and one a newer
- * release listing the commit was made before belongs to that one: HQ deploys production to the
- * newest release alone.
+ * The commit the release lists, and production does not run, whose production deploy failed as
+ * that release's (`ReleaseDeployFailure`: its rollout's job, or one it left a service out for);
+ * `undefined` for none. Another release's failure of the same commit is that release's.
  */
 function deployFailed(
   release: FlowRelease,
-  newer: ReadonlyArray<FlowRelease>,
   production: ReadonlyMap<string, string>,
-  failed: ReadonlyMap<string, string>,
+  failed: ReadonlyArray<ReleaseDeployFailure>,
 ): ReleaseEntry | undefined {
-  const madeBy = (listing: FlowRelease, entry: ReleaseEntry, failedMs: number) =>
-    Date.parse(listing.taggedAt) <= failedMs &&
-    listing.entries.some(
-      (listed) => listed.service === entry.service && sameCommit(listed.commit, entry.commit),
-    );
-  return release.entries.find((entry) => {
-    if (sameCommit(production.get(entry.service), entry.commit)) return false;
-    const key = failedKeyOf(failed, entry.service, entry.commit);
-    const failedAt = key === undefined ? undefined : failed.get(key);
-    if (failedAt === undefined) return false;
-    const failedMs = Date.parse(failedAt);
-    return (
-      madeBy(release, entry, failedMs) &&
-      !newer.some((listing) => listing.verdict !== "refused" && madeBy(listing, entry, failedMs))
-    );
-  });
+  return release.entries.find(
+    (entry) =>
+      !sameCommit(production.get(entry.service), entry.commit) &&
+      failed.some(
+        (failure) =>
+          failure.tag === release.tag &&
+          failure.service === entry.service &&
+          (sameCommit(failure.sha, entry.commit) || sameCommit(entry.commit, failure.sha)),
+      ),
+  );
 }
 
 /**
@@ -470,11 +460,9 @@ export function releaseRow(
   deploys: {
     /** `{service: sha}` production runs, whole or short (`deployedCommit`). */
     readonly production: ReadonlyMap<string, string>;
-    /** `{service}@{sha}` → when its production deploy failed (`ReleaseDeploys.failed`). */
-    readonly failed: ReadonlyMap<string, string>;
+    /** The production deploys that failed, each as a release's (`ReleaseDeploys.failed`). */
+    readonly failed: ReadonlyArray<ReleaseDeployFailure>;
     readonly live: boolean;
-    /** The releases newer than this one, newest first: a failure is the newest's to list it. */
-    readonly newer: ReadonlyArray<FlowRelease>;
   },
 ): FlowReleaseRow {
   const line =
@@ -491,7 +479,7 @@ export function releaseRow(
   const failedEntry =
     release.verdict === "refused"
       ? undefined
-      : deployFailed(release, deploys.newer, deploys.production, deploys.failed);
+      : deployFailed(release, deploys.production, deploys.failed);
   if (failedEntry !== undefined)
     return {
       ...release,

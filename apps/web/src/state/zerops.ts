@@ -36,6 +36,7 @@ import {
   type HqMates,
   type HqPlacement,
   type HqAppReads,
+  type HqPresses,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -125,6 +126,12 @@ export interface HqStructureView {
    * Null until the stream's first snapshot; never remembered across loads.
    */
   readonly appReads: HqAppReads | null;
+  /**
+   * Each Mate's press a browser holds at HQ, by project, its hold measured on this browser's clock
+   * from when HQ said it (`applyPressesEvent`); none — unknown — until this stream's snapshot said
+   * them. Never remembered across loads: a press is live or it is nothing.
+   */
+  readonly presses?: HqPresses | null;
   /** When `structure` was HQ's answer, wall ms. */
   readonly readAt: number | null;
   /** `structure` is HQ's answer now. */
@@ -159,14 +166,15 @@ export const hqStandingAtom = Atom.make((get): HqStanding => {
 
 /**
  * Where HQ places each project of the organization in view, as last known; null while nothing
- * is known of its structure — its projects are then placed nowhere.
+ * is known of its structure — its projects are then placed nowhere. A stage's or a production's
+ * project HQ holds nowhere is placed by its press's record, unregistered (`placementsOf`).
  */
 export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement> | null => {
   const view = get(hqStructureAtom);
   const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
   return view === null || view.organizationId !== organizationId || view.structure === null
     ? null
-    : placementsOf(view.structure, get(hqLoginsAtom), get(hqReadyAgentsAtom));
+    : placementsOf(view.structure, get(hqLoginsAtom), get(hqReadyAgentsAtom), view.presses ?? null);
 }).pipe(Atom.withLabel("zerops:hq-placements"));
 
 /**
@@ -182,7 +190,10 @@ export const hqEnvironmentsAtom = Atom.make(
       ? null
       : new Map(
           view.structure.apps.flatMap((app) =>
-            app.environments === undefined ? [] : [[app.id, app.environments] as const],
+            // Refused the reader, they are not theirs to finish: as missing as unreadable ones.
+            app.environments === undefined || "refused" in app.environments
+              ? []
+              : [[app.id, app.environments] as const],
           ),
         );
   },

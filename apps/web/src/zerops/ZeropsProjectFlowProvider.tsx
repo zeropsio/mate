@@ -13,7 +13,7 @@
  * Each group's flow is the same object until one of its own parts changes, so
  * one group answering never republishes another.
  *
- * A release is offered by HQ's rule (`useReleasePermission`) of each production
+ * A release is offered as HQ offers it (`useReleasePermission`) of each production
  * runtime at its repository's `main` as HQ lists it, and made — or rolled
  * back — in HQ, as the person. What each stop runs is the account's
  * deployment store's answer (`flow/deploymentStore.ts`). A change is merged
@@ -32,6 +32,7 @@ import {
   readZeropsMembership,
   releaseDeploys,
   releaseInFlight,
+  releaseStalled,
   releaseCandidate,
   releaseOffer,
   releaseReads,
@@ -84,7 +85,6 @@ import {
   type ZeropsProjectFlow,
   type ZeropsProjectFlowValue,
 } from "./projectFlowContext";
-import { useNowMs } from "./useNowMs";
 import { useZeropsAtomSelections, ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsAppRecipes } from "./useZeropsAppRecipes";
 import { useZeropsAppReleases } from "./useZeropsAppReleases";
@@ -103,8 +103,6 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const EMPTY_FLOWS: ReadonlyMap<string, ZeropsProjectFlow> = new Map();
 const NO_FAILURES: ReadonlyMap<string, string> = new Map();
-/** How long a verb whose call landed stays pending while the flow has not read its effect back. */
-export const HELD_VERB_MS = 30_000;
 /** What a second press of a verb that is still running says: the first one is the one that counts. */
 export const VERB_ALREADY_RUNNING = "It is already on its way.";
 
@@ -137,14 +135,14 @@ interface HeldVerb {
         /** The service's newest job when it was asked: read once a newer one is there. */
         readonly after: string;
       };
-  readonly sinceMs: number;
 }
 
-/** Whether the held verb's effect is read, or its application's releases can no longer say. */
+/** Whether the held verb's effect is read, or HQ can no longer say it: nothing then holds it. */
 function effectRead(held: HeldVerb, failed: boolean, flow: ZeropsProjectFlow | undefined): boolean {
   const { against } = held;
+  if (failed) return true;
   if (against.kind === "release")
-    return failed || (flow?.releases.some((entry) => entry.tag === against.tag) ?? false);
+    return flow?.releases.some((entry) => entry.tag === against.tag) ?? false;
   if (against.kind === "deploy") {
     const latest = flow?.environmentInputs
       .find((entry) => entry.projectId === against.projectId)
@@ -313,8 +311,6 @@ export function joinProjectFlows(input: {
   readonly changes: ReadonlyMap<string, GroupChanges> | null;
   /** Why HQ has told nothing of them, while it does not answer. */
   readonly changesFailure: string | undefined;
-  /** The clock a release in flight is bounded by (`releaseInFlight`). */
-  readonly nowMs: number;
   /** Why the grant withholds a project, by project id, for each project it withholds alone. */
   readonly withheld: ReadonlyMap<string, string>;
 }): ReadonlyMap<string, ZeropsProjectFlow> {
@@ -346,20 +342,20 @@ export function joinProjectFlows(input: {
         return notice === undefined ? [] : [[projectId, notice] as const];
       }),
     );
-    const { production, failed } = releaseDeploys(stops?.environments ?? []);
-    const inFlight = releaseInFlight({
-      newest: records?.[0] === undefined ? undefined : flowReleaseOf(records[0]),
-      production,
-      failed,
-      nowMs: input.nowMs,
-    });
+    const { rollouts } = releaseDeploys(stops?.environments ?? []);
+    const newest = records?.[0] === undefined ? undefined : flowReleaseOf(records[0]);
+    const deploy = {
+      inFlight: releaseInFlight({ newest, rollouts }),
+      stalled: releaseStalled({ newest, rollouts }),
+    };
     const repos = input.repos.get(group.groupId);
     const recipe = input.recipes.get(group.groupId);
     const permission = input.permissions.get(group.groupId);
     const live = input.live.get(group.groupId) ?? NOT_ASKED;
     const key = JSON.stringify([
       group.groupId,
-      inFlight ?? null,
+      deploy.inFlight ?? null,
+      deploy.stalled ?? null,
       changes === undefined ? (input.changesFailure ?? null) : null,
       [...withheld],
       repos ?? null,
@@ -375,7 +371,7 @@ export function joinProjectFlows(input: {
         group,
         { stops, records, changes, changesFailure: input.changesFailure },
         { repos, recipe, permission, live },
-        inFlight,
+        deploy,
         withheld,
       );
       byGroup.set(key, flow);
@@ -420,7 +416,8 @@ function projectFlow(
     readonly permission: ReleaseGate | undefined;
     readonly live: ReleaseLive;
   },
-  inFlight: string | undefined,
+  /** The newest release on its way to production, or stalled there (`releaseInFlight`, `releaseStalled`). */
+  deploy: { readonly inFlight: string | undefined; readonly stalled: string | undefined },
   /** Why the grant withholds each of the group's projects it withholds alone. */
   withheld: ReadonlyMap<string, string>,
 ): ZeropsProjectFlow {
@@ -441,7 +438,6 @@ function projectFlow(
       production: sides.production,
       failed: sides.failed,
       live: entry.tag === liveTag,
-      newer: releaseList.slice(0, index),
     }),
   );
   // Until HQ's releases, its repositories and the recipe are read, nothing is known to release:
@@ -455,7 +451,7 @@ function projectFlow(
     permission: read === undefined ? undefined : permission,
     candidate: read === undefined ? NOTHING_TO_LIST : read.candidate,
     production: sides.production,
-    inFlight,
+    inFlight: deploy.inFlight,
     tags: releaseList.map(({ tag }) => tag),
     live: live.moved,
   });
@@ -481,7 +477,7 @@ function projectFlow(
             comparisonFailure: live.moved.state === "failed" ? live.moved : undefined,
             permission,
             groupHead: read?.groupHead,
-            inFlight,
+            ...deploy,
             untold: live.untold,
             runs: live.runs,
             repositories: recipe?.productionRepositories,
@@ -493,7 +489,7 @@ function projectFlow(
             groupHead: undefined,
             comparison: [],
             entries: [],
-            inFlight,
+            ...deploy,
             contents: [],
             untold: [],
             runs: undefined,
@@ -669,8 +665,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
     [inventory],
   );
 
-  // A release in flight stops holding Release back once it is old enough (`releaseInFlight`).
-  const nowMs = useNowMs();
   // A Mate's changes, down the organization's HQ stream, linked at its official address: the
   // flows stand on them wherever HQ answers.
   const accountHq = useAccountHq(clientId);
@@ -799,7 +793,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
             live,
             changes,
             changesFailure,
-            nowMs,
             withheld,
           })
         : EMPTY_FLOWS,
@@ -810,7 +803,6 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
       flowGroups,
       groupStops,
       live,
-      nowMs,
       permissions,
       recipes,
       releaseRecords,
@@ -859,32 +851,15 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
 
   /**
    * A verb whose call landed, by its key, with the effect it waits to read. The verb stays pending
-   * until that is read, the group's releases fail to read, or {@link HELD_VERB_MS} passes: until
-   * then the flow still offers what was just done — the release it just made. A settled entry is
-   * dropped.
+   * until HQ's answer reads it, or HQ can no longer say it — the group's releases fail to read, or
+   * HQ refuses its stream: until then a second press would do it twice — a second release, a second
+   * deploy. A stream that blinks reconnects and brings the effect back; no clock lets it go. A
+   * settled entry is dropped.
    */
   const [awaiting, setAwaiting] = useState<ReadonlyMap<string, HeldVerb>>(() => new Map());
   const hold = useCallback((verb: FlowVerb, groupId: string, against: HeldVerb["against"]) => {
-    setAwaiting((current) =>
-      new Map(current).set(flowVerbKey(verb), { groupId, against, sinceMs: Date.now() }),
-    );
+    setAwaiting((current) => new Map(current).set(flowVerbKey(verb), { groupId, against }));
   }, []);
-  const letGo = useCallback((key: string, entry: HeldVerb) => {
-    setAwaiting((current) => {
-      if (current.get(key) !== entry) return current;
-      const next = new Map(current);
-      next.delete(key);
-      return next;
-    });
-  }, []);
-  useEffect(() => {
-    const timers = [...awaiting].map(([key, entry]) =>
-      setTimeout(() => letGo(key, entry), entry.sinceMs + HELD_VERB_MS - Date.now()),
-    );
-    return () => {
-      for (const timer of timers) clearTimeout(timer);
-    };
-  }, [awaiting, letGo]);
 
   const mateNames = useMemo(
     () => new Map(inventory.projects.map((project) => [project.id, project.name])),
@@ -1072,13 +1047,22 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   // are withheld with every project (§3.1); the reads themselves are kept for the next grant.
   const lapsed = inventory.account.kind === "withheld";
   // A held verb waits for its effect in the group's flow, or for its streamed release read to
-  // fail: the wait then has nothing left to hold.
+  // fail or HQ to refuse its stream — not reconnecting it: the wait then has nothing left to hold.
+  const streamRefused =
+    hqStructure !== null &&
+    !hqStructure.current &&
+    hqStructure.unavailableSince !== null &&
+    hqStructure.reconnecting === null;
   const settled = useMemo(
     () =>
       [...awaiting].filter(([, entry]) =>
-        effectRead(entry, releaseFailures.has(entry.groupId), flows.get(entry.groupId)),
+        effectRead(
+          entry,
+          releaseFailures.has(entry.groupId) || streamRefused,
+          flows.get(entry.groupId),
+        ),
       ),
-    [awaiting, flows, releaseFailures],
+    [awaiting, flows, releaseFailures, streamRefused],
   );
   useEffect(() => {
     if (settled.length === 0) return;

@@ -8,8 +8,8 @@
  * container and the Mate server streams it (`subscribeVcsStatus`). What the
  * Mate's work *means* outside the container is **HQ's**: its newest change in
  * the repository, open or landed, as HQ's stream tells it. And which
- * environment would pick it up on merge is the **group repo's**, from
- * `environments.yaml`.
+ * environment would pick it up on merge is HQ's too, from its record of the
+ * application's environments and the branches that feed them.
  *
  * Nothing here infers one from another. In particular, *that the remote is
  * healthy* comes from a live `git ls-remote`, never from the last push having
@@ -184,7 +184,7 @@ export interface GitBlock {
 const MAIN = "main";
 
 /**
- * Which environment picks a branch up, from `environments.yaml`.
+ * Which environment picks a branch up, from HQ's records of the application's environments.
  *
  * The first declaration that lists the branch among its sources. A production
  * never matches: its source is `release`, and a merge to a branch does not

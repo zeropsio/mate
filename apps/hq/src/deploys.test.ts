@@ -7,6 +7,7 @@ import * as NodeZlib from "node:zlib";
 import * as PgClient from "@effect/sql-pg/PgClient";
 import { assert, describe, it } from "@effect/vitest";
 import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -40,6 +41,7 @@ import { migrate } from "./migrations.ts";
 import { RecipeTiers } from "./recipeTiers.ts";
 import { Releases, releasesLayer } from "./releases.ts";
 import { Roles } from "./roles.ts";
+import { environmentBirths } from "./births.ts";
 import { type RolloutCause, Rollouts, addRollout, rolloutsLayer } from "./rollouts.ts";
 import { ZeropsApi, ZeropsDeploy, type ZeropsMember } from "./zerops/api.ts";
 
@@ -240,6 +242,7 @@ const withDeploys = <A, E>(
           forWrite: Effect.succeed({ ...ORG_VIEW, freshness: "recent" as const }),
           recent: Effect.succeed({ ...ORG_VIEW, freshness: "cached" as const }),
           exists: () => Effect.succeed(true),
+          answeredAt: Effect.succeed(undefined),
           views: Stream.never,
         }),
       ),
@@ -634,6 +637,71 @@ describe("deploys", () => {
         ),
     );
 
+    // Review #1: the client attaches an environment first and keeps its deploy token after, so the
+    // birth's first job is refused for want of a key. The birth follows it to the deploy the kept
+    // key asks for, and ends only once that one ran; a Run again after is no birth's.
+    it.effect(
+      "an environment's birth runs from its attach to the first deploy the kept key makes",
+      () =>
+        withDeploys(({ appId, tiers, commit, until, ask }) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`DELETE FROM hq_deploy_token`;
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("refused"));
+            yield* sql`DELETE FROM hq_deploy_job`;
+            yield* sql`DELETE FROM hq_rollout`;
+            const birth = Effect.map(environmentBirths(sql), (births) => births.get("P_STAGE"));
+            // Attached: its rollout refused for want of a key — still coming up, awaiting one.
+            yield* ask({ cause: "env_added", projectId: "P_STAGE", by: "owner" });
+            yield* until(settled("refused"));
+            assert.deepStrictEqual(yield* birth, { ended: false });
+            // The key kept: its rollout deploys, and the birth runs until that deploy is live.
+            yield* keepToken("P_STAGE", "key-stage");
+            yield* ask({ cause: "key_kept", projectId: "P_STAGE", by: "owner" });
+            yield* until((rows) => rows.at(-1)?.state === "live");
+            assert.deepStrictEqual(yield* birth, { ended: true });
+            // A Run again after its first deploy is no birth's.
+            yield* sql`
+            INSERT INTO hq_rollout (app_id, cause, project_id, by)
+            VALUES (${appId}::uuid, 'run_again', 'P_STAGE', 'dev')`;
+            assert.deepStrictEqual(yield* birth, { ended: true });
+          }),
+        ),
+    );
+
+    it.effect.each<[string, (sql: SqlClient.SqlClient) => Effect.Effect<void>]>([
+      ["a key held, its first job refused: ended", () => Effect.void],
+      [
+        "no key held, its first job refused: awaiting one",
+        (sql) => sql`DELETE FROM hq_deploy_token`.pipe(Effect.asVoid, Effect.orDie),
+      ],
+      [
+        "a key that no longer works: awaiting a new one",
+        (sql) =>
+          sql`UPDATE hq_deploy_token SET invalid_since = now()`.pipe(Effect.asVoid, Effect.orDie),
+      ],
+    ])("an environment's birth whose first job HQ refused, %s", ([name, keyed]) =>
+      withDeploys(({ appId }) =>
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* keyed(sql);
+          const [rollout] = yield* sql<{ readonly id: string }>`
+            INSERT INTO hq_rollout (app_id, cause, project_id, planned_at)
+            VALUES (${appId}::uuid, 'env_added', 'P_STAGE', now())
+            RETURNING id::text AS id`;
+          yield* sql`
+            INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+              reason, ended_at)
+            VALUES (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'web', 'web', ${"6".repeat(40)},
+              'refused', 'Zerops did not answer', now())`;
+          const births = yield* environmentBirths(sql);
+          assert.deepStrictEqual(births.get("P_STAGE"), { ended: name.endsWith("ended") });
+        }),
+      ),
+    );
+
     // Without HQ's key no deploy token opens (`deployKeys.ts`): every deploy is refused, saying so,
     // and no key is marked — an admin minting a new one would not help.
     it.effect.each<[string, string | undefined]>([
@@ -926,6 +994,59 @@ describe("deploys", () => {
           yield* until((rows) => rows.length === 2 && settled("live")(rows));
           assert.isFalse(web.subdomainAccess);
         }),
+      ),
+    );
+
+    // The subdomain is the last step of a first deploy HQ makes: followed by its process before the
+    // job ends live, and where it does not come on the live job says so in HQ's words.
+    it.effect(
+      "a subdomain HQ could not turn on is said on the live deploy, never only logged",
+      () =>
+        withDeploys(({ appId, world, tiers, commit, until, deploys }) =>
+          Effect.gen(function* () {
+            yield* createdForHq("P_STAGE");
+            world.unanswered.add("enableSubdomainAccess");
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until((found) => found.length === 1 && settled("live")(found));
+            const [row] = yield* deploys;
+            assert.match(row?.reason ?? "", /^its subdomain was not turned on: /u);
+            assert.isFalse(
+              world.services.find((service) => service.name === "web")!.subdomainAccess,
+            );
+          }),
+        ),
+    );
+
+    // Review #5: the subdomain is followed on its own clock, from its own start — never on what
+    // was left of the build's, read before it was followed (a takeover's).
+    it.effect("follows a subdomain on its own bound, never on what the build's left", () =>
+      withDeploys(
+        ({ appId, world, tiers, commit, deploys, until, takeover }) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* createdForHq("P_STAGE");
+            world.outcome = () => "BUILDING";
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("building"));
+            yield* takeover(
+              Effect.gen(function* () {
+                // Submitted all but a moment of its bound ago: the build lands at once, and its
+                // subdomain comes on three reads later.
+                yield* sql`
+                  UPDATE hq_deploy_job SET submitted_at = now() - interval '950 milliseconds'`;
+                world.outcome = () => "ACTIVE";
+                world.subdomainRunningReads = 3;
+              }).pipe(Effect.orDie),
+            );
+            yield* until(settled("live"));
+            assert.deepStrictEqual(
+              (yield* deploys).map(({ reason }) => reason),
+              [null],
+            );
+          }),
+        { ...FAST, followFor: Duration.seconds(1) },
       ),
     );
 
@@ -1534,30 +1655,74 @@ describe("deploys", () => {
       ),
     );
 
-    // A version whose upload went unanswered and whose build HQ never asked for still waits for its
-    // archive: Zerops never took the submission. The job ends refused, never submitted again; a
-    // person's Run again makes another.
-    it.effect("refuses a submission Zerops never took, and submits it again only when asked", () =>
+    // A version whose upload went unanswered is one whose build HQ never asked for: it waits for its
+    // archive for good, which HQ knows by its own record — no clock, however long its window. The
+    // job ends refused at once, never submitted again; a person's Run again makes another.
+    it.effect(
+      "refuses a submission whose upload went unanswered at once, and submits it again only when asked",
+      () =>
+        withDeploys(
+          ({ appId, world, tiers, commit, deploys, until }) =>
+            Effect.gen(function* () {
+              tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+              world.lost.add("upload");
+              const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+              yield* until(settled("refused"));
+              assert.deepStrictEqual(
+                (yield* deploys).map(({ reason }) => reason),
+                ["HQ's upload of the deploy's archive went unanswered: no build was asked for"],
+              );
+              assert.deepStrictEqual(
+                [...world.appVersions.values()].map((version) => version.status),
+                ["UPLOADING"],
+              );
+              assert.strictEqual(yield* runAgain(appId, "dev", sha), "ok");
+              yield* until((rows) => rows.at(-1)?.state === "live");
+              assert.deepStrictEqual(
+                [...world.appVersions.values()].map((version) => version.status),
+                ["UPLOADING", "ACTIVE"],
+              );
+            }),
+          { ...FAST, untakenAfter: Duration.minutes(10) },
+        ),
+    );
+
+    // B9: the window a version may still read UPLOADING after its build was asked for runs from
+    // HQ's own upload, never from before it: an archive slower to upload than the window, its
+    // build's answer lost, is followed to its end, not refused on its first read.
+    it.effect("measures a build's untaken window from HQ's upload, not from before it", () =>
       withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
         Effect.gen(function* () {
           tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
-          world.lost.add("upload");
-          const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          world.uploadTakes = 400;
+          world.buildSeenAfter = 100;
+          world.lost.add("buildAndDeploy");
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+          yield* until(settled("live"));
+          assert.deepStrictEqual(
+            (yield* deploys).map(({ state }) => state),
+            ["live"],
+          );
+          assert.lengthOf(versions(world), 1);
+        }),
+      ),
+    );
+
+    // A build HQ asked for after its upload, that Zerops never took — its version still waits for
+    // its archive past the window from the upload — ends refused, never submitted again.
+    it.effect("refuses a build Zerops never took, its window counted from the upload", () =>
+      withDeploys(({ appId, world, tiers, commit, deploys, until }) =>
+        Effect.gen(function* () {
+          tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+          world.buildSeenAfter = 60_000;
+          world.lost.add("buildAndDeploy");
+          yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
           yield* until(settled("refused"));
           assert.deepStrictEqual(
             (yield* deploys).map(({ reason }) => reason),
-            ["Zerops did not take the deploy's submission"],
+            ["Zerops did not take the deploy's build"],
           );
-          assert.deepStrictEqual(
-            [...world.appVersions.values()].map((version) => version.status),
-            ["UPLOADING"],
-          );
-          assert.strictEqual(yield* runAgain(appId, "dev", sha), "ok");
-          yield* until((rows) => rows.at(-1)?.state === "live");
-          assert.deepStrictEqual(
-            [...world.appVersions.values()].map((version) => version.status),
-            ["UPLOADING", "ACTIVE"],
-          );
+          assert.lengthOf(versions(world), 1);
         }),
       ),
     );
@@ -1662,6 +1827,72 @@ describe("deploys", () => {
           assert.lengthOf(versions(world), 2);
         }),
       ),
+    );
+
+    // Review #3 on B9: a job a Core left submitting before HQ recorded its uploads holds no upload
+    // record — that says nothing of its upload. Its version tells: one that went on is followed as
+    // uploaded; one still waiting for its archive gets the window from its submission it had then.
+    it.effect.each<{
+      readonly name: string;
+      /** When its build shows, ms after the takeover; never where undefined. */
+      readonly seenAfter?: number;
+      readonly ends: readonly [string, string | null];
+    }>([
+      {
+        name: "its build shows a moment later: followed to live",
+        seenAfter: 100,
+        ends: ["live", null],
+      },
+      {
+        name: "it still waits for its archive past the window: refused",
+        ends: ["refused", "Zerops did not take the deploy's submission"],
+      },
+    ])(
+      "a submission left from before HQ recorded uploads, at takeover: $name",
+      ({ seenAfter, ends }) =>
+        withDeploys(({ appId, world, tiers, commit, deploys, until, takeover }) =>
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            tiers.set(`${appId}/stage`, stageTier(appId, [{ hostname: "web" }]));
+            const sha = yield* commit("web", { "zerops.yaml": ZEROPS_YAML });
+            yield* until(settled("live"));
+            const web = world.services.find((service) => service.name === "web")!;
+            const now = yield* Clock.currentTimeMillis;
+            world.appVersions.set("V-legacy", {
+              id: "V-legacy",
+              serviceId: web.id,
+              name: "legacy",
+              status: "UPLOADING",
+              archive: new Uint8Array([1]),
+              zeropsYaml: ZEROPS_YAML,
+              setup: "web",
+              ...(seenAfter === undefined ? {} : { buildSeenAtMs: now + seenAfter }),
+            });
+            if (seenAfter !== undefined) {
+              world.jobs.set("process-legacy", {
+                status: "RUNNING",
+                failure: null,
+                appVersionId: "V-legacy",
+              });
+            }
+            yield* takeover(
+              Effect.gen(function* () {
+                const [rollout] = yield* sql<{ readonly id: string }>`
+                INSERT INTO hq_rollout (app_id, cause, project_id, by, planned_at)
+                VALUES (${appId}::uuid, 'run_again', 'P_STAGE', 'dev', now())
+                RETURNING id::text AS id`;
+                yield* sql`
+                INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, service_id, repo,
+                  sha, ord, state, submitted_at, app_version_id, upload_recorded)
+                VALUES (${rollout!.id}::bigint, 'deploy', 'P_STAGE', 'web', ${web.id}, 'web',
+                  ${sha}, 0, 'submitting', now(), 'V-legacy', false)`;
+              }).pipe(Effect.orDie),
+            );
+            yield* until((rows) => rows.length === 2 && rows[1]?.state !== "submitting");
+            const legacy = (yield* deploys)[1];
+            assert.deepStrictEqual([legacy?.state, legacy?.reason ?? null], [...ends]);
+          }),
+        ),
     );
 
     // F17, main #162: a commit whose zerops.yaml does not carry the tier's setup — none at all, under

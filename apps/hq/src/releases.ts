@@ -35,7 +35,8 @@ import {
   nextPatch,
   releaseMessage,
 } from "@t3tools/shared/hqRelease";
-import { type Decision, type Facts, REASONS, can } from "@t3tools/shared/zeropsPermissions";
+import { type Decision, REASONS } from "@t3tools/shared/zeropsPermissions";
+import { type Facts, can } from "./permissions.ts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -48,9 +49,10 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 import { appendEvent } from "./gitEvents.ts";
 import { GitHost, mainOf } from "./gitHost.ts";
 import { Leader, type NotLeader } from "./leader.ts";
+import { appTarget, releaseTarget } from "./offers.ts";
 import { RecipeTiers, type RecipeTierUnreadable } from "./recipeTiers.ts";
 import { Rollouts, addRollout } from "./rollouts.ts";
-import { Roles, confirmingRefusal } from "./roles.ts";
+import { Roles, decidedFresh } from "./roles.ts";
 import { tierRuntimes } from "./tierRuntimes.ts";
 import type { ZeropsError } from "./zerops/api.ts";
 
@@ -156,24 +158,21 @@ export const releasesLayer: Layer.Layer<
       Effect.gen(function* () {
         const projects = yield* sql<{ readonly project_id: string; readonly kind: string }>`
           SELECT project_id, kind FROM hq_app_project WHERE app_id::text = ${appId}`;
-        const projectIds = projects.map((row) => row.project_id);
-        yield* allowed(userId, appId, can(person(userId), "read_app", { projectIds }, facts));
+        yield* allowed(userId, appId, can(person(userId), "read_app", appTarget(projects), facts));
         const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
         if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
         return projects;
       });
 
-    /** Whether the person may release the application, over the org as a write is decided. */
+    /**
+     * Whether the person may release the application: a release cannot be taken back, so over
+     * roles read for it alone (`decidedFresh`).
+     */
     const releaser = (userId: string, appId: string) =>
-      confirmingRefusal(
+      decidedFresh(
         Effect.gen(function* () {
           const facts = yield* roles.forWrite;
-          const projects = yield* seenApp(userId, appId, facts);
-          const target = {
-            projectIds: projects.map((row) => row.project_id),
-            productionProjectId:
-              projects.find((row) => row.kind === "production")?.project_id ?? null,
-          };
+          const target = releaseTarget(yield* seenApp(userId, appId, facts));
           yield* allowed(userId, appId, can(person(userId), "release", target, facts));
           return target.productionProjectId;
         }),
@@ -294,8 +293,11 @@ export const releasesLayer: Layer.Layer<
         Effect.gen(function* () {
           const facts = yield* roles.view;
           const projects = yield* seenApp(userId, appId, facts);
-          const projectIds = projects.map((row) => row.project_id);
-          yield* allowed(userId, appId, can(person(userId), "read_change", { projectIds }, facts));
+          yield* allowed(
+            userId,
+            appId,
+            can(person(userId), "read_change", appTarget(projects), facts),
+          );
           return (yield* releasesOf(appId)).slice(0, RELEASES_SHOWN);
         }),
       release: (userId, appId, request) =>

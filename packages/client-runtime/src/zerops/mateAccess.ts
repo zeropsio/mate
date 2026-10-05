@@ -95,7 +95,6 @@ export function resolveMateVisibility(input: {
       groups: [
         {
           id: input.project.id,
-          slug: input.project.id,
           projects: [{ id: input.project.id, kind: "mate" }],
         },
       ],
@@ -120,17 +119,14 @@ export function resolveMateProjectRole(input: {
 }
 
 /**
- * What this person may do to a Mate's project on the platform — opening it is HQ's rule's
- * (`observe_mate`, `mateRowCan`), and so are its face and place (`mayOffer`).
+ * What this person may do to a Mate's project on the platform — following it, its face and its
+ * place are HQ's offers (`can`, `@t3tools/shared/hqOffers`).
  *
  * One rule for the whole screen (guide 0.8): **a verb a person cannot finish
  * is not offered**. Every one of these is a platform write that the platform
  * will refuse from the wrong role, and offering it anyway turns a permission
  * into an error message after the fact.
  *
- * - `create` — the app's *Add Mate* gate: `zeropsRoleAnswer(...).canCreate`,
- *   which is org `ADMIN`/`OWNER` or the *can create projects* flag. One rule,
- *   not the two the screen used to carry.
  * - `delete` — taking the Mate's project off Zerops, which needs effective
  *   `OWNER` or `ADMIN` **there** (measured 2026-09-15: a member below `ADMIN`,
  *   the `OWNER` of the project they made, deleted it; the OpenAPI says the same
@@ -162,28 +158,6 @@ export function resolveMateVerbs(input: {
     rename: projectAdmin,
     assign: orgAdmin && input.project.clientId === input.viewer.id,
   };
-}
-
-/**
- * Whether this person may make a Mate at all — the app's one *Add Mate* gate
- * (guide 0.8), and the same answer the role function gives every other
- * consumer.
- */
-export function canCreateMates(viewer: {
-  readonly roleCode?: string | undefined;
-  readonly canCreateProjects?: boolean | undefined;
-  readonly status?: string | undefined;
-}): boolean {
-  return zeropsRoleAnswer({
-    person: {
-      id: "",
-      orgRole: asOrgRole(viewer.roleCode),
-      status: viewer.status ?? "ACTIVE",
-      canCreateProjects: viewer.canCreateProjects === true,
-    },
-    overrides: {},
-    registry: { groups: [] },
-  }).canCreate;
 }
 
 /**

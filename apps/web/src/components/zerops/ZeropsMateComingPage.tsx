@@ -43,6 +43,7 @@ import {
   MATE_VOICE_SLOW_MS,
   mateVoice,
   mateVoiceQuietKey,
+  reachabilityCountsDown,
   type MateVoice,
 } from "@t3tools/client-runtime/zerops/environments";
 import {
@@ -95,6 +96,7 @@ import {
   KEEP_TAB_OPEN_LINE,
   pressNote,
   pressRuns,
+  SETUP_FAILURE_WORDS,
   type ArrivalSubstep,
   type ArrivalStep,
 } from "~/zerops/mateArrival";
@@ -112,6 +114,7 @@ import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { useToldActivity } from "~/zerops/useMenuMateReadings";
 import { useOpenMate } from "~/zerops/useOpenMate";
+import { usePressesElsewhere } from "~/zerops/usePressesElsewhere";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
 import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
@@ -125,10 +128,10 @@ import {
   useMatePress,
 } from "~/zerops/matePress";
 import { useReviveFailedMate } from "~/zerops/mateRestart";
-import { useMateSetup } from "~/zerops/useMateSetup";
+import { refreshMateSetup, useMateSetup } from "~/zerops/useMateSetup";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
-import type { MateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
+import type { MateSetup, MateSetupFailure } from "@t3tools/client-runtime/zerops/mateSetup";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -250,6 +253,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Held by the close-off gate: its view says why — and, where its project is known not closed
   // off, offers Finish setup.
   const closeOffHolds = useCloseOffHolds();
+  // A press of it in another browser, as HQ holds it: no container yet is that press at work.
+  const pressOf = usePressesElsewhere(held.rows);
   const coming = mateComing({
     closeOffHold: closeOffHoldOf(closeOffHolds, projectId, press),
     press:
@@ -270,6 +275,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     firstBuild: firstBuilding
       ? firstBuildState(firstBuildProcesses, candidate?.service?.id)
       : undefined,
+    pressElsewhere: pressOf(projectId),
   });
   // An absent project is decided by the person's project scope. Unopened projects' container
   // reads cannot keep an ungranted direct link waiting after that scope has answered.
@@ -494,9 +500,15 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         };
 
   // What its container says of its own setup, in any browser (`/mate/setup.json`): read only
-  // while its card is on screen and its setup is under way — every read of an older Mate costs
-  // it a tag read of its own.
-  const setup = useMateSetup(arrival !== undefined ? candidate?.containerOrigin : undefined);
+  // while its card is on screen and its setup is under way, and why where it can't be read.
+  // A read that could not be its setup is read again by the person's Try again, or once what it
+  // depends on changed: a redeploy (another environment), or its server seen restarting (its
+  // health moving).
+  const setupOrigin = arrival !== undefined ? candidate?.containerOrigin : undefined;
+  const { setup, failure: setupFailure } = useMateSetup(
+    setupOrigin,
+    `${link.environmentId ?? ""}|${containerHealth ?? ""}`,
+  );
   // What it brings, named before its project lists them: its press's, then its creation's — a
   // press over never takes a line back before the project's own read or its setup answers.
   const planned = useMemo(() => comingPlanned(press, made), [press, made]);
@@ -547,6 +559,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
             : newProjectProgress(made, progress.progress, progress.nowMs)),
           ...(managed === undefined ? {} : { managed }),
           ...(setup === undefined ? {} : { setup }),
+          ...(setupFailure === undefined ? {} : { setupFailure }),
           ...(made === undefined ? {} : { press: creationSubsteps(made) }),
           ...(empty.agentReady ? { agentReady: true } : {}),
         };
@@ -620,7 +633,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // The minute clock its pose reads (`mateArriving`).
   const clockMs = useNowMs();
   const nowMs = useSecondsNowMs(
-    page?.kind === "reaching" && page.reachability?.kind === "retrying",
+    page?.kind === "reaching" && reachabilityCountsDown(page.reachability),
   );
   // What its link says under its name (`mateVoice`): nothing for a blip, "Opening Wren…" and the
   // platform's processes for a first connect that is slow, a restart in its name.
@@ -672,6 +685,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
                     {...(finishSetup === undefined ? {} : { onFinishSetup: finishSetup })}
                     finishing={mateActions.busyKey === candidate?.key}
                     {...(pressRetry === null ? {} : { onTryAgain: () => void pressRetry() })}
+                    {...(setupOrigin === undefined
+                      ? {}
+                      : { onSetupAgain: () => refreshMateSetup(setupOrigin) })}
                     progress={lineProgress}
                     removing={removing}
                     you={you}
@@ -962,6 +978,7 @@ export function ComingBelow({
   onRemove,
   onFinishSetup,
   onTryAgain,
+  onSetupAgain,
   ends,
   projects,
 }: {
@@ -977,6 +994,8 @@ export function ComingBelow({
   /** *Finish setup*, for a Mate whose press stopped before its container. */
   readonly onFinishSetup?: () => void;
   readonly onTryAgain?: () => void;
+  /** Reads its setup again, where the last read could not be it (`refreshMateSetup`). */
+  readonly onSetupAgain?: () => void;
   /**
    * A creation that stopped before Zerops took it as far as this tab knows (`creationEnds`):
    * *Dismiss*, which takes it out of the menu — and, for an Add refused for certain, *Start over*
@@ -1049,19 +1068,27 @@ export function ComingBelow({
   // a stop's reason (one Zerops may have made says it in the sentence), or a registration not
   // finished, with this person's own *Finish setup*, at once.
   const note = pressNote(progress?.press);
-  const read =
+  const pressRead =
     note === null ||
     (note.kind === "stopped" && coming?.kind === "failed" && coming.verb === "go-to-projects")
       ? null
       : note;
-  const left = read?.kind === "unfinished" ? read : null;
+  const left = pressRead?.kind === "unfinished" ? pressRead : null;
   const finishVerb =
     left !== null && coming?.kind === "coming" && onFinishSetup !== undefined ? (
       <Button disabled={finishing} onClick={onFinishSetup}>
         {FINISH_MATE_SETUP_VERB}
       </Button>
     ) : null;
-  const acts = verb ?? finishVerb;
+  // Its setup that could not be read, while it comes up: why, and *Try again*, which reads it again.
+  const setupFailure = coming?.kind === "coming" ? progress?.setupFailure : undefined;
+  const read =
+    pressRead ?? (setupFailure === undefined ? null : { text: SETUP_FAILURE_WORDS[setupFailure] });
+  const setupVerb =
+    pressRead === null && setupFailure !== undefined && onSetupAgain !== undefined ? (
+      <Button onClick={onSetupAgain}>Try again</Button>
+    ) : null;
+  const acts = verb ?? finishVerb ?? setupVerb;
   if (acts === null && read === null) {
     return steps === null ? null : <div data-zerops-surface="mate-coming-progress">{steps}</div>;
   }
@@ -1108,6 +1135,8 @@ function stoppedStep(step: ArrivalStep): ArrivalStep {
 export type ArrivalProgress = BirthLineProgress & {
   readonly managed?: ReadonlyArray<BirthCopyService> | undefined;
   readonly setup?: MateSetup | undefined;
+  /** Why its setup can't be read (`useMateSetup`). */
+  readonly setupFailure?: MateSetupFailure | undefined;
   /** The steps this tab runs for it, while it holds them (`creationSubsteps`). */
   readonly press?: ReadonlyArray<ArrivalSubstep> | undefined;
   /** It runs on an agent that needs no sign-in, ready (`MateEmptyState.agentReady`). */

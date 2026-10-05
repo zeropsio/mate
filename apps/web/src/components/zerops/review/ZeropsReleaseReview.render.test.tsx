@@ -95,6 +95,7 @@ function flow(): ZeropsProjectFlow {
       ],
       entries: [{ service: "app", commit: HEAD }],
       inFlight: undefined,
+      stalled: undefined,
       contents: [
         {
           repository: "appdev",

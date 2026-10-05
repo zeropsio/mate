@@ -21,7 +21,14 @@ import { type KeySecret, deployKeysLayer, keySecretOf, openToken } from "./deplo
 import { treeMigrations } from "./migrationFiles.ts";
 import { migrate } from "./migrations.ts";
 import { type OrgView, Roles, WriteConfirm } from "./roles.ts";
-import { JOBS_SHOWN, type MateRecord, Structure, structureLayer } from "./structure.ts";
+import {
+  JOBS_SHOWN,
+  PRESS_HOLD_MS,
+  type MateRecord,
+  Structure,
+  type StructureRead,
+  structureLayer,
+} from "./structure.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
 import { type FakeWorld, emptyWorld, fakeZeropsApi } from "../test/harness/zeropsFake.ts";
 import { rolloutsLayer } from "./rollouts.ts";
@@ -144,6 +151,7 @@ const withStructure = <A, E, B = never>(
                 current.projects.some((candidate) => candidate.id === projectId),
               ),
         ),
+      answeredAt: Effect.succeed(undefined),
       views: Stream.never,
     });
     const context = yield* Layer.build(
@@ -187,6 +195,8 @@ const environmentRow = (
   keyHeld: false,
   keyInvalid: false,
   jobs: [],
+  release: null,
+  birth: { ended: false },
 });
 
 /**
@@ -198,7 +208,7 @@ const environmentsOf = (structure: Structure["Service"], appName: string) =>
     const app = read.apps.find((candidate) => candidate.name === appName);
     return Object.fromEntries(
       (app?.projects ?? []).map((project) => {
-        const environment = app?.environments.find(
+        const environment = (app === undefined ? [] : shown(app.environments)).find(
           (candidate) => candidate.projectId === project.projectId,
         );
         return [
@@ -215,6 +225,20 @@ const environmentsOf = (structure: Structure["Service"], appName: string) =>
       }),
     );
   });
+
+/** An application's environments as a reader of its changes reads them: never refused here. */
+const shown = (environments: StructureRead["apps"][number]["environments"]) => {
+  if ("refused" in environments) throw new Error(`environments refused: ${environments.refused}`);
+  return environments;
+};
+
+/** Applications as their records, without what they offer the reader (`offers.test.ts`). */
+const recordsOf = (apps: StructureRead["apps"]) =>
+  apps.map(({ can: _offers, environments, projects, ...app }) => ({
+    ...app,
+    projects: projects.map(({ can: _mate, moveTo: _choices, ...project }) => project),
+    environments: shown(environments).map(({ can: _offered, ...environment }) => environment),
+  }));
 
 /** The refusal's code, or the success. */
 const outcome = <A, E extends { readonly _tag: string }>(effect: Effect.Effect<A, E>) =>
@@ -267,6 +291,94 @@ describe("structure", () => {
                 ),
               ]),
               ["not_app_developer", "slot_taken", "not_project_admin", "ok"],
+            );
+          }),
+        ),
+    );
+
+    it.effect(
+      "offers each reader what the write decides: a release over the production they do not see",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const shop = yield* structure.createApp("owner", "Shop");
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { face: "face-1" },
+            });
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_PROD",
+              kind: "production",
+            });
+            // dev develops Shop through its Mate and sees nothing of its production: the release
+            // is refused for that production, never offered as "no production yet".
+            const read = yield* structure.read("dev");
+            const app = read.apps.find((candidate) => candidate.id === shop.id);
+            assert.deepStrictEqual(
+              app?.projects.map((project) => project.projectId),
+              ["P_MATE"],
+            );
+            assert.deepStrictEqual(
+              [app?.can.merge_change, app?.can.release, read.can.create_app],
+              [
+                { allow: true },
+                { allow: false, reason: "not_releaser" },
+                { allow: false, reason: "not_structure_writer" },
+              ],
+            );
+            assert.deepStrictEqual(
+              shown((yield* structure.read("owner")).apps[0]!.environments).map((environment) => [
+                environment.projectId,
+                environment.can,
+              ]),
+              [["P_PROD", { keep_deploy_token: { allow: true } }]],
+            );
+            // The org's writer is offered making an application, and makes one.
+            assert.deepStrictEqual((yield* structure.read("owner")).can.create_app, {
+              allow: true,
+            });
+            assert.strictEqual(
+              yield* reasonOf(structure.createApp("dev", "Mine")),
+              "not_structure_writer",
+            );
+          }),
+        ),
+    );
+
+    it.effect(
+      "offers moving a Mate into a production's place only where the move takes it: none held",
+      () =>
+        withStructure((view) =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const shop = yield* structure.createApp("owner", "Shop");
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_PROD",
+              kind: "production",
+            });
+            yield* structure.createMate("owner", { projectId: "P_MATE", face: "face-1" });
+            const offered = Effect.map(
+              structure.read("owner"),
+              (read) => read.ungrouped.find((entry) => entry.projectId === "P_MATE")?.moveTo,
+            );
+            const intoProduction = reasonOf(
+              structure.moveProject("owner", "P_MATE", { appId: shop.id, kind: "production" }),
+            );
+            // Shop's production holds the place: not offered, and refused.
+            assert.deepStrictEqual(
+              [(yield* offered)?.[shop.id], yield* intoProduction],
+              [["mate", "devstage", "stage"], "production_taken"],
+            );
+            // Zerops no longer has it: it makes room, offered and taken.
+            yield* Ref.update(view, (org) => ({
+              ...org,
+              projects: org.projects.filter((project) => project.id !== "P_PROD"),
+            }));
+            assert.deepStrictEqual(
+              [(yield* offered)?.[shop.id], yield* intoProduction],
+              [["mate", "devstage", "stage", "production"], "ok"],
             );
           }),
         ),
@@ -614,7 +726,7 @@ describe("structure", () => {
               ]),
               ["invalid", "ok", "ok", "ok", "ok", "ok", "invalid"],
             );
-            assert.deepStrictEqual((yield* structure.read("owner")).apps, [
+            assert.deepStrictEqual(recordsOf((yield* structure.read("owner")).apps), [
               {
                 id: shop.id,
                 name: "Shop",
@@ -624,7 +736,7 @@ describe("structure", () => {
                     projectId: "P_MATE",
                     name: "name of P_MATE",
                     kind: "devstage",
-                    mate: { name: "name of P_MATE", ...mate, madeBy: "owner", ...UNBORN },
+                    mate: { ...mate, madeBy: "owner", ...UNBORN },
                   },
                   { projectId: "P_STAGE", name: "name of P_STAGE", kind: "stage", mate: null },
                 ],
@@ -644,7 +756,7 @@ describe("structure", () => {
                     projectId: "P_OWNED",
                     name: "name of P_OWNED",
                     kind: "devstage",
-                    mate: { name: "name of P_OWNED", face: "face-1", madeBy: "maker", ...UNBORN },
+                    mate: { face: "face-1", madeBy: "maker", ...UNBORN },
                   },
                 ],
                 environments: [environmentRow("P_TEAM", "stage", "name-of-p-team", 1)],
@@ -789,7 +901,7 @@ describe("structure", () => {
             const read = yield* structure.read("owner");
             assert.deepStrictEqual(
               read.apps[0]?.projects.find((project) => project.projectId === "P_OWN")?.mate,
-              { name: "name of P_OWN", face: "face-3", madeBy: "owner", ...UNBORN },
+              { face: "face-3", madeBy: "owner", ...UNBORN },
             );
           }),
         ),
@@ -849,7 +961,6 @@ describe("structure", () => {
                   (read) => read.ungrouped.find((entry) => entry.projectId === projectId)?.mate,
                 );
               assert.deepStrictEqual(yield* mateOf("P_MATE"), {
-                name: "name of P_MATE",
                 face: "face-3",
                 madeBy: null,
                 standupRequestedBy: null,
@@ -857,7 +968,6 @@ describe("structure", () => {
                 keyWider: false,
               });
               assert.deepStrictEqual(yield* mateOf("P_OWN"), {
-                name: "name of P_OWN",
                 face: "face-1",
                 madeBy: "owner",
                 ...UNBORN,
@@ -890,7 +1000,6 @@ describe("structure", () => {
           const mateOf = (userId: string) =>
             Effect.map(structure.read(userId), (read) => read.ungrouped[0]?.mate);
           assert.deepStrictEqual(yield* mateOf("reader"), {
-            name: "name of P_MATE",
             face: "face-3",
             madeBy: "owner",
             standupRequestedBy: "owner",
@@ -906,7 +1015,6 @@ describe("structure", () => {
           assert.isTrue(Option.isSome(yield* Fiber.join(told)));
 
           assert.deepStrictEqual(yield* mateOf("reader"), {
-            name: "name of P_MATE",
             face: "face-3",
             madeBy: "owner",
             standupRequestedBy: "owner",
@@ -953,7 +1061,7 @@ describe("structure", () => {
           const structure = yield* Structure;
           yield* structure.createMate("owner", { projectId: "P_MATE", face: "face-3" });
           const named = Effect.all([
-            Effect.map(structure.read("reader"), (read) => read.ungrouped[0]?.mate.name),
+            Effect.map(structure.read("reader"), (read) => read.ungrouped[0]?.name),
             Effect.map(structure.mateState("P_MATE"), (state) =>
               Option.map(state, (mate) => mate.name),
             ),
@@ -1061,10 +1169,7 @@ describe("structure", () => {
               appId: team.id,
               face: "rose:seal",
             });
-            // Unnamed, as a client from before D3 reads it: its project is not yet, nor its name.
-            assert.deepStrictEqual(yield* birthsOf, [
-              { id: intent.id, name: "", face: "rose:seal" },
-            ]);
+            assert.deepStrictEqual(yield* birthsOf, [{ id: intent.id, face: "rose:seal" }]);
             // Nobody who does not see the application records one in it.
             assert.strictEqual(
               yield* reasonOf(structure.recordBirth("nobody", { appId: team.id, face: "" })),
@@ -1082,36 +1187,156 @@ describe("structure", () => {
         ),
     );
 
-    it.effect("ports missing Mate facts into HQ once, preserving facts HQ already holds", () =>
+    // B5: a Mate's press in one browser, read in another — held while its press renews it, taken
+    // over once it ran out, and following the container import it asked for.
+    it.effect("holds a Mate's press for the browser running it, and lets it go at its end", () =>
+      withStructure((_view, _down, _zerops, asked) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const MATE = { kind: "mate" } as const;
+          const pressOf = (userId: string) =>
+            Effect.map(structure.read(userId), (read) => read.presses["P_OWN"]);
+          const held = yield* structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-a" });
+          assert.isTrue(held.heldForMs > PRESS_HOLD_MS - 5_000 && held.heldForMs <= PRESS_HOLD_MS);
+          assert.strictEqual(held.kind, "mate");
+          // Another browser's press is refused while the first one's hold runs.
+          assert.strictEqual(
+            yield* reasonOf(structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-b" })),
+            "press_held",
+          );
+          // Renewed by its own press, with the import Zerops answered, kept through a renewal.
+          yield* structure.holdPress("maker", "P_OWN", {
+            ...MATE,
+            owner: "press-a",
+            importProcessId: "imp-1",
+          });
+          yield* structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-a" });
+          assert.strictEqual((yield* pressOf("owner"))?.importProcessId, "imp-1");
+          // Nobody who does not read the project holds it, or reads it — a refusal confirmed over
+          // a fresh read, as a project Zerops made seconds ago may be missing from the recent one.
+          yield* Ref.set(asked, []);
+          assert.strictEqual(
+            yield* reasonOf(structure.holdPress("nobody", "P_OWN", { ...MATE, owner: "press-c" })),
+            "not_project_reader",
+          );
+          assert.deepStrictEqual(yield* Ref.get(asked), ["write recent", "write fresh"]);
+          assert.isUndefined(yield* pressOf("nobody"));
+          // A hold that ran out — its tab closed — reads none left, and another press takes it over.
+          yield* sql`UPDATE hq_press SET until = now() - interval '1 second'`;
+          const ranOut = yield* pressOf("owner");
+          assert.deepStrictEqual([ranOut?.heldForMs, ranOut?.importProcessId], [0, "imp-1"]);
+          yield* structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-b" });
+          assert.isUndefined((yield* pressOf("owner"))?.importProcessId);
+          // Only the press holding it ends it; one that finished leaves no record.
+          yield* structure.endPress("maker", "P_OWN", { owner: "press-a", finished: true });
+          assert.isDefined(yield* pressOf("owner"));
+          yield* structure.endPress("maker", "P_OWN", { owner: "press-b", finished: true });
+          assert.isUndefined(yield* pressOf("owner"));
+        }),
+      ),
+    );
+
+    // A renewal in flight when its press ends lands after the end: it extends only a live hold of
+    // its own press, so it never revives a press that stopped or re-creates one that finished.
+    it.effect("never lets a renewal outlive its press's end", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const MATE = { kind: "mate" } as const;
+          const pressOf = Effect.map(structure.read("owner"), (read) => read.presses["P_OWN"]);
+          const renew = (owner: string) =>
+            reasonOf(structure.holdPress("maker", "P_OWN", { ...MATE, owner, renew: true }));
+          // Nothing to renew before the first hold, which alone creates.
+          assert.strictEqual(yield* renew("press-a"), "press_not_held");
+          assert.isUndefined(yield* pressOf);
+          yield* structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-a" });
+          // Its own live hold renews, with the import Zerops answered; another press's does not.
+          yield* structure.holdPress("maker", "P_OWN", {
+            ...MATE,
+            owner: "press-a",
+            importProcessId: "imp-1",
+            renew: true,
+          });
+          assert.strictEqual((yield* pressOf)?.importProcessId, "imp-1");
+          assert.strictEqual(yield* renew("press-b"), "press_not_held");
+          // Stopped: a renewal after it leaves its hold ended.
+          yield* structure.endPress("maker", "P_OWN", { owner: "press-a", finished: false });
+          assert.strictEqual(yield* renew("press-a"), "press_not_held");
+          assert.strictEqual((yield* pressOf)?.heldForMs, 0);
+          // Finished: a renewal after it leaves no record.
+          yield* structure.holdPress("maker", "P_OWN", { ...MATE, owner: "press-c" });
+          yield* structure.endPress("maker", "P_OWN", { owner: "press-c", finished: true });
+          assert.strictEqual(yield* renew("press-c"), "press_not_held");
+          assert.isUndefined(yield* pressOf);
+        }),
+      ),
+    );
+
+    // B5: a stage's press imports first and registers last; one cut short between them leaves a
+    // project HQ holds nowhere, whose press record says what it is and where it goes.
+    it.effect("keeps a stopped stage press's record, its hold ended, until its project goes", () =>
+      withStructure((view) =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const team = yield* structure.createApp("owner", "Team");
+          const pressOf = Effect.map(structure.read("owner"), (read) => read.presses["P_STAGE"]);
+          yield* structure.holdPress("owner", "P_STAGE", {
+            owner: "press-s",
+            kind: "stage",
+            appId: team.id,
+          });
+          assert.deepStrictEqual(
+            [(yield* pressOf)?.kind, (yield* pressOf)?.appId],
+            ["stage", team.id],
+          );
+          // An application HQ does not hold is refused.
+          assert.strictEqual(
+            yield* reasonOf(
+              structure.holdPress("owner", "P_STAGE", {
+                owner: "press-s",
+                kind: "stage",
+                appId: "00000000-0000-0000-0000-000000000000",
+              }),
+            ),
+            "app_not_found",
+          );
+          // Stopped: its hold ends now, its record stays.
+          yield* structure.endPress("owner", "P_STAGE", { owner: "press-s", finished: false });
+          assert.deepStrictEqual(
+            [(yield* pressOf)?.heldForMs, (yield* pressOf)?.kind],
+            [0, "stage"],
+          );
+          // Its setup finished elsewhere — registered as its stage — its record is over.
+          yield* structure.attachProject("owner", team.id, { projectId: "P_STAGE", kind: "stage" });
+          assert.isUndefined(yield* pressOf);
+          yield* structure.holdPress("owner", "P_STAGE", {
+            owner: "press-t",
+            kind: "stage",
+            appId: team.id,
+          });
+          // Its project gone from Zerops: its record goes with it.
+          yield* Ref.update(view, (org) => ({
+            ...org,
+            projects: org.projects.filter((project) => project.id !== "P_STAGE"),
+          }));
+          yield* structure.reconcile;
+          assert.isUndefined(
+            (yield* Effect.map(structure.read("owner"), (read) => read.presses))["P_STAGE"],
+          );
+        }),
+      ),
+    );
+
+    it.effect("reads the tool projects HQ holds", () =>
       withStructure(() =>
         Effect.gen(function* () {
           const structure = yield* Structure;
           const sql = yield* SqlClient.SqlClient;
-          yield* structure.createMate("owner", { projectId: "P_OWN", face: "rose:seal" });
-          yield* structure.portProjectMetadata("owner", {
-            projectId: "P_OWN",
-            face: "sky:flower",
-            signers: { codex: "owner" },
-          });
-          yield* structure.portProjectMetadata("owner", {
-            projectId: "P_OWN",
-            signers: { codex: "maker" },
-          });
-          const rows = yield* sql<{
-            readonly face: string;
-            readonly signers: Record<string, string>;
-          }>`SELECT face, signers FROM hq_mate WHERE project_id = 'P_OWN'`;
-          assert.deepStrictEqual(rows[0], { face: "rose:seal", signers: { codex: "owner" } });
-          yield* structure.portProjectMetadata("owner", { projectId: "P_TEAM", tool: "gitea" });
+          yield* sql`INSERT INTO hq_tool (project_id, kind) VALUES ('P_TEAM', 'gitea')`;
           assert.deepStrictEqual((yield* structure.read("owner")).tools, [
             { projectId: "P_TEAM", kind: "gitea" },
           ]);
-          assert.strictEqual(
-            yield* reasonOf(
-              structure.portProjectMetadata("maker", { projectId: "P_TEAM", tool: "gitea" }),
-            ),
-            "not_structure_writer",
-          );
         }),
       ),
     );
@@ -1126,7 +1351,7 @@ describe("structure", () => {
           yield* structure.bindBirth("owner", birth.id, "P_OWN");
           const read = yield* structure.read("owner");
           assert.deepStrictEqual(read.apps.find((a) => a.id === app.id)?.births, [
-            { id: birth.id, name: "", face: "rose:seal", projectId: "P_OWN" },
+            { id: birth.id, face: "rose:seal", projectId: "P_OWN" },
           ]);
           assert.strictEqual(
             yield* reasonOf(structure.bindBirth("nobody", birth.id, "P_TEAM")),
@@ -1246,8 +1471,8 @@ describe("structure", () => {
           );
           const mates = (yield* structure.read("owner")).apps[0]?.projects.map((p) => p.mate);
           assert.deepStrictEqual(mates, [
-            { name: "name of P_MATE", face: "rose:seal", madeBy: "owner", ...UNBORN },
-            { name: "name of P_OWNED", face: "olive:clover", madeBy: "owner", ...UNBORN },
+            { face: "rose:seal", madeBy: "owner", ...UNBORN },
+            { face: "olive:clover", madeBy: "owner", ...UNBORN },
             null,
           ]);
         }),
@@ -1591,7 +1816,7 @@ describe("structure", () => {
             // A key HQ's check before a deploy found no longer usable shows until a new one is kept.
             const keyInvalid = Effect.map(
               structure.read("owner"),
-              (read) => read.apps[0]?.environments[0]?.keyInvalid,
+              (read) => shown(read.apps[0]!.environments)[0]?.keyInvalid,
             );
             assert.strictEqual(yield* keyInvalid, false);
             yield* sql`UPDATE hq_deploy_token SET invalid_since = now()`;
@@ -1703,20 +1928,23 @@ describe("structure", () => {
             Effect.map(structure.read(userId), (structureRead) =>
               structureRead.apps.map((app) => ({
                 projects: app.projects.map((project) => project.projectId),
-                environments: app.environments.map(({ projectId, jobs }) => ({
-                  projectId,
-                  jobs: jobs.map((job) => [
-                    job.service,
-                    job.sha,
-                    job.state,
-                    job.cause,
-                    job.reason,
-                    job.processId,
-                    job.requestedBy,
-                    typeof job.at,
-                    job.endedAt === null ? null : typeof job.endedAt,
-                  ]),
-                })),
+                environments:
+                  "refused" in app.environments
+                    ? app.environments
+                    : app.environments.map(({ projectId, jobs }) => ({
+                        projectId,
+                        jobs: jobs.map((job) => [
+                          job.service,
+                          job.sha,
+                          job.state,
+                          job.cause,
+                          job.reason,
+                          job.processId,
+                          job.requestedBy,
+                          typeof job.at,
+                          job.endedAt === null ? null : typeof job.endedAt,
+                        ]),
+                      })),
               })),
             );
           const seen = [
@@ -1748,8 +1976,9 @@ describe("structure", () => {
           // dev develops Shop through P_MATE (Basic user there), and does not read its stage's
           // project; maker sees Shop only through a Read only grant on P_TEAM.
           assert.deepStrictEqual(yield* read("dev"), seen);
+          // Refused, and said so: never an empty list that reads as "no environments".
           assert.deepStrictEqual(yield* read("maker"), [
-            { projects: ["P_TEAM"], environments: [] },
+            { projects: ["P_TEAM"], environments: { refused: "changes_not_seen" } },
           ]);
           assert.deepStrictEqual(yield* read("nobody"), []);
         }),
@@ -1791,8 +2020,10 @@ describe("structure", () => {
             SELECT ${merge!.id}::bigint, 'deploy', 'P_STAGE', 'api', 'api', ${head}, 'refused',
               'Zerops did not answer', now()
             FROM generate_series(1, ${JOBS_SHOWN})`;
-          const [shown] = (yield* structure.read("dev")).apps.flatMap((app) => app.environments);
-          const jobs = shown?.jobs ?? [];
+          const [stage] = (yield* structure.read("dev")).apps.flatMap((app) =>
+            shown(app.environments),
+          );
+          const jobs = stage?.jobs ?? [];
           assert.strictEqual(jobs.length, JOBS_SHOWN + 1);
           assert.deepStrictEqual(
             [jobs[0], jobs.at(-1)].map((job) => [job?.service, job?.state, job?.cause, job?.ref]),
@@ -1807,6 +2038,230 @@ describe("structure", () => {
           );
         }),
       ),
+    );
+
+    // Release end (H2): each production carries where its newest release's rollout stands —
+    // planned, ended once every job it asked for there ended and every job of a commit it left out
+    // as under way ended too — however many jobs came after; a stage carries none.
+    it.effect("carries where a production's newest release stands, however many jobs it has", () =>
+      withStructure(() =>
+        Effect.gen(function* () {
+          const structure = yield* Structure;
+          const sql = yield* SqlClient.SqlClient;
+          const shop = yield* structure.createApp("owner", "Shop");
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_MATE",
+            kind: "mate",
+            mate: { face: "face-1" },
+          });
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_STAGE",
+            kind: "stage",
+            environment: { name: "stage" },
+          });
+          yield* structure.attachProject("owner", shop.id, {
+            projectId: "P_PROD",
+            kind: "production",
+            environment: { name: "production" },
+          });
+          const sha = "4".repeat(40);
+          /** HQ's record of release `tag`, made before rollouts were or recorded from git. */
+          const recorded = (tag: string) => sql`
+            INSERT INTO hq_release (app_id, tag, sha, entries, released_by, state)
+            VALUES (${shop.id}::uuid, ${tag}, ${sha}, '[]'::jsonb, 'owner', 'approved')`;
+          /** Release `tag`, recorded with the rollout that deploys it. */
+          const release = (tag: string, planned: boolean) =>
+            Effect.andThen(
+              recorded(tag),
+              Effect.map(
+                sql<{ readonly id: string }>`
+                  INSERT INTO hq_rollout (app_id, cause, tag, planned_at)
+                  VALUES (${shop.id}::uuid, 'release', ${tag},
+                    ${sql.literal(planned ? "now()" : "NULL")})
+                  RETURNING id::text AS id`,
+                (rows) => rows[0]!.id,
+              ),
+            );
+          const jobs = (rolloutId: string, state: string, count: number) =>
+            sql<{ readonly id: string }>`
+              INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+                ended_at)
+              SELECT ${rolloutId}::bigint, 'deploy', 'P_PROD', 'api', 'api', ${sha}, ${state},
+                ${sql.literal(state === "queued" || state === "building" ? "NULL" : "now()")}
+              FROM generate_series(1, ${count})
+              RETURNING id::text AS id`;
+          const end = (jobId: string) => sql`
+            UPDATE hq_deploy_job SET state = 'live', ended_at = now(), updated_at = now()
+            WHERE id = ${jobId}::bigint`;
+          const standing = Effect.map(structure.read("dev"), (read) =>
+            read.apps
+              .flatMap((app) => shown(app.environments))
+              .map(({ projectId, release: rollout }) => [
+                projectId,
+                rollout === null
+                  ? null
+                  : [
+                      rollout.tag,
+                      rollout.planned,
+                      rollout.ended,
+                      rollout.endedAt === null ? null : typeof rollout.endedAt,
+                      rollout.landed,
+                      rollout.leftOut.map((left) => [left.service, left.job]),
+                    ],
+              ]),
+          );
+
+          // Asked for and not planned yet: on its way.
+          const first = yield* release("v0.1.0", false);
+          assert.deepStrictEqual(yield* standing, [
+            ["P_STAGE", null],
+            ["P_PROD", ["v0.1.0", false, false, null, false, []]],
+          ]);
+          // Planned into more jobs than the view lists: its last job, newest, still waits.
+          yield* sql`UPDATE hq_rollout SET planned_at = now() WHERE id = ${first}::bigint`;
+          yield* jobs(first, "refused", JOBS_SHOWN + 5);
+          const [last] = yield* jobs(first, "queued", 1);
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v0.1.0", true, false, null, false, []],
+          ]);
+          yield* end(last!.id);
+          // Ended, and not landed: some of its jobs were refused.
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v0.1.0", true, true, "string", false, []],
+          ]);
+
+          // A newer release that left a service out, its commit building under a merge's job: it
+          // runs until that job ends, however its own jobs ended.
+          const [merge] = yield* sql<{ readonly id: string }>`
+            INSERT INTO hq_rollout (app_id, cause, repo, sha, planned_at)
+            VALUES (${shop.id}::uuid, 'merge', 'web', ${sha}, now())
+            RETURNING id::text AS id`;
+          const [building] = yield* jobs(merge!.id, "building", 1);
+          const second = yield* release("v0.2.0", true);
+          yield* jobs(second, "live", 1);
+          yield* sql`
+            UPDATE hq_rollout SET left_out = jsonb_build_array(
+              jsonb_build_object('project_id', 'P_PROD', 'service', 'web', 'sha', ${sha}::text,
+                'job', ${building!.id}::text, 'reason', 'under way'),
+              jsonb_build_object('project_id', 'P_OTHER', 'service', 'web', 'sha', ${sha}::text,
+                'job', NULL, 'reason', 'elsewhere'))
+            WHERE id = ${second}::bigint`;
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v0.2.0", true, false, null, false, [["web", building!.id]]],
+          ]);
+          yield* end(building!.id);
+          // Every job it asked for, and the one it waited on, live: landed.
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v0.2.0", true, true, "string", true, [["web", building!.id]]],
+          ]);
+
+          // One planned into no job there — every service already runs it — landed as planned.
+          yield* release("v0.3.0", true);
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v0.3.0", true, true, "string", true, []],
+          ]);
+
+          // Review #2 (web, client): a release HQ records with no rollout of its own — made before
+          // rollouts were, or recorded from git — deploys nothing more: ended, as it was made, and
+          // never on its way. The newest by version is what production follows.
+          yield* recorded("v0.10.0");
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v0.10.0", true, true, "string", false, []],
+          ]);
+          const [legacy] = shown((yield* structure.read("dev")).apps[0]!.environments).flatMap(
+            ({ release: rollout }) => (rollout === null ? [] : [rollout]),
+          );
+          assert.strictEqual(legacy?.id, null);
+          // Review (delta #4): a tag recorded from git may carry any number of digits — one past
+          // what an integer holds is still ordered, newest by version, and nobody's read fails.
+          yield* recorded("v1.99999999999.0");
+          assert.deepStrictEqual((yield* standing)[1], [
+            "P_PROD",
+            ["v1.99999999999.0", true, true, "string", false, []],
+          ]);
+        }),
+      ),
+    );
+
+    // An environment's birth (H2): the rollout its attach asked for, and its jobs there — and any
+    // job of a commit it left out as under way — ended or not, whatever came after; none for an
+    // environment HQ did not bring up.
+    it.effect(
+      "carries whether an environment's birth ended, from the rollout its attach asked",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            const sql = yield* SqlClient.SqlClient;
+            const shop = yield* structure.createApp("owner", "Shop");
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_MATE",
+              kind: "mate",
+              mate: { face: "face-1" },
+            });
+            yield* structure.attachProject("owner", shop.id, {
+              projectId: "P_STAGE",
+              kind: "stage",
+              environment: { name: "stage" },
+            });
+            const sha = "5".repeat(40);
+            const [birth] = yield* sql<{ readonly id: string }>`
+            SELECT id::text AS id FROM hq_rollout
+            WHERE project_id = 'P_STAGE' AND cause = 'env_added'`;
+            const job = (rolloutId: string, state: string) =>
+              Effect.map(
+                sql<{ readonly id: string }>`
+                INSERT INTO hq_deploy_job (rollout_id, kind, project_id, service, repo, sha, state,
+                  ended_at)
+                VALUES (${rolloutId}::bigint, 'deploy', 'P_STAGE', 'web', 'web', ${sha}, ${state},
+                  ${sql.literal(state === "queued" || state === "building" ? "NULL" : "now()")})
+                RETURNING id::text AS id`,
+                (rows) => rows[0]!.id,
+              );
+            const end = (jobId: string) => sql`
+            UPDATE hq_deploy_job SET state = 'live', ended_at = now(), updated_at = now()
+            WHERE id = ${jobId}::bigint`;
+            const born = Effect.map(structure.read("dev"), (read) =>
+              read.apps
+                .flatMap((app) => shown(app.environments))
+                .map((environment) => environment.birth),
+            );
+
+            // Asked for and not planned yet: still being born.
+            assert.deepStrictEqual(yield* born, [{ ended: false }]);
+            // Planned into its first deploy, which builds; then live.
+            yield* sql`UPDATE hq_rollout SET planned_at = now() WHERE id = ${birth!.id}::bigint`;
+            const first = yield* job(birth!.id, "building");
+            assert.deepStrictEqual(yield* born, [{ ended: false }]);
+            yield* end(first);
+            assert.deepStrictEqual(yield* born, [{ ended: true }]);
+            // Jobs after it are not its birth's.
+            const [merge] = yield* sql<{ readonly id: string }>`
+            INSERT INTO hq_rollout (app_id, cause, repo, sha, planned_at)
+            VALUES (${shop.id}::uuid, 'merge', 'web', ${sha}, now())
+            RETURNING id::text AS id`;
+            const later = yield* job(merge!.id, "building");
+            assert.deepStrictEqual(yield* born, [{ ended: true }]);
+            // A birth that left its service out for that job under way runs until the job ends.
+            yield* sql`
+            UPDATE hq_rollout SET left_out = jsonb_build_array(jsonb_build_object(
+              'project_id', 'P_STAGE', 'service', 'web', 'sha', ${sha}::text,
+              'job', ${later}::text, 'reason', 'under way'))
+            WHERE id = ${birth!.id}::bigint`;
+            assert.deepStrictEqual(yield* born, [{ ended: false }]);
+            yield* end(later);
+            assert.deepStrictEqual(yield* born, [{ ended: true }]);
+            // An environment HQ did not bring up has no birth.
+            yield* sql`DELETE FROM hq_rollout WHERE id = ${birth!.id}::bigint`;
+            assert.deepStrictEqual(yield* born, [null]);
+          }),
+        ),
     );
 
     it.effect("a project gone from Zerops loses its Mate credential and its challenges", () =>
@@ -2146,12 +2601,14 @@ describe("structure", () => {
               ["forbidden", "project_not_found", "invalid", "invalid", "ok", "conflict", "ok"],
             );
             const ungrouped = (userId: string) =>
-              Effect.map(structure.read(userId), (read) => read.ungrouped);
+              Effect.map(structure.read(userId), (read) =>
+                read.ungrouped.map(({ can: _offers, moveTo: _choices, ...entry }) => entry),
+              );
             const listed = [
               {
                 projectId: "P_OWNED",
                 name: "name of P_OWNED",
-                mate: { name: "name of P_OWNED", face: "rose:seal", madeBy: "maker", ...UNBORN },
+                mate: { face: "rose:seal", madeBy: "maker", ...UNBORN },
               },
             ];
             assert.deepStrictEqual(yield* ungrouped("maker"), listed);
@@ -2255,11 +2712,11 @@ describe("structure", () => {
           assert.deepStrictEqual(yield* seen("dev"), ["Shop: P_MATE"]);
           assert.deepStrictEqual(yield* seen("nobody"), []);
           assert.deepStrictEqual(yield* seen("stranger"), []);
-          assert.deepStrictEqual((yield* structure.read("owner")).apps[0]?.projects[0], {
+          assert.deepStrictEqual(recordsOf((yield* structure.read("owner")).apps)[0]?.projects[0], {
             projectId: "P_MATE",
             name: "name of P_MATE",
             kind: "mate",
-            mate: { name: "name of P_MATE", face: "face-3", madeBy: "owner", ...UNBORN },
+            mate: { face: "face-3", madeBy: "owner", ...UNBORN },
           });
 
           yield* Ref.update(view, (current) => ({
