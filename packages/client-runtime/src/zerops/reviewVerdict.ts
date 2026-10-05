@@ -208,6 +208,8 @@ export interface ChangeReviewInput {
     readonly state?: string | undefined;
     /** Whether `main` has moved on past the commit it was cut from. */
     readonly behind: boolean;
+    /** Whether it asks for review: its Mate described it at its head. Absent reads as ready. */
+    readonly ready?: boolean | undefined;
   };
   /** The name of the Mate that wrote it: only Mates open changes (SPEC §5.4). */
   readonly mateName: string;
@@ -528,14 +530,22 @@ function changeVerdictOf(input: ChangeReviewInput): {
     };
   }
 
-  // Quiet, not green: no signal about a change is not a good signal.
+  // Quiet, not green: no signal about a change is not a good signal. A draft merges as well,
+  // but says its words are not of its latest work: its Mate has not described that yet.
+  const draft = pull.ready === false;
   return {
     enabled: true,
     verdict: {
       state: "ready",
       tone: "quiet",
-      title: "Ready to merge",
-      why: [`No conflicts with ${base}`, commits].filter((part) => part !== undefined).join(" · "),
+      title: draft ? "Draft" : "Ready to merge",
+      why: [
+        draft ? `${who} hasn't described its latest work` : undefined,
+        `No conflicts with ${base}`,
+        commits,
+      ]
+        .filter((part) => part !== undefined)
+        .join(" · "),
       fix: undefined,
     },
   };
