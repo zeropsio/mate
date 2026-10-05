@@ -4052,3 +4052,16 @@ no-cache`.
   best possible and the most recommended solution").
   - _Why:_ with the focus on a safe _Merge_, a plain Enter merged (found in pass 39, T6); ⌘↵ is the
     deliberate press, Enter is not.
+- **2026-10-05** — **D10 (the owner): a new conversation starts on Extra High, wherever its model
+  offers it.**
+  - **Every new conversation:** a new Mate's first (the bootstrap thread and its stand-up) and every
+    later one (a draft, a thread that never ran a turn), on the web and the phone. The drivers keep
+    their own `isDefault` (Port zone untouched); the preference lives in `@t3tools/shared/zeropsEffort`.
+  - **The rule:** the effort option (`effort`, `reasoningEffort`, `reasoning`, `variant`) takes
+    `xhigh` by id; without it, the highest step below `max` on the ladder `none < minimal < low <
+medium < high < xhigh` (a driver's own order does not rank: Grok reports its levels top first,
+    OpenCode's come from an object's keys); no effort option, or nothing on the ladder, selects
+    nothing; `max` never.
+  - **What stays:** a conversation that has run keeps its effort, a person's own pick always wins,
+    and crewmates keep their own rule (unset = the login's default).
+  - _Why:_ the owner runs real work on Extra High — "at least extra high effort".
