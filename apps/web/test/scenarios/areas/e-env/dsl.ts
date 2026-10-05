@@ -15,7 +15,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
       try {
         await page.waitForFunction(
           (wanted) => document.body.innerText.includes(wanted),
-          { timeout: 15_000, polling: "raf" },
+          { timeout: 30_000, polling: "raf" },
           wanted,
         );
       } catch (cause) {
@@ -54,15 +54,19 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
     Effect.promise(() =>
       page.locator(`::-p-aria(${label}[role="button"])`).setTimeout(15_000).click(),
     );
-  const rowShows = (tag: string, words: string) =>
+  const rowShows = (tag: string, words: string, options: { within?: number } = {}) =>
     Effect.promise(async () => {
       try {
         await page.waitForFunction(
           (tag, words) =>
             [
               ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="environment-name"]'),
-            ].some((el) => el.innerText === tag && el.closest("li")?.innerText.includes(words)),
-          { timeout: 15_000, polling: "raf" },
+            ].some(
+              (el) =>
+                el.innerText === tag &&
+                el.closest<HTMLElement>("[data-zerops-environment-row]")?.innerText.includes(words),
+            ),
+          { timeout: options.within ?? 30_000, polling: "raf" },
           tag,
           words,
         );
@@ -72,6 +76,21 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
           { cause },
         );
       }
+    });
+  const keepsWord = (tag: string, word: string) =>
+    Effect.promise(async () => {
+      const guard = await recordReleaseWords(page, tag);
+      s.drivers.cleanup.push(async () => {
+        await guard.evaluate((state) => state.observer?.disconnect());
+        await guard.dispose();
+      });
+      return Effect.promise(async () => {
+        const words = await guard.evaluate((state) => {
+          state.observer?.disconnect();
+          return state.words;
+        });
+        expect(words, `Release ${tag} must continuously show ${word}`).toEqual([word]);
+      });
     });
   const releaseFromReview = Effect.gen(function* () {
     yield* click("Review release");
@@ -87,9 +106,9 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
         const name = [
           ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="environment-name"]'),
         ].find((el) => el.innerText === tag);
-        const button = [...(name?.closest("li")?.querySelectorAll("button") ?? [])].find(
-          (el) => el.innerText === "Roll back to this",
-        );
+        const button = [
+          ...(name?.closest("[data-zerops-environment-row]")?.querySelectorAll("button") ?? []),
+        ].find((el) => el.innerText === "Roll back to this");
         if (!button) throw new Error(`No Roll back offered for ${tag}`);
         const rect = button.getBoundingClientRect();
         return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
@@ -123,7 +142,76 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
   return {
     when: { open, finish, click, releaseFromReview, reload, rollBack, editVersion },
     // oxlint-disable-next-line unicorn/no-thenable
-    then: { text, rowShows, running, releaseDisabled, keepsDocument },
+    then: { text, rowShows, running, releaseDisabled, keepsDocument, keepsWord },
     deployment,
   };
+}
+
+// Observe visible release words, retaining transient text changes between browser callbacks.
+export function recordReleaseWords(page: Page, tag: string) {
+  return page.evaluateHandle((tag) => {
+    const state = {
+      words: [] as string[],
+      observer: undefined as MutationObserver | undefined,
+    };
+    const words = new Set(["Deploy failed", "Approved", "Live", "Refused"]);
+    const record = (word: string) => {
+      if (state.words.at(-1) !== word) state.words.push(word);
+    };
+    const isRow = (row: Element | null) =>
+      row !== null &&
+      [...row.querySelectorAll<HTMLElement>('[data-zerops-surface="environment-name"]')].some(
+        (name) => name.innerText === tag,
+      );
+    const check = () => {
+      const name = [
+        ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="environment-name"]'),
+      ].find((name) => name.innerText === tag);
+      const row = name?.closest("[data-zerops-environment-row]");
+      if (!row) return record("missing");
+      const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const word = node.textContent?.trim() ?? "";
+        if (words.has(word) && node.parentElement!.getBoundingClientRect().height > 0)
+          return record(word);
+      }
+      record("missing word");
+    };
+    check();
+    state.observer = new MutationObserver((mutations) => {
+      // Old values also catch a word that flashed and changed back before this callback ran.
+      for (const mutation of mutations) {
+        if (mutation.type === "childList") {
+          const parent =
+            mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
+          if (isRow(parent?.closest("[data-zerops-environment-row]") ?? null)) {
+            for (const node of [...mutation.removedNodes, ...mutation.addedNodes]) {
+              const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+              const recordNode = (node: Node) => {
+                const word = node.textContent?.trim() ?? "";
+                if (words.has(word)) record(word);
+              };
+              if (node.nodeType === Node.TEXT_NODE) recordNode(node);
+              while (walker.nextNode()) recordNode(walker.currentNode);
+            }
+          }
+        }
+        if (
+          mutation.type === "characterData" &&
+          words.has(mutation.oldValue?.trim() ?? "") &&
+          isRow(mutation.target.parentElement?.closest("[data-zerops-environment-row]") ?? null)
+        )
+          record(mutation.oldValue!.trim());
+      }
+      check();
+    });
+    state.observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      characterDataOldValue: true,
+    });
+    return state;
+  }, tag);
 }

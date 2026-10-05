@@ -27,9 +27,10 @@ describe("E: stage, production, release and rollback", () => {
         const f = yield* environmentFixture;
         const a = environmentActions(f);
         const sha = yield* f.merge();
-        yield* a.when.finish("stage");
         yield* f.s.given.signedIn;
         yield* a.when.open("stage");
+        yield* a.then.text(`Building ${sha.slice(0, 7)}`);
+        yield* a.when.finish("stage");
         yield* a.then.text("Deployed");
         yield* a.then.text(sha.slice(0, 7));
         yield* f.s.then.noExternalNetwork;
@@ -165,7 +166,7 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.then.text("Rolled back to v0.1.0");
           yield* a.when.click("Close");
           yield* a.then.rowShows("v0.1.2", "Live");
-          yield* a.then.text(earlier.slice(0, 7));
+          yield* a.then.rowShows("v0.1.2", earlier.slice(0, 7));
           yield* f.s.then.noExternalNetwork;
         }),
       90_000,

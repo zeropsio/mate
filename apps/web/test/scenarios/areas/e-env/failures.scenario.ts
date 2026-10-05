@@ -13,7 +13,7 @@ afterEach(() =>
 
 describe("E: known release failures", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
-    // Catches a failed release reverting to Approved as soon as a newer release starts building.
+    // Rebuild target: catches a failed release flashing Approved when a newer release replaces its newest deploy.
     it.effect.fails(
       "failed release stays failed while a colleague starts the next release",
       () => {
@@ -28,13 +28,16 @@ describe("E: known release failures", () => {
           yield* f.s.given.signedIn;
           yield* a.when.open("production");
           yield* a.then.rowShows("v0.1.0", "Deploy failed");
+          const keptFailure = yield* a.then.keepsWord("v0.1.0", "Deploy failed");
           yield* f.merge("Correct the storefront build");
           yield* a.when.finish("stage");
           yield* f.release("v0.1.1");
           yield* a.then.rowShows("v0.1.1", "Approved");
           yield* a.then.running("production");
           reachedTarget = true;
-          yield* a.then.rowShows("v0.1.0", "Deploy failed");
+          yield* a.then
+            .rowShows("v0.1.0", "Deploy failed", { within: 15_000 })
+            .pipe(Effect.ensuring(keptFailure));
         }).pipe(
           Effect.onExit((exit) =>
             Effect.sync(() => {
