@@ -28,7 +28,7 @@ import {
 import { assignMateTints, preferredMateTint } from "@t3tools/shared/mateFaces";
 
 import type { ZeropsCandidate } from "./candidates.ts";
-import { readZeropsMembership } from "./groups.ts";
+import { projectNameInApp, readZeropsMembership } from "./groups.ts";
 import { selectMateEnvironments } from "./mateEnvironments.ts";
 
 export { assignMateTints, preferredMateTint } from "@t3tools/shared/mateFaces";
@@ -36,7 +36,8 @@ export { assignMateTints, preferredMateTint } from "@t3tools/shared/mateFaces";
 /**
  * The account's Mates, each with its tint, keyed by the project it lives in.
  * Membership is `selectMateEnvironments` — the project has a Mate container —
- * and the name is its project's in Zerops (D3), what the menu calls the row.
+ * and the name is its project's in Zerops under its application (`projectNameInApp`), what the menu
+ * calls the row.
  * A Mate that picked its tint wears it. The rest share the tints their names
  * give them among themselves alone, exactly as before any Mate could pick: a
  * pick — even of a tint another Mate wears — never recolours anybody else. Two
@@ -56,7 +57,7 @@ export function assignCandidateMateTints(
     const picked = tags.face?.tint;
     if (picked !== undefined) byProject.set(mate.project.id, picked);
     if (picked !== undefined && tags.face?.named !== true) continue;
-    nameByProject.set(mate.project.id, mate.project.name);
+    nameByProject.set(mate.project.id, projectNameInApp(mate.project));
   }
   const byName = assignMateTints([...nameByProject.values()]);
   for (const [projectId, name] of nameByProject) {

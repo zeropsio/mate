@@ -81,6 +81,11 @@ describe("assignCandidateMateTints", () => {
     expect(tints.get("crm-dev")).toBe(assignMateTints(["Ada", "crm-stage"]).get("Ada"));
   });
 
+  it("deals a Mate named in full under its application the tint its own name gives", () => {
+    const tints = assignCandidateMateTints([candidate("crm-dev", recorded("Acme - Ada"))]);
+    expect(tints.get("crm-dev")).toBe(newMateTint([], "Ada"));
+  });
+
   it("gives a project with two containers one tint", () => {
     const tints = assignCandidateMateTints([
       candidate("crm-dev", recorded("Ada")),
