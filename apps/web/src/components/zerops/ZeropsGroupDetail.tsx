@@ -994,8 +994,13 @@ export function ZeropsGroupPane({
             {slots.map((slot) => {
               if (slot.kind === "devstage")
                 return (
-                  <li className="px-2 py-2 text-sm text-muted-foreground" key={slot.id}>
-                    {slot.line}
+                  <li className="flex min-w-0 items-center gap-3 px-2 py-2" key={slot.id}>
+                    <span className="shrink-0 text-sm font-medium text-muted-foreground">
+                      Stage
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                      {slot.line}
+                    </span>
                   </li>
                 );
               if (slot.kind === "creating")

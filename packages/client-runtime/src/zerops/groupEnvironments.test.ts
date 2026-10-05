@@ -357,7 +357,7 @@ describe("environmentSlots", () => {
       case: "a Mate that is also the stage counts as the stage",
       input: { ...base, devstages: [{ id: "p-dev", name: "Vera" }] },
       rows: [
-        ["devstage", "p-dev", "Vera — the stage, deployed by its agent"],
+        ["devstage", "p-dev", "Vera — deployed by its agent"],
         ["slot", "production", "Not added", true],
       ],
     },
@@ -440,25 +440,19 @@ describe("environmentSlots", () => {
     {
       case: "an empty production, main has code, the person may release: the first release",
       input: withProduction({ productionRuns: "empty", releaseOffered: true }),
-      rows: [
-        NO_STAGE_RECIPE,
-        ["environment", "p-prod", "Empty — waiting for its first release", true],
-      ],
+      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "No release yet", true]],
     },
     {
       case: "an empty production, main has code, the person may not release: only the information",
       input: withProduction({ productionRuns: "empty" }),
-      rows: [
-        NO_STAGE_RECIPE,
-        ["environment", "p-prod", "Empty — waiting for its first release", false],
-      ],
+      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "No release yet", false]],
     },
     {
       case: "an empty production while main is empty: waiting for the first merge",
       input: withProduction({ productionRuns: "empty", mainHasCode: false }),
       rows: [
         NO_STAGE_RECIPE,
-        ["environment", "p-prod", "Empty — waiting for the first merge", false],
+        ["environment", "p-prod", "No release yet — waiting for the first merge", false],
       ],
     },
     {

@@ -359,7 +359,7 @@ describe("ZeropsGroupPane", () => {
         environments: [],
         slots: slots({ devstages: [{ id: "dev", name: "Vera" }] }),
       });
-      expect(markup).toContain("Vera — the stage, deployed by its agent");
+      expect(markup).toContain("Vera — deployed by its agent");
       expect(markup).not.toContain("Add stage");
       expect(markup).toContain("Add production");
     });
@@ -395,7 +395,7 @@ describe("ZeropsGroupPane", () => {
           releaseOffered: true,
         }),
       });
-      expect(markup).toContain("Empty — waiting for its first release");
+      expect(markup).toContain("No release yet");
       expect(markup).not.toContain("Add production");
     });
   });

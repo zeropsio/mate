@@ -372,7 +372,7 @@ export function environmentSlots(input: {
     ...input.devstages.map(({ id, name }): EnvironmentSlotRow => ({
       kind: "devstage",
       id,
-      line: `${name} — the stage, deployed by its agent`,
+      line: `${name} — deployed by its agent`,
     })),
     ...coming("stage"),
   ];
@@ -403,8 +403,8 @@ function productionNote(input: {
     return { text: `Releasing ${input.releasing}…`, review: false };
   if (input.productionRuns === "empty") {
     return input.mainHasCode === false
-      ? { text: "Empty — waiting for the first merge", review: false }
-      : { text: "Empty — waiting for its first release", review: input.releaseOffered };
+      ? { text: "No release yet — waiting for the first merge", review: false }
+      : { text: "No release yet", review: input.releaseOffered };
   }
   if (input.waiting.count > 0)
     return {
