@@ -815,6 +815,10 @@ export function deriveWorkLogEntries(
   for (const activity of ordered) {
     if (exclude?.has(activity.id)) continue;
     if (activity.kind === "tool.started") {
+      // A helper's call is the helper's, from its start: drawn from a start
+      // that carries its command, it would run in the Mate's list until the
+      // helper ended, since its end is filtered out below.
+      if (isAgentInternalActivity(activity)) continue;
       const started = toDerivedWorkLogEntry(activity);
       // A command that starts with all it will say — Codex's, whole in its
       // start and silent until it ends — is drawn from its start, and its
