@@ -42,6 +42,45 @@ const coveredPath = (filename: string): string | undefined => {
 };
 
 const NAME_CHARACTER = /[\w$]/u;
+const WHITESPACE = /\s/u;
+
+/** Source text with comments dropped and whitespace kept only where it separates two names. */
+interface CompactText {
+  readonly text: string;
+  /** The source offset of each compact character. */
+  readonly offsets: ReadonlyArray<number>;
+}
+
+/**
+ * Compacts text so a formatter's rewrap neither hides a site nor breaks an entry: comments and
+ * whitespace go, except one space between two name characters (`const x` stays two words).
+ */
+const compact = (
+  text: string,
+  skipped: ReadonlyArray<readonly [number, number]> = [],
+): CompactText => {
+  let out = "";
+  const offsets: Array<number> = [];
+  let pendingSpace = false;
+  let skip = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    while (skip < skipped.length && skipped[skip]![1] <= index) skip += 1;
+    const range = skipped[skip];
+    if ((range !== undefined && index >= range[0]) || WHITESPACE.test(text[index]!)) {
+      pendingSpace = out.length > 0;
+      continue;
+    }
+    const character = text[index]!;
+    if (pendingSpace && NAME_CHARACTER.test(out.at(-1)!) && NAME_CHARACTER.test(character)) {
+      out += " ";
+      offsets.push(index - 1);
+    }
+    pendingSpace = false;
+    out += character;
+    offsets.push(index);
+  }
+  return { text: out, offsets };
+};
 
 /** Each occurrence of the token, bounded where the token itself begins or ends with a name. */
 const occurrences = (text: string, token: string): ReadonlyArray<number> => {
@@ -57,6 +96,10 @@ const occurrences = (text: string, token: string): ReadonlyArray<number> => {
   }
   return found;
 };
+
+const COMPACT_TOKENS: ReadonlyMap<RetiredMechanism, string> = new Map(
+  RETIRED_MECHANISMS.map((mechanism) => [mechanism, compact(mechanism.token).text]),
+);
 
 const summaryOf = (mechanism: RetiredMechanism): string =>
   `\`${mechanism.token}\` is retired (${mechanism.family}): ${mechanism.reason}.`;
@@ -75,23 +118,22 @@ export default defineRule({
 
     return {
       Program() {
-        const { text } = context.sourceCode;
         const comments = context.sourceCode
           .getAllComments()
           .map((comment) => [comment.start, comment.end] as const);
-        const inComment = (index: number) =>
-          comments.some(([start, end]) => index >= start && index < end);
+        const source = compact(context.sourceCode.text, comments);
 
-        for (const mechanism of RETIRED_MECHANISMS) {
-          for (const index of occurrences(text, mechanism.token)) {
-            if (inComment(index)) continue;
+        for (const [mechanism, token] of COMPACT_TOKENS) {
+          for (const index of occurrences(source.text, token)) {
             const fingerprint = normalizeFingerprint(mechanism.token);
             const ledgered = ledger.has({ path, kind: KIND, fingerprint });
             if (ledgered && !shouldReportLedgered()) continue;
             context.report({
               loc: {
-                start: context.sourceCode.getLocFromIndex(index),
-                end: context.sourceCode.getLocFromIndex(index + mechanism.token.length),
+                start: context.sourceCode.getLocFromIndex(source.offsets[index]!),
+                end: context.sourceCode.getLocFromIndex(
+                  source.offsets[index + token.length - 1]! + 1,
+                ),
               },
               message: formatFindingMessage({
                 ruleName: RULE_NAME,

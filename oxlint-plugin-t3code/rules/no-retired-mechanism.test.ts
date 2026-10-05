@@ -98,6 +98,14 @@ describe("t3code/no-retired-mechanism", () => {
     (output) => assert.match(output, /the store holds them in memory/u),
     2,
   );
+  webFile.invalid(
+    "reports a pattern a formatter wrapped over two lines",
+    `export const read = (client) =>\n  client\n    .readProjectCreation("p");`,
+  );
+  webFile.invalid(
+    "reports a pattern written across lines with its own spacing",
+    `const rootAtom =\n  Atom.make(0);\nexport { rootAtom };`,
+  );
   hqFile.invalid(
     "reports a retired HQ mechanism",
     `export const segment = STRUCTURE_SEGMENT_LIFETIME;`,
