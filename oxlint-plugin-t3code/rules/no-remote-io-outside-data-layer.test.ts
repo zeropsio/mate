@@ -262,13 +262,16 @@ describe("t3code/no-remote-io-outside-data-layer", () => {
   }
   const PLATFORM_CALL = `export const restart = (platform: Platform, id: string) => platform.restartService(id);`;
   createOxlintRuleHarness(RULE, {
-    filename: "packages/client-runtime/src/data/operations/restartService.ts",
+    filename: "packages/client-runtime/src/data/operations/executors/zerops.ts",
   }).valid("allows an operation executor to call a platform port", PLATFORM_CALL);
   createOxlintRuleHarness(RULE, {
     filename: "packages/client-runtime/src/data/adapters/services.ts",
   }).valid("allows a data-layer adapter to reach its remote", FETCH);
   for (const filename of [
     "packages/client-runtime/src/data/projections/services.ts",
+    "packages/client-runtime/src/data/operations/receipts.ts",
+    "packages/client-runtime/src/data/operations/restartService.ts",
+    "packages/client-runtime/src/data/operations/coordinator.ts",
     "packages/client-runtime/src/data/store.ts",
     "packages/client-runtime/src/data/reducer.ts",
   ]) {

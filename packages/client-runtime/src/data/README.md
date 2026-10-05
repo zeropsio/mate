@@ -36,7 +36,8 @@ how the owner's facts end it (a process row going terminal) — and `acceptedBy(
 its facts show it began, for an owner that keeps no request ids. Add one line to
 `OPERATION_KINDS`. Wire the owner's executor into `makeOperations({ executors })`: `submit`, and
 whichever of `lookup(requestId)` (HQ) and `lookupHandle(handle)` the owner answers. The executor
-lives in `operations/`, the one place besides `adapters/` that may reach a remote.
+lives in `operations/executors/`, the one place besides `adapters/` that may reach a remote; the
+kind itself runs inside projections and stays pure.
 
 **Mounting.** An app makes one store per account (`makeAccountStore`) and starts the active
 organization's navigation with `startZeropsNavigation`, over `makeZeropsWire` (today's receiver

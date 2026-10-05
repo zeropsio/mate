@@ -28,12 +28,12 @@ const SCOPE_MARKERS = [
  * client, the Zerops data runtime that drives them, and the Mate transports (RPC, connection,
  * authorization, relay) with the environment atoms built on them, and the new data layer's source
  * adapters and operation executors. A directory is listed only where every module in it is
- * transport; anything else in the client runtime — the data layer's store, reducer and
- * projections included — is reported like the apps.
+ * transport; anything else in the client runtime — the data layer's store, reducer, projections,
+ * operation kinds, receipts and coordinator included — is reported like the apps.
  */
 const ADAPTER_PATHS = [
   "packages/client-runtime/src/data/adapters/",
-  "packages/client-runtime/src/data/operations/",
+  "packages/client-runtime/src/data/operations/executors/",
   "packages/client-runtime/src/zerops/api.ts",
   "packages/client-runtime/src/zerops/hq/client.ts",
   "packages/client-runtime/src/zerops/data/",
