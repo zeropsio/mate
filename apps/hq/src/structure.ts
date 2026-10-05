@@ -280,9 +280,10 @@ export interface StructureRead {
    */
   readonly unheld: Readonly<Record<string, HqOffersOf<"create_mate_record">>>;
   /**
-   * Each Mate's press a browser holds (`holdPress`), by its project, for every project the reader
-   * reads: how long its hold runs on from this read — none left where its press stopped renewing it
-   * — and the container import it asked for, once Zerops answered it.
+   * Each press HQ holds a record of (`holdPress`), by its project, for every project the reader
+   * reads: what it makes and into which application, how long its hold runs on from this read —
+   * none left where its press stopped or stopped renewing it — and the container import it asked
+   * for, once Zerops answered it. A press that finished has none.
    */
   readonly presses: Readonly<Record<string, PressView>>;
   readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
@@ -405,27 +406,35 @@ export class Structure extends Context.Service<
       patch: { readonly face: string },
     ) => Effect.Effect<MateRecord, WriteError>;
     /**
-     * Records that a Mate's project is closed off, as the client that set it up does: the press's
-     * close-off step done. By whoever may edit the Mate's record.
-     */
-    /**
-     * Holds a Mate's press for the browser running it (`hq_mate_press`): taken, or renewed by the
-     * same press (`owner`), for {@link PRESS_HOLD_MS} from now, with the Zerops process of the
-     * container import it asked for once Zerops answered it — kept where a renewal names none.
-     * Another press's hold still running refuses it (`press_held`); one that ran out is taken over.
-     * By whoever reads the project (`hold_press`).
+     * Holds a press for the browser running it (`hq_press`): taken, or renewed by the same press
+     * (`owner`), for {@link PRESS_HOLD_MS} from now — what it makes, into which application, and
+     * the Zerops process of the container import it asked for once Zerops answered it, kept where
+     * a renewal names none. Another press's hold still running refuses it (`press_held`); one that
+     * ran out is taken over. By whoever reads the project (`hold_press`).
      */
     readonly holdPress: (
       userId: string,
       projectId: string,
-      press: { readonly owner: string; readonly importProcessId?: string },
+      press: {
+        readonly owner: string;
+        readonly kind: PressKind;
+        readonly appId?: string;
+        readonly importProcessId?: string;
+      },
     ) => Effect.Effect<PressView, WriteError>;
-    /** Lets a press's hold go at its end: only the press that holds it; none held is let go. */
-    readonly releasePress: (
+    /**
+     * A press's end, by the press that holds it: one that `finished` leaves no record; one that
+     * stopped ends its hold now and keeps its record, for its setup to be finished for its kind.
+     */
+    readonly endPress: (
       userId: string,
       projectId: string,
-      owner: string,
+      press: { readonly owner: string; readonly finished: boolean },
     ) => Effect.Effect<void, WriteError>;
+    /**
+     * Records that a Mate's project is closed off, as the client that set it up does: the press's
+     * close-off step done. By whoever may edit the Mate's record.
+     */
     readonly markClosedOff: (
       userId: string,
       projectId: string,
@@ -475,13 +484,21 @@ const refuse = (code: StructureRefused["code"], reason: StructureRefused["reason
   Effect.fail(new StructureRefused({ code, reason }));
 
 /**
- * How long a Mate's press is held from its last renewal (`holdPress`): its press renews it well
- * inside this while it runs, so a hold that runs out is a press that stopped — its tab closed.
+ * How long a press is held from its last renewal (`holdPress`): five minutes. Its press renews it
+ * every minute and at each of its steps; a browser throttles a hidden tab's timers to one wake a
+ * minute (Chrome's intensive throttling), which this survives several times over. A hold that runs
+ * out is a press that stopped — its tab closed.
  */
-export const PRESS_HOLD_MS = 60_000;
+export const PRESS_HOLD_MS = 300_000;
 
-/** A Mate's press as a reader sees it (`StructureRead.presses`). */
+/** What a press makes: a Mate, or a stage's or a production's environment — its registration's tier. */
+export type PressKind = "mate" | "stage" | "production";
+
+/** A press as a reader sees it (`StructureRead.presses`). */
 export interface PressView {
+  readonly kind: PressKind;
+  /** The application its registration places it in; none for a Mate in no application. */
+  readonly appId?: string;
   /** How long its hold runs on from the read that said it, ms; 0 where it ran out. */
   readonly heldForMs: number;
   /**
@@ -496,12 +513,16 @@ export interface PressView {
 /** A press row, its hold measured on HQ's own clock. */
 interface PressRow {
   readonly project_id: string;
+  readonly kind: PressKind;
+  readonly app_id: string | null;
   readonly held_for_ms: number;
   readonly until: string;
   readonly import_process_id: string | null;
 }
 
 const pressView = (row: PressRow): PressView => ({
+  kind: row.kind,
+  ...(row.app_id === null ? {} : { appId: row.app_id }),
   heldForMs: row.held_for_ms,
   until: row.until,
   ...(row.import_process_id === null ? {} : { importProcessId: row.import_process_id }),
@@ -640,8 +661,8 @@ export const structureLayer = (options: {
         );
       /**
        * In a fenced write: what HQ holds of the projects `gone` goes — their rows, their Mate
-       * records first, their Mates' challenges, and their Mate credentials are revoked
-       * (`mateCredentials.ts`).
+       * records first, their Mates' challenges, their presses' records, and their Mate credentials
+       * are revoked (`mateCredentials.ts`).
        */
       const dropRows = (gone: ReadonlyArray<string>) =>
         gone.length === 0
@@ -650,7 +671,7 @@ export const structureLayer = (options: {
               sql`DELETE FROM hq_mate WHERE ${sql.in("project_id", gone)}`,
               sql`DELETE FROM hq_app_project WHERE ${sql.in("project_id", gone)}`,
               sql`DELETE FROM hq_mate_challenge WHERE ${sql.in("project_id", gone)}`,
-              sql`DELETE FROM hq_mate_press WHERE ${sql.in("project_id", gone)}`,
+              sql`DELETE FROM hq_press WHERE ${sql.in("project_id", gone)}`,
               sql`
                 UPDATE hq_mate_credential SET revoked_at = now()
                 WHERE ${sql.in("project_id", gone)} AND revoked_at IS NULL`,
@@ -719,7 +740,8 @@ export const structureLayer = (options: {
           SELECT project_id FROM hq_app_project
           UNION SELECT project_id FROM hq_mate
           UNION SELECT project_id FROM hq_mate_challenge
-          UNION SELECT project_id FROM hq_mate_credential WHERE revoked_at IS NULL`;
+          UNION SELECT project_id FROM hq_mate_credential WHERE revoked_at IS NULL
+          UNION SELECT project_id FROM hq_press`;
         const gone = yield* goneOf(
           rows.map((row) => row.project_id).filter((projectId) => !listed.has(projectId)),
         );
@@ -885,33 +907,50 @@ export const structureLayer = (options: {
               return yield* refuse("invalid", "press_owner_length");
             yield* allowed(userId, "hold_press", { projectId }, yield* roles.forWrite);
             const importProcessId = press.importProcessId ?? null;
-            const rows = yield* leader.write(sql<PressRow>`
-              INSERT INTO hq_mate_press (project_id, owner, held_by, until, import_process_id)
-              VALUES (${projectId}, ${press.owner}, ${userId},
+            const appId = press.appId ?? null;
+            const rows = yield* leader.write(
+              Effect.gen(function* () {
+                if (appId !== null) {
+                  const apps = yield* sql`SELECT 1 FROM hq_app WHERE id::text = ${appId}`;
+                  if (apps.length === 0) return yield* refuse("app_not_found", "app_not_found");
+                }
+                return yield* sql<PressRow>`
+              INSERT INTO hq_press (project_id, kind, app_id, owner, held_by, until, import_process_id)
+              VALUES (${projectId}, ${press.kind}, ${appId}::uuid, ${press.owner}, ${userId},
                 now() + ${`${PRESS_HOLD_MS} milliseconds`}::interval, ${importProcessId})
               ON CONFLICT (project_id) DO UPDATE SET
+                kind = EXCLUDED.kind, app_id = EXCLUDED.app_id,
                 owner = EXCLUDED.owner, held_by = EXCLUDED.held_by, until = EXCLUDED.until,
                 import_process_id = COALESCE(
                   EXCLUDED.import_process_id,
-                  CASE WHEN hq_mate_press.owner = EXCLUDED.owner
-                    THEN hq_mate_press.import_process_id END)
-              WHERE hq_mate_press.owner = EXCLUDED.owner OR hq_mate_press.until <= now()
-              RETURNING project_id, import_process_id,
+                  CASE WHEN hq_press.owner = EXCLUDED.owner
+                    THEN hq_press.import_process_id END)
+              WHERE hq_press.owner = EXCLUDED.owner OR hq_press.until <= now()
+              RETURNING project_id, kind, app_id::text AS app_id, import_process_id,
                 GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms,
-                to_char(until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS until`);
+                to_char(until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS until`;
+              }),
+            );
             const held = rows[0];
             if (held === undefined) return yield* refuse("conflict", "press_held");
             yield* changed;
             return pressView(held);
           }),
         ),
-        releasePress: confirmed((userId, projectId, owner) =>
+        endPress: confirmed((userId, projectId, press) =>
           Effect.gen(function* () {
             yield* allowed(userId, "hold_press", { projectId }, yield* roles.forWrite);
-            const letGo = yield* leader.write(sql`
-              DELETE FROM hq_mate_press WHERE project_id = ${projectId} AND owner = ${owner}
-              RETURNING 1`);
-            if (letGo.length > 0) yield* changed;
+            const ended = yield* leader.write(
+              press.finished
+                ? sql`
+                    DELETE FROM hq_press WHERE project_id = ${projectId} AND owner = ${press.owner}
+                    RETURNING 1`
+                : sql`
+                    UPDATE hq_press SET until = LEAST(until, now())
+                    WHERE project_id = ${projectId} AND owner = ${press.owner}
+                    RETURNING 1`,
+            );
+            if (ended.length > 0) yield* changed;
           }),
         ),
         markClosedOff: confirmed((userId, projectId) =>
@@ -1394,10 +1433,10 @@ export const structureLayer = (options: {
               WHERE NOT EXISTS (SELECT 1 FROM hq_app_project p WHERE p.project_id = m.project_id)
               ORDER BY m.seq`;
             const presses = yield* sql<PressRow>`
-              SELECT project_id, import_process_id,
+              SELECT project_id, kind, app_id::text AS app_id, import_process_id,
                 GREATEST(0, CEIL(EXTRACT(EPOCH FROM (until - now())) * 1000))::int AS held_for_ms,
                 to_char(until AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS until
-              FROM hq_mate_press ORDER BY project_id`;
+              FROM hq_press ORDER BY project_id`;
             const tools = yield* sql<{ readonly projectId: string; readonly kind: "gitea" }>`
               SELECT project_id AS "projectId", kind FROM hq_tool ORDER BY project_id`;
             const environments = yield* sql<{

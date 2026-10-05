@@ -176,8 +176,8 @@ export interface Targets {
   readonly detach: ProjectTarget;
   readonly create_mate_record: ProjectTarget;
   /**
-   * A Mate's press held by the browser running it (`hq_mate_press`): whoever reads its project —
-   * the one making it — so another browser takes it for a press still running.
+   * A press held by the browser running it (`hq_press`): whoever reads its project — the one
+   * making it — so another browser takes it for a press still running.
    */
   readonly hold_press: { readonly projectId: string };
   readonly edit_mate_record: ProjectTarget;

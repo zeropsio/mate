@@ -23,9 +23,10 @@
  *   project they read that HQ holds nowhere, whenever either moves;
  * - `{ type: "roles", rolesAnsweredAt }` — when Zerops answered the org view the caller's offers
  *   are decided over, with every view it answers (the snapshot carries it from the start);
- * - `{ type: "presses", presses }` — each Mate's press a browser holds, by project, for every
+ * - `{ type: "presses", presses }` — each press HQ holds a record of, by project, for every
  *   project the caller reads (`Structure.holdPress`), whenever one is taken, renewed, given its
- *   import or let go: how long its hold runs on from this message, and its import;
+ *   import, stopped or finished: what it makes and where, how long its hold runs on from this
+ *   message, and its import;
  * - `{ type: "mate", projectId, value }` — what changed of one Mate the caller observes: its
  *   presence, or any section of its overview, each whole; `value: null` once they no longer may;
  * - `{ type: "people", people }` — the people the view names, whenever they differ: its Mates'
@@ -369,10 +370,12 @@ export const structureMessages = <R>(
           rolesAnsweredAt,
           presses: toJson(
             Object.fromEntries(
-              Object.entries(view.presses).map(([projectId, { until, importProcessId }]) => [
-                projectId,
-                { until, importProcessId },
-              ]),
+              Object.entries(view.presses).map(
+                ([projectId, { kind, appId, until, importProcessId }]) => [
+                  projectId,
+                  { kind, appId, until, importProcessId },
+                ],
+              ),
             ),
           ),
           structure: new Map([

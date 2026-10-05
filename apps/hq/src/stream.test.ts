@@ -294,7 +294,11 @@ describe("the structure stream", () => {
       Effect.gen(function* () {
         const h = yield* streamFor("owner");
         assert.deepStrictEqual(h.sent[0]?.["presses"], {});
-        const held = { heldForMs: 60_000, until: "2026-10-05T10:01:00.000Z" };
+        const held = {
+          kind: "mate",
+          heldForMs: 60_000,
+          until: "2026-10-05T10:01:00.000Z",
+        } as const;
         const tick = (next: StructureRead["presses"]) =>
           Effect.gen(function* () {
             yield* Ref.set(h.presses, next);

@@ -1905,7 +1905,7 @@ describe("HQ API", () => {
           // B5: its press held by the browser running it, read by another, and let go at its end.
           const pressed = yield* call("PUT", "/api/presses/P_MATE", {
             session: owner,
-            body: { owner: "press-a", importProcessId: "imp-1" },
+            body: { owner: "press-a", kind: "mate", importProcessId: "imp-1" },
           });
           assert.deepStrictEqual(
             [pressed.status, (pressed.body as { importProcessId?: string }).importProcessId],
@@ -1913,14 +1913,18 @@ describe("HQ API", () => {
           );
           const taken = yield* call("PUT", "/api/presses/P_MATE", {
             session: owner,
-            body: { owner: "press-b" },
+            body: { owner: "press-b", kind: "mate" },
           });
           assert.deepStrictEqual(
             [taken.status, taken.body],
             [409, { code: "conflict", reason: "press_held" }],
           );
-          const letGo = yield* call("DELETE", "/api/presses/P_MATE/press-a", { session: owner });
-          assert.strictEqual(letGo.status, 200);
+          const stopped = yield* call("POST", "/api/presses/P_MATE/press-a/stopped", {
+            session: owner,
+          });
+          assert.strictEqual(stopped.status, 200);
+          const finished = yield* call("DELETE", "/api/presses/P_MATE/press-a", { session: owner });
+          assert.strictEqual(finished.status, 200);
 
           const dev = yield* sessionFor(call, "door-dev");
           const refused = yield* call("POST", "/api/mates/P_MATE/closed-off", { session: dev });
