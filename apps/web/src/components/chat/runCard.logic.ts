@@ -260,8 +260,10 @@ export function thoughtRunText(text: string): string {
         return title === undefined ? paragraph : /[.!?:…]$/u.test(title) ? title : `${title}.`;
       })
       .join("\n\n")
-      // A code block is code, not words: a closed one, and one still streaming.
-      .replace(/```[\s\S]*?(?:```|$)/gu, " ")
+      // A code block is code, not words: a closed one, and one still streaming
+      // — a fence opening a line, never three backticks among words.
+      .replace(/```[\s\S]*?```/gu, " ")
+      .replace(/^\s{0,3}```[\s\S]*/mu, " ")
       .replace(/\*\*([^*\n]+)\*\*/gu, "$1")
       .replace(/__([^_\n]+)__/gu, "$1")
       .replace(/`([^`\n]+)`/gu, "$1")
