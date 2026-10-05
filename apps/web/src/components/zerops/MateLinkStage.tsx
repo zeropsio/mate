@@ -88,10 +88,17 @@ function MateLinkStageOf({
   const at = useZeropsMate(environmentId);
   // Try now asks its Mate again, its exchange as well as its link, as the banner's does.
   const tryAgain = useTryMateAgain();
-  // Before the directory names who lives here, the page stands with its header's place held and
-  // its line unnamed: the face and the name arrive in place, nothing below them moves.
-  if (at.kind === "unknown" && !stageSpeaks(voice)) {
-    return <MateOpeningPage below={null} composer={composer} mate={undefined} />;
+  // Before the directory names who lives here, the page stands with its header's place held, its
+  // line unnamed or the link's own words, and the composer in: the face and the name arrive in
+  // place, nothing below them moves.
+  if (at.kind === "unknown") {
+    return stageSpeaks(voice) ? (
+      <MateComingFrame composer={composer} header={null}>
+        <MateLinkWords voice={voice} />
+      </MateComingFrame>
+    ) : (
+      <MateOpeningPage below={null} composer={composer} mate={undefined} />
+    );
   }
   if (at.kind !== "mate") return <MateLinkWords voice={voice} />;
   const known = at.mate;

@@ -65,6 +65,20 @@ describe("MateOpeningView: a conversation's page lands when its Mate is known, n
       who.at = { kind: "unknown" };
     }
   });
+
+  it("who lives here unknown while the link speaks: its words in the page, the header's place held", () => {
+    const markup = renderToStaticMarkup(
+      <MateLinkStage
+        composer={<textarea data-stand-in="" />}
+        environmentId={ref.environmentId}
+        projectId={null}
+        voice={{ surface: "stage", text: "Reconnecting…", actions: [], processes: false }}
+      />,
+    );
+    expect(markup).toContain("<header></header>");
+    expect(markup).toContain("Reconnecting…");
+    expect(markup).toContain("data-stand-in");
+  });
 });
 
 it("an unknown Mate's refused inventory read names the failure and offers Again", () => {
