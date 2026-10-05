@@ -4104,3 +4104,35 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
     `Rune`): in an application a project is `<application> - <Mate>`, outside any just `<Mate>`.
   - _Why:_ the organization's project list in Zerops is where the projects of every application
     stand side by side; without the prefix a Mate's project says nothing of whose it is.
+- **2026-10-06** — **A written or edited file's row opens onto what was written, and "Open in
+  Files" reaches a file the agent wrote outside the workspace, read-only** (D9, the owner: "Are these
+  unclickable on purpose?", "Why can't this be opened in the Files tab?"). The row opens onto a new
+  file's content or an edit's change, drawn from the call's own stored payload
+  (`threads.fileWrites`): Claude Code's `Write`, `Edit`, `MultiEdit` and `NotebookEdit` inputs,
+  Codex's `fileChange` items, OpenCode's `write`, `edit`, `multiedit` and patch inputs, and an ACP
+  agent's `diff` blocks (Cursor, Grok, Antigravity). The client's copy of a call carries only a mark
+  that it wrote something; a call whose driver sent none keeps the row it had, and a running or
+  failed write opens onto nothing. Each file stands in one box of the opened detail's height that
+  scrolls inside, growing under the row only.
+  - _Rule — what `threads.readWrittenFile` serves:_ a file is served only when all of these hold,
+    each checked by the server, never the client:
+    - the caller may read the thread: the method takes `orchestration:read`, as `subscribeThread`
+      does, and the thread exists and is not deleted;
+    - the path is absolute, and, normalized, equals exactly a path that a `tool.completed` row of
+      THIS thread names as written or edited, read from the stored payload by the same reader that
+      draws the row. A failed or declined call wrote nothing, a deleted file is not written, a
+      relative path is the workspace's, and another thread's writes count for nothing;
+    - the path is resolved a part at a time, every symbolic link read by hand, and each link on the
+      way must be older than the thread (its change time, which its owner cannot set back): a link
+      made or re-pointed since could be the agent's, aiming the path at a file it never wrote;
+    - the file is opened with `O_NOFOLLOW`, must be the very file the walk found (same device and
+      inode), must have one name (no hard link to another file's content) and must have been last
+      written after the thread began;
+    - it is a regular file of UTF-8 text with no NUL byte, at most 1 MiB: anything larger is
+      refused whole, never cut.
+  - _Refused:_ anything else, with a reason the Files tab says plainly. Nothing outside the
+    workspace is listed, searched or written.
+  - _Why:_ the agent's own words reach everyone who may read the thread anyway, so a file it wrote
+    is no new disclosure; what the rule stops is a reader, or an agent steering one, reaching any
+    other file through the server: an arbitrary path, `..`, a link, a hard link or a swap between
+    the check and the read.
