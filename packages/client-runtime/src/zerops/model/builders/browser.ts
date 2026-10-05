@@ -2,6 +2,8 @@ import { browserFiguresLine, operationClosing, sentenceCase } from "../../operat
 import type {
   ZeropsBrowserViewport,
   ZeropsCall,
+  ZeropsCallImage,
+  ZeropsOperation,
   ZeropsOperationBrowserSummary,
   ZeropsOperationStep,
 } from "../types.ts";
@@ -103,6 +105,32 @@ function inputDeviceName(input: Record<string, unknown>): string | undefined {
 const PNG_HEADER_BASE64_LENGTH = 32;
 
 /** A PNG's pixel size from its header, for an image block that did not say. */
+type Screenshot = NonNullable<ZeropsOperation["screenshot"]>;
+
+/**
+ * Each picture's screenshot, built once: its address is the whole picture as
+ * text, and a live run re-derives every operation on every activity — built
+ * anew each time, every draw that held one kept a copy of its own (run 12).
+ */
+const screenshots = new WeakMap<ZeropsCallImage, Screenshot>();
+
+function screenshotOf(image: ZeropsCallImage): Screenshot {
+  const known = screenshots.get(image);
+  if (known !== undefined) return known;
+  const size =
+    image.width !== undefined && image.height !== undefined
+      ? { width: image.width, height: image.height }
+      : image.mimeType === "image/png"
+        ? pngSize(image.data)
+        : undefined;
+  const screenshot: Screenshot = {
+    src: `data:${image.mimeType};base64,${image.data}`,
+    ...(size !== undefined ? { width: size.width, height: size.height } : {}),
+  };
+  screenshots.set(image, screenshot);
+  return screenshot;
+}
+
 export function pngSize(base64: string): { width: number; height: number } | undefined {
   const head = base64.slice(0, PNG_HEADER_BASE64_LENGTH);
   if (!/^[A-Za-z0-9+/]{32}$/.test(head)) return undefined;
@@ -215,21 +243,7 @@ export function buildBrowserFields(call: ZeropsCall): BuiltCardFields {
   const viewport = inputViewport(call.input) ?? browserSummary?.viewport;
   const deviceName = inputDeviceName(call.input);
   const firstImage = call.images?.[0];
-  const size =
-    firstImage === undefined
-      ? undefined
-      : firstImage.width !== undefined && firstImage.height !== undefined
-        ? { width: firstImage.width, height: firstImage.height }
-        : firstImage.mimeType === "image/png"
-          ? pngSize(firstImage.data)
-          : undefined;
-  const screenshot =
-    firstImage !== undefined
-      ? {
-          src: `data:${firstImage.mimeType};base64,${firstImage.data}`,
-          ...(size !== undefined ? { width: size.width, height: size.height } : {}),
-        }
-      : undefined;
+  const screenshot = firstImage !== undefined ? screenshotOf(firstImage) : undefined;
 
   return {
     subject,
