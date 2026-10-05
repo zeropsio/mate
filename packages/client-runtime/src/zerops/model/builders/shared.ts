@@ -32,6 +32,7 @@ import type {
   ZeropsOperationStep,
   ZeropsOperationStepState,
   ZeropsOperationVersion,
+  ZeropsEnvChange,
   ZeropsReadResult,
 } from "../types.ts";
 
@@ -81,6 +82,8 @@ export interface BuiltCardFields {
   readonly deviceName?: string;
   /** `logs` · `events` · `process` · `discover` only. */
   readonly readResult?: ZeropsReadResult;
+  /** `env` only. */
+  readonly envChange?: ZeropsEnvChange;
   /**
    * Overrides `phaseFor(call.status)`, where the call's own status is not what
    * happened: `deploy`'s BUILD_TRIGGERED reads as the build it named stands

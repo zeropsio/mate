@@ -202,6 +202,7 @@ function buildStandaloneOperation(
     ...(fields.viewport !== undefined ? { viewport: fields.viewport } : {}),
     ...(fields.deviceName !== undefined ? { deviceName: fields.deviceName } : {}),
     ...(fields.readResult !== undefined ? { readResult: fields.readResult } : {}),
+    ...(fields.envChange !== undefined ? { envChange: fields.envChange } : {}),
   };
 }
 

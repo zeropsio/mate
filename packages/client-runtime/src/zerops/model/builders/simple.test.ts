@@ -88,3 +88,73 @@ describe("buildSimpleFields — why a delete / scale / manage / env failed or ti
     expect(buildSimpleFields(kind, call).explanation).toEqual(expected);
   });
 });
+
+describe("buildSimpleFields — what an env call changed and where, by its input", () => {
+  const envCall = (input: Record<string, unknown>, status: ZeropsCall["status"] = "completed") => ({
+    ...simpleCall(
+      "zerops_env",
+      status,
+      status === "inProgress" ? undefined : { process: proc("FINISHED") },
+    ),
+    input,
+  });
+  it.each([
+    {
+      name: "the project's variables, counted",
+      input: { action: "set", project: true, variables: ["A=1", "B=2", "C=3"] },
+      subject: "the project",
+      envChange: { action: "set", scope: "project", count: 3 },
+      target: undefined,
+    },
+    {
+      name: "a stringified project flag still names the project",
+      input: { action: "delete", project: "true", variables: ["A"] },
+      subject: "the project",
+      envChange: { action: "delete", scope: "project", count: 1 },
+      target: undefined,
+    },
+    {
+      name: "a service's variables, by its name",
+      input: { action: "set", serviceHostname: "apidev", variables: ["A=1", "B=2"] },
+      subject: "apidev",
+      envChange: { action: "set", scope: "service", service: "apidev", count: 2 },
+      target: { hostname: "apidev" },
+    },
+    {
+      name: "a read names no count",
+      input: { action: "get", project: true },
+      subject: "the project",
+      envChange: { action: "get", scope: "project" },
+      target: undefined,
+    },
+    {
+      name: "a .env written from a setup block",
+      input: { action: "generate-dotenv", setup: "dev" },
+      subject: "dev",
+      envChange: { action: "dotenv", scope: "service", service: "dev" },
+      target: undefined,
+    },
+    {
+      name: "an action it does not know",
+      input: { serviceHostname: "apidev" },
+      subject: "apidev",
+      envChange: { action: "update", scope: "service", service: "apidev" },
+      target: { hostname: "apidev" },
+    },
+  ])("$name", ({ input, subject, envChange, target }) => {
+    const fields = buildSimpleFields("env", envCall(input));
+    expect(fields.subject).toBe(subject);
+    expect(fields.envChange).toEqual(envChange);
+    expect(fields.target).toEqual(target);
+  });
+
+  it("never carries a value it was given", () => {
+    const secret = ["s3", "cr", "et-value"].join("");
+    const fields = buildSimpleFields(
+      "env",
+      envCall({ action: "set", project: true, variables: [`TOKEN=${secret}`] }, "inProgress"),
+    );
+    expect(JSON.stringify(fields)).not.toContain(secret);
+    expect(fields.voice).toBe("Setting one of the project's variables.");
+  });
+});

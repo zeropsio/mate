@@ -1,5 +1,6 @@
 export {
   browserLiveCaption,
+  envChangeWords,
   humanizeToolName,
   operationTone,
   plural,
@@ -32,6 +33,7 @@ export type {
   ZeropsCall,
   ZeropsCallImage,
   ZeropsCallStatus,
+  ZeropsEnvChange,
   ZeropsOperation,
   ZeropsOperationBrowserSummary,
   ZeropsOperationKind,

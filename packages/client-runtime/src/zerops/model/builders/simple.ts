@@ -4,8 +4,8 @@
  */
 import { readString } from "../../cards/decode.ts";
 import { decodeProcessOutcome, type ZeropsProcessOutcome } from "../../cards/payloads.ts";
-import { operationClosing } from "../../operations/phrases.ts";
-import type { ZeropsCall } from "../types.ts";
+import { envChangeWords, operationClosing } from "../../operations/phrases.ts";
+import type { ZeropsCall, ZeropsEnvChange } from "../types.ts";
 import {
   type BuiltCardFields,
   KIND_LABEL,
@@ -50,8 +50,17 @@ export function buildSimpleFields(
   const decoded = decodeCall(call);
   const errorInfo = errorInfoFor(call, decoded);
   const phase = phaseFor(call.status);
-  const subject = readSimpleSubject(call.input, decoded.document) ?? "the service";
-  const { voice, voiceSource } = mateVoiceFor(kind, subject);
+  const envChange = kind === "env" ? readEnvChange(call.input) : undefined;
+  const subject =
+    envChange === undefined
+      ? (readSimpleSubject(call.input, decoded.document) ?? "the service")
+      : envChange.scope === "project"
+        ? "the project"
+        : (envChange.service ?? "the service");
+  const { voice, voiceSource } =
+    envChange === undefined
+      ? mateVoiceFor(kind, subject)
+      : { voice: `${envChangeWords(envChange, "running")}.`, voiceSource: "mate" as const };
 
   const outcome =
     decoded.document !== undefined ? decodeProcessOutcome(decoded.document) : undefined;
@@ -91,7 +100,11 @@ export function buildSimpleFields(
       ),
     ],
     links: [],
-    target: { hostname: subject },
+    // The project, or a setup block a `.env` is written for, is no service to observe.
+    ...(envChange === undefined || (envChange.scope === "service" && envChange.action !== "dotenv")
+      ? { target: { hostname: subject } }
+      : {}),
+    ...(envChange !== undefined ? { envChange } : {}),
     hasResult: decoded.document !== undefined,
     ...(errorInfo !== undefined
       ? explanationField(failedCallReason(decoded, errorInfo))
@@ -111,4 +124,39 @@ function outcomeReason(
     return readString(document?.message) ?? readString(document?.warning);
   }
   return undefined;
+}
+
+const ENV_ACTIONS: Readonly<Record<string, ZeropsEnvChange["action"]>> = {
+  get: "get",
+  set: "set",
+  delete: "delete",
+  "generate-dotenv": "dotenv",
+};
+
+/**
+ * What a `zerops_env` call changes and where, from its input (zcp
+ * `internal/tools/env.go`): `project` (a boolean, or its string from some
+ * agents) names the project's variables, else `serviceHostname` a service's;
+ * `generate-dotenv` writes a `.env` for its `setup` block. The variables are
+ * only counted: their values can be secrets.
+ */
+function readEnvChange(input: Record<string, unknown> | undefined): ZeropsEnvChange {
+  const action = ENV_ACTIONS[readInputString(input, "action") ?? ""] ?? "update";
+  const project = input?.project === true || input?.project === "true";
+  const service =
+    action === "dotenv"
+      ? (readInputString(input, "setup") ?? readInputString(input, "serviceHostname"))
+      : readInputString(input, "serviceHostname");
+  const variables = input?.variables;
+  const count =
+    (action === "set" || action === "delete") && Array.isArray(variables)
+      ? variables.length
+      : undefined;
+  const scope = project && action !== "dotenv" ? "project" : "service";
+  return {
+    action,
+    scope,
+    ...(scope === "project" || service === undefined ? {} : { service }),
+    ...(count === undefined ? {} : { count }),
+  };
 }
