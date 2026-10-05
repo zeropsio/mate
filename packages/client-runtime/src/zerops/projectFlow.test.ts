@@ -582,6 +582,21 @@ describe("changeState", () => {
     for (const word of words) expect(word?.charAt(0)).toBe(word?.charAt(0).toLocaleUpperCase());
   });
 
+  // A draft is not ready to merge: its Mate has not described it as it is. What stops it from
+  // landing still speaks first.
+  it.each([
+    ["a draft nothing else stops", { mergeability: "mergeable", ready: false }, "Draft"],
+    [
+      "a draft that conflicts",
+      { mergeability: "conflicting", ready: false },
+      "Conflicts with main",
+    ],
+    ["a described change", { mergeability: "mergeable", ready: true }, "Ready to merge"],
+    ["a change from an HQ that knows no drafts", { mergeability: "mergeable" }, "Ready to merge"],
+  ] as const)("names %s", (_case, pull, word) => {
+    expect(changeState({ number: 1, ...pull })?.word).toBe(word);
+  });
+
   it("carries the tone that means the word", () => {
     expect(changeState({ number: 4, mergeability: "conflicting" })?.tone).toBe("attention");
     expect(changeState({ number: 4, mergeability: "checking" })?.tone).toBe("busy");

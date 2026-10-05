@@ -403,6 +403,7 @@ export interface ChangeState {
 export function changeState(pull: {
   readonly number: number;
   readonly mergeability: MergeabilityKind;
+  readonly ready?: boolean | undefined;
 }): ChangeState | undefined {
   const blocked = pullRequestBlocked(pull);
   if (blocked !== null) {
@@ -411,6 +412,8 @@ export function changeState(pull: {
       tone: blocked.tone,
     };
   }
+  // Its Mate has not described it as it is: nothing asks for its merge yet.
+  if (!changeAsksForReview(pull)) return { word: "Draft", tone: "off" };
   return { word: "Ready to merge", tone: "off" };
 }
 
