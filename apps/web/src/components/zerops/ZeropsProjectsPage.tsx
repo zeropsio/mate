@@ -103,6 +103,7 @@ import { withheldProjectNotices } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useZeropsFirstBuilds } from "~/zerops/useZeropsFirstBuilds";
+import { useMatesInventory } from "~/zerops/useMatesInventory";
 import { usePressesElsewhere } from "~/zerops/usePressesElsewhere";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
@@ -853,6 +854,9 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   );
   // A first build whose process failed reads as the platform leaves it, with what removes it.
   const firstBuilds = useZeropsFirstBuilds(observedCandidates);
+  // Each Mate the page draws has its project read: its container is what Restart and the
+  // application's Add Mate and Add stage stand on.
+  useMatesInventory(observedCandidates);
   const candidates = useMemo(
     () =>
       observedCandidates.map((candidate) =>
