@@ -238,7 +238,7 @@ describe("finishMateSetupVerb while HQ has not said who writes the registry", ()
     containerMissing: false,
     pressStopped: false,
     closedOffMissing: false,
-    pastGrace: true,
+    pressedElsewhere: false,
     viewerIsAdder: false,
     hasContainer: true,
     recordMissing: false,
