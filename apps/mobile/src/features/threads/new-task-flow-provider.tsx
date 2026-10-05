@@ -99,7 +99,7 @@ import {
   resolveNewTaskLocalWorkspaceSelection,
 } from "./new-task-context-presentation";
 import { resolveEnvironmentProjectMatch } from "./new-task-project-selection";
-import { newConversationSelection } from "../zerops/new-conversation-effort";
+import { newConversationSelection } from "../../lib/new-conversation-effort";
 
 type WorkspaceMode = "local" | "worktree";
 

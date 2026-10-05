@@ -23,7 +23,7 @@ import { deriveActiveWorkStartedAt } from "@t3tools/shared/orchestrationTiming";
 
 import { makeQueuedMessageMetadata } from "../lib/commandMetadata";
 import { isModelSelectionUnavailable } from "../lib/modelOptions";
-import { newConversationSelection } from "../features/zerops/new-conversation-effort";
+import { newConversationSelection } from "../lib/new-conversation-effort";
 import { isUnstartedThread } from "@t3tools/shared/zeropsEffort";
 import { resolveProviderInteractionMode } from "./legacy-plan-mode";
 import {
