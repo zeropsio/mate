@@ -4045,3 +4045,10 @@ no-cache`.
   2026-09-29 hand-off (R6) for a change.
   - _Why:_ the button that merged turned, in the same place and under the same ⌘↵, into the way to
     production, so the second press of one gesture reached a different decision.
+- **2026-10-05** — **The review's button never takes the focus.** The review opens with the focus on
+  itself, and a button that turns safe later doesn't take it either; ⌘↵ presses the button while it
+  is safe, as before. Replaces the focus half of the 2026-09-29 R5 rule ("The focus lands on it, and
+  ⌘↵ presses it, only while it is safe"); decided by the lead under the owner's delegation ("take the
+  best possible and the most recommended solution").
+  - _Why:_ with the focus on a safe _Merge_, a plain Enter merged (found in pass 39, T6); ⌘↵ is the
+    deliberate press, Enter is not.
