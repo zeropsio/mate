@@ -11,12 +11,29 @@ import { processFamily } from "./process.ts";
 import { projectFamily } from "./project.ts";
 import type { AnyFamilySpec } from "./spec.ts";
 
-export const FAMILIES: ReadonlyArray<AnyFamilySpec> = [
+/** The registry, checked once at startup: a family, a scope name and an index name each once. */
+export function defineFamilies(
+  families: ReadonlyArray<AnyFamilySpec>,
+): ReadonlyArray<AnyFamilySpec> {
+  const seen = new Set<string>();
+  const once = (what: string) => {
+    if (seen.has(what)) throw new Error(`The data layer registers ${what} twice.`);
+    seen.add(what);
+  };
+  for (const spec of families) {
+    once(`family ${spec.family}`);
+    once(`scope ${spec.scope.suffix}`);
+    if (spec.index !== undefined) once(`index ${spec.index.name}`);
+  }
+  return families;
+}
+
+export const FAMILIES = defineFamilies([
   projectFamily,
   processFamily,
   placementFamily,
   attentionFamily,
-];
+]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));
 const bySuffix = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.scope.suffix, spec]));
