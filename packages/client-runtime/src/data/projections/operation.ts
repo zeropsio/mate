@@ -44,12 +44,8 @@ export const operationProgressOf = (
     const { receipt } = record;
     if (receipt !== null && receipt.outcome.kind !== "pending")
       return { stage: "done", operationId: receipt.operationId, outcome: receipt.outcome.kind };
-    if (record.unresolved !== null)
-      return {
-        stage: "unresolved",
-        operationId: receipt?.operationId ?? null,
-        nextActor: record.unresolved.nextActor,
-      };
+    if (receipt === null && record.unresolved !== null)
+      return { stage: "unresolved", operationId: null, nextActor: record.unresolved.nextActor };
     if (receipt === null)
       switch (record.submission) {
         case "unsent":
@@ -75,6 +71,13 @@ export const operationProgressOf = (
             reason: settled.reason,
           }
         : { stage: "done", operationId: receipt.operationId, outcome: "succeeded" };
+    // The owner's facts said no end yet; an owner that can no longer observe it leaves it open.
+    if (record.unresolved !== null)
+      return {
+        stage: "unresolved",
+        operationId: receipt.operationId,
+        nextActor: record.unresolved.nextActor,
+      };
     return {
       stage: kind.reflected(read, record.intent, receipt) ? "reflected" : "accepted",
       operationId: receipt.operationId,

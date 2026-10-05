@@ -261,4 +261,30 @@ describe("an operation Zerops executes", () => {
       expect(owner.submitted).toEqual([requestId]);
     }),
   );
+
+  it.effect("is done when its process ended, even after its observation ran out", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const owner = zerops({ loseAnswer: false });
+      const requestId = yield* makeOperations({
+        store,
+        kinds,
+        executors: { zerops: owner.executor },
+        makeId: ids(),
+      }).submit(RESTART);
+      store.dispatch({ kind: "operation-exhausted", requestId, nextActor: "Zerops" });
+      expect(progress(store, requestId)).toEqual({
+        stage: "unresolved",
+        operationId: "proc-1",
+        nextActor: "Zerops",
+      });
+
+      processRow(store, "proc-1", "FINISHED", 2);
+      expect(progress(store, requestId)).toEqual({
+        stage: "done",
+        operationId: "proc-1",
+        outcome: "succeeded",
+      });
+    }),
+  );
 });
