@@ -107,6 +107,37 @@ describe("recipeOptions", () => {
   });
 });
 
+describe("validateBotName — under an application", () => {
+  const taken = { names: ["Fen"], complete: true };
+
+  it.each([
+    { value: "SPN - Fen", verdict: "Fen is already an agent on this account." },
+    { value: "Fen", verdict: "Fen is already an agent on this account." },
+    // Another application's prefix is part of the name: its own name, whole.
+    { value: "Shop - Fen", verdict: undefined },
+    { value: "SPN - Ada", verdict: undefined },
+  ])("judges $value by its own name under SPN", ({ value, verdict }) => {
+    expect(validateBotName(value, taken, { appName: "SPN" })).toBe(verdict);
+  });
+
+  it("refuses a typed prefix of a Mate that exists when a Mate is added", () => {
+    expect(
+      newMateSubmit({
+        botName: "SPN - Fen",
+        appName: "SPN",
+        takenBotNames: taken,
+        tier: undefined,
+        tierLoading: false,
+      }),
+    ).toEqual({ kind: "refuse", error: "Another Mate already has that name." });
+  });
+
+  it("keeps a Mate's current name whole when it is stale-prefixed and long", () => {
+    const current = "Old - A Mate With A Very Long Name";
+    expect(validateBotName(current, taken, { appName: "SPN", current })).toBeUndefined();
+  });
+});
+
 describe("validateBotName", () => {
   it.each<{
     readonly name: string;

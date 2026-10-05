@@ -126,7 +126,7 @@ export function ZeropsNewMateForm({
     defaultShape: defaultShapeFor,
   });
   const recipe = newMateRecipe({ tier, tierLoading });
-  const submit = newMateSubmit({ botName, takenBotNames, tier, tierLoading });
+  const submit = newMateSubmit({ botName, appName: groupName, takenBotNames, tier, tierLoading });
   const waiting = pressedFor !== null && submit.kind === "wait";
   const words = newMateWords({
     groupName,

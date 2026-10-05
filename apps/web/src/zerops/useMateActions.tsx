@@ -495,7 +495,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const project = projectRef(activeOrganization.id, candidate.project.id);
       void write(
         candidate.key,
-        () => runZeropsCommand(runtime.commands.renameProject(project, full)),
+        () =>
+          runZeropsCommand(runtime.commands.renameProject(project, full, candidate.project.name)),
         refresh,
       );
     },
@@ -1190,7 +1191,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const current = projectNameInApp(candidate.project);
       return {
         initialValue: current,
-        validate: (value) => validateBotName(value, taken, { current }),
+        validate: (value) =>
+          validateBotName(value, taken, {
+            current,
+            appName: readZeropsMembership(candidate.project).label,
+          }),
         commit: (value) => {
           rename(candidate, value.replace(/\s+/g, " ").trim());
         },
@@ -1233,7 +1238,10 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           submitLabel="Rename"
           title={`Rename ${projectNameInApp(dialog.candidate.project)}`}
           validate={(value) =>
-            validateBotName(value, taken, { current: projectNameInApp(dialog.candidate.project) })
+            validateBotName(value, taken, {
+              current: projectNameInApp(dialog.candidate.project),
+              appName: readZeropsMembership(dialog.candidate.project).label,
+            })
           }
         />
       ) : null}

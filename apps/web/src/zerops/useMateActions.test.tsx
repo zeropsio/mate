@@ -1334,6 +1334,7 @@ describe("useMateActions — Rename Mate", () => {
     expect(mock.renameProject).toHaveBeenCalledWith(
       { organizationId: "org-acme", projectId: named.project.id },
       "Acme Docs - Nova",
+      "Acme Docs - Fen",
     );
     expect(mock.updateMate).not.toHaveBeenCalled();
   });
@@ -1390,6 +1391,7 @@ describe("useMateActions — Move renames the Mate's project in Zerops", () => {
     expect(mock.renameProject).toHaveBeenCalledWith(
       { organizationId: "org-acme", projectId: named.project.id },
       "Shop - Fen",
+      "Acme Docs - Fen",
     );
   });
 
@@ -1400,6 +1402,7 @@ describe("useMateActions — Move renames the Mate's project in Zerops", () => {
     expect(mock.renameProject).toHaveBeenCalledWith(
       { organizationId: "org-acme", projectId: named.project.id },
       "Fen",
+      "Acme Docs - Fen",
     );
   });
 
@@ -1416,6 +1419,7 @@ describe("useMateActions — Move renames the Mate's project in Zerops", () => {
     expect(mock.renameProject).toHaveBeenLastCalledWith(
       { organizationId: "org-acme", projectId: named.project.id },
       "Shop - Fen",
+      "Acme Docs - Fen",
     );
     expect(verbs(named).find((verb) => verb.id === "finish-rename")).toBeUndefined();
   });

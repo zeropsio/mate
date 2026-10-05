@@ -4,6 +4,7 @@
 
 import {
   hasMate,
+  nameUnderApp,
   projectNameInApp,
   isRecipeProposal,
   ZEROPS_BOT_NAME_MAX_LENGTH,
@@ -104,9 +105,10 @@ const CHECKING_NAMES = "Checking which names are taken…";
 function botNameVerdict(
   raw: string,
   taken: TakenBotNames,
-  options: { readonly current?: string } = {},
+  options: { readonly current?: string; readonly appName?: string | undefined } = {},
 ): BotNameVerdict {
-  const bot = raw.replace(/\s+/g, " ").trim();
+  // A typed `"<application> - "` is the prefix of the project's name, not part of the Mate's own.
+  const bot = nameUnderApp(raw.replace(/\s+/g, " ").trim(), options.appName);
   if (bot.length === 0) return { kind: "refused", reason: "blank", bot };
   // The name a Mate already has is never refused, however long it is.
   const isCurrent =
@@ -129,7 +131,7 @@ const TOO_LONG = `Keep it under ${ZEROPS_BOT_NAME_MAX_LENGTH} characters.`;
 export function validateBotName(
   raw: string,
   taken: TakenBotNames,
-  options: { readonly current?: string } = {},
+  options: { readonly current?: string; readonly appName?: string | undefined } = {},
 ): string | undefined {
   const verdict = botNameVerdict(raw, taken, options);
   if (verdict.kind === "unread") return CHECKING_NAMES;
@@ -282,11 +284,15 @@ export type NewMateSubmit =
  */
 export function newMateSubmit(input: {
   readonly botName: string;
+  /** The application the Mate is added to: a typed prefix of it is cut before the name is judged. */
+  readonly appName?: string | undefined;
   readonly takenBotNames: TakenBotNames;
   readonly tier: Extract<EnvironmentRecipeChoice, { kind: "tier" }> | undefined;
   readonly tierLoading: boolean;
 }): NewMateSubmit {
-  const verdict = botNameVerdict(input.botName, input.takenBotNames);
+  const verdict = botNameVerdict(input.botName, input.takenBotNames, {
+    appName: input.appName,
+  });
   if (verdict.kind === "refused")
     return { kind: "refuse", error: NEW_MATE_REFUSALS[verdict.reason] };
   if (verdict.kind === "unread") return { kind: "wait", on: "names" };
