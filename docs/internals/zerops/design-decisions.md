@@ -4112,27 +4112,38 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   Codex's `fileChange` items, OpenCode's `write`, `edit`, `multiedit` and patch inputs, and an ACP
   agent's `diff` blocks (Cursor, Grok, Antigravity). The client's copy of a call carries only a mark
   that it wrote something; a call whose driver sent none keeps the row it had, and a running or
-  failed write opens onto nothing. Each file stands in one box of the opened detail's height that
-  scrolls inside, growing under the row only.
+  failed write opens onto nothing. Each file's text stands in the card's own item box: in the log
+  whole once opened, nothing scrolling inside (the 0.14.4 rule), in the working row at its height,
+  scrolling; it grows under the row only.
   - _Rule — what `threads.readWrittenFile` serves:_ a file is served only when all of these hold,
-    each checked by the server, never the client:
+    each checked by the server against times the server stamped, never a time a browser sent:
     - the caller may read the thread: the method takes `orchestration:read`, as `subscribeThread`
       does, and the thread exists and is not deleted;
-    - the path is absolute, and, normalized, equals exactly a path that a `tool.completed` row of
-      THIS thread names as written or edited, read from the stored payload by the same reader that
-      draws the row. A failed or declined call wrote nothing, a deleted file is not written, a
-      relative path is the workspace's, and another thread's writes count for nothing;
-    - the path is resolved a part at a time, every symbolic link read by hand, and each link on the
-      way must be older than the thread (its change time, which its owner cannot set back): a link
-      made or re-pointed since could be the agent's, aiming the path at a file it never wrote;
+    - the path is absolute, in its one normal form, and equals exactly — untrimmed — a path that a
+      `tool.completed` row of THIS thread names as written or edited, read from the stored payload
+      by the same reader that draws the row. A failed, declined or never-returned call wrote
+      nothing, a deleted file is not written, a path with a space around it is never recorded, and
+      another thread's writes count for nothing;
+    - the file is unchanged since the thread's newest such write: its change and modify times are no
+      later than that row's server-stamped completion plus 1.5 s, checked before the read and again
+      after it. Nobody can set a change time back, so content written in later (a token from
+      `npm login`, a key the CLI rewrites), a file moved or hard-linked onto the name, or a write
+      during the read is refused;
+    - the path is resolved a part at a time and never enters `/proc`, `/sys` or `/dev`, which name
+      the server's own process; every symbolic link on the way must be older than the thread's
+      first call (its first tool row's server stamp, not the thread's `created_at`, which its
+      creating command carries), and the links and the file must sit on a local file system, since
+      a FUSE or network mount reports whatever times it is told;
     - the file is opened with `O_NOFOLLOW`, must be the very file the walk found (same device and
-      inode), must have one name (no hard link to another file's content) and must have been last
-      written after the thread began;
+      inode), must have one name and must have been last written after the thread's first call;
     - it is a regular file of UTF-8 text with no NUL byte, at most 1 MiB: anything larger is
       refused whole, never cut.
-  - _Refused:_ anything else, with a reason the Files tab says plainly. Nothing outside the
-    workspace is listed, searched or written.
-  - _Why:_ the agent's own words reach everyone who may read the thread anyway, so a file it wrote
-    is no new disclosure; what the rule stops is a reader, or an agent steering one, reaching any
-    other file through the server: an arbitrary path, `..`, a link, a hard link or a swap between
-    the check and the read.
+  - _Refused:_ anything else, with a reason the Files tab says plainly ("This file changed after
+    Sage wrote it, so it isn't shown."); the row's own drawn content still shows. Nothing outside
+    the workspace is listed, searched or written. Looking a path up scans the thread's completed
+    rows for its text and parses only those that hold it.
+  - _Why:_ the agent's own words reach everyone who may read the thread anyway, so a file as it
+    wrote it is no new disclosure; what the rule stops is a reader, or an agent steering one,
+    reaching any other content through the server: an arbitrary path, `..`, a link, a hard link, a
+    file renamed onto the name, content written after the agent's write, the server's own `/proc`,
+    or a swap between the check and the read.
