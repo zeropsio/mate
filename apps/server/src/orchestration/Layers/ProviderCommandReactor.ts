@@ -565,6 +565,25 @@ const make = Effect.gen(function* () {
     });
   });
 
+  /**
+   * The turn a message sent now would steer: the agent's own session says
+   * whether one is open; the projection's lifecycle can lag it or lose the
+   * turn id mid-run.
+   */
+  const runningTurnFor = (threadId: ThreadId): Effect.Effect<TurnId | undefined> =>
+    Effect.gen(function* () {
+      const liveSession = (yield* providerService.listSessions()).find(
+        (session) => session.threadId === threadId,
+      );
+      if (liveSession !== undefined) {
+        return liveSession.status === "running" ? liveSession.activeTurnId : undefined;
+      }
+      const thread = yield* resolveThreadShell(threadId);
+      return thread?.session?.status === "running"
+        ? (thread.session.activeTurnId ?? undefined)
+        : undefined;
+    }).pipe(Effect.orElseSucceed(() => undefined));
+
   const ensureSessionForThread = Effect.fn("ensureSessionForThread")(function* (
     threadId: ThreadId,
     createdAt: string,
@@ -1585,25 +1604,15 @@ const make = Effect.gen(function* () {
       if (coordinator && thread.crew === undefined) {
         const project = yield* resolveProject(thread.projectId);
         const cwd = resolveThreadWorkspaceCwd({ thread, projects: project ? [project] : [] });
-        // The agent's own session says whether a send steers an open turn; the
-        // projection's lifecycle can lag it or lose the turn id mid-run.
-        const liveSession = (yield* providerService.listSessions()).find(
-          (session) => session.threadId === thread.id,
-        );
-        const continuationOf =
-          liveSession !== undefined
-            ? liveSession.status === "running"
-              ? liveSession.activeTurnId
-              : undefined
-            : thread.session?.status === "running"
-              ? (thread.session.activeTurnId ?? undefined)
-              : undefined;
+        const liveTurn = runningTurnFor(thread.id);
+        const continuationOf = yield* liveTurn;
         if (cwd)
           yield* coordinator.prepare({
             threadId: thread.id,
             runId: event.payload.messageId,
             cwd,
             ...(continuationOf ? { continuationOf } : {}),
+            liveTurn,
           });
       }
       // One lane per thread for a turn's session setup and its send: one

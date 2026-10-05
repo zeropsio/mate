@@ -832,6 +832,8 @@ describe("ProviderCommandReactor", () => {
       yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 2));
 
       expect(prepared.map((input) => input.continuationOf)).toEqual([undefined, "turn-live"]);
+      // A message that waits asks the session again: the first one's turn is open now.
+      expect(yield* prepared[0]!.liveTurn!).toBe("turn-live");
     }),
   );
 
