@@ -9,6 +9,7 @@
 import type {
   ModelCapabilities,
   ModelSelection,
+  OrchestrationThreadShell,
   ProviderOptionSelection,
   ServerProvider,
 } from "@t3tools/contracts";
@@ -74,4 +75,15 @@ export function selectionWithPreferredEffort(
   return options === selection.options || options === undefined
     ? selection
     : { ...selection, options };
+}
+
+/**
+ * A thread that never ran a turn: its conversation is still new. A crewmate's
+ * thread never is one — crewmates keep their own rule — and a thread not yet
+ * read is not judged.
+ */
+export function isUnstartedThread(
+  thread: Pick<OrchestrationThreadShell, "latestTurn" | "crew"> | null | undefined,
+): boolean {
+  return thread != null && thread.latestTurn === null && thread.crew === undefined;
 }

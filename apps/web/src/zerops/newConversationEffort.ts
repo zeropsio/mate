@@ -8,18 +8,14 @@ import type {
   OrchestrationThread,
   ProviderOptionSelection,
 } from "@t3tools/contracts";
-import { withPreferredEffort } from "@t3tools/shared/zeropsEffort";
+import { isUnstartedThread, withPreferredEffort } from "@t3tools/shared/zeropsEffort";
 
-/**
- * A draft, or a thread that never ran a turn. A crewmate's thread is never
- * one: crewmates keep their own rule (unset = the login's default).
- */
+/** A draft, or a thread that never ran a turn (and is no crewmate's). */
 export function isNewConversation(
   routeKind: "server" | "draft",
   thread: Pick<OrchestrationThread, "latestTurn" | "crew"> | undefined,
 ): boolean {
-  if (routeKind === "draft") return true;
-  return thread !== undefined && thread.latestTurn === null && thread.crew === undefined;
+  return routeKind === "draft" || isUnstartedThread(thread);
 }
 
 /** The model options the composer shows and sends. */

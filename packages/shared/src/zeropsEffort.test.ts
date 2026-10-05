@@ -8,6 +8,7 @@ import {
 
 import {
   EFFORT_OPTION_IDS,
+  isUnstartedThread,
   preferredEffort,
   selectionWithPreferredEffort,
   withPreferredEffort,
@@ -153,5 +154,18 @@ describe("selectionWithPreferredEffort", () => {
   ];
   it.each(cases)("%s", (_name, input, expected) => {
     expect(selectionWithPreferredEffort([provider], input)).toEqual(expected);
+  });
+});
+
+describe("isUnstartedThread", () => {
+  const cases: ReadonlyArray<readonly [string, Parameters<typeof isUnstartedThread>[0], boolean]> =
+    [
+      ["a thread that never ran a turn", { latestTurn: null }, true],
+      ["a thread that ran a turn", { latestTurn: { turnId: "t" } as never }, false],
+      ["a crewmate's thread", { latestTurn: null, crew: {} as never }, false],
+      ["a thread not yet read", undefined, false],
+    ];
+  it.each(cases)("%s", (_name, thread, expected) => {
+    expect(isUnstartedThread(thread)).toBe(expected);
   });
 });
