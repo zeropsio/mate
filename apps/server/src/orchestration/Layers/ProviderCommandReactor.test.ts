@@ -766,6 +766,30 @@ describe("ProviderCommandReactor", () => {
     }),
   );
 
+  effectIt.effect("a stop cancels a runtime mode change still waiting for the lane", () =>
+    Effect.gen(function* () {
+      const { harness, release, settle } = yield* heldFirstSendHarness();
+      yield* harness.engine.dispatch({
+        type: "thread.runtime-mode.set",
+        commandId: CommandId.make("cmd-lane-runtime-mode-then-session-stop"),
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* harness.engine.dispatch({
+        type: "thread.session.stop",
+        commandId: CommandId.make("cmd-lane-session-stop"),
+        threadId: ThreadId.make("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* Effect.promise(() => waitFor(() => harness.stopSession.mock.calls.length === 1));
+      yield* release;
+      yield* settle;
+      // Start, stop, and no start after it: the stopped thread keeps no live session.
+      expect(harness.startSession).toHaveBeenCalledTimes(1);
+    }),
+  );
+
   effectIt.effect("a message that waited is sent with the thread's selection as it is now", () =>
     Effect.gen(function* () {
       const held = yield* Deferred.make<void>();
