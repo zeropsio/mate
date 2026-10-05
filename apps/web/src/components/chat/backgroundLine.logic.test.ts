@@ -129,7 +129,7 @@ describe("backgroundLineOf", () => {
       return line.words;
     });
     expect(ended).toEqual([
-      "3 background tasks running",
+      "3 background jobs running",
       "3 background jobs: 2 running, 1 finished",
       "3 background jobs: 1 running, 1 finished, 1 failed",
       "3 background jobs: 2 finished, 1 failed",
