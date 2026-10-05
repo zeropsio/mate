@@ -37,8 +37,10 @@ export interface ZeropsDeployCard {
   readonly buildDuration?: string;
   readonly subdomainUrl?: string;
   readonly failedPhase?: string;
-  readonly failureCause?: string;
-  readonly failureAction?: string;
+  /** zcp's `failureClassification.category`: what kind of failure, for the person's words. */
+  readonly failureClass?: string;
+  /** zcp's `failureClassification.signals`: which pattern matched ("phase:init", "prepare:missing-sudo"). */
+  readonly failureSignals?: ReadonlyArray<string>;
   readonly warnings: ReadonlyArray<string>;
   /** The platform service id of `target`. */
   readonly targetServiceId?: string;
@@ -313,8 +315,10 @@ export function decodeDeployResult(
     ...optional("buildDuration", readString(document.buildDuration)),
     ...optional("subdomainUrl", readString(document.subdomainUrl)),
     ...optional("failedPhase", readString(document.failedPhase)),
-    ...optional("failureCause", readString(classification?.likelyCause)),
-    ...optional("failureAction", readString(classification?.suggestedAction)),
+    ...optional("failureClass", readString(classification?.category)),
+    ...(classification === undefined || readStringArray(classification.signals).length === 0
+      ? {}
+      : { failureSignals: readStringArray(classification.signals) }),
     warnings: readStringArray(document.warnings),
     ...optional("targetServiceId", readString(document.targetServiceId)),
     ...optional("appVersionId", readString(document.appVersionId)),

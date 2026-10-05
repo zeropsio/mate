@@ -4,6 +4,7 @@ import {
   queuedPipelineSlots,
 } from "../../activity/observedSteps.ts";
 import type { DeployBuildRead } from "../../activity/deployBuild.ts";
+import { deployFailureWords, readFailureClassification } from "../../operations/failureWords.ts";
 import type { PipelineState } from "../../activity/pipelineState.ts";
 import {
   readNumber,
@@ -78,11 +79,13 @@ function deployPhase(
   if (basePhase !== "done" || triggered === undefined) {
     return basePhase;
   }
-  const phases = triggered.map((appVersionId) =>
-    appVersionId === undefined ? "uncertain" : BUILD_PHASE[builds(appVersionId)],
+  const phases = new Set(
+    triggered.map((appVersionId) =>
+      appVersionId === undefined ? "uncertain" : BUILD_PHASE[builds(appVersionId)],
+    ),
   );
   for (const phase of ["failed", "running", "uncertain"] as const) {
-    if (phases.includes(phase)) return phase;
+    if (phases.has(phase)) return phase;
   }
   return "done";
 }
@@ -238,7 +241,11 @@ function resultExplanation(card: ZeropsDeployCard): ReturnType<typeof explanatio
       ? (card.runtimeLogs ?? card.buildLogs)
       : (card.buildLogs ?? card.runtimeLogs);
   const message = card.message !== undefined ? firstLine(card.message) : undefined;
-  return explanationField(card.failureCause ?? message, log);
+  const words =
+    card.failureClass === undefined
+      ? undefined
+      : deployFailureWords({ category: card.failureClass, signals: card.failureSignals });
+  return explanationField(words ?? message, log);
 }
 
 // --- git push ----------------------------------------------------------------
@@ -338,7 +345,7 @@ function decodeGitPushResult(
     buildTarget: readString(document.buildTarget),
     buildStatus,
     verifyTarget: readString(document.verifyTarget),
-    failureCause: readString(readRecord(document.failureClassification)?.likelyCause),
+    failureCause: deployFailureWords(readFailureClassification(document.failureClassification)),
     buildLogs: readStringArray(document.buildLogs),
     pullRequest: decodePullRequest(readRecord(document.pullRequest)),
   };

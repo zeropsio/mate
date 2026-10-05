@@ -5,6 +5,7 @@
  * outcome, never folded into "done" — the bug §2.6 fixes).
  */
 import type { DeployBuildRead } from "../../activity/deployBuild.ts";
+import { deployFailureWords, readFailureClassification } from "../../operations/failureWords.ts";
 import {
   readRecord,
   readString,
@@ -290,10 +291,10 @@ export function explanationField(
   return { explanation: { reason, ...(logTail.length > 0 ? { logTail } : {}) } };
 }
 
-/** A failed call's reason: zcp's classified cause when it made one, else the error's own line. */
+/** A failed call's reason: what zcp classified it as, in the person's words, else the error's own line. */
 export function failedCallReason(decoded: DecodedEntry, errorInfo: ErrorInfo): string {
   return (
-    readString(readRecord(decoded.document?.failureClassification)?.likelyCause) ??
+    deployFailureWords(readFailureClassification(decoded.document?.failureClassification)) ??
     firstLine(errorInfo.message)
   );
 }
