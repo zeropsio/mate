@@ -28,7 +28,7 @@ export function review(s: Pick<Scenario, "page" | "web">) {
         );
       }
     });
-  const mergeEnabled = Effect.promise(async () => {
+  const waitUntilMergeEnabled = async () => {
     try {
       await s.page.waitForFunction(
         () =>
@@ -46,10 +46,36 @@ export function review(s: Pick<Scenario, "page" | "web">) {
         { cause: error },
       );
     }
-  });
+  };
+  const mergeEnabled = Effect.promise(waitUntilMergeEnabled);
   return {
     text,
     mergeEnabled,
+    waitUntilMergeEnabled,
+    rememberUnknownPermission: Effect.promise(async () => {
+      await s.page.evaluateOnNewDocument(() => {
+        const history: string[] = [];
+        Object.assign(window, { dChangeUnknownOffers: history });
+        let visible = false;
+        const check = () => {
+          const shown = document.body?.innerText.includes("HQ has not said yet") === true;
+          if (shown && !visible) history.push("HQ has not said yet");
+          visible = shown;
+        };
+        new MutationObserver(check).observe(document, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+          attributes: true,
+        });
+        check();
+      });
+    }),
+    unknownPermissionHistory: Effect.promise(() =>
+      s.page.evaluate(
+        () => (window as unknown as { dChangeUnknownOffers: string[] }).dChangeUnknownOffers,
+      ),
+    ),
     open: Effect.promise(async () => {
       await s.page
         .locator('[data-zerops-surface="sidebar-pull-request-review"]')

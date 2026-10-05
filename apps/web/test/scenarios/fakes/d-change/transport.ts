@@ -29,7 +29,43 @@ export class MergeGate {
   }
 }
 
-export async function changeTransport(origin: string, gate: MergeGate) {
+/** Buffers real HQ socket frames in order; releasing never changes their contents. */
+export class HqFrameHold {
+  private holding = false;
+  private frames: { client: WebSocket; frame: string }[] = [];
+  private receipt = Promise.resolve();
+  private arrived: (() => void) | undefined;
+  hold() {
+    this.holding = true;
+    this.receipt = new Promise<void>((resolve) => {
+      this.arrived = resolve;
+    });
+  }
+  forward(client: WebSocket, frame: string) {
+    if (client.readyState !== WebSocket.OPEN) return;
+    if (!this.holding) {
+      client.send(frame);
+      return;
+    }
+    this.frames.push({ client, frame });
+    this.arrived?.();
+  }
+  received() {
+    return deadline(this.receipt, "HQ socket frame buffered", 15_000);
+  }
+  resume() {
+    this.holding = false;
+    for (const { client, frame } of this.frames) {
+      if (client.readyState === WebSocket.OPEN) client.send(frame);
+    }
+    this.frames = [];
+  }
+  forget(client: WebSocket) {
+    this.frames = this.frames.filter((frame) => frame.client !== client);
+  }
+}
+
+export async function changeTransport(origin: string, gate: MergeGate, frames = new HqFrameHold()) {
   const handle: HttpHandler = async (request) => {
     if (request.method === "POST" && request.url.pathname.endsWith("/merge")) await gate.enter();
     const response = await fetch(new URL(request.url.pathname + request.url.search, origin), {
@@ -67,7 +103,7 @@ export async function changeTransport(origin: string, gate: MergeGate) {
       for (const frame of pending) upstream.send(frame);
     });
     upstream.on("message", (frame) => {
-      if (client.readyState === WebSocket.OPEN) client.send(String(frame));
+      frames.forward(client, String(frame));
     });
     upstream.on("error", () => client.close(1011));
     upstream.on("close", (code, reason) => {
@@ -75,12 +111,16 @@ export async function changeTransport(origin: string, gate: MergeGate) {
       if (client.readyState === WebSocket.OPEN)
         client.close(code === 1006 ? 1011 : code === 1005 ? 1000 : code, String(reason));
     });
-    client.on("close", () => upstream.close());
+    client.on("close", () => {
+      frames.forget(client);
+      upstream.close();
+    });
   });
   return {
     ...server,
     async close() {
       gate.resume();
+      frames.resume();
       for (const socket of upstreams) socket.terminate();
       await server.close();
     },

@@ -1,13 +1,13 @@
-import { describe, it } from "@effect/vitest";
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
-import { installArea, mergeFor } from "./fake.ts";
+import { installArea, mergeFor, hqFramesFor } from "./fake.ts";
 import { changeFixture, review } from "./dsl.ts";
 
 const setup = Effect.gen(function* () {
   const s = yield* createScenario([installArea]);
-  const area = { merge: mergeFor(s.drivers) };
+  const area = { merge: mergeFor(s.drivers), hqFrames: hqFramesFor(s.drivers) };
   const change = yield* changeFixture(s);
   return { s, change, area, r: review(s) };
 });
@@ -127,6 +127,30 @@ describe("D: change review, comments and merge", () => {
         yield* r.text("You need at least Basic user access");
         yield* r.cannotMerge;
         yield* s.then.noExternalNetwork;
+      }),
+    );
+
+    // Catches a reload while HQ is slow hiding an offered Merge ('HQ has not said yet')
+    it.effect.fails("a slow HQ snapshot on reload preserves the offered Merge", () =>
+      Effect.gen(function* () {
+        const { s, change, r, area } = yield* setup;
+        yield* Effect.promise(() => s.clock.install());
+        yield* s.given.signedIn;
+        yield* r.direct(change.direct);
+        yield* r.mergeEnabled;
+        yield* Effect.promise(() =>
+          s.clock.advanceStepped(1000, { settle: r.waitUntilMergeEnabled }),
+        );
+        yield* r.rememberUnknownPermission;
+        area.hqFrames.hold();
+        yield* Effect.promise(() => s.page.reload());
+        yield* r.text("summary.txt");
+        yield* Effect.promise(() => area.hqFrames.received());
+        area.hqFrames.resume();
+        yield* r.mergeEnabled;
+        yield* s.then.noExternalNetwork;
+        const guard = yield* r.unknownPermissionHistory;
+        expect(guard).toEqual([]);
       }),
     );
   });

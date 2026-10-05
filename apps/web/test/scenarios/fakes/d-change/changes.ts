@@ -5,7 +5,7 @@ import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
 import { MateLinkUp } from "@t3tools/shared/mateLink";
 import { overviewOf, digest } from "../../../../../hq/test/harness/overviews.ts";
-import { changeRoutePath, HqChange } from "@t3tools/shared/hqChanges";
+import { HqChange } from "@t3tools/shared/hqChanges";
 import * as Schema from "effect/Schema";
 import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
 import { gitClient } from "../../../../../hq/test/harness/gitClient.ts";
@@ -86,7 +86,7 @@ export const changeFixture = Effect.fn(function* (s: Scenario) {
   return {
     title: TITLE,
     description: DESCRIPTION,
-    direct: changeRoutePath(appId, "appdev", 1),
+    direct: `/change/${appId}/appdev/1`,
     colleagueMerges: Effect.gen(function* () {
       const response = yield* s.drivers.core.call("POST", `${path}/merge`, {
         session: s.owner,
