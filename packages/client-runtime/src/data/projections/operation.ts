@@ -29,6 +29,8 @@ export type OperationProgress =
       readonly stage: "unresolved";
       readonly operationId: string | null;
       readonly nextActor: string;
+      /** What the owner named as the next step, where it named one. */
+      readonly nextAction?: string;
     };
 
 /** Progress over a registry of operation kinds: the account's, or a test's own. */
@@ -45,7 +47,7 @@ export const operationProgressOf = (
     if (receipt !== null && receipt.outcome.kind !== "pending")
       return { stage: "done", operationId: receipt.operationId, outcome: receipt.outcome.kind };
     if (receipt === null && record.unresolved !== null)
-      return { stage: "unresolved", operationId: null, nextActor: record.unresolved.nextActor };
+      return { stage: "unresolved", operationId: null, ...record.unresolved };
     if (receipt === null)
       switch (record.submission) {
         case "unsent":
@@ -76,7 +78,7 @@ export const operationProgressOf = (
       return {
         stage: "unresolved",
         operationId: receipt.operationId,
-        nextActor: record.unresolved.nextActor,
+        ...record.unresolved,
       };
     return {
       stage: kind.reflected(read, record.intent, receipt) ? "reflected" : "accepted",

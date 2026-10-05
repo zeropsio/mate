@@ -280,7 +280,11 @@ describe("makeOperations", () => {
   it("ends an observation that ran out as unresolved, naming who acts next, never as failed", () => {
     const store = account();
     store.dispatch({ kind: "operation-recorded", requestId: "request-1", intent: MOVE });
-    store.dispatch({ kind: "operation-exhausted", requestId: "request-1", nextActor: "HQ" });
+    store.dispatch({
+      kind: "operation-exhausted",
+      requestId: "request-1",
+      unobservable: { nextActor: "HQ" },
+    });
     expect(progress(store, "request-1")).toEqual({
       stage: "unresolved",
       operationId: null,

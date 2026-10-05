@@ -41,7 +41,10 @@ line to
 `OPERATION_KINDS`. Wire the owner's executor into `makeOperations({ executors })`: `submit`, and
 whichever of `lookup(requestId)` (HQ) and `lookupHandle(handle)` the owner answers. The executor
 lives in `operations/executors/`, the one place besides `adapters/` that may reach a remote; the
-kind itself runs inside projections and stays pure.
+kind itself runs inside projections and stays pure. Where a step's end can no longer be observed
+(a stop ran, then the link paused), `submit` — like a lookup — answers `{ unobservable: { nextActor,
+nextAction, handles } }`: the operation ends unresolved with that named next step ("Start the
+Mate"), and nothing further is sent blindly.
 
 **Mounting.** An app makes one store per account (`makeAccountStore`) and starts the active
 organization's navigation with `startZeropsNavigation`, over `makeZeropsWire` (today's receiver

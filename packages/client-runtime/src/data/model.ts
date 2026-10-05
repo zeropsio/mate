@@ -128,6 +128,15 @@ export interface OperationReceipt {
 }
 
 /**
+ * The owner can no longer observe an operation: who must act, and — where the owner names it — the
+ * next action ("Start the Mate"), never one the client would take blindly.
+ */
+export interface Unobservable {
+  readonly nextActor: string;
+  readonly nextAction?: string;
+}
+
+/**
  * An operation as this account knows it: the intent and request id recorded before sending, the
  * owner's receipt once it answers, and how its observation stands. Acceptance, reflection and
  * outcome are separate: reflection is read from the affected facts, the outcome only from the owner.
@@ -154,7 +163,7 @@ export interface OperationRecord {
   /** The owner's handles this account knows for it — given on resume, or from a receipt. */
   readonly handles: ReadonlyArray<string>;
   /** The owner can no longer observe it: who must act next, never an invented failure. */
-  readonly unresolved: { readonly nextActor: string } | null;
+  readonly unresolved: Unobservable | null;
 }
 
 /** A fact's key in the one facts map: its family and its domain id. */

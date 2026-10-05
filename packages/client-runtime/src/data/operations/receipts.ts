@@ -6,7 +6,7 @@
  *
  * @module data/operations/receipts
  */
-import type { OperationIntent, OperationReceipt, OperationRecord } from "../model.ts";
+import type { OperationIntent, OperationReceipt, OperationRecord, Unobservable } from "../model.ts";
 
 export type OperationInput =
   | {
@@ -31,7 +31,9 @@ export type OperationInput =
   | {
       readonly kind: "operation-exhausted";
       readonly requestId: string;
-      readonly nextActor: string;
+      readonly unobservable: Unobservable;
+      /** The owner's handles it reported with it (the stop it ran before it lost sight). */
+      readonly handles?: ReadonlyArray<string>;
     };
 
 /** Handles only accumulate: one the account knew is never forgotten by a later answer. */
@@ -81,7 +83,7 @@ export function reduceOperation(
     case "operation-exhausted":
       return settled(record.receipt)
         ? record
-        : { ...record, unresolved: { nextActor: input.nextActor } };
+        : { ...withHandles(record, input.handles ?? []), unresolved: input.unobservable };
   }
 }
 

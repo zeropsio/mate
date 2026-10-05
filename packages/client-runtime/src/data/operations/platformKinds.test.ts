@@ -272,7 +272,11 @@ describe("an operation Zerops executes", () => {
         executors: { zerops: owner.executor },
         makeId: ids(),
       }).submit(RESTART);
-      store.dispatch({ kind: "operation-exhausted", requestId, nextActor: "Zerops" });
+      store.dispatch({
+        kind: "operation-exhausted",
+        requestId,
+        unobservable: { nextActor: "Zerops" },
+      });
       expect(progress(store, requestId)).toEqual({
         stage: "unresolved",
         operationId: "proc-1",
@@ -307,6 +311,43 @@ describe("an operation Zerops executes", () => {
         operationId: null,
         nextActor: "Zerops support",
       });
+    }),
+  );
+
+  it.effect("ends unresolved with a named next action when its own send says so", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const sent: string[] = [];
+      const executor: OperationExecutor = {
+        // The stop ran; its end can no longer be observed, so the start is never sent blindly.
+        submit: (requestId) =>
+          Effect.sync(() => {
+            sent.push(requestId);
+            return {
+              unobservable: {
+                nextActor: "you",
+                nextAction: "Start the Mate",
+                handles: ["stop-1"],
+              },
+            };
+          }),
+      };
+      const operations = makeOperations({
+        store,
+        kinds,
+        executors: { zerops: executor },
+        makeId: ids(),
+      });
+      const requestId = yield* operations.submit(RESTART);
+      expect(progress(store, requestId)).toEqual({
+        stage: "unresolved",
+        operationId: null,
+        nextActor: "you",
+        nextAction: "Start the Mate",
+      });
+      expect(store.state().operations.get(requestId)?.handles).toEqual(["stop-1"]);
+      yield* operations.retry(requestId);
+      expect(sent).toEqual([requestId]);
     }),
   );
 });

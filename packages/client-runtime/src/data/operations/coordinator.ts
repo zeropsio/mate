@@ -8,20 +8,23 @@
  */
 import * as Effect from "effect/Effect";
 
-import type { Authority, OperationIntent, OperationReceipt } from "../model.ts";
+import type { Authority, OperationIntent, OperationReceipt, Unobservable } from "../model.ts";
 import { readsOfState, type AccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { OPERATION_KINDS, operationKind } from "./kinds.ts";
 
 /**
- * What an owner answers when asked: its receipt; `null` for none; or that it can no longer observe
- * the operation, and who must act — the one way an operation becomes unresolved.
+ * The owner can no longer observe the operation — who must act, the named next action, the handles
+ * it got as far as — the one way an operation becomes unresolved. A lookup may answer it, and so
+ * may `submit` itself (a stop ran, its end is out of sight: the start is never sent blindly).
  */
-export type OwnerAnswer =
-  | OperationReceipt
-  | null
-  | { readonly unobservable: { readonly nextActor: string } };
+export interface OwnerUnobservable {
+  readonly unobservable: Unobservable & { readonly handles?: ReadonlyArray<string> };
+}
+
+/** What an owner answers when asked: its receipt; `null` for none; or that it cannot observe it. */
+export type OwnerAnswer = OperationReceipt | null | OwnerUnobservable;
 
 /** The owner's answer was lost on the way: it may or may not have taken the request. */
 export interface UncertainAcceptance {
@@ -38,7 +41,7 @@ export interface OperationExecutor {
   readonly submit: (
     requestId: string,
     intent: OperationIntent,
-  ) => Effect.Effect<OperationReceipt, StreamFault | UncertainAcceptance>;
+  ) => Effect.Effect<OperationReceipt | OwnerUnobservable, StreamFault | UncertainAcceptance>;
   /** The receipt the owner holds for this request id; `null` when it never took it. */
   readonly lookup?: (requestId: string) => Effect.Effect<OwnerAnswer, StreamFault>;
   /** The receipt behind an external handle; `null` when the owner holds none for it. */
@@ -84,8 +87,7 @@ export function makeOperations(options: {
 
   const send = (requestId: string, intent: OperationIntent, resend: boolean): Effect.Effect<void> =>
     Effect.matchEffect(executorOf(intent).executor.submit(requestId, intent), {
-      onSuccess: (receipt) =>
-        Effect.sync(() => store.dispatch({ kind: "operation-receipt", receipt })),
+      onSuccess: (answer) => admit(answer, requestId),
       onFailure: (fault) => {
         if (fault.outcome === "uncertain-acceptance") {
           store.dispatch({ kind: "operation-uncertain", requestId });
@@ -136,7 +138,19 @@ export function makeOperations(options: {
         answer === null
           ? { kind: "operation-lookup-failed", requestId }
           : "unobservable" in answer
-            ? { kind: "operation-exhausted", requestId, nextActor: answer.unobservable.nextActor }
+            ? {
+                kind: "operation-exhausted",
+                requestId,
+                unobservable: {
+                  nextActor: answer.unobservable.nextActor,
+                  ...(answer.unobservable.nextAction === undefined
+                    ? {}
+                    : { nextAction: answer.unobservable.nextAction }),
+                },
+                ...(answer.unobservable.handles === undefined
+                  ? {}
+                  : { handles: answer.unobservable.handles }),
+              }
             : { kind: "operation-receipt", receipt: { ...answer, requestId } },
       ),
     );
