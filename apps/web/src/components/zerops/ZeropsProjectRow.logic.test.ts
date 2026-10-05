@@ -717,6 +717,23 @@ describe("deriveZeropsRestartAction", () => {
     });
     expect(action.kind).toBe(kind);
   });
+
+  // A container still on its first build is the platform's to bring up: a restart would race it.
+  it.each([
+    ["ACTIVE", "restart"],
+    ["READY_TO_DEPLOY", "none"],
+    ["CREATING", "none"],
+    ["NEW", "none"],
+    ["RESTARTING", "none"],
+    ["STOPPED", "none"],
+  ] as const)("a container Zerops reports %s → %s", (serviceStatus, kind) => {
+    const action = deriveZeropsRestartAction({
+      candidate: { ...READY, service: { ...READY.service!, status: serviceStatus } },
+      health: "ready",
+      can: ALL,
+    });
+    expect(action.kind).toBe(kind);
+  });
 });
 
 describe("a Mate the person may see and not open (D5)", () => {

@@ -524,15 +524,18 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
 
 /**
  * The menu's Restart, offered whenever the Mate's container can be bounced:
- * the project is up and the container is known. Not a row verb — a running
- * Mate's primary action is to open or connect, and a restart is a quiet
- * recovery for the menu.
+ * the project is up and Zerops reports its container ACTIVE. One still on its
+ * first build, or already restarting, is the platform's to bring up — a restart
+ * would race it. Not a row verb — a running Mate's primary action is to open or
+ * connect, and a restart is a quiet recovery for the menu.
  */
 export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, can } = input;
   if (isZeropsToolCandidate(candidate)) return { kind: "none" };
   if (input.visibility === "listed") return { kind: "none" };
-  return can.restart && candidate.project.status === "ACTIVE" && candidate.service?.id !== undefined
+  return can.restart &&
+    candidate.project.status === "ACTIVE" &&
+    candidate.service?.status === "ACTIVE"
     ? { kind: "restart", label: "Restart" }
     : { kind: "none" };
 }

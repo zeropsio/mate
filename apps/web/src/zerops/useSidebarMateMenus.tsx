@@ -43,6 +43,7 @@ import { useUiStateStore } from "~/uiStateStore";
 import { useMateCommand } from "./accountEnvironments";
 import type { ZeropsAgentActivity } from "./agentActivity";
 import { useMateActions } from "./useMateActions";
+import { useDrawnMates } from "./useMatesInventory";
 import { useMutedMates } from "./mutedMates";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { useZeropsRegistry } from "./useZeropsRegistry";
@@ -121,6 +122,8 @@ export function useSidebarMateMenus(input: {
   const { serverVersions } = useZeropsContainers();
   const registry = useZeropsRegistry();
   const mateActions = useMateActions({ registry, serverVersions });
+  // Each Mate's container is read while its row is drawn: what its menu's Restart stands on.
+  const drawnOf = useDrawnMates();
   const { muted, toggle } = useMutedMates();
   const markThreadUnread = useUiStateStore((store) => store.markThreadUnread);
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
@@ -217,11 +220,13 @@ export function useSidebarMateMenus(input: {
                 });
               },
         entries: sidebarMateVerbs(mateActions.actionsFor(candidate, tags)),
+        drawn: drawnOf(candidate.project.id),
       };
     },
     [
       completedAt,
       copyToClipboard,
+      drawnOf,
       hq,
       interrupt,
       markThreadUnread,

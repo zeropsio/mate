@@ -15,12 +15,12 @@ import {
   type ScopeAuthority,
 } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
-import { act, createElement } from "react";
+import { act, createElement, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { Inventory } from "./inventoryContext";
-import { drawnMateProjects, useMatesInventory } from "./useMatesInventory";
+import { drawnMateProjects, useDrawnMates, useMatesInventory } from "./useMatesInventory";
 
 const organization = {
   kind: "organization" as const,
@@ -84,7 +84,19 @@ const inventoryOf = (authority: ReadonlyMap<string, ScopeAuthority> = new Map())
   }) as unknown as Inventory;
 
 function Probe({ candidates }: { readonly candidates: ReadonlyArray<ZeropsCandidate> }) {
-  useMatesInventory(candidates);
+  useMatesInventory(drawnMateProjects(candidates));
+  return null;
+}
+
+/** A surface whose rows say they are drawn, as the left menu's do. */
+const rows: { drawn: (projectId: string) => () => () => void } = {
+  drawn: () => () => () => {},
+};
+function RowsProbe() {
+  const drawn = useDrawnMates();
+  useLayoutEffect(() => {
+    rows.drawn = drawn;
+  });
   return null;
 }
 
@@ -135,5 +147,34 @@ describe("useMatesInventory", () => {
     );
     await render([ADA, CY]);
     expect(runtime.held).toEqual(["p-cy"]);
+  });
+});
+
+describe("useDrawnMates", () => {
+  it("reads a Mate's project while any row of it is drawn, and lets it go with the last", async () => {
+    await act(async () => {
+      tree = create(createElement(RowsProbe));
+    });
+    const drawnOnce = rows.drawn("p-ada");
+    expect(rows.drawn("p-ada")).toBe(drawnOnce);
+    let first: () => void = () => {};
+    let second: () => void = () => {};
+    await act(async () => {
+      first = drawnOnce();
+      second = rows.drawn("p-ada")();
+    });
+    expect(runtime.held).toEqual(["p-ada"]);
+
+    await act(async () => first());
+    expect(runtime.held).toEqual(["p-ada"]);
+    await act(async () => second());
+    expect(runtime.held).toEqual([]);
+  });
+
+  it("reads none while no row is drawn", async () => {
+    await act(async () => {
+      tree = create(createElement(RowsProbe));
+    });
+    expect(runtime.held).toEqual([]);
   });
 });
