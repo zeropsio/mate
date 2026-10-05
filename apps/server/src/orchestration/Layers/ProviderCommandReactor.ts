@@ -36,6 +36,8 @@ import { increment, orchestrationEventsProcessedTotal } from "../../observabilit
 import {
   ProviderAdapterProcessError,
   ProviderAdapterRequestError,
+  ProviderAdapterSessionClosedError,
+  ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
   ProviderWorkspaceMissingError,
 } from "../../provider/Errors.ts";
@@ -68,6 +70,12 @@ import { makeSendLanes } from "../../sendLanes.ts";
 import { classifyModelSelectionChange, selectionAtSend } from "../modelSelectionChange.ts";
 const isProviderAdapterProcessError = Schema.is(ProviderAdapterProcessError);
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
+const isProviderAdapterSessionClosedError = Schema.is(ProviderAdapterSessionClosedError);
+const isProviderAdapterSessionNotFoundError = Schema.is(ProviderAdapterSessionNotFoundError);
+const isSessionGoneError = (
+  error: ProviderServiceError,
+): error is ProviderAdapterSessionClosedError | ProviderAdapterSessionNotFoundError =>
+  isProviderAdapterSessionClosedError(error) || isProviderAdapterSessionNotFoundError(error);
 const isProviderAdapterValidationError = Schema.is(ProviderAdapterValidationError);
 const isProviderWorkspaceMissingError = Schema.is(ProviderWorkspaceMissingError);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
@@ -591,10 +599,17 @@ const make = Effect.gen(function* () {
 
     const desiredRuntimeMode = thread.runtimeMode;
     const requestedModelSelection = options?.modelSelection;
+    // A closed session is no session: the next send needs a new one.
     const resolveActiveSession = (threadId: ThreadId) =>
       providerService
         .listSessions()
-        .pipe(Effect.map((sessions) => sessions.find((session) => session.threadId === threadId)));
+        .pipe(
+          Effect.map((sessions) =>
+            sessions.find(
+              (session) => session.threadId === threadId && session.status !== "closed",
+            ),
+          ),
+        );
 
     const activeSession = yield* resolveActiveSession(threadId);
     const activeThreadSession =
@@ -1539,7 +1554,30 @@ const make = Effect.gen(function* () {
       }
 
       if (coordinator) yield* coordinator.markDispatched(thread.id, event.payload.messageId);
-      yield* providerService.sendTurn(sendTurnRequest.value).pipe(
+      const request = sendTurnRequest.value;
+      // A send that met a closed or missing session before the agent got it
+      // sets the session up again (resuming from the stored cursor) and goes
+      // once more: the person's message just goes through.
+      const resendOnNewSession = (error: ProviderServiceError) =>
+        Effect.gen(function* () {
+          const instanceId =
+            request.modelSelection?.instanceId ??
+            (threadNow ?? thread).session?.providerInstanceId ??
+            (threadNow ?? thread).modelSelection.instanceId;
+          const capabilities = yield* providerService.getCapabilities(instanceId);
+          if (capabilities.closedSendUndelivered !== true) return yield* Effect.fail(error);
+          yield* Effect.logWarning("provider session was gone at send; resending on a new one", {
+            threadId: thread.id,
+            reason: error._tag,
+          });
+          yield* ensureSessionForThread(thread.id, event.payload.createdAt, {
+            ...(modelSelection !== undefined ? { modelSelection } : {}),
+            pendingTurnStart: true,
+          });
+          return yield* providerService.sendTurn(request);
+        });
+      yield* providerService.sendTurn(request).pipe(
+        Effect.catchIf(isSessionGoneError, resendOnNewSession),
         Effect.asVoid,
         Effect.catchCause((cause) =>
           recoverTurnStartFailure(cause).pipe(

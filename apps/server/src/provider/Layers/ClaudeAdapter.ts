@@ -6017,6 +6017,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     capabilities: {
       sessionModelSwitch: "in-session",
       inSessionModelOptions: ["effort"],
+      closedSendUndelivered: true,
       threadProfile: { tools: true, reportsSpend: true },
     },
     compaction: { type: "slash-command", command: "/compact" },

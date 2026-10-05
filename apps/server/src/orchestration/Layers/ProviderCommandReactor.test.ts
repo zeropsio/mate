@@ -41,6 +41,8 @@ import { deriveServerPaths, ServerConfig } from "../../config.ts";
 import { TextGenerationError } from "@t3tools/contracts";
 import {
   ProviderAdapterRequestError,
+  ProviderAdapterSessionClosedError,
+  ProviderAdapterSessionNotFoundError,
   ProviderWorkspaceMissingError,
   type ProviderServiceError,
 } from "../../provider/Errors.ts";
@@ -163,6 +165,9 @@ describe("ProviderCommandReactor", () => {
     readonly threadModelSelection?: ModelSelection;
     readonly sessionModelSwitch?: "unsupported" | "in-session";
     readonly inSessionModelOptions?: ReadonlyArray<string>;
+    readonly closedSendUndelivered?: boolean;
+    /** A send's failure, by its 1-based call number; none succeeds. */
+    readonly sendTurnFailure?: (call: number) => ProviderServiceError | undefined;
     readonly requiresNewThreadForModelChange?: boolean;
     readonly unreadableHistory?: boolean;
     readonly titleRegenerationCompletionDispatchFailures?: number;
@@ -259,11 +264,18 @@ describe("ProviderCommandReactor", () => {
         ),
       );
     });
+    let sendTurnCalls = 0;
     const sendTurn = vi.fn((_: unknown) =>
-      Effect.succeed({
-        threadId: ThreadId.make("thread-1"),
-        turnId: asTurnId("turn-1"),
-      }).pipe(Effect.tap(() => input?.onSendTurn ?? Effect.void)),
+      Effect.suspend(() => {
+        const failure = input?.sendTurnFailure?.(++sendTurnCalls);
+        return failure === undefined ? Effect.void : Effect.fail(failure);
+      }).pipe(
+        Effect.as({
+          threadId: ThreadId.make("thread-1"),
+          turnId: asTurnId("turn-1"),
+        }),
+        Effect.tap(() => input?.onSendTurn ?? Effect.void),
+      ),
     );
     const compactThread = vi.fn((_: ThreadId) => input?.compactThreadEffect?.() ?? Effect.void);
     const interruptTurn = vi.fn((_: unknown) => input?.interruptTurnEffect?.() ?? Effect.void);
@@ -362,6 +374,9 @@ describe("ProviderCommandReactor", () => {
           sessionModelSwitch: input?.sessionModelSwitch ?? "in-session",
           ...(input?.inSessionModelOptions !== undefined
             ? { inSessionModelOptions: input.inSessionModelOptions }
+            : {}),
+          ...(input?.closedSendUndelivered !== undefined
+            ? { closedSendUndelivered: input.closedSendUndelivered }
             : {}),
         }),
       assertConversationRollbackSupported: () => unsupported(),
@@ -716,6 +731,60 @@ describe("ProviderCommandReactor", () => {
 
       expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({ modelSelection: max });
     }),
+  );
+
+  effectIt.effect.each([
+    { name: "closed", closedSendUndelivered: true, resent: true },
+    { name: "missing", closedSendUndelivered: true, resent: true },
+    { name: "closed", closedSendUndelivered: false, resent: false },
+  ])(
+    "a send meeting a $name session is resent on a new one: $resent",
+    ({ name, closedSendUndelivered, resent }) =>
+      Effect.gen(function* () {
+        const threadId = ThreadId.make("thread-1");
+        const harness = yield* Effect.promise(() =>
+          createHarness({
+            closedSendUndelivered,
+            sendTurnFailure: (call) => {
+              if (call !== 2) return undefined;
+              // The session went away under the send.
+              harness.runtimeSessions.splice(0);
+              return name === "closed"
+                ? new ProviderAdapterSessionClosedError({ provider: "codex", threadId })
+                : new ProviderAdapterSessionNotFoundError({ provider: "codex", threadId });
+            },
+          }),
+        );
+        const start = (suffix: string) =>
+          harness.engine.dispatch({
+            type: "thread.turn.start",
+            commandId: CommandId.make(`cmd-resend-${suffix}`),
+            threadId,
+            message: {
+              messageId: asMessageId(`message-resend-${suffix}`),
+              role: "user",
+              text: `message ${suffix}`,
+              attachments: [],
+            },
+            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+            runtimeMode: "approval-required",
+            createdAt: "2026-01-01T00:00:00.000Z",
+          });
+
+        yield* start("a");
+        yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
+        yield* start("b");
+        yield* Effect.promise(() =>
+          waitFor(() => harness.sendTurn.mock.calls.length === (resent ? 3 : 2)),
+        );
+        yield* Effect.promise(harness.drain);
+
+        const failures = (yield* Effect.promise(harness.readModel)).threads
+          .find((thread) => thread.id === threadId)
+          ?.activities.filter((activity) => activity.kind === "provider.turn.start.failed");
+        expect(harness.startSession).toHaveBeenCalledTimes(resent ? 2 : 1);
+        expect(failures).toHaveLength(resent ? 0 : 1);
+      }),
   );
 
   effectIt.effect("prepares a message as a steer while the agent's own session runs a turn", () =>

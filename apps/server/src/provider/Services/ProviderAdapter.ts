@@ -56,6 +56,12 @@ export interface ProviderAdapterCapabilities {
    * none.
    */
   readonly inSessionModelOptions?: ReadonlyArray<string>;
+  /**
+   * True when a send failing with a closed or missing session never reached
+   * the agent (the adapter queues the prompt as its send's last step), so the
+   * send may be made again on a new session. Omitted: false.
+   */
+  readonly closedSendUndelivered?: boolean;
   /** Starts a resumed turn with no synthetic user prompt. Omitted means the
       adapter needs an explicit continuation instruction. */
   readonly promptlessTurnContinuation?: boolean;
