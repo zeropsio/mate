@@ -378,8 +378,9 @@ describe("RunChat", () => {
     expect(script).toMatch(
       /<span class="font-mono text-foreground">cat &gt; status.ts &lt;&lt;&#x27;EOF&#x27;<\/span>/u,
     );
-    expect(script).toContain(">Show all 16 lines<");
-    expect(script).not.toContain("line 13");
+    // Its lines stand in its item's box, the rest a scroll away: no control.
+    expect(script).toContain('data-capped="item"');
+    expect(script).not.toContain("Show all");
   });
 
   // Failures belong to the work, and red always means still broken (K9): a
@@ -425,7 +426,7 @@ describe("RunChat", () => {
       ]),
     );
     expect(markup).toMatch(
-      /data-chat-bubble="speech" data-chat-kind="question"><p[^>]*>Should \/status be public\?</u,
+      /data-chat-bubble="speech" data-chat-kind="question"><div[^>]*data-capped="item"[^>]*><div><p[^>]*>Should \/status be public\?</u,
     );
     // Its answer stands nowhere else: whole, never cut to a line.
     expect(markup).toMatch(/<p class="[^"]*whitespace-pre-wrap[^"]*" data-chat-kind="person">/u);
@@ -551,31 +552,23 @@ describe("RunChat", () => {
     expect(markup).not.toContain("text-status-busy-text");
   });
 
-  // A thought is the quietest thing in the card: two lines of it, and where
-  // it runs on, the thought itself is the way to the rest (D4) — never a
-  // scroll inside the card.
-  // One cap, live and in the history (pass 35): four lines, read from the
-  // head, "Show full thought" past them.
-  it("says Show full thought on a thought past its four lines, and nothing on a short one", () => {
-    const long = draw(record([thought("r1", LONG_THOUGHT)]));
-    expect(long).toContain(">Show full thought<");
-    expect(long).toMatch(/<button aria-expanded="false" aria-label="[^"]*Show full thought"/u);
-    const short = draw(record([thought("r1", "The route and the check disagree.")]));
-    expect(short).toContain("The route and the check disagree.");
-    expect(short).not.toContain("Show full thought");
-  });
-
-  it("folds what the chat opens onto past the limits, and leaves the rest whole", () => {
+  // One box for every item (run 11): a thought, a note, a command's code —
+  // at most four of the card's lines, the rest scrolling inside it, live and
+  // in the history alike. No toggle, and a thought keeps its one size.
+  it("stands every item in its box, with nothing to open", () => {
     const markup = draw(
       record([
         thought("r1", LONG_THOUGHT),
         thought("r2", "Short."),
         { kind: "note", key: "note:a1", at: at(10), message: message("a1", "assistant", LONG) },
+        step(command("w1", SCRIPT, { callInput: { description: "Write the status route" } })),
       ]),
     );
-    expect(markup.match(/data-chat-folded="true"/g)).toHaveLength(2);
-    expect(markup.match(/Show full thought"/g)).toHaveLength(1);
-    expect(markup.match(/>Show full message</g)).toHaveLength(1);
+    expect(markup.match(/data-capped="item"/g)).toHaveLength(4);
+    expect(markup).not.toContain("Show full");
+    expect(markup).not.toContain("Show all");
+    expect(markup).not.toContain("Show less");
+    expect(markup).toContain("Short.");
   });
 
   // A script arrives whole, so it is never "being written": four of its
@@ -605,56 +598,34 @@ describe("RunChat", () => {
     }
   });
 
-  it("folds a command past its fourth line from its first frame, saying how many there are", () => {
-    const done = draw(
-      record([
-        step(command("w1", SCRIPT, { callInput: { description: "Write the status route" } })),
-      ]),
-    );
-    expect(done).toContain('data-chat-folded="true"');
-    expect(done).toContain(">Show all 16 lines<");
-    const running = draw(
-      record([], {
-        live: true,
-        status: status(),
-        now: {
-          kind: "step",
-          step: stepOf(
-            command("w9", SCRIPT, {
-              callInput: { description: "Write the status route" },
-              toolLifecycleStatus: "inProgress",
-              sourceActivityKind: "tool.started",
-            }),
-            undefined,
-            false,
-          ),
-        },
-      }),
-    );
+  it("stands a running command's code in its box in the slot, as it lands", () => {
+    const running = (described: boolean) =>
+      draw(
+        record([], {
+          live: true,
+          status: status(),
+          now: {
+            kind: "step",
+            step: stepOf(
+              command("w9", SCRIPT, {
+                ...(described ? { callInput: { description: "Write the status route" } } : {}),
+                toolLifecycleStatus: "inProgress",
+                sourceActivityKind: "tool.started",
+              }),
+              undefined,
+              false,
+            ),
+          },
+        }),
+      );
     // Running, the command stands in the live slot as the row it becomes:
-    // its words sweeping, its code folded at the history's cap, and the way
-    // to the rest under it, so it lands as it stood.
-    expect(bubbles(running).map(({ kind }) => kind)).toEqual(["step:command"]);
-    expect(running).toContain('data-chat-folded="true"');
-    expect(running).toContain(">Show all 16 lines<");
-    // A command that says nothing of itself stands open to its cap in the slot.
-    const bare = draw(
-      record([], {
-        live: true,
-        status: status(),
-        now: {
-          kind: "step",
-          step: stepOf(
-            command("w8", SCRIPT, {
-              toolLifecycleStatus: "inProgress",
-              sourceActivityKind: "tool.started",
-            }),
-          ),
-        },
-      }),
-    );
-    expect(bare).toContain('data-chat-folded="true"');
-    expect(bare).toContain(">Show all 16 lines<");
+    // its code in its box, said or bare.
+    for (const described of [true, false]) {
+      const markup = running(described);
+      expect(bubbles(markup).map(({ kind }) => kind)).toEqual(["step:command"]);
+      expect(markup).toContain('data-capped="item"');
+      expect(markup).not.toContain("Show all");
+    }
   });
 
   // The call running now is the card's "this, now": a light sweeps across
@@ -955,6 +926,17 @@ describe("RunChat, as the person uses it", () => {
       callback(0);
       return 0;
     }) as typeof requestAnimationFrame;
+    // A thought's words are markdown, whose code blocks keep a wrap choice in
+    // the page's storage: a window to subscribe on, where none is.
+    if (typeof globalThis.window === "undefined") {
+      vi.stubGlobal("window", { addEventListener: () => {}, removeEventListener: () => {} });
+      vi.stubGlobal("localStorage", {
+        getItem: () => null,
+        setItem: () => {},
+        removeItem: () => {},
+        clear: () => {},
+      });
+    }
   });
   // Every card a test drew is taken down with it: a card left drawn keeps its
   // now line's dwell, its words' fade and its clock running past the test,
@@ -971,7 +953,18 @@ describe("RunChat, as the person uses it", () => {
     });
     globalThis.ResizeObserver = saved.resize;
     globalThis.requestAnimationFrame = saved.frame;
+    vi.unstubAllGlobals();
   });
+
+  /** An item's own box (`data-capped`): a scroll of its own, never the run's. */
+  const itemBox = () => ({
+    scrollTop: 0,
+    scrollHeight: 0,
+    clientHeight: 0,
+    toggleAttribute: () => undefined,
+  });
+  const isItemBox = (element: { props: unknown }) =>
+    (element.props as Record<string, unknown> | null)?.["data-capped"] !== undefined;
 
   const mount = (row: RecordRow) => {
     let renderer!: ReactTestRenderer;
@@ -995,8 +988,8 @@ describe("RunChat, as the person uses it", () => {
     );
 
   // The Claude adapter starts a call before its input streams in: a bare
-  // command stands open to its cap once its code arrives, and lands so (E3).
-  it("opens a bare command in the slot once its code streams in, and lands it so", () => {
+  // command's code stands in its box once it arrives, and lands so (E3).
+  it("stands a bare command's code in its box once it streams in, and lands it so", () => {
     vi.useFakeTimers();
     try {
       const running = (text: string | undefined) =>
@@ -1024,9 +1017,9 @@ describe("RunChat, as the person uses it", () => {
           </Rows>,
         ),
       );
-      expect(shown()).toContain('"data-chat-folded":"true"');
-      expect(shown()).toContain("Show all 16 lines");
-      // It returned: it lands in the history as it stood, open to its cap.
+      expect(shown()).toContain('"data-capped":"item"');
+      expect(shown()).not.toContain("Show all");
+      // It returned: it lands in the history as it stood, in its box.
       act(() =>
         renderer.update(
           <Rows>
@@ -1037,8 +1030,8 @@ describe("RunChat, as the person uses it", () => {
         ),
       );
       act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + 100));
-      expect(shown()).toContain('"data-chat-folded":"true"');
-      expect(shown()).toContain("Show all 16 lines");
+      expect(shown()).toContain('"data-capped":"item"');
+      expect(shown()).not.toContain("Show all");
     } finally {
       vi.useRealTimers();
     }
@@ -1463,9 +1456,9 @@ describe("RunChat, as the person uses it", () => {
     expect(details()).toHaveLength(0);
   });
 
-  // D4: what a call printed never scrolls inside the card — past twelve lines
-  // it folds, and "Show all N lines" opens every line of it in place.
-  it("folds a long output past its twelfth line, every line of it a click away", () => {
+  // What a call printed opens in a box of twelve lines, every line of it a
+  // scroll away inside it (run 11: one box for every item, no toggles).
+  it("opens a long output in its box, every line of it there", () => {
     const printed = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n");
     const renderer = mount(
       record([
@@ -1473,13 +1466,9 @@ describe("RunChat, as the person uses it", () => {
       ]),
     );
     act(() => button(renderer, "Test").props.onClick());
-    const more = button(renderer, "Show all 30 lines");
-    expect(more.props["aria-expanded"]).toBe(false);
-    act(() => more.props.onClick());
-    expect(button(renderer, "Show less").props["aria-expanded"]).toBe(true);
-    const pre = renderer.root.find((node) => node.type === "pre");
-    expect(pre.props["data-chat-folded"]).toBe("false");
-    expect(JSON.stringify(renderer.toJSON())).toContain("line 30");
+    const box = renderer.root.find((node) => node.props["data-capped"] === "detail");
+    expect(JSON.stringify(box.findByType("pre").children)).toContain("line 30");
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("Show all");
   });
 
   // A run the person comes back to opens closed (D3): its summary line alone
@@ -1707,76 +1696,6 @@ describe("RunChat, as the person uses it", () => {
     });
   });
 
-  // A control that goes once pressed hands the focus on: the thought's way to
-  // the rest to its "Show less" and back, the last "Show N earlier" to the
-  // lines it drew — never to the page's body.
-  // The focus moves without scrolling: a scroll it made would read as the
-  // person's move, and a toggle on the card's foot would follow again.
-  it("keeps the focus on the thought's toggle as it opens and closes, scrolling nothing", () => {
-    // The opened thought is markdown, which reads the page's own storage.
-    const savedWindow = (globalThis as { window?: unknown }).window;
-    (globalThis as { window?: unknown }).window = {
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-      localStorage: { getItem: () => null, setItem: () => undefined },
-      matchMedia: () => ({
-        matches: false,
-        addEventListener: () => undefined,
-        removeEventListener: () => undefined,
-      }),
-    };
-    try {
-      const focused: string[] = [];
-      let renderer!: ReactTestRenderer;
-      act(() => {
-        renderer = mounted(
-          <Rows>
-            <RunChat row={record([thought("r1", LONG)])} />
-          </Rows>,
-          {
-            createNodeMock: (element) =>
-              element.type === "button"
-                ? {
-                    focus: (options?: FocusOptions) =>
-                      focused.push(
-                        `${String(
-                          (element.props as { "aria-label"?: string })["aria-label"] ?? "Show less",
-                        )}${options?.preventScroll === true ? "" : " (scrolled)"}`,
-                      ),
-                    closest: () => null,
-                    isConnected: true,
-                    parentElement: null,
-                    ownerDocument: { scrollingElement: null },
-                    getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
-                  }
-                : {
-                    scrollHeight: 100,
-                    clientHeight: 40,
-                    scrollTop: 0,
-                    toggleAttribute: () => undefined,
-                  },
-          },
-        );
-      });
-      act(() => button(renderer, "Line 1").props.onClick());
-      expect(focused).toEqual(["Show less"]);
-      act(() =>
-        button(renderer, "Show less").props.onClick({
-          currentTarget: {
-            closest: () => null,
-            isConnected: true,
-            parentElement: null,
-            ownerDocument: { scrollingElement: null },
-            getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
-          },
-        }),
-      );
-      expect(focused.at(-1)).toMatch(/Show full thought$/u);
-    } finally {
-      (globalThis as { window?: unknown }).window = savedWindow;
-    }
-  });
-
   // An entry that ended with no line of its own in the record yet — a call
   // the record folds or files elsewhere — stands its minimum as it last
   // showed, never a gap that blocks what comes next (pass 35).
@@ -1814,20 +1733,52 @@ describe("RunChat, as the person uses it", () => {
     }
   });
 
-  // What the person opened in the slot lands opened (pass 35): the row's
-  // plop moves it and never resizes it.
-  it("lands a row the person opened in the slot opened", () => {
+  // A box lands as it stood in the slot (run 11): code that streamed in, its
+  // newest lines in view, lands with them in view — its plop moves it, never
+  // its words.
+  it("lands a box that followed its end in the slot at its end", () => {
     vi.useFakeTimers();
     try {
+      const boxes: Array<{ scrollTop: number; scrollHeight: number; clientHeight: number }> = [];
+      const node = (element: { type: unknown; props: unknown }) => {
+        if (element.type !== "div" || !isItemBox(element)) {
+          return {
+            scrollTop: 0,
+            scrollHeight: 0,
+            clientHeight: 0,
+            toggleAttribute: () => undefined,
+          };
+        }
+        const box = {
+          scrollTop: 0,
+          scrollHeight: 200,
+          clientHeight: 80,
+          toggleAttribute: () => undefined,
+        };
+        boxes.push(box);
+        return box;
+      };
       const live = command("w9", SCRIPT, {
         callInput: { description: "Write the status route" },
         toolLifecycleStatus: "inProgress",
         sourceActivityKind: "tool.started",
       });
-      const renderer = mount(
-        record([], { live: true, status: status(), now: { kind: "step", step: stepOf(live) } }),
-      );
-      act(() => button(renderer, "Show all 16 lines").props.onClick({ currentTarget: null }));
+      let renderer!: ReactTestRenderer;
+      act(() => {
+        renderer = mounted(
+          <Rows>
+            <RunChat
+              row={record([], {
+                live: true,
+                status: status(),
+                now: { kind: "step", step: stepOf(live) },
+              })}
+            />
+          </Rows>,
+          { createNodeMock: node },
+        );
+      });
+      expect(boxes.map((box) => box.scrollTop)).toEqual([120]);
       const landed = step(
         command("w9", SCRIPT, { callInput: { description: "Write the status route" } }),
       );
@@ -1839,10 +1790,8 @@ describe("RunChat, as the person uses it", () => {
         ),
       );
       act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + 100));
-      const folds = renderer.root.findAll(
-        (node) => node.type === "div" && node.props["data-chat-folded"] !== undefined,
-      );
-      expect(folds.map((node) => node.props["data-chat-folded"])).toEqual(["false"]);
+      // The history's box mounted at its end, as the slot's stood.
+      expect(boxes.at(-1)?.scrollTop).toBe(120);
     } finally {
       vi.useRealTimers();
     }
@@ -1875,8 +1824,14 @@ describe("RunChat, as the person uses it", () => {
         clientHeight: 60,
         toggleAttribute: () => undefined,
       };
-      const node = (element: { type: unknown }) =>
-        element.type === "ol" ? list : element.type === "div" ? box : {};
+      const node = (element: { type: unknown; props: unknown }) =>
+        element.type === "ol"
+          ? list
+          : element.type === "div"
+            ? isItemBox(element)
+              ? itemBox()
+              : box
+            : {};
       let renderer!: ReactTestRenderer;
       act(() => {
         renderer = mounted(
@@ -1958,8 +1913,14 @@ describe("RunChat, as the person uses it", () => {
         },
         toggleAttribute: () => undefined,
       };
-      const node = (element: { type: unknown }) =>
-        element.type === "ol" ? list : element.type === "div" ? box : null;
+      const node = (element: { type: unknown; props: unknown }) =>
+        element.type === "ol"
+          ? list
+          : element.type === "div"
+            ? isItemBox(element)
+              ? itemBox()
+              : box
+            : null;
       let renderer!: ReactTestRenderer;
       act(() => {
         renderer = mounted(
@@ -2112,8 +2073,19 @@ describe("RunChat, as the person uses it", () => {
     // A card below its cap cannot scroll: it stands at its foot whatever
     // happens, and only the person's move down onto it follows again.
     it("keeps a call opened in a card below its cap in view as it grows and settles", () => {
-      const run = liveScroll({ height: 300, cap: 560, code: SCRIPT });
-      run.press("Show all 16 lines");
+      const run = liveScroll({
+        height: 300,
+        cap: 560,
+        items: [
+          step(
+            command("w1", "npm test", {
+              callInput: { description: "Run the tests" },
+              detail: "ok",
+            }),
+          ),
+        ],
+      });
+      run.press("Run the tests");
       // What it opened grows the card, still below its cap.
       run.grow(120);
       expect(run.box.scrollHeight).toBe(run.box.clientHeight);
@@ -2172,12 +2144,21 @@ describe("RunChat, as the person uses it", () => {
 
     // What they stopped it for is done: it follows again, and catches up.
     it("follows again once the person closes the call they opened", async () => {
-      const run = liveScroll({ code: SCRIPT });
+      const run = liveScroll({
+        items: [
+          step(
+            command("w1", "npm test", {
+              callInput: { description: "Run the tests" },
+              detail: "ok",
+            }),
+          ),
+        ],
+      });
       run.grow(400);
-      run.press("Show all 16 lines");
+      run.press("Run the tests");
       run.grow(200);
       expect(run.box.scrollTop).toBe(560);
-      run.press("Show less");
+      run.press("Run the tests");
       // It catches up once the press is done.
       await Promise.resolve();
       expect(run.fromFoot()).toBe(0);
@@ -2185,9 +2166,9 @@ describe("RunChat, as the person uses it", () => {
       expect(run.fromFoot()).toBe(0);
     });
 
-    // A bare command opens itself in the slot and lands so: hiding it closes
-    // nothing the person opened, and the call they did open holds the card.
-    it("stays where the person reads when a command that opened itself is hidden", async () => {
+    // A bare command lands from the slot in its box: the call the person
+    // opened holds the card all the same.
+    it("stays where the person reads as a command lands under the call they opened", async () => {
       vi.useFakeTimers();
       try {
         const call = step(
@@ -2208,7 +2189,6 @@ describe("RunChat, as the person uses it", () => {
         });
         run.show([call, step(command("w8", code))]);
         act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + 100));
-        run.press("Show less");
         await Promise.resolve();
         run.grow(65);
         expect(run.box.scrollTop).toBe(560);
@@ -2217,44 +2197,22 @@ describe("RunChat, as the person uses it", () => {
       }
     });
 
-    // Folding what they opened inside the call keeps the press under the
-    // pointer: the scroll that keeping makes is the page's, not their move up.
-    it("follows again once the person closes their call, though a fold inside it kept its place", async () => {
-      const printed = Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n");
+    it("stays where the person scrolled after opening a call, once they close it", () => {
       const run = liveScroll({
         items: [
           step(
             command("w1", "npm test", {
               callInput: { description: "Run the tests" },
-              detail: printed,
+              detail: "ok",
             }),
           ),
         ],
       });
       run.grow(400);
       run.press("Run the tests");
-      run.grow(300);
-      run.press("Show all 40 lines");
-      run.grow(400);
-      run.box.scrollHeight -= 400;
-      run.press("Show less", 400);
-      await Promise.resolve();
-      run.grow(0);
-      run.heard();
-      run.press("Run the tests");
-      await Promise.resolve();
-      expect(run.fromFoot()).toBe(0);
-      run.grow(65);
-      expect(run.fromFoot()).toBe(0);
-    });
-
-    it("stays where the person scrolled after opening a call, once they close it", () => {
-      const run = liveScroll({ code: SCRIPT });
-      run.grow(400);
-      run.press("Show all 16 lines");
       run.scrolled(300);
       run.grow(200);
-      run.press("Show less");
+      run.press("Run the tests");
       run.grow(65);
       expect(run.box.scrollTop).toBe(300);
     });
@@ -2323,11 +2281,21 @@ describe("RunChat, as the person uses it", () => {
         renderer = mounted(
           <Rows>
             <RunChat
-              row={record([step(command("h1", SCRIPT))], {
-                live: true,
-                status: status(),
-                now: { kind: "step", step: stepOf(running) },
-              })}
+              row={record(
+                [
+                  step(
+                    command("h1", SCRIPT, {
+                      callInput: { description: "Write the status route" },
+                      detail: "written",
+                    }),
+                  ),
+                ],
+                {
+                  live: true,
+                  status: status(),
+                  now: { kind: "step", step: stepOf(running) },
+                },
+              )}
             />
           </Rows>,
           { createNodeMock: node },
@@ -2342,11 +2310,22 @@ describe("RunChat, as the person uses it", () => {
             renderer.update(
               <Rows>
                 <RunChat
-                  row={record([step(command("h1", SCRIPT)), step(command("w2", "pnpm build"))], {
-                    live: true,
-                    status: status(),
-                    now: null,
-                  })}
+                  row={record(
+                    [
+                      step(
+                        command("h1", SCRIPT, {
+                          callInput: { description: "Write the status route" },
+                          detail: "written",
+                        }),
+                      ),
+                      step(command("w2", "pnpm build")),
+                    ],
+                    {
+                      live: true,
+                      status: status(),
+                      now: null,
+                    },
+                  )}
                 />
               </Rows>,
             ),
@@ -2361,7 +2340,7 @@ describe("RunChat, as the person uses it", () => {
       const run = landingRun();
       expect(run.box.scrollTop).toBe(160);
       // They open a call in it, at its foot.
-      act(() => button(run.renderer, "Show all 16 lines").props.onClick({ currentTarget: null }));
+      act(() => button(run.renderer, "Write the status route").props.onClick());
       run.land();
       expect(run.box.scrollTop).toBe(160);
     });
@@ -2423,8 +2402,14 @@ describe("RunChat, as the person uses it", () => {
           else marks.delete(name);
         },
       };
-      const node = (element: { type: unknown }) =>
-        element.type === "ol" ? list : element.type === "div" ? box : {};
+      const node = (element: { type: unknown; props: unknown }) =>
+        element.type === "ol"
+          ? list
+          : element.type === "div"
+            ? isItemBox(element)
+              ? itemBox()
+              : box
+            : {};
       act(() => {
         mounted(
           <Rows>
@@ -2478,32 +2463,5 @@ describe("RunChat, as the person uses it", () => {
       }),
     );
     expect(rows()).toHaveLength(50);
-  });
-
-  it("unfolds a folded script in place, and folds it back", () => {
-    const renderer = mount(
-      record([
-        step(command("w1", SCRIPT, { callInput: { description: "Write the status route" } })),
-      ]),
-    );
-    const folded = () =>
-      renderer.root.find(
-        (node) => node.type === "div" && node.props["data-chat-folded"] !== undefined,
-      ).props["data-chat-folded"];
-    expect(folded()).toBe("true");
-    // The button pressed, as the page has it: no scroll to keep it in.
-    const pressed = {
-      closest: () => null,
-      isConnected: true,
-      parentElement: null,
-      ownerDocument: { scrollingElement: null },
-      getBoundingClientRect: () => ({ top: 0, bottom: 0 }),
-    };
-    const press = (words: string) =>
-      act(() => button(renderer, words).props.onClick({ currentTarget: pressed }));
-    press("Show all 16 lines");
-    expect(folded()).toBe("false");
-    press("Show less");
-    expect(folded()).toBe("true");
   });
 });

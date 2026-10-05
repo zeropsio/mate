@@ -498,9 +498,10 @@ describe("RunChat — an operation's card, read from the account store", () => {
     return renderer;
   };
 
-  // Only an open the person made rises: a command's output that stood open
-  // in the slot lands as it stood (pass 36).
-  it("a bare command's output that stood open in the slot lands without rising", () => {
+  // Only an open the person made rises (pass 36): what a command printed
+  // opens on the person's press alone (run 11), so it lands from the slot
+  // closed, and their open rises.
+  it("a bare command lands from the slot with its output closed, and the person's open rises", () => {
     const entry = (running: boolean): WorkLogEntry => ({
       id: "c1",
       createdAt: at(2),
@@ -522,7 +523,7 @@ describe("RunChat — an operation's card, read from the account store", () => {
     });
     const renderer = mount(record([], { now: { kind: "step", step: stepOf(entry(true)) } }));
     plop(renderer, record([landed(true)]));
-    expect(nodes(renderer, "data-chat-detail").length).toBeGreaterThan(0);
+    expect(nodes(renderer, "data-chat-detail")).toHaveLength(0);
     expect(nodes(renderer, "data-chat-detail-rises")).toHaveLength(0);
 
     const fresh = mount(record([landed(false)], { live: false, status: null }));

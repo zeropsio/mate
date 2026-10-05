@@ -1669,7 +1669,7 @@ describe("MessagesTimeline — the conversation", () => {
     );
     const card = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
     expect(card).toMatch(
-      /data-chat-bubble="speech" data-chat-kind="question"><p[^>]*>Which accent do you prefer\?</u,
+      /data-chat-bubble="speech" data-chat-kind="question"><div[^>]*data-capped="item"[^>]*><div><p[^>]*>Which accent do you prefer\?</u,
     );
     expect(card).toMatch(/<p class="[^"]*bg-message[^"]*" data-chat-kind="person">Teal</u);
     expect(card.indexOf("Which accent do you prefer?")).toBeLessThan(card.indexOf(">Teal<"));

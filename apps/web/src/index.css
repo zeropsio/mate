@@ -4107,6 +4107,10 @@ code {
 :root {
   --run-tray: oklch(0.968 0.004 255.5);
   --run-tray-ring: color-mix(in oklab, var(--foreground) 7%, transparent);
+  /* Every item's one height (run 11): four of the card's 13 px lines. */
+  --run-item-cap: 5rem;
+  /* What the person opens under a call (what a command printed): twelve. */
+  --run-detail-cap: 15rem;
   @variant dark {
     --run-tray: oklch(0.19 0.007 180);
   }
@@ -4430,39 +4434,35 @@ code {
 
 /* A thought as it streams: its newest four lines, the history's cap, and a
    fade at its top once its words run past them. */
-.run-thought-live {
-  display: flex;
-  max-height: 4lh;
-  flex-direction: column;
-  justify-content: flex-end;
-  overflow: hidden;
+/* One item's box (run 11, the owner: thinking "grows to a max height, then
+   scrolls inside with a fade"; "running commands and everything should have
+   scrollable max-height … when it plops, it needs to have the same height"):
+   at most four of the card's lines, live and in the history alike, its words
+   scrolling inside it and a fade at an edge saying there is more past it. */
+.run-capped {
+  max-height: var(--run-item-cap);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-anchor: none;
+  scrollbar-width: none;
 }
-.run-thought-live[data-over] {
-  mask-image: linear-gradient(to bottom, transparent, currentColor 22px);
+.run-capped[data-capped="detail"] {
+  max-height: var(--run-detail-cap);
 }
-/* A thought past its four lines says so at its foot, over its last words. */
-.run-thought-more {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  padding-left: 30px;
-  background: linear-gradient(
-    to right,
+.run-capped[data-more-above] {
+  mask-image: linear-gradient(to bottom, transparent, currentColor 14px);
+}
+.run-capped[data-more-below] {
+  mask-image: linear-gradient(to top, transparent, currentColor 14px);
+}
+.run-capped[data-more-above][data-more-below] {
+  mask-image: linear-gradient(
+    to bottom,
     transparent,
-    color-mix(in oklab, var(--color-foreground) 3%, var(--run-tray)) 26px
+    currentColor 14px,
+    currentColor calc(100% - 14px),
+    transparent
   );
-  font-style: normal;
-  color: var(--color-muted-foreground);
-  /* At rest the clamp's ellipsis says there is more; the words show under
-     the pointer or the focus only (Bodhi: "Show full thought" 13 times in
-     one card). */
-  opacity: 0;
-  transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-[data-chat-disclose]:hover > .run-thought-more,
-[data-chat-disclose]:focus-visible > .run-thought-more {
-  opacity: 1;
-  color: var(--color-foreground);
 }
 
 /* The record while the run goes on: once it holds its height, the history
