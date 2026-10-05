@@ -64,6 +64,7 @@ function flow(): ZeropsProjectFlow {
     groupId: "xyz",
     declarations: [{ name: "prod", tier: "production", project: "p-prod", sources: ["release"] }],
     declarationsRead: true,
+    recipeRead: true,
     environments: [],
     environmentInputs: [],
     missing: [],

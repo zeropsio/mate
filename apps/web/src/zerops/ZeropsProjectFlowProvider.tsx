@@ -448,6 +448,7 @@ function projectFlow(
     environments: environmentInputs.map((entry) => stopRow(entry, releaseList)),
     environmentInputs,
     missing: stops?.missing ?? [],
+    recipeRead: recipe !== undefined,
     pullRequests: changes?.pullRequests ?? [],
     changesKnown: changes !== undefined,
     changesFailure: changes === undefined ? halves.changesFailure : undefined,

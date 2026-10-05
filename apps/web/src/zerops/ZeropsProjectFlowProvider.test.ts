@@ -131,6 +131,17 @@ describe("joinProjectFlows", () => {
     expect(flow?.environments.map(({ name }) => name)).toEqual(["harbor stage"]);
   });
 
+  it("knows whether the recipe is read, which says whether a missing tier is absent or unknown", () => {
+    const recipe = { tiers: ["stage"], repositories: new Map(), productionRepositories: new Map() };
+    expect(join({ stops: new Map([["g1", stopsOf()]]) }).get("g1")?.recipeRead).toBe(false);
+    expect(
+      join({
+        stops: new Map([["g1", stopsOf()]]),
+        recipes: new Map([["g1", recipe as unknown as AppRecipe]]),
+      }).get("g1")?.recipeRead,
+    ).toBe(true);
+  });
+
   it("knows a group's releases once HQ has answered them", () => {
     expect(join({ stops: new Map([["g1", stopsOf()]]) }).get("g1")?.releasesKnown).toBe(false);
     expect(join({ releases: new Map([["g1", []]]) }).get("g1")?.releasesKnown).toBe(true);

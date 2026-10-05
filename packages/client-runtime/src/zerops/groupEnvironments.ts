@@ -22,6 +22,9 @@ import type { ZeropsRegistry } from "./hq/registry.ts";
 import { readZeropsMembership } from "./groups.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import { environmentKeyed } from "./deployToken.ts";
+import { deploymentReadFailed, type Deployment } from "./flow/deployment.ts";
+import type { Shown } from "./knowledge/known.ts";
+import { changesCountWords } from "./projectAttention.ts";
 
 /** What a group environment is: a stage, or the one production. */
 export type GroupEnvironmentTier = "stage" | "production";
@@ -160,4 +163,144 @@ export function halfMadeGroupEnvironments(input: {
     out.push({ groupId: membership.groupId, projectId: project.id, tier });
   }
   return out;
+}
+
+/** A slot's line while the tier is absent and could be added. */
+export const ENVIRONMENT_NOT_ADDED = "Not added";
+/** A slot's line where the recipe on `main` does not hold the tier yet: the Mate composes it. */
+export const ENVIRONMENT_AWAITS_RECIPE = "Waiting for the Mate's recipe";
+
+/** What the production row says beside its state, and whether *Review release* stands with it. */
+export interface ProductionNote {
+  readonly text: string;
+  readonly review: boolean;
+}
+
+/**
+ * One row of an application's *Environments* section. An environment is keyed by an opaque `id`
+ * (today its Zerops project's), never assumed to be a Zerops project here, so a production that
+ * is delivered another way fits the same rows (MODEL §8).
+ */
+export type EnvironmentSlotRow =
+  | {
+      readonly kind: "environment";
+      readonly tier: GroupEnvironmentTier;
+      readonly id: string;
+      /** Production only: where its releases stand, when that is worth a line. */
+      readonly note: ProductionNote | undefined;
+    }
+  /** A Mate that is also the application's stage: the agent deploys there, HQ does not. */
+  | { readonly kind: "devstage"; readonly id: string; readonly line: string }
+  /** A tier nobody added: quiet, never a step, a dot or a count. */
+  | {
+      readonly kind: "slot";
+      readonly tier: GroupEnvironmentTier;
+      readonly name: string;
+      readonly line: string;
+      /** Whether *Add* stands on it: the recipe holds the tier and this person may add. */
+      readonly add: boolean;
+    };
+
+/** What production runs, as the section reads it. */
+export type ProductionRuns = "unknown" | "empty" | "deploying" | "running";
+
+/**
+ * The *Environments* section of an application, always drawn: its stages (and a Mate that serves as
+ * one), a slot for the stage when it has none, and production or its slot. Stage and production
+ * are peers (P3): either, both or neither may exist, and neither waits on the other.
+ */
+export function environmentSlots(input: {
+  readonly environments: ReadonlyArray<{
+    readonly id: string;
+    readonly tier: GroupEnvironmentTier;
+  }>;
+  /** Mates that are also the stage (`devstage`). */
+  readonly devstages: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  /** The tiers the recipe on `main` offers and the application lacks (`missingEnvironmentRows`). */
+  readonly missing: ReadonlyArray<GroupEnvironmentTier>;
+  /** Whether the recipe is read: until it is, no slot is offered or said to wait for it. */
+  readonly recipeRead: boolean;
+  /** Whether this person may add an environment (`mayAddEnvironment`). */
+  readonly mayAdd: boolean;
+  /** What production runs: nothing (`empty`), a deploy under way, a release, or not known. */
+  readonly productionRuns: ProductionRuns;
+  /** The changes merged and waiting for production, as the release counts them. */
+  readonly waiting: { readonly count: number; readonly atLeast: boolean };
+  /** Whether `main` holds code; `undefined` where it is not known. */
+  readonly mainHasCode: boolean | undefined;
+  /** Whether *Review release* is offered to this person (the release gate allows). */
+  readonly releaseOffered: boolean;
+  /** The release tag on its way to production. */
+  readonly releasing: string | undefined;
+}): ReadonlyArray<EnvironmentSlotRow> {
+  const slot = (tier: GroupEnvironmentTier): EnvironmentSlotRow => {
+    const offered = input.missing.includes(tier);
+    return {
+      kind: "slot",
+      tier,
+      name: tier === "stage" ? "Stage" : "Production",
+      line: input.recipeRead && !offered ? ENVIRONMENT_AWAITS_RECIPE : ENVIRONMENT_NOT_ADDED,
+      add: input.mayAdd && input.recipeRead && offered,
+    };
+  };
+  const stages = input.environments.filter((entry) => entry.tier === "stage");
+  const production = input.environments.find((entry) => entry.tier === "production");
+  const rows: Array<EnvironmentSlotRow> = [
+    ...stages.map(({ id, tier }): EnvironmentSlotRow => ({
+      kind: "environment",
+      tier,
+      id,
+      note: undefined,
+    })),
+    ...input.devstages.map(({ id, name }): EnvironmentSlotRow => ({
+      kind: "devstage",
+      id,
+      line: `${name} — the stage, deployed by its agent`,
+    })),
+  ];
+  if (rows.length === 0) rows.push(slot("stage"));
+  rows.push(
+    production === undefined
+      ? slot("production")
+      : { kind: "environment", tier: "production", id: production.id, note: productionNote(input) },
+  );
+  return rows;
+}
+
+function productionNote(input: {
+  readonly productionRuns: ProductionRuns;
+  readonly waiting: { readonly count: number; readonly atLeast: boolean };
+  readonly mainHasCode: boolean | undefined;
+  readonly releaseOffered: boolean;
+  readonly releasing: string | undefined;
+}): ProductionNote | undefined {
+  if (input.releasing !== undefined)
+    return { text: `Releasing ${input.releasing}…`, review: false };
+  if (input.productionRuns === "empty") {
+    return input.mainHasCode === false
+      ? { text: "Empty — waiting for the first merge", review: false }
+      : { text: "Empty — waiting for its first release", review: input.releaseOffered };
+  }
+  if (input.waiting.count > 0)
+    return {
+      text: `${changesCountWords(input.waiting.count, input.waiting.atLeast)} waiting for production`,
+      review: input.releaseOffered,
+    };
+  return undefined;
+}
+
+/**
+ * What a production runs, as the platform's pushed answer says it: nothing, a build, or a version —
+ * and `unknown` for an answer not read, failed or stale, which claims nothing.
+ */
+export function productionRunsOf(deployment: Shown<Deployment> | undefined): ProductionRuns {
+  if (deployment?.state !== "known" || deploymentReadFailed(deployment)) return "unknown";
+  switch (deployment.value.kind) {
+    case "none":
+      return "empty";
+    case "deploying":
+      return "deploying";
+    default:
+      return "running";
+  }
 }

@@ -33,6 +33,9 @@ import {
   flowVerbKey,
   flowVerbLabel,
   readZeropsMembership,
+  environmentSlots,
+  productionRunsOf,
+  type EnvironmentSlotRow,
   PROJECT_ALL_CLEAR,
   projectAttention,
   releaseContentsCommits,
@@ -129,6 +132,7 @@ import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { useZeropsCompares, type ComparedCommits } from "~/zerops/useZeropsCompares";
 import { useZeropsRecipeFailure } from "~/zerops/useZeropsAppRecipes";
+import { useAddEnvironment, useMayAddEnvironment } from "~/zerops/useAddEnvironment";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { useZeropsHistory, type ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 import { cn } from "~/lib/utils";
@@ -595,6 +599,31 @@ export function runtimeStopsOf(
   return [...stops.values()];
 }
 
+/**
+ * The Mates of a group that are also its stage (`devstage`): HQ deploys nothing to them, their
+ * agent does, and they stand for the stage in the *Environments* section.
+ */
+export function devstagesOf(
+  groupId: string,
+  projects: ReadonlyArray<ZeropsProject>,
+): ReadonlyArray<{ readonly id: string; readonly name: string }> {
+  return projects.flatMap((project) => {
+    const membership = readZeropsMembership(project);
+    return membership.groupId === groupId && membership.role === "devstage"
+      ? [{ id: project.id, name: project.name }]
+      : [];
+  });
+}
+
+function useDevstages(
+  groupId: string,
+): ReadonlyArray<{ readonly id: string; readonly name: string }> {
+  const inventory = useZeropsInventory();
+  const held = useContext(HeldInventoryContext);
+  const projects = held?.projects ?? inventory.projects;
+  return useMemo(() => devstagesOf(groupId, projects), [groupId, projects]);
+}
+
 function useRuntimeStops(groupId: string): ReadonlyArray<RuntimeStopIdentity> {
   const inventory = useZeropsInventory();
   const held = useContext(HeldInventoryContext);
@@ -692,6 +721,9 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     notLiveAtLeast: waiting.atLeast,
     canRelease: release.offered,
   });
+  const mayAdd = useMayAddEnvironment()(groupId);
+  const addEnvironment = useAddEnvironment();
+  const devstages = useDevstages(groupId);
 
   if (flow === undefined) {
     return (
@@ -708,12 +740,34 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     );
   }
 
+  const production = environments.find((entry) => entry.tier === "production");
+  const slots = environmentSlots({
+    environments: environments.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
+    devstages,
+    missing: flow.missing.map((row) => row.tier),
+    recipeRead: flow.recipeRead,
+    mayAdd,
+    productionRuns:
+      production === undefined
+        ? "unknown"
+        : productionRunsOf(flowValue?.deployments.get(production.projectId)),
+    waiting: { count: waiting.total, atLeast: waiting.atLeast },
+    // Entries are what `main` would put in a release: none says it holds no code, once read.
+    mainHasCode:
+      flow.release.entries.length > 0 ? true : flow.repos === undefined ? undefined : false,
+    releaseOffered: release.offered,
+    releasing: flow.release.inFlight,
+  });
   return (
     <ZeropsGroupPane
       readFailures={
         <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
       }
       environments={environments}
+      slots={slots}
+      onAdd={(tier) => {
+        addEnvironment(groupId, tier);
+      }}
       history={history}
       groupId={groupId}
       attention={attention.items}
@@ -763,6 +817,8 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
 export function ZeropsGroupPane({
   readFailures,
   environments,
+  slots,
+  onAdd,
   history,
   attention,
   groupId,
@@ -796,6 +852,10 @@ export function ZeropsGroupPane({
   /** Opens the review of the change that landed a commit. */
   readonly onOpenChange?: ((change: HistoryChange, from: HTMLElement) => void) | undefined;
   readonly environments: ReadonlyArray<EnvironmentRow>;
+  /** The *Environments* section's rows: what exists, and a slot for each tier that does not. */
+  readonly slots: ReadonlyArray<EnvironmentSlotRow>;
+  /** *Add stage* or *Add production*, pressed on a slot. */
+  readonly onAdd: (tier: EnvironmentRow["tier"]) => void;
   readonly groupId: string;
   /** The project's name; undefined while the listing has not named it — never its id. */
   readonly name: string | undefined;
@@ -896,27 +956,60 @@ export function ZeropsGroupPane({
         )}
       </Section>
 
-      <Section title="Where it is">
+      <Section title="Environments">
         <ul className="flex flex-col">
-          {environments.length === 0 ? (
-            // A project with nothing set up used to land on three sentences
-            // saying "no" and no way to change any of them.
-            <Empty
-              action="Set up an environment"
-              onAction={onSetUp}
-              text="No stage or production declared yet."
-            />
-          ) : (
-            environments.map((environment) => (
-              <StopLine
-                environment={environment}
-                groupId={groupId}
-                key={environment.projectId}
-                notice={withheldNotice?.(environment.projectId) ?? null}
-                firstDeploy={firstDeployOf?.(environment.projectId)}
-              />
-            ))
-          )}
+          {slots.map((slot) => {
+            if (slot.kind === "devstage")
+              return (
+                <li className="px-2 py-2 text-sm text-muted-foreground" key={slot.id}>
+                  {slot.line}
+                </li>
+              );
+            if (slot.kind === "slot")
+              return (
+                <li className="flex min-w-0 items-center gap-3 px-2 py-2" key={slot.tier}>
+                  <span className="shrink-0 text-sm font-medium text-muted-foreground">
+                    {slot.name}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                    {slot.line}
+                  </span>
+                  {slot.add ? (
+                    <Button
+                      onClick={() => {
+                        onAdd(slot.tier);
+                      }}
+                      size="sm"
+                      variant="outline"
+                    >
+                      {`Add ${slot.name.toLocaleLowerCase()}`}
+                    </Button>
+                  ) : null}
+                </li>
+              );
+            const environment = environments.find((entry) => entry.projectId === slot.id);
+            if (environment === undefined) return null;
+            return (
+              <Fragment key={slot.id}>
+                <StopLine
+                  environment={environment}
+                  groupId={groupId}
+                  notice={withheldNotice?.(environment.projectId) ?? null}
+                  firstDeploy={firstDeployOf?.(environment.projectId)}
+                />
+                {slot.note === undefined ? null : (
+                  <li className="flex min-w-0 items-center gap-3 px-2 pb-2">
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                      {slot.note.text}
+                    </span>
+                    {slot.note.review ? (
+                      <ReleaseAction release={release} variant="outline" />
+                    ) : null}
+                  </li>
+                )}
+              </Fragment>
+            );
+          })}
         </ul>
       </Section>
 

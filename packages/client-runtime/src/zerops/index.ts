@@ -537,8 +537,15 @@ export {
   type MateRegistration,
 } from "./groupCreation.ts";
 export {
+  ENVIRONMENT_AWAITS_RECIPE,
+  ENVIRONMENT_NOT_ADDED,
+  environmentSlots,
   halfMadeGroupEnvironments,
+  type EnvironmentSlotRow,
   type HalfMadeGroupEnvironment,
+  productionRunsOf,
+  type ProductionNote,
+  type ProductionRuns,
   environmentTierForRole,
   type GroupEnvironment,
   type GroupEnvironmentTier,

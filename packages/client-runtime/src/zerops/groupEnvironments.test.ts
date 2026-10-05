@@ -1,9 +1,13 @@
+import type { Deployment } from "./flow/deployment.ts";
 import type { ZeropsRegistry } from "./hq/registry.ts";
+import type { Shown } from "./knowledge/known.ts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  environmentSlots,
   halfMadeGroupEnvironments,
   missingEnvironmentRows,
+  productionRunsOf,
   MISSING_ENVIRONMENT_LINE,
 } from "./groupEnvironments.ts";
 
@@ -213,4 +217,182 @@ describe("missingEnvironmentRows", () => {
       }
     });
   }
+});
+
+// The application's Environments section (MODEL §4, §9): always there; a row for what exists, a
+// quiet slot for a tier that does not, and the production's own line while no release ran.
+describe("environmentSlots", () => {
+  const STAGE = { id: "p-stage", tier: "stage" } as const;
+  const PROD = { id: "p-prod", tier: "production" } as const;
+  const base: Parameters<typeof environmentSlots>[0] = {
+    environments: [],
+    devstages: [],
+    missing: ["stage", "production"],
+    recipeRead: true,
+    mayAdd: true,
+    productionRuns: "unknown",
+    waiting: { count: 0, atLeast: false },
+    mainHasCode: true,
+    releaseOffered: false,
+    releasing: undefined,
+  };
+  const shape = (rows: ReturnType<typeof environmentSlots>) =>
+    rows.map((row) =>
+      row.kind === "slot"
+        ? [row.kind, row.tier, row.line, row.add]
+        : row.kind === "devstage"
+          ? [row.kind, row.id, row.line]
+          : [row.kind, row.id, row.note?.text, row.note?.review],
+    );
+  const withProduction = (over: Partial<typeof base>): typeof base => ({
+    ...base,
+    environments: [PROD],
+    missing: [],
+    ...over,
+  });
+
+  it.each<{
+    case: string;
+    input: Parameters<typeof environmentSlots>[0];
+    rows: ReadonlyArray<ReadonlyArray<unknown>>;
+  }>([
+    {
+      case: "nothing is added: two quiet slots, each with Add",
+      input: base,
+      rows: [
+        ["slot", "stage", "Not added", true],
+        ["slot", "production", "Not added", true],
+      ],
+    },
+    {
+      case: "nothing is added and the person may not add",
+      input: { ...base, mayAdd: false },
+      rows: [
+        ["slot", "stage", "Not added", false],
+        ["slot", "production", "Not added", false],
+      ],
+    },
+    {
+      case: "production without a stage: the stage stays a slot (production needs no stage)",
+      input: { ...base, environments: [PROD], missing: ["stage"] },
+      rows: [
+        ["slot", "stage", "Not added", true],
+        ["environment", "p-prod", undefined, undefined],
+      ],
+    },
+    {
+      case: "a stage without production",
+      input: { ...base, environments: [STAGE], missing: ["production"] },
+      rows: [
+        ["environment", "p-stage", undefined, undefined],
+        ["slot", "production", "Not added", true],
+      ],
+    },
+    {
+      case: "a Mate that is also the stage counts as the stage",
+      input: { ...base, devstages: [{ id: "p-dev", name: "Vera" }], missing: ["production"] },
+      rows: [
+        ["devstage", "p-dev", "Vera — the stage, deployed by its agent"],
+        ["slot", "production", "Not added", true],
+      ],
+    },
+    {
+      case: "the recipe does not offer production yet: it waits for the Mate's recipe",
+      input: { ...base, missing: ["stage"] },
+      rows: [
+        ["slot", "stage", "Not added", true],
+        ["slot", "production", "Waiting for the Mate's recipe", false],
+      ],
+    },
+    {
+      case: "the recipe is not read: nothing is claimed or offered",
+      input: { ...base, recipeRead: false, missing: [] },
+      rows: [
+        ["slot", "stage", "Not added", false],
+        ["slot", "production", "Not added", false],
+      ],
+    },
+    {
+      case: "an empty production, main has code, the person may release: the first release",
+      input: withProduction({ productionRuns: "empty", releaseOffered: true }),
+      rows: [
+        ["slot", "stage", "Waiting for the Mate's recipe", false],
+        ["environment", "p-prod", "Empty — waiting for its first release", true],
+      ],
+    },
+    {
+      case: "an empty production, main has code, the person may not release: only the information",
+      input: withProduction({ productionRuns: "empty" }),
+      rows: [
+        ["slot", "stage", "Waiting for the Mate's recipe", false],
+        ["environment", "p-prod", "Empty — waiting for its first release", false],
+      ],
+    },
+    {
+      case: "an empty production while main is empty: waiting for the first merge",
+      input: withProduction({ productionRuns: "empty", mainHasCode: false }),
+      rows: [
+        ["slot", "stage", "Waiting for the Mate's recipe", false],
+        ["environment", "p-prod", "Empty — waiting for the first merge", false],
+      ],
+    },
+    {
+      case: "production runs and changes wait: the count, with Review release for a releaser",
+      input: withProduction({
+        productionRuns: "running",
+        waiting: { count: 3, atLeast: false },
+        releaseOffered: true,
+      }),
+      rows: [
+        ["slot", "stage", "Waiting for the Mate's recipe", false],
+        ["environment", "p-prod", "3 changes waiting for production", true],
+      ],
+    },
+    {
+      case: "production runs and one change waits, for somebody who may not release",
+      input: withProduction({ productionRuns: "running", waiting: { count: 1, atLeast: false } }),
+      rows: [
+        ["slot", "stage", "Waiting for the Mate's recipe", false],
+        ["environment", "p-prod", "1 change waiting for production", false],
+      ],
+    },
+    {
+      case: "a release on its way is said, with nothing to press",
+      input: withProduction({
+        productionRuns: "running",
+        waiting: { count: 3, atLeast: false },
+        releaseOffered: true,
+        releasing: "v0.1.2",
+      }),
+      rows: [
+        ["slot", "stage", "Waiting for the Mate's recipe", false],
+        ["environment", "p-prod", "Releasing v0.1.2…", false],
+      ],
+    },
+    {
+      case: "production current: no line of its own",
+      input: withProduction({ productionRuns: "running" }),
+      rows: [
+        ["slot", "stage", "Waiting for the Mate's recipe", false],
+        ["environment", "p-prod", undefined, undefined],
+      ],
+    },
+  ])("$case", ({ input, rows }) => {
+    expect(shape(environmentSlots(input))).toEqual(rows);
+  });
+});
+
+describe("productionRunsOf", () => {
+  const known = (value: unknown, freshness: "live" | "stale" = "live") =>
+    ({ state: "known", value, freshness: { kind: freshness } }) as unknown as Shown<Deployment>;
+  it.each([
+    ["nothing read yet", undefined, "unknown"],
+    ["the read failed", { state: "failed" } as unknown as Shown<Deployment>, "unknown"],
+    ["a stale answer", known({ kind: "none" }, "stale"), "unknown"],
+    ["nothing runs", known({ kind: "none" }), "empty"],
+    ["a build runs", known({ kind: "deploying" }), "deploying"],
+    ["a version runs", known({ kind: "running" }), "running"],
+  ] as const)("reads %s as %s", (_name, deployment, expected) => {
+    expect(productionRunsOf(deployment)).toBe(expected);
+  });
 });

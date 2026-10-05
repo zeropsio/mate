@@ -1,6 +1,7 @@
 import {
   deployedVersion,
   environmentRow,
+  environmentSlots,
   releaseContentsSummary,
   releaseRow,
   type EnvironmentRow,
@@ -41,6 +42,7 @@ import {
   ZeropsGroupPane,
   ZeropsStopPane,
   ZeropsRuntimeStops,
+  devstagesOf,
   runtimeStopsOf,
 } from "./ZeropsGroupDetail";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
@@ -103,6 +105,21 @@ const mate = (projectId: string, name: string, subject: string) => ({
   when: "1h",
 });
 
+/** The Environments section as it stands for these environments and nothing else. */
+const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
+  environmentSlots({
+    environments: environments.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
+    devstages: [],
+    missing: [],
+    recipeRead: false,
+    mayAdd: false,
+    productionRuns: "unknown",
+    waiting: { count: 0, atLeast: false },
+    mainHasCode: undefined,
+    releaseOffered: false,
+    releasing: undefined,
+  });
+
 function render(
   who: Pick<
     React.ComponentProps<typeof ZeropsGroupPane>,
@@ -116,7 +133,7 @@ function render(
   stops: Pick<
     React.ComponentProps<typeof ZeropsGroupPane>,
     "environments" | "withheldNotice" | "firstDeployOf"
-  > = {
+  > & { readonly slots?: React.ComponentProps<typeof ZeropsGroupPane>["slots"] } = {
     environments: [environment("stage", "stage"), environment("prod", "production", "production")],
   },
   waiting: ReleaseContentsSummary = releaseContentsSummary([], 20),
@@ -132,6 +149,8 @@ function render(
       name="Shop"
       {...who}
       {...stops}
+      slots={stops.slots ?? slotsOf(stops.environments)}
+      onAdd={() => {}}
       names={{ mateNames: new Map() }}
       onAct={() => {}}
       onAddMate={() => {}}
@@ -184,6 +203,23 @@ describe("runtime without HQ detail", () => {
       { projectId: "stage", name: "stage", tier: "stage" },
     ]);
   });
+  it("names a Mate that is also the stage, and no other project, as the group's devstage", () => {
+    const project = (id: string, kind: "mate" | "devstage" | "stage", appId = "shop") => ({
+      id,
+      name: id,
+      status: "ACTIVE",
+      hq: { appId, appName: "Shop", kind, mate: null },
+    });
+    expect(
+      devstagesOf("shop", [
+        project("vera", "devstage"),
+        project("iris", "mate"),
+        project("shop-stage", "stage"),
+        project("other-dev", "devstage", "links"),
+      ]),
+    ).toEqual([{ id: "vera", name: "vera" }]);
+  });
+
   it.each([
     {
       deployment: { state: "unread", waitingFor: null } as Shown<Deployment>,
@@ -270,6 +306,64 @@ describe("ZeropsGroupPane", () => {
 
     expect(markup).toContain("Merged, waiting for production · 10000+");
     expect(markup).toContain("+9999+ more");
+  });
+
+  describe("the Environments section", () => {
+    const slots = (over: Partial<Parameters<typeof environmentSlots>[0]>) =>
+      environmentSlots({
+        environments: [],
+        devstages: [],
+        missing: ["stage", "production"],
+        recipeRead: true,
+        mayAdd: true,
+        productionRuns: "unknown",
+        waiting: { count: 0, atLeast: false },
+        mainHasCode: true,
+        releaseOffered: false,
+        releasing: undefined,
+        ...over,
+      });
+
+    it("is there with nothing added: two quiet slots, each with its Add", () => {
+      const markup = render(undefined, { environments: [], slots: slots({}) });
+      expect(markup).toContain("Environments");
+      expect(markup).toContain("Add stage");
+      expect(markup).toContain("Add production");
+    });
+
+    it("offers no Add to somebody who may not add, and says a tier waits for the recipe", () => {
+      const markup = render(undefined, {
+        environments: [],
+        slots: slots({ mayAdd: false, missing: ["stage"] }),
+      });
+      expect(markup).not.toContain("Add stage");
+      expect(markup).toContain("Waiting for the Mate&#x27;s recipe");
+    });
+
+    it("says a Mate that is the stage is the stage, and asks no second one of the person", () => {
+      const markup = render(undefined, {
+        environments: [],
+        slots: slots({ devstages: [{ id: "dev", name: "Vera" }], missing: ["production"] }),
+      });
+      expect(markup).toContain("Vera — the stage, deployed by its agent");
+      expect(markup).not.toContain("Add stage");
+      expect(markup).toContain("Add production");
+    });
+
+    it("says an empty production waits for its first release, with Review release where offered", () => {
+      const prod = environment("prod", "production", "production");
+      const markup = render(undefined, {
+        environments: [prod],
+        slots: slots({
+          environments: [{ id: "prod", tier: "production" }],
+          missing: [],
+          productionRuns: "empty",
+          releaseOffered: true,
+        }),
+      });
+      expect(markup).toContain("Empty — waiting for its first release");
+      expect(markup).not.toContain("Add production");
+    });
   });
 
   it("lists nothing as waiting for a production the application does not have", () => {

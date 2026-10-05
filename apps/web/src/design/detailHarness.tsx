@@ -813,6 +813,16 @@ function Harness() {
               },
             }),
           ]}
+          slots={[
+            { kind: "environment", tier: "stage", id: "shop-stage", note: undefined },
+            {
+              kind: "environment",
+              tier: "production",
+              id: "shop-prod",
+              note: { text: "3 changes waiting for production", review: true },
+            },
+          ]}
+          onAdd={() => {}}
           groupId="shop"
           name="Shop"
           crumbs={CRUMBS}
@@ -841,6 +851,11 @@ function Harness() {
           history={{ kind: "read", commits: [], total: 0 }}
           tags={new Map()}
           environments={[]}
+          slots={[
+            { kind: "slot", tier: "stage", name: "Stage", line: "Not added", add: true },
+            { kind: "slot", tier: "production", name: "Production", line: "Not added", add: true },
+          ]}
+          onAdd={() => {}}
           groupId="fresh"
           name="Design tokens"
           crumbs={CRUMBS}
