@@ -18,7 +18,6 @@ import {
 } from "../state/zerops";
 import { menuMemory } from "./menuMemory";
 import { useZeropsSession } from "./ZeropsSessionProvider";
-import { hqOutageLine } from "./hqStructure";
 
 const NO_ROWS: ReadonlyArray<CandidateRow> = [];
 const NO_ACTION = () => {};
@@ -78,30 +77,13 @@ export function useZeropsMenu<Row extends CandidateRow>(
   return useAtomValue(rows);
 }
 
-/** The admitted product takes over this same HQ row list; the pre-admission menu has no verbs. */
+/**
+ * The admitted product takes over this same HQ row list; the pre-admission menu has no verbs, and
+ * says nothing of how current its rows are: the menu it hands over to says that in its header.
+ */
 export function ZeropsMenuPreview() {
   const rows = useZeropsMenu(NO_ROWS);
-  const view = useAtomValue(hqStructureAtom);
   const slot = typeof document === "undefined" ? null : document.getElementById("boot-shell-menu");
-  const { activeOrganization } = useZeropsSession();
-  const kept =
-    activeOrganization == null ? undefined : menuMemory().structures[activeOrganization.id];
-  const line = hqOutageLine(
-    view ??
-      (kept === undefined
-        ? null
-        : {
-            organizationId: activeOrganization!.id,
-            structure: kept,
-            readAt: kept.readAt,
-            current: false,
-            changes: null,
-            appReads: null,
-            unavailableSince: null,
-          }),
-    "locale",
-    Date.now(),
-  );
   if (slot === null) return null;
   return createPortal(
     <div inert className="h-full overflow-y-auto px-4 pt-20">
@@ -110,7 +92,6 @@ export function ZeropsMenuPreview() {
         complete={false}
         onSelect={NO_ACTION}
         onBrowseProjects={NO_ACTION}
-        hqOutage={line}
       />
     </div>,
     slot,

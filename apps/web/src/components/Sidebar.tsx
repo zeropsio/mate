@@ -234,10 +234,11 @@ import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { AccountVoiceLine } from "./zerops/AccountVoiceLine";
 import { useListingPatience } from "../zerops/useListingPatience";
-import { hqOutageLine, requestHqSnapshot } from "../zerops/hqStructure";
+import { hqOutageKind, hqOutageLine, requestHqSnapshot } from "../zerops/hqStructure";
 import { useNowMs } from "../zerops/useNowMs";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
 import {
+  SidebarHqStatus,
   SidebarNewProject,
   SidebarZeropsTree,
   type SidebarDrawn,
@@ -1943,6 +1944,10 @@ export default function Sidebar() {
   const zeropsHqOutage =
     zeropsHqView?.organizationId === zeropsSession.activeOrganization?.id
       ? hqOutageLine(zeropsHqView, timestampFormat, zeropsNowMs)
+      : null;
+  const zeropsHqKind =
+    zeropsHqView?.organizationId === zeropsSession.activeOrganization?.id
+      ? hqOutageKind(zeropsHqView)
       : null;
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const {
@@ -3939,6 +3944,22 @@ export default function Sidebar() {
     <>
       <SidebarChromeHeader
         isElectron={isElectron}
+        status={
+          zeropsHqOutage === null || zeropsHqKind === null ? undefined : (
+            <SidebarHqStatus
+              kind={zeropsHqKind}
+              line={zeropsHqOutage}
+              onAgain={
+                !zeropsHqView?.failure
+                  ? undefined
+                  : () => {
+                      if (zeropsSession.activeOrganization)
+                        requestHqSnapshot(zeropsSession.activeOrganization.id);
+                    }
+              }
+            />
+          )
+        }
         jump={
           // Every environment is in the roster: there is no thread list to
           // search, and the jump box finds anything the menu holds — from one
@@ -4186,15 +4207,6 @@ export default function Sidebar() {
               className="mb-2"
               complete={zeropsHeld.complete}
               notice={zeropsNotice}
-              hqOutage={zeropsHqOutage}
-              onHqAgain={
-                !zeropsHqView?.failure
-                  ? undefined
-                  : () => {
-                      if (zeropsSession.activeOrganization)
-                        requestHqSnapshot(zeropsSession.activeOrganization.id);
-                    }
-              }
               onNoticeAct={(affordance) => {
                 if (affordance.kind === "go-to-projects") navigateToZeropsProjects();
                 else refreshZeropsCandidates();

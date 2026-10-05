@@ -17,7 +17,13 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { HqMatesView, HqPeopleView, HqStructureView } from "../state/zerops";
 import type { HqStanding } from "./accountHq";
-import { driveHqStructure, requestHqSnapshot, hqOfficialOf, hqOutageLine } from "./hqStructure";
+import {
+  driveHqStructure,
+  requestHqSnapshot,
+  hqOfficialOf,
+  hqOutageKind,
+  hqOutageLine,
+} from "./hqStructure";
 
 const ACME: HqStructure = { ungrouped: [], apps: [{ id: "app-1", name: "Acme", projects: [] }] };
 const BETA = { id: "app-2", name: "Beta", projects: [] };
@@ -728,6 +734,40 @@ describe("planned HQ segments", () => {
       }
     },
   );
+});
+
+describe("hqOutageKind: where the menu says HQ's standing", () => {
+  const view = (over: Partial<HqStructureView>): HqStructureView => ({
+    organizationId: "org",
+    structure: ACME,
+    changes: null,
+    appReads: null,
+    readAt: 1000,
+    current: false,
+    unavailableSince: null,
+    ...over,
+  });
+  it.each<[string, HqStructureView | null, "syncing" | "unavailable" | null]>([
+    ["nothing known yet", null, null],
+    ["HQ answers", view({ current: true }), null],
+    ["the structure read again: a spinner", view({}), "syncing"],
+    ["nothing drawn yet, nothing said", view({ readAt: null, structure: null }), null],
+    [
+      "the stream reconnecting: a spinner",
+      view({ reconnecting: { capped: false } } as Partial<HqStructureView>),
+      "syncing",
+    ],
+    ["HQ not answering: said in words", view({ unavailableSince: 5000 }), "unavailable"],
+    [
+      "retries capped: said in words",
+      view({ unavailableSince: 5000, reconnecting: { capped: true } } as Partial<HqStructureView>),
+      "unavailable",
+    ],
+  ])("%s", (_case, v, kind) => {
+    expect(hqOutageKind(v)).toBe(kind);
+    // Said somewhere exactly when there is a line to say.
+    expect(hqOutageLine(v, "locale", 10000) === null).toBe(kind === null);
+  });
 });
 
 describe("HQ menu currency", () => {

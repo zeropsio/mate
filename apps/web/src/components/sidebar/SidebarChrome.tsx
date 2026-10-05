@@ -31,10 +31,16 @@ import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUp
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
+  status,
   waiting,
   jump,
 }: {
   isElectron: boolean;
+  /**
+   * How current the menu is, while it is not (`SidebarHqStatus`): before the waiting faces, in
+   * the row, so saying it moves nothing under it.
+   */
+  status?: ReactNode;
   /**
    * The Mates waiting on the viewer (`SidebarWaitingStack`), in a slot kept
    * whether or not anybody waits, so the header never moves. Absent where the
@@ -63,7 +69,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
     >
       <SidebarTrigger className="md:hidden" />
       <SidebarBrand />
-      {waiting === undefined && jump === undefined ? null : (
+      {status === undefined && waiting === undefined && jump === undefined ? null : (
         // The room the mark leaves: ⌘K on the end edge, whole, and the
         // waiting faces before it in a slot of at most 96 px that gives way
         // first — fewer faces where the row is narrow (`waitingFacesThatFit`).
@@ -71,6 +77,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         // mark is 16 px in from the window (the owner, 2026-09-29: "padding
         // around this whole column feels a little inconsistent").
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2 md:pe-4">
+          {status}
           {waiting === undefined ? null : (
             <div
               className="flex min-w-0 max-w-24 flex-1 items-center justify-end"

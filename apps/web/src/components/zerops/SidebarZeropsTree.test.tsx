@@ -125,6 +125,7 @@ import type { SidebarCrewRead } from "./crew/SidebarCrewLine";
 import { MateMenu, type MateRowActions } from "./SidebarMateMenu";
 import {
   ProjectHeader,
+  SidebarHqStatus,
   SidebarNewProject,
   SidebarZeropsTree,
   type SidebarDrawn,
@@ -548,23 +549,27 @@ describe("SidebarZeropsTree", () => {
     );
   });
 
-  it("offers manual again beside an HQ outage, including an empty inventory", () => {
-    for (const candidates of [[CRM_DEV], []]) {
-      expect(
-        render(candidates, { hqOutage: "HQ could not be reached.", onHqAgain: () => {} }),
-      ).toContain("Try again");
+  it("never says HQ's standing above the list, so the list never moves for it", () => {
+    for (const candidates of [[CRM_DEV], [CRM_STAGE], []]) {
+      expect(render(candidates)).not.toContain("sidebar-hq-outage");
     }
   });
 
-  it("says HQ is not answering at the menu's top, over the structure it last read", () => {
+  // The menu's header says it instead (the owner, 2026-10-05: a notice pushed the menu down and
+  // back on every reconnect): a spinner while HQ is read again, words once it does not answer.
+  it.each([
+    ["syncing", false, false, false],
+    ["syncing", true, false, false],
+    ["unavailable", false, true, false],
+    ["unavailable", true, true, true],
+  ] as const)("the header's HQ standing: %s, a retry offered %s", (kind, offered, words, again) => {
     const line = "HQ unavailable since 14:05. Projects as of 13:58.";
-    const html = render([CRM_DEV], { hqOutage: line });
-    expect(html).toContain('data-zerops-surface="sidebar-hq-outage"');
-    expect(html.indexOf(line)).toBeLessThan(html.indexOf('data-zerops-surface="sidebar-mate"'));
-    // No Mate to draw, or no project at all: the line still stands.
-    expect(render([CRM_STAGE], { hqOutage: line })).toContain(line);
-    expect(render([], { hqOutage: line })).toContain(line);
-    expect(render([CRM_DEV])).not.toContain("sidebar-hq-outage");
+    const html = renderToStaticMarkup(
+      <SidebarHqStatus kind={kind} line={line} onAgain={offered ? () => {} : undefined} />,
+    );
+    expect(html).toContain(line);
+    expect(html.includes(">HQ unavailable<")).toBe(words);
+    expect(html.includes("<button")).toBe(again);
   });
 
   // One band in the list lights the open Mate's row and slides to the next
