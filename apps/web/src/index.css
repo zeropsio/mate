@@ -2044,6 +2044,13 @@ code {
   overflow-wrap: anywhere;
 }
 
+/* In a table they are words of their column: whole-word at its min-content, so
+   a short one never splits ("ope / n"), and a long one widens the table, whose
+   container scrolls. */
+.chat-markdown :is(th, td) :is(a, :not(pre) > code) {
+  overflow-wrap: break-word;
+}
+
 .chat-markdown > :first-child {
   margin-top: 0;
 }
