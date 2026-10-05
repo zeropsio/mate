@@ -119,4 +119,29 @@ describe("superviseLink", () => {
       expect(store.state().streams.get(LINK)?.phase).toBe("paused");
     }),
   );
+
+  it.effect(
+    "refuses, without looping, a session whose repair itself ends in an ended session",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        let repairs = 0;
+        const ended: StreamFault = { outcome: "recoverable-session", message: "4401" };
+        const supervisor = yield* superviseLink({
+          key: LINK,
+          scopes: [],
+          store,
+          attempt: () => Effect.fail(ended),
+          repairSession: Effect.suspend(() => {
+            repairs += 1;
+            return Effect.fail(ended);
+          }),
+        });
+        const fiber = yield* Effect.forkChild(supervisor.run);
+        for (let turn = 0; turn < 50; turn += 1) yield* Effect.yieldNow;
+        expect(repairs).toBe(1);
+        expect(store.state().streams.get(LINK)?.phase).toBe("refused");
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
 });

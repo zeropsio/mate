@@ -213,7 +213,7 @@ function fail(
   // A child's session and transport are its parent's: it waits for the parent's next attempt.
   if (state.parent !== null) return awaitParent({ ...state, failures, fault });
   if (fault.outcome === "recoverable-session") {
-    if (state.repaired) return refuse();
+    if (state.repaired || state.phase === "reauthenticating") return refuse();
     return {
       state: { ...state, phase: "reauthenticating", fault, next: { kind: "repair-session" } },
       directives: [{ kind: "repair-session" }],
