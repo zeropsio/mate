@@ -6,7 +6,8 @@
  *
  * @module data/projections/operation
  */
-import { operationKind } from "../operations/kinds.ts";
+import type { RegisteredOperationKind } from "../operations/kind.ts";
+import { OPERATION_KINDS, operationKind } from "../operations/kinds.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 
@@ -21,6 +22,8 @@ export type OperationProgress =
       readonly stage: "done";
       readonly operationId: string;
       readonly outcome: "succeeded" | "failed" | "cancelled";
+      /** Why, where the owner's facts said it failed. */
+      readonly reason?: string;
     }
   | {
       readonly stage: "unresolved";
@@ -28,7 +31,10 @@ export type OperationProgress =
       readonly nextActor: string;
     };
 
-export const operationProgress: Projection<string, OperationProgress> = {
+/** Progress over a registry of operation kinds: the account's, or a test's own. */
+export const operationProgressOf = (
+  kinds: ReadonlyArray<RegisteredOperationKind>,
+): Projection<string, OperationProgress> => ({
   name: "operationProgress",
   keyOf: (requestId) => requestId,
   equals: sameValue,
@@ -57,9 +63,23 @@ export const operationProgress: Projection<string, OperationProgress> = {
       }
     if (receipt.acceptance.kind === "refused")
       return { stage: "refused", reason: receipt.acceptance.reason };
+    const kind = operationKind(kinds, record.intent);
+    // The owner's facts may say the end before — or instead of — its receipt.
+    const settled = kind.settledBy?.(read, record.intent, receipt) ?? null;
+    if (settled !== null)
+      return settled.kind === "failed"
+        ? {
+            stage: "done",
+            operationId: receipt.operationId,
+            outcome: "failed",
+            reason: settled.reason,
+          }
+        : { stage: "done", operationId: receipt.operationId, outcome: "succeeded" };
     return {
-      stage: operationKind(record.intent).reflected(read, record.intent) ? "reflected" : "accepted",
+      stage: kind.reflected(read, record.intent, receipt) ? "reflected" : "accepted",
       operationId: receipt.operationId,
     };
   },
-};
+});
+
+export const operationProgress = operationProgressOf(OPERATION_KINDS);

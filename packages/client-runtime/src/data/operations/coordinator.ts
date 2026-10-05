@@ -11,7 +11,8 @@ import * as Effect from "effect/Effect";
 import type { Authority, OperationIntent, OperationReceipt } from "../model.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
-import { operationKind } from "./kinds.ts";
+import type { RegisteredOperationKind } from "./kind.ts";
+import { OPERATION_KINDS, operationKind } from "./kinds.ts";
 
 /** The owner's answer was lost on the way: it may or may not have taken the request. */
 export interface UncertainAcceptance {
@@ -45,11 +46,13 @@ export function makeOperations(options: {
   readonly store: AccountStore;
   /** Each owner's executor; an intent goes to the one its kind names. */
   readonly executors: Partial<Readonly<Record<Authority, OperationExecutor>>>;
+  /** The operation kinds it submits; the account's registry unless a test brings its own. */
+  readonly kinds?: ReadonlyArray<RegisteredOperationKind>;
   readonly makeId: () => string;
 }): Operations {
   const { store } = options;
   const executorOf = (intent: OperationIntent) => {
-    const owner = operationKind(intent).executor;
+    const owner = operationKind(options.kinds ?? OPERATION_KINDS, intent).executor;
     const executor = options.executors[owner];
     if (executor === undefined) throw new Error(`No executor for ${owner} is wired.`);
     return { owner, executor };
@@ -73,6 +76,7 @@ export function makeOperations(options: {
                 operationId: requestId,
                 executor: executorOf(intent).owner,
                 affected: [],
+                handles: [],
                 acceptance: { kind: "refused", reason: fault.message },
                 outcome: { kind: "pending" },
               },

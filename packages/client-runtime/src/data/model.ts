@@ -101,11 +101,15 @@ export interface Membership {
  * (`declare module "../model.ts"`).
  */
 export interface OperationIntents {}
-export type OperationIntent = {
+type DeclaredIntent = {
   readonly [Kind in keyof OperationIntents & string]: {
     readonly kind: Kind;
   } & OperationIntents[Kind];
 }[keyof OperationIntents & string];
+/** Every declared intent; until a kind declares one, an intent no value can be — but still has a kind. */
+export type OperationIntent = [DeclaredIntent] extends [never]
+  ? { readonly kind: never }
+  : DeclaredIntent;
 
 /** The owner's word on a request: accepted or refused, and later how it ended. */
 export interface OperationReceipt {
@@ -113,6 +117,8 @@ export interface OperationReceipt {
   readonly operationId: string;
   readonly executor: Authority;
   readonly affected: ReadonlyArray<{ readonly family: Family; readonly id: string }>;
+  /** The owner's external handles for it — a Zerops process id — to follow it and to ask by. */
+  readonly handles: ReadonlyArray<string>;
   readonly acceptance:
     | { readonly kind: "accepted" }
     | { readonly kind: "refused"; readonly reason: string };
