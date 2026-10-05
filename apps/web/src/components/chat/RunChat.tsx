@@ -599,41 +599,67 @@ function markCappedEdges(box: HTMLElement): void {
 function CappedBox({
   follows = false,
   detail = false,
+  part,
   className,
   children,
 }: {
   readonly follows?: boolean;
   /** What the person opened under a call: twelve lines (`--run-detail-cap`). */
   readonly detail?: boolean;
+  /** Which of its line's boxes it is, where the line has several. */
+  readonly part?: string;
   readonly className?: string;
   readonly children: ReactNode;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
   // Whether it stands at its end, carried from the slot to the history.
-  const [atEnd, setAtEnd] = useCarried(detail ? "detail-end" : "capped-end", () => follows);
+  const [atEnd, setAtEnd] = useCarried(
+    part ?? (detail ? "detail-end" : "capped-end"),
+    () => follows,
+  );
   const stickRef = useRef(atEnd);
-  // A scroll it made itself is never the person's.
-  const ownScrollRef = useRef(false);
+  // Where it last scrolled itself: a scroll that lands there is its own,
+  // any other the person's — even in the same frame as its own.
+  const ownTopRef = useRef<number | null>(null);
   useLayoutEffect(() => {
     const box = boxRef.current;
     const content = contentRef.current;
-    if (box === null || content === null) return;
+    const end = endRef.current;
+    if (box === null || content === null || end === null) return;
     const settle = () => {
       if (stickRef.current) {
-        const end = box.scrollHeight - box.clientHeight;
-        if (Math.abs(box.scrollTop - end) > 1) {
-          ownScrollRef.current = true;
-          box.scrollTop = end;
+        const bottom = box.scrollHeight - box.clientHeight;
+        if (Math.abs(box.scrollTop - bottom) > 1) {
+          box.scrollTop = bottom;
+          ownTopRef.current = box.scrollTop;
         }
       }
       markCappedEdges(box);
     };
     settle();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(settle);
-    observer.observe(content);
-    return () => observer.disconnect();
+    const observers: Array<{ disconnect: () => void }> = [];
+    if (typeof ResizeObserver !== "undefined") {
+      const resized = new ResizeObserver(settle);
+      resized.observe(content);
+      observers.push(resized);
+    }
+    // A node the list puts back stands at its head, saying nothing — no
+    // scroll, no resize: its end leaving view is the one sign of it.
+    if (typeof IntersectionObserver === "function") {
+      const seen = new IntersectionObserver(
+        (entries) => {
+          if (!entries.every((entry) => entry.isIntersecting)) settle();
+        },
+        { root: box },
+      );
+      seen.observe(end);
+      observers.push(seen);
+    }
+    return () => {
+      for (const observer of observers) observer.disconnect();
+    };
   }, []);
   // An item that starts streaming follows from then, until the person scrolls it.
   useLayoutEffect(() => {
@@ -648,16 +674,16 @@ function CappedBox({
         const box = boxRef.current;
         if (box === null) return;
         markCappedEdges(box);
-        if (ownScrollRef.current) {
-          ownScrollRef.current = false;
-          return;
-        }
+        const own = ownTopRef.current;
+        ownTopRef.current = null;
+        if (own !== null && Math.abs(box.scrollTop - own) <= 1) return;
         const end = cappedAtEnd(box);
         stickRef.current = end;
         if (end !== atEnd) setAtEnd(end);
       }}
     >
       <div ref={contentRef}>{children}</div>
+      <div ref={endRef} aria-hidden className="h-px" />
     </div>
   );
 }
@@ -755,16 +781,23 @@ function OpensMark() {
 function OutputBlock({
   label = null,
   mono = true,
+  part,
   text,
 }: {
   readonly label?: string | null;
   readonly mono?: boolean;
+  /** Which of its line's outputs it is, where the line has several. */
+  readonly part?: string;
   readonly text: string;
 }) {
   return (
     <section aria-label={label ?? undefined} className="grid min-w-0 gap-1">
       {label === null ? null : <h4 className={cn(META, "text-muted-foreground")}>{label}</h4>}
-      <CappedBox className="rounded-xl bg-foreground/4" detail>
+      <CappedBox
+        className="rounded-xl bg-foreground/4"
+        detail
+        {...(part === undefined ? {} : { part })}
+      >
         <pre
           className={cn(
             "min-w-0 whitespace-pre-wrap break-words px-3 py-2 text-foreground/80 select-text",
@@ -1372,7 +1405,12 @@ function StepBubble({
           data-chat-detail-rises={disclosure.made ? "" : undefined}
         >
           {outputs.map((output) => (
-            <OutputBlock key={output.key} label={output.label} text={output.text} />
+            <OutputBlock
+              key={output.key}
+              label={output.label}
+              part={`detail-end:${output.key}`}
+              text={output.text}
+            />
           ))}
         </div>
       ) : null}
