@@ -40,6 +40,23 @@ export interface ZeropsFamilySource<Value> {
   readonly verifyPath?: (id: string) => string;
 }
 
+/**
+ * A further listing of a family's members, observed only while a screen demands it for one owner
+ * (one project's newest processes): its own scope under the link, `…:<suffix>:<ownerId>`. Its
+ * baseline is one read; its members' later changes reach the family through its own scope's
+ * updates, which observe them already.
+ */
+export interface DetailListing {
+  readonly suffix: string;
+  /** What leaving the listing says of a member. */
+  readonly leaving: MemberState;
+  /** Zerops: the `GET` whose answer is the listing's baseline, and the rows in that answer. */
+  readonly zerops: {
+    readonly path: (owner: ScopeOwner) => string;
+    readonly items: (answer: unknown) => ReadonlyArray<unknown> | undefined;
+  };
+}
+
 /** An index the reducer keeps for the family: under which key a fact counts now, if any. */
 export interface FamilyIndex<Value> {
   readonly name: string;
@@ -61,8 +78,13 @@ export interface FamilySpec<F extends Family> {
     readonly leaving: MemberState;
     readonly demand: "navigation" | "detail";
   };
+  /**
+   * Its index. A member's `listed` is how this family's own scope lists it, whichever listing
+   * last delivered its value.
+   */
   readonly index?: FamilyIndex<FamilyValues[F]>;
   readonly zerops?: ZeropsFamilySource<FamilyValues[F]>;
+  readonly details?: ReadonlyArray<DetailListing>;
 }
 
 export type AnyFamilySpec = { readonly [F in Family]: FamilySpec<F> }[Family];

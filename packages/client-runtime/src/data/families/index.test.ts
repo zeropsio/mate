@@ -10,6 +10,7 @@ const otherFamily = {
   family: "other",
   scope: { ...processFamily.scope, suffix: "other" },
   index: { ...processFamily.index!, name: "other" },
+  details: [],
 };
 
 describe("the registries", () => {
@@ -23,6 +24,11 @@ describe("the registries", () => {
       name: "a scope name twice",
       families: [processFamily, { ...otherFamily, scope: processFamily.scope }],
       error: /scope running/,
+    },
+    {
+      name: "a detail listing's scope name twice",
+      families: [processFamily, { ...otherFamily, details: processFamily.details }],
+      error: /scope history/,
     },
     {
       name: "an index name twice",

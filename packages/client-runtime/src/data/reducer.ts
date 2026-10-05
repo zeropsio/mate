@@ -8,7 +8,7 @@
  *
  * @module data/reducer
  */
-import { FAMILIES, familySpec, scopeSpec } from "./families/index.ts";
+import { FAMILIES, familySpec, ownScopeOf, scopeListing, scopeSpec } from "./families/index.ts";
 import {
   factKey,
   type Access,
@@ -219,9 +219,9 @@ function reduceMembership(
   directives: RuntimeDirective[],
 ): AccountState {
   const {
-    family,
-    scope: { leaving },
-  } = scopeSpec(scope);
+    spec: { family },
+    leaving,
+  } = scopeListing(scope);
   const membership = state.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
   changed.add(`members:${scope}`);
   // While a baseline is read, a delta may be older or newer than its answer: replay it after.
@@ -331,7 +331,7 @@ function indexKey(state: AccountState, family: Family, id: string): string | nul
   const spec = familySpec(family);
   const fact = state.facts.get(factKey(family, id));
   if (spec.index === undefined || fact?.content.kind !== "value") return null;
-  const listed = state.memberships.get(fact.scope)?.members.get(id);
+  const listed = state.memberships.get(ownScopeOf(fact.scope))?.members.get(id);
   return (spec.index.keyOf as (value: unknown, listed: MemberState | undefined) => string | null)(
     fact.content.value,
     listed,

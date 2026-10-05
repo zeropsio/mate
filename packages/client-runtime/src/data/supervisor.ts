@@ -31,6 +31,8 @@ export interface LinkSupervisor {
 export interface LinkOptions {
   readonly key: LinkKey;
   readonly scopes: ReadonlyArray<ScopeKey>;
+  /** The details screens demand now: children of the link like its scopes, held by demand. */
+  readonly details?: () => ReadonlyArray<ScopeKey>;
   readonly store: AccountStore;
   /** One attempt: open, register, deliver; it ends only by failing with its classified fault. */
   readonly attempt: (generation: number) => Effect.Effect<never, StreamFault, Scope.Scope>;
@@ -45,6 +47,8 @@ interface Deadline {
 export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSupervisor> =>
   Effect.gen(function* () {
     const { key, scopes, store } = options;
+    /** Every child of the link now: its navigation scopes and the details demanded. */
+    const children = () => [...scopes, ...(options.details?.() ?? [])];
     const signals = yield* Queue.unbounded<LinkSignal>();
 
     /**
@@ -58,7 +62,7 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
         const directives = store.dispatch({ kind: "stream", key: target, now, event });
         const link = streamOf(store.state(), key);
         if (target === key && before !== "refused" && link.phase === "refused")
-          for (const scope of scopes)
+          for (const scope of children())
             store.dispatch({
               kind: "stream",
               key: scope,
@@ -98,8 +102,29 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
           yield* Effect.sleep(waiting ? next.deadlineAt - now : STREAM_POLICY.handshakeTimeoutMs);
         }
       });
+    /**
+     * The demanded details' deadlines, whichever are demanded now: a detail demanded during the
+     * attempt is looked at within the time its handshake may take.
+     */
+    const watchDetails: Effect.Effect<never, Deadline> = Effect.gen(function* () {
+      while (true) {
+        const now = yield* Clock.currentTimeMillis;
+        let wake = now + STREAM_POLICY.handshakeTimeoutMs;
+        for (const scope of options.details?.() ?? []) {
+          const { next } = streamOf(store.state(), scope);
+          if (next.kind !== "await-handshake" && next.kind !== "await-baseline") continue;
+          if (now >= next.deadlineAt) return yield* Effect.fail({ deadline: scope });
+          wake = Math.min(wake, next.deadlineAt);
+        }
+        yield* Effect.sleep(wake - now);
+      }
+    });
     const deadlines = (generation: number): Effect.Effect<never, Deadline> =>
-      Effect.raceAllFirst([watch(key, generation), ...scopes.map((scope) => watch(scope, null))]);
+      Effect.raceAllFirst([
+        watch(key, generation),
+        ...scopes.map((scope) => watch(scope, null)),
+        watchDetails,
+      ]);
 
     const step = (
       directives: ReadonlyArray<RuntimeDirective>,
@@ -113,7 +138,7 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
             ),
           );
           if ("deadline" in ended) {
-            for (const scope of scopes) yield* dispatch({ kind: "parent-lost" }, scope);
+            for (const scope of children()) yield* dispatch({ kind: "parent-lost" }, scope);
             // The link's own deadline is its machine's; a scope's ends the link's attempt.
             return yield* ended.deadline === key
               ? dispatch({ kind: "deadline" })
@@ -124,7 +149,7 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
                 });
           }
           // The scopes wait for the link's next attempt; if the link is refused, so are they.
-          for (const scope of scopes) yield* dispatch({ kind: "parent-lost" }, scope);
+          for (const scope of children()) yield* dispatch({ kind: "parent-lost" }, scope);
           return yield* dispatch({ kind: "fault", fault: ended, jitter: yield* Random.next });
         }
         if (directives.some((directive) => directive.kind === "repair-session")) {
@@ -155,7 +180,9 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
     /** Demand moves the link and its scopes together: navigation scopes live as long as it. */
     const demand = (demanded: boolean) =>
       Effect.gen(function* () {
-        for (const scope of scopes) yield* dispatch({ kind: "demand", demanded }, scope);
+        // Navigation is demanded with the link; on its end, every child lets go.
+        for (const scope of demanded ? scopes : children())
+          yield* dispatch({ kind: "demand", demanded }, scope);
         return yield* dispatch({ kind: "demand", demanded });
       });
 
@@ -170,7 +197,7 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
       // by it, never by its link's own attempts.
       signal: (signal) =>
         Effect.gen(function* () {
-          for (const scope of scopes) yield* dispatch({ kind: signal }, scope);
+          for (const scope of children()) yield* dispatch({ kind: signal }, scope);
           yield* Queue.offer(signals, signal);
         }),
     };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { zeropsRegistrations } from "./demand.ts";
+import { detailScopeOf, makeDetailDemands, zeropsRegistrations } from "./demand.ts";
 import { FAMILIES } from "./families/index.ts";
 import { scopeOf, type AnyFamilySpec, type ScopeOwner } from "./families/spec.ts";
 import { emptyAccount } from "./model.ts";
@@ -60,5 +60,34 @@ describe("zeropsRegistrations", () => {
     });
     const scope = scopeOf(serviceFamily, "org", "p1");
     expect(streamOf(emptyAccount, scope).parent).toBe("zerops:org");
+  });
+});
+
+describe("makeDetailDemands", () => {
+  it("demands a scope at its first hold and lets it go at its last release, once", () => {
+    const said: Array<readonly [string, boolean]> = [];
+    let heard = 0;
+    const demands = makeDetailDemands({ demanded: (scope, on) => said.push([scope, on]) });
+    demands.onChange(() => (heard += 1));
+    const first = demands.hold("zerops:org:history:p1");
+    const second = demands.hold("zerops:org:history:p1");
+    expect(demands.scopes()).toEqual(["zerops:org:history:p1"]);
+
+    first();
+    first();
+    expect(demands.scopes()).toEqual(["zerops:org:history:p1"]);
+    second();
+    expect(demands.scopes()).toEqual([]);
+    expect(said).toEqual([
+      ["zerops:org:history:p1", true],
+      ["zerops:org:history:p1", false],
+    ]);
+    expect(heard).toBe(2);
+  });
+
+  it("names a listing's scope by the listing, and a detail family's by its own scope", () => {
+    expect(detailScopeOf("org", { family: "process", listing: "history", ownerId: "p1" })).toBe(
+      "zerops:org:history:p1",
+    );
   });
 });

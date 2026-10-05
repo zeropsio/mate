@@ -82,6 +82,10 @@ baseline, and ends only by failing with a classified fault. Run it under
   Run them one after another.
 - **A new revision kind** edits `Revision` and `Delivery` in `model.ts` and `supersedes` in
   `reducer.ts`.
-- **Detail demand** is declared per family and planned by `zeropsRegistrations`. The Zerops adapter
-  registers navigation on each attempt; registering and releasing details while live comes with the
-  first detail family.
+- **Detail demand** is declared per family: a detail family's own scope (`demand: "detail"`,
+  registered per owner by `zeropsRegistrations`), or a family's `details` listing (one read is its
+  baseline; its members' later changes arrive through the family's own updates). A screen holds a
+  detail through `demandDetail({ family, listing?, ownerId })` while it is drawn and releases it on
+  unmount; the Zerops adapter reads each demanded listing once per attempt, and the supervisor
+  treats demanded details as children of the link. Registering and releasing a detail family's
+  own pair while live comes with the first such family.

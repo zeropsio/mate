@@ -16,12 +16,20 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
-import { ORGANIZATION_SEARCH_LIMIT, zeropsNavigation, type Registration } from "../demand.ts";
-import { familySpec, scopeSpec } from "../families/index.ts";
+import {
+  detailScopeOf,
+  makeDetailDemands,
+  ORGANIZATION_SEARCH_LIMIT,
+  zeropsNavigation,
+  type DetailDemand,
+  type Registration,
+} from "../demand.ts";
+import { familySpec, scopeListing, scopeSpec } from "../families/index.ts";
 import { linkKeys, type Family, type LinkKey, type ScopeKey } from "../model.ts";
 import { streamOf, type Row, type RuntimeDirective } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
@@ -108,8 +116,19 @@ export function zeropsNavigationLink(options: {
   readonly store: AccountStore;
   /** A fresh subscription name. */
   readonly makeId: () => string;
-}): Pick<LinkOptions, "key" | "scopes" | "attempt"> {
+}): Pick<LinkOptions, "key" | "scopes" | "details" | "attempt"> & {
+  /** A screen's hold on a detail; the release lets it go once no screen holds it. */
+  readonly demandDetail: (demand: DetailDemand) => () => void;
+} {
   const { orgId, store } = options;
+  const demands = makeDetailDemands({
+    demanded: (scope, demanded) =>
+      Effect.runSync(
+        Effect.map(Clock.currentTimeMillis, (now) =>
+          store.dispatch({ kind: "stream", key: scope, now, event: { kind: "demand", demanded } }),
+        ),
+      ),
+  });
   const key: LinkKey = linkKeys.zerops(orgId);
   const registrations = zeropsNavigation(orgId);
   const scopes = [...new Set(registrations.map((registration) => registration.scope))];
@@ -265,9 +284,81 @@ export function zeropsNavigationLink(options: {
           yield* signal(scope, { kind: "baseline-committed" });
         }
       }
-      yield* Fiber.join(reading);
+      /**
+       * One demanded detail listing, read while the receiver is up: its answer is the scope's
+       * baseline. The owner refusing that one read refuses that scope alone; a failure the link
+       * would recover from ends the attempt, and the next one reads every demanded detail again.
+       */
+      const observeDetail = (scope: ScopeKey): Effect.Effect<void, StreamFault> =>
+        Effect.gen(function* () {
+          const { spec, detail } = scopeListing(scope);
+          if (detail === null) return;
+          yield* signal(scope, { kind: "attempt" });
+          generations.set(scope, streamOf(store.state(), scope).generation);
+          yield* signal(scope, { kind: "handshake" });
+          store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
+          const ownerId = scope.split(":").slice(3).join(":");
+          const answer = yield* link.get(detail.zerops.path({ orgId, ownerId })).pipe(
+            Effect.map((read) =>
+              read.status === 403
+                ? classifyHttp(403)
+                : read.status === 404
+                  ? classifyHttp(404)
+                  : read,
+            ),
+            Effect.catchIf(
+              (fault) =>
+                fault.outcome === "definitive-refusal" || fault.outcome === "authoritative-denial",
+              Effect.succeed,
+            ),
+          );
+          if ("outcome" in answer)
+            return yield* signal(scope, { kind: "fault", fault: answer, jitter: 0 });
+          const items = detail.zerops.items(answer.body);
+          if (items === undefined)
+            return yield* Effect.fail(corrupt("A detail baseline answer is malformed."));
+          yield* carryOut(
+            store.dispatch({
+              kind: "baseline-commit",
+              scope,
+              generation: generationOf(scope),
+              via: "zerops-read",
+              members: items.flatMap((item) =>
+                Option.match(decodeIdentified(item), {
+                  onNone: () => [],
+                  onSome: ({ id }) => [id],
+                }),
+              ),
+              rows: rowsOf(spec.family, items),
+            }),
+          );
+          yield* signal(scope, { kind: "baseline-committed" });
+        });
+
+      // Every detail demanded now is read once in this attempt, and each one demanded later.
+      const observed = new Set<ScopeKey>();
+      const changes = yield* Queue.unbounded<void>();
+      const stopListening = demands.onChange(() => Queue.offerUnsafe(changes, undefined));
+      yield* Effect.addFinalizer(() => Effect.sync(stopListening));
+      const observeDemanded = Effect.suspend(() => {
+        const demanded = new Set(demands.scopes());
+        for (const scope of observed) if (!demanded.has(scope)) observed.delete(scope);
+        const fresh = [...demanded].filter((scope) => !observed.has(scope));
+        for (const scope of fresh) observed.add(scope);
+        return Effect.forEach(fresh, observeDetail, { concurrency: "unbounded", discard: true });
+      });
+      yield* Effect.raceFirst(
+        Fiber.join(reading),
+        Effect.forever(Effect.andThen(observeDemanded, Queue.take(changes))),
+      );
       return yield* Effect.fail(corrupt("The receiver's socket closed."));
     });
 
-  return { key, scopes, attempt };
+  return {
+    key,
+    scopes,
+    details: demands.scopes,
+    attempt,
+    demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),
+  };
 }

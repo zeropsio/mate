@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { linkKeys, emptyAccount, type AccountState } from "./model.ts";
 import type { Revision } from "./model.ts";
 import { reduceAccount, supersedes, type AccountInput } from "./reducer.ts";
-import { runningScope } from "./families/process.ts";
+import { historyScope, runningScope } from "./families/process.ts";
 import { factOf, indexOf } from "./reducer.ts";
 import { processValue } from "./__fixtures__/account.ts";
 
@@ -267,6 +267,65 @@ describe("reduceAccount", () => {
         value: { status: "RUNNING" },
       });
       expect(rebaselined.directives).toEqual([]);
+    });
+  });
+
+  describe("a detail listing", () => {
+    const running = runningScope(ORG);
+    const history = historyScope(ORG, "x");
+    const rowOf = (id: string, version: number, status: string) => ({
+      family: "process" as const,
+      id,
+      value: processValue({ id, projectId: "x", status }),
+      revision: { kind: "zerops" as const, version },
+    });
+
+    it("lists a demanded history and keeps the running index on the running scope's word", () => {
+      const lit = apply(emptyAccount, [
+        {
+          kind: "stream",
+          key: linkKeys.zerops(ORG),
+          now: 0,
+          event: { kind: "demand", demanded: true },
+        },
+        { kind: "stream", key: running, now: 0, event: { kind: "demand", demanded: true } },
+        { kind: "stream", key: running, now: 0, event: { kind: "attempt" } },
+        { kind: "baseline-begin", scope: running, generation: 1 },
+        {
+          kind: "baseline-commit",
+          scope: running,
+          generation: 1,
+          via: "zerops-realtime",
+          members: ["q"],
+          rows: [rowOf("q", 1, "RUNNING")],
+        },
+        { kind: "stream", key: history, now: 0, event: { kind: "demand", demanded: true } },
+        { kind: "stream", key: history, now: 0, event: { kind: "attempt" } },
+        { kind: "baseline-begin", scope: history, generation: 1 },
+        {
+          kind: "baseline-commit",
+          scope: history,
+          generation: 1,
+          via: "zerops-read",
+          members: ["q", "old"],
+          rows: [rowOf("q", 2, "RUNNING"), rowOf("old", 3, "FINISHED")],
+        },
+      ]);
+      expect([...(lit.memberships.get(history)?.members ?? [])]).toEqual([
+        ["q", "member"],
+        ["old", "member"],
+      ]);
+      expect(factOf(lit, "process", "q")?.scope).toBe(history);
+      expect(indexOf(lit, "running", "x")).toEqual(new Set(["q"]));
+
+      const stopped = reduceAccount(lit, {
+        kind: "membership",
+        scope: running,
+        generation: 1,
+        delta: { add: [], remove: ["q"] },
+      });
+      expect(indexOf(stopped.state, "running", "x")).toEqual(new Set());
+      expect(stopped.state.memberships.get(history)?.members.get("q")).toBe("member");
     });
   });
 

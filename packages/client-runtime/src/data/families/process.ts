@@ -7,6 +7,7 @@
  * @module data/families/process
  */
 import { readActivityProcess, type ActivityProcess } from "../../zerops/activity/dto.ts";
+import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
 /** A process as the platform's whole row says it: identity, status, pipeline, its end. */
@@ -17,6 +18,8 @@ declare module "../model.ts" {
     readonly process: ProcessValue;
   }
 }
+
+const HISTORY = "history";
 
 /** The statuses the running registration admits (`registration-formats.jsonl`). */
 const RUNNING_PROCESS_STATUSES = ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const;
@@ -57,6 +60,27 @@ export const processFamily: FamilySpec<"process"> = {
       return value === undefined ? null : { id: value.id, value, version: versionOf(raw) };
     },
   },
+  details: [
+    {
+      suffix: HISTORY,
+      // A process falls out of the newest hundred by age, which says nothing of its end.
+      leaving: "removed",
+      zerops: {
+        path: ({ ownerId }) => `/project/${encodeURIComponent(ownerId ?? "")}/process?limit=100`,
+        items: (answer) =>
+          typeof answer === "object" &&
+          answer !== null &&
+          "list" in answer &&
+          Array.isArray(answer.list)
+            ? answer.list
+            : undefined,
+      },
+    },
+  ],
 };
 
 export const runningScope = (orgId: string) => scopeOf(processFamily, orgId);
+
+/** One project's newest hundred processes, observed while a screen demands them. */
+export const historyScope = (orgId: string, projectId: string): ScopeKey =>
+  `zerops:${orgId}:${HISTORY}:${projectId}`;

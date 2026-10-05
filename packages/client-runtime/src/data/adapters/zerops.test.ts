@@ -15,7 +15,7 @@ import { makeAccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
 import { zeropsNavigationLink } from "./zerops.ts";
-import { runningScope } from "../families/process.ts";
+import { historyScope, runningScope } from "../families/process.ts";
 import { factOf, indexOf } from "../reducer.ts";
 import { linkKeys } from "../model.ts";
 
@@ -260,16 +260,139 @@ const frameOf = (index: number) => {
   return event.data;
 };
 
-const run = (store: ReturnType<typeof makeAccountStore>, fixture: ReturnType<typeof fixtureWire>) =>
+const runLink = (
+  store: ReturnType<typeof makeAccountStore>,
+  fixture: ReturnType<typeof fixtureWire>,
+) =>
   Effect.gen(function* () {
     const link = zeropsNavigationLink({ orgId: ORG, wire: fixture.wire, store, makeId: counter() });
     const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
     const fiber = yield* Effect.forkChild(supervisor.run);
     yield* settle;
-    return fiber;
+    return { fiber, link };
   });
+
+const run = (store: ReturnType<typeof makeAccountStore>, fixture: ReturnType<typeof fixtureWire>) =>
+  Effect.map(runLink(store, fixture), ({ fiber }) => fiber);
 
 function counter() {
   let next = 0;
   return () => `sub-${(next += 1)}`;
 }
+
+describe("a demanded detail", () => {
+  const HISTORY_PATH = `/project/${PROBE_PROJECT_ID}/process?limit=100`;
+  const history = historyScope(ORG, PROBE_PROJECT_ID);
+  const DEMAND = { family: "process", listing: "history", ownerId: PROBE_PROJECT_ID } as const;
+  const finished = {
+    id: "old",
+    projectId: PROBE_PROJECT_ID,
+    status: "FINISHED",
+    actionName: "stack.deploy",
+    created: "2026-10-05T18:00:00Z",
+  };
+  const historyReads = (fixture: ReturnType<typeof fixtureWire>) =>
+    fixture.requests.filter((request) => request.method === "GET" && request.path === HISTORY_PATH)
+      .length;
+
+  it.effect("reads a demanded history once as its baseline and lets it go when released", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({ status: 200, body: { list: [finished] } })
+          : answers(() => [])(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      expect(historyReads(fixture)).toBe(0);
+
+      const release = link.demandDetail(DEMAND);
+      yield* settle;
+      expect(historyReads(fixture)).toBe(1);
+      expect(store.state().streams.get(history)?.phase).toBe("live");
+      expect(store.state().memberships.get(history)?.members.get("old")).toBe("member");
+      expect(factOf(store.state(), "process", "old")?.content).toMatchObject({
+        value: { status: "FINISHED" },
+      });
+
+      release();
+      yield* settle;
+      expect(store.state().streams.get(history)).toMatchObject({
+        phase: "paused",
+        demanded: false,
+      });
+      expect(factOf(store.state(), "process", "old")?.content.kind).toBe("value");
+
+      link.demandDetail(DEMAND);
+      yield* settle;
+      expect(historyReads(fixture)).toBe(2);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("goes stale with its link and reads every demanded history again when it returns", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.succeed({ status: 200, body: { list: [finished] } })
+          : answers(() => [])(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      link.demandDetail(DEMAND);
+      yield* settle;
+
+      yield* fixture.drop({ outcome: "transient", message: "socket closed" });
+      yield* settle;
+      expect(store.state().streams.get(history)?.phase).toBe("stale");
+      expect(store.state().memberships.get(history)?.members.get("old")).toBe("member");
+
+      const down = store.state().streams.get(linkKeys.zerops(ORG));
+      yield* TestClock.adjust(down?.next.kind === "retry" ? down.next.at : 0);
+      yield* settle;
+      expect(historyReads(fixture)).toBe(2);
+      expect(store.state().streams.get(history)?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect.each([
+    { status: 403, phase: "refused", outcome: "authoritative-denial" },
+    { status: 404, phase: "refused", outcome: "definitive-refusal" },
+  ])(
+    "refuses only the history its owner answers $status to; navigation stays live",
+    ({ status, phase, outcome }) =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire((request) =>
+          request.method === "GET"
+            ? Effect.succeed({ status, body: null })
+            : answers(() => [])(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail(DEMAND);
+        yield* settle;
+        expect(store.state().streams.get(history)).toMatchObject({ phase, fault: { outcome } });
+        expect(store.state().streams.get(runningScope(ORG))?.phase).toBe("live");
+        expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect("ends the attempt when a demanded history's read is lost on the way", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire((request) =>
+        request.method === "GET"
+          ? Effect.fail({ outcome: "transient", message: "HTTP 503" } as const)
+          : answers(() => [])(request),
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+      link.demandDetail(DEMAND);
+      yield* settle;
+      expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("recovering");
+      expect(store.state().streams.get(history)?.phase).toBe("stale");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});

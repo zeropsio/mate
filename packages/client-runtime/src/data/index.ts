@@ -5,6 +5,7 @@
  * @module data
  */
 export { startZeropsNavigation, type RunningLink } from "./account.ts";
+export type { DetailDemand } from "./demand.ts";
 export { makeAccountStore, type AccountStore, type Projection } from "./store.ts";
 export {
   makeZeropsWire,

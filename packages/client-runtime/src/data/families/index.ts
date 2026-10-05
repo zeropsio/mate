@@ -4,9 +4,9 @@
  *
  * @module data/families
  */
-import type { Family, ScopeKey } from "../model.ts";
+import type { Family, MemberState, ScopeKey } from "../model.ts";
 import { processFamily } from "./process.ts";
-import type { AnyFamilySpec } from "./spec.ts";
+import type { AnyFamilySpec, DetailListing } from "./spec.ts";
 
 /** The registry, checked once at startup: a family, a scope name and an index name each once. */
 export function defineFamilies(
@@ -20,6 +20,7 @@ export function defineFamilies(
   for (const spec of families) {
     once(`family ${spec.family}`);
     once(`scope ${spec.scope.suffix}`);
+    for (const listing of spec.details ?? []) once(`scope ${listing.suffix}`);
     if (spec.index !== undefined) once(`index ${spec.index.name}`);
   }
   return families;
@@ -28,7 +29,21 @@ export function defineFamilies(
 export const FAMILIES = defineFamilies([processFamily]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));
-const bySuffix = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.scope.suffix, spec]));
+/** What a scope lists: its family, what leaving it means, and the detail listing it is, if one. */
+export interface ScopeListing {
+  readonly spec: AnyFamilySpec;
+  readonly leaving: MemberState;
+  readonly detail: DetailListing | null;
+}
+
+const bySuffix = new Map<string, ScopeListing>(
+  FAMILIES.flatMap((spec) => [
+    [spec.scope.suffix, { spec, leaving: spec.scope.leaving, detail: null }] as const,
+    ...(spec.details ?? []).map(
+      (detail) => [detail.suffix, { spec, leaving: detail.leaving, detail }] as const,
+    ),
+  ]),
+);
 
 export function familySpec(family: Family): AnyFamilySpec {
   const spec = byFamily.get(family);
@@ -36,9 +51,24 @@ export function familySpec(family: Family): AnyFamilySpec {
   return spec;
 }
 
+/** What a scope lists. */
+export function scopeListing(scope: ScopeKey): ScopeListing {
+  const listing = bySuffix.get(scope.split(":")[2] ?? "");
+  if (listing === undefined) throw new Error(`No family lists the scope ${scope}.`);
+  return listing;
+}
+
 /** The family whose members a scope lists. */
-export function scopeSpec(scope: ScopeKey): AnyFamilySpec {
-  const spec = bySuffix.get(scope.split(":")[2] ?? "");
-  if (spec === undefined) throw new Error(`No family lists the scope ${scope}.`);
-  return spec;
+export const scopeSpec = (scope: ScopeKey): AnyFamilySpec => scopeListing(scope).spec;
+
+/**
+ * The family's own scope under the link a scope belongs to: where a member's `listed` is read,
+ * whichever listing delivered its value. A detail listing's members are listed in their family's
+ * own navigation scope.
+ */
+export function ownScopeOf(scope: ScopeKey): ScopeKey {
+  const { spec, detail } = scopeListing(scope);
+  if (detail === null) return scope;
+  const [source, linkOwner] = scope.split(":");
+  return `${source}:${linkOwner}:${spec.scope.suffix}` as ScopeKey;
 }
