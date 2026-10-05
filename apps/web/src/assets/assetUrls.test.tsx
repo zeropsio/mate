@@ -8,21 +8,36 @@ const testState = vi.hoisted(() => ({
   refreshes: 0,
 }));
 
-vi.mock("@effect/atom-react", () => ({
-  useAtomValue: () => testState.result,
-  useAtomRefresh: () => () => {
-    testState.refreshes += 1;
-  },
-}));
+vi.mock("@effect/atom-react", async () => {
+  const { createContext } = await import("react");
+  return {
+    useAtomValue: () => testState.result,
+    useAtomRefresh: () => () => {
+      testState.refreshes += 1;
+    },
+    RegistryContext: createContext({
+      refresh: () => {
+        testState.refreshes += 1;
+      },
+    }),
+  };
+});
 vi.mock("~/state/assets", () => ({
-  assetEnvironment: { createUrl: () => ({}) },
+  assetEnvironment: { createUrl: () => ({}), createUrls: () => ({}) },
 }));
 vi.mock("~/state/session", () => ({
   usePreparedConnection: () => ({ _tag: "Some", value: { httpBaseUrl: "https://mate.test/" } }),
 }));
 
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import { SIGN_RETRY_DELAYS_MS, signingSaysNotThere, useAssetUrlState } from "./assetUrls";
+import { AsyncResult } from "effect/unstable/reactivity";
+import {
+  assetUrlStateOf,
+  SIGN_RETRY_DELAYS_MS,
+  signingSaysNotThere,
+  useAssetUrlState,
+  useAssetUrlStates,
+} from "./assetUrls";
 
 const failure = (error: unknown) => ({ _tag: "Failure", cause: Cause.fail(error) });
 
@@ -89,5 +104,83 @@ describe("a picture's signed address", () => {
       missing.renderer.unmount();
       once.renderer.unmount();
     });
+  });
+});
+
+// A result's pictures, read together: only a file the server says is not there is gone; one whose
+// Mate is asleep, offline or reconnecting is still on its way (opening a sleeping Mate's cached
+// conversation must not drop its pictures and bring them back with a jump).
+describe("pictures' signed addresses, read together", () => {
+  const BASE = "https://mate.test/";
+  it.each([
+    {
+      case: "the file is not there",
+      result: AsyncResult.failure(Cause.fail({ _tag: "AssetWorkspaceResolutionError" })),
+      base: BASE,
+      state: "Failure",
+    },
+    {
+      case: "the Mate's link is not connected",
+      result: AsyncResult.failure(Cause.fail({ _tag: "EnvironmentRpcUnavailableError" })),
+      base: BASE,
+      state: "Loading",
+    },
+    {
+      case: "the Mate did not answer",
+      result: AsyncResult.failure(Cause.fail({ _tag: "RpcClientError" })),
+      base: BASE,
+      state: "Loading",
+    },
+    { case: "not asked yet", result: AsyncResult.initial(), base: BASE, state: "Loading" },
+    {
+      case: "signed, its connection not prepared",
+      result: AsyncResult.success({ relativeUrl: "/api/assets/a.png" }),
+      base: null,
+      state: "Loading",
+    },
+    {
+      case: "signed",
+      result: AsyncResult.success({ relativeUrl: "/api/assets/a.png" }),
+      base: BASE,
+      state: "Success",
+    },
+  ])("reads $case as $state", ({ result, base, state }) => {
+    expect(assetUrlStateOf(result as never, base)._tag).toBe(state);
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    testState.refreshes = 0;
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("tries a failed signing again on the same schedule, and never calls it gone", () => {
+    testState.result = [
+      AsyncResult.failure(Cause.fail({ _tag: "RpcClientError" })),
+      AsyncResult.failure(Cause.fail({ _tag: "AssetWorkspaceResolutionError" })),
+    ];
+    const seen: Array<ReadonlyArray<string>> = [];
+    function Probe() {
+      seen.push(
+        useAssetUrlStates(EnvironmentId.make("env-1"), [
+          { _tag: "workspace-file", threadId: ThreadId.make("thread-1"), path: "a.png" },
+          { _tag: "workspace-file", threadId: ThreadId.make("thread-1"), path: "b.png" },
+        ]).map((state) => state._tag),
+      );
+      return null;
+    }
+    let renderer!: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(<Probe />);
+    });
+    expect(seen.at(-1)).toEqual(["Loading", "Failure"]);
+    for (const wait of SIGN_RETRY_DELAYS_MS) {
+      act(() => vi.advanceTimersByTime(wait));
+    }
+    // Only the one that may come back is asked again, once per step of the schedule.
+    expect(testState.refreshes).toBe(SIGN_RETRY_DELAYS_MS.length);
+    expect(seen.at(-1)).toEqual(["Loading", "Failure"]);
+    act(() => renderer.unmount());
   });
 });

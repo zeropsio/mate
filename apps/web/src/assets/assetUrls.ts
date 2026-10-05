@@ -1,9 +1,9 @@
-import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { resolveAssetUrl } from "@t3tools/client-runtime/state/assets";
 import type { AssetImageDimensions, AssetResource, EnvironmentId } from "@t3tools/contracts";
 import { Cause, Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
-import { useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 
 import { assetEnvironment } from "~/state/assets";
 import { usePreparedConnection } from "~/state/session";
@@ -119,31 +119,77 @@ export function useAssetUrls(
   );
 }
 
-/** Each resource's state, read together: its address once signed, a failure where it is not there. */
+/**
+ * One signing's state, as a picture read with others takes it: gone only where the server says the
+ * file is not there (`signingSaysNotThere`); any other failure — a Mate asleep, offline or
+ * reconnecting, which the query refuses on purpose — is a picture still on its way.
+ */
+export function assetUrlStateOf(
+  result: AsyncResult.AsyncResult<
+    {
+      readonly relativeUrl: string;
+      readonly sourcePath?: string | undefined;
+      readonly imageDimensions?: AssetImageDimensions | undefined;
+    },
+    unknown
+  >,
+  httpBaseUrl: string | null,
+): AssetUrlState {
+  if (AsyncResult.isFailure(result)) {
+    return signingSaysNotThere(result.cause) ? { _tag: "Failure" } : { _tag: "Loading" };
+  }
+  if (httpBaseUrl === null || !AsyncResult.isSuccess(result)) return { _tag: "Loading" };
+  const url = resolveAssetUrl(httpBaseUrl, result.value.relativeUrl);
+  return url === null
+    ? { _tag: "Failure" }
+    : {
+        _tag: "Success",
+        url,
+        ...(result.value.imageDimensions !== undefined
+          ? { imageDimensions: result.value.imageDimensions }
+          : {}),
+      };
+}
+
+/**
+ * Each resource's state, read together (`assetUrlStateOf`). A signing that failed for a moment is
+ * tried again on `SIGN_RETRY_DELAYS_MS`, as `useAssetUrlState`'s `retry` does, and stays loading
+ * meanwhile and after: the Mate's link coming back asks again by itself.
+ */
 export function useAssetUrlStates(
   environmentId: EnvironmentId,
   resources: ReadonlyArray<AssetResource>,
 ): ReadonlyArray<AssetUrlState> {
   const preparedConnection = usePreparedConnection(environmentId);
+  const registry = useContext(RegistryContext);
   const results = useAtomValue(assetEnvironment.createUrls({ environmentId, resources }));
-  return useMemo(
-    () =>
-      results.map((result): AssetUrlState => {
-        if (AsyncResult.isFailure(result)) return { _tag: "Failure" };
-        if (preparedConnection._tag === "None" || !AsyncResult.isSuccess(result)) {
-          return { _tag: "Loading" };
+  const key = JSON.stringify([environmentId, resources]);
+  const [tries, setTries] = useState({ key, done: 0 });
+  const done = tries.key === key ? tries.done : 0;
+  // The ones that may come back: failed, and not for want of the file.
+  const passing = results
+    .flatMap((result, index) =>
+      AsyncResult.isFailure(result) && !signingSaysNotThere(result.cause) ? [index] : [],
+    )
+    .join(",");
+  const retrying = passing !== "" && done < SIGN_RETRY_DELAYS_MS.length;
+  useEffect(() => {
+    if (!retrying) return;
+    const timer = setTimeout(() => {
+      setTries({ key, done: done + 1 });
+      for (const index of passing.split(",")) {
+        const resource = resources[Number(index)];
+        if (resource !== undefined) {
+          registry.refresh(assetEnvironment.createUrl({ environmentId, input: { resource } }));
         }
-        const url = resolveAssetUrl(preparedConnection.value.httpBaseUrl, result.value.relativeUrl);
-        return url === null
-          ? { _tag: "Failure" }
-          : {
-              _tag: "Success",
-              url,
-              ...(result.value.imageDimensions !== undefined
-                ? { imageDimensions: result.value.imageDimensions }
-                : {}),
-            };
-      }),
-    [preparedConnection, results],
+      }
+    }, SIGN_RETRY_DELAYS_MS[done]);
+    return () => clearTimeout(timer);
+  }, [done, environmentId, key, passing, registry, resources, retrying]);
+  const httpBaseUrl =
+    preparedConnection._tag === "None" ? null : preparedConnection.value.httpBaseUrl;
+  return useMemo(
+    () => results.map((result) => assetUrlStateOf(result, httpBaseUrl)),
+    [httpBaseUrl, results],
   );
 }
