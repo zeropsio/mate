@@ -172,6 +172,7 @@ describe("planMateKey", () => {
       ],
       plan: { kind: "write", tokenId: "tok-mate", projects: [OWN] },
     },
+    // Security review 7: only a Mate's key is ever written (`mateKeyReach`).
     {
       case: "by id: a key with no grant on its own project is given exactly that one",
       foundBy: "id",
@@ -345,5 +346,35 @@ describe("findHeldMateKey — the key a Mate's container holds", () => {
         "p-1",
       )?.id,
     ).toBe("k-new");
+  });
+
+  // Security review 7: a press reuses only a key that is its Mate's (`mateKeyReach`): its own
+  // project alone. A `zcp-` key that reaches anything else is never reused — and so never
+  // stripped: the press mints a new one.
+  it.each([
+    {
+      case: "READ_ONLY on a sibling: never reused",
+      grants: [{ projectId: "prod", roleCode: "READ_ONLY" as const }],
+      want: undefined,
+    },
+    {
+      case: "a sibling it may write: never reused",
+      grants: [{ projectId: "prod", roleCode: "BASIC_USER" as const }],
+      want: undefined,
+    },
+    {
+      case: "a sibling it administers: never reused",
+      grants: [{ projectId: "prod", roleCode: "ADMIN" as const }],
+      want: undefined,
+    },
+  ])("$case", ({ grants, want }) => {
+    const widened = {
+      ...key("k-1", "2026-10-01T09:00:00Z"),
+      name: "zcp-shop",
+    };
+    expect(
+      newestMateKey([{ ...widened, projects: [...(widened.projects ?? []), ...grants] }], "p-1")
+        ?.id,
+    ).toBe(want);
   });
 });

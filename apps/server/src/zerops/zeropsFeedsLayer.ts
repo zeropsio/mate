@@ -21,6 +21,7 @@ import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { CrewEngine } from "./crew/CrewEngine.ts";
 import { crewLayer } from "./crew/crewLayer.ts";
+import { CrewPlatformProcesses } from "./crew/crewDeployState.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
@@ -76,7 +77,21 @@ const ZeropsTurnAdmissionLive = ZeropsTurnAdmissionModule.layer.pipe(
  * until a crew is applied. It admits its turns through the same gate instance. One value, so the
  * link below reads the very engine the merge runs.
  */
+/** Crew's port to the platform's process list: whether a deploy a restart cut off still runs. */
+const CrewPlatformProcessesLive = Layer.effect(
+  CrewPlatformProcesses,
+  Effect.map(ZeropsRestartReadModule.ZeropsRestartRead, (reader) =>
+    CrewPlatformProcesses.of({
+      read: reader.read.pipe(
+        Effect.map((evidence) => evidence.processes),
+        Effect.orElseSucceed(() => undefined),
+      ),
+    }),
+  ),
+).pipe(Layer.provide(ZeropsRestartReadModule.layer));
+
 const ZeropsCrewLive = crewLayer.pipe(
+  Layer.provide(CrewPlatformProcessesLive),
   Layer.provide(ZeropsTurnAdmissionLive),
   Layer.provide(ZeropsAgentAuthLive),
   Layer.provide(ZeropsLoginsLive),

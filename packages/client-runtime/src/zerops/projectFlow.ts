@@ -82,6 +82,11 @@ export interface FlowPullRequest {
    * written. What a review reads first.
    */
   readonly description?: string | undefined;
+  /**
+   * How many comments were said on it, as HQ counts them: the room its review's conversation
+   * holds while it reads them. `undefined` where HQ counts none.
+   */
+  readonly commentCount?: number | undefined;
 }
 
 /**
@@ -123,6 +128,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     updatedAt: change.updatedAt,
     headBranch: `mate/${change.mateProjectId}/${String(change.number)}`,
     description: change.body.trim().length === 0 ? undefined : change.body,
+    commentCount: change.comments ?? undefined,
   };
 }
 

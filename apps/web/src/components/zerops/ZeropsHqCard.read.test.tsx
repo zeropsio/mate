@@ -6,9 +6,14 @@
  */
 import type { ZeropsService } from "@t3tools/client-runtime/zerops";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
+import { RegistryContext } from "@effect/atom-react";
+import { type Atom, AtomRegistry } from "effect/unstable/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { hqStandingAtom } from "~/state/zerops";
+import type { HqStanding } from "~/zerops/accountHq";
 
 import { ZeropsHqCard } from "./ZeropsHqCard";
 
@@ -33,10 +38,15 @@ vi.mock("~/zerops/accountHq", () => ({
   useAccountHq: () => ({
     hq: { kind: "official", projectId: "hq1", address: "https://hq.example.test" },
   }),
-  useHqStanding: () => ({ kind: "healthy", build: health.build, parts: { quarantined: [] } }),
   useCarriedCoreBuild: () => CARRIED,
   readBundledCore: () => Promise.reject(new Error("no Core in this test")),
 }));
+// Where HQ stands, as its stream says it (`hqStandingAtom`): written here as the stream would.
+vi.mock("~/state/zerops", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("~/state/zerops")>();
+  const { Atom } = await import("effect/unstable/reactivity");
+  return { ...actual, hqStandingAtom: Atom.make<HqStanding>({ kind: "unknown" }) };
+});
 vi.mock("~/hooks/useSettings", () => ({
   useClientSettings: (select: (settings: { readonly timestampFormat: string }) => unknown) =>
     select({ timestampFormat: "24-hour" }),
@@ -105,11 +115,25 @@ afterEach(() => {
   health.build = RUNS;
 });
 
+const registry = AtomRegistry.make();
+/** HQ's stream saying HQ serves on the Core `build`, its parts quiet. */
+const serving = (build: string) =>
+  registry.set(hqStandingAtom as unknown as Atom.Writable<HqStanding>, {
+    kind: "healthy",
+    build,
+    parts: { quarantined: [] },
+  });
+
 async function mount(): Promise<ReactTestRenderer> {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  serving(health.build);
   let tree: ReactTestRenderer | undefined;
   await act(async () => {
-    tree = create(<ZeropsHqCard />);
+    tree = create(
+      <RegistryContext.Provider value={registry}>
+        <ZeropsHqCard />
+      </RegistryContext.Provider>,
+    );
   });
   mounted.push(tree!);
   return tree!;
@@ -168,9 +192,8 @@ describe("ZeropsHqCard — HQ's project in Zerops", () => {
     await press(tree);
     expect(text(tree)).toContain("Updating");
 
-    health.build = CARRIED;
     await act(async () => {
-      tree.update(<ZeropsHqCard />);
+      serving(CARRIED);
     });
     expect(text(tree)).toContain("Healthy");
     expect(text(tree)).not.toContain("Updating");

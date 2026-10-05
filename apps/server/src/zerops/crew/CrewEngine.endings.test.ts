@@ -5,15 +5,26 @@ import * as NodePath from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import type { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
+
+import { CrewThreadDirectory, CrewToolHost } from "./crewSeams.ts";
 
 import { spiEvent, withCrewEngine, type CrewWorld } from "./testing/crewEngineFixture.ts";
 import {
+  AS_CREW,
   applied,
   command,
   dispatchedOf,
   firstTurn,
   snapshotWhere,
 } from "./testing/crewEngineSteps.ts";
+
+/** The crewmate's current conversation. */
+const currentThread = Effect.map(
+  snapshotWhere((current) => current.crewmates[0]!.currentThreadId !== null),
+  (snapshot) => snapshot.crewmates[0]!.currentThreadId!,
+);
 
 const endsWith = (world: CrewWorld, thread: ThreadId, terminalReason: string) =>
   world.publish(
@@ -23,79 +34,171 @@ const endsWith = (world: CrewWorld, thread: ThreadId, terminalReason: string) =>
     }),
   );
 
-describe("CrewEngine endings", () => {
-  for (const terminalReason of ["api_error", "model_error", "turn_setup_failed"]) {
-    it.live(`${terminalReason} ends visibly without another turn or committing dirty work`, () =>
-      withCrewEngine((world) =>
-        Effect.gen(function* () {
-          yield* applied(world);
-          const copy = NodePath.join(world.root, ".crew/backend");
-          const thread = yield* firstTurn(world, () =>
-            NodeFS.writeFileSync(NodePath.join(copy, "dirty.txt"), "keep this work\n"),
-          );
-          const turns = (yield* dispatchedOf(world, "thread.turn.start")).length;
-          yield* endsWith(world, thread, terminalReason);
-          const stopped = yield* snapshotWhere(
-            (frame) =>
-              frame.attention.some((need) => need.kind === "interrupted") &&
-              frame.crewmates[0]?.lane?.dirty === true,
-          );
-          const operation = stopped.attention.find(
-            (need) => need.kind === "interrupted",
-          )!.operation!;
-          assert.strictEqual(operation.status, "interrupted");
-          assert.strictEqual(stopped.board.tasks[0]!.attempts, 1);
-          assert.strictEqual(stopped.crewmates[0]!.lane?.dirty, true);
-          assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, turns);
-          yield* command({
-            _tag: "operationContinue",
-            handle: "backend",
-            operationId: operation.id,
-          });
-          assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, turns + 1);
-        }),
-      ),
-    );
-  }
+/** The person's next message runs a turn in the crewmate's current conversation. */
+const nextTurn = (world: CrewWorld, stints: number) =>
+  Effect.gen(function* () {
+    yield* snapshotWhere((current) => current.crewmates[0]!.stints.length === stints);
+    yield* command({ _tag: "message", handle: "backend", text: "Go on", attachments: [] });
+    const thread = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.threadId;
+    yield* world.publish(spiEvent("turn.started", thread, {}));
+    return thread;
+  });
 
-  for (const terminalReason of ["prompt_too_long", "rapid_refill_breaker"]) {
-    it.live(`${terminalReason} waits for Continue before rotating its conversation`, () =>
+describe("CrewEngine endings", () => {
+  it.live(
+    "a conversation that outgrows its context rotates at once; the third time the task stops",
+    () =>
       withCrewEngine((world) =>
         Effect.gen(function* () {
           yield* applied(world);
-          const thread = yield* firstTurn(world, () =>
-            NodeFS.writeFileSync(
-              NodePath.join(world.root, ".crew/backend/dirty.txt"),
-              "keep overflow edits\n",
-            ),
+          const first = yield* firstTurn(world, () => undefined);
+          yield* endsWith(world, first, "prompt_too_long");
+          const second = yield* nextTurn(world, 2);
+          yield* endsWith(world, second, "rapid_refill_breaker");
+          const third = yield* nextTurn(world, 3);
+          yield* endsWith(world, third, "prompt_too_long");
+          const parked = yield* snapshotWhere(
+            (current) => current.board.tasks[0]?.state === "parked",
           );
-          yield* endsWith(world, thread, terminalReason);
-          const stopped = yield* snapshotWhere(
-            (frame) =>
-              frame.attention.some((need) => need.kind === "interrupted") &&
-              frame.crewmates[0]?.lane?.dirty === true,
+          assert.deepStrictEqual(
+            {
+              stints: parked.crewmates[0]!.stints.map((stint) => [stint.state, stint.reason]),
+              reason: parked.board.tasks[0]!.reason,
+            },
+            {
+              stints: [
+                ["retired", null],
+                ["retired", "A fresh conversation: the last one grew too long"],
+                ["open", "A fresh conversation: the last one grew too long"],
+              ],
+              reason: "its conversation outgrew its context too often",
+            },
           );
-          assert.strictEqual(stopped.crewmates[0]!.lane?.dirty, true);
-          assert.strictEqual(stopped.crewmates[0]!.stints.length, 1);
-          assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, 1);
-          const operation = stopped.attention.find(
-            (need) => need.kind === "interrupted",
-          )!.operation!;
-          yield* command({
-            _tag: "operationContinue",
-            handle: "backend",
-            operationId: operation.id,
-          });
-          const continued = yield* snapshotWhere(
-            (frame) => frame.crewmates[0]!.stints.length === 2,
-          );
-          assert.strictEqual(
-            continued.crewmates[0]!.stints[1]!.reason,
-            "A fresh conversation: the last one grew too long",
-          );
-          assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, 2);
         }),
       ),
-    );
-  }
+  );
+
+  it.live(
+    "a turn the provider broke off queues its task again once; the second time it stops",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          const thread = yield* firstTurn(world, () => undefined);
+          yield* endsWith(world, thread, "api_error");
+          const again = yield* snapshotWhere(
+            (current) =>
+              current.board.tasks[0]?.state === "working" && current.board.tasks[0]?.attempts === 2,
+          );
+          const principal = (yield* Ref.get(world.admitted)).at(-1)?.principal;
+          yield* world.publish(spiEvent("turn.started", thread, {}));
+          yield* endsWith(world, thread, "model_error");
+          const parked = yield* snapshotWhere(
+            (current) => current.board.tasks[0]?.state === "parked",
+          );
+          assert.deepStrictEqual(
+            [again.board.tasks[0]!.attempts, principal, parked.board.tasks[0]!.reason],
+            [2, AS_CREW, "its turn broke off twice"],
+          );
+        }),
+      ),
+  );
+
+  it.live("Try again gives a task its one re-queue after a broken-off turn back", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const thread = yield* firstTurn(world, () => undefined);
+        yield* endsWith(world, thread, "api_error");
+        yield* snapshotWhere((current) => current.board.tasks[0]?.attempts === 2);
+        yield* world.publish(spiEvent("turn.started", thread, {}));
+        yield* endsWith(world, thread, "model_error");
+        const parked = yield* snapshotWhere(
+          (current) => current.board.tasks[0]?.state === "parked",
+        );
+        yield* command({ _tag: "taskRetry", taskId: parked.board.tasks[0]!.id });
+        const retried = yield* snapshotWhere(
+          (current) =>
+            current.board.tasks[0]?.state === "working" && current.board.tasks[0]?.attempts === 3,
+        );
+        const current = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.threadId;
+        yield* world.publish(spiEvent("turn.started", current, {}));
+        yield* endsWith(world, current, "api_error");
+        const again = yield* snapshotWhere(
+          (frame) =>
+            frame.board.tasks[0]?.state === "working" && frame.board.tasks[0]?.attempts === 4,
+        );
+        assert.deepStrictEqual(
+          [retried.board.tasks[0]!.attempts, again.board.tasks[0]!.state],
+          [3, "working"],
+        );
+      }),
+    ),
+  );
+
+  it.live("in a run, a new conversation after an overflow carries the task on at once", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* command({
+          _tag: "start",
+          budgetUsd: "unlimited",
+          timeLimitHours: "unlimited",
+          stopAtUsagePercent: null,
+          landing: "person",
+          devGrant: false,
+          leadMayStart: false,
+        });
+        const first = yield* firstTurn(world, () => undefined);
+        yield* endsWith(world, first, "prompt_too_long");
+        yield* snapshotWhere((current) => current.crewmates[0]!.stints.length === 2);
+        const second = yield* currentThread;
+        const carried = (yield* dispatchedOf(world, "thread.turn.start")).findLast(
+          (turn) => turn.threadId === second,
+        );
+        assert.deepStrictEqual(carried?.message.text.split("\n").slice(1, 3), [
+          "#1 Change a.txt · continues",
+          "A fresh conversation: the last one grew too long",
+        ]);
+      }),
+    ),
+  );
+
+  it.live("a rotation a turn's start makes counts toward the attempt's two", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        const first = yield* firstTurn(world, () => undefined);
+        yield* endsWith(world, first, "prompt_too_long");
+        yield* snapshotWhere((current) => current.crewmates[0]!.stints.length === 2);
+        const second = yield* currentThread;
+        const transcript = NodePath.join(world.workspace, "second.jsonl");
+        NodeFS.writeFileSync(transcript, "{}\n");
+        const member = Option.getOrThrow(yield* (yield* CrewThreadDirectory).memberFor(second));
+        yield* (yield* CrewToolHost).sessionStart(member, {
+          source: "startup",
+          sessionId: "session-2",
+          transcriptPath: transcript,
+        });
+        yield* snapshotWhere((current) => current.crewmates[0]!.stints[1]?.state === "active");
+        NodeFS.rmSync(transcript);
+        const third = yield* nextTurn(world, 2);
+        yield* endsWith(world, third, "prompt_too_long");
+        const parked = yield* snapshotWhere(
+          (current) => current.board.tasks[0]?.state === "parked",
+        );
+        assert.deepStrictEqual(
+          [parked.crewmates[0]!.stints.map((stint) => stint.reason), parked.board.tasks[0]!.reason],
+          [
+            [
+              null,
+              "A fresh conversation: the last one grew too long",
+              "A fresh conversation: the last one couldn't be resumed",
+            ],
+            "its conversation outgrew its context too often",
+          ],
+        );
+      }),
+    ),
+  );
 });

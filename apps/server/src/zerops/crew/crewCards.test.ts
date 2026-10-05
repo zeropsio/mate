@@ -11,6 +11,7 @@ import {
   resolveCard,
   rotationSeed,
   savedSeamWords,
+  sweptSeamWords,
   stintReasonWords,
   taskCard,
 } from "./crewCards.ts";
@@ -255,6 +256,22 @@ describe("crew cards", () => {
       expect(savedSeamWords(change, reason, apply)).toBe(expected);
     },
   );
+
+  // The boot sweep's save, said where the person reads the crewmate: what it saved, and where.
+  it.each([
+    [
+      ["src/api.ts"],
+      "Saved what the restart left uncommitted on crew/backend as 0a84078: src/api.ts",
+    ],
+    [
+      ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"],
+      "Saved what the restart left uncommitted on crew/backend as 0a84078: a.ts, b.ts, c.ts and 2 more",
+    ],
+  ] as const)("a boot sweep's save of %o leaves its seam line", (paths, expected) => {
+    expect(sweptSeamWords("crew/backend", "0a84078f2fd5652d10c3c820786c944d057386e3", paths)).toBe(
+      expected,
+    );
+  });
 
   it("carries the open task into a new conversation's first turn", () => {
     expect(

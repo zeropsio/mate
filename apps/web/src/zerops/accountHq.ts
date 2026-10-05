@@ -10,8 +10,9 @@
  *   not served with is presented again on the next, while young, and mints nothing. One API per account, org and
  *   HQ for the account's lifetime; its session is kept across loads as the Mates' are
  *   (`keptSessions.ts`, audit K7), so a load with a live one passes no door.
- * - **Whether it answers:** `/health`, read while a surface shows it. An HQ that stops answering
- *   is `unavailable` from the first read that failed, and says so with that time (SPEC §4).
+ * - **Whether it answers:** its structure stream (`hqStructure.ts`): healthy while it serves, and
+ *   after it failed, `/health` read once per failed attempt while the tab is visible. An HQ that
+ *   stops answering is `unavailable` from the stream's first failure, with that time (SPEC §4).
  * - **Its birth's ports:** Core comes from this very build, same-origin under `hq-core/`
  *   (`apps/hq/scripts/pack-core.ts`).
  */
@@ -28,6 +29,7 @@ import {
   type HqCoreArtifact,
   type HqEndpoint,
   type HqHealth,
+  type HqParts,
   type OfficialHq,
   type OpenHqSocket,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -38,8 +40,7 @@ import {
 import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { MembersCellRequest } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { create } from "zustand";
+import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { appBasePath } from "~/basePath";
 import { randomUUID } from "~/lib/utils";
@@ -57,6 +58,7 @@ import {
 } from "./hqVerdict";
 import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
+import { whenShown } from "./whenShown";
 import { ZeropsDataContext } from "./zeropsDataContext";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
@@ -119,12 +121,22 @@ export function useAccountHq(clientId: string | undefined): AccountHq {
     Effect.runFork(data.runtime.cells.invalidate(request));
     forgetNoHqVerdict(owner);
   }, [data, owner]);
-  // A verdict of no official HQ stands a day, then the member list is read again.
+  // A verdict of no official HQ stands a day, then the member list is read again — in a hidden
+  // tab, once it is shown again.
   const keptNone = kept !== undefined && keptNoHq(kept) ? kept : undefined;
   useEffect(() => {
     if (keptNone === undefined) return;
-    const timer = setTimeout(reread, Math.max(0, keptNone.noneAt + NO_HQ_RECHECK_MS - Date.now()));
-    return () => clearTimeout(timer);
+    let unwait: () => void = () => undefined;
+    const timer = setTimeout(
+      () => {
+        unwait = whenShown(reread);
+      },
+      Math.max(0, keptNone.noneAt + NO_HQ_RECHECK_MS - Date.now()),
+    );
+    return () => {
+      clearTimeout(timer);
+      unwait();
+    };
   }, [keptNone, reread]);
   return { status: kept === undefined ? status : "ready", hq, admins, reread };
 }
@@ -249,15 +261,19 @@ export function useOfficialHq(): { readonly address: string; readonly api: HqApi
   );
 }
 
-/** Where an HQ stands, as this tab last read it. */
+/** Where an HQ stands, as its stream last said it (`hqStandingAtom`). */
 export type HqStanding =
   | { readonly kind: "unknown" }
   /**
-   * Its newest answer as the official HQ: `build` the Core it runs (`hq/update.ts`), `parts` how
-   * they stand. `unchecked` serves while it cannot check Zerops right now: no outage, everything
-   * keeps using it.
+   * Serving as the official HQ — `unchecked` while it cannot check Zerops right now: no outage,
+   * everything keeps using it. `build` the Core it runs (`hq/update.ts`) and `parts` how they
+   * stand, as its stream or its health says them; each absent while neither has yet.
    */
-  | Extract<HqHealth, { readonly kind: "healthy" | "unchecked" }>
+  | {
+      readonly kind: "healthy" | "unchecked";
+      readonly build?: string;
+      readonly parts?: HqParts;
+    }
   /** Not answering as the official HQ since `since` (wall ms): the last known state stays shown. */
   | { readonly kind: "unavailable"; readonly since: number };
 
@@ -265,48 +281,6 @@ export type HqStanding =
 export function nextHqStanding(previous: HqStanding, health: HqHealth, nowMs: number): HqStanding {
   if (health.kind === "healthy" || health.kind === "unchecked") return health;
   return previous.kind === "unavailable" ? previous : { kind: "unavailable", since: nowMs };
-}
-
-/** How often a shown HQ's health is read. */
-export const HQ_HEALTH_EVERY_MS = 30_000;
-
-const useHqStandings = create<{ readonly byAddress: Readonly<Record<string, HqStanding>> }>(() => ({
-  byAddress: {},
-}));
-onAccountLifetimeClose(() => useHqStandings.setState({ byAddress: {} }));
-
-/** The HQ at `address`, read now and every {@link HQ_HEALTH_EVERY_MS} while shown. */
-export function useHqStanding(address: string | undefined): HqStanding {
-  const standing = useHqStandings((state) =>
-    address === undefined ? undefined : state.byAddress[address],
-  );
-  useEffect(() => {
-    if (address === undefined) return;
-    const controller = new AbortController();
-    const read = () =>
-      void readHqHealth((input, init) => fetch(input, init), address, controller.signal).then(
-        (health) => {
-          if (controller.signal.aborted) return;
-          useHqStandings.setState((state) => ({
-            byAddress: {
-              ...state.byAddress,
-              [address]: nextHqStanding(
-                state.byAddress[address] ?? { kind: "unknown" },
-                health,
-                Date.now(),
-              ),
-            },
-          }));
-        },
-      );
-    read();
-    const timer = setInterval(read, HQ_HEALTH_EVERY_MS);
-    return () => {
-      controller.abort();
-      clearInterval(timer);
-    };
-  }, [address]);
-  return standing ?? { kind: "unknown" };
 }
 
 /**
@@ -339,26 +313,48 @@ export async function readCarriedCoreBuild(
   }
 }
 
-/** This tab's one read of the Core it carries: its build does not change under it. */
-let carriedCoreBuild: Promise<string> | undefined;
+/**
+ * This tab's one read of the Core it carries — its build does not change under it — made for the
+ * first reader in a shown tab, never in a hidden one.
+ */
+const carried: {
+  build: string | undefined;
+  /** Waiting for a shown tab, or sent. */
+  asked: boolean;
+  sent: boolean;
+  readonly listeners: Set<() => void>;
+  unwait: () => void;
+} = { build: undefined, asked: false, sent: false, listeners: new Set(), unwait: () => undefined };
+
+function subscribeCarried(listener: () => void): () => void {
+  carried.listeners.add(listener);
+  if (!carried.asked) {
+    carried.asked = true;
+    carried.unwait = whenShown(() => {
+      carried.sent = true;
+      void readCarriedCoreBuild(
+        (input, init) => fetch(input, init),
+        `${appBasePath()}/hq-core`,
+      ).then((build) => {
+        carried.build = build;
+        for (const heard of carried.listeners) heard();
+      });
+    });
+  }
+  return () => {
+    carried.listeners.delete(listener);
+    if (carried.listeners.size > 0 || carried.sent) return;
+    // Let go of before it went out: the next reader asks again.
+    carried.unwait();
+    carried.asked = false;
+  };
+}
+
+const carriedBuild = () => carried.build;
 
 /** The Core this build carries (`readCarriedCoreBuild`); `undefined` until read. */
 export function useCarriedCoreBuild(): string | undefined {
-  const [build, setBuild] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    let live = true;
-    carriedCoreBuild ??= readCarriedCoreBuild(
-      (input, init) => fetch(input, init),
-      `${appBasePath()}/hq-core`,
-    );
-    void carriedCoreBuild.then((read) => {
-      if (live) setBuild(read);
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-  return build;
+  return useSyncExternalStore(subscribeCarried, carriedBuild, carriedBuild);
 }
 
 /**

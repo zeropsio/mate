@@ -464,6 +464,8 @@ export function crewNeedSentence(
       return "Its crew copy is missing";
     case "conversation-copy":
       return "Conversation points elsewhere";
+    case "deploy-unreadable":
+      return `The redeploy of ${row.host ?? "its service"} can't be read. Thaw it if it ended.`;
     case "question":
       return row.text === null || row.text.trim() === ""
         ? "It asks you something."
@@ -526,6 +528,7 @@ export function crewNeedSentence(
 export const CREW_ROW_VERBS = {
   rebuildCopy: "Rebuild crew copy",
   useCrewCopy: "Use crew copy",
+  thawHost: "Thaw it",
   answer: "Answer",
   review: "Review",
   reviewWhatItHas: "Review what it has",
@@ -562,6 +565,8 @@ export function crewRowVerbLine(
       return "Rebuilds this copy from its saved work. It leaves other copies alone.";
     case "useCrewCopy":
       return "This conversation uses its crew copy.";
+    case "thawHost":
+      return "Its crew copies thaw and carry on. Only if the redeploy ended.";
     case "answer":
       return "Write your answer right here.";
     case "review":

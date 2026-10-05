@@ -79,10 +79,8 @@ import {
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
-import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { HqMates } from "@t3tools/client-runtime/zerops/hq";
 import { mateIsViewers, mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
@@ -123,7 +121,12 @@ import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 import { SidebarComingEnds } from "./SidebarComingEnds";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { mateBirthFace, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import {
+  mateAwake,
+  mateBirthFace,
+  mateReviewWaits,
+  type ZeropsAgentActivity,
+} from "~/zerops/agentActivity";
 import type { MateComing } from "~/zerops/mateComing";
 import { useZeropsProjectFlowOptional } from "~/zerops/projectFlowContext";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
@@ -253,14 +256,6 @@ type RosterCandidate = ZeropsCandidate & {
 };
 
 type Entry<T> = { readonly item: T; readonly role: ZeropsEnvironmentRole | undefined };
-
-/**
- * Whether a Mate is up, its face awake: this tab's socket to it is, or HQ holds one of its links
- * open — though no socket of this tab reaches it and no chat of its says anything yet.
- */
-function mateUp(item: ZeropsCandidate, mates: HqMates | null | undefined): boolean {
-  return item.group === "connected" || mates?.get(item.project.id)?.presence.online === true;
-}
 
 /** The set with the group collapsed or not; the same set where nothing changed. */
 function withCollapsed(
@@ -986,7 +981,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           projectName: groupName,
           environmentId: item.environmentId,
           owner: getOwner?.(item),
-          connected: mateUp(item, hqMates) || candidateContainerRuns(item),
+          connected: mateAwake(item, hqMates),
           activity: getActivity?.(item),
           reviewWaits: mateReviewWaits(input.flow, item.project.id),
           mine: mateIsViewers(item.project, viewer),
@@ -1275,7 +1270,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             const live = getActivity?.(item);
             const coming = getComing?.(item);
             const read = mateRowReading({
-              connected: mateUp(item, hqMates) || candidateContainerRuns(item),
+              connected: mateAwake(item, hqMates),
               activity: live,
               reviewWaits: reviewWaits(item),
               mine: mateIsViewers(item.project, viewer),
@@ -1480,7 +1475,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   actions={getMateActions?.(item, getActivity?.(item))}
                   active={active}
                   activity={getActivity?.(item)}
-                  up={mateUp(item, hqMates)}
+                  up={mateAwake(item, hqMates)}
                   appUrl={appUrl}
                   candidate={item}
                   coming={getComing?.(item)}
@@ -2503,7 +2498,7 @@ function MateRow<T extends RosterCandidate>({
   readonly shape: MateShapeId;
   readonly active: boolean;
   readonly activity: ZeropsAgentActivity | undefined;
-  /** It is up, its face awake (`mateUp`): its socket, or its link to HQ. */
+  /** It is up, its face awake (`mateAwake`): its container runs, or its link to HQ is open. */
   readonly up: boolean;
   /** Still coming up, or never came (`mateComing`): its one line says so. */
   readonly coming?: MateComing | undefined;
@@ -2536,8 +2531,14 @@ function MateRow<T extends RosterCandidate>({
   const deletingIds = useDeletingMates();
   const deleting = mateDeleting(candidate.project, deletingIds);
   // *Finish setup* running on it, from whichever screen it was pressed (`finishSetupRowLine`):
-  // its own view draws the steps only while its container is missing, so its row says so.
+  // its own view draws the steps only while its container is missing, so its row says so. A stop
+  // is said for a moment, and never over a Mate that is connected: this tab's socket to it, or its
+  // link to HQ — not a container that only runs, whose stop is what the row says.
   const press = useMatePress(candidate.project.id);
+  const hqWord = useAtomValue(hqMatesAtom);
+  const linkedNow =
+    candidate.group === "connected" ||
+    (hqWord?.current === true && hqWord.mates?.get(candidate.project.id)?.presence.online === true);
   const structure = useAtomValue(hqStructureAtom);
   const placements = useAtomValue(hqPlacementsAtom);
   const outsideHq = mateOutsideHq(
@@ -2545,7 +2546,8 @@ function MateRow<T extends RosterCandidate>({
     placements !== null && structure?.current === true,
     coming !== undefined || press !== undefined,
   );
-  const finishing = deleting || coming !== undefined ? undefined : finishSetupRowLine(press);
+  const finishing =
+    deleting || coming !== undefined ? undefined : finishSetupRowLine(press, { up: linkedNow });
   // What the row says in its state (`mateRowView`, M7): the face, the right of
   // the name, what was asked and the third line — the face and the words from
   // the one reading of it (`mateRowReading`): what it is on, or was last on,
@@ -2555,7 +2557,7 @@ function MateRow<T extends RosterCandidate>({
   const viewer = useZeropsSessionOptional()?.user?.id;
   const nowMs = useNowMs();
   const read = mateRowReading({
-    connected: up || candidateContainerRuns(candidate),
+    connected: up,
     activity,
     reviewWaits,
     mine: mateIsViewers(candidate.project, viewer),

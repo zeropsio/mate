@@ -4,12 +4,12 @@
  * after a break, the whole state again). JSON messages:
  *
  * - `{ type: "snapshot", can, unheld, ungrouped, apps, changes, appReads, mates, people,
- *   rolesAnsweredAt }` — what `GET /api/structure` answers, with what the caller may do with the
+ *   rolesAnsweredAt, official, build, parts }` — what `GET /api/structure` answers, with what the caller may do with the
  *   organization, each project HQ holds nowhere, each application, environment and Mate (`can`,
  *   `moveTo`, `offers.ts`); beside it when Zerops answered the org
  *   view those offers are decided over, and the changes of every application the caller may read
  *   them of, by application id (`@t3tools/shared/hqChanges` `ChangesSnapshot`), and where each of
- *   those applications' releases, repository heads and stage/production recipes (`hqAppReads`); and
+ *   those applications' releases, repository heads and Mate/stage/production recipes (`hqAppReads`); and
  *   every Mate the caller may observe (`observe_mate`) as HQ holds it, by project, with the people
  *   the view names (`@t3tools/shared/hqMates`);
  * - `{ type: "changes", appId, changes }` — one application's changes as the caller now reads them
@@ -32,6 +32,13 @@
  * - `{ type: "people", people }` — the people the view names, whenever they differ: its Mates'
  *   makers and stand-up askers, their logins' signers, and whoever an `OWNER` entry names on its
  *   projects, each by user id with their member id — never a token;
+ * - `{ type: "official", official }` — whether this HQ is the official one as its last check of
+ *   Zerops said (`official.ts`), whenever that changes: `unknown` while Zerops does not answer
+ *   it, which HQ's grace serves through (`@t3tools/shared/hqStream` `HqOfficialVerdict`), and
+ *   `null` before this Core's first check finished — a Core starts at `unknown`, which is no
+ *   verdict;
+ * - `{ type: "parts", parts }` — how this Core's parts stand, as `/health` reports them
+ *   (`health.ts` `healthParts`), whenever that changes; the snapshot carries them too;
  * - `{ type: "ping" }` every 20 s, so the Zerops L7 (which cuts an idle connection at 60 s) never
  *   sees one; the client answers `{ type: "pong" }`. Any message counts: a client silent through
  *   three pings is closed (4408).
@@ -52,7 +59,7 @@
  */
 import * as NodeCrypto from "node:crypto";
 
-import { HQ_STREAM_SEGMENT_CLOSE } from "@t3tools/shared/hqStream";
+import { HQ_STREAM_SEGMENT_CLOSE, type HqOfficialVerdict } from "@t3tools/shared/hqStream";
 import type { ChangesMessage, ChangesSnapshot } from "@t3tools/shared/hqChanges";
 import type { AppRead, AppReads, ReleaseRevisionMessage } from "@t3tools/shared/hqAppReads";
 import type {
@@ -79,6 +86,8 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 import { Changes } from "./changes.ts";
 import { Deploys } from "./deploys.ts";
 import { type MateOverviewEntry, MateOverviews } from "./mateOverviews.ts";
+import { healthParts } from "./health.ts";
+import { Official } from "./official.ts";
 import { Recomputes } from "./recomputes.ts";
 import { Releases } from "./releases.ts";
 import { type OrgView, Roles } from "./roles.ts";
@@ -88,6 +97,8 @@ import type { ZeropsError, ZeropsMember } from "./zerops/api.ts";
 export interface StreamOptions {
   readonly recheck?: Duration.Duration;
   readonly pingEvery?: Duration.Duration;
+  /** The Core this one is, as its bundle stamps it: what the snapshot names it by. */
+  readonly build?: string;
 }
 
 /** Why an open view ends: the caller's session, or this Core's lead. */
@@ -100,10 +111,15 @@ export type StructureMessage =
       readonly type: "snapshot";
       readonly changes: ChangesSnapshot;
       readonly appReads: AppReads;
+      readonly official: HqOfficialVerdict | null;
+      readonly build?: string;
+      readonly parts: StreamParts;
       /** When Zerops answered the org view its offers are decided over (ISO 8601); none yet. */
       readonly rolesAnsweredAt: string | null;
     } & StructureRead &
       HqMatesSnapshot)
+  | { readonly type: "official"; readonly official: HqOfficialVerdict | null }
+  | { readonly type: "parts"; readonly parts: StreamParts }
   | ChangesMessage
   | ReleaseRevisionMessage
   | { readonly type: "change"; readonly key: string; readonly value: unknown }
@@ -115,6 +131,12 @@ export type StructureMessage =
   | { readonly type: "roles"; readonly rolesAnsweredAt: string | null }
   | { readonly type: "presses"; readonly presses: StructureRead["presses"] }
   | HqMatesMessage;
+
+/**
+ * How this Core's parts stand, as `/health` reports them (`health.ts` `healthParts`): its database
+ * answers while the stream computes a view at all.
+ */
+type StreamParts = { readonly db: "up" } & Omit<Effect.Success<typeof healthParts>, "git">;
 
 /** The key of the Mates in no application; an application's key is its id, never this. */
 const UNGROUPED = "ungrouped";
@@ -215,6 +237,10 @@ interface Sent {
   /** Each observed Mate's parts, encoded. */
   readonly mates: ReadonlyMap<string, ReadonlyMap<string, string>>;
   readonly people: string;
+  /** Whether this HQ is the official one, as its last check of Zerops said; none before one. */
+  readonly official: HqOfficialVerdict | null;
+  /** How this Core's parts stand, encoded. */
+  readonly parts: string;
 }
 
 /**
@@ -227,10 +253,20 @@ export const structureMessages = <R>(
   ending: Effect.Effect<Ending | undefined, never, R>,
   recheck: Duration.Duration,
   batch: Duration.Duration = MATES_BATCH,
+  /** The Core this one is (`StreamOptions.build`), named in the snapshot. */
+  build?: string,
 ): Stream.Stream<
   Outgoing,
   SqlError | ZeropsError,
-  Structure | Changes | Releases | Deploys | MateOverviews | Roles | R
+  | Structure
+  | Changes
+  | Releases
+  | Deploys
+  | MateOverviews
+  | Roles
+  | Official
+  | Effect.Services<typeof healthParts>
+  | R
 > =>
   Stream.unwrap(
     Effect.gen(function* () {
@@ -240,6 +276,10 @@ export const structureMessages = <R>(
       const deploys = yield* Deploys;
       const overviews = yield* MateOverviews;
       const roles = yield* Roles;
+      const officialHq = yield* Official;
+      const partsNow = healthParts.pipe(
+        Effect.provideContext(yield* Effect.context<Effect.Services<typeof healthParts>>()),
+      );
       const one = yield* Semaphore.make(1);
       const sent = yield* Ref.make<Sent | undefined>(undefined);
       /** The keys whose value differs between what was sent and what is now. */
@@ -316,11 +356,20 @@ export const structureMessages = <R>(
           appReads[appId] = yield* Effect.gen(function* () {
             const records = yield* releases.list(userId, appId);
             const repos = yield* changes.listRepos(userId, appId);
+            // The Mate's tier stands alone: one HQ cannot read — past the read's bound, say — is
+            // left out, and its reader reads it on its own; the rest never fails for it.
+            const mate = yield* changes.readRecipe(userId, appId, "mate").pipe(
+              Effect.map((read) => ({ mate: read })),
+              Effect.catchTags({
+                ChangeRefused: () => Effect.succeed({}),
+                GitError: () => Effect.succeed({}),
+              }),
+            );
             const stage = yield* changes.readRecipe(userId, appId, "stage");
             const production = yield* changes.readRecipe(userId, appId, "production");
             return {
               revision,
-              value: { releases: records, repos, recipes: { stage, production } },
+              value: { releases: records, repos, recipes: { ...mate, stage, production } },
               failure: null,
             };
           }).pipe(
@@ -352,6 +401,8 @@ export const structureMessages = <R>(
             }),
           );
         }
+        const { git: _git, ...health } = yield* partsNow;
+        const parts: StreamParts = { db: "up", ...health };
         const facts = yield* roles.view;
         const listed = matesIn(view);
         const observable = new Set(
@@ -399,6 +450,8 @@ export const structureMessages = <R>(
           named,
           mates: new Map([...mates].map(([projectId, entry]) => [projectId, encodedParts(entry)])),
           people: toJson(people),
+          official: (yield* officialHq.checked) ? (yield* officialHq.status).official : null,
+          parts: toJson(parts),
         };
         yield* Ref.set(sent, now);
         if (before === undefined) {
@@ -413,10 +466,17 @@ export const structureMessages = <R>(
                 [...mates].map(([projectId, entry]) => [projectId, partsOf(entry)]),
               ) as HqMatesSnapshot["mates"],
               people,
+              official: now.official,
+              ...(build === undefined ? {} : { build }),
+              parts,
             },
           ];
         }
         return [
+          ...(now.official === before.official
+            ? []
+            : [{ type: "official" as const, official: now.official }]),
+          ...(now.parts === before.parts ? [] : [{ type: "parts" as const, parts }]),
           ...differing(before.changes, now.changes).map((appId): Outgoing => ({
             type: "changes",
             appId,

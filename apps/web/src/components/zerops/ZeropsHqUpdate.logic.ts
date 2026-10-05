@@ -68,18 +68,34 @@ export function hqUpdateWords(state: HqUpdateState, answering: string | undefine
 }
 
 /**
- * What HQ's card offers an owner or an admin beside HQ's health: its update while HQ's health
+ * What HQ's card offers an owner or an admin beside HQ's health: its update while HQ's stream
  * names an older Core than this app carries, else the way to see that it is up to date — both from
- * data already read. `null` for anybody else, and while either Core is unread.
+ * data already read. A stream that names no Core leaves it to Zerops: the `hq` service's active
+ * app version, read when an admin opens the card (`hqUpdateState`). `null` for anybody else, and
+ * while either Core is unread.
  */
 export function hqUpdateTrigger(input: {
   readonly admin: boolean;
   readonly standing: HqStanding;
   /** The Core this app carries; `undefined` until read. */
   readonly carried: string | undefined;
+  /** Where Zerops says HQ's Core stands, once the opened card read it. */
+  readonly zerops?: HqUpdateState | undefined;
 }): "Update available" | "Up to date" | null {
-  const { standing, carried } = input;
+  const { standing, carried, zerops } = input;
   if (!input.admin || carried === undefined) return null;
   if (standing.kind !== "healthy" && standing.kind !== "unchecked") return null;
-  return hqUpdateOffered(standing.build, carried) ? "Update available" : "Up to date";
+  if (standing.build !== undefined) {
+    return hqUpdateOffered(standing.build, carried) ? "Update available" : "Up to date";
+  }
+  // The Core it runs not named by its stream, nor read from Zerops yet: nothing offered on a guess.
+  switch (zerops?.kind) {
+    case "available":
+    case "failed":
+      return "Update available";
+    case "current":
+      return "Up to date";
+    default:
+      return null;
+  }
 }

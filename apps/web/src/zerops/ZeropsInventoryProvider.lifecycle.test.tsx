@@ -40,6 +40,7 @@ import { inventoryProjectRefKey, useZeropsInventory, type Inventory } from "./in
 import { ZeropsInventoryProvider } from "./ZeropsInventoryProvider";
 import { hqStructureAtom } from "../state/zerops";
 import { AccountVoiceLine } from "../components/zerops/AccountVoiceLine";
+import { TRY_NOW_SETTLE_MS } from "./inventoryTrouble.logic";
 
 const encodeWireFrame = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
@@ -923,14 +924,14 @@ it.live(
         }
         // The silence changes nothing the data says: through the hold before the line speaks,
         // the stalled read is not known.
-        expect(loading).toContain(true);
-        expect(harness.inventory()?.error).toBe("Zerops isn't answering.");
-        expect(harness.inventory()?.isLoading).toBe(false);
+        expect(loading.slice(-19, -1)).toEqual(Array.from({ length: 18 }, () => true));
+        expect(harness.inventory()?.error).toBe("Zerops isn't answering. Trying again…");
+        expect(harness.inventory()?.isLoading).toBe(true);
         // Said once, at the menu's foot, naming what isn't answering — the organization's
         // projects and services, whose subscriptions every project shares — with Try now and no
         // Sign out.
         expect(harness.container.textContent).toBe(
-          "Zerops isn't answering.Organization's projects and servicesTry now",
+          "Zerops isn't answering. Trying again…Organization's projects and servicesTry now",
         );
         heard.length = 0;
         const reopened = harness.refreshed().length;
@@ -949,10 +950,9 @@ it.live(
         expect(harness.client.fetchUser).toHaveBeenCalledTimes(1);
         // Never a silent no-op: it says it is trying, and once that has run with the stall still
         // on, the line says so and offers it again.
-        expect(harness.inventory()?.isLoading).toBe(true);
-        yield* harness.advance(60_000);
-        expect(harness.container.textContent).toContain("Zerops isn't answering.");
-        expect(buttonsLabelled(harness.container as never, "Try now")).toHaveLength(1);
+        expect(harness.container.textContent).toContain("Trying…");
+        yield* harness.advance(TRY_NOW_SETTLE_MS);
+        expect(harness.container.textContent).toContain("Still not answering.");
         expect(harness.container.textContent).toContain("Try now");
       }),
     ),

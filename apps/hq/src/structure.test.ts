@@ -67,7 +67,7 @@ const project = (id: string, userRoles: ZeropsProject["userRoles"] = []): Zerops
 type Org = Omit<OrgView, "freshness">;
 
 /** A Mate's birth before anything marked it. */
-const UNBORN = { standupRequestedBy: null, closedOff: false } as const;
+const UNBORN = { standupRequestedBy: null, closedOff: false, keyWider: false } as const;
 
 const VIEW: Org = {
   orgId: "ORG",
@@ -965,6 +965,7 @@ describe("structure", () => {
                 madeBy: null,
                 standupRequestedBy: null,
                 closedOff: true,
+                keyWider: false,
               });
               assert.deepStrictEqual(yield* mateOf("P_OWN"), {
                 face: "face-1",
@@ -1003,6 +1004,7 @@ describe("structure", () => {
             madeBy: "owner",
             standupRequestedBy: "owner",
             closedOff: false,
+            keyWider: false,
           });
 
           const told = yield* Stream.runHead(Stream.drop(structure.changes, 1)).pipe(
@@ -1017,9 +1019,38 @@ describe("structure", () => {
             madeBy: "owner",
             standupRequestedBy: "owner",
             closedOff: true,
+            keyWider: false,
           });
         }),
       ),
+    );
+
+    // ADR 0003's fallout: a Mate whose key reads other projects says so with its record, so its
+    // menu offers Finish setup — and its readers are told when HQ's word on its key moves.
+    it.effect(
+      "says a Mate whose key reads other projects, and tells its readers as that moves",
+      () =>
+        withStructure(() =>
+          Effect.gen(function* () {
+            const structure = yield* Structure;
+            yield* structure.createMate("owner", { projectId: "P_MATE", face: "face-3" });
+            const keyWider = Effect.map(
+              structure.read("reader"),
+              (read) => read.ungrouped[0]?.mate.keyWider,
+            );
+            assert.isFalse(yield* keyWider);
+
+            const told = yield* Stream.runHead(Stream.drop(structure.changes, 1)).pipe(
+              Effect.forkChild,
+            );
+            yield* Effect.yieldNow;
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`UPDATE hq_mate SET key_wider_token_id = 'tok-wide' WHERE project_id = 'P_MATE'`;
+            yield* structure.mateTouched("P_MATE");
+            assert.isTrue(Option.isSome(yield* Fiber.join(told)));
+            assert.isTrue(yield* keyWider);
+          }),
+        ),
     );
 
     // D3: Zerops holds a Mate's name, HQ none — what a reader and the Mate itself are told is its

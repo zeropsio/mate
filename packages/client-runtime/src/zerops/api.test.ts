@@ -670,6 +670,9 @@ describe("a throttled answer's Retry-After", () => {
     ["0", 0],
     ["Wed, 30 Sep 2026 12:00:30 GMT", 30_000],
     ["Wed, 30 Sep 2026 11:59:00 GMT", 0],
+    ["600", 600_000],
+    ["86400", 600_000],
+    ["Thu, 01 Oct 2026 12:00:00 GMT", 600_000],
     ["soon", null],
     ["", null],
     [null, null],
@@ -1102,17 +1105,25 @@ describe("ZeropsApiClient project reads", () => {
       grants: [{ projectId: "project-1", roleCode: "BASIC_USER" }],
       written: null,
     },
-    // Until the harden finds the key by the id its Mate enrolled with HQ, a key that reaches
-    // another project too is not taken for the Mate's (step A, A11).
+    // Found by its name alone, a key an earlier client widened to its group is not taken for the
+    // Mate's (`planMateKey`): only the id HQ holds narrows it.
     {
-      case: "a key widened to the group, left as it is",
+      case: "a key widened to the group, found by its name: left as it is",
       grants: [
         { projectId: "project-1", roleCode: "ADMIN" },
         { projectId: "project-stage", roleCode: "READ_ONLY" },
       ],
       written: null,
     },
-  ])("hardening lowers only the Mate's own grant: $case", async ({ grants, written }) => {
+    {
+      case: "a key that writes another project too, left as it is",
+      grants: [
+        { projectId: "project-1", roleCode: "ADMIN" },
+        { projectId: "project-stage", roleCode: "ADMIN" },
+      ],
+      written: null,
+    },
+  ])("hardening leaves the Mate's key on its own project: $case", async ({ grants, written }) => {
     const token = { id: "token-1", name: "zcp-project-1", roleCode: "NO_ACCESS", projects: grants };
     const stub = recordingFetch((request) => {
       if (request.url.endsWith("/integration-token/list"))
@@ -2486,7 +2497,8 @@ describe("ZeropsApiClient.writeProject — the TagWriter's one PUT", () => {
     expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
       name: "Nova",
       description: "A Mate",
-      tagList: ["mate"],
+      // The project's own tags go back with the marker: they are its person's.
+      tagList: ["billing:team-a", "mate"],
       publicIpV4Shared: true,
       maxCreditLimit: 40,
     });

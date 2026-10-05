@@ -1,7 +1,7 @@
 /**
  * The words of HQ's card on the projects page (`ZeropsHqCard.tsx`), from reads already made: HQ's
- * health and how its parts stand (`useHqStanding`, every 30 s), the structure and the Mates'
- * presence its stream keeps, and — once an admin opens the card — HQ's services and builds, read
+ * standing, the Core it runs and how its parts stand (`hqStandingAtom`, off HQ's stream, never
+ * polled), the structure and the Mates' presence the same stream keeps, and — once an admin opens the card — HQ's services and builds, read
  * from Zerops once.
  */
 import type { ZeropsService } from "@t3tools/client-runtime/zerops";
@@ -285,10 +285,13 @@ function headline(input: HqCardInput, troubles: ReadonlyArray<string>): HqCardVi
 export function hqCardView(input: HqCardInput): HqCardView {
   const { admin, standing } = input;
   const serving = admin && (standing.kind === "healthy" || standing.kind === "unchecked");
+  // The Core it runs, once HQ's stream or its health has named it.
+  const build = serving ? standing.build : undefined;
   const update = readState(input.update);
   const troubles = admin
     ? [
-        ...(standing.kind === "healthy" || standing.kind === "unchecked"
+        ...((standing.kind === "healthy" || standing.kind === "unchecked") &&
+        standing.parts !== undefined
           ? partsTroubles(standing.parts, input.structure)
           : []),
         ...servicesTroubles(input.services),
@@ -299,10 +302,10 @@ export function hqCardView(input: HqCardInput): HqCardView {
     state: headline(input, troubles),
     opens: admin && standing.kind !== "unknown",
     counts: holdings(input.structure, input.online),
-    coreDay: serving ? coreDayLabel(standing.build) : null,
-    core: serving ? coreLabel(standing.build) : null,
+    coreDay: build === undefined ? null : coreDayLabel(build),
+    core: build === undefined ? null : coreLabel(build),
     coreNote: serving ? updateNote(input) : null,
-    backup: serving ? lastBackup(standing.parts.backup, input.time) : null,
+    backup: serving ? lastBackup(standing.parts?.backup, input.time) : null,
     troubles,
     services: admin
       ? ownServices(input.services).map((service) => ({

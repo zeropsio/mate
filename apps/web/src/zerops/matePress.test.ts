@@ -18,6 +18,9 @@ import {
   FINISHED_SHOWN_MS,
   PRESSED_ELSEWHERE,
   connectedPresses,
+  closeOffHoldOf,
+  closeOffOpenOf,
+  closeOffPendingOf,
   finishSetupRowLine,
   finishSetupRunning,
   birthPresses,
@@ -28,6 +31,7 @@ import {
   readMatePress,
   runPress,
   settlePress,
+  STOPPED_SHOWN_MS,
   mateFinishRegistration,
   PRESS_MAY_HAVE_LANDED,
   PRESS_RENEW_MS,
@@ -53,6 +57,9 @@ vi.mock("./accountHq", () => ({
   accountHqApi: () => ({
     recordClosedOff: async () => {
       hq.calls?.push("mark");
+    },
+    recheckKey: async () => {
+      hq.calls?.push("recheck key");
     },
     bindBirth: async () => undefined,
     attachProject: async (
@@ -100,7 +107,8 @@ const mate = (serviceId: string | undefined, closedOff: boolean | undefined) => 
 });
 
 // A press interrupted before its close-off: the container carries the press's marker, and HQ does
-// not know its project closed off (pass 28). *Finish setup* finishes it.
+// not know its project closed off (pass 28) — or HQ says it is not, and the marker is not read.
+// *Finish setup* finishes it.
 describe("interruptedPresses", () => {
   it.each([
     {
@@ -121,15 +129,29 @@ describe("interruptedPresses", () => {
       marker: false,
       interrupted: false,
     },
+    // HQ's word that its project is not closed off is enough while the marker is not read, or
+    // cannot be: the close-off gate holds it then, and Finish setup is its way out (2026-10-05).
     {
-      case: "a marker the store has not read yet",
+      case: "a marker the store has not read yet, HQ saying it is not closed off",
       mate: mate("zcp-a", false),
       marker: "unread" as const,
+      interrupted: true,
+    },
+    {
+      case: "a marker whose stream failed, HQ saying it is not closed off",
+      mate: mate("zcp-a", false),
+      marker: "unknown" as const,
+      interrupted: true,
+    },
+    {
+      case: "a marker whose stream failed, HQ saying nothing of it",
+      mate: mate("zcp-a", undefined),
+      marker: "unknown" as const,
       interrupted: false,
     },
     {
-      case: "a marker whose stream failed",
-      mate: mate("zcp-a", false),
+      case: "a marker whose stream failed, HQ holding no record",
+      mate: { service: { id: "zcp-a" }, project: {} },
       marker: "unknown" as const,
       interrupted: false,
     },
@@ -762,7 +784,9 @@ describe("a press's end", () => {
 });
 
 // A stopped Finish setup keeps its reason and manual continuation, including after bringing
-// its container. Its coming-up projection still distinguishes what it brought.
+// its container (76a0c48f8): nothing tries it again on its own. On a Mate with its container its
+// row says it stopped, then is the Mate's again (restores 6027014ee and 3d194e2e7); one bringing
+// its container stands, for its own view's Try again.
 describe("a Finish setup that stopped", () => {
   const STOPPED: MatePressState = {
     kind: "failed",
@@ -798,14 +822,14 @@ describe("a Finish setup that stopped", () => {
   // its harden and the lock of another tab stop it before any step, naming its close-off.
   it.each([
     {
-      case: "on a Mate with its container: the stop stays",
+      case: "on a Mate with its container: said, then gone, its plan kept",
       container: false,
       progress: undefined,
       stopped: STOPPED,
       stands: false,
     },
     {
-      case: "after bringing its container: the stop stays without saying it is coming",
+      case: "after bringing its container: said, then gone, and no longer coming",
       container: true,
       progress: BROUGHT,
       stopped: STOPPED,
@@ -830,15 +854,40 @@ describe("a Finish setup that stopped", () => {
     try {
       begin(container);
       if (progress !== undefined) progressPress("p-stop", progress);
-      settlePress("p-stop", stopped);
+      const resume: MatePress["resumeSetup"] = async () => ({ ok: true }) as never;
+      settlePress("p-stop", stopped, resume);
       const press = readMatePress("p-stop");
       expect(finishSetupRowLine(press)).toBe("Setup stopped");
       expect(pressComingInput([press!], "p-stop")).toEqual({
         press: { startedAt: 0, container: stands, retryable: false },
         setUpFailed: stands ? "Zerops refused the change" : undefined,
       });
-      vi.advanceTimersByTime(60_000);
-      expect(readMatePress("p-stop")?.state).toEqual(stopped);
+      vi.advanceTimersByTime(STOPPED_SHOWN_MS);
+      const later = readMatePress("p-stop");
+      expect(later?.state).toEqual(stopped);
+      expect(later?.resumeSetup).toBe(resume);
+      expect(finishSetupRowLine(later)).toBe(stands ? "Setup stopped" : undefined);
+      expect(pressComingInput([later!], "p-stop").setUpFailed).toBe(
+        stands ? "Zerops refused the change" : undefined,
+      );
+    } finally {
+      forgetPress("p-stop");
+      vi.useRealTimers();
+    }
+  });
+
+  it("a Finish setup pressed again within its words is said anew, never cut short", () => {
+    vi.useFakeTimers();
+    try {
+      begin(false);
+      settlePress("p-stop", STOPPED);
+      vi.advanceTimersByTime(STOPPED_SHOWN_MS - 1_000);
+      begin(false);
+      settlePress("p-stop", STOPPED);
+      vi.advanceTimersByTime(1_000);
+      expect(finishSetupRowLine(readMatePress("p-stop"))).toBe("Setup stopped");
+      vi.advanceTimersByTime(STOPPED_SHOWN_MS);
+      expect(finishSetupRowLine(readMatePress("p-stop"))).toBeUndefined();
     } finally {
       forgetPress("p-stop");
       vi.useRealTimers();
@@ -855,6 +904,124 @@ describe("a Finish setup that stopped", () => {
       forgetPress("p-stop");
     }
     expect(finishSetupRunning(undefined)).toBe(false);
+  });
+});
+
+describe("closeOffOpenOf — a Mate the close-off gate holds, as its row and page say it", () => {
+  const holds = new Map([
+    ["p-open", "open"],
+    ["p-unsure", "checking"],
+  ] as const);
+  const press = (state: MatePressState): MatePress => ({
+    projectId: "p-open",
+    organizationId: "org-acme",
+    startedAt: 0,
+    placement: null,
+    container: false,
+    finishing: true,
+    state,
+  });
+  it.each([
+    { case: "known not closed off", projectId: "p-open", press: undefined, want: true },
+    {
+      case: "held quietly while nothing is known",
+      projectId: "p-unsure",
+      press: undefined,
+      want: false,
+    },
+    { case: "not held", projectId: "p-other", press: undefined, want: false },
+    {
+      case: "its Finish setup running here says that instead",
+      projectId: "p-open",
+      press: press({ kind: "pressing" }),
+      want: false,
+    },
+    {
+      case: "its Finish setup stopped here: held again, said",
+      projectId: "p-open",
+      press: press({ kind: "failed", step: "close-off", reason: "No.", retry: null }),
+      want: true,
+    },
+  ])("$case: $want", ({ projectId, press, want }) => {
+    expect(closeOffOpenOf(holds, projectId, press)).toBe(want);
+  });
+});
+
+// Security review 4: where HQ says nothing, only this browser's own knowledge that a project's
+// close-off has not happened holds its Mate — a press here that runs or stopped before it.
+describe("closeOffPendingOf — the projects this browser knows are not closed off yet", () => {
+  const CLOSE_OFF: EnvironmentCreationStep = { kind: "close-off" };
+  const IMPORT: EnvironmentCreationStep = { kind: "import-container", agents: [] };
+  const press = (
+    projectId: string,
+    state: MatePressState,
+    progress: ReadonlyArray<EnvironmentCreationStepProgress> | undefined,
+    container = true,
+  ): MatePress => ({
+    projectId,
+    organizationId: "org-acme",
+    startedAt: 0,
+    placement: null,
+    container,
+    state,
+    ...(progress === undefined ? {} : { progress }),
+  });
+  const STOPPED: MatePressState = { kind: "failed", step: "close-off", reason: "No.", retry: null };
+  it.each([
+    {
+      case: "stopped before its close-off",
+      press: press("p", STOPPED, [
+        { step: IMPORT, state: "done" },
+        { step: CLOSE_OFF, state: "failed" },
+      ]),
+      want: ["p"],
+    },
+    {
+      case: "running, its close-off ahead",
+      press: press("p", { kind: "pressing" }, [
+        { step: IMPORT, state: "running" },
+        { step: CLOSE_OFF, state: "queued" },
+      ]),
+      want: ["p"],
+    },
+    {
+      case: "bringing a container, its steps not said yet",
+      press: press("p", { kind: "pressing" }, undefined),
+      want: ["p"],
+    },
+    {
+      case: "closed off, then stopped after",
+      press: press("p", STOPPED, [{ step: CLOSE_OFF, state: "done" }]),
+      want: [],
+    },
+    {
+      case: "through",
+      press: press("p", { kind: "pressed" }, [{ step: CLOSE_OFF, state: "done" }]),
+      want: [],
+    },
+    {
+      case: "a stage's press, which closes nothing off",
+      press: press("p", { kind: "pressing" }, undefined, false),
+      want: [],
+    },
+  ])("$case", ({ press, want }) => {
+    expect([...closeOffPendingOf([press])]).toEqual(want);
+  });
+});
+
+describe("closeOffHoldOf — a hold, as the Mate's own view says it", () => {
+  const holds = new Map([
+    ["p-open", "open"],
+    ["p-checking", "checking"],
+    ["p-hq", "awaiting-hq"],
+  ] as const);
+  it.each([
+    { projectId: "p-open", want: "open" },
+    { projectId: "p-checking", want: "checking" },
+    { projectId: "p-hq", want: "awaiting-hq" },
+    { projectId: "p-none", want: undefined },
+  ])("$projectId: $want", ({ projectId, want }) => {
+    expect(closeOffHoldOf(holds, projectId, undefined)).toBe(want);
   });
 });
 
@@ -893,8 +1060,20 @@ describe("finishSetupRowLine — Finish setup as its Mate's row says it, from an
       press: press(failed, true),
       line: "Setup stopped",
     },
-  ])("$case", ({ press, line }) => {
-    expect(finishSetupRowLine(press)).toBe(line);
+    {
+      case: "stopped on a Mate that is up: its sign-in line, dot and last message are its own",
+      press: press(failed, true),
+      up: true,
+      line: undefined,
+    },
+    {
+      case: "finishing on a Mate that is up: still said",
+      press: press({ kind: "pressing" }, true),
+      up: true,
+      line: "Finishing setup…",
+    },
+  ])("$case", ({ press, up, line }) => {
+    expect(finishSetupRowLine(press, { up: up === true })).toBe(line);
   });
 });
 
@@ -1027,6 +1206,67 @@ describe("finishMateSetup — the harden path", () => {
       }),
     ).toMatchObject({ ok: true });
     expect(calls).toEqual(["attach app-d", "container", "read isolation", "mark"]);
+    forgetPress("p-old");
+  });
+
+  // The 09-05 offer, end to end: Set up Mate on an existing plain project HQ holds nothing of
+  // writes the new Mate's record in no application, then its container, and closes it off at HQ —
+  // which the record lets HQ mark, so the close-off gate lets it in.
+  it("brings a Mate into an existing plain project: its record, its container, its close-off", async () => {
+    begin();
+    const calls: Array<string> = [];
+    const base = inputs(() => true, calls) as unknown as {
+      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
+    };
+    const withContainer = {
+      ...base,
+      data: {
+        ...base.data,
+        runtime: {
+          ...base.data.runtime,
+          commands: {
+            ...base.data.runtime.commands,
+            importDevelopmentContainer: () => {
+              calls.push("container");
+              return Effect.succeed({ value: { serviceName: "zcp", imported: true } });
+            },
+          },
+        },
+      },
+    };
+    const endpoint = { projectId: "hq-project", address: "https://hq.test" };
+    const registration = mateFinishRegistration({
+      hq: endpoint,
+      hqKnown: true,
+      structure: { ungrouped: [], apps: [] } as never,
+      project: { id: "p-old", name: "shop", status: "ACTIVE", tagList: [] },
+      press: readMatePress("p-old"),
+      writer: false,
+      mayCreateRecord: true,
+      standUp: false,
+      candidates: [],
+    });
+    expect(registration).toMatchObject({ kind: "mate-record", standUp: false });
+    hq.calls = calls;
+    expect(
+      await finishMateSetup({
+        inputs: withContainer as never,
+        projectId: "p-old",
+        projectName: "shop",
+        container: { agents: [] },
+        registration,
+        hq: endpoint,
+        isCurrent: () => true,
+        locks: undefined,
+        sleep: async () => undefined,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(calls).toEqual([
+      expect.stringMatching(/^record \S+:\S+$/u),
+      "container",
+      "read isolation",
+      "mark",
+    ]);
     forgetPress("p-old");
   });
 
@@ -1352,6 +1592,24 @@ describe("finishMateSetup — the harden path", () => {
     forgetPress("p-old");
   });
 
+  // Security review 8: a stopped press this tab keeps resumes where it stopped, and its Finish
+  // setup still hardens first — the kept plan never skips the key's lowering.
+  it("hardens before it resumes a stopped press this tab keeps", async () => {
+    begin();
+    const calls: Array<string> = [];
+    settlePress(
+      "p-old",
+      { kind: "failed", step: "close-off", reason: "No.", retry: null },
+      async () => {
+        calls.push("resume");
+        return { ok: true, projectId: "p-old" } as never;
+      },
+    );
+    expect(await finish(() => true, calls)).toMatchObject({ ok: true });
+    expect(calls).toEqual(["harden", "resume"]);
+    forgetPress("p-old");
+  });
+
   // Key by id (audit K3): an adopted Mate's key is hardened by the id the Mate named to HQ, where
   // it named one; matched on the token list only where it did not.
   it("hardens an adopted Mate's key by the id HQ names", async () => {
@@ -1404,6 +1662,64 @@ describe("finishMateSetup — the harden path", () => {
     hq.key = null;
     expect(await finishOld()).toMatchObject({ ok: true });
     expect(asked).toEqual(["token-7", undefined]);
+    forgetPress("p-old");
+  });
+
+  // ADR 0003's fallout: a Mate HQ holds whose key reads other projects is hardened by its Finish
+  // setup by the id HQ names — the widened key its container holds, never taken for the Mate's own
+  // — and then asks HQ to read the key again.
+  it("hardens a Mate whose key reads other projects, then asks HQ to read its key again", async () => {
+    begin();
+    const calls: Array<string> = [];
+    const base = inputs(() => true, calls) as unknown as {
+      readonly data: { readonly runtime: { readonly commands: Record<string, unknown> } };
+    };
+    const asked: Array<string | undefined> = [];
+    const matched = {
+      ...base,
+      data: {
+        ...base.data,
+        runtime: {
+          ...base.data.runtime,
+          commands: {
+            ...base.data.runtime.commands,
+            isolateProjectEnv: (_project: unknown, keyTokenId?: string) => {
+              asked.push(keyTokenId);
+              calls.push("harden");
+              return Effect.succeed({
+                value: {
+                  tokenLowered: true,
+                  keyNotLowered: null,
+                  delegationsDropped: 0,
+                  isolationSteps: 1,
+                  restarted: false,
+                },
+              });
+            },
+          },
+        },
+      },
+    };
+    hq.calls = calls;
+    hq.key = "token-wide";
+    expect(
+      await finishMateSetup({
+        inputs: matched as never,
+        projectId: "p-old",
+        projectName: "Acme - Ada",
+        container: null,
+        registration: null,
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        isCurrent: () => true,
+        harden: true,
+        keyWider: true,
+        locks: undefined,
+        sleep: async () => undefined,
+      }),
+    ).toMatchObject({ ok: true });
+    hq.key = null;
+    expect(asked).toEqual(["token-wide"]);
+    expect(calls).toEqual(["harden", "recheck key", "mark"]);
     forgetPress("p-old");
   });
 
@@ -1548,7 +1864,8 @@ describe("finishMateSetup — the harden path", () => {
         sleep: async () => undefined,
       }),
     ).toMatchObject({ ok: true, serviceName: "zcp" });
-    expect(calls).toEqual(["register", "container", "failed mark", "mark"]);
+    // Its harden runs first: a kept plan never skips the key's lowering (security review 8).
+    expect(calls).toEqual(["register", "container", "failed mark", "harden", "mark"]);
     forgetPress("p-old");
   });
 

@@ -214,7 +214,8 @@ function projectWriteBody(input: {
   return {
     name: input.name,
     description: input.description ?? "",
-    tagList: input.tagList.includes("mate") ? ["mate"] : [],
+    // The list the writer planned (`withZeropsMateTag`): the project's own tags with the marker.
+    tagList: input.tagList,
     publicIpV4Shared: input.publicIpV4Shared ?? false,
     maxCreditLimit: input.maxCreditLimit ?? null,
   };
@@ -484,16 +485,19 @@ export class ZeropsApiError extends Error {
   }
 }
 
+/** The longest a `Retry-After` holds a read: a header asking for a day is read as ten minutes. */
+export const RETRY_AFTER_CAP_MS = 10 * 60_000;
+
 /**
  * A `Retry-After` header as milliseconds from `nowMs`: delta seconds or an HTTP date; `null` when
- * absent or unreadable, and never negative.
+ * absent or unreadable, never negative and never past `RETRY_AFTER_CAP_MS`.
  */
 export function parseRetryAfterMs(header: string | null, nowMs: number): number | null {
   const value = header?.trim();
   if (!value) return null;
-  if (/^\d+$/u.test(value)) return Number(value) * 1000;
+  if (/^\d+$/u.test(value)) return Math.min(RETRY_AFTER_CAP_MS, Number(value) * 1000);
   const at = Date.parse(value);
-  return Number.isNaN(at) ? null : Math.max(0, at - nowMs);
+  return Number.isNaN(at) ? null : Math.min(RETRY_AFTER_CAP_MS, Math.max(0, at - nowMs));
 }
 
 /**

@@ -31,6 +31,7 @@
  *
  * @module groupReach
  */
+import { mateKeyReach } from "@t3tools/shared/mateKeyReach";
 
 /** The platform's project roles, as its own validation error enumerates them. */
 export type ZeropsProjectRole = "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY" | "NO_ACCESS";
@@ -57,16 +58,6 @@ const MATE_KEY_NAME_PREFIXES: ReadonlyArray<string> = ["zcp-", "zerops-zcp-"];
  * the work in its own project.
  */
 export const MATE_SELF_PROJECT_ROLE = "BASIC_USER" satisfies ZeropsProjectRole;
-
-/**
- * The roles a Mate's own token may hold on its project: the one the platform
- * mints it with, and the one 0.2 lowers it to. Both, or the search would lose
- * every Mate at the moment it was secured.
- */
-const MATE_SELF_GRANT_ROLES: ReadonlySet<ZeropsProjectRole> = new Set<ZeropsProjectRole>([
-  "ADMIN",
-  MATE_SELF_PROJECT_ROLE,
-]);
 
 export interface ZeropsProjectGrant {
   readonly projectId: string;
@@ -111,14 +102,9 @@ export interface ZeropsTokenDelegation {
  * id once the Mate enrolled it with HQ, and by this rule only until then.
  */
 function isMateKeyOf(token: ZeropsIntegrationToken, projectId: string): boolean {
-  const grants = token.projects ?? [];
-  const [grant] = grants;
   return (
     MATE_KEY_NAME_PREFIXES.some((prefix) => token.name.startsWith(prefix)) &&
-    grants.length === 1 &&
-    grant !== undefined &&
-    grant.projectId === projectId &&
-    MATE_SELF_GRANT_ROLES.has(grant.roleCode)
+    mateKeyReach(token.projects ?? [], projectId) === "own"
   );
 }
 

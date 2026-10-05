@@ -167,7 +167,8 @@ an admin updates it from HQ's card at the projects page's end to the Core the cl
   A, A11), sets it to its own project alone (`planMateKey`): a key found by the id the Mate enrolled
   with HQ loses every other grant, a `READ_ONLY` grant on a sibling an earlier client gave included;
   a key found only by its name is the Mate's only while it holds its own project alone, and is never
-  narrowed. A grant on a key HQ cannot identify stays until it is taken off by hand
+  narrowed. A widened key the Mate names, HQ says (`keyWider`) and tells Finish setup by its id. A
+  grant on a key HQ cannot identify stays until it is taken off by hand
   - _Reaches:_ its own project — the door's role reads, zcp's every platform call, the challenge it
     writes for HQ
 - **a Mate credential** — issued by HQ for a challenge whose nonce it finds in the Mate's own
@@ -553,8 +554,12 @@ still to come says so.
     `matePress.test.ts` ("writes no other Mate's key")
 - **0.4, 0.10** — A new Mate's key on `zcp` and its project closed off before anyone is admitted
   - _State:_ live — the press does it in the foreground before _Add_ returns, and records the
-    close-off in HQ (`matePress.ts`, `hqMateBirth.ts`)
-  - _Proven by:_ `matePress.test.ts`, `projectIsolation.test.ts`, `createEnvironment.test.ts`
+    close-off in HQ (`matePress.ts`, `hqMateBirth.ts`); a Mate whose press stopped before it holds
+    no lease's connection until HQ records it, and offers _Finish setup_ (`closeOff.ts`). Only a
+    fact holds one — HQ's record, or where HQ says nothing this browser's own stopped press — and
+    every hold says why on the Mate's own view
+  - _Proven by:_ `matePress.test.ts`, `projectIsolation.test.ts`, `createEnvironment.test.ts`,
+    `closeOff.test.ts`, `accountRuntime.test.ts` ("the close-off gate")
 - **0.6** — The _Update_ verb's scope
   - _State:_ live
   - _Built in:_ mate 0.11.0 `2ff377304`
@@ -1074,8 +1079,9 @@ still to come says so.
   - _Built in:_ mate 0.11.0 `b296a0139`
   - _Proven by:_ `hacks.md` H-26, H-27
 - **7** — _Set up Mate_
-  - _State:_ partial — still offered on a project with no container, to whoever may open its Mate
-    (`ZeropsProjectRow.logic.ts`); it registers the Mate in HQ
+  - _State:_ partial — offered on a dev environment or a declared Mate with no container, to
+    whoever may open its Mate, and on an existing plain project to whoever may write its Mate's
+    record at HQ (`ZeropsProjectRow.logic.ts`, `plainZeropsProject`); it registers the Mate in HQ
 - **7** — zcp's delegated launch and the GitHub `prodCd` track for group Mates
   - _State:_ **open** — `launch_delegation.go` and the build-integration track remain in zcp
 
@@ -1134,9 +1140,9 @@ lands.
 1. **Grants an earlier client left on a Mate's key.** The Gitea release gave each Mate's key
    `READ_ONLY` on its application's other projects, and the rebuild's client did until
    `04d73b1557`. The client adds no such grant now, and a Mate's harden takes any other grant off a
-   key HQ knows by the id the Mate enrolled with (`planMateKey`, `2f75bd226b`); a key HQ cannot
-   identify — found only by its name, widened before HQ — is never narrowed, and its grants are
-   removed by hand.
+   key HQ knows by the id the Mate enrolled with (`planMateKey`, `2f75bd226b`), or by the id of a
+   widened key the Mate named (`keyWider`); a key HQ cannot identify — found only by its name — is
+   never narrowed, and its grants are removed by hand.
 2. **The pairs the Gitea release's zcp wired to the old Gitea.** zcp's move of such a pair to HQ
    (`38c4695c6`) is removed from zcp. Their checkouts still name Mate s.r.o.'s old Gitea as
    `origin`, which a worktree's preparation fetches (`apps/server/src/ws.ts`), so that project runs

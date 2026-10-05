@@ -392,7 +392,7 @@ describe("a stop's line", () => {
     ],
     [
       { state: "empty", version: undefined, firstDeploy: { kind: "held" } },
-      { word: "Awaiting a deploy key", version: undefined, tone: "off" },
+      { word: "Stage awaits a deploy key", version: undefined, tone: "off" },
     ],
   ] as const)("reads %j as %j", (over, expected) => {
     expect(stopLine(stop(over))).toEqual(expected);
@@ -746,6 +746,19 @@ describe("the Overview's ungrouped projects", () => {
       mate,
       lostMate,
     ]);
+  });
+
+  // The 09-05 offer: a plain project its viewer may bring a Mate into is listed with Set up Mate.
+  it("lists a plain project its row offers Set up Mate", () => {
+    const shop = {
+      item: {
+        key: "shop",
+        group: "unavailable" as const,
+        project: { id: "shop", name: "shop", status: "ACTIVE", tagList: [] },
+      },
+      action: "set-up-mate" as const,
+    };
+    expect(shownUngrouped([shop])).toEqual([shop]);
   });
 });
 

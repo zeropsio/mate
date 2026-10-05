@@ -72,6 +72,94 @@ describe("one setup observation per Mate on screen", () => {
   });
 });
 
+describe("a setup still on its way", () => {
+  /** The tab's document, as far as visibility goes. */
+  function stubDocument() {
+    const listeners = new Set<() => void>();
+    const page = {
+      visibilityState: "visible" as DocumentVisibilityState,
+      addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+    };
+    vi.stubGlobal("document", page);
+    return {
+      listeners,
+      show: (state: DocumentVisibilityState) => {
+        page.visibilityState = state;
+        for (const listener of listeners) listener();
+      },
+    };
+  }
+
+  it("opened in a hidden tab, is read only once the tab is shown", async () => {
+    const tab = stubDocument();
+    tab.show("hidden");
+    try {
+      openAccountLifetime("setup-viewer");
+      source.read.mockResolvedValue({
+        kind: "setup",
+        setup: { at: "now", git: "done", runtimes: "none", standup: "done" },
+      });
+      function View() {
+        useMateSetup("https://mate.test");
+        return null;
+      }
+      await act(async () => {
+        trees.push(create(createElement(View)));
+      });
+      expect(source.read).not.toHaveBeenCalled();
+      await act(async () => {
+        tab.show("visible");
+      });
+      expect(source.read).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("is read every few seconds while shown, never while the tab is hidden, once on its return", async () => {
+    vi.useFakeTimers();
+    const tab = stubDocument();
+    try {
+      openAccountLifetime("setup-viewer");
+      source.read.mockResolvedValue({
+        kind: "setup",
+        setup: { at: "now", git: "done", runtimes: "running", standup: "waiting" },
+      });
+      function View() {
+        useMateSetup("https://mate.test");
+        return null;
+      }
+      await act(async () => {
+        trees.push(create(createElement(View)));
+      });
+      expect(source.read).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_000);
+      });
+      expect(source.read).toHaveBeenCalledTimes(2);
+      tab.show("hidden");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(source.read).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        tab.show("visible");
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(source.read).toHaveBeenCalledTimes(3);
+      await act(async () => {
+        for (const tree of trees.splice(0)) tree.unmount();
+      });
+      expect(tab.listeners.size).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 // A read that can't be the setup is a failure the view says, and the observation ends there: no
 // timer reads it again. Only a read with nothing answering yet, or a setup still under way, is
 // read again.

@@ -35,6 +35,8 @@ import {
   type CrewWorld,
 } from "./testing/crewEngineFixture.ts";
 import {
+  AS_CREW,
+  commandWhenFree,
   KAREL,
   applied,
   command,
@@ -686,7 +688,33 @@ describe("CrewEngine", () => {
     ),
   );
 
-  it.live("a refused queued task needs an explicit Try again after a login sign-in changes", () =>
+  it.live("a refused queued task waits through another login's sign-in", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* Ref.set(world.refusal, "not the login's signer");
+        yield* command({
+          _tag: "taskCreate",
+          owner: "backend",
+          title: "Refused",
+          brief: "Try it.",
+          doneWhen: "",
+          dependsOn: [],
+        });
+        yield* snapshotWhere((current) => current.attention.length === 1);
+        const tries = (yield* Ref.get(world.admitted)).length;
+        yield* world.signedInAs("codex");
+        yield* world.extraSignedIn("work");
+        yield* Effect.sleep("300 millis");
+        assert.deepStrictEqual(
+          [(yield* Ref.get(world.admitted)).length, (yield* latest).board.tasks[0]!.state],
+          [tries, "queued"],
+        );
+      }),
+    ),
+  );
+
+  it.live("a refused queued task starts again once a login's sign-in changes", () =>
     withCrewEngine((world) =>
       Effect.gen(function* () {
         yield* applied(world);
@@ -702,15 +730,12 @@ describe("CrewEngine", () => {
         yield* snapshotWhere((current) => current.attention.length === 1);
         yield* Ref.set(world.refusal, undefined);
         yield* world.signedIn;
-        const refused = yield* latest;
-        assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, 0);
-        yield* command({ _tag: "taskRetry", taskId: refused.board.tasks[0]!.id });
         const started = yield* snapshotWhere(
           (current) => current.board.tasks[0]?.state === "working",
         );
         assert.deepStrictEqual(
           [started.attention, (yield* Ref.get(world.admitted)).at(-1)?.principal],
-          [[], KAREL],
+          [[], AS_CREW],
         );
       }),
     ),
@@ -1075,8 +1100,261 @@ describe("CrewEngine", () => {
       ),
   );
 
-  for (const path of [null, "/chosen/copy"]) {
-    it.live(`boot preserves the conversation path ${path} and offers a selected crew copy`, () =>
+  const deployEvent = (type: "item.started" | "item.completed") =>
+    spiEvent(
+      type,
+      "person-thread",
+      {
+        itemType: "mcp_tool_call",
+        status: type === "item.started" ? "inProgress" : "completed",
+      } as never,
+      {
+        itemId: "deploy-1",
+        toolCall: {
+          name: "zerops_deploy",
+          rawName: "mcp__zerops__zerops_deploy",
+          server: "zerops",
+          arguments: { targetService: "appdev" },
+        },
+      } as never,
+    );
+
+  it.live("a self-deploy that lost a copy's branch unfreezes the service and names the loss", () =>
+    withCrewEngine((world) =>
+      Effect.gen(function* () {
+        yield* applied(world);
+        yield* world.publish(deployEvent("item.started"));
+        yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+        NodeFS.rmSync(NodePath.join(world.root, ".crew/backend"), { recursive: true });
+        git(world.root, ["worktree", "prune"]);
+        git(world.root, ["branch", "-D", "-q", "crew/backend"]);
+        yield* world.publish(deployEvent("item.completed"));
+        const after = yield* snapshotWhere(
+          (snapshot) => snapshot.lastError?.includes("crew/backend") === true,
+        );
+        const lane = yield* (yield* CrewStore).getLane(CREW_ID, "backend");
+        assert.deepStrictEqual(
+          [after.crewmates[0]!.lane?.state === "frozen", Option.getOrThrow(lane).frozenSince],
+          [false, null],
+        );
+      }),
+    ),
+  );
+
+  it.live("a restart during a self-deploy does not leave the service frozen", () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* world.publish(deployEvent("item.started"));
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* (yield* ServerCommandReadiness).complete;
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "ready");
+          yield* commandWhenFree({
+            _tag: "message",
+            handle: "backend",
+            text: "Work",
+            attachments: [],
+          });
+          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
+          assert.strictEqual((yield* dispatchedOf(world, "thread.turn.start")).length, 1);
+        }),
+    ]),
+  );
+
+  for (const [state, processes, words] of [
+    [
+      "still runs",
+      [{ serviceStacks: [{ name: "appdev" }], status: "RUNNING" }],
+      "still redeploying",
+    ],
+    ["cannot be read", "unreadable", "could not read"],
+  ] as const) {
+    it.live(
+      `a restart keeps a service frozen while its deploy ${state}, and thaws it at its end`,
+      () =>
+        withCrewEngines([
+          (world) =>
+            Effect.gen(function* () {
+              yield* applied(world);
+              yield* world.publish(deployEvent("item.started"));
+              yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+            }),
+          (world) =>
+            Effect.gen(function* () {
+              yield* Ref.set(world.processes, processes);
+              yield* (yield* ServerCommandReadiness).complete;
+              const held = yield* snapshotWhere(
+                (snapshot) => snapshot.lastError?.includes(words) === true,
+              );
+              assert.strictEqual(held.crewmates[0]!.lane?.state, "frozen");
+              yield* Ref.set(world.processes, []);
+              const thawed = yield* snapshotWhere(
+                (snapshot) => snapshot.crewmates[0]!.lane?.state === "ready",
+              );
+              assert.isNull(thawed.lastError);
+            }),
+        ]),
+    );
+  }
+
+  it.live("a restart leaves a frozen host's interrupted work untouched until its deploy ends", () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* firstTurn(world, () => write(world.root, ".crew/backend/a.txt", "work\n"));
+          yield* world.publish(deployEvent("item.started"));
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          const copy = NodePath.join(world.root, ".crew/backend");
+          yield* Ref.set(world.processes, [
+            { serviceStacks: [{ name: "appdev" }], status: "RUNNING" },
+          ]);
+          yield* (yield* ServerCommandReadiness).complete;
+          yield* snapshotWhere(
+            (snapshot) => snapshot.lastError?.includes("still redeploying") === true,
+          );
+          yield* Effect.sleep("500 millis");
+          const head = git(copy, ["rev-parse", "HEAD"]);
+          assert.deepStrictEqual(
+            [
+              (yield* dispatchedOf(world, "thread.turn.start")).length,
+              git(copy, ["status", "--porcelain"]),
+            ],
+            [1, "?? a.txt"],
+          );
+          yield* Ref.set(world.processes, []);
+          yield* eventually(
+            Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) => turns.length === 2),
+          );
+          assert.notStrictEqual(git(copy, ["rev-parse", "HEAD"]), head);
+        }),
+    ]),
+  );
+
+  it.live("an unreadable redeploy is asked less and less, then offered to the person to thaw", () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* world.publish(deployEvent("item.started"));
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* Ref.set(world.processes, "unreadable");
+          yield* (yield* ServerCommandReadiness).complete;
+          const offered = yield* snapshotWhere((snapshot) =>
+            snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
+          );
+          // Asked at boot, then after 50, 100, 200, 200 ms: a handful, not one every tick.
+          assert.isAtMost(yield* Ref.get(world.processReads), 8);
+          const frames = yield* (yield* CrewEngine).snapshot.pipe(
+            Stream.interruptWhen(Effect.sleep("700 millis")),
+            Stream.runCount,
+          );
+          // Nothing moved meanwhile: the feed holds still, its current frame alone.
+          assert.isAtMost(frames, 1);
+          assert.strictEqual(
+            offered.attention.find((need) => need.kind === "deploy-unreadable")!.host,
+            TEST_HOST,
+          );
+          yield* command({ _tag: "thawHost", host: TEST_HOST });
+          yield* snapshotWhere(
+            (snapshot) =>
+              snapshot.crewmates[0]!.lane?.state === "ready" &&
+              !snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
+          );
+          // Thawed, it stops asking.
+          const after = yield* Ref.get(world.processReads);
+          yield* Effect.sleep("600 millis");
+          assert.strictEqual(yield* Ref.get(world.processReads), after);
+        }),
+    ]),
+  );
+
+  it.live(
+    "a deploy's end recovers the copies before it thaws: a press meanwhile waits its turn",
+    () =>
+      withCrewEngine((world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* world.publish(deployEvent("item.started"));
+          yield* snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
+          const hold = yield* world.holdSsh((script) => script.includes("worktree prune"));
+          yield* world.publish(deployEvent("item.completed"));
+          yield* hold.reached;
+          const press = yield* command({
+            _tag: "message",
+            handle: "backend",
+            text: "Work",
+            attachments: [],
+          }).pipe(Effect.forkChild);
+          yield* Effect.sleep("300 millis");
+          const lane = Option.getOrThrow(yield* (yield* CrewStore).getLane(CREW_ID, "backend"));
+          assert.deepStrictEqual(
+            [lane.frozenSince !== null, press.pollUnsafe() === undefined],
+            [true, true],
+          );
+          yield* hold.release;
+          yield* Fiber.join(press);
+          yield* snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
+        }),
+      ),
+  );
+
+  it.live("a writer's conversation without its copy as its worktree gets it back at boot", () =>
+    withCrewEngines([
+      (world) =>
+        Effect.gen(function* () {
+          yield* applied(world);
+          yield* eventually(
+            Effect.map(dispatchedOf(world, "thread.crew.create"), (creates) => creates.length > 0),
+          );
+          const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
+            (entry) => entry.crew.crewmate === "backend",
+          )!;
+          yield* Ref.set(world.threads, [
+            {
+              ...runningPersonThread(),
+              id: created.threadId,
+              crew: created.crew,
+              session: null,
+              worktreePath: null,
+            } as unknown as OrchestrationThreadShell,
+          ]);
+        }),
+      (world) =>
+        Effect.gen(function* () {
+          yield* (yield* ServerCommandReadiness).complete;
+          const created = (yield* dispatchedOf(world, "thread.crew.create")).find(
+            (entry) => entry.crew.crewmate === "backend",
+          )!;
+          yield* eventually(
+            Effect.map(dispatchedOf(world, "thread.meta.update"), (updates) => updates.length > 0),
+          );
+          const [update] = yield* dispatchedOf(world, "thread.meta.update");
+          assert.deepStrictEqual(
+            [
+              update?.threadId,
+              update?.worktreePath,
+              created.worktreePath?.endsWith("/.crew/backend"),
+            ],
+            [created.threadId, created.worktreePath, true],
+          );
+        }),
+    ]),
+  );
+
+  {
+    const path = "/chosen/copy";
+    it.live("boot keeps a conversation path a person chose and offers a selected crew copy", () =>
       withCrewEngines([
         (world) =>
           Effect.gen(function* () {
@@ -1106,10 +1384,11 @@ describe("CrewEngine", () => {
             assert.deepStrictEqual(need.copyAssignment, {
               threadId: created!.threadId,
               currentPath: path,
-              crewPath: created!.worktreePath,
+              crewPath: created!.worktreePath!,
               source: "crew-stint",
             });
-            yield* command({
+            // The restart's turn carries on first; the press waits for its copy to be free.
+            yield* commandWhenFree({
               _tag: "useCrewCopy",
               handle: "backend",
               threadId: created!.threadId,
@@ -1146,7 +1425,7 @@ describe("CrewEngine", () => {
   }
 
   it.live(
-    "after a restart: policies install at once and a died turn ends without a new dispatch",
+    "after a restart: policies install at once, the resume waits for readiness, a died turn carries on",
     () => {
       let turnsBefore = 0;
       return withCrewEngines([
@@ -1168,19 +1447,36 @@ describe("CrewEngine", () => {
         (world) =>
           Effect.gen(function* () {
             assert.strictEqual(yield* Ref.get(world.installs), 2);
+            yield* Effect.sleep("300 millis");
+            assert.strictEqual(
+              (yield* dispatchedOf(world, "thread.turn.start")).length,
+              turnsBefore,
+            );
             yield* (yield* ServerCommandReadiness).complete;
+            yield* eventually(
+              Effect.map(
+                dispatchedOf(world, "thread.turn.start"),
+                (turns) => turns.length === turnsBefore + 1,
+              ),
+            );
+            // Its turn died: it carries on in the attempt it stood in, never a forced rework.
             const snapshot = yield* snapshotWhere(
-              (frame) =>
-                frame.attention.some((row) => row.kind === "interrupted") &&
-                Boolean(frame.hosts[0]?.integration),
+              (current) =>
+                current.board.tasks[0]?.attempts === 1 &&
+                current.board.tasks[0]?.state === "working" &&
+                current.attention.length === 0,
             );
             assert.deepStrictEqual(
               [
                 (yield* dispatchedOf(world, "thread.turn.start")).length,
-                snapshot.board.tasks[0]!.attempts,
+                (yield* Ref.get(world.admitted)).at(-1)?.principal,
+                snapshot.lastError,
+                snapshot.attention,
               ],
-              [turnsBefore, 1],
+              [turnsBefore + 1, AS_CREW, null, []],
             );
+            const resumed = (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!;
+            assert.include(resumed.message.text, "Continue where you stopped");
             const thread = snapshot.crewmates[0]!.currentThreadId!;
             const member = yield* (yield* CrewThreadDirectory).memberFor(thread);
             assert.isTrue(Option.getOrThrow(member).live);
@@ -1281,7 +1577,7 @@ describe("CrewEngine", () => {
               busy: "wrong-state",
               interrupts: [thread],
               continueIn: true,
-              continueAs: { kind: "crew", startedBy: "user-karel" },
+              continueAs: AS_CREW,
               reasons: [null, "The crew's goal changed", "You cleared its conversation"],
               brief: 2,
             },
@@ -1587,7 +1883,7 @@ describe("CrewEngine", () => {
     ),
   );
 
-  it.live("an Allow waiting on a turn stays requested when the engine restarts", () => {
+  it.live("an Allow waiting on a turn that a restart ended goes out when the engine boots", () => {
     const started: Array<number> = [];
     return withCrewEngines([
       (world) =>
@@ -1611,16 +1907,26 @@ describe("CrewEngine", () => {
       (world) =>
         Effect.gen(function* () {
           yield* (yield* ServerCommandReadiness).complete;
-          const stopped = yield* snapshotWhere(
-            (frame) =>
-              frame.attention.some((need) => need.kind === "interrupted") &&
-              frame.hosts[0]?.claim.state === "requested",
+          const starting = yield* snapshotWhere(
+            (snapshot) => snapshot.hosts[0]?.claim.state === "starting",
           );
-          assert.strictEqual(stopped.hosts[0]?.claim.state, "requested");
-          assert.isFalse(
-            (yield* dispatchedOf(world, "thread.turn.start")).some((turn) =>
-              turn.message.text.includes("Show your work on appdev"),
+          // The claim reads starting a moment before its turn is dispatched.
+          yield* eventually(
+            Effect.map(dispatchedOf(world, "thread.turn.start"), (turns) =>
+              turns.at(-1)!.message.text.includes("Show your work on appdev"),
             ),
+          );
+          assert.deepStrictEqual(
+            [
+              starting.hosts[0]!.claim,
+              (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.message.text.split("\n")[1],
+              (yield* Ref.get(world.admitted)).at(-1)?.principal,
+            ],
+            [
+              { state: "starting", handle: "backend", grantWaiting: false },
+              "Show your work on appdev",
+              KAREL,
+            ],
           );
         }),
     ]).pipe(
@@ -1791,7 +2097,7 @@ describe("CrewEngine", () => {
             (yield* dispatchedOf(world, "thread.turn.start")).at(-1)!.message.text.split("\n")[1],
             (yield* Ref.get(world.admitted)).at(-1)?.principal,
           ],
-          ["backend", "Show your work on appdev", { kind: "crew", startedBy: "user-karel" }],
+          ["backend", "Show your work on appdev", AS_CREW],
         );
       }),
     ).pipe(

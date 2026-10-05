@@ -823,6 +823,32 @@ describe("exchange driver (DESIGN §4.4)", () => {
     expect(shop.descriptorReads()).toBe(reads);
   });
 
+  // The close-off gate (restores 0.12.3's closeOffGate): a Mate whose project is not closed off
+  // takes no lease's demand and no Connect, until the gate lets it go.
+  it("a Mate held for its close-off is wanted by nothing, and by its leases again once let go", async () => {
+    const shop = mate("shop");
+    const other = mate("other");
+    const { driver, exchanges, start } = rig([shop, other], { hold: true });
+    await start({ route: shop });
+    expect(exchanges).toHaveLength(1);
+    driver.setCloseOffHeld([shop.projectId]);
+    await flush();
+    expect(exchanges[0]!.signal.aborted).toBe(true);
+    expect(driver.machine(keyOf(shop))?.guards.want).toBe(false);
+    await expect(connectHeld(driver, keyOf(shop), "user")).resolves.toMatchObject({
+      _tag: "NotConnected",
+    });
+    expect(exchanges).toHaveLength(1);
+    driver.hold(keyOf(other), "action");
+    await flush();
+    expect(driver.machine(keyOf(other))?.guards.want).toBe(true);
+
+    driver.setCloseOffHeld([]);
+    await flush();
+    expect(driver.machine(keyOf(shop))?.guards.want).toBe(true);
+    expect(exchanges.filter((request) => request.key === keyOf(shop))).toHaveLength(2);
+  });
+
   // A9 (krok-a-hub §3): a Mate is wanted while something holds a lease on it — the route, the one
   // left last, an action from the sidebar — and no longer once its last holder lets it go.
   it("an action lease ends its demand when released", async () => {

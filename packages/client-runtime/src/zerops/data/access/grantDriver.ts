@@ -120,6 +120,8 @@ export interface GrantDriverOptions {
   readonly observe: (observation: AccessObservation) => Effect.Effect<void>;
   /** Runs work in the runtime's scope, interrupted when the runtime shuts down. */
   readonly fork: (work: Effect.Effect<void>) => Effect.Effect<Fiber.Fiber<void>>;
+  /** The jitter source of the grant's ladders. */
+  readonly random?: () => number;
 }
 
 export interface GrantDriver {
@@ -173,6 +175,7 @@ const remainingMs = (stamp: Instant, now: Instant, policy: ZeropsGrantPolicy): n
 
 export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriverOptions) {
   const { clock, policy } = options;
+  const random = options.random ?? Math.random;
   const now: Effect.Effect<Instant> = Effect.sync(() => ({
     wall: clock.currentTimeMillisUnsafe(),
     mono: Number(clock.monotonicTimeNanosUnsafe()) / 1_000_000,
@@ -467,7 +470,7 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
         if (verifier === null) return;
         const at = yield* now;
         const before = machine;
-        const { state, effects } = transitionGrant(machine, event, { now: at, policy });
+        const { state, effects } = transitionGrant(machine, event, { now: at, policy, random });
         machine = state;
         if (
           message !== undefined &&
@@ -556,7 +559,7 @@ export const makeGrantDriver = Effect.fnUntraced(function* (options: GrantDriver
           const at = yield* now;
           const before = machine;
           const event: GrantEvent = { type: "EPOCH_CLOSED" };
-          machine = transitionGrant(machine, event, { now: at, policy }).state;
+          machine = transitionGrant(machine, event, { now: at, policy, random }).state;
           const abandoned = abandonedWork(event, before, at);
           waits++;
           overdue = false;

@@ -23,6 +23,7 @@ import {
   nextHqStanding,
   readBundledCore,
   useAccountHq,
+  useCarriedCoreBuild,
   useOfficialHq,
   type AccountHq,
   type HqStanding,
@@ -174,6 +175,49 @@ const anchor = (projectId: string, address: string) =>
     status: "ACTIVE",
     user: { fullName: hqAnchorName(projectId, address), email: `token-${projectId}@zerops.io` },
   }) as ZeropsOrganizationMember;
+
+// What an owner's update offer weighs HQ's Core against: read once per tab, in a shown one only.
+describe("useCarriedCoreBuild — the Core this app carries", () => {
+  it("is read once the tab is shown, once for every reader", async () => {
+    const listeners = new Set<() => void>();
+    const page = {
+      visibilityState: "hidden" as DocumentVisibilityState,
+      addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+    };
+    const fetched: string[] = [];
+    vi.stubGlobal("document", page);
+    vi.stubGlobal("fetch", async (input: string) => {
+      fetched.push(input);
+      return new Response(JSON.stringify({ build: "20261004T100000Z.0123456789ab" }));
+    });
+    try {
+      const seen: Array<string | undefined> = [];
+      function Reader() {
+        seen.push(useCarriedCoreBuild());
+        return null;
+      }
+      (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+      let tree!: ReturnType<typeof create>;
+      await act(async () => {
+        tree = create(createElement("div", null, createElement(Reader), createElement(Reader)));
+      });
+      expect(fetched).toEqual([]);
+      await act(async () => {
+        page.visibilityState = "visible";
+        for (const listener of listeners) listener();
+      });
+      expect(fetched).toHaveLength(1);
+      expect(fetched[0]).toMatch(/hq-core\/build\.json$/u);
+      expect(seen.at(-1)).toBe("20261004T100000Z.0123456789ab");
+      await act(async () => {
+        tree.unmount();
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
 
 describe("useAccountHq — the official HQ this browser keeps", () => {
   const scope: AccountScope = {
@@ -617,6 +661,36 @@ describe("useAccountHq — no official HQ, kept too", () => {
       await new Promise((resolve) => setTimeout(resolve, 60));
     });
     expect([open.reads(), open.last().hq.kind]).toEqual([1, "none"]);
+  });
+
+  it("waits for the tab to be shown before the day's read, and reads once then", async () => {
+    const listeners = new Set<() => void>();
+    const page = {
+      visibilityState: "hidden" as DocumentVisibilityState,
+      addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+    };
+    vi.stubGlobal("document", page);
+    try {
+      keepNoHqVerdict(
+        { account: scope.account, clientId: "org-hidden" },
+        Date.now() - NO_HQ_RECHECK_MS + 30,
+      );
+      const open = await loaded("org-hidden", () => []);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      });
+      expect(open.reads()).toBe(0);
+      await act(async () => {
+        page.visibilityState = "visible";
+        for (const listener of listeners) listener();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect([open.reads(), open.last().hq.kind]).toEqual([1, "none"]);
+      expect(listeners.size).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("reads it again at once for this browser's own birth or a press, and keeps what it names", async () => {

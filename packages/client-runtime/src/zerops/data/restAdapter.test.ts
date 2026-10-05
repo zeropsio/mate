@@ -1139,6 +1139,40 @@ describe("ZeropsDataAdapter receiver", () => {
     }),
   );
 
+  // Set up Mate on a plain project (restored over 116a2c54c): the press declares the Mate on the
+  // tags the write's own fresh read holds, and its PUT carries them back with the marker — an
+  // owner's tags are theirs; only an earlier client's `mate:*` metadata tags go.
+  it.effect("declares a Mate on a plain project keeping its own tags", () =>
+    Effect.gen(function* () {
+      const requests: RequestInit[] = [];
+      const client = clientFor((_url, init) => {
+        requests.push(init ?? {});
+        return new Response(
+          JSON.stringify({
+            id: "project",
+            name: "shop",
+            status: "ACTIVE",
+            tagList:
+              requests.length === 1
+                ? ["billing:team-a", "mate:face:rose:seal"]
+                : ["billing:team-a", "mate"],
+          }),
+          { status: 200 },
+        );
+      });
+      const adapter = makeZeropsDataAdapter({
+        client,
+        makeSocket: () => new FakeSocket(),
+        timers,
+      });
+
+      yield* adapter.execute(declareMateCommand, context());
+
+      expect(requests.map((request) => request.method ?? "GET")).toEqual(["GET", "PUT", "GET"]);
+      expect(String(requests[1]?.body)).toContain(`"tagList":["billing:team-a","mate"]`);
+    }),
+  );
+
   // D3: a Mate's rename is its project's, through the one writer of the project's record.
   it.effect("renames a project on a fresh read, its tags put back, as a typed Project result", () =>
     Effect.gen(function* () {

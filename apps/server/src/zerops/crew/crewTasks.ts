@@ -35,8 +35,10 @@ import type {
   CrewTaskSource,
   CrewTaskState,
 } from "@t3tools/contracts";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { refreshLaneStats } from "./crewLanding.ts";
@@ -85,8 +87,10 @@ const ROTATED_TOO_OFTEN = "its conversation outgrew its context too often";
 const PARK_WORDS: Readonly<Record<string, string>> = {
   reworks: "it came back for rework too often",
   rotations: ROTATED_TOO_OFTEN,
+  infrastructure: "its turn broke off twice",
   "empty-merge-base": "your tree's history was rewritten",
   "disk-full": "the service's disk is full",
+  "missing-object": "an object its landing needs is missing, twice",
 };
 
 export const requireTask = (core: CrewCore, taskId: string) =>
@@ -106,7 +110,8 @@ export const busyWords = (handle: string) =>
 /**
  * A press to a crewmate, under its lock (`CrewCore.crewmate`): it never runs
  * beside that crewmate's turn end, a merge or another press in the same copy,
- * and never waits for one — it is refused at once as busy, having done nothing.
+ * and never waits for one — it is refused at once as busy, having done nothing
+ * — except behind the boot sweep or a deploy's recovery, which it waits out.
  */
 export const pressCrewmate = <A, E, R>(
   core: CrewCore,
@@ -118,11 +123,30 @@ export const pressCrewmate = <A, E, R>(
     .pipe(
       Effect.flatMap(
         Option.match({
-          onNone: () => Effect.fail(refuse("wrong-state", busyWords(handle))),
+          // The boot sweep or a deploy's recovery holds the copy: the press waits its turn, bounded.
+          onNone: () =>
+            core.memory.sweeping.has(handle)
+              ? core
+                  .crewmateWithin(
+                    handle,
+                    SWEEP_WAIT,
+                  )(effect)
+                  .pipe(
+                    Effect.flatMap(
+                      Option.match({
+                        onNone: () => Effect.fail(refuse("wrong-state", busyWords(handle))),
+                        onSome: (value) => Effect.succeed(value),
+                      }),
+                    ),
+                  )
+              : Effect.fail(refuse("wrong-state", busyWords(handle))),
           onSome: (value) => Effect.succeed(value),
         }),
       ),
     );
+
+/** How long a press waits for a copy the boot sweep or a deploy's recovery holds. */
+const SWEEP_WAIT = Duration.minutes(2);
 
 /** `pressCrewmate` on every one of `handles`, or on none: a busy one refuses the whole press. */
 export const pressCrewmates = <A, E, R>(
@@ -201,8 +225,8 @@ export const stepTask = (
   row: CrewAssignmentRow,
   event: TaskEvent,
   change: (next: CrewAssignmentRow) => CrewAssignmentRow = (next) => next,
-  /** Counters the row does not carry. */
-  counted: Partial<Pick<TaskCounters, "rotations">> = {},
+  /** Counters the row does not carry: re-queues are counted from the task's attempts. */
+  counted: Partial<Pick<TaskCounters, "requeues" | "rotations">> = {},
 ) =>
   Effect.gen(function* () {
     const step = taskTransition(
@@ -212,6 +236,7 @@ export const stepTask = (
           attempt: Math.max(1, row.attempt),
           reworks: row.reworks,
           remerges: row.remerges,
+          requeues: counted.requeues ?? 0,
           rotations: counted.rotations ?? 0,
         },
       },
@@ -384,6 +409,42 @@ const optionalReason = (reason: string | undefined) =>
 const optionalApply = (apply: ReturnType<CrewCore["memory"]["applyChoices"]["get"]>) =>
   apply === undefined ? {} : { apply };
 
+/** The crew log's record of a Try again: the attempt it started, from which re-queues count again. */
+const RETRIED_LOG = "retried";
+const decodeRetried = Schema.decodeUnknownOption(
+  Schema.Struct({ task: Schema.String, attempt: Schema.Number }),
+);
+const readRetried = (payload: unknown) => Option.getOrUndefined(decodeRetried(payload));
+
+/**
+ * An infrastructure ending (the provider or the session setup failed): the attempt ends with `detail`, and the task
+ * queues again once — the second time it stops (ARCHITECTURE §4 *Assignment*).
+ */
+export const requeueTask = (core: CrewCore, task: CrewAssignmentRow, detail: string) =>
+  Effect.gen(function* () {
+    const attempts = yield* asRefusal(core.store.attemptsOf(task.assignment));
+    const attempt = attempts.find((row) => row.attempt === task.attempt);
+    if (attempt !== undefined) {
+      yield* asRefusal(
+        core.store.putAttempt({
+          ...attempt,
+          ending: "infrastructure",
+          endingDetail: detail,
+          endedAt: yield* core.now,
+        }),
+      );
+    }
+    // A Try again starts a fresh budget: only the attempts since the last one count.
+    const retried = (yield* asRefusal(core.store.logOf(CREW_ID, [RETRIED_LOG])))
+      .map((entry) => readRetried(entry.payload))
+      .filter((entry) => entry?.task === task.assignment)
+      .reduce((latest, entry) => Math.max(latest, entry?.attempt ?? 0), 0);
+    const requeues = attempts.filter(
+      (row) => row.attempt >= retried && row.ending === "infrastructure",
+    ).length;
+    return yield* stepTask(core, task, { type: "infrastructure-ending" }, undefined, { requeues });
+  });
+
 /* ------------------------------------------------------------ turns */
 
 export type StartOutcome =
@@ -424,6 +485,8 @@ export const sendTurn = (
     yield* updateOperation(core, owned.id, {
       targets: { ...owned.targets, threadId: stint.threadId, commandId: command.commandId },
       confirmedStage: admittedCommand === undefined ? "attempt-recorded" : "admitted",
+      // The turn's words, kept until its dispatch is confirmed: a restart before that sends them.
+      result: { turn: text },
     });
     if (admittedCommand === undefined)
       yield* operationStep(
@@ -487,7 +550,11 @@ export const startTask = (
         core,
         owned.id,
         "preparing-copy",
-        asRefusal(core.workspace.prepareDispatch(key)),
+        asRefusal(
+          core.workspace.prepareDispatch(key, (target) =>
+            updateOperation(core, owned.id, { result: { resetTo: target } }).pipe(Effect.orDie),
+          ),
+        ),
       );
       switch (prepared._tag) {
         case "dirty":
@@ -550,6 +617,8 @@ export const startTask = (
     );
     const now = yield* core.now;
     if (refused !== undefined) {
+      // The refusal is the outcome, shown as Can't start; no effect waits to be continued.
+      yield* finishOperation(core, owned.id, { refused });
       core.memory.cantStart.set(task.assignment, { text: refused, at: now });
       return { _tag: "refused", detail: refused } satisfies StartOutcome as StartOutcome;
     }
@@ -702,6 +771,7 @@ export const leadTurn = (
       kind: "dispatch",
       handle: lead.row.handle,
       startedBy: principalUser(principal),
+      bySession: principal.kind === "session",
     });
     if (principal.kind === "session") yield* acknowledgeOperations(core, lead.row.handle);
     const stint = yield* operationStep(
@@ -1008,6 +1078,16 @@ export const retryTask = (core: CrewCore, principal: TurnPrincipal, taskId: stri
       row.state === "queued"
         ? row
         : yield* stepTask(core, row, { type: "retry" }, (next) => ({ ...next, waiting: null }));
+    if (queued !== row)
+      yield* asRefusal(
+        core.store.appendLog({
+          crew: CREW_ID,
+          run: null,
+          at: yield* core.now,
+          kind: RETRIED_LOG,
+          payload: { task: queued.assignment, attempt: queued.attempt },
+        }),
+      );
     yield* pump(core, row.member, { taskId: queued.assignment, principal });
   });
 

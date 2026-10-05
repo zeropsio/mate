@@ -28,6 +28,7 @@ export {
   HqError,
   makeHqApi,
   readHqHealth,
+  readHqParts,
   type Asked,
   type HqApi,
   type HqAttach,

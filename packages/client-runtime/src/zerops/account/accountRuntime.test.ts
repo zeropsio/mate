@@ -36,6 +36,7 @@ import {
   type ZeropsDataAdapter,
 } from "../data/types.ts";
 import type { DescriptorFacts } from "../environments/environmentMachine.ts";
+import type { CloseOffWord } from "../environments/closeOff.ts";
 import { candidateListingsAtom } from "../environments/listings.ts";
 import { readServiceMateFlag } from "../environments/mateFlag.ts";
 import { rowTarget } from "../environments/mateLink.ts";
@@ -106,7 +107,11 @@ const MATE_ORIGIN = A_MATE.origin;
 const ENV_A = EnvironmentId.make("env-a");
 
 /** The datastream over a platform whose one organization holds these Mates' projects. */
-const platformAdapter = (mates: ReadonlyArray<Mate>): ZeropsDataAdapter => {
+const platformAdapter = (
+  mates: ReadonlyArray<Mate>,
+  /** The services' variables as the stream answers them; `never`: it never answers. */
+  variables: ReadonlyArray<unknown> | "never" = [],
+): ZeropsDataAdapter => {
   const rowsOf = (query: EntityQueryDescriptor): ReadonlyArray<unknown> => {
     switch (query.kind) {
       case "projects-of-organization":
@@ -128,16 +133,31 @@ const platformAdapter = (mates: ReadonlyArray<Mate>): ZeropsDataAdapter => {
         events: Stream.never,
       }),
     register: (_receiver, request) =>
-      Effect.sync(() => {
-        if (request.descriptor.kind !== "query-membership") return { responseObservations: [] };
-        const items = rowsOf(request.descriptor.query);
-        return {
-          responseObservations: decodeRegistrationResponse(request, {
-            items,
-            totalHits: items.length,
-          }).observations,
-        };
-      }),
+      request.descriptor.kind === "table-list" && variables === "never"
+        ? Effect.never
+        : Effect.sync(() => {
+            if (request.descriptor.kind === "table-list") {
+              const listed =
+                request.descriptor.query.kind === "service-variables-of-services" &&
+                variables !== "never"
+                  ? variables
+                  : [];
+              return {
+                responseObservations: decodeRegistrationResponse(request, {
+                  items: listed,
+                  totalHits: listed.length,
+                }).observations,
+              };
+            }
+            if (request.descriptor.kind !== "query-membership") return { responseObservations: [] };
+            const items = rowsOf(request.descriptor.query);
+            return {
+              responseObservations: decodeRegistrationResponse(request, {
+                items,
+                totalHits: items.length,
+              }).observations,
+            };
+          }),
     read: (ticket) =>
       Effect.sync(() => {
         if (ticket.target.kind === "query") {
@@ -305,6 +325,9 @@ const environmentRig = (clock: DeadlineClock, remembered: ReadonlyArray<Registra
     hqIndex: { projectOf: () => null, subscribe: () => () => undefined },
     online: { read: () => new Set(), subscribe: () => () => undefined },
     hqOrganization: { read: () => null, subscribe: () => () => undefined },
+    // No word on any close-off, and none pending here: nothing is held.
+    closeOff: { read: () => null, subscribe: () => () => undefined },
+    closeOffPending: { read: () => new Set(), subscribe: () => () => undefined },
   };
   return {
     ports,
@@ -486,6 +509,7 @@ describe("the account runtime", () => {
           const grant = heldVerifier();
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: inertAdapter,
               atomRegistry: registry,
@@ -561,6 +585,7 @@ describe("the account runtime", () => {
           };
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: platformAdapter([A_MATE]),
               atomRegistry: registry,
@@ -615,6 +640,7 @@ describe("the account runtime", () => {
           const grant = heldVerifier();
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: inertAdapter,
               atomRegistry: registry,
@@ -676,6 +702,7 @@ describe("the account runtime", () => {
         const grant = heldVerifier();
         const built = yield* Effect.gen(function* () {
           const data = yield* makeZeropsDataRuntime({
+            random: () => 0,
             scope: scope(),
             adapter: inertAdapter,
             atomRegistry: registry,
@@ -748,6 +775,7 @@ describe("the account runtime", () => {
         const opened: Array<string> = [];
         const built = yield* Effect.gen(function* () {
           const data = yield* makeZeropsDataRuntime({
+            random: () => 0,
             scope: scope(),
             adapter: {
               ...datastream,
@@ -852,6 +880,7 @@ describe("the account runtime", () => {
           });
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: datastream.adapter,
               atomRegistry: registry,
@@ -962,6 +991,7 @@ describe("the account runtime", () => {
           });
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: {
                 ...datastream.adapter,
@@ -1063,6 +1093,7 @@ describe("the account runtime", () => {
           client.restoreSession(rest.issueSession(account.accountId));
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: makeFakeDatastream(rest).adapter,
               atomRegistry: registry,
@@ -1171,44 +1202,55 @@ describe("the account runtime", () => {
       ),
   );
 
-  it.effect("a failed grant remains failed across wake until a manual again", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
-        const registry = AtomRegistry.make();
-        const page = yield* makePage(clock);
-        const grant = heldVerifier();
-        const built = yield* Effect.gen(function* () {
-          const data = yield* makeZeropsDataRuntime({
-            scope: scope(),
-            adapter: inertAdapter,
-            atomRegistry: registry,
-            makeOpaqueId: () => "opaque",
-          });
-          return yield* makeAccountRuntime({
-            data,
-            verifier: grant.verifier,
-            signals: page.signals,
-            atomRegistry: registry,
-            environments: inertEnvironments(clock),
-          }).pipe(
-            Effect.tap((runtime) =>
-              Effect.sync(() => runtime.selectOrganization(organization.organizationId)),
-            ),
-          );
-        }).pipe(Effect.provideService(Clock.Clock, clock));
-        yield* Effect.addFinalizer(() => built.close("application-close"));
-        yield* settle;
-        yield* grant.answer({ kind: "server", status: 503 });
-        yield* clock.advance(60 * SECOND);
-        yield* page.emit({ type: "visibility", hidden: true });
-        yield* clock.advance(31 * SECOND);
-        yield* page.emit({ type: "visibility", hidden: false });
-        expect(grant.rounds()).toBe(1);
-        yield* built.data.access.signal({ type: "USER_RETRY" });
-        expect(grant.rounds()).toBe(2);
-      }),
-    ),
+  it.effect(
+    "a visible wake after 30 s hidden retries the grant at once; a quick switch does not (§6.4)",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const clock = yield* makeDeadlineClock({ startWallMs: START_WALL_MS });
+          const registry = AtomRegistry.make();
+          const page = yield* makePage(clock);
+          const grant = heldVerifier();
+          const built = yield* Effect.gen(function* () {
+            const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
+              scope: scope(),
+              adapter: inertAdapter,
+              atomRegistry: registry,
+              makeOpaqueId: () => "opaque",
+            });
+            return yield* makeAccountRuntime({
+              data,
+              verifier: grant.verifier,
+              signals: page.signals,
+              atomRegistry: registry,
+              environments: inertEnvironments(clock),
+            });
+          }).pipe(Effect.provideService(Clock.Clock, clock));
+          yield* Effect.addFinalizer(() => built.close("application-close"));
+          yield* settle;
+          // Rounds fail up the session backoff until the next one waits 60 s.
+          for (const rung of [2, 4, 8, 15, 30]) {
+            yield* grant.answer({ kind: "server", status: 503 });
+            yield* clock.advance(rung * SECOND);
+            yield* settle;
+          }
+          yield* grant.answer({ kind: "server", status: 503 });
+          expect(grant.rounds()).toBe(6);
+
+          yield* page.emit({ type: "visibility", hidden: true });
+          yield* page.emit({ type: "visibility", hidden: false });
+          expect(grant.rounds()).toBe(6);
+
+          yield* page.emit({ type: "visibility", hidden: true });
+          yield* clock.advance(31 * SECOND);
+          yield* settle;
+          expect(grant.rounds()).toBe(6);
+          // Back before the backoff's 60 s: the wake alone starts the round.
+          yield* page.emit({ type: "visibility", hidden: false });
+          expect(grant.rounds()).toBe(7);
+        }),
+      ),
   );
 
   it.effect("an account runtime whose grant cannot start fails and leaves nothing running", () =>
@@ -1220,6 +1262,7 @@ describe("the account runtime", () => {
         const grant = heldVerifier();
         const exit = yield* Effect.gen(function* () {
           const data = yield* makeZeropsDataRuntime({
+            random: () => 0,
             scope: scope(),
             adapter: inertAdapter,
             atomRegistry: registry,
@@ -1279,6 +1322,7 @@ describe("the account runtime", () => {
           client.restoreSession(rest.issueSession(account.accountId));
           const built = yield* Effect.gen(function* () {
             const data = yield* makeZeropsDataRuntime({
+              random: () => 0,
               scope: scope(),
               adapter: makeFakeDatastream(rest).adapter,
               atomRegistry: registry,
@@ -1382,6 +1426,7 @@ describe("the post-grant stage's Mate environments", () => {
     const rig = environmentRig(clock, remembered);
     const built = yield* Effect.gen(function* () {
       const data = yield* makeZeropsDataRuntime({
+        random: () => 0,
         scope: scope(),
         adapter,
         atomRegistry: registry,
@@ -1868,6 +1913,190 @@ describe("the post-grant stage's Mate environments", () => {
       }),
     ),
   );
+
+  // The close-off gate (restores 0.12.3's closeOffGate inside the lease model): a Mate whose
+  // container carries the press's marker is let in only once HQ says its project is closed off.
+  describe("the close-off gate", () => {
+    /** The press's marker on Mate A's container, as the account's streamed variables say it. */
+    const MARKER = [
+      {
+        id: "variable-marker",
+        serviceStackId: A_MATE.service.id,
+        projectId: A_MATE.projectId,
+        key: "MATE_SETUP_RUNTIMES",
+        content: "services: []",
+      },
+    ];
+    /** HQ's close-off word, as a test moves it. */
+    const hqWord = (initial: CloseOffWord | null) => {
+      let word = initial;
+      const heard = new Set<() => void>();
+      return {
+        port: {
+          read: () => word,
+          subscribe: (listener: () => void) => {
+            heard.add(listener);
+            return () => heard.delete(listener);
+          },
+        },
+        say: (next: CloseOffWord | null) => {
+          word = next;
+          for (const listener of heard) listener();
+        },
+      };
+    };
+    /** HQ's record of Mate A: closed off, or not. */
+    const said = (closed: ReadonlyArray<string>, current = true): CloseOffWord => ({
+      organizationId: organization.organizationId,
+      current,
+      closed: new Set(closed),
+      open: new Set(closed.includes(A_MATE.projectId) ? [] : [A_MATE.projectId]),
+    });
+    /** This browser's own knowledge of projects whose close-off has not happened. */
+    const pendingHere = (projectIds: ReadonlyArray<string>) => ({
+      read: () => new Set(projectIds),
+      subscribe: () => () => undefined,
+    });
+    const madeAt = (created: string) => ({
+      ...A_MATE,
+      service: { ...A_MATE.service, created },
+    });
+    const exchangesOf = (rig: {
+      readonly exchanges: ReadonlyArray<{ readonly input: { readonly key: string } }>;
+    }) => rig.exchanges.filter(({ input }) => input.key === MATE).length;
+
+    it.effect(
+      "holds a marked Mate HQ says is not closed off, on screen too, and lets it in once it is",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const word = hqWord(said([]));
+            const { rig, environments } = yield* granted(
+              [],
+              [A_MATE],
+              platformAdapter([A_MATE], MARKER),
+              [A_MATE],
+              { closeOff: word.port },
+            );
+            environments.setOnScreen(A_MATE.projectId);
+            yield* settle;
+            expect(environments.closeOffHolds().get(A_MATE.projectId)).toBe("open");
+            expect(environments.machines().get(MATE)?.guards.want).toBe(false);
+            expect(exchangesOf(rig)).toBe(0);
+
+            word.say(said([A_MATE.projectId]));
+            yield* settle;
+            expect(environments.closeOffHolds().size).toBe(0);
+            expect(environments.machines().get(MATE)?.guards.want).toBe(true);
+            expect(exchangesOf(rig)).toBe(1);
+          }),
+        ),
+    );
+
+    it.effect("lets in a Mate whose container carries no press marker", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const word = hqWord(said([]));
+          const { rig, environments } = yield* granted(
+            [],
+            [A_MATE],
+            platformAdapter([A_MATE]),
+            [A_MATE],
+            {
+              closeOff: word.port,
+            },
+          );
+          environments.setOnScreen(A_MATE.projectId);
+          yield* settle;
+          expect(environments.closeOffHolds().size).toBe(0);
+          expect(exchangesOf(rig)).toBe(1);
+        }),
+      ),
+    );
+
+    // Security review 4: HQ saying nothing is no reason to hold — only this browser's own
+    // knowledge that its close-off has not happened is, and then it says why.
+    it.effect(
+      "where HQ says nothing, holds a marked Mate only on this browser's own evidence",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const fresh = madeAt("2026-09-23T09:50:00.000Z");
+            const unheld = yield* granted([], [fresh], platformAdapter([fresh], MARKER), [fresh], {
+              closeOff: hqWord(null).port,
+            });
+            unheld.environments.setOnScreen(fresh.projectId);
+            yield* settle;
+            expect(unheld.environments.closeOffHolds().size).toBe(0);
+            expect(exchangesOf(unheld.rig)).toBe(1);
+          }),
+        ),
+    );
+
+    it.effect(
+      "holds a Mate whose press here stopped before its close-off, saying it waits on HQ",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { rig, environments } = yield* granted(
+              [],
+              [A_MATE],
+              platformAdapter([A_MATE], MARKER),
+              [A_MATE],
+              { closeOff: hqWord(null).port, closeOffPending: pendingHere([A_MATE.projectId]) },
+            );
+            environments.setOnScreen(A_MATE.projectId);
+            yield* settle;
+            expect(environments.closeOffHolds().get(A_MATE.projectId)).toBe("awaiting-hq");
+            expect(exchangesOf(rig)).toBe(0);
+          }),
+        ),
+    );
+
+    // Security review 10: HQ's record saying it is not closed off holds the Mate while its marker
+    // is read, before it could connect for a moment.
+    it.effect("holds a Mate HQ says is not closed off while its marker is read", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const old = madeAt("2026-09-23T07:00:00.000Z");
+          const { rig, environments } = yield* granted(
+            [],
+            [old],
+            platformAdapter([old], "never"),
+            [old],
+            { closeOff: hqWord(said([])).port },
+          );
+          environments.setOnScreen(old.projectId);
+          yield* settle;
+          expect(environments.closeOffHolds().get(old.projectId)).toBe("checking");
+          expect(exchangesOf(rig)).toBe(0);
+        }),
+      ),
+    );
+
+    // HQ's word alone says closed off (ADR 0002): 0.12.3's close-off tag on the project is no word.
+    it.effect("holds a Mate HQ says is not closed off, whatever tag its project carries", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const tagged = {
+            ...A_MATE,
+            project: { ...A_MATE.project, tagList: ["mate", "mate:closed-off"] },
+          };
+          const { rig, environments } = yield* granted(
+            [],
+            [tagged],
+            platformAdapter([tagged], MARKER),
+            [tagged],
+            { closeOff: hqWord(said([])).port },
+          );
+          environments.setOnScreen(tagged.projectId);
+          yield* settle;
+          expect(environments.closeOffHolds().get(tagged.projectId)).toBe("open");
+          expect(exchangesOf(rig)).toBe(0);
+        }),
+      ),
+    );
+  });
 
   it.effect(
     "deleting a Mate overrides every lease, parks its socket, and restores demand on failure",

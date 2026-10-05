@@ -82,6 +82,7 @@ const routes = (options: CoreOptions) =>
   Layer.mergeAll(
     healthRoute(options.build),
     apiRoutes({
+      build: options.build,
       ...(options.streamRecheck === undefined ? {} : { recheck: options.streamRecheck }),
       ...(options.pingEvery === undefined ? {} : { pingEvery: options.pingEvery }),
       link: {

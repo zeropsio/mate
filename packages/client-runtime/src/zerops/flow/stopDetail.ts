@@ -118,6 +118,9 @@ export function stopKeyGap(input: {
   return undefined;
 }
 
+/** Where a stage HQ holds for a deploy key is finished, by one who may keep its key. */
+const FINISH_HELD_STAGE = "Finish setting it up from its project's menu on the Projects page.";
+
 /** What a stop's page says first: the first state that holds, in the order a person needs them. */
 export function stopVerdict(input: {
   readonly tier: GroupEnvironmentTier;
@@ -198,8 +201,15 @@ export function stopVerdict(input: {
     // A stage's first deploy asked for says where it stands, as its cell and the menu do.
     const first = tier === "stage" ? firstDeployLine(input.firstDeploy) : undefined;
     if (first !== undefined) {
-      // Why it failed, only where the job's own words say it (`firstDeployFailure`).
-      const why = input.firstDeploy?.kind === "failed" ? input.firstDeploy.reason : undefined;
+      // Why it failed, only where the job's own words say it (`firstDeployFailure`); held for a
+      // key, where one who may keep it finishes it (`halfMadeGroupEnvironments`) — one who may
+      // not is told who mints it, by `keyGap` above.
+      const why =
+        input.firstDeploy?.kind === "failed"
+          ? input.firstDeploy.reason
+          : input.firstDeploy?.kind === "held"
+            ? FINISH_HELD_STAGE
+            : undefined;
       return {
         tone: firstDeployTone(input.firstDeploy),
         text: `${first}.`,

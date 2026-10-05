@@ -1,4 +1,5 @@
 import type { CrewOperation } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -6,6 +7,12 @@ import { asRefusal, currentStint, type CrewCore } from "./crewCore.ts";
 import { crewLane } from "./CrewDefinition.ts";
 import { CREW_ID } from "./CrewHome.ts";
 import type { CrewAssignmentRow } from "./CrewStore.ts";
+
+const SESSION_OPERATION = "crew-operation:session:";
+
+/** Whether a person's own session sent the operation's turn. */
+export const sentBySession = (operation: Pick<CrewOperation, "id">): boolean =>
+  operation.id.startsWith(SESSION_OPERATION);
 
 /** A durable handle is written before any effect belonging to the attempt. */
 export const beginOperation = (
@@ -16,6 +23,8 @@ export const beginOperation = (
     readonly task?: CrewAssignmentRow | undefined;
     readonly startedBy?: string;
     readonly id?: string;
+    /** A turn a person's own session sent, not a run's or the engine's: named in its id. */
+    readonly bySession?: boolean;
   },
 ) =>
   Effect.gen(function* () {
@@ -27,7 +36,9 @@ export const beginOperation = (
         : applied?.repositories.get(member.host);
     const now = yield* core.now;
     const row: CrewOperation = {
-      id: input.id ?? `crew-operation:${yield* core.uuid}`,
+      id:
+        input.id ??
+        `${input.bySession === true ? SESSION_OPERATION : "crew-operation:"}${yield* core.uuid}`,
       crew: CREW_ID,
       handle: input.handle,
       taskId: input.task?.assignment ?? null,
@@ -129,6 +140,9 @@ export const withOperation = <A, E, R>(
       Effect.onExit((exit) =>
         Effect.gen(function* () {
           if (exit._tag === "Success") return;
+          // The engine is shutting down (a Mate update, SIGTERM): the row stays running, its stage
+          // confirmed, and the next boot marks it interrupted and carries it on (`crewBoot`).
+          if (Cause.hasInterruptsOnly(exit.cause) && core.shuttingDown()) return;
           const current = Option.getOrThrow(
             yield* asRefusal(core.store.getOperation(operation.id)),
           );

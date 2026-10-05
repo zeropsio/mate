@@ -545,7 +545,7 @@ describe("Zerops data model coordination", () => {
     });
   });
 
-  it("bounds long pending-baseline membership deltas and fails the affected interest until manual again", () => {
+  it("bounds long pending-baseline membership deltas and fails the affected interest for good", () => {
     const tiny = makeZeropsDataPolicy({ membershipMarkersPerQuery: 2 });
     const id = identity();
     const descriptor = {
@@ -602,6 +602,7 @@ describe("Zerops data model coordination", () => {
     expect(state.interests.get(id.key)?.interest).toMatchObject({
       status: "failed",
       reason: "overflow",
+      retryable: false,
       retryAtMs: null,
     });
   });
@@ -690,7 +691,7 @@ describe("Zerops data model coordination", () => {
 
     it.each(Object.entries(failures))(
       "publishes %s as failed with no scheduled retry",
-      (_, apply) => {
+      (name, apply) => {
         const id = identity();
         let state = reduce(
           makeInitialZeropsDataState(scope()),
@@ -706,9 +707,10 @@ describe("Zerops data model coordination", () => {
           tiny,
         );
         state = apply(state, id);
+        // The runtime stamps a retry on what may pass; lost updates wait for a person.
         expect(state.interests.get(id.key)?.interest).toMatchObject({
           status: "failed",
-          retryable: true,
+          retryable: name !== "membership overflow",
           attempts: 1,
           retryAtMs: null,
         });

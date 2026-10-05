@@ -2,7 +2,8 @@
  * A Mate's setup, read off its own `/mate/setup.json` (`mateSetup.ts`) while its view shows it
  * coming up: the same answer in any browser, and whether a browser watches or not. Read every few
  * seconds while there is something left to happen or nothing answers yet, and no more once its
- * Git access, its runtimes and its stand-up have settled.
+ * Git access, its runtimes and its stand-up have settled. Nothing is read while the tab is hidden,
+ * the first read either: a read that falls due then waits for the tab's return (527bbf7f7's rule).
  *
  * A read turned away, or answered with something that is not the setup, is a failure the view
  * says, and ends the observation until the person's *Try again* (`refreshMateSetup`) or a changed
@@ -16,6 +17,7 @@ import {
 } from "@t3tools/client-runtime/zerops/mateSetup";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { onAccountLifetimeClose } from "./accountLifetime";
+import { whenShown } from "./whenShown";
 
 /** How often a Mate's setup is read while something in it is still to happen. */
 export const MATE_SETUP_POLL_MS = 4_000;
@@ -53,6 +55,8 @@ interface SetupObservation {
   observed: MateSetupObserved;
   controller: AbortController | undefined;
   timer: ReturnType<typeof setTimeout> | undefined;
+  /** Stops waiting for the tab's return, while a read that fell due waits for it. */
+  unwait: (() => void) | undefined;
   inFlight: boolean;
   dirty: boolean;
   /** The caller's input the last read answered for (`useMateSetup`'s `epoch`). */
@@ -68,6 +72,7 @@ function observation(origin: string): SetupObservation {
       observed: NOTHING_OBSERVED,
       controller: undefined,
       timer: undefined,
+      unwait: undefined,
       inFlight: false,
       dirty: false,
       epoch: undefined,
@@ -104,9 +109,22 @@ async function ask(held: SetupObservation): Promise<void> {
   ) {
     held.timer = setTimeout(() => {
       held.timer = undefined;
-      void ask(held);
+      whenShownAsk(held);
     }, MATE_SETUP_POLL_MS);
   }
+}
+
+/** Reads now while the tab is shown, else once it is shown again. */
+function whenShownAsk(held: SetupObservation): void {
+  held.unwait = whenShown(() => {
+    held.unwait = undefined;
+    void ask(held);
+  });
+}
+
+function unwait(held: SetupObservation): void {
+  held.unwait?.();
+  held.unwait = undefined;
 }
 
 /** Re-read after an explicit action. Never clears the last answer. */
@@ -115,6 +133,7 @@ export function refreshMateSetup(origin: string): void {
   if (held === undefined) return;
   if (held.timer !== undefined) clearTimeout(held.timer);
   held.timer = undefined;
+  unwait(held);
   if (held.inFlight) held.dirty = true;
   else void ask(held);
 }
@@ -126,6 +145,7 @@ function stop(held: SetupObservation): void {
   held.dirty = false;
   if (held.timer !== undefined) clearTimeout(held.timer);
   held.timer = undefined;
+  unwait(held);
 }
 
 export function useMateSetup(
@@ -138,7 +158,7 @@ export function useMateSetup(
       if (origin === undefined) return () => undefined;
       const held = observation(origin);
       held.listeners.add(listener);
-      if (held.listeners.size === 1) void ask(held);
+      if (held.listeners.size === 1) whenShownAsk(held);
       return () => {
         held.listeners.delete(listener);
         if (held.listeners.size === 0) stop(held);

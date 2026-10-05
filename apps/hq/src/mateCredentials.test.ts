@@ -130,6 +130,25 @@ const keyIn = (fake: FakeWorld, orgId: string, id: string, ...projectIds: Readon
     createdByUser: "owner",
   });
 
+/** A key of HQ's org, by its id, with exactly these grants. */
+const keyWith = (
+  fake: FakeWorld,
+  id: string,
+  grants: ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }>,
+) =>
+  fake.tokens.set(`value-of-${id}`, {
+    id,
+    name: "zcp-P_MATE",
+    orgId: "ORG",
+    roleCode: "NO_ACCESS",
+    canCreateProjects: false,
+    canViewFinances: false,
+    canEditFinances: false,
+    projects: grants,
+    createdMs: 0,
+    createdByUser: "owner",
+  });
+
 /** A Mate's key on the platform, in HQ's org. */
 const keyOn = (fake: FakeWorld, id: string, ...projectIds: ReadonlyArray<string>) =>
   keyIn(fake, "ORG", id, ...projectIds);
@@ -412,6 +431,129 @@ describe("mate credentials", () => {
           );
           yield* mates.keepKey(credential, "tok-own");
           assert.strictEqual(yield* mates.keyOf("P_MATE"), "tok-own");
+        }),
+      ),
+    );
+
+    // ADR 0003's fallout: a key an earlier client widened with READ_ONLY on siblings is never
+    // taken for the Mate's key, but HQ says the Mate needs Finish setup — read at its enrollment
+    // and with its credential, never on a page's read — and reads the key again, when the person
+    // who finished it asks, once its harden took those grants off.
+    it.effect(
+      "says a Mate whose key reads other projects needs Finish setup, until it no longer does",
+      () =>
+        withMates((fake) =>
+          Effect.gen(function* () {
+            keyWith(fake, "tok-wide", [
+              { projectId: "P_MATE", roleCode: "BASIC_USER" },
+              { projectId: "P_STAGE", roleCode: "READ_ONLY" },
+            ]);
+            const mates = yield* MateCredentials;
+            const { nonce } = yield* mates.challenge("P_MATE");
+            writeChallenge(fake, "P_MATE", nonce);
+            const issued = yield* mates.issue("P_MATE", nonce, { keyTokenId: "tok-wide" });
+            assert.isNull(yield* mates.keyOf("P_MATE"));
+            assert.isTrue(issued.keyWiderMoved);
+            assert.isTrue(yield* mates.keyWider("P_MATE"));
+
+            // Finish setup's harden is told that key by its id, the one the Mate's container
+            // holds: a key found by its id is the Mate's to narrow (`planMateKey`).
+            assert.strictEqual(yield* mates.keyFor("owner", "P_MATE"), "tok-wide");
+
+            // Not yet lowered: asked again, it still reads other projects.
+            assert.isFalse(yield* mates.recheckKey("owner", "P_MATE"));
+            assert.isTrue(yield* mates.keyWider("P_MATE"));
+
+            // Finish setup's harden took the siblings off: it is the Mate's own key now.
+            keyWith(fake, "tok-wide", [{ projectId: "P_MATE", roleCode: "BASIC_USER" }]);
+            assert.isTrue(yield* mates.recheckKey("owner", "P_MATE"));
+            assert.isFalse(yield* mates.keyWider("P_MATE"));
+            assert.strictEqual(yield* mates.keyOf("P_MATE"), "tok-wide");
+          }),
+        ),
+    );
+
+    it.effect(
+      "a key that writes another project, or reads none of its own, is not said wider",
+      () =>
+        withMates((fake) =>
+          Effect.gen(function* () {
+            keyWith(fake, "tok-writes", [
+              { projectId: "P_MATE", roleCode: "BASIC_USER" },
+              { projectId: "P_STAGE", roleCode: "ADMIN" },
+            ]);
+            keyWith(fake, "tok-elsewhere", [{ projectId: "P_STAGE", roleCode: "READ_ONLY" }]);
+            keyWith(fake, "tok-wide", [
+              { projectId: "P_MATE", roleCode: "BASIC_USER" },
+              { projectId: "P_STAGE", roleCode: "READ_ONLY" },
+            ]);
+            const mates = yield* MateCredentials;
+            const { nonce } = yield* mates.challenge("P_MATE");
+            writeChallenge(fake, "P_MATE", nonce);
+            const { credential } = yield* mates.issue("P_MATE", nonce, {
+              keyTokenId: "tok-writes",
+            });
+            assert.isFalse(yield* mates.keyWider("P_MATE"));
+            assert.strictEqual(
+              yield* refusalOf(mates.keepKey(credential, "tok-elsewhere")),
+              "key_not_its_own",
+            );
+            assert.isFalse(yield* mates.keyWider("P_MATE"));
+            // Named with its credential, a widened key is said, and still never kept as its key.
+            assert.strictEqual(
+              yield* refusalOf(mates.keepKey(credential, "tok-wide")),
+              "key_not_its_own",
+            );
+            assert.isTrue(yield* mates.keyWider("P_MATE"));
+            assert.isNull(yield* mates.keyOf("P_MATE"));
+          }),
+        ),
+    );
+
+    // Security review 9: the word that a Mate's key reads other projects goes only on a positive
+    // reading of it narrow; a key gone, refused, or now writing elsewhere keeps the word.
+    it.effect(
+      "keeps saying a key is wider until it reads narrow, never on a key it cannot read",
+      () =>
+        withMates((fake) =>
+          Effect.gen(function* () {
+            keyWith(fake, "tok-wide", [
+              { projectId: "P_MATE", roleCode: "BASIC_USER" },
+              { projectId: "P_STAGE", roleCode: "READ_ONLY" },
+            ]);
+            const mates = yield* MateCredentials;
+            const { nonce } = yield* mates.challenge("P_MATE");
+            writeChallenge(fake, "P_MATE", nonce);
+            yield* mates.issue("P_MATE", nonce, { keyTokenId: "tok-wide" });
+
+            keyWith(fake, "tok-wide", [
+              { projectId: "P_MATE", roleCode: "BASIC_USER" },
+              { projectId: "P_STAGE", roleCode: "ADMIN" },
+            ]);
+            assert.isFalse(yield* mates.recheckKey("owner", "P_MATE"));
+            assert.isTrue(yield* mates.keyWider("P_MATE"));
+
+            fake.tokens.delete("value-of-tok-wide");
+            assert.isFalse(yield* mates.recheckKey("owner", "P_MATE"));
+            assert.isTrue(yield* mates.keyWider("P_MATE"));
+          }),
+        ),
+    );
+
+    it.effect("reads a Mate's key again only for whoever may edit its record", () =>
+      withMates((fake) =>
+        Effect.gen(function* () {
+          keyWith(fake, "tok-wide", [
+            { projectId: "P_MATE", roleCode: "BASIC_USER" },
+            { projectId: "P_STAGE", roleCode: "READ_ONLY" },
+          ]);
+          const mates = yield* MateCredentials;
+          const { nonce } = yield* mates.challenge("P_MATE");
+          writeChallenge(fake, "P_MATE", nonce);
+          yield* mates.issue("P_MATE", nonce, { keyTokenId: "tok-wide" });
+          const refused = yield* Effect.flip(mates.recheckKey("stranger", "P_MATE"));
+          assert.strictEqual(refused._tag, "StructureRefused");
+          assert.isTrue(yield* mates.keyWider("P_MATE"));
         }),
       ),
     );

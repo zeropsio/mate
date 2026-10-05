@@ -635,7 +635,12 @@ function Pane({ state, go }: { readonly state: HarnessState; readonly go: (id: s
     <MateEmptyStateView
       addedBy={state.addedBy}
       coming={comingOf(state, nowMs)}
-      mate={state.mate}
+      // Waiting for its first sign-in, it is still arriving (`mateArrivingUntil`).
+      mate={
+        state.logins === undefined
+          ? state.mate
+          : { ...state.mate, arrivingUntil: nowMs + 30 * 60_000 }
+      }
       phase={state.phase}
       runtimes={signInRuntimes(nowMs - openedAt)}
       signIn={

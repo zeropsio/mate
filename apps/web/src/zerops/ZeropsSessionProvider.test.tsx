@@ -6,9 +6,7 @@ import {
 } from "@t3tools/client-runtime/zerops/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { mountTab, preloadTabs, settle, unmountTabs } from "./__fixtures__/harnessTabs";
-
-preloadTabs();
+import { mountTab, settle, unmountTabs } from "./__fixtures__/harnessTabs";
 
 /** The login a tab verified, beside the session key and never inside it (DESIGN §1.1). */
 const OWNER_KEY = "zerops-mate.zerops-session-owner.v1";
@@ -211,7 +209,7 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     expect(storedSession(harness)).not.toBeNull();
   });
 
-  it("keeps a failed boot on coming online until the person verifies again", async () => {
+  it("retries a boot the network failed, and signs in once the tab is back online", async () => {
     const harness = harnessWith({ signedIn: "user-1" });
     const offline = harness.browser.openTab();
     offline.signals.offline();
@@ -220,12 +218,48 @@ describe("ZeropsSessionProvider sign-in guards", () => {
 
     offline.signals.online();
     await settle();
-    expect(tab.session().status).toBe("unavailable");
-    await tab.run(() => tab.session().verifyAgain?.());
 
     expect(tab.session().status).toBe("signed-in");
     expect(tab.accountId()).toBe("user-1");
     expect(tab.tab.reloads).toBe(0);
+  });
+
+  it("a hidden tab that comes back online checks nothing until it is shown", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const offline = harness.browser.openTab();
+    offline.signals.offline();
+    const tab = await mountTab(harness, offline);
+    expect(tab.session().status).toBe("unavailable");
+    const checks = () =>
+      harness.rest.requests().filter(({ route }) => route === "GET /user/info").length;
+    const before = checks();
+
+    offline.signals.hide();
+    offline.signals.online();
+    await settle();
+    expect(checks()).toBe(before);
+    expect(tab.session().status).toBe("unavailable");
+
+    offline.signals.show();
+    await settle();
+    expect(tab.session().status).toBe("signed-in");
+  });
+
+  it("a background retry keeps the failure shown, saying it tries again", async () => {
+    const harness = harnessWith({ signedIn: "user-1" });
+    const offline = harness.browser.openTab();
+    offline.signals.offline();
+    const tab = await mountTab(harness, offline);
+    const check = harness.rest.hold("GET /user/info");
+    const frames: string[] = [];
+    offline.signals.online();
+    await settle();
+    expect(check.waiting()).toBe(1);
+    frames.push(tab.session().status);
+    expect(tab.session().retrying).toBe(true);
+    await tab.run(() => check.release());
+    expect(frames).toEqual(["unavailable"]);
+    expect(tab.session().status).toBe("signed-in");
   });
 
   it("renews an expired stored token at boot and signs in", async () => {
@@ -371,7 +405,7 @@ describe("ZeropsSessionProvider verified adoption across tabs", () => {
     expect([a.tab.reloads, b.tab.reloads]).toEqual([0, 0]);
   });
 
-  it("retains the account after a failed probe and adopts only on Verify again", async () => {
+  it("stays signed in while the probe answers 503, and adopts when it retries", async () => {
     const harness = harnessWith({ signedIn: "user-1" });
     const b = await recordingTab(harness);
     const from = b.frames().length;
@@ -387,24 +421,20 @@ describe("ZeropsSessionProvider verified adoption across tabs", () => {
     probe.fail(503);
     await settle();
 
-    expect(b.session().status).toBe("unavailable");
+    expect(b.session().status).toBe("signed-in");
     expect(b.accountId()).toBe("user-1");
     expect(b.session().client.session?.accessToken).toBe(held);
 
     b.tab.signals.hide();
     b.tab.signals.show();
     await settle();
-    expect(b.session().status).toBe("unavailable");
-    expect(b.session().client.session?.accessToken).toBe(held);
-    await b.run(() => b.session().verifyAgain?.());
 
     expect(b.session().client.session?.accessToken).toBe(next.accessToken);
-    expect(b.session().status).toBe("signed-in");
-    expect(
+    expect(b.framesSince(from)).toEqual(
       b
         .framesSince(from)
-        .every((frame) => frame.userId === "user-1" && frame.accountId === "user-1"),
-    ).toBe(true);
+        .map(() => ({ status: "signed-in", userId: "user-1", accountId: "user-1" })),
+    );
     expect(b.tab.reloads).toBe(0);
   });
 

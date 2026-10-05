@@ -264,6 +264,23 @@ export const savedSeamWords = (
 export const landedSeamWords = (number: number, commit: string): string =>
   `Task #${number} landed as ${commit.slice(0, 7)}`;
 
+/** The files a seam line names before it counts the rest. */
+const SWEPT_PATHS_NAMED = 3;
+
+/**
+ * The seam line the boot sweep leaves where it saved work a restart left uncommitted: the branch
+ * it saved it on, its commit, and the files.
+ */
+export const sweptSeamWords = (
+  branch: string,
+  commit: string,
+  paths: ReadonlyArray<string>,
+): string => {
+  const named = paths.slice(0, SWEPT_PATHS_NAMED).join(", ");
+  const rest = paths.length - SWEPT_PATHS_NAMED;
+  return `Saved what the restart left uncommitted on ${branch} as ${commit.slice(0, 7)}: ${named}${rest > 0 ? ` and ${rest} more` : ""}`;
+};
+
 /** The seam line of a task closed with nothing of its own to land. */
 export const closedSeamWords = (number: number): string =>
   `Task #${number} closed — nothing to land`;

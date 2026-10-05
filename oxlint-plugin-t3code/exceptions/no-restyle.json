@@ -2406,37 +2406,5 @@
     "owner": "web-intake",
     "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
     "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.index.tsx",
-    "kind": "Literal",
-    "fingerprint": "<EmptyDescription> text-muted-foreground/78 in \"mt-2 text-muted-foreground/78\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.index.tsx",
-    "kind": "Literal",
-    "fingerprint": "<EmptyTitle> sm:text-3xl in \"text-foreground text-2xl sm:text-3xl\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.index.tsx",
-    "kind": "Literal",
-    "fingerprint": "<EmptyTitle> text-2xl in \"text-foreground text-2xl sm:text-3xl\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.index.tsx",
-    "kind": "Literal",
-    "fingerprint": "<EmptyTitle> text-foreground in \"text-foreground text-2xl sm:text-3xl\"",
-    "owner": "web-intake",
-    "reason": "restyle that predates the ui-kit pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
   }
 ]

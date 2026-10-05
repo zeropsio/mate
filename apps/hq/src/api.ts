@@ -43,7 +43,10 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  *   than the one the Mate's record names (one Mate per project, audit D2); `GET /api/mate/whoami`
  *   with `Authorization: Mate <credential>` → `{ projectId }`; `PUT /api/mate/key` `{ keyTokenId }`,
  *   the same → `204`: the id of the key the Mate's container holds, which `GET
- *   /api/mates/:projectId/key` → `{ keyTokenId }` tells the project's admin;
+ *   /api/mates/:projectId/key` → `{ keyTokenId }` tells the project's admin; a named key that
+ *   also reads other projects is never kept, and its Mate's record says `keyWider` — its id told
+ *   by that read, for Finish setup's harden to narrow — until its admin, having finished its setup,
+ *   asks `POST /api/mates/:projectId/key-check` → `204` to read it again;
  *   `GET /api/mate/self`, the same → the Mate's state (`@t3tools/shared/mateLink` `MateState`)
  *   with its changes (`@t3tools/shared/hqChanges` `MateChanges`).
  * - `POST /api/mates/:projectId/closed-off` → the Mate's state: its project closed off, recorded by
@@ -130,6 +133,7 @@ import type { RolloutCause } from "./rollouts.ts";
 import { PersonGitCredentials, type GitHolder } from "./personGitCredentials.ts";
 import { Sessions } from "./sessions.ts";
 import {
+  MATES_BATCH,
   MateLinkTickets,
   type StreamOptions,
   StreamTickets,
@@ -788,7 +792,13 @@ const routes = (
         Effect.gen(function* () {
           yield* knock("mate");
           const { projectId, nonce, ...named } = yield* jsonBody(CredentialBody, DOOR_BODY_LIMIT);
-          return json(yield* (yield* MateCredentials).issue(projectId, nonce, named), 200);
+          const { credential, keyWiderMoved } = yield* (yield* MateCredentials).issue(
+            projectId,
+            nonce,
+            named,
+          );
+          if (keyWiderMoved) yield* (yield* Structure).mateTouched(projectId);
+          return json({ credential }, 200);
         }),
       ),
     ),
@@ -937,8 +947,10 @@ const routes = (
       handle(
         Effect.gen(function* () {
           const { keyTokenId } = yield* jsonBody(KeyBody, DOOR_BODY_LIMIT);
-          const { credential } = yield* mate;
-          yield* (yield* MateCredentials).keepKey(credential, keyTokenId);
+          const { credential, projectId } = yield* mate;
+          if (yield* (yield* MateCredentials).keepKey(credential, keyTokenId)) {
+            yield* (yield* Structure).mateTouched(projectId);
+          }
           return HttpServerResponse.empty();
         }),
       ),
@@ -1162,7 +1174,13 @@ const routes = (
           const socket = yield* request.upgrade;
           const ended = yield* serveStructureSocket(
             socket,
-            structureMessages(userId, ending, options.recheck ?? Duration.seconds(30)),
+            structureMessages(
+              userId,
+              ending,
+              options.recheck ?? Duration.seconds(30),
+              MATES_BATCH,
+              options.build,
+            ),
             options.pingEvery ?? Duration.seconds(20),
           );
           // Which side ended it says whether a cut was HQ's or the way's (F26).
@@ -1516,6 +1534,21 @@ const routes = (
               return json(yield* (yield* Structure).createMate(userId, mate), 201);
             }),
           );
+        }),
+      ),
+    ),
+    // Finish setup took a widened key's sibling grants off: HQ reads the key again.
+    HttpRouter.add(
+      "POST",
+      "/api/mates/:projectId/key-check",
+      handle(
+        Effect.gen(function* () {
+          const { userId } = yield* principal;
+          const projectId = (yield* HttpRouter.params)["projectId"] ?? "";
+          if (yield* (yield* MateCredentials).recheckKey(userId, projectId)) {
+            yield* (yield* Structure).mateTouched(projectId);
+          }
+          return HttpServerResponse.empty({ status: 204 });
         }),
       ),
     ),

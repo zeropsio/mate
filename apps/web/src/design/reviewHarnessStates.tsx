@@ -190,6 +190,7 @@ const CHANGE: HqChange = {
   updatedAt: minutesAgo(400),
   mergeability: "clean",
   behind: false,
+  comments: 0,
 };
 
 /** HQ's detail of the change, `over` it, as its review reads it (`changeReadout`). */

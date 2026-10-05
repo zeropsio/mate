@@ -53,6 +53,7 @@ import { connectionAtomRuntime } from "../../connection/runtime";
 import { uuidv4 } from "../../lib/uuid";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { hqAbsent, loadAccountRecords, memoryIntents } from "./account-ports";
+import { closeOffFacts } from "./close-off";
 import { mateDescriptors } from "./mate-descriptors";
 import { openMateRoute } from "./open-mate";
 import { mobilePlatformSignals } from "./platform-signals";
@@ -297,6 +298,8 @@ export async function mobileAccountPorts(input: {
       catalog: catalogPort,
       // The Mate whose screen is open as the stage starts: its target is wanted first.
       route: openMateRoute,
+      // No HQ word on the phone: a Mate is held only on what its open read here (`close-off.ts`).
+      closeOffPending: closeOffFacts,
       ...hqAbsent(),
     },
   };

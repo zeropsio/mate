@@ -28,6 +28,12 @@ import {
   type Shown,
   type WithheldReason,
 } from "../knowledge/known.ts";
+import {
+  backoffOn,
+  INITIAL_BACKOFF,
+  scheduleRetry,
+  type Backoff,
+} from "../knowledge/retryPolicy.ts";
 import type { ZeropsAgentType } from "../newProject.ts";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
 import type {
@@ -136,8 +142,8 @@ export const CELL_FRESH_MS: Readonly<Record<ZeropsCellKind, number>> = {
 };
 
 /**
- * How long a read of its kind may go unanswered before it fails as Zerops not answering,
- * its request aborted until a manual Read again. The token and member lists are each one
+ * How long a read of its kind may go unanswered before it fails as Zerops not answering and climbs
+ * the retry ladder like any other — its request aborted. The token and member lists are each one
  * heavy answer the whole organization's, and a read the platform sat on held its cell reading for
  * as long as it did. A kind not named waits as long as its source does.
  */
@@ -147,7 +153,7 @@ const CELL_READ_DEADLINE_MS: Readonly<Partial<Record<ZeropsCellKind, number>>> =
   members: 30_000,
 };
 
-/** A read past its kind's deadline: Zerops did not answer. */
+/** A read past its kind's deadline: Zerops did not answer, and a retry may. */
 const READ_PAST_DEADLINE: ZeropsCellSourceError = {
   _tag: "ZeropsCellSourceError",
   kind: "transport",
@@ -162,6 +168,8 @@ export interface ZeropsCellSourceError {
   readonly _tag: "ZeropsCellSourceError";
   readonly kind: "transport" | "unavailable" | "permission" | "decode";
   readonly retryable: boolean;
+  /** A 429's Retry-After: the cell reads nothing sooner. */
+  readonly retryAfterMs?: number;
 }
 
 export interface ZeropsCellReadContext {
@@ -258,8 +266,13 @@ export interface ZeropsCells {
    * an idle one on its next demand, whatever its freshness.
    */
   readonly invalidate: (request: ZeropsCellRequest) => Effect.Effect<void>;
-  /** One manual Read again for a demanded failed cell or expired admission. */
+  /** One manual Read again for a demanded failed cell or expired admission, from the first rung. */
   readonly readAgain: (request: ZeropsCellRequest) => Effect.Effect<boolean>;
+  /**
+   * The tab is visible again: every demanded cell whose retry came due while it was hidden reads
+   * now, from the first rung.
+   */
+  readonly wake: Effect.Effect<void>;
   /** Idempotent. Fences completion, aborts work and erases all retained values. */
   readonly shutdown: Effect.Effect<void>;
 }
@@ -274,9 +287,20 @@ export interface ZeropsCellsOptions {
   readonly idleRetentionMs?: number;
   /** Bounds waiting and failed admissions separately from the active cells. */
   readonly maxQueuedEntries?: number;
+  /** The jitter source of the retry policy. */
+  readonly random?: () => number;
+  /** Whether the tab is visible: a retry that comes due while it is not waits for `wake`. */
+  readonly visible?: () => boolean;
 }
 
 export const CELL_ADMISSION_DEADLINE_MS = 30_000;
+
+/**
+ * A heavy list the platform sat on past its deadline retries on the ladder this many times; after
+ * that it waits `CELL_DEADLINE_CAP_MS` between reads, or a person's Read again.
+ */
+const DEADLINE_RETRIES = 2;
+const CELL_DEADLINE_CAP_MS = 5 * 60_000;
 
 export const CELL_IDLE_RETENTION_MS = 10 * 60_000;
 
@@ -306,6 +330,13 @@ interface CellEntry {
   attemptedInvalidation: number;
   /** Ends a queued admission once, without starting a read. */
   admissionWake: Fiber.Fiber<void> | null;
+  backoff: Backoff;
+  /** The wake at the failed read's `retryAt`, while demanded. */
+  retryWake: Fiber.Fiber<void> | null;
+  /** Its retry came due while the tab was hidden: the next `wake` reads it. */
+  retryDue: boolean;
+  /** Reads past their deadline in a row (`DEADLINE_RETRIES`). */
+  deadlineFailures: number;
   /** The end of the idle retention window, while nothing demands the entry. */
   evictionWake: Fiber.Fiber<void> | null;
 }
@@ -399,18 +430,52 @@ export function zeropsCellKeyOf(request: ZeropsCellRequest): ZeropsCellKey {
 }
 
 /** The sanitized reason a read failed: the source's own message never leaves the adapter. */
-const failureOf = (cause: Cause.Cause<ZeropsCellSourceError>): FailureReason => {
+const failureOf = (
+  cause: Cause.Cause<ZeropsCellSourceError>,
+): {
+  readonly failure: FailureReason;
+  readonly retryable: boolean;
+  readonly retryAfterMs?: number;
+  readonly pastDeadline?: true;
+} => {
   const found = Cause.findError(cause);
-  if (Result.isFailure(found)) return { kind: "transport", detail: "The read ended unexpectedly." };
-  switch (found.success.kind) {
+  if (Result.isFailure(found)) {
+    return {
+      failure: { kind: "transport", detail: "The read ended unexpectedly." },
+      retryable: false,
+    };
+  }
+  if (found.success === READ_PAST_DEADLINE)
+    return {
+      failure: { kind: "transport", detail: "Zerops did not answer." },
+      retryable: true,
+      pastDeadline: true,
+    };
+  const { kind, retryable } = found.success;
+  if (found.success.retryAfterMs !== undefined)
+    return {
+      failure: { kind: "transport", detail: "Zerops did not answer." },
+      retryable,
+      retryAfterMs: found.success.retryAfterMs,
+    };
+  switch (kind) {
     case "transport":
-      return { kind: "transport", detail: "Zerops did not answer." };
+      return { failure: { kind: "transport", detail: "Zerops did not answer." }, retryable };
     case "unavailable":
-      return { kind: "refused", code: "unavailable", words: "Zerops has no such resource." };
+      return {
+        failure: { kind: "refused", code: "unavailable", words: "Zerops has no such resource." },
+        retryable,
+      };
     case "permission":
-      return { kind: "refused", code: "permission", words: "Zerops refused this read." };
+      return {
+        failure: { kind: "refused", code: "permission", words: "Zerops refused this read." },
+        retryable,
+      };
     case "decode":
-      return { kind: "malformed", detail: "Zerops answered in an unknown shape." };
+      return {
+        failure: { kind: "malformed", detail: "Zerops answered in an unknown shape." },
+        retryable,
+      };
   }
 };
 
@@ -526,6 +591,8 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
   const clock = yield* Clock.Clock;
   const now = () => clock.currentTimeMillisUnsafe();
   const idleRetentionMs = options.idleRetentionMs ?? CELL_IDLE_RETENTION_MS;
+  const random = options.random ?? Math.random;
+  const visible = options.visible ?? (() => true);
   const entries = new Map<ZeropsCellKey, CellEntry>();
   const atoms = new Map<ZeropsCellKey, Atom.Atom<AnyShown>>();
   const maxQueuedEntries =
@@ -533,9 +600,9 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
   if (!Number.isSafeInteger(maxQueuedEntries) || maxQueuedEntries <= 0) {
     return yield* Effect.die(new RangeError("maxQueuedEntries must be a positive safe integer."));
   }
-  /** Waiting and failed admissions keep their identity until release or manual Read again. */
+  /** Waiting and expired admissions keep their identity until admitted or released. */
   const pending = new Map<ZeropsCellKey, CellEntry>();
-  /** Queue-full views keep a manual admission action; capacity release does not invoke it. */
+  /** Queue-full views: each asks again at its retryAt, at a Read again, or when the broker closes. */
   const refusedAtoms = new Map<ZeropsCellKey, () => void>();
   let draining = false;
   let nextDemandId = 0;
@@ -565,7 +632,14 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     entry.admissionWake = null;
   };
 
+  const cancelRetry = (entry: CellEntry): void => {
+    entry.retryWake?.interruptUnsafe();
+    entry.retryWake = null;
+    entry.retryDue = false;
+  };
+
   const abortRead = (entry: CellEntry): void => {
+    cancelRetry(entry);
     const inFlight = entry.inFlight;
     if (inFlight === null) return;
     entry.inFlight = null;
@@ -595,6 +669,7 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
    * revalidation in flight may still land in it), anything else goes now.
    */
   const idle = (entry: CellEntry): void => {
+    cancelRetry(entry);
     if (entry.cell.held.state !== "known" || entry.cell.withheld !== null) {
       dispose(entry);
       return;
@@ -635,6 +710,8 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     if (closed || entries.get(entry.key) !== entry || entry.inFlight !== inFlight) return;
     entry.inFlight = null;
     if (Exit.isSuccess(exit)) {
+      entry.backoff = INITIAL_BACKOFF;
+      entry.deadlineFailures = 0;
       apply(entry, {
         kind: "read-succeeded",
         ordinal: inFlight.ordinal,
@@ -646,14 +723,29 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
       if (entry.cell.dirty && entry.demands.size > 0) startRead(entry);
       return;
     }
-    const failure = failureOf(exit.cause);
+    const { failure, retryable, retryAfterMs, pastDeadline } = failureOf(exit.cause);
+    entry.deadlineFailures = pastDeadline === true ? entry.deadlineFailures + 1 : 0;
+    const ladder = retryable ? scheduleRetry(entry.backoff, now(), random) : null;
+    if (ladder !== null) entry.backoff = ladder.backoff;
+    // A Retry-After is a floor; a list the platform keeps sitting on waits the cap.
+    const scheduled =
+      ladder === null
+        ? null
+        : {
+            retryAtMs: Math.max(
+              entry.deadlineFailures > DEADLINE_RETRIES
+                ? now() + CELL_DEADLINE_CAP_MS
+                : ladder.retryAtMs,
+              now() + (retryAfterMs ?? 0),
+            ),
+          };
     const failed = advance(
       entry.cell,
       {
         kind: "read-failed",
         ordinal: inFlight.ordinal,
         failure,
-        retryAtMs: null,
+        retryAtMs: scheduled?.retryAtMs ?? null,
       },
       now(),
     );
@@ -661,10 +753,14 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     // Its reader waits for that revision, rather than settling with the superseded failure.
     if (entry.demands.size > 0 && entry.cell.lastInvalidation > entry.attemptedInvalidation)
       startRead(entry, failed);
-    else setCell(entry, failed);
+    else {
+      setCell(entry, failed);
+      if (scheduled !== null) scheduleRetryWake(entry, scheduled.retryAtMs);
+    }
   };
 
   const startRead = (entry: CellEntry, cell = entry.cell): void => {
+    cancelRetry(entry);
     const inFlight: CellReadInFlight = {
       ordinal: ++ordinal,
       controller: new AbortController(),
@@ -769,6 +865,17 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     }
     const held = entry.cell.held;
     if (pending.has(entry.key)) return;
+    // A surface that starts watching a failed cell waits for its scheduled retry; a one-shot
+    // reader reads it at once.
+    if (
+      newlyDemanded &&
+      passive &&
+      held.state === "failed" &&
+      held.retryAtMs !== null &&
+      entry.retryWake === null &&
+      entry.inFlight === null
+    )
+      scheduleRetryWake(entry, held.retryAtMs);
     if (
       entry.inFlight === null &&
       (held.state === "unread" ||
@@ -801,16 +908,47 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     return true;
   };
 
-  /** FIFO admission is woken by actual capacity release, never by a retry timer. */
+  /** Timers are hints (§4.0): the wake re-checks the entry before it reads. */
+  function scheduleRetryWake(entry: CellEntry, retryAtMs: number): void {
+    cancelRetry(entry);
+    if (entry.demands.size === 0) return;
+    entry.retryWake = fork(
+      Effect.sleep(Duration.millis(Math.max(0, retryAtMs - now()))).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            entry.retryWake = null;
+            if (closed || entry.demands.size === 0) return;
+            if (entries.get(entry.key) !== entry && pending.get(entry.key) !== entry) return;
+            // Nothing is read while the tab is hidden: the wake that shows it reads.
+            if (!visible()) entry.retryDue = true;
+            else readAgain(entry);
+          }),
+        ),
+      ),
+    );
+  }
+
+  /** A person's Read again, or the tab coming back, starts from the first rung. */
+  const retry = (entry: CellEntry): boolean => {
+    entry.backoff = backoffOn(entry.backoff, "user-retry");
+    return readAgain(entry);
+  };
+
+  /**
+   * FIFO admission is woken by capacity release: a waiting key, and one whose wait expired
+   * visibly, take the slot in order. A withheld key waits for its grant instead.
+   */
   function drainAdmission(): void {
     if (closed || draining) return;
     draining = true;
     try {
       for (const entry of pending.values()) {
-        if (entry.admissionWake === null) continue;
+        if (entry.admissionWake === null && entry.cell.withheld !== null) continue;
         if (entries.size >= maxEntries && !evictIdle()) break;
         pending.delete(entry.key);
         cancelAdmission(entry);
+        if (entry.cell.held.state === "failed")
+          setCell(entry, { ...entry.cell, held: { state: "unread", waitingFor: "data-slot" } });
         entries.set(entry.key, entry);
         reconcile(entry, options.access(), now());
       }
@@ -821,7 +959,7 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
 
   function queueAdmission(entry: CellEntry): void {
     cancelAdmission(entry);
-    // A failed admission begins a new attempt only when the person asks.
+    // A wait past its deadline shows as failed and keeps its place for the next free slot.
     setCell(entry, { ...entry.cell, held: { state: "unread", waitingFor: "data-slot" } });
     entry.admissionWake = fork(
       Effect.sleep(Duration.millis(CELL_ADMISSION_DEADLINE_MS)).pipe(
@@ -872,6 +1010,10 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
         inFlight: null,
         attemptedInvalidation: 0,
         admissionWake: null,
+        backoff: INITIAL_BACKOFF,
+        retryWake: null,
+        retryDue: false,
+        deadlineFailures: 0,
         evictionWake: null,
       };
       if (waits) {
@@ -898,7 +1040,7 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
       },
       retry: () => {
         if (closed) return admissionError("runtime-closed");
-        return active() ? readAgain(held) : admissionError("lease-released");
+        return active() ? retry(held) : admissionError("lease-released");
       },
       release: () => {
         if (!held.demands.delete(id) || held.demands.size > 0) return;
@@ -914,6 +1056,8 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
     const key = zeropsCellKeyOf(request);
     let atom = atoms.get(key);
     if (atom === undefined) {
+      // Consecutive refusals for a full queue, which the atom outlives between evaluations.
+      let refusals = { backoff: INITIAL_BACKOFF, attempt: 0 };
       atom = Atom.make((get): AnyShown => {
         let mounted = false;
         const opened = open(
@@ -928,9 +1072,21 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
         );
         if ("_tag" in opened) {
           if (opened.reason !== "account-capacity") return ACCOUNT_CLOSED;
+          // The queue is the broker's own limit: the atom asks again at its retryAt.
+          const atMs = now();
+          const scheduled = scheduleRetry(refusals.backoff, atMs, random);
+          refusals = { backoff: scheduled.backoff, attempt: refusals.attempt + 1 };
           const askAgain = () => get.refreshSelf();
           refusedAtoms.set(key, askAgain);
-          get.addFinalizer(() => refusedAtoms.delete(key));
+          const wake = fork(
+            Effect.sleep(Duration.millis(scheduled.retryAtMs - atMs)).pipe(
+              Effect.andThen(Effect.sync(() => (visible() ? askAgain() : undefined))),
+            ),
+          );
+          get.addFinalizer(() => {
+            refusedAtoms.delete(key);
+            wake.interruptUnsafe();
+          });
           return {
             state: "failed",
             failure: {
@@ -938,11 +1094,12 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
               code: "data-slot-queue-full",
               words: "The data slot queue is full.",
             },
-            atMs: now(),
-            attempt: 1,
-            retryAtMs: null,
+            atMs,
+            attempt: refusals.attempt,
+            retryAtMs: scheduled.retryAtMs,
           };
         }
+        refusals = { backoff: INITIAL_BACKOFF, attempt: 0 };
         get.addFinalizer(opened.release);
         mounted = true;
         return opened.shown();
@@ -1078,8 +1235,19 @@ export const makeZeropsCells = Effect.fn("ZeropsCells.make")(function* (
           askAgain();
           return true;
         }
-        return entry !== undefined && entry.demands.size > 0 && readAgain(entry);
+        return entry !== undefined && entry.demands.size > 0 && retry(entry);
       }),
+    wake: Effect.sync(() => {
+      if (closed) return;
+      for (const entry of [...entries.values(), ...pending.values()]) {
+        if (!entry.retryDue || entry.demands.size === 0) continue;
+        entry.retryDue = false;
+        entry.backoff = backoffOn(entry.backoff, "visible-wake");
+        readAgain(entry);
+      }
+      // A refused atom asking again re-registers itself: iterate over a copy.
+      for (const askAgain of Array.from(refusedAtoms.values())) askAgain();
+    }),
     shutdown,
   } satisfies ZeropsCells;
 });

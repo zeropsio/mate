@@ -153,14 +153,24 @@ export function changedMateFace(worn: ZeropsMateFaceTag | undefined, face: Zerop
 }
 
 /**
- * Declares the Mate for the Zerops GUI: the marker alone. Idempotent, so
- * every path that stands a Mate up — the wizard, "Add dev" with an agent,
- * "Set up Mate" — can write it without checking first.
+ * Declares the Mate for the Zerops GUI: the marker added to the project's own tags — a plain
+ * project its person tagged keeps them (Set up Mate) — and the obsolete `mate:*` metadata tags an
+ * earlier client wrote on a Mate dropped, as HQ holds that metadata now. Idempotent, so every path
+ * that stands a Mate up — the wizard, "Add dev" with an agent, "Set up Mate" — can write it without
+ * checking first.
  */
 export function withZeropsMateTag(
   tagList: ReadonlyArray<string> | undefined,
 ): ReadonlyArray<string> {
-  return tagList?.length === 1 && tagList[0] === MATE_MARKER_TAG ? tagList : [MATE_MARKER_TAG];
+  const own = (tagList ?? []).filter(
+    (tag) => tag !== MATE_MARKER_TAG && !tag.startsWith(`${MATE_MARKER_TAG}:`),
+  );
+  const next = [...own, MATE_MARKER_TAG];
+  return tagList !== undefined &&
+    tagList.length === next.length &&
+    next.every((tag) => tagList.includes(tag))
+    ? tagList
+    : next;
 }
 
 export const ZEROPS_GROUP_ID_LENGTH = 12;

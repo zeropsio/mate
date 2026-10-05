@@ -28,15 +28,28 @@ const linkedMate = (overviews: MateOverviews["Service"]) =>
     return link;
   });
 import type { AppReadValue } from "@t3tools/shared/hqAppReads";
+import type { RecipeTier } from "@t3tools/shared/hqRecipe";
 
-import { Changes } from "./changes.ts";
+import { Backup, type BackupStatus } from "./backup.ts";
+import { ChangeRefused, Changes } from "./changes.ts";
+import { DeployKeys } from "./deployKeys.ts";
+import { GitHost } from "./gitHost.ts";
 import { Deploys } from "./deploys.ts";
 import { MateOverviews, makeMateOverviews } from "./mateOverviews.ts";
+import { Official, type OfficialStatus } from "./official.ts";
 import { mateOffers } from "./offers.ts";
 import { Releases } from "./releases.ts";
 import { type OrgSeen, type OrgView, Roles } from "./roles.ts";
 import { Structure, type StructureRead } from "./structure.ts";
-import { liveSocketsLayer, serveStructureSocket, structureMessages } from "./stream.ts";
+import {
+  MATES_BATCH,
+  liveSocketsLayer,
+  serveStructureSocket,
+  structureMessages,
+} from "./stream.ts";
+
+/** The Core this one is, as its bundle stamps it (`vite.config.ts`). */
+const BUILD = "20261004T100000Z.0123456789ab";
 import type { ZeropsMember } from "./zerops/api.ts";
 
 const member = (userId: string, roleCode: string): ZeropsMember => ({
@@ -93,6 +106,7 @@ const STRUCTURE: StructureRead = {
         madeBy: "owner",
         standupRequestedBy: "dev",
         closedOff: false,
+        keyWider: false,
       },
       can: {
         observe_mate: { allow: false, reason: "not_mate_operator" },
@@ -118,6 +132,11 @@ const streamFor = (
   readable: Readonly<Record<string, ReadonlyArray<never>>> = {},
   /** When Zerops answered the view HQ holds as the stream opens, wall ms; none answered yet. */
   answered?: number,
+  /** Where this Core's check of Zerops stands as the stream opens. */
+  start: { readonly official: OfficialStatus["official"]; readonly checked: boolean } = {
+    official: "ok",
+    checked: true,
+  },
 ) =>
   Effect.gen(function* () {
     const reads = yield* Ref.make(0);
@@ -136,6 +155,7 @@ const streamFor = (
               { name: "group", mainHead: "a".repeat(40), updatedAt: "2026-10-03T10:00:00.000Z" },
             ],
             recipes: {
+              mate: { state: "absent" as const },
               stage: { state: "absent" as const },
               production: { state: "absent" as const },
             },
@@ -144,6 +164,14 @@ const streamFor = (
       ),
     );
     const appReadCalls: string[] = [];
+    /** The applications whose Mate tier HQ cannot read: too large for its bound. */
+    const mateUnreadable = new Set<string>();
+    /** Whether this Core is the official HQ, as its last check of Zerops said. */
+    const official = yield* Ref.make<OfficialStatus>({ official: start.official, allowed: true });
+    /** This Core's newest backup set, as its health reports it. */
+    const backup = yield* Ref.make<BackupStatus>({ state: "pending" });
+    /** Whether this Core's first check of Zerops has finished. */
+    const checked = yield* Ref.make(start.checked);
     const view = yield* Ref.make(org([{ clientUserId: "C-dev", roleCode: "BASIC_USER" }]));
     /** The org view as Zerops answers it (`Roles.views`); none until a test answers one. */
     const seen = yield* SubscriptionRef.make<OrgSeen | undefined>(
@@ -186,10 +214,13 @@ const streamFor = (
               appReadCalls.push(`${appId}:repos`);
               return (yield* Ref.get(appReads)).get(appId)!.repos;
             }),
-          readRecipe: (_userId: string, appId: string, tier: "stage" | "production") =>
+          readRecipe: (_userId: string, appId: string, tier: RecipeTier) =>
             Effect.gen(function* () {
               appReadCalls.push(`${appId}:${tier}`);
-              return (yield* Ref.get(appReads)).get(appId)!.recipes[tier];
+              if (tier === "mate" && mateUnreadable.has(appId)) {
+                return yield* new ChangeRefused({ code: "too_large", reason: "recipe_too_large" });
+              }
+              return (yield* Ref.get(appReads)).get(appId)!.recipes[tier]!;
             }),
           changes: Stream.never,
         } as unknown as Changes["Service"]),
@@ -220,11 +251,32 @@ const streamFor = (
         } as unknown as Roles["Service"]),
       ),
       Layer.succeed(MateOverviews, overviews),
+      Layer.succeed(
+        GitHost,
+        GitHost.of({
+          status: Effect.succeed({ git: "open", quarantined: [] }),
+        } as unknown as GitHost["Service"]),
+      ),
+      Layer.succeed(Backup, Backup.of({ status: Ref.get(backup) } as unknown as Backup["Service"])),
+      Layer.succeed(
+        DeployKeys,
+        DeployKeys.of({
+          state: "ok",
+          status: Effect.succeed("ok"),
+        } as unknown as DeployKeys["Service"]),
+      ),
+      Layer.succeed(
+        Official,
+        Official.of({
+          status: Ref.get(official),
+          checked: Ref.get(checked),
+        } as unknown as Official["Service"]),
+      ),
     );
     const sent: Array<{ readonly type: string } & Record<string, unknown>> = [];
     yield* Effect.forkScoped(
       Stream.runForEach(
-        structureMessages(userId, Effect.succeed(undefined), Duration.hours(1)),
+        structureMessages(userId, Effect.succeed(undefined), Duration.hours(1), MATES_BATCH, BUILD),
         (message) => Effect.sync(() => sent.push(message as (typeof sent)[number])),
       ).pipe(Effect.provide(services), Effect.tapCause(Effect.logError)),
     );
@@ -243,6 +295,10 @@ const streamFor = (
       released,
       appReads,
       appReadCalls,
+      official,
+      checked,
+      mateUnreadable,
+      backup,
     };
   });
 
@@ -326,7 +382,7 @@ describe("the structure stream", () => {
     ),
   );
 
-  it.effect("carries the four load reads for readable apps, and re-reads only the moved app", () =>
+  it.effect("carries the five load reads for readable apps, and re-reads only the moved app", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const h = yield* streamFor("owner", undefined, { "app-shop": [], "app-team": [] });
@@ -336,7 +392,7 @@ describe("the structure stream", () => {
           "app-shop": { revision: null, value: shop, failure: null },
           "app-team": { revision: null, value: team, failure: null },
         });
-        assert.strictEqual(h.appReadCalls.length, 8);
+        assert.strictEqual(h.appReadCalls.length, 10);
         h.appReadCalls.length = 0;
         const fresh: AppReadValue = {
           releases: [
@@ -355,6 +411,11 @@ describe("the structure stream", () => {
             { name: "group", mainHead: "b".repeat(40), updatedAt: "2026-10-03T10:00:00.000Z" },
           ],
           recipes: {
+            mate: {
+              state: "present",
+              mainHead: "b".repeat(40),
+              importYaml: "services:\n  - hostname: appdev\n",
+            },
             stage: {
               state: "present",
               mainHead: "b".repeat(40),
@@ -385,6 +446,7 @@ describe("the structure stream", () => {
           },
         ]);
         assert.deepStrictEqual(h.appReadCalls.toSorted(), [
+          "app-shop:mate",
           "app-shop:production",
           "app-shop:releases",
           "app-shop:repos",
@@ -394,6 +456,104 @@ describe("the structure stream", () => {
         yield* SubscriptionRef.update(h.version, (n) => n + 1);
         yield* Effect.repeat(Effect.yieldNow, { times: 50 });
         assert.deepStrictEqual(h.appReadCalls, []);
+      }),
+    ),
+  );
+
+  const verdict = (official: OfficialStatus["official"]): OfficialStatus => ({
+    official,
+    allowed: true,
+  });
+  // HQ serving while it cannot check Zerops is no outage, and the reader is told so (e840eb444).
+  it.effect("carries whether HQ could check Zerops, and each time that changes", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner");
+        assert.strictEqual(h.sent[0]?.["official"], "ok");
+        yield* Ref.set(h.official, verdict("unknown"));
+        yield* SubscriptionRef.update(h.version, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        yield* SubscriptionRef.update(h.version, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        yield* Ref.set(h.official, verdict("ok"));
+        yield* SubscriptionRef.update(h.version, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        assert.deepStrictEqual(h.sent.slice(1), [
+          { type: "official", official: "unknown" },
+          { type: "official", official: "ok" },
+        ]);
+      }),
+    ),
+  );
+
+  // What an owner's update offer weighs against the Core this app carries (`hq/update.ts`).
+  it.effect("names the Core it is in its snapshot", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner");
+        assert.strictEqual(h.sent[0]?.["build"], BUILD);
+      }),
+    ),
+  );
+
+  // HQ's card says how its parts stand, from the stream — never a /health poll.
+  it.effect("says how its parts stand in its snapshot, and each time they change", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner");
+        assert.deepStrictEqual(h.sent[0]?.["parts"], {
+          db: "up",
+          backup: { state: "pending" },
+          keys: "ok",
+        });
+        yield* Ref.set(h.backup, { state: "off" });
+        yield* SubscriptionRef.update(h.version, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        yield* SubscriptionRef.update(h.version, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        assert.deepStrictEqual(h.sent.slice(1), [
+          { type: "parts", parts: { db: "up", backup: { state: "off" }, keys: "ok" } },
+        ]);
+      }),
+    ),
+  );
+
+  // A Core starts at `unknown` until its first check answers: no verdict, never "can't check".
+  it.effect("says no verdict before HQ's first check of Zerops, then the check's", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner", undefined, {}, undefined, {
+          official: "unknown",
+          checked: false,
+        });
+        assert.strictEqual(h.sent[0]?.["official"], null);
+        yield* Ref.set(h.checked, true);
+        yield* Ref.set(h.official, verdict("ok"));
+        yield* SubscriptionRef.update(h.version, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        assert.deepStrictEqual(h.sent.slice(1), [{ type: "official", official: "ok" }]);
+      }),
+    ),
+  );
+
+  // The releases, repositories, stage and production do not stand on a file they do not use.
+  it.effect("a Mate tier it cannot read is left out, and fails nothing beside it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* streamFor("owner", undefined, { "app-shop": [] });
+        h.mateUnreadable.add("app-shop");
+        yield* Ref.set(h.revisions, new Map([["app-shop", "3"]]));
+        yield* SubscriptionRef.update(h.released, (n) => n + 1);
+        yield* Effect.repeat(Effect.yieldNow, { times: 50 });
+        const { mate: _mate, ...recipes } = (yield* Ref.get(h.appReads)).get("app-shop")!.recipes;
+        const value = (yield* Ref.get(h.appReads)).get("app-shop")!;
+        assert.deepStrictEqual(h.sent.slice(1), [
+          {
+            type: "release-revision",
+            appId: "app-shop",
+            read: { revision: "3", value: { ...value, recipes }, failure: null },
+          },
+        ]);
       }),
     ),
   );

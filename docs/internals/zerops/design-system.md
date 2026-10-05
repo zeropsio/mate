@@ -856,8 +856,9 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     database, repositories it withholds, its backup, its key for deploy tokens, a service Zerops
     does not run, a failed update. Opened: `MicroLabel` rows _Core_ (the Core it runs whole, and
     where an update stands) and _Services_ (each of HQ's services as `StatusDot` + "hq · Active"),
-    then _Open in Zerops_. Every fact comes from a read already made — HQ's health every 30 s, HQ's
-    structure stream — but HQ's services and builds, read from Zerops once each time the card is
+    then _Open in Zerops_. Every fact comes from a read already made — HQ's structure stream, which
+    says where HQ stands, the Core it runs and how its parts stand (an older Core's health read once
+    per stream) — but HQ's services and builds, read from Zerops once each time the card is
     opened, as HQ's update reads them: the projects page draws none of HQ's stops, so its inventory
     holds none of HQ's services. A read that failed says so, and nothing is read again on its own
   - _States:_ unknown (_HQ_ alone, before its health is read) · healthy (_Healthy_ to an owner or

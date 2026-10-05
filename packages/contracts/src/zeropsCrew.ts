@@ -375,7 +375,7 @@ export const CrewRun = Schema.Struct({
 });
 export type CrewRun = typeof CrewRun.Type;
 
-/** One owned attempt. A restart ends running attempts; only a person's press continues them. */
+/** One owned attempt. A restart ends running attempts and the engine carries each on from its recorded stage; a person continues only an ambiguous one. */
 export const CrewOperation = Schema.Struct({
   id: Schema.String,
   crew: Schema.String,
@@ -463,6 +463,8 @@ export type CrewSummary = typeof CrewSummary.Type;
  * reaches this conversation later, by `apply`. `stint`: a conversation opened
  * between turns (*Start fresh*, a save applied at once) opens with its
  * reason; one opened for a turn carries the reason in that turn's card.
+ * `swept`: work a restart left uncommitted in the crewmate's copy, saved by
+ * the boot sweep as a WIP commit on its branch — the files and the commit.
  */
 export const CREW_SEAM_ACTIVITY_KIND = "crew.seam";
 
@@ -476,6 +478,12 @@ export const CrewSeam = Schema.Union([
   Schema.Struct({ seam: Schema.Literal("closed"), taskId: CrewTaskId, number: PositiveInt }),
   Schema.Struct({ seam: Schema.Literal("saved"), apply: CrewApplyChoice }),
   Schema.Struct({ seam: Schema.Literal("stint"), previousThreadId: Schema.NullOr(ThreadId) }),
+  Schema.Struct({
+    seam: Schema.Literal("swept"),
+    branch: TrimmedNonEmptyString,
+    commit: TrimmedNonEmptyString,
+    paths: Schema.Array(Schema.String),
+  }),
 ]);
 export type CrewSeam = typeof CrewSeam.Type;
 
@@ -569,6 +577,8 @@ const runRef = { runId: CrewRunId } as const;
 export const CrewCommand = Schema.TaggedUnion({
   apply: {},
   rebuildCopy: { ...handleRef },
+  /** Thaws a host whose redeploy could not be read: the person says it ended. */
+  thawHost: { host: Schema.String },
   operationContinue: { ...handleRef, operationId: Schema.String },
   operationDiscard: { ...handleRef, operationId: Schema.String },
   useCrewCopy: { ...handleRef, threadId: ThreadId, expectedPath: Schema.NullOr(Schema.String) },
@@ -720,6 +730,7 @@ export function crewCommandReach(command: CrewCommand): CrewCommandReach {
     case "resume":
     case "finish":
     case "briefSave":
+    case "thawHost":
       return { kind: "crew" };
     case "apply":
       return { kind: "home" };

@@ -150,9 +150,11 @@ describe("headingLine — the heading's second line, the board's D′ ladder", (
       line: ["Stage coming up · first deploy on its way", "ink", "", ""],
     },
     {
-      case: "14 a stage whose first deploy waits for a deploy key",
+      // Its own fact, never coming up, and Details to the stage's page, where the key is minted or
+      // who mints it is named (restores 630d8f1bb's idea for HQ's key).
+      case: "14 a stage HQ holds for a deploy key",
       over: { production: undefined, stages: [stage({ kind: "coming", step: "awaiting-key" })] },
-      line: ["Stage coming up · awaits a deploy key", "ink", "", ""],
+      line: ["Stage awaits a deploy key", "ink", "", "details"],
     },
     {
       case: "15 a stage that didn't come up",

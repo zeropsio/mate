@@ -102,6 +102,7 @@ const CHANGE: HqChange = {
   updatedAt: "2026-10-02T09:00:00.000Z",
   mergeability: "clean",
   behind: false,
+  comments: 0,
 };
 
 const AT = "2026-10-03T10:00:00.000Z";
@@ -285,6 +286,47 @@ describe("structureEventOf", () => {
     ["a message that is no object is none", "snapshot", undefined],
   ])("%s", (_name, message, expected) => {
     expect(structureEventOf(message)).toEqual(expected);
+  });
+
+  // Whether HQ could check Zerops: `unknown` is an HQ that serves through its grace (e840eb444).
+  it("reads whether HQ could check Zerops, in its snapshot and each time it changes", () => {
+    expect(structureEventOf({ type: "snapshot", apps: [ACME], official: "unknown" })).toMatchObject(
+      { kind: "snapshot", official: "unknown" },
+    );
+    expect(structureEventOf({ type: "snapshot", apps: [ACME] })).not.toHaveProperty("official");
+    expect(structureEventOf({ type: "official", official: "ok" })).toEqual({
+      kind: "official",
+      official: "ok",
+    });
+    expect(structureEventOf({ type: "official", official: 7 })).toBeUndefined();
+    expect(
+      structureEventOf({ type: "snapshot", apps: [ACME], official: "ok", build: "b1" }),
+    ).toMatchObject({ kind: "snapshot", official: "ok", build: "b1" });
+    // How its parts stand, as its health reports them: what this build cannot read is absent.
+    expect(
+      structureEventOf({
+        type: "snapshot",
+        apps: [ACME],
+        parts: { db: "up", backup: { state: "pending" }, keys: "ok", loop: 3 },
+      }),
+    ).toMatchObject({
+      kind: "snapshot",
+      parts: { db: "up", quarantined: [], backup: { state: "pending" }, keys: "ok" },
+    });
+    expect(structureEventOf({ type: "parts", parts: { db: "up", keys: "no_secret" } })).toEqual({
+      kind: "parts",
+      parts: { db: "up", quarantined: [], keys: "no_secret" },
+    });
+    expect(structureEventOf({ type: "parts", parts: "fine" })).toBeUndefined();
+    // Before the Core's first check: no verdict, which is not a Core that never says one.
+    expect(structureEventOf({ type: "snapshot", apps: [ACME], official: null })).toMatchObject({
+      kind: "snapshot",
+      official: null,
+    });
+    expect(structureEventOf({ type: "official", official: null })).toEqual({
+      kind: "official",
+      official: null,
+    });
   });
 
   it("parses a Mate's sections and the people map and passes by what it does not know", () => {

@@ -30,6 +30,7 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Option from "effect/Option";
@@ -49,6 +50,8 @@ import { OrchestrationEngineService } from "../../orchestration/Services/Orchest
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderInstances } from "../../spi/providerInstances.ts";
 import { ZeropsLogins } from "../ZeropsLogins.ts";
+import { CrewPlatformProcesses, deployStateOf, type DeployState } from "./crewDeployState.ts";
+import { withPermitWithin } from "./crewLockWait.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../ZeropsRepositorySource.ts";
 import {
   principalUserId,
@@ -114,6 +117,17 @@ export interface EngineMemory {
   readonly progress: Map<string, LaneProgress>;
   readonly laneStats: Map<string, LaneStats>;
   readonly missingLanes: Set<string>;
+  /**
+   * Operations a restart interrupted (`crew_operation` ids) that the engine
+   * carries on itself from their last confirmed stage once their crewmate is free.
+   */
+  readonly resumeAtBoot: Set<string>;
+  /** Crewmates whose copies the boot sweep or a deploy's recovery holds right now. */
+  readonly sweeping: Set<string>;
+  /** Hosts a deploy the restart cut off may still replace: frozen, their work untouched. */
+  readonly deployHeld: Set<string>;
+  /** Of those, the ones whose deploy could not be read for long: offered to the person to thaw. */
+  readonly deployUnreadable: Set<string>;
   readonly apps: Map<string, "running" | "stopped">;
   readonly context: Map<string, { readonly tokens: number; readonly window: number }>;
   readonly delivered: Set<string>;
@@ -138,6 +152,8 @@ export interface EngineMemory {
   readonly landWhenReady: Map<string, TurnPrincipal>;
   /** Tasks a run's own landing is queued or running for: one at a time per task. */
   readonly autoLanding: Set<string>;
+  /** Landings (`<assignment>:<attempt>`) that took their one retry after a missing object. */
+  readonly landRetried: Set<string>;
   /** Each dev service's Show-on-dev claim, as the gate's `holdsClaim` reads it. */
   readonly claims: Map<string, MemoryClaim>;
   /** What each dev service's dev server served when last read. */
@@ -223,6 +239,10 @@ export const makeMemory = (): EngineMemory => ({
   progress: new Map(),
   laneStats: new Map(),
   missingLanes: new Set(),
+  resumeAtBoot: new Set(),
+  sweeping: new Set(),
+  deployHeld: new Set(),
+  deployUnreadable: new Set(),
   apps: new Map(),
   context: new Map(),
   delivered: new Set(),
@@ -238,6 +258,7 @@ export const makeMemory = (): EngineMemory => ({
   integrateAgain: new Set(),
   landWhenReady: new Map(),
   autoLanding: new Set(),
+  landRetried: new Set(),
   claims: new Map(),
   served: new Map(),
   integration: new Map(),
@@ -338,6 +359,8 @@ export const makeCrewCore = Effect.gen(function* () {
   const shell = yield* CrewShell;
   const instances = yield* ProviderInstances;
   const logins = yield* ZeropsLogins;
+  // The platform's process list, where the wiring gives it (a Zerops container).
+  const platformProcesses = yield* Effect.serviceOption(CrewPlatformProcesses);
   const cache = yield* Ref.make<AppliedCrew | undefined>(undefined);
 
   /** The coding agent a login runs, read off its instance's adapter. */
@@ -561,6 +584,15 @@ export const makeCrewCore = Effect.gen(function* () {
         Effect.forkIn(scope),
         Effect.asVoid,
       ),
+    /**
+     * Runs a person's press in the engine's own scope and waits for it: a
+     * browser that goes away interrupts only the wait, never the landing or
+     * check it started, which finishes and shows on the next frame.
+     */
+    inEngine: <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+      Effect.flatMap(Effect.forkIn(effect, scope), Fiber.join),
+    /** The engine is shutting down (its scope is closing): work in flight is left for the next boot. */
+    shuttingDown: (): boolean => scope.state._tag === "Closed",
     signals: Stream.fromPubSub(signals),
     /** Serializes what takes a task's `#N`: two presses at once never share a number. */
     numbered: <A, E, R>(effect: Effect.Effect<A, E, R>) => numbering.withPermits(1)(effect),
@@ -580,10 +612,45 @@ export const makeCrewCore = Effect.gen(function* () {
      * `crewmate`'s lock taken only when free: `None`, and `effect` not run,
      * while its turn end, a merge in its copy or another press holds it.
      */
+    /** `crewmate`'s lock waited for at most `wait`; the work it then runs is never cut off. */
+    crewmateWithin:
+      (handle: string, wait: Duration.Input) =>
+      <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        withPermitWithin(lockOf(handle), wait)(effect),
     crewmateIfFree:
       (handle: string) =>
       <A, E, R>(effect: Effect.Effect<A, E, R>) =>
         lockOf(handle).withPermitsIfAvailable(1)(effect),
+    /**
+     * Holds every one of `handles`' copies around `effect` (the boot sweep, a
+     * deploy's recovery): a press meanwhile waits its turn, and a turn's end
+     * queues behind it, instead of either being refused or holding up the
+     * crew's event loop.
+     */
+    holdingCopies: <A, E, R>(handles: ReadonlyArray<string>, effect: Effect.Effect<A, E, R>) =>
+      Effect.suspend(() => {
+        for (const handle of handles) memory.sweeping.add(handle);
+        return handles
+          .reduce((inner, handle) => lockOf(handle).withPermits(1)(inner), effect)
+          .pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                for (const handle of handles) memory.sweeping.delete(handle);
+              }),
+            ),
+          );
+      }),
+    /** Whether a self-deploy onto `host` may still run, as the platform's processes say. */
+    deployState: (host: string, serviceId: string | undefined): Effect.Effect<DeployState> =>
+      Option.match(platformProcesses, {
+        onNone: () => Effect.succeed<DeployState>("unknown"),
+        onSome: (reader) =>
+          reader.read.pipe(
+            Effect.map((processes): DeployState =>
+              processes === undefined ? "unknown" : deployStateOf(processes, { host, serviceId }),
+            ),
+          ),
+      }),
     now: Effect.map(DateTime.now, DateTime.formatIso),
     uuid: crypto.randomUUIDv4.pipe(Effect.orDie),
   };

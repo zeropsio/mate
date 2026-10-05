@@ -97,78 +97,131 @@ describe("CrewStore", () => {
   });
 
   it.layer(storeLayer)("landed outcomes", (it) => {
-    it.effect("reads a landed outcome and lists a crewmate's tasks by number", () =>
-      Effect.gen(function* () {
-        const store = yield* CrewStore.CrewStore;
-        const member = (handle: string, host: string): CrewStore.CrewMemberRow => ({
-          crew: "game",
-          handle,
-          displayName: handle,
-          kind: "writer",
-          tint: null,
-          host,
-          lane: handle,
-          readOnly: false,
-          login: null,
-          model: null,
-          effort: null,
-          jobVersion: 1,
-          runCommand: null,
-          restartAfterMerge: false,
-          crewPort: null,
-          config: {},
-        });
-        const task = (
-          assignment: string,
-          number: number,
-          owner: string,
-          landedCommit: string | null,
-        ): CrewStore.CrewAssignmentRow => ({
-          assignment,
-          run: null,
-          crew: "game",
-          member: owner,
-          number,
-          title: `Task ${number}`,
-          source: "you",
-          createdBy: "user-1",
-          card: null,
-          pending: null,
-          dependsOn: [],
-          fresh: false,
-          state: landedCommit === null ? "queued" : "landed",
-          attempt: 1,
-          reworks: 0,
-          remerges: 0,
-          mergedHead: null,
-          check: null,
-          review: null,
-          report: null,
-          waiting: null,
-          landedCommit,
-          createdAt: "2026-09-27T10:00:00.000Z",
-          updatedAt: `2026-09-27T10:0${number}:00.000Z`,
-        });
-        yield* store.putMember(member("backend", "appdev"));
-        yield* store.putMember(member("web", "webdev"));
-        yield* store.putAssignment(task("a-2", 2, "backend", "d".repeat(40)));
-        yield* store.putAssignment(task("a-1", 1, "backend", "c".repeat(40)));
-        yield* store.putAssignment(task("a-3", 3, "backend", null));
-        yield* store.putAssignment(task("a-4", 4, "web", "e".repeat(40)));
-        const read = yield* store.getAssignment("a-1");
-        assert.deepStrictEqual(
-          {
-            members: (yield* store.members("game")).map((row) => row.handle),
-            backendTasks: yield* store.assignmentsOf("game", "backend"),
-            read: Option.getOrUndefined(read),
-          },
-          {
-            members: ["backend", "web"],
-            backendTasks: ["a-1", "a-2", "a-3"],
-            read: task("a-1", 1, "backend", "c".repeat(40)),
-          },
-        );
-      }),
+    it.effect(
+      "lists the landings made on a host oldest first, and a crewmate's tasks by number",
+      () =>
+        Effect.gen(function* () {
+          const store = yield* CrewStore.CrewStore;
+          const member = (handle: string, host: string): CrewStore.CrewMemberRow => ({
+            crew: "game",
+            handle,
+            displayName: handle,
+            kind: "writer",
+            tint: null,
+            host,
+            lane: handle,
+            readOnly: false,
+            login: null,
+            model: null,
+            effort: null,
+            jobVersion: 1,
+            runCommand: null,
+            restartAfterMerge: false,
+            crewPort: null,
+            config: {},
+          });
+          const task = (
+            assignment: string,
+            number: number,
+            owner: string,
+            landedCommit: string | null,
+          ): CrewStore.CrewAssignmentRow => ({
+            assignment,
+            run: null,
+            crew: "game",
+            member: owner,
+            number,
+            title: `Task ${number}`,
+            source: "you",
+            createdBy: "user-1",
+            card: null,
+            pending: null,
+            dependsOn: [],
+            fresh: false,
+            state: landedCommit === null ? "queued" : "landed",
+            attempt: 1,
+            reworks: 0,
+            remerges: 0,
+            mergedHead: null,
+            check: null,
+            review: null,
+            report: null,
+            waiting: null,
+            landedCommit,
+            createdAt: "2026-09-27T10:00:00.000Z",
+            updatedAt: `2026-09-27T10:0${number}:00.000Z`,
+          });
+          yield* store.putMember(member("backend", "appdev"));
+          yield* store.putMember(member("web", "webdev"));
+          yield* store.putAssignment(task("a-2", 2, "backend", "d".repeat(40)));
+          yield* store.putAssignment(task("a-1", 1, "backend", "c".repeat(40)));
+          yield* store.putAssignment(task("a-3", 3, "backend", null));
+          yield* store.putAssignment(task("a-4", 4, "web", "e".repeat(40)));
+          // a-4 landed on appdev; its crewmate serves webdev now. Its landing stays appdev's.
+          yield* store.putOperation({
+            id: "landing-a-4",
+            crew: "game",
+            handle: "web",
+            taskId: "a-4",
+            kind: "landing",
+            stage: "landing",
+            confirmedStage: "landing",
+            status: "succeeded",
+            startedBy: "user-1",
+            resumeState: "ready",
+            targets: {
+              host: "appdev",
+              path: null,
+              ref: null,
+              threadId: null,
+              commandId: null,
+              attempt: 1,
+            },
+            result: null,
+            detail: null,
+            startedAt: "2026-09-27T10:04:00.000Z",
+            updatedAt: "2026-09-27T10:04:00.000Z",
+          });
+          const read = yield* store.getAssignment("a-1");
+          assert.deepStrictEqual(
+            {
+              landings: yield* store.landingsOnHost("appdev"),
+              webLandings: yield* store.landingsOnHost("webdev"),
+              members: (yield* store.members("game")).map((row) => row.handle),
+              backendTasks: yield* store.assignmentsOf("game", "backend"),
+              read: Option.getOrUndefined(read),
+            },
+            {
+              landings: [
+                {
+                  crew: "game",
+                  member: "backend",
+                  assignment: "a-1",
+                  title: "Task 1",
+                  landedCommit: "c".repeat(40),
+                },
+                {
+                  crew: "game",
+                  member: "backend",
+                  assignment: "a-2",
+                  title: "Task 2",
+                  landedCommit: "d".repeat(40),
+                },
+                {
+                  crew: "game",
+                  member: "web",
+                  assignment: "a-4",
+                  title: "Task 4",
+                  landedCommit: "e".repeat(40),
+                },
+              ],
+              webLandings: [],
+              members: ["backend", "web"],
+              backendTasks: ["a-1", "a-2", "a-3"],
+              read: task("a-1", 1, "backend", "c".repeat(40)),
+            },
+          );
+        }),
     );
   });
 
@@ -522,6 +575,26 @@ describe("CrewStore", () => {
       finishedAt: null,
       ...overrides,
     });
+
+    it.effect("a run's meters move without touching its state; a stale move does not land", () =>
+      Effect.gen(function* () {
+        const store = yield* CrewStore.CrewStore;
+        const arcade = (overrides: Partial<CrewStore.CrewRunRow> = {}) =>
+          run({ run: "arcade-1", crew: "arcade", ...overrides });
+        yield* store.putRun(arcade({ spentUsd: 1 }));
+        // The run finished while a tick or a turn's end held the running row it read.
+        const finished = yield* store.putRun(arcade({ state: "finished" }), "running");
+        yield* store.updateRunMeters(arcade(), { wallMs: 5_000, addSpentUsd: 0.5 });
+        const paused = yield* store.putRun(
+          arcade({ state: "paused", reason: "budget" }),
+          "running",
+        );
+        assert.deepStrictEqual(
+          [finished, paused, Option.getOrUndefined(yield* store.latestRun("arcade"))],
+          [true, false, arcade({ state: "finished", spentUsd: 1.5, wallMs: 5_000 })],
+        );
+      }),
+    );
 
     it.effect("keeps a crew's runs, changes one in place and reads the latest", () =>
       Effect.gen(function* () {

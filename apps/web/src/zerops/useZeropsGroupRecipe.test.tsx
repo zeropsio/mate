@@ -1,59 +1,81 @@
 /**
- * The recipe a new Mate starts from, read off the application's recipe in HQ as the person: a tier
- * HQ says is not there is no recipe, a read that failed is not — and neither is a read that could
- * not go out yet.
+ * The recipe a new Mate starts from, as HQ's stream carries the application's Mate tier: a tier
+ * HQ says is not there is no recipe; a read that failed is not, nor is a snapshot that says nothing
+ * of the tier, nor a stream that has not said it yet. Nothing is read beside the stream, and what
+ * a stream that is down said last is never handed over.
  */
-import type { RecipeTier, RecipeTierResponse } from "@t3tools/shared/hqRecipe";
-import { act, type ReactElement } from "react";
+import { RegistryContext } from "@effect/atom-react";
+import type { AppRead } from "@t3tools/shared/hqAppReads";
+import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
+import { AtomRegistry } from "effect/unstable/reactivity";
+import { act, createElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { forgetGroupRecipes, useZeropsGroupRecipe, type GroupRecipe } from "./useZeropsGroupRecipe";
+import { hqStructureAtom } from "../state/zerops";
+import { useZeropsGroupRecipe, type GroupRecipe } from "./useZeropsGroupRecipe";
 
-/**
- * The organization's official HQ — one object, as `useOfficialHq` keeps it, or `null` while it is
- * not open here — and each read of a tier still waiting on its answer.
- */
 vi.mock("../state/zerops", async () => {
   const { Atom } = await import("effect/unstable/reactivity");
   return { hqStructureAtom: Atom.make(null) };
 });
-vi.mock("./hqStructure", () => ({ requestHqSnapshot: () => {} }));
-
-const hq = vi.hoisted(() => {
-  const reads: Array<{
-    readonly appId: string;
-    readonly tier: RecipeTier;
-    readonly resolve: (tier: RecipeTierResponse) => void;
-    readonly reject: (cause: unknown) => void;
-  }> = [];
-  const official = {
-    address: "https://hq.example.test",
-    api: {
-      mateRecipe: (appId: string) =>
-        new Promise<RecipeTierResponse>((resolve, reject) => {
-          reads.push({ appId, tier: "mate", resolve, reject });
-        }),
-    },
-  };
-  return { reads, official, open: true };
-});
-
-vi.mock("./accountHq", () => ({
-  useOfficialHq: () => (hq.open ? hq.official : null),
+const snapshots = vi.hoisted(() => [] as string[]);
+vi.mock("./hqStructure", () => ({
+  requestHqSnapshot: (organizationId: string) => snapshots.push(organizationId),
 }));
 
-/** What HQ answers: a tier `main` does not hold, the recipe, one it cannot use, or a failed read. */
-type Answer = "absent" | "recipe" | "unusable" | "fails";
+/** What HQ's stream says of the Mate tier. */
+type Said = "absent" | "recipe" | "unusable" | "failed" | "unsaid";
 
 const RECIPE = "services:\n  - hostname: db\n    type: postgresql@16\n";
+const ABSENT: RecipeTierResponse = { state: "absent" };
+
+function readOf(said: Said): AppRead {
+  if (said === "failed") {
+    return { revision: "1", value: null, failure: { code: "repo_unavailable", reason: null } };
+  }
+  const mate: RecipeTierResponse | undefined =
+    said === "unsaid"
+      ? undefined
+      : said === "absent"
+        ? ABSENT
+        : {
+            state: "present",
+            importYaml: said === "recipe" ? RECIPE : "project:\n  name: shop\n",
+            mainHead: "a".repeat(40),
+          };
+  return {
+    revision: "1",
+    value: {
+      releases: [],
+      repos: [],
+      recipes: { ...(mate === undefined ? {} : { mate }), stage: ABSENT, production: ABSENT },
+    },
+    failure: null,
+  };
+}
+
+const registry = AtomRegistry.make();
+function say(said: Said | null, down = false) {
+  act(() => {
+    registry.set(hqStructureAtom, {
+      organizationId: "org-1",
+      structure: null,
+      changes: null,
+      appReads: said === null ? null : new Map([["app-1", readOf(said)]]),
+      readAt: 1_000,
+      current: !down,
+      unavailableSince: down ? 2_000 : null,
+    });
+  });
+}
 
 /** What the hook said, render by render. */
 const renders: GroupRecipe[] = [];
 const seen = () => renders.at(-1);
 
-function Probe({ revision }: { readonly revision?: string | undefined }) {
-  renders.push(useZeropsGroupRecipe({ appId: "app-1", tier: "mate", enabled: true, revision }));
+function Probe() {
+  renders.push(useZeropsGroupRecipe({ appId: "app-1", tier: "mate", enabled: true }));
   return null;
 }
 
@@ -64,121 +86,68 @@ afterEach(() => {
       tree.unmount();
     });
   }
-  hq.open = true;
-  hq.reads.length = 0;
+  registry.set(hqStructureAtom, null);
   renders.length = 0;
-  forgetGroupRecipes();
+  snapshots.length = 0;
 });
 
-function mount(element: ReactElement): ReactTestRenderer {
+function mount() {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  let tree: ReactTestRenderer | undefined;
   act(() => {
-    tree = create(element);
-  });
-  mounted.push(tree!);
-  return tree!;
-}
-
-/** Answers the oldest read still waiting, which asked for the application's Mate tier. */
-async function answer(with_: Answer) {
-  const read = hq.reads.shift();
-  expect(read).toMatchObject({ appId: "app-1", tier: "mate" });
-  await act(async () => {
-    if (with_ === "fails") read?.reject(new Error("HQ is not answering right now."));
-    else if (with_ === "absent") read?.resolve({ state: "absent" });
-    else
-      read?.resolve({
-        state: "present",
-        importYaml: with_ === "recipe" ? RECIPE : "project:\n  name: shop\n",
-        mainHead: "a".repeat(40),
-      });
+    mounted.push(
+      create(createElement(RegistryContext.Provider, { value: registry }, createElement(Probe))),
+    );
   });
 }
 
 describe("useZeropsGroupRecipe", () => {
-  it.each<{ readonly main: Answer; readonly state: GroupRecipe["state"] }>([
-    { main: "absent", state: "absent" },
-    { main: "recipe", state: "present" },
+  it.each<{ readonly said: Said; readonly state: GroupRecipe["state"] }>([
+    { said: "absent", state: "absent" },
+    { said: "recipe", state: "present" },
     // HQ holds a tier this build finds no service in: nothing a Mate could be made from.
-    { main: "unusable", state: "unreadable" },
-    { main: "fails", state: "unreadable" },
-  ])("reads a tier HQ answers $main as $state", async ({ main, state }) => {
-    mount(<Probe />);
-    expect(seen()?.state).toBe("loading");
-    await answer(main);
-    expect(seen()?.state).toBe(state);
+    { said: "unusable", state: "unreadable" },
+    { said: "failed", state: "unreadable" },
+    // A snapshot that says nothing of the Mate tier: not known, never "no recipe".
+    { said: "unsaid", state: "unreadable" },
+  ])("reads a Mate tier HQ's stream says $said as $state", ({ said, state }) => {
+    mount();
+    expect(seen()).toMatchObject({ state: "loading", loading: true });
+    say(null);
+    expect(seen()).toMatchObject({ state: "loading", loading: true });
+    say(said);
+    expect(seen()).toMatchObject({ state, loading: false });
     expect(seen()?.tier === undefined).toBe(state !== "present");
   });
 
-  it("hands over the recipe's tier as main holds it, and its services", async () => {
+  it("hands over the recipe's tier as main holds it, and its services", () => {
     // The creation's plan converts it: what goes in when depends on whether there is a Mate.
-    mount(<Probe />);
-    await answer("recipe");
+    say("recipe");
+    mount();
     expect(seen()?.tier).toEqual({ kind: "tier", tier: "mate", yaml: RECIPE });
     expect(seen()?.services).toEqual(["db"]);
   });
 
-  // The product opens only over its official HQ (`hqGate.ts`): until it is open here the recipe is
-  // not known to be missing.
-  it("asks nothing while the organization's HQ is not open here, and reads once it is", async () => {
-    hq.open = false;
-    const tree = mount(<Probe />);
-    expect(seen()?.state).toBe("loading");
-    expect(hq.reads).toEqual([]);
-    hq.open = true;
-    act(() => {
-      tree.update(<Probe />);
-    });
-    await answer("absent");
-    expect(seen()?.state).toBe("absent");
+  // 0.13.2's rule: a remembered answer is said, not acted on. The stream reconnects by itself, and
+  // its fresh snapshot hands the tier over again.
+  it("says the tier while HQ's stream is down, and hands it over only once it serves again", () => {
+    say("recipe");
+    mount();
+    say("recipe", true);
+    expect(seen()).toMatchObject({ state: "present", tier: undefined, loading: true });
+    say("recipe");
+    expect(seen()).toMatchObject({ state: "present", loading: false });
+    expect(seen()?.tier).toEqual({ kind: "tier", tier: "mate", yaml: RECIPE });
   });
 
-  it("tries again keeping what it said until the new answer, busy meanwhile", async () => {
-    mount(<Probe />);
-    await answer("fails");
+  it("tries again through HQ's stream, keeping what it said until the snapshot lands", () => {
+    say("failed");
+    mount();
     act(() => {
       seen()?.reread();
     });
+    expect(snapshots).toEqual(["org-1"]);
     expect(seen()).toMatchObject({ state: "unreadable", rereading: true });
-    await answer("recipe");
+    say("recipe");
     expect(seen()).toMatchObject({ state: "present", rereading: false });
   });
-
-  it("reads again from nothing once a proposal lands, not when the changes are first known", async () => {
-    const tree = mount(<Probe revision={undefined} />);
-    await answer("absent");
-    act(() => {
-      tree.update(<Probe revision="" />);
-    });
-    expect(seen()?.state).toBe("absent");
-    expect(hq.reads).toEqual([]);
-    act(() => {
-      tree.update(<Probe revision="13" />);
-    });
-    expect(seen()?.state).toBe("loading");
-    await answer("recipe");
-    expect(seen()?.state).toBe("present");
-  });
-
-  it.each<{ readonly first: Answer; readonly said: GroupRecipe["state"] }>([
-    { first: "absent", said: "absent" },
-    { first: "recipe", said: "present" },
-    { first: "fails", said: "loading" },
-  ])(
-    "opened again after $first, says $said at once and holds Add until it has read anew",
-    async ({ first, said }) => {
-      const tree = mount(<Probe />);
-      await answer(first);
-      act(() => {
-        tree.unmount();
-      });
-      mounted.splice(0);
-
-      mount(<Probe />);
-      expect(seen()).toMatchObject({ state: said, loading: true });
-      await answer("recipe");
-      expect(seen()).toMatchObject({ state: "present", loading: false });
-    },
-  );
 });

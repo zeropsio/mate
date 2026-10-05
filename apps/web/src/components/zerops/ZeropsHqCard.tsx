@@ -4,9 +4,11 @@
  * wrong with it, its update, and — opened — that Core whole and its services in Zerops
  * (`ZeropsHqCard.logic.ts`).
  *
- * Everything it shows comes from reads already made — HQ's health every 30 s, HQ's structure
- * stream — but one: an admin opening it reads HQ's project from Zerops once, its services and its
- * builds, as HQ's update does. The projects page holds no read of HQ's project — it draws none of
+ * Everything it shows comes from reads already made — HQ's structure stream, which says where HQ
+ * stands, the Core it runs and how its parts stand (`hqStandingAtom`) — but one: an admin opening
+ * it reads HQ's project from Zerops once, its services and its builds, as HQ's update does. Where
+ * the stream names no Core, that read names the running one (its `hq` service's active app
+ * version), and the update is offered on it. The projects page holds no read of HQ's project — it draws none of
  * its stops — so its inventory has none of HQ's services. Nothing is read again while the card
  * stays open, and a read that failed says so.
  */
@@ -22,9 +24,9 @@ import { useCallback, useRef, useState, type ReactNode } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
-import { hqMatesViewAtom, hqStructureAtom } from "~/state/zerops";
+import { hqMatesViewAtom, hqStandingAtom, hqStructureAtom } from "~/state/zerops";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
-import { useAccountHq, useCarriedCoreBuild, useHqStanding } from "~/zerops/accountHq";
+import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Button } from "../ui/button";
@@ -64,7 +66,7 @@ export function ZeropsHqCard() {
   const organizationId = activeOrganization?.id;
   const accountHq = useAccountHq(organizationId);
   const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
-  const standing = useHqStanding(hq?.address);
+  const standing = useAtomValue(hqStandingAtom);
   const carried = useCarriedCoreBuild();
   // Who looks after HQ — its Core, its backups, its updates — is who bears it (`mayBearHq`).
   const admin = user !== null && mayBearHq(activeOrganization ?? undefined);
@@ -152,7 +154,12 @@ export function ZeropsHqCard() {
     updating,
     time: (ms) => formatDayAwareTimestamp(new Date(ms).toISOString(), timestampFormat),
   });
-  const trigger = hqUpdateTrigger({ admin, standing, carried });
+  const trigger = hqUpdateTrigger({
+    admin,
+    standing,
+    carried,
+    zerops: update?.kind === "read" ? update.state : undefined,
+  });
   return (
     <ZeropsHqCardView
       onOpenChange={openCard}

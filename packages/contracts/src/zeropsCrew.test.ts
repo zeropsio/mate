@@ -203,6 +203,7 @@ const commandSamples = [
   { _tag: "showOnDev", handle: "backend" },
   { _tag: "startFresh", handle: "backend" },
   { _tag: "rebuildCopy", handle: "backend" },
+  { _tag: "thawHost", host: "appdev" },
   { _tag: "operationContinue", handle: "backend", operationId: "op-1" },
   { _tag: "operationDiscard", handle: "backend", operationId: "op-2" },
   { _tag: "useCrewCopy", handle: "backend", threadId: "thread-backend-1", expectedPath: null },
@@ -321,6 +322,7 @@ const REACH: { readonly [Tag in CrewCommand["_tag"]]: CrewCommandReach } = {
   showOnDev: { kind: "crewmates", handles: ["backend"] },
   startFresh: { kind: "crewmates", handles: ["backend"] },
   rebuildCopy: { kind: "crewmates", handles: ["backend"] },
+  thawHost: { kind: "crew" },
   operationContinue: { kind: "crewmates", handles: ["backend"] },
   operationDiscard: { kind: "crewmates", handles: ["backend"] },
   useCrewCopy: { kind: "crewmates", handles: ["backend"] },
@@ -505,6 +507,12 @@ describe("CrewSeam", () => {
     { seam: "saved", apply: "nextTurn" },
     { seam: "stint", previousThreadId: "thread-1" },
     { seam: "stint", previousThreadId: null },
+    {
+      seam: "swept",
+      branch: "crew/backend",
+      commit: "0a84078f2fd5652d10c3c820786c944d057386e3",
+      paths: ["src/api.ts"],
+    },
   ])("decodes a $seam seam", (seam) => {
     expect(decodeSeam(seam)).toEqual(seam);
   });

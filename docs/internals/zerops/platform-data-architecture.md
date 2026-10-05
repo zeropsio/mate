@@ -314,15 +314,17 @@ The opened project holds service/process membership and updates filtered by both
 project IDs. Its services bootstrap from one direct project service list. Version/variable list
 and update filters name only that project's service IDs. Query identities and table coverage
 include those IDs; releasing one project cannot erase another project's table rows or mark its
-unopened service answered. Absent metadata is a single attempt, re-read only for a causal source
-change or a person's manual action.
+unopened service answered. Absent metadata reads unknown and is asked about again past the index's
+lag, then on a widening back-off (30 s, 2 min, 10 min); a failed read waits 30 s; a person's
+manual action asks at once.
 
 Each active organization has one receiver: one socket login carries navigation and every drawn or
 opened project's subscriptions, each under its own subscription name. When demand shrinks, its
 registrations stop being routed and the socket stays; the platform has no unsubscribe, so a
 released subscription keeps sending until the socket closes. The socket closes with the
 organization's last demand, and is replaced once the subscriptions released on it reach
-`releasedRegistrationsPerReceiver`. A socket failure reconnects that one socket and re-registers
+`releasedRegistrationsPerReceiver`; a registration the platform refused, or one never sent, held
+no subscription and does not count. A socket failure reconnects that one socket and re-registers
 everything it carried with fresh baselines. A failed sibling remains failed during rebuilding.
 Metrics and metric history are separate leases held only while the opened Mate panel and browser
 tab are visible. Panel **Try again** re-registers that project's held demand on the same socket,
@@ -364,12 +366,12 @@ rules, not source chronology. See the consistency contract for the complete
 algorithm; implementers must not invent a different recovery policy per domain.
 
 Resnapshot healthy paused demand on foreground return or a held scope on explicit refresh.
-Detected loss and rejected input produce a visible failed state with a manual action.
+Detected loss and rejected input produce a visible failed state with its retry and a manual action.
 A healthy receiver drives data through native frames without periodic REST
 traversals of the account. Heartbeats detect transport failure, not silent source
 omissions; those can remain until a new baseline or explicit refresh. Keep that
 limit in the observation guarantee. Overflow marks the affected interest
-unsynchronized before a manual recovery; dropped frames plus a GET are not automatically
+unsynchronized before recovery; dropped frames plus a GET are not automatically
 correct. Read-only domains without push have explicit on-demand semantics and do
 not advertise live synchronization.
 
@@ -377,8 +379,10 @@ Active-organization navigation never creates detail leases for all listed projec
 process searches belong to an opened project or explicit action. Each demanded scope pairs
 subscription baselines with a direct anchor. Removing its surface releases demand. The access
 verifier shares an opened project's direct read and never uses navigation enumeration to renew
-access. Failed HQ streams, grant rounds, registrations, hydration and metadata reads stay failed
-until the visible manual action; no timer repairs them.
+access. A failed grant round or project check retries on the grant's ladders while the tab is
+visible (`account-lifecycle.md`); a malformed answer waits for the manual action alone. A failed registration, hydration or metadata read retries on its
+bounded backoff while the tab is visible and its demand is held, never while hidden, beside the
+visible manual action that retries at once.
 
 Local account/transport/interest generations fence obsolete work. Revocation stops
 affected content and commands immediately; a sleeping tab cannot extend access

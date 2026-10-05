@@ -35,8 +35,8 @@ import {
   RepositorySource,
   type RepositoryQuery,
 } from "@t3tools/shared/hqGit";
-import { type HqDeployAnswer, WithDeploys } from "@t3tools/shared/hqDeploys";
 import { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
+import { type HqDeployAnswer, WithDeploys } from "@t3tools/shared/hqDeploys";
 import {
   Release,
   ReleaseListResponse,
@@ -100,6 +100,12 @@ export interface HqMate extends HqMateRecord {
   readonly standupRequestedBy?: string | null;
   /** Whether its project is closed off (`recordClosedOff`); an older HQ says nothing. */
   readonly closedOff?: boolean;
+  /**
+   * The key it last named reads other projects too — READ_ONLY grants on siblings an earlier client
+   * gave it (ADR 0003's fallout): it needs *Finish setup*, whose harden takes them off. Absent where
+   * it does not, and from an older HQ.
+   */
+  readonly keyWider?: boolean;
   /** Who signed each of its agents' logins in, as its overview says; absent where HQ holds none. */
   readonly logins?: OverviewLogins;
   /** A ready agent outside Mate's sign-in flow, relayed in its overview. */
@@ -289,6 +295,12 @@ export interface HqApi {
    * (`mate_not_found`).
    */
   readonly recordClosedOff: (projectId: string) => Promise<void>;
+  /**
+   * HQ reads the Mate's widened key again (`POST /api/mates/{projectId}/key-check`), asked by its
+   * project's admin once *Finish setup* took its sibling grants off: its record stops saying
+   * `keyWider` once the key reaches its own project alone.
+   */
+  readonly recheckKey: (projectId: string) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   /**
    * A Mate's birth intent in an application, before its project exists (`POST /api/births`):
@@ -377,7 +389,11 @@ export interface HqApi {
   readonly closeChange: (link: ChangeLink) => Promise<HqChange>;
   /** A picture of a change, read as the person (`attachmentPath`). */
   readonly changeAttachment: (link: AttachmentLink, signal?: AbortSignal) => Promise<Blob>;
-  /** The Mate tier, read only on detail demand; stage/production are in the structure snapshot. */
+  /**
+   * The Mate tier, as the person (`GET /api/apps/:appId/recipe/mate`): read on demand only where
+   * HQ's stream does not carry it — a Core from before it did, or one that could not read it —
+   * or while the stream is down.
+   */
   readonly mateRecipe: (appId: string, signal?: AbortSignal) => Promise<RecipeTierResponse>;
   /**
    * What lies between two commits of an application's repository, by its name, read as the person
@@ -569,11 +585,11 @@ const readComments = decoded(CommentListResponse);
 const readComment = decoded(HqChangeComment);
 const readChange = decoded(HqChange);
 const readMerged = decodedAsked(HqChange);
-const readRecipeTier = decoded(RecipeTierResponse);
 
 const readGitCredential = decoded(GitCredential);
 const readGitCredentialList = decoded(GitCredentialList);
 const readCompare = decoded(CompareResponse);
+const readRecipeTier = decoded(RecipeTierResponse);
 const readReleases = decoded(ReleaseListResponse);
 const readRelease = decodedAsked(Release);
 const readDeploys = decoded(WithDeploys);
@@ -730,7 +746,11 @@ function readQuarantined(raw: unknown): ReadonlyArray<string> {
   });
 }
 
-function readParts(body: Record<string, unknown>): HqParts {
+/**
+ * How HQ's parts stand, as its health or its structure stream reports them: a part this build
+ * cannot read is absent.
+ */
+export function readHqParts(body: Record<string, unknown>): HqParts {
   const backup = readBackup(body.backup);
   return {
     ...(body.db === "up" || body.db === "down" ? { db: body.db } : {}),
@@ -758,10 +778,10 @@ export async function readHqHealth(
     }
     const build = typeof body.build === "string" ? body.build : "";
     if (response.ok && body.state === "active" && body.official === "ok") {
-      return { kind: "healthy", build, parts: readParts(body) };
+      return { kind: "healthy", build, parts: readHqParts(body) };
     }
     return response.ok && body.state === "active" && body.official === "unknown"
-      ? { kind: "unchecked", build, parts: readParts(body) }
+      ? { kind: "unchecked", build, parts: readHqParts(body) }
       : { kind: "not-ready", state: body.state, official: body.official };
   } catch {
     return { kind: "unreachable" };
@@ -1292,6 +1312,13 @@ export function makeHqApi(input: {
     recordClosedOff: async (projectId) => {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}/closed-off`,
+        { method: "POST" },
+        true,
+      );
+    },
+    recheckKey: async (projectId) => {
+      await authorized(
+        `/api/mates/${encodeURIComponent(projectId)}/key-check`,
         { method: "POST" },
         true,
       );

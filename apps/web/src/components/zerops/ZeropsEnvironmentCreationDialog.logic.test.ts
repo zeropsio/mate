@@ -16,7 +16,6 @@ import {
   creationRecipe,
   faceName,
   hasCreationErrors,
-  landedRecipeProposal,
   newMateDoor,
   newMateDoorMates,
   newMateFace,
@@ -747,6 +746,7 @@ describe("the recipe's proposal, as HQ holds it", () => {
     updatedAt: "2026-10-02T09:00:00.000Z",
     mergeability: "clean",
     behind: false,
+    comments: 0,
     ...over,
   });
   const flow = (changes: ReadonlyArray<HqChange>) =>
@@ -760,30 +760,6 @@ describe("the recipe's proposal, as HQ holds it", () => {
         mateName: (id) => (id === "cleo-project" ? "Cleo" : undefined),
       }),
     ).toEqual({ number: 11, mate: "Cleo" });
-  });
-
-  it("is the landing the recipe is read again on once it merged", () => {
-    const { merged } = flow([
-      proposal({ state: "merged", mergedSha: "d00d", mergedAt: "2026-10-02T10:00:00.000Z" }),
-    ]);
-    expect(landedRecipeProposal(merged)).toBe(11);
-  });
-});
-
-describe("landedRecipeProposal — the proposal that landed last", () => {
-  it.each([
-    { case: "none landed", merged: [], landed: undefined },
-    {
-      case: "the newest of them, code changes aside",
-      merged: [
-        change({ number: 9, merged: true }),
-        change({ number: 13, merged: true }),
-        change({ repository: "appdev", kind: "code", number: 40, merged: true }),
-      ],
-      landed: 13,
-    },
-  ])("reads $case", ({ merged, landed }) => {
-    expect(landedRecipeProposal(merged)).toBe(landed);
   });
 });
 

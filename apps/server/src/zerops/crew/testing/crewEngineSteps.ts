@@ -15,11 +15,17 @@ import { ZEROPS_SUBJECT_PREFIX } from "../../ZeropsMembershipWatch.ts";
 import type { TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
 import { CrewEngine } from "../CrewEngine.ts";
 import { CrewThreadDirectory, CrewToolHost } from "../crewSeams.ts";
-import { spiEvent, writeCrewHome, type CrewWorld } from "./crewEngineFixture.ts";
+import { eventually, spiEvent, writeCrewHome, type CrewWorld } from "./crewEngineFixture.ts";
 
 export const KAREL: TurnPrincipal = {
   kind: "session",
   subject: `${ZEROPS_SUBJECT_PREFIX}user-karel`,
+};
+
+/** The engine acting for the person outside their session: a run's or a task's later turns. */
+export const AS_CREW: TurnPrincipal = {
+  kind: "crew",
+  startedBy: KAREL.kind === "session" ? KAREL.subject.slice(ZEROPS_SUBJECT_PREFIX.length) : "",
 };
 
 export const latest = Effect.flatMap(CrewEngine, (engine) =>
@@ -29,6 +35,17 @@ export const latest = Effect.flatMap(CrewEngine, (engine) =>
 /** A press of the person's. */
 export const command = (input: Parameters<CrewEngine["Service"]["command"]>[0]) =>
   Effect.flatMap(CrewEngine, (engine) => engine.command(input, KAREL));
+
+/** A press of the person's once the crewmate's copy is free: the boot's own work may hold it a moment. */
+export const commandWhenFree = (input: Parameters<CrewEngine["Service"]["command"]>[0]) =>
+  eventually(
+    command(input).pipe(
+      Effect.as(true),
+      Effect.catchTag("CrewCommandError", (error) =>
+        error.detail?.includes("is busy") === true ? Effect.succeed(false) : Effect.fail(error),
+      ),
+    ),
+  );
 
 export const dispatchedOf = <T extends OrchestrationCommand["type"]>(world: CrewWorld, type: T) =>
   Effect.map(Ref.get(world.dispatched), (all) =>

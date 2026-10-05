@@ -12,7 +12,8 @@ import { continueOperation, discardOperation, rebuildCopy } from "./crewContinue
  *
  * The live engine subscribes to the provider event bus when it is built (an
  * event before the subscription is invisible to it), records restart interruptions
- * before exposing commands, and keeps one snapshot hub: a
+ * before exposing commands, carries them on once the server accepts commands
+ * (`crewBoot`), and keeps one snapshot hub: a
  * change to the crew tables or to the engine's memory rebuilds the snapshot
  * from SQLite, at most four times a second, `seq` rising across restarts.
  *
@@ -25,6 +26,7 @@ import {
   type CrewCommandResult,
   type CrewLogin,
   type CrewSnapshot,
+  type ZeropsLogin,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -41,7 +43,10 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import { ServerConfig } from "../../config.ts";
 import { ClaudeThreadExtensionRegistry } from "../../spi/claudeThreadProfile.ts";
 import { ProviderRuntimeEventBus } from "../../spi/ProviderRuntimeEventBus.ts";
+import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
+import { ZeropsAgentAuth } from "../ZeropsAgentAuth.ts";
+import { withLogins } from "../ZeropsLogins.ts";
 import { isZeropsEnvironment } from "../ZeropsEnvironment.ts";
 import type { TurnPrincipal } from "../ZeropsTurnAdmission.ts";
 import { guardCommand, guardFilesWrite } from "./crewAccess.ts";
@@ -61,7 +66,7 @@ import {
   type Activate,
 } from "./crewApply.ts";
 import { conversationCopies, useCrewCopy } from "./CrewStints.ts";
-import { boot, inspectBoot } from "./crewBoot.ts";
+import { boot, carryOnAtBoot, inspectBoot, thawHost } from "./crewBoot.ts";
 import { grantClaim, moveClaim, releaseClaim, showOnDevNow } from "./crewClaims.ts";
 import * as CrewChecks from "./CrewChecks.ts";
 import {
@@ -119,7 +124,7 @@ import {
 import { makeTurnHandler } from "./crewTurns.ts";
 import { restoreNotes } from "./crewNotes.ts";
 import { MIRRORED_TABLES } from "./crewState.ts";
-import { advanceAll, takeUpWaiting } from "./crewRunFlow.ts";
+import { advanceAll, retryRefused, takeUpWaiting } from "./crewRunFlow.ts";
 import { finishRun, pressPause, resumeRun, runView, startRun, stopRun } from "./crewRuns.ts";
 import * as CrewWorkspace from "./CrewWorkspace.ts";
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
@@ -295,6 +300,16 @@ const buildSnapshot = (core: CrewCore, seq: number) =>
           at: now,
         })),
         ...(applied === undefined ? [] : yield* conversationCopies(core, applied)),
+        ...[...core.memory.deployUnreadable].map((host) => ({
+          id: `deploy-unreadable:${host}`,
+          kind: "deploy-unreadable" as const,
+          handle: null,
+          taskId: null,
+          text: `The redeploy of ${host} can't be read. Thaw it if it ended.`,
+          paths: [],
+          host,
+          at: now,
+        })),
       ],
     };
   });
@@ -306,6 +321,9 @@ const run = (core: CrewCore, command: CrewCommand, principal: TurnPrincipal, act
     switch (command._tag) {
       case "apply":
         yield* apply(core, principal, activate);
+        return done;
+      case "thawHost":
+        yield* thawHost(core, command.host);
         return done;
       case "rebuildCopy":
         yield* pressCrewmate(core, command.handle, rebuildCopy(core, principal, command.handle));
@@ -476,6 +494,8 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
     const core = yield* makeCrewCore;
     yield* restoreNotes(core);
     const bus = yield* ProviderRuntimeEventBus;
+    const agentAuth = yield* ZeropsAgentAuth;
+    const readiness = yield* ServerCommandReadiness;
     const policies = yield* ThreadToolPolicyRegistry;
     const extensions = yield* ClaudeThreadExtensionRegistry;
     const scope = yield* Effect.scope;
@@ -512,7 +532,50 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
           ),
     );
 
-    const activate: Activate = installPolicies;
+    // A queued task admission refused may start once a sign-in or a signer changes.
+    let watching = false;
+    const watchSignIns = Effect.suspend(() => {
+      if (watching) return Effect.void;
+      watching = true;
+      // Each login's sign-in as last seen: only a login whose state or signer moved retries.
+      const seen = new Map<string, string>();
+      const baseline = Effect.gen(function* () {
+        const defaults = withLogins(yield* agentAuth.latest, []).logins ?? [];
+        moved([...defaults, ...(yield* core.logins.latest)]);
+      });
+      const moved = (logins: ReadonlyArray<ZeropsLogin>) => {
+        const changed = new Set<string>();
+        for (const login of logins) {
+          const now = `${login.state}|${login.signedInBy ?? ""}`;
+          if (seen.get(login.id) !== now) changed.add(login.id);
+          seen.set(login.id, now);
+        }
+        return changed;
+      };
+      return Stream.unwrap(
+        Effect.as(
+          baseline,
+          Stream.merge(
+            core.logins.changes,
+            // The default logins live on the agent rows: their state and signer, as the picker reads them.
+            Stream.map(agentAuth.changes, (snapshot) => withLogins(snapshot, []).logins ?? []),
+          ),
+        ),
+      ).pipe(
+        Stream.runForEach((logins) =>
+          retryRefused(core, moved(logins)).pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                core.memory.lastError = failureWords(error);
+              }),
+            ),
+          ),
+        ),
+        Effect.forkIn(scope),
+        Effect.asVoid,
+      );
+    });
+    const activate: Activate = installPolicies.pipe(Effect.andThen(watchSignIns));
 
     yield* core.reload;
     if ((yield* core.applied) !== undefined) yield* activate;
@@ -535,6 +598,18 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
             ),
       ),
     ).pipe(Effect.forkIn(scope));
+    // Interrupted work carries on once the server accepts commands.
+    yield* Deferred.await(inspected).pipe(
+      Effect.andThen(readiness.await),
+      Effect.andThen(carryOnAtBoot(core)),
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          core.memory.lastError = failureWords(error);
+          yield* core.changed;
+        }),
+      ),
+      Effect.forkIn(scope),
+    );
 
     yield* core.listDevHosts;
     let seq = yield* Clock.currentTimeMillis;
@@ -580,7 +655,8 @@ export const makeCrewEngine = (installer: CrewPolicyInstaller) =>
       command: (command, principal) =>
         guardCommand(core, command, principal).pipe(
           Effect.andThen(Deferred.await(inspected)),
-          Effect.andThen(run(core, command, principal, activate)),
+          // Once accepted, a press runs to its end whatever happens to the browser that sent it.
+          Effect.andThen(core.inEngine(run(core, command, principal, activate))),
         ),
     };
     return Context.make(CrewEngine, engine).pipe(

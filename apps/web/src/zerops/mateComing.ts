@@ -129,6 +129,13 @@ export interface MateComingInput {
   readonly firstBuild?: FirstBuildState | undefined;
   /** Its link still waits for its first answer (`arrivalAwaitsAnswer`). */
   readonly answerAwaited?: boolean | undefined;
+  /**
+   * Why the close-off gate holds it (`closeOffGate`), never silent: `open`, its container carries
+   * the press's marker and HQ says its project is not closed off, so nobody is let in; `checking`,
+   * its marker is not read yet; `awaiting-hq`, HQ says nothing and this browser knows its close-off
+   * has not happened. Left out while a Finish setup runs on it in this tab.
+   */
+  readonly closeOffHold?: "open" | "checking" | "awaiting-hq" | undefined;
 }
 
 /** Whether `at` is within `graceMs` of now; an unknown time or now counts as young. */
@@ -143,6 +150,18 @@ export const HALF_MADE_LINE = "Its setup stopped before its container. Finish se
 /** The same Mate, for a viewer who may not finish it: who can. */
 export const HALF_MADE_OWNER_LINE =
   "Its setup stopped before its container; an owner or admin can finish it.";
+
+/**
+ * A Mate held because HQ says its project is not closed off (`closeOffHold` `open`), until HQ says
+ * it is: a press may be closing it off, and *Finish setup* in its menu does.
+ */
+export const CLOSING_OFF_LINE = "Closing off its project…";
+
+/** A Mate held while its container's marker is read (`closeOffHold` `checking`). */
+export const CHECKING_SETUP_LINE = "Checking that its setup finished…";
+
+/** A Mate held until HQ confirms its close-off (`closeOffHold` `awaiting-hq`). */
+export const AWAITING_HQ_LINE = "Waiting for HQ to confirm its setup finished.";
 
 /**
  * A half-made Mate as its viewer may act on it: the line names Finish setup only where the
@@ -201,6 +220,16 @@ export function mateComing(input: MateComingInput): MateComing | undefined {
       line: why.length === 0 ? NOT_SET_UP_LINE : `${NOT_SET_UP_LINE} ${why}`,
       verb: "remove",
     };
+  }
+  // Held because its project is not closed off: said, closing off until HQ says it is — never
+  // failed on a clock (2026-10-05); Finish setup is in its menu. A press of this tab's bringing its
+  // container says that instead.
+  if (input.closeOffHold === "checking") return { kind: "coming", line: CHECKING_SETUP_LINE };
+  if (input.closeOffHold === "awaiting-hq" && press?.container !== true) {
+    return { kind: "coming", line: AWAITING_HQ_LINE };
+  }
+  if (input.closeOffHold === "open" && press?.container !== true) {
+    return { kind: "coming", line: CLOSING_OFF_LINE };
   }
   // A container that failed, stopped or is restarting shows that, whatever this tab pressed.
   if (containerDown(candidate?.service?.status)) return undefined;

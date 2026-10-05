@@ -217,6 +217,7 @@ describe("HQ API", () => {
                       madeBy: "owner",
                       standupRequestedBy: null,
                       closedOff: false,
+                      keyWider: false,
                     },
                     ...MATE_OWNED(appId),
                   },
@@ -957,6 +958,9 @@ describe("HQ API", () => {
             appReads: {},
             mates: {},
             people: {},
+            official: "ok",
+            build: "test",
+            parts: { db: "up", backup: { state: "pending" }, keys: "ok" },
           });
           const appId = (
             (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
@@ -1006,6 +1010,7 @@ describe("HQ API", () => {
                     madeBy: "owner",
                     standupRequestedBy: null,
                     closedOff: false,
+                    keyWider: false,
                   },
                   ...MATE_OWNED(appId),
                 },
@@ -1230,6 +1235,9 @@ describe("HQ API", () => {
             appReads: {},
             mates: {},
             people: {},
+            official: "ok",
+            build: "test",
+            parts: { db: "up", backup: { state: "pending" }, keys: "ok" },
           });
           const ada = { face: "sky:flower" };
           // Who made it is the session that set it up, never a field the client sends.
@@ -1238,6 +1246,7 @@ describe("HQ API", () => {
             madeBy: "owner",
             standupRequestedBy: null,
             closedOff: false,
+            keyWider: false,
           };
           /** The Mate in no application, movable into each of `appIds` or a new one. */
           const lone = (...appIds: ReadonlyArray<string>) => [
@@ -1371,6 +1380,9 @@ describe("HQ API", () => {
           appReads: {},
           mates: {},
           people: {},
+          official: "ok",
+          build: "test",
+          parts: { db: "up", backup: { state: "pending" }, keys: "ok" },
         });
         const appId = (
           (yield* call("POST", "/api/apps", { session: owner, body: { name: "Shop" } })).body as {
@@ -1457,6 +1469,7 @@ describe("HQ API", () => {
             }
           ).repos,
           recipes: {
+            mate: (yield* call("GET", `/api/apps/${appId}/recipe/mate`, { session: reader })).body,
             stage: (yield* call("GET", `/api/apps/${appId}/recipe/stage`, { session: reader }))
               .body,
             production: (yield* call("GET", `/api/apps/${appId}/recipe/production`, {
@@ -1493,6 +1506,9 @@ describe("HQ API", () => {
           appReads: { [appId]: shopRead },
           mates: {},
           people: {},
+          official: "ok",
+          build: "test",
+          parts: { db: "up", backup: { state: "pending" }, keys: "ok" },
         });
 
         // Zerops lowers the reader to no access: the open socket drops the application.
@@ -1552,6 +1568,9 @@ describe("HQ API", () => {
             appReads: {},
             mates: {},
             people: {},
+            official: "ok",
+            build: "test",
+            parts: { db: "up", backup: { state: "pending" }, keys: "ok" },
           });
           assert.deepStrictEqual(
             [
@@ -1798,6 +1817,49 @@ describe("HQ API", () => {
           ],
         );
       }),
+    );
+
+    // ADR 0003's fallout: a Mate naming a key an earlier client widened gets its credential as any
+    // other — the word that its key reads other projects stays HQ's — and the project's admin, who
+    // finished its setup, asks HQ to read the key again; nobody else.
+    it.effect(
+      "a Mate's widened key is said, never answered back, and read again by its admin",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* setUpMate(call, "P_MATE");
+          fake.tokens.set("value-of-tok-wide", {
+            id: "tok-wide",
+            name: "zcp-P_MATE",
+            orgId: "ORG",
+            roleCode: "NO_ACCESS",
+            canCreateProjects: false,
+            canViewFinances: false,
+            canEditFinances: false,
+            projects: [
+              { projectId: "P_MATE", roleCode: "BASIC_USER" },
+              { projectId: "P_ELSE", roleCode: "READ_ONLY" },
+            ],
+            createdMs: 0,
+            createdByUser: "owner",
+          });
+          const { nonce } = (yield* call("POST", "/api/mate/challenge", {
+            body: { projectId: "P_MATE" },
+          })).body as { readonly nonce: string };
+          fake.env.set("P_MATE", [{ key: "MATE_HQ_CHALLENGE", value: nonce, sensitive: false }]);
+          const issued = yield* call("POST", "/api/mate/credential", {
+            body: { projectId: "P_MATE", nonce, keyTokenId: "tok-wide" },
+          });
+          assert.deepStrictEqual(Object.keys(issued.body as object), ["credential"]);
+          const dev = yield* sessionFor(call, "door-dev");
+          const check = (session: string) =>
+            Effect.map(
+              call("POST", "/api/mates/P_MATE/key-check", { session }),
+              (answer) => answer.status,
+            );
+          assert.deepStrictEqual([yield* check(owner), yield* check(dev)], [204, 403]);
+        }),
     );
 
     it.effect(

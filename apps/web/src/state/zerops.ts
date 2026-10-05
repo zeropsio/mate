@@ -54,6 +54,7 @@ import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import { Atom } from "effect/unstable/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
+import type { HqStanding } from "../zerops/accountHq";
 import { registeredZeropsOrigins, rowEnvironment } from "../zerops/environmentOrigins";
 import { createZeropsFeedAtoms } from "../zerops/feeds";
 import { findInventoryProjectRef, type InventoryProjection } from "../zerops/inventoryContext";
@@ -121,7 +122,7 @@ export interface HqStructureView {
    */
   readonly changes: HqChanges | null;
   /**
-   * HQ-owned releases, repository heads and stage/production recipes for each readable app.
+   * HQ-owned releases, repository heads and recipe tiers (Mate, stage, production) by app.
    * Null until the stream's first snapshot; never remembered across loads.
    */
   readonly appReads: HqAppReads | null;
@@ -137,12 +138,31 @@ export interface HqStructureView {
   readonly current: boolean;
   /** When HQ stopped answering, wall ms, while it does not; the last known structure stands. */
   readonly unavailableSince: number | null;
+  /**
+   * Where HQ stands, as its stream says it — healthy while it serves — and, after the stream
+   * failed, as HQ's health then said it (`driveHqStructure`). Absent: nothing known of it.
+   */
+  readonly standing?: HqStanding;
 }
 
 export const hqStructureAtom = Atom.make<HqStructureView | null>(null).pipe(
   Atom.keepAlive,
   Atom.withLabel("zerops:hq-structure"),
 );
+
+const HQ_STANDING_UNKNOWN: HqStanding = { kind: "unknown" };
+
+/**
+ * Where the organization in view's HQ stands, as its structure stream last said it (SPEC §4): no
+ * read of its own, nothing on a timer.
+ */
+export const hqStandingAtom = Atom.make((get): HqStanding => {
+  const view = get(hqStructureAtom);
+  const organizationId = get(zeropsSessionAtom)?.activeOrganization?.organizationId;
+  return view === null || view.organizationId !== organizationId
+    ? HQ_STANDING_UNKNOWN
+    : (view.standing ?? HQ_STANDING_UNKNOWN);
+}).pipe(Atom.withLabel("zerops:hq-standing"));
 
 /**
  * Where HQ places each project of the organization in view, as last known; null while nothing

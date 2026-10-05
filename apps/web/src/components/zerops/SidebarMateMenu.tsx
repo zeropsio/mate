@@ -170,6 +170,7 @@ export function MateMenuItems({
               disabled={entry.disabled === true}
               key={entry.id}
               onClick={entry.onSelect}
+              title={entry.why}
             >
               {entry.label}
             </MenuItem>

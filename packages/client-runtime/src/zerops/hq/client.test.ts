@@ -985,6 +985,12 @@ describe("makeHqApi — application name and a project's application", () => {
       (api) => api.recordClosedOff("p1"),
       { method: "POST", path: "/api/mates/p1/closed-off" },
     ],
+    // ADR 0003's fallout: once Finish setup took a widened key's siblings off, HQ reads it again.
+    [
+      "asks HQ to read a Mate's widened key again",
+      (api) => api.recheckKey("p1"),
+      { method: "POST", path: "/api/mates/p1/key-check" },
+    ],
     // SPEC §3.2b: a stage or a production attached as an environment of the application, named.
     [
       "attaches a stage under the environment's name",
@@ -1094,6 +1100,8 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     updatedAt: "2026-10-02T09:00:00.000Z",
     mergeability: "clean",
     behind: false,
+    // HQ counts what was said on it, with the change.
+    comments: 2,
   } as const;
   const DETAIL = {
     change: CHANGE,
@@ -1234,7 +1242,8 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     });
   });
 
-  // The recipe a new environment starts from, on its recipe repository's `main` (SPEC §3.2c).
+  // The Mate tier a new Mate starts from, read on demand where HQ's stream does not carry it — a
+  // Core from before it did (SPEC §3.2c).
   it.each([
     [
       "a tier main holds",

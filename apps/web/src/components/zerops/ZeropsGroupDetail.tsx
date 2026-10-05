@@ -19,7 +19,7 @@ import { RuntimeStopPublicAccess, StopPublicAccessStatus } from "./StopPublicAcc
  * `groupHistory.ts`'s (rule R5).
  */
 import { useAtomValue } from "@effect/atom-react";
-import { hqEnvironmentsAtom } from "~/state/zerops";
+import { hqEnvironmentsAtom, hqMatesAtom } from "~/state/zerops";
 import { StopReadAgain } from "./StopReadAgain";
 import {
   cannotTellWhatRuns,
@@ -100,11 +100,13 @@ import { Fragment, useCallback, useContext, useId, useMemo, useState } from "rea
 
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
 
 import { compactSidebarTimeLabel } from "../Sidebar.logic";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import {
   activityOfNow,
+  mateAwake,
   mateFaceFor,
   mateFaceOf,
   mateReviewWaits,
@@ -362,6 +364,9 @@ function useGroupMates(groupId: string): {
   const { listing, refresh } = useZeropsCandidates();
   // Each Mate as its menu row reads it: HQ's word, or its socket's.
   const activityOf = useMateRowActivity(useZeropsAgentActivity());
+  // HQ's word of who is up, as the menu reads it (`mateAwake`).
+  const hqView = useAtomValue(hqMatesAtom);
+  const hqMates = hqView?.current === true ? hqView.mates : null;
   const updates = useZeropsMateUpdateStates();
   const nowMs = useNowMs();
   const flow = useZeropsProjectFlowOptional()?.flows.get(groupId);
@@ -385,13 +390,14 @@ function useGroupMates(groupId: string): {
           nowMs,
           item,
           read: activityOf(item),
+          mates: hqMates,
           tint: tints.get(item.project.id) ?? "slate",
           reviewWaits: mateReviewWaits(flow, item.project.id),
           mine: mateIsViewers(item.project, viewer),
           update: mateUpdateStatus(updates.of(item)),
         }),
       );
-  }, [activityOf, flow, groupId, listing, updates, viewer, nowMs]);
+  }, [activityOf, flow, groupId, hqMates, listing, updates, viewer, nowMs]);
   const patient = useListingPatience(listing);
   const notice = useMemo(
     () => candidatesNotice(listing, GROUP_MATES_SURFACE, nowMs, { patient }),
@@ -2163,10 +2169,10 @@ const ATTENTION_TONE: Record<ProjectAttentionKind, ServiceStatusToneId> = {
   "not-live": "busy",
 };
 
-/** One Mate on a project's page: who it is and what it is on. */
 /**
  * A Mate on the project as its page draws it: what it is on while a word of now says it — HQ's
- * live word or its socket's reading — and asleep, saying nothing, otherwise. Its face is its row's
+ * live word or its socket's reading — and saying nothing otherwise, awake at rest while it runs as
+ * its menu row reads it (`mateAwake`), else asleep. Its face is its row's
  * (`mateFaceOf`): needing you while it asks, or while its own change waits for your review — your
  * own Mate only; another's waits on its owner.
  */
@@ -2175,6 +2181,8 @@ export function groupMateOf(input: {
   readonly item: ZeropsCandidate;
   /** What its menu row reads (`useMateRowActivity`). */
   readonly read: ZeropsAgentActivity | undefined;
+  /** HQ's Mates, where its view is current (`hqMatesAtom`). */
+  readonly mates?: ReadonlyMap<string, Pick<MateLiveView, "presence">> | null;
   readonly tint: MateTintId;
   readonly reviewWaits: boolean;
   /** The viewer's own Mate (`mateIsViewers`). */
@@ -2183,7 +2191,7 @@ export function groupMateOf(input: {
 }): GroupMate {
   const { item, tint, mine } = input;
   const live = activityOfNow(input.read);
-  const connected = item.group === "connected" || live !== undefined;
+  const connected = mateAwake(item, input.mates) || live !== undefined;
   const subject = live?.subject;
   return {
     projectId: item.project.id,

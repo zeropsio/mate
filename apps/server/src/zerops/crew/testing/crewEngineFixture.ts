@@ -29,14 +29,19 @@ import {
   type OrchestrationThreadShell,
   type SpiEvent,
   type ZeropsAgentAuthSnapshot,
+  type ZeropsLogin,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
+import * as Result from "effect/Result";
+import { CrewDeployPoll } from "../crewBoot.ts";
+import { CrewPlatformProcesses } from "../crewDeployState.ts";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
@@ -113,6 +118,10 @@ export interface CrewWorld {
   readonly logins: Ref.Ref<ReadonlyMap<string, MateLogin>>;
   /** Logins whose instance is not live yet (the registry has no adapter for it). */
   readonly missingAgents: Ref.Ref<ReadonlySet<string>>;
+  /** The project's processes as the platform lists them (`ZeropsRestartRead`); `unreadable` fails the read. */
+  readonly processes: Ref.Ref<ReadonlyArray<unknown> | "unreadable">;
+  /** How many times the engine read the project's processes. */
+  readonly processReads: Ref.Ref<number>;
   /**
    * Hands the engine a provider event and returns once the engine has handled
    * it: its next pull of the bus comes only after its handler for this one.
@@ -123,8 +132,16 @@ export interface CrewWorld {
    * `reached` once the engine is waiting on it, `release` lets it run.
    */
   readonly holdSsh: (matches: (script: string) => boolean) => Effect.Effect<SshHold>;
-  /** A login's sign-in or signer changed: the agent-auth and logins feeds move. */
+  /**
+   * The default Claude login is signed in afresh (a new signer): as in
+   * production, its agent row moves on the agent-auth feed; the logins feed
+   * carries only extra logins.
+   */
   readonly signedIn: Effect.Effect<void>;
+  /** A default agent's login is signed in afresh, on the agent-auth feed. */
+  readonly signedInAs: (agent: "claude-code" | "codex") => Effect.Effect<void>;
+  /** An extra login (`~/.mate/logins/<id>`) is signed in afresh, on the logins feed. */
+  readonly extraSignedIn: (id: string) => Effect.Effect<void>;
 }
 
 export interface SshHold {
@@ -243,10 +260,31 @@ const repositoryLayers = (root: string) =>
     }),
   );
 
+/** The agent-auth feed's snapshot: both default agents signed in, each by its last signer. */
+const agentSnapshot = (signers: ReadonlyMap<string, string>): ZeropsAgentAuthSnapshot => ({
+  available: true,
+  agents: (["claude-code", "codex"] as const).map((agentId) => ({
+    agentId,
+    credPresent: true,
+    flagOAuth: true,
+    flagToken: false,
+    providerAuth: "authenticated" as const,
+    state: "authorized" as const,
+    authorizedBy: { subject: signers.get(agentId) ?? "user-karel" },
+  })),
+});
+
+/** A sign-in the fixture moves: a default agent's (agent-auth feed) or an extra login's (logins feed). */
+type SignIn =
+  | { readonly _tag: "agent"; readonly agent: "claude-code" | "codex" }
+  | { readonly _tag: "extra"; readonly id: string };
+
 const fakes = (
-  world: Omit<CrewWorld, "publish" | "holdSsh" | "signedIn">,
+  world: Omit<CrewWorld, "publish" | "holdSsh" | "signedIn" | "signedInAs" | "extraSignedIn">,
   events: Queue.Queue<Published>,
-  signIns: PubSub.PubSub<void>,
+  signIns: PubSub.PubSub<SignIn>,
+  /** Each default agent's signer as the agent-auth feed last told it. */
+  agentSigners = new Map<string, string>(),
 ) =>
   Layer.mergeAll(
     repositoryLayers(world.root),
@@ -257,6 +295,18 @@ const fakes = (
           : Effect.void
         ).pipe(
           Effect.andThen(Ref.update(world.dispatched, (all) => [...all, command])),
+          // The projection follows a conversation's new copy, as the reactor's does.
+          Effect.andThen(
+            command.type === "thread.meta.update" && command.worktreePath !== undefined
+              ? Ref.update(world.threads, (threads) =>
+                  threads.map((thread) =>
+                    thread.id === command.threadId
+                      ? { ...thread, worktreePath: command.worktreePath ?? null }
+                      : thread,
+                  ),
+                )
+              : Effect.void,
+          ),
           Effect.as({ sequence: 1 }),
         ),
     }),
@@ -295,13 +345,46 @@ const fakes = (
           }),
         ),
     }),
+    Layer.succeed(CrewPlatformProcesses, {
+      read: Ref.update(world.processReads, (count) => count + 1).pipe(
+        Effect.andThen(Ref.get(world.processes)),
+        Effect.map((processes) => (processes === "unreadable" ? undefined : processes)),
+      ),
+    }),
     Layer.mock(ZeropsLogins)({
       resolve: (id) => Effect.map(Ref.get(world.logins), (logins) => logins.get(id)),
-      changes: Stream.fromPubSub(signIns).pipe(Stream.map(() => [])),
+      latest: Effect.succeed([]),
+      // Production's shape: only the extra logins, never the defaults.
+      changes: Stream.fromPubSub(signIns).pipe(
+        Stream.zipWithIndex,
+        Stream.filterMap(([signIn, index]) =>
+          signIn._tag === "extra"
+            ? Result.succeed([
+                {
+                  id: signIn.id,
+                  agent: "claude-code",
+                  label: signIn.id,
+                  kind: "subscription",
+                  default: false,
+                  state: "authorized",
+                  token: false,
+                  signedInBy: `user-${index}`,
+                } satisfies ZeropsLogin,
+              ])
+            : Result.failVoid,
+        ),
+      ),
     }),
     Layer.mock(ZeropsAgentAuth)({
+      latest: Effect.sync(() => agentSnapshot(agentSigners)),
+      // Production's shape: every agent row, each with its signer; no `logins`.
       changes: Stream.fromPubSub(signIns).pipe(
-        Stream.map(() => ({ agents: [] }) as unknown as ZeropsAgentAuthSnapshot),
+        Stream.zipWithIndex,
+        Stream.filterMap(([signIn, index]) => {
+          if (signIn._tag !== "agent") return Result.failVoid;
+          agentSigners.set(signIn.agent, `user-${index}`);
+          return Result.succeed(agentSnapshot(agentSigners));
+        }),
       ),
     }),
     Layer.mock(ProviderInstances)({
@@ -415,7 +498,7 @@ export const withCrewEngines = <E>(
       NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-mate-")),
     );
     const events = yield* Queue.unbounded<Published>();
-    const signIns = yield* PubSub.unbounded<void>();
+    const signIns = yield* PubSub.unbounded<SignIn>();
     const holds = yield* Ref.make<ReadonlyArray<PendingHold>>([]);
     const world: CrewWorld = {
       root,
@@ -439,6 +522,8 @@ export const withCrewEngines = <E>(
       sshCalls: yield* Ref.make(0),
       logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
       missingAgents: yield* Ref.make<ReadonlySet<string>>(new Set()),
+      processes: yield* Ref.make<ReadonlyArray<unknown> | "unreadable">([]),
+      processReads: yield* Ref.make(0),
       publish: (event) =>
         Effect.gen(function* () {
           const handled = yield* Deferred.make<void>();
@@ -458,7 +543,11 @@ export const withCrewEngines = <E>(
             release: Deferred.succeed(hold.release, undefined).pipe(Effect.asVoid),
           };
         }),
-      signedIn: PubSub.publish(signIns, undefined).pipe(Effect.asVoid),
+      signedIn: PubSub.publish(signIns, { _tag: "agent", agent: "claude-code" }).pipe(
+        Effect.asVoid,
+      ),
+      signedInAs: (agent) => PubSub.publish(signIns, { _tag: "agent", agent }).pipe(Effect.asVoid),
+      extraSignedIn: (id) => PubSub.publish(signIns, { _tag: "extra", id }).pipe(Effect.asVoid),
     };
     const installer = (options.installer ?? countingInstaller)(world.installs);
     const engine = () =>
@@ -469,6 +558,12 @@ export const withCrewEngines = <E>(
             fakes(world, events, signIns),
             countingSsh(world.sshCalls, holds),
             Layer.succeed(DevServerPidFile, world.devServerPidFile),
+            // A deploy's state is asked again within moments, not minutes.
+            Layer.succeed(CrewDeployPoll, {
+              first: Duration.millis(50),
+              max: Duration.millis(200),
+              unreadable: Duration.millis(600),
+            }),
             ServerConfig.layer({
               cwd: workspace,
               attachmentsDir: NodePath.join(workspace, "attachments"),

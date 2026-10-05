@@ -309,6 +309,19 @@ describe("officialLayer", () => {
     }),
   );
 
+  // A reader told `unknown` before the first check answered would see an outage that is none.
+  it.effect("says whether its first check finished, whatever that check answered", () =>
+    Effect.gen(function* () {
+      const fake = world();
+      fake.down = true;
+      const service = yield* official(fake);
+      assert.isFalse(yield* service.checked);
+      yield* Effect.yieldNow;
+      assert.isTrue(yield* service.checked);
+      assert.deepStrictEqual(yield* service.status, { official: "unknown", allowed: false });
+    }),
+  );
+
   it.effect("keeps an ok through an unreachable platform for ten minutes, never a refusal", () =>
     Effect.gen(function* () {
       const fake = world();

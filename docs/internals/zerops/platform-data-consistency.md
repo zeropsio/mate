@@ -93,8 +93,13 @@ Terminal records remain available to retained history/operation views.
    admitted as indexed search, so the interest still completes and per-project
    anchors keep their authority. An unopened project's inventory
    never downloads process history. Hydrate unresolved
-   added IDs with one shared in-flight request per target/facet. A failed attempt waits for
-   a visible manual **again**.
+   added IDs with one shared in-flight request per target/facet. A failed attempt retries on
+   the recovery backoff within its budget, then the backoff's cap, while the tab is visible; a
+   429 holds every read of its organization until its Retry-After (ten minutes at most), each
+   held entity's interests read as failed until then, and a hold ending in a hidden tab reads
+   on the visible wake; a 403/404/410 waits for a grant change. Every backoff, the grant's and the cells' included, is jittered up to a fifth
+   sooner; a Retry-After is a floor no jitter lowers. A visible manual
+   **again** reads it at once.
 5. On a direct result reject obsolete generations. For each owned field group,
    suppress values if a native observation arrived after the ticket began, or a
    later-started direct read has already applied. Apply unaffected groups. **Mark
@@ -115,11 +120,14 @@ Terminal records remain available to retained history/operation views.
 8. On disconnect, registration failure, malformed data or overflow, fence affected work and
    publish a failed attempt immediately. A registration refusal fails only its dependents; a
    socket failure, malformed frame or uncertain ownership fails the receiver's demand. Optional metrics can fail without
-   withholding service topology. No automatic recovery cycle or retry ladder runs. A visible
-   manual **again** re-establishes the held scope with new identities and baselines.
+   withholding service topology. An interest that failed alone re-establishes alone on its own
+   backoff, staying at the cap once its budget is spent, its siblings observing on; a refusal or
+   an overflow waits for a manual attempt, or is asked once more each grant round. A failed receiver reconnects on its
+   own. A new lease joins the failure and its scheduled retry; it starts nothing sooner. A visible manual
+   **again** re-establishes the held scope with new identities and baselines at once.
 9. Bound establishment/token/open/greeting/read deadlines. The first failed attempt has a
    visible cause and manual action. Foreground return re-establishes healthy paused demand and
-   checks expired access, but preserves failed interests. Removing project or metric demand stops
+   checks expired access; a failed interest waiting for its retry starts over from the first rung. Removing project or metric demand stops
    routing its registrations on the organization's one receiver; no safe native unsubscribe has
    been established, so the receiver is replaced once its released registrations reach the
    policy bound, rebuilding the surviving healthy registrations.
@@ -169,23 +177,28 @@ both; receiver replacement and replay of desired interests is the conservative
 fallback for registration churn. Never recycle another account's receiver.
 A shared physical observation is admitted once, using a still-current dependent selected when
 ingestion runs. A failed interest retains no automatic retry budget or intermediate recovering state.
-A late successful completion cannot move a failed or paused interest back to observing.
+A late successful completion cannot move a failed or paused interest back to observing; a failed
+hydration or metadata read that answers on its retry lifts only the failure it caused, as does a
+read a 429 held when it answers, or when the hold ends with its entity no longer wanted.
 
 Registration requests share one account-wide concurrency bound. The organization
 inventory's own registrations, its project feed and project list, are admitted
 ahead of waiting project registrations; a registration's deadline starts when it
 is sent, not while it waits for its turn. A registration the platform refused
-with an HTTP error status took no effect; a manual attempt may register again on the
-same receiver. A required interest's registration without an answer, or with an
+with an HTTP error status took no effect. A refusal (400/401/403/404/410) registers again only
+at a manual attempt or once each grant round, unless an entity read's refusal failed it, which
+that read's own retry lifts; any other registers again on the same receiver on its own backoff,
+sending only the failed subscription, and a socket whose released subscriptions (refused ones
+never count) reach the bound is replaced. A required interest's registration without an answer, or with an
 answer that could not be read, may have left a subscription nobody owns, so its
-receiver fails and a manual attempt replaces it. A subscription nobody owns names no registration the
+receiver fails and reconnects. A subscription nobody owns names no registration the
 adapter holds: should a refused or optional registration have taken effect after
 all, its first frame fails the receiver rather than initiating recovery.
 
 Native frames are the ordinary data path. A valid admitted update performs no REST
 reread. New baselines come from explicit refresh and foreground return of healthy paused demand;
-unresolved demanded references get one hydration attempt. Disconnect, decoding failure or loss
-stays failed until a manual attempt. Healthy receivers have no periodic
+unresolved demanded references are hydrated, a failure on the recovery backoff. Disconnect,
+decoding failure or loss reconnects on its own backoff; a manual attempt does so at once. Healthy receivers have no periodic
 inventory, process or metric reread. Heartbeats test transport health; they do not
 prove complete source delivery. A silent source omission with no observable fault
 can remain until a new baseline or explicit refresh; `observing` retains its weaker

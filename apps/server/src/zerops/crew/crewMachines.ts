@@ -24,7 +24,7 @@ import type {
   ProviderRuntimeTurnStatus,
 } from "@t3tools/contracts";
 
-import { type RotationReason } from "./rotationDecision.ts";
+import { CREW_ROTATIONS_PER_ATTEMPT, type RotationReason } from "./rotationDecision.ts";
 
 export type Illegal<S> = {
   readonly kind: "illegal";
@@ -176,16 +176,18 @@ export const stintTransition = (from: CrewStintState | "none", event: StintEvent
 
 /* ------------------------------------------------------------------- task */
 
-/** Reworks per task (a conflict counts), and selected landing re-merges. */
+/** Reworks per task (a conflict counts), landing re-merges, crash re-queues. */
 export const CREW_REWORKS_MAX = 2;
 export const CREW_REMERGES_MAX = 3;
+export const CREW_REQUEUES_MAX = 1;
 
 export interface TaskCounters {
-  /** The attempt in progress; an explicit rework starts the next one. */
+  /** The attempt in progress; a rework or a re-queue starts the next one. */
   readonly attempt: number;
   readonly reworks: number;
   /** Re-merges of the current landing because H moved. */
   readonly remerges: number;
+  readonly requeues: number;
   /** Rotation endings in the current attempt. */
   readonly rotations: number;
 }
@@ -194,6 +196,7 @@ export const TASK_START: TaskCounters = {
   attempt: 1,
   reworks: 0,
   remerges: 0,
+  requeues: 0,
   rotations: 0,
 };
 
@@ -226,6 +229,8 @@ export type TaskEvent =
   | { readonly type: "report-blocked" }
   | { readonly type: "report-done" }
   | { readonly type: "land-now" }
+  | { readonly type: "infrastructure-ending" }
+  | { readonly type: "rotation-ending" }
   | { readonly type: "merge-clean" }
   | { readonly type: "merge-conflict" }
   | { readonly type: "merge-empty-base" }
@@ -241,7 +246,8 @@ export type TaskEvent =
   | { readonly type: "dirty-tree" }
   | { readonly type: "untracked-in-way" }
   | { readonly type: "index-lock" }
-  | { readonly type: "missing-object" }
+  /** `retried`: this landing already took its one retry after a missing object. */
+  | { readonly type: "missing-object"; readonly retried: boolean }
   | { readonly type: "disk-full" }
   | { readonly type: "tree-clean" }
   | { readonly type: "wait-expired" }
@@ -388,6 +394,23 @@ export const initialTaskState = (input: {
 }): CrewTaskState => (input.source === "lead" && !input.leadMayStart ? "proposed" : "queued");
 
 const TERMINAL: ReadonlySet<CrewTaskState> = new Set(["landed", "discarded"]);
+
+/**
+ * A task whose check passed: its copy's tip is the tree that lands, so no
+ * edit is ever committed onto it (a boot sweep, a turn's end) and none lands.
+ */
+export const CHECKED_STATES: ReadonlySet<CrewTaskState> = new Set([
+  "ready",
+  "review",
+  "landing",
+  "waiting-on-you",
+]);
+
+/** Why a checked task stopped: its copy changed after the check. */
+export const EDITED_AFTER_CHECK =
+  "its copy has edits made after its check; they stay in its copy and do not land";
+export const MOVED_AFTER_CHECK =
+  "its copy moved after its check; the change stays in its copy and does not land";
 const RETURNS_TO_WORK_ON_MESSAGE: ReadonlySet<CrewTaskState> = new Set([
   "working",
   "blocked",
@@ -468,6 +491,21 @@ export const taskTransition = (task: CrewTask, event: TaskEvent): TaskStep => {
       return from === "working" ? to("merging") : illegal;
     case "land-now":
       return from === "working" || from === "rework" ? to("merging") : illegal;
+    case "infrastructure-ending":
+      if (from !== "working") return illegal;
+      return counters.requeues >= CREW_REQUEUES_MAX
+        ? park("infrastructure")
+        : to("queued", {
+            ...counters,
+            attempt: counters.attempt + 1,
+            requeues: counters.requeues + 1,
+            rotations: 0,
+          });
+    case "rotation-ending":
+      if (from !== "working") return illegal;
+      return counters.rotations >= CREW_ROTATIONS_PER_ATTEMPT
+        ? park("rotations")
+        : to("working", { ...counters, rotations: counters.rotations + 1 });
     case "merge-clean":
       return from === "merging" ? to("checking") : illegal;
     case "merge-conflict":
@@ -491,18 +529,19 @@ export const taskTransition = (task: CrewTask, event: TaskEvent): TaskStep => {
     case "fast-forward":
       return from === "landing" ? to("landed") : illegal;
     case "head-moved":
+    case "not-fast-forward":
       if (from !== "landing") return illegal;
       return counters.remerges >= CREW_REMERGES_MAX
         ? rework()
         : to("merging", { ...counters, remerges: counters.remerges + 1 });
-    case "not-fast-forward":
-      return from === "landing" ? to("merging") : illegal;
     case "dirty-tree":
     case "untracked-in-way":
       return from === "landing" ? to("waiting-on-you") : illegal;
     case "index-lock":
-    case "missing-object":
       return from === "landing" ? to("ready") : illegal;
+    case "missing-object":
+      if (from !== "landing") return illegal;
+      return event.retried ? park("missing-object") : to("ready");
     case "disk-full":
       return from === "landing" ? park("disk-full") : illegal;
     case "tree-clean":
@@ -522,6 +561,7 @@ export const taskTransition = (task: CrewTask, event: TaskEvent): TaskStep => {
             attempt: counters.attempt + 1,
             reworks: 0,
             remerges: 0,
+            requeues: 0,
             rotations: 0,
           })
         : illegal;

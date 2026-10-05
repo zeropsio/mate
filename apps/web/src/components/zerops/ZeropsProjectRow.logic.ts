@@ -26,7 +26,13 @@ import {
   type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { HqMateOfferStates } from "@t3tools/client-runtime/zerops/hq";
+import {
+  HQ_PROJECT_NAME,
+  type HqMateOfferStates,
+  type HqPresses,
+  type HqStructure,
+  type OfficialHq,
+} from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
 import {
@@ -58,6 +64,8 @@ export function mateOutsideHq(
 export const NOT_IN_HQ_LINE = "Not in this HQ";
 
 export interface ZeropsRowInput {
+  /** What says a project is its person's own (`plainZeropsProject`); none, and nothing is. */
+  readonly plainEvidence?: PlainProjectEvidence | undefined;
   /** A current HQ structure places no record here, and no local birth is in progress. */
   readonly outsideHq?: boolean;
   readonly candidate: ZeropsRowCandidate;
@@ -105,6 +113,11 @@ export interface ZeropsRowInput {
     readonly open: boolean;
     readonly enable: boolean;
     readonly setUpMate: boolean;
+    /**
+     * *Set up Mate* on an existing plain project (`plainZeropsProject`): HQ offers the viewer writing
+     * the new Mate's record (`create_mate_record`), which the press registers before its container.
+     */
+    readonly setUpPlainProject?: boolean;
     readonly start: boolean;
     readonly restart: boolean;
     /** Deleting a project the platform failed to create. */
@@ -126,10 +139,14 @@ const ROW_VERBS = (offered: boolean): ZeropsRowInput["can"] => ({
  * rest Zerops' — each refusal shown as they word it. None where HQ refuses following its Mate
  * (`observe_mate`): the door would refuse them too. Every one otherwise — where HQ offers it, has
  * not said (an HQ from before its offers, a structure not read yet), or does not answer, and on a
- * project HQ holds as no Mate.
+ * project HQ holds as no Mate. *Set up Mate* on a plain project only where HQ offers writing its
+ * Mate's record (`create_mate_record`), which the press registers and HQ enforces.
  */
 export function mateRowCan(offers: HqMateOfferStates | undefined): ZeropsRowInput["can"] {
-  return ROW_VERBS(offers?.held !== true || offers.observe.kind !== "refused");
+  return {
+    ...ROW_VERBS(offers?.held !== true || offers.observe.kind !== "refused"),
+    setUpPlainProject: offers?.held === false && offers.createRecord.kind === "allowed",
+  };
 }
 
 export type ZeropsRowAction =
@@ -330,6 +347,82 @@ export function mateSetupOffered(role: ZeropsEnvironmentRole | undefined): boole
 }
 
 /**
+ * What says a project is its person's own — evidence the caller gathers once for the page: HQ's
+ * records, its anchor and this tab's own presses (`plainZeropsProject`).
+ */
+export interface PlainProjectEvidence {
+  /** Every project HQ holds any record of (`hqRecordedProjects`), a press's included. */
+  readonly hqRecords: ReadonlySet<string>;
+  /** The project the organization's official HQ anchor names: the HQ carries no record of itself. */
+  readonly hqAnchors: ReadonlySet<string>;
+  /** The projects this tab is making or finishing. */
+  readonly local: ReadonlySet<string>;
+}
+
+/**
+ * An existing plain Zerops project, on HQ's word (security review 1, 11; ADR 0002, HQ holds the
+ * structure): no Mate, no place in HQ and no record of it there at all, not the organization's HQ
+ * by its anchor or its name, and not one this tab is making. A project's tags and its age decide
+ * nothing. Anything nothing can tell apart — HQ's structure not known — is not plain.
+ */
+export function plainZeropsProject(
+  project: ZeropsCandidate["project"],
+  evidence: PlainProjectEvidence | undefined,
+): boolean {
+  if (evidence === undefined) return false;
+  return (
+    project.hq === undefined &&
+    project.name !== HQ_PROJECT_NAME &&
+    !evidence.hqRecords.has(project.id) &&
+    !evidence.hqAnchors.has(project.id) &&
+    !evidence.local.has(project.id)
+  );
+}
+
+/**
+ * The page's evidence for `plainZeropsProject`: none while HQ's structure is not known, or the
+ * organization has no official HQ — with none, or an unclear one, nothing is plain. A press HQ holds
+ * a record of, running elsewhere or stopped, is its Mate being made: never plain.
+ */
+export function plainEvidenceOf(input: {
+  readonly hqKnown: boolean;
+  readonly structure: HqStructure | null;
+  /** Each press HQ holds a record of, by project (`hq_press`); none before HQ said. */
+  readonly presses: HqPresses | null;
+  readonly hq: OfficialHq;
+  /** The projects this tab is making or finishing. */
+  readonly local: Iterable<string>;
+}): PlainProjectEvidence | undefined {
+  if (!input.hqKnown || input.structure === null || input.hq.kind !== "official") return undefined;
+  return {
+    hqRecords: new Set([...hqRecordedProjects(input.structure), ...(input.presses?.keys() ?? [])]),
+    hqAnchors: new Set([input.hq.projectId]),
+    local: new Set(input.local),
+  };
+}
+
+/**
+ * Every project HQ's structure holds any record of: placed in an application or none, a tool, a
+ * birth bound to it, an environment, or one whose removal HQ has not finished.
+ */
+export function hqRecordedProjects(structure: HqStructure): ReadonlySet<string> {
+  const recorded = new Set<string>();
+  for (const tool of structure.tools ?? []) recorded.add(tool.projectId);
+  for (const mate of structure.ungrouped) recorded.add(mate.projectId);
+  for (const app of structure.apps) {
+    for (const project of app.projects) recorded.add(project.projectId);
+    for (const id of app.contents?.deletingProjectIds ?? []) recorded.add(id);
+    // Environments HQ refused this reader are still among its projects above.
+    const environments = Array.isArray(app.environments) ? app.environments : [];
+    for (const environment of environments) recorded.add(environment.projectId);
+    for (const birth of app.births ?? []) {
+      if (birth.projectId != null) recorded.add(birth.projectId);
+    }
+  }
+  return recorded;
+}
+
+/**
  * Platform transition — the project or its zcp service is on its way to or
  * from STOPPED. Neither has a verb: the platform is already doing the work,
  * offering one would only race it.
@@ -430,7 +523,9 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     }
     // Unknown is not unavailable: the inventory has not yet said whether a
     // container is there, so the row is still being checked (DESIGN §3.4).
-    if (candidate.presence === "unknown") {
+    // A plain project offered Set up Mate is not being checked: nothing reads its services until
+    // something leases it, and its Set up Mate reads them as it runs.
+    if (candidate.presence === "unknown" && deriveZeropsRowAction(input).kind !== "set-up-mate") {
       return { status: { label: "Checking", pulse: true, tone: "busy" } };
     }
     return {
@@ -561,13 +656,20 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
       if (candidate.creationFailed !== undefined) {
         return can.remove ? { kind: "remove", label: "Remove" } : { kind: "none" };
       }
-      // Missing HQ membership cannot establish that an existing environment is a dev box.
-      // Only an explicit dev role or a declared Mate justifies setting up a container here.
+      // An explicit dev role or a declared Mate with no container, or an existing plain project its
+      // viewer may bring a Mate into (`plainZeropsProject`) — its services read with none, or not
+      // read at all: 0.13 reads them only once something leases the project, and Set up Mate reads
+      // them as it runs, importing nothing where a container is there already. Never an
+      // environment an earlier group tagged, whose role nothing here can read.
       if (
-        candidate.missingContainer === true &&
         can.setUpMate &&
         mateSetupOffered(role) &&
-        (role === "dev" || role === "devstage" || hasMate(candidate))
+        ((candidate.missingContainer === true &&
+          (role === "dev" || role === "devstage" || hasMate(candidate))) ||
+          ((candidate.missingContainer === true ||
+            (candidate.service === undefined && candidate.presence === "unknown")) &&
+            can.setUpPlainProject === true &&
+            plainZeropsProject(candidate.project, input.plainEvidence)))
       ) {
         return { kind: "set-up-mate", label: "Set up Mate" };
       }

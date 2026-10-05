@@ -71,6 +71,10 @@
       "types": "./src/zeropsRoles.ts",
       "import": "./src/zeropsRoles.ts"
     },
+    "./mateKeyReach": {
+      "types": "./src/mateKeyReach.ts",
+      "import": "./src/mateKeyReach.ts"
+    },
     "./zeropsPermissions": {
       "types": "./src/zeropsPermissions.ts",
       "import": "./src/zeropsPermissions.ts"

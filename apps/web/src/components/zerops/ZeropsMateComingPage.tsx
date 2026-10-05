@@ -120,7 +120,13 @@ import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useZeropsInventory, type InventoryServiceOutcome } from "~/zerops/inventoryContext";
-import { finishSetupView, forgetPress, pressFailure, useMatePress } from "~/zerops/matePress";
+import {
+  closeOffHoldOf,
+  finishSetupView,
+  forgetPress,
+  pressFailure,
+  useMatePress,
+} from "~/zerops/matePress";
 import { useReviveFailedMate } from "~/zerops/mateRestart";
 import { refreshMateSetup, useMateSetup } from "~/zerops/useMateSetup";
 import { useMateActions } from "~/zerops/useMateActions";
@@ -132,7 +138,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ConversationStripView } from "../chat/ConversationStrip";
 import { MateDetailFailure } from "./MateDetailFailure";
-import { useMateDetailRead } from "~/zerops/accountEnvironments";
+import { useCloseOffHolds, useMateDetailRead } from "~/zerops/accountEnvironments";
 import { MateLinkLine, MateOpeningLine } from "./MateLinkLine";
 import { zeropsAccountDisplay } from "./landing/ZeropsAccountControl.logic";
 import { ZeropsProjectLink } from "../chat/ChatHeader";
@@ -244,9 +250,13 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Its first build's processes, read only while its container waits for that build.
   const firstBuilding = candidate?.service?.status === "READY_TO_DEPLOY";
   const { processes: firstBuildProcesses } = useProjectActivity(firstBuilding ? projectId : null);
+  // Held by the close-off gate: its view says why — and, where its project is known not closed
+  // off, offers Finish setup.
+  const closeOffHolds = useCloseOffHolds();
   // A press of it in another browser, as HQ holds it: no container yet is that press at work.
   const pressOf = usePressesElsewhere(held.rows);
   const coming = mateComing({
+    closeOffHold: closeOffHoldOf(closeOffHolds, projectId, press),
     press:
       press === undefined
         ? undefined

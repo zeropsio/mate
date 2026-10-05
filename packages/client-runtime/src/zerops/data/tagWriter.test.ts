@@ -46,13 +46,16 @@ function platform(
 }
 
 describe("updateProjectTags' writer", () => {
-  it("writes only the Mate marker from a fresh project read", async () => {
+  // Set up Mate on a plain project: the marker is added to the tags a fresh read holds at the
+  // moment of the write — the owner's own and another writer's kept — and only the obsolete
+  // metadata tags go.
+  it("adds the Mate marker to a fresh project read, keeping the project's own tags", async () => {
     const rest = platform(["mate:face:rose:seal", "person:own"], {
       beforeRead: (tags) => [...tags, "theirs"],
     });
     const writer = makeProjectTagWriter({ source: rest.source });
     expect((await writer.write("p1", { kind: "mate" })).kind).toBe("written");
-    expect(rest.tags()).toEqual(["mate"]);
+    expect(rest.tags()).toEqual(["person:own", "theirs", "mate"]);
     expect(rest.log).toEqual(["GET", "PUT", "GET"]);
   });
 
@@ -136,7 +139,7 @@ describe("updateProjectTags' writer", () => {
     ]);
 
     expect([declared.kind, again.kind]).toEqual(["written", "unchanged"]);
-    expect(rest.project("p1")?.tagList).toEqual(["mate"]);
+    expect(rest.project("p1")?.tagList).toEqual(["person:own", "mate"]);
     // One tab's read, write and read-back, then the other's read: never interleaved.
     expect(rest.requests().map(({ route, tab }) => `${tab} ${route}`)).toEqual([
       `${first.id} GET /project/p1`,
@@ -150,7 +153,7 @@ describe("updateProjectTags' writer", () => {
 // D3: a Mate's name is its project's, written through the same record a tag write puts back.
 describe("a project renamed by the project's one writer", () => {
   it("renames on a fresh read and puts back every tag the platform holds", async () => {
-    const rest = platform(["mate", "person:own"], {
+    const rest = platform(["mate", "person:own", "mate:face:rose:seal"], {
       beforeRead: (tags: ReadonlyArray<string>) => [...tags, "theirs"],
     });
     const writer = makeProjectTagWriter({ source: rest.source });
@@ -158,7 +161,10 @@ describe("a project renamed by the project's one writer", () => {
     const renamed = await writer.rename("p1", "Nova");
 
     expect(renamed).toMatchObject({ kind: "written", project: { name: "Nova" } });
-    expect([rest.name(), rest.tags()]).toEqual(["Nova", ["mate"]]);
+    expect([rest.name(), rest.tags()]).toEqual([
+      "Nova",
+      ["mate", "person:own", "mate:face:rose:seal", "theirs"],
+    ]);
     expect(rest.log).toEqual(["GET", "PUT", "GET"]);
   });
 
@@ -177,6 +183,36 @@ describe("a project renamed by the project's one writer", () => {
     await Promise.all([writer.write("p1", { kind: "mate" }), writer.rename("p1", "Nova")]);
 
     expect([rest.name(), rest.tags()]).toEqual(["Nova", ["mate"]]);
+  });
+
+  // Security review 12: a rename puts back the tags of its own fresh read, under the lock, and its
+  // read-back checks the Mate's marker too — a whole-record write from another browser in between
+  // that dropped it fails visibly, never as a rename that went through.
+  it("fails visibly where another writer's record dropped the Mate's marker", async () => {
+    let project: ZeropsProject = {
+      id: "p1",
+      name: "One",
+      status: "ACTIVE",
+      tagList: ["mate", "person:own"],
+    };
+    const log: Array<string> = [];
+    const writer = makeProjectTagWriter({
+      source: {
+        fetchProject: async () => {
+          log.push("GET");
+          return project;
+        },
+        writeProject: async (_read, record) => {
+          log.push("PUT");
+          // Ours lands, then another browser's record: our name, its tags without the marker.
+          project = { ...project, name: record.name, tagList: ["person:own"] };
+          return project;
+        },
+      },
+    });
+
+    await expect(writer.rename("p1", "Nova")).rejects.toMatchObject({ kind: "rejected" });
+    expect(log).toEqual(["GET", "PUT", "GET"]);
   });
 
   it("names it again where another writer's record replaced the name", async () => {

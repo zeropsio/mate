@@ -21,6 +21,7 @@ import {
 } from "@t3tools/client-runtime/zerops/flow";
 import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -1416,14 +1417,42 @@ describe("groupMateOf — a Mate on the project, as its page draws it", () => {
     });
   });
 
-  it("draws it asleep, saying nothing, where only a word at rest is known", () => {
+  // Its container runs (ready) though no socket of this page reaches it: awake, as its menu row
+  // draws it (restores 374c9923e's rule over bb04ea183's asleep).
+  it("draws a running Mate awake at rest, saying nothing, where only a word at rest is known", () => {
     expect(draw({ ...SPLITTING, remembered: true })).toMatchObject({
-      face: "sleep",
+      face: "idle",
       subject: undefined,
     });
   });
 
-  it("wakes a newly arriving Mate, then returns to its HQ resting face at the bound", () => {
+  it.each([
+    ["its container runs, nothing heard yet", "ready", false, "idle"],
+    ["HQ holds one of its links open, the listing not caught up", "provisioning", true, "idle"],
+    ["its container is not reachable, HQ holds no link", "unavailable", false, "sleep"],
+  ] as const)("%s: %s", (_case, group, online, face) => {
+    const mates = new Map([
+      [
+        "iris",
+        {
+          presence: { online, since: "2026-09-25T10:00:00.000Z", overview: "none" },
+        } as unknown as MateLiveView,
+      ],
+    ]);
+    expect(
+      groupMateOf({
+        item: { ...IRIS, group },
+        read: undefined,
+        mates,
+        tint: "amber",
+        reviewWaits: false,
+        mine: true,
+        update: undefined,
+      }).face,
+    ).toBe(face);
+  });
+
+  it("wakes a newly arriving Mate, then returns to its resting face at the bound", () => {
     const born = Date.parse("2026-10-03T10:00:00Z");
     const item = { ...IRIS, project: { ...IRIS.project, created: new Date(born).toISOString() } };
     const at = (nowMs: number) =>
@@ -1437,7 +1466,7 @@ describe("groupMateOf — a Mate on the project, as its page draws it", () => {
         update: undefined,
       });
     expect(at(born + 60_000).face).toBe("waking");
-    expect(at(born + 31 * 60_000).face).toBe("sleep");
+    expect(at(born + 31 * 60_000).face).toBe("idle");
   });
 });
 

@@ -1188,7 +1188,7 @@ describe("stageMenu — each stage, as production's menu says production", () =>
     {
       case: "held for a deploy key",
       firstDeploy: { kind: "held" } as const,
-      word: "Awaiting a deploy key",
+      word: "Stage awaits a deploy key",
     },
   ])("says an empty stage's first deploy as its cell does: $case", ({ firstDeploy, word }) => {
     const empty = {

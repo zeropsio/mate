@@ -21,7 +21,7 @@
 import type { MateMarkState } from "@t3tools/shared/brand";
 
 import type { ZeropsCandidate } from "./candidates.ts";
-import { mateOwnerRecords } from "./mateAccess.ts";
+import { mateSignedInOnce } from "./mateAccess.ts";
 
 /** Where a Mate is in its life, as its faces need it. */
 export type MateLife =
@@ -51,15 +51,21 @@ export const MATE_ARRIVAL_WINDOW_MS = 30 * 60_000;
 /**
  * Until when a Mate is arriving, in epoch milliseconds — from its press, through its container
  * coming up, to its first sign-in, bounded to {@link MATE_ARRIVAL_WINDOW_MS} from its project's
- * creation. `undefined` when it is not arriving at all: HQ records somebody as its agent's signer (`mateOwnerRecords`), its container is unavailable, or its creation time is not known.
+ * creation. `undefined` when it is not arriving at all: somebody has signed one of its logins in
+ * (`mateSignedInOnce` — a sign-out keeps its last signer, so a Mate once signed in has arrived for
+ * good), its agent runs without a sign-in (`runsWithoutSignIn`, told once it is up), its container
+ * is unavailable, or its creation time is not known.
  */
 export function mateArrivingUntil(
   candidate: Pick<ZeropsCandidate, "group"> & {
-    readonly project: Pick<ZeropsCandidate["project"], "hq" | "userRoles" | "created">;
+    readonly project: Pick<ZeropsCandidate["project"], "hq" | "created">;
   },
 ): number | undefined {
   if (candidate.group === "unavailable") return undefined;
-  if (mateOwnerRecords(candidate.project).signedIn) return undefined;
+  if (mateSignedInOnce(candidate.project)) return undefined;
+  // Its agent runs without a sign-in: nothing to wait on once it is up. HQ knows that only from
+  // the overview the Mate sends over its own link, so knowing it means the Mate has been up.
+  if (candidate.project.hq?.mate?.runsWithoutSignIn === true) return undefined;
   const created = Date.parse(candidate.project.created ?? "");
   return Number.isNaN(created) ? undefined : created + MATE_ARRIVAL_WINDOW_MS;
 }

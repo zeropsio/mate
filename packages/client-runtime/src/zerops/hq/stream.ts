@@ -9,6 +9,11 @@
  * `release-revision` message supplies one moved application's fresh load data. A reconnect starts
  * with a fresh snapshot, so nothing held from before it is needed to read it right.
  *
+ * The snapshot says, as `official`, whether HQ could check Zerops that it is the official HQ
+ * (`unknown` while Zerops does not answer, which HQ serves through), and an `official` message says
+ * it again each time it changes. It names the Core it runs (`build`), and says how HQ's parts stand
+ * (`parts`), again in a `parts` message each time they change.
+ *
  * The same socket carries the Mates the reader may observe (`@t3tools/shared/hqMates`): the
  * snapshot holds each of them whole, with the people the view names; a `mate` message, what
  * changed of one Mate, or `null` once the reader may no longer observe it; a `people` message, the
@@ -38,7 +43,13 @@ import {
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { HqAppContents, HqBirth, HqStructure } from "./client.ts";
+import {
+  readHqParts,
+  type HqAppContents,
+  type HqBirth,
+  type HqParts,
+  type HqStructure,
+} from "./client.ts";
 import { environmentsOf } from "./environments.ts";
 
 type HqApp = HqStructure["apps"][number];
@@ -70,11 +81,23 @@ export type HqStructureEvent =
       readonly mates: HqMates | null;
       readonly people: HqPeople | null;
       /**
+       * Whether HQ is the official one as its last check of Zerops said
+       * (`@t3tools/shared/hqStream` `HqOfficialVerdict`); `null` before the Core's first check,
+       * absent from a Core whose stream does not say it.
+       */
+      readonly official?: string | null;
+      /** The Core HQ runs, as its bundle stamps it; absent from a Core whose stream does not name it. */
+      readonly build?: string;
+      /** How HQ's parts stand, as its health reports them; absent from a Core that does not say. */
+      readonly parts?: HqParts;
+      /**
        * Empty where HQ sent none — a Core from before the presses holds none; `null` where it sent
        * presses this build cannot read.
        */
       readonly presses?: HqPressesSent | null;
     }
+  | { readonly kind: "parts"; readonly parts: HqParts }
+  | { readonly kind: "official"; readonly official: string | null }
   | { readonly kind: "presses"; readonly presses: HqPressesSent }
   | { readonly kind: "change"; readonly appId: string; readonly app: HqApp | null }
   | { readonly kind: "ungrouped"; readonly mates: HqUngrouped }
@@ -297,6 +320,9 @@ function matesOf(sent: unknown): HqMates | null {
   return mates;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 /**
  * The structure as HQ answers it (`GET /api/structure`, a snapshot): each part read through its
  * shape; none where its applications or its Mates in no application cannot be read.
@@ -338,11 +364,14 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
   if (typeof message !== "object" || message === null) return undefined;
   const { type } = message as { readonly type?: unknown };
   if (type === "snapshot") {
-    const { changes, appReads, mates, people, presses } = message as {
+    const { changes, appReads, mates, people, presses, official, build, parts } = message as {
       readonly changes?: unknown;
       readonly appReads?: unknown;
       readonly mates?: unknown;
       readonly people?: unknown;
+      readonly official?: unknown;
+      readonly build?: unknown;
+      readonly parts?: unknown;
       readonly presses?: unknown;
     };
     const structure = hqStructureOf(message);
@@ -360,9 +389,22 @@ export function structureEventOf(message: unknown): HqStructureEvent | undefined
       }),
       mates: matesOf(mates),
       people: Option.getOrNull(readPeople(people)),
+      ...(typeof official === "string" || official === null ? { official } : {}),
+      ...(typeof build === "string" ? { build } : {}),
+      ...(isRecord(parts) ? { parts: readHqParts(parts) } : {}),
       // A Core from before the presses sends none: it holds none. One unreadable says nothing.
       presses: presses === undefined ? {} : Option.getOrNull(readPressesSent(presses)),
     };
+  }
+  if (type === "parts") {
+    const { parts } = message as { readonly parts?: unknown };
+    return isRecord(parts) ? { kind: "parts", parts: readHqParts(parts) } : undefined;
+  }
+  if (type === "official") {
+    const { official } = message as { readonly official?: unknown };
+    return typeof official === "string" || official === null
+      ? { kind: "official", official }
+      : undefined;
   }
   if (type === "presses") {
     const { presses } = message as { readonly presses?: unknown };

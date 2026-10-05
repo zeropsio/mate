@@ -3474,8 +3474,9 @@ no-cache`.
 - **2026-10-02** — **Superseded 2026-10-03 in part by "A Mate's key is lowered only when Finish
   setup adopts it" below: the projects page lowers no key on its read. Superseded 2026-10-05 in
   part: the harden keeps no other grant on a key HQ knows by the id the Mate enrolled with — it sets
-  that key to its own project alone (`planMateKey`, `foundBy: "id"`); only a key found by its name
-  alone is never narrowed, and the grants by hand are that key's.**
+  that key to its own project alone (`planMateKey`, `foundBy: "id"`), a widened key HQ tells by id
+  (`keyWider`) included; only a key found by its name alone is never narrowed, and the grants by
+  hand are that key's.**
   **A Mate's key reaches only its own project** (the owner, ADR 0003). The key a
   Mate's container holds is `NO_ACCESS` at the org and `BASIC_USER` on its own project, and nothing
   more: the mint grants its own project alone (`api.ts:1791`), the press gives no sibling reach, and
@@ -3820,6 +3821,137 @@ no-cache`.
     non-animated height expansions, the sometimes weirdly acting scroll processes". Run 9 measured
     231 one-frame height changes and 83 unprovoked jumps; the desktop harness now shows 0 and 0–1.
     At 390 px a card still bounces when a tall step arrives (its 60svh cap), the first follow-up.
+- **2026-10-04** — **0.13's rebuild keeps what 0.12.3 shipped (pass 40).** An audit checked 694 commits
+  from 0.11.80 to 0.12.3 against 0.13.0, the release that replaced the Gitea backbone with HQ.
+  - 534 kept every line. Of the other 160, most were kept or rebuilt on HQ; the Gitea plumbing went
+    with Gitea.
+  - Merge resolutions dropped two behaviours, and the rebuild reversed several on purpose. This pass
+    restores both kinds on HQ, below.
+  - Where 0.13 carries out an owner decision (D6, ADR 0003), the decision stands and only its fallout
+    is fixed.
+  - _Why:_ the owner: "we should fix everything, we have the knowhow of what we worked on".
+- **2026-10-04** — **A Mate signed in once has arrived for good; one whose agent needs no sign-in has
+  arrived once it is up** (`mateArrivingUntil`, `mateSignedInOnce`).
+  - A sign-out, or HQ's saved signers before the live ones arrive, no longer brings back the waking
+    face.
+  - **Supersedes:** the current-signer-only arrival from the 0.12.2 port.
+  - _Why:_ the waking face means "waiting on a first sign-in", and nothing else.
+- **2026-10-04** — **A Mate's face follows one rule in the menu and on its project page**
+  (`mateAwake`). It is awake when its container runs, its socket is up, or HQ has it online.
+  - _Why:_ the port kept the rule in the menu only, so a running Mate looked asleep on its page
+    whenever HQ's word wasn't live.
+- **2026-10-04** — **`/` decides before it paints and lands nowhere dead** (`homeTarget`, `homeView`).
+  - An empty organization, no chosen organization, and a failed catalog with no Mate named all land
+    on the projects page, which offers the way on.
+  - Only the organization in view lands. A cached registration whose socket is down never claims the
+    landing.
+  - A projects page once shown stays until the person acts.
+  - **Supersedes:** upstream's "What should we work on?" hero as the empty-org home (deleted).
+  - _Why:_ the hero's Add project led nowhere in Mate, and with no organization chosen `/` waited
+    forever.
+- **2026-10-04** — **A stopped Finish setup is said, then gone; nobody is let into a Mate before its
+  project is closed off.**
+  - On a Mate with its container, "Setup stopped" stands for 10 s. It never hides a connected Mate's
+    sign-in line, amber dot or last message, and is still never retried on its own.
+  - A Mate whose project HQ says is not closed off takes no lease and no Connect, even on screen,
+    whatever its container's age. It reads "Closing off its project…" until HQ says it is closed
+    off, with Finish setup in its menu — offered on HQ's word whenever its container's marker is not
+    read absent, so a marker that cannot be read never leaves it without a way out. HQ's streamed word alone says closed off: no project tag,
+    no clock (2026-10-05). While HQ says nothing, only this browser's own knowledge that its
+    close-off has not happened holds it.
+  - _Why:_ the stop hid a working Mate's state until reload, and leases had dropped 0.12.3's
+    close-off gate, so an unisolated project could be used.
+- **2026-10-04** — **Set up Mate is offered on an existing plain project, and a Mate's project keeps
+  its owner's own tags.**
+  - A project is plain on HQ's word alone (ADR 0002): HQ's structure is read and holds no record of
+    it of any kind, no press of it either — running elsewhere or stopped — and the official HQ's
+    anchor does not name it. Its tags and its age decide nothing. Set up Mate is offered where HQ
+    offers writing its Mate's record (`create_mate_record`, streamed beside each project it holds
+    nowhere), never on a client's own reading of the person's roles.
+  - Set up Mate asks first, in the app's own dialog: what it adds, and that the project's services
+    restart once while it is closed off.
+  - Declaring a Mate adds `mate` beside the project's tags and drops only old `mate:*` ones; a rename
+    puts every tag back.
+  - **Supersedes:** "limit Mate setup to declared development environments", and "a project carries
+    only the mate tag" (`project-metadata.md`).
+  - _Why:_ an owner could no longer bring Mate into an existing project, and declaring or renaming a
+    Mate wiped the project's own tags.
+- **2026-10-04** — **Finish setup takes an old Mate key's sibling grants off; HQ says which keys still
+  reach further.**
+  - HQ records a key wider than its project at enrollment and on its credential (`keyWider`, HQ
+    migration 0042). The Mate then offers Finish setup to whoever HQ offers its record
+    (`edit_mate_record`). HQ tells them that key's id, and the harden sets the key to its own
+    project alone by it (`planMateKey`, `foundBy: "id"`).
+  - The client keeps no path for a Core older than that: the fleet's Cores are updated first, as
+    an admin updates any Core from HQ's card (`ZeropsHqUpdate`).
+  - `planMateKey` writes a Mate's key as exactly its own project at `BASIC_USER`. Found by its name,
+    a key is a Mate's only with a single `ADMIN` or `BASIC_USER` grant on its own project and nothing
+    else (`mateKeyReach`, shared by HQ and the client); any other `zcp-*` key is never narrowed, and a
+    press mints a new one beside it (2026-10-05, the HQ-answers pass).
+  - No load reads a token list.
+  - **Supersedes in part:** the 2026-10-02 row's "taken off by hand", and the 2026-10-03 row's "a
+    Mate HQ holds is never hardened", for widened keys only.
+  - _Why:_ ADR 0003 (the owner). A `READ_ONLY` grant an earlier client left on production reads its
+    secrets for anyone with the Mate's terminal.
+- **2026-10-04** — **HQ's data reaches the client through its stream, and nothing is read while the
+  tab is hidden.**
+  - HQ's standing comes from the stream; its 30 s `/health` poll is gone. The stream also carries the
+    recipe's Mate tier and HQ's own verdict on whether it could check Zerops.
+  - `/health` is read only after a stream attempt failed, to say why: HQ down, a standby or an HQ
+    that is not the official one, or one that cannot check Zerops right now. A stream that names no
+    Core is an older Core: no health read stands in for it, and HQ's card, opened by an admin, reads
+    the running Core from Zerops (its `hq` service's active app version) and offers the update on it
+    (`ZeropsHqUpdate`).
+  - While the stream is down, Add a Mate and the creation forms say the tier it said last and import
+    none until it serves again; nothing reads the tier beside the stream.
+  - A Mate's setup, and the day's re-read of a no-HQ verdict, wait for a shown tab.
+  - _Why:_ the owner's rules: Zerops and HQ data through the store, never a fetch in a hook, no idle
+    requests.
+- **2026-10-04** — **Transient failures recover by themselves again, beside Try again** (the
+  2026-10-05 rule below: "Automatic recovery is wanted; a clock standing in for an answer is not").
+  - Covered: session checks, data cells, access grants, hydration (Retry-After on a 429), per-interest
+    recovery, and metadata back-offs.
+  - Retries are bounded in rate, not in count: each climbs one of the ladders `retryPolicy.ts` names
+    and stays at its cap. They run only for what is held and pause while the tab is hidden.
+  - A definitive refusal ends them with its manual again: a cell's decode, an access check's
+    malformed answer, a 403/404.
+  - **Supersedes:** "failed reads stay failed until the visible manual action"
+    (`platform-data-architecture.md`).
+  - _Why:_ a laptop waking before its Wi-Fi, or a 429, left pages failed until a click.
+- **2026-10-04** — **Superseded 2026-10-05: nothing is carried over. A project's tags decide nothing
+  (ADR 0002), and HQ already holds the signers its tag port moved off the tags, which zcp seeds an
+  absent record from.** **An old Mate's signer is carried into its sign-in record once** (D6
+  unchanged).
+  - At the first start of this build, a login held then, and never named in `~/.mate/signed-in.json`,
+    is recorded for the one person its `mate:signer:` tag or HQ's saved signer names.
+  - It closes once both sources answer, and at the latest on the third start. A credential that
+    appears later is never carried.
+  - A credential already present at the update is taken to be the one its tag was written for: 0.12.3
+    trusted the tag the same way.
+  - _Why:_ 0.13 dropped the tag fallback, so a login made before the record began (v0.11.79) was
+    refused for everyone, its signer too.
+- **2026-10-04** — **A change's conversation holds its comments' room while it reads them** (HQ counts a
+  change's comments), and **a stage HQ holds for a deploy key says that, never "coming up"**.
+  - _Why:_ layout shift; and "coming up" for a stage nothing will bring up.
+- **2026-10-04** — **Crew work carries on after a restart, from the stage it recorded.**
+  - 0.13's operations persist their stage before each side effect. At boot the engine carries each
+    interrupted one on from that stage:
+    - a turn continues in its copy as its starter;
+    - a checkpoint commits again;
+    - a check merges and checks again;
+    - a landing records the outcome its trailer already shows, or lands again as the person who
+      pressed Land.
+  - A waiting Allow goes out again at boot. A refused task starts again once a sign-in changes. In a
+    run, a failed check goes back to its crewmate.
+  - The boot sweeps the crew copies: a dirty copy is saved as a WIP commit, said in its crewmate's
+    chat with its files, branch and commit (no side effect nobody sees, 2026-10-05), and a missing
+    one comes back only when its branch, landings and tip prove nothing is lost.
+  - Only an ambiguous resume waits for a person, with its reason: a rebuild a person chose, a task
+    changed since, a resume admission refuses.
+  - **Supersedes:** "crew work interrupted by a restart is shown and continued by a person, never
+    repaired at boot".
+  - _Why:_ a Mate update mid-run paused every crew until someone pressed Continue; the recorded
+    stages make the resume safe.
 - **2026-10-05** — **Automatic recovery is wanted; a clock standing in for an answer is not.**
   - **Wanted:** recovery with a clear logic — renewing a session, reconnecting, re-subscribing,
     re-reading, re-running an idempotent step after a transient failure (network, timeout, 5xx, the

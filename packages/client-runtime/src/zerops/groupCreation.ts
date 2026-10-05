@@ -114,7 +114,8 @@ export function finishMateSetupVerb(input: {
   readonly pressStopped: boolean;
   /**
    * Its container carries the press's marker (`MATE_SETUP_RUNTIMES`) and HQ does not know its
-   * project closed off: a press interrupted before its close-off, whose runtimes zcp holds back.
+   * project closed off — or HQ says it is not, and the marker is not read or cannot be: a press
+   * interrupted before its close-off, whose runtimes zcp holds back (`interruptedPresses`).
    */
   readonly closedOffMissing: boolean;
   /**
@@ -139,7 +140,18 @@ export function finishMateSetupVerb(input: {
   readonly recordMissing: boolean;
   /** HQ's rule lets the viewer create its record (`create_mate_record`). */
   readonly mayCreateRecord: boolean;
+  /**
+   * HQ says its key reads other projects too (`keyWider`, ADR 0003's fallout): *Finish setup*'s
+   * harden takes those grants off, by the key's id HQ tells (`mayEditRecord`).
+   */
+  readonly keyWider?: boolean;
+  /**
+   * HQ offers the viewer editing the Mate's record (`edit_mate_record`): HQ tells them its key's
+   * id, which the harden narrows.
+   */
+  readonly mayEditRecord?: boolean;
 }): string | undefined {
+  if (input.keyWider === true && input.mayEditRecord === true) return FINISH_MATE_SETUP_VERB;
   // Its record, and its birth after it, are whoever HQ's rule lets create the record.
   if (
     input.recordMissing &&

@@ -10,7 +10,6 @@ import {
   unmountTabs,
   type MountedTab,
 } from "./__fixtures__/harnessTabs";
-import { buttonsLabelled, press } from "./__fixtures__/testDom";
 
 preloadTabs(
   () => import("./__fixtures__/accountProduct"),
@@ -97,25 +96,22 @@ describe("ZeropsInventoryProvider first admission", () => {
 
   // An organization's project list failing fails the whole round, today and
   // after one project's failure stops failing it (DESIGN G1).
-  it("shows a failed navigation read with a manual retry while the product stays mounted", async () => {
+  it("reads a failed navigation list again by itself, while the product stays mounted and silent", async () => {
     const harness = signedInHarness();
     const listing = harness.rest.hold("GET /client/org-1/project");
     const { mounting, accessAtMount } = mountProduct(harness);
     const tab = await mounting;
     expect(listing.waiting()).toBe(1);
+    const lists = () =>
+      harness.rest.requests().filter(({ route }) => route === "GET /client/org-1/project").length;
 
     await tab.run(() => listing.fail(503));
 
-    expect(tab.text()).toContain("Zerops isn't answering.");
+    // A failure the runtime retries on its own says nothing before it has lasted.
     expect(tab.text()).toContain(CHILD);
-    const retries = buttonsLabelled(tab.container(), "Try now");
-    expect(retries).toHaveLength(1);
-
-    await tab.run(() => press(retries[0]!));
-    // The retry is an intent: it reaches the grant when its window closes (DESIGN §6.2).
-    await tab.run(
-      () => new Promise<void>((resolve) => setTimeout(resolve, INVALIDATION_COALESCE_MS)),
-    );
+    expect(tab.text()).not.toContain("Zerops isn't answering.");
+    await vi.waitFor(() => expect(lists()).toBe(2), { timeout: 5_000 });
+    await settle();
 
     expect(tab.text()).toContain(CHILD);
     expect(tab.text()).not.toContain("Zerops isn't answering.");

@@ -28,8 +28,10 @@ import {
 } from "@t3tools/client-runtime/zerops/containerHealth";
 import { zeropsThrowawayPlatform } from "@t3tools/client-runtime/zerops/doorThrowaway";
 import {
+  closeOffWordOf,
   REGISTRATION_RECORDS_KEY,
   systemExchangeClock,
+  type CloseOffWord,
   type LinkPhase,
 } from "@t3tools/client-runtime/zerops/environments";
 import {
@@ -56,7 +58,14 @@ import { environmentCatalog } from "~/connection/catalog";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { randomUUID } from "~/lib/utils";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
-import { hqMatesAtom, hqMatesViewAtom, hqOfficialAtom, hqProjectOf } from "~/state/zerops";
+import {
+  hqMatesAtom,
+  hqMatesViewAtom,
+  hqOfficialAtom,
+  hqProjectOf,
+  hqStructureAtom,
+  type HqStructureView,
+} from "~/state/zerops";
 
 import { accountLocalStorage, accountStorageKey, captureAccountLifetime } from "./accountLifetime";
 import {
@@ -66,7 +75,7 @@ import {
   keptSessions,
 } from "./keptSessions";
 import { mateDescriptors } from "./mateDescriptors";
-import { pressesInFlight } from "./matePress";
+import { closeOffPendingProjects, pressesInFlight } from "./matePress";
 
 // ── The door, through the connection runtime ─────────────────────────────────────────────────
 
@@ -328,6 +337,27 @@ export function hqOrganizationPort(
 }
 
 /**
+ * HQ's word on which Mates' projects are closed off, from its structure as this tab holds it —
+ * HQ's answer now, or what was last known of it (`closeOffWordOf`). None while nothing is known.
+ */
+export function closeOffPort(
+  registry: AtomRegistry.AtomRegistry,
+): AccountEnvironmentPorts["closeOff"] {
+  let last: { readonly view: HqStructureView; readonly word: CloseOffWord } | null = null;
+  return {
+    read: () => {
+      const view = registry.get(hqStructureAtom);
+      if (view === null || view.structure === null) return null;
+      if (last?.view !== view) {
+        last = { view, word: closeOffWordOf(view.organizationId, view.structure, view.current) };
+      }
+      return last.word;
+    },
+    subscribe: (listener) => registry.subscribe(hqStructureAtom, listener),
+  };
+}
+
+/**
  * The catalog's environments, and every publication of each one's link: a repeated rejection is
  * counted by the runtime, never coalesced here.
  */
@@ -549,5 +579,9 @@ export function webEnvironmentPorts(input: {
     // A Mate HQ holds online is up: its container is never probed.
     online: onlinePort(registry),
     hqOrganization: hqOrganizationPort(registry),
+    // Nobody is let into a Mate before its project is closed off: HQ's word, and where HQ says
+    // nothing, what this browser's own presses know.
+    closeOff: closeOffPort(registry),
+    closeOffPending: closeOffPendingProjects,
   };
 }

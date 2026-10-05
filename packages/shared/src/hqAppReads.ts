@@ -1,6 +1,6 @@
 /**
  * HQ-owned application facts needed at load: the same bounded releases, repository heads and
- * stage/production recipe declarations as HQ's detail reads. Zerops owns deployments and services;
+ * recipe declarations — the Mate's, the stage's and the production's tier — as HQ's detail reads. Zerops owns deployments and services;
  * none are mirrored here. The structure snapshot carries these by readable application, then a
  * release-revision message replaces just the moved app. No bootstrap requests or old-HQ fallback.
  */
@@ -13,7 +13,12 @@ import { Release } from "./hqRelease.ts";
 export const AppReadValue = Schema.Struct({
   releases: Schema.Array(Release),
   repos: Schema.Array(RepoListEntry),
-  recipes: Schema.Struct({ stage: RecipeTierResponse, production: RecipeTierResponse }),
+  recipes: Schema.Struct({
+    /** Absent from an HQ that predates it, or could not read it: not known, never "no recipe". */
+    mate: Schema.optionalKey(RecipeTierResponse),
+    stage: RecipeTierResponse,
+    production: RecipeTierResponse,
+  }),
 });
 export type AppReadValue = typeof AppReadValue.Type;
 

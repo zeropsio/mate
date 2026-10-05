@@ -300,27 +300,32 @@ export function stopServes(listed: Pick<ListedStop, "stop" | "routes">): boolean
   return stopDeployed(listed.stop) === true && listed.routes > 0;
 }
 
-const STEP_WORDS: Record<ComingStep, string> = {
+const STEP_WORDS: Record<Exclude<ComingStep, "awaiting-key">, string> = {
   project: "making the project",
   database: "adding the database",
   app: "adding the app",
   build: "building the app",
   "awaiting-deploy": "awaiting a first deploy",
   "deploy-on-its-way": "first deploy on its way",
-  "awaiting-key": "awaits a deploy key",
   address: "turning its address on",
 };
 
+/** What a stage HQ holds for a deploy key says of itself: nothing comes up until one is minted. */
+const awaitsKey = (subject: string) => `${subject} awaits a deploy key`;
+
 /**
  * The line an environment coming up says, about `subject` ("Stage", a stage's own name,
- * "Production"): "Stage coming up · building the app". Each fits the menu’s narrowest line, 241 px
- * of words.
+ * "Production"): "Stage coming up · building the app", or — held, so nothing comes up until
+ * somebody mints a key — its own fact, "Stage awaits a deploy key" (630d8f1bb's rule for main's
+ * runner). Each fits the menu’s narrowest line, 241 px of words.
  */
 export function comingLine(
   subject: string,
   coming: Extract<StopComing, { readonly kind: "coming" }>,
-): { readonly fact: string; readonly rest: string } {
-  return { fact: `${subject} coming up`, rest: STEP_WORDS[coming.step] };
+): { readonly fact: string; readonly rest: string | undefined } {
+  return coming.step === "awaiting-key"
+    ? { fact: awaitsKey(subject), rest: undefined }
+    : { fact: `${subject} coming up`, rest: STEP_WORDS[coming.step] };
 }
 
 /**
@@ -348,8 +353,8 @@ export const FIRST_DEPLOY_FAILED = "First deploy failed";
 /** A stage's first deploy on its way, where its line would say nothing is deployed. */
 export const FIRST_DEPLOY_ON_ITS_WAY = "First deploy on its way";
 
-/** A stage's first deploy held: HQ holds no deploy key that works for it. */
-const FIRST_DEPLOY_AWAITS_KEY = "Awaiting a deploy key";
+/** A stage's first deploy held: HQ holds no deploy key that works for it — the menu's words. */
+const FIRST_DEPLOY_AWAITS_KEY = awaitsKey("Stage");
 
 /**
  * What a stage that runs nothing says of its first deploy, where its line says what it runs:

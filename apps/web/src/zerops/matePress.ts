@@ -116,6 +116,11 @@ export interface MatePress {
    */
   readonly keyNotLowered?: string;
   readonly state: MatePressState;
+  /**
+   * A stopped Finish setup on a Mate with its container has said so (`STOPPED_SHOWN_MS`): its row is
+   * the Mate's again, the press kept for its plan (`resumeSetup`).
+   */
+  readonly stopSaid?: true;
   /** This account lifetime's stopped plan, shared by Try again and Finish setup. */
   readonly resumeSetup?: (
     heldLock: boolean,
@@ -184,28 +189,45 @@ function stopStands(press: MatePress): boolean {
 const stoppedWithContainer = (press: MatePress): boolean =>
   press.finishing === true && press.state.kind === "failed" && !stopStands(press);
 
-/** Keep a stopped press's reason and receipts until its creator explicitly continues it. */
+/** How long a Mate's row says its Finish setup stopped before the row is the Mate's again. */
+export const STOPPED_SHOWN_MS = 10_000;
+
+/**
+ * Keep a stopped press's reason and receipts until its creator explicitly continues it — nothing
+ * tries it again on its own (76a0c48f8). A Finish setup that stopped on a Mate with its container
+ * — one it had, or one it brought before a later step stopped — is said, then its row is the
+ * Mate's again (restores 6027014ee, 3d194e2e7): nothing of that Mate waits on the press, and its
+ * menu offers Finish setup again. One that stopped bringing its container stands, for its own
+ * view's *Try again*.
+ */
 export function settlePress(
   projectId: string,
   state: MatePressState,
   resumeSetup?: MatePress["resumeSetup"],
 ): void {
+  let stopped: MatePress | undefined;
   usePressStore.setState((store) => {
     const press = store.presses[projectId];
     if (press === undefined) return store;
-    const { resumeSetup: previousResume, ...held } = press;
+    const { resumeSetup: previousResume, stopSaid: _said, ...held } = press;
     const continuation = resumeSetup ?? (state.kind === "pressed" ? undefined : previousResume);
-    return {
-      presses: {
-        ...store.presses,
-        [projectId]: {
-          ...held,
-          state,
-          ...(continuation === undefined ? {} : { resumeSetup: continuation }),
-        },
-      },
+    const settled: MatePress = {
+      ...held,
+      state,
+      ...(continuation === undefined ? {} : { resumeSetup: continuation }),
     };
+    if (stoppedWithContainer(settled)) stopped = settled;
+    return { presses: { ...store.presses, [projectId]: settled } };
   });
+  if (stopped === undefined) return;
+  const said = stopped;
+  setTimeout(() => {
+    usePressStore.setState((store) =>
+      store.presses[projectId] === said
+        ? { presses: { ...store.presses, [projectId]: { ...said, stopSaid: true } } }
+        : store,
+    );
+  }, STOPPED_SHOWN_MS);
 }
 
 /** A press moved on: each step's state, kept on a press this tab holds. */
@@ -540,13 +562,72 @@ export function finishSetupRunning(press: MatePress | undefined): boolean {
   return press?.finishing === true && press.state.kind === "pressing";
 }
 
+type CloseOffHold = "open" | "checking" | "awaiting-hq";
+
+/**
+ * Whether a Mate's row says the close-off gate holds it: its project is known not closed off, and
+ * no Finish setup runs on it in this tab — whose own words say that. Its other holds are said
+ * where it is opened (`closeOffHoldOf`): a row it is not opened from waits on nothing.
+ */
+export function closeOffOpenOf(
+  holds: ReadonlyMap<string, CloseOffHold>,
+  projectId: string,
+  press: MatePress | undefined,
+): boolean {
+  return holds.get(projectId) === "open" && !finishSetupRunning(press);
+}
+
+/**
+ * Why the close-off gate holds a Mate, as its own view says it (`mateComing`'s `closeOffHold`) —
+ * never silent; none while a Finish setup runs on it in this tab, whose own words say that.
+ */
+export function closeOffHoldOf(
+  holds: ReadonlyMap<string, CloseOffHold>,
+  projectId: string,
+  press: MatePress | undefined,
+): CloseOffHold | undefined {
+  return finishSetupRunning(press) ? undefined : holds.get(projectId);
+}
+
+/**
+ * The projects this browser knows are not closed off yet (`closeOffPending`): a press here that
+ * brings a Mate and runs, or stopped, with its close-off not done. Where HQ says nothing, only
+ * these are held (`closeOffGate`).
+ */
+export function closeOffPendingOf(presses: ReadonlyArray<MatePress>): ReadonlySet<string> {
+  return new Set(
+    presses.flatMap((press) => {
+      if (press.state.kind === "pressed") return [];
+      const closeOff = press.progress?.find((entry) => entry.step.kind === "close-off");
+      const pending =
+        closeOff === undefined
+          ? (press.progress ?? []).length === 0 && press.container
+          : closeOff.state !== "done";
+      return pending ? [press.projectId] : [];
+    }),
+  );
+}
+
+/** `closeOffPendingOf` over this tab's presses, as the account's environments port reads it. */
+export const closeOffPendingProjects = {
+  read: (): ReadonlySet<string> =>
+    closeOffPendingOf(Object.values(usePressStore.getState().presses)),
+  subscribe: (listener: () => void): (() => void) => usePressStore.subscribe(listener),
+};
+
 /**
  * *Finish setup* as its Mate's row says it, on every screen — its own view draws the steps only
  * while its container is missing: running, through for the moment its record stays
- * (`FINISHED_SHOWN_MS`), or stopped, when its menu offers it again. Undefined for any other press.
+ * (`FINISHED_SHOWN_MS`), or stopped, when its menu offers it again. Undefined for any other press,
+ * and for a stop already said (`STOPPED_SHOWN_MS`) or on a Mate that is `up`: its sign-in line,
+ * its dot and its last message are its own.
  */
-export function finishSetupRowLine(press: MatePress | undefined): string | undefined {
+export function finishSetupRowLine(
+  press: MatePress | undefined,
+  mate: { readonly up: boolean } = { up: false },
+): string | undefined {
   if (press?.finishing !== true) return undefined;
+  if (press.state.kind === "failed" && (press.stopSaid === true || mate.up)) return undefined;
   switch (press.state.kind) {
     case "pressing":
       return "Finishing setup…";
@@ -1116,6 +1197,12 @@ export async function finishMateSetup(input: {
    * dropped and its key moved off the project's variables (`hardenMate`) before the steps run.
    */
   readonly harden?: boolean;
+  /**
+   * HQ says the Mate's key reads other projects too (`keyWider`, ADR 0003's fallout): its harden
+   * matches that widened key on the token list — HQ never takes it for the Mate's key — takes its
+   * sibling grants off, and asks HQ to read the key again.
+   */
+  readonly keyWider?: boolean;
   /** Each step's state as the press moves, for a dialog that stays on it. */
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
   /** This browser's locks; the page's own where omitted. */
@@ -1161,6 +1248,21 @@ async function mateKeyAtHq(input: Parameters<typeof finishMateSetup>[0]): Promis
   } catch {
     // HQ not answering, or not telling this person: the harden matches the token list instead.
     return null;
+  }
+}
+
+/**
+ * HQ asked to read the Mate's widened key again (`recheckKey`); HQ not answering leaves its word as
+ * it was, and Finish setup offered again — nothing of the Mate's waits on it.
+ */
+async function recheckKeyAtHq(input: Parameters<typeof finishMateSetup>[0]): Promise<void> {
+  if (input.hq === null) return;
+  try {
+    await accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).recheckKey(
+      input.projectId,
+    );
+  } catch {
+    // Said again on its menu; the harden it asked for is done.
   }
 }
 
@@ -1251,11 +1353,12 @@ async function finishLocked(
     readObservedServices: async () => [],
     hold,
   });
-  if (resumeSetup !== undefined) return resumeSetup(true, input.onProgress, platform);
+  // The harden first, whatever plan this tab keeps: a kept plan never skips the key's lowering.
   if (input.harden === true) {
     let keyNotLowered: string | null = null;
-    // The key its Mate named to HQ by its id, hardened by it alone (audit K3); matched on the token
-    // list only where the Mate named none, or HQ does not say.
+    // The key its Mate named to HQ by its id, hardened by it alone (audit K3) — a widened one
+    // included, which its id lets the harden narrow; matched on the token list only where the Mate
+    // named none, or HQ does not say.
     const keyTokenId = await mateKeyAtHq(input);
     try {
       const hardened = await runZeropsCommand(
@@ -1272,7 +1375,10 @@ async function finishLocked(
     if (keyNotLowered !== null && input.isCurrent()) {
       noteKeyNotLowered(input.projectId, keyNotLowered);
     }
+    // HQ reads the key again, and stops saying it reads other projects once it does not.
+    if (input.keyWider === true && keyNotLowered === null) await recheckKeyAtHq(input);
   }
+  if (resumeSetup !== undefined) return resumeSetup(true, input.onProgress, platform);
   return runPress({
     organizationId: input.inputs.organizationId,
     steps,
@@ -1298,23 +1404,30 @@ interface MarkedCandidate {
 const closedOffAtHq = (candidate: MarkedCandidate): boolean =>
   candidate.project.hq?.mate?.closedOff === true;
 
+/** Whether HQ's record of the project's Mate says it is not closed off. */
+const openAtHq = (candidate: MarkedCandidate): boolean =>
+  candidate.project.hq?.mate?.closedOff === false;
+
 /**
  * The zcp services of the Mates whose press was interrupted before its close-off: the container
- * carries the press's marker (`MATE_SETUP_RUNTIMES`) while HQ does not know the project closed off.
- * A marker the store has not read, or could not, says nothing.
+ * carries the press's marker (`MATE_SETUP_RUNTIMES`) while HQ does not know the project closed off
+ * — or HQ says it is not, and the marker is not read yet or cannot be. The close-off gate holds
+ * that Mate (`closeOffGate` `checking`), and *Finish setup* is its way out: closing off a project
+ * already closed off only restarts its services once. A marker read absent (a Mate made before the
+ * press) is never one.
  */
 export function interruptedPresses(
   candidates: ReadonlyArray<MarkedCandidate>,
   markers: ReadonlyMap<string, boolean | "unknown" | "unread">,
 ): ReadonlySet<string> {
   return new Set(
-    candidates.flatMap((candidate) =>
-      candidate.service !== undefined &&
-      !closedOffAtHq(candidate) &&
-      markers.get(candidate.service.id) === true
+    candidates.flatMap((candidate) => {
+      if (candidate.service === undefined || closedOffAtHq(candidate)) return [];
+      const marker = markers.get(candidate.service.id);
+      return marker === true || (marker !== false && marker !== undefined && openAtHq(candidate))
         ? [candidate.service.id]
-        : [],
-    ),
+        : [];
+    }),
   );
 }
 

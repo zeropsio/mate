@@ -4,7 +4,7 @@
  * Rows are plain values; JSON columns are decoded here so no caller parses
  * SQL text. Every write publishes a {@link CrewStoreChange} so a snapshot
  * subscriber re-reads without polling. Git is the truth for lanes - a lane
- * row is what the engine last wrote and saw; boot reports unfinished operations.
+ * row is what the engine last wrote and saw, re-derived by the boot sweep.
  *
  * The git core reads and writes definition seq, crewmates, lanes, task
  * landings and dev-service crew ports; the crew tools Show-on-dev claims and
@@ -118,6 +118,15 @@ export interface CrewAssignmentRow {
   readonly landedCommit: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+/** A landing the integration branch must keep carrying (its `Crew-Assignment:` trailer). */
+export interface CrewLanding {
+  readonly crew: string;
+  readonly member: string;
+  readonly assignment: string;
+  readonly title: string;
+  readonly landedCommit: string;
 }
 
 export interface CrewHostPort {
@@ -305,6 +314,10 @@ export interface CrewStoreService {
     crew: string,
     member: string,
   ) => Effect.Effect<ReadonlyArray<string>, CrewStoreError>;
+  /** Every recorded landing made on `host` (its landing operation's host), oldest first. */
+  readonly landingsOnHost: (
+    host: string,
+  ) => Effect.Effect<ReadonlyArray<CrewLanding>, CrewStoreError>;
   readonly putHost: (row: CrewHostRow) => Effect.Effect<void, CrewStoreError>;
   readonly getHost: (host: string) => Effect.Effect<Option.Option<CrewHostRow>, CrewStoreError>;
   readonly getClaim: (host: string) => Effect.Effect<Option.Option<CrewClaimRow>, CrewStoreError>;
@@ -374,7 +387,17 @@ export interface CrewStoreService {
     crew: string,
     kinds: ReadonlyArray<string>,
   ) => Effect.Effect<ReadonlyArray<CrewLogEntry>, CrewStoreError>;
-  readonly putRun: (row: CrewRunRow) => Effect.Effect<void, CrewStoreError>;
+  /**
+   * Writes the run; with `from`, a move of its state, only while it still
+   * stands there — `false` when it moved meanwhile, so a decision made on a
+   * stale read never undoes a newer one — keeping the spend as it stands.
+   */
+  readonly putRun: (row: CrewRunRow, from?: CrewRunState) => Effect.Effect<boolean, CrewStoreError>;
+  /** Moves a run's clock and spend in place, never its state. */
+  readonly updateRunMeters: (
+    run: Pick<CrewRunRow, "crew" | "run">,
+    meters: { readonly wallMs?: number; readonly addSpentUsd?: number },
+  ) => Effect.Effect<void, CrewStoreError>;
   /** The crew's run started last, in any state. */
   readonly latestRun: (crew: string) => Effect.Effect<Option.Option<CrewRunRow>, CrewStoreError>;
   readonly changes: Stream.Stream<CrewStoreChange>;
@@ -929,6 +952,27 @@ export const make = Effect.gen(function* () {
         Effect.mapError(sqlError("assignmentsOf")),
         Effect.map((rows) => rows.map((row) => row.assignment)),
       ),
+    landingsOnHost: (host) =>
+      // Each landing on the host it landed on (its landing operation's), else its crewmate's.
+      sql<CrewLanding>`
+        SELECT
+          a.crew, a.member, a.assignment, a.title,
+          a.landed_commit AS "landedCommit"
+        FROM crew_assignment a
+        LEFT JOIN crew_member m ON m.crew = a.crew AND m.handle = a.member
+        WHERE a.landed_commit IS NOT NULL AND COALESCE(
+          (
+            SELECT json_extract(o.data, '$.targets.host') FROM crew_operation o
+            WHERE o.crew = a.crew
+              AND json_extract(o.data, '$.kind') = 'landing'
+              AND json_extract(o.data, '$.taskId') = a.assignment
+              AND json_extract(o.data, '$.targets.host') IS NOT NULL
+            ORDER BY o.rowid DESC LIMIT 1
+          ),
+          m.host
+        ) = ${host}
+        ORDER BY a.updated_at, a.number
+      `.pipe(Effect.mapError(sqlError("landingsOnHost"))),
     putHost: (row) =>
       Effect.gen(function* () {
         const crewPorts = yield* decode("putHost", encodeCrewPorts(row.crewPorts));
@@ -1185,13 +1229,13 @@ export const make = Effect.gen(function* () {
               ),
             ),
           ),
-    putRun: (row) =>
+    putRun: (row, from) =>
       Effect.gen(function* () {
         const options = yield* decode(
           "putRun",
           encodeRunOptions({ options: row.options, reasonDetail: row.reasonDetail }),
         );
-        yield* sql`
+        const written = yield* sql<{ readonly run: string }>`
           INSERT INTO crew_run (
             run, crew, started_by, budget_usd, spent_usd, options_json, state, reason,
             started_at, wall_ms, waiting_ms, finished_at
@@ -1202,15 +1246,29 @@ export const make = Effect.gen(function* () {
           )
           ON CONFLICT (run) DO UPDATE SET
             budget_usd = excluded.budget_usd,
-            spent_usd = excluded.spent_usd,
+            spent_usd = ${from === undefined ? sql`excluded.spent_usd` : sql`crew_run.spent_usd`},
             options_json = excluded.options_json,
             state = excluded.state,
             reason = excluded.reason,
             wall_ms = excluded.wall_ms,
             waiting_ms = excluded.waiting_ms,
             finished_at = excluded.finished_at
+          WHERE ${from === undefined ? sql`1` : sql`crew_run.state = ${from}`}
+          RETURNING run
         `.pipe(Effect.mapError(sqlError("putRun")));
-      }).pipe(Effect.andThen(publish({ crew: row.crew, table: "run" }))),
+        yield* publish({ crew: row.crew, table: "run" });
+        return written.length > 0;
+      }),
+    updateRunMeters: (run, meters) =>
+      sql`
+        UPDATE crew_run SET
+          wall_ms = COALESCE(${meters.wallMs ?? null}, wall_ms),
+          spent_usd = spent_usd + ${meters.addSpentUsd ?? 0}
+        WHERE run = ${run.run}
+      `.pipe(
+        Effect.mapError(sqlError("updateRunMeters")),
+        Effect.andThen(publish({ crew: run.crew, table: "run" })),
+      ),
     latestRun: (crew) =>
       sql<RunSqlRow>`
         SELECT

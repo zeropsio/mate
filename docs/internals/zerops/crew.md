@@ -55,7 +55,9 @@ or with the switch off, it builds the inert engine (the feed says `off` once, ev
 `unavailable`, no thread is a crewmate's, every crew tool answers that it is not available).
 Otherwise the live engine runs, and with no crew applied it opens no ssh session and installs
 nothing into the thread policy registries, so every thread's adapter options stay byte-identical.
-An applied crew, at boot or by Apply, installs the crew's thread policies for the engine's life. A refused dispatch waits for an explicit Try again.
+An applied crew, at boot or by Apply, installs the crew's thread policies and a watch on sign-ins
+for the engine's life: a queued task admission refused starts again once its crewmate's login's
+sign-in or signer changes (another login's change leaves it waiting), and one refused again keeps its _Can't start_ row with the new words.
 
 ## 3. Where the code lives
 
@@ -244,7 +246,8 @@ engine never deploys); the crewmate's app (`appRun`, `appStop`); person-started 
 `message`, `tell`, `taskCreate`, `taskEdit`, `discard`, `markFresh`, `taskRetry`; the WIP commit
 at every turn end; merge-in, check, `land` and `landNow` with landing refusals classified
 (`classifyLandingRefusal.ts`); `startFresh`; `briefSave` and `jobSave` with rotation;
-`removeCrewmate`; `deliverDraft`, `orphanScan`, `adopt`; explicit continuation after a Mate server restart.
+`removeCrewmate`; `deliverDraft`, `orphanScan`, `adopt`; work a Mate server restart interrupted
+carries on from its recorded stage, and only an ambiguous resume waits for a person's Continue.
 Every crew turn traces to a person's press.
 
 **Show on dev** (`crewClaims.ts`, `CrewRuntime.ts`): the crewmate asks with `crew_show_on_dev` (the
@@ -253,7 +256,8 @@ request times out after 10 minutes); the person answers with `claimGrant`, `clai
 — as request and grant at once. A grant pressed while the crewmate's turn runs waits for that turn's
 end, then sends the claim turn as the person who pressed it, and keeps the request from timing out;
 a deny or any other move of the claim drops it. The waiting grant is `grantWaiting` on the wire —
-the crewmate's row reads "Shows its work at Fen's dev address once its current step ends." — and the retained request after a restart. Show on dev restarts the dev server zcp
+the crewmate's row reads "Shows its work at Fen's dev address once its current step ends." — and a grant whose turn a restart ended goes out once the server accepts commands, before the
+crewmate's interrupted work carries on. Show on dev restarts the dev server zcp
 started; with none, the refusal says to ask the Mate to start it, or to open the crewmate's own app
 when it has a crew port.
 
@@ -308,8 +312,9 @@ on holds every task after it.
 A turn that leaves its task `working` ends the task's attempt — `crew_attempt.ending` is `budget`,
 `run-paused`, `run-stopped`, `interrupted`, `failed` or `no-report`, with its words in
 `ending_detail` and `ended_at` — and the attempt's next turn opens it again; a rework's new
-attempt has a row of its own. At boot an attempt a turn left open without the engine seeing it end
-ends interrupted at restart, with its dirty files untouched and its last confirmed operation stage visible immediately. The five minutes are one rule (`UNATTENDED_MS`): a `stalled` row
+attempt has a row of its own. At boot an attempt whose turn the restart killed ends `interrupted`
+and carries on in its copy; one a turn left open without the engine seeing it end ends
+`no-report` when the task last moved. The five minutes are one rule (`UNATTENDED_MS`): a `stalled` row
 counts from the attempt's end, a `review-wait` row from the task's move into review, and the feed
 publishes again when they pass.
 
@@ -424,16 +429,62 @@ changed since the row was read refuses the action. New stints record their copy 
 `crew_operation` owns dispatch, checkpoint, merge/check, landing and selected copy rebuilds.
 An identity, actor, exact thread command or copy/ref target, and pending stage are durable before
 that stage runs. Its receipt confirms the stage afterward; the handle remains running until the
-consumer has recorded the task outcome. A fatal restart marks running handles interrupted. Boot
-reads copy status and known landing trailers, pauses a running run, and does not commit files,
-recreate copies, delete landing anchors, merge, check, dispatch, or advance queues.
+consumer has recorded the task outcome. A restart marks running handles interrupted — after a crash, or a graceful shutdown,
+which leaves a handle in flight running with its stage confirmed — and
+reads copy status and known landing trailers; a running run stays running, its clock counting
+again once its crew works. Once the server accepts commands, the engine first adopts what an
+interrupted handle finished on the service after the Mate stopped — a lane commit carrying its
+`Crew-Operation:` trailer, a dispatch's reset to your tree, a landing your branch took — as the
+copy's recorded tip, then carries each handle on as its crewmate is free, by the task's state, as
+Continue would (`resumeAfterRestart` in `crewContinue.ts`), never forcing a rework: a died turn
+continues in the attempt it stood in, as the run's starter or the task's creator; a turn-end save
+is redone with no new turn outside a run; a merging, checking or landing task merges and checks
+again, and a landing lands as the person who pressed Land or records an outcome its trailer
+already shows; a blocked report waits for its answer, and a ready or review task stays as it is.
+A run the person paused or stopped gets no turn: Resume carries its task on. Only an ambiguous
+resume waits for a person: a rebuild a person chose, a person's own turn in a conversation (the
+lead's wake in a running run is woken again on its spacing), a changed task, or a resume admission
+refuses, whose row says why. A copy save outside any task is redone, or dropped by Drop it. A
+writer's conversation that records no copy at all gets its crew copy back.
 
-Interrupted rows offer Continue and, before landing, Drop it. Continue operates on the selected
+A press, once accepted, runs in the engine's own scope (`CrewCore.inEngine`): a browser that
+closes or reloads interrupts only its wait, never the landing, check or Continue it started, and
+a handle is left running for the next boot only when the engine itself shuts down.
+
+Rows still interrupted offer Continue and, before landing, Drop it. Continue operates on the selected
 handle under the crewmate's lock, rejects a changed attempt or newer handle, and records a new
 operation for its side effects. An already landed receipt only records the task's outcome.
-Drop it ends the task's records while leaving its dirty files and HEAD in place. Missing copies
-offer Rebuild crew copy; that selected rebuild refuses a missing or changed saved branch and never
-resets an existing directory. Infrastructure and context failures likewise wait for Continue.
+Drop it ends the task's records while leaving its dirty files and HEAD in place. Before any of
+that, the boot sweeps each writer's service from git (`CrewWorkspace.sweep`): a lane gitdir made
+relative, a dirty lane's work saved as a WIP commit and said in its crewmate's chat — a `swept`
+seam line naming its files, its branch and the commit — an unreadable ref or a tip the engine did
+not write parked. A copy whose task passed its check (`ready`, `review`, `landing`, `waiting-on-you`)
+is never committed, at boot or at a turn's end: a tracked edit on it stops the task, "its copy has
+edits made after its check", and stays where it is; untracked files are neither edits nor landed. A
+landing that went through is landed, whatever its copy holds. A check judges the committed tree:
+the copy's untracked files are set aside while it runs and put back after (`CrewChecks`), so none
+can make it pass for a tree that lands without them. A passed check records the tip it ran on, and Land
+refuses any other tip ("its copy moved after its check"), so nothing unchecked lands. A copy missing at boot or after a self-deploy comes back from its branch
+(`CrewWorkspace.recover`) only where its branch, every recorded landing's trailer and its saved
+tip remain, so no work is lost; otherwise the loss is named and the copy offers Rebuild crew copy, a selected rebuild that refuses a missing or changed saved branch and
+never resets an existing directory. Nothing leaves a host frozen with no way out: a self-deploy's
+end recovers its copies while holding them and then thaws the host, whatever the recovery finds;
+boot asks the platform whether a deploy the restart cut off still runs (`crewDeployState.ts`,
+through crew's `CrewPlatformProcesses` port) and keeps its host frozen, with words, its crewmates'
+interrupted work neither adopted nor resumed, until the platform says it ended; then the work is
+adopted, recovered, swept and carried on. It asks again from 15 s, doubling to 5 min, moves the
+feed only when the answer changes, and stops once no copy on the host is frozen. After 30 min of
+answers it cannot read, a `deploy-unreadable` row offers the person _Thaw it_ (`thawHost`); it
+never thaws on a guess.
+While the boot sweep or a deploy's recovery holds a crewmate's copy (`CrewCore.holdingCopies`), a
+person's press waits its turn, up to two minutes, and the crewmate's turn end queues behind it
+instead of holding up the crew's events. Each landing is verified on the host it landed on. A turn the provider broke off (`api_error`, `model_error`,
+`turn_setup_failed`) saves its work in the turn's WIP commit and queues its task again once, the
+second time it stops; an overflowed context (`prompt_too_long`, `rapid_refill_breaker`) saves its
+work and rotates at once into a fresh conversation, which a running run carries the task on in, at
+most twice an attempt (`crewTurns.endedHow`).
 Checks run once; a killed or timed-out command is a visible ending. A failed operation holds the
-crewmate's queue until a person acts. Desktop uses these same web controls; mobile currently has
+crewmate's queue until a person acts; a check that ran and failed, or a merge of your tree that
+stopped on conflicts, is not one — its verdict sends the task back as a counted rework, which a
+running run hands to its crewmate at once. Desktop uses these same web controls; mobile currently has
 no crew controls and accepts the optional operation and assignment detail fields in the contract.

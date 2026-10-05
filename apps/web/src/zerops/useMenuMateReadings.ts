@@ -21,9 +21,10 @@ import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { arrivalAwaitsAnswer, arrivalLinkHolds, mateComing, type MateComing } from "./mateComing";
 import { useNewMate } from "./newMate";
 import { useZeropsCreationVerdicts } from "./useZeropsCreationVerdicts";
+import { useCloseOffHolds } from "./accountEnvironments";
 import { useZeropsFirstBuilds } from "./useZeropsFirstBuilds";
 import { usePressesElsewhere } from "./usePressesElsewhere";
-import { pressComingInput, useMatePresses } from "./matePress";
+import { closeOffOpenOf, pressComingInput, useMatePresses } from "./matePress";
 
 /**
  * What a Mate's row says (`useZeropsAgentActivity`), found by its project: through HQ's word of it,
@@ -131,6 +132,7 @@ export function useMateComingOf(
   const presses = useMatePresses();
   const creations = useNewMate((state) => state.creations);
   const { mateLink } = useEnvironmentLinks();
+  const closeOffHolds = useCloseOffHolds();
   const verdicts = useZeropsCreationVerdicts(
     candidates,
     presses.find((press) => press.container && press.state.kind === "pressing")?.projectId ?? null,
@@ -142,6 +144,14 @@ export function useMateComingOf(
       const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
       return mateComing({
         press,
+        // A row says only the hold it offers Finish setup for; the others, its own view.
+        closeOffHold: closeOffOpenOf(
+          closeOffHolds,
+          candidate.project.id,
+          presses.find((entry) => entry.projectId === candidate.project.id),
+        )
+          ? "open"
+          : undefined,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
         setUpFailed: setUpFailed ?? creations[candidate.project.id]?.failed,
         nowMs: Date.now(),
@@ -156,6 +166,6 @@ export function useMateComingOf(
         pressElsewhere: pressOf(candidate.project.id),
       });
     },
-    [presses, creations, firstBuilds, mateLink, pressOf, verdicts],
+    [presses, creations, firstBuilds, mateLink, pressOf, verdicts, closeOffHolds],
   );
 }

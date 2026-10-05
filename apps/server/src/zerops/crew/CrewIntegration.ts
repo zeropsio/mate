@@ -59,7 +59,7 @@ import {
   type CrewLaneRow,
   type CrewStoreError,
 } from "./CrewStore.ts";
-import { landingTrailers } from "./crewTrailers.ts";
+import { landingTrailers, operationMessage } from "./crewTrailers.ts";
 import { EXCLUDE_LINE, type LaneKey } from "./CrewWorkspace.ts";
 
 export type CrewIntegrationError =
@@ -115,6 +115,8 @@ export interface LandInput extends LaneKey {
   readonly assignment: string;
   /** The task's title; its first line is the landing's subject. */
   readonly title: string;
+  /** The copy's tip its check passed on: any other tip is refused `unchecked`. */
+  readonly checkedTip?: string | undefined;
 }
 
 export type LandOutcome =
@@ -124,6 +126,8 @@ export type LandOutcome =
   | { readonly _tag: "nothing" }
   | { readonly _tag: "head-moved"; readonly head: string }
   | { readonly _tag: "refused"; readonly refusal: LandingRefusal }
+  /** The copy is not the tree its check passed on. */
+  | { readonly _tag: "unchecked"; readonly tip: string }
   | LaneNotReady;
 
 export interface RefChange {
@@ -137,7 +141,11 @@ export interface CrewIntegrationService {
     host: string,
     assignment: string,
   ) => Effect.Effect<string | null, CrewIntegrationError>;
-  readonly mergeIn: (key: LaneKey) => Effect.Effect<MergeOutcome, CrewIntegrationError>;
+  /** `operation` names the merge commit's `Crew-Operation:` trailer. */
+  readonly mergeIn: (
+    key: LaneKey,
+    operation?: string,
+  ) => Effect.Effect<MergeOutcome, CrewIntegrationError>;
   readonly land: (input: LandInput) => Effect.Effect<LandOutcome, CrewIntegrationError>;
   /** Dispatch: record the lane's policed refs. */
   readonly snapshotRefs: (
@@ -176,12 +184,15 @@ export const make = Effect.gen(function* () {
   const run = (host: string, operation: string, body: string) =>
     runFields(shell, host, operation, body, INTEGRATION_SCRIPT_TIMEOUT);
 
-  /** Refuses a frozen, missing, dirty or foreign-tipped lane before any write. */
-  const laneReady = (row: CrewLaneRow): string =>
+  /**
+   * Refuses a frozen, missing, dirty or foreign-tipped lane before any write.
+   * A merge and a landing take the committed tree alone, so `tracked` ignores untracked files.
+   */
+  const laneReady = (row: CrewLaneRow, tracked = false): string =>
     `[ -d ${shellQuote(laneDirectory(row.lane))} ] || { printf 'status\\tlane-missing\\n'; exit 0; }\n` +
     `tip=$(${git({ lane: row.lane }, ["rev-parse", "HEAD"])}) || exit 1\n` +
     `[ "$tip" = ${shellQuote(row.recordedTip ?? "")} ] || { printf 'status\\tunknown-tip\\ntip\\t%s\\n' "$tip"; exit 0; }\n` +
-    `[ -z "$(${git({ lane: row.lane }, ["status", "--porcelain"])})" ] || { printf 'status\\tuncommitted\\n'; exit 0; }\n`;
+    `[ -z "$(${git({ lane: row.lane }, ["status", "--porcelain", ...(tracked ? ["--untracked-files=no"] : [])])})" ] || { printf 'status\\tuncommitted\\n'; exit 0; }\n`;
 
   const notReady = (
     status: string | undefined,
@@ -195,7 +206,7 @@ export const make = Effect.gen(function* () {
           ? { _tag: "unknown-tip", tip: field(out, "tip") ?? "" }
           : undefined;
 
-  const mergeIn: CrewIntegrationService["mergeIn"] = (key) =>
+  const mergeIn: CrewIntegrationService["mergeIn"] = (key, operation) =>
     Effect.gen(function* () {
       const row = yield* store.requireLane(key.crew, key.handle);
       if (row.frozenSince !== null) return { _tag: "frozen" } satisfies MergeOutcome;
@@ -203,12 +214,12 @@ export const make = Effect.gen(function* () {
       const out = yield* run(
         row.host,
         "mergeIn",
-        laneReady(row) +
+        laneReady(row, true) +
           `H=$(${git("integration", ["rev-parse", "--verify", "HEAD^{commit}"])}) || exit 1\n` +
           `printf 'head\\t%s\\n' "$H"\n` +
           `${lg(["merge-base", H, "HEAD"])} >/dev/null || { printf 'status\\tunrelated\\n'; exit 0; }\n` +
           `if ${lg(["merge-base", "--is-ancestor", H, "HEAD"])}; then printf 'status\\tcurrent\\n'; exit 0; fi\n` +
-          `if ${lg(["merge", "-q", "--no-edit", "--no-verify", H])} >/dev/null 2>&1; then\n` +
+          `if ${lg(["merge", "-q", "--no-verify", "-m", operationMessage("Merge your tree", operation), H])} >/dev/null 2>&1; then\n` +
           `  printf 'status\\tmerged\\ntip\\t%s\\n' "$(${lg(["rev-parse", "HEAD"])})"\n` +
           `  ${lg(["diff", "--name-only", shellVariable("tip"), "HEAD", "--", ...LOCKFILES.map((name) => `:(glob)**/${name}`)])} | sed 's/^/lockfile\t/'\n` +
           `elif ${lg(["rev-parse", "-q", "--verify", "MERGE_HEAD"])} >/dev/null; then\n` +
@@ -271,7 +282,10 @@ export const make = Effect.gen(function* () {
           `H=$(${git("integration", ["rev-parse", "--verify", "HEAD^{commit}"])}) || exit 1\n` +
           `landed=$(${findLanding(input.assignment).trimEnd()})\n` +
           `[ -z "$landed" ] || { printf '%s\\n' "$landed"; exit 0; }\n` +
-          laneReady(row) +
+          laneReady(row, true) +
+          (input.checkedTip === undefined
+            ? ""
+            : `[ "$tip" = ${shellQuote(input.checkedTip)} ] || { printf 'status\\tunchecked\\ntip\\t%s\\n' "$tip"; exit 0; }\n`) +
           `ahead=$(${git("integration", ["rev-list", "--count", `HEAD..${branch}`])}) || exit 1\n` +
           `[ "$ahead" != 0 ] && [ "$(${git("integration", ["rev-parse", `${branch}^{tree}`])})" != "$(${git("integration", ["rev-parse", "HEAD^{tree}"])})" ] || { printf 'status\\tnothing\\n'; exit 0; }\n` +
           `${git("integration", ["merge-base", "--is-ancestor", H, branch])} || { printf 'status\\thead-moved\\nhead\\t%s\\n' "$H"; exit 0; }\n` +
@@ -306,6 +320,8 @@ export const make = Effect.gen(function* () {
           return { _tag: "nothing" } satisfies LandOutcome;
         case "head-moved":
           return { _tag: "head-moved", head: field(out, "head") ?? "" } satisfies LandOutcome;
+        case "unchecked":
+          return { _tag: "unchecked", tip: field(out, "tip") ?? "" } satisfies LandOutcome;
         case "refused":
           return {
             _tag: "refused",

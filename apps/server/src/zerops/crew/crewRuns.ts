@@ -190,10 +190,17 @@ export const runView = (core: CrewCore, applied: AppliedCrew, nowMs: number): Cr
   };
 };
 
-/** Writes the run's new state and logs it. */
-const saveRun = (core: CrewCore, run: CrewRunRow) =>
+/**
+ * Writes the run's new state and logs it. With `from`, only while the run
+ * still stands there: a tick, a turn's end or a press that read it earlier
+ * never undoes a newer move (`false`, nothing written).
+ */
+const saveRun = (core: CrewCore, run: CrewRunRow, from?: CrewRunRow["state"]) =>
   Effect.gen(function* () {
-    yield* asRefusal(core.store.putRun(run));
+    if (!(yield* asRefusal(core.store.putRun(run, from)))) {
+      yield* asRefusal(core.reload);
+      return false;
+    }
     yield* asRefusal(
       core.store.appendLog({
         crew: CREW_ID,
@@ -205,7 +212,16 @@ const saveRun = (core: CrewCore, run: CrewRunRow) =>
     );
     yield* asRefusal(core.reload);
     yield* core.changed;
+    return true;
   });
+
+/** A press whose run moved since it was read: refused, so the person looks again. */
+const changedMeanwhile = <E, R>(saved: Effect.Effect<boolean, E, R>) =>
+  Effect.flatMap(saved, (moved) =>
+    moved
+      ? Effect.void
+      : Effect.fail(refuse("wrong-state", "the run changed meanwhile; look again")),
+  );
 
 /** Moves the run by `event`, or refuses in the words of what stopped it. */
 const moved = (run: CrewRunRow | undefined, event: RunEvent) => {
@@ -266,7 +282,7 @@ export const checkRunLimits = (core: CrewCore) =>
     if (reached !== undefined) return yield* pauseRun(core, reached);
     core.memory.runningSince = clockCounts(core, run) ? nowMs : null;
     if (counted === run.wallMs) return;
-    yield* asRefusal(core.store.putRun({ ...run, wallMs: counted }));
+    yield* asRefusal(core.store.updateRunMeters(run, { wallMs: counted }));
     yield* asRefusal(core.reload);
     yield* core.changed;
   });
@@ -285,7 +301,7 @@ export const followCrewWork = (core: CrewCore) =>
     const clock = runClockFollows(clockOf(core, run), counts, yield* Clock.currentTimeMillis);
     core.memory.runningSince = clock.since;
     if (clock.keptMs === run.wallMs) return;
-    yield* asRefusal(core.store.putRun({ ...run, wallMs: clock.keptMs }));
+    yield* asRefusal(core.store.updateRunMeters(run, { wallMs: clock.keptMs }));
     yield* asRefusal(core.reload);
     yield* core.changed;
   });
@@ -312,6 +328,17 @@ export const ensureRunTick = (core: CrewCore) =>
         Effect.asVoid,
       ),
     );
+  });
+
+/**
+ * After a restart a running run counts its time again once its crew works;
+ * the downtime is not its time.
+ */
+export const runOnAfterRestart = (core: CrewCore) =>
+  Effect.gen(function* () {
+    if ((yield* core.applied)?.run?.state !== "running") return;
+    yield* clockFromNow(core);
+    yield* ensureRunTick(core);
   });
 
 export const startRun = (core: CrewCore, principal: TurnPrincipal, options: CrewRunOptions) =>
@@ -367,13 +394,18 @@ export const pauseRun = (core: CrewCore, reason: CrewRunReason, detail: string |
     const run = applied?.run;
     if (applied === undefined || run?.state !== "running") return;
     const nowMs = yield* Clock.currentTimeMillis;
-    yield* saveRun(core, {
-      ...run,
-      state: "paused",
-      reason,
-      reasonDetail: detail,
-      wallMs: elapsedMs(core, run, nowMs),
-    });
+    const paused = yield* saveRun(
+      core,
+      {
+        ...run,
+        state: "paused",
+        reason,
+        reasonDetail: detail,
+        wallMs: elapsedMs(core, run, nowMs),
+      },
+      "running",
+    );
+    if (!paused) return;
     core.memory.runningSince = null;
     yield* interruptCrewTurns(core, applied);
   });
@@ -431,14 +463,13 @@ export const resumeRun = (
       stopAtUsagePercent: options.stopAtUsagePercent,
     });
     if (refusal !== undefined) return yield* refuse("wrong-state", refusal);
-    yield* saveRun(core, {
-      ...run,
-      state: "running",
-      reason: null,
-      reasonDetail: null,
-      budgetUsd,
-      options,
-    });
+    yield* changedMeanwhile(
+      saveRun(
+        core,
+        { ...run, state: "running", reason: null, reasonDetail: null, budgetUsd, options },
+        run.state,
+      ),
+    );
     yield* clockFromNow(core);
     // The person's press wakes the lead at once; the spacing is between the engine's own wakes.
     core.memory.lastWakeAt = null;
@@ -451,12 +482,18 @@ export const stopRun = (core: CrewCore, runId: string) =>
     const { applied, run } = yield* requireRun(core, runId);
     yield* moved(run, { type: "stop" });
     const nowMs = yield* Clock.currentTimeMillis;
-    yield* saveRun(core, {
-      ...run,
-      state: "stopped",
-      wallMs: elapsedMs(core, run, nowMs),
-      finishedAt: yield* core.now,
-    });
+    yield* changedMeanwhile(
+      saveRun(
+        core,
+        {
+          ...run,
+          state: "stopped",
+          wallMs: elapsedMs(core, run, nowMs),
+          finishedAt: yield* core.now,
+        },
+        run.state,
+      ),
+    );
     core.memory.runningSince = null;
     yield* interruptCrewTurns(core, applied);
   });
@@ -472,12 +509,16 @@ export const finishRun = (core: CrewCore, runId: string) =>
     const wallMs = elapsedMs(core, run, yield* Clock.currentTimeMillis);
     const finishing = { ...run, wallMs, state: yield* moved(run, { type: "finish" }) };
     core.memory.runningSince = null;
-    yield* saveRun(core, finishing);
-    yield* saveRun(core, {
-      ...finishing,
-      state: yield* moved(finishing, { type: "cleaned" }),
-      finishedAt: yield* core.now,
-    });
+    yield* changedMeanwhile(saveRun(core, finishing, run.state));
+    yield* saveRun(
+      core,
+      {
+        ...finishing,
+        state: yield* moved(finishing, { type: "cleaned" }),
+        finishedAt: yield* core.now,
+      },
+      finishing.state,
+    );
   });
 
 /**
@@ -538,7 +579,7 @@ export const recordRunSpend = (core: CrewCore, costUsd: number) =>
     const run = (yield* core.applied)?.run;
     if (costUsd <= 0) return;
     if (run?.state !== "running" && run?.state !== "paused") return;
-    yield* asRefusal(core.store.putRun({ ...run, spentUsd: run.spentUsd + costUsd }));
+    yield* asRefusal(core.store.updateRunMeters(run, { addSpentUsd: costUsd }));
     yield* asRefusal(core.reload);
     yield* checkRunLimits(core);
   });

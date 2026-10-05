@@ -2,7 +2,9 @@ import {
   HqError,
   makeHqApi,
   type HqApi,
+  type HqHealth,
   type HqMates,
+  type HqParts,
   type HqStructure,
   type HqStructureEvent,
   type OpenHqSocket,
@@ -14,6 +16,7 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { HqMatesView, HqPeopleView, HqStructureView } from "../state/zerops";
+import type { HqStanding } from "./accountHq";
 import { driveHqStructure, requestHqSnapshot, hqOfficialOf, hqOutageLine } from "./hqStructure";
 
 const ACME: HqStructure = { ungrouped: [], apps: [{ id: "app-1", name: "Acme", projects: [] }] };
@@ -28,6 +31,9 @@ const VERA = Schema.decodeUnknownSync(MateLiveView)({
   logins: { "claude-code": { signedInBy: "u-ada", present: true, token: false } },
   crew: { status: "off" },
 });
+
+/** HQ's parts as a health read with nothing wrong reports them. */
+const QUIET: HqParts = { quarantined: [] };
 
 /** HQ's ping, this long after what came before it. */
 type Ping = { readonly pingAfterMs: number; readonly tick: (ms: number) => void };
@@ -85,8 +91,19 @@ function streamingApi(attempts: ReadonlyArray<Attempt>) {
   return { streamStructure, attempts: () => at };
 }
 
-function harness(remembered?: { readonly structure: HqStructure; readonly readAt: number }) {
+function harness(
+  remembered?: { readonly structure: HqStructure; readonly readAt: number },
+  health: HqHealth = { kind: "unreachable" },
+) {
   const views: Array<HqStructureView> = [];
+  const healthReads: Array<number> = [];
+  /** The tab: whether it is shown, and what waits for it to be. */
+  const page = { visible: true, waiting: new Set<() => void>() };
+  const show = () => {
+    page.visible = true;
+    for (const run of page.waiting) run();
+    page.waiting.clear();
+  };
   const mates: Array<HqMatesView> = [];
   const people: Array<HqPeopleView> = [];
   const kept: Array<[HqStructure, number]> = [];
@@ -100,6 +117,9 @@ function harness(remembered?: { readonly structure: HqStructure; readonly readAt
     kept,
     keptMates,
     logged,
+    healthReads,
+    page,
+    show,
     tick: (ms: number) => (now += ms),
     deps: {
       organizationId: "org-1",
@@ -111,10 +131,299 @@ function harness(remembered?: { readonly structure: HqStructure; readonly readAt
       rememberMates: (mates: HqMates, told: HqPeople | null) => keptMates.push([mates, told]),
       now: () => now,
       log: (line: string) => logged.push(line),
+      readHealth: async () => {
+        healthReads.push(now);
+        return health;
+      },
+      whenShown: (run: () => void) => {
+        if (page.visible) {
+          run();
+          return () => undefined;
+        }
+        page.waiting.add(run);
+        return () => void page.waiting.delete(run);
+      },
       silenceMs: 60_000,
     },
   };
 }
+
+describe("HQ's standing, from its stream", () => {
+  /** A Core whose stream says nothing of its check of Zerops nor of itself: no `official`. */
+  const legacy: HqStructureEvent = {
+    kind: "snapshot",
+    structure: ACME,
+    changes: null,
+    appReads: null,
+    mates: null,
+    people: null,
+  };
+  const snapshot: HqStructureEvent = { ...legacy, official: "ok", build: "b0" };
+
+  it.each<[string, HqHealth, HqStructureView["standing"]]>([
+    ["HQ not answering", { kind: "unreachable" }, { kind: "unavailable", since: 10_000 }],
+    [
+      "HQ answering as a standby",
+      { kind: "not-ready", state: "standby", official: "ok" },
+      { kind: "unavailable", since: 10_000 },
+    ],
+    // HQ serves, but its door cannot check Zerops right now: no outage (e840eb444).
+    [
+      "HQ unable to check Zerops",
+      { kind: "unchecked", build: "b1", parts: QUIET },
+      { kind: "unchecked", build: "b1", parts: QUIET },
+    ],
+  ])("after its stream breaks, says %s as HQ's health does", async (_case, health, standing) => {
+    vi.useFakeTimers();
+    const h = harness(undefined, health);
+    const api = streamingApi([
+      { events: [snapshot], end: "cut" },
+      { events: [], end: "hang" },
+    ]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.views.at(-1)?.standing).toEqual(standing);
+      expect(h.healthReads).toEqual([10_000]);
+      await vi.advanceTimersByTimeAsync(1000);
+      // Answering again is HQ's health: its stream says so, no read.
+      expect(h.views.at(-1)?.standing).toEqual(standing);
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  it("says nothing before HQ first answers, healthy once its stream does, and reads no health while it serves", async () => {
+    vi.useFakeTimers();
+    const h = harness({ structure: ACME, readAt: 1 });
+    // A stream that serves: its snapshot, then HQ's ping every 20 s.
+    const api = {
+      streamStructure: async (on: Parameters<HqApi["streamStructure"]>[0], signal: AbortSignal) => {
+        on.onAlive();
+        on.onEvent(snapshot);
+        const pings = setInterval(on.onAlive, 20_000);
+        await new Promise<void>((_resolve, reject) =>
+          signal.addEventListener("abort", () => {
+            clearInterval(pings);
+            reject(signal.reason);
+          }),
+        );
+      },
+    };
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      expect(h.views[0]?.standing ?? { kind: "unknown" }).toEqual({ kind: "unknown" });
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "healthy", build: "b0" });
+      expect(h.healthReads).toEqual([]);
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  // An HQ serving through its grace while Zerops does not answer its check is no outage, and
+  // says so while its stream serves (e840eb444), with no read of its own.
+  it("says while its stream serves whether HQ could check Zerops, as the stream tells it", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    const api = streamingApi([
+      {
+        events: [
+          { ...snapshot, official: "unknown" },
+          { kind: "official", official: "ok" },
+          { kind: "official", official: "unknown" },
+        ],
+        end: "hang",
+      },
+    ]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        h.views.flatMap((view) => (view.standing === undefined ? [] : [view.standing.kind])),
+      ).toEqual(["unchecked", "healthy", "unchecked"]);
+      expect(h.views.at(-1)).toMatchObject({ current: true, structure: ACME });
+      expect(h.healthReads).toEqual([]);
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  it("reads HQ's health once per failed attempt, never while the tab is hidden, once on its return", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    h.page.visible = false;
+    const api = streamingApi([{ events: [], end: "fail" }]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(1000 + 2000 + 4000);
+      expect(api.attempts()).toBe(4);
+      expect(h.healthReads).toEqual([]);
+      // What the stream itself says stands: HQ did not answer it.
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "unavailable", since: 10_000 });
+      h.show();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.healthReads).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(api.attempts()).toBe(5);
+      expect(h.healthReads).toHaveLength(2);
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  // A refusal waits for a manual again: no next attempt would ever read HQ's health.
+  it("reads HQ's health on the tab's return after a refusal it was hidden for", async () => {
+    vi.useFakeTimers();
+    const h = harness(undefined, { kind: "unchecked", build: "b1", parts: QUIET });
+    h.page.visible = false;
+    const api = {
+      streamStructure: async () => {
+        throw new HqError({ kind: "refused", code: "session_required", message: "Sign in." });
+      },
+    };
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(h.healthReads).toEqual([]);
+      h.show();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.healthReads).toHaveLength(1);
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked", build: "b1", parts: QUIET });
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps only the newest health answer, whichever comes back first", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    const answers: Array<(health: HqHealth) => void> = [];
+    const api = streamingApi([{ events: [], end: "fail" }]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({
+      ...h.deps,
+      readHealth: () => new Promise<HqHealth>((resolve) => answers.push(resolve)),
+      api,
+      signal: stop.signal,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(answers).toHaveLength(2);
+      answers[1]!({ kind: "unchecked", build: "b1", parts: QUIET });
+      await vi.advanceTimersByTimeAsync(0);
+      answers[0]!({ kind: "unreachable" });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.views.at(-1)?.standing).toEqual({ kind: "unchecked", build: "b1", parts: QUIET });
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  // What an owner's update offer weighs (`ZeropsHqUpdate.logic.ts`): the Core HQ runs, as its stream
+  // names it. A stream that names none names nothing — no read stands in for it; HQ's card reads
+  // the running Core from Zerops instead.
+  it.each<[string, HqStructureEvent, HqStanding]>([
+    [
+      "named",
+      { ...snapshot, build: "20261004T100000Z.0123456789ab" },
+      { kind: "healthy", build: "20261004T100000Z.0123456789ab" },
+    ],
+    ["named by none", legacy, { kind: "healthy" }],
+  ])("names the Core HQ runs from its stream: %s", async (_case, event, standing) => {
+    vi.useFakeTimers();
+    const h = harness();
+    const stop = new AbortController();
+    const driving = driveHqStructure({
+      ...h.deps,
+      api: streamingApi([{ events: [event], end: "hang" }]),
+      signal: stop.signal,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.views.at(-1)?.standing).toEqual(standing);
+      expect(h.healthReads).toEqual([]);
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  // HQ's card says how its parts stand off the stream, as each change comes; no health read.
+  it("says how HQ's parts stand as its stream tells them", async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    const parts = { db: "up" as const, quarantined: [], backup: { state: "pending" as const } };
+    const api = streamingApi([
+      {
+        events: [
+          { ...snapshot, build: "b2", parts },
+          { kind: "parts", parts: { ...parts, backup: { state: "ok", takenAt: 5 } } },
+        ],
+        end: "hang",
+      },
+    ]);
+    const stop = new AbortController();
+    const driving = driveHqStructure({ ...h.deps, api, signal: stop.signal });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.views.at(-1)?.standing).toEqual({
+        kind: "healthy",
+        build: "b2",
+        parts: { ...parts, backup: { state: "ok", takenAt: 5 } },
+      });
+      expect(h.healthReads).toEqual([]);
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+
+  // A serving stream is HQ answering as the official one: a Core yet to finish its first check
+  // (`null`), or one whose stream says nothing of it, serves — no health read stands in for it.
+  it.each<[string, HqStructureEvent]>([
+    ["yet to check", { ...snapshot, official: null }],
+    ["silent on its check", legacy],
+  ])("reads no health for a serving Core %s", async (_case, event) => {
+    vi.useFakeTimers();
+    const h = harness(undefined, { kind: "unchecked", build: "b1", parts: QUIET });
+    const stop = new AbortController();
+    const driving = driveHqStructure({
+      ...h.deps,
+      api: streamingApi([{ events: [event, event], end: "hang" }]),
+      signal: stop.signal,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.healthReads).toEqual([]);
+      expect(h.views.at(-1)).toMatchObject({ current: true, standing: { kind: "healthy" } });
+    } finally {
+      stop.abort();
+      await driving;
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe("automatic HQ recovery", () => {
   it("backs off to 30 s, keeps its outage and as-of time, and keeps trying at the cap", async () => {
@@ -612,6 +921,7 @@ describe("driveHqStructure", () => {
       updatedAt: "2026-10-02T09:00:00.000Z",
       mergeability: "clean",
       behind: false,
+      comments: 0,
     };
     const merged: HqChange = { ...change, state: "merged", mergedAt: "2026-10-02T10:00:00.000Z" };
     const api = streamingApi([
@@ -766,6 +1076,7 @@ describe("driveHqStructure", () => {
             changes: null,
             mates: null,
             people: null,
+            official: "ok",
           },
           { kind: "release-revision", appId: "app-1", read: read("57") },
         ],
@@ -780,6 +1091,7 @@ describe("driveHqStructure", () => {
             changes: null,
             mates: null,
             people: null,
+            official: "ok",
           },
         ],
         end: "hang",
@@ -797,6 +1109,8 @@ describe("driveHqStructure", () => {
       null,
       new Map([["app-1", read("41")]]),
       new Map([["app-1", read("57")]]),
+      new Map([["app-1", read("57")]]),
+      // HQ's health, read once its stream failed: where it stands, its data as it was.
       new Map([["app-1", read("57")]]),
       new Map([["app-1", read("57")]]),
       new Map(),
@@ -859,6 +1173,7 @@ describe("driveHqStructure", () => {
             changes: null,
             mates: new Map([["p1", VERA]]),
             people: { "u-ada": { name: "Ada Lovelace" } },
+            official: "ok",
           },
           { kind: "mate", projectId: "p1", value: { crew: { status: "off" }, main: null } },
           { kind: "mate", projectId: "p2", value: VERA },
