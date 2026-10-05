@@ -6,7 +6,7 @@
  */
 import type { ZeropsLifecycle } from "@t3tools/contracts";
 
-import type { ProcessHistoryRead } from "../data/types.ts";
+import type { HistoryRead } from "../../data/projections/processes.ts";
 import type { Known } from "../knowledge/index.ts";
 import { attributeActivity } from "./attribution.ts";
 import type { ActivityProcess } from "./dto.ts";
@@ -23,7 +23,7 @@ export interface ProjectBuildsRead {
   /** What runs and what ran; undefined until a read landed. */
   readonly processes: ReadonlyArray<ActivityProcess> | undefined;
   /** Where the read of the project's newest process history stands. */
-  readonly processHistory: ProcessHistoryRead;
+  readonly processHistory: HistoryRead;
 }
 
 export function readDeployBuild(

@@ -56,6 +56,8 @@ import {
   type DoorCredential,
   type DoorRequest,
 } from "./accountRuntime.ts";
+import { accountReadsAtom } from "../../data/reads.ts";
+import { makeAccountStore } from "../../data/store.ts";
 
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
@@ -1864,34 +1866,32 @@ describe("the post-grant stage's Mate environments", () => {
 
   // A coming page left open on a Mate whose door fails minted a throwaway a minute as the route
   // (review, 2026-10-03): the Mate on screen is one the person asked for, capped as no route is.
-  // B6: whether a Mate's address is being turned on is its project's processes' word, so they are
-  // read for as long as its container is ACTIVE without one — and not for a Mate that has one.
+  // B6: whether a Mate's address is being turned on is its project's processes' word, so its
+  // history is held for as long as its container is ACTIVE without one — not for one that has one.
   it.effect.each([
-    { case: "its address off: its project's processes are read", address: false, read: true },
+    { case: "its address off: its project's history is held", address: false, read: true },
     { case: "its address on: nothing more is read", address: true, read: false },
   ])("a Mate ACTIVE, $case", ({ address, read }) =>
     Effect.scoped(
       Effect.gen(function* () {
         const lacking = { ...A_MATE, service: { ...A_MATE.service, subdomainAccess: address } };
         const opened = yield* granted([], [lacking]);
+        // The account's store, as far as the wiring holds it: whose newest history it holds.
+        const held = new Set<string>();
+        opened.registry.set(accountReadsAtom, {
+          data: makeAccountStore(opened.registry).data,
+          orgId: "org",
+          demandDetail: ({ ownerId }) => {
+            held.add(ownerId);
+            return () => void held.delete(ownerId);
+          },
+        });
         yield* settle;
-        const kinds = () =>
-          new Set(
-            [...opened.registry.get(opened.built.data.stateAtom).interests.values()]
-              .filter(
-                ({ descriptor, leases }) =>
-                  leases > 0 &&
-                  "project" in descriptor &&
-                  descriptor.project.projectId === A_MATE.projectId,
-              )
-              .map(({ descriptor }) => descriptor.kind),
-          );
-        expect(kinds().has("project-activity")).toBe(read);
-        expect(kinds().has("project-process-history")).toBe(read);
+        expect(held.has(A_MATE.projectId)).toBe(read);
         // Only the organization in view is read for.
         opened.environments.setActiveOrganization("org-other");
         yield* settle;
-        expect(kinds().has("project-activity")).toBe(false);
+        expect(held.has(A_MATE.projectId)).toBe(false);
       }),
     ),
   );

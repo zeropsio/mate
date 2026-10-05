@@ -1,10 +1,13 @@
 import { Atom, AtomRegistry } from "effect/unstable/reactivity";
+
+import type { ProjectProcesses } from "../../data/projections/processes.ts";
+import { accountReadsAtom, type AccountReads } from "../../data/reads.ts";
+import type { ActivityProcess } from "../activity/dto.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   identity,
   organization,
-  process,
   project,
   scope,
   service,
@@ -224,39 +227,25 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
 
   /**
    * The project's `stack.enableSubdomainAccess` for its zcp service, in this status: one that
-   * finished ended at 12:01:45 on Zerops' clock, its end read at receipt `at`.
+   * finished ended at 12:01:45 on Zerops' clock.
    */
-  const enable = (status: string, at = 5) => ({
-    knowledge: "observed",
-    record: {
-      ref: process("enable-1", project()),
-      identity: observed({
-        actionName: "stack.enableSubdomainAccess",
-        serviceIds: ["service-1"],
-        createdAt: "2026-10-02T12:01:40.000Z",
-      }),
-      lifecycle: {
-        ...observed({
-          status,
-          startedAt: null,
-          finishedAt: status === "RUNNING" ? null : "2026-10-02T12:01:45.000Z",
-        }),
-        stamp: stamp(at),
-      },
-      pipeline: unresolved,
-    },
+  const enable = (status: string): ActivityProcess => ({
+    id: "enable-1",
+    projectId: project().projectId,
+    serviceStackIds: ["service-1"],
+    status,
+    actionName: "stack.enableSubdomainAccess",
+    created: "2026-10-02T12:01:40.000Z",
+    ...(status === "RUNNING" ? {} : { finished: "2026-10-02T12:01:45.000Z" }),
   });
 
-  /** The project's processes as read: running ones and the newest history, or not read yet. */
-  const activityOf = (enableStatus: string | null, read = true, at = 5) => ({
-    running: {
-      value: enableStatus === "RUNNING" ? [enable(enableStatus, at)] : [],
-      query: { status: read ? "observed" : "pending" },
-    },
-    retainedHistory:
-      enableStatus !== null && enableStatus !== "RUNNING" ? [enable(enableStatus, at)] : [],
-    processHistory: read ? "read" : "reading",
-    observation: { required: [], optional: [] },
+  /** The project's processes as the account's store holds them: running ones and the history. */
+  const activityOf = (enableStatus: string | null, read = true): ProjectProcesses => ({
+    processes: !read ? undefined : enableStatus === null ? [] : [enable(enableStatus)],
+    running: enableStatus === "RUNNING" ? [enable(enableStatus)] : [],
+    live: true,
+    reconnecting: false,
+    history: read ? "read" : "reading",
   });
 
   const listingOver = () => {
@@ -264,7 +253,13 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
     const servicesRead = Atom.make<unknown>(read([], project()));
     const projectsRead = Atom.make<unknown>(read([projectRecord]));
     const access = Atom.make<unknown>(admitted(true));
-    const activity = Atom.make<unknown>(activityOf(null, false));
+    const activity = Atom.make<ProjectProcesses>(activityOf(null, false));
+    // The account's store, as far as the listing reads it: this project's processes.
+    registry.set(accountReadsAtom, {
+      data: { project: () => activity } as unknown as AccountReads["data"],
+      orgId: "org",
+      demandDetail: () => () => {},
+    });
     const data = {
       access: {
         view: Atom.make({
@@ -285,7 +280,6 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
         access,
         projectsOf: () => projectsRead,
         servicesOf: () => servicesRead,
-        activity: () => activity,
       },
     } as unknown as ManagedZeropsDataRuntime;
     const listings = candidateListingsAtom(data);
@@ -313,7 +307,7 @@ describe("candidateListingsAtom: a container ACTIVE before its address landed", 
               ),
             );
           case "enabled-read-again":
-            return registry.set(activity, activityOf("FINISHED", true, 9));
+            return registry.set(activity, { ...activityOf("FINISHED"), live: false });
           case "enabling":
             return registry.set(activity, activityOf("RUNNING"));
           case "enabled":

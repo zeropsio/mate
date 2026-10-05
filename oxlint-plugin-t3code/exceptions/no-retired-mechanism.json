@@ -5536,6 +5536,30 @@
     "expires": "never"
   },
   {
+    "path": "packages/client-runtime/src/zerops/account/flow.ts",
+    "kind": "retired-token",
+    "fingerprint": "runningProcessesRead",
+    "owner": "data-layer rewrite: app versions",
+    "reason": "the deployment store reads processes through the in-transit bridge until it reads the store; it goes with deploymentStore",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/account/flow.ts",
+    "kind": "retired-token",
+    "fingerprint": "runningProcessesRead",
+    "owner": "data-layer rewrite: app versions",
+    "reason": "the deployment store reads processes through the in-transit bridge until it reads the store; it goes with deploymentStore",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/account/processBridge.ts",
+    "kind": "retired-token",
+    "fingerprint": "runningProcessesRead",
+    "owner": "data-layer rewrite: app versions",
+    "reason": "the deployment store reads processes through the in-transit bridge until it reads the store; it goes with deploymentStore",
+    "expires": "never"
+  },
+  {
     "path": "packages/client-runtime/src/zerops/data/access/capabilities.ts",
     "kind": "retired-token",
     "fingerprint": "\"runtime-closed\"",

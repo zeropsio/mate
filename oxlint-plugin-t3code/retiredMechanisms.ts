@@ -21,6 +21,12 @@ export interface RetiredMechanism {
 
 export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
   {
+    token: "runningProcessesRead",
+    family: "app versions",
+    reason:
+      "the deployment store's in-transit bridge to the process family; deployments read the store's projections and the bridge goes with deploymentStore",
+  },
+  {
     token: "useInterestLeases",
     family: "projects",
     reason:

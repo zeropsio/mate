@@ -30,6 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { mobileCandidates, type MobileCandidate } from "./candidate-listing";
 import { useZeropsData, type ZeropsDataBinding } from "./ZeropsDataProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+import { projectProcessesAtom } from "@t3tools/client-runtime/data";
 
 /** A read, and the moment this device saw it change (`known.ts` dates a read with no value by it). */
 interface StampedRead<Read> {
@@ -201,7 +202,9 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
         if (activityUnsubscribes.has(key)) continue;
         activityUnsubscribes.set(
           key,
-          registry.subscribe(runtime.reads.activity(project), publish, { immediate: false }),
+          registry.subscribe(projectProcessesAtom(project.projectId), publish, {
+            immediate: false,
+          }),
         );
       }
     };
@@ -240,7 +243,7 @@ export function useZeropsCandidates(openedProjectId: string | null = null): {
         if (project === undefined) return undefined;
         const services = serviceReads.get(projectKeyOf(project));
         return subdomainEnableIn(
-          registry.get(runtime.reads.activity(project)),
+          registry.get(projectProcessesAtom(project.projectId)),
           serviceId,
           serviceUpdatedAtIn(services?.read ?? null, serviceId),
         );

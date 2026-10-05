@@ -4,6 +4,7 @@
  * through projections only.
  */
 import {
+  accountReadsAtom,
   makeAccountStore,
   makeZeropsWire,
   observeAccount,
@@ -12,7 +13,7 @@ import {
   type DetailDemand,
   type ZeropsWireClient,
 } from "@t3tools/client-runtime/data";
-import { AtomRegistry } from "effect/unstable/reactivity";
+import type { AtomRegistry } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
 /** What a screen may reach of the account's data: the store's reads, never its writer. */
@@ -29,19 +30,23 @@ const AccountDataContext = createContext<AccountData | null>(null);
 
 export function ZeropsAccountData({
   account,
+  registry,
   activeOrganizationId,
   children,
 }: {
   readonly account: { readonly client: ZeropsWireClient; readonly userId: string } | null;
+  /**
+   * The account's atom registry, which its data provider owns: the store publishes into the
+   * registry the account runtime's derivations read, so they read one store.
+   */
+  readonly registry: AtomRegistry.AtomRegistry | null;
   readonly activeOrganizationId: string | null;
   readonly children: ReactNode;
 }) {
   const client = account?.client ?? null;
-  const userId = account?.userId ?? null;
-  // One registry and store per account: a new account starts empty, nothing carries over.
+  // One store per account and registry: a new account starts empty, nothing carries over.
   const held = useMemo(() => {
-    if (userId === null || client === null) return null;
-    const registry = AtomRegistry.make();
+    if (registry === null || client === null) return null;
     const store = makeAccountStore(registry);
     const observation = observeAccount({
       store,
@@ -49,17 +54,8 @@ export function ZeropsAccountData({
       repairSession: repairZeropsSession(client),
     });
     return { registry, store, observation };
-  }, [client, userId]);
-  useEffect(
-    () =>
-      held === null
-        ? undefined
-        : () => {
-            held.observation.stop();
-            held.registry.dispose();
-          },
-    [held],
-  );
+  }, [client, registry]);
+  useEffect(() => (held === null ? undefined : () => held.observation.stop()), [held]);
   useEffect(() => {
     held?.observation.show(activeOrganizationId);
   }, [activeOrganizationId, held]);
@@ -75,6 +71,11 @@ export function ZeropsAccountData({
           },
     [activeOrganizationId, held],
   );
+  useEffect(() => {
+    if (value === null) return;
+    value.registry.set(accountReadsAtom, value);
+    return () => value.registry.set(accountReadsAtom, null);
+  }, [value]);
   return <AccountDataContext value={value}>{children}</AccountDataContext>;
 }
 

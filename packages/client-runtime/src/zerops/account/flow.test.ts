@@ -5,11 +5,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { process, project, service } from "../data/__fixtures__/index.ts";
 import type { ManagedZeropsDataRuntime } from "../data/runtime.ts";
-import { processKeyOf, type LeaseAdmissionError } from "../data/types.ts";
+import type { LeaseAdmissionError } from "../data/types.ts";
+import { liveZerops, ORG } from "../../data/__fixtures__/account.ts";
+import { accountReadsAtom } from "../../data/reads.ts";
+import { makeAccountStore } from "../../data/store.ts";
 import { deploymentStorePorts } from "./flow.ts";
-
-const observed = (status: string) => ({ knowledge: "observed", fields: { status } });
-const UNREAD = { knowledge: "unresolved", fields: {} };
 
 describe("the deployment store's ports (DESIGN §2.D D6)", () => {
   it("tells the store why the platform took no demand for a stop's processes", () => {
@@ -20,7 +20,7 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
     };
     const listing = Atom.make(null);
     const data = {
-      reads: { servicesOf: () => listing, runningProcessesOf: () => listing },
+      reads: { servicesOf: () => listing },
       stateAtom: Atom.make({ table: {} }),
       acquire: () => Effect.fail(refusal),
     } as unknown as ManagedZeropsDataRuntime;
@@ -64,7 +64,7 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
     const state = Atom.make({ table: { rows: 1 } });
     const acquired: Array<string> = [];
     const data = {
-      reads: { servicesOf: () => listing, runningProcessesOf: () => listing },
+      reads: { servicesOf: () => listing },
       stateAtom: state,
       acquire: (descriptor: { readonly kind: string }) => {
         acquired.push(descriptor.kind);
@@ -92,22 +92,32 @@ describe("the deployment store's ports (DESIGN §2.D D6)", () => {
   });
 
   it.each([
-    { name: "a build Zerops ended failed", lifecycle: observed("FAILED"), status: "FAILED" },
-    { name: "a build still running", lifecycle: observed("RUNNING"), status: "RUNNING" },
-    { name: "a process whose status was never read", lifecycle: UNREAD, status: undefined },
-    { name: "a process the account does not hold", lifecycle: undefined, status: undefined },
-  ])("reads $name's status off the account's store", ({ lifecycle, status }) => {
+    { name: "a build Zerops ended failed", row: "FAILED", status: "FAILED" },
+    { name: "a build still running", row: "RUNNING", status: "RUNNING" },
+    { name: "a process the account does not hold", row: undefined, status: undefined },
+  ])("reads $name's status off the account's store", ({ row, status }) => {
     const build = process("build-1", project("project-stage"));
-    const data = {
-      stateAtom: Atom.make({
-        activity: {
-          processes: new Map(
-            lifecycle === undefined ? [] : [[processKeyOf(build), { ref: build, lifecycle }]],
-          ),
-        },
-      }),
-    } as unknown as ManagedZeropsDataRuntime;
-    const ports = deploymentStorePorts(data, AtomRegistry.make(), Context.empty());
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({
+      running:
+        row === undefined ? [] : [{ id: "build-1", projectId: "project-stage", status: row }],
+    }).forEach(store.dispatch);
+    registry.set(accountReadsAtom, { data: store.data, orgId: ORG, demandDetail: () => () => {} });
+    const ports = deploymentStorePorts(
+      {} as unknown as ManagedZeropsDataRuntime,
+      registry,
+      Context.empty(),
+    );
     expect(ports.buildStatus(build)).toBe(status);
+  });
+
+  it("knows no status without a mounted account", () => {
+    const ports = deploymentStorePorts(
+      {} as unknown as ManagedZeropsDataRuntime,
+      AtomRegistry.make(),
+      Context.empty(),
+    );
+    expect(ports.buildStatus(process("build-1", project("project-stage")))).toBeUndefined();
   });
 });

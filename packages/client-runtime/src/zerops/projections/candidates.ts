@@ -26,18 +26,9 @@ import {
   type ZeropsCandidate,
 } from "../candidates.ts";
 import { projectNameInApp, readZeropsMembership } from "../groups.ts";
-import {
-  processRecordToActivityProcess,
-  projectRecordToZeropsProject,
-  serviceRecordToZeropsService,
-} from "../data/dto.ts";
-import type {
-  CollectionRead,
-  ProjectActivityRead,
-  ProjectRecord,
-  ProjectRef,
-  ServiceRecord,
-} from "../data/types.ts";
+import type { ProjectProcesses } from "../../data/projections/processes.ts";
+import { projectRecordToZeropsProject, serviceRecordToZeropsService } from "../data/dto.ts";
+import type { CollectionRead, ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
 import {
   knownPresentation,
@@ -114,14 +105,9 @@ export function selectCandidates(
   );
 }
 
-/** A project's processes as read. */
-function subdomainProcessesOf(activity: ProjectActivityRead): ReadonlyArray<SubdomainProcess> {
-  return [...activity.running.value, ...activity.retainedHistory].flatMap((entry) => {
-    if (entry.knowledge !== "observed") return [];
-    const process = processRecordToActivityProcess(entry.record);
-    return process === null ? [] : [process];
-  });
-}
+/** A project's processes as the account's store holds them. */
+const subdomainProcessesOf = (activity: ProjectProcesses): ReadonlyArray<SubdomainProcess> =>
+  activity.processes ?? [];
 
 /**
  * Where the platform stands on turning a service's address on, from its project's activity
@@ -130,13 +116,13 @@ function subdomainProcessesOf(activity: ProjectActivityRead): ReadonlyArray<Subd
  * record was last updated, on Zerops' clock. `undefined` while it is not known.
  */
 export function subdomainEnableIn(
-  activity: ProjectActivityRead | null,
+  activity: ProjectProcesses | null,
   serviceId: string,
   serviceUpdatedAt: string | null = null,
 ): SubdomainEnable | undefined {
   if (activity === null) return undefined;
   const said = subdomainEnableOf(subdomainProcessesOf(activity), serviceId, serviceUpdatedAt);
-  const read = activity.running.query.status === "observed" && activity.processHistory === "read";
+  const read = activity.processes !== undefined && activity.history === "read";
   return read || said === "on" ? said : undefined;
 }
 
@@ -146,7 +132,7 @@ export function subdomainEnableIn(
  * otherwise.
  */
 export function finishedEnableAt(
-  activity: ProjectActivityRead | null,
+  activity: ProjectProcesses | null,
   serviceId: string,
 ): string | null {
   if (activity === null) return null;

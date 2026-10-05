@@ -33,6 +33,9 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
+import type { ProjectProcesses } from "../../data/projections/processes.ts";
+import { holdProjectHistory, projectProcessesAtom } from "../../data/reads.ts";
+
 import { normalizeOrigin } from "../candidates.ts";
 import { identityMint } from "../data/access/capabilities.ts";
 import type { AccessGrantView } from "../data/access/grantDriver.ts";
@@ -42,7 +45,6 @@ import {
   ZeropsProjectId,
   ZeropsServiceId,
   type OrganizationRef,
-  type ProjectActivityRead,
   type ProjectRef,
   type LeaseAdmissionError,
 } from "../data/types.ts";
@@ -352,16 +354,10 @@ const sameItems = <T>(left: ReadonlyArray<T>, right: ReadonlyArray<T>): boolean 
   left.length === right.length && left.every((item, index) => item === right[index]);
 
 /** Whether a process the activity feed reads as running runs on the row's container. */
-const runningOn = (activity: ProjectActivityRead, row: CandidateRow): boolean =>
-  activity.running.value.some((entry) => {
-    if (entry.knowledge !== "observed") return false;
-    const identity = entry.record.identity;
-    if (identity.knowledge !== "observed") return false;
-    return (
-      row.service === undefined ||
-      (identity.fields.serviceIds ?? []).includes(ZeropsServiceId.make(row.service.id))
-    );
-  });
+const runningOn = (activity: ProjectProcesses, row: CandidateRow): boolean =>
+  activity.running.some(
+    (process) => row.service === undefined || process.serviceStackIds.includes(row.service.id),
+  );
 
 const origin = (url: string | undefined | null): string | null =>
   url === undefined || url === null ? null : normalizeOrigin(url);
@@ -425,11 +421,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     );
     checks.set(projectId, () => run(Fiber.interrupt(lease)));
   };
-  /** The activity feed of each booting target's project: its lease and its subscription. */
-  const activity = new Map<
-    string,
-    { readonly lease: Fiber.Fiber<void>; readonly stop: () => void }
-  >();
+  /** What runs in each booting target's project, as the account's store holds it: followed. */
+  const activity = new Map<string, { readonly stop: () => void }>();
   const listeners = new Set<() => void>();
   const detailLeases = new Map<string, Fiber.Fiber<void>>();
   /**
@@ -892,30 +885,19 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       activity.delete(projectId);
       followed.stop();
     }
-    for (const [projectId, project] of booting) {
+    for (const projectId of booting.keys()) {
       if (activity.has(projectId)) continue;
-      const lease = run(
-        Effect.scoped(
-          data.acquire({ kind: "project-activity", project }).pipe(Effect.andThen(Effect.never)),
-        ).pipe(Effect.ignore),
-      );
-      const report = (read: ProjectActivityRead) => {
+      const report = (read: ProjectProcesses) => {
         if (stores === null || closed) return;
         for (const row of rows) {
           if (row.project.id === projectId)
             stores.containers.process(row.key, runningOn(read, row));
         }
       };
-      const unsubscribe = atomRegistry.subscribe(data.reads.activity(project), report, {
+      const unsubscribe = atomRegistry.subscribe(projectProcessesAtom(projectId), report, {
         immediate: true,
       });
-      activity.set(projectId, {
-        lease,
-        stop: () => {
-          unsubscribe();
-          run(Fiber.interrupt(lease));
-        },
-      });
+      activity.set(projectId, { stop: unsubscribe });
     }
   };
 
@@ -1007,18 +989,11 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
     for (const [projectId, project] of lacking) {
       if (addressWatch.has(projectId)) continue;
-      const lease = run(
-        Effect.scoped(
-          Effect.all([
-            data.acquire({ kind: "project-activity", project }),
-            data.acquire({ kind: "project-process-history", project, before: null, limit: 100 }),
-          ]).pipe(Effect.andThen(Effect.never)),
-        ).pipe(Effect.ignore),
-      );
+      const releaseHistory = holdProjectHistory(atomRegistry, projectId);
       // One direct read of its services after each enable read as finished: a fresher record.
       let checkedAfter: string | null = null;
       let check: Fiber.Fiber<void> | null = null;
-      const recheck = (read: ProjectActivityRead) => {
+      const recheck = (read: ProjectProcesses) => {
         if (closed) return;
         let ended: string | null = null;
         for (const row of rows) {
@@ -1038,12 +1013,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           ).pipe(Effect.ignore),
         );
       };
-      const unsubscribe = atomRegistry.subscribe(data.reads.activity(project), recheck, {
+      const unsubscribe = atomRegistry.subscribe(projectProcessesAtom(projectId), recheck, {
         immediate: true,
       });
       addressWatch.set(projectId, () => {
         unsubscribe();
-        run(Fiber.interrupt(lease));
+        releaseHistory();
         if (check !== null) run(Fiber.interrupt(check));
       });
     }

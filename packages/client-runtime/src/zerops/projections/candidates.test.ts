@@ -1,14 +1,10 @@
+import type { ProjectProcesses } from "../../data/projections/processes.ts";
+import type { ActivityProcess } from "../activity/dto.ts";
 import { describe, expect, it } from "@effect/vitest";
 
 import type { Known, Shown } from "../knowledge/known.ts";
-import type {
-  FacetAdmission,
-  ProjectActivityRead,
-  ProjectRecord,
-  ProjectRef,
-  ServiceRecord,
-} from "../data/types.ts";
-import { process, project, service, stamp } from "../data/__fixtures__/index.ts";
+import type { FacetAdmission, ProjectRecord, ProjectRef, ServiceRecord } from "../data/types.ts";
+import { project, service, stamp } from "../data/__fixtures__/index.ts";
 import type { ZeropsCandidate } from "../candidates.ts";
 import {
   admittedOnly,
@@ -695,35 +691,29 @@ describe("learnAddresses — what the listings teach the address memory, and the
 // Whether a container's address is being turned on is its project's processes' word: known once
 // both its running processes and its newest history are read; a live enable says so before that.
 describe("subdomainEnableIn", () => {
-  const observedFacet = (fields: unknown) => ({ knowledge: "observed", fields, stamp: stamp(1) });
-  const enable = (status: string) => ({
-    knowledge: "observed",
-    record: {
-      ref: process("enable-1", project()),
-      identity: observedFacet({
-        actionName: "stack.enableSubdomainAccess",
-        serviceIds: ["service-1"],
-        createdAt: "2026-10-02T12:01:40.000Z",
-      }),
-      lifecycle: observedFacet({ status, startedAt: null, finishedAt: null }),
-      pipeline: { knowledge: "unresolved" },
-    },
+  const enable = (status: string): ActivityProcess => ({
+    id: `enable-${status}`,
+    projectId: "project-1",
+    serviceStackIds: ["service-1"],
+    status,
+    actionName: "stack.enableSubdomainAccess",
+    created: "2026-10-02T12:01:40.000Z",
   });
   const activity = (input: {
     readonly running: ReadonlyArray<string>;
     readonly history: ReadonlyArray<string>;
     readonly runningRead: boolean;
     readonly historyRead: boolean;
-  }) =>
-    ({
-      running: {
-        value: input.running.map(enable),
-        query: { status: input.runningRead ? "observed" : "pending" },
-      },
-      retainedHistory: input.history.map(enable),
-      processHistory: input.historyRead ? "read" : "reading",
-      observation: { required: [], optional: [] },
-    }) as unknown as ProjectActivityRead;
+  }): ProjectProcesses => {
+    const processes = [...input.running, ...input.history].map(enable);
+    return {
+      processes: input.runningRead ? processes : undefined,
+      running: input.running.map(enable),
+      live: true,
+      reconnecting: false,
+      history: input.historyRead ? "read" : "reading",
+    };
+  };
 
   it.each([
     { case: "nothing asked", read: null, said: undefined },

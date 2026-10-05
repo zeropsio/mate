@@ -289,7 +289,11 @@ export function ZeropsDataProvider({
   const context = useMemo(() => value, [value]);
   return (
     <ZeropsDataContext value={context}>
-      <ZeropsAccountData account={account} activeOrganizationId={activeOrganizationId}>
+      <ZeropsAccountData
+        account={account}
+        registry={value.binding?.registry ?? null}
+        activeOrganizationId={activeOrganizationId}
+      >
         {children}
       </ZeropsAccountData>
     </ZeropsDataContext>

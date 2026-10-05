@@ -6,6 +6,12 @@ import {
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
 import { reactHookHarness as hooks } from "../../../../web/src/test/reactHookHarness";
+import {
+  NOT_READ_PROCESSES,
+  projectProcessesAtom,
+  type ProjectProcesses,
+} from "@t3tools/client-runtime/data";
+import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 
 interface TestBinding {
   readonly released: Array<{ readonly kind: string }>;
@@ -196,7 +202,7 @@ describe("candidate inventory demand", () => {
     };
     const projectsAtom = {};
     const servicesAtom = {};
-    const activityAtom = {};
+    const activityAtom = projectProcessesAtom("project-a");
     const stateAtom = {};
     const projects = {
       value: [
@@ -226,7 +232,7 @@ describe("candidate inventory demand", () => {
       observation: { required: [], optional: [], access: { status: "unverified" as const } },
     };
     reads.project = project;
-    reads.activity = null;
+    reads.activity = NOT_READ_PROCESSES;
     const released: Array<{ readonly kind: string }> = [];
     runtime.acquire.mockImplementation((descriptor: { readonly kind: string }) =>
       Effect.sync(() => ({
@@ -246,7 +252,6 @@ describe("candidate inventory demand", () => {
         reads: {
           projectsOf: () => projectsAtom,
           servicesOf: () => servicesAtom,
-          activity: () => activityAtom,
         },
         acquire: runtime.acquire,
         refresh: runtime.refresh,
@@ -434,35 +439,23 @@ describe("candidate inventory demand", () => {
     const CREATED = Date.parse(CREATED_AT);
 
     /** Its project's processes as read: an enable in this status, or none; not read where null. */
-    const activityOf = (status: "RUNNING" | "FAILED" | "none" | null) => {
-      const enable = {
-        knowledge: "observed",
-        record: {
-          ref: { kind: "process", project: reads.project, processId: "enable-1" },
-          identity: {
-            knowledge: "observed",
-            fields: {
-              actionName: "stack.enableSubdomainAccess",
-              serviceIds: ["service-a"],
-              createdAt: CREATED_AT,
-            },
-          },
-          lifecycle: {
-            knowledge: "observed",
-            fields: { status, startedAt: null, finishedAt: null },
-            stamp: { receiptOrdinal: 5, observedAtMs: 50 },
-          },
-          pipeline: { knowledge: "unresolved" },
-        },
+    const activityOf = (status: "RUNNING" | "FAILED" | "none" | null): ProjectProcesses => {
+      if (status === null) return NOT_READ_PROCESSES;
+      const enable: ActivityProcess = {
+        id: "enable-1",
+        projectId: "project-a",
+        serviceStackIds: ["service-a"],
+        status,
+        actionName: "stack.enableSubdomainAccess",
+        created: CREATED_AT,
       };
-      return status === null
-        ? null
-        : {
-            running: { value: status === "RUNNING" ? [enable] : [], query: { status: "observed" } },
-            retainedHistory: status === "FAILED" ? [enable] : [],
-            processHistory: "read",
-            observation: { required: [], optional: [] },
-          };
+      return {
+        processes: status === "none" ? [] : [enable],
+        running: status === "RUNNING" ? [enable] : [],
+        live: true,
+        reconnecting: false,
+        history: "read",
+      };
     };
 
     beforeEach(() => {

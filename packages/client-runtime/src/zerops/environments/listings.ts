@@ -20,6 +20,9 @@
  */
 import { Atom } from "effect/unstable/reactivity";
 
+import type { ProjectProcesses } from "../../data/projections/processes.ts";
+import { projectProcessesAtom } from "../../data/reads.ts";
+
 import {
   evidenceProjectRefs,
   inventoryProjectRefs,
@@ -32,7 +35,6 @@ import {
   projectKeyOf,
   type CollectionRead,
   type OrganizationRef,
-  type ProjectActivityRead,
   type ProjectRecord,
   type ServiceRecord,
 } from "../data/types.ts";
@@ -77,7 +79,7 @@ interface ProjectEntry {
   /** Its services read; null for a project whose status reads no services. */
   readonly services: CollectionRead<ServiceRecord> | null;
   /** Its processes as read for a container lacking its address; null where none was asked. */
-  readonly activity: ProjectActivityRead | null;
+  readonly activity: ProjectProcesses | null;
   /** Null while its record does not name it yet. */
   readonly rows: ReadonlyArray<CandidateRow> | null;
   /** When the first of its rows' arrival poses ends, wall ms; null when none is shown. */
@@ -166,7 +168,8 @@ export function candidateListingsAtom(
         if (before.services === null) return before;
         const read = get(data.reads.servicesOf(record.ref));
         const activityMoved =
-          before.activity !== null && get(data.reads.activity(record.ref)) !== before.activity;
+          before.activity !== null &&
+          get(projectProcessesAtom(record.ref.projectId)) !== before.activity;
         if (read === before.services && !activityMoved) return before;
         return derive(record, before, read, isAdmitted);
       }
@@ -181,7 +184,7 @@ export function candidateListingsAtom(
     ): ProjectEntry => {
       let services: CollectionRead<ServiceRecord> | null = null;
       let directRead: number | null = null;
-      let activity: ProjectActivityRead | null = null;
+      let activity: ProjectProcesses | null = null;
       const rows = projectCandidates(
         record,
         (ref) => {
@@ -193,7 +196,7 @@ export function candidateListingsAtom(
           return value;
         },
         addressFactsOf(addresses, nowMs, (_projectId, serviceId) => {
-          activity = get(data.reads.activity(record.ref));
+          activity = get(projectProcessesAtom(record.ref.projectId));
           // Its record, last updated after its enable ended on Zerops' clock, says it caught up.
           return subdomainEnableIn(activity, serviceId, serviceUpdatedAtIn(services, serviceId));
         }),

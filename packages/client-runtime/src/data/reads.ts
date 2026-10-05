@@ -5,7 +5,7 @@
  *
  * @module data/reads
  */
-import { Atom } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
 import type { DetailDemand } from "./demand.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
@@ -41,3 +41,25 @@ export const projectProcessesAtom = Atom.family((projectId: string) =>
     return get(account.data.project(projectProcesses, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:project-processes:${projectId}`)),
 );
+
+/**
+ * Holds a project's newest process history from outside React, through whichever account is
+ * mounted in `registry`: moved to a newly mounted one, let go on release.
+ */
+export function holdProjectHistory(
+  registry: AtomRegistry.AtomRegistry,
+  projectId: string,
+): () => void {
+  let release: (() => void) | null = null;
+  const hold = (account: AccountReads | null) => {
+    release?.();
+    release =
+      account?.demandDetail({ family: "process", listing: "history", ownerId: projectId }) ?? null;
+  };
+  const unsubscribe = registry.subscribe(accountReadsAtom, hold, { immediate: true });
+  return () => {
+    unsubscribe();
+    release?.();
+    release = null;
+  };
+}
