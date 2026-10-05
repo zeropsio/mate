@@ -515,23 +515,16 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
     expect(facts?.mate?.waiting).toBe(waiting);
   });
 
-  // Whether it works, and since when: the changes the run it works in moved ask for nothing until
-  // it rests (`changeShowsReview`).
+  // Its changes ask for nothing while it works: the group's next step waits until it rests.
   it.each([
-    {
-      case: "a Mate at work",
-      group: "connected",
-      face: "working",
-      workingSince: "2026-10-05T10:00:00.000Z",
-      working: [[true, "2026-10-05T10:00:00.000Z"]],
-    },
-    { case: "a Mate at rest", group: "connected", face: "idle", working: [[undefined, undefined]] },
+    { case: "a Mate at work", group: "connected", face: "working", working: [true] },
+    { case: "a Mate at rest", group: "connected", face: "idle", working: [undefined] },
     {
       case: "a word at rest says nothing of now",
       group: "ready",
       face: "working",
       remembered: true,
-      working: [[undefined, undefined]],
+      working: [undefined],
     },
   ] as const)("feeds $case to the flow", ({ group, face, working, ...rest }) => {
     const members = groupMemberFactsOf(
@@ -547,7 +540,7 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
       deployments: new Map(),
       pending: [],
     });
-    expect(input.mates.map((entry) => [entry.working, entry.workingSince])).toEqual(working);
+    expect(input.mates.map((entry) => entry.working)).toEqual(working);
   });
 
   it("feeds an unknown talk to the flow as not spoken to", () => {

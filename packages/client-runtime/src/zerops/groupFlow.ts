@@ -91,10 +91,8 @@ export interface GroupFlowMate {
   readonly failed?: boolean;
   /** Somebody has spoken into its conversation (`ZeropsAgentActivity.subject` is present). */
   readonly talked: boolean;
-  /** It works — a turn, or helpers it started: the changes that run moved ask for nothing yet. */
+  /** It works — a turn, or helpers it started: its changes ask for nothing until it rests. */
   readonly working?: boolean;
-  /** When the run it works in was asked for (`changeShowsReview`). */
-  readonly workingSince?: string;
   /** Present while it is being created: where its birth has got to. */
   readonly coming?: GroupFlowComing;
 }

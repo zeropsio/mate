@@ -405,32 +405,6 @@ describe("threadAgentActivity", () => {
   });
 });
 
-// The run a Mate works in, by when it was asked for: a change it moved since then is still being
-// written (`changeShowsReview`); its helpers belong to the run that started them.
-describe("workingSince — when the run a Mate works in began", () => {
-  it.each([
-    { case: "a turn running", thread: RUNNING, since: "2026-09-05T10:01:00.000Z" },
-    {
-      case: "its turn over, its helpers at work",
-      thread: shell({
-        backgroundLiveness: "working",
-        latestTurn: {
-          turnId: TurnId.make("turn-1"),
-          state: "completed",
-          requestedAt: "2026-09-05T10:01:00.000Z",
-          startedAt: "2026-09-05T10:01:02.000Z",
-          completedAt: "2026-09-05T10:05:00.000Z",
-          assistantMessageId: null,
-        },
-      }),
-      since: "2026-09-05T10:01:00.000Z",
-    },
-    { case: "at rest", thread: shell(), since: undefined },
-  ])("$case", ({ thread, since }) => {
-    expect(threadAgentActivity(thread, undefined).workingSince).toBe(since);
-  });
-});
-
 describe("agentActivitySubject", () => {
   it.each([
     ["idle", "Add the login page"],

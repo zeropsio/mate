@@ -874,70 +874,26 @@ describe("waitingForProduction: how many changes wait for production once one me
   });
 });
 
-// D7: a change asks for review once its Mate described it at its head, and only after the run that
-// made it. Wherever a change is listed it shows its Review by this one rule: a ready change keeps
-// it while its Mate works on something else, and gives it up only while the run still writing it
-// works — the run moved it (described, pushed or commented on) since it began.
+// D7: a change asks for review once its Mate described it at its head, and never while its Mate
+// works in any of its chats. Every list a change stands in reads this one rule.
 describe("changeShowsReview — one rule for every list a change stands in", () => {
-  const RUN = "2026-10-05T10:00:00.000Z";
   it.each([
+    { case: "a draft, its Mate at rest", ready: false, mate: undefined, shows: false },
+    { case: "a described change, its Mate at rest", ready: true, mate: undefined, shows: true },
     {
-      case: "a draft, its Mate at rest",
-      ready: false,
-      updatedAt: "2026-10-05T09:00:00.000Z",
-      mate: undefined,
-      shows: false,
-    },
-    {
-      case: "a ready change, its Mate at rest",
+      case: "a described change, its Mate idle",
       ready: true,
-      updatedAt: "2026-10-05T09:00:00.000Z",
-      mate: undefined,
-      shows: true,
-    },
-    {
-      case: "a ready change, its Mate idle",
-      ready: true,
-      updatedAt: "2026-10-05T09:00:00.000Z",
       mate: { working: false },
       shows: true,
     },
     {
-      case: "a ready change an earlier run finished, its Mate on something else",
+      case: "a described change, its Mate at work",
       ready: true,
-      updatedAt: "2026-10-05T09:00:00.000Z",
-      mate: { working: true, workingSince: RUN },
-      shows: true,
-    },
-    {
-      case: "a ready change the working run moved",
-      ready: true,
-      updatedAt: "2026-10-05T10:04:00.000Z",
-      mate: { working: true, workingSince: RUN },
-      shows: false,
-    },
-    {
-      case: "a ready change, its Mate working since a time unknown",
-      ready: true,
-      updatedAt: "2026-10-05T09:00:00.000Z",
       mate: { working: true },
       shows: false,
     },
-    {
-      case: "a ready change of no known time, its Mate working",
-      ready: true,
-      updatedAt: undefined,
-      mate: { working: true, workingSince: RUN },
-      shows: false,
-    },
-    {
-      case: "a draft an earlier run left, its Mate on something else",
-      ready: false,
-      updatedAt: "2026-10-05T09:00:00.000Z",
-      mate: { working: true, workingSince: RUN },
-      shows: false,
-    },
-  ])("$case: $shows", ({ ready, updatedAt, mate, shows }) => {
-    expect(changeShowsReview({ ready, updatedAt }, mate)).toBe(shows);
+    { case: "a draft, its Mate at work", ready: false, mate: { working: true }, shows: false },
+  ])("$case: $shows", ({ ready, mate, shows }) => {
+    expect(changeShowsReview({ ready }, mate)).toBe(shows);
   });
 });

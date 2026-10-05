@@ -146,6 +146,18 @@ describe("mateNextStep", () => {
         : next.kind,
     ).toEqual(step);
   });
+
+  // D7, the rule every list of changes reads (`changeShowsReview`): while the Mate works, its
+  // described change asks for nothing yet.
+  it.each([
+    { case: "at rest", working: false, kind: "review" },
+    { case: "at work", working: true, kind: "none" },
+  ])("reads its own described change, its Mate $case: $kind", ({ working, kind }) => {
+    expect(
+      mateNextStep({ pullRequests: [pull()], mateProjectId: "p-wren", mateName: "Wren", working })
+        .kind,
+    ).toBe(kind);
+  });
 });
 
 describe("mateNextStep: every change of its own waiting, newest first", () => {

@@ -515,7 +515,10 @@ describe("groupFlow", () => {
       "merge",
     ],
   ] as const)("asks for a merge only of a change ready for it: %s", (_case, input, kind) => {
-    expect(groupFlow(input).nextStep.kind).toBe(kind);
+    const flow = groupFlow(input);
+    expect(flow.nextStep.kind).toBe(kind);
+    // Its row shows Review by the rule the next step reads (`changeShowsReview`).
+    expect(flow.pullRequests.map((entry) => entry.review)).toEqual([kind === "merge"]);
   });
 
   const productionOf = (

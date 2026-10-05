@@ -4104,18 +4104,16 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
     `Rune`): in an application a project is `<application> - <Mate>`, outside any just `<Mate>`.
   - _Why:_ the organization's project list in Zerops is where the projects of every application
     stand side by side; without the prefix a Mate's project says nothing of whose it is.
-- **2026-10-06** — **A ready change shows _Review_ wherever it is listed, except while the run still
-  writing it works** (pass 43: the menu's rows hid a change's _Review_ while its Mate worked, the
-  projects page did not). One rule, `changeShowsReview`, read by the menu's change rows, the
-  projects page's change rows and the group's next step: a draft asks nothing; a described change
-  keeps its _Review_ while its Mate works on something else, and gives it up while the Mate's
-  working run has moved it — HQ's `updatedAt` (a description, a push or a comment) is at or after
-  the run's start (`workingSince`: the running turn's request, its helpers counted in its run).
-  Where either time is unknown, a working Mate's changes wait for it to rest, as before. The
-  composer's top still gives way while the Mate works in any of its chats.
-  - _Why:_ "a change asks for review only once described, and only after the run that made it";
-    hiding every change of a working Mate hid one an earlier run had finished, and the two surfaces
-    disagreed.
+- **2026-10-06** — **Every list of a Mate's changes reads D7 by one rule** (pass 43: the menu's rows
+  hid a change's _Review_ while its Mate worked, the projects page did not). `changeShowsReview` —
+  described at its head, and its Mate not working in any of its chats, a turn or helpers it
+  started — is read by the menu's change rows, the projects page's change rows, the group's next
+  step and the composer's top (`mateNextStep`; the composer gives way by its own hold, which keeps
+  a dismissed strip remembered). A rule by HQ's `updatedAt` against the run's start was tried and
+  dropped: a person's comment moves a change, a change the run will amend could be merged
+  mid-edit, and two clocks would decide it.
+  - _Why:_ 0fc8a2eca's D7 — "While the Mate works in any of its chats … its rows carry no Review,
+    and the group's next step passes its changes by" — and the surfaces disagreed.
 - **2026-10-06** — **A sign-in failure is the Mate's, said in its words** (F7: the reason read
   "Claude's sign-in has expired. Sign Claude in again, …" under Sage). Where a Mate is named, its
   sign-in failure reads "Sage is signed out of Claude. Sign in again to continue." — the Mate the
