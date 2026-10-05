@@ -114,6 +114,7 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
         headBranch: `mate/${VERA}/3`,
         description: undefined,
         commentCount: 0,
+        ready: true,
       },
     ]);
   });
@@ -132,6 +133,13 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
     ["unknown", "checking"],
   ] as const)("names how it merges as HQ last judged it: %s", (said, word) => {
     expect(flow([change({ mergeability: said })]).pullRequests[0]?.mergeability).toBe(word);
+  });
+
+  it.each([
+    ["a change described at its head asks for review", true],
+    ["a draft asks for nothing", false],
+  ] as const)("%s", (_case, ready) => {
+    expect(flow([change({ ready })]).pullRequests[0]?.ready).toBe(ready);
   });
 
   it("is behind main where HQ judged main moved past it", () => {

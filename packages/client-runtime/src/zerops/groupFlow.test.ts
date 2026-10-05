@@ -501,6 +501,38 @@ describe("groupFlow", () => {
     expect(groupFlow(input).nextStep).toEqual(step);
   });
 
+  // A change asks for the merge only once its Mate described it at its head, and never while its
+  // Mate still works: the description would trail what it does.
+  it.each([
+    ["a change described at its head, its Mate at rest", SM_FIXTURE, "merge"],
+    ["a draft", { ...SM_FIXTURE, pullRequests: [pull({ ready: false })] }, "add-production"],
+    [
+      "a described change whose Mate still works",
+      { ...SM_FIXTURE, mates: SM_FIXTURE.mates.map((mate) => ({ ...mate, working: true })) },
+      "add-production",
+    ],
+    [
+      "another Mate works",
+      {
+        ...SM_FIXTURE,
+        mates: [
+          ...SM_FIXTURE.mates,
+          {
+            projectId: "p-juno",
+            name: "Juno",
+            preview: undefined,
+            waiting: false,
+            talked: false,
+            working: true,
+          },
+        ],
+      },
+      "merge",
+    ],
+  ] as const)("asks for a merge only of a change ready for it: %s", (_case, input, kind) => {
+    expect(groupFlow(input).nextStep.kind).toBe(kind);
+  });
+
   const productionOf = (
     over: Partial<GroupFlowStopInput>,
     release: GroupFlowInput["release"] = {
