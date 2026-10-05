@@ -476,6 +476,9 @@ export function arrivalHoldsThrough(
       return !failing;
     case "retrying":
       return !reachability.restart && !failing;
+    // Nothing but failed probes says it is coming up: as a boot on its way until its cap runs out.
+    case "not-answering":
+      return !reachability.overdue;
     case "container":
       return (
         ON_ITS_WAY_LEVELS.has(reachability.container.level) &&

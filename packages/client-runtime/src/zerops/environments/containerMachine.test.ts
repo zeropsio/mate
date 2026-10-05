@@ -385,7 +385,13 @@ describe("container machine (DESIGN §4.5)", () => {
   for (const row of CADENCE_ROWS) {
     it(`a boot is read as its evidence asks: ${row.name}`, () => {
       const run = drive(row.events);
-      expect(containerVerdict(run.machine)).toEqual({ level: "booting", overdue: false });
+      // Only a boot nothing vouches for is guessed: its verdict says so.
+      const guessed = row.cadence.kind === "on-demand" ? { guessed: true } : {};
+      expect(containerVerdict(run.machine)).toEqual({
+        level: "booting",
+        overdue: false,
+        ...guessed,
+      });
       expect(probeCadence(run.machine)).toEqual(row.cadence);
     });
   }
@@ -421,12 +427,20 @@ describe("container machine (DESIGN §4.5)", () => {
       [probed({ kind: "unreachable" }, dropped.nowMs + READY_SILENCE_MS)],
       unanswered,
     );
-    expect(containerVerdict(silent.machine)).toEqual({ level: "booting", overdue: false });
+    expect(containerVerdict(silent.machine)).toEqual({
+      level: "booting",
+      overdue: false,
+      guessed: true,
+    });
     expect(probeCadence(silent.machine)).toEqual({ kind: "on-demand" });
     expect(probeCadence(silent.machine, true)).toEqual({ kind: "poll", overdue: true });
 
     const stalled = drive([{ type: "TICK" }], silent);
-    expect(containerVerdict(stalled.machine)).toEqual({ level: "booting", overdue: true });
+    expect(containerVerdict(stalled.machine)).toEqual({
+      level: "booting",
+      overdue: true,
+      guessed: true,
+    });
     expect(stalled.nowMs).toBe(dropped.nowMs + READY_SILENCE_MS + CONTAINER_CAPS_MS.booting);
   });
 
@@ -477,13 +491,18 @@ describe("container machine (DESIGN §4.5)", () => {
       probed({ kind: "predates-mate" }, START_MS),
       { now: instant(START_MS + 5_000) },
     );
-    expect(containerVerdict(predates.state)).toEqual({ level: "booting", overdue: false });
+    expect(containerVerdict(predates.state)).toEqual({
+      level: "booting",
+      overdue: false,
+      guessed: true,
+    });
     expect(predates.effects).toContainEqual({ kind: "read-mate-flag" });
 
     const at = { machine: predates.state, nowMs: START_MS + 5_000 };
     expect(containerVerdict(drive([{ type: "MATE_FLAG", flag: "unknown" }], at).machine)).toEqual({
       level: "booting",
       overdue: false,
+      guessed: true,
     });
     const off = drive([{ type: "MATE_FLAG", flag: false }], at);
     expect(containerVerdict(off.machine)).toEqual({ level: "needs-enable" });

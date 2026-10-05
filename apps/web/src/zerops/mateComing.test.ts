@@ -504,7 +504,7 @@ describe("mateOpeningPhrase — what a Mate's own view says under its name", () 
     {
       case: "reconnecting",
       page: { kind: "reaching", reachability: { kind: "reconnecting" } },
-      phrase: { text: "Reconnecting…", actions: [] },
+      phrase: { text: "Reconnecting…", actions: ["try-now"] },
     },
     {
       case: "nothing known of it yet",
@@ -535,7 +535,7 @@ describe("mateOpeningPhrase — what a Mate's own view says under its name", () 
         kind: "reaching",
         reachability: { kind: "container", container: { level: "inactive", status: "STOPPED" } },
       },
-      phrase: { text: "This Mate isn't running.", actions: ["start"] },
+      phrase: { text: "This Mate isn't running.", actions: ["try-now", "start"] },
     },
     {
       case: "gone: why, and the projects",

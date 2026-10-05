@@ -202,9 +202,12 @@ export const containerVerdict = (machine: ContainerMachine): ContainerVerdict =>
       return { level: state.level };
     case "inactive":
       return { level: "inactive", status: state.status };
+    case "booting":
+      return state.guessed
+        ? { level: "booting", overdue, guessed: true }
+        : { level: "booting", overdue };
     case "creating":
     case "provisioning":
-    case "booting":
     case "updating":
       return { level: state.level, overdue };
     case "restarting":

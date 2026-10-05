@@ -94,6 +94,7 @@ function mateState(candidate: MobileCandidate, nowMs: number): ZeropsCandidatePr
         notice,
       );
     case "retrying":
+    case "not-answering":
       return withNotice(
         {
           label: "Connecting",

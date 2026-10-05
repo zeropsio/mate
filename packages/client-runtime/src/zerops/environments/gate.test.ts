@@ -130,7 +130,7 @@ const ROWS: ReadonlyArray<{
     target: resolved({ kind: "reconnecting" }, "synchronizing"),
     gate: { kind: "outlet", banner: { kind: "reconnecting" }, composer: "disabled" },
     text: "Reconnecting…",
-    actions: [],
+    actions: ["try-now"],
   },
   {
     row: "RG7",

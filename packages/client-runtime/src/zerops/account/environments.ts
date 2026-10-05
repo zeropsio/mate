@@ -1118,6 +1118,9 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       // the screen stays as the Mate left last.
       connect: (key, reason) => {
         const letGo = driver.hold(key, "user");
+        // The person's Try now asks its container too: a level it reads past its cap, or a server
+        // that stopped answering, is read again at once.
+        containers.request(key, { fresh: true });
         return driver.connect(key, reason).then((outcome) => {
           if (outcome._tag === "Connected" && !viewed.includes(key)) keepRecent(key);
           letGo();
