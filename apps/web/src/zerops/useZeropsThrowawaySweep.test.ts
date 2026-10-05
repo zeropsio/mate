@@ -33,20 +33,24 @@ vi.mock("./ZeropsSessionProvider", () => {
   };
   return { useZeropsSession: () => ({ client }) };
 });
-vi.mock("./ZeropsAccountData", async () => {
+// The account's operations as its data mount builds them, over a store of the test's registry.
+vi.mock("./accountOperations", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./accountOperations")>();
   const { RegistryContext } = await import("@effect/atom-react");
   const { makeAccountStore } = await import("@t3tools/client-runtime/data");
   const { useContext } = await import("react");
+  const { useZeropsSession } = await import("./ZeropsSessionProvider");
   const stores = new WeakMap<object, ReturnType<typeof makeAccountStore>>();
   return {
-    useAccountData: () => {
+    ...actual,
+    useAccountOperations: () => {
       const registry = useContext(RegistryContext);
       let store = stores.get(registry);
       if (store === undefined) {
         store = makeAccountStore(registry);
         stores.set(registry, store);
       }
-      return { store, orgId: null };
+      return actual.accountOperations(store, registry, useZeropsSession().client, () => () => {});
     },
   };
 });

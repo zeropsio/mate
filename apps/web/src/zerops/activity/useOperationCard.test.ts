@@ -45,8 +45,8 @@ vi.mock("../useNowMs.ts", () => ({
 const observationSpy = vi.hoisted(() =>
   vi.fn<() => unknown>(() => ({
     state: { kind: "off", reason: "not-found" },
-    history: undefined,
     buildLog: { status: "idle", lines: [] },
+    settledRead: "pending",
   })),
 );
 
@@ -90,11 +90,7 @@ function operation(overrides: Partial<ZeropsOperation> = {}): ZeropsOperation {
 }
 
 function observation(overrides: Partial<Observation> = {}): Observation {
-  return {
-    chips: [],
-    readAtMs: NOW,
-    ...overrides,
-  };
+  return { chips: [], ...overrides };
 }
 
 describe("observationTargetFor — building the ObservationTarget from an operation", () => {
@@ -377,10 +373,10 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
   it("observing a live feed: the pipeline's steps, and nothing said about the feed", () => {
     const state: ObservationState = {
       kind: "observing",
-      observation: observation({ pipeline: BUILDING, readAtMs: NOW }),
+      observation: observation({ pipeline: BUILDING }),
       elapsedMs: 42_000,
     };
-    const region = deriveObservedStepsRegion("import", "running", state, undefined, NOW);
+    const region = deriveObservedStepsRegion("import", "running", state, NOW);
 
     expect(region).toEqual({
       steps: [
@@ -420,11 +416,11 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
   it("a running step's duration is the render clock's, never the read's", () => {
     const state: ObservationState = {
       kind: "observing",
-      observation: observation({ pipeline: BUILDING, readAtMs: NOW }),
+      observation: observation({ pipeline: BUILDING }),
       elapsedMs: 42_000,
     };
     const buildAt = (nowMs: number) =>
-      deriveObservedStepsRegion("import", "running", state, undefined, nowMs)?.steps.find(
+      deriveObservedStepsRegion("import", "running", state, nowMs)?.steps.find(
         (entry) => entry.id === "RUN_BUILD_COMMANDS",
       )?.durationMs;
 
@@ -440,7 +436,7 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
       }),
       elapsedMs: 42_000,
     };
-    const region = deriveObservedStepsRegion("import", "running", state, undefined, NOW);
+    const region = deriveObservedStepsRegion("import", "running", state, NOW);
 
     expect(region?.buildLogQuery).toEqual({ buildServiceStackId: "svc-1", appVersionId: "av-1" });
   });
@@ -451,17 +447,19 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
       observation: observation(),
       elapsedMs: 2_000,
     };
-    expect(deriveObservedStepsRegion("import", "running", state, undefined, NOW)).toBeUndefined();
+    expect(deriveObservedStepsRegion("import", "running", state, NOW)).toBeUndefined();
   });
 
-  // Review of pass 43: a running card that never read says it once the feed
-  // has been out past its grace, rather than sitting blank.
+  // A running card that holds nothing says so while the feed catches up or failed, as the feed's
+  // phase says, never after a timer.
   it.each([
-    { name: "past its timeout", reason: "stale-timeout" },
-    { name: "the feed failed", reason: "feed-error" },
-  ] as const)("off with nothing seen, $name: it says Zerops isn't answering", ({ reason }) => {
-    const state: ObservationState = { kind: "off", reason };
-    expect(deriveObservedStepsRegion("import", "running", state, undefined, NOW)).toEqual({
+    {
+      name: "the feed catches up",
+      state: { kind: "stale", observation: observation() } as const,
+    },
+    { name: "the feed failed", state: { kind: "off", reason: "feed-error" } as const },
+  ])("nothing held, $name: it says Zerops isn't answering", ({ state }) => {
+    expect(deriveObservedStepsRegion("import", "running", state, NOW)).toEqual({
       steps: [],
       chips: [],
       provenance: "Zerops isn't answering",
@@ -470,90 +468,73 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
 
   it("off with nothing seen, for another reason: undefined", () => {
     const state: ObservationState = { kind: "off", reason: "not-found" };
-    expect(deriveObservedStepsRegion("import", "running", state, undefined, NOW)).toBeUndefined();
+    expect(deriveObservedStepsRegion("import", "running", state, NOW)).toBeUndefined();
   });
 
   it.each([
     {
-      name: "stale",
+      name: "catching up: what it holds, said once",
+      state: { kind: "stale", observation: observation({ pipeline: BUILDING }) } as const,
+      provenance: "Zerops isn't answering",
+    },
+    {
+      name: "observing: nothing said",
       state: {
-        kind: "stale",
-        observation: observation({ pipeline: BUILDING, readAtMs: NOW - 12_000 }),
-        ageMs: 12_000,
+        kind: "observing",
+        observation: observation({ pipeline: BUILDING }),
+        elapsedMs: 2_000,
       } as const,
-      provenance: "Zerops isn't answering · last update 12s ago",
-    },
-    {
-      name: "off past its timeout",
-      state: { kind: "off", reason: "stale-timeout" } as const,
-      provenance: "Zerops isn't answering · last update 2m 5s ago",
-    },
-    {
-      name: "off, the feed failed",
-      state: { kind: "off", reason: "feed-error" } as const,
-      provenance: "Zerops isn't answering · last update 2m 5s ago",
-    },
-    {
-      name: "off past the ceiling: it stopped looking, Zerops did not stop answering",
-      state: { kind: "off", reason: "ceiling" } as const,
       provenance: "",
     },
-    {
-      name: "observing, nothing new for this card yet",
-      state: { kind: "observing", observation: observation(), elapsedMs: 2_000 } as const,
-      provenance: "",
-    },
-  ])("a feed that is not observing says so, once: $name", ({ state, provenance }) => {
-    const history = observation({ pipeline: BUILDING, readAtMs: NOW - 125_000 });
-    const region = deriveObservedStepsRegion("import", "running", state, history, NOW);
+  ])("a running card's feed: $name", ({ state, provenance }) => {
+    const region = deriveObservedStepsRegion("import", "running", state, NOW);
     expect(region?.provenance).toBe(provenance);
+    expect(region?.steps.find((entry) => entry.state === "running")?.id).toBe("RUN_BUILD_COMMANDS");
   });
 
-  it("settled operation with history: the history's steps and log stay, with no provenance", () => {
-    const state: ObservationState = { kind: "off", reason: "ceiling" };
-    const history = observation({
-      pipeline: BUILDING,
-      outcome: "finished",
-      buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
-    });
-    const region = deriveObservedStepsRegion("import", "done", state, history, NOW);
+  it("settled with its outcome read: its steps and log, with no provenance", () => {
+    const state: ObservationState = {
+      kind: "stale",
+      observation: observation({
+        pipeline: BUILDING,
+        outcome: "finished",
+        buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
+      }),
+    };
+    const region = deriveObservedStepsRegion("import", "done", state, NOW);
 
     expect(region?.steps).toHaveLength(5);
     expect(region?.provenance).toBe("");
     expect(region?.buildLogQuery).toEqual({ buildServiceStackId: "svc-1", appVersionId: "av-1" });
   });
 
-  // A read from mid-run that nobody reads on is never drawn as live under the
-  // verdict: its steps leave, what it named of the build stays (pass 36).
-  it.each([
-    { name: "the read stopped", state: { kind: "off", reason: "ceiling" } as const },
-    {
-      name: "the read is stale",
-      state: { kind: "stale", observation: observation(), ageMs: 20_000 } as const,
-    },
-  ])("settled, a remembered mid-run read: $name", ({ state }) => {
-    const history = observation({
-      pipeline: BUILDING,
-      buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
-    });
-    const region = deriveObservedStepsRegion("deploy", "done", state, history, NOW);
+  // A mid-run row held while the feed catches up is never drawn as live under the verdict: its
+  // steps leave, what it named of the build stays (pass 36).
+  it("settled, only a mid-run row held while catching up: its log, never its steps", () => {
+    const state: ObservationState = {
+      kind: "stale",
+      observation: observation({
+        pipeline: BUILDING,
+        buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
+      }),
+    };
+    const region = deriveObservedStepsRegion("deploy", "done", state, NOW);
     expect(region?.pipeline).toBeUndefined();
     expect(region?.buildLogQuery).toEqual({ buildServiceStackId: "svc-1", appVersionId: "av-1" });
   });
 
-  it("settled operation, no history at all: undefined", () => {
+  it("settled operation, nothing held: undefined", () => {
     const state: ObservationState = { kind: "off", reason: "ceiling" };
-    expect(deriveObservedStepsRegion("import", "failed", state, undefined, NOW)).toBeUndefined();
+    expect(deriveObservedStepsRegion("import", "failed", state, NOW)).toBeUndefined();
   });
 
-  it("a settled operation still being read draws the newest read", () => {
+  it("a settled operation whose build still runs draws what the store holds", () => {
     const state: ObservationState = {
       kind: "observing",
       observation: observation({ pipeline: { appVersion: { status: "DEPLOYING" } } }),
       elapsedMs: 0,
     };
-    const history = observation({ pipeline: BUILDING });
-    const region = deriveObservedStepsRegion("import", "done", state, history, NOW);
+    const region = deriveObservedStepsRegion("import", "done", state, NOW);
     expect(region?.steps.find((entry) => entry.state === "running")?.id).toBe("DEPLOY");
   });
 });
@@ -579,67 +560,38 @@ describe("deriveObservedStepsRegion — secondary processes ride as compact rows
       name: "running, beside observed steps",
       kind: "deploy" as const,
       phase: "running" as const,
-      state: {
-        kind: "observing",
-        observation: observation({ pipeline: BUILDING, chips: [subdomainChip] }),
-        elapsedMs: 2_000,
-      } as const,
-      history: undefined,
+      observation: observation({ pipeline: BUILDING, chips: [subdomainChip] }),
     },
     {
       name: "running, a kind with no pipeline steps at all",
       kind: "scale" as const,
       phase: "running" as const,
-      state: {
-        kind: "observing",
-        observation: observation({ chips: [subdomainChip] }),
-        elapsedMs: 2_000,
-      } as const,
-      history: undefined,
+      observation: observation({ chips: [subdomainChip] }),
     },
     {
-      name: "settled, frozen with the history",
+      name: "settled, its outcome read",
       kind: "deploy" as const,
       phase: "done" as const,
-      state: { kind: "off", reason: "ceiling" } as const,
-      history: observation({ pipeline: BUILDING, chips: [subdomainChip] }),
+      observation: observation({ pipeline: BUILDING, chips: [subdomainChip], outcome: "finished" }),
     },
-  ])("$name", ({ kind, phase, state, history }) => {
-    const region = deriveObservedStepsRegion(kind, phase, state, history, NOW);
-    expect(region?.chips).toEqual([chipRow]);
+  ])("$name", ({ kind, phase, observation: held }) => {
+    const state: ObservationState = { kind: "observing", observation: held, elapsedMs: 2_000 };
+    expect(deriveObservedStepsRegion(kind, phase, state, NOW)?.chips).toEqual([chipRow]);
   });
 });
 
-describe("deriveObservedStepsRegion — steps once seen never leave a running card", () => {
-  it.each([
-    { name: "the feed goes off", state: { kind: "off", reason: "stale-timeout" } as const },
-    {
-      name: "a read attributes nothing yet",
-      state: {
-        kind: "observing",
-        observation: observation(),
-        elapsedMs: 2_000,
-      } as const,
-    },
-  ])("$name: the last observed steps stay", ({ state }) => {
-    const history = observation({ pipeline: BUILDING, readAtMs: NOW - 70_000 });
-    const region = deriveObservedStepsRegion("import", "running", state, history, NOW);
-
-    expect(region?.steps.find((entry) => entry.state === "running")?.id).toBe("RUN_BUILD_COMMANDS");
-  });
-});
-
-describe("deriveObservedStepsRegion — the build log once shown stays while the deploy runs", () => {
-  it("the feed goes off: the history's build log query rides on", () => {
-    const history = observation({
-      pipeline: BUILDING,
-      buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
-    });
+describe("deriveObservedStepsRegion — the build log rides on while the feed catches up", () => {
+  it("a running deploy keeps its build log query", () => {
     const region = deriveObservedStepsRegion(
       "deploy",
       "running",
-      { kind: "off", reason: "stale-timeout" },
-      history,
+      {
+        kind: "stale",
+        observation: observation({
+          pipeline: BUILDING,
+          buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
+        }),
+      },
       NOW,
     );
     expect(region?.buildLogQuery).toEqual({ buildServiceStackId: "svc-1", appVersionId: "av-1" });
@@ -650,7 +602,7 @@ describe("deriveObservedStepsRegion — a deploy reads its pipeline the way the 
   const SERVICE = { name: "weatherdash", type: "Node.js", hadContainers: true };
   const observingOf = (pipeline: ObservedPipeline): ObservationState => ({
     kind: "observing",
-    observation: observation({ pipeline, readAtMs: NOW }),
+    observation: observation({ pipeline }),
     elapsedMs: 42_000,
   });
 
@@ -661,9 +613,7 @@ describe("deriveObservedStepsRegion — a deploy reads its pipeline the way the 
     },
     { name: "with the feed off", state: { kind: "off", reason: "no-target" } as const },
   ])("$name: no region — the card says it is calculating the steps", ({ state }) => {
-    expect(
-      deriveObservedStepsRegion("deploy", "running", state, undefined, NOW, SERVICE),
-    ).toBeUndefined();
+    expect(deriveObservedStepsRegion("deploy", "running", state, NOW, SERVICE)).toBeUndefined();
   });
 
   it("once the build runs: the readout, read against the render clock, and no slot steps", () => {
@@ -671,7 +621,6 @@ describe("deriveObservedStepsRegion — a deploy reads its pipeline the way the 
       "deploy",
       "running",
       observingOf(BUILDING),
-      undefined,
       NOW,
       SERVICE,
     );
@@ -696,7 +645,6 @@ describe("deriveObservedStepsRegion — a deploy reads its pipeline the way the 
       "deploy",
       "running",
       observingOf(deploying),
-      undefined,
       NOW,
       SERVICE,
     );
@@ -712,12 +660,11 @@ describe("deriveObservedStepsRegion — a deploy reads its pipeline the way the 
     ]);
   });
 
-  it("a settled deploy keeps the readout it last saw once its outcome was read", () => {
+  it("a settled deploy keeps the readout the store holds once its outcome was read", () => {
     const region = deriveObservedStepsRegion(
       "deploy",
       "done",
-      { kind: "off", reason: "ceiling" },
-      observation({ pipeline: BUILDING, outcome: "failed" }),
+      { kind: "stale", observation: observation({ pipeline: BUILDING, outcome: "failed" }) },
       NOW,
       SERVICE,
     );
@@ -729,7 +676,6 @@ describe("deriveObservedStepsRegion — a deploy reads its pipeline the way the 
       "import",
       "running",
       observingOf(BUILDING),
-      undefined,
       NOW,
       SERVICE,
     );
@@ -868,15 +814,16 @@ describe("useOperationCard — the browser card's live viewport (hook)", () => {
 
 describe("useOperationCard — the whole build log opens in a dialog, only when asked (hook)", () => {
   const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
-  const history = observation({
+  const held = observation({
     pipeline: BUILDING,
+    outcome: "finished",
     buildLog: { buildServiceStackId: "svc-1", appVersionId: "av-1" },
   });
   const LINE = { id: "l1", at: "2026-09-01T00:00:10.000Z", text: "> npm ci", severity: 6 };
   const observed = (status: string, lines: ReadonlyArray<typeof LINE> = [LINE]) => ({
-    state: { kind: "off", reason: "stale-timeout" },
-    history: { ...history, outcome: "finished" },
+    state: { kind: "stale", observation: held },
     buildLog: { status, lines },
+    settledRead: "read",
   });
   const logOf = (region: ReturnType<typeof useOperationCard>) =>
     region.observed?.log as { props: { open: boolean; onToggle: () => void } } | undefined;

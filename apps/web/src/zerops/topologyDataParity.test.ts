@@ -7,7 +7,6 @@ import {
   makeInitialZeropsDataState,
   reduceZeropsDataState,
   selectHistory,
-  selectActivity,
   knownProjectsOf,
   knownServicesOf,
   selectProjectsOf,
@@ -25,9 +24,6 @@ import type {
   ZeropsStatHistoryItem,
 } from "@t3tools/client-runtime/zerops";
 import { projectTopology } from "@t3tools/client-runtime/zerops/topology";
-import { readProjectProcesses } from "@t3tools/client-runtime/zerops/activity/dto";
-import { getPipelineState } from "@t3tools/client-runtime/zerops/activity/pipelineState";
-import { observe } from "@t3tools/client-runtime/zerops/activity/observe";
 import { selectCandidates } from "@t3tools/client-runtime/zerops/projections";
 import {
   derivePublicRoutes,
@@ -48,7 +44,6 @@ import {
   stamp,
 } from "./__fixtures__/platformData";
 import { projectTopologySnapshotFromRead } from "../state/zerops";
-import { projectActivitySnapshotFromRead } from "./activity/useProjectActivity";
 
 const owner = project();
 const projectDto = {
@@ -233,6 +228,7 @@ function fixture() {
   const snapshot = () =>
     projectTopologySnapshotFromRead(
       selectTopology(state, owner),
+      [],
       new Map(services.map(({ id }) => [id, selectUsage(state, service(id))])),
       new Map(
         services.map(({ id }) => [
@@ -312,79 +308,6 @@ describe("original topology behavior through the central data pipeline", () => {
     expect(candidates[0]?.project).toEqual(projectDto);
   });
 
-  it.each(["BUILDING", "PREPARING_RUNTIME", "DEPLOYING", "ACTIVE", "FAILED", "CANCELLED"])(
-    "preserves original process and pipeline fields for %s",
-    (status) => {
-      const f = fixture();
-      const raw = {
-        id: "build-process",
-        projectId: owner.projectId,
-        status: "RUNNING",
-        actionName: "stack.deploy",
-        created: "2026-09-08T09:00:00Z",
-        serviceStackId: "app",
-        serviceStacks: [{ id: "app" }, { id: "worker" }],
-        started: "2026-09-08T09:00:01Z",
-        appVersion: {
-          id: "release-1",
-          status,
-          created: "2026-09-08T09:00:00Z",
-          source: "CLI",
-          build: {
-            containerCreationStart: "2026-09-08T09:00:02Z",
-            pipelineStart: "2026-09-08T09:00:02Z",
-            startDate: "2026-09-08T09:00:03Z",
-            endDate: "2026-09-08T09:00:04Z",
-            pipelineFinish: "2026-09-08T09:00:08Z",
-            pipelineFailed: "2026-09-08T09:00:08Z",
-            serviceStackId: "builder",
-            serviceStackName: "build-app",
-          },
-          prepareCustomRuntime: {
-            containerCreationStart: "2026-09-08T09:00:04Z",
-            startDate: "2026-09-08T09:00:05Z",
-            endDate: "2026-09-08T09:00:06Z",
-            serviceStackId: "prepare",
-            serviceStackName: "prepare-app",
-          },
-          activationDate: "2026-09-08T09:00:07Z",
-        },
-      };
-      f.ingest(
-        decodeEntityDirectResponse(
-          directTicket({ kind: "process", ref: process(raw.id) }, f.id),
-          raw,
-        ),
-      );
-      const actual = projectActivitySnapshotFromRead(selectActivity(f.state(), owner)).processes;
-      const expected = readProjectProcesses({ list: [raw] });
-      expect(actual).toEqual(expected);
-      expect(getPipelineState(actual?.[0]?.appVersion)).toEqual(
-        getPipelineState(expected?.[0]?.appVersion),
-      );
-      expect(
-        observe(
-          {
-            attributable: true,
-            startedAtMs: 0,
-            lastRead: {
-              attribution: { stepSource: actual![0]!, chips: [], projectMismatch: false },
-              atMs: 0,
-            },
-          },
-          0,
-        ),
-      ).toMatchObject({
-        observation: {
-          buildLog: {
-            buildServiceStackId: "builder",
-            appVersionId: "release-1",
-            fromIso: "2026-09-08T08:59:57.000Z",
-          },
-        },
-      });
-    },
-  );
   it("hides system services even after a partial native update, without hiding zcp", () => {
     const f = fixture();
     const registration = entityRegistration("service", f.id);

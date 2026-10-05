@@ -9,9 +9,7 @@ import {
   makeZeropsApiOrigin,
   projectKeyOf,
   type ProjectRef,
-  type RuntimeInterestDescriptor,
 } from "@t3tools/client-runtime/zerops/data";
-import * as Effect from "effect/Effect";
 import { act, createElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -34,34 +32,26 @@ const ref = (projectId: string): ProjectRef => ({
 });
 
 const leases = vi.hoisted(() => ({
-  /** Each lease held now, as `kind project`. */
+  /** Each hold held now, as `listing project`. */
   held: [] as Array<string>,
-  /** Every lease taken, in order. */
+  /** Every hold taken, in order. */
   taken: [] as Array<string>,
 }));
-vi.mock("../zeropsDataContext", () => {
-  // The account's runtime: one object for the account's life, as the real one is.
+vi.mock("../ZeropsAccountData", () => {
+  // The account's data layer: one object for the account's life, as the real one is.
   const data = {
-    runtime: {
-      acquire: (descriptor: RuntimeInterestDescriptor) => {
-        const name = `${descriptor.kind} ${"project" in descriptor ? descriptor.project.projectId : ""}`;
-        return Effect.acquireRelease(
-          Effect.sync(() => {
-            leases.held.push(name);
-            leases.taken.push(name);
-          }),
-          () =>
-            Effect.sync(() => {
-              leases.held.splice(leases.held.indexOf(name), 1);
-            }),
-        );
-      },
-      reads: { activity: () => null },
+    orgId: "org-1",
+    demandDetail: (demand: { readonly listing?: string; readonly ownerId: string }) => {
+      const name = `${demand.listing} ${demand.ownerId}`;
+      leases.held.push(name);
+      leases.taken.push(name);
+      return () => void leases.held.splice(leases.held.indexOf(name), 1);
     },
   };
   return {
-    useZeropsData: () => data,
-    useZeropsAtomSelections: () => new Map(),
+    useAccountDataOptional: () => data,
+    useAccountOrgId: () => data.orgId,
+    useProjection: () => ({}),
   };
 });
 vi.mock("../inventoryContext", async (importOriginal) => ({
@@ -103,13 +93,8 @@ describe("useProjectsProcesses", () => {
     await render(["p-ada"]);
     await render(["p-ada", "p-cy"]);
     await render(["p-cy"]);
-    expect(leases.taken).toEqual([
-      "project-activity p-ada",
-      "project-process-history p-ada",
-      "project-activity p-cy",
-      "project-process-history p-cy",
-    ]);
-    expect(leases.held).toEqual(["project-activity p-cy", "project-process-history p-cy"]);
+    expect(leases.taken).toEqual(["history p-ada", "history p-cy"]);
+    expect(leases.held).toEqual(["history p-cy"]);
 
     await act(async () => tree?.unmount());
     tree = undefined;

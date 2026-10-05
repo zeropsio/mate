@@ -1,61 +1,61 @@
 /**
- * The processes of several projects at once — running ones and the newest history — read while
- * this is drawn and the grant admits each project (DESIGN §4.2 G12): what a surface listing many
- * Mates follows each one's own process by, never a clock.
+ * The processes of several projects at once — what runs, what ended this session and the newest
+ * history — held while this is drawn and read from the account's store; a project the grant
+ * withholds (DESIGN §4.2 G12) reads as not read. What a surface listing many Mates follows each
+ * one's own process by, never a clock.
  */
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
-import type { ProjectActivityRead, ProjectRef } from "@t3tools/client-runtime/zerops/data";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
-import { findInventoryProjectRef, projectAuthority, useZeropsInventory } from "../inventoryContext";
-import { useInterestLeases } from "../useInterestLeases";
-import {
-  useZeropsAtomSelections,
-  useZeropsData,
-  type ZeropsAtomSelection,
-} from "../zeropsDataContext";
-import { projectActivitySnapshotFromRead } from "./useProjectActivity";
+import { projectAuthority, useZeropsInventory } from "../inventoryContext";
+import { useAccountDataOptional } from "../ZeropsAccountData";
+import { useProjectsActivityRead } from "./useProjectActivity";
 
 /** Each project's processes by id; none for a project not read yet, or one the grant withholds. */
 export function useProjectsProcesses(
   projectIds: ReadonlyArray<string>,
 ): ReadonlyMap<string, ReadonlyArray<ActivityProcess> | undefined> {
-  const { runtime } = useZeropsData();
   const inventory = useZeropsInventory();
-  const projects = useMemo(() => {
-    const refs = new Map<string, ProjectRef>();
-    for (const projectId of projectIds) {
-      if (projectAuthority(inventory, projectId).kind === "withheld") continue;
-      const ref = findInventoryProjectRef(inventory, projectId);
-      if (ref !== null) refs.set(projectId, ref);
+  const admitted = useMemo(
+    () => projectIds.filter((id) => projectAuthority(inventory, id).kind !== "withheld"),
+    [inventory, projectIds],
+  );
+  // Each project's history held while it is followed: one joining or leaving takes or lets go of
+  // its own hold only, never the others'.
+  const demandDetail = useAccountDataOptional()?.demandDetail;
+  const holds = useRef<{
+    readonly demandDetail: typeof demandDetail;
+    readonly released: Map<string, () => void>;
+  }>({ demandDetail: undefined, released: new Map() });
+  const key = admitted.join(",");
+  useEffect(() => {
+    // Another account's observation: every hold moves to it.
+    if (holds.current.demandDetail !== demandDetail) {
+      for (const release of holds.current.released.values()) release();
+      holds.current = { demandDetail, released: new Map() };
     }
-    return refs;
-  }, [inventory, projectIds]);
-  useInterestLeases(
-    useMemo(
-      () =>
-        [...projects.values()].flatMap((project) => [
-          { kind: "project-activity", project } as const,
-          { kind: "project-process-history", project, before: null, limit: 100 } as const,
-        ]),
-      [projects],
-    ),
+    const { released } = holds.current;
+    const following = new Set(key === "" ? [] : key.split(","));
+    for (const [projectId, release] of released)
+      if (!following.has(projectId)) {
+        release();
+        released.delete(projectId);
+      }
+    if (demandDetail === undefined) return;
+    for (const ownerId of following)
+      if (!released.has(ownerId))
+        released.set(ownerId, demandDetail({ family: "process", listing: "history", ownerId }));
+  }, [demandDetail, key]);
+  useEffect(
+    () => () => {
+      for (const release of holds.current.released.values()) release();
+      holds.current = { demandDetail: undefined, released: new Map() };
+    },
+    [],
   );
-
-  const entries = useMemo(
-    (): ReadonlyArray<ZeropsAtomSelection<ProjectActivityRead>> =>
-      [...projects].map(([projectId, project]) => [projectId, runtime.reads.activity(project)]),
-    [projects, runtime],
-  );
-  const reads = useZeropsAtomSelections(entries);
+  const reads = useProjectsActivityRead(admitted);
   return useMemo(
-    () =>
-      new Map(
-        [...reads].map(([projectId, read]) => [
-          projectId,
-          projectActivitySnapshotFromRead(read).processes,
-        ]),
-      ),
-    [reads],
+    () => new Map(admitted.map((id) => [id, reads[id]?.processes] as const)),
+    [admitted, reads],
   );
 }

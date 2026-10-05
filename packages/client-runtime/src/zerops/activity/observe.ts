@@ -36,8 +36,6 @@ export interface Observation {
   readonly chips: ReadonlyArray<ActivityProcess>;
   /** The step source's pipeline outcome, once settled. */
   readonly outcome?: "finished" | "failed" | "cancelled";
-  /** When what this observation holds was last known current, epoch ms. */
-  readonly readAtMs: number;
   /** Present once the step source's appVersion carries both an id and `build.serviceStackId`. */
   readonly buildLog?: BuildLogQuery;
   /** The services the step source names — which of a batch's services it is. */
@@ -57,17 +55,21 @@ export type ObservationState =
         | "unauthorized"
         | "not-found"
         | "project-mismatch"
-        | "feed-error"
-        | "stale-timeout";
+        | "feed-error";
     }
   | { readonly kind: "observing"; readonly observation: Observation; readonly elapsedMs: number }
-  | { readonly kind: "stale"; readonly observation: Observation; readonly ageMs: number };
+  /** The feed catches up: what it held stays, said to be not current. */
+  | { readonly kind: "stale"; readonly observation: Observation };
 
 export type ObservationOffReason = ReasonOf<ObservationState>;
 
 const DEFAULT_CEILING_MS = 30 * 60 * 1000;
-const STALE_AFTER_MS = 10_000;
-const OFF_AFTER_MS = 60_000;
+
+/**
+ * How the account's feed of the project's processes stands: live, first connecting, or catching
+ * up after it was read — the stream's own phase, never a timer.
+ */
+export type ObservationFeed = "live" | "connecting" | "catching-up";
 
 export interface ObservationInput {
   /** Session + target service id resolved. */
@@ -80,24 +82,12 @@ export interface ObservationInput {
    * A reason supplied by the caller — why `attributable` is false
    * (`no-session`/`no-target`), or why the feed itself is off
    * (`unauthorized`/`not-found`/`project-mismatch`/`feed-error`). `ceiling`
-   * and `stale-timeout` are computed here and never need to be passed in.
+   * is computed here and never needs to be passed in.
    */
   readonly unavailableReason?: ObservationOffReason;
-  /**
-   * Since when every read of Zerops has failed and been retried
-   * (`unreachableSince`): before a first read, past the same grace a read
-   * gets before it goes stale, the card says Zerops isn't answering.
-   */
-  readonly unreachableSinceMs?: number;
-  readonly lastRead?: {
-    readonly attribution: AttributionResult;
-    /**
-     * When the attribution was last known current: the caller's now while the
-     * feed observes (it pushes every change, so silence is news too), else
-     * the last read — the age that turns an observation stale, then off.
-     */
-    readonly atMs: number;
-  };
+  readonly feed: ObservationFeed;
+  /** What the store holds for the operation, once it holds anything for it. */
+  readonly attribution?: AttributionResult;
 }
 
 /** `undefined` appVersion.id + build.serviceStackId → no build log to offer. */
@@ -169,7 +159,7 @@ function pipelineFor(stepSource: ActivityProcess | undefined): ObservedPipeline 
   };
 }
 
-function observationFor(attribution: AttributionResult, atMs: number): Observation {
+function observationFor(attribution: AttributionResult): Observation {
   const stepSource = attribution.stepSource;
   const pipeline = pipelineFor(stepSource);
   const outcome = stepSource === undefined ? undefined : outcomeFor(stepSource);
@@ -177,35 +167,10 @@ function observationFor(attribution: AttributionResult, atMs: number): Observati
   return {
     ...(pipeline === undefined ? {} : { pipeline }),
     chips: attribution.chips,
-    readAtMs: atMs,
     ...(outcome === undefined ? {} : { outcome }),
     ...(buildLog === undefined ? {} : { buildLog }),
     ...(stepSource === undefined ? {} : { serviceIds: stepSource.serviceStackIds }),
   };
-}
-
-/** How long Zerops may be unreachable before what never read says so: the grace a read gets. */
-export const UNREACHABLE_GRACE_MS = STALE_AFTER_MS;
-
-/**
- * Since when Zerops has been unreachable — every read failed and retried, the
- * socket's routine 30-minute reconnect among them: from the first moment seen
- * so, kept while it lasts, gone once it is back.
- */
-export function unreachableSince(
-  previousMs: number | undefined,
-  reconnecting: boolean,
-  nowMs: number,
-): number | undefined {
-  return reconnecting ? (previousMs ?? nowMs) : undefined;
-}
-
-/**
- * Whether Zerops has been unreachable past the grace a read gets before it
- * goes stale: the routine reconnect is back within it, a lasting outage is not.
- */
-export function unreachableLasts(sinceMs: number | undefined, nowMs: number): boolean {
-  return sinceMs !== undefined && nowMs - sinceMs > UNREACHABLE_GRACE_MS;
 }
 
 export function observe(input: ObservationInput, nowMs: number): ObservationState {
@@ -223,36 +188,13 @@ export function observe(input: ObservationInput, nowMs: number): ObservationStat
     return { kind: "off", reason: input.unavailableReason };
   }
 
-  if (input.lastRead === undefined) {
-    if (unreachableLasts(input.unreachableSinceMs, nowMs)) {
-      return { kind: "off", reason: "stale-timeout" };
-    }
-    return {
-      kind: "observing",
-      observation: { chips: [], readAtMs: nowMs },
-      elapsedMs: Math.max(0, nowMs - input.startedAtMs),
-    };
-  }
-
-  const { attribution, atMs } = input.lastRead;
-  const observation = observationFor(attribution, atMs);
   const elapsedMs = Math.max(0, nowMs - input.startedAtMs);
-
-  // A settled pipeline never goes stale — the poller has already stopped
-  // polling for exactly that reason, so the time-based rules below do not
-  // apply once the outcome is known.
-  if (observation.outcome !== undefined) {
+  const observation =
+    input.attribution === undefined ? { chips: [] } : observationFor(input.attribution);
+  // A settled pipeline is the platform's word: it stands whether the feed is live or not.
+  if (observation.outcome !== undefined || input.feed !== "catching-up")
     return { kind: "observing", observation, elapsedMs };
-  }
-
-  const ageMs = nowMs - atMs;
-  if (ageMs > OFF_AFTER_MS) {
-    return { kind: "off", reason: "stale-timeout" };
-  }
-  if (ageMs > STALE_AFTER_MS) {
-    return { kind: "stale", observation, ageMs };
-  }
-  return { kind: "observing", observation, elapsedMs };
+  return { kind: "stale", observation };
 }
 
 /**
@@ -267,56 +209,4 @@ export function operationReadCeilingMs(
   ceilingMs: number = DEFAULT_CEILING_MS,
 ): number {
   return operation.exact ? Number.POSITIVE_INFINITY : ceilingMs;
-}
-
-/**
- * What one open of a settled operation's card has read of it: its read of the project's newest
- * process history is pending, landed, or failed — then it says so and reads no more.
- */
-export type SettledRead = "pending" | "read" | "failed";
-
-/**
- * The next `SettledRead`, from where the project's newest process history read stands and
- * whether the store's read of the project failed. Once landed or failed it stays so for the
- * open: a failed read is never asked for again.
- */
-export function settledReadAfter(
-  previous: SettledRead,
-  history: "unread" | "reading" | "read" | "failed",
-  feedFailed: boolean,
-): SettledRead {
-  if (previous !== "pending") return previous;
-  if (feedFailed || history === "failed") return "failed";
-  return history === "read" ? "read" : "pending";
-}
-
-export interface OperationReadBound {
-  readonly running: boolean;
-  /** Settled only: what this open has read of it. */
-  readonly settledRead: SettledRead;
-  /** Settled only: the read named its process. */
-  readonly found: boolean;
-  /** Still inside the ceiling since its start, on a clock that moves. */
-  readonly withinCeiling: boolean;
-}
-
-/**
- * Whether a card keeps the account store reading its operation. A running one: until its
- * outcome is read, and one only silent past its timeout too — it recovers only while somebody
- * still wants it. A settled one: one read of the project's history per open; past it, only one
- * whose process that read found, its outcome still unread, and only inside the ceiling — never
- * after a failed read, never once the store stopped answering.
- */
-export function readsOperation(state: ObservationState, bound: OperationReadBound): boolean {
-  if (state.kind === "off") return bound.running && state.reason === "stale-timeout";
-  if (state.observation.outcome !== undefined) return false;
-  if (bound.running) return true;
-  switch (bound.settledRead) {
-    case "pending":
-      return true;
-    case "failed":
-      return false;
-    case "read":
-      return bound.found && bound.withinCeiling;
-  }
 }

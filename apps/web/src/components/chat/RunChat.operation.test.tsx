@@ -45,7 +45,6 @@ vi.mock("../../zerops/activity/useProjectActivity", async (importOriginal) => {
       ? actual.EMPTY_PROJECT_ACTIVITY_SNAPSHOT
       : {
           processes: store.processes,
-          atMs: Date.now(),
           live: true,
           processHistory: store.history,
           ...(store.failure === undefined ? {} : { unavailableReason: store.failure }),
@@ -442,16 +441,6 @@ describe("RunChat — an operation's card, read from the account store", () => {
     expect(store.reading).toBe(false);
   });
 
-  it("keeps reading after its call settled until its outcome is read", () => {
-    const renderer = mount(inSlot(deploy("running")));
-    redraw(renderer, inSlot(deploy("done")));
-    redraw(renderer, inSlot(deploy("done")));
-    expect(store.reading).toBe(true);
-    store.processes = [process("finished")];
-    redraw(renderer, inSlot(deploy("done")));
-    expect(store.reading).toBe(false);
-  });
-
   it("lands in the history as it stood, the way to its log there from the first draw", () => {
     const renderer = mount(inSlot(deploy("running")));
     store.processes = [process("finished")];
@@ -551,8 +540,6 @@ describe("RunChat — an operation's card, read from the account store", () => {
     expect(count(renderer).steps).toBeGreaterThan(0);
     expect(count(renderer).whole).toBe(1);
     expect([...store.logReads]).toEqual(["av-41"]);
-    // Read: the store is asked no further.
-    expect(store.reading).toBe(false);
   });
 
   it("a failed deploy that named nothing never takes on a later deploy of its service", () => {
@@ -583,25 +570,21 @@ describe("RunChat — an operation's card, read from the account store", () => {
     expect(store.reading).toBe(false);
   });
 
-  it("a settled deploy found mid-run is read until its outcome, and no further than the ceiling", () => {
+  it("a settled deploy found mid-run shows its build as the store holds it, past any ceiling", () => {
     // Its call returned while the platform still says it builds.
     const settled = deploy("done", { key: "op:d4" });
     const renderer = openSettled(settled);
     expect(store.reading).toBe(true);
-    redraw(renderer, settledRow(settled));
-    expect(store.reading).toBe(true);
-    // Its clock moves on its own: past the ceiling the store is asked no further.
     vi.setSystemTime(fixtureAt(1, 30 * 60 + 1));
     act(() => vi.advanceTimersByTime(1_000));
     redraw(renderer, settledRow(settled));
-    expect(store.reading).toBe(false);
     expect(count(renderer).steps).toBeGreaterThan(0);
   });
 
   it.each([
     { name: "its history read", fail: () => (store.history = "failed") },
-    { name: "the store's read of the project", fail: () => (store.failure = "network") },
-  ])("a settled deploy whose read failed ($name) says so and asks no more", ({ fail }) => {
+    { name: "the store's read of the project", fail: () => (store.failure = "refused") },
+  ])("a settled deploy whose read failed ($name) says so", ({ fail }) => {
     store.processes = [];
     store.history = "reading";
     const settled = settledRow(deploy("done", { key: "op:d5" }));
@@ -610,14 +593,7 @@ describe("RunChat — an operation's card, read from the account store", () => {
     expect(store.reading).toBe(true);
     fail();
     redraw(renderer, settled);
-    expect(store.reading).toBe(false);
     expect(nodes(renderer, "data-zerops-operation-provenance")).toHaveLength(1);
-    // Let go, the failure is no longer said: the read is not asked for again.
-    store.history = "unread";
-    store.failure = undefined;
-    redraw(renderer, settled);
-    redraw(renderer, settled);
-    expect(store.reading).toBe(false);
   });
 
   it("one whose call returned while its build runs on lands closed and opens onto nothing", () => {

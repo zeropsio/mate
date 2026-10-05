@@ -17,10 +17,12 @@ import {
 import { Atom } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
+import { accountOperations, AccountOperationsContext } from "./accountOperations";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
+/** What a screen may reach of the account's data: the store's reads, never its writer. */
 export interface AccountData {
-  readonly store: AccountStore;
+  readonly data: AccountStore["data"];
   /** The organization whose navigation is observed; `null` before one is chosen. */
   readonly orgId: string | null;
   /** A screen's hold on a detail while it is drawn; the release lets it go. */
@@ -57,14 +59,23 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   }, [observation, orgId]);
   useEffect(() => () => observation.show(null), [observation]);
   const value = useMemo(
-    () => ({ store, orgId, demandDetail: observation.demandDetail }),
+    () => ({ data: store.data, orgId, demandDetail: observation.demandDetail }),
     [observation, orgId, store],
+  );
+  // The operations are built here, over the store this mount owns: no screen reaches its writer.
+  const operations = useMemo(
+    () => accountOperations(store, registry, client, observation.demandDetail),
+    [client, observation, registry, store],
   );
   useEffect(() => {
     registry.set(accountDataAtom, value);
     return () => registry.set(accountDataAtom, null);
   }, [registry, value]);
-  return <AccountDataContext value={value}>{children}</AccountDataContext>;
+  return (
+    <AccountDataContext value={value}>
+      <AccountOperationsContext value={operations}>{children}</AccountOperationsContext>
+    </AccountDataContext>
+  );
 }
 
 export function useAccountData(): AccountData {
@@ -92,9 +103,9 @@ export function useProjection<Key, Value>(
   key: Key | null,
   fallback: Atom.Atom<Value>,
 ): Value {
-  const store = useAccountDataOptional()?.store;
+  const data = useAccountDataOptional()?.data;
   return useAtomValue(
-    store === undefined || key === null ? fallback : store.data.project(projection, key),
+    data === undefined || key === null ? fallback : data.project(projection, key),
   );
 }
 

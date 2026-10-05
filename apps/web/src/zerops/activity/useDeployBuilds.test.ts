@@ -15,7 +15,6 @@ const BUILDING: ActivityProcess = {
 };
 const READ: ProjectActivitySnapshot = {
   processes: [BUILDING],
-  atMs: 1,
   live: true,
   processHistory: "read",
 };
@@ -32,7 +31,7 @@ describe("deployBuildLookup — what the thread's project says of a build a depl
     { name: "the store read the project", input: input({}), expected: "running" },
     {
       name: "nothing read of it yet",
-      input: input({ snapshot: { processes: undefined, atMs: undefined, live: false } }),
+      input: input({ snapshot: { processes: undefined, live: false, processHistory: "unread" } }),
       expected: "unread",
     },
     {
@@ -62,16 +61,20 @@ describe("deployBuildLookup — what the thread's project says of a build a depl
       expected: "unobservable",
     },
     {
-      name: "Zerops unreachable past the grace before anything was read",
+      name: "Zerops out before anything was read: still unread, however long, never unobservable",
       input: input({
-        snapshot: { processes: undefined, atMs: undefined, live: false, reconnecting: true },
-        unreachable: true,
+        snapshot: {
+          processes: undefined,
+          live: false,
+          reconnecting: true,
+          processHistory: "reading",
+        },
       }),
-      expected: "unobservable",
+      expected: "unread",
     },
     {
-      name: "Zerops unreachable past the grace with the project read",
-      input: input({ snapshot: { ...READ, live: false, reconnecting: true }, unreachable: true }),
+      name: "Zerops out with the project read: as it was read",
+      input: input({ snapshot: { ...READ, live: false, reconnecting: true } }),
       expected: "running",
     },
   ] as const)("$name: $expected", ({ input: given, expected }) => {

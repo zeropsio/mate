@@ -7,34 +7,28 @@
  *
  * The decision logic (`deriveOperationObservation`) is a pure function of
  * its inputs, exported and tested directly — the hook itself is thin React
- * glue: it reads session/topology/activity through hooks, keeps its
- * cross-render observation memory inside the mounted card, and asks the
- * account store to read the operation only while the decision says so. A card
- * drawn again for the same operation (a row plopped from the live slot, a
- * settled row opened after a reload or in another window) reads it from the
- * store again — by the ids its result named — never from the page.
+ * glue: it reads session/topology/activity through hooks and holds the
+ * project's newest process history while the card is drawn. It remembers
+ * nothing: what was read stays in the account's store, through an outage
+ * too, and a card drawn again for the same operation (a row plopped from the
+ * live slot, a settled row opened after a reload or in another window) reads
+ * it from the store again — by the ids its result named — never from the page.
  */
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 
 import {
-  type AttributionInput,
-  type AttributionResult,
   type ObservedKind,
   attributeActivity,
 } from "@t3tools/client-runtime/zerops/activity/attribution";
 import {
-  type Observation,
+  type ObservationFeed,
   type ObservationOffReason,
   type ObservationState,
   observe,
   operationReadCeilingMs,
-  readsOperation,
-  settledReadAfter,
-  type SettledRead,
-  unreachableLasts,
-  unreachableSince,
 } from "@t3tools/client-runtime/zerops/activity/observe";
 import type { BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
+import type { AttributionInput } from "@t3tools/client-runtime/zerops/activity/attribution";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 import { useZeropsSessionOptional } from "../ZeropsSessionProvider";
@@ -59,27 +53,25 @@ export interface ObservationTarget {
   readonly batch?: boolean;
 }
 
+/**
+ * What a settled operation's card has read of it: the project's newest process history is still
+ * on its way, read, or refused — then it says so, and nothing reads it again by itself.
+ */
+export type SettledRead = "pending" | "read" | "failed";
+
 export interface OperationObservation {
   readonly state: ObservationState;
-  /** The last good observation, kept after `running` turns false. */
-  readonly history: Observation | undefined;
   readonly buildLog: ReturnType<typeof useBuildLog>;
-  /** Whether the card keeps the account store reading its operation. */
-  readonly wantsPoll: boolean;
-  /** A settled one's: what this open read of it — `failed` says so. */
+  /** A settled one's: what was read of it — `failed` says so. */
   readonly settledRead: SettledRead;
 }
 
-type LastRead = { readonly attribution: AttributionResult; readonly atMs: number };
-
 /**
- * `ProjectActivitySnapshot.unavailableReason` carries a `ZeropsApiErrorKind`
- * uses transport/access vocabulary, not an `ObservationOffReason`.
- * The two happen to share the string `"not-found"`, but that is a
- * coincidence, not a contract — map explicitly rather than casting.
+ * `ProjectActivitySnapshot.unavailableReason` uses the store's access vocabulary, not an
+ * `ObservationOffReason`: map it explicitly rather than casting.
  */
 function mapActivityUnavailableReason(
-  reason: string | undefined,
+  reason: ProjectActivitySnapshot["unavailableReason"],
 ): ObservationOffReason | undefined {
   switch (reason) {
     case undefined:
@@ -87,11 +79,15 @@ function mapActivityUnavailableReason(
     case "expired-session":
     case "forbidden":
       return "unauthorized";
-    case "not-found":
-      return "not-found";
     default:
       return "feed-error";
   }
+}
+
+/** The feed as the store says it stands: live, first connecting, or catching up. */
+function feedOf(snapshot: ProjectActivitySnapshot): ObservationFeed {
+  if (snapshot.live) return "live";
+  return snapshot.reconnecting === true ? "catching-up" : "connecting";
 }
 
 export interface DeriveOperationObservationInput {
@@ -103,60 +99,36 @@ export interface DeriveOperationObservationInput {
   readonly serviceIds: ReadonlyArray<string>;
   readonly projectId: string | undefined;
   readonly snapshot: ProjectActivitySnapshot;
-  readonly previousLastRead: LastRead | undefined;
-  readonly previousHistory: Observation | undefined;
-  /** What this open of a settled operation had read of it, as of the previous draw. */
-  readonly previousSettledRead?: SettledRead;
-  /** Since when Zerops was unreachable, as of the previous draw (`unreachableSince`). */
-  readonly previousUnreachableSinceMs?: number;
   readonly ceilingMs?: number;
 }
 
 export interface DeriveOperationObservationResult {
   readonly state: ObservationState;
-  readonly lastRead: LastRead | undefined;
-  readonly history: Observation | undefined;
-  readonly wantsPoll: boolean;
   readonly settledRead: SettledRead;
-  /** Since when Zerops has been unreachable; the caller hands it back next draw. */
-  readonly unreachableSinceMs?: number;
-  /** The build whose log the card shows: the current read's, else the remembered one's — so a log once shown never leaves. */
+  /** The build whose log the card shows. */
   readonly buildLogQuery?: BuildLogQuery;
 }
 
 /**
- * Pure: `(input, nowMs) → result`. Folds a fresh snapshot (when one is
- * present) into an attribution read, computes the observation state, keeps
- * `history` sticky (the last observation with non-empty steps, carried
- * forward otherwise), and decides whether the caller should keep activity demand —
- * `running`, not past the ceiling, and the pipeline outcome not yet settled.
+ * Pure: `(input, nowMs) → result`. Attributes what the store holds of the
+ * project to the operation and computes its observation state from the
+ * feed's own phase; the clock only bounds an operation known by its service
+ * and start (its ceiling) and counts its elapsed time.
  */
 export function deriveOperationObservation(
   input: DeriveOperationObservationInput,
   nowMs: number,
 ): DeriveOperationObservationResult {
-  const { target } = input;
+  const { target, snapshot } = input;
   if (target === null) {
-    return {
-      state: { kind: "off", reason: "no-target" },
-      lastRead: undefined,
-      history: input.previousHistory,
-      wantsPoll: false,
-      settledRead: input.previousSettledRead ?? "pending",
-    };
+    return { state: { kind: "off", reason: "no-target" }, settledRead: "pending" };
   }
 
-  let lastRead = input.previousLastRead;
-  let unavailableReason = mapActivityUnavailableReason(input.snapshot.unavailableReason);
-
-  if (
-    input.attributable &&
-    input.projectId !== undefined &&
-    input.snapshot.processes !== undefined &&
-    input.snapshot.atMs !== undefined
-  ) {
-    const attribution = attributeActivity({
-      processes: input.snapshot.processes,
+  let unavailableReason = mapActivityUnavailableReason(snapshot.unavailableReason);
+  let attribution: Parameters<typeof observe>[0]["attribution"];
+  if (input.attributable && input.projectId !== undefined && snapshot.processes !== undefined) {
+    const attributed = attributeActivity({
+      processes: snapshot.processes,
       projectId: input.projectId,
       serviceIds: input.serviceIds,
       startedAtMs: target.startedAtMs,
@@ -164,85 +136,43 @@ export function deriveOperationObservation(
       ...(target.exact === undefined ? {} : { exact: target.exact }),
       ...(target.batch === true ? { batch: true } : {}),
     });
-    if (attribution.projectMismatch) {
-      unavailableReason = "project-mismatch";
-    } else if (attribution.stepSource !== undefined || attribution.chips.length > 0) {
-      // A successful observation that attributes nothing new for this target
-      // (`processes` is `[]`, not `undefined`, once the runtime has established
-      // the query) must not refresh the staleness clock; only a read that
-      // actually found something for this target counts as fresh knowledge.
-      // A live feed pushes every change, so what it holds is current now; one
-      // that is not observing is as old as the later of its newest record and
-      // the last moment it was seen live.
-      const atMs = input.snapshot.live
-        ? nowMs
-        : Math.max(input.snapshot.atMs, lastRead?.atMs ?? Number.NEGATIVE_INFINITY);
-      lastRead = { attribution, atMs };
-    }
+    if (attributed.projectMismatch) unavailableReason = "project-mismatch";
+    else if (attributed.stepSource !== undefined || attributed.chips.length > 0)
+      attribution = attributed;
   }
 
-  const ceiling = input.ceilingMs ?? OPERATION_OBSERVATION_CEILING_MS;
   const ceilingMs = operationReadCeilingMs(
     { running: target.running, exact: target.exact !== undefined },
-    ceiling,
+    input.ceilingMs ?? OPERATION_OBSERVATION_CEILING_MS,
   );
   const resolvedUnavailableReason = input.attributable
     ? unavailableReason
     : input.notAttributableReason;
-  const unreachableSinceMs = unreachableSince(
-    input.previousUnreachableSinceMs,
-    input.snapshot.reconnecting === true,
-    nowMs,
-  );
-  // Never read, and Zerops out past the grace: a settled one's one read failed.
-  const unreachableUnread = lastRead === undefined && unreachableLasts(unreachableSinceMs, nowMs);
   const state = observe(
     {
       attributable: input.attributable,
       startedAtMs: target.startedAtMs,
       ceilingMs,
+      feed: feedOf(snapshot),
       ...(resolvedUnavailableReason === undefined
         ? {}
         : { unavailableReason: resolvedUnavailableReason }),
-      ...(lastRead === undefined ? {} : { lastRead }),
-      ...(unreachableSinceMs === undefined ? {} : { unreachableSinceMs }),
+      ...(attribution === undefined ? {} : { attribution }),
     },
     nowMs,
   );
-
-  const observationNow = state.kind === "off" ? undefined : state.observation;
-  const history = observationNow?.pipeline !== undefined ? observationNow : input.previousHistory;
-
-  // A settled one is read once per open: its read of the project's history
-  // lands or fails, and a failed one is never asked for again.
-  const settledRead = target.running
-    ? "pending"
-    : settledReadAfter(
-        input.previousSettledRead ?? "pending",
-        input.snapshot.processHistory ?? "unread",
-        input.attributable && (unavailableReason !== undefined || unreachableUnread),
-      );
-  // `state.kind === "off"` covers every stop condition but the outcome —
-  // not attributable, the ceiling, and any feed problem the activity feed or
-  // attribution itself reports (including a project mismatch: no process for
-  // the right project is ever going to arrive from a read that is not even
-  // reading that project). A settled one stops once its read landed, unless
-  // that read found it mid-run inside the ceiling (`readsOperation`).
-  const wantsPoll = readsOperation(state, {
-    running: target.running,
-    settledRead,
-    found: lastRead !== undefined,
-    withinCeiling: nowMs - target.startedAtMs <= ceiling,
-  });
-  const buildLogQuery = observationNow?.buildLog ?? history?.buildLog;
-
+  const settledRead: SettledRead =
+    input.attributable && unavailableReason !== undefined
+      ? "failed"
+      : snapshot.processHistory === "failed"
+        ? "failed"
+        : snapshot.processHistory === "read"
+          ? "read"
+          : "pending";
+  const buildLogQuery = state.kind === "off" ? undefined : state.observation.buildLog;
   return {
     state,
-    lastRead,
-    history,
-    wantsPoll,
     settledRead,
-    ...(unreachableSinceMs === undefined ? {} : { unreachableSinceMs }),
     ...(buildLogQuery === undefined ? {} : { buildLogQuery }),
   };
 }
@@ -265,8 +195,8 @@ function serviceIdsFor(
 }
 
 /**
- * `nowMs` is the card's render clock (`useSecondsNowMs`): a live feed's
- * observation is current as of it, and a silent one ages against it.
+ * `nowMs` is the card's render clock (`useSecondsNowMs`): a running step's
+ * duration counts on against it between pushes.
  */
 export function useOperationObservation(
   target: ObservationTarget | null,
@@ -289,24 +219,11 @@ export function useOperationObservation(
     serviceIds.length > 0 &&
     projectId !== undefined;
 
-  const keyRef = useRef<string | null>(null);
-  const lastReadRef = useRef<LastRead | undefined>(undefined);
-  const historyRef = useRef<Observation | undefined>(undefined);
-  const settledReadRef = useRef<SettledRead>("pending");
-  const unreachableSinceRef = useRef<number | undefined>(undefined);
-  if (target === null || target.key !== keyRef.current) {
-    keyRef.current = target?.key ?? null;
-    lastReadRef.current = undefined;
-    historyRef.current = undefined;
-    settledReadRef.current = "pending";
-    unreachableSinceRef.current = undefined;
-  }
-
-  // What the account store holds of the project is read at once, whoever
-  // asked it to read: a settled operation it holds draws on its first paint.
-  const snapshot = useProjectActivityRead(target === null ? null : (projectId ?? null));
-
-  const previousHistory = historyRef.current;
+  // The project's newest history is held while the card is drawn: a settled
+  // operation's process may have ended before this tab ever saw it run.
+  const readsProject = target === null ? null : (projectId ?? null);
+  useProjectActivityDemand(readsProject);
+  const snapshot = useProjectActivityRead(readsProject);
 
   const result = deriveOperationObservation(
     {
@@ -316,23 +233,9 @@ export function useOperationObservation(
       serviceIds,
       projectId,
       snapshot,
-      previousLastRead: lastReadRef.current,
-      previousHistory,
-      previousSettledRead: settledReadRef.current,
-      ...(unreachableSinceRef.current === undefined
-        ? {}
-        : { previousUnreachableSinceMs: unreachableSinceRef.current }),
     },
     nowMs,
   );
-
-  lastReadRef.current = result.lastRead;
-  historyRef.current = result.history;
-  settledReadRef.current = result.settledRead;
-  unreachableSinceRef.current = result.unreachableSinceMs;
-  // The single source of truth for "should the store read it" is the
-  // decision's own `wantsPoll`, from this render's snapshot.
-  useProjectActivityDemand(result.wantsPoll ? (projectId ?? null) : null);
 
   const observationNow = result.state.kind === "off" ? undefined : result.state.observation;
   const buildLog = useBuildLog({
@@ -341,11 +244,5 @@ export function useOperationObservation(
     live: target !== null && target.running && observationNow?.outcome === undefined,
   });
 
-  return {
-    state: result.state,
-    history: result.history,
-    buildLog,
-    wantsPoll: result.wantsPoll,
-    settledRead: result.settledRead,
-  };
+  return { state: result.state, buildLog, settledRead: result.settledRead };
 }

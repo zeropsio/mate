@@ -3,7 +3,6 @@
  * wired as the owner of its kinds. A verb submits an intent here and reads where it stands through
  * the operation's progress projection; it never calls the platform itself.
  */
-import { RegistryContext } from "@effect/atom-react";
 import {
   makeOperations,
   makeZeropsExecutor,
@@ -17,15 +16,14 @@ import {
 } from "@t3tools/client-runtime/data";
 import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/unstable/reactivity";
-import { useContext, useMemo } from "react";
+import { createContext, useContext } from "react";
 
 import { randomUUID } from "~/lib/utils";
 
 import { accountThrowawayDebt } from "./throwawayDebt";
-import { useAccountData } from "./ZeropsAccountData";
-import { useZeropsSession } from "./ZeropsSessionProvider";
+import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
-type SessionClient = ReturnType<typeof useZeropsSession>["client"];
+type SessionClient = ZeropsSessionValue["client"];
 
 export interface AccountOperations {
   /** Records and sends one intent; resolves with where it stands once its owner has answered. */
@@ -41,7 +39,7 @@ export interface AccountOperations {
 
 const coordinators = new WeakMap<AccountStore, WeakMap<SessionClient, AccountOperations>>();
 
-function accountOperations(
+export function accountOperations(
   store: AccountStore,
   registry: AtomRegistry.AtomRegistry,
   client: SessionClient,
@@ -98,12 +96,12 @@ function accountOperations(
   return made;
 }
 
+/** The mounted account's operations, which its data mount builds over the store it owns. */
+export const AccountOperationsContext = createContext<AccountOperations | null>(null);
+
 export function useAccountOperations(): AccountOperations {
-  const { store, demandDetail } = useAccountData();
-  const registry = useContext(RegistryContext);
-  const { client } = useZeropsSession();
-  return useMemo(
-    () => accountOperations(store, registry, client, demandDetail),
-    [client, demandDetail, registry, store],
-  );
+  const operations = useContext(AccountOperationsContext);
+  if (operations === null)
+    throw new Error("useAccountOperations must be used inside ZeropsAccountData.");
+  return operations;
 }

@@ -15,8 +15,9 @@ import {
 import { AtomRegistry } from "effect/unstable/reactivity";
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 
+/** What a screen may reach of the account's data: the store's reads, never its writer. */
 interface AccountData {
-  readonly store: AccountStore;
+  readonly data: AccountStore["data"];
   readonly registry: AtomRegistry.AtomRegistry;
   /** The organization whose navigation is observed; `null` before one is chosen. */
   readonly orgId: string | null;
@@ -67,7 +68,7 @@ export function ZeropsAccountData({
       held === null
         ? null
         : {
-            store: held.store,
+            data: held.store.data,
             registry: held.registry,
             orgId: activeOrganizationId,
             demandDetail: held.observation.demandDetail,

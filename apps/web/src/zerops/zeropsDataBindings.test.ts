@@ -78,9 +78,10 @@ describe("central Zerops data bindings", () => {
     expect(topology).toContain("runtime.reads.topology(");
     expect(topology).not.toContain("runtime.stateAtom");
 
+    // A project's processes are the account store's projection, never the runtime's.
     const activity = source("./activity/useProjectActivity.ts");
-    expect(activity).toContain("runtime.reads.activity(project)");
-    expect(activity).not.toContain("runtime.stateAtom");
+    expect(activity).toContain("useProjection(");
+    expect(activity).not.toContain("runtime.");
   });
 
   it("binds inventory and candidates only to their narrow projection families", () => {

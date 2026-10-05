@@ -2,19 +2,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ActivityProcess } from "./dto.ts";
-import type { AttributionResult } from "./attribution.ts";
-import {
-  type ObservationInput,
-  type ObservationState,
-  observe,
-  operationReadCeilingMs,
-  readsOperation,
-  settledReadAfter,
-  type OperationReadBound,
-  type SettledRead,
-  unreachableLasts,
-  unreachableSince,
-} from "./observe.ts";
+import { type ObservationInput, observe, operationReadCeilingMs } from "./observe.ts";
 
 const NOW = Date.parse("2026-09-02T10:00:00.000Z");
 
@@ -33,13 +21,9 @@ function process(overrides: Partial<ActivityProcess>): ActivityProcess {
 const baseInput = (overrides: Partial<ObservationInput> = {}): ObservationInput => ({
   attributable: true,
   startedAtMs: NOW,
+  feed: "live",
   ...overrides,
 });
-
-const lastReadOf = (
-  attribution: AttributionResult,
-  atMs = NOW,
-): NonNullable<ObservationInput["lastRead"]> => ({ attribution, atMs });
 
 describe("observe — the three-state observation layer", () => {
   it("off: no-target when not attributable and no reason was given", () => {
@@ -58,21 +42,20 @@ describe("observe — the three-state observation layer", () => {
   it("observing with no pipeline or chips before the first read — the elapsed clock only", () => {
     expect(observe(baseInput(), NOW + 3_000)).toEqual({
       kind: "observing",
-      observation: { chips: [], readAtMs: NOW + 3_000 },
+      observation: { chips: [] },
       elapsedMs: 3_000,
     });
   });
 
-  // Review of pass 43: a card that never read sat blank through a lasting
-  // outage. After the same 10 s grace a read that ages gets, it says so; the
-  // socket's routine reconnect, back within it, stays quiet.
+  // A card that never read says what the feed says, never what a timer guessed: catching up is
+  // stale, however long; the first connect is still waiting.
   it.each([
-    { name: "within the grace: still waiting for its first read", after: 5_000, kind: "observing" },
-    { name: "past the grace: it says Zerops isn't answering", after: 15_000, kind: "off" },
-  ])("never read, Zerops unreachable — $name", ({ after, kind }) => {
-    const state = observe(baseInput({ unreachableSinceMs: NOW + 1_000 }), NOW + 1_000 + after);
+    { name: "while the feed first connects: waiting", feed: "connecting", kind: "observing" },
+    { name: "while the feed catches up: stale, after 5 s", feed: "catching-up", kind: "stale" },
+    { name: "while the feed catches up: stale, after 5 min", feed: "catching-up", kind: "stale" },
+  ] as const)("never read — $name", ({ feed, kind }) => {
+    const state = observe(baseInput({ feed }), NOW + 5 * 60_000);
     expect(state.kind).toBe(kind);
-    if (state.kind === "off") expect(state.reason).toBe("stale-timeout");
   });
 
   it("off: ceiling once the 30-minute default ceiling is exceeded", () => {
@@ -98,7 +81,7 @@ describe("observe — the three-state observation layer", () => {
     const appVersion = { status: "BUILDING", build: { pipelineStart: "t1" } };
     const p = process({ started: "2026-09-02T10:00:01.000Z", appVersion });
     const state = observe(
-      baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
+      baseInput({ attribution: { stepSource: p, chips: [], projectMismatch: false } }),
       NOW,
     );
     expect(state.kind).toBe("observing");
@@ -126,11 +109,11 @@ describe("observe — the three-state observation layer", () => {
   ])("carries no pipeline for $name", ({ stepSource }) => {
     const state = observe(
       baseInput({
-        lastRead: lastReadOf({
+        attribution: {
           ...(stepSource === undefined ? {} : { stepSource }),
           chips: [],
           projectMismatch: false,
-        }),
+        },
       }),
       NOW,
     );
@@ -141,7 +124,7 @@ describe("observe — the three-state observation layer", () => {
     const stepSource = process({ id: "p-deploy" });
     const chip = process({ id: "p-subdomain", actionName: "stack.enableSubdomainAccess" });
     const state = observe(
-      baseInput({ lastRead: lastReadOf({ stepSource, chips: [chip], projectMismatch: false }) }),
+      baseInput({ attribution: { stepSource, chips: [chip], projectMismatch: false } }),
       NOW,
     );
     expect(state.kind === "observing" && state.observation.chips).toEqual([chip]);
@@ -150,7 +133,7 @@ describe("observe — the three-state observation layer", () => {
   it("carries the outcome once the attributed process's pipeline is terminal", () => {
     const p = process({ appVersion: { status: "ACTIVE" } });
     const state = observe(
-      baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
+      baseInput({ attribution: { stepSource: p, chips: [], projectMismatch: false } }),
       NOW,
     );
     expect(state.kind === "observing" && state.observation.outcome).toBe("finished");
@@ -159,7 +142,7 @@ describe("observe — the three-state observation layer", () => {
   it("outcome failed for a DEPLOY_FAILED pipeline", () => {
     const p = process({ appVersion: { status: "DEPLOY_FAILED" } });
     const state = observe(
-      baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
+      baseInput({ attribution: { stepSource: p, chips: [], projectMismatch: false } }),
       NOW,
     );
     expect(state.kind === "observing" && state.observation.outcome).toBe("failed");
@@ -168,7 +151,7 @@ describe("observe — the three-state observation layer", () => {
   it("outcome cancelled when the process itself is CANCELED, independent of the appVersion", () => {
     const p = process({ status: "CANCELED", appVersion: { status: "BUILDING" } });
     const state = observe(
-      baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
+      baseInput({ attribution: { stepSource: p, chips: [], projectMismatch: false } }),
       NOW,
     );
     expect(state.kind === "observing" && state.observation.outcome).toBe("cancelled");
@@ -183,7 +166,7 @@ describe("observe — the three-state observation layer", () => {
   it("outcome finished for a FINISHED process with no appVersion (e.g. stack.create)", () => {
     const p = process({ status: "FINISHED", actionName: "stack.create" });
     const state = observe(
-      baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
+      baseInput({ attribution: { stepSource: p, chips: [], projectMismatch: false } }),
       NOW,
     );
     expect(state.kind === "observing" && state.observation.outcome).toBe("finished");
@@ -192,7 +175,7 @@ describe("observe — the three-state observation layer", () => {
   it("outcome failed for a FAILED process with no appVersion", () => {
     const p = process({ status: "FAILED", actionName: "stack.create" });
     const state = observe(
-      baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
+      baseInput({ attribution: { stepSource: p, chips: [], projectMismatch: false } }),
       NOW,
     );
     expect(state.kind === "observing" && state.observation.outcome).toBe("failed");
@@ -201,69 +184,40 @@ describe("observe — the three-state observation layer", () => {
   it("no outcome for a still-RUNNING process with no appVersion", () => {
     const p = process({ status: "RUNNING", actionName: "stack.create" });
     const state = observe(
-      baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
+      baseInput({ attribution: { stepSource: p, chips: [], projectMismatch: false } }),
       NOW,
     );
     expect(state.kind === "observing" && state.observation.outcome).toBeUndefined();
   });
 
-  it("stale after 10s with no fresh read, keeping the last observation", () => {
-    const p = process({ appVersion: { status: "BUILDING" } });
-    const input = baseInput({
-      lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }, NOW),
-    });
-    const state = observe(input, NOW + 11_000);
-    expect(state).toMatchObject({ kind: "stale", ageMs: 11_000 });
-  });
+  it.each([
+    { feed: "live", kind: "observing" },
+    { feed: "connecting", kind: "observing" },
+    { feed: "catching-up", kind: "stale" },
+  ] as const)(
+    "a read observation is $kind while the feed is $feed, however old",
+    ({ feed, kind }) => {
+      const p = process({ appVersion: { status: "BUILDING" } });
+      const state = observe(
+        baseInput({ feed, attribution: { stepSource: p, chips: [], projectMismatch: false } }),
+        NOW + 10 * 60_000,
+      );
+      expect(state.kind).toBe(kind);
+      expect(state.kind !== "off" && state.observation.pipeline).toBeDefined();
+    },
+  );
 
-  it("off: stale-timeout after 60s with no fresh read", () => {
-    const p = process({ appVersion: { status: "BUILDING" } });
-    const input = baseInput({
-      lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }, NOW),
-    });
-    expect(observe(input, NOW + 61_000)).toEqual({ kind: "off", reason: "stale-timeout" });
-  });
-
-  it("stale recovers to observing once a fresh read lands", () => {
-    const p = process({ appVersion: { status: "BUILDING" } });
-    const stale = observe(
-      baseInput({
-        lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }, NOW),
-      }),
-      NOW + 11_000,
-    );
-    expect(stale.kind).toBe("stale");
-
-    const fresh = observe(
-      baseInput({
-        lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }, NOW + 11_000),
-      }),
-      NOW + 11_000,
-    );
-    expect(fresh.kind).toBe("observing");
-  });
-
-  /**
-   * A settled pipeline never goes stale — the poller has already stopped
-   * polling for exactly that reason (nothing left to learn), so re-applying
-   * the staleness rule here would make a finished/failed/cancelled operation
-   * flicker in and out as its last read ages, unlike an operation still in
-   * flight.
-   */
-  it("never goes stale once the outcome is set, however old the last read", () => {
+  it("never goes stale once the outcome is set, the feed catching up or not", () => {
     const p = process({ appVersion: { status: "ACTIVE" } });
-    const input = baseInput({
-      lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }, NOW),
-    });
-    const past10s = observe(input, NOW + 11_000);
-    expect(past10s.kind).toBe("observing");
-    const past60s = observe(input, NOW + 61_000);
-    expect(past60s.kind).toBe("observing");
-    // Still well inside the 30-minute ceiling — the outcome exemption is
-    // about staleness (10s/60s), not the per-operation ceiling.
-    const past5min = observe(input, NOW + 5 * 60_000);
-    expect(past5min.kind).toBe("observing");
-    expect(past5min.kind === "observing" && past5min.observation.outcome).toBe("finished");
+    const state = observe(
+      baseInput({
+        feed: "catching-up",
+        attribution: { stepSource: p, chips: [], projectMismatch: false },
+      }),
+      NOW + 5 * 60_000,
+    );
+    expect(state.kind).toBe("observing");
+    expect(state.kind === "observing" && state.observation.outcome).toBe("finished");
   });
 
   it("carries the build log query once the step source's appVersion has id + build.serviceStackId", () => {
@@ -275,7 +229,7 @@ describe("observe — the three-state observation layer", () => {
       },
     });
     const state = observe(
-      baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
+      baseInput({ attribution: { stepSource: p, chips: [], projectMismatch: false } }),
       NOW,
     );
     expect(state.kind === "observing" && state.observation.buildLog).toEqual({
@@ -290,7 +244,7 @@ describe("observe — the three-state observation layer", () => {
       appVersion: { status: "BUILDING", build: { serviceStackId: "build-svc-1" } },
     });
     const state = observe(
-      baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
+      baseInput({ attribution: { stepSource: p, chips: [], projectMismatch: false } }),
       NOW,
     );
     expect(state.kind === "observing" && state.observation.buildLog).toBeUndefined();
@@ -301,7 +255,7 @@ describe("observe — the three-state observation layer", () => {
       appVersion: { id: "av-1", status: "BUILDING", build: { serviceStackId: "build-svc-1" } },
     });
     const state = observe(
-      baseInput({ lastRead: lastReadOf({ stepSource: p, chips: [], projectMismatch: false }) }),
+      baseInput({ attribution: { stepSource: p, chips: [], projectMismatch: false } }),
       NOW,
     );
     expect(state.kind === "observing" && state.observation.buildLog).toEqual({
@@ -339,189 +293,5 @@ describe("operationReadCeilingMs — how long after its start a card reads its o
     },
   ])("$name", ({ running, exact, ms }) => {
     expect(operationReadCeilingMs({ running, exact })).toBe(ms);
-  });
-});
-
-describe("readsOperation — whether a card keeps the store reading its operation", () => {
-  const read = (outcome?: "finished" | "failed" | "cancelled") => ({
-    chips: [],
-    readAtMs: NOW,
-    ...(outcome === undefined ? {} : { outcome }),
-  });
-  const RUNNING: OperationReadBound = {
-    running: true,
-    settledRead: "pending",
-    found: false,
-    withinCeiling: true,
-  };
-  const settled = (bound: Partial<OperationReadBound>): OperationReadBound => ({
-    ...RUNNING,
-    running: false,
-    ...bound,
-  });
-  const unread: ObservationState = { kind: "observing", observation: read(), elapsedMs: 9_000 };
-  it.each<{ name: string; state: ObservationState; bound: OperationReadBound; reads: boolean }>([
-    {
-      name: "running, nothing read yet",
-      state: { kind: "observing", observation: read(), elapsedMs: 0 },
-      bound: RUNNING,
-      reads: true,
-    },
-    { name: "running, read mid-run", state: unread, bound: RUNNING, reads: true },
-    {
-      name: "running, its outcome read",
-      state: { kind: "observing", observation: read("finished"), elapsedMs: 9_000 },
-      bound: RUNNING,
-      reads: false,
-    },
-    {
-      name: "running, stale",
-      state: { kind: "stale", observation: read(), ageMs: 20_000 },
-      bound: RUNNING,
-      reads: true,
-    },
-    {
-      name: "running, silent past its timeout",
-      state: { kind: "off", reason: "stale-timeout" },
-      bound: RUNNING,
-      reads: true,
-    },
-    {
-      name: "running, past the ceiling",
-      state: { kind: "off", reason: "ceiling" },
-      bound: RUNNING,
-      reads: false,
-    },
-    {
-      name: "running, the feed failed",
-      state: { kind: "off", reason: "feed-error" },
-      bound: RUNNING,
-      reads: false,
-    },
-    {
-      name: "signed out",
-      state: { kind: "off", reason: "no-session" },
-      bound: RUNNING,
-      reads: false,
-    },
-    {
-      name: "settled, its one read pending",
-      state: unread,
-      bound: settled({ withinCeiling: false }),
-      reads: true,
-    },
-    {
-      name: "settled, its read failed",
-      state: unread,
-      bound: settled({ settledRead: "failed" }),
-      reads: false,
-    },
-    {
-      name: "settled, read and not found",
-      state: unread,
-      bound: settled({ settledRead: "read" }),
-      reads: false,
-    },
-    {
-      name: "settled, found mid-run inside the ceiling: until its outcome",
-      state: unread,
-      bound: settled({ settledRead: "read", found: true }),
-      reads: true,
-    },
-    {
-      name: "settled, found mid-run past the ceiling: no further",
-      state: unread,
-      bound: settled({ settledRead: "read", found: true, withinCeiling: false }),
-      reads: false,
-    },
-    {
-      name: "settled, its outcome read",
-      state: { kind: "observing", observation: read("failed"), elapsedMs: 9_000 },
-      bound: settled({}),
-      reads: false,
-    },
-    {
-      name: "settled, silent past its timeout",
-      state: { kind: "off", reason: "stale-timeout" },
-      bound: settled({}),
-      reads: false,
-    },
-  ])("$name", ({ state, bound, reads }) => {
-    expect(readsOperation(state, bound)).toBe(reads);
-  });
-});
-
-describe("settledReadAfter — one read of a settled operation per open", () => {
-  it.each<{
-    name: string;
-    previous: SettledRead;
-    history: "unread" | "reading" | "read" | "failed";
-    feedFailed: boolean;
-    next: SettledRead;
-  }>([
-    {
-      name: "not asked yet",
-      previous: "pending",
-      history: "unread",
-      feedFailed: false,
-      next: "pending",
-    },
-    {
-      name: "being read",
-      previous: "pending",
-      history: "reading",
-      feedFailed: false,
-      next: "pending",
-    },
-    { name: "read", previous: "pending", history: "read", feedFailed: false, next: "read" },
-    {
-      name: "its read failed",
-      previous: "pending",
-      history: "failed",
-      feedFailed: false,
-      next: "failed",
-    },
-    {
-      name: "the store's read failed",
-      previous: "pending",
-      history: "reading",
-      feedFailed: true,
-      next: "failed",
-    },
-    {
-      name: "failed, then let go",
-      previous: "failed",
-      history: "unread",
-      feedFailed: false,
-      next: "failed",
-    },
-    {
-      name: "read, then let go",
-      previous: "read",
-      history: "unread",
-      feedFailed: false,
-      next: "read",
-    },
-  ])("$name", ({ previous, history, feedFailed, next }) => {
-    expect(settledReadAfter(previous, history, feedFailed)).toBe(next);
-  });
-});
-
-describe("since when Zerops has been unreachable", () => {
-  it.each([
-    { name: "it starts now", previous: undefined, reconnecting: true, since: NOW },
-    { name: "it keeps its start", previous: NOW - 4_000, reconnecting: true, since: NOW - 4_000 },
-    { name: "back again, it ends", previous: NOW - 4_000, reconnecting: false, since: undefined },
-    { name: "never unreachable", previous: undefined, reconnecting: false, since: undefined },
-  ])("$name", ({ previous, reconnecting, since }) => {
-    expect(unreachableSince(previous, reconnecting, NOW)).toBe(since);
-  });
-
-  it.each([
-    { name: "not unreachable", since: undefined, lasts: false },
-    { name: "within the grace", since: NOW - 10_000, lasts: false },
-    { name: "past the grace", since: NOW - 10_001, lasts: true },
-  ])("lasts: $name", ({ since, lasts }) => {
-    expect(unreachableLasts(since, NOW)).toBe(lasts);
   });
 });

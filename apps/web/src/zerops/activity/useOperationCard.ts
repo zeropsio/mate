@@ -26,7 +26,6 @@ import {
 } from "@t3tools/client-runtime/zerops/activity/observedSteps";
 import {
   type PipelineReadout,
-  formatDuration,
   readPipeline,
 } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
@@ -186,23 +185,17 @@ export interface ObservedStepsRegion {
   readonly buildLogQuery?: BuildLogQuery;
 }
 
-/** The feed has gone silent, or failed — not a card that stopped looking (the ceiling, a settled result). */
+/**
+ * The feed catches up, or failed — as its stream says, never a timer; not a card that stopped
+ * looking (the ceiling, a settled result).
+ */
 function feedNotObserving(state: ObservationState): boolean {
-  return (
-    state.kind === "stale" ||
-    (state.kind === "off" && (state.reason === "stale-timeout" || state.reason === "feed-error"))
-  );
+  return state.kind === "stale" || (state.kind === "off" && state.reason === "feed-error");
 }
 
 /** Nothing while the feed observes: a live card needs no word that it is live. */
-function provenanceFor(state: ObservationState, source: Observation, nowMs: number): string {
-  if (!feedNotObserving(state)) {
-    return "";
-  }
-  const age = formatDuration(nowMs - source.readAtMs);
-  return age === undefined
-    ? "Zerops isn't answering"
-    : `Zerops isn't answering · last update ${age} ago`;
+function provenanceFor(state: ObservationState): string {
+  return feedNotObserving(state) ? "Zerops isn't answering" : "";
 }
 
 /** The deployed service as a deploy step's sentence names it; any of it may not be known yet. */
@@ -250,25 +243,22 @@ function readoutOf(
 }
 
 /**
- * Pure: `(operation kind, phase, current state, remembered history, now) → region`.
- * A settled operation (`phase !== "running"`) draws its newest fresh read —
- * the store reads it on until its outcome is read — else its history once
- * that read the outcome; a remembered read from mid-run keeps its build log
- * and its secondary processes but never its steps, which would run on under
- * the result's verdict (§3, "the result is the verdict"). While
- * running, `state` drives the region once a read has produced a pipeline or
- * secondary processes; until then — and whenever the feed goes quiet or off
- * — the history holds what was already shown (steps, secondary processes,
- * build log), so nothing once on the card leaves it. The steps are read off
- * the pipeline against `nowMs`, the render clock, so a running step counts on
- * between reads. A deploy reads its pipeline the way the Zerops GUI does
- * (`readPipeline`), naming `service`; every other kind lists the steps.
+ * Pure: `(operation kind, phase, state, now) → region`. A settled operation
+ * (`phase !== "running"`) draws what the store holds of it while the feed is
+ * current or its outcome is read; one only held from mid-run while the feed
+ * catches up keeps its build log and its secondary processes but never its
+ * steps, which would run on under the result's verdict (§3, "the result is
+ * the verdict"). While running, the state drives the region once the store
+ * holds a pipeline or secondary processes; while the feed catches up it says
+ * so over what it holds, and over nothing when it holds nothing. The steps are
+ * read off the pipeline against `nowMs`, the render clock, so a running step
+ * counts on between pushes. A deploy reads its pipeline the way the Zerops GUI
+ * does (`readPipeline`), naming `service`; every other kind lists the steps.
  */
 export function deriveObservedStepsRegion(
   kind: ZeropsOperationKind,
   phase: ZeropsOperationPhase,
   state: ObservationState,
-  history: Observation | undefined,
   nowMs: number,
   service: PipelineService = UNKNOWN_SERVICE,
 ): ObservedStepsRegion | undefined {
@@ -293,40 +283,22 @@ export function deriveObservedStepsRegion(
     };
   };
 
+  const held = state.kind === "off" ? undefined : state.observation;
   if (phase !== "running") {
-    // Its call settled; the store reads on until the outcome is read. The
-    // newest fresh read is drawn; a remembered one only once it read the
-    // outcome — one from mid-run is never drawn as live under the verdict.
-    const fresh =
-      state.kind === "observing" && state.observation.pipeline !== undefined
-        ? state.observation
-        : undefined;
-    const source = fresh ?? history;
-    if (source === undefined) {
+    if (held === undefined || (held.pipeline === undefined && held.chips.length === 0))
       return undefined;
-    }
-    if (source === fresh || source.outcome !== undefined) {
-      return regionOf(source, "");
-    }
-    const { pipeline: _midRun, ...remembered } = source;
-    return remembered.chips.length === 0 && remembered.buildLog === undefined
-      ? undefined
-      : regionOf(remembered, "");
+    if (state.kind === "observing" || held.outcome !== undefined) return regionOf(held, "");
+    const { pipeline: _midRun, ...kept } = held;
+    return kept.chips.length === 0 && kept.buildLog === undefined ? undefined : regionOf(kept, "");
   }
 
-  const current =
-    state.kind === "off" ||
-    (state.observation.pipeline === undefined && state.observation.chips.length === 0)
-      ? undefined
-      : state.observation;
-  const source = current ?? history;
-  if (source === undefined) {
-    // Never read, and Zerops out past the grace: it says so, never blank.
+  if (held === undefined || (held.pipeline === undefined && held.chips.length === 0)) {
+    // Nothing held, and the feed catching up: it says so, never blank.
     return feedNotObserving(state)
       ? { steps: [], chips: [], provenance: "Zerops isn't answering" }
       : undefined;
   }
-  return regionOf(source, provenanceFor(state, source, nowMs));
+  return regionOf(held, provenanceFor(state));
 }
 
 /** A settled operation whose one read failed: it says so, over what its call returned. */
@@ -439,17 +411,21 @@ export function useOperationCard(
 ): OperationCardRegions {
   const target = observationTargetFor(operation);
   const running = operation.phase === "running";
-  // A settled one still read moves on the clock too: its read ends at the ceiling.
-  const [settledReading, setSettledReading] = useState(false);
-  const nowMs = useSecondsNowMs(running || settledReading);
-  const { state, history, buildLog, wantsPoll, settledRead } = useOperationObservation(
+  // A settled one whose pipeline still runs moves on the clock too: its steps count on.
+  const [settledRunning, setSettledRunning] = useState(false);
+  const nowMs = useSecondsNowMs(running || settledRunning);
+  const { state, buildLog, settledRead } = useOperationObservation(
     target,
     environmentId,
     nowMs,
     readsLog,
   );
-  const reading = !running && wantsPoll;
-  useEffect(() => setSettledReading(reading), [reading]);
+  const unsettled =
+    !running &&
+    state.kind !== "off" &&
+    state.observation.pipeline !== undefined &&
+    state.observation.outcome === undefined;
+  useEffect(() => setSettledRunning(unsettled), [unsettled]);
   const topology = useZeropsTopology(environmentId);
   // The whole log opens in a dialog, only when asked for.
   const ownLogDialog = useState(false);
@@ -459,10 +435,7 @@ export function useOperationCard(
   const devServerUrl = devServerUrlFor(operation, topology);
   const browserScreenshot = browserScreenshotFor(operation);
   const subjectHost = browserSubjectHostFor(operation, topology);
-  const seen =
-    state.kind === "off" || state.observation.serviceIds === undefined
-      ? history
-      : state.observation;
+  const seen = state.kind === "off" ? undefined : state.observation;
   const service = batchServiceFor(operation, seen, topology);
   const fields = {
     ...(service === undefined ? {} : { service }),
@@ -479,7 +452,6 @@ export function useOperationCard(
       operation.kind,
       operation.phase,
       state,
-      history,
       nowMs,
       pipelineServiceFor(
         service === undefined ? operation : { ...operation, target: { hostname: service } },

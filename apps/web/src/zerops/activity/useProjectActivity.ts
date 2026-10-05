@@ -1,167 +1,91 @@
-import { useAtomValue } from "@effect/atom-react";
+/**
+ * A project's processes as the account's store holds them (`projectProcesses`): what runs now, what
+ * ended this session, and its newest history while somebody holds it. Nothing here reads Zerops;
+ * a project the grant withholds reads as nothing (DESIGN §4.2 G12).
+ */
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
-import {
-  type InterestState,
-  processRecordToActivityProcess,
-  type ProcessHistoryRead,
-  type ProjectActivityRead,
-  type RuntimeInterestDescriptor,
-} from "@t3tools/client-runtime/zerops/data";
+import type { HistoryRead, ProjectProcesses } from "@t3tools/client-runtime/data";
+import { projectProcesses, projectsProcesses } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/unstable/reactivity";
 import { useMemo } from "react";
 
-import { findInventoryProjectRef, projectAuthority, useZeropsInventory } from "../inventoryContext";
-import { useZeropsData, useZeropsDataInterest } from "../zeropsDataContext";
+import { projectAuthority, useZeropsInventory } from "../inventoryContext";
+import { useAccountOrgId, useDetailDemand, useProjection } from "../ZeropsAccountData";
 
 export interface ProjectActivitySnapshot {
   readonly processes: ReadonlyArray<ActivityProcess> | undefined;
-  /** When the newest of the records was observed — a quiet process changes nothing for minutes. */
-  readonly atMs: number | undefined;
-  /**
-   * Every interest the read requires is observing: the feed pushes each
-   * change as it happens, so what the snapshot holds is current now,
-   * however long ago a record last changed.
-   */
+  /** The organization's running work is observed live now: what is held is current. */
   readonly live: boolean;
-  readonly unavailableReason?: string | undefined;
-  /**
-   * A read failed and the runtime retries it — the socket's routine reconnect,
-   * or an outage while it lasts: not the feed's error, and not live.
-   */
+  /** Its read was refused: the session ended, or the viewer may not read it. */
+  readonly unavailableReason?: "expired-session" | "forbidden" | "refused";
+  /** Read before and not live now: what is held stays while it catches up. */
   readonly reconnecting?: true;
-  /** Where the project's newest process history read stands; `unread` when not said. */
-  readonly processHistory?: ProcessHistoryRead;
+  /** Where the project's newest process history read stands. */
+  readonly processHistory: HistoryRead;
 }
 
 export const EMPTY_PROJECT_ACTIVITY_SNAPSHOT: ProjectActivitySnapshot = {
   processes: undefined,
-  atMs: undefined,
   live: false,
+  processHistory: "unread",
 };
 
-const EMPTY_PROJECT_ACTIVITY_READ_ATOM = Atom.make<ProjectActivityRead | null>(null).pipe(
-  Atom.withLabel("zerops:project-activity-read-empty"),
-);
+const NOT_READ: ProjectProcesses = {
+  processes: undefined,
+  running: [],
+  live: false,
+  reconnecting: false,
+  history: "unread",
+};
+const NOT_READ_ATOM = Atom.make(NOT_READ);
+const NONE_READ_ATOM = Atom.make<Readonly<Record<string, ProjectProcesses>>>({});
 
-export function projectActivitySnapshotFromRead(
-  read: ProjectActivityRead,
-): ProjectActivitySnapshot {
-  // A failure the runtime retries — the socket's routine reconnect — is no
-  // error of the feed: the read is just not live, and ages as one that stopped
-  // observing does. Only one it gives up on makes the read unavailable.
-  const failed = read.observation.required.find(
-    (interest): interest is Extract<InterestState, { readonly status: "failed" }> =>
-      interest.status === "failed" && !interest.retryable,
-  );
-  const access = read.observation.access;
-  const unavailableReason =
-    access.status === "expired"
-      ? "expired-session"
-      : access.status === "denied"
-        ? access.scope.kind === "project"
-          ? "forbidden"
-          : "expired-session"
-        : failed?.reason;
-  const reconnecting =
-    unavailableReason === undefined &&
-    read.observation.required.some(
-      (interest) => interest.status === "failed" && interest.retryable,
-    );
-  const knowledge = [...read.running.value, ...read.retainedHistory];
-  const processes = knowledge.flatMap((entry) => {
-    if (entry.knowledge !== "observed") return [];
-    const process = processRecordToActivityProcess(entry.record);
-    return process === null ? [] : [process];
-  });
-  const deduped = [...new Map(processes.map((process) => [process.id, process])).values()];
-  const observedAt = knowledge.flatMap((entry) => {
-    if (entry.knowledge !== "observed") return [];
-    const stamps = [];
-    if (entry.record.identity.knowledge === "observed")
-      stamps.push(entry.record.identity.stamp.observedAtMs);
-    if (entry.record.lifecycle.knowledge === "observed")
-      stamps.push(entry.record.lifecycle.stamp.observedAtMs);
-    if (entry.record.pipeline.knowledge === "observed")
-      stamps.push(entry.record.pipeline.stamp.observedAtMs);
-    return stamps;
-  });
-  if (read.running.query.status === "observed")
-    observedAt.push(read.running.query.stamp.observedAtMs);
-  const atMs = observedAt.length === 0 ? undefined : Math.max(...observedAt);
-  if (read.running.query.status !== "observed" && deduped.length === 0) {
-    return {
-      ...EMPTY_PROJECT_ACTIVITY_SNAPSHOT,
-      processHistory: read.processHistory,
-      ...(unavailableReason ? { unavailableReason } : {}),
-      ...(reconnecting ? { reconnecting: true as const } : {}),
-    };
-  }
-  const required = read.observation.required;
+export function projectActivitySnapshotOf(read: ProjectProcesses): ProjectActivitySnapshot {
   return {
-    processes: deduped,
-    atMs,
-    live: required.length > 0 && required.every((interest) => interest.status === "observing"),
-    processHistory: read.processHistory,
-    ...(unavailableReason ? { unavailableReason } : {}),
-    ...(reconnecting ? { reconnecting: true as const } : {}),
+    processes: read.processes,
+    live: read.live,
+    processHistory: read.history,
+    ...(read.unavailableReason === undefined ? {} : { unavailableReason: read.unavailableReason }),
+    ...(read.reconnecting ? { reconnecting: true as const } : {}),
   };
 }
 
-/** Demand-scoped activity/history projection: the store reads it while this is drawn. */
+/** A project's processes, its newest history held while this is drawn. */
 export function useProjectActivity(projectId: string | null): ProjectActivitySnapshot {
   useProjectActivityDemand(projectId);
   return useProjectActivityRead(projectId);
 }
 
-function useProjectRef(projectId: string | null) {
-  const inventory = useZeropsInventory();
-  return {
-    inventory,
-    project: projectId === null ? null : findInventoryProjectRef(inventory, projectId),
-  };
-}
-
-/**
- * Asks the account store to read a project's activity and its process history
- * (the newest 100) while it is drawn: what is running, streamed, and what ran,
- * held by id.
- */
+/** Holds a project's newest process history while this is drawn with one. */
 export function useProjectActivityDemand(projectId: string | null): void {
-  const { project } = useProjectRef(projectId);
-  const activityDescriptor = useMemo<RuntimeInterestDescriptor | null>(
-    () => (project === null ? null : { kind: "project-activity", project }),
-    [project],
-  );
-  const historyDescriptor = useMemo<RuntimeInterestDescriptor | null>(
-    () =>
-      project === null
-        ? null
-        : { kind: "project-process-history", project, before: null, limit: 100 },
-    [project],
-  );
-  useZeropsDataInterest(activityDescriptor);
-  useZeropsDataInterest(historyDescriptor);
+  useDetailDemand("process", "history", projectId);
 }
 
-/**
- * What the account store holds of a project's activity, whoever asked it to
- * read: it reads nothing of its own.
- */
+/** What the store holds of a project's processes, whoever holds its history: it holds nothing. */
 export function useProjectActivityRead(projectId: string | null): ProjectActivitySnapshot {
-  const { runtime } = useZeropsData();
-  const { inventory, project } = useProjectRef(projectId);
-  const activityAtom = useMemo(
-    () => (project === null ? EMPTY_PROJECT_ACTIVITY_READ_ATOM : runtime.reads.activity(project)),
-    [project, runtime],
+  const inventory = useZeropsInventory();
+  const orgId = useAccountOrgId();
+  const read = useProjection(
+    projectProcesses,
+    orgId === null || projectId === null ? null : { orgId, projectId },
+    NOT_READ_ATOM,
   );
-  const read = useAtomValue(activityAtom);
-  // Withheld at the read while the grant withholds the project (DESIGN §4.2 G12); its demand stays.
+  // Withheld at the read while the grant withholds the project; its demand stays.
   const withheld = projectId !== null && projectAuthority(inventory, projectId).kind === "withheld";
   return useMemo(
-    () =>
-      read === null || withheld
-        ? EMPTY_PROJECT_ACTIVITY_SNAPSHOT
-        : projectActivitySnapshotFromRead(read),
+    () => (withheld ? EMPTY_PROJECT_ACTIVITY_SNAPSHOT : projectActivitySnapshotOf(read)),
     [read, withheld],
+  );
+}
+
+/** Several projects' processes at once, without holding any history. */
+export function useProjectsActivityRead(
+  projectIds: ReadonlyArray<string>,
+): Readonly<Record<string, ProjectProcesses>> {
+  const orgId = useAccountOrgId();
+  return useProjection(
+    projectsProcesses,
+    orgId === null ? null : { orgId, projectIds },
+    NONE_READ_ATOM,
   );
 }

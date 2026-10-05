@@ -6,7 +6,11 @@ import type { ProjectActivitySnapshot } from "~/zerops/activity/useProjectActivi
 import { ZeropsDeployLog } from "./ZeropsDeployLog";
 
 const mock = vi.hoisted(() => ({
-  activity: { processes: undefined, atMs: undefined, live: false } as ProjectActivitySnapshot,
+  activity: {
+    processes: undefined,
+    live: false,
+    processHistory: "unread",
+  } as ProjectActivitySnapshot,
   demands: [] as (string | null)[],
   releases: [] as (string | null)[],
   logs: vi.fn(),
@@ -85,7 +89,7 @@ const toggle = () => act(() => tree.root.findByProps({ "aria-expanded": false })
 
 describe("deploy inspection", () => {
   it("reads only after View deploy, opens the whole log, and releases the demand when closed", () => {
-    mock.activity = { processes: [PROCESS], atMs: 0, live: false, processHistory: "read" };
+    mock.activity = { processes: [PROCESS], live: false, processHistory: "read" };
     mount();
     expect(mock.demands).toEqual([]);
     toggle();
@@ -116,7 +120,7 @@ describe("deploy inspection", () => {
   it("says when a retained process has no pipeline steps", () => {
     mock.activity = {
       processes: [{ ...PROCESS, appVersion: { id: "v7" } }],
-      atMs: 0,
+
       live: false,
       processHistory: "read",
     };
@@ -133,7 +137,7 @@ describe("deploy inspection", () => {
   ])(
     "ends a $processHistory lookup visibly without reading another log",
     ({ processHistory, words }) => {
-      mock.activity = { processes: [], atMs: 0, live: false, processHistory };
+      mock.activity = { processes: [], live: false, processHistory };
       mount();
       toggle();
       expect(JSON.stringify(tree.toJSON())).toContain(words);
