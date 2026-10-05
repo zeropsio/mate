@@ -96,8 +96,8 @@ function zerops(options: { readonly loseAnswer: boolean }) {
           ? Effect.fail({ outcome: "uncertain-acceptance", message: "No answer." })
           : Effect.succeed(receiptOf(requestId));
       }),
-    lookupHandle: (handle) =>
-      Effect.sync(() => (handle === "proc-1" ? receiptOf("request-1") : null)),
+    // Zerops answers for its process, knowing nothing of the request id that started it.
+    lookupHandle: (handle) => Effect.sync(() => (handle === "proc-1" ? receiptOf(handle) : null)),
   };
   return { executor, submitted };
 }
@@ -176,9 +176,9 @@ describe("an operation Zerops executes", () => {
         kinds,
         executors: { zerops: owner.executor },
         makeId: ids(),
-      }).resume("request-1", RESTART, ["proc-1"]);
+      }).resume("request-7", RESTART, ["proc-1"]);
       expect(owner.submitted).toEqual([]);
-      expect(progress(store, "request-1")).toEqual({ stage: "accepted", operationId: "proc-1" });
+      expect(progress(store, "request-7")).toEqual({ stage: "accepted", operationId: "proc-1" });
     }),
   );
 });

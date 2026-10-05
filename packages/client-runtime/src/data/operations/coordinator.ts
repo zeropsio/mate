@@ -100,12 +100,13 @@ export function makeOperations(options: {
       },
     });
 
+  /** Files the owner's answer under this account's request id, whatever id the owner knows. */
   const admit = (receipt: OperationReceipt | null, requestId: string) =>
     Effect.sync(() =>
       store.dispatch(
         receipt === null
           ? { kind: "operation-lookup-failed", requestId }
-          : { kind: "operation-receipt", receipt },
+          : { kind: "operation-receipt", receipt: { ...receipt, requestId } },
       ),
     );
 
