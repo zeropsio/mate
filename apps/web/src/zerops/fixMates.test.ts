@@ -6,7 +6,7 @@ import { fixMatesOf, runFixMate } from "./fixMates";
 
 const GROUP = "group-snap";
 
-/** A Mate's candidate: its project in a group, named as the Mate is (D3). */
+/** A Mate's candidate: its project in a group, named in full after its group. */
 function mate(
   id: string,
   bot: string,

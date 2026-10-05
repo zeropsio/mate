@@ -520,7 +520,7 @@ export function deriveZeropsGroups(
     const sorted = [...environments].sort(
       (left, right) =>
         roleRank(left.role) - roleRank(right.role) ||
-        byName(left.project.name, right.project.name) ||
+        byName(projectNameInApp(left.project), projectNameInApp(right.project)) ||
         byName(left.project.id, right.project.id),
     );
     const production = sorted.filter((environment) => environment.role === "prod");
@@ -544,7 +544,7 @@ export function deriveZeropsGroups(
       pending: coming.map((birth): ZeropsGroupPendingMember => ({
         projectId: birth.projectId,
         kind: birth.placement.kind,
-        name: birth.placement.displayName,
+        name: nameUnderApp(birth.placement.displayName, birth.placement.groupName),
         startedAt: birth.startedAt,
         ...(birth.placement.face === undefined ? {} : { face: birth.placement.face }),
         ...(birth.failed === true ? { failed: true } : {}),

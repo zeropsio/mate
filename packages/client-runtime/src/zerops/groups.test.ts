@@ -111,7 +111,7 @@ describe("readZeropsMembership", () => {
       expected: {},
     },
     {
-      // D3: a Mate's name is its project's in Zerops; one an HQ before it still sends is nobody's.
+      // A Mate's name is its project's in Zerops; one an HQ before it still sends is nobody's.
       name: "keeps no Mate's name HQ still sends",
       input: { hq: placed("abc", "mate", { mate: { name: "Ada", face: "" } as HqMate }) },
       expected: { mate: true, groupId: "abc", role: "dev" },
@@ -306,6 +306,23 @@ describe("deriveZeropsGroups", () => {
       ["a", "stage"],
       ["c", "stage"],
       ["d", "prod"],
+    ]);
+  });
+
+  it("orders Mates of an application by the names they go by under it", () => {
+    const result = deriveZeropsGroups(
+      [
+        project("SPN - Zed", { hq: placed("aaa", "mate", { appName: "SPN" }) }),
+        project("Tom", { hq: placed("aaa", "mate", { appName: "SPN" }) }),
+        project("SPN - Abe", { hq: placed("aaa", "mate", { appName: "SPN" }) }),
+      ],
+      { order: "name" },
+    );
+
+    expect(result.groups[0]?.environments.map((environment) => environment.project.name)).toEqual([
+      "SPN - Abe",
+      "Tom",
+      "SPN - Zed",
     ]);
   });
 
@@ -721,7 +738,7 @@ describe("deriveZeropsGroups — creations under way", () => {
       {
         projectId: "p-new",
         kind: "production",
-        name: "Todo - p-new",
+        name: "p-new",
         startedAt: 7,
       },
     ]);
@@ -738,8 +755,8 @@ describe("deriveZeropsGroups — creations under way", () => {
     expect(group?.pending.map((entry) => entry.failed)).toEqual([expected]);
   });
 
-  // D3: a pending Mate's project is named as the Mate is; its name is that one name.
-  it("names a pending member as its project will be named, a Mate by its own name", () => {
+  // A pending member is named as a listed one is: by what follows its application's name.
+  it("names a pending member by its own name under its application, as a listed one is", () => {
     const [group] = deriveZeropsGroups([], {
       order: "name",
       births: [
@@ -747,7 +764,7 @@ describe("deriveZeropsGroups — creations under way", () => {
         birth("p-stage", "aaa", 2, { kind: "stage", displayName: "Todo - stage" }),
       ],
     }).groups;
-    expect(group?.pending.map((entry) => entry.name)).toEqual(["Quinn", "Todo - stage"]);
+    expect(group?.pending.map((entry) => entry.name)).toEqual(["Quinn", "stage"]);
   });
 
   it("wears the face its person picked while it is pending, and none it was not given", () => {

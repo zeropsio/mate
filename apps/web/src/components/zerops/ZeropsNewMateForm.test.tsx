@@ -297,7 +297,7 @@ describe("the New Mate dialog", () => {
     expect(option(tree, to).props["aria-checked"]).toBe(true);
   });
 
-  // D3: its project is named as the Mate is, whole.
+  // The form hands over the Mate's own name; its project is named in full from it.
   it("adds the Mate with the project's recipe, its name and the face it was given", () => {
     const made: EnvironmentCreationChoice[] = [];
     const tree = mount(form({ onCreate: (choice) => made.push(choice) }));

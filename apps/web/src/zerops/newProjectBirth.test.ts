@@ -864,7 +864,7 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
 });
 
 describe("an added Mate held from the press", () => {
-  // D3: its project is named as the Mate is, the one name its row draws.
+  // Its row draws the Mate's own name; its project is named in full after its application.
   it("is placed in its project by its own id, its project named as Add named it", () => {
     expect(placedNewProjects([added()], ASK.organizationId)).toEqual([
       expect.objectContaining({
