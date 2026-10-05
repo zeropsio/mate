@@ -384,7 +384,8 @@ const ENV_VERB: Readonly<
   get: { asked: "Read", running: "Reading", done: "Read" },
   dotenv: { asked: "Write", running: "Writing", done: "Wrote" },
   dotenvPreview: { asked: "Read", running: "Reading", done: "Read" },
-  update: { asked: "Update", running: "Updating", done: "Updated" },
+  // An action it does not know: neutral, never a claim of what it did.
+  update: { asked: "Change", running: "Changing", done: "Changed" },
 };
 
 /**

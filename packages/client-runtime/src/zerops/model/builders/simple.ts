@@ -51,12 +51,22 @@ export function buildSimpleFields(
   const errorInfo = errorInfoFor(call, decoded);
   const phase = phaseFor(call.status);
   const envChange = kind === "env" ? readEnvChange(call.input, decoded.document) : undefined;
-  const subject =
+  // The service it names, the one it observes: none where it names none.
+  const named =
     envChange === undefined
-      ? (readSimpleSubject(call.input, decoded.document) ?? "the service")
-      : envChange.scope === "project"
-        ? "the project"
-        : (envChange.service ?? "the service");
+      ? readSimpleSubject(call.input, decoded.document)
+      : envChange.scope === "service" &&
+          envChange.action !== "dotenv" &&
+          envChange.action !== "dotenvPreview"
+        ? envChange.service
+        : undefined;
+  const subject =
+    named ??
+    (envChange?.scope === "project"
+      ? "the project"
+      : envChange?.action === "dotenv" || envChange?.action === "dotenvPreview"
+        ? (envChange.service ?? "the service")
+        : "the service");
   const { voice, voiceSource } =
     envChange === undefined
       ? mateVoiceFor(kind, subject)
@@ -100,13 +110,8 @@ export function buildSimpleFields(
       ),
     ],
     links: [],
-    // The project, or a setup block a `.env` is written for, is no service to observe.
-    ...(envChange === undefined ||
-    (envChange.scope === "service" &&
-      envChange.action !== "dotenv" &&
-      envChange.action !== "dotenvPreview")
-      ? { target: { hostname: subject } }
-      : {}),
+    // The project, a setup block a `.env` is written for, or no name at all is no service to observe.
+    ...(named === undefined ? {} : { target: { hostname: named } }),
     ...(envChange !== undefined ? { envChange } : {}),
     hasResult: decoded.document !== undefined,
     ...(errorInfo !== undefined
@@ -138,8 +143,8 @@ const ENV_ACTIONS: Readonly<Record<string, ZeropsEnvChange["action"]>> = {
 
 /**
  * What a `zerops_env` call changes and where, from its input (zcp
- * `internal/tools/env.go`): `project` (a boolean, or its string from some
- * agents) names the project's variables, else `serviceHostname` a service's;
+ * `internal/tools/env.go`): `project` (zcp's FlexBool: a boolean, or "true"
+ * in any case) names the project's variables, else `serviceHostname` a service's;
  * `generate-dotenv` writes a `.env` for its `setup` block. The variables are
  * only counted: their values can be secrets.
  */
@@ -150,7 +155,7 @@ function readEnvChange(
   const asked = ENV_ACTIONS[readInputString(input, "action") ?? ""] ?? "update";
   // A preview writes nothing: it reads what a write would change.
   const action = asked === "dotenv" && readFlexBool(input, "preview") ? "dotenvPreview" : asked;
-  const project = input?.project === true || input?.project === "true";
+  const project = readFlexBool(input, "project");
   const service =
     action === "dotenv" || action === "dotenvPreview"
       ? (readInputString(input, "setup") ?? readInputString(input, "serviceHostname"))

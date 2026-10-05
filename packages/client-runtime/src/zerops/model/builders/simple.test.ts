@@ -128,6 +128,20 @@ describe("buildSimpleFields — what an env call changed and where, by its input
       target: undefined,
     },
     {
+      name: "a project flag in any case",
+      input: { action: "set", project: "TRUE", variables: ["A=1"] },
+      subject: "the project",
+      envChange: { action: "set", scope: "project", count: 1 },
+      target: undefined,
+    },
+    {
+      name: "no service named: no service to observe",
+      input: { action: "set", variables: ["A=1"] },
+      subject: "the service",
+      envChange: { action: "set", scope: "service", count: 1 },
+      target: undefined,
+    },
+    {
       name: "a read names no count",
       input: { action: "get", project: true },
       subject: "the project",
@@ -196,5 +210,16 @@ describe("buildSimpleFields — a .env that was not written says so", () => {
     },
   ])("$name", ({ input, result, envChange }) => {
     expect(buildSimpleFields("env", dotenvCall(input, result)).envChange).toEqual(envChange);
+  });
+});
+
+describe("buildSimpleFields — a call that names no service observes none", () => {
+  it.each(["delete", "scale", "manage"] as const)("%s", (kind) => {
+    const fields = buildSimpleFields(kind, {
+      ...simpleCall(`zerops_${kind}`, "completed", { process: proc("FINISHED") }),
+      input: {},
+    });
+    expect(fields.subject).toBe("the service");
+    expect(fields.target).toBeUndefined();
   });
 });
