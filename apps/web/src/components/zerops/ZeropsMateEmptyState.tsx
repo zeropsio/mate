@@ -38,6 +38,7 @@ import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { Fragment, useContext, useEffect, useId, useMemo, useRef, type ReactNode } from "react";
 
+import { MATE_SHAPE_OF_TINT, MATE_TINT_IDS } from "@t3tools/shared/brand";
 import { cn } from "~/lib/utils";
 
 import { useServerConfigs, useThreadShells } from "../../state/entities";
@@ -225,6 +226,18 @@ export function useMateEmptyState({
 type DrawnMate = Omit<ZeropsMateIdentity, "projectUrl">;
 
 /**
+ * The places a Mate not yet named holds (HANDOFF §4.4): a face's room, drawn unseen, and a
+ * headline's line with no words — the named view's footprint, so nothing moves when it arrives.
+ */
+const UNNAMED: DrawnMate = {
+  name: "\u00a0",
+  tint: MATE_TINT_IDS[0],
+  shape: MATE_SHAPE_OF_TINT[MATE_TINT_IDS[0]],
+  project: undefined,
+  connected: false,
+};
+
+/**
  * A Mate still coming up, one that never came, or one on its way to its conversation, as its own
  * view draws it (`ZeropsMateComingPage`): the kind of headline, the sentence under it where the
  * view has its own, and what stands in the slot — how far it has got, what it waits for, or what
@@ -284,7 +297,7 @@ const SIGN_IN_KINDS: ReadonlySet<ArrivalKind> = new Set([
  * same stage is the Mate's own view while it comes up (`coming`), its steps in the slot.
  */
 export function MateEmptyStateView({
-  mate,
+  mate: named,
   phase,
   standUpFailure,
   signIn,
@@ -296,7 +309,8 @@ export function MateEmptyStateView({
   runtimes,
   focusOnArrival = false,
 }: {
-  readonly mate: DrawnMate;
+  /** Null while the directory has not named the Mate: its places held, empty. */
+  readonly mate: DrawnMate | null;
   readonly phase: MateStandUpPhase | null;
   readonly standUpFailure?: { readonly retrying: boolean; readonly retry: () => void } | undefined;
   /** The sign-in, once the agents' sign-in is known; null before. */
@@ -318,6 +332,7 @@ export function MateEmptyStateView({
    */
   readonly focusOnArrival?: boolean;
 }) {
+  const mate = named ?? UNNAMED;
   const sentenceId = useId();
   const headline = useRef<HTMLHeadingElement>(null);
   const arrived = useRef(false);
@@ -375,7 +390,8 @@ export function MateEmptyStateView({
       <div aria-hidden="true" className="shrink-0 basis-1/3" />
       <div className="flex w-full flex-col items-center" data-mate-empty-lead>
         <MateFace
-          className={MATE_EMPTY_FACE_CLASS}
+          className={cn(MATE_EMPTY_FACE_CLASS, named === null && "invisible")}
+          data-mate-face-reserved={named === null ? "" : undefined}
           size="lg"
           shape={mate.shape}
           state={arrivalFace(kind, mate.connected, mateArriving(mate.arrivingUntil, nowMs))}

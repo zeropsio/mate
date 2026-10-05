@@ -22,7 +22,12 @@ vi.mock("~/zerops/useZeropsMates", () => ({ useZeropsMate: () => who.at }));
 vi.mock("~/zerops/mateVoiceContext", () => ({ useMateVoice: () => ({ surface: "none" }) }));
 vi.mock("./RouteStandIn", () => ({ RouteStandIn: () => <textarea data-stand-in="" /> }));
 vi.mock("./WaitLine", () => ({
-  PageWaitLine: ({ text }: { text: string | null }) => <p>{text}</p>,
+  PageWaitLine: ({ text, below }: { text: string | null; below?: ReactNode }) => (
+    <p>
+      {text}
+      {below}
+    </p>
+  ),
 }));
 vi.mock("./ZeropsMateComingPage", () => ({
   MateComingFrame: (props: { header: ReactNode; composer?: ReactNode; children: ReactNode }) => (
@@ -34,8 +39,28 @@ vi.mock("./ZeropsMateComingPage", () => ({
   ),
   MateComingHeader: ({ mate }: { mate: { name: string } }) => <h1>{mate.name}</h1>,
 }));
-vi.mock("./MateLinkLine", () => ({ MateLinkLine: () => null, MateLinkProcesses: () => null }));
-vi.mock("./ZeropsMateEmptyState", () => ({ MateEmptyStateView: () => null }));
+vi.mock("./MateLinkLine", () => ({
+  MateLinkLine: (props: {
+    onTryNow?: () => void;
+    projectUrl?: string;
+    voice: { text: string };
+  }) => (
+    <div data-line={props.voice.text} data-project-url={props.projectUrl ?? ""}>
+      {props.onTryNow === undefined ? null : <button>Try now</button>}
+    </div>
+  ),
+  MateLinkProcesses: () => <ol data-processes="" />,
+}));
+vi.mock("./ZeropsMateEmptyState", () => ({
+  MateEmptyStateView: (props: {
+    mate: { name: string } | null;
+    coming: { below: ReactNode } | null;
+  }) => (
+    <section data-empty-state={props.mate === null ? "unnamed" : props.mate.name}>
+      {props.coming?.below}
+    </section>
+  ),
+}));
 
 import { MateOpeningView, MateLinkStage } from "./MateLinkStage";
 
@@ -66,19 +91,59 @@ describe("MateOpeningView: a conversation's page lands when its Mate is known, n
     }
   });
 
-  it("who lives here unknown while the link speaks: its words in the page, the header's place held", () => {
-    const markup = renderToStaticMarkup(
-      <MateLinkStage
-        composer={<textarea data-stand-in="" />}
-        environmentId={ref.environmentId}
-        projectId={null}
-        voice={{ surface: "stage", text: "Reconnecting…", actions: [], processes: false }}
-      />,
-    );
-    expect(markup).toContain("<header></header>");
-    expect(markup).toContain("Reconnecting…");
-    expect(markup).toContain("data-stand-in");
+  // Nothing in the link's slot needs the name: unnamed, the page is the named one's, its face and
+  // headline places held, so nothing moves when the name arrives.
+  it.each([
+    ["unnamed", { kind: "unknown" }, ["<header></header>", 'data-empty-state="unnamed"']],
+    ["named", { kind: "mate", mate: QUILL }, ["<h1>Quill</h1>", 'data-empty-state="Quill"']],
+  ] as const)("while the link speaks, %s: the same stage with its verbs", (_case, at, shown) => {
+    who.at = at;
+    try {
+      const markup = renderToStaticMarkup(
+        <MateLinkStage
+          composer={<textarea data-stand-in="" />}
+          environmentId={ref.environmentId}
+          projectId="project-orchard"
+          voice={{
+            surface: "stage",
+            text: "Reconnecting…",
+            actions: ["try-now", "open-in-zerops"],
+            processes: false,
+          }}
+        />,
+      );
+      for (const text of shown) expect(markup).toContain(text);
+      expect(markup).toContain('data-line="Reconnecting…"');
+      expect(markup).toContain("Try now</button>");
+      expect(markup).toMatch(/data-project-url="[^"]+"/u);
+      expect(markup).toContain("data-stand-in");
+    } finally {
+      who.at = { kind: "unknown" };
+    }
   });
+
+  it.each([
+    ["unnamed", { kind: "unknown" }],
+    ["named", { kind: "mate", mate: QUILL }],
+  ] as const)(
+    "while the link is quiet, %s: its Try now and processes under the line",
+    (_case, at) => {
+      who.at = at;
+      try {
+        const markup = renderToStaticMarkup(
+          <MateLinkStage
+            environmentId={ref.environmentId}
+            projectId="project-orchard"
+            voice={{ surface: "stage", text: null, actions: ["try-now"], processes: true }}
+          />,
+        );
+        expect(markup).toContain("Try now</button>");
+        expect(markup).toContain("data-processes");
+      } finally {
+        who.at = { kind: "unknown" };
+      }
+    },
+  );
 });
 
 it("an unknown Mate's refused inventory read names the failure and offers Again", () => {

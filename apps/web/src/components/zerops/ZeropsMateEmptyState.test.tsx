@@ -468,6 +468,25 @@ describe("MateEmptyStateView — a Mate coming up", () => {
     expect(stage(html)).toMatchObject({ headline: "Fen", sentence: "", face: "sleep" });
     expect(html).toContain("data-opening");
   });
+
+  it("holds an unnamed Mate's face and headline places, empty, with its line under them", () => {
+    const named = view({
+      mate: MATE,
+      phase: null,
+      coming: { kind: "reaching", below: <p data-opening>Reconnecting…</p> },
+    });
+    const unnamed = view({
+      mate: null,
+      phase: null,
+      coming: { kind: "reaching", below: <p data-opening>Reconnecting…</p> },
+    });
+    expect(stage(unnamed).headline.trim()).toBe("");
+    expect(unnamed).toContain("data-mate-face-reserved");
+    expect(unnamed).toContain("data-opening");
+    // The same elements in the same order: nothing moves when the name arrives.
+    const shape = (html: string) => html.match(/<(\w+)[^>]*data-(?:mate-empty-lead|arrival-\w+)/gu);
+    expect(shape(unnamed)).toEqual(shape(named));
+  });
 });
 
 it("a failed stand-up send says what failed and offers a manual Try again", () => {

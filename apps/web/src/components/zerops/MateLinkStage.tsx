@@ -8,6 +8,7 @@
  * stands asleep over its name with them, on one axis (`stageSpeaks`).
  */
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 
@@ -88,21 +89,11 @@ function MateLinkStageOf({
   const at = useZeropsMate(environmentId);
   // Try now asks its Mate again, its exchange as well as its link, as the banner's does.
   const tryAgain = useTryMateAgain();
-  // Before the directory names who lives here, the page stands with its header's place held, its
-  // line unnamed or the link's own words, and the composer in: the face and the name arrive in
-  // place, nothing below them moves.
-  if (at.kind === "unknown") {
-    return stageSpeaks(voice) ? (
-      <MateComingFrame composer={composer} header={null}>
-        <MateLinkWords voice={voice} />
-      </MateComingFrame>
-    ) : (
-      <MateOpeningPage below={null} composer={composer} mate={undefined} />
-    );
-  }
-  if (at.kind !== "mate") return <MateLinkWords voice={voice} />;
-  const known = at.mate;
-  const mate = { ...known, connected: false };
+  if (at.kind === "nobody") return <MateLinkWords voice={voice} />;
+  // Before the directory names who lives here, the stage is the named one's with the face, the
+  // name and the header's place held (HANDOFF §4.4): its verbs, its processes and its words need
+  // no name, and nothing moves when the name arrives.
+  const known = at.kind === "mate" ? at.mate : null;
   const askAgain = askAgainLabel(voice.actions);
   const onTryNow = askAgain === null ? undefined : () => tryAgain(environmentId);
   if (!stageSpeaks(voice)) {
@@ -111,7 +102,7 @@ function MateLinkStageOf({
         below={
           <>
             {voice.processes && projectId !== null ? (
-              <MateLinkProcesses mateServiceId={mate.serviceId} projectId={projectId} />
+              <MateLinkProcesses mateServiceId={known?.serviceId} projectId={projectId} />
             ) : null}
             {onTryNow === undefined ? null : (
               <Button onClick={onTryNow} size="compact" variant="pill">
@@ -123,21 +114,27 @@ function MateLinkStageOf({
         composer={composer}
         // Opening, it wears the pose its container has — awake where the listing has it running —
         // not asleep for this page's own wait.
-        mate={{ ...known, connected: mateOpeningAwake(known) }}
+        mate={known === null ? undefined : { ...known, connected: mateOpeningAwake(known) }}
       />
     );
   }
+  const mate = known === null ? null : { ...known, connected: false };
   return (
-    <MateComingFrame composer={composer} header={<MateComingHeader mate={mate} />}>
+    <MateComingFrame
+      composer={composer}
+      header={mate === null ? null : <MateComingHeader mate={mate} />}
+    >
       <MateEmptyStateView
         coming={{
           kind: "reaching",
           below: (
             <MateLinkLine
-              mateServiceId={mate.serviceId}
+              mateServiceId={mate?.serviceId}
               onTryNow={onTryNow}
               projectId={projectId}
-              projectUrl={mate.projectUrl}
+              projectUrl={
+                mate?.projectUrl ?? (projectId === null ? undefined : zeropsProjectUrl(projectId))
+              }
               voice={voice}
             />
           ),
