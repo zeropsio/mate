@@ -172,6 +172,17 @@ describe("runningWork", () => {
       state: () => outage(live()),
       expected: "running",
     },
+    {
+      name: "out for running work that is no build or deploy",
+      state: () =>
+        apply(live(), [
+          pushed(
+            processValue({ id: "build", projectId: "p1", status: "FINISHED" }),
+            processValue({ id: "restart", projectId: "p1", actionName: "stack.restart" }),
+          ),
+        ]),
+      expected: "idle",
+    },
   ])("is $name", ({ state, expected }) => {
     expect(runningWork.derive(readsOfState(state()), KEY).kind).toBe(expected);
   });

@@ -51,14 +51,21 @@ export type RunningWork =
   | { readonly kind: "unknown"; readonly live: boolean }
   | { readonly kind: "running" | "idle"; readonly live: boolean };
 
-/** The menu's build/deploy indicator for one project: on while anything of it runs. */
+/** The work the menu's indicator is for: a build, or a deploy. */
+const BUILDS_AND_DEPLOYS: ReadonlySet<string> = new Set(["stack.build", "stack.deploy"]);
+
+/** The menu's build/deploy indicator for one project: on while a build or deploy of it runs. */
 export const runningWork: Projection<ProjectKey, RunningWork> = {
   name: "runningWork",
   keyOf,
   derive: (read, { orgId, projectId }) => {
     const { complete, live } = freshness(read, orgId);
     if (!complete) return { kind: "unknown", live };
-    return { kind: read.index("running", projectId).size > 0 ? "running" : "idle", live };
+    const building = [...read.index("running", projectId)].some((id) => {
+      const fact = read.fact("process", id);
+      return fact.kind === "known" && BUILDS_AND_DEPLOYS.has(fact.value.actionName);
+    });
+    return { kind: building ? "running" : "idle", live };
   },
   equals: sameValue,
 };
