@@ -4739,8 +4739,16 @@ button.run-bar:focus-visible {
   overflow-x: hidden;
   overflow-y: auto;
   overflow-anchor: none;
-  scrollbar-width: thin;
   scrollbar-gutter: stable;
+}
+/* Its bar is the app's (`::-webkit-scrollbar`): a standard `scrollbar-width`
+   on it makes Chrome drop those rules and draw its native bar. A browser
+   without them takes the standard thin one, in the app's colours. */
+@supports not selector(::-webkit-scrollbar) {
+  .run-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--app-scrollbar-thumb) transparent;
+  }
 }
 .run-scroll:focus-visible {
   outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);
