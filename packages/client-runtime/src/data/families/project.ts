@@ -32,11 +32,16 @@ const decodeRow = Schema.decodeUnknownOption(Row);
 export const projectFamily: FamilySpec<"project"> = {
   family: "project",
   authority: "zerops",
-  scope: { source: "zerops", suffix: "projects", leaving: "absent-unverified" },
+  scope: {
+    source: "zerops",
+    suffix: "projects",
+    leaving: "absent-unverified",
+    demand: "navigation",
+  },
   zerops: {
     entity: "project",
-    membership: (orgId) => [{ name: "clientId", operator: "eq", value: orgId }],
-    updates: (orgId) => [{ name: "clientId", operator: "eq", value: orgId }],
+    membership: ({ orgId }) => [{ name: "clientId", operator: "eq", value: orgId }],
+    updates: ({ orgId }) => [{ name: "clientId", operator: "eq", value: orgId }],
     decode: (raw) =>
       Option.match(decodeRow(raw), {
         onNone: () => null,

@@ -24,7 +24,7 @@ declare module "../model.ts" {
 export const placementFamily: FamilySpec<"placement"> = {
   family: "placement",
   authority: "hq",
-  scope: { source: "hq", suffix: "navigation", leaving: "removed" },
+  scope: { source: "hq", suffix: "navigation", leaving: "removed", demand: "navigation" },
   /** Project ids by the application HQ places them in, while navigation lists them. */
   index: {
     name: "apps",

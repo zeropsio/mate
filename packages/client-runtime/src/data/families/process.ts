@@ -43,7 +43,7 @@ const notBalancer = { name: "executorTag", operator: "ne", value: "L7_MASTER" };
 export const processFamily: FamilySpec<"process"> = {
   family: "process",
   authority: "zerops",
-  scope: { source: "zerops", suffix: "running", leaving: "removed" },
+  scope: { source: "zerops", suffix: "running", leaving: "removed", demand: "navigation" },
   /**
    * Running ids by project: a process runs while its newest row is not terminal and its running
    * scope has not let it go. A terminal row clears it; leaving the scope clears it inventing no end.
@@ -55,12 +55,12 @@ export const processFamily: FamilySpec<"process"> = {
   },
   zerops: {
     entity: "process",
-    membership: (orgId) => [
+    membership: ({ orgId }) => [
       organization(orgId),
       { name: "status", operator: "in", value: RUNNING_PROCESS_STATUSES },
       notBalancer,
     ],
-    updates: (orgId) => [organization(orgId), notBalancer],
+    updates: ({ orgId }) => [organization(orgId), notBalancer],
     decode: (raw) =>
       Option.match(decodeRow(raw), {
         onNone: () => null,

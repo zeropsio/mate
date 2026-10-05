@@ -27,7 +27,7 @@ declare module "../model.ts" {
 export const attentionFamily: FamilySpec<"attention"> = {
   family: "attention",
   authority: "mate",
-  scope: { source: "mate", suffix: "attention", leaving: "removed" },
+  scope: { source: "mate", suffix: "attention", leaving: "removed", demand: "navigation" },
 };
 
 /** An open Mate's own attention scope. */
