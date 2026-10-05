@@ -1436,11 +1436,6 @@ export default function ChatView(props: ChatViewProps) {
     },
     [environmentId, routeThreadRef, updateThreadMetadata],
   );
-  useThreadModelSelection({
-    threadRef: routeKind === "server" && serverThread ? routeThreadRef : null,
-    threadSelection: serverThread?.modelSelection ?? null,
-    write: writeThreadModelSelection,
-  });
   // Pagination window state for the routed server thread: drives the
   // "load earlier turns" header when the loaded window has older history.
   const routeThreadState = useEnvironmentThread(
@@ -2340,6 +2335,23 @@ export default function ChatView(props: ChatViewProps) {
     ? (activeEnvironment?.serverConfig ?? null)
     : (primaryEnvironment?.serverConfig ?? null);
   const providerStatuses = serverConfig?.providers ?? EMPTY_PROVIDERS;
+  const threadModelCapabilitiesFor = useCallback(
+    (selection: ModelSelection) => {
+      const provider = providerStatuses.find(
+        (candidate) => candidate.instanceId === selection.instanceId,
+      );
+      return provider
+        ? getProviderModelCapabilities(provider.models, selection.model, provider.driver)
+        : null;
+    },
+    [providerStatuses],
+  );
+  useThreadModelSelection({
+    threadRef: routeKind === "server" && serverThread ? routeThreadRef : null,
+    threadSelection: serverThread?.modelSelection ?? null,
+    write: writeThreadModelSelection,
+    capabilitiesFor: threadModelCapabilitiesFor,
+  });
   const selectedProviderByThreadId = composerActiveProvider ?? null;
   const threadProvider =
     activeThread?.modelSelection.instanceId ??

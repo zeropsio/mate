@@ -1,4 +1,4 @@
-import type { ModelSelection, ScopedThreadRef } from "@t3tools/contracts";
+import type { ModelCapabilities, ModelSelection, ScopedThreadRef } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { useEffect, useRef } from "react";
 
@@ -16,8 +16,10 @@ export function useThreadModelSelection(input: {
   readonly threadRef: ScopedThreadRef | null;
   readonly threadSelection: ModelSelection | null;
   readonly write: (selection: ModelSelection) => void;
+  /** What a model takes, so a model switch keeps the thread's options it can. */
+  readonly capabilitiesFor?: (selection: ModelSelection) => ModelCapabilities | null;
 }): void {
-  const { threadRef, threadSelection, write } = input;
+  const { threadRef, threadSelection, write, capabilitiesFor } = input;
   const clearModelSelection = useComposerDraftStore((store) => store.clearModelSelection);
   const draft = useComposerDraftStore((store) =>
     threadRef ? store.getComposerDraft(threadRef) : null,
@@ -39,10 +41,10 @@ export function useThreadModelSelection(input: {
     const written = threadChanged ? null : seen.current.written;
     seen.current = { refKey, threadKey, written };
     if (!threadRef || !threadSelection) return;
-    const next = selectionToWrite({ threadChanged, draft, threadSelection });
+    const next = selectionToWrite({ threadChanged, draft, threadSelection, capabilitiesFor });
     const nextKey = modelSelectionKey(next);
     if (next === null || nextKey === written) return;
     seen.current = { refKey, threadKey, written: nextKey };
     write(next);
-  }, [draft, threadKey, threadRef, threadSelection, write]);
+  }, [capabilitiesFor, draft, threadKey, threadRef, threadSelection, write]);
 }

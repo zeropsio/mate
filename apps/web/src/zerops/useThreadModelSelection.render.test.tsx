@@ -1,8 +1,10 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { createModelCapabilities } from "@t3tools/shared/model";
 import {
   EnvironmentId,
   ProviderInstanceId,
   ThreadId,
+  type ModelCapabilities,
   type ModelSelection,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
@@ -23,10 +25,26 @@ const withEffort = (effort: string): ModelSelection => ({
 const draftPick = () =>
   useComposerDraftStore.getState().getComposerDraft(threadRef)?.modelSelectionByProvider[claude];
 
+// claude-opus and claude-sonnet take an effort; claude-haiku takes none.
+const effortCaps = createModelCapabilities({
+  optionDescriptors: [
+    {
+      id: "effort",
+      label: "Effort",
+      type: "select",
+      options: ["low", "xhigh", "max"].map((id) => ({ id, label: id })),
+    },
+  ],
+});
+const capabilitiesFor = (selection: ModelSelection): ModelCapabilities =>
+  selection.model === "claude-haiku"
+    ? createModelCapabilities({ optionDescriptors: [] })
+    : effortCaps;
+
 let tree: ReactTestRenderer | undefined;
 const write = vi.fn<(selection: ModelSelection) => void>();
 function Probe(props: { threadRef: ScopedThreadRef | null; threadSelection: ModelSelection }) {
-  useThreadModelSelection({ ...props, write });
+  useThreadModelSelection({ ...props, write, capabilitiesFor });
   return null;
 }
 const mount = (threadSelection: ModelSelection, ref: ScopedThreadRef | null = threadRef) =>
@@ -78,6 +96,27 @@ describe("useThreadModelSelection", () => {
     rerender(withEffort("low"));
     expect(draftPick()).toBeUndefined();
     expect(write).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: "a model that takes the effort keeps it",
+      model: "claude-sonnet",
+      written: {
+        instanceId: claude,
+        model: "claude-sonnet",
+        options: [{ id: "effort", value: "xhigh" }],
+      },
+    },
+    {
+      name: "a model without effort goes without it",
+      model: "claude-haiku",
+      written: { instanceId: claude, model: "claude-haiku" },
+    },
+  ])("switching model keeps the thread's options: $name", ({ model, written }) => {
+    mount(withEffort("xhigh"));
+    pick({ instanceId: claude, model });
+    expect(write).toHaveBeenCalledExactlyOnceWith(written);
   });
 
   it("a local draft thread keeps its own pick", () => {

@@ -1,4 +1,8 @@
-import type { ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
+import type { ModelCapabilities, ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
+import {
+  buildExplicitProviderOptionSelectionsFromDescriptors,
+  getProviderOptionDescriptors,
+} from "@t3tools/shared/model";
 
 /**
  * A thread has one model selection, held on the server. A tab's draft only
@@ -40,9 +44,31 @@ export function selectionToWrite(input: {
   readonly threadChanged: boolean;
   readonly draft: DraftModelSelection | null | undefined;
   readonly threadSelection: ModelSelection;
+  readonly capabilitiesFor?: ((selection: ModelSelection) => ModelCapabilities | null) | undefined;
 }): ModelSelection | null {
   if (input.threadChanged) return null;
-  const pick = draftModelSelection(input.draft, input.threadSelection);
-  if (pick === null) return null;
+  const drafted = draftModelSelection(input.draft, input.threadSelection);
+  if (drafted === null) return null;
+  const pick = withThreadOptions(drafted, input.threadSelection, input.capabilitiesFor);
   return modelSelectionKey(pick) === modelSelectionKey(input.threadSelection) ? null : pick;
+}
+
+/**
+ * A model picked without options (the model picker) keeps the thread's
+ * options the new model takes, so a switch never resets effort and the rest.
+ */
+export function withThreadOptions(
+  pick: ModelSelection,
+  threadSelection: ModelSelection,
+  capabilitiesFor: ((selection: ModelSelection) => ModelCapabilities | null) | undefined,
+): ModelSelection {
+  if (pick.options !== undefined || pick.instanceId !== threadSelection.instanceId) return pick;
+  const caps = capabilitiesFor?.(pick);
+  const kept = caps
+    ? buildExplicitProviderOptionSelectionsFromDescriptors(
+        getProviderOptionDescriptors({ caps, selections: threadSelection.options }),
+        threadSelection.options,
+      )
+    : undefined;
+  return kept ? { ...pick, options: kept } : pick;
 }
