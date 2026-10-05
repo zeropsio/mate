@@ -521,6 +521,34 @@ describe("liveCallOf", () => {
         startedAt: at(5),
       },
     },
+    // The rows say an env call as its card does (pass 43): what it changes
+    // and where, so a flag and how many variables ride along — never one.
+    {
+      name: "an env call relays its flag as words and its variables as a count, never a value",
+      input: item({
+        itemType: "mcp_tool_call",
+        status: "inProgress",
+        title: "MCP tool call",
+        data: {
+          toolName: "mcp__zerops__zerops_env",
+          input: {
+            action: "set",
+            project: true,
+            skipRestart: false,
+            variables: ["STAGE_URL=https://example.test", "SMTP_PASS=hunter2"],
+          },
+        },
+      }),
+      call: {
+        id: "call-1",
+        activityKind: "tool.updated",
+        itemType: "mcp_tool_call",
+        title: "MCP tool call",
+        toolName: "mcp__zerops__zerops_env",
+        input: { action: "set", project: "true", skipRestart: "false", variablesCount: "2" },
+        startedAt: at(5),
+      },
+    },
     {
       name: "an edit names the files it changes",
       input: item({

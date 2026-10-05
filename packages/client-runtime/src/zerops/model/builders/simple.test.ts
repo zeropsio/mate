@@ -121,6 +121,13 @@ describe("buildSimpleFields — what an env call changed and where, by its input
       target: { hostname: "apidev" },
     },
     {
+      name: "the count the live step relays in place of the variables",
+      input: { action: "set", project: "true", variablesCount: "6" },
+      subject: "the project",
+      envChange: { action: "set", scope: "project", count: 6 },
+      target: undefined,
+    },
+    {
       name: "a read names no count",
       input: { action: "get", project: true },
       subject: "the project",

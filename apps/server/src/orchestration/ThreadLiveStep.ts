@@ -246,7 +246,12 @@ function cut(text: string, max: number): string {
   return text.length <= max ? text : Array.from(`${text.slice(0, max - 1).trimEnd()}…`).join("");
 }
 
-/** A call's plain arguments, each cut short: what it says of itself and what it names. */
+/**
+ * A call's plain arguments, each cut short: what it says of itself and what it
+ * names. A flag rides as its word ("true"), a list of words as how many it
+ * holds (`<key>Count`), never its entries: an env call's are `KEY=value` pairs, and
+ * values can be secrets.
+ */
 function plainArguments(source: Record<string, unknown> | undefined): Record<string, string> {
   const kept: Record<string, string> = {};
   if (source === undefined) return kept;
@@ -254,6 +259,17 @@ function plainArguments(source: Record<string, unknown> | undefined): Record<str
     if (Object.keys(kept).length >= MAX_INPUT_FIELDS) break;
     // The command rides as the call's own fact.
     if (key === "command") continue;
+    if (typeof value === "boolean") {
+      kept[key] = String(value);
+      continue;
+    }
+    if (Array.isArray(value)) {
+      // A list of words is counted; any other shape is the call's own business.
+      if (value.every((entry) => typeof entry === "string")) {
+        kept[`${key}Count`] = String(value.length);
+      }
+      continue;
+    }
     const text = asText(value);
     if (text === undefined) continue;
     kept[key] = cut(text, MAX_INPUT_VALUE_LENGTH);

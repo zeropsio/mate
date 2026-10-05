@@ -147,11 +147,7 @@ function readEnvChange(input: Record<string, unknown> | undefined): ZeropsEnvCha
     action === "dotenv"
       ? (readInputString(input, "setup") ?? readInputString(input, "serviceHostname"))
       : readInputString(input, "serviceHostname");
-  const variables = input?.variables;
-  const count =
-    (action === "set" || action === "delete") && Array.isArray(variables)
-      ? variables.length
-      : undefined;
+  const count = action === "set" || action === "delete" ? variablesCount(input) : undefined;
   const scope = project && action !== "dotenv" ? "project" : "service";
   return {
     action,
@@ -159,4 +155,16 @@ function readEnvChange(input: Record<string, unknown> | undefined): ZeropsEnvCha
     ...(scope === "project" || service === undefined ? {} : { service }),
     ...(count === undefined ? {} : { count }),
   };
+}
+
+/**
+ * How many variables an env call names: its `variables` list, or the count
+ * the live step relays in its place (`variablesCount`, the server's
+ * `ThreadLiveStep`), never their entries.
+ */
+function variablesCount(input: Record<string, unknown> | undefined): number | undefined {
+  const variables = input?.variables;
+  if (Array.isArray(variables)) return variables.length;
+  const relayed = readInputString(input, "variablesCount");
+  return relayed !== undefined && /^\d+$/u.test(relayed) ? Number(relayed) : undefined;
 }
