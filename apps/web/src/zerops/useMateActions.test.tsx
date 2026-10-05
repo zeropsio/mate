@@ -54,6 +54,14 @@ const OWNER_OFFERS: HqMateOfferStates = {
 };
 
 const mock = vi.hoisted(() => ({
+  /** HQ's registry as the page hands it to the hook; empty by default. */
+  registry: { groups: [] } as {
+    groups: ReadonlyArray<{
+      groupId: string;
+      name: string;
+      projects: ReadonlyArray<{ projectId: string; kind: "mate" | "stage" | "production" }>;
+    }>;
+  },
   /** Whether each Mate's press in another browser is at it, as HQ holds it; none by default. */
   pressElsewhere: (_projectId: string): "pressing" | "stopped" | "unknown" => "stopped",
   /** What HQ offers of each project (`useMateOffers`); an owner's by default. */
@@ -334,7 +342,7 @@ const seen: Array<MateActions> = [];
 const actions = () => seen.at(-1)!;
 function Probe() {
   const handed = useMateActions({
-    registry: { registry: { groups: [] } },
+    registry: { registry: mock.registry },
     serverVersions: new Map(),
   });
   seen.push(handed);
@@ -353,6 +361,7 @@ beforeEach(() => {
   mock.user = { id: "user-ada" };
   mock.markers.clear();
   mock.pressElsewhere = () => "stopped";
+  mock.registry = { groups: [] };
   mock.dialog.current = null;
   mock.assignDialog.current = null;
   mock.setProjectMemberRole.mockReset();
@@ -892,8 +901,10 @@ describe("useMateActions — Finish setup on a Mate whose press here stopped bef
   const FACE = { tint: "coral", shape: "gem" } as const;
   const startedAt = Date.now() - 2 * 60 * 60 * 1000;
   const DAN = {
-    key: "dan-project:zcp",
-    group: "ready",
+    key: "dan-project",
+    group: "unavailable",
+    // Its project's services read, and no zcp among them: its press stopped before its container.
+    missingContainer: true,
     presence: "known",
     environmentId: EnvironmentId.make("env-dan"),
     project: {
@@ -993,7 +1004,9 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
     const { service: _none, ...base } = mate("Ivo", "coral:gem");
     return {
       ...base,
-      group: "ready",
+      group: "unavailable",
+      // Its project's services read, and no zcp among them.
+      missingContainer: true,
       project: { ...base.project, created: "2026-09-01T10:00:00Z" },
     } as ZeropsCandidatePresentation;
   })();
@@ -1030,6 +1043,34 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
     } as never);
     return registry;
   };
+
+  // Live, KRLS 2026-10-05: unknown is never missing. A Mate whose project's services are not read
+  // yet — or could not be — has no container this browser knows of, and none it knows is missing:
+  // no Finish setup, and no container imported for it.
+  it("offers no Finish setup while its project's services are not read", () => {
+    // Registered in its application, so only its container could make it half made.
+    mock.registry = {
+      groups: [
+        {
+          groupId: "acme",
+          name: "Acme Docs",
+          projects: [{ projectId: IVO.project.id, kind: "mate" }],
+        },
+      ],
+    };
+    const { missingContainer: _read, ...unread } = IVO;
+    mock.listing.current = {
+      state: "known",
+      value: [unread as ZeropsCandidatePresentation],
+      asOf: { ordinal: 1, atMs: 1_000 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+    mount(known());
+    expect(
+      verbs(unread as ZeropsCandidatePresentation).some((verb) => verb.id === "finish-setup"),
+    ).toBe(false);
+  });
 
   it("registers it there again under HQ's face, writing no new Mate", async () => {
     mock.finishMateSetup.mockResolvedValue({ ok: true });
