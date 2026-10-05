@@ -339,6 +339,8 @@ export function detailLines(
   operation: ZeropsOperation,
   standupRows: number | null,
   observed: ObservedLines | null = null,
+  /** A dev server's address, as the topology knows it: its card draws the way to it (`devServerUrlFor`). */
+  devServerUrl: string | undefined = undefined,
 ): number {
   if (operation.kind === "standup") return standupRows ?? 0;
   if (operation.kind === "import") return Math.max(operation.steps.length, observed?.steps ?? 0);
@@ -353,9 +355,11 @@ export function detailLines(
     observed === null
       ? own
       : (observed.steps > 0 ? observed.steps : own) + observed.chips + (observed.log ? 1 : 0);
+  const openLink = operation.kind === "devServer" && devServerUrl !== undefined ? 1 : 0;
   return (
     drawn +
     operation.links.length +
+    openLink +
     (operation.explanation === undefined ? 0 : 1) +
     (operation.version === undefined ? 0 : 1) +
     (operation.screenshot === undefined ? 0 : 1) +

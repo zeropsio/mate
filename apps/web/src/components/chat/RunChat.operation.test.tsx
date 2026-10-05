@@ -34,6 +34,8 @@ const store = vi.hoisted(() => ({
   history: "read" as "unread" | "reading" | "read" | "failed",
   /** Why the store's read of the project failed, if it did. */
   failure: undefined as string | undefined,
+  /** The dev service's subdomain, where the topology knows one. */
+  subdomainUrl: undefined as string | undefined,
 }));
 
 vi.mock("../../zerops/activity/useProjectActivity", async (importOriginal) => {
@@ -78,7 +80,13 @@ vi.mock("../../zerops/useZeropsFeeds", async (importOriginal) => {
     useZeropsTopology: () => ({
       project: { id: "proj-7", name: "orchard" },
       services: [
-        { hostname: "appdev", serviceId: "svc-app", typeName: "Node.js", routes: [] },
+        {
+          hostname: "appdev",
+          serviceId: "svc-app",
+          typeName: "Node.js",
+          routes: [],
+          ...(store.subdomainUrl === undefined ? {} : { subdomainUrl: store.subdomainUrl }),
+        },
         { hostname: "apidev", serviceId: "svc-api", typeName: "Go", routes: [] },
       ],
       warnings: [],
@@ -307,6 +315,7 @@ describe("RunChat — an operation's card, read from the account store", () => {
     store.logLines = LOG_LINES;
     store.history = "read";
     store.failure = undefined;
+    store.subdomainUrl = undefined;
   });
   afterEach(() => {
     act(() => {
@@ -767,5 +776,15 @@ describe("RunChat — an operation's card, read from the account store", () => {
     store.processes = [];
     const renderer = mount(settledRow(op));
     expect(nodes(renderer, "data-status-bar")).toHaveLength(bars);
+  });
+
+  // A settled dev server opens onto the way to its service when the topology
+  // knows its subdomain: the card draws an "Open" chip there (pass 43).
+  it("a dev server opens onto its Open link when the topology knows its address", () => {
+    store.processes = [];
+    store.subdomainUrl = "https://appdev.example.test";
+    const op = kindOp({ kind: "devServer", subject: "appdev", steps: one("done") });
+    const renderer = openSettled(op);
+    expect(said(renderer)).toContain("Open");
   });
 });

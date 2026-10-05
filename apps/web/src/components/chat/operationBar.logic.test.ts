@@ -326,6 +326,21 @@ describe("detailLines — how much an operation opens to", () => {
 
 // The count of what an operation opens to agrees with what its card draws,
 // kind by kind: a chevron that opens onto nothing is a defect (pass 43).
+describe("detailLines — the links a card adds of its own", () => {
+  it.each([
+    { name: "a dev server whose address is known: its Open link", url: "https://a.test", lines: 1 },
+    { name: "a dev server whose address is not known: nothing", url: undefined, lines: 0 },
+  ])("$name", ({ url, lines }) => {
+    const op = operation({ kind: "devServer", steps: [step("appdev", "done")] });
+    expect(detailLines(op, null, null, url)).toBe(lines);
+  });
+
+  it("an address counts only for a dev server", () => {
+    const op = operation({ kind: "env", steps: [step("appdev", "done")] });
+    expect(detailLines(op, null, null, "https://a.test")).toBe(0);
+  });
+});
+
 describe("detailLines — what its card draws, kind by kind", () => {
   const done = step("apidev", "done");
   const failed = step("apidev", "failed");
