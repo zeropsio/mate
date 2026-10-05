@@ -69,6 +69,8 @@ export interface AccountStore {
   /** The adapters' one entry: reduces, publishes the changed keys, returns the runtime's work. */
   readonly dispatch: (input: AccountInput) => ReadonlyArray<RuntimeDirective>;
   readonly state: () => AccountState;
+  /** Hears every reduction, after its keys are published: for the runtime's own holds, not for UI. */
+  readonly subscribe: (listener: () => void) => () => void;
 }
 
 const EMPTY_IDS: ReadonlySet<string> = new Set();
@@ -141,6 +143,7 @@ export const readsOfState = (state: AccountState): ProjectionReads =>
 
 export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountStore {
   let state = emptyAccount;
+  const listeners = new Set<() => void>();
   const cells = new Map<ReadKey, Atom.Writable<unknown>>();
   const cell = <T>(key: ReadKey): Atom.Writable<T> => {
     let atom = cells.get(key);
@@ -186,7 +189,12 @@ export function makeAccountStore(registry: AtomRegistry.AtomRegistry): AccountSt
           if (atom !== undefined) registry.set(atom, valueOf(state, key));
         }
       });
+      if (reduction.changed.size > 0) for (const listener of [...listeners]) listener();
       return reduction.directives;
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
     },
   };
 }

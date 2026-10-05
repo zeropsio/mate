@@ -6,6 +6,7 @@
  * @module data/operations/kind
  */
 import type { Authority, OperationIntent, OperationIntents, OperationReceipt } from "../model.ts";
+import type { DetailDemand } from "../demand.ts";
 import type { ProjectionReads } from "../store.ts";
 
 export type IntentOf<Kind extends keyof OperationIntents & string> = Extract<
@@ -36,6 +37,12 @@ export interface OperationKind<Kind extends keyof OperationIntents & string> {
     receipt: OperationReceipt,
   ) => Settlement | null;
   /**
+   * The detail that holds the accepted operation's handle (its project's process history): held as
+   * a standing demand until the operation settles, so an end that came while the account was away
+   * is read in the detail's next baseline.
+   */
+  readonly observedIn?: (intent: IntentOf<Kind>, receipt: OperationReceipt) => DetailDemand | null;
+  /**
    * For an owner that keeps no request ids (Zerops, a Mate): the handles in its facts that would
    * show this intent's effect (the processes running for the service). After a lost answer, the
    * coordinator adopts exactly one that was absent at the send and no other operation holds.
@@ -62,4 +69,5 @@ export interface RegisteredOperationKind {
     receipt: OperationReceipt,
   ): Settlement | null;
   effectHandles?(read: ProjectionReads, intent: OperationIntent): ReadonlyArray<string>;
+  observedIn?(intent: OperationIntent, receipt: OperationReceipt): DetailDemand | null;
 }

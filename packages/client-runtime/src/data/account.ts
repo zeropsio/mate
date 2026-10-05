@@ -10,6 +10,8 @@ import * as Fiber from "effect/Fiber";
 
 import { zeropsNavigationLink, type ZeropsWire } from "./adapters/zerops.ts";
 import type { DetailDemand } from "./demand.ts";
+import type { RegisteredOperationKind } from "./operations/kind.ts";
+import { holdStandingDemands } from "./operations/standing.ts";
 import type { AccountStore } from "./store.ts";
 import type { StreamFault } from "./streamMachine.ts";
 import { superviseLink, type LinkSignal } from "./supervisor.ts";
@@ -66,10 +68,12 @@ export function observeAccount(options: {
   readonly store: AccountStore;
   readonly wire: ZeropsWire;
   readonly repairSession: Effect.Effect<void, StreamFault>;
+  /** The operation kinds whose open operations hold their details; the account's registry. */
+  readonly kinds?: ReadonlyArray<RegisteredOperationKind>;
 }): AccountObservation {
   let shown: { readonly orgId: string; readonly link: RunningLink } | null = null;
   const holds = new Set<{ readonly demand: DetailDemand; release: (() => void) | null }>();
-  return {
+  const observation: AccountObservation = {
     show: (orgId) => {
       if (shown?.orgId === orgId) return;
       if (shown !== null) {
@@ -95,4 +99,12 @@ export function observeAccount(options: {
     },
     retry: () => shown?.link.signal("manual-retry"),
   };
+  // Every accepted operation holds the detail its handle is observed in until it settles: a
+  // standing demand at its owner, whichever organization is shown, for the account's lifetime.
+  holdStandingDemands({
+    store: options.store,
+    demandDetail: observation.demandDetail,
+    ...(options.kinds === undefined ? {} : { kinds: options.kinds }),
+  });
+  return observation;
 }

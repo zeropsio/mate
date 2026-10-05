@@ -5,7 +5,8 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 import { fixtureWire } from "./__fixtures__/zeropsWire.ts";
 import { observeAccount, startZeropsNavigation } from "./account.ts";
 import { historyScope, runningScope } from "./families/process.ts";
-import { linkKeys } from "./model.ts";
+import { linkKeys, type OperationIntent } from "./model.ts";
+import type { RegisteredOperationKind } from "./operations/kind.ts";
 import { streamOf } from "./reducer.ts";
 import { makeAccountStore } from "./store.ts";
 
@@ -81,5 +82,50 @@ describe("observeAccount", () => {
         yield* turns;
         expect(streamOf(store.state(), linkKeys.zerops("org-b")).demanded).toBe(false);
       }),
+  );
+
+  it.live("holds an open operation's detail as a standing demand, without any screen", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire((request) =>
+        Effect.succeed(
+          request.method === "GET"
+            ? { status: 200, body: { list: [] } }
+            : request.body?.wsOutputType === "listStream"
+              ? { items: [] }
+              : {},
+        ),
+      );
+      const restart = {
+        kind: "restart-service",
+        executor: "zerops",
+        reflected: () => false,
+        observedIn: () => ({ family: "process", listing: "history", ownerId: "p1" }),
+      } as RegisteredOperationKind;
+      const account = observeAccount({
+        store,
+        wire: fixture.wire,
+        repairSession: Effect.void,
+        kinds: [restart],
+      });
+      account.show("org");
+      const intent = { kind: "restart-service" } as unknown as OperationIntent;
+      store.dispatch({ kind: "operation-recorded", requestId: "request-1", intent });
+      store.dispatch({
+        kind: "operation-receipt",
+        receipt: {
+          requestId: "request-1",
+          operationId: "proc-1",
+          executor: "zerops",
+          affected: [],
+          handles: ["proc-1"],
+          acceptance: { kind: "accepted" },
+          outcome: { kind: "pending" },
+        },
+      });
+      yield* turns;
+      expect(streamOf(store.state(), historyScope("org", "p1")).phase).toBe("live");
+      account.show(null);
+    }),
   );
 });

@@ -34,7 +34,10 @@ equals: sameValue }`. `derive` reads keyed facts, memberships, coverage, indexes
 reflected(read, intent, receipt) }`, plus, where they apply, `settledBy(read, intent, receipt)` —
 how the owner's facts end it (a process row going terminal) — and `effectHandles(read, intent)` —
 the handles in its facts that would show it began (for an owner that keeps no request ids; after a
-lost answer only one absent at the send and held by no other operation is adopted). Add one line to
+lost answer only one absent at the send and held by no other operation is adopted) — and
+`observedIn(intent, receipt)` — the detail holding its handle (a project's process history), which
+`observeAccount` holds as a standing demand from acceptance until the operation settles. Add one
+line to
 `OPERATION_KINDS`. Wire the owner's executor into `makeOperations({ executors })`: `submit`, and
 whichever of `lookup(requestId)` (HQ) and `lookupHandle(handle)` the owner answers. The executor
 lives in `operations/executors/`, the one place besides `adapters/` that may reach a remote; the
