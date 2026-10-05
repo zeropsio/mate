@@ -19,6 +19,7 @@ import {
   deployedCommit,
   deployedVersion,
   environmentRow,
+  environmentSlots,
   releaseRunBy,
   nameStopByRelease,
   sameCommit,
@@ -707,7 +708,14 @@ function State({
   readonly children: React.ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-2" data-detail-harness-state={label}>
+    <section
+      className="flex flex-col gap-2"
+      data-detail-harness-state={label}
+      id={label
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/gu, "-")
+        .replace(/^-|-$/gu, "")}
+    >
       <div className="px-2">
         <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
           {label}
@@ -718,6 +726,78 @@ function State({
         {children}
       </div>
     </section>
+  );
+}
+
+const PRODUCTION_ROW = environment({
+  projectId: "shop-prod",
+  name: "production",
+  tier: "production",
+  source: "release",
+  version: {
+    name: "v1.4.0",
+    label: "v1.4.0",
+    commit: "3f9c1b2e",
+    sha: sha("3f9c1b2e"),
+    taggedBy: "ales",
+  },
+});
+
+/**
+ * The application page with only its Environments section of interest: the section's rows are
+ * `environmentSlots`' answer over the facts a frame sets, and nothing else of the page is drawn but
+ * the stops' own rows.
+ */
+function EnvironmentsFrame({
+  environments,
+  facts,
+  release = RELEASE_NONE,
+  waiting = NOTHING_WAITING,
+}: {
+  readonly environments: ReadonlyArray<EnvironmentRow>;
+  readonly facts: Partial<Parameters<typeof environmentSlots>[0]>;
+  readonly release?: ReleaseOffer;
+  readonly waiting?: typeof NOTHING_WAITING;
+}) {
+  return (
+    <ZeropsGroupPane
+      attention={[]}
+      mates={[]}
+      onAct={() => {}}
+      onAddMate={() => {}}
+      onOpenMate={() => {}}
+      history={{ kind: "read", commits: [], total: 0 }}
+      tags={new Map()}
+      environments={environments}
+      slots={environmentSlots({
+        environments: environments.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
+        devstages: [],
+        pending: [],
+        halfMade: [],
+        recipeTiers: ["stage", "production"],
+        recipeRead: true,
+        mayAdd: true,
+        writer: false,
+        productionRuns: "unknown",
+        waiting: { count: waiting.total, atLeast: false },
+        mainHasCode: true,
+        releaseOffered: release.offered,
+        releasing: undefined,
+        ...facts,
+      })}
+      onAdd={() => {}}
+      onFinish={() => {}}
+      finishing={false}
+      groupId="shop"
+      name="Shop"
+      crumbs={CRUMBS}
+      names={NAMES}
+      onSetUp={() => {}}
+      pullRequests={[]}
+      release={release}
+      repo={undefined}
+      waiting={waiting}
+    />
   );
 }
 
@@ -870,6 +950,85 @@ function Harness() {
           repo={undefined}
           waiting={NOTHING_WAITING}
         />
+      </State>
+
+      <State
+        label="Environments · nothing, recipe not ready"
+        note="Neither tier is held by the recipe on main yet: both slots say they wait for the Mate's recipe, with no Add."
+      >
+        <EnvironmentsFrame environments={[]} facts={{ recipeTiers: [] }} />
+      </State>
+      <State
+        label="Environments · nothing, recipe ready"
+        note="Two quiet slots, each with its own Add — peers, neither optional, neither first."
+      >
+        <EnvironmentsFrame environments={[]} facts={{}} />
+      </State>
+      <State
+        label="Environments · stage only"
+        note="A stage runs; production is a quiet slot with Add."
+      >
+        <EnvironmentsFrame environments={[environment()]} facts={{}} />
+      </State>
+      <State
+        label="Environments · a Mate is the stage"
+        note="A devstage Mate stands for the stage: its agent deploys, HQ does not. No second stage is offered to a developer."
+      >
+        <EnvironmentsFrame
+          environments={[]}
+          facts={{ devstages: [{ id: "vera-dev", name: "Vera" }] }}
+        />
+      </State>
+      <State
+        label="Environments · production only, empty"
+        note="Production attached, no release yet, main has code: the first release is one press away."
+      >
+        <EnvironmentsFrame
+          environments={[PRODUCTION_ROW]}
+          facts={{ productionRuns: "empty" }}
+          release={RELEASE_WAITING}
+        />
+      </State>
+      <State
+        label="Environments · production only, 3 waiting"
+        note="Production runs v1.4.0; three merged changes wait for it."
+      >
+        <EnvironmentsFrame
+          environments={[PRODUCTION_ROW]}
+          facts={{ productionRuns: "running" }}
+          release={RELEASE_WAITING}
+          waiting={WAITING}
+        />
+      </State>
+      <State label="Environments · both" note="A stage and a production: no slots at all.">
+        <EnvironmentsFrame
+          environments={[environment(), PRODUCTION_ROW]}
+          facts={{ productionRuns: "running" }}
+        />
+      </State>
+      <State
+        label="Environments · a stage being created"
+        note="The stage stands in its slot as being set up; Add is not offered twice."
+      >
+        <EnvironmentsFrame
+          environments={[]}
+          facts={{ pending: [{ id: "shop-stage-new", tier: "stage" }] }}
+        />
+      </State>
+      <State
+        label="Environments · half-made production"
+        note="A project made as the production that HQ does not hold in full: Finish setup, never a second Add."
+      >
+        <EnvironmentsFrame
+          environments={[]}
+          facts={{ halfMade: [{ id: "shop-prod", tier: "production" }] }}
+        />
+      </State>
+      <State
+        label="Environments · a person who may not add"
+        note="The same two empty slots, drawn without any Add."
+      >
+        <EnvironmentsFrame environments={[]} facts={{ mayAdd: false }} />
       </State>
 
       <State
