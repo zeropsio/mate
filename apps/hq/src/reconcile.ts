@@ -37,6 +37,7 @@ import * as Schema from "effect/Schema";
 import type * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
+import { firstCodeMergeOf } from "./firstCodeMerge.ts";
 import { appendEvent } from "./gitEvents.ts";
 import type { Leader, NotLeader } from "./leader.ts";
 import { squashesOnMain } from "./squashes.ts";
@@ -247,15 +248,20 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
       merged.add(row.number);
       const head = headOf.get(row.number) ?? null;
       yield* leader.write(
-        Effect.andThen(
-          sql`
+        Effect.gen(function* () {
+          const first = yield* firstCodeMergeOf(sql, {
+            appId: repo.appId,
+            repo: repo.id,
+            number: row.number,
+          });
+          yield* sql`
             UPDATE hq_change
             SET state = 'merged', merged_sha = ${squash}, landed_head = ${head},
                 head = COALESCE(${head}, head),
                 merged_at = now(), updated_at = now(), mergeability = 'already_merged',
-                behind = false
-            WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND number = ${row.number}`,
-          appendEvent(sql, {
+                behind = false, first_code_merge = ${first}::boolean
+            WHERE app_id::text = ${repo.appId} AND repo = ${repo.id} AND number = ${row.number}`;
+          yield* appendEvent(sql, {
             kind: "merged",
             appId: repo.appId,
             repo: repo.id,
@@ -267,8 +273,8 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
               recovered: true,
               reconciled: true,
             },
-          }),
-        ),
+          });
+        }),
       );
     }
     // Of each Mate's open changes, its newest stays open.

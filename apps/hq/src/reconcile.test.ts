@@ -127,12 +127,13 @@ describe("a takeover after git moved past HQ's records", () => {
           const now = (query: string) => rowsWhere(next.url, query, () => true);
           assert.deepStrictEqual(
             yield* now(
-              `SELECT number, mate_project_id AS mate, state, head, merged_sha AS merged
+              `SELECT number, mate_project_id AS mate, state, head, merged_sha AS merged,
+                      first_code_merge AS first
                FROM hq_change WHERE repo = 'appdev' ORDER BY number`,
             ),
             [
               // Closed before the records were taken; stays so.
-              { number: 1, mate: "P_MATE", state: "closed", head: null, merged: null },
+              { number: 1, mate: "P_MATE", state: "closed", head: null, merged: null, first: null },
               // Open in the records, its squash on main: merged, recovered.
               {
                 number: 2,
@@ -140,13 +141,22 @@ describe("a takeover after git moved past HQ's records", () => {
                 state: "merged",
                 head: appdev(["rev-parse", "refs/heads/mate/P_MATE/2"]),
                 merged: squashed,
+                // The recovered squash is the application's first code merge.
+                first: true,
               },
               // Open in the records, but Bo opened a newer one since: closed, superseded.
-              { number: 3, mate: "P_MATE2", state: "closed", head: null, merged: null },
+              {
+                number: 3,
+                mate: "P_MATE2",
+                state: "closed",
+                head: null,
+                merged: null,
+                first: null,
+              },
               // No record: Ada's newest, open.
-              { number: 4, mate: "P_MATE", state: "open", head: third, merged: null },
+              { number: 4, mate: "P_MATE", state: "open", head: third, merged: null, first: null },
               // No record: Bo's newest, open.
-              { number: 5, mate: "P_MATE2", state: "open", head: bos, merged: null },
+              { number: 5, mate: "P_MATE2", state: "open", head: bos, merged: null, first: null },
             ],
           );
           assert.deepStrictEqual(yield* now(`SELECT title FROM hq_change WHERE number = 4`), [

@@ -62,6 +62,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 
+import { firstCodeMergeOf } from "./firstCodeMerge.ts";
 import { appendEvent, releaseRevisions } from "./gitEvents.ts";
 import { GitHost, type PushedChange, mainOf } from "./gitHost.ts";
 import { heldOf } from "./held.ts";
@@ -345,6 +346,7 @@ const CHANGE_COLUMNS = [
   instant("updated_at"),
   "mergeability",
   "behind",
+  "first_code_merge",
   // A recipe change is whole as proposed: it asks for review undescribed. A Mate's delivery
   // asks at the head it last described.
   `(repo = '${RECIPE_REPO}' OR COALESCE(ready_head = head, false)) AS ready`,
@@ -371,6 +373,7 @@ interface ChangeRow {
   readonly updated_at: string;
   readonly mergeability: HqChange["mergeability"];
   readonly behind: boolean;
+  readonly first_code_merge: boolean | null;
   readonly ready: boolean;
   readonly comments: number;
 }
@@ -416,6 +419,7 @@ const changeOf = (row: ChangeRow): HqChange => ({
   updatedAt: row.updated_at,
   mergeability: row.mergeability,
   behind: row.behind,
+  ...(row.first_code_merge === null ? {} : { firstCodeMerge: row.first_code_merge }),
   ready: row.ready,
   comments: row.comments,
 });
@@ -677,11 +681,13 @@ export const changesLayer: Layer.Layer<
                 return yield* refuse("conflict", landed.kind);
               }
               const mergedSha = "merged" in landed ? landed.merged : found!;
+              const first = yield* firstCodeMergeOf(sql, { appId: at.appId, repo: at.id, number });
               const [row] = yield* sql<ChangeRow>`
                 UPDATE hq_change
                 SET state = 'merged', merged_sha = ${mergedSha}, landed_head = ${expectedHead},
                     head = ${expectedHead}, merged_at = now(), updated_at = now(),
-                    mergeability = 'already_merged', behind = false
+                    mergeability = 'already_merged', behind = false,
+                    first_code_merge = ${first}::boolean
                 WHERE app_id = ${at.appId}::uuid AND repo = ${at.id} AND number = ${number}
                 RETURNING ${sql.literal(CHANGE_COLUMNS)}`;
               // The merge asks for its deploys in its own write (`rollouts.ts`): the request that

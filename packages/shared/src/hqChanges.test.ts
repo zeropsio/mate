@@ -384,6 +384,15 @@ describe("hqChanges — the wire", () => {
     expect(decodeChange(change(patch)).ready).toBe(ready);
   });
 
+  it.each([
+    ["an HQ that does not record it", {}, undefined],
+    ["the first code merge", { firstCodeMerge: true }, true],
+    ["a later one", { firstCodeMerge: false }, false],
+  ])("reads whether a merge was its application's first from %s", (_name, patch, first) => {
+    expect(decodeChange(change(patch)).firstCodeMerge).toBe(first);
+    expect(read(HqChange, change({ firstCodeMerge: "yes" }))).toBe("Failure");
+  });
+
   it("reads a comment from an HQ that kept only people's as a person's", () => {
     const [said] = decodeComments({ comments: [comment("Looks good")] }).comments;
     expect([said?.authorUserId, said?.authorMateProjectId]).toEqual(["owner", null]);

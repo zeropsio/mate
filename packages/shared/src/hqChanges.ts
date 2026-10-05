@@ -146,6 +146,12 @@ export const HqChange = Schema.Struct({
   /** Whether `main` has moved past the change's merge base, judged with `mergeability`. */
   behind: Schema.Boolean,
   /**
+   * On a merged code change: whether it was the first of its application's to merge, no other code
+   * change merged before it. Recorded by HQ as it merges. Absent for a change not merged, a recipe
+   * repository's, and one merged before HQ recorded it.
+   */
+  firstCodeMerge: Schema.optionalKey(Schema.Boolean),
+  /**
    * Whether it asks for review: the Mate described it at its head. A draft — before its first
    * description, and again after a push the description has not caught up with — stays readable
    * and never asks. Added after the rest: an older HQ's change, which knows no drafts, is ready.

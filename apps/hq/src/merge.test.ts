@@ -517,6 +517,40 @@ describe("a change merged into main, or closed", () => {
         }),
     );
 
+    it.effect("a merged code change says whether it was its application's first", () =>
+      Effect.gen(function* () {
+        const { call, fake, origin, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, credential } = yield* mateWithChange(call, fake, owner);
+        const bo = yield* siblingMate(call, fake, owner, appId, "P_MATE2");
+        const git = yield* gitClient;
+        const ada = yield* checkout(git, origin, credential, appId, "ada");
+        const boWork = yield* checkout(git, origin, bo.credential, appId, "bo");
+        yield* ada.commit("ada.txt", "ada\n", "Ada's file");
+        const adaHead = (yield* ada.push("P_MATE", 1)).head;
+        yield* boWork.commit("bo.txt", "bo\n", "Bo's file");
+        const boHead = (yield* boWork.push("P_MATE2", bo.number)).head;
+        yield* recorded(url, 1, adaHead);
+        yield* recorded(url, bo.number, boHead);
+        const firstOf = (answer: { readonly body: unknown }) =>
+          (answer.body as Record<string, unknown>)["firstCodeMerge"];
+        const asRead = (number: number) =>
+          Effect.map(
+            call("GET", `/api/apps/${appId}/changes/appdev/${String(number)}`, { session: owner }),
+            (answer) => ({ body: (answer.body as { readonly change: unknown }).change }),
+          );
+
+        // Unmerged, it says nothing.
+        assert.isUndefined(firstOf(yield* asRead(1)));
+        assert.strictEqual(firstOf(yield* merge(call, owner, appId, 1, adaHead)), true);
+        // Every code change merged after it is not the first.
+        assert.strictEqual(firstOf(yield* merge(call, owner, appId, bo.number, boHead)), false);
+        assert.strictEqual(firstOf(yield* asRead(1)), true);
+        assert.strictEqual(firstOf(yield* asRead(bo.number)), false);
+      }),
+    );
+
     it.effect(
       "a developer closes a change without merging: its branch stays, and takes no pushes",
       () =>
