@@ -7,11 +7,11 @@ import { AtomRegistry } from "effect/unstable/reactivity";
 import { makeAccountStore } from "./store.ts";
 import { STREAM_POLICY, type StreamFault } from "./streamMachine.ts";
 import { superviseLink } from "./supervisor.ts";
-import { projectsScope } from "./families/project.ts";
+import { runningScope } from "./families/process.ts";
 import { linkKeys } from "./model.ts";
 
 const LINK = linkKeys.zerops("org");
-const SCOPE = projectsScope("org");
+const SCOPE = runningScope("org");
 
 const transient: StreamFault = { outcome: "transient", message: "socket closed" };
 

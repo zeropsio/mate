@@ -299,6 +299,10 @@
       "types": "./src/zerops/candidates.ts",
       "default": "./src/zerops/candidates.ts"
     },
+    "./data": {
+      "types": "./src/data/index.ts",
+      "default": "./src/data/index.ts"
+    },
     "./zerops/data": {
       "types": "./src/zerops/data/index.ts",
       "default": "./src/zerops/data/index.ts"

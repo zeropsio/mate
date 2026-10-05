@@ -3,24 +3,22 @@ import { describe, expect, it } from "vite-plus/test";
 import { linkKeys, emptyAccount, type AccountState } from "./model.ts";
 import type { Revision } from "./model.ts";
 import { reduceAccount, supersedes, type AccountInput } from "./reducer.ts";
-import { projectsScope } from "./families/project.ts";
 import { runningScope } from "./families/process.ts";
-import { navigationScope } from "./families/placement.ts";
 import { factOf, indexOf } from "./reducer.ts";
 
 const ORG = "org";
-const projects = projectsScope(ORG);
+const scope = runningScope(ORG);
 
-const projectRow = (id: string, version: number, name = id) => ({
-  family: "project" as const,
+const row = (id: string, version: number, status = "RUNNING") => ({
+  family: "process" as const,
   id,
-  value: { id, name, status: "ACTIVE" },
+  value: { id, projectId: "x", status, actionName: "stack.deploy" },
   revision: { kind: "zerops" as const, version },
 });
 
-const pushRows = (rows: ReadonlyArray<ReturnType<typeof projectRow>>): AccountInput => ({
+const pushRows = (rows: ReadonlyArray<ReturnType<typeof row>>): AccountInput => ({
   kind: "rows",
-  scope: projects,
+  scope: scope,
   generation: 1,
   method: "push",
   via: "zerops-realtime",
@@ -32,24 +30,24 @@ const delta = (change: {
   remove: ReadonlyArray<string>;
 }): AccountInput => ({
   kind: "membership",
-  scope: projects,
+  scope: scope,
   generation: 1,
   delta: change,
 });
 
 const commit = (
   members: ReadonlyArray<string>,
-  rows: ReadonlyArray<ReturnType<typeof projectRow>>,
+  rows: ReadonlyArray<ReturnType<typeof row>>,
 ): AccountInput => ({
   kind: "baseline-commit",
-  scope: projects,
+  scope: scope,
   generation: 1,
   via: "zerops-realtime",
   members,
   rows,
 });
 
-/** The projects scope of `ORG`, demanded and in its first attempt. */
+/** The scope scope of `ORG`, demanded and in its first attempt. */
 function attached(): AccountState {
   return apply(emptyAccount, [
     {
@@ -58,8 +56,8 @@ function attached(): AccountState {
       now: 0,
       event: { kind: "demand", demanded: true },
     },
-    { kind: "stream", key: projects, now: 0, event: { kind: "demand", demanded: true } },
-    { kind: "stream", key: projects, now: 0, event: { kind: "attempt" } },
+    { kind: "stream", key: scope, now: 0, event: { kind: "demand", demanded: true } },
+    { kind: "stream", key: scope, now: 0, event: { kind: "attempt" } },
   ]);
 }
 
@@ -69,8 +67,8 @@ function apply(state: AccountState, inputs: ReadonlyArray<AccountInput>): Accoun
 
 describe("reduceAccount", () => {
   it("keeps the newer Zerops version of a row whichever order the rows arrive in", () => {
-    const newer = projectRow("p1", 5, "renamed");
-    const older = projectRow("p1", 4, "old");
+    const newer = row("p1", 5, "FINISHED");
+    const older = row("p1", 4, "RUNNING");
 
     for (const order of [
       [newer, older],
@@ -80,7 +78,7 @@ describe("reduceAccount", () => {
         attached(),
         order.map((row) => pushRows([row])),
       );
-      expect(factOf(state, "project", "p1")?.content).toEqual({
+      expect(factOf(state, "process", "p1")?.content).toEqual({
         kind: "value",
         value: newer.value,
       });
@@ -89,10 +87,10 @@ describe("reduceAccount", () => {
 
   it("ignores input a superseded attempt delivers late", () => {
     const reattached = apply(attached(), [
-      { kind: "stream", key: projects, now: 0, event: { kind: "parent-lost" } },
-      { kind: "stream", key: projects, now: 0, event: { kind: "attempt" } },
+      { kind: "stream", key: scope, now: 0, event: { kind: "parent-lost" } },
+      { kind: "stream", key: scope, now: 0, event: { kind: "attempt" } },
     ]);
-    const late = reduceAccount(reattached, pushRows([projectRow("p1", 9)]));
+    const late = reduceAccount(reattached, pushRows([row("p1", 9)]));
 
     expect(late.state).toBe(reattached);
     expect(late.changed.size).toBe(0);
@@ -100,86 +98,80 @@ describe("reduceAccount", () => {
 
   it("lists a member before its row and asks for the row; a row before its member stays unlisted", () => {
     const memberFirst = reduceAccount(attached(), delta({ add: ["p2"], remove: [] }));
-    expect(memberFirst.state.memberships.get(projects)?.members.get("p2")).toBe("member");
-    expect(memberFirst.directives).toEqual([{ kind: "resolve-rows", key: projects, ids: ["p2"] }]);
-    expect(memberFirst.changed).toEqual(new Set([`members:${projects}`]));
+    expect(memberFirst.state.memberships.get(scope)?.members.get("p2")).toBe("member");
+    expect(memberFirst.directives).toEqual([{ kind: "resolve-rows", key: scope, ids: ["p2"] }]);
+    expect(memberFirst.changed).toEqual(new Set([`members:${scope}`]));
 
-    const rowFirst = apply(attached(), [pushRows([projectRow("p3", 1)])]);
-    expect(rowFirst.memberships.get(projects)?.members.has("p3") ?? false).toBe(false);
+    const rowFirst = apply(attached(), [pushRows([row("p3", 1)])]);
+    expect(rowFirst.memberships.get(scope)?.members.has("p3") ?? false).toBe(false);
     const joined = reduceAccount(rowFirst, delta({ add: ["p3"], remove: [] }));
-    expect(joined.state.memberships.get(projects)?.members.get("p3")).toBe("member");
+    expect(joined.state.memberships.get(scope)?.members.get("p3")).toBe("member");
     expect(joined.directives).toEqual([]);
   });
 
   it("commits a baseline atomically and replays the changes that arrived while it was read", () => {
-    const begun = apply(attached(), [{ kind: "baseline-begin", scope: projects, generation: 1 }]);
+    const begun = apply(attached(), [{ kind: "baseline-begin", scope: scope, generation: 1 }]);
     const during = apply(begun, [
       delta({ add: ["p9"], remove: [] }),
       delta({ add: [], remove: ["p1"] }),
-      pushRows([projectRow("p1", 7, "pushed")]),
+      pushRows([row("p1", 7, "CANCELING")]),
     ]);
-    expect(during.memberships.get(projects)?.coverage).toBe("unknown");
+    expect(during.memberships.get(scope)?.coverage).toBe("unknown");
 
-    const committed = reduceAccount(
-      during,
-      commit(["p1", "p2"], [projectRow("p1", 6), projectRow("p2", 1)]),
-    );
-    const membership = committed.state.memberships.get(projects);
+    const committed = reduceAccount(during, commit(["p1", "p2"], [row("p1", 6), row("p2", 1)]));
+    const membership = committed.state.memberships.get(scope);
     expect(membership?.coverage).toBe("complete");
     expect(membership?.baseline).toBeNull();
     expect([...(membership?.members ?? [])]).toEqual([
-      ["p1", "absent-unverified"],
+      ["p1", "removed"],
       ["p2", "member"],
       ["p9", "member"],
     ]);
-    expect(factOf(committed.state, "project", "p1")?.content).toEqual({
+    expect(factOf(committed.state, "process", "p1")?.content).toEqual({
       kind: "value",
-      value: projectRow("p1", 7, "pushed").value,
+      value: row("p1", 7, "CANCELING").value,
     });
-    expect(committed.directives).toEqual([
-      { kind: "resolve-rows", key: projects, ids: ["p9"] },
-      { kind: "verify-absence", key: projects, ids: ["p1"] },
-    ]);
+    expect(committed.directives).toEqual([{ kind: "resolve-rows", key: scope, ids: ["p9"] }]);
   });
 
   it("deletes a fact only on proof: transport events and absence keep it", () => {
     const held = apply(attached(), [
-      { kind: "baseline-begin", scope: projects, generation: 1 },
-      commit(["p1"], [projectRow("p1", 1)]),
+      { kind: "baseline-begin", scope: scope, generation: 1 },
+      commit(["p1"], [row("p1", 1)]),
     ]);
     const transport = apply(held, [
-      { kind: "stream", key: projects, now: 0, event: { kind: "parent-lost" } },
+      { kind: "stream", key: scope, now: 0, event: { kind: "parent-lost" } },
       {
         kind: "stream",
         key: linkKeys.zerops(ORG),
         now: 0,
         event: { kind: "fault", jitter: 0, fault: { outcome: "transient", message: "closed" } },
       },
-      { kind: "stream", key: projects, now: 0, event: { kind: "close" } },
+      { kind: "stream", key: scope, now: 0, event: { kind: "close" } },
     ]);
     expect(transport.facts).toBe(held.facts);
     expect(transport.memberships).toBe(held.memberships);
 
     const absent = apply(held, [delta({ add: [], remove: ["p1"] })]);
-    expect(factOf(absent, "project", "p1")?.content.kind).toBe("value");
+    expect(factOf(absent, "process", "p1")?.content.kind).toBe("value");
 
     const deleted = apply(absent, [
-      { kind: "proven-deletion", family: "project", id: "p1", evidence: "GET /project/p1 404" },
+      { kind: "proven-deletion", family: "process", id: "p1", evidence: "GET /process/p1 404" },
     ]);
-    expect(factOf(deleted, "project", "p1")?.content).toEqual({
+    expect(factOf(deleted, "process", "p1")?.content).toEqual({
       kind: "deleted",
-      evidence: "GET /project/p1 404",
+      evidence: "GET /process/p1 404",
     });
-    expect(deleted.memberships.get(projects)?.members.has("p1")).toBe(false);
+    expect(deleted.memberships.get(scope)?.members.has("p1")).toBe(false);
 
     const denied = apply(absent, [
-      { kind: "access", family: "project", id: "p1", access: "denied" },
+      { kind: "access", family: "process", id: "p1", access: "denied" },
     ]);
-    expect(factOf(denied, "project", "p1")).toMatchObject({
+    expect(factOf(denied, "process", "p1")).toMatchObject({
       content: { kind: "purged" },
       access: "denied",
     });
-    expect(denied.memberships.get(projects)?.members.has("p1")).toBe(false);
+    expect(denied.memberships.get(scope)?.members.has("p1")).toBe(false);
   });
 
   describe("running work", () => {
@@ -274,113 +266,6 @@ describe("reduceAccount", () => {
         value: { status: "RUNNING" },
       });
       expect(rebaselined.directives).toEqual([]);
-    });
-  });
-
-  describe("application index", () => {
-    const navigation = navigationScope(ORG);
-    const placed = (id: string, sequence: number, appId: string | null) => ({
-      family: "placement" as const,
-      id,
-      value:
-        appId === null
-          ? { kind: "outside" as const }
-          : { kind: "app" as const, appId, appName: appId.toUpperCase(), role: "mate" },
-      revision: { kind: "hq-observation" as const, generation: 1, sequence },
-    });
-
-    it("indexes projects by the application HQ places them in, and lets go of unplaced ones", () => {
-      const state = apply(emptyAccount, [
-        {
-          kind: "stream",
-          key: linkKeys.hq(ORG),
-          now: 0,
-          event: { kind: "demand", demanded: true },
-        },
-        { kind: "stream", key: navigation, now: 0, event: { kind: "demand", demanded: true } },
-        { kind: "stream", key: navigation, now: 0, event: { kind: "attempt" } },
-        { kind: "baseline-begin", scope: navigation, generation: 1 },
-        {
-          kind: "baseline-commit",
-          scope: navigation,
-          generation: 1,
-          via: "hq-stream",
-          members: ["m1", "m2", "m3"],
-          rows: [placed("m1", 1, "a"), placed("m2", 1, "a"), placed("m3", 1, null)],
-        },
-      ]);
-      expect(indexOf(state, "apps", "a")).toEqual(new Set(["m1", "m2"]));
-
-      const moved = reduceAccount(state, {
-        kind: "rows",
-        scope: navigation,
-        generation: 1,
-        method: "push",
-        via: "hq-stream",
-        rows: [placed("m2", 2, "b")],
-      });
-      expect(indexOf(moved.state, "apps", "a")).toEqual(new Set(["m1"]));
-      expect(indexOf(moved.state, "apps", "b")).toEqual(new Set(["m2"]));
-      expect([...moved.changed].filter((key) => key.startsWith("index:")).sort()).toEqual([
-        "index:apps:a",
-        "index:apps:b",
-      ]);
-
-      const withdrawn = reduceAccount(moved.state, {
-        kind: "membership",
-        scope: navigation,
-        generation: 1,
-        delta: { add: [], remove: ["m1"] },
-      });
-      expect(indexOf(withdrawn.state, "apps", "a")).toEqual(new Set());
-    });
-  });
-
-  it("keeps a relayed attention the Mate's, and reads a value again once its owner sends one", () => {
-    const navigation = navigationScope(ORG);
-    const relayed = (sequence: number): AccountInput => ({
-      kind: "rows",
-      scope: navigation,
-      generation: 1,
-      method: "push",
-      via: "hq-stream",
-      rows: [
-        {
-          family: "attention",
-          id: "m1",
-          value: {
-            mainChatId: null,
-            latestChatId: `c${sequence}`,
-            working: 0,
-            waiting: 0,
-            resultIds: [],
-            questionIds: [],
-            truncated: false,
-          },
-          revision: { kind: "hq-observation", generation: 1, sequence },
-        },
-      ],
-    });
-    const state = apply(emptyAccount, [
-      {
-        kind: "stream",
-        key: linkKeys.hq(ORG),
-        now: 0,
-        event: { kind: "demand", demanded: true },
-      },
-      { kind: "stream", key: navigation, now: 0, event: { kind: "demand", demanded: true } },
-      { kind: "stream", key: navigation, now: 0, event: { kind: "attempt" } },
-      relayed(1),
-    ]);
-    expect(factOf(state, "attention", "m1")).toMatchObject({ authority: "mate", via: "hq-stream" });
-
-    const denied = apply(state, [
-      { kind: "access", family: "attention", id: "m1", access: "denied" },
-    ]);
-    expect(factOf(denied, "attention", "m1")?.content.kind).toBe("purged");
-    expect(factOf(apply(denied, [relayed(2)]), "attention", "m1")).toMatchObject({
-      content: { kind: "value" },
-      access: "allowed",
     });
   });
 

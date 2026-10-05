@@ -938,6 +938,14 @@ export class ZeropsApiClient {
     );
   }
 
+  /**
+   * Renews the held session once, for a background reader: the same refresh every request makes
+   * after a 401, whose failure never signs the account out from under the person.
+   */
+  async renewHeldSession(): Promise<void> {
+    await this.#refreshSession(false);
+  }
+
   /** Adopts a session read back from storage without re-notifying the owner. */
   restoreSession(session: ZeropsSession): void {
     this.#nextGeneration();

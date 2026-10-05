@@ -6,7 +6,6 @@
  */
 import type { OperationIntent } from "../model.ts";
 import type { AnyOperationKind, OperationKind } from "./kind.ts";
-import { moveProject } from "./moveProject.ts";
 
 /** The registry, checked once at startup: each kind once. */
 export function defineOperationKinds(
@@ -20,14 +19,20 @@ export function defineOperationKinds(
   return kinds;
 }
 
-export const OPERATION_KINDS = defineOperationKinds([moveProject]);
+export const OPERATION_KINDS = defineOperationKinds([]);
 
-const byKind = new Map<string, AnyOperationKind>(OPERATION_KINDS.map((kind) => [kind.kind, kind]));
+/** A kind's name, read the same way whether or not any kind is registered yet. */
+const nameOf = (named: { readonly kind: string }) => named.kind;
+
+const byKind = new Map<string, AnyOperationKind>(
+  OPERATION_KINDS.map((kind) => [nameOf(kind as { readonly kind: string }), kind]),
+);
 
 export function operationKind<Intent extends OperationIntent>(
   intent: Intent,
 ): OperationKind<Intent["kind"]> {
-  const kind = byKind.get(intent.kind);
-  if (kind === undefined) throw new Error(`No operation kind ${intent.kind} is registered.`);
+  const name = nameOf(intent as { readonly kind: string });
+  const kind = byKind.get(name);
+  if (kind === undefined) throw new Error(`No operation kind ${name} is registered.`);
   return kind as unknown as OperationKind<Intent["kind"]>;
 }

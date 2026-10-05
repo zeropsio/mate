@@ -34,6 +34,11 @@ equals: sameValue }`. `derive` reads keyed facts, memberships, coverage, indexes
 Add one line to `OPERATION_KINDS`, and wire the owner's executor into
 `makeOperations({ executors })`.
 
+**Mounting.** An app makes one store per account (`makeAccountStore`) and starts the active
+organization's navigation with `startZeropsNavigation`, over `makeZeropsWire` (today's receiver
+socket and REST client) and `repairZeropsSession` (today's refresh). All of it comes through the
+`@t3tools/client-runtime/data` entry.
+
 **A source adapter.** Return `{ key, scopes, attempt }`. An attempt opens the connection, starts
 reading before it registers anything, registers each scope, commits each answer as that scope's
 baseline, and ends only by failing with a classified fault. Run it under
@@ -67,9 +72,9 @@ baseline, and ends only by failing with a classified fault. Run it under
 
 ## Still shared between slices
 
-- **HQ families** are written by the thin adapter over today's structure stream (`adapters/hq.ts`,
-  `onEvent`). Until the scoped HQ protocol replaces it, slices that add HQ families edit that one
-  function. Run them one after another.
+- **HQ families** come with the HQ slice's thin adapter over today's structure stream (`onEvent`).
+  Until the scoped HQ protocol replaces it, slices that add HQ families edit that one function.
+  Run them one after another.
 - **A new revision kind** edits `Revision` and `Delivery` in `model.ts` and `supersedes` in
   `reducer.ts`.
 - **Detail demand** is declared per family and planned by `zeropsRegistrations`. The Zerops adapter

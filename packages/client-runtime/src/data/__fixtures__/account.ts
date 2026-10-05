@@ -5,10 +5,7 @@
 import { linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
 import type { AccountInput, Row } from "../reducer.ts";
 import type { StreamEvent } from "../streamMachine.ts";
-import { projectsScope } from "../families/project.ts";
 import { runningScope } from "../families/process.ts";
-import { navigationScope } from "../families/placement.ts";
-import { type AttentionValue, attentionScope } from "../families/attention.ts";
 
 export const ORG = "org";
 
@@ -24,7 +21,7 @@ function liveScopes(
   link: LinkKey,
   scopes: ReadonlyArray<{
     readonly scope: ScopeKey;
-    readonly via: "zerops-realtime" | "hq-stream" | "mate-direct";
+    readonly via: "zerops-realtime";
     readonly members: ReadonlyArray<string>;
     readonly rows: ReadonlyArray<Row>;
   }>,
@@ -47,27 +44,14 @@ function liveScopes(
 export const zeropsVersion = (version: number) => ({ kind: "zerops" as const, version });
 
 export function liveZerops(input: {
-  readonly projects: ReadonlyArray<{ readonly id: string; readonly name: string }>;
-  readonly running?: ReadonlyArray<{ readonly id: string; readonly projectId: string }>;
+  readonly running: ReadonlyArray<{ readonly id: string; readonly projectId: string }>;
 }): ReadonlyArray<AccountInput> {
-  const running = input.running ?? [];
   return liveScopes(linkKeys.zerops(ORG), [
-    {
-      scope: projectsScope(ORG),
-      via: "zerops-realtime",
-      members: input.projects.map((project) => project.id),
-      rows: input.projects.map((project) => ({
-        family: "project",
-        id: project.id,
-        value: { ...project, status: "ACTIVE" },
-        revision: zeropsVersion(1),
-      })),
-    },
     {
       scope: runningScope(ORG),
       via: "zerops-realtime",
-      members: running.map((process) => process.id),
-      rows: running.map((process) => ({
+      members: input.running.map((process) => process.id),
+      rows: input.running.map((process) => ({
         family: "process",
         id: process.id,
         value: { ...process, status: "RUNNING", actionName: "stack.deploy" },
@@ -76,86 +60,3 @@ export function liveZerops(input: {
     },
   ]);
 }
-
-export const hqObservation = (sequence: number, generation = 1) => ({
-  kind: "hq-observation" as const,
-  generation,
-  sequence,
-});
-
-export const attentionOf = (patch: Partial<AttentionValue> = {}): AttentionValue => ({
-  mainChatId: "chat-main",
-  latestChatId: "chat-main",
-  working: 0,
-  waiting: 0,
-  resultIds: [],
-  questionIds: [],
-  truncated: false,
-  ...patch,
-});
-
-export function liveHq(input: {
-  readonly placements: ReadonlyArray<{
-    readonly projectId: string;
-    readonly appId: string | null;
-    readonly role?: string;
-  }>;
-  readonly attention?: ReadonlyArray<{
-    readonly projectId: string;
-    readonly value: AttentionValue;
-    readonly producer: "up" | "down";
-  }>;
-}): ReadonlyArray<AccountInput> {
-  const attention = input.attention ?? [];
-  return liveScopes(linkKeys.hq(ORG), [
-    {
-      scope: navigationScope(ORG),
-      via: "hq-stream",
-      members: input.placements.map((placement) => placement.projectId),
-      rows: [
-        ...input.placements.map(({ projectId, appId, role }): Row => ({
-          family: "placement",
-          id: projectId,
-          value:
-            appId === null
-              ? { kind: "outside" }
-              : { kind: "app", appId, appName: `App ${appId}`, role: role ?? "mate" },
-          revision: hqObservation(1),
-        })),
-        ...attention.map(({ projectId, value, producer }): Row => ({
-          family: "attention",
-          id: projectId,
-          value,
-          revision: hqObservation(1),
-          producer,
-        })),
-      ],
-    },
-  ]);
-}
-
-/** An open Mate's own attention, its link live. */
-export function liveMate(
-  projectId: string,
-  value: AttentionValue,
-  revision: number,
-  incarnation = "inc-1",
-): ReadonlyArray<AccountInput> {
-  return liveScopes(linkKeys.mate(projectId), [
-    {
-      scope: attentionScope(projectId),
-      via: "mate-direct",
-      members: [projectId],
-      rows: [
-        {
-          family: "attention",
-          id: projectId,
-          value,
-          revision: { kind: "mate-attention", incarnation, revision },
-        },
-      ],
-    },
-  ]);
-}
-
-export const streamEvent = event;

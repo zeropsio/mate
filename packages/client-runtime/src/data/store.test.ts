@@ -1,16 +1,13 @@
 import { AtomRegistry, type Atom } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { attentionOf, liveHq, liveMate, liveZerops, ORG } from "./__fixtures__/account.ts";
-import { menuRow, menuRowKeys } from "./projections/navigation.ts";
+import { liveZerops, ORG } from "./__fixtures__/account.ts";
+import { runningScope } from "./families/process.ts";
+import { linkKeys } from "./model.ts";
 import type { AccountInput } from "./reducer.ts";
 import { makeAccountStore, type Projection } from "./store.ts";
-import { projectsScope } from "./families/project.ts";
-import { runningScope } from "./families/process.ts";
-import { attentionScope } from "./families/attention.ts";
-import { linkKeys } from "./model.ts";
 
-const projects = projectsScope(ORG);
+const running = runningScope(ORG);
 
 const attach: ReadonlyArray<AccountInput> = [
   {
@@ -19,23 +16,33 @@ const attach: ReadonlyArray<AccountInput> = [
     now: 0,
     event: { kind: "demand", demanded: true },
   },
-  { kind: "stream", key: projects, now: 0, event: { kind: "demand", demanded: true } },
-  { kind: "stream", key: projects, now: 0, event: { kind: "attempt" } },
+  { kind: "stream", key: running, now: 0, event: { kind: "demand", demanded: true } },
+  { kind: "stream", key: running, now: 0, event: { kind: "attempt" } },
 ];
 
-const projectRows = (...rows: ReadonlyArray<readonly [string, number]>): AccountInput => ({
+const processRows = (
+  ...rows: ReadonlyArray<readonly [id: string, version: number, projectId?: string]>
+): AccountInput => ({
   kind: "rows",
-  scope: projects,
+  scope: running,
   generation: 1,
   method: "push",
   via: "zerops-realtime",
-  rows: rows.map(([id, version]) => ({
-    family: "project" as const,
+  rows: rows.map(([id, version, projectId = "p"]) => ({
+    family: "process" as const,
     id,
-    value: { id, name: id, status: "ACTIVE" },
+    value: { id, projectId, status: "RUNNING", actionName: "stack.deploy" },
     revision: { kind: "zerops" as const, version },
   })),
 });
+
+/** A project's running work, as a menu row would read it: by the index, never the table. */
+const runningOf: Projection<string, number> = {
+  name: "runningOf",
+  keyOf: (projectId) => projectId,
+  derive: (read, projectId) => read.index("running", projectId).size,
+  equals: (left, right) => left === right,
+};
 
 describe("makeAccountStore", () => {
   it("publishes a reduction to the keys it changed and to no other", () => {
@@ -43,98 +50,49 @@ describe("makeAccountStore", () => {
     const store = makeAccountStore(registry);
     attach.forEach(store.dispatch);
     const heard: string[] = [];
-    for (const id of ["p1", "p2"])
-      registry.subscribe(store.data.fact("project", id), () => heard.push(id));
+    for (const id of ["q1", "q2"])
+      registry.subscribe(store.data.fact("process", id), () => heard.push(id));
 
-    store.dispatch(projectRows(["p1", 1]));
+    store.dispatch(processRows(["q1", 1]));
 
-    expect(heard).toEqual(["p1"]);
-    expect(registry.get(store.data.fact("project", "p1"))).toMatchObject({
+    expect(heard).toEqual(["q1"]);
+    expect(registry.get(store.data.fact("process", "q1"))).toMatchObject({
       kind: "known",
-      value: { id: "p1" },
-      scope: projects,
+      value: { id: "q1" },
+      scope: running,
     });
-    expect(registry.get(store.data.fact("project", "p2"))).toEqual({ kind: "unknown" });
+    expect(registry.get(store.data.fact("process", "q2"))).toEqual({ kind: "unknown" });
   });
 
-  it("recomputes only the busy Mate's row while 100 menu rows are mounted", () => {
+  it("recomputes only the busy project's row while 100 menu rows are mounted", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
-    const apps = Array.from({ length: 100 }, (_, index) => `app-${index}`);
-    [
-      liveZerops({
-        projects: apps.flatMap((app) => [
-          { id: `${app}-mate`, name: `${app} mate` },
-          { id: `${app}-stage`, name: `${app} stage` },
-        ]),
-      }),
-      liveHq({
-        placements: apps.flatMap((app) => [
-          { projectId: `${app}-mate`, appId: app, role: "mate" },
-          { projectId: `${app}-stage`, appId: app, role: "stage" },
-        ]),
-      }),
-      liveMate("app-0-mate", attentionOf(), 1),
-    ]
-      .flat()
-      .forEach(store.dispatch);
+    const projects = Array.from({ length: 100 }, (_, index) => `project-${index}`);
+    liveZerops({ running: [] }).forEach(store.dispatch);
 
     const derived = new Map<string, number>();
-    const counted = <K, V>(projection: Projection<K, V>): Projection<K, V> => ({
-      ...projection,
+    const counted: Projection<string, number> = {
+      ...runningOf,
       derive: (read, key) => {
-        const name = `${projection.name}/${projection.keyOf(key)}`;
-        derived.set(name, (derived.get(name) ?? 0) + 1);
-        return projection.derive(read, key);
+        derived.set(key, (derived.get(key) ?? 0) + 1);
+        return runningOf.derive(read, key);
       },
-    });
-    const rows = counted(menuRow);
-    const roster = counted(menuRowKeys);
+    };
     // A render: every mounted atom is read again whenever it says it changed.
     const mount = <Value>(atom: Atom.Atom<Value>) =>
       registry.subscribe(atom, () => void registry.get(atom), { immediate: true });
-    mount(store.data.project(roster, ORG));
-    const keys = registry.get(store.data.project(roster, ORG));
-    expect(keys).toHaveLength(100);
-    for (const row of keys) mount(store.data.project(rows, { orgId: ORG, row }));
+    for (const projectId of projects) mount(store.data.project(counted, projectId));
     derived.clear();
 
-    // A busy conversation: the open Mate's attention moves fifty times, its stage deploys once.
-    for (let revision = 2; revision <= 51; revision += 1)
-      store.dispatch({
-        kind: "rows",
-        scope: attentionScope("app-0-mate"),
-        generation: 1,
-        method: "push",
-        via: "mate-direct",
-        rows: [
-          {
-            family: "attention",
-            id: "app-0-mate",
-            value: attentionOf({ working: 1, latestChatId: `chat-${revision}` }),
-            revision: { kind: "mate-attention", incarnation: "inc-1", revision },
-          },
-        ],
-      });
-    store.dispatch({
-      kind: "rows",
-      scope: runningScope(ORG),
-      generation: 1,
-      method: "push",
-      via: "zerops-realtime",
-      rows: [
-        {
-          family: "process",
-          id: "deploy-0",
-          value: { id: "deploy-0", projectId: "app-0-stage", status: "RUNNING", actionName: null },
-          revision: { kind: "zerops", version: 1 },
-        },
-      ],
-    });
+    // A busy project: its deploy's row moves fifty times; one other project starts a build.
+    for (let version = 1; version <= 50; version += 1)
+      store.dispatch(processRows(["deploy-0", version, "project-0"]));
+    store.dispatch(processRows(["build-7", 1, "project-7"]));
 
-    expect([...derived]).toEqual([[`menuRow/${ORG}/app/app-0`, 51]]);
-    expect(
-      registry.get(store.data.project(rows, { orgId: ORG, row: { kind: "app", appId: "app-0" } })),
-    ).toMatchObject({ running: { kind: "ready", value: true } });
+    expect([...derived]).toEqual([
+      ["project-0", 1],
+      ["project-7", 1],
+    ]);
+    expect(registry.get(store.data.project(counted, "project-0"))).toBe(1);
   });
 });

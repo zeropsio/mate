@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { ZeropsProjectFlowProvider } from "./zerops/ZeropsProjectFlowProvider";
+import { ZeropsAccountData } from "./zerops/ZeropsAccountData";
 import { ZeropsDataProvider } from "./zerops/ZeropsDataProvider";
 import { ZeropsInventoryProvider } from "./zerops/ZeropsInventoryProvider";
 import { ZeropsMenuPreview } from "./zerops/useZeropsMenu";
@@ -55,12 +56,14 @@ function AccountProductBoundary({ router }: { readonly router: AppRouter }) {
       {callback ? (
         <RouterProvider router={router} />
       ) : (
-        <ZeropsAccountDataBoundary>
-          <ZeropsProjectFlowProvider>
-            <RouterProvider router={router} />
-            <ZeropsProductHosts status={status} />
-          </ZeropsProjectFlowProvider>
-        </ZeropsAccountDataBoundary>
+        <ZeropsAccountData>
+          <ZeropsAccountDataBoundary>
+            <ZeropsProjectFlowProvider>
+              <RouterProvider router={router} />
+              <ZeropsProductHosts status={status} />
+            </ZeropsProjectFlowProvider>
+          </ZeropsAccountDataBoundary>
+        </ZeropsAccountData>
       )}
     </AppAtomRegistryProvider>
   );

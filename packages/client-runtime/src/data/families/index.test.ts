@@ -1,36 +1,32 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { moveProject } from "../operations/moveProject.ts";
 import { defineOperationKinds } from "../operations/kinds.ts";
-import { attentionFamily } from "./attention.ts";
 import { defineFamilies } from "./index.ts";
-import { placementFamily } from "./placement.ts";
 import { processFamily } from "./process.ts";
-import { projectFamily } from "./project.ts";
+
+/** Another family as the registry sees it: a name, a scope and an index of its own. */
+const otherFamily = {
+  ...processFamily,
+  family: "other",
+  scope: { ...processFamily.scope, suffix: "other" },
+  index: { ...processFamily.index!, name: "other" },
+};
 
 describe("the registries", () => {
   it("accept the families as registered", () => {
-    expect(
-      defineFamilies([projectFamily, processFamily, placementFamily, attentionFamily]),
-    ).toHaveLength(4);
+    expect(defineFamilies([processFamily, otherFamily as never])).toHaveLength(2);
   });
 
   it.each([
-    { name: "a family twice", families: [projectFamily, projectFamily], error: /family project/ },
+    { name: "a family twice", families: [processFamily, processFamily], error: /family process/ },
     {
       name: "a scope name twice",
-      families: [
-        projectFamily,
-        { ...processFamily, scope: { ...processFamily.scope, suffix: "projects" } },
-      ],
-      error: /scope projects/,
+      families: [processFamily, { ...otherFamily, scope: processFamily.scope }],
+      error: /scope running/,
     },
     {
       name: "an index name twice",
-      families: [
-        processFamily,
-        { ...placementFamily, index: { ...placementFamily.index!, name: "running" } },
-      ],
+      families: [processFamily, { ...otherFamily, index: processFamily.index }],
       error: /index running/,
     },
   ])("refuse $name at startup", ({ families, error }) => {
@@ -38,6 +34,7 @@ describe("the registries", () => {
   });
 
   it("refuses an operation kind twice at startup", () => {
-    expect(() => defineOperationKinds([moveProject, moveProject])).toThrow(/move-project/);
+    const kind = { kind: "some-kind", executor: "hq", reflected: () => false };
+    expect(() => defineOperationKinds([kind, kind] as never)).toThrow(/some-kind/);
   });
 });

@@ -5,10 +5,7 @@
  * @module data/families
  */
 import type { Family, ScopeKey } from "../model.ts";
-import { attentionFamily } from "./attention.ts";
-import { placementFamily } from "./placement.ts";
 import { processFamily } from "./process.ts";
-import { projectFamily } from "./project.ts";
 import type { AnyFamilySpec } from "./spec.ts";
 
 /** The registry, checked once at startup: a family, a scope name and an index name each once. */
@@ -28,12 +25,7 @@ export function defineFamilies(
   return families;
 }
 
-export const FAMILIES = defineFamilies([
-  projectFamily,
-  processFamily,
-  placementFamily,
-  attentionFamily,
-]);
+export const FAMILIES = defineFamilies([processFamily]);
 
 const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));
 const bySuffix = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.scope.suffix, spec]));

@@ -36,8 +36,6 @@ describe("zeropsRegistrations", () => {
   it("registers navigation families for the organization always, a detail family never unasked", () => {
     const navigation = zeropsRegistrations(families, "org", []);
     expect(navigation.map((registration) => registration.scope)).toEqual([
-      "zerops:org:projects",
-      "zerops:org:projects",
       "zerops:org:running",
       "zerops:org:running",
     ]);

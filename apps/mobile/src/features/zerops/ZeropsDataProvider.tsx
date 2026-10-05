@@ -33,6 +33,7 @@ import type { ZeropsApiClient, ZeropsUser } from "@t3tools/client-runtime/zerops
 import type { PlatformWatchSocket } from "@t3tools/client-runtime/zerops/data";
 
 import { mobileAccountPorts, type MobileAccountPorts } from "./environment-ports";
+import { ZeropsAccountData } from "./ZeropsAccountData";
 
 export interface MobileZeropsDataAccount {
   readonly client: ZeropsApiClient;
@@ -286,7 +287,13 @@ export function ZeropsDataProvider({
   }, [accountKey, accountPorts, client, runtimeFactory]);
 
   const context = useMemo(() => value, [value]);
-  return <ZeropsDataContext value={context}>{children}</ZeropsDataContext>;
+  return (
+    <ZeropsDataContext value={context}>
+      <ZeropsAccountData account={account} activeOrganizationId={activeOrganizationId}>
+        {children}
+      </ZeropsAccountData>
+    </ZeropsDataContext>
+  );
 }
 
 export function useZeropsData(): ZeropsDataValue {
