@@ -50,6 +50,8 @@ export interface ResultChange {
   readonly repository: string;
   readonly number: number;
   readonly title: string;
+  /** Whether it asks for review: its Mate described it at its head. Absent reads as ready. */
+  readonly ready?: boolean;
 }
 
 /** A service of the Mate's project, as the platform has it now. */
@@ -460,7 +462,10 @@ function ownChange(outcome: OutcomeModel): OutcomeModel["change"] {
   return change !== null && !outcome.later.changes.includes(changeKey(change)) ? change : null;
 }
 
-/** The change a run pushed, while it waits for the person's review. */
+/**
+ * The change a run pushed, while it waits for the person's review — or, a
+ * draft its Mate has not described yet, while it asks nothing of them.
+ */
 function changeRow(outcome: OutcomeModel, facts: ResultFacts): ResultRow | null {
   const change = ownChange(outcome);
   const forge = facts.changes;
@@ -468,13 +473,14 @@ function changeRow(outcome: OutcomeModel, facts: ResultFacts): ResultRow | null 
   const open = forge.open.find((candidate) => changeKey(candidate) === changeKey(change));
   if (open === undefined) return null;
   const { files } = outcome;
+  const draft = open.ready === false;
   return {
     key: `change:${changeKey(change)}`,
-    group: "waiting",
+    group: draft ? "running" : "waiting",
     mark: "change",
     tone: "muted",
     title: `#${open.number} ${open.title}`,
-    words: null,
+    words: draft ? "Draft" : null,
     version: null,
     sub:
       files === null
@@ -488,15 +494,17 @@ function changeRow(outcome: OutcomeModel, facts: ResultFacts): ResultRow | null 
             fromTurnId: files.fromTurnId,
           },
     url: null,
-    action: {
-      kind: "review",
-      target: {
-        kind: "change",
-        groupId: forge.groupId,
-        repository: open.repository,
-        number: open.number,
-      },
-    },
+    action: draft
+      ? null
+      : {
+          kind: "review",
+          target: {
+            kind: "change",
+            groupId: forge.groupId,
+            repository: open.repository,
+            number: open.number,
+          },
+        },
   };
 }
 

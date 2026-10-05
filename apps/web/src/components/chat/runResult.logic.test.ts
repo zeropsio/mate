@@ -642,6 +642,14 @@ describe("resultRows", () => {
     });
   });
 
+  // Review of pass 42: a change its Mate has not described asks nothing yet —
+  // the menu said "Draft" while the run card offered its Review.
+  it("draws a draft the run pushed as a draft, with no review", () => {
+    const [change] = resultRows(NOVA, facts({ open: [{ ...STATUS_PAGE, ready: false }] }));
+    expect(change).toMatchObject({ title: "#2 Add a /status page", words: "Draft", action: null });
+    expect(change?.group).not.toBe("waiting");
+  });
+
   it("reviews a crew task ready to land where its crew lands it", () => {
     const [task] = resultRows(
       outcome({ crewTask: { number: 12, title: "Camera rig" } }),
