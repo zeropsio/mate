@@ -1,8 +1,9 @@
-import { useAtomValue } from "@effect/atom-react";
+import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
 import { resolveAssetUrl } from "@t3tools/client-runtime/state/assets";
 import type { AssetImageDimensions, AssetResource, EnvironmentId } from "@t3tools/contracts";
+import { Cause, Option } from "effect";
 import { AsyncResult } from "effect/unstable/reactivity";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { assetEnvironment } from "~/state/assets";
 import { usePreparedConnection } from "~/state/session";
@@ -20,19 +21,63 @@ export type AssetUrlState =
       readonly imageDimensions?: AssetImageDimensions;
     };
 
+/**
+ * How long a failed signing is tried again before a picture is said to be
+ * unavailable, with `retry`: a Mate busy building or a socket that reconnects
+ * fails one for a moment, never for good (the owner, 2026-10-05: "image
+ * unavailable is a lot of the times just slow loading"). Until then it is
+ * still loading.
+ */
+export const SIGN_RETRY_DELAYS_MS: ReadonlyArray<number> = [1_000, 2_000, 4_000, 8_000, 15_000];
+
+/** What the server says is not there: no try again finds it. */
+const NOT_THERE = new Set([
+  "AssetWorkspaceResolutionError",
+  "AssetAttachmentNotFoundError",
+  "AssetProjectFaviconNotFoundError",
+]);
+
+/** Whether a failed signing says the file is not there, rather than that its Mate did not answer. */
+export function signingSaysNotThere(cause: Cause.Cause<unknown>): boolean {
+  const error = Cause.findErrorOption(cause);
+  if (Option.isNone(error)) return false;
+  const tag = (error.value as { readonly _tag?: unknown } | null)?._tag;
+  return typeof tag === "string" && NOT_THERE.has(tag);
+}
+
 export function useAssetUrlState(
   environmentId: EnvironmentId,
   resource: AssetResource,
+  options?: {
+    /** A failed signing is tried again (`SIGN_RETRY_DELAYS_MS`) before it fails. */
+    readonly retry?: boolean;
+  },
 ): AssetUrlState {
   const preparedConnection = usePreparedConnection(environmentId);
-  const result = useAtomValue(
-    assetEnvironment.createUrl({
-      environmentId,
-      input: { resource },
-    }),
-  );
+  const atom = assetEnvironment.createUrl({
+    environmentId,
+    input: { resource },
+  });
+  const result = useAtomValue(atom);
+  const refresh = useAtomRefresh(atom);
+  const key = JSON.stringify([environmentId, resource]);
+  const [tries, setTries] = useState({ key, done: 0 });
+  const done = tries.key === key ? tries.done : 0;
+  const retrying =
+    options?.retry === true &&
+    result._tag === "Failure" &&
+    !signingSaysNotThere(result.cause) &&
+    done < SIGN_RETRY_DELAYS_MS.length;
+  useEffect(() => {
+    if (!retrying) return;
+    const timer = setTimeout(() => {
+      setTries({ key, done: done + 1 });
+      refresh();
+    }, SIGN_RETRY_DELAYS_MS[done]);
+    return () => clearTimeout(timer);
+  }, [retrying, key, done, refresh]);
   if (result._tag === "Failure") {
-    return { _tag: "Failure" };
+    return retrying ? { _tag: "Loading" } : { _tag: "Failure" };
   }
   if (preparedConnection._tag === "None" || result._tag !== "Success") {
     return { _tag: "Loading" };
