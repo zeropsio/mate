@@ -193,6 +193,19 @@ function unheldOf(value: unknown): Readonly<Record<string, HqOffers>> | undefine
   );
 }
 
+/**
+ * The account's tools HQ lists (the old Gitea project), each read through its shape: one this build
+ * cannot read is left out; none where HQ sent no list.
+ */
+function toolsOf(value: unknown): HqStructure["tools"] {
+  if (!Array.isArray(value)) return undefined;
+  return value.flatMap((entry: unknown) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const { projectId, kind } = entry as { readonly projectId?: unknown; readonly kind?: unknown };
+    return typeof projectId === "string" && kind === "gitea" ? [{ projectId, kind }] : [];
+  });
+}
+
 /** Environments HQ refused the reader, with its reason; none where HQ sent them. */
 function refusedOf(value: unknown): { readonly refused: string } | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
@@ -292,19 +305,23 @@ export function hqStructureOf(value: unknown): HqStructure | undefined {
     ungrouped = [],
     can: offered,
     unheld: told,
+    tools: listed,
     rolesAnsweredAt,
   } = value as {
     readonly apps?: unknown;
     readonly ungrouped?: unknown;
     readonly can?: unknown;
     readonly unheld?: unknown;
+    readonly tools?: unknown;
     readonly rolesAnsweredAt?: unknown;
   };
   // An HQ from before the Mates in no application names none of them.
   if (!(Array.isArray(apps) && apps.every(isApp) && isUngrouped(ungrouped))) return undefined;
   const can = offersOf(offered);
   const unheld = unheldOf(told);
+  const tools = toolsOf(listed);
   return {
+    ...(tools === undefined ? {} : { tools }),
     ...(can === undefined ? {} : { can }),
     ...(unheld === undefined ? {} : { unheld }),
     ...(typeof rolesAnsweredAt === "string" ? { rolesAnsweredAt } : {}),

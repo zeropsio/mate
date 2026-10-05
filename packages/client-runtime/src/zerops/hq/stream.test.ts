@@ -4,6 +4,10 @@ import type { MateLiveView } from "@t3tools/shared/hqMates";
 
 import type { HqStructure } from "./client.ts";
 import type { HqEnvironment } from "./environments.ts";
+import type { ZeropsCandidate } from "../candidates.ts";
+import { hasMate } from "../mateEnvironments.ts";
+import { partitionZeropsToolProjects, readZeropsToolKind } from "../tools.ts";
+import { placementsOf, placeProjects } from "./placement.ts";
 import {
   applyChangesEvent,
   applyAppReadsEvent,
@@ -323,6 +327,41 @@ describe("structureEventOf", () => {
       people: {},
     });
     expect(event?.kind === "snapshot" ? event.mates : event).toEqual(new Map([["p1", VERA_VIEW]]));
+  });
+});
+
+// The docs sweep, 2026-10-05: HQ lists the old Gitea project as a tool, and the snapshot's reader
+// dropped the list — so the project read as a plain one, a Mate, offered Set up Mate.
+describe("a project HQ lists as a tool", () => {
+  const gitea = {
+    key: "p-gitea:zcp",
+    group: "unavailable",
+    reason: "no Zerops Mate container in this project",
+    missingContainer: true,
+    project: { id: "p-gitea", name: "gitea", status: "ACTIVE", clientId: "org-1" },
+    service: { id: "s-zcp", name: "zcp", status: "ACTIVE" },
+  } as ZeropsCandidate;
+  const snapshot = structureEventOf({
+    type: "snapshot",
+    ungrouped: [],
+    apps: [],
+    tools: [
+      { projectId: "p-gitea", kind: "gitea" },
+      { projectId: 7 },
+      { projectId: "p-x", kind: "x" },
+    ],
+  });
+  const structure = applyStructureEvent(null, snapshot!)!;
+
+  it("is read from the snapshot, each entry through its shape", () => {
+    expect(structure.tools).toEqual([{ projectId: "p-gitea", kind: "gitea" }]);
+  });
+
+  it("is a tool wherever its project is read: never plain, never a Mate", () => {
+    const [placed] = placeProjects([gitea.project], placementsOf(structure));
+    expect(readZeropsToolKind(placed!)).toBe("gitea");
+    expect(partitionZeropsToolProjects([placed!]).rest).toEqual([]);
+    expect(hasMate({ ...gitea, project: placed! })).toBe(false);
   });
 });
 
