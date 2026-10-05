@@ -99,3 +99,41 @@ export function hqUpdateTrigger(input: {
       return null;
   }
 }
+
+/** What the update control is mounted with: its trigger, and the two Cores it weighs. */
+export interface HqUpdateMount {
+  readonly trigger: "Update available" | "Up to date";
+  /** The Core HQ's health names; `undefined` where its stream names none. */
+  readonly answering: string | undefined;
+  /** The Core this app carries. */
+  readonly carried: string;
+}
+
+/**
+ * Whether, and how, HQ's card mounts its update control: as HQ answers now while it is healthy;
+ * while it does not answer, as it was last shown for as long as the person follows it — its dialog
+ * open, or its update running — so HQ's own switch to the new Core, which answers a health read
+ * 503 for a moment, never takes the update the person watches away (the rollout, 2026-10-05). None
+ * once nobody follows it.
+ */
+export function hqUpdateMount(input: {
+  readonly admin: boolean;
+  readonly standing: HqStanding;
+  readonly carried: string | undefined;
+  /** Where Zerops says HQ's Core stands, once the opened card read it (`hqUpdateTrigger`). */
+  readonly zerops?: HqUpdateState | undefined;
+  /** The person follows the update: its dialog is open, or its update runs. */
+  readonly following: boolean;
+  /** How it was last mounted; none before. */
+  readonly last: HqUpdateMount | null;
+}): HqUpdateMount | null {
+  const trigger = hqUpdateTrigger(input);
+  if (
+    trigger !== null &&
+    input.carried !== undefined &&
+    (input.standing.kind === "healthy" || input.standing.kind === "unchecked")
+  ) {
+    return { trigger, answering: input.standing.build, carried: input.carried };
+  }
+  return input.admin && input.following ? input.last : null;
+}

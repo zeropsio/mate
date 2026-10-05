@@ -33,7 +33,7 @@ import { Button } from "../ui/button";
 import { FlatCard, MicroLabel, StatusDot } from "./primitives";
 import { hqCardView, type HqCardUpdateRead, type HqCardView } from "./ZeropsHqCard.logic";
 import { ZeropsHqUpdate } from "./ZeropsHqUpdate";
-import { hqUpdateTrigger } from "./ZeropsHqUpdate.logic";
+import { hqUpdateMount, type HqUpdateMount } from "./ZeropsHqUpdate.logic";
 
 /**
  * How many of the Mates the viewer observes in `organizationId` are online, while HQ's view of them
@@ -79,6 +79,10 @@ export function ZeropsHqCard() {
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
+  /** The person follows HQ's update: its dialog is open, or its update runs. */
+  const [following, setFollowing] = useState(false);
+  /** How the update control was last mounted: it stays so while followed through HQ's switch. */
+  const [lastMount, setLastMount] = useState<HqUpdateMount | null>(null);
   const [project, setProject] = useState<HqRead | undefined>(undefined);
   /** The newest read of HQ's project: an older one's answer lands nowhere. */
   const reading = useRef<object | null>(null);
@@ -154,31 +158,43 @@ export function ZeropsHqCard() {
     updating,
     time: (ms) => formatDayAwareTimestamp(new Date(ms).toISOString(), timestampFormat),
   });
-  const trigger = hqUpdateTrigger({
+  const mount = hqUpdateMount({
     admin,
     standing,
     carried,
     zerops: update?.kind === "read" ? update.state : undefined,
+    following,
+    last: lastMount,
   });
+  // Kept as it is mounted now, so a moment HQ does not answer finds it.
+  if (
+    mount !== null &&
+    (lastMount === null ||
+      mount.trigger !== lastMount.trigger ||
+      mount.answering !== lastMount.answering ||
+      mount.carried !== lastMount.carried)
+  ) {
+    setLastMount(mount);
+  }
   return (
     <ZeropsHqCardView
       onOpenChange={openCard}
       open={open}
       projectUrl={zeropsProjectUrl(hq.projectId)}
       update={
-        // Mounted while HQ answers at all, so a dialog left open sees an update through to HQ
-        // answering.
-        carried !== undefined &&
-        trigger !== null &&
-        (standing.kind === "healthy" || standing.kind === "unchecked") ? (
+        // Mounted while HQ answers, and through a moment it does not while the person follows
+        // the update — its own switch to the new Core answers a health read 503 — so the dialog
+        // sees the update to its end; the card recovers on its next read.
+        mount === null ? null : (
           <ZeropsHqUpdate
-            answering={standing.build}
-            carried={carried}
+            answering={mount.answering}
+            carried={mount.carried}
             onBusy={onBusy}
+            onFollowing={setFollowing}
             projectId={hq.projectId}
-            trigger={trigger}
+            trigger={mount.trigger}
           />
-        ) : null
+        )
       }
       view={view}
     />

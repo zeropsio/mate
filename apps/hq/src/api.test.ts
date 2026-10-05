@@ -2,6 +2,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
+import * as NodeUtil from "node:util";
 import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Fiber from "effect/Fiber";
@@ -1252,6 +1253,18 @@ describe("HQ API", () => {
           const lone = (...appIds: ReadonlyArray<string>) => [
             { projectId: "P_MATE", name: "P_MATE", mate: adaView, ...MATE_OWNED(...appIds) },
           ];
+          /**
+           * The change of `key` to `value`: taken by what it says, never by its place among the
+           * socket's other messages, whose order it does not promise.
+           */
+          const changed = (key: string, value: unknown) =>
+            owner.takeWhere(
+              `the change of ${key}`,
+              (message) =>
+                message.type === "change" &&
+                message["key"] === key &&
+                NodeUtil.isDeepStrictEqual(message["value"], value),
+            );
 
           const setUp = yield* call("POST", "/api/mates", {
             session,
@@ -1261,10 +1274,7 @@ describe("HQ API", () => {
             [setUp.status, setUp.body],
             [201, { projectId: "P_MATE", ...ada }],
           );
-          assert.deepStrictEqual(yield* owner.next("change"), {
-            key: "ungrouped",
-            value: lone(),
-          });
+          yield* changed("ungrouped", lone());
 
           const appId = (
             (yield* call("POST", "/api/apps", { session, body: { name: "Shop" } })).body as {
@@ -1272,12 +1282,17 @@ describe("HQ API", () => {
             }
           ).id;
           // The new application, and the Mate's way into it.
-          assert.sameDeepMembers(
-            [yield* owner.next("change"), yield* owner.next("change")].map(
-              (message) => (message as { readonly key: string }).key,
-            ),
-            ["ungrouped", appId],
-          );
+          const store = {
+            id: appId,
+            name: "Store",
+            can: OWNER_EMPTY_APP,
+            contents: { empty: true, deletingProjectIds: [] },
+            projects: [],
+            environments: [],
+            births: [],
+          };
+          yield* changed(appId, { ...store, name: "Shop" });
+          yield* changed("ungrouped", lone(appId));
           const renamed = yield* call("PATCH", `/api/apps/${appId}`, {
             session,
             body: { name: "Store" },
@@ -1286,18 +1301,7 @@ describe("HQ API", () => {
             [renamed.status, renamed.body],
             [200, { id: appId, name: "Store" }],
           );
-          assert.deepStrictEqual(yield* owner.next("change"), {
-            key: appId,
-            value: {
-              id: appId,
-              name: "Store",
-              can: OWNER_EMPTY_APP,
-              contents: { empty: true, deletingProjectIds: [] },
-              projects: [],
-              environments: [],
-              births: [],
-            },
-          });
+          yield* changed(appId, store);
 
           const moved = yield* call("PUT", "/api/projects/P_MATE/app", {
             session,
@@ -1307,32 +1311,21 @@ describe("HQ API", () => {
             [moved.status, moved.body],
             [200, { projectId: "P_MATE", appId, kind: "mate" }],
           );
-          assert.sameDeepMembers(
-            [yield* owner.next("change"), yield* owner.next("change")] as Array<object>,
-            [
-              { key: "ungrouped", value: [] },
+          yield* changed("ungrouped", []);
+          yield* changed(appId, {
+            ...store,
+            can: APP_ALLOWED,
+            contents: { empty: false, deletingProjectIds: [] },
+            projects: [
               {
-                key: appId,
-                value: {
-                  id: appId,
-                  name: "Store",
-                  can: APP_ALLOWED,
-                  contents: { empty: false, deletingProjectIds: [] },
-                  projects: [
-                    {
-                      projectId: "P_MATE",
-                      name: "P_MATE",
-                      kind: "mate",
-                      mate: adaView,
-                      ...MATE_OWNED(appId),
-                    },
-                  ],
-                  environments: [],
-                  births: [],
-                },
+                projectId: "P_MATE",
+                name: "P_MATE",
+                kind: "mate",
+                mate: adaView,
+                ...MATE_OWNED(appId),
               },
             ],
-          );
+          });
           const out = yield* call("PUT", "/api/projects/P_MATE/app", {
             session,
             body: { appId: null, kind: "mate" },
@@ -1341,24 +1334,8 @@ describe("HQ API", () => {
             [out.status, out.body],
             [200, { projectId: "P_MATE", appId: null, kind: null }],
           );
-          assert.sameDeepMembers(
-            [yield* owner.next("change"), yield* owner.next("change")] as Array<object>,
-            [
-              { key: "ungrouped", value: lone(appId) },
-              {
-                key: appId,
-                value: {
-                  id: appId,
-                  name: "Store",
-                  can: OWNER_EMPTY_APP,
-                  contents: { empty: true, deletingProjectIds: [] },
-                  projects: [],
-                  environments: [],
-                  births: [],
-                },
-              },
-            ],
-          );
+          yield* changed("ungrouped", lone(appId));
+          yield* changed(appId, store);
           yield* owner.close;
         }),
     );

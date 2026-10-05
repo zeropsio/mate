@@ -149,6 +149,7 @@ export function ZeropsHqUpdate({
   answering,
   trigger,
   onBusy,
+  onFollowing,
 }: {
   /** HQ's project. */
   readonly projectId: string;
@@ -159,10 +160,16 @@ export function ZeropsHqUpdate({
   readonly trigger: "Update available" | "Up to date";
   /** Told when an update pressed here starts and ends. */
   readonly onBusy: (busy: boolean) => void;
+  /** Told whether the person follows it: its dialog open, or its update running. */
+  readonly onFollowing: (following: boolean) => void;
 }) {
   const { client } = useZeropsSession();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const following = open || busy;
+  useEffect(() => {
+    onFollowing(following);
+  }, [following, onFollowing]);
   const busyNow = useCallback(
     (next: boolean) => {
       setBusy(next);

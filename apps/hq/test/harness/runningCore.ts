@@ -137,6 +137,9 @@ const world = (now: number, anchored: boolean, orgId: string): FakeWorld => {
   return fake;
 };
 
+/** A message a socket sent, as JSON. */
+export type SocketMessage = { readonly type: string; readonly [field: string]: unknown };
+
 /**
  * Core on a fresh database and git root (or the given ones), served over a real Node server on a
  * free port, as the container serves it; requests as `{ status, body, headers }`. `stop` ends it —
@@ -266,12 +269,12 @@ export const startCore = (
     /** A WebSocket to `path`: its messages one by one, its close, a pong for every ping while `answering`. */
     const socket = (path: string) =>
       Effect.gen(function* () {
-        const messages: Array<{ readonly type: string }> = [];
+        const messages: Array<SocketMessage> = [];
         const pings = { seen: 0, answering: true };
         let closed: { readonly code: number } | undefined;
         const ws = new WebSocket(`ws://${base}${path}`);
         ws.addEventListener("message", (event) => {
-          const message = decodeJson(String(event.data)) as { readonly type: string };
+          const message = decodeJson(String(event.data)) as SocketMessage;
           if (message.type !== "ping") messages.push(message);
           else {
             pings.seen += 1;
@@ -303,6 +306,15 @@ export const startCore = (
             const found = messages.findIndex((message) => message.type === type);
             return found < 0 ? undefined : messages.splice(found, 1)[0];
           }, type).pipe(Effect.map(({ type: _type, ...rest }) => rest));
+        /**
+         * The first message `matches`, leaving every other message where it is — for a message
+         * whose order among others the socket does not promise.
+         */
+        const takeWhere = (what: string, matches: (message: SocketMessage) => boolean) =>
+          until(() => {
+            const found = messages.findIndex(matches);
+            return found < 0 ? undefined : messages.splice(found, 1)[0];
+          }, what);
         const next = (type: string) =>
           until(() => {
             const found = messages.findIndex((message) => message.type === type);
@@ -313,6 +325,7 @@ export const startCore = (
           pings,
           next,
           take,
+          takeWhere,
           /** What arrived within `window`. */
           quiet: (window: Duration.Input) =>
             Effect.andThen(
