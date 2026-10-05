@@ -4034,3 +4034,12 @@ no-cache`.
     nemam tak bych mel mit moznost pridat bud stage, nebo rovnou produkci"; "UI a chovani ma byt
     nejak progresivni, umoznovat vsechny mozne situace, efektivne a jasne je resit a propisovat do
     ui".
+- **2026-10-05** — **A merge ends its review, with a production too** (the owner, of _Review release_
+  on a merged change: "after mergin, it directly opens release to prod (even when there is no
+  prod).. and it shouldnt even when there is prod"). Completes "Merge is a finished act" above: with
+  a production, a merged change still offered _Review release_ as its one button. It now says what it
+  did and what waits for production, and offers nothing to press but the first merge's question; the
+  release opens from its own doors — the menu row, the project's strip and page. This reverses the
+  2026-09-29 hand-off (R6) for a change.
+  - _Why:_ the button that merged turned, in the same place and under the same ⌘↵, into the way to
+    production, so the second press of one gesture reached a different decision.

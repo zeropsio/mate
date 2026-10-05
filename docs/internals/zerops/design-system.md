@@ -555,10 +555,10 @@ conversation's state) Fen lives here` (`ZeropsMateOnMap`, from the panel), and t
     "Close #2 without merging?" in the verdict and _Keep it open_ beside the button — _Cancel_ or
     _Close_, and the button (34 px, radius 10): _Merge_, _Add to Fen's code_, _Release v0.1.57_,
     _Roll back to v0.1.55_ (R5), none where HQ's rule does not offer it, the foot saying what it
-    takes. After the press it stays and says what happened, then the next step
-    — "Merged into main", "1 change now waits for production" with _Review release_, which hands
-    over in place; a release's progress with its clock, then "Released" or the failure and its fix
-    (R6). It grows from what was pressed (200 ms: scale .98, 6 px of lift, a fade) and closes in
+    takes. After the press it stays and says what happened — "Merged into main", "1 change now
+    waits for production", and nothing more to press: a merge ends its review, and the release opens
+    from its own doors (2026-10-05); a release's progress with its clock, then "Released" or the
+    failure and its fix (R6). It grows from what was pressed (200 ms: scale .98, 6 px of lift, a fade) and closes in
     about 150 ms; Esc or a press outside closes it and gives the focus back; the focus lands on the
     button, and ⌘↵ presses it, only while it is safe — never for _Release_ or _Roll back_; reduced
     motion keeps only the fade; what is typed in it reaches nothing behind it (R7); a release's change rows press through to that

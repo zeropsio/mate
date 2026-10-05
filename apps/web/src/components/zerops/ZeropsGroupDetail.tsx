@@ -2054,8 +2054,7 @@ function StopServiceLine({
  *
  * The page and the dialog that opens over the conversation are one surface in two frames — the
  * same sections, in the same words, in a column the conversation's width. The page is the review:
- * nothing opens over it, its one button is pinned in view, and after a merge its *Review release*
- * opens the release's review, which has no page of its own.
+ * nothing opens over it, and its one button is pinned in view.
  *
  * `#4` used to be a link into Gitea, which was a sign-in page for everybody. Everything a change is
  * — its description, files, conversation and commits — is read here from HQ, as the person.
@@ -2071,16 +2070,12 @@ export function ZeropsChangeDetailPage({
 }) {
   const groupName = useGroupName(groupId);
   const crumbs = useCrumbs({ groupId, name: groupName });
-  const openReview = useOpenReview();
   const titleId = useId();
   return (
     <ZeropsHostedFrame breadcrumb={<Crumbs crumbs={crumbs} />} width="column">
       <ZeropsChangeReview
         frame="page"
         onClose={STAYS}
-        onReplace={(next) => {
-          openReview(next);
-        }}
         target={{ kind: "change", groupId, repository, number }}
         titleId={titleId}
       />

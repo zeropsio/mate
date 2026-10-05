@@ -6451,21 +6451,6 @@ a.message-file:focus-visible {
     transform: none;
   }
 }
-/* A review swapped for the next one in place (Merge → Review release) fades its body in. */
-.rv-swap {
-  display: contents;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .rv-swap > * {
-    animation: rv-swap-in 180ms var(--ease-out-strong) both;
-  }
-}
-@keyframes rv-swap-in {
-  from {
-    opacity: 0;
-  }
-}
-
 /* The dialog's own row: what kind of thing this is, its way to its page, and ×. */
 .rv-chrome {
   display: flex;

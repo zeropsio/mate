@@ -642,12 +642,10 @@ export function changeReview(input: ChangeReviewInput): ReviewModel {
         fix: undefined,
       },
       consequence,
-      // A recipe is never released: the next review is a code change's release, and only its —
-      // and a release exists only where a production does.
-      primary:
-        !recipe && input.downstream.production && input.release?.allowed === true
-          ? { label: REVIEW_RELEASE_LABEL, enabled: true, safe: true }
-          : undefined,
+      // A merge is a finished act: it says what waits for production, and the release opens from its
+      // own doors — never this button, where a second ⌘↵ would reach production (the owner,
+      // 2026-10-05). The one question after a first merge is all it may still ask.
+      primary: undefined,
       question: recipe ? undefined : whereShouldItRun(input),
     };
   }
