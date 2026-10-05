@@ -142,6 +142,41 @@ export function readZeropsMembership(
   };
 }
 
+/** What joins an application's name to a project's own name in the project's Zerops name. */
+const APP_NAME_SEPARATOR = " - ";
+
+/**
+ * A project's own name under its application: in Zerops every project of an application is named
+ * in full ("SPN - Rune", "SPN - stage"), and under the application the client shows what follows
+ * its exact `"<application> - "` prefix. Anything else — another application's name, a different
+ * case, no separator, nothing after it, no application — is shown whole, so a stale prefix (the
+ * application renamed, the project moved) never cuts a name wrongly.
+ */
+export function nameUnderApp(projectName: string, appName: string | undefined): string {
+  const whole = projectName.trim();
+  const app = appName?.trim();
+  if (app === undefined || app === "") return whole;
+  const prefix = `${app}${APP_NAME_SEPARATOR}`;
+  if (!whole.startsWith(prefix)) return whole;
+  const rest = whole.slice(prefix.length).trim();
+  return rest === "" ? whole : rest;
+}
+
+/** `nameUnderApp` for a project, the application being the one HQ places it in. */
+export function projectNameInApp(
+  project: { readonly name: string; readonly hq?: HqPlacement | undefined } | undefined,
+): string {
+  if (project === undefined) return "";
+  return nameUnderApp(project.name, readZeropsMembership(project).label);
+}
+
+/** The full Zerops name of a project of an application: `nameUnderApp`'s inverse. */
+export function appProjectName(appName: string | undefined, ownName: string): string {
+  const app = appName?.trim();
+  const own = ownName.trim();
+  return app === undefined || app === "" ? own : `${app}${APP_NAME_SEPARATOR}${own}`;
+}
+
 /**
  * The face a Mate already born changes to. One that wore its name's tint — no face this client
  * reads a tint from, or one changed before — keeps its name's place among the names the tints

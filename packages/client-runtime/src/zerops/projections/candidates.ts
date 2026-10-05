@@ -25,7 +25,7 @@ import {
   type SubdomainProcess,
   type ZeropsCandidate,
 } from "../candidates.ts";
-import { readZeropsMembership } from "../groups.ts";
+import { projectNameInApp, readZeropsMembership } from "../groups.ts";
 import {
   processRecordToActivityProcess,
   projectRecordToZeropsProject,
@@ -453,7 +453,7 @@ export function findCandidate<Row extends CandidateRow>(
 }
 
 /**
- * The names the organization's Mates already go by: their projects' names in Zerops (D3). `complete`
+ * The names the organization's Mates already go by: their projects' names in Zerops under their application (`projectNameInApp`). `complete`
  * — the one licence to call a name free — is the listing being known and complete, HQ's structure
  * known (`structureKnown`: until it answers, which project is a Mate is unread), and no member of
  * its list withheld from this account (`withheldMembers`: its name is on it, unread). Until then a
@@ -472,7 +472,7 @@ export function takenBotNames(
     case "known":
       return {
         names: listing.value.flatMap((row) => {
-          return readZeropsMembership(row.project).mate ? [row.project.name] : [];
+          return readZeropsMembership(row.project).mate ? [projectNameInApp(row.project)] : [];
         }),
         complete:
           listing.coverage === "complete" &&

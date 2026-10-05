@@ -7,7 +7,10 @@ import {
   deriveZeropsGroups,
   formatMateFace,
   generateZeropsGroupId,
+  appProjectName,
   kindOfRole,
+  nameUnderApp,
+  projectNameInApp,
   readMateFace,
   readZeropsMembership,
   withZeropsMateTag,
@@ -966,5 +969,46 @@ describe("heldGroupLabel: HQ's name off the projects the account holds", () => {
     ["no project held", [], undefined],
   ] as const)("%s", (_case, projects, label) => {
     expect(heldGroupLabel(projects, "grpA1")).toBe(label);
+  });
+});
+
+describe("nameUnderApp", () => {
+  it.each([
+    { project: "SPN - Rune", app: "SPN", expected: "Rune" },
+    { project: "Vary + - Milo", app: "Vary +", expected: "Milo" },
+    { project: "  SPN - Rune  ", app: " SPN ", expected: "Rune" },
+    { project: "Shopper - stage", app: "Shop", expected: "Shopper - stage" },
+    { project: "Sage", app: "Ahmad Tea", expected: "Sage" },
+    { project: "spn - Rune", app: "SPN", expected: "spn - Rune" },
+    { project: "SPN Rune", app: "SPN", expected: "SPN Rune" },
+    { project: "Rune", app: undefined, expected: "Rune" },
+    { project: "SPN - Rune", app: "", expected: "SPN - Rune" },
+    { project: "SPN", app: "SPN", expected: "SPN" },
+    { project: "SPN - ", app: "SPN", expected: "SPN -" },
+    { project: "SPN -   ", app: "SPN", expected: "SPN -" },
+  ])("$project under $app is $expected", ({ project: name, app, expected }) => {
+    expect(nameUnderApp(name, app)).toBe(expected);
+  });
+});
+
+describe("appProjectName", () => {
+  it("names a project in full: the application, a dash, its own name", () => {
+    expect(appProjectName("SPN", "Rune")).toBe("SPN - Rune");
+    expect(appProjectName(" SPN ", " Rune ")).toBe("SPN - Rune");
+  });
+
+  it("keeps the own name alone where the project has no application", () => {
+    expect(appProjectName(undefined, "Rune")).toBe("Rune");
+  });
+});
+
+describe("projectNameInApp", () => {
+  it("cuts the application HQ names for the project", () => {
+    const inApp = project("SPN - Rune", { hq: placed("a", "mate", { appName: "SPN" }) });
+    expect(projectNameInApp(inApp)).toBe("Rune");
+  });
+
+  it("keeps the whole name of a project HQ places in no application", () => {
+    expect(projectNameInApp(project("SPN - Rune"))).toBe("SPN - Rune");
   });
 });

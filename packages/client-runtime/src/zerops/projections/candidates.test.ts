@@ -390,6 +390,12 @@ describe("takenBotNames", () => {
       taken: { names: ["Fen", "Ada"], complete: true },
     },
     {
+      // The project is named in full in Zerops ("Acme - Fen"); the Mate goes by what follows.
+      name: "a Mate is named by its own name under its application, the whole name where it is not so named",
+      listing: known([named("a", "Acme - Fen"), named("b", "Acmed - Ada"), named("c", "Nova")]),
+      taken: { names: ["Fen", "Acmed - Ada", "Nova"], complete: true },
+    },
+    {
       name: "a partial listing names the Mates it read and is never all of them",
       listing: known([named("a", "Fen")], "partial"),
       taken: { names: ["Fen"], complete: false },
