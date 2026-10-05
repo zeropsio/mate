@@ -1912,6 +1912,31 @@ describe("composerDraftStore modelSelection", () => {
     );
   });
 
+  it("drops a draft's model pick so the thread's selection shows, keeping its text", () => {
+    const store = useComposerDraftStore.getState();
+    store.setPrompt(threadRef, "still typing");
+    store.setModelSelection(
+      threadRef,
+      modelSelection(CODEX_DRIVER, "gpt-5.3-codex", { reasoningEffort: "xhigh" }),
+    );
+
+    store.clearModelSelection(threadRef);
+
+    const draft = draftFor(threadId, TEST_ENVIRONMENT_ID);
+    expect(draft?.modelSelectionByProvider).toEqual({});
+    expect(draft?.activeProvider).toBeNull();
+    expect(draft?.prompt).toBe("still typing");
+  });
+
+  it("drops a draft that held only a model pick", () => {
+    const store = useComposerDraftStore.getState();
+    store.setModelSelection(threadRef, modelSelection(CODEX_DRIVER, "gpt-5.4"));
+
+    store.clearModelSelection(threadRef);
+
+    expect(draftFor(threadId, TEST_ENVIRONMENT_ID)).toBeUndefined();
+  });
+
   it("keeps default-only model selections on the draft", () => {
     const store = useComposerDraftStore.getState();
     store.setModelSelection(threadRef, modelSelection(CODEX_DRIVER, "gpt-5.4"));

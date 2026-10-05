@@ -375,6 +375,39 @@ describe("Workspace history", () => {
       }).pipe(Effect.provide(testLayer)),
   );
 
+  it.effect.each(["before", "after"] as const)(
+    "a run its message steered into another turn is released when that turn binds (sent %s)",
+    (sentWhen) =>
+      Effect.gen(function* () {
+        const h = yield* harness();
+        const first = TurnId.make("turn-first");
+        const next = TurnId.make("turn-next");
+        // A's setup outlasts B's wait: B starts as its own run, then steers A's turn.
+        yield* h.prepare("a");
+        yield* h.history.markDispatched(threadId, "a");
+        const b = yield* h.prepare("b").pipe(Effect.forkChild);
+        yield* TestClock.adjust(History.PREVIOUS_RUN_WAIT);
+        yield* Fiber.join(b);
+        yield* h.history.markDispatched(threadId, "b");
+        yield* h.history.sentTo(threadId, "a", first);
+        if (sentWhen === "before") yield* h.history.sentTo(threadId, "b", first);
+        yield* h.history.bindTurn(threadId, first);
+        if (sentWhen === "after") yield* h.history.sentTo(threadId, "b", first);
+        yield* h.history.finish({ threadId, turnId: first, cwd: "/var/www" });
+        yield* h.history.release(threadId, first);
+
+        const c = yield* h
+          .prepare("c")
+          .pipe(Effect.timeout("1 second"), Effect.result, Effect.forkChild);
+        yield* TestClock.adjust("2 seconds");
+        expect(yield* Fiber.join(c)).toMatchObject({ _tag: "Success" });
+        yield* h.history.markDispatched(threadId, "c");
+        yield* h.history.bindTurn(threadId, next);
+        expect((yield* h.journal.get(threadId, "c"))?.turnId).toBe(next);
+        expect((yield* h.journal.get(threadId, "a"))?.turnId).toBe(first);
+      }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect("a new request waits for a running run only briefly, and says they overlap", () =>
     Effect.gen(function* () {
       const h = yield* harness();

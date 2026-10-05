@@ -221,6 +221,29 @@ const make = Effect.gen(function* () {
   const providerService = yield* ProviderService;
   const workspaceHistory = yield* Effect.serviceOption(WorkspaceHistory);
   const pendingStarts = new Map<ThreadId, Set<Fiber.Fiber<void, never>>>();
+  /** Session work forked for a thread, which its stop or interrupt cancels. */
+  const forkPendingStart = Effect.fnUntraced(function* (
+    threadId: ThreadId,
+    work: Effect.Effect<void>,
+  ) {
+    const gate = yield* Deferred.make<void>();
+    const running = pendingStarts.get(threadId) ?? new Set<Fiber.Fiber<void, never>>();
+    pendingStarts.set(threadId, running);
+    const fiber: Fiber.Fiber<void, never> = yield* Deferred.await(gate).pipe(
+      Effect.andThen(work),
+      Effect.ensuring(
+        Effect.sync(() => {
+          running.delete(fiber);
+          if (running.size === 0 && pendingStarts.get(threadId) === running) {
+            pendingStarts.delete(threadId);
+          }
+        }),
+      ),
+      Effect.forkScoped,
+    );
+    running.add(fiber);
+    yield* Deferred.succeed(gate, undefined);
+  });
   const interruptPendingStarts = (threadId: ThreadId) =>
     Effect.forEach([...(pendingStarts.get(threadId) ?? [])], (fiber) => Fiber.interrupt(fiber), {
       discard: true,
@@ -1488,21 +1511,24 @@ const make = Effect.gen(function* () {
       const clearCompacting = Effect.sync(
         () => void compactingThreadIds.delete(event.payload.threadId),
       );
-      yield* Effect.gen(function* () {
-        yield* ensureSessionForThread(
-          event.payload.threadId,
-          event.payload.createdAt,
-          event.payload.modelSelection !== undefined
-            ? { modelSelection: event.payload.modelSelection, pendingTurnStart: true }
-            : { pendingTurnStart: true },
-        );
-        compactionSessionEnsured = true;
-        yield* providerService.compactThread(
-          event.payload.threadId,
-          event.payload.modelSelection,
-          event.payload.messageId,
-        );
-      }).pipe(
+      yield* turnLanes(
+        event.payload.threadId,
+        Effect.gen(function* () {
+          yield* ensureSessionForThread(
+            event.payload.threadId,
+            event.payload.createdAt,
+            event.payload.modelSelection !== undefined
+              ? { modelSelection: event.payload.modelSelection, pendingTurnStart: true }
+              : { pendingTurnStart: true },
+          );
+          compactionSessionEnsured = true;
+          yield* providerService.compactThread(
+            event.payload.threadId,
+            event.payload.modelSelection,
+            event.payload.messageId,
+          );
+        }),
+      ).pipe(
         Effect.andThen(restoreCompaction(event.payload.threadId, true)),
         Effect.andThen(clearCompacting),
         Effect.andThen(resumeTurnsAfterCompaction(event.payload.threadId)),
@@ -1587,6 +1613,12 @@ const make = Effect.gen(function* () {
         });
       yield* providerService.sendTurn(request).pipe(
         Effect.catchIf(isSessionGoneError, resendOnNewSession),
+        // The turn it went into tells a steer from a turn of its own.
+        Effect.tap((turn) =>
+          coordinator
+            ? coordinator.sentTo(thread.id, event.payload.messageId, turn.turnId)
+            : Effect.void,
+        ),
         Effect.asVoid,
         Effect.catchCause((cause) =>
           recoverTurnStartFailure(cause).pipe(
@@ -1635,22 +1667,7 @@ const make = Effect.gen(function* () {
     if (resumed && event.commandId !== null) resumedTurnStarts.delete(event.commandId);
     const settleResumed = resumed ? Deferred.succeed(resumed.sent, undefined) : Effect.void;
     if (Option.isSome(workspaceHistory)) {
-      const gate = yield* Deferred.make<void>();
-      const running = pendingStarts.get(thread.id) ?? new Set<Fiber.Fiber<void, never>>();
-      pendingStarts.set(thread.id, running);
-      const fiber = yield* Deferred.await(gate).pipe(
-        Effect.andThen(sendPreparedTurn),
-        Effect.ensuring(
-          Effect.sync(() => {
-            running.delete(fiber);
-            if (running.size === 0) pendingStarts.delete(thread.id);
-          }),
-        ),
-        Effect.ensuring(settleResumed),
-        Effect.forkScoped,
-      );
-      running.add(fiber);
-      yield* Deferred.succeed(gate, undefined);
+      yield* forkPendingStart(thread.id, sendPreparedTurn.pipe(Effect.ensuring(settleResumed)));
     } else yield* sendPreparedTurn.pipe(Effect.ensuring(settleResumed));
   });
 
@@ -1964,11 +1981,28 @@ const make = Effect.gen(function* () {
           return;
         }
         const cachedModelSelection = threadModelSelections.get(event.payload.threadId);
-        yield* ensureSessionForThread(
+        // Through the thread's lane, so never a restart under a message's
+        // send, and off the worker: a send can hold the lane for a whole turn
+        // (Cursor, Grok), and the worker serves every thread's stops and answers.
+        // A stop or interrupt cancels it like a pending turn start.
+        const applyRuntimeMode = turnLanes(
           event.payload.threadId,
-          event.occurredAt,
-          cachedModelSelection !== undefined ? { modelSelection: cachedModelSelection } : {},
+          ensureSessionForThread(
+            event.payload.threadId,
+            event.occurredAt,
+            cachedModelSelection !== undefined ? { modelSelection: cachedModelSelection } : {},
+          ),
+        ).pipe(
+          Effect.catchCause((cause) =>
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.void
+              : Effect.logWarning("provider command reactor failed to apply a runtime mode", {
+                  threadId: event.payload.threadId,
+                  cause: Cause.pretty(cause),
+                }),
+          ),
         );
+        yield* forkPendingStart(event.payload.threadId, applyRuntimeMode);
         return;
       }
       case "thread.turn-start-requested":
