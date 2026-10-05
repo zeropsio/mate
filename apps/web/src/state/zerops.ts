@@ -299,7 +299,8 @@ export const hqLoginsAtom = Atom.make(
     ),
 ).pipe(Atom.withEquality(sameLogins), Atom.withLabel("zerops:hq-logins"));
 
-const hqReadyAgentsAtom = Atom.make(
+/** Whether each Mate runs on an agent that needs no sign-in, as HQ's overview of it says, by project. */
+export const hqReadyAgentsAtom = Atom.make(
   (get): ReadonlyMap<string, boolean> =>
     new Map(
       [...(get(hqMatesAtom)?.mates ?? new Map())].flatMap(([id, mate]) =>
