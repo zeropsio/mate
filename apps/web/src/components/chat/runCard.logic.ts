@@ -201,6 +201,28 @@ export function followAfter(state: RunScrollFollow, event: RunScrollEvent): RunS
 }
 
 /**
+ * Whether a move of the scroll's top, from where it last stood (`stood`, its
+ * furthest top then `stoodMax`) to `top` (its furthest now `max`), is no more
+ * than the browser clamping it as its box grew: such a move, while the live
+ * slot beside it eases, is the card's. A move up past that — find in page,
+ * Tab, a drag-select or a screen reader taking it, none an input on the
+ * scroll — is the person's (the review of p43, 2026-10-06).
+ */
+export function movedByClamp({
+  stood,
+  top,
+  stoodMax,
+  max,
+}: {
+  readonly stood: number;
+  readonly top: number;
+  readonly stoodMax: number;
+  readonly max: number;
+}): boolean {
+  return stood - top <= Math.max(0, stoodMax - max) + MOVED_PX;
+}
+
+/**
  * The scroll as its lines are laid out: a row travelling into its place (a
  * plop from the live slot, a rise) paints past their foot for a moment, and
  * the browser counts that as more to scroll to. It is not: the foot is where

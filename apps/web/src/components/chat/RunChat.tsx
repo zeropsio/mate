@@ -177,6 +177,7 @@ import {
   followAfter,
   NOTHING_OPENED,
   footTop,
+  movedByClamp,
   formatClock,
   laidOutPosition,
   type RunScrollEvent,
@@ -3127,6 +3128,11 @@ export function RunLine({ status }: { readonly status: RunStatus }) {
  */
 const EASED_BOXES = "[data-chat-bubble],[data-chat-calls],[data-zerops-pipeline-step]";
 
+/** What the motions of a run's card share: the live slot's rooms, read by the history beside it. */
+interface RunMotion {
+  slot: Rooms | null;
+}
+
 const NO_KEYS: ReadonlyArray<string> = [];
 const NO_HOLDS: ReadonlySet<string> = new Set();
 
@@ -3321,6 +3327,7 @@ function LiveSlot({
   answering,
   status,
   undone,
+  motionRef,
 }: {
   readonly ref: Ref<HTMLDivElement>;
   readonly slot: LiveSlotState;
@@ -3333,6 +3340,8 @@ function LiveSlot({
   readonly answering: boolean;
   readonly status: RunStatus;
   readonly undone: ReadonlySet<string>;
+  /** Its card's motion: the history reads the slot's ease from it. */
+  readonly motionRef: { readonly current: RunMotion };
 }) {
   const ctx = use(TimelineRowCtx);
   const { isCompacting } = use(TimelineRowActivityCtx);
@@ -3450,11 +3459,14 @@ function LiveSlot({
       rootClips: true,
     });
     slotRoomsRef.current = rooms;
+    const motion = motionRef.current;
+    motion.slot = rooms;
     return () => {
       rooms.stop();
       slotRoomsRef.current = null;
+      if (motion.slot === rooms) motion.slot = null;
     };
-  }, []);
+  }, [motionRef]);
   // Every commit, before the list's row measures it in its own.
   useLayoutEffect(() => slotRoomsRef.current?.flush());
   // The face and the clock stand on the first line, whatever bubble it is in.
@@ -3576,6 +3588,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const keepScrollRef = useRef<(() => void) | null>(null);
   // How its boxes ease (`easeRooms`), for a line landing in it.
   const historyRoomsRef = useRef<Rooms | null>(null);
+  // What its parts' motions share (`RunMotion`).
+  const motionRef = useRef<RunMotion>({ slot: null });
   const { fold, foldNow, settling } = useRunFold({
     conversation: ctx.routeThreadKey,
     run: row.turnKey,
@@ -3830,6 +3844,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         lines={lines}
         keepRef={keepScrollRef}
         roomsRef={historyRoomsRef}
+        motionRef={motionRef}
         eases={slotted && !ctx.syncing}
         opensAtStart={!above}
         {...(above ? { readingRef } : {})}
@@ -3915,6 +3930,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               slot={slot}
               status={row.status}
               undone={undone}
+              motionRef={motionRef}
             />
           )}
           <div key="below" ref={feedRef} className="run-later-feed">
@@ -4118,6 +4134,7 @@ function RunScroll({
   eases = false,
   opensAtStart = false,
   roomsRef,
+  motionRef,
 }: {
   readonly label: string;
   readonly lines: ReadonlyArray<ChatLine>;
@@ -4137,6 +4154,8 @@ function RunScroll({
   readonly opensAtStart?: boolean;
   /** Given how its boxes ease, for a line landing in it. */
   readonly roomsRef?: { current: Rooms | null };
+  /** Its card's motion: the live slot's ease beside it. */
+  readonly motionRef?: { readonly current: RunMotion };
 }) {
   // Drawn once: from here on, what arrives arrives while the person watches.
   const shownRef = useRef(false);
@@ -4200,8 +4219,15 @@ function RunScroll({
     foot: null,
   });
   const follow = useMemo(() => {
+    // Its furthest top as it last stood: what a clamp since can take it up by.
+    const stoodAt = { max: 0 };
     const heard = (event: RunScrollEvent) => {
+      const stood = followRef.current.stood;
       followRef.current = followAfter(followRef.current, event);
+      const element = scrollRef.current;
+      if (element !== null && (event.kind === "set" || followRef.current.stood !== stood)) {
+        stoodAt.max = element.scrollHeight - element.clientHeight;
+      }
       const { follows } = followRef.current;
       // Said on it, as its cut edges are, for what looks at the page.
       scrollRef.current?.toggleAttribute("data-follows", follows);
@@ -4212,14 +4238,12 @@ function RunScroll({
       typeof scrollRef.current?.parentElement?.closest === "function" &&
       scrollRef.current.parentElement.closest("[data-room-easing]") !== null;
     /**
-     * Whether a box of its card eases this moment — the live slot under it
-     * too: its box gives that ease its room, and the browser clamps its top
-     * as it does (a phone's slot easing beside a 5 px history moved it 2 px
-     * up between two reads; read as the person's, the run stopped following).
+     * Whether the live slot beside it eases this moment: its box gives that
+     * ease its room, and the browser clamps its top as it does (a phone's
+     * slot easing beside a 5 px history moved it 2 px up between two reads;
+     * read as the person's, the run stopped following).
      */
-    const cardEases = () =>
-      typeof scrollRef.current?.closest === "function" &&
-      scrollRef.current.closest("[data-run-chat]")?.querySelector("[data-room-easing]") != null;
+    const slotEases = () => motionRef?.current.slot?.easing() ?? false;
     /** The page puts its top at `top`, and remembers where the browser took it. */
     const putAt = (element: HTMLElement, top: number) => {
       element.scrollTop = top;
@@ -4279,15 +4303,34 @@ function RunScroll({
      * move up.
      */
     const read = (position: RunScrollPosition) => {
-      const resized =
-        (sized.box !== null && Math.abs(position.clientHeight - sized.box) > 0.5) ||
-        (sized.lines !== null && Math.abs(position.scrollHeight - sized.lines) > 0.5);
+      const boxResized = sized.box !== null && Math.abs(position.clientHeight - sized.box) > 0.5;
+      const linesResized =
+        sized.lines !== null && Math.abs(position.scrollHeight - sized.lines) > 0.5;
       sized.box = position.clientHeight;
       sized.lines = position.scrollHeight;
+      const element = scrollRef.current;
+      // A motion of the card's own — its glide, its boxes easing, the card
+      // around it or the slot beside it — or its box resizing moves it only
+      // as far as the clamp explains: further up is the person's, whatever
+      // took it there with no input on it (find in page, Tab, a drag-select,
+      // a screen reader). Its lines resizing are the browser's move whatever
+      // it was (run 12: 6 px taller, the top set 14 px up).
+      const explained =
+        element !== null &&
+        movedByClamp({
+          stood: followRef.current.stood,
+          top: position.scrollTop,
+          stoodMax: stoodAt.max,
+          max: element.scrollHeight - element.clientHeight,
+        });
       const person = movesAsPerson({
         moving:
-          gliding.frame !== 0 || (roomRef.current?.easing() ?? false) || heldAbove() || cardEases(),
-        resized,
+          explained &&
+          (gliding.frame !== 0 ||
+            (roomRef.current?.easing() ?? false) ||
+            heldAbove() ||
+            slotEases()),
+        resized: linesResized || (boxResized && explained),
         msSinceInput: performance.now() - personAtRef.current,
         atFoot: standsAtFoot(position),
         follows: followRef.current.follows,
@@ -4319,7 +4362,7 @@ function RunScroll({
         below: foot > element.scrollTop + 0.5,
         eases: easesRef.current,
         // Its own boxes, or the slot squeezing it as it eases taller.
-        roomEases: (roomRef.current?.easing() ?? false) || cardEases(),
+        roomEases: (roomRef.current?.easing() ?? false) || slotEases(),
         gliding: gliding.frame !== 0,
       });
       // The card around it easing taller gives it the room it needs: it
@@ -4360,7 +4403,7 @@ function RunScroll({
         });
       },
     };
-  }, [readingRef]);
+  }, [readingRef, motionRef]);
   // Its node re-inserted puts it back at 0, silently: following, it stands at its foot again.
   const endRef = useRef<HTMLDivElement>(null);
   useRunScrollResettle({ scrollRef, endRef, followRef, positionOf, putAt: follow.putAt });
