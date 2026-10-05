@@ -119,6 +119,18 @@ describe("useThreadModelSelection", () => {
     expect(write).toHaveBeenCalledExactlyOnceWith(written);
   });
 
+  it("a trait change landing with the echo of the previous pick is kept", () => {
+    mount(withEffort("max"));
+    pick(withEffort("xhigh"));
+    write.mockReset();
+    act(() => {
+      useComposerDraftStore.getState().setModelSelection(threadRef, withEffort("low"));
+      tree?.update(<Probe threadRef={threadRef} threadSelection={withEffort("xhigh")} />);
+    });
+    expect(write).toHaveBeenCalledExactlyOnceWith(withEffort("low"));
+    expect(draftPick()).toEqual(withEffort("low"));
+  });
+
   it("a local draft thread keeps its own pick", () => {
     pick(withEffort("xhigh"));
     mount(withEffort("max"), null);

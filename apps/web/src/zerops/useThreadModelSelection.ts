@@ -26,10 +26,6 @@ export function useThreadModelSelection(input: {
   );
   const threadKey = modelSelectionKey(threadSelection);
 
-  useEffect(() => {
-    if (threadRef && threadKey !== null) clearModelSelection(threadRef);
-  }, [clearModelSelection, threadRef, threadKey]);
-
   const seen = useRef<{
     readonly refKey: string | null;
     readonly threadKey: string | null;
@@ -37,14 +33,28 @@ export function useThreadModelSelection(input: {
   }>({ refKey: null, threadKey: null, written: null });
   useEffect(() => {
     const refKey = threadRef ? scopedThreadKey(threadRef) : null;
-    const threadChanged = seen.current.refKey !== refKey || seen.current.threadKey !== threadKey;
-    const written = threadChanged ? null : seen.current.written;
-    seen.current = { refKey, threadKey, written };
+    const previous = seen.current;
+    const moved = previous.refKey !== refKey || previous.threadKey !== threadKey;
+    // The echo of this tab's own pick is no change from elsewhere: a pick
+    // made since stays and goes to the thread.
+    const echo = moved && previous.refKey === refKey && threadKey === previous.written;
+    const foreign = moved && !echo;
+    seen.current = { refKey, threadKey, written: foreign ? null : previous.written };
     if (!threadRef || !threadSelection) return;
-    const next = selectionToWrite({ threadChanged, draft, threadSelection, capabilitiesFor });
+    if (foreign) {
+      // The thread's selection wins over this tab's pick.
+      clearModelSelection(threadRef);
+      return;
+    }
+    const next = selectionToWrite({
+      threadChanged: false,
+      draft,
+      threadSelection,
+      capabilitiesFor,
+    });
     const nextKey = modelSelectionKey(next);
-    if (next === null || nextKey === written) return;
+    if (next === null || nextKey === seen.current.written) return;
     seen.current = { refKey, threadKey, written: nextKey };
     write(next);
-  }, [capabilitiesFor, draft, threadKey, threadRef, threadSelection, write]);
+  }, [capabilitiesFor, clearModelSelection, draft, threadKey, threadRef, threadSelection, write]);
 }
