@@ -129,3 +129,52 @@ describe("observeAccount", () => {
     }),
   );
 });
+
+describe("observeAccount — its end", () => {
+  it.live("lets go of its store when stopped, so a replacement is the store's only observer", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      let listening = 0;
+      const counted = {
+        ...store,
+        subscribe: (listener: () => void) => {
+          listening += 1;
+          const stop = store.subscribe(listener);
+          return () => {
+            listening -= 1;
+            stop();
+          };
+        },
+      };
+      const fixture = fixtureWire(() => Effect.succeed({ items: [] }));
+      const first = observeAccount({
+        store: counted,
+        wire: fixture.wire,
+        repairSession: Effect.void,
+      });
+      first.show("org");
+      yield* turns;
+      expect(listening).toBe(1);
+
+      first.stop();
+      yield* turns;
+      expect(listening).toBe(0);
+      expect(streamOf(store.state(), linkKeys.zerops("org")).demanded).toBe(false);
+
+      const second = observeAccount({
+        store: counted,
+        wire: fixture.wire,
+        repairSession: Effect.void,
+      });
+      second.show("org");
+      yield* turns;
+      expect(listening).toBe(1);
+      // Stopped and shown again (a remount): it observes again, once.
+      second.stop();
+      second.show("org");
+      yield* turns;
+      expect(listening).toBe(1);
+      second.stop();
+    }),
+  );
+});

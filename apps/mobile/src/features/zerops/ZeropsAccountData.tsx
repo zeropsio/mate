@@ -55,7 +55,7 @@ export function ZeropsAccountData({
       held === null
         ? undefined
         : () => {
-            held.observation.show(null);
+            held.observation.stop();
             held.registry.dispose();
           },
     [held],

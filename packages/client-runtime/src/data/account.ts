@@ -62,6 +62,8 @@ export interface AccountObservation {
   readonly demandDetail: (demand: DetailDemand) => () => void;
   /** The person's "try now". */
   readonly retry: () => void;
+  /** Ends the observation: no organization shown, and its operations' standing demands let go. */
+  readonly stop: () => void;
 }
 
 export function observeAccount(options: {
@@ -72,6 +74,10 @@ export function observeAccount(options: {
   readonly kinds?: ReadonlyArray<RegisteredOperationKind>;
 }): AccountObservation {
   let shown: { readonly orgId: string; readonly link: RunningLink } | null = null;
+  // Every accepted operation holds the detail its handle is observed in until it settles: a
+  // standing demand at its owner, whichever organization is shown, from the first shown on until
+  // the observation stops — and again if it is shown after that.
+  let stopStanding: (() => void) | null = null;
   const holds = new Set<{ readonly demand: DetailDemand; release: (() => void) | null }>();
   const observation: AccountObservation = {
     show: (orgId) => {
@@ -85,6 +91,11 @@ export function observeAccount(options: {
         shown = null;
       }
       if (orgId === null) return;
+      stopStanding ??= holdStandingDemands({
+        store: options.store,
+        demandDetail: observation.demandDetail,
+        ...(options.kinds === undefined ? {} : { kinds: options.kinds }),
+      });
       const link = startZeropsNavigation({ ...options, orgId });
       shown = { orgId, link };
       for (const hold of holds) hold.release = link.demandDetail(hold.demand);
@@ -98,13 +109,11 @@ export function observeAccount(options: {
       };
     },
     retry: () => shown?.link.signal("manual-retry"),
+    stop: () => {
+      stopStanding?.();
+      stopStanding = null;
+      observation.show(null);
+    },
   };
-  // Every accepted operation holds the detail its handle is observed in until it settles: a
-  // standing demand at its owner, whichever organization is shown, for the account's lifetime.
-  holdStandingDemands({
-    store: options.store,
-    demandDetail: observation.demandDetail,
-    ...(options.kinds === undefined ? {} : { kinds: options.kinds }),
-  });
   return observation;
 }

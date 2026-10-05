@@ -57,7 +57,7 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   useEffect(() => {
     observation.show(orgId);
   }, [observation, orgId]);
-  useEffect(() => () => observation.show(null), [observation]);
+  useEffect(() => () => observation.stop(), [observation]);
   const value = useMemo(
     () => ({ data: store.data, orgId, demandDetail: observation.demandDetail }),
     [observation, orgId, store],
