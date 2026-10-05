@@ -6,7 +6,12 @@ import {
   THREAD_JUMP_KEYBINDING_COMMANDS,
 } from "@t3tools/contracts";
 import { filterFilesystemBrowseEntries } from "@t3tools/client-runtime/state/filesystem";
-import { hasMate } from "@t3tools/client-runtime/zerops";
+import {
+  hasMate,
+  nameUnderApp,
+  projectNameInApp,
+  readZeropsMembership,
+} from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqMates, HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import type { ThreadDigest } from "@t3tools/shared/mateLink";
@@ -233,24 +238,58 @@ export interface CommandPaletteHqThreads {
   ) => string | null | undefined;
   /** The Mate's name, by its project. */
   readonly mateName: (projectId: string) => string | undefined;
+  /** The application a Mate is in: its chats are found by it too. */
+  readonly mateApp?: (projectId: string) => string | undefined;
   readonly renderStatus: (status: ThreadStatus) => ReactNode;
 }
 
+/** The Mates HQ's structure relays, each with the name of the application it is in. */
+function relayedMates(structure: HqStructure | null) {
+  return [
+    ...(structure?.ungrouped ?? []).map((entry) => ({ ...entry, app: undefined })),
+    ...(structure?.apps ?? []).flatMap((app) =>
+      app.projects
+        .filter(({ mate }) => mate !== null)
+        .map((entry) => ({ ...entry, app: app.name })),
+    ),
+  ];
+}
+
 /**
- * Each Mate's name by its project, for the chats HQ lists: its project's name in Zerops (D3), as
- * this client's listing reads it, else as HQ's structure relays it — which may arrive first.
+ * Each Mate's name by its project, for the chats HQ lists: its project's name in Zerops under its
+ * application (`nameUnderApp`), as this client's listing reads it, else as HQ's structure relays it
+ * — which may arrive first.
  */
 export function hqChatMateNames(
   listed: ReadonlyArray<ZeropsCandidate>,
   structure: HqStructure | null,
 ): ReadonlyMap<string, string> {
-  const relayed = [
-    ...(structure?.ungrouped ?? []),
-    ...(structure?.apps ?? []).flatMap((app) => app.projects.filter(({ mate }) => mate !== null)),
-  ];
   return new Map([
-    ...relayed.flatMap(({ projectId, name }) => (name === "" ? [] : [[projectId, name] as const])),
-    ...listed.filter(hasMate).map((row) => [row.project.id, row.project.name] as const),
+    ...relayedMates(structure).flatMap(({ projectId, name, app }) =>
+      name === "" ? [] : [[projectId, nameUnderApp(name, app)] as const],
+    ),
+    ...listed
+      .filter(hasMate)
+      .map((row) => [row.project.id, projectNameInApp(row.project)] as const),
+  ]);
+}
+
+/**
+ * Each Mate's application by its project, as `hqChatMateNames` reads it: a Mate's chats are found
+ * by the application's name too, its own name being what follows it.
+ */
+export function hqChatMateApps(
+  listed: ReadonlyArray<ZeropsCandidate>,
+  structure: HqStructure | null,
+): ReadonlyMap<string, string> {
+  return new Map([
+    ...relayedMates(structure).flatMap(({ projectId, app }) =>
+      app === undefined || app === "" ? [] : [[projectId, app] as const],
+    ),
+    ...listed.filter(hasMate).flatMap((row) => {
+      const app = readZeropsMembership(row.project).label;
+      return app === undefined ? [] : [[row.project.id, app] as const];
+    }),
   ]);
 }
 
@@ -258,6 +297,7 @@ interface HqChat {
   readonly environmentId: EnvironmentId;
   readonly digest: ThreadDigest;
   readonly mateName: string | undefined;
+  readonly mateApp: string | undefined;
   readonly status: ReactNode;
 }
 
@@ -279,12 +319,14 @@ function hqChats(hq: CommandPaletteHqThreads | undefined): {
     listed.add(environmentId);
     if (!hq.linkable(environmentId)) continue;
     const mateName = hq.mateName(projectId);
+    const mateApp = hq.mateApp?.(projectId);
     for (const digest of mate.threads.list) {
       const kind = viewerThreadKind(digest, hq.lastVisitedAt(environmentId, digest.id));
       chats.push({
         environmentId,
         digest,
         mateName,
+        mateApp,
         status: hq.current ? hq.renderStatus({ kind, toneId: toneIdForKind(kind) }) : null,
       });
     }
@@ -299,7 +341,7 @@ function digestRecency(digest: ThreadDigest): number {
 }
 
 function hqChatActionItem(
-  { environmentId, digest, mateName, status }: HqChat,
+  { environmentId, digest, mateName, mateApp, status }: HqChat,
   icon: ReactNode,
   runThread: (thread: Pick<SidebarThreadSummary, "environmentId" | "id">) => Promise<void>,
 ): CommandPaletteActionItem {
@@ -307,7 +349,7 @@ function hqChatActionItem(
     {
       kind: "action" as const,
       value: `thread:${digest.id}`,
-      searchTerms: [digest.title, mateName ?? ``, digest.id],
+      searchTerms: [digest.title, mateName ?? ``, mateApp ?? ``, digest.id],
       title: digest.title,
       searchRecency: digestRecency(digest),
       icon,

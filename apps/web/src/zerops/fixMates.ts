@@ -8,7 +8,7 @@
  * conversation's composer, and one not connected has none to take them.
  */
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { readZeropsMembership } from "@t3tools/client-runtime/zerops";
+import { projectNameInApp, readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
@@ -55,7 +55,7 @@ export function fixMatesOf(input: {
       mateProjectId: project.id,
       mine: input.isMine(candidate) ?? true,
       ...(lastVisitedAt === undefined ? {} : { lastVisitedAt }),
-      name: project.name,
+      name: projectNameInApp(project),
     });
   }
   return fixMateChoice(options).map(({ lastVisitedAt: _lastVisitedAt, ...option }) => option);

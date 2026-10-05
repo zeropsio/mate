@@ -814,7 +814,7 @@ describe("newMateDoorMates — the project's Mates, listed and coming", () => {
     });
     expect(mates).toEqual([
       { projectId: "cleo-project", name: "Cleo" },
-      { projectId: "beviro-project", name: "Beviro - beviro-project" },
+      { projectId: "beviro-project", name: "beviro-project" },
       { projectId: "wren-project", name: "Wren" },
     ]);
   });

@@ -91,8 +91,10 @@ export interface JumpStop {
   /** The stop's own Zerops project. */
   readonly projectId: string;
   readonly groupId: string;
-  /** Its name, as Zerops has its project: `Shop - production`. */
+  /** Its name under its project (`projectNameInApp`): `production`, of `Shop - production`. */
   readonly title: string;
+  /** The project it belongs to: found by it too. */
+  readonly projectName: string;
   /** What it runs. */
   readonly line: string;
   /** The dot its chip's menu wears for it: production's, or the stage's own. */
@@ -329,8 +331,9 @@ export function jumpGroups(
       ...group("projects", "Projects", "", [...index.projects.map(projectItem), NEW_PROJECT_ITEM]),
     ];
   }
+  // A Mate is found by its own name and by its project's: it is named in full there.
   const mates = startsFirst(
-    index.mates.filter((mate) => contains(mate.name, text)),
+    index.mates.filter((mate) => contains(`${mate.projectName ?? ""} ${mate.name}`, text)),
     (mate) => mate.name,
     text,
   ).slice(0, JUMP_LIMITS.mates);
@@ -341,7 +344,7 @@ export function jumpGroups(
     .filter((change) => contains(change.label, text))
     .slice(0, JUMP_LIMITS.changes);
   const stops = index.stops
-    .filter((stop) => contains(`${stop.title} ${stop.line}`, text))
+    .filter((stop) => contains(`${stop.projectName} ${stop.title} ${stop.line}`, text))
     .slice(0, JUMP_LIMITS.stops);
   return [
     ...group("mates", "Mates", text, mates.map(mateItem)),

@@ -104,7 +104,7 @@ export function historyLine(
   // A change a Mate landed is the Mate's, whoever git says wrote its commit: named, or not said.
   const who =
     entry.change === null ? entry.author : names?.mateNames?.get(entry.change.mateProjectId);
-  // Each stop as Zerops names its project, whole (D3).
+  // Each stop by its project's name under its application (`projectNameInApp`).
   const parts = [who, ...entry.deployedTo].filter(
     (part): part is string => part !== undefined && part.length > 0,
   );

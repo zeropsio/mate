@@ -32,6 +32,7 @@ import {
   deployWord,
   flowVerbKey,
   flowVerbLabel,
+  projectNameInApp,
   readZeropsMembership,
   environmentSlots,
   productionRunsOf,
@@ -285,7 +286,7 @@ function useMateMenus(): {
         return (
           <ZeropsProjectMenu
             actions={entries}
-            label={`More for ${candidate.project.name}`}
+            label={`More for ${projectNameInApp(candidate.project)}`}
             routes={candidate.routes}
           />
         );
@@ -298,7 +299,7 @@ function useMateMenus(): {
       return (
         <ZeropsMateUpdateControl
           environmentId={candidate.environmentId}
-          mateName={candidate.project.name}
+          mateName={projectNameInApp(candidate.project)}
         >
           {({ menuActions }) => menu(menuActions)}
         </ZeropsMateUpdateControl>
@@ -596,7 +597,7 @@ export function runtimeStopsOf(
       continue;
     stops.set(project.id, {
       projectId: project.id,
-      name: project.name,
+      name: projectNameInApp(project),
       tier: membership.role === "prod" ? "production" : "stage",
     });
   }
@@ -615,7 +616,7 @@ export function devstagesOf(
   return projects.flatMap((project) => {
     const membership = readZeropsMembership(project);
     return membership.groupId === groupId && membership.role === "devstage"
-      ? [{ id: project.id, name: project.name }]
+      ? [{ id: project.id, name: projectNameInApp(project) }]
       : [];
   });
 }
@@ -2358,7 +2359,7 @@ export function groupMateOf(input: {
   const subject = live?.subject;
   return {
     projectId: item.project.id,
-    name: item.project.name,
+    name: projectNameInApp(item.project),
     tint,
     shape: mateShapeOf(item.project, tint),
     face: mateFaceOf({

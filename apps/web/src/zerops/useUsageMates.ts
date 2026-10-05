@@ -6,6 +6,7 @@
  * missing — named on the page — when it cannot connect or HQ names no environment for it.
  */
 import { useAtomValue } from "@effect/atom-react";
+import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import {
   environmentTarget,
   selectReachability,
@@ -108,7 +109,10 @@ export function useUsageMates(
     [missingKey],
   );
   const names = useMemo(
-    () => new Map(heldCandidates(listing).rows.map((row) => [row.project.id, row.project.name])),
+    () =>
+      new Map(
+        heldCandidates(listing).rows.map((row) => [row.project.id, projectNameInApp(row.project)]),
+      ),
     [listing],
   );
   const read = useMemo(

@@ -572,7 +572,12 @@ function JumpRow({ item, match }: { readonly item: JumpItem; readonly match: str
         </span>
       );
       title = <Marked match={match} text={item.stop.title} />;
-      sub = <Marked match={match} text={item.stop.line} />;
+      sub = (
+        <Marked
+          match={match}
+          text={[item.stop.projectName, item.stop.line].filter((part) => part !== "").join(" · ")}
+        />
+      );
       break;
     case "text":
       lead = (

@@ -130,6 +130,7 @@ import {
   pullRequestLineWith,
   releaseContentsCommits,
   type FlowPullRequest,
+  projectNameInApp,
   readZeropsMembership,
   unionAgents,
   type EnvironmentCreationStepProgress,
@@ -1229,7 +1230,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       <ZeropsProjectMenu
         actions={mate ? mateActions.actionsFor(candidate, tags, updateMenuActions ?? []) : []}
         enablingServiceId={route.enablingServiceId}
-        label={`More for ${candidate.project.name}`}
+        label={`More for ${projectNameInApp(candidate.project)}`}
         projectId={tags.role === "prod" || tags.role === "stage" ? candidate.project.id : undefined}
         offers={candidate.routeOffers}
         onEnableRoute={(offer) => {
@@ -1271,7 +1272,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
               <>
                 <span className="min-w-0 truncate" data-zerops-surface="mate-subject">
                   <RestartMateWarning
-                    name={candidate.project.name}
+                    name={projectNameInApp(candidate.project)}
                     projectId={candidate.project.id}
                     environmentId={candidate.environmentId}
                   />
@@ -1710,12 +1711,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     [groupDeploys],
   );
 
-  /** Each Mate's name, for a pull request's line: its project's (D3). */
+  /** Each Mate's name, for a pull request's line: its project's name under its application. */
   const mateNames = useMemo(
     () =>
       new Map(
         groupTree.groups.flatMap(({ environments }) =>
-          environments.map(({ item }) => [item.project.id, item.project.name] as const),
+          environments.map(
+            ({ item }) => [item.project.id, projectNameInApp(item.project)] as const,
+          ),
         ),
       ),
     [groupTree.groups],
@@ -2166,8 +2169,8 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         // A group's stage or production: its name opens the stop's page.
         link={stopLinkOf(tags.groupId, candidate.project.id, role)}
         menu={renderEnvironmentMenu(candidate, tags, false)}
-        // As Zerops names the project, whole (D3).
-        name={candidate.project.name}
+        // By its own name under its application (`projectNameInApp`).
+        name={projectNameInApp(candidate.project)}
         status={
           projectTrouble ? (
             <StatusDot
@@ -2240,7 +2243,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           {busy ? "Removing…" : "Remove"}
         </Button>
       ) : undefined;
-    const name = candidate.project.name;
+    const name = projectNameInApp(candidate.project);
     const tint = tints.get(candidate.project.id) ?? "slate";
     const shape = mateShapeOf(candidate.project, tint);
     // What the menu asked of this Mate's server — a check, an update — is
@@ -2691,7 +2694,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
       {mateActions.dialogs}
       {confirmingSetUp === null ? null : (
         <ZeropsSetUpMateDialog
-          name={confirmingSetUp.project.name}
+          name={projectNameInApp(confirmingSetUp.project)}
           onCancel={() => setConfirmingSetUp(null)}
           onConfirm={() => {
             const candidate = confirmingSetUp;

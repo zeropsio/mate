@@ -20,7 +20,7 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { readZeropsMembership } from "@t3tools/client-runtime/zerops";
+import { projectNameInApp, readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -171,7 +171,7 @@ export function useSidebarMateMenus(input: {
         completedAt,
       });
       const tags = readZeropsMembership(candidate.project);
-      const name = candidate.project.name;
+      const name = projectNameInApp(candidate.project);
       const threadRef =
         environmentId === undefined || activity === undefined
           ? undefined

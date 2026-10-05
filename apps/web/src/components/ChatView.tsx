@@ -3863,10 +3863,16 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "browser");
   }, [activeThreadRef]);
+  const chromeMates = useZeropsMateDirectory();
+  const chromeMate =
+    activeThreadEnvironmentId === null
+      ? undefined
+      : zeropsMateAt(chromeMates, activeThreadEnvironmentId);
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,
     providers: providerStatuses,
+    appName: chromeMate?.kind === "mate" ? chromeMate.mate.project : undefined,
   });
   // The Mate's crew: the board's tab exists only while its status says a crew
   // is, or could be, set up; its view gives the strip its crew group and a

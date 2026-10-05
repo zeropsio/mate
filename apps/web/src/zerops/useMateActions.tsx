@@ -1170,7 +1170,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               dialog.candidate.project,
           )}
           key={`face:${dialog.candidate.key}`}
-          name={dialog.candidate.project.name}
+          name={projectNameInApp(dialog.candidate.project)}
           onCancel={() => {
             setDialog({ ...dialog, closing: true });
           }}

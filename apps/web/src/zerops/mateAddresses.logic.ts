@@ -15,6 +15,7 @@
  *
  * Pure: no React, no store.
  */
+import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   devPartnerHostname,
@@ -175,7 +176,7 @@ export function groupAddressEnvironments<
       pending = true;
       return [];
     }
-    return [{ projectId: project.id, name: project.name, role, routes }];
+    return [{ projectId: project.id, name: projectNameInApp(project), role, routes }];
   });
   return { ownRole, environments, pending };
 }

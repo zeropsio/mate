@@ -192,6 +192,18 @@ describe("resolveZeropsChatChrome", () => {
     });
   });
 
+  it("names a project of an application by what follows the application's name", () => {
+    const chrome = (name: string, appName: string | undefined) =>
+      resolveZeropsChatChrome(THREAD_REF, {
+        topology: topology({ project: { id: "project-1", name } }),
+        agentAuth: known(NO_ATTENTION),
+        appName,
+      }).projectName;
+    expect(chrome("SPN - Rune", "SPN")).toBe("Rune");
+    expect(chrome("SPN - Rune", "Shop")).toBe("SPN - Rune");
+    expect(chrome("SPN - Rune", undefined)).toBe("SPN - Rune");
+  });
+
   it("uses the trimmed Zerops project name only when topology is available", () => {
     expect(
       resolveZeropsChatChrome(THREAD_REF, {

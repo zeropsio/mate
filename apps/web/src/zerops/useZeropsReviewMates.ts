@@ -8,6 +8,7 @@ import {
   assignCandidateMateTints,
   hasMate,
   mateShapeOf,
+  projectNameInApp,
   readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
@@ -39,7 +40,7 @@ export function useZeropsReviewMates(
       const tint = tints.get(row.project.id) ?? "slate";
       mates.set(row.project.id, {
         mateProjectId: row.project.id,
-        name: row.project.name,
+        name: projectNameInApp(row.project),
         tint,
         shape: mateShapeOf(row.project, tint),
       });

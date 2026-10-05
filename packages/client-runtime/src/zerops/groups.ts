@@ -13,8 +13,10 @@
  *   their only writer, and the client joins where HQ places each project onto
  *   the projects it reads from Zerops (`ZeropsProject.hq`, `hq/placement.ts`).
  *   Delete a project in Zerops and HQ lets it go.
- * - **A Mate's name** is its project's in Zerops (D3): renamed there, or by
- *   Mate through the project's own record, and never held anywhere else.
+ * - **A Mate's name** is its project's in Zerops, which names every project of an
+ *   application in full ("SPN - Rune"); the client shows what follows the
+ *   application's name (`nameUnderApp`). Renamed there, or by Mate through the
+ *   project's own record, and never held anywhere else.
  * - **That a Mate lives here** is HQ's too: it places the project as a Mate.
  *   The project's `mate` marker is written for the Zerops GUI and read by
  *   nothing here.

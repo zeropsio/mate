@@ -3769,7 +3769,7 @@ describe("a long list, kept scannable", () => {
       getActivity: () => act(),
       shown: (item: ZeropsCandidate) => item.project.id === "links-dev",
     });
-    expect(names(html)).toEqual(["Links - dev"]);
+    expect(names(html)).toEqual(["dev"]);
     expect(html).not.toContain('data-zerops-group="aaa"');
   });
 
@@ -3929,8 +3929,8 @@ describe("what the jump box finds in the menu", () => {
       ["appdev#6", "#6 Bump the linter", "gone-dev", "gone-dev"],
     ]);
     expect(index()?.stops.map((stop) => [stop.projectId, stop.title])).toEqual([
-      ["links-stage", "Links - stage"],
-      ["links-prod", "Links - production"],
+      ["links-stage", "stage"],
+      ["links-prod", "production"],
     ]);
     act_(() => {
       mounted.unmount();

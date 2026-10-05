@@ -13,6 +13,7 @@ import {
   enumerateCommandPaletteItems,
   filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
+  hqChatMateApps,
   hqChatMateNames,
   reduceCommandPaletteUiState,
   type CommandPaletteGroup,
@@ -526,6 +527,7 @@ describe("buildThreadActionItems — chats HQ lists", () => {
     linkable: () => true,
     lastVisitedAt: () => undefined,
     mateName: (projectId: string) => (projectId === "project-parked" ? "Ida" : undefined),
+    mateApp: (projectId: string) => (projectId === "project-parked" ? "Shop" : undefined),
     renderStatus: (status: { readonly kind: string }) => `status:${status.kind}`,
   });
 
@@ -567,6 +569,7 @@ describe("buildThreadActionItems — chats HQ lists", () => {
     });
     expect(parked?.titleTrailingContent).toBeUndefined();
     expect(parked?.searchTerms).not.toContain("feature/open");
+    expect(parked?.searchTerms).toContain("Shop");
     await parked?.run();
     expect(runThread).toHaveBeenCalledWith({ environmentId: PARKED, id: "thread-parked" });
   });
@@ -705,6 +708,7 @@ describe("hqChatMateNames", () => {
         projects: [
           { projectId: "p-ada", name: "Ada", kind: "mate", mate: { face: "" } },
           { projectId: "p-bo", name: "Bo", kind: "mate", mate: { face: "" } },
+          { projectId: "p-cy", name: "Shop - Cy", kind: "mate", mate: { face: "" } },
           { projectId: "p-stage", name: "Shop - stage", kind: "stage", mate: null },
           { projectId: "p-unread", name: "", kind: "mate", mate: { face: "" } },
         ],
@@ -715,17 +719,34 @@ describe("hqChatMateNames", () => {
   const listed = (id: string, name: string, mate = true) =>
     ({
       key: `${id}:zcp`,
-      project: { id, name, status: "ACTIVE", tagList: mate ? ["mate"] : [] },
+      project: {
+        id,
+        name,
+        status: "ACTIVE",
+        tagList: mate ? ["mate"] : [],
+        ...(mate
+          ? { hq: { appId: "app-1", appName: "Shop", kind: "mate", mate: { face: "" } } }
+          : {}),
+      },
       group: mate ? "ready" : "unavailable",
       ...(mate ? { service: { id: "zcp", name: "zcp", status: "ACTIVE" } } : {}),
     }) as ZeropsCandidate;
 
-  it("names each Mate by the listing first, else by HQ's structure, and nothing else", () => {
+  it("names each Mate by its own name under its application, from the listing first, else HQ's structure, and nothing else", () => {
     expect(
       Object.fromEntries(
-        hqChatMateNames([listed("p-ada", "Ada Lin"), listed("p-shop", "Shop", false)], STRUCTURE),
+        hqChatMateNames(
+          [listed("p-ada", "Shop - Ada Lin"), listed("p-shop", "Shop", false)],
+          STRUCTURE,
+        ),
       ),
-    ).toEqual({ "p-ada": "Ada Lin", "p-bo": "Bo", "p-lone": "Lone" });
+    ).toEqual({ "p-ada": "Ada Lin", "p-bo": "Bo", "p-cy": "Cy", "p-lone": "Lone" });
+  });
+
+  it("names each Mate's application the same way, for finding its chats by it", () => {
+    expect(
+      Object.fromEntries(hqChatMateApps([listed("p-ada", "Shop - Ada Lin")], STRUCTURE)),
+    ).toEqual({ "p-ada": "Shop", "p-bo": "Shop", "p-cy": "Shop", "p-unread": "Shop" });
   });
 
   it("names only what the listing holds while HQ's structure is not known", () => {

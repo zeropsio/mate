@@ -98,7 +98,8 @@ const INDEX: SidebarJumpIndex = {
     {
       projectId: "shop-stage",
       groupId: "shop",
-      title: "Shop stage",
+      title: "stage",
+      projectName: "Shop",
       line: "3f9c1b2",
       dot: "spinner",
       word: "Stage, deploying",
@@ -106,7 +107,8 @@ const INDEX: SidebarJumpIndex = {
     {
       projectId: "shop-prod",
       groupId: "shop",
-      title: "Shop production",
+      title: "production",
+      projectName: "Shop",
       line: "v2.11.0",
       dot: "ok",
       word: "Production v2.11.0, healthy",
@@ -172,8 +174,25 @@ describe("jumpGroups — what a query finds, grouped", () => {
       case: "a Mate by its name, the ones it starts first",
       value: "no",
       groups: [
-        { group: "Mates", items: ["mate:shop-nova", "mate:notes-nora"] },
+        { group: "Mates", items: ["mate:shop-nova", "mate:notes-nora", "mate:notes-ada"] },
         { group: "Projects", items: ["project:notes"] },
+      ],
+    },
+    {
+      case: "a Mate by its project's name, as it is shown by its own name under it",
+      value: "notes",
+      groups: [
+        { group: "Mates", items: ["mate:notes-nora", "mate:notes-ada"] },
+        { group: "Projects", items: ["project:notes"] },
+      ],
+    },
+    {
+      case: "a stop by its project's name, as it is shown by its own name under it",
+      value: "shop",
+      groups: [
+        { group: "Mates", items: ["mate:shop-nova", "mate:shop-kai"] },
+        { group: "Projects", items: ["project:shop"] },
+        { group: "Stops", items: ["stop:shop-stage", "stop:shop-prod"] },
       ],
     },
     {

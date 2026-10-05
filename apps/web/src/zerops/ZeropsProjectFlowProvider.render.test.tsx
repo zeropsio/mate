@@ -73,7 +73,11 @@ const inventoryRefs = vi.hoisted(() => ({
   refs: new Map<string, ProjectRef>(),
   services: new Map<string, InventoryServiceOutcome>(),
   detail: new Set<string>(),
-  projects: [] as ReadonlyArray<{ readonly id: string; readonly status: string }>,
+  projects: [] as ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly status: string;
+  }>,
   authority: new Map<
     string,
     | { readonly kind: "authorized" }
@@ -515,8 +519,8 @@ describe("ZeropsProjectFlowProvider", () => {
     );
     inventoryRefs.detail = new Set(["open-1", "denied-1", "stopped-1"]);
     inventoryRefs.projects = [
-      { id: "open-1", status: "ACTIVE" },
-      { id: "stopped-1", status: "STOPPED" },
+      { id: "open-1", name: "Open", status: "ACTIVE" },
+      { id: "stopped-1", name: "Stopped", status: "STOPPED" },
     ];
     inventoryRefs.authority = new Map([
       [projectKeyOf(ref("denied-1")), { kind: "withheld", reason: "access-denied", cause: null }],

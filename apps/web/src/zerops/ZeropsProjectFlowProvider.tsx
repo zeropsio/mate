@@ -29,6 +29,7 @@ import {
   groupStopsOf,
   releaseRunBy,
   nameStopByRelease,
+  projectNameInApp,
   readZeropsMembership,
   releaseDeploys,
   releaseInFlight,
@@ -514,7 +515,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
               const { role } = readZeropsMembership(project);
               return {
                 projectId: project.id,
-                name: project.name,
+                name: projectNameInApp(project),
                 ...(role === undefined ? {} : { role }),
                 services:
                   services?.status === "resolved"
@@ -846,7 +847,7 @@ export function ZeropsProjectFlowProvider({ children }: { readonly children: Rea
   }, []);
 
   const mateNames = useMemo(
-    () => new Map(inventory.projects.map((project) => [project.id, project.name])),
+    () => new Map(inventory.projects.map((project) => [project.id, projectNameInApp(project)])),
     [inventory.projects],
   );
 

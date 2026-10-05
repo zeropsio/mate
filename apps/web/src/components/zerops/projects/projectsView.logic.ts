@@ -15,6 +15,7 @@ import {
   flowVerbKey,
   flowVerbLabel,
   hasMate,
+  projectNameInApp,
   pairPreviewRoute,
   releaseContentsSummary,
   releaseInFlightReason,
@@ -347,7 +348,7 @@ export interface GroupMemberFacts {
   readonly services?: ReadonlyArray<PlatformService> | undefined;
   readonly projectId: string;
   readonly role: ZeropsEnvironmentRole | undefined;
-  /** Its name, as Zerops has its project (D3). */
+  /** Its name under its application (`projectNameInApp`). */
   readonly name: string;
   /** Present where a Mate lives (`hasMate`). */
   readonly mate:
@@ -407,10 +408,10 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
       services: item.services?.statuses,
       projectId: item.project.id,
       role,
-      name: item.project.name,
+      name: projectNameInApp(item.project),
       mate: hasMate(item)
         ? {
-            name: item.project.name,
+            name: projectNameInApp(item.project),
             // Waiting on an answer: its conversation's question. A change of its waiting for
             // review wears the same face (`mateFaceOf`) and is the flow's own step — *Review* —
             // never "waiting on an answer". Another's Mate waits on its owner, not the viewer.

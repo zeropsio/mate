@@ -4,6 +4,7 @@
  * ("www", the same in every container) says nothing. Pure: the candidate
  * list is the one source, and `zeropsEnvironmentNamesAtom` derives the result.
  */
+import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
@@ -14,7 +15,7 @@ export function zeropsEnvironmentNames(
   for (const candidate of candidates) {
     const environmentId = candidate.environmentId;
     if (environmentId === undefined || names.has(environmentId)) continue;
-    const name = candidate.project.name.trim();
+    const name = projectNameInApp(candidate.project);
     if (name.length > 0) names.set(environmentId, name);
   }
   return names;

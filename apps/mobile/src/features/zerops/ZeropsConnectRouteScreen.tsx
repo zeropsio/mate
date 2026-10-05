@@ -33,7 +33,7 @@ import {
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsData } from "./ZeropsDataProvider";
 import { checkCloseOff, closeOffFacts, SETUP_MARKER } from "./close-off";
-import { PROJECT_ENV_ISOLATION_KEY } from "@t3tools/client-runtime/zerops";
+import { PROJECT_ENV_ISOLATION_KEY, projectNameInApp } from "@t3tools/client-runtime/zerops";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 type ZeropsConnectSurfaceProps = {
@@ -56,7 +56,7 @@ function CandidateRow(props: {
       <View className="flex-row items-start justify-between gap-4">
         <View className="min-w-0 flex-1 gap-1">
           <Text className="font-t3-bold text-base text-foreground" numberOfLines={2}>
-            {props.candidate.project.name}
+            {projectNameInApp(props.candidate.project)}
           </Text>
           <Text className="text-sm text-foreground-muted" numberOfLines={2}>
             {props.candidate.service?.name ?? "Zerops project"}

@@ -10,6 +10,7 @@ import {
   assignCandidateMateTints,
   hasMate,
   mateShapeOf,
+  projectNameInApp,
   readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -62,7 +63,7 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
       return [
         {
           projectId: candidate.project.id,
-          name: candidate.project.name,
+          name: projectNameInApp(candidate.project),
           tint,
           shape: mateShapeOf(candidate.project, tint),
           face,

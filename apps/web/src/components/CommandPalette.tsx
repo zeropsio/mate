@@ -131,6 +131,7 @@ import {
   filterPinnedBrowseEntries,
   getCommandPaletteInputPlaceholder,
   getCommandPaletteMode,
+  hqChatMateApps,
   hqChatMateNames,
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
@@ -1221,6 +1222,10 @@ function OpenCommandPaletteDialog(props: {
     () => hqChatMateNames(heldCandidates(candidateListing).rows, hqStructure?.structure ?? null),
     [candidateListing, hqStructure],
   );
+  const mateApps = useMemo(
+    () => hqChatMateApps(heldCandidates(candidateListing).rows, hqStructure?.structure ?? null),
+    [candidateListing, hqStructure],
+  );
   const threadLastVisitedAtById = useUiStateStore((store) => store.threadLastVisitedAtById);
   // Every Mate's chats HQ lists, of those this browser holds no socket to: titles and status only.
   const hqThreads = useMemo((): CommandPaletteHqThreads => {
@@ -1237,9 +1242,10 @@ function OpenCommandPaletteDialog(props: {
       lastVisitedAt: (environmentId, threadId) =>
         threadLastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, threadId))],
       mateName: (projectId) => mateNames.get(projectId),
+      mateApp: (projectId) => mateApps.get(projectId),
       renderStatus: (status) => <ThreadRowResolvedStatus status={status} />,
     };
-  }, [environments, hqMates, mateNames, linkable, threadLastVisitedAtById]);
+  }, [environments, hqMates, mateNames, mateApps, linkable, threadLastVisitedAtById]);
   const allThreadItems = useMemo(
     () =>
       buildThreadActionItems({

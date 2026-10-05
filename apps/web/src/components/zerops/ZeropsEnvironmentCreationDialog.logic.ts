@@ -4,6 +4,7 @@
 
 import {
   hasMate,
+  projectNameInApp,
   isRecipeProposal,
   ZEROPS_BOT_NAME_MAX_LENGTH,
   type EnvironmentCreationStep,
@@ -427,7 +428,7 @@ export function newMateDoorMates(input: {
       ? [
           {
             projectId: item.project.id,
-            name: item.project.name,
+            name: projectNameInApp(item.project),
           },
         ]
       : [],

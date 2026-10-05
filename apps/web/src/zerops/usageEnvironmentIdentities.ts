@@ -12,6 +12,7 @@
 import {
   buildZeropsGroupTree,
   hasMate,
+  projectNameInApp,
   type ZeropsOrganizationMember,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -89,7 +90,7 @@ export function usageEnvironmentIdentities(input: {
     if (environmentId === undefined || identities.has(environmentId) || !hasMate(candidate))
       continue;
     identities.set(environmentId, {
-      mateName: candidate.project.name,
+      mateName: projectNameInApp(candidate.project),
       projectName: projectNames.get(candidate.project.id) ?? null,
       owner: usageOwner(
         resolveMateOwnerPerson({ project: candidate.project, people: input.people }),

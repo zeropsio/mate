@@ -21,6 +21,7 @@ import {
   mateArriving,
   mateArrivingUntil,
   mateShapeOf,
+  projectNameInApp,
   readZeropsMembership,
   type MatePoseFacts,
 } from "@t3tools/client-runtime/zerops";
@@ -110,7 +111,7 @@ export function zeropsMateIdentityOf(
   return {
     serviceId: candidate.service?.id,
     projectId: candidate.project.id,
-    name: candidate.project.name,
+    name: projectNameInApp(candidate.project),
     tint,
     shape: mateShapeOf(candidate.project, tint),
     project: tags.label,

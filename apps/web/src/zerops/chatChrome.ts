@@ -10,6 +10,7 @@ import {
   type OtherAgentFields,
   type ZeropsAgentAuthView,
 } from "@t3tools/client-runtime/zerops/agentLogin";
+import { nameUnderApp } from "@t3tools/client-runtime/zerops";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 import type { ScopedThreadRef, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
@@ -60,9 +61,13 @@ export function resolveZeropsChatChrome(
     readonly agentAuth: ZeropsAgentAuthView;
     /** The environment's provider instances: an agent outside the sign-in is enough to work. */
     readonly providers?: ReadonlyArray<OtherAgentFields> | undefined;
+    /** The application its project belongs to, whose name its project's own name follows. */
+    readonly appName?: string | undefined;
   },
 ): ZeropsChatChrome {
-  const topologyProjectName = input.topology?.project.name.trim();
+  const topologyProjectName = input.topology
+    ? nameUnderApp(input.topology.project.name, input.appName)
+    : undefined;
   const projectName = topologyProjectName ? topologyProjectName : null;
 
   if (threadRef === null) {

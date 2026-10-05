@@ -22,14 +22,14 @@ const FEN = EnvironmentId.make("env-fen");
 const JUNO = EnvironmentId.make("env-juno");
 const STAGE = EnvironmentId.make("env-stage");
 
-/** A project's candidate: Acme Docs' dev project is Fen's, named as Fen is (D3). */
+/** A project's candidate: Acme Docs' dev project is Fen's, named in full, "Acme Docs - Fen". */
 function candidate(
   id: string,
   tagList: ReadonlyArray<string>,
   environmentId?: EnvironmentId,
   hq?: HqPlacement,
 ): ZeropsCandidate {
-  const name = id === "acme-docs-dev" ? "Fen" : id;
+  const name = id === "acme-docs-dev" ? "Acme Docs - Fen" : id;
   return {
     key: `${id}:zcp`,
     project: { id, name, status: "ACTIVE", tagList, ...(hq === undefined ? {} : { hq }) },
