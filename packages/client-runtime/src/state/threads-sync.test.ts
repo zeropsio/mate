@@ -1137,7 +1137,18 @@ describe("EnvironmentThreads", () => {
     }),
   );
 
-  it.effect("resubscribes on app foreground from the latest applied sequence", () =>
+  // Run 12: a window regaining focus resubscribed a live thread twenty times;
+  // each marked it synchronizing until the marker came back with nothing new,
+  // which switched the run card's motion off. A resubscribe on the same
+  // session leaves a live thread live unless it replays something.
+  it.effect.each([
+    { name: "brings nothing new stays live", replayed: [] as string[], synchronizes: false },
+    {
+      name: "replays history synchronizes until the marker",
+      replayed: ["Missed title"],
+      synchronizes: true,
+    },
+  ])("a foreground resubscribe that $name", ({ replayed, synchronizes }) =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({ cached: BASE_THREAD, completionMarker: true });
       yield* Queue.offer(
@@ -1152,37 +1163,44 @@ describe("EnvironmentThreads", () => {
           Option.isSome(value.data) &&
           value.data.value.title === "Latest title",
       );
+      yield* Queue.clear(harness.observed);
 
       yield* Queue.offer(harness.wakeups, "application-active");
-      const synchronizing = yield* awaitThreadState(
-        harness.observed,
-        (value) => value.status === "synchronizing" && Option.isSome(value.data),
-      );
       for (let attempt = 0; attempt < 100; attempt += 1) {
         if ((yield* Ref.get(harness.subscriptionCount)) >= 2) break;
         yield* Effect.yieldNow;
       }
-
-      expect(synchronizing.status).toBe("synchronizing");
       expect(yield* Ref.get(harness.subscriptionCount)).toBe(2);
       expect(yield* Ref.get(harness.lastSubscribeAfterSequence)).toBe(CACHED_SNAPSHOT_SEQUENCE + 1);
       expect(yield* Ref.get(harness.lastRequestCompletionMarker)).toBe(true);
       expect(yield* Ref.get(harness.loaderCalls)).toBe(0);
 
+      for (const [index, title] of replayed.entries()) {
+        yield* Queue.offer(
+          harness.inputs,
+          titleUpdated(title, CACHED_SNAPSHOT_SEQUENCE + 2 + index),
+        );
+      }
       yield* Queue.offer(harness.inputs, synchronized());
-      const live = yield* awaitThreadState(
-        harness.observed,
-        (value) => value.status === "live" && Option.isSome(value.data),
+      const statuses: string[] = [];
+      yield* Queue.take(harness.observed).pipe(
+        Effect.tap((value) => Effect.sync(() => statuses.push(value.status))),
+        Effect.repeat({
+          until: (value) =>
+            value.status === "live" &&
+            Option.isSome(value.data) &&
+            value.data.value.title === (replayed.at(-1) ?? "Latest title"),
+        }),
       );
-      expect(Option.getOrThrow(live.data).title).toBe("Latest title");
+      expect(statuses.includes("synchronizing")).toBe(synchronizes);
 
+      // Only a wakeup that resubscribes does: a reconnect goes by the session.
       yield* Queue.offer(harness.wakeups, "application-active-probe");
       for (let attempt = 0; attempt < 100; attempt += 1) {
         if ((yield* Ref.get(harness.subscriptionCount)) >= 3) break;
         yield* Effect.yieldNow;
       }
       expect(yield* Ref.get(harness.subscriptionCount)).toBe(3);
-
       yield* Queue.offer(harness.wakeups, "application-active-reconnect");
       for (let attempt = 0; attempt < 10; attempt += 1) {
         yield* Effect.yieldNow;
