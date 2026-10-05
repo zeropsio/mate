@@ -32,6 +32,7 @@ import * as Equal from "effect/Equal";
 import * as Effect from "effect/Effect";
 import { DeepMutable } from "effect/Types";
 import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
+import { selectionWithoutEffort } from "@t3tools/shared/zeropsEffort";
 import { useMemo } from "react";
 import { resolveAppModelSelection, resolveAppModelSelectionForInstance } from "./modelSelection";
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE, type ChatImageAttachment } from "./types";
@@ -2805,8 +2806,9 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 // the typed lookup.
                 const instanceKey = provider as ProviderInstanceId;
                 const current = nextMap[instanceKey];
+                // D10: the effort is the new conversation's preference to set, never the memory's.
                 nextMap[instanceKey] = {
-                  ...selection,
+                  ...selectionWithoutEffort(selection),
                   model: current?.model ?? selection.model,
                 };
               }

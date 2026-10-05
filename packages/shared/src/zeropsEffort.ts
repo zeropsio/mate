@@ -92,3 +92,18 @@ export function isUnstartedThread(
 ): boolean {
   return thread != null && thread.latestTurn === null && thread.crew === undefined;
 }
+
+/**
+ * The last-used selection a new draft inherits, without its effort: touching
+ * any trait remembers every option's value, the default effort included, so a
+ * remembered effort is nobody's pick for the next conversation. The model and
+ * the other traits carry over; the preference sets the effort.
+ */
+export function selectionWithoutEffort<Selection extends ModelSelection>(
+  selection: Selection,
+): Selection {
+  if (!selection.options?.some((option) => EFFORT_OPTION_IDS.has(option.id))) return selection;
+  const { options, ...rest } = selection;
+  const kept = options.filter((option) => !EFFORT_OPTION_IDS.has(option.id));
+  return (kept.length > 0 ? { ...rest, options: kept } : rest) as Selection;
+}

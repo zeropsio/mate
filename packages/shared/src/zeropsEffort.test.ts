@@ -10,6 +10,7 @@ import {
   EFFORT_OPTION_IDS,
   isUnstartedThread,
   preferredEffort,
+  selectionWithoutEffort,
   selectionWithPreferredEffort,
   withPreferredEffort,
 } from "./zeropsEffort.ts";
@@ -183,5 +184,40 @@ describe("isUnstartedThread", () => {
     ];
   it.each(cases)("%s", (_name, thread, expected) => {
     expect(isUnstartedThread(thread)).toBe(expected);
+  });
+});
+
+describe("selectionWithoutEffort", () => {
+  const base = { instanceId: ProviderInstanceId.make("claudeAgent"), model: "claude-opus-5-5" };
+  const cases: ReadonlyArray<readonly [string, ModelSelection, ModelSelection]> = [
+    [
+      "drops the effort, keeps the other traits",
+      {
+        ...base,
+        options: [
+          { id: "effort", value: "medium" },
+          { id: "contextWindow", value: "1m" },
+        ],
+      },
+      { ...base, options: [{ id: "contextWindow", value: "1m" }] },
+    ],
+    [
+      "every driver's effort option is one",
+      {
+        ...base,
+        options: [
+          { id: "reasoningEffort", value: "low" },
+          { id: "reasoning", value: "low" },
+          { id: "variant", value: "high" },
+          { id: "agent", value: "build" },
+        ],
+      },
+      { ...base, options: [{ id: "agent", value: "build" }] },
+    ],
+    ["no options left leaves none", { ...base, options: [{ id: "effort", value: "max" }] }, base],
+    ["a selection without options is as it was", base, base],
+  ];
+  it.each(cases)("%s", (_name, input, expected) => {
+    expect(selectionWithoutEffort(input)).toEqual(expected);
   });
 });

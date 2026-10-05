@@ -496,12 +496,16 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
 
   // An unsent draft keeps its explicit pick. Fresh drafts resolve the project
   // default before the last manual app-wide selection and provider default.
-  const resolvedNewTaskModel = resolveNewTaskModelSelection({
-    draftSelection: draftModelSelection,
-    projectDefaultSelection: projectDefaultModelSelection,
-    stickySelection: stickyModelSelection,
-    modelOptions,
-  });
+  const resolvedNewTaskModel = useMemo(
+    () =>
+      resolveNewTaskModelSelection({
+        draftSelection: draftModelSelection,
+        projectDefaultSelection: projectDefaultModelSelection,
+        stickySelection: stickyModelSelection,
+        modelOptions,
+      }),
+    [draftModelSelection, modelOptions, projectDefaultModelSelection, stickyModelSelection],
+  );
   // A new task is a new conversation: Extra High unless an effort is picked (D10).
   const selectedModel = useMemo(
     () =>

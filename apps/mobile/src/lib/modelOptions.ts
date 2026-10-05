@@ -7,6 +7,7 @@ import {
   buildExplicitProviderOptionSelectionsFromDescriptors,
   getProviderOptionDescriptors,
 } from "@t3tools/shared/model";
+import { selectionWithoutEffort } from "@t3tools/shared/zeropsEffort";
 
 export type ModelOption = {
   readonly key: string;
@@ -140,7 +141,8 @@ export function resolveNewTaskModelSelection(input: {
   return (
     input.draftSelection ??
     input.projectDefaultSelection ??
-    input.stickySelection ??
+    // D10: the remembered effort is nobody's pick for a new task; the preference sets it.
+    (input.stickySelection ? selectionWithoutEffort(input.stickySelection) : null) ??
     input.modelOptions.find((option) => option.isDefault && !option.isUnavailable)?.selection ??
     input.modelOptions.find((option) => !option.isUnavailable)?.selection ??
     null

@@ -13,6 +13,33 @@ import {
 } from "./modelOptions";
 
 describe("mobile model options", () => {
+  // D10: a remembered effort (written whenever any trait was touched, the default included) is not
+  // carried into a new task; the model and the other traits are, and the preference sets the effort.
+  it("a new task inherits the remembered model and traits, never the effort", () => {
+    const remembered: ModelSelection = {
+      instanceId: ProviderInstanceId.make("claudeAgent"),
+      model: "claude-opus-5-5",
+      options: [
+        { id: "effort", value: "medium" },
+        { id: "contextWindow", value: "1m" },
+      ],
+    };
+    const picked: ModelSelection = { ...remembered, options: [{ id: "effort", value: "low" }] };
+    const resolve = (draftSelection: ModelSelection | null) =>
+      resolveNewTaskModelSelection({
+        draftSelection,
+        projectDefaultSelection: null,
+        stickySelection: remembered,
+        modelOptions: [],
+      });
+    expect(resolve(null)).toEqual({
+      ...remembered,
+      options: [{ id: "contextWindow", value: "1m" }],
+    });
+    // A pick inside the draft still wins there.
+    expect(resolve(picked)).toBe(picked);
+  });
+
   it("groups models by provider and flags legacy entries", () => {
     const config = {
       providers: [

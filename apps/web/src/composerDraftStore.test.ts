@@ -2323,6 +2323,30 @@ describe("composerDraftStore sticky composer settings", () => {
     expect(useComposerDraftStore.getState().stickyActiveProvider).toBe("cursor");
   });
 
+  // D10: the effort a new draft starts on is Extra High's to set; a remembered effort (written
+  // whenever any trait was touched, the default included) is not carried over. The other traits are.
+  it("a new draft inherits the remembered model and traits, never the effort", () => {
+    const store = useComposerDraftStore.getState();
+    const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("thread-sticky-effort"));
+    const draftId = ThreadId.make("thread-sticky-effort");
+
+    store.setStickyModelSelection(
+      modelSelection(CLAUDE_AGENT_DRIVER, "claude-opus-4-6", {
+        effort: "medium",
+        contextWindow: "1m",
+      }),
+    );
+    store.setStickyModelSelection(
+      modelSelection(CODEX_DRIVER, "gpt-5.4", { reasoningEffort: "medium" }),
+    );
+    store.applyStickyState(threadRef);
+
+    expect(draftFor(draftId, TEST_ENVIRONMENT_ID)?.modelSelectionByProvider).toEqual({
+      claudeAgent: modelSelection(CLAUDE_AGENT_DRIVER, "claude-opus-4-6", { contextWindow: "1m" }),
+      codex: modelSelection(CODEX_DRIVER, "gpt-5.4"),
+    });
+  });
+
   it("applies sticky activeProvider to new drafts", () => {
     const store = useComposerDraftStore.getState();
     const threadId = ThreadId.make("thread-sticky-active-provider");
