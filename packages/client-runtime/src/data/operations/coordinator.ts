@@ -89,8 +89,11 @@ export function makeOperations(options: {
       onSuccess: (receipt) => {
         if (receipt !== null)
           return Effect.sync(() => store.dispatch({ kind: "operation-receipt", receipt }));
+        // Never taken: sent again now, once; after that it waits, unsent, for the person.
+        if (!resend)
+          return Effect.sync(() => store.dispatch({ kind: "operation-unsent", requestId }));
         store.dispatch({ kind: "operation-absent", requestId });
-        return resend ? send(requestId, intent, false) : Effect.void;
+        return send(requestId, intent, false);
       },
       // The owner could not be asked: uncertain, with asking again as the next step.
       onFailure: () =>

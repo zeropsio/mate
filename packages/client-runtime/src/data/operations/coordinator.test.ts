@@ -245,6 +245,23 @@ describe("makeOperations", () => {
     }),
   );
 
+  it.effect("shows a request lost twice, which the owner never took, as unsent", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const owner = fixtureOwner({ loseAnswers: 0, loseRequests: 2 });
+      const operations = makeOperations({
+        store,
+        executors: { hq: owner.executor },
+        makeId: ids(),
+      });
+
+      const requestId = yield* operations.submit(MOVE);
+      expect(owner.submitted).toEqual([requestId, requestId]);
+      expect(owner.effects).toEqual([]);
+      expect(progress(store, requestId)).toEqual({ stage: "unsent", next: "send-again" });
+    }),
+  );
+
   it("ends an observation that ran out as unresolved, naming who acts next, never as failed", () => {
     const store = account();
     store.dispatch({ kind: "operation-recorded", requestId: "request-1", intent: MOVE });
