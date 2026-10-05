@@ -535,3 +535,20 @@ export function rolledBackTo(
   if (previous === undefined || sameEntries(previous, release)) return undefined;
   return earlier.find((entry) => sameEntries(entry, release))?.tag;
 }
+
+/**
+ * What becomes of a production just added (P7): its first release's review opens by itself once the
+ * production is there and the gate offers the release — main has code and this person may release
+ * it — and never otherwise. `wait` while HQ has not yet said so; `drop` where it will not be
+ * offered, and the production's row says it waits for its first release.
+ */
+export function firstReleaseHandoff(input: {
+  /** Whether HQ holds the production now. */
+  readonly hasProduction: boolean;
+  /** The flow's release gate (`releaseGate`). */
+  readonly gate: ReleaseGate;
+}): "wait" | "open" | "drop" {
+  if (!input.hasProduction) return "wait";
+  if (input.gate.allowed) return "open";
+  return input.gate.reason === RELEASE_CHECKING ? "wait" : "drop";
+}

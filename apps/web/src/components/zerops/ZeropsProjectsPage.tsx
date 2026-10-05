@@ -122,6 +122,7 @@ import {
   changeKindTag,
   changeAsksForReview,
   changeState,
+  firstReleaseHandoff,
   halfMadeGroupEnvironments,
   assignCandidateMateTints,
   buildZeropsGroupTree,
@@ -1678,6 +1679,22 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   };
   const openReview = useOpenReview();
   const groupDeploys = projectFlow.flows;
+  // A production just added is the intent to release (P7): the application whose production came
+  // up waits here until HQ holds it and the gate says whether its first release is the person's to
+  // review, which then opens by itself (`firstReleaseHandoff`).
+  const [handoffTo, setHandoffTo] = useState<string | null>(null);
+  useEffect(() => {
+    if (handoffTo === null) return;
+    const flow = groupDeploys.get(handoffTo);
+    if (flow === undefined) return;
+    const verdict = firstReleaseHandoff({
+      hasProduction: flow.environments.some((entry) => entry.tier === "production"),
+      gate: flow.release.gate,
+    });
+    if (verdict === "wait") return;
+    setHandoffTo(null);
+    if (verdict === "open") openReview({ kind: "release", groupId: handoffTo });
+  }, [groupDeploys, handoffTo, openReview]);
 
   /**
    * The environment row of one Zerops project, when HQ records it as one of an
@@ -1934,6 +1951,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           ? current
           : { ...current, outcome: { kind: "done", deployments: outcome.deployments } },
       );
+      if (role === "prod") setHandoffTo(groupId);
     },
     [activeOrganization, creationRunning, groupTree.groups, runCreation, setConnectError],
   );

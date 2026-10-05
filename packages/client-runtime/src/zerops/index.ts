@@ -293,6 +293,7 @@ export {
   releaseCandidate,
   releaseOffer,
   releaseWord,
+  firstReleaseHandoff,
   RELEASE_NO_PRODUCTION,
   RELEASE_NOTHING_MERGED,
   RELEASE_NOTHING_NEW_ON_MAIN,

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { environmentRow, type EnvironmentRow } from "./groupRows.ts";
 import {
   compareForRelease,
+  firstReleaseHandoff,
   flowReleaseOf,
   isReleaseTag,
   releaseRunBy,
@@ -908,5 +909,43 @@ describe("a production whose version names spell short shas", () => {
       live: false,
     });
     expect(row.standing).toBe("deploy-failed");
+  });
+});
+
+// Adding a production is the intent to release (P7): once it is there, main has code and the person
+// may release, its first release's review opens by itself; otherwise the production row says it
+// waits, and nothing opens.
+describe("firstReleaseHandoff", () => {
+  it.each([
+    {
+      case: "HQ does not hold the production yet",
+      input: { hasProduction: false, gate: { allowed: true } as const },
+      want: "wait",
+    },
+    {
+      case: "the release is offered: main has code and the person may release",
+      input: { hasProduction: true, gate: { allowed: true } as const },
+      want: "open",
+    },
+    {
+      case: "the gate is still checking",
+      input: { hasProduction: true, gate: { allowed: false, reason: RELEASE_CHECKING } as const },
+      want: "wait",
+    },
+    {
+      case: "main has no code",
+      input: {
+        hasProduction: true,
+        gate: { allowed: false, reason: RELEASE_NOTHING_MERGED } as const,
+      },
+      want: "drop",
+    },
+    {
+      case: "HQ's rule refuses the person the release",
+      input: { hasProduction: true, gate: NOT_RELEASER },
+      want: "drop",
+    },
+  ])("is $want when $case", ({ input, want }) => {
+    expect(firstReleaseHandoff(input)).toBe(want);
   });
 });
