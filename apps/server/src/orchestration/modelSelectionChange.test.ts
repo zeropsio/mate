@@ -1,7 +1,11 @@
 import { ProviderInstanceId, type ModelSelection } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { classifyModelSelectionChange, sameModelSelection } from "./modelSelectionChange.ts";
+import {
+  classifyModelSelectionChange,
+  sameModelSelection,
+  selectionAtSend,
+} from "./modelSelectionChange.ts";
 
 const claude = ProviderInstanceId.make("claudeAgent");
 const select = (
@@ -124,5 +128,55 @@ describe("classifyModelSelectionChange", () => {
         modelSwitchInSession: false,
       }),
     ).toBe("new-session");
+  });
+});
+
+describe("selectionAtSend", () => {
+  const xhigh = select([{ id: "effort", value: "xhigh" }]);
+  const max = select([{ id: "effort", value: "max" }]);
+  it.each([
+    {
+      name: "a message keeps its selection when the thread's did not change while it waited",
+      requested: xhigh,
+      threadWhenSent: xhigh,
+      threadNow: xhigh,
+      expected: xhigh,
+    },
+    {
+      name: "a message that waited takes the thread's newer selection",
+      requested: xhigh,
+      threadWhenSent: xhigh,
+      threadNow: max,
+      expected: max,
+    },
+    {
+      name: "a reordered thread selection is no change",
+      requested: xhigh,
+      threadWhenSent: select([
+        { id: "effort", value: "max" },
+        { id: "thinking", value: true },
+      ]),
+      threadNow: select([
+        { id: "thinking", value: true },
+        { id: "effort", value: "max" },
+      ]),
+      expected: xhigh,
+    },
+    {
+      name: "a message for another instance keeps its own selection",
+      requested: select([], "claude-opus", ProviderInstanceId.make("claudeAgent_work")),
+      threadWhenSent: xhigh,
+      threadNow: max,
+      expected: select([], "claude-opus", ProviderInstanceId.make("claudeAgent_work")),
+    },
+    {
+      name: "a message without a selection stays without one",
+      requested: undefined,
+      threadWhenSent: xhigh,
+      threadNow: max,
+      expected: undefined,
+    },
+  ])("$name", ({ requested, threadWhenSent, threadNow, expected }) => {
+    expect(selectionAtSend({ requested, threadWhenSent, threadNow })).toEqual(expected);
   });
 });

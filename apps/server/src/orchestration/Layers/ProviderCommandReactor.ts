@@ -65,7 +65,7 @@ import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { withAgentNotes } from "../agentNotes.ts";
 import { makeSendLanes } from "../../sendLanes.ts";
-import { classifyModelSelectionChange } from "../modelSelectionChange.ts";
+import { classifyModelSelectionChange, selectionAtSend } from "../modelSelectionChange.ts";
 const isProviderAdapterProcessError = Schema.is(ProviderAdapterProcessError);
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 const isProviderAdapterValidationError = Schema.is(ProviderAdapterValidationError);
@@ -1509,6 +1509,15 @@ const make = Effect.gen(function* () {
     }
     const sendThroughLane = Effect.gen(function* () {
       const coordinator = Option.getOrUndefined(workspaceHistory);
+      // A message that waited goes with the thread's selection as it is now.
+      const threadNow = yield* resolveThreadShell(thread.id);
+      const modelSelection = threadNow
+        ? selectionAtSend({
+            requested: event.payload.modelSelection,
+            threadWhenSent: thread.modelSelection,
+            threadNow: threadNow.modelSelection,
+          })
+        : event.payload.modelSelection;
       const sendTurnRequest = yield* buildSendTurnRequestForThread({
         threadId: event.payload.threadId,
         messageText: message.text,
@@ -1516,9 +1525,7 @@ const make = Effect.gen(function* () {
         // about somebody else's merge is not part of that.
         ...(event.payload.agentNotes !== undefined ? { agentNotes: event.payload.agentNotes } : {}),
         ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
-        ...(event.payload.modelSelection !== undefined
-          ? { modelSelection: event.payload.modelSelection }
-          : {}),
+        ...(modelSelection !== undefined ? { modelSelection } : {}),
         interactionMode: event.payload.interactionMode,
         createdAt: event.payload.createdAt,
       }).pipe(

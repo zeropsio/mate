@@ -678,6 +678,46 @@ describe("ProviderCommandReactor", () => {
     }),
   );
 
+  effectIt.effect("a message that waited is sent with the thread's selection as it is now", () =>
+    Effect.gen(function* () {
+      const held = yield* Deferred.make<void>();
+      const entered = yield* Deferred.make<void>();
+      const harness = yield* Effect.promise(() =>
+        createHarness({
+          threadModelSelection: {
+            instanceId: ProviderInstanceId.make("claudeAgent"),
+            model: "claude-sonnet-4-6",
+          },
+          inSessionModelOptions: ["effort"],
+          workspaceHistory: {
+            prepare: () =>
+              Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(held))),
+            release: () => Effect.void,
+            markDispatched: () => Effect.void,
+          },
+        }),
+      );
+      const max = createModelSelection(
+        ProviderInstanceId.make("claudeAgent"),
+        "claude-sonnet-4-6",
+        [{ id: "effort", value: "max" }],
+      );
+
+      yield* harness.engine.dispatch(claudeTurnStart("waited", [{ id: "effort", value: "xhigh" }]));
+      yield* Deferred.await(entered);
+      yield* harness.engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-selection-while-waiting"),
+        threadId: ThreadId.make("thread-1"),
+        modelSelection: max,
+      });
+      yield* Deferred.succeed(held, undefined);
+      yield* Effect.promise(() => waitFor(() => harness.sendTurn.mock.calls.length === 1));
+
+      expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({ modelSelection: max });
+    }),
+  );
+
   effectIt.effect("prepares a message as a steer while the agent's own session runs a turn", () =>
     Effect.gen(function* () {
       const prepared: Array<Parameters<WorkspaceHistory["Service"]["prepare"]>[0]> = [];

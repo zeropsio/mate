@@ -49,3 +49,18 @@ export function classifyModelSelectionChange(input: {
     ? "in-session"
     : "new-session";
 }
+
+/**
+ * The selection a message is sent with once it has waited: the one it was sent
+ * with, unless the thread's selection changed while it waited, which is then
+ * the person's latest word.
+ */
+export function selectionAtSend(input: {
+  readonly requested: ModelSelection | undefined;
+  readonly threadWhenSent: ModelSelection;
+  readonly threadNow: ModelSelection;
+}): ModelSelection | undefined {
+  const { requested, threadWhenSent, threadNow } = input;
+  if (requested === undefined || sameModelSelection(threadWhenSent, threadNow)) return requested;
+  return threadNow.instanceId === requested.instanceId ? threadNow : requested;
+}
