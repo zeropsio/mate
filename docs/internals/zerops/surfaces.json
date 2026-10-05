@@ -7,9 +7,11 @@
       "components": [
         "apps/web/src/zerops/ZeropsSessionProvider.tsx",
         "apps/web/src/zerops/ZeropsDataProvider.tsx",
+        "apps/web/src/zerops/ZeropsAccountData.tsx",
         "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
         "packages/client-runtime/src/zerops/account/accountRuntime.ts",
         "apps/mobile/src/features/zerops/ZeropsDataProvider.tsx",
+        "apps/mobile/src/features/zerops/ZeropsAccountData.tsx",
         "packages/client-runtime/src/zerops/data/runtime.ts"
       ],
       "entryPoints": [
