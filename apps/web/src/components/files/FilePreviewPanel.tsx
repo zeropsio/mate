@@ -31,6 +31,7 @@ import { buildFileReviewComment } from "~/reviewCommentContext";
 import { usePrimaryEnvironmentId } from "~/state/environments";
 
 import FileBrowserPanel from "./FileBrowserPanel";
+import WrittenFilePanel from "./WrittenFilePanel";
 import {
   type FileCommentAnnotationEntry,
   type FileCommentAnnotationGroup,
@@ -716,7 +717,30 @@ function initialExplorerOpen(): boolean {
   }
 }
 
-export default function FilePreviewPanel({
+/**
+ * A path the Files tab is asked for: a workspace file by its path there, or a
+ * file this conversation's agent wrote outside it, by its absolute path —
+ * read-only, served only because the agent wrote it (`WrittenFilePanel`).
+ */
+export default function FilePreviewPanel(props: FilePreviewPanelProps) {
+  const { relativePath } = props;
+  if (
+    relativePath !== null &&
+    (relativePath.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(relativePath))
+  ) {
+    return (
+      <WrittenFilePanel
+        key={relativePath}
+        environmentId={props.environmentId}
+        path={relativePath}
+        threadRef={props.threadRef}
+      />
+    );
+  }
+  return <WorkspaceFilePreviewPanel {...props} />;
+}
+
+function WorkspaceFilePreviewPanel({
   environmentId,
   cwd,
   projectName,
