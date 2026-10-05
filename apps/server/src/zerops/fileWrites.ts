@@ -45,8 +45,9 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/** A path exactly as the call named it, never trimmed: `/a ` is another file than `/a`. */
 function asPath(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
 function firstString(record: Record<string, unknown>, keys: ReadonlyArray<string>): string | null {
@@ -334,7 +335,18 @@ export function hasFileWrites(data: unknown): boolean {
   return rawWrites(data).some(drawsSomething);
 }
 
-/** Every path a call's payload shows it wrote or edited, an empty write too; never a deleted one. */
+/**
+ * Every path a call's payload shows it wrote or edited, an empty write too,
+ * exactly as named; never a deleted one, nor one with a space around it.
+ */
 export function readFileWritePaths(data: unknown): string[] {
-  return [...new Set(rawWrites(data).map((write) => write.path))];
+  // A path with a space or a line end around it may be one the tool trimmed
+  // before writing: whichever file it wrote, it is not the one named here.
+  return [
+    ...new Set(
+      rawWrites(data)
+        .map((write) => write.path)
+        .filter((path) => path === path.trim()),
+    ),
+  ];
 }

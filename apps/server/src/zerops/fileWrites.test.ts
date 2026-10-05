@@ -180,6 +180,11 @@ describe("readFileWrites", () => {
       ],
     },
     {
+      name: "a path drawn exactly as named, a space around it too",
+      data: { toolName: "Write", input: { file_path: " /srv/a.md", content: "a" } },
+      writes: [{ path: " /srv/a.md", kind: "write", format: "content", text: "a" }],
+    },
+    {
       name: "a read names a file but wrote nothing",
       data: { toolName: "Read", input: { file_path: "/srv/a.ts" } },
       writes: [],
@@ -235,6 +240,16 @@ describe("readFileWritePaths", () => {
     {
       name: "a read",
       data: { toolName: "Read", input: { file_path: "/etc/passwd" } },
+      paths: [],
+    },
+    {
+      name: "a path with a space around it: another file than its trim, never recorded",
+      data: { toolName: "Write", input: { file_path: "/home/u/.claude.json ", content: "x" } },
+      paths: [],
+    },
+    {
+      name: "a patch header with a space after its path",
+      data: { tool: "apply_patch", input: { patchText: "*** Add File: /srv/a.md \n+x" } },
       paths: [],
     },
   ])("$name", ({ data, paths }) => {

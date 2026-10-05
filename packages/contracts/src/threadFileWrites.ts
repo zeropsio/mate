@@ -22,10 +22,22 @@ import { NonNegativeInt, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.t
 export const FileWriteFormat = Schema.Literals(["content", "diff"]);
 export type FileWriteFormat = typeof FileWriteFormat.Type;
 
+/** The longest path a written file is asked by. */
+export const THREAD_WRITTEN_FILE_PATH_MAX_LENGTH = 4096;
+
+/**
+ * A path exactly as the call named it, never trimmed: `/a.txt ` is another
+ * file than `/a.txt`, and the server serves only the one the agent wrote.
+ */
+const RawPath = Schema.String.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(THREAD_WRITTEN_FILE_PATH_MAX_LENGTH),
+);
+
 /** One file one call wrote: `write` made or replaced it whole, `edit` changed part of it. */
 export const FileWrite = Schema.Struct({
   /** As the call named it: absolute, or relative to the agent's directory. */
-  path: TrimmedNonEmptyString,
+  path: RawPath,
   kind: Schema.Literals(["write", "edit"]),
   format: FileWriteFormat,
   text: Schema.String,
@@ -56,18 +68,15 @@ export const ThreadFileWritesResult = Schema.Struct({
 });
 export type ThreadFileWritesResult = typeof ThreadFileWritesResult.Type;
 
-/** The longest path a written file is asked by. */
-export const THREAD_WRITTEN_FILE_PATH_MAX_LENGTH = 4096;
-
 export const ThreadWrittenFileInput = Schema.Struct({
   threadId: ThreadId,
   /** Absolute, exactly as one of the thread's own writes named it. */
-  path: TrimmedNonEmptyString.check(Schema.isMaxLength(THREAD_WRITTEN_FILE_PATH_MAX_LENGTH)),
+  path: RawPath,
 });
 export type ThreadWrittenFileInput = typeof ThreadWrittenFileInput.Type;
 
 export const ThreadWrittenFileResult = Schema.Struct({
-  path: TrimmedNonEmptyString,
+  path: RawPath,
   contents: Schema.String,
   byteLength: NonNegativeInt,
 });
@@ -77,7 +86,10 @@ export type ThreadWrittenFileResult = typeof ThreadWrittenFileResult.Type;
  * Why a written file was not served. Each is a refusal, never a partial read:
  * - `not_absolute` — the path is not absolute;
  * - `not_written` — no completed write or edit of this thread named this exact path;
+ * - `changed_since_write` — it changed after the thread's newest write of it;
  * - `link_after_thread` — a symbolic link on its way was made, or changed, after the thread began;
+ * - `system` — its way enters `/proc`, `/sys` or `/dev`, which name the server's own process;
+ * - `remote_fs` — it, or a link on its way, is on a file system whose times can be set (FUSE, network);
  * - `not_file` — it is gone, or not a regular file;
  * - `binary` — it is not UTF-8 text;
  * - `too_large` — it is past the cap;
@@ -86,7 +98,10 @@ export type ThreadWrittenFileResult = typeof ThreadWrittenFileResult.Type;
 export const ThreadWrittenFileRefusal = Schema.Literals([
   "not_absolute",
   "not_written",
+  "changed_since_write",
   "link_after_thread",
+  "system",
+  "remote_fs",
   "not_file",
   "binary",
   "too_large",
