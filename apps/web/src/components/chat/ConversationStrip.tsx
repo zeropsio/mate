@@ -51,6 +51,7 @@ import {
   lineMotion,
   lineStage,
   mateChats,
+  mateWorks,
   mateWords,
   sameLineStage,
   type CrewRoom,
@@ -795,6 +796,15 @@ export function ConversationStrip({
       onRename={onRename}
       renameField={renameField}
     />
+  );
+}
+
+/** Whether the Mate living in `environmentId` is at work in any of its chats (`mateWorks`). */
+export function useMateWorks(environmentId: EnvironmentId): boolean {
+  const shells = useThreadShells();
+  return useMemo(
+    () => mateWorks(mateChats(shells.filter((thread) => thread.environmentId === environmentId))),
+    [environmentId, shells],
   );
 }
 

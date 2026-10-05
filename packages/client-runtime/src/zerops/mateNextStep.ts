@@ -11,7 +11,7 @@
  * 2026-09-26 — "merges could be coming from different mates").
  *
  * The rule is the in-chat offer's exactly (MB-30): this Mate's own code
- * change, only where HQ said it merges — a change that conflicts or is
+ * change, described at its head (a draft asks nothing), only where HQ said it merges — a change that conflicts or is
  * still being checked waits on the Mate or on HQ, not on the person. A
  * recipe change is the group's document and is left to the projects page.
  *
@@ -22,6 +22,7 @@
 
 import {
   byNewest,
+  changeAsksForReview,
   changeNamesRepository,
   sidebarChangeLabel,
   type FlowPullRequest,
@@ -73,7 +74,8 @@ export function mateNextStep(input: {
         entry.kind === "code" &&
         entry.mateProjectId === mateProjectId &&
         !entry.merged &&
-        entry.mergeability === "mergeable",
+        entry.mergeability === "mergeable" &&
+        changeAsksForReview(entry),
     )
     .sort(byNewest);
   const [pull] = waiting;

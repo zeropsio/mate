@@ -473,6 +473,14 @@ export function lineLeaving(
 }
 
 /**
+ * Whether the Mate is at work in any of its chats (`mateChats`): a turn running, or helpers it
+ * started still running after the turn. A watch loop alone is not work.
+ */
+export function mateWorks(chats: ReadonlyArray<EnvironmentThreadShell>): boolean {
+  return chats.some((chat) => resolveThreadStatus(chat).kind === "working");
+}
+
+/**
  * The quiet line over the composer while you type in one chat and the Mate is
  * at work in another: nothing is refused — two chats are two terminals on one
  * tree — but the person should know both are changing the same files. The

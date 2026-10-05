@@ -102,6 +102,7 @@ const CHANGE: HqChange = {
   updatedAt: "2026-10-02T09:00:00.000Z",
   mergeability: "clean",
   behind: false,
+  ready: true,
   comments: 0,
 };
 

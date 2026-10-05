@@ -190,6 +190,7 @@ const CHANGE: HqChange = {
   updatedAt: minutesAgo(400),
   mergeability: "clean",
   behind: false,
+  ready: true,
   comments: 0,
 };
 

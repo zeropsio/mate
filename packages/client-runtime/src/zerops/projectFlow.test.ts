@@ -75,6 +75,7 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
     updatedAt: "2026-10-02T09:00:00.000Z",
     mergeability: "clean",
     behind: false,
+    ready: true,
     comments: 0,
     ...over,
   });
@@ -113,6 +114,7 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
         headBranch: `mate/${VERA}/3`,
         description: undefined,
         commentCount: 0,
+        ready: true,
       },
     ]);
   });
@@ -131,6 +133,13 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
     ["unknown", "checking"],
   ] as const)("names how it merges as HQ last judged it: %s", (said, word) => {
     expect(flow([change({ mergeability: said })]).pullRequests[0]?.mergeability).toBe(word);
+  });
+
+  it.each([
+    ["a change described at its head asks for review", true],
+    ["a draft asks for nothing", false],
+  ] as const)("%s", (_case, ready) => {
+    expect(flow([change({ ready })]).pullRequests[0]?.ready).toBe(ready);
   });
 
   it("is behind main where HQ judged main moved past it", () => {
@@ -571,6 +580,21 @@ describe("changeState", () => {
       "Nothing to merge",
     ]);
     for (const word of words) expect(word?.charAt(0)).toBe(word?.charAt(0).toLocaleUpperCase());
+  });
+
+  // A draft is not ready to merge: its Mate has not described it as it is. What stops it from
+  // landing still speaks first.
+  it.each([
+    ["a draft nothing else stops", { mergeability: "mergeable", ready: false }, "Draft"],
+    [
+      "a draft that conflicts",
+      { mergeability: "conflicting", ready: false },
+      "Conflicts with main",
+    ],
+    ["a described change", { mergeability: "mergeable", ready: true }, "Ready to merge"],
+    ["a change from an HQ that knows no drafts", { mergeability: "mergeable" }, "Ready to merge"],
+  ] as const)("names %s", (_case, pull, word) => {
+    expect(changeState({ number: 1, ...pull })?.word).toBe(word);
   });
 
   it("carries the tone that means the word", () => {

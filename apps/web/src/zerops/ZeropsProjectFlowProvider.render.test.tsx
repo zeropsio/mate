@@ -1152,6 +1152,7 @@ describe("a Mate's changes in a project's flow", () => {
     updatedAt: "2026-10-02T09:00:00.000Z",
     mergeability: "clean",
     behind: false,
+    ready: true,
     comments: 0,
     ...over,
   });
@@ -1252,6 +1253,7 @@ describe("merging and closing a change in HQ", () => {
     updatedAt: "2026-10-02T09:00:00.000Z",
     mergeability: "clean",
     behind: false,
+    ready: true,
     comments: 0,
   });
   const streamed = (changes: ReadonlyArray<HqChange>): HqStructureView => ({

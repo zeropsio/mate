@@ -354,6 +354,8 @@ export interface GroupMemberFacts {
         readonly waiting: boolean;
         /** Its last run stopped on an error: its face reads `needs`, and it asks nothing. */
         readonly failed?: boolean;
+        /** It works now — a turn, or helpers it started: its changes ask for nothing yet. */
+        readonly working?: boolean;
         /**
          * Somebody has spoken into its conversation — `undefined` while that
          * is not known: its container is not connected, or its conversations
@@ -412,6 +414,7 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
             waiting:
               mateIsViewers(item.project, viewer) && mateFaceFor(connected, activity) === "needs",
             ...(connected && activity?.kind === "failed" ? { failed: true } : {}),
+            ...(connected && activity?.face === "working" ? { working: true } : {}),
             talked: !connected
               ? undefined
               : activity !== undefined
@@ -516,6 +519,7 @@ export function groupFlowInputOf(input: {
               preview: pairPreviewRoute(member.routes, member.hostnames)?.url,
               waiting: member.mate.waiting,
               ...(member.mate.failed === true ? { failed: true } : {}),
+              ...(member.mate.working === true ? { working: true } : {}),
               // Unknown is not spoken to as far as the flow can say; where a
               // group is drawn waits for it (`groupPlacement`).
               talked: member.mate.talked ?? false,

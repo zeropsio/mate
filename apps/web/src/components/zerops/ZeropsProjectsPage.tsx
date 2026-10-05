@@ -120,6 +120,7 @@ import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
   changeKindTag,
+  changeAsksForReview,
   changeState,
   halfMadeGroupEnvironments,
   assignCandidateMateTints,
@@ -1760,22 +1761,24 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
     // the left menu use (`changeState`): a change that no longer merges is the
     // one a person needs to see.
     const state = changeState(pull);
-    const action = withMerge ? (
-      <ZeropsMateVerb
-        label={changeRowVerb(projectFlow.pending, group.groupId, pull)}
-        onClick={(event) => {
-          openReview(
-            {
-              kind: "change",
-              groupId: group.groupId,
-              repository: pull.repository,
-              number: pull.number,
-            },
-            { from: event.currentTarget },
-          );
-        }}
-      />
-    ) : undefined;
+    // A draft stays listed and opens from its title; it asks for no review.
+    const action =
+      withMerge && changeAsksForReview(pull) ? (
+        <ZeropsMateVerb
+          label={changeRowVerb(projectFlow.pending, group.groupId, pull)}
+          onClick={(event) => {
+            openReview(
+              {
+                kind: "change",
+                groupId: group.groupId,
+                repository: pull.repository,
+                number: pull.number,
+              },
+              { from: event.currentTarget },
+            );
+          }}
+        />
+      ) : undefined;
     const key = `pull-${group.groupId}-${pull.repository}-${pull.number}`;
     const line = pullRequestLineWith(pull, mateNames.get(pull.mateProjectId));
     const open = () => {

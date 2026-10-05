@@ -47,6 +47,8 @@ import { MateFace } from "./primitives";
 export interface ZeropsNextStepPending {
   readonly question: boolean;
   readonly approval: boolean;
+  /** The Mate works — a turn, or helpers it started: its change still moves under the ask. */
+  readonly working: boolean;
 }
 
 /** One of several changes waiting, on a line of its own with its own Review. */
@@ -115,7 +117,7 @@ function stripOf(top: RememberedComposerTop): ZeropsNextStepStripModel {
  * The composer's top for `nextStep`: HQ's answer once it has given one,
  * and until then what this conversation showed last — so a reload paints the
  * strip it will keep. Nothing while a question or an approval waits on the
- * person first.
+ * person first, nor while the Mate works.
  */
 export function zeropsComposerTop(input: {
   readonly nextStep: ZeropsMateNextStep;
@@ -124,7 +126,7 @@ export function zeropsComposerTop(input: {
   readonly pending: ZeropsNextStepPending;
 }): ZeropsComposerTop {
   const { nextStep, remembered, pending } = input;
-  const held = pending.question || pending.approval;
+  const held = pending.question || pending.approval || pending.working;
   switch (nextStep.kind) {
     case "unknown":
       return {

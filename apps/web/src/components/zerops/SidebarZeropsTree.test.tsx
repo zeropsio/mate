@@ -1434,6 +1434,41 @@ describe("the project's flow under it", () => {
     }
   });
 
+  // A change asks for review only once its Mate described it at its head, and only while the
+  // Mate rests: a draft, or a change its Mate still works on, stays listed and opens, and asks
+  // nothing.
+  it.each([
+    {
+      case: "a change described at its head, its Mate at rest",
+      ready: true,
+      busy: false,
+      asks: true,
+    },
+    { case: "a draft", ready: false, busy: false, asks: false },
+    { case: "a described change its Mate still works on", ready: true, busy: true, asks: false },
+  ])("lists $case, asking for review: $asks", ({ ready, busy, asks }) => {
+    const atWork: ZeropsAgentActivity = {
+      threadId: ThreadId.make("thread-1"),
+      kind: "working",
+      status: null,
+      face: "working",
+      subject: "Add a size guide",
+      at: "2026-10-05T10:00:00.000Z",
+      snippet: undefined,
+      unread: false,
+      pausedUntil: undefined,
+      threadKey: "env:thread-1",
+      task: "Add a size guide",
+    };
+    const html = render([CRM_DEV, CRM_STAGE], {
+      getFlow: () => flow({ pullRequests: [pull(4, { ready })] }),
+      ...(busy ? { getActivity: () => atWork } : {}),
+    });
+    const rows = html.slice(html.indexOf('data-zerops-surface="sidebar-pull-requests"'));
+    expect(rows).toContain("#4 Change 4");
+    expect(rows.includes('data-zerops-surface="sidebar-pull-request-review"')).toBe(asks);
+  });
+
   // One meaning per colour (S3): the mark is amber where the change fell
   // behind main, and its own grey otherwise.
   it.each([
