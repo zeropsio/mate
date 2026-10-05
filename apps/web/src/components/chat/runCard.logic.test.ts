@@ -36,7 +36,6 @@ import {
   workedWords,
   noteText,
   slotWords,
-  thoughtTail,
 } from "./runCard.logic";
 import { stepOf } from "./workSteps.logic";
 
@@ -100,6 +99,15 @@ describe("thoughtRunText", () => {
     {
       text: "Checked the scale.\n\n> [!WARNING]\n> My earlier claim was incorrect.",
       run: "Checked the scale. Warning: My earlier claim was incorrect.",
+    },
+    { text: "Try:\n\n```sh\nls\n```\n\nThen this.", run: "Try: Then this." },
+    // A code block still streaming is code too, not words with backticks.
+    { text: "Try this:\n\n```ts\nconst port = 3000;", run: "Try this:" },
+    // Review of pass 42: three backticks in its words opened no block, and
+    // every word after them went.
+    {
+      text: "Wrap it in ``` fences, then go on.",
+      run: "Wrap it in ``` fences, then go on.",
     },
   ])("reads $text as one run of words", ({ text, run }) => {
     expect(thoughtRunText(text)).toBe(run);
@@ -1098,20 +1106,6 @@ describe("noteText", () => {
     ["```yaml\nkey:\n```", false, "```yaml\nkey:\n```"],
   ])("%j (streaming %j) reads %j", (text, streaming, expected) => {
     expect(noteText(text, streaming)).toBe(expected);
-  });
-});
-
-describe("thoughtTail", () => {
-  it.each([
-    ["Short. Whole.", 40, "Short. Whole."],
-    [
-      "The first goes. The second stays. The third stays.",
-      36,
-      "The second stays. The third stays.",
-    ],
-    ["One sentence that is far too long to fit at all here", 20, "…to fit at all here"],
-  ])("%j in %j characters reads %j", (run, chars, expected) => {
-    expect(thoughtTail(run, chars)).toBe(expected);
   });
 });
 

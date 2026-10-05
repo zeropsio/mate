@@ -79,8 +79,8 @@ describe("readRunResultFacts", () => {
     });
     expect(facts.changes).toEqual({
       groupId: GROUP,
-      open: [{ repository: "app", number: 2, title: "Add a /status page" }],
-      merged: [{ repository: "app", number: 1, title: "Scaffold the app" }],
+      open: [{ repository: "app", number: 2, title: "Add a /status page", ready: true }],
+      merged: [{ repository: "app", number: 1, title: "Scaffold the app", ready: true }],
       known: true,
     });
     expect(facts.services?.get("appdev")).toEqual({
@@ -103,7 +103,7 @@ describe("readRunResultFacts", () => {
       remembered: [pull(2, "Add a /status page")],
       changes: {
         groupId: GROUP,
-        open: [{ repository: "app", number: 2, title: "Add a /status page" }],
+        open: [{ repository: "app", number: 2, title: "Add a /status page", ready: true }],
         merged: [],
         known: false,
       },
@@ -114,7 +114,7 @@ describe("readRunResultFacts", () => {
       remembered: [pull(2, "Add a /status page")],
       changes: {
         groupId: GROUP,
-        open: [{ repository: "app", number: 2, title: "Add a /status page" }],
+        open: [{ repository: "app", number: 2, title: "Add a /status page", ready: true }],
         merged: [],
         known: false,
       },

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  SLOT_BUSY_SHOW_MS,
   SLOT_HOLD_MS,
   SLOT_MIN_SHOW_MS,
+  SLOT_RUSH_SHOW_MS,
   slotClock,
   slotDue,
   slotHolds,
@@ -129,10 +131,10 @@ describe("the live slot's schedule", () => {
       plopped: { a: 300 + SLOT_HOLD_MS, b: 6000 + SLOT_HOLD_MS },
     },
     {
-      // The board's burst: six reads start and end in half a second, then the
-      // tests run. Coalesced, the reads ride along with the first one's plop
-      // and the tests show 0.25 s after they started, never 4.7 s.
-      name: "a burst rides along with the item that stands, and the next shows on its plop",
+      // Run 11: "one plop and 5 messages". A burst no longer rides along with
+      // the item that stands: each read stands in the slot on its own, in the
+      // order it came, quicker while three or more wait, and plops alone.
+      name: "a burst passes the slot one at a time, quicker while three or more wait",
       moments: [
         { at: 0, live: ["r1"], record: [] },
         { at: 80, live: [], record: ["r1"] },
@@ -144,11 +146,12 @@ describe("the live slot's schedule", () => {
         { at: 6550, live: [], record: ["r1", "r2", "r3", "tests"] },
       ],
       until: 9000,
-      shown: { r1: 0, tests: SLOT_MIN_SHOW_MS },
+      // r2, r3 and the tests waiting make three: r1 has stood its quarter second.
+      shown: { r1: 0, r2: 550, r3: 550 + SLOT_MIN_SHOW_MS, tests: 550 + 2 * SLOT_MIN_SHOW_MS },
       plopped: {
-        r1: SLOT_MIN_SHOW_MS,
-        r2: SLOT_MIN_SHOW_MS,
-        r3: SLOT_MIN_SHOW_MS,
+        r1: 550,
+        r2: 550 + SLOT_MIN_SHOW_MS,
+        r3: 550 + 2 * SLOT_MIN_SHOW_MS,
         tests: 6550 + SLOT_HOLD_MS,
       },
     },
@@ -162,7 +165,21 @@ describe("the live slot's schedule", () => {
       until: 6000,
       shown: { a: 0, b: 0 },
       // One ending while another runs never empties the slot: no hold.
-      plopped: { a: SLOT_MIN_SHOW_MS, b: 3000 + SLOT_HOLD_MS },
+      plopped: { a: 1000, b: 3000 + SLOT_HOLD_MS },
+    },
+    {
+      name: "calls that end together plop one after another, never as one",
+      moments: [
+        { at: 0, live: ["a", "b", "c"], record: [] },
+        { at: 2000, live: [], record: ["a", "b", "c"] },
+      ],
+      until: 6000,
+      shown: { a: 0, b: 0, c: 0 },
+      plopped: {
+        a: 2000,
+        b: 2000 + SLOT_BUSY_SHOW_MS,
+        c: Math.max(2000 + 2 * SLOT_BUSY_SHOW_MS, 2000 + SLOT_HOLD_MS),
+      },
     },
     {
       // The answer rises in under the question, and the pair plops as one.
@@ -174,8 +191,8 @@ describe("the live slot's schedule", () => {
       until: 8000,
       shown: { "question:q": 0 },
       plopped: {
-        "question:q": 5000 + SLOT_MIN_SHOW_MS,
-        "person:a": 5000 + SLOT_MIN_SHOW_MS,
+        "question:q": 5000 + SLOT_HOLD_MS,
+        "person:a": 5000 + SLOT_HOLD_MS,
       },
     },
     {
@@ -192,20 +209,24 @@ describe("the live slot's schedule", () => {
     },
     {
       // Codex sends nothing for a command until it returns; a note is placed
-      // once its words are known.
-      name: "what is first seen ended stands its minimum, and what came with it rides along",
+      // once its words are known. Each stands on its own, in the order it came.
+      name: "what is first seen ended stands its minimum, one at a time",
       moments: [
         { at: 0, live: [], record: [] },
         { at: 1000, live: [], record: ["c1", "c2"] },
         { at: 1300, live: [], record: ["c1", "c2", "note"] },
       ],
-      until: 4000,
-      // "Thinking" from the first draw stands its minimum before c1 takes its place.
-      shown: { c1: SLOT_MIN_SHOW_MS },
+      until: 6000,
+      // "Thinking" from the first draw has stood its minimum when c1 arrives.
+      shown: {
+        c1: 1000,
+        c2: 1000 + SLOT_MIN_SHOW_MS,
+        note: 1000 + 2 * SLOT_MIN_SHOW_MS,
+      },
       plopped: {
-        c1: SLOT_MIN_SHOW_MS + SLOT_HOLD_MS,
-        c2: SLOT_MIN_SHOW_MS + SLOT_HOLD_MS,
-        note: SLOT_MIN_SHOW_MS + SLOT_HOLD_MS,
+        c1: 1000 + SLOT_MIN_SHOW_MS,
+        c2: 1000 + 2 * SLOT_MIN_SHOW_MS,
+        note: 1000 + 2 * SLOT_MIN_SHOW_MS + SLOT_HOLD_MS,
       },
     },
     {
@@ -302,12 +323,26 @@ describe("the live slot's schedule", () => {
     },
   ])("counts what runs past the rows drawn: $name", ({ rows, ended, more }) => {
     const entries = new Map(
-      rows.map((key) => [
-        key,
-        { key, shownAt: 0, endedAt: ended.includes(key) ? 10 : null, riders: [] },
-      ]),
+      rows.map((key) => [key, { key, shownAt: 0, endedAt: ended.includes(key) ? 10 : null }]),
     );
     expect(slotRunningPast(rows.map((key) => ({ entry: entries.get(key)! })))).toBe(more);
+  });
+
+  // Review of pass 42: a call that went live while notes waited their turn,
+  // and ended before its own came, was drawn in the history at once — above
+  // the notes still waiting to plop.
+  it("queues a live item that ended before its turn, after what waited before it", () => {
+    const played = play(
+      [
+        { at: 0, live: ["a"], record: [] },
+        { at: 100, live: [], record: ["a", "n1", "n2", "n3"] },
+        { at: 150, live: ["b"], record: ["a", "n1", "n2", "n3", "b"] },
+        { at: 400, live: [], record: ["a", "n1", "n2", "n3", "b"] },
+      ],
+      8000,
+    );
+    expect(played.shown.b).toBeGreaterThan(played.shown.n3!);
+    expect(played.plopped.b).toBeGreaterThan(played.plopped.n3!);
   });
 
   it("leaves out of the history what arrived since the slot last heard, before it places it", () => {
@@ -315,8 +350,10 @@ describe("the live slot's schedule", () => {
     expect([...slotHoldsIn(slot, ["c1", "c2"])]).toEqual(["c2"]);
   });
 
-  it("is never more than one minimum show time behind the Mate", () => {
-    // Twenty quick reads back to back, 100 ms each, then a long command.
+  // Twenty quick reads back to back, then a long command: each read stands in
+  // the slot, a quarter second each while three or more wait, and the
+  // command shows once they passed: about 3 s behind, never a pile in one plop.
+  it("passes a long burst a quarter second an item, and the next call after it", () => {
     const moments: Moment[] = [];
     const done: string[] = [];
     for (let read = 0; read < 20; read += 1) {
@@ -325,8 +362,14 @@ describe("the live slot's schedule", () => {
       moments.push({ at: read * 100 + 90, live: [], record: [...done] });
     }
     moments.push({ at: 2000, live: ["build"], record: [...done] });
-    const played = play(moments, 4000);
-    expect(played.shown.build! - 2000).toBeLessThanOrEqual(SLOT_MIN_SHOW_MS);
+    const played = play(moments, 9000);
+    const plops = Object.values(played.plopped).toSorted((a, b) => a - b);
+    // One at a time: never two plops at once.
+    for (let index = 1; index < plops.length; index += 1) {
+      expect(plops[index]! - plops[index - 1]!).toBeGreaterThanOrEqual(SLOT_RUSH_SHOW_MS);
+    }
+    expect(Object.keys(played.shown)).toHaveLength(21);
+    expect(played.shown.build! - 2000).toBeLessThanOrEqual(3200);
   });
 });
 
@@ -340,6 +383,7 @@ describe("slotClock", () => {
     seen: new Set(),
     quietSince,
     pending: [],
+    lastPlopAt: null,
   });
   it.each<{
     readonly name: string;
@@ -354,21 +398,19 @@ describe("slotClock", () => {
   }>([
     {
       name: "a step running: since it started",
-      slot: slot([{ key: "s1", shownAt: 1000, endedAt: null, riders: [] }]),
+      slot: slot([{ key: "s1", shownAt: 1000, endedAt: null }]),
       first: { key: "s1", at: "2026-10-04T10:00:00.000Z" },
       clock: { from: "2026-10-04T10:00:00.000Z", stopped: null },
     },
     {
       name: "a step that ended, holding its place: stopped where it ended",
-      slot: slot([
-        { key: "s1", shownAt: 1000, endedAt: Date.parse("2026-10-04T10:01:11.000Z"), riders: [] },
-      ]),
+      slot: slot([{ key: "s1", shownAt: 1000, endedAt: Date.parse("2026-10-04T10:01:11.000Z") }]),
       first: { key: "s1", at: "2026-10-04T10:00:00.000Z" },
       clock: { from: "2026-10-04T10:00:00.000Z", stopped: "2026-10-04T10:01:11.000Z" },
     },
     {
       name: "a note first seen whole: no time of its own",
-      slot: slot([{ key: "n1", shownAt: 5000, endedAt: 5000, riders: [] }]),
+      slot: slot([{ key: "n1", shownAt: 5000, endedAt: 5000 }]),
       first: { key: "n1", at: "2026-10-04T10:00:00.000Z" },
       clock: null,
     },
@@ -382,7 +424,7 @@ describe("slotClock", () => {
     // jumped to the whole wait once answered.
     {
       name: "waiting on the person: the wait itself, counting",
-      slot: slot([{ key: "question:q", shownAt: 1000, endedAt: null, riders: [] }]),
+      slot: slot([{ key: "question:q", shownAt: 1000, endedAt: null }]),
       first: { key: "question:q", at: "2026-10-04T10:00:00.000Z" },
       waitingSince: "2026-10-04T10:00:00.000Z",
       clock: { from: "2026-10-04T10:00:00.000Z", stopped: null, waiting: true },
@@ -394,7 +436,6 @@ describe("slotClock", () => {
           key: "question:q",
           shownAt: 1000,
           endedAt: Date.parse("2026-10-04T10:04:37.000Z"),
-          riders: [],
         },
       ]),
       first: { key: "question:q", at: "2026-10-04T10:00:00.000Z" },
@@ -402,7 +443,7 @@ describe("slotClock", () => {
     },
     {
       name: "a call waiting on the person's approval: the wait, from when it began",
-      slot: slot([{ key: "s1", shownAt: 1000, endedAt: null, riders: [] }]),
+      slot: slot([{ key: "s1", shownAt: 1000, endedAt: null }]),
       first: { key: "s1", at: "2026-10-04T09:59:58.000Z" },
       waitingSince: "2026-10-04T10:00:00.000Z",
       clock: { from: "2026-10-04T10:00:00.000Z", stopped: null, waiting: true },

@@ -78,8 +78,6 @@ import {
   type Ref,
 } from "react";
 
-import { flushSync } from "react-dom";
-
 import { cn } from "~/lib/utils";
 import { useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
 import {
@@ -181,7 +179,6 @@ import {
   nowLineWords,
   noteText,
   slotWords,
-  thoughtTail,
   operationNowWords,
   reachesEarlier,
   runCardShows,
@@ -192,13 +189,12 @@ import {
   type SlotFiller,
   stepNowWords,
   subscribeRunFolds,
-  thoughtRunText,
   type NowLine as NowLineModel,
   type RunFold,
   type RunScrollPosition,
   standsAtFoot,
 } from "./runCard.logic";
-import { keepInPlace, scrollerOf } from "./keepInPlace";
+import { useRunScrollResettle } from "./useRunScrollResettle";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -574,128 +570,121 @@ function Bubble({
   );
 }
 
-/** A fold's state: whether it folds at all, whether it is folded now, and its switch. */
-interface Fold {
-  readonly eligible: boolean;
-  readonly folded: boolean;
-  /**
-   * Whether its switch shows: folded, the way to the rest; opened by the
-   * person, the way back. A bubble that simply stands whole — one that
-   * arrived while the person watched — offers nothing, so none appears
-   * under it later.
-   */
-  readonly offered: boolean;
-  readonly toggle: () => void;
+/** Whether a box stands at its end: within two pixels of it. */
+function cappedAtEnd(box: HTMLElement): boolean {
+  return box.scrollTop + box.clientHeight >= box.scrollHeight - 2;
+}
+
+/** A fade at each edge of a box that has more past it (`.run-capped`). */
+function markCappedEdges(box: HTMLElement): void {
+  if (typeof box.toggleAttribute !== "function") return;
+  box.toggleAttribute("data-more-above", box.scrollTop > 1);
+  box.toggleAttribute(
+    "data-more-below",
+    !cappedAtEnd(box) && box.scrollHeight > box.clientHeight + 1,
+  );
 }
 
 /**
- * Whether a bubble is folded. Past the fold's limits it opens folded when the
- * chat opens onto it; one that arrived while the person watched stays whole —
- * nothing folds while the person is looking (K12). Once the person opened or
- * closed it, it stays as they left it.
+ * One item's box (run 11, the owner: thinking "grows to a max height, then
+ * scrolls inside with a fade"; "running commands and everything should have
+ * scrollable max-height … when it plops, it needs to have the same height"):
+ * at most four of the card's lines (`--run-item-cap`), live and in the
+ * history alike, so a plop moves an item and never resizes it. What runs past
+ * the cap scrolls inside it, a fade at an edge saying there is more. While
+ * its item streams (`follows`) it keeps the newest words in view, until the
+ * person scrolls it; carried by its line's key, it lands in the history where
+ * it stood in the slot, and one nobody watched rests at its head.
  */
-function useFold(eligible: boolean, foldsLive = false): Fold {
-  const arrived = useArrivedLive();
-  const hold = useHoldReading("folded");
-  const [folded, setFolded] = useCarried("folded", () => eligible && (foldsLive || !arrived));
-  const [opened, setOpened] = useCarried("opened", () => false);
-  return {
-    eligible,
-    folded: eligible && folded,
-    offered: eligible && (folded || opened),
-    toggle: () => {
-      hold(folded);
-      setOpened(folded);
-      setFolded(!folded);
-    },
-  };
-}
-
-/** What folds: its top only while folded, fading into the bubble. */
-function FoldBody({
-  fold,
-  height,
+function CappedBox({
+  follows = false,
+  detail = false,
+  part,
+  className,
   children,
 }: {
-  readonly fold: Fold;
-  /** How tall it stands folded: eight of its lines. */
-  readonly height: "max-h-44" | "max-h-40";
+  readonly follows?: boolean;
+  /** What the person opened under a call: twelve lines (`--run-detail-cap`). */
+  readonly detail?: boolean;
+  /** Which of its line's boxes it is, where the line has several. */
+  readonly part?: string;
+  readonly className?: string;
   readonly children: ReactNode;
 }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+  // Whether it stands at its end, carried from the slot to the history.
+  const [atEnd, setAtEnd] = useCarried(
+    part ?? (detail ? "detail-end" : "capped-end"),
+    () => follows,
+  );
+  const stickRef = useRef(atEnd);
+  // Where it last scrolled itself: a scroll that lands there is its own,
+  // any other the person's — even in the same frame as its own.
+  const ownTopRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const content = contentRef.current;
+    const end = endRef.current;
+    if (box === null || content === null || end === null) return;
+    const settle = () => {
+      if (stickRef.current) {
+        const bottom = box.scrollHeight - box.clientHeight;
+        if (Math.abs(box.scrollTop - bottom) > 1) {
+          box.scrollTop = bottom;
+          ownTopRef.current = box.scrollTop;
+        }
+      }
+      markCappedEdges(box);
+    };
+    settle();
+    const observers: Array<{ disconnect: () => void }> = [];
+    if (typeof ResizeObserver !== "undefined") {
+      const resized = new ResizeObserver(settle);
+      resized.observe(content);
+      observers.push(resized);
+    }
+    // A node the list puts back stands at its head, saying nothing — no
+    // scroll, no resize: its end leaving view is the one sign of it.
+    if (typeof IntersectionObserver === "function") {
+      const seen = new IntersectionObserver(
+        (entries) => {
+          if (!entries.every((entry) => entry.isIntersecting)) settle();
+        },
+        { root: box },
+      );
+      seen.observe(end);
+      observers.push(seen);
+    }
+    return () => {
+      for (const observer of observers) observer.disconnect();
+    };
+  }, []);
+  // An item that starts streaming follows from then, until the person scrolls it.
+  useLayoutEffect(() => {
+    if (follows) stickRef.current = true;
+  }, [follows]);
   return (
     <div
-      className={cn("min-w-0", fold.folded && cn(height, "overflow-hidden"))}
-      data-chat-folded={fold.eligible ? String(fold.folded) : undefined}
-      style={
-        fold.folded ? { WebkitMaskImage: FOLD_FADE_MASK, maskImage: FOLD_FADE_MASK } : undefined
-      }
+      ref={boxRef}
+      className={cn("run-capped min-w-0", className)}
+      data-capped={detail ? "detail" : "item"}
+      onScroll={() => {
+        const box = boxRef.current;
+        if (box === null) return;
+        markCappedEdges(box);
+        const own = ownTopRef.current;
+        ownTopRef.current = null;
+        if (own !== null && Math.abs(box.scrollTop - own) <= 1) return;
+        const end = cappedAtEnd(box);
+        stickRef.current = end;
+        if (end !== atEnd) setAtEnd(end);
+      }}
     >
-      {children}
+      <div ref={contentRef}>{children}</div>
+      <div ref={endRef} aria-hidden className="h-px" />
     </div>
-  );
-}
-
-/**
- * The way to more of a bubble, or back: its words in the quiet size, on the
- * bubble's one text edge — every bubble's the same, a thought's, a command's
- * or a message's.
- */
-function MoreToggle({
-  open,
-  onToggle,
-  ref,
-  children,
-}: {
-  readonly open: boolean;
-  readonly onToggle: () => void;
-  readonly ref?: Ref<HTMLButtonElement>;
-  readonly children: ReactNode;
-}) {
-  // The slot draws it as the history does, so a row lands as it stood.
-  return (
-    <button
-      ref={ref}
-      aria-expanded={open}
-      className={cn(
-        META,
-        "mt-1 block cursor-pointer rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
-      )}
-      // It stands at the foot of what it opened: closing folds what stands
-      // above it, and it stays under the pointer (K12).
-      onClick={(event) => (open ? collapseInPlace(event.currentTarget, onToggle) : onToggle())}
-      type="button"
-    >
-      {children}
-    </button>
-  );
-}
-
-/**
- * Closes what `pressed` opened, keeping `pressed` where it stands on screen
- * — or, where it is gone once closed, the foot of the bubble it stood in.
- */
-function collapseInPlace(pressed: HTMLElement, close: () => void) {
-  keepInPlace({
-    anchor: pressed,
-    fallback: pressed.closest<HTMLElement>("[data-chat-bubble], [data-chat-row]"),
-    scroller: scrollerOf(pressed),
-    change: () => flushSync(close),
-  });
-}
-
-/** The way to the rest of a folded bubble, in the person's own words for it. */
-function FoldToggle({
-  fold,
-  more = "Show full message",
-}: {
-  readonly fold: Fold;
-  readonly more?: string;
-}) {
-  if (!fold.offered) return null;
-  return (
-    <MoreToggle onToggle={fold.toggle} open={!fold.folded}>
-      {fold.folded ? more : "Show less"}
-    </MoreToggle>
   );
 }
 
@@ -787,63 +776,41 @@ function OpensMark() {
 /**
  * What a call's detail says, in its own inset on the code's left edge — a
  * command's output, a report, an error: a well under what was run, never
- * text that drifts left of it.
+ * text that drifts left of it. Past twelve lines it scrolls inside its box.
  */
 function OutputBlock({
   label = null,
   mono = true,
+  part,
   text,
 }: {
   readonly label?: string | null;
   readonly mono?: boolean;
+  /** Which of its line's outputs it is, where the line has several. */
+  readonly part?: string;
   readonly text: string;
 }) {
-  const hold = useHoldReading();
-  const lines = text.split("\n").length;
-  const [taller, watch] = useTallerThan(OUTPUT_CAP_PX, lines > OUTPUT_CAP_LINES);
-  const [open, setOpen] = useState(false);
-  // No scroll inside the run's scroll: past twelve lines it folds, and the
-  // way to the rest opens it in place (D4).
-  const folded = taller && !open;
   return (
     <section aria-label={label ?? undefined} className="grid min-w-0 gap-1">
       {label === null ? null : <h4 className={cn(META, "text-muted-foreground")}>{label}</h4>}
-      <pre
-        className={cn(
-          "min-w-0 whitespace-pre-wrap break-words rounded-xl bg-foreground/4 px-3 py-2 text-foreground/80 select-text",
-          META,
-          mono ? "font-mono" : "font-sans",
-          folded && "max-h-64 overflow-hidden",
-        )}
-        data-chat-folded={taller ? String(folded) : undefined}
-        style={folded ? { WebkitMaskImage: FOLD_FADE_MASK, maskImage: FOLD_FADE_MASK } : undefined}
+      <CappedBox
+        className="rounded-xl bg-foreground/4"
+        detail
+        {...(part === undefined ? {} : { part })}
       >
-        <span ref={watch} className="block">
-          {text}
-        </span>
-      </pre>
-      {taller ? (
-        <MoreToggle
-          onToggle={() => {
-            hold(!open);
-            setOpen((value) => !value);
-          }}
-          open={open}
+        <pre
+          className={cn(
+            "min-w-0 whitespace-pre-wrap break-words px-3 py-2 text-foreground/80 select-text",
+            META,
+            mono ? "font-mono" : "font-sans",
+          )}
         >
-          {open
-            ? "Show less"
-            : lines > OUTPUT_CAP_LINES
-              ? `Show all ${lines} lines`
-              : "Show the rest"}
-        </MoreToggle>
-      ) : null}
+          {text}
+        </pre>
+      </CappedBox>
     </section>
   );
 }
-
-/** Twelve of an output's 20 px lines: past them it folds. */
-const OUTPUT_CAP_PX = 240;
-const OUTPUT_CAP_LINES = 12;
 
 /**
  * A bubble's first line: its words, and at the right edge its time and the
@@ -998,26 +965,12 @@ function NoteWords({ message }: { readonly message: ChatMessage }) {
 }
 
 /**
- * A stretch of thinking. Settled, its words are read once, whole; still
- * coming, a paragraph at a time, each keyed where it stands, so the ones
- * written keep their place as the newest grows.
+ * A stretch of thinking, a paragraph at a time, each keyed where it stands, so
+ * the ones written keep their place as the newest grows — the same shape
+ * still coming and settled, so it never changes height as it ends.
  */
 function ThoughtParagraphs({ messages }: { readonly messages: ReadonlyArray<ChatMessage> }) {
   const ctx = use(TimelineRowCtx);
-  if (!messages.some((message) => message.streaming)) {
-    return (
-      <div className="italic">
-        <ChatMarkdown
-          className={THOUGHT_TEXT}
-          cwd={ctx.markdownCwd}
-          headingLevelOffset={MESSAGE_HEADING_LEVEL}
-          skills={ctx.skills}
-          text={messages.flatMap((message) => thoughtParagraphs(message.text)).join("\n\n")}
-          threadRef={ctx.threadRef ?? undefined}
-        />
-      </div>
-    );
-  }
   const paragraphs = messages.flatMap((message) => {
     const said = thoughtParagraphs(message.text);
     return said.map((text, index) => ({
@@ -1063,35 +1016,34 @@ function keyedByOccurrence(
 function QuestionBubble({ questions }: { readonly questions: ReadonlyArray<string> }) {
   return (
     <Bubble className={BUBBLE_PAD} kind="question" tone="speech">
-      {keyedByOccurrence(questions).map(({ key, value }) => (
-        <p key={key} className="whitespace-pre-wrap break-words">
-          {value}
-        </p>
-      ))}
+      <CappedBox>
+        {keyedByOccurrence(questions).map(({ key, value }) => (
+          <p key={key} className="whitespace-pre-wrap break-words">
+            {value}
+          </p>
+        ))}
+      </CappedBox>
     </Bubble>
   );
 }
 
-/** Its words to the person on the way: the chat's bubble in its fullest fill. */
+/**
+ * Its words to the person on the way: the chat's bubble in its fullest fill,
+ * in its item's box — the newest words in view while they stream.
+ */
 function NoteBubble({ message }: { readonly message: ChatMessage }) {
-  // One cap live and in the history: a note past it stands folded in both,
-  // so its plop moves it and never resizes it.
-  const fold = useFold(foldsLikeAMessage(message.text), true);
   return (
     <Bubble className={BUBBLE_PAD} kind="note" tone="speech">
-      <FoldBody fold={fold} height="max-h-44">
+      <CappedBox follows={Boolean(message.streaming)}>
         <NoteWords message={message} />
-      </FoldBody>
-      <FoldToggle fold={fold} />
+      </CappedBox>
     </Bubble>
   );
 }
 
 /** A thought's hand: small, faint and italic — its code and file names too. */
-const THOUGHT_TEXT = "chat-markdown-aside text-muted-foreground";
-
-/** About two of a thought's lines on a desktop card: what a first frame guesses runs past them. */
-const THOUGHT_GUESS_CHARS = 180;
+/** A thought's words at the card's quiet size, 13 px on 20 px lines, however it is drawn. */
+const THOUGHT_TEXT = "chat-markdown-aside text-muted-foreground text-line leading-5";
 
 /**
  * Whether what `watch` is given runs past the lines it is clamped to — or,
@@ -1121,94 +1073,20 @@ function useRunsPast(
   return [past, watch];
 }
 
-/** How many lines of a thought show, live and in the history alike (pass 35): a whole sentence. */
-const THOUGHT_CAP_LINES = 4;
-
-/**
- * A thought as it streams in the live slot: its newest lines in view, four
- * at most — the history's cap, so its plop never resizes it — and a fade at
- * its top once its words run past them.
- */
-function LiveThought({ run }: { readonly run: string }) {
-  const [over, watch] = useTallerThan(THOUGHT_CAP_LINES * 20, run.length > THOUGHT_GUESS_CHARS * 2);
-  return (
-    <div className="run-thought-live" data-over={over ? "" : undefined}>
-      <span ref={watch} className="block italic">
-        {thoughtTail(run, THOUGHT_GUESS_CHARS * 2)}
-      </span>
-    </div>
-  );
-}
-
 /**
  * A stretch of its thinking, the quietest thing in the card (K14): 13 px,
- * faint and italic on the faintest fill, four lines of it at most, read from
- * its head. One that runs on says "Show full thought" — a click opens the
- * whole thought in place, and "Show less" closes it (D4: nothing is cut
- * without a way to reach it). In the live slot it shows its newest lines.
+ * faint and italic on the faintest fill, in its item's box — its newest words
+ * in view while it streams, the rest a scroll away (D4: nothing is cut
+ * without a way to reach it).
  */
 function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMessage> }) {
   const text = messages.map((message) => message.text).join("\n\n");
-  const run = thoughtRunText(text);
-  const inSlot = use(InSlotContext);
-  const hold = useHoldReading();
-  const [open, setOpen] = useState(false);
-  const [past, watch] = useRunsPast(run.length > THOUGHT_GUESS_CHARS * 2);
-  // Opening swaps the thought's button for "Show less", and closing swaps it
-  // back: the focus goes with the person's press to the one that stands —
-  // scrolling nothing, or the card would read it as their move.
-  const toggleRef = useRef<HTMLButtonElement>(null);
-  const handOnRef = useRef(false);
-  useLayoutEffect(() => {
-    if (!handOnRef.current) return;
-    handOnRef.current = false;
-    toggleRef.current?.focus({ preventScroll: true });
-  });
-  const toggle = (next: boolean) => {
-    handOnRef.current = true;
-    hold(next);
-    setOpen(next);
-  };
   if (text.trim().length === 0) return null;
-  if (inSlot) {
-    return (
-      <Bubble className={THOUGHT_PAD} kind="thought" size={META} tone="thought">
-        <LiveThought run={run} />
-      </Bubble>
-    );
-  }
-  const clamped = (
-    <span ref={watch} className="line-clamp-4 italic" data-chat-folded={past ? "true" : undefined}>
-      {run}
-    </span>
-  );
   return (
     <Bubble className={THOUGHT_PAD} kind="thought" size={META} tone="thought">
-      {open ? (
-        <>
-          <ThoughtParagraphs messages={messages} />
-          <MoreToggle ref={toggleRef} onToggle={() => toggle(false)} open>
-            Show less
-          </MoreToggle>
-        </>
-      ) : past ? (
-        <button
-          ref={toggleRef}
-          aria-expanded={false}
-          aria-label={`${run.slice(0, 80)}… Show full thought`}
-          className="relative block w-full min-w-0 cursor-pointer rounded-sm text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-          data-chat-disclose
-          onClick={() => toggle(true)}
-          type="button"
-        >
-          {clamped}
-          <span aria-hidden="true" className="run-thought-more">
-            Show full thought
-          </span>
-        </button>
-      ) : (
-        clamped
-      )}
+      <CappedBox follows={messages.some((message) => message.streaming)}>
+        <ThoughtParagraphs messages={messages} />
+      </CappedBox>
     </Bubble>
   );
 }
@@ -1334,33 +1212,6 @@ const STEP_GLYPH: Record<StepKind, LucideIcon> = {
  * Two of a command's 20 px lines: past them, the way to the rest — its words
  * say what it does, and four lines of shell read heavy (Bodhi, run 9).
  */
-const CODE_CAP_PX = 40;
-const CODE_CAP_LINES = 2;
-
-/**
- * Whether what `watch` is given stands taller than `cap` pixels — measured on
- * the content, not the box that caps it, so it holds folded or open. Until it
- * is measured — the first render, before the page paints it — the words' own
- * length guesses.
- */
-function useTallerThan(
-  cap: number,
-  guess: boolean,
-): readonly [boolean, (element: HTMLElement | null) => void] {
-  const [element, setElement] = useState<HTMLElement | null>(null);
-  const [taller, setTaller] = useState(guess);
-  useLayoutEffect(() => {
-    if (element === null) return;
-    const measure = () => setTaller(element.offsetHeight > cap + 1);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [element, cap]);
-  const [watch] = useState(() => (node: HTMLElement | null) => setElement(node));
-  return [taller, watch];
-}
-
 /**
  * A run of calls, one after another, as one bubble of the chat's shape: each
  * call a row of it and a hairline between them. Ten reads in a row are one
@@ -1441,32 +1292,17 @@ function CallRow({
 }
 
 /**
- * A command's code, in mono: two lines of it from its first frame and a fade
- * where it goes on — a script never prints whole into the chat (the owner,
- * 2026-09-28: "I see 100s of LoC printed directly"). It is how, under what the
- * command was for, on the words' own edge: in the muted ink, failed too — its
- * mark and its right edge say that it failed.
+ * A command's code, in mono, in its item's box — a script never prints whole
+ * into the chat (the owner, 2026-09-28: "I see 100s of LoC printed
+ * directly"): four lines of it, the rest a scroll away, following the code as
+ * it streams in. It is how, under what the command was for, on the words' own
+ * edge: in the muted ink, failed too — its mark and its right edge say that
+ * it failed.
  */
-function CommandCode({
-  script,
-  folded,
-  watch,
-}: {
-  readonly script: string;
-  /** Cut to its first four lines. */
-  readonly folded: boolean | null;
-  readonly watch: (element: HTMLElement | null) => void;
-}) {
+function CommandCode({ script, follows }: { readonly script: string; readonly follows: boolean }) {
   return (
-    <div
-      className={cn("min-w-0", folded === true && "max-h-10 overflow-hidden")}
-      data-chat-folded={folded === null ? undefined : String(folded)}
-      style={
-        folded === true ? { WebkitMaskImage: FOLD_FADE_MASK, maskImage: FOLD_FADE_MASK } : undefined
-      }
-    >
+    <CappedBox follows={follows}>
       <code
-        ref={watch}
         className={cn(
           "block whitespace-pre-wrap break-words font-mono text-muted-foreground",
           META,
@@ -1474,17 +1310,16 @@ function CommandCode({
       >
         {script}
       </code>
-    </div>
+    </CappedBox>
   );
 }
 
 /**
  * A call the Mate made, as its row in the card of calls: led by what kind of
  * call it was, its time and a chevron on the card's right edge. A command
- * says what it was for, then two lines of its code. The row opens as one
- * thing: its first line or "Show all N lines" shows the whole code and what it
- * printed, in an inset on the code's own left edge, and "Show less" folds it
- * back. The one it is making now counts its time in the same quiet ink:
+ * says what it was for, then its code in its item's box. What it printed
+ * opens under it, on its first line's press, in an inset on the code's own
+ * left edge. The one it is making now counts its time in the same quiet ink:
  * blue means something to click (S3), and the run has one clock.
  */
 function StepBubble({
@@ -1498,22 +1333,15 @@ function StepBubble({
   const inSlot = use(InSlotContext);
   const script = step.kind === "command" ? (step.script ?? step.code) : null;
   // A command that said nothing of itself is its own title (K4): its first
-  // line, in mono, and the rest of it opens under it. In the live slot it
-  // stands open to its cap, and lands so.
+  // line, in mono, and the whole of it in its box under it when it runs on.
   const bare = script !== null && step.words === null;
-  // In the slot it follows the code as it streams in, until the person sets it.
-  const disclosure = useDisclosure(bare && inSlot && step.codeLines > 1, "open", true);
-  // A bare command opened to its cap, then whole.
-  const whole = useDisclosure(false, "whole");
+  const disclosure = useDisclosure(false, "open");
   const outputs = stepOutput(step);
   const failure: Failure | null = step.state !== "failed" ? null : undone ? "undone" : "broken";
   const running = step.state === "running";
   const time = stepTime(step);
-  const [taller, watchCode] = useTallerThan(CODE_CAP_PX, step.codeLines > CODE_CAP_LINES);
-  const cut = script !== null && (bare ? step.codeLines > 1 : taller);
-  const showsCode = script !== null && (!bare || disclosure.open);
-  const bareCapped = bare && disclosure.open && step.codeLines > CODE_CAP_LINES && !whole.open;
-  const opens = opensOnto({ control: "step", step, codeCut: cut });
+  const showsCode = script !== null && (!bare || step.codeLines > 1);
+  const opens = opensOnto({ control: "step", step, codeCut: false });
   const title = step.words ?? step.code ?? "A command";
   const headline = (
     <Headline
@@ -1539,7 +1367,7 @@ function StepBubble({
       ) : null}
     </Headline>
   );
-  const pad = showsCode || cut ? "ps-3 pe-3.5 pt-1.75 pb-0.5" : CALL_PAD;
+  const pad = showsCode ? "ps-3 pe-3.5 pt-1.75 pb-0.5" : CALL_PAD;
   return (
     <CallRow
       failure={failure}
@@ -1555,9 +1383,7 @@ function StepBubble({
       {opens ? (
         <DisclosureButton
           className={pad}
-          label={`${title}. ${disclosure.open ? "Hide" : "Show"} ${
-            outputs.length > 0 ? "what it returned" : "the whole command"
-          }`}
+          label={`${title}. ${disclosure.open ? "Hide" : "Show"} what it returned`}
           onToggle={disclosure.toggle}
           open={disclosure.open}
         >
@@ -1567,12 +1393,8 @@ function StepBubble({
         <div className={pad}>{headline}</div>
       )}
       {showsCode ? (
-        <div className={cn("px-3", cut ? "pb-0.5" : "pb-1.75")}>
-          <CommandCode
-            folded={cut && !bare ? !disclosure.open : bare && cut ? bareCapped : null}
-            script={script}
-            watch={watchCode}
-          />
+        <div className="px-3 pb-1.75">
+          <CommandCode follows={inSlot && running} script={script} />
         </div>
       ) : null}
       <StepPictures paths={step.images} />
@@ -1583,32 +1405,13 @@ function StepBubble({
           data-chat-detail-rises={disclosure.made ? "" : undefined}
         >
           {outputs.map((output) => (
-            <OutputBlock key={output.key} label={output.label} text={output.text} />
+            <OutputBlock
+              key={output.key}
+              label={output.label}
+              part={`detail-end:${output.key}`}
+              text={output.text}
+            />
           ))}
-        </div>
-      ) : null}
-      {cut ? (
-        <div className="px-3 pb-1.75">
-          {bareCapped ? (
-            <MoreToggle onToggle={() => whole.set(true)} open={false}>
-              {`Show all ${step.codeLines} lines`}
-            </MoreToggle>
-          ) : (
-            <MoreToggle
-              onToggle={() => {
-                if (bare && disclosure.open) whole.set(false);
-                else if (bare) whole.set(true);
-                disclosure.toggle();
-              }}
-              open={disclosure.open}
-            >
-              {disclosure.open
-                ? "Show less"
-                : bare || step.codeLines > CODE_CAP_LINES
-                  ? `Show all ${step.codeLines} lines`
-                  : "Show the whole command"}
-            </MoreToggle>
-          )}
         </div>
       ) : null}
     </CallRow>
@@ -2130,7 +1933,7 @@ function HelperFace() {
   );
 }
 
-/** The helpers a launch started, as the agents panel knows them. */
+/** The helpers a launch started, as the helpers panel knows them. */
 function spawnAgents(model: AgentPanelModel, spawn: NonNullable<WorkLogEntry["agentSpawn"]>) {
   const memberIds = new Set(spawn.agentTaskIds);
   const workflowGroup = spawn.workflowId
@@ -2396,6 +2199,18 @@ export function recordEventWords(
         words: `You ran /${event.command.name}`,
         detail: event.command.args || null,
       };
+    case "woke": {
+      const what =
+        event.title === null
+          ? `${event.tasks} ${event.helpers ? "helpers" : "background jobs"}`
+          : event.tasks === 1
+            ? event.title
+            : `${event.title} and ${event.tasks - 1} more`;
+      return {
+        words: `${what} ${event.failed > 0 ? "failed" : "finished"}`,
+        detail: `${speaker} went on`,
+      };
+    }
   }
 }
 
@@ -2869,6 +2684,13 @@ function NowWords({ line }: { readonly line: NowLineModel }) {
       return <span className="run-now-verb">{severalCallsWords(line.calls)}</span>;
     case "waiting":
       return <span className="run-now-verb">{nowLineWords(line)}</span>;
+    case "after":
+      return (
+        <>
+          <span className="run-now-verb">{nowLineWords(line)}</span>
+          <TypingDots className="run-now-dots" />
+        </>
+      );
     case "writing":
       return (
         <>
@@ -2941,6 +2763,7 @@ function NowLine({
   answering,
   outcome,
   end = null,
+  settledHere = false,
 }: {
   readonly status: RunStatus;
   readonly now: TurnHeaderActivity | null;
@@ -2949,6 +2772,12 @@ function NowLine({
   readonly outcome: OutcomeModel | null;
   /** What stands in the right column once the run is over. */
   readonly end?: ReactNode;
+  /**
+   * The person watched the run end here: its worked line takes the working
+   * row's place rising into it, as the line's words change in place — never a
+   * swap in one frame (run 11).
+   */
+  readonly settledHere?: boolean;
 }) {
   const ctx = use(TimelineRowCtx);
   const { isCompacting } = use(TimelineRowActivityCtx);
@@ -2970,9 +2799,14 @@ function NowLine({
   // where they stood as the new ones rise into it, so a change reads as the
   // same line saying something new.
   const wordsChanged = useChangedSinceShown(words);
+  const [risesIn] = useState(settledHere);
   const leaving = useLeavingLine(line, words);
   const head = (
-    <span key={words} className="run-now-head" data-run-now-change={wordsChanged ? "" : undefined}>
+    <span
+      key={words}
+      className="run-now-head"
+      data-run-now-change={wordsChanged || risesIn ? "" : undefined}
+    >
       <NowWords line={line} />
     </span>
   );
@@ -3185,6 +3019,13 @@ function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
       return (
         <span className="run-slot-word">{nowLineWords({ kind: "waiting", on: filler.on })}</span>
       );
+    case "after":
+      return (
+        <>
+          <span className="run-slot-word">{nowLineWords({ kind: "after" })}</span>
+          <TypingDots className="run-now-dots" />
+        </>
+      );
   }
 }
 
@@ -3202,7 +3043,7 @@ const NO_ITEMS: ReadonlyMap<string, RecordItem> = new Map();
 
 /** What the empty slot says, as a key: the same words are no change. */
 function fillerKey(filler: SlotFiller): string {
-  return filler.kind === "waiting" ? `waiting:${filler.on}` : filler.kind;
+  return filler.kind === "waiting" ? `${filler.kind}:${filler.on}` : filler.kind;
 }
 
 function LiveSlot({
@@ -3276,13 +3117,9 @@ function LiveSlot({
     const item = byKey.get(entry.key);
     if (item === undefined) return [];
     // A question's answer rises in under it, and the pair plops as one.
-    const answer =
-      item.kind === "question"
-        ? entry.riders.flatMap((key) => {
-            const rider = byKey.get(key);
-            return rider?.kind === "person" ? [{ entry, item: rider }] : [];
-          })
-        : [];
+    const said =
+      item.kind === "question" && entry.answer !== undefined ? byKey.get(entry.answer) : undefined;
+    const answer = said?.kind === "person" ? [{ entry, item: said }] : [];
     return [{ entry, item }, ...answer];
   });
   const drawn = shown.slice(0, SLOT_MAX_ROWS);
@@ -3510,6 +3347,9 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   // worked line alone — the summary — and "Show work" opens the whole run
   // under it (K12).
   const settled = row.status !== null && !row.live;
+  // Watched live here, it ends under the person's eyes: its line rises in.
+  const [watchedLive, setWatchedLive] = useState(row.live && !ctx.syncing);
+  if (row.live && !ctx.syncing && !watchedLive) setWatchedLive(true);
   const shows = runCardShows(settled, fold);
   const folded = shows.toggle === "show";
   // The work stands over the line while the run goes on, while it stays open
@@ -3767,6 +3607,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
               key="line"
               answering={false}
               outcome={row.outcome}
+              settledHere={watchedLive}
               end={
                 // A chat opens from its first thing the Mate did (`chatLines`),
                 // and only onto a line that shows something.
@@ -4208,8 +4049,8 @@ function RunScroll({
         if (element !== null) heard({ kind: "scrolled", position: positionOf(element) });
         heard({ kind: opens ? "opened" : "closed", key });
         if (opens) return;
-        // Once the press has kept itself in place (`collapseInPlace`), that
-        // keeping is the page's move, never read as their move up: closing
+        // Once a closing kept what they pressed in place, that keeping is
+        // the page's move, never read as their move up: closing
         // the last thing they opened, it catches up to its foot; else it
         // stands where the keeping put it.
         queueMicrotask(() => {
@@ -4222,6 +4063,9 @@ function RunScroll({
       },
     };
   }, [readingRef]);
+  // Its node re-inserted puts it back at 0, silently: following, it stands at its foot again.
+  const endRef = useRef<HTMLDivElement>(null);
+  useRunScrollResettle({ scrollRef, endRef, followRef, positionOf, putAt: follow.putAt });
   useLayoutEffect(() => {
     if (keepRef === undefined) return;
     keepRef.current = follow.keep;
@@ -4346,6 +4190,7 @@ function RunScroll({
               ),
             )}
           </ol>
+          <div ref={endRef} aria-hidden="true" data-run-scroll-end="" />
         </div>
       </ChatShownContext>
     </RunScrollHoldContext>

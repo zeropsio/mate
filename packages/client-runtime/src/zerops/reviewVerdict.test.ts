@@ -119,6 +119,19 @@ describe("changeReview: the verdict comes first (R2)", () => {
         fix: undefined,
       },
     ],
+    // Review of pass 42: a draft read "Ready to merge", its words written for
+    // an earlier head as if they were current.
+    [
+      "a draft: its words are not of its latest work",
+      { pull: pull({ ready: false }), commits: 3 },
+      {
+        state: "ready",
+        tone: "quiet",
+        title: "Draft",
+        why: "Nova hasn't described its latest work · No conflicts with main · 3 commits",
+        fix: undefined,
+      },
+    ],
     [
       "conflict, the files named",
       {

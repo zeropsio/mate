@@ -51,6 +51,8 @@ function structure(
     latest?: { id: string; state: string; completed: boolean };
     working?: boolean;
     nowMs?: number;
+    /** The task ids of the helpers still at work. */
+    helpersAtWork?: ReadonlyArray<string>;
   } = {},
 ) {
   const latestTurn = options.latest
@@ -68,6 +70,9 @@ function structure(
     isWorking: options.working ?? options.live !== undefined,
     activeTurnStartedAt: options.live ? at(0) : null,
     ...(options.nowMs === undefined ? {} : { nowMs: options.nowMs }),
+    ...(options.helpersAtWork === undefined
+      ? {}
+      : { helperWorks: (taskId: string) => options.helpersAtWork!.includes(taskId) }),
   });
 }
 
@@ -248,8 +253,10 @@ describe("readsAsAnswer", () => {
 });
 
 describe("deriveConversationStructure", () => {
-  // The answer streams where it will stand: a running turn's last words are
-  // its answer once they read as one and nothing came after them.
+  // D4 (run 11): the answer is decided when the run ends. A running turn's
+  // words are the working row's, however much they read as an answer: under
+  // a live card an answer streamed "below while still writing", then turned
+  // back into a note when a question followed.
   it.each([
     {
       case: "a note on the way",
@@ -263,7 +270,7 @@ describe("deriveConversationStructure", () => {
         tool("w1", "t1", 1),
         assistant("a1", "t1", 2, "It is live.\n\n**What changed**"),
       ],
-      answer: "a1",
+      answer: undefined,
     },
     {
       case: "words that read as an answer, then more work: a note after all",
@@ -282,7 +289,7 @@ describe("deriveConversationStructure", () => {
         assistant("a1", "t1", 2, "It is live.\n\n**What changed**"),
         reasoning("r1", "t1", 3),
       ],
-      answer: "a1",
+      answer: undefined,
     },
   ])("a running turn: $case", ({ entries, answer }) => {
     const [only] = structure(entries, { live: "t1" }).turns;
@@ -472,6 +479,7 @@ describe("deriveConversationStructure", () => {
       ],
       { latest: { id: "t1", state: "completed", completed: true }, working: true },
     );
+    // The run before it launched no helper: it is a run of its own.
     const last = result.turns.at(-1)!;
     expect(last).toMatchObject({ turnId: turn("t2"), live: true, answer: null });
     expect(result.turns[0]).toMatchObject({ live: false });
@@ -566,14 +574,15 @@ describe("deriveConversationStructure", () => {
           taskId: "task-9",
         }),
       ],
-      writing: null,
-      answer: "a1",
+      // D4: the working row's while the run goes on.
+      writing: "a1",
+      answer: null,
     },
     {
       name: "words that read as its answer",
       tail: [assistant("a1", "t1", 1, "Done.\n\nThe routes are:")],
       writing: null,
-      answer: "a1",
+      answer: null,
     },
     {
       name: "a line it moved on from",
@@ -1289,7 +1298,7 @@ describe("browser checks", () => {
       (operation) => operation.kind === "browser",
     );
     expect(checksStrip(checks, false)).toMatchObject({ views: 2, failures: 0 });
-    expect(deriveOutcome({ turn: only!, landed: [], diff: null })?.checks).toMatchObject({
+    expect(deriveOutcome({ turn: only!, landed: [], diffs: [] })?.checks).toMatchObject({
       count: 3,
       views: 2,
       failures: 0,
@@ -1457,6 +1466,11 @@ describe("standingIncidents — what the dock under the now line says of a servi
       shows: [],
     },
     {
+      name: "a log read checks nothing: nothing",
+      ops: [dev("s1", 1, "Health check", true), dev("s2", 2, "Logs", false)],
+      shows: [],
+    },
+    {
       name: "found, then started and running: gone",
       ops: [dev("s1", 1, "Status", false), dev("s2", 2, "Start", true)],
       shows: [],
@@ -1594,7 +1608,7 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: only!,
       landed: [entries[5] as Extract<TimelineEntry, { kind: "change-landed" }>],
-      diff: diff(3),
+      diffs: [diff(3)],
     });
     expect(outcome).toEqual({
       key: "outcome:msg:m0",
@@ -1620,7 +1634,7 @@ describe("deriveOutcome", () => {
           title: "Draw distance",
         },
       ],
-      files: { count: 3, additions: 30, deletions: 6, turnId: turn("t1") },
+      files: { count: 3, additions: 30, deletions: 6, turnId: turn("t1"), fromTurnId: null },
       checks: {
         count: 1,
         views: 1,
@@ -1670,7 +1684,7 @@ describe("deriveOutcome", () => {
       assistant("a1", "t1", 2),
     ];
     const [only] = structure(entries, settled).turns;
-    const outcome = deriveOutcome({ turn: only!, landed: [], diff: null });
+    const outcome = deriveOutcome({ turn: only!, landed: [], diffs: [] });
     expect(
       outcome?.live.map(({ hostname, tone, word, url, failure }) => ({
         hostname,
@@ -1758,7 +1772,7 @@ describe("deriveOutcome", () => {
       assistant("a1", "t1", 2),
     ];
     const [only] = structure(entries, settled).turns;
-    const outcome = deriveOutcome({ turn: only!, landed: [], diff: null });
+    const outcome = deriveOutcome({ turn: only!, landed: [], diffs: [] });
     expect(
       outcome?.live.map(({ hostname, tone, failure }) => ({
         hostname,
@@ -1795,7 +1809,7 @@ describe("deriveOutcome", () => {
       assistant("a1", "t1", 2),
     ];
     const [only] = structure(entries, settled).turns;
-    const outcome = deriveOutcome({ turn: only!, landed: [], diff: null });
+    const outcome = deriveOutcome({ turn: only!, landed: [], diffs: [] });
     expect(outcome?.live.map(({ hostname, word, url }) => ({ hostname, word, url }))).toEqual([
       { hostname: "apidev", word: "Deployed", url: "https://apidev.example.dev" },
     ]);
@@ -1866,7 +1880,7 @@ describe("deriveOutcome", () => {
         settled,
       ).turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
     });
     expect(outcome?.live).toEqual([
       expect.objectContaining({ hostname: "appdev", tone: "failed", word, failure }),
@@ -1951,7 +1965,7 @@ describe("deriveOutcome", () => {
         settled,
       ).turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
     });
     expect(outcome?.live).toEqual([expect.objectContaining({ hostname: "appdev", tone, word })]);
   });
@@ -1972,7 +1986,7 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure([user("m0", 0), ...ops, assistant("a1", "t1", 5)], settled).turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
     });
     expect(outcome?.live.map((service) => service.word) ?? []).toEqual(words);
   });
@@ -2035,7 +2049,7 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure([user("m0", 0), ...ops, assistant("a1", "t1", 5)], settled).turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
     });
     expect(outcome?.live.map((service) => service.word) ?? []).toEqual(services);
     expect(outcome?.notDone.length ?? 0).toBe(notDone);
@@ -2201,7 +2215,7 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
       later: turns.slice(1),
     });
     expect(outcome?.later).toEqual(later);
@@ -2219,7 +2233,7 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure(entries, settled).turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
     });
     expect(outcome?.change).toEqual({ repository: "app", number: 2 });
     expect(outcome?.crewTask).toEqual({ number: 12, title: "Camera rig" });
@@ -2250,7 +2264,7 @@ describe("deriveOutcome", () => {
       turn: structure([user("m0", 0), plan, tool("w1", "t1", 2), assistant("a1", "t1", 3)], settled)
         .turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
     });
     expect(outcome?.planLeft).toEqual(["Style the page", "Write the tests"]);
   });
@@ -2361,7 +2375,7 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure([user("m0", 0), ...pictures, assistant("a1", "t1", 9)], settled).turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
     });
     expect(readPictures(outcome?.pictures ?? [])).toEqual(read);
   });
@@ -2383,7 +2397,7 @@ describe("deriveOutcome", () => {
         settled,
       ).turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
     });
     expect(
       outcome?.pictures.map((picture) =>
@@ -2406,7 +2420,7 @@ describe("deriveOutcome", () => {
         settled,
       ).turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
     });
     expect(outcome?.live.map((service) => service.at)).toEqual([at(4, 30)]);
   });
@@ -2416,7 +2430,7 @@ describe("deriveOutcome", () => {
       [user("m0", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2)],
       settled,
     );
-    expect(deriveOutcome({ turn: quiet.turns[0]!, landed: [], diff: null })).toBeNull();
+    expect(deriveOutcome({ turn: quiet.turns[0]!, landed: [], diffs: [] })).toBeNull();
     const refused = structure(
       [
         user("m0", 0),
@@ -2424,7 +2438,7 @@ describe("deriveOutcome", () => {
       ],
       settled,
     );
-    expect(deriveOutcome({ turn: refused.turns[0]!, landed: [], diff: diff(2) })).toBeNull();
+    expect(deriveOutcome({ turn: refused.turns[0]!, landed: [], diffs: [diff(2)] })).toBeNull();
   });
 
   // What its calls came to is the run's effort: a run that only ran
@@ -2442,7 +2456,7 @@ describe("deriveOutcome", () => {
         settled,
       ).turns[0]!,
       landed: [],
-      diff: changed === null ? null : diff(changed),
+      diffs: changed === null ? [] : [diff(changed)],
       activity,
     });
     expect(outcome?.activity).toEqual(activity);
@@ -2456,7 +2470,7 @@ describe("deriveOutcome", () => {
       assistant("a1", "t1", 2),
     ];
     expect(
-      deriveOutcome({ turn: structure(entries, settled).turns[0]!, landed: [], diff: null }),
+      deriveOutcome({ turn: structure(entries, settled).turns[0]!, landed: [], diffs: [] }),
     ).toMatchObject({
       checks: {
         count: 1,
@@ -2492,7 +2506,7 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure(entries, settled).turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
     });
     expect(outcome?.live).toEqual([
       expect.objectContaining({ hostname: "apistage", tone: "ok", word: "Deployed" }),
@@ -2516,7 +2530,7 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure(entries, settled).turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
     });
     expect(outcome?.notDone).toEqual([
       {
@@ -2557,7 +2571,7 @@ describe("deriveOutcome", () => {
     const outcome = deriveOutcome({
       turn: structure(entries, settled).turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
     });
     expect(outcome?.notDone).toEqual([
       expect.objectContaining({ subject: "cache", reason: "Zerops has no service type valkey@9" }),
@@ -3195,10 +3209,234 @@ describe("deriveOutcome: a service's standing is the latest word on it", () => {
     const outcome = deriveOutcome({
       turn: structure([user("m0", 0), ...ops, assistant("a1", "t1", 20)], settled).turns[0]!,
       landed: [],
-      diff: null,
+      diffs: [],
     });
     expect(
       Object.fromEntries((outcome?.live ?? []).map((service) => [service.hostname, service.tone])),
     ).toEqual(standing);
+  });
+});
+
+// Run 11 (2026-10-05): a run is what the Mate did for one message of the
+// person's, the turns its helpers woke included — one card, open while its
+// helpers work, its answer decided as it ends.
+describe("a run, its woken turns and its work", () => {
+  const ANSWER = "All four sites are live.\n\nEach one has its ten pages, and the switcher works.";
+  // A helper's finish reaches the thread under no turn.
+  const finished = (id: string, minute: number): TimelineEntry => {
+    const base = tool(`done-${id}`, "unused", minute, {
+      label: "Task completed",
+      sourceActivityKind: "task.completed",
+      taskId: `task-${id}`,
+    });
+    if (base.kind !== "work") return base;
+    const { turnId: _turnId, command: _command, toolCallId: _call, ...entry } = base.entry;
+    return { ...base, entry };
+  };
+  // A helper the run launched: its row stands where it was spawned.
+  const launched = (id: string, minute: number): TimelineEntry =>
+    tool(`launch-${id}`, "t1", minute, {
+      label: `Review ${id}`,
+      sourceActivityKind: "task.started",
+      taskId: `task-${id}`,
+      agentSpawn: { workflowId: null, agentTaskIds: [`task-${id}`] },
+    });
+
+  it("draws a turn nobody wrote to start as the run before it going on", () => {
+    const entries = [
+      user("u1", 0),
+      tool("w1", "t1", 1),
+      launched("h1", 1),
+      assistant("a1", "t1", 2, "Fresh screenshots are being captured now."),
+      finished("h1", 4),
+      tool("w2", "t2", 5),
+      assistant("a2", "t2", 6, ANSWER),
+    ];
+    const built = structure(entries, { latest: { id: "t2", state: "completed", completed: true } });
+    expect(built.turns).toHaveLength(1);
+    const [run] = built.turns;
+    expect(run!.stretches.map((stretch) => stretch.lead?.id ?? null)).toEqual(["u1", null]);
+    expect(run!.answer?.id).toBe("a2");
+    // What woke it is the run's: never a loose line between two cards.
+    expect([...built.looseIndexes]).toEqual([]);
+    // A run that launched none settled with its answer: the turn after it is
+    // a run of its own, never one that takes the settled card back.
+    const alone = structure(
+      entries.filter((entry) => entry.id !== "launch-h1"),
+      { latest: { id: "t2", state: "completed", completed: true } },
+    );
+    expect(alone.turns.map((each) => each.answer?.id ?? null)).toEqual(["a1", "a2"]);
+  });
+
+  // Review of pass 42: the words a run said before the work its helpers woke
+  // it to were on the way, never its answer.
+  // Review of pass 42: the files the turns its helpers woke changed went
+  // unsaid, and the diff opened the first turn's alone.
+  it("counts the files every turn of a run changed, its diff the whole run's", () => {
+    const entries = [
+      user("u1", 0),
+      launched("h1", 1),
+      assistant("a1", "t1", 2, "Started it."),
+      finished("h1", 4),
+      tool("w2", "t2", 5),
+      assistant("a2", "t2", 6, ANSWER),
+    ];
+    const [run] = structure(entries, {
+      latest: { id: "t2", state: "completed", completed: true },
+    }).turns;
+    const diffOf = (turnId: string, paths: ReadonlyArray<string>) =>
+      ({
+        turnId: turn(turnId),
+        checkpointTurnCount: 1,
+        checkpointRef: "ref" as TurnDiffSummary["checkpointRef"],
+        status: "ready",
+        files: paths.map((path) => ({ path, kind: "modified", additions: 5, deletions: 1 })),
+        assistantMessageId: null,
+        completedAt: at(9),
+      }) as TurnDiffSummary;
+    const outcome = deriveOutcome({
+      turn: run!,
+      landed: [],
+      diffs: [diffOf("t1", ["a.ts", "b.ts"]), diffOf("t2", ["b.ts", "c.ts"])],
+    });
+    expect(outcome?.files).toEqual({
+      count: 3,
+      additions: 20,
+      deletions: 4,
+      turnId: turn("t2"),
+      fromTurnId: turn("t1"),
+    });
+  });
+
+  it("answers a run its helpers woke with its last turn's words alone", () => {
+    const entries = [
+      user("u1", 0),
+      launched("h1", 1),
+      assistant("a1", "t1", 2, ANSWER),
+      finished("h1", 4),
+      tool("w2", "t2", 5),
+    ];
+    const [run] = structure(entries, {
+      latest: { id: "t2", state: "completed", completed: true },
+    }).turns;
+    expect(run!.span.turnIds).toEqual([turn("t1"), turn("t2")]);
+    expect(run!.answer).toBeNull();
+  });
+
+  it("keeps a run waiting on the helpers it launched, its last words no answer yet", () => {
+    const entries = [
+      user("u1", 0),
+      tool("w1", "t1", 1),
+      launched("h1", 1),
+      assistant("a1", "t1", 2, ANSWER),
+    ];
+    const latest = { id: "t1", state: "completed", completed: true };
+    const settled = structure(entries, { latest });
+    expect(settled.turns[0]!.waiting).toBe(false);
+    expect(settled.turns[0]!.answer?.id).toBe("a1");
+    const waiting = structure(entries, { latest, helpersAtWork: ["task-h1"] });
+    expect(waiting.turns[0]!.waiting).toBe(true);
+    expect(waiting.turns[0]!.live).toBe(false);
+    expect(waiting.turns[0]!.answer).toBeNull();
+    // Review of pass 42: work it never launched — a helper of another run, a
+    // dev server, a watch — holds no run open, nor hides its answer.
+    const other = structure(entries, { latest, helpersAtWork: ["task-elsewhere"] });
+    expect(other.turns[0]).toMatchObject({ waiting: false, answer: { id: "a1" } });
+  });
+
+  // D4: the answer is decided when the run ends. While it runs, its words
+  // are the working row's, however much they read as an answer.
+  it("decides no answer while the run goes on", () => {
+    const entries = [user("u1", 0), tool("w1", "t1", 1), assistant("a1", "t1", 2, ANSWER)];
+    expect(structure(entries, { live: "t1" }).turns[0]!.answer).toBeNull();
+    expect(
+      structure(entries, { latest: { id: "t1", state: "completed", completed: true } }).turns[0]!
+        .answer?.id,
+    ).toBe("a1");
+  });
+
+  // "Stopped" is said only after the person's Stop: a run their message
+  // interrupted says so.
+  it("tells a run the person's message interrupted from one they stopped", () => {
+    const interrupted = structure(
+      // Their message came while the step ran: the run stopped for it.
+      [
+        user("u1", 0),
+        tool("w1", "t1", 1, { toolLifecycleStatus: "inProgress" }),
+        user("u2", 1),
+        tool("w2", "t2", 3),
+        assistant("a2", "t2", 4),
+      ],
+      { latest: { id: "t2", state: "completed", completed: true } },
+    );
+    expect(interrupted.turns[0]!.interrupted).toBe(true);
+    expect(interrupted.turns[0]!.byMessage).toBe(true);
+    const stopped = structure([user("u1", 0), tool("w1", "t1", 1)], {
+      latest: { id: "t1", state: "interrupted", completed: true },
+    });
+    expect(stopped.turns[0]!.interrupted).toBe(true);
+    expect(stopped.turns[0]!.byMessage).toBe(false);
+    // The Stop ends the tasks the run started; a message leaves them running
+    // (Rhea, run 11: stopped, then "continue" a minute later).
+    const stoppedThenWritten = structure(
+      [
+        user("u1", 0),
+        tool("w1", "t1", 1, { toolLifecycleStatus: "inProgress" }),
+        tool("h1", "t1", 1, {
+          sourceActivityKind: "task.completed",
+          taskId: "task-h1",
+          toolLifecycleStatus: "stopped",
+        }),
+        user("u2", 2),
+        tool("w2", "t2", 3),
+        assistant("a2", "t2", 4),
+      ],
+      { latest: { id: "t2", state: "completed", completed: true } },
+    );
+    expect(stoppedThenWritten.turns[0]!.interrupted).toBe(true);
+    expect(stoppedThenWritten.turns[0]!.byMessage).toBe(false);
+  });
+
+  // Review of pass 42: a completion of the run's call filed under the turn
+  // the person's message started cleared that message, and the run took it in.
+  it("keeps the person's interrupting message the opener of its own run", () => {
+    const built = structure(
+      [
+        user("u1", 0),
+        tool("w1", "t1", 1, { toolLifecycleStatus: "inProgress", toolCallId: "call-c1" }),
+        user("u2", 2),
+        tool("w1done", "t2", 2, { toolCallId: "call-c1" }),
+        tool("w2", "t2", 3),
+        assistant("a2", "t2", 4),
+      ],
+      { latest: { id: "t2", state: "completed", completed: true } },
+    );
+    expect(built.turns.map((turn) => turn.span.opener?.id ?? null)).toEqual(["u1", "u2"]);
+    expect(built.turns[0]!.interrupted).toBe(true);
+  });
+
+  it("never takes a woken turn into a run that launched no helper", () => {
+    const compacted = structure(
+      [
+        user("u1", 0),
+        assistant("a1", "t1", 1),
+        user("cmd", 2, "/compact"),
+        tool("cmp", "t2", 3, { sourceActivityKind: "context-compaction", label: "Compacted" }),
+        tool("w3", "t3", 4),
+        assistant("a3", "t3", 5),
+      ],
+      { latest: { id: "t3", state: "completed", completed: true } },
+    );
+    expect(compacted.turns.map((turn) => turn.span.turnIds.length)).toEqual([1, 1, 1]);
+    const late = structure(
+      [
+        user("u1", 0),
+        assistant("a1", "t1", 1),
+        tool("w2", "t2", 1 + 61),
+        assistant("a2", "t2", 63),
+      ],
+      { latest: { id: "t2", state: "completed", completed: true } },
+    );
+    expect(late.turns).toHaveLength(2);
   });
 });

@@ -84,6 +84,8 @@ type Item =
       readonly code: string;
       readonly output?: string;
       readonly fails?: boolean;
+      /** Sent to the background, as Claude Code says: the job's id. */
+      readonly background?: string;
     }
   | {
       readonly id: string;
@@ -119,6 +121,11 @@ interface Run {
   readonly write: number;
   readonly end: number;
   readonly answer: string;
+  /**
+   * The person writes into the run at `at`: the turn ends there and the next
+   * one starts thinking, as a message sent mid-run does (run 11).
+   */
+  readonly interrupt?: { readonly at: number; readonly words: string; readonly thought: string };
 }
 
 const THOUGHT1 =
@@ -329,10 +336,64 @@ const CARDS: Run = {
   answer: "Lint, tests and build pass.",
 };
 
+/**
+ * Photos sent to the background, the menu page wired meanwhile, a build
+ * running — then the person writes into the run (Rhea, run 11: the card was
+ * cut off at its bottom as the next run began).
+ */
+const INTERRUPT: Run = {
+  ask: "Make photos for the six recipe pages and add them to the menu page.",
+  items: [
+    {
+      id: "t1",
+      kind: "thought",
+      start: 0.3,
+      end: 1.5,
+      text: "Six photos take a while: I'll send them to the background and wire the menu meanwhile.",
+    },
+    {
+      id: "c1",
+      kind: "command",
+      start: 1.8,
+      end: 2.2,
+      words: "Generate the remaining six recipe photos",
+      code: "python make_photos.py --all",
+      background: "bg-photos",
+    },
+    { id: "r1", kind: "read", start: 2.6, end: 2.8, name: "src/pages/menu.tsx" },
+    { id: "e1", kind: "edit", start: 3.2, end: 3.6, name: "src/pages/menu.tsx" },
+    {
+      id: "n1",
+      kind: "note",
+      start: 4.2,
+      text: "Adding the photos to the menu page while they render.",
+    },
+    { id: "c2", kind: "command", start: 5, end: null, words: "Build the site", code: "pnpm build" },
+  ],
+  write: 1000,
+  end: 14,
+  answer: "",
+  interrupt: {
+    at: 7,
+    words: "could the desserts get a darker background?",
+    thought: "The person asks for a darker background behind the desserts.",
+  },
+};
+
 const RUN: Run =
-  { main: MAIN, burst: BURST, stale: STALE, band: BAND, long: LONG, edits: EDITS, cards: CARDS }[
-    SCRIPT
-  ] ?? MAIN;
+  {
+    main: MAIN,
+    burst: BURST,
+    stale: STALE,
+    band: BAND,
+    long: LONG,
+    edits: EDITS,
+    cards: CARDS,
+    interrupt: INTERRUPT,
+  }[SCRIPT] ?? MAIN;
+
+/** The turn the person's message starts, in the interrupt script. */
+const TURN2 = TurnId.make("live-turn-2");
 
 /** The run started this long before the page loaded, so its clock reads as it would live. */
 const STARTED = Date.now() - START_AT * 1000;
@@ -388,6 +449,7 @@ function callEntry(
       ...lifecycle,
       ...(returned && item.output !== undefined ? { detail: item.output } : {}),
       ...(returned && item.fails ? { tone: "tool" } : {}),
+      ...(returned && item.background !== undefined ? { sentToBackground: item.background } : {}),
     });
   }
   const tool = TOOL[item.kind];
@@ -551,6 +613,15 @@ function entriesAt(t: number): TimelineEntry[] {
         break;
     }
   }
+  if (RUN.interrupt !== undefined && t >= RUN.interrupt.at) {
+    const { at, words, thought } = RUN.interrupt;
+    entries.push(message("interrupt", "user", at, words));
+    if (t >= at + 0.5) {
+      const shown = Math.min(1, (t - at - 0.5) / 2);
+      const text = thought.slice(0, Math.max(1, Math.round(thought.length * shown)));
+      entries.push(message("t2-thought", "reasoning", at + 0.5, text, shown < 1, TURN2));
+    }
+  }
   if (t >= RUN.write) {
     const shown = Math.min(1, (t - RUN.write) / Math.max(0.1, RUN.end - RUN.write));
     entries.push(
@@ -621,23 +692,33 @@ function Pane() {
     };
   }, [jump, restart, seconds]);
   const step = Math.floor(seconds * 20) / 20;
-  const ended = step >= RUN.end;
+  const ended = step >= RUN.end && RUN.interrupt === undefined;
+  // Written into: the first turn is over, the next one runs.
+  const second = RUN.interrupt !== undefined && step >= RUN.interrupt.at + 0.5;
   const entries = useMemo(() => entriesAt(step), [step]);
   const latestTurn = useMemo(
-    () => ({
-      turnId: TURN,
-      state: ended ? ("completed" as const) : ("running" as const),
-      startedAt: iso(0),
-      completedAt: ended ? iso(RUN.end) : null,
-    }),
-    [ended],
+    () =>
+      second
+        ? {
+            turnId: TURN2,
+            state: "running" as const,
+            startedAt: iso(RUN.interrupt!.at + 0.5),
+            completedAt: null,
+          }
+        : {
+            turnId: TURN,
+            state: ended ? ("completed" as const) : ("running" as const),
+            startedAt: iso(0),
+            completedAt: ended ? iso(RUN.end) : null,
+          },
+    [ended, second],
   );
   const dock = useMemo(
     () =>
       deriveDock({
         timelineEntries: entries,
         isWorking: !ended,
-        runningTurnId: ended ? null : TURN,
+        runningTurnId: ended ? null : second ? TURN2 : TURN,
         agentPanelModel: emptyAgentPanelModel(),
         plan: null,
         pause: null,
@@ -655,11 +736,11 @@ function Pane() {
           crewTimeline={null}
           timeline={{
             isWorking: !ended,
-            activeTurnStartedAt: ended ? null : iso(0),
+            activeTurnStartedAt: ended ? null : second ? iso(RUN.interrupt!.at + 0.5) : iso(0),
             listRef,
             timelineEntries: entries,
             latestTurn,
-            runningTurnId: ended ? null : TURN,
+            runningTurnId: ended ? null : second ? TURN2 : TURN,
             turnDiffSummaries: [],
             working: dock,
             routeThreadKey,

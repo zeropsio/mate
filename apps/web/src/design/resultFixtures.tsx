@@ -233,7 +233,7 @@ const NOVA = outcome({
   live: [service("appdev", { word: "Dev server running" })],
   checks: { count: 1, views: 1, failures: 0, takes: [take("op:b1", `${APPDEV}/status`)] },
   pictures: [checked("op:b1", `${APPDEV}/status`, PICTURE.src)],
-  files: { count: 3, additions: 45, deletions: 3, turnId: TURN },
+  files: { count: 3, additions: 45, deletions: 3, turnId: TURN, fromTurnId: null },
   change: { repository: "app", number: 2 },
   activity: [
     { kind: "edit", count: 3 },
@@ -280,7 +280,7 @@ const FEN = outcome({
       shapeOf(TABLET),
     ),
   ],
-  files: { count: 59, additions: 2400, deletions: 529, turnId: TURN },
+  files: { count: 59, additions: 2400, deletions: 529, turnId: TURN, fromTurnId: null },
   change: { repository: "world", number: 4 },
   activity: [
     { kind: "edit", count: 59 },

@@ -10,6 +10,7 @@
  * change it will keep rather than growing it in a second later.
  */
 import {
+  changeAsksForReview,
   readZeropsMembership,
   type FlowPullRequest,
   type ZeropsProject,
@@ -28,9 +29,14 @@ import { runEffortWords, type ResultChange, type ResultFacts } from "./runResult
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
 
 function resultChange(
-  pull: Pick<FlowPullRequest, "repository" | "number" | "title">,
+  pull: Pick<FlowPullRequest, "repository" | "number" | "title" | "ready">,
 ): ResultChange {
-  return { repository: pull.repository, number: pull.number, title: pull.title };
+  return {
+    repository: pull.repository,
+    number: pull.number,
+    title: pull.title,
+    ready: changeAsksForReview(pull),
+  };
 }
 
 export function readRunResultFacts(input: {

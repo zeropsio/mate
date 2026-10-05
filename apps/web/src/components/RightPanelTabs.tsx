@@ -391,7 +391,8 @@ function surfaceTitle(
         getTerminalLabel(surface.activeTerminalId)
       );
     case "agents":
-      return "Agents";
+      // One word for them everywhere: the card says "helpers" (run 11).
+      return "Helpers";
     case "zerops":
       return "Zerops";
     case "browser":

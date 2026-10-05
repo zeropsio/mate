@@ -515,6 +515,35 @@ describe("groupMemberFactsOf — whether a Mate was spoken to", () => {
     expect(facts?.mate?.waiting).toBe(waiting);
   });
 
+  // Its changes ask for nothing while it works: the group's next step waits until it rests.
+  it.each([
+    { case: "a Mate at work", group: "connected", face: "working", working: [true] },
+    { case: "a Mate at rest", group: "connected", face: "idle", working: [undefined] },
+    {
+      case: "a word at rest says nothing of now",
+      group: "ready",
+      face: "working",
+      remembered: true,
+      working: [undefined],
+    },
+  ] as const)("feeds $case to the flow", ({ group, face, working, ...rest }) => {
+    const members = groupMemberFactsOf(
+      [{ item: mate(group), role: "dev" }],
+      () => ({ ...activity("Fix it"), face, ...rest }),
+      () => true,
+      undefined,
+    );
+    const input = groupFlowInputOf({
+      groupId: "g",
+      members,
+      flow: undefined,
+      deployments: new Map(),
+      productionAddable: false,
+      pending: [],
+    });
+    expect(input.mates.map((entry) => entry.working)).toEqual(working);
+  });
+
   it("feeds an unknown talk to the flow as not spoken to", () => {
     const members = groupMemberFactsOf(
       [{ item: mate("ready"), role: "dev" }],

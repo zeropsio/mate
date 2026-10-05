@@ -84,6 +84,44 @@ describe("migrate", () => {
     );
 
     // The migration from main ran once, before the switch; its tables go with its code.
+    it.effect(
+      "keeps a change described before drafts existed asking, and an undescribed one a draft",
+      () =>
+        withSql(
+          Effect.gen(function* () {
+            const all = treeMigrations();
+            const at = all.findIndex((file) => file.name.startsWith("0043_"));
+            yield* migrate(all.slice(0, at));
+            const sql = yield* SqlClient.SqlClient;
+            const head = "a".repeat(40);
+            yield* sql`INSERT INTO hq_app (id, name, created_by)
+            VALUES ('00000000-0000-0000-0000-000000000001', 'Shop', 'owner')`;
+            yield* sql`INSERT INTO hq_repo (app_id, name, created_by)
+            VALUES ('00000000-0000-0000-0000-000000000001', 'appdev', 'owner')`;
+            for (const [number, body] of [
+              [1, "It adds a login page."],
+              [2, ""],
+              [3, "  "],
+            ] as const) {
+              yield* sql`INSERT INTO hq_change (app_id, repo, number, mate_project_id, title, body, state, head)
+              VALUES ('00000000-0000-0000-0000-000000000001', 'appdev', ${number}, 'P_MATE',
+                'The task', ${body}, 'closed', ${head})`;
+            }
+            yield* migrate(all);
+            const rows = yield* sql<{ readonly number: number; readonly ready: boolean }>`
+            SELECT number, COALESCE(ready_head = head, false) AS ready FROM hq_change ORDER BY number`;
+            assert.deepStrictEqual(
+              rows.map((row) => [row.number, row.ready]),
+              [
+                [1, true],
+                [2, false],
+                [3, false],
+              ],
+            );
+          }),
+        ),
+    );
+
     it.effect("leaves none of the migration from main's tables", () =>
       withSql(
         Effect.gen(function* () {

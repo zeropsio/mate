@@ -57,7 +57,7 @@ const WAITING: ZeropsMateNextStep = {
   target: { kind: "change", groupId: "g-1", repository: "app", number: 2 },
 };
 
-const NOTHING_PENDING: ZeropsNextStepPending = { question: false, approval: false };
+const NOTHING_PENDING: ZeropsNextStepPending = { question: false, approval: false, working: false };
 
 const UNANSWERED: ZeropsMateNextStep = { kind: "unknown" };
 const NOTHING: ZeropsMateNextStep = { kind: "none" };
@@ -165,19 +165,27 @@ describe("zeropsComposerTop", () => {
     {
       case: "a question waits on the person first",
       nextStep: WAITING,
-      pending: { question: true, approval: false },
+      pending: { question: true, approval: false, working: false },
       shown: null,
     },
     {
       case: "an approval waits on the person first",
       nextStep: WAITING,
-      pending: { question: false, approval: true },
+      pending: { question: false, approval: true, working: false },
       shown: null,
     },
     {
       case: "a question and an approval wait on the person first",
       nextStep: WAITING,
-      pending: { question: true, approval: true },
+      pending: { question: true, approval: true, working: false },
+      shown: null,
+    },
+    // While the Mate works — a turn, or helpers it started — its change is still moving: the
+    // review it asks for would trail what the change does. It asks once the Mate rests.
+    {
+      case: "the Mate works",
+      nextStep: WAITING,
+      pending: { question: false, approval: false, working: true },
       shown: null,
     },
   ])("$case", ({ nextStep, pending, shown }) => {
@@ -354,7 +362,7 @@ describe("zeropsComposerTop", () => {
     const top = zeropsComposerTop({
       nextStep: UNANSWERED,
       remembered: REMEMBERED,
-      pending: { question: true, approval: false },
+      pending: { question: true, approval: false, working: false },
     });
     expect(top).toEqual({ strip: null, remember: undefined });
   });
@@ -510,7 +518,9 @@ const UNREAD: Inventory = {
 const THREAD = scopeThreadRef(EnvironmentId.make("env-nova"), ThreadId.make("thread-1"));
 
 function ComposerTop() {
-  return <>{useZeropsNextStepStrip(THREAD, { question: false, approval: false })}</>;
+  return (
+    <>{useZeropsNextStepStrip(THREAD, { question: false, approval: false, working: false })}</>
+  );
 }
 
 describe("the composer's top on a reload's first render", () => {

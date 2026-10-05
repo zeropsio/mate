@@ -37,6 +37,8 @@ const ChangeSchema = Schema.Struct({
   line: Schema.String,
   baseBranch: Schema.String,
   updatedAt: Schema.optionalKey(Schema.String),
+  // A draft is remembered as one: drawn ready, a reload offered its Review and took it back.
+  ready: Schema.optionalKey(Schema.Boolean),
 });
 
 const ChipStateSchema = Schema.Literals([
@@ -179,6 +181,7 @@ export function rememberedChangeOf(pull: FlowPullRequest): RememberedMateChange 
     line: pull.line,
     baseBranch: pull.baseBranch,
     ...(pull.updatedAt === undefined ? {} : { updatedAt: pull.updatedAt }),
+    ...(pull.ready === undefined ? {} : { ready: pull.ready }),
   };
 }
 
@@ -202,6 +205,7 @@ export function changeFromMemory(change: RememberedMateChange): FlowPullRequest 
     baseBranch: change.baseBranch,
     line: change.line,
     updatedAt: change.updatedAt,
+    ready: change.ready,
   };
 }
 

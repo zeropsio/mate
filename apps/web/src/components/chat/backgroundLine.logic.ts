@@ -84,7 +84,7 @@ export function backgroundLineOf(
       items: only.report === null || inline ? [] : [only],
     };
   }
-  const noun = helpers ? "helpers" : "background tasks";
+  const noun = helpers ? "helpers" : "background jobs";
   const counts = [
     running > 0 ? `${running} running` : null,
     done > 0 && (running > 0 || failed > 0 || lost > 0) ? `${done} finished` : null,

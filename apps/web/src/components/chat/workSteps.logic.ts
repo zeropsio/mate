@@ -14,6 +14,7 @@
 import type { WorkLogEntry } from "../../session-logic";
 import { lookedAt, namedToolCall, toolCallWords } from "./conversation.logic";
 import { jobLost, type LiveJobs } from "./liveJobs.logic";
+import { spilledOutputOf, spilledOutputPhrase } from "./spilledOutput.logic";
 
 export type StepKind = "command" | "look" | "read" | "edit" | "search" | "web" | "tool";
 
@@ -104,6 +105,8 @@ export interface TrackedCommands {
   readonly trackers: ReadonlySet<string>;
   /** Each background task's words, by its id: a read of its output names it. */
   readonly jobTitles: ReadonlyMap<string, string>;
+  /** Each call whose output was saved to a file, by the file's id: a read of it names the call. */
+  readonly spillTitles?: ReadonlyMap<string, string>;
   /** The jobs the server holds live (`liveJobs.logic`): one it does not, unreported, never will. */
   readonly liveJobs?: LiveJobs | null;
 }
@@ -272,6 +275,14 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
     if (command.sentToBackground !== undefined && words)
       jobTitles.set(command.sentToBackground, words);
   }
+  const spillTitles = new Map(
+    entries.flatMap((call) => {
+      const words = spillTitleOf(call);
+      return call.spilledTo === undefined || words === undefined
+        ? []
+        : [[call.spilledTo, words] as const];
+    }),
+  );
   for (const task of entries) {
     if (!isTask(task)) continue;
     const words = (task.toolTitle ?? task.label).trim();
@@ -297,29 +308,33 @@ export function trackCommands(entries: ReadonlyArray<WorkLogEntry>): TrackedComm
         : { task },
     );
   }
-  return { byCommand, trackers, jobTitles };
+  return { byCommand, trackers, jobTitles, spillTitles };
 }
 
-/** The file a background task writes what it prints to: `…/tasks/<task id>.output`. */
-const JOB_OUTPUT = /[\\/]tasks[\\/]([\w-]+)\.output$/u;
+/** The words a call whose output was saved to a file goes by: its own, else its command. */
+function spillTitleOf(call: WorkLogEntry): string | undefined {
+  const described = call.callInput?.description?.trim();
+  if (described) return described;
+  const command = call.rawCommand ?? call.command;
+  return command ? commandShown(unwrapShell(command)) : undefined;
+}
 
 /**
- * A read of the file a background job writes, said by the job (a probe read
- * "Read be98ni9xv.output" on the live card): null for any other read.
+ * A read of output Claude Code saved to a file, said by what made it (a probe
+ * read "Read be98ni9xv.output" on the live card, run 11 "Reading
+ * br89ocvyk.txt"): null for any other read.
  */
-function jobOutputPhrase(
+function spilledReadPhrase(
   entry: WorkLogEntry,
   tracked: TrackedCommands,
   running: boolean,
 ): StepPhrase | null {
   const file = entry.callInput?.filePath ?? detailFile(entry.detail) ?? null;
-  const id = file === null ? undefined : JOB_OUTPUT.exec(file)?.[1];
-  if (id === undefined) return null;
-  const title = tracked.jobTitles.get(id);
-  const verb = running ? "Reading" : "Read";
-  return title === undefined
-    ? { verb: `${verb} a background job's output`, targets: [], more: 0, code: false }
-    : { verb: `${verb} the output of`, targets: [title], more: 0, code: false };
+  const spilled = file === null ? null : spilledOutputOf(file);
+  if (spilled === null) return null;
+  const titles = spilled.kind === "job" ? tracked.jobTitles : tracked.spillTitles;
+  const { verb, target } = spilledOutputPhrase(spilled, titles?.get(spilled.id), running);
+  return { verb, targets: target === null ? [] : [target], more: 0, code: false };
 }
 
 /**
@@ -708,7 +723,7 @@ export function stepOf(
   const look = kind === "look" ? lookedAt(entry) : null;
   const described = entry.callInput?.description ?? track?.description ?? null;
   const ofJob =
-    kind === "read" && described === null ? jobOutputPhrase(entry, tracked, running) : null;
+    kind === "read" && described === null ? spilledReadPhrase(entry, tracked, running) : null;
   return {
     key: entry.id,
     kind,

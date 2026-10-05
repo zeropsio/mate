@@ -1567,14 +1567,15 @@ describe("MessagesTimeline — the conversation", () => {
     expect(markup).toContain("data-conversation-working");
   });
 
-  it("says the Mate is writing, and shows none of its words, until they are known", () => {
+  // D4 (run 11): its words stream in the working row as the note they become.
+  it("streams the words the Mate is writing in its working row", () => {
     const writing = assistant("a1", 8, "Checking /status next.");
     const markup = liveTimeline([
       tool("w1", 5),
       { ...writing, message: { ...writing.message, streaming: true } },
     ]);
-    expect(markup).toContain(">Writing<");
-    expect(markup).not.toContain("Checking /status next.");
+    expect(markup).toContain('data-chat-kind="note"');
+    expect(markup).toContain("Checking /status next.");
   });
 
   it("shows the Mate composing before it said anything", () => {
@@ -1669,7 +1670,7 @@ describe("MessagesTimeline — the conversation", () => {
     );
     const card = markup.slice(markup.indexOf('data-timeline-row-kind="record"'));
     expect(card).toMatch(
-      /data-chat-bubble="speech" data-chat-kind="question"><p[^>]*>Which accent do you prefer\?</u,
+      /data-chat-bubble="speech" data-chat-kind="question"><div[^>]*data-capped="item"[^>]*><div><p[^>]*>Which accent do you prefer\?</u,
     );
     expect(card).toMatch(/<p class="[^"]*bg-message[^"]*" data-chat-kind="person">Teal</u);
     expect(card.indexOf("Which accent do you prefer?")).toBeLessThan(card.indexOf(">Teal<"));
@@ -1745,16 +1746,19 @@ describe("MessagesTimeline — the conversation", () => {
         }
       />,
     );
-    const line = markup.indexOf("Review the endpoint finished");
-    expect(line).toBeGreaterThan(markup.indexOf("It reports back when done."));
-    expect(line).toBeLessThan(markup.indexOf("The review came back clean."));
-    expect(markup).toContain("helper · No issues found.");
+    // The run went on over the turn the helper woke: one card, what woke it
+    // inside its work, nothing loose between cards (run 11).
+    expect(markup.match(/data-timeline-row-kind="record"/g)).toHaveLength(1);
+    expect(markup).not.toContain('data-timeline-row-kind="background"');
+    expect(markup).toContain("The review came back clean.");
   });
 
   it.each([
     { watch: true, words: "Watching in the background", title: "Watch the pull request" },
     { watch: false, words: "Still working in the background", title: "Typecheck appdev" },
   ])(
+    // A watch or a background command may run for hours: the run settles with
+    // its answer, and the work goes on at the bottom with the way to stop it.
     "keeps the Mate at work at the bottom after its answer while work runs on, with a stop ($words)",
     ({ watch, words, title }) => {
       const markup = renderToStaticMarkup(
@@ -1800,6 +1804,41 @@ describe("MessagesTimeline — the conversation", () => {
       expect(markup.indexOf("On it.")).toBeLessThan(markup.indexOf(words));
     },
   );
+
+  // Run 11, "finished, but background running": the run's own card waits on
+  // the helpers it launched, with the way to stop them — nothing at the bottom.
+  it("keeps the run's card waiting on its helpers, with a stop", () => {
+    const review = tool("h1", 8);
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline
+        {...buildProps()}
+        latestTurn={settled}
+        afterTurnWork="working"
+        liveJobs={{ ids: new Set(["task-1"]) }}
+        timelineEntries={
+          [
+            buildUserTimelineEntry("Have a helper review it"),
+            {
+              ...review,
+              entry: {
+                ...review.entry,
+                label: "Review the endpoint",
+                toolTitle: "Review the endpoint",
+                sourceActivityKind: "task.started",
+                taskId: "task-1",
+                agentRole: "general-purpose",
+                tone: "info",
+              },
+            },
+            assistant("a1", 10, "A helper is reviewing it."),
+          ] as Parameters<typeof MessagesTimeline>[0]["timelineEntries"]
+        }
+      />,
+    );
+    expect(markup).not.toContain("data-conversation-after-work");
+    expect(markup).toContain("Waiting for its helpers");
+    expect(markup).toContain(">Stop<");
+  });
 
   it("draws a usage limit as one pause, however many attempts hit it", () => {
     const limit = "You've hit your session limit · resets 9:20pm (UTC)";

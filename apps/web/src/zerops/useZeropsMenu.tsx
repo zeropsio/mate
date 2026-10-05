@@ -10,7 +10,12 @@ import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 import { createPortal } from "react-dom";
 import { SidebarZeropsTree } from "../components/zerops/SidebarZeropsTree";
-import { hqStructureAtom, zeropsDataRuntimeAtom } from "../state/zerops";
+import {
+  hqLoginsAtom,
+  hqReadyAgentsAtom,
+  hqStructureAtom,
+  zeropsDataRuntimeAtom,
+} from "../state/zerops";
 import { menuMemory } from "./menuMemory";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { hqOutageLine } from "./hqStructure";
@@ -57,7 +62,16 @@ export function useZeropsMenu<Row extends CandidateRow>(
             }
           }
         }
-        return menuRowsFromHq({ organizationId, structure, projects, candidates, gone });
+        // Each Mate as HQ's overview of it says it: who signed its agent in, whether it needs nobody.
+        return menuRowsFromHq({
+          organizationId,
+          structure,
+          projects,
+          candidates,
+          gone,
+          logins: get(hqLoginsAtom),
+          readyAgents: get(hqReadyAgentsAtom),
+        });
       }),
     [organizationId, structure, runtime, candidates],
   );

@@ -7,6 +7,7 @@ import * as Arr from "effect/Array";
 import * as Schema from "effect/Schema";
 import { shallow } from "zustand/vanilla/shallow";
 import { isBackgroundTaskActivity } from "@t3tools/client-runtime/state/subagentRuntime";
+import { spilledResultIdIn } from "./components/chat/spilledOutput.logic";
 import {
   commandDetailRepeatsCommand,
   extractCommandOutputText,
@@ -211,6 +212,12 @@ export interface WorkLogEntry {
    * the task that tracks it reaches the log, which is only once it ends.
    */
   sentToBackground?: string;
+  /**
+   * A call's: the file its output was saved to, too long to hand back whole,
+   * by the id a read of it names (`…/tool-results/<id>.txt`), as its own
+   * output says.
+   */
+  spilledTo?: string;
   /** A task's kind, as the runtime names it ("local_bash", "local_agent", …). */
   taskType?: string;
   itemType?: ToolLifecycleItemType;
@@ -815,6 +822,10 @@ export function deriveWorkLogEntries(
   for (const activity of ordered) {
     if (exclude?.has(activity.id)) continue;
     if (activity.kind === "tool.started") {
+      // A helper's call is the helper's, from its start: drawn from a start
+      // that carries its command, it would run in the Mate's list until the
+      // helper ended, since its end is filtered out below.
+      if (isAgentInternalActivity(activity)) continue;
       const started = toDerivedWorkLogEntry(activity);
       // A command that starts with all it will say — Codex's, whole in its
       // start and silent until it ends — is drawn from its start, and its
@@ -1116,8 +1127,11 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   } else if (!isTaskActivity) {
     const callInput = readCallInput(asRecord(data?.input));
     if (callInput !== undefined) entry.callInput = callInput;
-    const sent = BACKGROUND_NOTICE.exec(asTrimmedString(asRecord(data?.rawOutput)?.content) ?? "");
+    const output = asTrimmedString(asRecord(data?.rawOutput)?.content) ?? "";
+    const sent = BACKGROUND_NOTICE.exec(output);
     if (sent?.[1] !== undefined) entry.sentToBackground = sent[1];
+    const spilled = spilledResultIdIn(output);
+    if (spilled !== undefined) entry.spilledTo = spilled;
   }
   if (itemType) {
     entry.itemType = itemType;

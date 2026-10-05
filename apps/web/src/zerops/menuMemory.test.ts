@@ -56,6 +56,12 @@ describe("a remembered change", () => {
       headSha: undefined,
     });
   });
+
+  // Review of pass 42: a draft remembered read as ready, and a reload drew
+  // its Review only to take it away once HQ spoke.
+  it("stays a draft", () => {
+    expect(changeFromMemory(rememberedChangeOf({ ...PULL, ready: false })).ready).toBe(false);
+  });
 });
 
 describe("what the memory keeps", () => {

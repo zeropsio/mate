@@ -87,6 +87,16 @@ export interface FlowPullRequest {
    * holds while it reads them. `undefined` where HQ counts none.
    */
   readonly commentCount?: number | undefined;
+  /**
+   * Whether it asks for review: its Mate described it at its head. A draft (`false`) is listed and
+   * reachable, and asks nothing. Absent reads as ready, as every change did before drafts.
+   */
+  readonly ready?: boolean | undefined;
+}
+
+/** Whether a change asks for the person's review at all: it is no draft. */
+export function changeAsksForReview(pull: Pick<FlowPullRequest, "ready">): boolean {
+  return pull.ready !== false;
 }
 
 /**
@@ -129,6 +139,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     headBranch: `mate/${change.mateProjectId}/${String(change.number)}`,
     description: change.body.trim().length === 0 ? undefined : change.body,
     commentCount: change.comments ?? undefined,
+    ready: change.ready,
   };
 }
 
@@ -392,6 +403,7 @@ export interface ChangeState {
 export function changeState(pull: {
   readonly number: number;
   readonly mergeability: MergeabilityKind;
+  readonly ready?: boolean | undefined;
 }): ChangeState | undefined {
   const blocked = pullRequestBlocked(pull);
   if (blocked !== null) {
@@ -400,6 +412,8 @@ export function changeState(pull: {
       tone: blocked.tone,
     };
   }
+  // Its Mate has not described it as it is: nothing asks for its merge yet.
+  if (!changeAsksForReview(pull)) return { word: "Draft", tone: "off" };
   return { word: "Ready to merge", tone: "off" };
 }
 

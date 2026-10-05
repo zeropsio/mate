@@ -95,6 +95,28 @@ describe("mateNextStep", () => {
       mateName: "Wren",
       step: "none",
     },
+    // A draft asks for nothing: the Mate has not described it at its head yet.
+    {
+      case: "its own change it has not described yet",
+      pullRequests: [pull({ ready: false })],
+      mate: "p-wren",
+      mateName: "Wren",
+      step: "none",
+    },
+    {
+      case: "its own draft beside a described change: only the described one waits",
+      pullRequests: [
+        pull({ number: 2, ready: false, title: "Tune images" }),
+        pull({ number: 1, ready: true }),
+      ],
+      mate: "p-wren",
+      mateName: "Wren",
+      step: {
+        title: "Wren is waiting for your review of #1",
+        detail: "Greet with a fuller line",
+        number: 1,
+      },
+    },
     {
       case: "a recipe change of its own",
       pullRequests: [pull({ repository: "group", kind: "recipe" })],

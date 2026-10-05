@@ -625,6 +625,68 @@ describe("a read of a background job's output", () => {
   });
 });
 
+// Run 11: the working line read "Reading br89ocvyk.txt" — the agent reading a
+// command's output Claude Code had saved to a file. It names what made it.
+describe("a read of a call's spilled output", () => {
+  const RESULTS =
+    "/home/zerops/.claude/projects/-srv-app/0a1b2c3d-1111-4222-8333-444455556666/tool-results";
+  const read = (path: string) =>
+    entry({
+      id: "r1",
+      label: "Read",
+      itemType: "dynamic_tool_call",
+      toolName: "Read",
+      toolLifecycleStatus: "inProgress",
+      callInput: { filePath: path },
+    } as Partial<WorkLogEntry> & { id: string });
+  const described = command("c1", "curl -s localhost:3000/catalogue", {
+    callInput: { description: "List the catalogue" },
+    spilledTo: "q7t2m4xke",
+  });
+  const plain = command("c2", "pnpm build", { spilledTo: "w3h8d1rza" });
+
+  it.each([
+    {
+      name: "a command it knows, described: by its words",
+      path: `${RESULTS}/q7t2m4xke.txt`,
+      words: "Reading the output of List the catalogue",
+    },
+    {
+      name: "a command it knows: by the command",
+      path: `${RESULTS}/w3h8d1rza.txt`,
+      words: "Reading the output of pnpm build",
+    },
+    {
+      name: "one it does not know: as a command's output",
+      path: `${RESULTS}/zz8k2m1pq.txt`,
+      words: "Reading a command's output",
+    },
+    {
+      name: "an MCP tool's: by the tool its name holds",
+      path: `${RESULTS}/mcp-zerops-zerops_logs-1759650000000.txt`,
+      words: "Reading the output of zerops logs",
+    },
+    {
+      name: "a file of the same name elsewhere: by its name",
+      path: "/srv/app/q7t2m4xke.txt",
+      words: "Reading q7t2m4xke.txt",
+    },
+    // Review of pass 42: a project's own folder of that name is no session's.
+    {
+      name: "a project's own tool-results folder: by its name",
+      path: "/srv/app/api/tool-results/q7t2m4xke.txt",
+      words: "Reading q7t2m4xke.txt",
+    },
+  ])("$name", ({ path, words }) => {
+    const reading = read(path);
+    expect(stepOf(reading, trackCommands([described, plain, reading])).words).toBe(words);
+  });
+
+  it("says it plainly with nothing to name it by, as the menu's live step does", () => {
+    expect(stepOf(read(`${RESULTS}/q7t2m4xke.txt`)).words).toBe("Reading a command's output");
+  });
+});
+
 describe("taskReportWords", () => {
   it.each([
     ['Background command "Soak" failed with exit code 3', "Exit code 3"],

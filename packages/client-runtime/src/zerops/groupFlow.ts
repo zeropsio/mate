@@ -70,7 +70,12 @@ import {
   projectAttention,
   type ProjectAttentionItem,
 } from "./projectAttention.ts";
-import { changeState, type ChangeState, type FlowPullRequest } from "./projectFlow.ts";
+import {
+  changeAsksForReview,
+  changeState,
+  type ChangeState,
+  type FlowPullRequest,
+} from "./projectFlow.ts";
 import type { ZeropsPublicRoute } from "./publicRoutes.ts";
 import { shortCommit, type ReleaseGate } from "./release.ts";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
@@ -88,6 +93,8 @@ export interface GroupFlowMate {
   readonly failed?: boolean;
   /** Somebody has spoken into its conversation (`ZeropsAgentActivity.subject` is present). */
   readonly talked: boolean;
+  /** It works — a turn, or helpers it started: its changes ask for nothing until it rests. */
+  readonly working?: boolean;
   /** Present while it is being created: where its birth has got to. */
   readonly coming?: GroupFlowComing;
 }
@@ -514,7 +521,15 @@ function nextStepOf(
   const failed = first("deploy-failed");
   if (failed !== undefined) return fromAttention("fix-deploy", failed);
 
-  const mergeable = pullRequests.find((entry) => entry.pull.mergeability === "mergeable")?.pull;
+  const working = new Set(
+    input.mates.filter((mate) => mate.working === true).map((mate) => mate.projectId),
+  );
+  const mergeable = pullRequests.find(
+    (entry) =>
+      entry.pull.mergeability === "mergeable" &&
+      changeAsksForReview(entry.pull) &&
+      !working.has(entry.pull.mateProjectId),
+  )?.pull;
   if (mergeable !== undefined)
     return {
       kind: "merge",

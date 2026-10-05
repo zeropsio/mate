@@ -307,7 +307,7 @@ interface MessagesTimelineProps {
   runningTurnId: TurnId | null;
   turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   routeThreadKey: string;
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenTurnDiff: (turnId: TurnId, filePath?: string, fromTurnId?: TurnId) => void;
   supportsConversationRollback: boolean;
   /** The thread's provider driver: how its live field reads a batch (`batchesByTiming`). */
   provider?: string | null;
@@ -1505,6 +1505,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <LegendList<MessagesTimelineRow>
               ref={listRef}
               data={rows}
+              // Each container reads its row again whenever the rows change.
+              // LegendList (3.3.5) draws `data[indexByKey(key)]` once per
+              // container and keeps it until that container's own data
+              // changes: read while a row was being inserted, the index was
+              // the old one, and the container went on drawing the row that
+              // slid into it — a row twice, a card's edge gone (Rhea, run 11).
+              extraData={rows}
               keyExtractor={keyExtractor}
               getItemType={getItemType}
               renderItem={renderItem}
@@ -2279,6 +2286,7 @@ function FoldRoom({ fold }: { readonly fold: FoldsFrom | undefined }) {
 /** What runs alongside the Mate, under its record. */
 function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
   const ctx = use(TimelineRowCtx);
+  const { stoppingBackgroundWork } = use(TimelineRowActivityCtx);
   const dock = use(TimelineWorkingCtx);
   useEffect(() => {
     watchedTurnKeys.add(row.turnKey);
@@ -2300,6 +2308,9 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
         incidents={row.incidents}
         onOpenAgents={ctx.onOpenAgents}
         threadRef={ctx.threadRef}
+        {...(row.waiting === true
+          ? { stop: { stopping: stoppingBackgroundWork, onStop: ctx.onStopBackgroundWork } }
+          : {})}
       />
     </div>
   );
@@ -2467,7 +2478,9 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
     <div ref={markerRef} className="run-band">
       <TurnReport
         onOpenImage={ctx.onImageExpand}
-        onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}
+        onOpenTurnDiff={(turnId, fromTurnId) =>
+          ctx.onOpenTurnDiff(turnId, undefined, fromTurnId ?? undefined)
+        }
         outcome={row.outcome}
         settling={settling}
       />

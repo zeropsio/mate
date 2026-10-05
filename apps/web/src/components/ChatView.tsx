@@ -374,7 +374,7 @@ import { shouldTypeToFocusComposer } from "./chat/typeToFocus";
 import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineInsets";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
-import { useAlsoWorkingBanner } from "./chat/ConversationStrip";
+import { useAlsoWorkingBanner, useMateWorks } from "./chat/ConversationStrip";
 import { replacementChatToPin } from "./chat/ConversationStrip.logic";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
@@ -5364,11 +5364,13 @@ export default function ChatView(props: ChatViewProps) {
    * The composer's top: this Mate's change waiting for the person's review,
    * from the project's flow rather than from what the agent said
    * (`ZeropsNextStepBanner.tsx`); it gives way while a question or an
-   * approval waits on the person.
+   * approval waits on the person, and while the Mate works in any of its chats.
    */
+  const mateAtWork = useMateWorks(environmentId);
   const composerTop = useZeropsNextStepStrip(activeThreadRef, {
     question: activePendingUserInput !== null,
     approval: activePendingApproval !== null,
+    working: isWorking || mateAtWork,
   });
   // Typing here while the Mate works in another of its chats (`ConversationStrip.tsx`).
   // A crewmate works on its own copy of the code, so another chat's work is
@@ -8008,10 +8010,10 @@ export default function ChatView(props: ChatViewProps) {
     setExpandedImage(preview);
   }, []);
   const onOpenTurnDiff = useCallback(
-    (turnId: TurnId, filePath?: string) => {
+    (turnId: TurnId, filePath?: string, fromTurnId?: TurnId) => {
       if (!isServerThread || !activeThreadRef) return;
       explicitDiffOpenRef.current = diffOpen ? null : activeThreadRef;
-      useDiffPanelStore.getState().selectTurn(activeThreadRef, turnId, filePath);
+      useDiffPanelStore.getState().selectTurn(activeThreadRef, turnId, filePath, fromTurnId);
       useRightPanelStore.getState().open(activeThreadRef, "diff");
       onDiffPanelOpen?.();
     },

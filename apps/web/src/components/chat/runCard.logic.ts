@@ -251,42 +251,26 @@ export function reachesEarlier(
  * callout said as its word (`quoteWords`), its paragraphs run together.
  */
 export function thoughtRunText(text: string): string {
-  return quoteWords(text)
-    .split(/\n\s*\n/u)
-    .map((paragraph) => {
-      // A title standing alone reads as a sentence of its own, not the start of the next.
-      const title = /^\s*\*\*([^*\n]+)\*\*\s*$/u.exec(paragraph)?.[1]?.trim();
-      return title === undefined ? paragraph : /[.!?:…]$/u.test(title) ? title : `${title}.`;
-    })
-    .join("\n\n")
-    .replace(/```[\s\S]*?```/gu, " ")
-    .replace(/\*\*([^*\n]+)\*\*/gu, "$1")
-    .replace(/__([^_\n]+)__/gu, "$1")
-    .replace(/`([^`\n]+)`/gu, "$1")
-    .replace(/^\s{0,3}(?:#{1,6}|[-*+]|\d+[.)])\s+/gmu, "")
-    .replace(/\s+/gu, " ")
-    .trim();
-}
-
-/**
- * The newest of a thought as the live slot shows it: whole sentences from the
- * end, as many as fit in `chars`, so its first line never starts mid-sentence
- * (Bodhi: "headless-specific rendering glitch. To pin…"). One sentence longer
- * than that is the newest words, cut at a word.
- */
-export function thoughtTail(run: string, chars: number): string {
-  if (run.length <= chars) return run;
-  const sentences = run.split(/(?<=[.!?…])\s+/u).filter((sentence) => sentence.length > 0);
-  let tail = "";
-  for (let index = sentences.length - 1; index >= 0; index -= 1) {
-    const next = tail.length === 0 ? sentences[index]! : `${sentences[index]!} ${tail}`;
-    if (next.length > chars) break;
-    tail = next;
-  }
-  if (tail.length > 0) return tail;
-  const words = run.slice(run.length - chars);
-  const at = words.indexOf(" ");
-  return `…${at < 0 ? words : words.slice(at + 1)}`;
+  return (
+    quoteWords(text)
+      .split(/\n\s*\n/u)
+      .map((paragraph) => {
+        // A title standing alone reads as a sentence of its own, not the start of the next.
+        const title = /^\s*\*\*([^*\n]+)\*\*\s*$/u.exec(paragraph)?.[1]?.trim();
+        return title === undefined ? paragraph : /[.!?:…]$/u.test(title) ? title : `${title}.`;
+      })
+      .join("\n\n")
+      // A code block is code, not words: a closed one, and one still streaming
+      // — a fence opening a line, never three backticks among words.
+      .replace(/```[\s\S]*?```/gu, " ")
+      .replace(/^\s{0,3}```[\s\S]*/mu, " ")
+      .replace(/\*\*([^*\n]+)\*\*/gu, "$1")
+      .replace(/__([^_\n]+)__/gu, "$1")
+      .replace(/`([^`\n]+)`/gu, "$1")
+      .replace(/^\s{0,3}(?:#{1,6}|[-*+]|\d+[.)])\s+/gmu, "")
+      .replace(/\s+/gu, " ")
+      .trim()
+  );
 }
 
 /**
@@ -339,6 +323,8 @@ export type NowLine =
   | { readonly kind: "several"; readonly calls: ReadonlyArray<LiveCall> }
   /** It waits on the person: their answer to its question, or their approval. */
   | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
+  /** Its turns are over, and the helpers it launched work on. */
+  | { readonly kind: "after" }
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
   /** Over: who, what it did and for how long, and what the effort came to. */
@@ -360,6 +346,10 @@ function workedMs(status: RunStatus): number {
 export function workedWords(speaker: string, status: RunStatus): string {
   const took = formatWorkDuration(workedMs(status));
   if (status.face === "stopped") return `${speaker} stopped after ${took}`;
+  // Its turn ended for the person's message, not by their Stop (run 11).
+  if (status.face === "interrupted") {
+    return `${speaker} ${status.worked ? "worked" : "thought"} ${took} until your message`;
+  }
   if (status.face === "paused") return `${speaker} stopped at the usage limit after ${took}`;
   return `${speaker} ${status.worked ? "worked" : "thought"} ${took}`;
 }
@@ -387,6 +377,8 @@ export function nowLineOf(input: {
   switch (now.kind) {
     case "waiting":
       return { kind: "waiting", on: now.on };
+    case "after":
+      return { kind: "after" };
     case "writing":
       return { kind: "writing" };
     case "thinking":
@@ -414,7 +406,8 @@ export type SlotFiller =
   | { readonly kind: "thinking" }
   | { readonly kind: "writing" }
   | { readonly kind: "condensing" }
-  | { readonly kind: "waiting"; readonly on: "answer" | "approval" };
+  | { readonly kind: "waiting"; readonly on: "answer" | "approval" }
+  | { readonly kind: "after" };
 
 /**
  * What the live slot holds (pass 35): what the Mate is doing this moment,
@@ -435,10 +428,30 @@ export function slotModelOf(input: {
 }): SlotModel {
   const { now } = input;
   if (input.compacting) return { live: [], filler: { kind: "condensing" } };
-  if (input.answering || now?.kind === "writing") return { live: [], filler: { kind: "writing" } };
   const thinking: SlotModel = { live: [], filler: { kind: "thinking" } };
+  // Its words as they come stand in the slot as the note they become (D4).
+  if (
+    now?.kind === "writing" &&
+    now.note !== undefined &&
+    now.note.message.text.trim().length > 0
+  ) {
+    return {
+      live: [
+        {
+          kind: "note",
+          key: now.note.key,
+          at: now.note.message.createdAt,
+          message: now.note.message,
+        },
+      ],
+      filler: thinking.filler,
+    };
+  }
+  if (input.answering || now?.kind === "writing") return { live: [], filler: { kind: "writing" } };
   if (now === null) return thinking;
   switch (now.kind) {
+    case "after":
+      return { live: [], filler: { kind: "after" } };
     case "thinking":
       return now.key !== null && now.messages.some((message) => message.text.trim().length > 0)
         ? {
@@ -538,6 +551,8 @@ export function nowLineWords(line: NowLine): string {
       return severalCallsWords(line.calls);
     case "waiting":
       return line.on === "approval" ? "Waiting for your approval" : "Waiting for your answer";
+    case "after":
+      return "Waiting for its helpers";
     case "writing":
       return "Writing";
     case "condensing":
@@ -557,6 +572,8 @@ export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
     switch (filler.kind) {
       case "waiting":
         return nowLineWords({ kind: "waiting", on: filler.on });
+      case "after":
+        return nowLineWords({ kind: "after" });
       case "thinking":
         return nowLineWords({ kind: "thinking", thought: null });
       default:
@@ -607,6 +624,7 @@ const SETTLED_FACE: Record<RunStatus["face"], MateMarkState> = {
   failed: "idle",
   paused: "sleep",
   stopped: "idle",
+  interrupted: "idle",
 };
 
 /**

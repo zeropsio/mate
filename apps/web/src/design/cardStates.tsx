@@ -290,7 +290,7 @@ const OUTCOME: OutcomeModel = {
   turnKey: "status-run",
   live: [APPDEV_RUNNING],
   landed: [],
-  files: { count: 3, additions: 42, deletions: 3, turnId: TURN },
+  files: { count: 3, additions: 42, deletions: 3, turnId: TURN, fromTurnId: null },
   checks: { count: 1, views: 1, failures: 0, takes: [CHECK] },
   pictures: [],
   created: [],

@@ -316,12 +316,86 @@ export interface TurnSpan {
   readonly key: string;
   /** Null only between a send and the server creating the turn. */
   readonly turnId: TurnId | null;
+  /**
+   * Every turn of the run, in order: the one the person's message started,
+   * then the ones nobody wrote to start — its helpers' results woke the
+   * Mate, and it went on (run 11).
+   */
+  readonly turnIds: ReadonlyArray<TurnId>;
+  /** Where each turn nobody wrote to start joined the run: its first entry's index. */
+  readonly wakes: ReadonlyArray<number>;
+  /** The helpers its turns launched, by task id: what it waits on, and what wakes it. */
+  readonly helpers: ReadonlyArray<string>;
   readonly opener: MessageEntry | null;
   readonly openerIndex: number | null;
   /** Timeline indexes of the turn's own entries, in order. */
   readonly entryIndexes: ReadonlyArray<number>;
   readonly terminalEntry: MessageEntry | null;
 }
+
+/**
+ * The turn each call began in. Claude files a call's result as an update and
+ * a completion, the completion now and then under a later turn: a call is its
+ * starting turn's, never a turn of its own.
+ */
+function callTurns(entries: ReadonlyArray<TimelineEntry>): ReadonlyMap<string, TurnId> {
+  const turns = new Map<string, TurnId>();
+  for (const entry of entries) {
+    if (entry.kind !== "work" && entry.kind !== "generic-call") continue;
+    const call = entry.entry.toolCallId;
+    const turnId = entry.entry.turnId;
+    if (call !== undefined && turnId && !turns.has(call)) turns.set(call, turnId);
+  }
+  return turns;
+}
+
+/** The turn an entry is the Mate's work in: its call's, else its own. */
+function entryTurnId(entry: TimelineEntry, calls: ReadonlyMap<string, TurnId>): TurnId | null {
+  if (entry.kind === "work" || entry.kind === "generic-call") {
+    const call = entry.entry.toolCallId;
+    const began = call === undefined ? undefined : calls.get(call);
+    if (began !== undefined) return began;
+  }
+  return timelineEntryTurnId(entry);
+}
+
+/**
+ * The helpers an entry is the launch or the report of, by task id: a launch
+ * gathers the helpers it started; a helper's own task names its role, where
+ * a shell's or a watch's names none.
+ */
+function helpersOf(entry: TimelineEntry): ReadonlyArray<string> {
+  if (entry.kind !== "work") return [];
+  const work = entry.entry;
+  if (work.agentSpawn !== undefined) return work.agentSpawn.agentTaskIds;
+  return work.agentRole !== undefined && work.taskId !== undefined ? [work.taskId] : [];
+}
+
+/** Whether a run's last word, a helper's report aside, is a usage limit refusing it. */
+function endsOnALimit(
+  entries: ReadonlyArray<TimelineEntry>,
+  indexes: ReadonlyArray<number>,
+): boolean {
+  const last = indexes
+    .map((index) => entries[index])
+    .findLast((entry) => entry !== undefined && !isTaskReport(entry));
+  if (last === undefined) return false;
+  return (
+    isUsageLimitError(last) ||
+    (last.kind === "message" &&
+      last.message.role === "assistant" &&
+      readUsageLimitNotice(last.message.text, last.createdAt) !== null)
+  );
+}
+
+/**
+ * How soon after the last thing a run showed the person's next message may
+ * come and still be what interrupted it: a run thinks for minutes between
+ * the paragraphs it shows (Noibit, run 11: 79 s after its last one, the
+ * message that stopped it read "stopped"). Said wrongly, "until your
+ * message" stands for a Stop the person pressed just before writing.
+ */
+const INTERRUPTING_MESSAGE_MS = 180_000;
 
 /**
  * How far apart two of the person's messages may stand and still be one
@@ -357,6 +431,9 @@ export function deriveTurnSpans(input: {
   type MutableSpan = {
     key: string;
     turnId: TurnId | null;
+    turnIds: TurnId[];
+    wakes: number[];
+    helpers: string[];
     opener: MessageEntry | null;
     openerIndex: number | null;
     entryIndexes: number[];
@@ -394,6 +471,9 @@ export function deriveTurnSpans(input: {
     const span: MutableSpan = {
       key: opener ? `msg:${opener.entry.message.id}` : `turn:${turnId}`,
       turnId,
+      turnIds: turnId === null ? [] : [turnId],
+      wakes: [],
+      helpers: [],
       opener: opener?.entry ?? null,
       openerIndex: opener?.index ?? null,
       entryIndexes: [],
@@ -403,30 +483,77 @@ export function deriveTurnSpans(input: {
     if (turnId !== null) byTurnId.set(turnId, span);
     return span;
   };
+  /**
+   * A turn nobody wrote to start goes on with the run before it when that run
+   * launched helpers (run 11): their results woke the Mate, and the run is
+   * one card, not a card per wake — it waited open on them. Any other run's
+   * card settled with its answer, and a turn after it — what a background
+   * command's end woke, a `/compact`'s, a wake-up hours on — is a run of its
+   * own, never one that takes the settled card back (review of pass 42).
+   */
+  const wake = (turnId: TurnId, index: number | null): MutableSpan | null => {
+    const previous = spans.at(-1);
+    if (previous === undefined || previous.turnId === null || previous.helpers.length === 0) {
+      return null;
+    }
+    // A usage limit's own attempts and the server's resume after it are the
+    // pause's to tell, turn by turn.
+    if (endsOnALimit(input.timelineEntries, previous.entryIndexes)) return null;
+    previous.turnIds.push(turnId);
+    if (index !== null) previous.wakes.push(index);
+    // Its answer is the last turn's to give: words before the work it woke to
+    // were on the way.
+    previous.terminalEntry = null;
+    byTurnId.set(turnId, previous);
+    return previous;
+  };
+  const calls = callTurns(input.timelineEntries);
   for (const [index, entry] of input.timelineEntries.entries()) {
     if (isUserMessageEntry(entry)) {
       unclaimed.push({ entry, index });
       continue;
     }
-    const turnId = timelineEntryTurnId(entry);
+    const turnId = entryTurnId(entry, calls);
     if (turnId === null) {
       if (endsTheWait(entry)) unclaimed = [];
       continue;
+    }
+    // A completion filed under a later turn than its call began in is its
+    // call's, but says the later turn began: the person's messages waiting
+    // started it (review of pass 42: their message, taken for one sent into
+    // the run it interrupted, lost its own run).
+    const filedUnder = timelineEntryTurnId(entry);
+    if (
+      filedUnder !== null &&
+      filedUnder !== turnId &&
+      unclaimed.length > 0 &&
+      !byTurnId.has(filedUnder)
+    ) {
+      open(filedUnder, openerOf(unclaimed));
+      unclaimed = [];
     }
     let span = byTurnId.get(turnId);
     if (span) {
       unclaimed = [];
     } else {
-      span = open(turnId, openerOf(unclaimed));
+      const opener = openerOf(unclaimed);
+      span = (opener === null ? wake(turnId, index) : null) ?? open(turnId, opener);
       unclaimed = [];
     }
     span.entryIndexes.push(index);
+    span.helpers.push(...helpersOf(entry));
     if (entry.kind === "message" && input.terminalAssistantMessageIds.has(entry.message.id)) {
       span.terminalEntry = entry;
     }
   }
   if (input.unsettledTurnId !== null) {
-    if (!byTurnId.has(input.unsettledTurnId)) open(input.unsettledTurnId, openerOf(unclaimed));
+    if (!byTurnId.has(input.unsettledTurnId)) {
+      const opener = openerOf(unclaimed);
+      // Woken, named, nothing of it yet: it takes the run on from the end.
+      if (opener !== null || wake(input.unsettledTurnId, input.timelineEntries.length) === null) {
+        open(input.unsettledTurnId, opener);
+      }
+    }
   } else if (input.isWorking && unclaimed.length > 0) {
     open(null, openerOf(unclaimed));
   }
@@ -479,7 +606,15 @@ export interface ConversationTurn {
    */
   readonly writing: MessageEntry | null;
   readonly live: boolean;
+  /**
+   * No turn of it runs, and what it started still does — a helper, a
+   * background job: the run is not over (run 11, "finished, but background
+   * running").
+   */
+  readonly waiting: boolean;
   readonly interrupted: boolean;
+  /** Interrupted by the person's next message, not by their Stop. */
+  readonly byMessage: boolean;
   /** The usage-limit notice the turn ended on, when it did. */
   readonly limit: UsageLimitNotice | null;
   /** Nothing but a usage-limit notice: a turn a limit refused before it did anything. */
@@ -658,6 +793,12 @@ export function deriveConversationStructure(given: {
   readonly activeTurnStartedAt: string | null;
   /** The clock the last words' wait is read against; without it nothing waits. */
   readonly nowMs?: number;
+  /**
+   * Whether a helper still works, by its task id; unset while a turn runs.
+   * The latest run waits on the helpers it launched, its turns over (run 11)
+   * — never on a background command or a watch, which may run for hours.
+   */
+  readonly helperWorks?: (taskId: string) => boolean;
 }): ConversationStructure {
   const entries = given.timelineEntries;
   // The server settled the latest turn a moment before its words landed: it
@@ -679,9 +820,19 @@ export function deriveConversationStructure(given: {
   });
 
   const liveSpan = input.isWorking
-    ? (spans.find((span) => span.turnId === unsettledTurnId) ??
+    ? (spans.find((span) => unsettledTurnId !== null && span.turnIds.includes(unsettledTurnId)) ??
       spans.find((span) => span.turnId === null))
     : undefined;
+  // The latest run, its turns over, while what it started goes on.
+  const latestSpan = spans.at(-1);
+  const helperWorks = input.helperWorks;
+  const waitingSpan =
+    liveSpan === undefined &&
+    helperWorks !== undefined &&
+    latestSpan !== undefined &&
+    latestSpan.helpers.some((taskId) => helperWorks(taskId))
+      ? latestSpan
+      : undefined;
   const openerIndexes = new Set(
     spans.flatMap((span) => (span.openerIndex === null ? [] : [span.openerIndex])),
   );
@@ -692,7 +843,10 @@ export function deriveConversationStructure(given: {
   const ranges = spans.map((span) => ({
     span,
     start: span.openerIndex ?? span.entryIndexes[0] ?? entries.length,
-    end: span === liveSpan ? Infinity : (span.entryIndexes.at(-1) ?? span.openerIndex ?? -1),
+    end:
+      span === liveSpan || span === waitingSpan
+        ? Infinity
+        : (span.entryIndexes.at(-1) ?? span.openerIndex ?? -1),
   }));
   const ownerOf = (index: number) => {
     let owner: (typeof ranges)[number] | undefined;
@@ -707,28 +861,16 @@ export function deriveConversationStructure(given: {
   const membersBySpan = new Map<TurnSpan, number[]>();
   const looseIndexes = new Set<number>();
   const spanByTurnId = new Map(
-    spans.flatMap((span) => (span.turnId ? [[span.turnId, span] as const] : [])),
+    spans.flatMap((span) => span.turnIds.map((turnId) => [turnId, span] as const)),
   );
   // A call can be seen before the session names its turn — its start arrives
   // turnless, and was drawn as background work finishing "in the background"
   // over the run it began (Nova, 2026-09-28). The same call, reported with
   // its turn, says whose it is.
-  const turnIdByCall = new Map<string, TurnId>();
-  for (const entry of entries) {
-    if (
-      (entry.kind === "work" || entry.kind === "generic-call") &&
-      entry.entry.toolCallId !== undefined &&
-      entry.entry.turnId
-    ) {
-      turnIdByCall.set(entry.entry.toolCallId, entry.entry.turnId);
-    }
-  }
-  const turnIdOf = (entry: TimelineEntry): TurnId | null => {
-    const own = timelineEntryTurnId(entry);
-    if (own !== null || (entry.kind !== "work" && entry.kind !== "generic-call")) return own;
-    const call = entry.entry.toolCallId;
-    return call === undefined ? null : (turnIdByCall.get(call) ?? null);
-  };
+  // A call is its starting turn's: one seen before the session named its
+  // turn, or filed under a later one, says whose it is by its call.
+  const turnIdByCall = callTurns(entries);
+  const turnIdOf = (entry: TimelineEntry): TurnId | null => entryTurnId(entry, turnIdByCall);
   for (const [index, entry] of entries.entries()) {
     let span: TurnSpan | undefined;
     if (isUserMessageEntry(entry)) {
@@ -757,33 +899,42 @@ export function deriveConversationStructure(given: {
       .map((index) => entries[index]!)
       .filter((entry) => !isUserMessageEntry(entry));
     const firstMember = members[0];
-    const isLatestTurn = span.turnId !== null && input.latestTurn?.turnId === span.turnId;
+    const waiting = span === waitingSpan;
+    const latestTurnId = input.latestTurn?.turnId ?? null;
+    const isLatestTurn = latestTurnId !== null && span.turnIds.at(-1) === latestTurnId;
     const interrupted =
       !live &&
+      !waiting &&
       ((isLatestTurn && input.latestTurn?.state === "interrupted") || endedOnAStep(turnEntries));
-
-    // The answer is the turn's last message once it settles. While the turn
-    // runs, its last message is the answer already when it reads as one and
-    // nothing came after it: it streams where it will stand, never first in
-    // the Mate's panel (the owner, 2026-09-26 — "the last message … first
-    // starts rendering in the working panel, then it all turns into the
-    // result"). Work after it makes it a note on the way after all.
-    const lastSaid = turnEntries.findLast(
-      (entry) => hasMeaningfulContent(entry) && !isTaskReport(entry),
+    // The person's next message came while it ran: their message interrupted
+    // it, never their Stop (Noibit, run 11: "stopped after 8m 11s").
+    const next = spans[spans.indexOf(span) + 1];
+    const lastOwn = turnEntries.at(-1);
+    // The person's Stop ends every task the run started (stop-everything);
+    // their message leaves them running.
+    const stoppedTasks = turnEntries.some(
+      (entry) =>
+        (entry.kind === "work" || entry.kind === "generic-call") &&
+        entry.entry.toolLifecycleStatus === "stopped",
     );
-    const answer = !live
-      ? span.terminalEntry
-      : span.terminalEntry !== null &&
-          span.terminalEntry === lastSaid &&
-          readsAsAnswer(span.terminalEntry.message.text)
-        ? span.terminalEntry
-        : null;
-    // Words still streaming that cannot be placed yet are drawn nowhere, so
-    // none stream in one place and then move to another: streamed in the
-    // panel first, every answer jumped under the card at its first paragraph
-    // break. Anything after them — a step, a thought — makes them a note, and
-    // so does their end: Codex says nothing of a command until it completes,
-    // so words held until a step came after them hid the whole command long.
+    const byMessage =
+      interrupted &&
+      !stoppedTasks &&
+      next?.opener != null &&
+      lastOwn !== undefined &&
+      (parseMs(next.opener.createdAt) ?? Infinity) <=
+        (parseMs(timelineEntryEnd(lastOwn)) ?? -Infinity) + INTERRUPTING_MESSAGE_MS;
+
+    // D4 (run 11): the answer is decided when the run ends. Until then its
+    // words stream in the working row, however much they read as an answer:
+    // drawn under a live card, an answer streamed "below while still writing"
+    // and turned back into a note when a question followed.
+    const answer = live || waiting ? null : span.terminalEntry;
+    // Words still streaming, nothing after them: the working row's, as they
+    // come. Anything after them — a step, a thought — makes them a note in
+    // the record, and so does their end: Codex says nothing of a command
+    // until it completes, so words held until a step came after them hid the
+    // whole command long.
     const lastEntry = turnEntries.findLast(countsAsLastWord);
     // Words that have just finished wait a moment more: the turn nearly
     // always settles within it, and a short answer then goes straight under
@@ -835,13 +986,17 @@ export function deriveConversationStructure(given: {
           null,
         ) ?? turnStart);
 
-    // Split at the person's messages.
+    // Split at the person's messages, and where a turn nobody wrote to start
+    // took the run on.
     type Draft = { lead: MessageEntry | null; leadIndex: number | null; indexes: number[] };
     const drafts: Draft[] = [];
+    const wakes = new Set(span.wakes);
     for (const index of members) {
       const entry = entries[index]!;
       if (isUserMessageEntry(entry)) {
         drafts.push({ lead: entry, leadIndex: index, indexes: [] });
+      } else if (wakes.has(index) && drafts.length > 0) {
+        drafts.push({ lead: null, leadIndex: null, indexes: [index] });
       } else if (drafts.length === 0) {
         drafts.push({ lead: null, leadIndex: null, indexes: [index] });
       } else {
@@ -851,15 +1006,30 @@ export function deriveConversationStructure(given: {
     if (drafts.length === 0) {
       // A live turn the server has named but that has produced nothing yet.
       drafts.push({ lead: span.opener, leadIndex: span.openerIndex, indexes: [] });
+    } else if (live && span.wakes.some((index) => index >= entries.length)) {
+      // Woken, and nothing of the turn yet: the run goes on from here.
+      drafts.push({ lead: null, leadIndex: null, indexes: [] });
     }
 
     const stretches: Stretch[] = drafts.map((draft, position) => {
       const next = drafts[position + 1];
       const stretchEntries = draft.indexes.map((index) => entries[index]!);
       const last = position === drafts.length - 1;
+      // A turn woken with nothing of it yet began once what came before it ended.
+      const wokenAt =
+        position > 0 && draft.lead === null && stretchEntries.length === 0
+          ? laterIso(
+              input.activeTurnStartedAt,
+              members.reduce<string | null>(
+                (end, index) => laterIso(end, timelineEntryEnd(entries[index]!)),
+                null,
+              ),
+            )
+          : null;
       const startedAt =
         draft.lead?.createdAt ??
         stretchEntries[0]?.createdAt ??
+        wokenAt ??
         turnStart ??
         input.activeTurnStartedAt ??
         "";
@@ -868,13 +1038,22 @@ export function deriveConversationStructure(given: {
           ? null
           : (turnEnd ?? startedAt)
         : (next!.lead?.createdAt ??
+          // As a run's own end: a helper reporting in is the helper's time.
           stretchEntries.reduce<string | null>(
-            (end, entry) => laterIso(end, timelineEntryEnd(entry)),
+            (end, entry) => (isTaskReport(entry) ? end : laterIso(end, timelineEntryEnd(entry))),
             null,
           ) ??
           startedAt);
+      const woke =
+        draft.lead === null && position > 0
+          ? stretchEntries[0] === undefined
+            ? (span.turnIds.at(-1) ?? null)
+            : turnIdOf(stretchEntries[0])
+          : null;
       return {
-        key: draft.lead ? `msg:${draft.lead.message.id}` : `turn:${span.turnId ?? span.key}`,
+        key: draft.lead
+          ? `msg:${draft.lead.message.id}`
+          : `turn:${woke ?? span.turnId ?? span.key}`,
         turnKey: span.key,
         turnId: span.turnId,
         lead: draft.lead,
@@ -902,7 +1081,9 @@ export function deriveConversationStructure(given: {
       answer,
       writing,
       live,
+      waiting,
       interrupted,
+      byMessage,
       limit,
       limitOnly,
       startMs: parseMs(turnStart),
@@ -1204,7 +1385,15 @@ export function isActivityWork(entry: WorkLogEntry): boolean {
   );
 }
 
-export type WorkLineFace = "working" | "idle" | "produced" | "failed" | "paused" | "stopped";
+export type WorkLineFace =
+  | "working"
+  | "idle"
+  | "produced"
+  | "failed"
+  | "paused"
+  | "stopped"
+  /** The person's message came in while it worked: it took that up, not stopped. */
+  | "interrupted";
 
 /**
  * A platform operation whose call never returned, as a step's words: what was
@@ -1469,7 +1658,7 @@ export function stretchFace(input: {
 }): WorkLineFace {
   const { stretch, turn } = input;
   if (stretch.live) return "working";
-  if (turn.interrupted && stretch.last) return "stopped";
+  if (turn.interrupted && stretch.last) return turn.byMessage ? "interrupted" : "stopped";
   if (input.pausedHere) return "paused";
   const operations = stretchOperations(stretch);
   if (unrecoveredFailures(operations).length > 0) return "failed";
@@ -1707,6 +1896,8 @@ export interface IncidentModel {
 /** What a dev-server call found: running, not running, or nothing (still running, another kind). */
 export function devServerRunning(operation: ZeropsOperation): boolean | null {
   if (operation.kind !== "devServer" || operation.phase === "running") return null;
+  // A log read checks nothing about the server.
+  if (devServerAction(operation) === "logs") return null;
   if (operation.phase === "failed") return false;
   if (operation.statusWord === "Not running") return false;
   if (operation.statusWord === "Running") return true;
@@ -1981,6 +2172,8 @@ export interface OutcomeModel {
     readonly additions: number;
     readonly deletions: number;
     readonly turnId: TurnId;
+    /** A run of several turns: the first whose diff it shows, its diff the whole run's. */
+    readonly fromTurnId: TurnId | null;
   } | null;
   readonly checks: {
     readonly count: number;
@@ -2361,7 +2554,8 @@ export function turnsAfter(
 export function deriveOutcome(input: {
   readonly turn: ConversationTurn;
   readonly landed: ReadonlyArray<ChangeLandedEntry>;
-  readonly diff: TurnDiffSummary | null;
+  /** The diff of each of its turns that has one, in order. */
+  readonly diffs: ReadonlyArray<TurnDiffSummary>;
   /** What its calls came to (`activityCounts`). */
   readonly activity?: ReadonlyArray<OutcomeActivity>;
   /** The conversation's turns after it (`turnsAfter`): what they took over since. */
@@ -2480,13 +2674,23 @@ export function deriveOutcome(input: {
       at: operation.settledAt ?? operation.anchorAt,
     }));
 
+  // Every turn of the run: the turns its helpers woke change files too
+  // (review of pass 42: a run's first turn launched them, and said none).
+  const changed = input.diffs.filter((diff) => diff.files.length > 0);
+  const first = changed[0];
+  const lastDiff = changed.at(-1);
   const files =
-    input.diff && input.diff.files.length > 0 && input.diff.turnId
+    first !== undefined && lastDiff !== undefined
       ? {
-          count: input.diff.files.length,
-          additions: input.diff.files.reduce((sum, file) => sum + (file.additions ?? 0), 0),
-          deletions: input.diff.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0),
-          turnId: input.diff.turnId,
+          count: new Set(changed.flatMap((diff) => diff.files.map((file) => file.path))).size,
+          additions: changed
+            .flatMap((diff) => diff.files)
+            .reduce((sum, file) => sum + (file.additions ?? 0), 0),
+          deletions: changed
+            .flatMap((diff) => diff.files)
+            .reduce((sum, file) => sum + (file.deletions ?? 0), 0),
+          turnId: lastDiff.turnId,
+          fromTurnId: first === lastDiff ? null : first.turnId,
         }
       : null;
 

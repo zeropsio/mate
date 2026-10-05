@@ -179,6 +179,8 @@ describe("a Mate's changes in HQ", () => {
             // Nothing pushed: nothing to judge yet.
             mergeability: "unknown",
             behind: false,
+            // Not described yet: a draft.
+            ready: false,
             // Nothing said on it yet.
             comments: 0,
           });
@@ -582,6 +584,66 @@ describe("a Mate's changes in HQ", () => {
           );
           assert.deepStrictEqual((yield* attach(PNG)).body, settled);
         }),
+    );
+
+    it.effect("a change is ready for review only at the head the Mate last described it at", () =>
+      Effect.gen(function* () {
+        const { call, fake, origin, url } = yield* startCore(true);
+        yield* untilHealth(call, "active");
+        const owner = yield* sessionFor(call, "door-owner");
+        const { appId, credential, auth } = yield* mateWithChange(call, fake, owner);
+        const edit = (body: unknown) =>
+          Effect.map(
+            call("PATCH", "/api/mate/changes/appdev/1", { headers: auth, body }),
+            (answer) => (answer.body as { ready: boolean }).ready,
+          );
+        const listed = Effect.map(
+          call("GET", `/api/apps/${appId}/changes`, { session: owner }),
+          (answer) => (answer.body as { changes: ReadonlyArray<{ ready: boolean }> }).changes,
+        );
+        const detail = Effect.map(
+          call("GET", `/api/apps/${appId}/changes/appdev/1`, { session: owner }),
+          (answer) => (answer.body as { change: { ready: boolean } }).change.ready,
+        );
+        const git = yield* gitClient;
+        yield* git.checked(["clone", remoteOf(origin, credential, appId, "appdev"), "work"]);
+        const work = NodePath.join(git.dir, "work");
+        const push = (subject: string) =>
+          Effect.gen(function* () {
+            yield* git.checked(["commit", "--allow-empty", "-m", subject], work);
+            yield* git.checked(["push", "origin", "HEAD:refs/heads/mate/P_MATE/1"], work);
+            const head = yield* git.checked(["rev-parse", "HEAD"], work);
+            yield* rowsWhere(
+              url,
+              "SELECT head FROM hq_change",
+              (rows) => rows[0]?.["head"] === head,
+            );
+          });
+
+        // Words before any push describe no head: the first push opens a draft.
+        assert.isFalse(yield* edit({ body: "It adds a login page." }));
+        yield* push("Add a login page");
+        assert.deepStrictEqual(
+          (yield* listed).map((change) => change.ready),
+          [false],
+        );
+        // A title is not a description.
+        assert.isFalse(yield* edit({ title: "Add a login page" }));
+        // Described at its head, it asks for review, wherever a person reads it.
+        assert.isTrue(yield* edit({ body: "It adds a login page." }));
+        assert.deepStrictEqual(
+          (yield* listed).map((change) => change.ready),
+          [true],
+        );
+        assert.isTrue(yield* detail);
+        assert.isTrue(yield* edit({ title: "Add a login page and its form" }));
+        // A push moves the head past the words: a draft again until described again.
+        yield* push("Fix the form");
+        assert.isFalse(yield* detail);
+        assert.isTrue(yield* edit({ body: "It adds a login page; the form is fixed." }));
+        // Words taken back leave nothing to review by.
+        assert.isFalse(yield* edit({ body: "" }));
+      }),
     );
 
     it.effect(

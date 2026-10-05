@@ -22,6 +22,7 @@ import {
 } from "~/zerops/agentActivity";
 import type { MateComing } from "~/zerops/mateComing";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
+import { nowLineWords } from "../chat/runCard.logic";
 import type { SentAsk } from "~/zerops/sentAsk";
 
 import { formatWorkingTime } from "./SidebarZeropsTree.logic";
@@ -390,6 +391,10 @@ export function mateRowView(
   }
   switch (state) {
     case "working":
+      // Its turn over, its helpers at work: its card's own words, its clock stopped with its turn.
+      if (activity.waitsOnHelpers === true) {
+        return view({ kind: "live", words: nowLineWords({ kind: "after" }), code: undefined });
+      }
       return view(
         activity.liveStep === undefined
           ? { kind: "pending" }

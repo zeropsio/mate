@@ -20,7 +20,14 @@ const storage = {
 export type DiffPanelSelection =
   | { kind: "branch"; baseRef: string | null }
   | { kind: "unstaged" }
-  | { kind: "turn"; turnId: TurnId; filePath: string | null; revealRequestId: number };
+  | {
+      kind: "turn";
+      turnId: TurnId;
+      /** A run of several turns: its first, the diff the whole run's from where it began. */
+      fromTurnId?: TurnId;
+      filePath: string | null;
+      revealRequestId: number;
+    };
 
 export type DiffRenderMode = "stacked" | "split";
 
@@ -33,7 +40,12 @@ interface DiffPanelStoreState {
   setDiffRenderMode: (mode: DiffRenderMode) => void;
   selectGitScope: (ref: ScopedThreadRef, scope: "branch" | "unstaged") => void;
   selectBranchBaseRef: (ref: ScopedThreadRef, baseRef: string | null) => void;
-  selectTurn: (ref: ScopedThreadRef, turnId: TurnId, filePath?: string) => void;
+  selectTurn: (
+    ref: ScopedThreadRef,
+    turnId: TurnId,
+    filePath?: string,
+    fromTurnId?: TurnId,
+  ) => void;
   reconcileTurnSelection: (ref: ScopedThreadRef, availableTurnIds: ReadonlyArray<TurnId>) => void;
   removeThread: (ref: ScopedThreadRef) => void;
 }
@@ -87,7 +99,7 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
             },
           };
         }),
-      selectTurn: (ref, turnId, filePath) =>
+      selectTurn: (ref, turnId, filePath, fromTurnId) =>
         set((state) => {
           const threadKey = scopedThreadKey(ref);
           const previous = state.byThreadKey[threadKey];
@@ -97,6 +109,7 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
               [threadKey]: {
                 kind: "turn",
                 turnId,
+                ...(fromTurnId === undefined || fromTurnId === turnId ? {} : { fromTurnId }),
                 filePath: filePath?.trim() || null,
                 revealRequestId: previous?.kind === "turn" ? previous.revealRequestId + 1 : 1,
               },
@@ -115,10 +128,11 @@ export const useDiffPanelStore = create<DiffPanelStoreState>()(
           ) {
             return state;
           }
+          const { fromTurnId: _range, ...turn } = previous;
           return {
             byThreadKey: {
               ...state.byThreadKey,
-              [threadKey]: { ...previous, turnId: latestTurnId },
+              [threadKey]: { ...turn, turnId: latestTurnId },
             },
           };
         }),

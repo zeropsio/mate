@@ -14,6 +14,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   alsoWorkingLine,
+  mateWorks,
   crewmateAccessibleName,
   foldCrew,
   lineChats,
@@ -815,6 +816,37 @@ describe("lineLeaving", () => {
     },
   ])("$name", ({ previous, next, motion, leaving }) => {
     expect(lineLeaving(previous, next, motion)).toEqual(leaving);
+  });
+});
+
+describe("mateWorks", () => {
+  // Whether the Mate is at work in any of its chats: a turn running, or helpers it started
+  // still running after the turn — what holds its review ask back.
+  it.each([
+    {
+      name: "a turn runs in its main chat",
+      chats: [shell("main", { latestTurn: running })],
+      works: true,
+    },
+    {
+      name: "a turn runs in another of its chats",
+      chats: [shell("main"), shell("logs", { latestTurn: running })],
+      works: true,
+    },
+    {
+      name: "helpers it started still run after the turn",
+      chats: [shell("main", { backgroundLiveness: "working" })],
+      works: true,
+    },
+    {
+      name: "only a watch loop runs",
+      chats: [shell("main", { backgroundLiveness: "monitoring" })],
+      works: false,
+    },
+    { name: "every chat rests", chats: [shell("main"), shell("logs")], works: false },
+    { name: "it has no chat", chats: [], works: false },
+  ])("$name: $works", ({ chats, works }) => {
+    expect(mateWorks(chats)).toBe(works);
   });
 });
 

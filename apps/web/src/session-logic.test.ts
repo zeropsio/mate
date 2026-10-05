@@ -3114,6 +3114,42 @@ describe("deriveWorkLogEntries - non-Zerops tool.started rows are still skipped"
     ]);
     expect(entries).toHaveLength(0);
   });
+
+  // A helper's command starts with its whole command too, and its end is the
+  // helper's own row: drawn from its start, it ran in the Mate's list until
+  // the helper ended (+104 running on one live card).
+  it("keeps a helper's command out of the Mate's list from its start to its end", () => {
+    const helper = { agentId: "task-helper", parentToolUseId: "toolu_launch" };
+    const started = makeActivity({
+      id: "helper-cmd-started",
+      kind: "tool.started",
+      turnId: "turn-1",
+      summary: "Ran command",
+      payload: {
+        toolCallId: "call-helper-curl",
+        itemType: "command_execution",
+        status: "inProgress",
+        data: { command: "curl -s https://shop.example/", toolName: "Bash" },
+        ...helper,
+      },
+    });
+    const completed = makeActivity({
+      id: "helper-cmd-completed",
+      kind: "tool.completed",
+      createdAt: "2026-02-23T00:00:05.000Z",
+      turnId: "turn-1",
+      summary: "Ran command",
+      payload: {
+        toolCallId: "call-helper-curl",
+        itemType: "command_execution",
+        status: "completed",
+        data: { command: "curl -s https://shop.example/", toolName: "Bash" },
+        ...helper,
+      },
+    });
+    expect(deriveWorkLogEntries([started])).toEqual([]);
+    expect(deriveWorkLogEntries([started, completed])).toEqual([]);
+  });
 });
 
 /**

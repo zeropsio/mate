@@ -120,6 +120,16 @@ const MAX_BUFFERED_ASSISTANT_CHARS = 24_000;
 // message several times a second while still showing the first paragraph
 // as soon as it is done.
 const MIN_ASSISTANT_DELIVERY_INTERVAL_MS = 400;
+/**
+ * A thought flows in words (D3): what it has said so far reaches the page about
+ * five times a second. Thinking arrives at a few hundred characters a second,
+ * so each delivery is a line's worth of words, which reads as text growing
+ * rather than paragraphs jumping in; and each is a command, an event-store
+ * write, a fan-out and a rewrite of the message's projected row, which this
+ * pace bounds to five a second per thought (review of pass 42: at ten, a
+ * two-minute thought rewrote its row eleven hundred times, 16 MB).
+ */
+export const THOUGHT_DELIVERY_INTERVAL_MS = 200;
 const STRICT_PROVIDER_LIFECYCLE_GUARD = process.env.T3CODE_STRICT_PROVIDER_LIFECYCLE_GUARD !== "0";
 
 type TurnStartRequestedDomainEvent = Extract<
@@ -300,6 +310,63 @@ export function splitBufferedAssistantText(text: string): { ready: string; rest:
   return { ready: text.slice(0, boundary), rest: text.slice(boundary) };
 }
 
+// Scripts written without spaces between words (Chinese, Japanese, their
+// punctuation and full-width forms) break after any character.
+const NO_SPACE_SCRIPT_CHAR_PATTERN =
+  /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/;
+const WHITESPACE_CHAR_PATTERN = /\s/;
+// A bold run or a code span opened on the line being cut.
+const INLINE_SPAN_MARKER_PATTERN = /\*\*|`+/g;
+// How far back an unclosed span's opener may sit and still hold the words
+// after it. A title or a path is shorter; past this the marker is literal.
+const OPEN_INLINE_SPAN_HOLD_CHARS = 120;
+
+function isWordBoundaryChar(char: string): boolean {
+  return WHITESPACE_CHAR_PATTERN.test(char) || NO_SPACE_SCRIPT_CHAR_PATTERN.test(char);
+}
+
+/** Where a bold run or code span left open on this line starts, or -1. */
+function openInlineSpanStart(line: string): number {
+  let bold = -1;
+  let code: { at: number; length: number } | null = null;
+  for (const match of line.matchAll(INLINE_SPAN_MARKER_PATTERN)) {
+    const marker = match[0];
+    if (marker.startsWith("`")) {
+      if (code === null) {
+        code = { at: match.index, length: marker.length };
+      } else if (marker.length === code.length) {
+        code = null;
+      }
+    } else if (code === null) {
+      bold = bold === -1 ? match.index : -1;
+    }
+  }
+  if (code === null) return bold;
+  return bold === -1 ? code.at : Math.min(bold, code.at);
+}
+
+/**
+ * Splits a buffered thought after its last whole word: `ready` ends on
+ * whitespace (or a character of a script without spaces), so a word is never
+ * shown cut; `rest` is the word still arriving. A bold run or code span opened
+ * on the line being cut waits until it closes, so its marks never show as
+ * literal characters for a moment. Markdown is otherwise the client's: an
+ * open fence renders as code to the end of what has arrived, as CommonMark
+ * says, and closes when its closing line does.
+ */
+export function splitBufferedThoughtText(text: string): { ready: string; rest: string } {
+  let cut = text.length;
+  while (cut > 0 && !isWordBoundaryChar(text[cut - 1]!)) {
+    cut -= 1;
+  }
+  const lineStart = text.lastIndexOf("\n", cut - 1) + 1;
+  const opener = openInlineSpanStart(text.slice(lineStart, cut));
+  if (opener !== -1 && cut - (lineStart + opener) <= OPEN_INLINE_SPAN_HOLD_CHARS) {
+    cut = lineStart + opener;
+  }
+  return { ready: text.slice(0, cut), rest: text.slice(cut) };
+}
+
 function proposedPlanIdForTurn(threadId: ThreadId, turnId: TurnId): string {
   return `plan:${threadId}:turn:${turnId}`;
 }
@@ -326,6 +393,9 @@ function assistantSegmentBaseKeyFromEvent(event: ProviderRuntimeEvent): string {
  * that opened it, so the role never has to be threaded through those paths.
  */
 type MessageStreamRole = "assistant" | "reasoning";
+
+/** How a buffered stream is let out: by the turn, a paragraph, or whole words. */
+type BufferedDeliveryMode = Exclude<ResponseStreamingMode, "token"> | "word";
 
 const REASONING_MESSAGE_ID_PREFIX = "reasoning:";
 
@@ -1344,11 +1414,12 @@ const make = Effect.gen(function* () {
     (settings) => settings.responseStreamingMode,
   );
 
-  // `mode` is "turn" or "paragraph"; token mode never buffers.
+  // An answer is held by the turn or delivered a paragraph at a time (token
+  // mode never buffers it); a thought is held by the turn or flows in words.
   const appendBufferedAssistantText = (
     messageId: MessageId,
     delta: string,
-    mode: Exclude<ResponseStreamingMode, "token">,
+    mode: BufferedDeliveryMode,
     atMillis: number,
   ) =>
     Cache.getOption(bufferedAssistantTextByMessageId, messageId).pipe(
@@ -1361,17 +1432,21 @@ const make = Effect.gen(function* () {
 
           // Paragraph mode delivers finished paragraphs and closed code blocks
           // early so the user sees progress without token-by-token repaints.
+          // Word mode delivers the whole words so far, at a faster pace.
           // Turn mode holds everything until the turn finishes or pauses.
           const { ready, rest } =
             mode === "paragraph"
               ? splitBufferedAssistantText(nextText)
-              : { ready: "", rest: nextText };
+              : mode === "word"
+                ? splitBufferedThoughtText(nextText)
+                : { ready: "", rest: nextText };
           const lastDeliveredAt = Option.getOrUndefined(
             yield* Cache.getOption(lastAssistantDeliveryAtByMessageId, messageId),
           );
           const paced =
             lastDeliveredAt === undefined ||
-            atMillis - lastDeliveredAt >= MIN_ASSISTANT_DELIVERY_INTERVAL_MS;
+            atMillis - lastDeliveredAt >=
+              (mode === "word" ? THOUGHT_DELIVERY_INTERVAL_MS : MIN_ASSISTANT_DELIVERY_INTERVAL_MS);
           if (
             paced &&
             hasRenderableAssistantText(ready) &&
@@ -2035,12 +2110,12 @@ const make = Effect.gen(function* () {
           yield* Cache.set(reasoningPartIndexByMessageId, reasoningMessageId, partIndex);
         }
 
-        // Reasoning is never delivered token by token, even when token
-        // streaming is chosen: the block is collapsed by default, so a command,
-        // an event-store write and a fan-out per token would buy nothing. Traces
-        // are longer than the answers they precede.
+        // A thought flows in words while it is thought, whether answers stream
+        // by paragraph or by token; turn mode holds it with the answer. Never
+        // per token: a command, an event-store write and a fan-out per token
+        // would buy nothing over a delivery every tenth of a second.
         const streamingMode = yield* resolveResponseStreamingMode;
-        const reasoningMode = streamingMode === "token" ? "paragraph" : streamingMode;
+        const reasoningMode = streamingMode === "turn" ? "turn" : "word";
         const spillChunk = yield* appendBufferedAssistantText(
           reasoningMessageId,
           delta,

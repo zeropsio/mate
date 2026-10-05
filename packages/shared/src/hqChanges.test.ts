@@ -157,6 +157,8 @@ describe("hqChanges — the wire", () => {
     ["a change with its comments counted", { comments: 3 }, "Success"],
     ["a count of comments below none", { comments: -1 }, "Failure"],
     ["a fractional count of comments", { comments: 1.5 }, "Failure"],
+    ["a draft", { ready: false }, "Success"],
+    ["a readiness that is no boolean", { ready: "yes" }, "Failure"],
   ])("a change: %s", (_name, patch, expected) => {
     expect(read(HqChange, change(patch))).toBe(expected);
   });
@@ -372,6 +374,14 @@ describe("hqChanges — the wire", () => {
 
   it("reads a change from an HQ that counted no comments as uncounted", () => {
     expect(decodeChange(change()).comments).toBeNull();
+  });
+
+  it.each([
+    ["an HQ that knows no drafts", {}, true],
+    ["a draft", { ready: false }, false],
+    ["a change described at its head", { ready: true }, true],
+  ])("reads whether a change asks for review from %s", (_name, patch, ready) => {
+    expect(decodeChange(change(patch)).ready).toBe(ready);
   });
 
   it("reads a comment from an HQ that kept only people's as a person's", () => {

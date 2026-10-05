@@ -40,9 +40,11 @@ const DEV_SERVER_STEP_LABEL: Readonly<Record<string, string>> = {
 /**
  * The one step's PASS/FAIL goal depends on the action: start/restart/status
  * want `running=true`, stop wants `running=false` — a successful stop
- * reporting `running=false` is the step succeeding, not failing.
+ * reporting `running=false` is the step succeeding, not failing. A log read
+ * checks nothing, so it succeeds by returning, whatever `running` says.
  */
 function devServerStepSucceeded(action: string, running: boolean): boolean {
+  if (action === "logs") return true;
   return action === "stop" ? !running : running;
 }
 

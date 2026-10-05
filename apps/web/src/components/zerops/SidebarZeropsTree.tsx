@@ -59,6 +59,7 @@ import {
   readZeropsMembership,
   selectMateEnvironments,
   sidebarChangeLabel,
+  changeAsksForReview,
   listedStopComing,
   matePoseOf,
   stopServes,
@@ -122,6 +123,7 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/men
 import { SidebarComingEnds } from "./SidebarComingEnds";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
+  activityOfNow,
   mateAwake,
   mateBirthFace,
   mateReviewWaits,
@@ -1509,6 +1511,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   onOpenChange={changeRows.onOpenChange}
                   pulls={pulls}
                   remembered={changeRows.remembered === true}
+                  working={activityOfNow(getActivity?.(item))?.face === "working"}
                 />
               )}
             </div>
@@ -1522,6 +1525,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
           {grouped.others.map((pull) => (
             <PullRequestRow
               among={grouped.others}
+              asks={changeAsksForReview(pull)}
               groupId={id}
               key={changeRowKey(pull)}
               onOpenChange={changeRows.onOpenChange}
@@ -3554,10 +3558,13 @@ function PullRequestList({
   onToggle,
   onOpenChange,
   remembered = false,
+  working = false,
 }: {
   /** The project whose repository they are open against, for *Review*. */
   readonly groupId: string;
   readonly pulls: ReadonlyArray<FlowPullRequest>;
+  /** Their Mate works: its changes still move, and none asks for review until it rests. */
+  readonly working?: boolean;
   readonly open: boolean;
   readonly onToggle: () => void;
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
@@ -3588,6 +3595,7 @@ function PullRequestList({
           {pulls.map((pull) => (
             <PullRequestRow
               among={pulls}
+              asks={!working && changeAsksForReview(pull)}
               groupId={groupId}
               key={`${pull.repository}#${pull.number}`}
               onOpenChange={onOpenChange}
@@ -3610,10 +3618,14 @@ function PullRequestList({
  * in the review. The mark alone may say that something is wrong (S3): amber
  * where it fell behind `main` and no longer merges (`changeMarkTone`). A person's own
  * pull request names them after the title — there is no room for a line.
+ * A draft, or a change its Mate still works on, asks nothing: the row stays,
+ * its title still opens it, and *Review* waits until it is described and the
+ * Mate rests.
  */
 function PullRequestRow({
   pull,
   among,
+  asks,
   groupId,
   onOpenChange,
   remembered = false,
@@ -3621,6 +3633,8 @@ function PullRequestRow({
 }: {
   readonly whose?: string;
   readonly pull: FlowPullRequest;
+  /** It asks for review: described at its head, its Mate at rest. Only then is *Review* here. */
+  readonly asks: boolean;
   /** The rows drawn with it: where its opener's span repositories, each names its own. */
   readonly among: ReadonlyArray<FlowPullRequest>;
   /** The project whose repository it is open against, for *Review*. */
@@ -3662,19 +3676,21 @@ function PullRequestRow({
           {label}
         </button>
       )}
-      <button
-        className="menu-textbtn outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        data-zerops-surface="sidebar-pull-request-review"
-        onClick={(event) => {
-          openReview(
-            { kind: "change", groupId, repository: pull.repository, number: pull.number },
-            { from: event.currentTarget },
-          );
-        }}
-        type="button"
-      >
-        Review
-      </button>
+      {asks ? (
+        <button
+          className="menu-textbtn outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          data-zerops-surface="sidebar-pull-request-review"
+          onClick={(event) => {
+            openReview(
+              { kind: "change", groupId, repository: pull.repository, number: pull.number },
+              { from: event.currentTarget },
+            );
+          }}
+          type="button"
+        >
+          Review
+        </button>
+      ) : null}
     </li>
   );
 }

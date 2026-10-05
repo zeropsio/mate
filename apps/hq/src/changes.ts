@@ -345,6 +345,9 @@ const CHANGE_COLUMNS = [
   instant("updated_at"),
   "mergeability",
   "behind",
+  // A recipe change is whole as proposed: it asks for review undescribed. A Mate's delivery
+  // asks at the head it last described.
+  `(repo = '${RECIPE_REPO}' OR COALESCE(ready_head = head, false)) AS ready`,
   // Every read of a change is of `hq_change` by that name, its writes' `RETURNING` included.
   `(SELECT count(*)::int FROM hq_change_comment c
     WHERE c.app_id = hq_change.app_id AND c.repo = hq_change.repo
@@ -368,6 +371,7 @@ interface ChangeRow {
   readonly updated_at: string;
   readonly mergeability: HqChange["mergeability"];
   readonly behind: boolean;
+  readonly ready: boolean;
   readonly comments: number;
 }
 
@@ -412,6 +416,7 @@ const changeOf = (row: ChangeRow): HqChange => ({
   updatedAt: row.updated_at,
   mergeability: row.mergeability,
   behind: row.behind,
+  ready: row.ready,
   comments: row.comments,
 });
 
@@ -1011,6 +1016,12 @@ export const changesLayer: Layer.Layer<
                 UPDATE hq_change
                 SET title = COALESCE(${edit.title ?? null}, title),
                     body = COALESCE(${edit.body ?? null}, body),
+                    -- Words describe the head they were written at; a title describes nothing.
+                    ready_head = CASE
+                      WHEN ${edit.body === undefined} THEN ready_head
+                      WHEN ${(edit.body ?? "").trim() === ""} THEN NULL
+                      ELSE head
+                    END,
                     updated_at = now()
                 WHERE app_id = ${appId}::uuid AND repo = ${repo} AND number = ${number}
                 RETURNING ${sql.literal(CHANGE_COLUMNS)}`;

@@ -60,8 +60,8 @@ describe("right panel kinds", () => {
       },
       {
         kind: "agents",
-        label: "Agents",
-        description: "Follow subagents and workflows.",
+        label: "Helpers",
+        description: "Follow the helpers it started and their workflows.",
         shortcut: "A",
         unavailableHint: "Available from a thread.",
       },

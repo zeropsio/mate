@@ -212,6 +212,26 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
   const selectedCheckpointTurnCount =
     selectedTurn &&
     (selectedTurn.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[selectedTurn.turnId]);
+  // A run of several turns is shown whole: from where its first turn began.
+  const fromTurn =
+    shownSelection.kind === "turn" &&
+    shownSelection.fromTurnId !== undefined &&
+    selectedTurn?.turnId === shownSelection.turnId
+      ? orderedTurnDiffSummaries.find((summary) => summary.turnId === shownSelection.fromTurnId)
+      : undefined;
+  const fromCount =
+    fromTurn &&
+    (fromTurn.checkpointTurnCount ?? inferredCheckpointTurnCountByTurnId[fromTurn.turnId]);
+  const fromCheckpointTurnCount =
+    typeof fromCount === "number" &&
+    typeof selectedCheckpointTurnCount === "number" &&
+    fromCount < selectedCheckpointTurnCount
+      ? fromCount
+      : null;
+  const turnTitle =
+    fromCheckpointTurnCount === null
+      ? `Turn ${selectedCheckpointTurnCount ?? "?"}`
+      : `Turns ${fromCheckpointTurnCount}–${selectedCheckpointTurnCount}`;
   const latestTurn = orderedTurnDiffSummaries[0];
   // A stored turn that is gone shows the latest one, and is named so.
   const scope = diffScope({
@@ -228,8 +248,10 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
         ? "Branch changes"
         : scope === "latest"
           ? "Latest turn"
-          : `Turn ${selectedCheckpointTurnCount ?? "?"}`;
-  const reviewSectionId = selectedTurn ? `turn:${selectedTurn.turnId}` : selectedGitScope;
+          : turnTitle;
+  const reviewSectionId = selectedTurn
+    ? `turn:${selectedTurn.turnId}${fromCheckpointTurnCount === null ? "" : `:from:${fromCheckpointTurnCount}`}`
+    : selectedGitScope;
   const collapseScopeKey = routeThreadRef
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}:${reviewSectionId}`
     : null;
@@ -239,7 +261,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
       ? collapsedDiffFiles.fileKeys
       : EMPTY_COLLAPSED_DIFF_FILE_KEYS;
   const reviewSectionTitle = selectedTurn
-    ? `Turn ${selectedCheckpointTurnCount ?? "?"}`
+    ? turnTitle
     : selectedGitScope === "unstaged"
       ? "Working tree"
       : "Branch changes";
@@ -247,11 +269,14 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     () =>
       typeof selectedCheckpointTurnCount === "number"
         ? {
-            fromTurnCount: Math.max(0, selectedCheckpointTurnCount - 1),
+            fromTurnCount: Math.max(
+              0,
+              (fromCheckpointTurnCount ?? selectedCheckpointTurnCount) - 1,
+            ),
             toTurnCount: selectedCheckpointTurnCount,
           }
         : null,
-    [selectedCheckpointTurnCount],
+    [selectedCheckpointTurnCount, fromCheckpointTurnCount],
   );
   const checkpointDiffAvailability = resolveCheckpointDiffAvailability({
     hasActiveThread: activeThread !== null && activeThread !== undefined,
@@ -266,8 +291,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
       fromTurnCount: selectedCheckpointRange?.fromTurnCount ?? null,
       toTurnCount: selectedCheckpointRange?.toTurnCount ?? null,
       ignoreWhitespace: diffIgnoreWhitespace,
-      cacheScope:
-        selectedTurn?.history?.runId ?? (selectedTurn ? `turn:${selectedTurn.turnId}` : null),
+      cacheScope: selectedTurn?.history?.runId ?? (selectedTurn ? reviewSectionId : null),
     },
     { enabled: checkpointDiffAvailability.enabled && !selectedTurn?.history },
   );
