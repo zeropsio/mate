@@ -69,7 +69,7 @@ import {
   type ProjectAttentionItem,
 } from "./projectAttention.ts";
 import {
-  changeAsksForReview,
+  changeShowsReview,
   changeState,
   type ChangeState,
   type FlowPullRequest,
@@ -91,8 +91,10 @@ export interface GroupFlowMate {
   readonly failed?: boolean;
   /** Somebody has spoken into its conversation (`ZeropsAgentActivity.subject` is present). */
   readonly talked: boolean;
-  /** It works — a turn, or helpers it started: its changes ask for nothing until it rests. */
+  /** It works — a turn, or helpers it started: the changes that run moved ask for nothing yet. */
   readonly working?: boolean;
+  /** When the run it works in was asked for (`changeShowsReview`). */
+  readonly workingSince?: string;
   /** Present while it is being created: where its birth has got to. */
   readonly coming?: GroupFlowComing;
 }
@@ -168,6 +170,8 @@ export interface GroupFlowPullRequest {
   readonly pull: FlowPullRequest;
   readonly blocked: PullRequestBlocked | null;
   readonly state: ChangeState | undefined;
+  /** It shows its *Review* where it is listed (`changeShowsReview`). */
+  readonly review: boolean;
 }
 
 export interface GroupFlowMain {
@@ -290,8 +294,16 @@ function byNewest(left: FlowPullRequest, right: FlowPullRequest): number {
   return (right.updatedAt ?? "").localeCompare(left.updatedAt ?? "") || right.number - left.number;
 }
 
-function flowPullRequestOf(pull: FlowPullRequest): GroupFlowPullRequest {
-  return { pull, blocked: pullRequestBlocked(pull), state: changeState(pull) };
+function flowPullRequestOf(
+  pull: FlowPullRequest,
+  mate: GroupFlowMate | undefined,
+): GroupFlowPullRequest {
+  return {
+    pull,
+    blocked: pullRequestBlocked(pull),
+    state: changeState(pull),
+    review: changeShowsReview(pull, mate),
+  };
 }
 
 /** What a stop runs and how it went, by the rules `stopView` draws the page with (`runningVersion`, `runningTone`). */
@@ -487,14 +499,8 @@ function nextStepOf(
   const failed = first("deploy-failed");
   if (failed !== undefined) return fromAttention("fix-deploy", failed);
 
-  const working = new Set(
-    input.mates.filter((mate) => mate.working === true).map((mate) => mate.projectId),
-  );
   const mergeable = pullRequests.find(
-    (entry) =>
-      entry.pull.mergeability === "mergeable" &&
-      changeAsksForReview(entry.pull) &&
-      !working.has(entry.pull.mateProjectId),
+    (entry) => entry.pull.mergeability === "mergeable" && entry.review,
   )?.pull;
   if (mergeable !== undefined)
     return {
@@ -539,7 +545,8 @@ function fromAttention(kind: GroupNextStepKind, item: ProjectAttentionItem): Gro
 /** One project's flow, from what the surfaces already read for it. */
 export function groupFlow(input: GroupFlowInput): GroupFlow {
   const open = [...input.pullRequests].sort(byNewest);
-  const pullRequests = open.map(flowPullRequestOf);
+  const mates = new Map(input.mates.map((mate) => [mate.projectId, mate] as const));
+  const pullRequests = open.map((pull) => flowPullRequestOf(pull, mates.get(pull.mateProjectId)));
   const landedCode = input.merged.some((pull) => pull.kind === "code");
   const main: GroupFlowMain = {
     head: input.mainHead === undefined ? undefined : shortCommit(input.mainHead),

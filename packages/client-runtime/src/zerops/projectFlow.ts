@@ -105,6 +105,31 @@ export function changeAsksForReview(pull: Pick<FlowPullRequest, "ready">): boole
   return pull.ready !== false;
 }
 
+/** A change's Mate as its Review reads it: whether it works now, and since when its run began. */
+export interface MateRunFacts {
+  readonly working?: boolean | undefined;
+  /** When the run it works in was asked for; `undefined` where that is not known. */
+  readonly workingSince?: string | undefined;
+}
+
+/**
+ * Whether a change shows its *Review* wherever it is listed — the menu's rows, the projects page,
+ * the group's next step (D7: a change asks for review once its Mate described it at its head, and
+ * only after the run that made it). A ready change keeps its Review while its Mate works on
+ * something else; it gives it up while the run still writing it works — the run moved it
+ * (described, pushed or commented on) since it began. Where either time is unknown, a working
+ * Mate's change waits for it to rest.
+ */
+export function changeShowsReview(
+  pull: Pick<FlowPullRequest, "ready" | "updatedAt">,
+  mate: MateRunFacts | undefined,
+): boolean {
+  if (!changeAsksForReview(pull)) return false;
+  if (mate?.working !== true) return true;
+  if (mate.workingSince === undefined || pull.updatedAt === undefined) return false;
+  return Date.parse(pull.updatedAt) < Date.parse(mate.workingSince);
+}
+
 /**
  * A Mate's proposal of the application's recipe: the recipe repository's change of zcp's title
  * (`RECIPE_PROPOSAL_TITLE`), the tiers `main` lacks, which Core lands by itself when it only adds

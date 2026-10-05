@@ -498,6 +498,8 @@ export {
   changeLandedEvents,
   type ChangeLandedEvent,
   changeAsksForReview,
+  changeShowsReview,
+  type MateRunFacts,
   changeState,
   pullRequestMergeLine,
   pullRequestsFolded,

@@ -60,12 +60,14 @@ import {
   selectMateEnvironments,
   sidebarChangeLabel,
   changeAsksForReview,
+  changeShowsReview,
   listedStopComing,
   matePoseOf,
   projectNameInApp,
   stopServes,
   type EnvironmentRow,
   type FlowPullRequest,
+  type MateRunFacts,
   type Moved,
   type GroupFlow,
   type GroupEnvironmentTier,
@@ -126,6 +128,7 @@ import { SidebarComingEnds } from "./SidebarComingEnds";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   activityOfNow,
+  mateRunOf,
   mateAwake,
   mateBirthFace,
   mateReviewWaits,
@@ -1471,7 +1474,7 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
                   onOpenChange={changeRows.onOpenChange}
                   pulls={pulls}
                   remembered={changeRows.remembered === true}
-                  working={activityOfNow(getActivity?.(item))?.face === "working"}
+                  run={mateRunOf(activityOfNow(getActivity?.(item)))}
                 />
               )}
             </div>
@@ -3551,13 +3554,13 @@ function PullRequestList({
   onToggle,
   onOpenChange,
   remembered = false,
-  working = false,
+  run,
 }: {
   /** The project whose repository they are open against, for *Review*. */
   readonly groupId: string;
   readonly pulls: ReadonlyArray<FlowPullRequest>;
-  /** Their Mate works: its changes still move, and none asks for review until it rests. */
-  readonly working?: boolean;
+  /** Their Mate's run: the changes it still writes ask for no review until it rests. */
+  readonly run?: MateRunFacts | undefined;
   readonly open: boolean;
   readonly onToggle: () => void;
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
@@ -3588,7 +3591,7 @@ function PullRequestList({
           {pulls.map((pull) => (
             <PullRequestRow
               among={pulls}
-              asks={!working && changeAsksForReview(pull)}
+              asks={changeShowsReview(pull, run)}
               groupId={groupId}
               key={`${pull.repository}#${pull.number}`}
               onOpenChange={onOpenChange}

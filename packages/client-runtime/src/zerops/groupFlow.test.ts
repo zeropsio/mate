@@ -268,7 +268,7 @@ describe("groupFlow", () => {
       target: { kind: "change", repository: "app", number: 1 },
     });
     expect(flow.pullRequests).toEqual([
-      { pull: pull(), blocked: null, state: { word: "Ready to merge", tone: "off" } },
+      { pull: pull(), blocked: null, state: { word: "Ready to merge", tone: "off" }, review: true },
     ]);
     expect(flow.stages).toEqual([
       {

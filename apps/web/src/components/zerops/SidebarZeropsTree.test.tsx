@@ -1435,19 +1435,41 @@ describe("the project's flow under it", () => {
     }
   });
 
-  // A change asks for review only once its Mate described it at its head, and only while the
-  // Mate rests: a draft, or a change its Mate still works on, stays listed and opens, and asks
-  // nothing.
+  // A change asks for review only once its Mate described it at its head, and only after the run
+  // that made it (D7, `changeShowsReview`): a draft, or a change the Mate's working run moved,
+  // stays listed and opens, and asks nothing; one an earlier run finished keeps its Review while
+  // the Mate works on something else. Change 4 last moved at 14:00.
   it.each([
     {
       case: "a change described at its head, its Mate at rest",
       ready: true,
       busy: false,
+      since: undefined,
       asks: true,
     },
-    { case: "a draft", ready: false, busy: false, asks: false },
-    { case: "a described change its Mate still works on", ready: true, busy: true, asks: false },
-  ])("lists $case, asking for review: $asks", ({ ready, busy, asks }) => {
+    { case: "a draft", ready: false, busy: false, since: undefined, asks: false },
+    {
+      case: "a described change the Mate's working run moved",
+      ready: true,
+      busy: true,
+      since: "2026-09-17T13:00:00Z",
+      asks: false,
+    },
+    {
+      case: "a described change an earlier run finished, its Mate on something else",
+      ready: true,
+      busy: true,
+      since: "2026-09-17T15:00:00Z",
+      asks: true,
+    },
+    {
+      case: "a described change, its Mate at work since a time unknown",
+      ready: true,
+      busy: true,
+      since: undefined,
+      asks: false,
+    },
+  ])("lists $case, asking for review: $asks", ({ ready, busy, since, asks }) => {
     const atWork: ZeropsAgentActivity = {
       threadId: ThreadId.make("thread-1"),
       kind: "working",
@@ -1460,6 +1482,7 @@ describe("the project's flow under it", () => {
       pausedUntil: undefined,
       threadKey: "env:thread-1",
       task: "Add a size guide",
+      ...(since === undefined ? {} : { workingSince: since }),
     };
     const html = render([CRM_DEV, CRM_STAGE], {
       getFlow: () => flow({ pullRequests: [pull(4, { ready })] }),

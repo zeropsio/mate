@@ -40,6 +40,7 @@ import {
   resolvePrimaryConversation,
   type FlowPullRequest,
   type MatePoseFacts,
+  type MateRunFacts,
 } from "@t3tools/client-runtime/zerops";
 import type {
   EnvironmentId,
@@ -150,6 +151,11 @@ export interface ZeropsAgentActivity {
   readonly question?: string | undefined;
   /** The first line of the error the Mate stopped on: a failed row's third line. */
   readonly errorLine?: string | undefined;
+  /**
+   * While it works, when the run it works in was asked for — its helpers belong to the run that
+   * started them: a change that run moved since is still being written (`changeShowsReview`).
+   */
+  readonly workingSince?: string;
   /**
    * The Mate finished something this device has not looked at since
    * (`hasUnseenCompletion`, the resolver's own fact): its row's name is at
@@ -408,7 +414,29 @@ export function threadAgentActivity(
       : {}),
     ...agentActivityQuestion(thread, resolved.kind),
     ...agentActivityErrorLine(thread, resolved.kind),
+    ...agentActivityWorkingSince(thread, resolved.kind),
   };
+}
+
+/**
+ * When the run it works in was asked for: its turn's, while that turn runs or its helpers do; the
+ * person's newest words where they came after its last turn ended and no turn answers them yet.
+ */
+function agentActivityWorkingSince(
+  thread: Pick<AgentActivityThread, "latestTurn" | "latestUserMessageAt">,
+  kind: ThreadStatusKind,
+): { readonly workingSince?: string } {
+  if (kind !== "working") return {};
+  const turn = thread.latestTurn;
+  const asked = thread.latestUserMessageAt;
+  const since =
+    turn !== null &&
+    (turn.completedAt === null ||
+      asked === null ||
+      Date.parse(asked) <= Date.parse(turn.completedAt))
+      ? turn.requestedAt
+      : asked;
+  return since === null ? {} : { workingSince: since };
 }
 
 /**
@@ -505,6 +533,7 @@ export function restingActivity(activity: ZeropsAgentActivity): ZeropsAgentActiv
     waitsOnHelpers: _helpers,
     question: _question,
     errorLine: _error,
+    workingSince: _since,
     ...words
   } = activity;
   return {
@@ -515,6 +544,12 @@ export function restingActivity(activity: ZeropsAgentActivity): ZeropsAgentActiv
     pausedUntil: undefined,
     remembered: true,
   };
+}
+
+/** A Mate's run as a change's *Review* reads it (`changeShowsReview`), from its activity of now. */
+export function mateRunOf(activity: ZeropsAgentActivity | undefined): MateRunFacts | undefined {
+  if (activity?.face !== "working") return undefined;
+  return { working: true, workingSince: activity.workingSince };
 }
 
 /**

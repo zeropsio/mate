@@ -336,6 +336,40 @@ describe("an opened row", () => {
     expect(withMerge(1)).toBe("true");
   });
 
+  // D7, one rule with the menu (`changeShowsReview`): while Wren works, the change its run moved
+  // shows no Review; the one an earlier run finished keeps it.
+  it("shows each change's Review by the rule the menu reads", () => {
+    const tree = mount(
+      <ZeropsProjectsFlow<Item>
+        {...FLOW_PROPS}
+        groups={[
+          entry([WREN, STAGE], {
+            mates: [
+              {
+                projectId: "wren-dev",
+                name: "Wren",
+                preview: undefined,
+                waiting: false,
+                talked: true,
+                working: true,
+                workingSince: "2026-10-05T10:00:00.000Z",
+              },
+            ],
+            pullRequests: [
+              pull({ updatedAt: "2026-10-05T09:00:00.000Z" }),
+              pull({ number: 2, updatedAt: "2026-10-05T10:04:00.000Z" }),
+            ],
+            stops: [STAGE_STOP],
+          }),
+        ]}
+      />,
+    );
+    act(() => tree.root.findByProps({ "aria-expanded": false }).props.onClick());
+    const review = (number: number) =>
+      tree.root.findByProps({ "data-test-pull": number }).props["data-test-review"];
+    expect([review(1), review(2)]).toEqual(["true", "false"]);
+  });
+
   it("opens by itself when the page names its project", () => {
     const html = render({ groups: [MERGING, FRESH], focusGroup: "bbb" });
     expect(section(html, 'data-zerops-group="bbb"')).toContain(
