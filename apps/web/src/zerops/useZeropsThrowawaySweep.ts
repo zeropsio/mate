@@ -2,10 +2,12 @@
  * One inventory-owned cleanup attempt for the account's persisted door debt. Outstanding mints
  * wait past the door window, then exactly the throwaways owed are deleted — by the id their mint
  * answered, or by their name where that answer was lost — never another tab's or device's by its
- * look or its age. Failed cleanup stays visible until an explicit again. Nothing owed lists
- * nothing.
+ * look or its age. An explicit cleanup also deletes the person's own throwaways older than the
+ * door's window by the platform's `created`: no door admits them, whoever minted them. Failed
+ * cleanup stays visible until an explicit again. Nothing owed lists nothing until asked.
  */
 import {
+  planExpiredThrowaways,
   planThrowawaySweep,
   THROWAWAY_SWEEP_AGE_MS,
   throwawayCleanupFailureState,
@@ -36,7 +38,8 @@ export function useZeropsThrowawaySweep(input: {
   readonly clientId: string | undefined;
   readonly enabled: boolean;
 }): ThrowawaySweepView {
-  const { client } = useZeropsSession();
+  const { client, user } = useZeropsSession();
+  const userId = user?.id;
   const { organizationRef, runtime } = useZeropsData();
   const { clientId, enabled } = input;
   const debt = accountThrowawayDebt(client);
@@ -172,15 +175,25 @@ export function useZeropsThrowawaySweep(input: {
           account: runtime.scope,
           organization: organizationRef(clientId),
         } as const;
-        // Only a mint whose answer was lost needs the list: it is found by its name.
-        const tokens = owed.every((entry) => entry.tokenId !== undefined)
-          ? []
-          : await readZeropsCell(runtime.cells, request, controller.signal, explicit);
+        // An automatic sweep needs the list only for a mint whose answer was lost, found by its
+        // name; an explicit one also reads it for the person's own throwaways no door admits.
+        const tokens =
+          explicit || owed.some((entry) => entry.tokenId === undefined)
+            ? await readZeropsCell(runtime.cells, request, controller.signal, explicit)
+            : [];
         if (controller.signal.aborted) return;
-        const stale = planThrowawaySweep({
-          tokens: tokens.map((token) => ({ id: token.tokenId, name: token.name })),
-          owed,
-        });
+        const rows = tokens.map((token) => ({
+          id: token.tokenId,
+          name: token.name,
+          created: token.created,
+          createdByUser: token.createdByUser,
+        }));
+        const stale = new Set([
+          ...planThrowawaySweep({ tokens: rows, owed }),
+          ...(explicit && userId !== undefined
+            ? planExpiredThrowaways({ tokens: rows, userId, nowEpochMs: Date.now() })
+            : []),
+        ]);
         for (const tokenId of stale) {
           if (controller.signal.aborted) return;
           if (!explicit && debt.sweepFailed(clientId)) {
@@ -229,6 +242,7 @@ export function useZeropsThrowawaySweep(input: {
     needsAgain,
     organizationRef,
     runtime,
+    userId,
   ]);
 
   return { ...(view.debt === debt && view.clientId === clientId ? view : IDLE), again };

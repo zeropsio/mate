@@ -18,8 +18,10 @@ import {
   makeMintPace,
   makeThrowawayDebt,
   makeThrowawayMintBudgets,
+  planExpiredThrowaways,
   planThrowawaySweep,
   THROWAWAY_REUSE_MS,
+  THROWAWAY_SWEEP_AGE_MS,
   zeropsThrowawayPlatform,
 } from "./doorThrowaway.ts";
 import type { ZeropsSession } from "./session.ts";
@@ -75,6 +77,38 @@ describe("planThrowawaySweep", () => {
     },
   ])("$case", ({ tokens, owed, swept }) => {
     expect(planThrowawaySweep({ tokens, owed })).toEqual(swept);
+  });
+});
+
+describe("planExpiredThrowaways", () => {
+  // Past the door's window no door admits a throwaway, so the person's own is dead weight
+  // whichever tab or device minted it; by the platform's own `created`, never a local record.
+  const expired = new Date(NOW - THROWAWAY_SWEEP_AGE_MS - 1).toISOString();
+  const own = { name: "mate-door:p1:n1", createdByUser: "ada", created: expired };
+  it.each([
+    { case: "the person's own throwaway past the door's window", token: own, swept: ["t"] },
+    {
+      case: "never one a door may still admit",
+      token: { ...own, created: new Date(NOW - THROWAWAY_SWEEP_AGE_MS).toISOString() },
+      swept: [],
+    },
+    { case: "never another person's", token: { ...own, createdByUser: "bob" }, swept: [] },
+    {
+      case: "never one whose creator is not listed",
+      token: { name: own.name, created: expired },
+      swept: [],
+    },
+    { case: "never a Mate's own key", token: { ...own, name: "zcp-acme" }, swept: [] },
+    { case: "never one with no mint time", token: { ...own, created: undefined }, swept: [] },
+    {
+      case: "never one with an unreadable mint time",
+      token: { ...own, created: "soon" },
+      swept: [],
+    },
+  ])("$case", ({ token, swept }) => {
+    expect(
+      planExpiredThrowaways({ tokens: [{ id: "t", ...token }], userId: "ada", nowEpochMs: NOW }),
+    ).toEqual(swept);
   });
 });
 
