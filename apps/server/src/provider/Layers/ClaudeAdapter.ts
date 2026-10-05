@@ -389,6 +389,9 @@ interface ClaudeTaskState {
 interface ClaudeTaskAgentState {
   readonly taskId: string;
   toolUseId: string | undefined;
+  /** Every launch of this task, a resume's included: a resumed helper's calls
+   * keep naming its first launch as their parent. */
+  launches: ReadonlyArray<string>;
   description: string | undefined;
   subagentType: string | undefined;
   taskType: string | undefined;
@@ -1407,7 +1410,7 @@ function agentIdForParentToolUse(
     return undefined;
   }
   for (const agent of agents.values()) {
-    if (agent.toolUseId === parentToolUseId) {
+    if (agent.toolUseId === parentToolUseId || agent.launches.includes(parentToolUseId)) {
       return agent.taskId;
     }
   }
@@ -3310,9 +3313,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     status: "completed" | "failed",
     rawPayload: unknown,
   ) {
-    const launch = context.taskAgents.get(taskId)?.toolUseId;
+    const launches = context.taskAgents.get(taskId)?.launches ?? [];
     for (const [index, tool] of context.inFlightTools.entries()) {
-      if (tool.agentId !== taskId && (launch === undefined || tool.parentToolUseId !== launch)) {
+      if (
+        tool.agentId !== taskId &&
+        (tool.parentToolUseId === undefined || !launches.includes(tool.parentToolUseId))
+      ) {
         continue;
       }
       yield* closeUnreturnedCall(context, tool, {
@@ -3547,6 +3553,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           context.taskAgents.set(workflowTaskId, {
             taskId: workflowTaskId,
             toolUseId: existing?.toolUseId ?? tool.itemId,
+            launches: existing?.launches ?? [tool.itemId],
             description: existing?.description,
             subagentType: existing?.subagentType,
             taskType: existing?.taskType ?? "local_workflow",
@@ -4035,9 +4042,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             : context.currentEffort);
         // Remember the agent identity so every later task.* payload for this
         // taskId is self-describing (identity must survive activity retention).
+        const earlier = context.taskAgents.get(message.task_id)?.launches ?? [];
         context.taskAgents.set(message.task_id, {
           taskId: message.task_id,
           toolUseId: message.tool_use_id,
+          launches:
+            message.tool_use_id === undefined || earlier.includes(message.tool_use_id)
+              ? earlier
+              : [...earlier, message.tool_use_id],
           description: message.description,
           subagentType: message.subagent_type,
           taskType: message.task_type,

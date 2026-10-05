@@ -2543,6 +2543,29 @@ describe("ClaudeAdapterLive", () => {
           );
         },
       },
+      // A resume starts the same task under a new launch, while the helper's
+      // calls keep naming its first launch as their parent.
+      {
+        name: "a resumed helper's calls stay its own",
+        messages: [
+          launch("toolu_agent_a", { description: "Review the change", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a", "local_agent", { prompt: PROMPT }),
+          returned(null, "toolu_agent_a", "Reviewed"),
+          launch("toolu_agent_a2", { description: "Review again", prompt: PROMPT }),
+          started("task-a", "toolu_agent_a2", "local_agent", { prompt: PROMPT }),
+          helperCalls("toolu_agent_a", [
+            { id: "tool-h2", name: "Bash", input: { command: "npm test" } },
+          ]),
+          returned("toolu_agent_a", "tool-h2", "4 passing"),
+          turnEnd,
+        ],
+        check: (events) => {
+          assert.deepStrictEqual(
+            callsOf(events, "item.completed").filter((call) => call.id === "tool-h2"),
+            [{ id: "tool-h2", agentId: "task-a", parent: "toolu_agent_a" }],
+          );
+        },
+      },
       {
         name: "a helper starts with the prompt it was given",
         messages: [
