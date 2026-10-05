@@ -329,6 +329,54 @@ describe("reduceAccount", () => {
     });
   });
 
+  it("keeps a relayed attention the Mate's, and reads a value again once its owner sends one", () => {
+    const navigation = scopeKeys.navigation(ORG);
+    const relayed = (sequence: number): AccountInput => ({
+      kind: "rows",
+      scope: navigation,
+      generation: 1,
+      method: "push",
+      via: "hq-stream",
+      rows: [
+        {
+          family: "attention",
+          id: "m1",
+          value: {
+            mainChatId: null,
+            latestChatId: `c${sequence}`,
+            working: 0,
+            waiting: 0,
+            resultIds: [],
+            questionIds: [],
+            truncated: false,
+          },
+          revision: { kind: "hq-observation", generation: 1, sequence },
+        },
+      ],
+    });
+    const state = apply(emptyAccount, [
+      {
+        kind: "stream",
+        key: scopeKeys.hqLink(ORG),
+        now: 0,
+        event: { kind: "demand", demanded: true },
+      },
+      { kind: "stream", key: navigation, now: 0, event: { kind: "demand", demanded: true } },
+      { kind: "stream", key: navigation, now: 0, event: { kind: "attempt" } },
+      relayed(1),
+    ]);
+    expect(state.attention.get("m1")).toMatchObject({ authority: "mate", via: "hq-stream" });
+
+    const denied = apply(state, [
+      { kind: "access", family: "attention", id: "m1", access: "denied" },
+    ]);
+    expect(denied.attention.get("m1")?.content.kind).toBe("purged");
+    expect(apply(denied, [relayed(2)]).attention.get("m1")).toMatchObject({
+      content: { kind: "value" },
+      access: "allowed",
+    });
+  });
+
   describe("supersedes", () => {
     const zerops = (version: number | null): Revision => ({ kind: "zerops", version });
     const hq = (generation: number, sequence: number): Revision => ({

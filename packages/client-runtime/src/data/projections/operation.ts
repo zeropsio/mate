@@ -7,6 +7,7 @@
  * @module data/projections/operation
  */
 import type { OperationRecord } from "../model.ts";
+import { sameValue } from "./equal.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 
 export type OperationProgress =
@@ -39,7 +40,7 @@ function reflected(read: ProjectionReads, record: OperationRecord): boolean {
 export const operationProgress: Projection<string, OperationProgress> = {
   name: "operationProgress",
   keyOf: (requestId) => requestId,
-  equals: (left, right) => JSON.stringify(left) === JSON.stringify(right),
+  equals: sameValue,
   derive: (read, requestId) => {
     const record = read.operation(requestId);
     if (record === undefined) return { stage: "unknown" };

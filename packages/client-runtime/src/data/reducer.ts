@@ -12,6 +12,7 @@ import { RUNNING_PROCESS_STATUSES } from "./demand.ts";
 import type {
   Access,
   AccountState,
+  Authority,
   Delivery,
   Fact,
   Family,
@@ -112,7 +113,13 @@ export interface Reduction {
   readonly directives: ReadonlyArray<RuntimeDirective>;
 }
 
-const AUTHORITY_OF = { zerops: "zerops", hq: "hq", mate: "mate" } as const;
+/** Who owns each family, whichever path delivered it: HQ's relay of attention stays the Mate's. */
+const AUTHORITY: Readonly<Record<Family, Authority>> = {
+  project: "zerops",
+  process: "zerops",
+  placement: "hq",
+  attention: "mate",
+};
 
 /** A scope's stream is the child of its link's: `zerops:org:projects` of `zerops:org`. */
 function parentOf(key: StreamKey): string | null {
@@ -174,11 +181,12 @@ function reduceRows(
     const fact: Fact<unknown> = {
       content: { kind: "value", value: row.value },
       revision: row.revision,
-      authority: AUTHORITY_OF[input.scope.split(":")[0] as keyof typeof AUTHORITY_OF],
+      authority: AUTHORITY[row.family],
       via: input.via,
       method: input.method,
       scope: input.scope,
-      access: current?.access ?? "allowed",
+      // The owner delivering a value is its word that the viewer reads it; unverified stays so.
+      access: current?.access === "unverified" ? "unverified" : "allowed",
       ...(row.producer === undefined ? {} : { producer: row.producer }),
     };
     const draft = drafts.get(row.family) ?? new Map(facts);

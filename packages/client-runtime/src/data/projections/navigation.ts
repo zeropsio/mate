@@ -11,6 +11,7 @@
  * @module data/projections/navigation
  */
 import { scopeKeys, type AttentionValue, type PublicRead, type StreamKey } from "../model.ts";
+import { sameValue } from "./equal.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { Phase } from "../streamMachine.ts";
 
@@ -83,7 +84,7 @@ export const menuRow: Projection<MenuRowKey, MenuRow> = {
   name: "menuRow",
   keyOf: ({ orgId, row }) =>
     `${orgId}/${row.kind}/${row.kind === "app" ? row.appId : row.projectId}`,
-  equals: (left, right) => JSON.stringify(left) === JSON.stringify(right),
+  equals: sameValue,
   derive: (read, { orgId, row }) => {
     const projectsScope = scopeKeys.projects(orgId);
     const runningScope = scopeKeys.running(orgId);
@@ -165,7 +166,7 @@ export const menuRow: Projection<MenuRowKey, MenuRow> = {
 export const menuRowKeys: Projection<string, ReadonlyArray<RowKey>> = {
   name: "menuRowKeys",
   keyOf: (orgId) => orgId,
-  equals: (left, right) => JSON.stringify(left) === JSON.stringify(right),
+  equals: sameValue,
   derive: (read, orgId) => {
     const roster = read.members(scopeKeys.projects(orgId));
     const placed = new Set(read.members(scopeKeys.navigation(orgId)).ids);
