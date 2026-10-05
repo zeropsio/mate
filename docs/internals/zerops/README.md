@@ -49,8 +49,7 @@ no plan of their own.
   - _Lifecycle:_ Append-only; a decision promotes to `spec-mate.md`
 - **[`test-accounts.md`](test-accounts.md)** — How a person signs in through the hand-over, and how
   an agent signs a dev build in as several Zerops accounts (`signInAs`, `window.__mateDev`)
-  - _Lifecycle:_ Changes when the hand-over or the dev hook changes; the transition note goes when
-    the new Zerops app is live
+  - _Lifecycle:_ Changes when the hand-over or the dev hook changes
 - **[`client-state-model.md`](client-state-model.md)** — The client state model: three axes, seven
   laws, the knowledge type, fact owners, machines, lifetimes, data flow, module boundaries, and
   which slice makes each part true

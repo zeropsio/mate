@@ -8,19 +8,16 @@ itself.
 
 - The client sends the tab to `{VITE_ZEROPS_APP_URL}/authorize-app` (default
   `https://app.zerops.io`) with `app=zerops-code`, its own `origin`, its base `path`, a per-tab
-  `nonce` and, for a dev instance, `project` (`VITE_MATE_SIGNIN_PROJECT`). Code:
+  nonce as `state` and, for a dev instance, `project` (`VITE_MATE_SIGNIN_PROJECT`). Code:
   `packages/client-runtime/src/zerops/handover.ts`.
-- The Zerops app checks the origin and redirects to `<origin><path>/zerops/authorized#token=…&nonce=…`.
-  The token is the access token of that app's own session: no refresh token, valid up to five days,
-  dead when app.zerops.io logs out or refreshes.
+- The Zerops app checks the origin, mints a personal access token named
+  `Zerops Code · <device> · <origin>`, and redirects to
+  `<origin><path>/zerops/authorized#token=…&state=…`. The token has no refresh token and no expiry:
+  it ends only when revoked in Settings › Token management.
 - A 401 sends the tab back for a fresh hand-over and then returns it to the route it was on. A fresh
   token refused before a load verified it leaves the tab signed out (`apps/web/src/zerops/reauth.ts`).
-- Sign-out only forgets the token locally. It never calls `/auth/logout`, because that would sign
-  the person out of the Zerops app too.
-- **Transition, until the new Zerops app is live on app.zerops.io:** the request also carries the
-  old `state` (the same nonce) and, on `localhost`, `port`. The client also accepts the old
-  `#token=…&state=…` return, which carries a personal token. Every such line is marked
-  `TRANSITION` in code and goes once the new app is live.
+- Sign-out only forgets the token locally. It never calls `/auth/logout`, which answers a personal
+  token 200 and revokes nothing; the token stays in Settings › Token management.
 
 ## Signing a test page in
 

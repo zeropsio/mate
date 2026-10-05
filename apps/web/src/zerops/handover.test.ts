@@ -36,7 +36,7 @@ describe("startZeropsHandover", () => {
   it("remembers the nonce it sent, so the callback has something to check against", () => {
     const store = fakeStore();
     const url = new URL(startZeropsHandover({ ...here, store }));
-    const sent = url.searchParams.get("nonce") ?? "";
+    const sent = url.searchParams.get("state") ?? "";
 
     expect(sent).not.toBe("");
     expect(store.take()).toBe(sent);
@@ -46,7 +46,7 @@ describe("startZeropsHandover", () => {
     const seen = new Set<string>();
     for (let attempt = 0; attempt < 32; attempt += 1) {
       const url = new URL(startZeropsHandover({ ...here, store: fakeStore() }));
-      seen.add(url.searchParams.get("nonce") ?? "");
+      seen.add(url.searchParams.get("state") ?? "");
     }
     expect(seen.size).toBe(32);
     for (const nonce of seen) {
@@ -87,7 +87,7 @@ describe("completeZeropsHandover", () => {
   it("accepts a callback answering the nonce this browser stored", () => {
     const store = fakeStore("nonce-1");
     const outcome = completeZeropsHandover({
-      fragment: "#token=rt-1&nonce=nonce-1&zcpClaimed=true",
+      fragment: "#token=rt-1&state=nonce-1&zcpClaimed=true",
       store,
     });
 
@@ -102,7 +102,7 @@ describe("completeZeropsHandover", () => {
     // A back button, a restored tab or a copied link must not sign anyone in
     // a second time off one authorization.
     const store = fakeStore("nonce-1");
-    const fragment = "#token=rt-1&nonce=nonce-1";
+    const fragment = "#token=rt-1&state=nonce-1";
 
     expect(completeZeropsHandover({ fragment, store })).toMatchObject({ kind: "session" });
     expect(completeZeropsHandover({ fragment, store })).toEqual({ kind: "mismatched" });
@@ -111,7 +111,7 @@ describe("completeZeropsHandover", () => {
   it("refuses a credential this browser never asked for, and reads nothing out of it", () => {
     const store = fakeStore(null);
     const outcome = completeZeropsHandover({
-      fragment: "#token=attacker-token&nonce=whatever",
+      fragment: "#token=attacker-token&state=whatever",
       store,
     });
 
@@ -151,18 +151,13 @@ describe("startZeropsHandover names where this tab lives", () => {
     });
   }
 
-  // TRANSITION: the app.zerops.io still live finds a dev server only by its
-  // port, interpolated into http://localhost:<port>.
-  it("also names the localhost port, for the old Zerops app", () => {
-    const at = (origin: string) =>
-      new URL(startZeropsHandover({ store: fakeStore(), origin, path: "" })).searchParams.get(
-        "port",
-      );
-    expect(at("http://localhost:5173")).toBe("5173");
-    expect(at("http://localhost")).toBe("80");
-    expect(at("http://127.0.0.1:5173")).toBeNull();
-    expect(at("https://localhost.evil.example")).toBeNull();
-    expect(at("https://mate.zerops.io")).toBeNull();
+  // The platform returns to the origin it is given; a port beside it is never read.
+  it("names a dev server by its origin alone, never by a port", () => {
+    const url = new URL(
+      startZeropsHandover({ store: fakeStore(), origin: "http://localhost:5173", path: "" }),
+    );
+    expect(url.searchParams.get("origin")).toBe("http://localhost:5173");
+    expect(url.searchParams.has("port")).toBe(false);
   });
 
   it("goes to the Zerops app this build was pointed at", () => {

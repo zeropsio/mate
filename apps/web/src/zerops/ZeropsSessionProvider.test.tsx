@@ -145,9 +145,9 @@ describe("ZeropsSessionProvider sign-in guards", () => {
     expect(JSON.parse(storedSession(harness)!)).toEqual({ accessToken: handedOver });
   });
 
-  // The handed-over token is the Zerops app's own session: logging it out
-  // would sign the person out there too. Sign-out forgets it here, and the
-  // account's close ends every HQ and Mate session it kept.
+  // The handed-over token is a personal token, which `/auth/logout` does not
+  // revoke. Sign-out forgets it here, and the account's close ends every HQ
+  // and Mate session it kept.
   it("signs out locally: closes the account, forgets the token, never calls /auth/logout", async () => {
     const harness = harnessWith();
     const tab = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/authorized" });

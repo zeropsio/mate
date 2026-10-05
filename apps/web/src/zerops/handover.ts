@@ -85,24 +85,6 @@ function currentOrigin(): string {
 }
 
 /**
- * TRANSITION — remove once the new FL is live on app.zerops.io: the port the
- * old one comes back to, or null when this is not a dev server. Matched on the
- * hostname `localhost` and deliberately not `127.0.0.1`: the trust is on the
- * hostname. An implicit port is filled in.
- */
-function loopbackPortOf(origin: string): number | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(origin);
-  } catch {
-    return null;
-  }
-  if (parsed.hostname !== "localhost") return null;
-  if (parsed.port) return Number(parsed.port);
-  return parsed.protocol === "https:" ? 443 : 80;
-}
-
-/**
  * Mints and remembers a nonce, and returns it bare. Used directly by the
  * native (desktop-bridge) sign-in, which hands the nonce to the main process
  * as `state` rather than building a browser URL with it — the platform is
@@ -139,14 +121,11 @@ export function startZeropsHandover(
   const nonce = mintZeropsHandoverNonce({ store });
   const project = input.project ?? import.meta.env.VITE_MATE_SIGNIN_PROJECT;
   const guiBaseUrl = input.guiBaseUrl ?? import.meta.env.VITE_ZEROPS_APP_URL;
-  const origin = input.origin ?? currentOrigin();
-  const loopbackPort = loopbackPortOf(origin);
   return buildZeropsAuthorizeUrl({
     nonce,
-    origin,
+    origin: input.origin ?? currentOrigin(),
     path: input.path ?? appBasePath(),
     ...(project ? { project } : {}),
-    ...(loopbackPort === null ? {} : { loopbackPort }),
     ...(input.intent ? { intent: input.intent } : {}),
     ...(guiBaseUrl ? { guiBaseUrl } : {}),
   });

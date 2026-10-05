@@ -23,7 +23,7 @@ function fakeTab(options: { readonly native?: boolean; readonly blocked?: boolea
     go: (url) => {
       went.push(url);
     },
-    start: () => `https://app.zerops.io/authorize-app?nonce=${++started}`,
+    start: () => `https://app.zerops.io/authorize-app?state=${++started}`,
   });
   return { reauth, went };
 }
@@ -32,7 +32,7 @@ describe("makeZeropsReauth", () => {
   it("sends the tab for a fresh hand-over on the first refusal", () => {
     const tab = fakeTab();
     tab.reauth.ask();
-    expect(tab.went).toEqual(["https://app.zerops.io/authorize-app?nonce=1"]);
+    expect(tab.went).toEqual(["https://app.zerops.io/authorize-app?state=1"]);
   });
 
   // A fresh token refused at once would otherwise bounce between this tab and

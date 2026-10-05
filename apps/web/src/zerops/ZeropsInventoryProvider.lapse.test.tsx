@@ -377,7 +377,7 @@ describe("ZeropsInventoryProvider lapse", () => {
     expect(tab.session().status).toBe("signed-out");
     expect(tab.accountId()).toBeNull();
     expect(storedSession(harness)).toBeNull();
-    // Local only: the token is the Zerops app's own session.
+    // Local only: `/auth/logout` revokes no personal token.
     expect(harness.rest.requests().filter(({ route }) => route === "POST /auth/logout")).toEqual(
       [],
     );
