@@ -7,7 +7,7 @@ import {
   normalizeFingerprint,
   shouldReportLedgered,
 } from "../exceptions.ts";
-import { getPropertyName, unwrapExpression } from "../utils.ts";
+import { getPropertyName, resolveVariable, unwrapExpression } from "../utils.ts";
 
 /**
  * Remote I/O happens in the data layer alone: the client runtime's adapters reach Zerops, HQ and
@@ -105,8 +105,9 @@ const isBeacon = (node: unknown): boolean => {
   );
 };
 
-/** Effect's HTTP client and React Query: libraries whose only job is to reach a remote. */
-const REMOTE_LIBRARY = /^(?:effect\/unstable\/http(?:\/|$)|@tanstack\/(?:react-)?query)/u;
+/** Effect's HTTP client and sockets, and React Query: libraries whose only job is to reach a remote. */
+const REMOTE_LIBRARY =
+  /^(?:effect\/unstable\/(?:http|socket)(?:\/|$)|@tanstack\/(?:react-)?query)/u;
 /** Effect Atom's reactivity module, whose RPC and HTTP API atoms query a remote. */
 const REACTIVITY = /^effect\/unstable\/reactivity(?:\/|$)/u;
 const REMOTE_ATOM_MODULES: ReadonlySet<string> = new Set(["AtomRpc", "AtomHttpApi"]);
@@ -115,8 +116,11 @@ const REMOTE_ATOM_PATH = /^effect\/unstable\/reactivity\/(?:AtomRpc|AtomHttpApi)
 const specifierName = (name: ESTree.IdentifierName | ESTree.StringLiteral): string =>
   name.type === "Literal" ? String(name.value) : name.name;
 
-/** The client runtime's remote-query atom constructors: each one reads or subscribes a Mate. */
-const REMOTE_QUERY_CONSTRUCTORS: ReadonlySet<string> = new Set([
+/** The client runtime's remote atom constructors: each one reads, subscribes or commands a Mate. */
+const REMOTE_ATOM_CONSTRUCTORS: ReadonlySet<string> = new Set([
+  "createEnvironmentCommand",
+  "createEnvironmentRpcCommand",
+  "createEnvironmentRpcStreamCommand",
   "createEnvironmentQueryAtomFamily",
   "createEnvironmentRpcQueryAtomFamily",
   "createEnvironmentRpcSubscriptionAtomFamily",
@@ -124,7 +128,7 @@ const REMOTE_QUERY_CONSTRUCTORS: ReadonlySet<string> = new Set([
 ]);
 
 /** The Zerops API client's remote verbs (`ZeropsApiClient`, `client-runtime/src/zerops/api.ts`). */
-const ZEROPS_CLIENT_VERBS = [
+export const ZEROPS_CLIENT_VERBS = [
   "adoptSession",
   "buildAndDeployAppVersion",
   "createAppVersion",
@@ -185,7 +189,7 @@ const ZEROPS_CLIENT_VERBS = [
 ] as const;
 
 /** The HQ client's remote verbs (`HqApi`, `client-runtime/src/zerops/hq/client.ts`). */
-const HQ_CLIENT_VERBS = [
+export const HQ_CLIENT_VERBS = [
   "structure",
   "streamStructure",
   "prepareProjectDeletion",
@@ -257,6 +261,20 @@ const REMOTE_CONSTRUCTORS: ReadonlySet<string> = new Set([
   "ZeropsApiClient",
 ]);
 
+/** A property, method or type member named by the identifier, rather than a value it reads. */
+const isKeyName = (node: ESTree.Node): boolean => {
+  const parent = node.parent;
+  if (parent === null || !("key" in parent) || parent.key !== node) return false;
+  if ("computed" in parent && parent.computed) return false;
+  return !("shorthand" in parent && parent.shorthand);
+};
+
+/** `fetch` read as a value rather than called: handed on, it reaches the network elsewhere. */
+const handsOnFetch = (node: ESTree.Node): boolean => {
+  const parent = node.parent;
+  return !(parent?.type === "CallExpression" && parent.callee === node);
+};
+
 const ADAPTERS_OWN_IO =
   "Remote I/O belongs to the data layer: read the projection; adapters own I/O.";
 
@@ -289,12 +307,15 @@ export default defineRule({
       });
     };
 
+    /** Shorthand properties can visit one identifier twice; a site reports once. */
+    const reported = new Set<number>();
+
     return {
       CallExpression(node) {
         const head = headOf(context.sourceCode.getText(node.callee));
         if (globalName(node.callee) === "fetch" || isBeacon(node.callee)) return report(node, head);
         const name = calleeName(node.callee);
-        if (name !== undefined && REMOTE_QUERY_CONSTRUCTORS.has(name)) return report(node, head);
+        if (name !== undefined && REMOTE_ATOM_CONSTRUCTORS.has(name)) return report(node, head);
         if (name !== undefined && CLIENT_FACTORIES.has(name)) return report(node, head);
         if (isClientCall(node.callee)) report(node, head);
       },
@@ -313,6 +334,21 @@ export default defineRule({
             REMOTE_ATOM_MODULES.has(specifierName(specifier.imported)),
         );
         if (remoteAtoms || REMOTE_ATOM_PATH.test(source)) report(node, source);
+      },
+      Identifier(node) {
+        if (node.name !== "fetch" || !handsOnFetch(node)) return;
+        const parent = node.parent;
+        if (parent?.type === "MemberExpression" && parent.property === node) return;
+        if (isKeyName(node)) return;
+        if (parent?.type === "TSTypeQuery" || parent?.type.startsWith("Import")) return;
+        if (resolveVariable(context, node)?.defs.length) return;
+        if (reported.has(node.start)) return;
+        reported.add(node.start);
+        report(node, "fetch");
+      },
+      MemberExpression(node) {
+        if (globalName(node) !== "fetch" || node.object.type !== "Identifier") return;
+        if (handsOnFetch(node)) report(node, headOf(context.sourceCode.getText(node)));
       },
       NewExpression(node) {
         const name = globalName(node.callee);

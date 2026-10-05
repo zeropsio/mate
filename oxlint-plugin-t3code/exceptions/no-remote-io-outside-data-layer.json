@@ -112,6 +112,22 @@
     "expires": "never"
   },
   {
+    "path": "apps/mobile/src/lib/runtime.ts",
+    "kind": "Identifier",
+    "fingerprint": "fetch",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/lib/runtime.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "effect/unstable/socket/Socket",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app wires a socket transport itself; moves into the client runtime's transport adapters",
+    "expires": "never"
+  },
+  {
     "path": "apps/web/src/cloud/linkEnvironment.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
@@ -168,6 +184,14 @@
     "expires": "never"
   },
   {
+    "path": "apps/web/src/environments/primary/httpLayer.ts",
+    "kind": "MemberExpression",
+    "fingerprint": "globalThis.fetch",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "expires": "never"
+  },
+  {
     "path": "apps/web/src/lib/runtime.ts",
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
@@ -176,11 +200,75 @@
     "expires": "never"
   },
   {
+    "path": "apps/web/src/lib/runtime.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "effect/unstable/socket/Socket",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app wires a socket transport itself; moves into the client runtime's transport adapters",
+    "expires": "never"
+  },
+  {
     "path": "apps/web/src/observability/clientTracing.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "effect/unstable/http",
     "owner": "data-layer rewrite: Mate transport",
     "reason": "invariant 1: wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/state/attachments.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/state/attachments.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/state/mcpServers.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/state/mcpServers.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/state/mcpServers.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/state/mcpServers.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/state/mcpServers.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -353,6 +441,14 @@
   },
   {
     "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+    "kind": "MemberExpression",
+    "fingerprint": "globalThis.fetch",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
     "kind": "NewExpression",
     "fingerprint": "new ZeropsApiClient",
     "owner": "data-layer rewrite: sign-in/session",
@@ -445,6 +541,134 @@
     "fingerprint": "input.hq.structure",
     "owner": "data-layer rewrite: HQ",
     "reason": "invariant 1: a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/commands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/commands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/commands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/commands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/commands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/commands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/commands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/commands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/commands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/commands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/commands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/commands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/commands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/crew/crewCommands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/crew/crewCommands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/crew/crewCommands.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcCommand",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app builds a Mate command atom itself; the Mate adapter owns commands and the view dispatches through the store",
     "expires": "never"
   },
   {
@@ -872,6 +1096,14 @@
     "expires": "never"
   },
   {
+    "path": "packages/client-runtime/src/zerops/containerHealth.ts",
+    "kind": "MemberExpression",
+    "fingerprint": "globalThis.fetch",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app hands the network to a client it builds; the adapter is given fetch, not the view",
+    "expires": "never"
+  },
+  {
     "path": "packages/client-runtime/src/zerops/doorThrowaway.ts",
     "kind": "CallExpression",
     "fingerprint": "client.deleteThrowaway",
@@ -1229,6 +1461,14 @@
     "fingerprint": "platform.uploadAppVersionArchive",
     "owner": "data-layer rewrite: operations",
     "reason": "invariant 1: an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/mateSetup.ts",
+    "kind": "MemberExpression",
+    "fingerprint": "globalThis.fetch",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "invariant 1: the app hands the network to a client it builds; the adapter is given fetch, not the view",
     "expires": "never"
   },
   {

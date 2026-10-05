@@ -7,6 +7,7 @@ import * as Schema from "effect/Schema";
 
 import { type ExceptionEntry } from "../exceptions.ts";
 import { createOxlintRuleHarness } from "../test/utils.ts";
+import { HQ_CLIENT_VERBS, ZEROPS_CLIENT_VERBS } from "./no-remote-io-outside-data-layer.ts";
 
 const RULE = "t3code/no-remote-io-outside-data-layer";
 const LEDGER_DIRECTORY_ENV = "T3CODE_REMOTE_IO_LEDGER_DIRECTORY";
@@ -57,6 +58,59 @@ const withFixtureLedger = <A, E, R>(
       );
     }),
   );
+
+/** The Zerops client's public methods that touch only its own memory, never the network. */
+const ZEROPS_CLIENT_LOCAL_METHODS: ReadonlySet<string> = new Set([
+  "admitWritesThrough",
+  "restoreSession",
+  "adoptRenewedSession",
+  "forgetSession",
+  "onIntegrationTokensWritten",
+  "verifiedUser",
+  "projectListRefused",
+  "noteProjectListRefused",
+  "signOutLocally",
+]);
+
+const sourceBlock = Effect.fnUntraced(function* (file: string, opening: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const text = yield* fs.readFileString(path.join(import.meta.dirname, "../..", file));
+  const start = text.indexOf(opening);
+  assert.notEqual(start, -1, `${opening} is in ${file}`);
+  return text.slice(start, text.indexOf("\n}\n", start));
+});
+
+it.layer(NodeServices.layer)("client verbs", (it) => {
+  it.effect("names every remote method of the Zerops client", () =>
+    Effect.gen(function* () {
+      const block = yield* sourceBlock(
+        "packages/client-runtime/src/zerops/api.ts",
+        "export class ZeropsApiClient {",
+      );
+      const methods = [...block.matchAll(/^ {2}(?:async )?([a-z][A-Za-z]*)\(/gmu)].map(
+        (match) => match[1]!,
+      );
+      assert.deepStrictEqual(
+        [...new Set(methods)]
+          .filter((name) => name !== "constructor" && !ZEROPS_CLIENT_LOCAL_METHODS.has(name))
+          .toSorted(),
+        [...ZEROPS_CLIENT_VERBS].toSorted(),
+      );
+    }),
+  );
+
+  it.effect("names every member of the HQ client", () =>
+    Effect.gen(function* () {
+      const block = yield* sourceBlock(
+        "packages/client-runtime/src/zerops/hq/client.ts",
+        "export interface HqApi {",
+      );
+      const members = [...block.matchAll(/^ {2}readonly ([a-zA-Z]+)/gmu)].map((match) => match[1]!);
+      assert.deepStrictEqual(members.toSorted(), [...HQ_CLIENT_VERBS].toSorted());
+    }),
+  );
+});
 
 it.layer(NodeServices.layer)("no-remote-io-outside-data-layer ledger", (it) => {
   it.effect("an exact ledger entry suppresses the finding", () =>
@@ -121,6 +175,34 @@ describe("t3code/no-remote-io-outside-data-layer", () => {
     ].join("\n"),
     undefined,
     4,
+  );
+  webFile.invalid(
+    "reports fetch handed on as a value",
+    [
+      `export const a = makeClient(globalThis.fetch);`,
+      `export const b = makeClient({ fetch });`,
+      `export const c = makeClient(fetch);`,
+    ].join("\n"),
+    undefined,
+    3,
+  );
+  webFile.valid(
+    "leaves a fetch the module was handed, and a property named fetch, alone",
+    `export const read = (options: { fetch: typeof fetch }) => ({ fetch: options.fetch });`,
+  );
+  webFile.invalid(
+    "reports Effect's socket module taken into the client",
+    `import * as Socket from "effect/unstable/socket/Socket"; export const s = Socket;`,
+  );
+  webFile.invalid(
+    "reports a remote command atom built in the client",
+    [
+      `export const a = createEnvironmentRpcCommand(runtime, { label: "x" });`,
+      `export const b = createEnvironmentCommand(runtime, { label: "y" });`,
+      `export const c = createEnvironmentRpcStreamCommand(runtime, { label: "z" });`,
+    ].join("\n"),
+    undefined,
+    3,
   );
   webFile.valid(
     "allows verbs called on something that is not a client",
