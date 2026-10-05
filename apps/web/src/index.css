@@ -4741,6 +4741,22 @@ button.run-bar:focus-visible {
   overflow-anchor: none;
   scrollbar-gutter: stable;
 }
+/* Its bar stands apart from the lines and from the card's edge: the app's
+   6 px thumb in a 16 px gutter, 6 px from the lines, 4 px from the edge, and
+   short of the top and bottom (the owner, 2026-10-05: "custom scrollbar too
+   close to the edge"). */
+.run-scroll::-webkit-scrollbar {
+  width: 16px;
+}
+.run-scroll::-webkit-scrollbar-track {
+  margin-block: 8px;
+}
+.run-scroll::-webkit-scrollbar-thumb {
+  border: solid transparent;
+  border-width: 0 6px 0 4px;
+  border-radius: 10px;
+  background-clip: padding-box;
+}
 /* Its bar is the app's (`::-webkit-scrollbar`): a standard `scrollbar-width`
    on it makes Chrome drop those rules and draw its native bar. A browser
    without them takes the standard thin one, in the app's colours. */

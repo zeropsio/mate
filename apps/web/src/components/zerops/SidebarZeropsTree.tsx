@@ -492,12 +492,6 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   /** How clock times read — the paused Mate's "picks up at" — per the viewer's setting. */
   readonly timestampFormat?: TimestampFormat;
   /**
-   * Since when HQ does not answer and how old the structure drawn is (`hqOutageLine`), at the
-   * menu's top while it lasts; `null` while HQ answers.
-   */
-  readonly onHqAgain?: (() => void) | undefined;
-  readonly hqOutage?: string | null | undefined;
-  /**
    * What each Mate's own menu can do (`useSidebarMateMenus`). Absent — a
    * harness, a test — the rows carry no menu.
    */
@@ -593,8 +587,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   complete,
   notice = null,
   onNoticeAct,
-  hqOutage = null,
-  onHqAgain,
   className,
   births = NO_BIRTHS,
   timestampFormat = "locale",
@@ -840,25 +832,13 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
   // Nothing to draw, and the listing may not say "none" yet: its notice, at
   // the menu's own left edge, never an empty state it has not earned.
   if (nothing !== undefined && !complete) {
-    if (notice === null)
-      return hqOutage === null ? null : (
-        <HqOutage className={className} line={hqOutage} onAgain={onHqAgain} />
-      );
-    return (
-      <>
-        {hqOutage === null ? null : <HqOutage line={hqOutage} onAgain={onHqAgain} />}
-        <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />
-      </>
-    );
+    if (notice === null) return null;
+    return <ListingNotice className={className} notice={notice} onAct={onNoticeAct} />;
   }
 
   // No project at all: nothing to list, and nothing to say — the one thing to
   // do is *New project*, at the menu's foot (`SidebarNewProject`).
-  if (nothing === "no-projects") {
-    return hqOutage === null ? null : (
-      <HqOutage className={className} line={hqOutage} onAgain={onHqAgain} />
-    );
-  }
+  if (nothing === "no-projects") return null;
 
   // Projects, but none with a Mate: one quiet line on the menu's own left
   // edge, where every other row starts, and the way to the projects screen —
@@ -869,9 +849,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
         className={cn("flex flex-col items-start gap-1.5 px-2.5 py-2", className)}
         data-zerops-surface="sidebar-environments-empty"
       >
-        {hqOutage === null ? null : (
-          <HqOutage className="px-0 py-0" line={hqOutage} onAgain={onHqAgain} />
-        )}
         <span className="text-xs text-sidebar-muted-foreground">No environment has Mate yet</span>
         <button
           className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
@@ -1717,7 +1694,6 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
       ref={treeRef}
     >
       <SidebarSelectedBand current={activeProjectId} />
-      {hqOutage === null ? null : <HqOutage className="mb-2" line={hqOutage} onAgain={onHqAgain} />}
       {groupSections}
       {ungroupedSection}
 
@@ -1832,28 +1808,56 @@ function scrollingAncestor(element: HTMLElement | null): HTMLElement | null {
  * HQ not answering (SPEC §6.2.3): the structure under it is the last one read. A status, not an
  * alert — the Mates' conversations go on without HQ.
  */
-function HqOutage({
+/**
+ * How current the menu is while HQ is not answering it (`hqOutageLine`, SPEC §6.2.3), in the
+ * header row: a spinner while HQ is read again or its stream reconnects, "HQ unavailable" once it
+ * does not answer — the whole line in its tooltip, and *Try again* on a press where it is offered.
+ * Never a line above the list: the owner, 2026-10-05, of one that pushed the menu down and back on
+ * every reconnect.
+ */
+export function SidebarHqStatus({
+  kind,
   line,
-  className,
   onAgain,
 }: {
+  readonly kind: "syncing" | "unavailable";
   readonly line: string;
   readonly onAgain?: (() => void) | undefined;
-  readonly className?: string | undefined;
 }) {
+  const again = kind === "unavailable" ? onAgain : undefined;
   return (
-    <div
-      className={cn("px-2.5 py-2 text-xs text-sidebar-muted-foreground", className)}
-      data-zerops-surface="sidebar-hq-outage"
-      role="status"
-    >
-      {line}{" "}
-      {onAgain === undefined ? null : (
-        <button type="button" onClick={onAgain}>
-          Try again
-        </button>
-      )}
-    </div>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          again === undefined ? (
+            <span
+              className="inline-flex shrink-0 items-center"
+              data-zerops-surface="sidebar-hq-outage"
+              role="status"
+            />
+          ) : (
+            <button
+              className="inline-flex shrink-0 cursor-pointer items-center"
+              data-zerops-surface="sidebar-hq-outage"
+              onClick={again}
+              type="button"
+            />
+          )
+        }
+      >
+        {kind === "syncing" ? (
+          <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />
+        ) : (
+          <span aria-hidden="true" className="text-xs text-sidebar-muted-foreground">
+            HQ unavailable
+          </span>
+        )}
+        <span className="sr-only">{again === undefined ? line : `${line} Try again.`}</span>
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">
+        {again === undefined ? line : `${line} Press to try again.`}
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 

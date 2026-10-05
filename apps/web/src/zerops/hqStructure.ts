@@ -434,6 +434,21 @@ export function hqOutageLine(
 }
 
 /**
+ * What kind of standing `hqOutageLine` says, for where it is said: "syncing" while HQ is being
+ * read again or the stream reconnects — a spinner in the menu's header, the line in its tooltip
+ * (the owner, 2026-10-05: a notice pushed the whole menu down and back on every reconnect);
+ * "unavailable" once HQ has not answered — said in the header in words. `null` exactly when
+ * `hqOutageLine` is.
+ */
+export function hqOutageKind(view: HqStructureView | null): "syncing" | "unavailable" | null {
+  if (view === null || view.current) return null;
+  if (view.reconnecting && !view.reconnecting.capped) return "syncing";
+  if (view.unavailableSince === null)
+    return view.readAt === null || view.structure === null ? null : "syncing";
+  return "unavailable";
+}
+
+/**
  * Whether the organization has an official HQ, once its verdict is decided: kept, or read off its
  * member list. Null before — no answer of HQ's is waited for where it is false.
  */

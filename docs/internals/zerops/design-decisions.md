@@ -4072,3 +4072,11 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
     queued before the catalog arrived, the stand-up) runs on the preference, and the thread stores
     what its first turn ran on, so a reload reads it back.
   - _Why:_ the owner runs real work on Extra High — "at least extra high effort".
+- **2026-10-05** — **HQ's standing is said in the menu's header, never above the list** (the owner,
+  of "Last known · as of 8:35 PM · Updating…" above the Mates: "what is this layout shifting …
+  here"). While HQ is read again or its stream reconnects, a spinner stands before the waiting
+  faces, the whole line in its tooltip; once HQ does not answer, "HQ unavailable" stands there, with
+  _Try again_ where it is offered. The boot menu drawn from memory says nothing of it. SPEC §6.2.3
+  still holds: the menu says since when, and how old its rows are.
+  - _Why:_ every reconnect and every reload pushed the whole menu down and back; syncing belongs in
+    the header, and a reload paints nothing it takes back.
