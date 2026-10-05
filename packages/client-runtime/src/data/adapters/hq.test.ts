@@ -189,6 +189,48 @@ describe("hqNavigationLink", () => {
         yield* Fiber.interrupt(fiber);
       }),
   );
+
+  it.effect("keeps a project that moved between applications, whichever change comes first", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const hq = fixtureHq();
+      const fiber = yield* run(store, hq, { count: 0 });
+      yield* hq.emit(
+        snapshot([
+          { id: "shop", name: "Shop", projects: [mate("m1"), mate("m2")] },
+          { id: "blog", name: "Blog", projects: [] },
+        ]),
+      );
+
+      // The new home's change first, then the old home's without it.
+      yield* hq.emit({
+        kind: "change",
+        appId: "blog",
+        app: { id: "blog", name: "Blog", projects: [mate("m1")] },
+      });
+      yield* hq.emit({
+        kind: "change",
+        appId: "shop",
+        app: { id: "shop", name: "Shop", projects: [mate("m2")] },
+      });
+      expect(store.state().memberships.get(NAVIGATION)?.members.get("m1")).toBe("member");
+      expect(store.state().apps.get("blog")).toEqual(new Set(["m1"]));
+      expect(store.state().apps.get("shop")).toEqual(new Set(["m2"]));
+
+      // Out of every application into none, the ungrouped list first.
+      yield* hq.emit({ kind: "ungrouped", mates: [{ ...mate("m2"), mate: { face: "" } }] });
+      yield* hq.emit({
+        kind: "change",
+        appId: "shop",
+        app: { id: "shop", name: "Shop", projects: [] },
+      });
+      expect(store.state().memberships.get(NAVIGATION)?.members.get("m2")).toBe("member");
+      expect(store.state().placement.get("m2")?.content).toMatchObject({
+        value: { kind: "outside" },
+      });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
 });
 
 function thread(id: string, kind: "working" | "idle" | "approval") {

@@ -127,6 +127,11 @@ export function hqNavigationLink(options: {
         producer: producerOf(view),
       });
 
+      /** A project leaves navigation only when no application and not the ungrouped list hold it:
+       * a move's changes may come new home first. */
+      const placedElsewhere = (id: string) =>
+        outside.has(id) || [...held.values()].some((ids) => ids.has(id));
+
       const onEvent = (event: HqStructureEvent) => {
         switch (event.kind) {
           case "snapshot": {
@@ -163,18 +168,18 @@ export function hqNavigationLink(options: {
             }
             membership(
               [...after],
-              [...before].filter((id) => !after.has(id)),
+              [...before].filter((id) => !after.has(id) && !placedElsewhere(id)),
             );
             return;
           }
           case "ungrouped": {
-            const after = new Set(event.mates.map((entry) => entry.projectId));
-            rows(outsideRows([...after]));
+            const before = outside;
+            outside = new Set(event.mates.map((entry) => entry.projectId));
+            rows(outsideRows([...outside]));
             membership(
-              [...after],
-              [...outside].filter((id) => !after.has(id)),
+              [...outside],
+              [...before].filter((id) => !placedElsewhere(id)),
             );
-            outside = after;
             return;
           }
           case "mate": {
