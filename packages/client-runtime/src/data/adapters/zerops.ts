@@ -153,7 +153,10 @@ export function zeropsNavigationLink(options: {
         Effect.map(Clock.currentTimeMillis, (now) =>
           store.dispatch({ kind: "stream", key: target, now, event }),
         );
-      const generationOf = (scope: ScopeKey) => streamOf(store.state(), scope).generation;
+      // Each scope's generation as this attempt registered it: input of a registration the scope
+      // has since replaced carries the old one, and the reducer fences it out.
+      const generations = new Map<ScopeKey, number>();
+      const generationOf = (scope: ScopeKey) => generations.get(scope) ?? -1;
 
       /** The runtime work a reduction asks for, run beside the frames, never blocking them. */
       const carryOut = (directives: ReadonlyArray<RuntimeDirective>): Effect.Effect<void> =>
@@ -246,6 +249,7 @@ export function zeropsNavigationLink(options: {
 
       for (const scope of scopes) {
         yield* signal(scope, { kind: "attempt" });
+        generations.set(scope, streamOf(store.state(), scope).generation);
         yield* signal(scope, { kind: "handshake" });
         store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
         for (const registration of registrations.filter((entry) => entry.scope === scope)) {

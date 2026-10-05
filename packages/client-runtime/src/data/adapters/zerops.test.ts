@@ -267,6 +267,23 @@ describe("zeropsNavigationLink", () => {
       yield* Fiber.interrupt(fiber);
     }),
   );
+
+  it.effect("fences out frames of a registration its scope has since replaced", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire(answers({ projects: [PROBE_PROJECT], running: () => [] }));
+      const fiber = yield* run(store, fixture);
+      const running = scopeKeys.running(ORG);
+      // Another attempt takes the scope over; this receiver's registration is now superseded.
+      for (const event of [{ kind: "parent-lost" }, { kind: "attempt" }] as const)
+        store.dispatch({ kind: "stream", key: running, now: 0, event });
+
+      yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "updateStream"), frameOf(1));
+      yield* settle;
+      expect(store.state().process.size).toBe(0);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
 });
 
 const itemsOf = (event: ReturnType<typeof recorded>) => ("items" in event ? event.items : []);
