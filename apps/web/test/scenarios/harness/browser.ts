@@ -1,15 +1,16 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Chrome and the static localhost server are Node test tools.
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
-import { afterEach, expect } from "vite-plus/test";
+import { afterAll, expect } from "vite-plus/test";
 import puppeteer, { type Page, type BrowserContext } from "puppeteer-core";
 import { clientClock } from "./clientClock.ts";
 import { serve } from "./http.ts";
 
-// Hooks remain outside it.fails: setup errors, blocked sockets and page errors cannot masquerade
-// as the expected Zerops-only inventory failure. Closed pages retain their diagnostics until here.
+// Vitest inverts afterEach failures inside it.fails too. Retain diagnostics from every opened
+// browser until the file-level hook, which cannot become an expected domain failure.
+// Filtered/skipped tests never open a browser and therefore contribute no diagnostics.
 const healthChecks: { pageErrors: string[]; blocked: string[] }[] = [];
-afterEach(() => {
+afterAll(() => {
   const checks = healthChecks.splice(0);
   expect(
     checks.flatMap((check) => check.pageErrors),
@@ -242,19 +243,34 @@ export async function visibleText(page: Page, surface: string, text: string, tim
 }
 
 export async function clickText(page: Page, surface: string, text: string) {
-  await visibleText(page, surface, text);
-  const handle = await page.evaluateHandle(
-    (surface, text) =>
-      [...document.querySelectorAll<HTMLElement>(`[data-zerops-surface="${surface}"]`)].find(
-        (element) =>
-          element.innerText.split("\n").some((line) => line.trim() === text) &&
-          element.getBoundingClientRect().height > 0,
-      ),
-    surface,
-    text,
-  );
-  const element = handle.asElement();
-  if (!element) throw new Error(`Missing ${surface}: ${text}`);
-  await (element as import("puppeteer-core").ElementHandle<Element>).click();
-  await handle.dispose();
+  const until = Date.now() + 10_000;
+  for (;;) {
+    await visibleText(page, surface, text, Math.max(1, until - Date.now()));
+    const handle = await page.evaluateHandle(
+      (surface, text) =>
+        [...document.querySelectorAll<HTMLElement>(`[data-zerops-surface="${surface}"]`)].find(
+          (element) =>
+            element.innerText.split("\n").some((line) => line.trim() === text) &&
+            element.getBoundingClientRect().height > 0,
+        ),
+      surface,
+      text,
+    );
+    try {
+      const element = handle.asElement();
+      if (element) {
+        await (element as import("puppeteer-core").ElementHandle<Element>).click();
+        return;
+      }
+    } catch (error) {
+      // A row can be replaced after it becomes visible but before Chrome checks clickability.
+      // Reacquire through the same visible-text condition; every other click error is a failure.
+      if (!/Node is detached|Node is either not clickable or not an Element/u.test(String(error)))
+        throw error;
+      if (Date.now() >= until) throw error;
+    } finally {
+      await handle.dispose();
+    }
+    if (Date.now() >= until) throw new Error(`Missing clickable ${surface}: ${text}`);
+  }
 }

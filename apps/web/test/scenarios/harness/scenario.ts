@@ -20,6 +20,7 @@ import { ZeropsFake } from "../fakes/zerops.ts";
 import { MateFake } from "../fakes/mate.ts";
 import { hqConnection } from "../fakes/hqConnection.ts";
 import { serve } from "./http.ts";
+import { startScenarioCore, type HqTimings } from "./hqCore.ts";
 import { openBrowser, clickText, visibleText } from "./browser.ts";
 
 const decodeOverview = Schema.decodeUnknownEffect(MateOverview);
@@ -39,8 +40,13 @@ export interface ScenarioDrivers {
   cleanup: (() => Promise<void>)[];
 }
 
+export interface ScenarioOptions {
+  hq?: HqTimings;
+}
+
 export const createScenario = Effect.fn("scenarios.create")(function* (
   extensions: ScenarioExtension[] = [],
+  options: ScenarioOptions = {},
 ) {
   const cleanup: (() => Promise<void>)[] = [];
   yield* Effect.addFinalizer(() =>
@@ -53,9 +59,10 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   const api = yield* Effect.promise(() => serve(zerops.handle, zerops.socket));
   zerops.origin = api.origin;
   cleanup.push(api.close);
-  const core = yield* startCore(true, {
-    zeropsHttp: { baseUrl: `${api.origin}/api/rest/public`, world },
-  });
+  const core = yield* startScenarioCore(
+    { baseUrl: `${api.origin}/api/rest/public`, world },
+    options.hq,
+  );
   yield* untilHealth(core.call, "active");
   const personal = core.fake.tokens.get("door-owner")!;
   core.fake.tokens.set("personal", {

@@ -1,5 +1,11 @@
 import type { Page } from "puppeteer-core";
 
+export interface SteppedAdvanceOptions {
+  /** Override the default completed-HTTP condition, e.g. to release held replies and await receipts. */
+  settle?: () => Promise<void>;
+  timeout?: number;
+}
+
 /** Opt-in clock at the browser API boundary. Install before navigation/sign-in. */
 export function clientClock(page: Page) {
   let installed = false;
@@ -84,8 +90,24 @@ export function clientClock(page: Page) {
         }
         now = end;
       };
+      const step = async (end: number) => {
+        const next = [...timers.entries()]
+          .filter(([, timer]) => timer.at <= end)
+          .sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
+        if (!next) {
+          now = end;
+          return false;
+        }
+        const [id, timer] = next;
+        now = timer.at;
+        timers.delete(id);
+        if (timer.interval !== undefined) timers.set(id, { ...timer, at: now + timer.interval });
+        timer.callback();
+        await Promise.resolve();
+        return true;
+      };
       Object.assign(window, {
-        scenarioClock: { advance, now: () => now, pending: () => timers.size },
+        scenarioClock: { advance, step, now: () => now, pending: () => timers.size },
       });
     });
   };
@@ -108,6 +130,33 @@ export function clientClock(page: Page) {
   return {
     install,
     advance,
+    async advanceStepped(ms: number, options: SteppedAdvanceOptions = {}) {
+      if (!installed) throw new Error("Install clientClock before sign-in/navigation");
+      if (!Number.isFinite(ms) || ms < 0)
+        throw new Error("Clock advance must be nonnegative and finite");
+      const end = await page.evaluate(
+        (ms) =>
+          (window as unknown as { scenarioClock: { now(): number } }).scenarioClock.now() + ms,
+        ms,
+      );
+      const settle =
+        options.settle ??
+        (() => page.waitForNetworkIdle({ idleTime: 0, timeout: options.timeout ?? 10_000 }));
+      let turns = 0;
+      while (
+        await page.evaluate(
+          (end) =>
+            (
+              window as unknown as { scenarioClock: { step(end: number): Promise<boolean> } }
+            ).scenarioClock.step(end),
+          end,
+        )
+      ) {
+        if (++turns > 10_000)
+          throw new Error("Scenario clock timer loop exceeded 10,000 callbacks");
+        await settle();
+      }
+    },
     async sleep() {
       if (!installed) throw new Error("Install clientClock before sign-in/navigation");
       const cdp = await page.createCDPSession();

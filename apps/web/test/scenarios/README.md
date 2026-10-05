@@ -18,13 +18,17 @@ Chrome with `MATE_CHROME_BIN` and Postgres with `MATE_PG_BIN`. Puppeteer Core ne
 Use `pnpm install --offline` when dependencies are absent and the package cache is populated.
 HTTP and WebSockets are routed to loopback only; Chrome background networking and external DNS
 are disabled. Both unmapped HTTP and WebSocket destinations fail the suite, even if the app catches
-an error. Uncaught page errors fail an `afterEach` hook outside expected-failure tests.
+an error. Uncaught page errors and unmapped network diagnostics survive browser closure and fail
+an `afterAll` file-level assertion, including inside `it.fails` / `it.effect.fails`. Vitest also
+inverts failing `afterEach` hooks in expected-failure tests, so they cannot enforce this guard.
+Only browsers actually opened by selected tests contribute diagnostics; `-t` filters are safe.
 
 ## Layout
 
 - `harness/{build,http,browser}.ts`: production build, loopback servers, pages/contexts and routing.
 - `harness/scenario.ts`: real Core composition and the foundation `given / when / then` DSL.
-- `harness/clientClock.ts`: opt-in browser timers and Chrome lifecycle controls.
+- `harness/clientClock.ts`: opt-in browser timers, stepped network settling and lifecycle controls.
+- `harness/hqCore.ts`: production-like Core timing defaults and per-scenario overrides.
 - `fakes/zerops.ts`: REST, socket login, subscriptions, versioned entity tables, faults and budgets.
 - `fakes/zeropsWrites.ts`: shared HTTP deployment/import driver and process transitions.
 - `fakes/zeropsWorld.ts`: organization memberships, person presets and project grants.
@@ -61,7 +65,9 @@ Public fixture and control APIs (all scoped to one scenario). Project fixture na
 synthetic ids: use URL-safe names. Environment names follow Core's lowercase naming rules:
 
 ```ts
-const s = yield * createScenario([installArea]);
+const s = yield * createScenario([installArea]); // existing calls remain valid
+// Optional second argument; all values are milliseconds, scoped to this scenario:
+// createScenario([installArea], { hq: { pingEvery: 20_000, reconcileEvery: 60_000, streamRecheck: 30_000 } });
 yield * s.given.app("Shop"); // idempotent, also created automatically by given.project
 for (const name of ["Ada", "Bea"]) yield * s.given.project(name, { mate: true, app: "Shop" });
 yield * s.given.project("Shop-stage", { app: "Shop", kind: "stage", environmentName: "stage" });
@@ -94,7 +100,8 @@ yield * otherTab.given.signedIn; // shares the real account session; another per
 // An actor has its own given/when/then/page/clock. web.newContext/newPage are also public.
 
 // Then sign in and drive conditions; advance actual browser positive timer waits explicitly.
-yield * Effect.promise(() => reader.clock.advance(30_000));
+yield * Effect.promise(() => reader.clock.advanceStepped(30_000));
+// Existing advance(ms, coalesce?) still performs a bulk advance with microtask draining only.
 yield * Effect.promise(() => reader.clock.sleep());
 yield * Effect.promise(() => reader.clock.wake(3_600_000));
 ```
@@ -110,13 +117,37 @@ organizations; integration credentials remain scoped to their own organization.
 `when.zerops.colleague.createsProject` mutates the world directly and returns without waiting for
 client subscriptions. Area scenarios assert visible outcomes in `then`.
 
-`advance(ms)` executes
+`advanceStepped(ms, {settle?, timeout?})` fires one due timer at a time and awaits completed HTTP
+requests before choosing the next timer (including timers newly scheduled by response handlers).
+The default is `page.waitForNetworkIdle({idleTime: 0, timeout: timeout ?? 10_000})`: a condition,
+with no arbitrary quiet delay. For held fake replies, deliberate timeouts, or WebSocket-driven
+work, supply `settle: async () => { ... }` to replace that condition. The area driver must release
+any held response and await its reply/UI receipt before returning; use deadlines. For example:
+
+```ts
+await actor.clock.advanceStepped(7_000, {
+  settle: async () => {
+    await area.releaseAdmittedReplies(); // domain driver, no protocol in the scenario
+    await actor.page.waitForNetworkIdle({ idleTime: 0, timeout: 10_000 });
+    await area.repliesApplied(); // add a semantic condition when HTTP completion is insufficient
+  },
+});
+```
+
+WebSockets are long-lived and excluded from HTTP idle; the custom settler owns their receipts.
+A held HTTP request whose completion needs a later virtual timeout requires a custom settler;
+the default intentionally stops at that request instead of overtaking it. Install before
+navigation, await initial fixture/UI conditions, then advance. `advance(ms)` executes
 positive timers in deadline order, including chained backoff/Retry-After waits, and drains their
 microtasks. Zero-delay scheduler jobs and requestAnimationFrame stay native so React and condition
 waits keep running. `sleep()` freezes the renderer through CDP; `wake(elapsedMs)` resumes, advances
 Date, coalesces overdue timers, and emits online/pageshow signals. This is a renderer sleep model,
 not a full OS suspend: performance.now, network services and real HQ clocks remain native. Await
 fake receipts/UI conditions before the next clock advance; advancing is not a network drain.
+Scenario Core now uses production-like ping/reconcile/stream-recheck intervals of 20/60/30 seconds.
+Override them with `createScenario(extensions, {hq: {pingEvery?, reconcileEvery?, streamRecheck?}})`;
+values are milliseconds. `startCore` accepts corresponding Effect Duration overrides, retaining
+its old 300/200/200 ms defaults for existing HQ unit tests. Page clocks do not advance Core time.
 G exercises real client reconnect timers with this clock. Core's own 10-second HTTP timeout is
 native; it is not sped up by the page clock. For time-sensitive areas this split is the least
 intrusive seam: no application hooks, fake responses or altered backoff implementation.

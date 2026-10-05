@@ -164,6 +164,9 @@ export const startCore = (
     /** How long the org's view is kept, and how often the structure reconciles; 200 ms each. */
     readonly viewTtl?: Duration.Duration;
     readonly reconcileEvery?: Duration.Duration;
+    /** Socket pings and role rechecks; fast defaults retained for existing Core tests. */
+    readonly pingEvery?: Duration.Duration;
+    readonly streamRecheck?: Duration.Duration;
     /** The directory backup sets are kept in; a fresh one by default. */
     readonly storeDir?: string;
     /** Backup with no store: sets are only staged. */
@@ -218,8 +221,8 @@ export const startCore = (
       retryAfter: Duration.millis(100),
       viewTtl: given.viewTtl ?? Duration.millis(200),
       reconcileEvery: given.reconcileEvery ?? Duration.millis(200),
-      streamRecheck: Duration.millis(200),
-      pingEvery: Duration.millis(300),
+      streamRecheck: given.streamRecheck ?? Duration.millis(200),
+      pingEvery: given.pingEvery ?? Duration.millis(300),
       ...(given.officialRecheck === undefined ? {} : { officialRecheck: given.officialRecheck }),
     };
     const scope = yield* Scope.make();
