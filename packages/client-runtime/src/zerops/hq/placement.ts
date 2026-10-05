@@ -206,8 +206,12 @@ export function menuRowsFromHq(input: {
   readonly projects: ReadonlyArray<ZeropsProject>;
   readonly candidates: ReadonlyArray<CandidateRow>;
   readonly gone: ReadonlySet<string>;
+  /** Each Mate's logins, as HQ's overview of it says them (`placementsOf`). */
+  readonly logins: ReadonlyMap<string, OverviewLogins>;
+  /** Whether each Mate runs on an agent that needs no sign-in, as its overview says. */
+  readonly readyAgents: ReadonlyMap<string, boolean>;
 }): ReadonlyArray<CandidateRow> {
-  const placements = placementsOf(input.structure);
+  const placements = placementsOf(input.structure, input.logins, input.readyAgents);
   const projects = new Map(input.projects.map((project) => [project.id, project]));
   const candidates = new Map<string, CandidateRow>();
   for (const row of input.candidates) {

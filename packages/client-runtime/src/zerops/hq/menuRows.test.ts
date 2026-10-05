@@ -30,6 +30,8 @@ const input = {
   projects: [],
   candidates: [],
   gone: new Set<string>(),
+  logins: new Map(),
+  readyAgents: new Map(),
 };
 
 describe("HQ menu rows", () => {
@@ -63,5 +65,31 @@ describe("HQ menu rows", () => {
     });
     expect(rows[0]?.project).toMatchObject({ name: "Renamed", status: "STOPPED" });
     expect(rows[0]?.presence).toBe("unknown");
+  });
+  it.each([
+    {
+      case: "a Mate somebody has just signed in: HQ's live logins name its signer",
+      logins: new Map([
+        ["mate", { "claude-code": { signedInBy: "u-maker", present: true, token: false } }],
+      ]),
+      readyAgents: new Map<string, boolean>(),
+      expected: {
+        logins: { "claude-code": { signedInBy: "u-maker", present: true, token: false } },
+      },
+    },
+    {
+      case: "a Mate on an agent that needs no sign-in: HQ's overview says it runs as it is",
+      logins: new Map(),
+      readyAgents: new Map([["mate", true]]),
+      expected: { runsWithoutSignIn: true },
+    },
+  ])("places each row's Mate with what HQ's overview of it says: $case", (row) => {
+    const rows = menuRowsFromHq({
+      ...input,
+      candidates: [candidate],
+      logins: row.logins,
+      readyAgents: row.readyAgents,
+    });
+    expect(rows[0]?.project.hq?.mate).toMatchObject(row.expected);
   });
 });

@@ -176,3 +176,26 @@ describe("a command sent to the background", () => {
     expect(entry?.sentToBackground).toBe(sent);
   });
 });
+
+// Run 11: a command's output too long to hand back whole, saved to a file the
+// agent then read; its call's own output names the file.
+describe("a call whose output was saved to a file", () => {
+  it.each([
+    {
+      name: "names the file: its id",
+      content:
+        "<persisted-output>\nOutput too large (48.1KB). Full output saved to: /home/zerops/.claude/projects/-srv-app/0a1b2c3d-1111-4222-8333-444455556666/tool-results/q7t2m4xke.txt\n\nPreview (first 2KB):\n[]\n</persisted-output>",
+      spilled: "q7t2m4xke",
+    },
+    { name: "an ordinary command: nothing", content: "4 passed", spilled: undefined },
+  ])("$name", ({ content, spilled }) => {
+    const [entry] = deriveWorkLogEntries([
+      completedCall("command_execution", {
+        toolName: "Bash",
+        command: "curl -s localhost:3000/catalogue",
+        rawOutput: { content },
+      }),
+    ]);
+    expect(entry?.spilledTo).toBe(spilled);
+  });
+});

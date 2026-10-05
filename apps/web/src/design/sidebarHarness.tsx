@@ -1038,6 +1038,7 @@ function structureOf(candidates: ReadonlyArray<ZeropsCandidate>): HqStructure {
 }
 
 const NOTHING_GONE: ReadonlySet<string> = new Set();
+const NO_READY_AGENTS: ReadonlyMap<string, boolean> = new Map();
 
 /** The menu's rows as the app's menu reads them on a reload (`?reload=`): HQ's, enriched. */
 function useReloadedRows(candidates: ReadonlyArray<ZeropsCandidate>) {
@@ -1070,6 +1071,14 @@ function useReloadedRows(candidates: ReadonlyArray<ZeropsCandidate>) {
               projects: [],
               candidates: landed ? listed : [],
               gone: NOTHING_GONE,
+              // Each Mate's logins as its fixture's overview names them, as HQ's would.
+              logins: new Map(
+                (landed ? listed : []).flatMap((row) => {
+                  const logins = row.project.hq?.mate?.logins;
+                  return logins === undefined ? [] : [[row.project.id, logins] as const];
+                }),
+              ),
+              readyAgents: NO_READY_AGENTS,
             }),
       complete: landed,
       fromMemory: !landed && structure !== undefined,
