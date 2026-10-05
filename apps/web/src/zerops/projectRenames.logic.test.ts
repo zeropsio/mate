@@ -1,0 +1,99 @@
+import { describe, expect, it, vi } from "vite-plus/test";
+
+import {
+  planProjectRenames,
+  projectRenameTrouble,
+  renamesLeft,
+  runProjectRenames,
+} from "./projectRenames.logic";
+
+describe("planProjectRenames — what each project of an application is renamed to", () => {
+  it.each([
+    {
+      case: "a Mate named in full moves to the new application's name",
+      projects: [{ id: "p1", name: "SPN - Rune" }],
+      plan: [{ projectId: "p1", from: "SPN - Rune", to: "Shop - Rune" }],
+    },
+    {
+      case: "a stage and a production, as a Mate",
+      projects: [
+        { id: "p2", name: "SPN - stage" },
+        { id: "p3", name: "SPN - production" },
+      ],
+      plan: [
+        { projectId: "p2", from: "SPN - stage", to: "Shop - stage" },
+        { projectId: "p3", from: "SPN - production", to: "Shop - production" },
+      ],
+    },
+    {
+      case: "a project without the old prefix: its whole name is its own",
+      projects: [{ id: "p4", name: "Sage" }],
+      plan: [{ projectId: "p4", from: "Sage", to: "Shop - Sage" }],
+    },
+    {
+      case: "a stale prefix of another application is its own name too",
+      projects: [{ id: "p5", name: "Old - Rune" }],
+      plan: [{ projectId: "p5", from: "Old - Rune", to: "Shop - Old - Rune" }],
+    },
+    {
+      case: "a project already named for the new application is left as it is",
+      projects: [{ id: "p6", name: "Shop - Ada" }],
+      plan: [],
+    },
+    {
+      case: "a project named as the old application alone keeps it as its own name",
+      projects: [{ id: "p7", name: "SPN" }],
+      plan: [{ projectId: "p7", from: "SPN", to: "Shop - SPN" }],
+    },
+  ])("$case", ({ projects, plan }) => {
+    expect(planProjectRenames(projects, "SPN", "Shop")).toEqual(plan);
+  });
+
+  it("builds nothing where the old name is not read: no prefix can be told from a name", () => {
+    expect(planProjectRenames([{ id: "p1", name: "SPN - Rune" }], undefined, "Shop")).toEqual([]);
+  });
+
+  it("builds nothing where the name does not change", () => {
+    expect(planProjectRenames([{ id: "p1", name: "SPN - Rune" }], "SPN", "SPN")).toEqual([]);
+  });
+});
+
+describe("runProjectRenames — every project is tried, a refusal is kept", () => {
+  const plan = [
+    { projectId: "p1", from: "SPN - Rune", to: "Shop - Rune" },
+    { projectId: "p2", from: "SPN - stage", to: "Shop - stage" },
+    { projectId: "p3", from: "Sage", to: "Shop - Sage" },
+  ];
+
+  it("settles with no failure once every project is renamed", async () => {
+    const apply = vi.fn(async () => undefined);
+    expect(await runProjectRenames(plan, apply)).toEqual([]);
+    expect(apply).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps the projects refused with why, and still renames the rest", async () => {
+    const apply = vi.fn(async (rename: (typeof plan)[number]) => {
+      if (rename.projectId === "p2") throw new Error("No access.");
+    });
+    const failures = await runProjectRenames(plan, apply);
+    expect(apply).toHaveBeenCalledTimes(3);
+    expect(failures).toEqual([{ rename: plan[1], reason: "No access." }]);
+  });
+
+  it("retries the same targets: what is left is the failed renames as they were planned", () => {
+    expect(renamesLeft([{ rename: plan[1]!, reason: "x" }])).toEqual([plan[1]]);
+  });
+});
+
+describe("projectRenameTrouble", () => {
+  it("says which projects were not renamed and why", () => {
+    expect(
+      projectRenameTrouble([
+        {
+          rename: { projectId: "p2", from: "SPN - stage", to: "Shop - stage" },
+          reason: "No access.",
+        },
+      ]),
+    ).toBe("SPN - stage was not renamed to Shop - stage in Zerops: No access.");
+  });
+});
