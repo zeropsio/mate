@@ -7,7 +7,7 @@ import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
-import { liveZerops } from "../__fixtures__/account.ts";
+import { liveZerops, processValue } from "../__fixtures__/account.ts";
 import { runningScope } from "../families/process.ts";
 import type { OperationIntent, OperationReceipt } from "../model.ts";
 import { operationProgressOf } from "../projections/operation.ts";
@@ -80,7 +80,7 @@ const processRow = (store: AccountStore, id: string, status: string, version: nu
       {
         family: "process",
         id,
-        value: { id, projectId: "p1", status, actionName: "stack.restart" },
+        value: processValue({ id, projectId: "p1", status, actionName: "stack.restart" }),
         revision: { kind: "zerops", version },
       },
     ],

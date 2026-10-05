@@ -1,7 +1,7 @@
 import { AtomRegistry, type Atom } from "effect/unstable/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveZerops, ORG } from "./__fixtures__/account.ts";
+import { liveZerops, ORG, processValue } from "./__fixtures__/account.ts";
 import { runningScope } from "./families/process.ts";
 import { linkKeys } from "./model.ts";
 import type { AccountInput } from "./reducer.ts";
@@ -31,7 +31,7 @@ const processRows = (
   rows: rows.map(([id, version, projectId = "p"]) => ({
     family: "process" as const,
     id,
-    value: { id, projectId, status: "RUNNING", actionName: "stack.deploy" },
+    value: processValue({ id, projectId }),
     revision: { kind: "zerops" as const, version },
   })),
 });

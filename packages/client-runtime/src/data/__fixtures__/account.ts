@@ -5,7 +5,7 @@
 import { linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
 import type { AccountInput, Row } from "../reducer.ts";
 import type { StreamEvent } from "../streamMachine.ts";
-import { runningScope } from "../families/process.ts";
+import { runningScope, type ProcessValue } from "../families/process.ts";
 
 export const ORG = "org";
 
@@ -41,6 +41,17 @@ function liveScopes(
   ];
 }
 
+/** A process as its whole row reads: what a test does not name is a plain deploy. */
+export const processValue = (
+  patch: Pick<ProcessValue, "id" | "projectId"> & Partial<ProcessValue>,
+): ProcessValue => ({
+  serviceStackIds: [],
+  status: "RUNNING",
+  actionName: "stack.deploy",
+  created: "2026-10-05T18:49:08Z",
+  ...patch,
+});
+
 export const zeropsVersion = (version: number) => ({ kind: "zerops" as const, version });
 
 export function liveZerops(input: {
@@ -54,7 +65,7 @@ export function liveZerops(input: {
       rows: input.running.map((process) => ({
         family: "process",
         id: process.id,
-        value: { ...process, status: "RUNNING", actionName: "stack.deploy" },
+        value: processValue(process),
         revision: zeropsVersion(1),
       })),
     },

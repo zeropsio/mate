@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/unstable/reactivity";
 
-import { liveZerops, ORG } from "../__fixtures__/account.ts";
+import { liveZerops, ORG, processValue } from "../__fixtures__/account.ts";
 import { runningScope } from "../families/process.ts";
 import type { OperationIntent, OperationReceipt } from "../model.ts";
 import { operationProgressOf } from "../projections/operation.ts";
@@ -105,7 +105,7 @@ const reflect = (store: AccountStore) =>
       {
         family: "process",
         id: "proc-1",
-        value: { id: "proc-1", projectId: "p1", status: "RUNNING", actionName: "stack.deploy" },
+        value: processValue({ id: "proc-1", projectId: "p1" }),
         revision: { kind: "zerops", version: 1 },
       },
     ],

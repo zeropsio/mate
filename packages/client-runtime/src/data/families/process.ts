@@ -6,17 +6,11 @@
  *
  * @module data/families/process
  */
-import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
-
+import { readActivityProcess, type ActivityProcess } from "../../zerops/activity/dto.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-export interface ProcessValue {
-  readonly id: string;
-  readonly projectId: string;
-  readonly status: string;
-  readonly actionName: string | null;
-}
+/** A process as the platform's whole row says it: identity, status, pipeline, its end. */
+export type ProcessValue = ActivityProcess;
 
 declare module "../model.ts" {
   interface FamilyValues {
@@ -28,14 +22,11 @@ declare module "../model.ts" {
 const RUNNING_PROCESS_STATUSES = ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const;
 const RUNNING: ReadonlySet<string> = new Set(RUNNING_PROCESS_STATUSES);
 
-const Row = Schema.Struct({
-  id: Schema.String,
-  projectId: Schema.String,
-  status: Schema.String,
-  actionName: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  _version: Schema.optionalKey(Schema.Number),
-});
-const decodeRow = Schema.decodeUnknownOption(Row);
+/** The row's `_version`, the platform's ordering of its observations; `null` where it has none. */
+const versionOf = (raw: unknown): number | null =>
+  typeof raw === "object" && raw !== null && "_version" in raw && typeof raw._version === "number"
+    ? raw._version
+    : null;
 
 const organization = (orgId: string) => ({ name: "clientId", operator: "eq", value: orgId });
 const notBalancer = { name: "executorTag", operator: "ne", value: "L7_MASTER" };
@@ -61,20 +52,10 @@ export const processFamily: FamilySpec<"process"> = {
       notBalancer,
     ],
     updates: ({ orgId }) => [organization(orgId), notBalancer],
-    decode: (raw) =>
-      Option.match(decodeRow(raw), {
-        onNone: () => null,
-        onSome: (row) => ({
-          id: row.id,
-          value: {
-            id: row.id,
-            projectId: row.projectId,
-            status: row.status,
-            actionName: row.actionName ?? null,
-          },
-          version: row._version ?? null,
-        }),
-      }),
+    decode: (raw) => {
+      const value = readActivityProcess(raw);
+      return value === undefined ? null : { id: value.id, value, version: versionOf(raw) };
+    },
   },
 };
 

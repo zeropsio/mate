@@ -5,6 +5,7 @@ import type { Revision } from "./model.ts";
 import { reduceAccount, supersedes, type AccountInput } from "./reducer.ts";
 import { runningScope } from "./families/process.ts";
 import { factOf, indexOf } from "./reducer.ts";
+import { processValue } from "./__fixtures__/account.ts";
 
 const ORG = "org";
 const scope = runningScope(ORG);
@@ -12,7 +13,7 @@ const scope = runningScope(ORG);
 const row = (id: string, version: number, status = "RUNNING") => ({
   family: "process" as const,
   id,
-  value: { id, projectId: "x", status, actionName: "stack.deploy" },
+  value: processValue({ id, projectId: "x", status }),
   revision: { kind: "zerops" as const, version },
 });
 
@@ -179,7 +180,7 @@ describe("reduceAccount", () => {
     const processRow = (id: string, version: number, status: string, projectId = "x") => ({
       family: "process" as const,
       id,
-      value: { id, projectId, status, actionName: "stack.deploy" },
+      value: processValue({ id, projectId, status }),
       revision: { kind: "zerops" as const, version },
     });
     const live = (): AccountState =>

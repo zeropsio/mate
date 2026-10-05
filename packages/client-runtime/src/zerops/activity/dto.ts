@@ -174,7 +174,10 @@ function readServiceStackIds(entry: Record<string, unknown>): ReadonlyArray<stri
   return [...ids];
 }
 
-function readActivityProcess(entry: Record<string, unknown>): ActivityProcess | undefined {
+/** One process row as the surfaces read it; `undefined` for a row missing its identity. */
+export function readActivityProcess(value: unknown): ActivityProcess | undefined {
+  const entry = readRecord(value);
+  if (entry === undefined) return undefined;
   const id = readString(entry.id);
   const projectId = readString(entry.projectId);
   const status = readString(entry.status);

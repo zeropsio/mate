@@ -204,7 +204,12 @@ describe("zeropsNavigationLink", () => {
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
       let reconnected = false;
-      const deploy = { id: "deploy", projectId: PROBE_PROJECT_ID, actionName: "stack.deploy" };
+      const deploy = {
+        id: "deploy",
+        projectId: PROBE_PROJECT_ID,
+        actionName: "stack.deploy",
+        created: "2026-10-05T18:49:08Z",
+      };
       const fixture = fixtureWire(
         answers(() =>
           reconnected
