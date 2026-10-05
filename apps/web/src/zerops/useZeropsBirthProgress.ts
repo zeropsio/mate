@@ -1,8 +1,8 @@
 /**
  * The birth-progress checklist's one glue point: the project's live activity
- * (`useProjectActivity`, already wired to the `project-activity` and
- * `project-process-history` interests so processes arrive over the platform
- * socket and finished ones survive a reload) plus whatever the caller already
+ * (`useProjectActivity`, already wired to the account store's process family,
+ * `projectProcesses`, so processes arrive over the platform socket and
+ * finished ones survive a reload) plus whatever the caller already
  * knows about the candidate, folded into `BirthFacts` (`birthFacts.ts`) and
  * derived into a `BirthProgress` (`@t3tools/client-runtime/zerops/birthProgress`).
  *

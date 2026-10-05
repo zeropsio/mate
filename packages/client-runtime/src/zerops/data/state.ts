@@ -1317,11 +1317,9 @@ function markRetentionViewsPartial(
     if (serviceKeys.has(key))
       serviceOrganizations.add(organizationKeyOf(record.ref.project.organization));
   }
-  const processProjects = new Set<string>();
   const processOrganizations = new Set<string>();
   for (const [key, record] of state.activity.processes) {
     if (!processKeys.has(key)) continue;
-    processProjects.add(projectKeyOf(record.ref.project));
     processOrganizations.add(organizationKeyOf(record.ref.project.organization));
   }
 
@@ -1347,9 +1345,7 @@ function markRetentionViewsPartial(
     const affected =
       queryKeys.has(key) ||
       query.memberKeys.some((memberKey) => processKeys.has(memberKey)) ||
-      (query.descriptor.kind === "process-history-window"
-        ? processProjects.has(projectKeyOf(query.descriptor.project))
-        : processOrganizations.has(organizationKeyOf(query.descriptor.project.organization)));
+      processOrganizations.has(organizationKeyOf(query.descriptor.project.organization));
     if (!affected) continue;
     activityQueries ??= new Map(state.activity.queries);
     activityQueries.set(key, {

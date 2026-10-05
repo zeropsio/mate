@@ -1,9 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
 
+import { isTerminalProcess } from "./activity.ts";
 import { DEFAULT_ZEROPS_DATA_POLICY } from "./policy.ts";
-import { selectActivity, selectRunningProcessesOf } from "./projection.ts";
+import { selectRunningProcessesOf } from "./projection.ts";
 import { makeInitialZeropsDataState, reduceZeropsDataState } from "./state.ts";
-import { ReceiptOrdinal, processKeyOf, queryKeyOf } from "./types.ts";
+import { processKeyOf, queryKeyOf } from "./types.ts";
 import {
   desiredInterest,
   directTicket,
@@ -82,7 +83,7 @@ describe("Zerops activity model", () => {
       unresolvedRequiredFields: ["createdAt"],
     });
     expect(selectRunningProcessesOf(state, project()).value).toHaveLength(4);
-    expect(selectActivity(state, project()).retainedHistory).toHaveLength(3);
+    expect([...state.activity.processes.values()].filter(isTerminalProcess)).toHaveLength(3);
   });
 
   it("preserves unknown process status as observed data without treating it as running or successful", () => {
@@ -114,7 +115,7 @@ describe("Zerops activity model", () => {
       fields: { status: { kind: "unknown", raw: "WAITING_FOR_CAPACITY" } },
     });
     expect(selectRunningProcessesOf(state, project()).value).toEqual([]);
-    expect(selectActivity(state, project()).retainedHistory).toEqual([]);
+    expect(isTerminalProcess(state.activity.processes.get(processKeyOf(ref))!)).toBe(false);
   });
 
   it("removes a terminal process from running membership without deleting its canonical record", () => {
@@ -202,7 +203,6 @@ describe("Zerops activity model", () => {
     });
     expect(state.activity.queries.get(queryKeyOf(descriptor))?.memberKeys).toEqual([]);
     expect(state.activity.processes.has(processKeyOf(ref))).toBe(true);
-    expect(selectActivity(state, project()).retainedHistory).toHaveLength(1);
   });
 
   it("fences a pre-push direct lifecycle response per facet", () => {
@@ -327,65 +327,3 @@ describe("a project's running processes after its organization's running read", 
 
 // A settled operation's card reads the project's newest process history once
 // per open: it has to know when that read landed, or failed (pass 36).
-describe("selectActivity — where the project's newest process history read stands", () => {
-  const history = (
-    status: "establishing" | "observing" | "failed" | "retrying" | "paused" | null,
-    descriptor: { readonly projectId?: string; readonly before?: string | null } = {},
-  ) => {
-    const state = makeInitialZeropsDataState(scope());
-    if (status === null) return state;
-    const id = identity(1, 1, 1, "history");
-    const base = desiredInterest(id, 1, false);
-    const interest =
-      status === "establishing"
-        ? base.interest
-        : status === "observing"
-          ? {
-              status,
-              identity: id,
-              guarantee: "source-order-unverified" as const,
-              sinceReceiptOrdinal: ReceiptOrdinal.make(1),
-            }
-          : status === "failed" || status === "retrying"
-            ? {
-                status: "failed" as const,
-                identity: id,
-                reason: "boom",
-                retryable: status === "retrying",
-                attempts: 1,
-                retryAtMs: status === "retrying" ? 9 : null,
-              }
-            : { status, identity: id, reason: "no-leases" as const };
-    return reduce(state, {
-      kind: "interest-upserted",
-      interest: {
-        ...base,
-        descriptor: {
-          kind: "project-process-history",
-          project: project(descriptor.projectId),
-          before: descriptor.before ?? null,
-          limit: 100,
-        },
-        interest,
-      },
-    });
-  };
-  it.each([
-    { name: "nobody asks for it", state: history(null), read: "unread" },
-    { name: "being read", state: history("establishing"), read: "reading" },
-    { name: "read", state: history("observing"), read: "read" },
-    { name: "its read failed", state: history("failed"), read: "failed" },
-    // Run 12: the socket's routine close every 30 minutes fails its reads with
-    // a retry scheduled; a settled card's one read is still on its way.
-    { name: "its read failed and is retried", state: history("retrying"), read: "reading" },
-    { name: "let go", state: history("paused"), read: "unread" },
-    {
-      name: "another project's",
-      state: history("observing", { projectId: "project-2" }),
-      read: "unread",
-    },
-    { name: "an older window", state: history("observing", { before: "p-9" }), read: "unread" },
-  ])("$name: $read", ({ state, read }) => {
-    expect(selectActivity(state, project()).processHistory).toBe(read);
-  });
-});

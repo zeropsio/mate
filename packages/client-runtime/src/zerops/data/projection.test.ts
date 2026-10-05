@@ -148,7 +148,6 @@ describe("Zerops data projections", () => {
     { kind: "project-versions", project: project(), serviceIds: ["app"] },
     { kind: "project-variables", project: project(), serviceIds: ["app"] },
     { kind: "project-current-metrics", project: project() },
-    { kind: "project-process-history", project: project(), before: null, limit: 20 },
     { kind: "organization-inventory", organization },
   ] satisfies ReadonlyArray<RuntimeInterestDescriptor>)(
     "a failed $kind read cannot fail the runtime listings after a deploy",

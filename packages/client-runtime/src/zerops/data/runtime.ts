@@ -208,15 +208,6 @@ function serializedInterestKey(descriptor: RuntimeInterestDescriptor): InterestK
       return InterestKeySchema.make(
         JSON.stringify([descriptor.kind, projectKeyOf(descriptor.project)]),
       );
-    case "project-process-history":
-      return InterestKeySchema.make(
-        JSON.stringify([
-          descriptor.kind,
-          projectKeyOf(descriptor.project),
-          descriptor.before ?? "",
-          descriptor.limit,
-        ]),
-      );
     case "project-metric-history":
       return InterestKeySchema.make(
         JSON.stringify([
@@ -574,25 +565,6 @@ export function planZeropsInterest(descriptor: RuntimeInterestDescriptor): Inter
       registrations: [
         {
           descriptor: { kind: "current-metrics", query },
-          baseline: { kind: "query", descriptor: query },
-        },
-      ],
-      directReads: [],
-    };
-  }
-  if (descriptor.kind === "project-process-history") {
-    const query: QueryDescriptor = {
-      kind: "process-history-window",
-      project,
-      before: descriptor.before,
-      limit: descriptor.limit,
-      schemaVersion: 1,
-    };
-    return {
-      registrations: [
-        entityUpdate("process"),
-        {
-          descriptor: { kind: "query-membership", query },
           baseline: { kind: "query", descriptor: query },
         },
       ],
@@ -1679,7 +1651,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
         (target.descriptor.kind === "projects-of-organization" ||
           target.descriptor.kind === "services-of-project" ||
           target.descriptor.kind === "running-processes-of-project" ||
-          target.descriptor.kind === "process-history-window" ||
           target.descriptor.kind === "active-versions-of-services" ||
           target.descriptor.kind === "service-variables-of-services")
           ? {
@@ -3764,7 +3735,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
           // failures stay visible and never replace the organization's receiver.
           required:
             descriptor.kind !== "project-current-metrics" &&
-            descriptor.kind !== "project-process-history" &&
             descriptor.kind !== "project-metric-history",
           identity,
           recoveryAttempts: 0,

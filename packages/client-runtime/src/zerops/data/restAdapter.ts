@@ -328,8 +328,6 @@ function searchTerms(
     terms.push({ name: "status", operator: "in", value: query.statuses });
     terms.push({ name: "executorTag", operator: "ne", value: "L7_MASTER" });
   }
-  if (query.kind === "process-history-window")
-    terms.push({ name: "executorTag", operator: "ne", value: "L7_MASTER" });
   return terms;
 }
 
@@ -418,10 +416,7 @@ function registrationHttp(request: RegistrationRequest, receiver: ReceiverHandle
       body: {
         search: searchTerms(descriptor.query),
         sort: [],
-        limit:
-          descriptor.query.kind === "process-history-window"
-            ? descriptor.query.limit
-            : ORGANIZATION_SEARCH_LIMIT,
+        limit: ORGANIZATION_SEARCH_LIMIT,
         ...common,
         wsOutputType: "listStream",
       },
@@ -486,11 +481,6 @@ function readHttp(ticket: PlatformReadRequest, offset = 0) {
         ...(offset ? { offset } : {}),
       },
     };
-  if (query.kind === "process-history-window")
-    return {
-      path: `/project/${query.project.projectId}/process?limit=${query.limit}${offset ? `&offset=${offset}` : ""}`,
-      method: "GET" as const,
-    };
   if (query.kind === "services-of-project")
     return {
       path: `/project/${query.project.projectId}/service-stack?limit=500${offset ? `&offset=${offset}` : ""}`,
@@ -526,7 +516,6 @@ function decodeRead(ticket: PlatformReadRequest, body: unknown) {
     case "projects-of-organization":
     case "services-of-project":
     case "running-processes-of-project":
-    case "process-history-window":
       return decodeEntityQueryResponse(ticket.target.descriptor, ticket, body, "direct-read");
     case "current-metrics-of-project":
     case "metric-history-of-project":

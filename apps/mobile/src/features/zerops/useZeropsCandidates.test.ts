@@ -33,7 +33,7 @@ const session = vi.hoisted(() => ({ status: "signed-in", activeId: "org-a" as st
 const reads = vi.hoisted(() => ({
   services: null as unknown,
   project: null as unknown,
-  activity: null as unknown,
+  processes: null as unknown,
 }));
 /** The account runtime's Mate environments, as the provider binds them after the first grant. */
 const stage = vi.hoisted(() => ({
@@ -232,7 +232,7 @@ describe("candidate inventory demand", () => {
       observation: { required: [], optional: [], access: { status: "unverified" as const } },
     };
     reads.project = project;
-    reads.activity = NOT_READ_PROCESSES;
+    reads.processes = NOT_READ_PROCESSES;
     const released: Array<{ readonly kind: string }> = [];
     runtime.acquire.mockImplementation((descriptor: { readonly kind: string }) =>
       Effect.sync(() => ({
@@ -242,7 +242,7 @@ describe("candidate inventory demand", () => {
       })),
     );
     runtime.registry.get.mockImplementation((atom: unknown) =>
-      atom === projectsAtom ? projects : atom === activityAtom ? reads.activity : reads.services,
+      atom === projectsAtom ? projects : atom === activityAtom ? reads.processes : reads.services,
     );
     runtime.registry.subscribe.mockImplementation(() => () => undefined);
     runtime.binding = {
@@ -545,7 +545,7 @@ describe("candidate inventory demand", () => {
         group: "unavailable",
       },
     ])("$case", async ({ enable, afterMs, group }) => {
-      reads.activity = activityOf(enable);
+      reads.processes = activityOf(enable);
       render();
       await settle();
       listenerOf(runtime.binding?.projectAtom)?.();

@@ -254,8 +254,6 @@ export function createZeropsDataAtoms(stateAtom: Atom.Atom<ZeropsDataState>): {
       (state) => selectActivity(state, projects.get(key)!),
       (left: ProjectActivityRead, right: ProjectActivityRead) =>
         collectionReadsEqual(left.running, right.running) &&
-        knowledgeArraysEqual(left.retainedHistory, right.retainedHistory) &&
-        left.processHistory === right.processHistory &&
         observationsEqual(left.observation, right.observation),
       `zerops-activity:${key}`,
     ),

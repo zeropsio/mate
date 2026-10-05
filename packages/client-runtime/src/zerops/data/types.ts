@@ -384,10 +384,7 @@ type IndexedQueryForTarget<Target extends EntityReadTarget> = Target["kind"] ext
   ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
   : Target["kind"] extends "service"
     ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
-    : Extract<
-        EntityQueryDescriptor,
-        { readonly kind: "running-processes-of-project" | "process-history-window" }
-      >;
+    : Extract<EntityQueryDescriptor, { readonly kind: "running-processes-of-project" }>;
 
 type DirectCollectionQueryForTarget<Target extends EntityReadTarget> =
   Target["kind"] extends "project"
@@ -395,10 +392,7 @@ type DirectCollectionQueryForTarget<Target extends EntityReadTarget> =
     : Target["kind"] extends "service"
       ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
       : Target["kind"] extends "process"
-        ? Extract<
-            EntityQueryDescriptor,
-            { readonly kind: "running-processes-of-project" | "process-history-window" }
-          >
+        ? Extract<EntityQueryDescriptor, { readonly kind: "running-processes-of-project" }>
         : never;
 
 type EntityUpdateRegistrationForTarget<Target extends EntityReadTarget> = RegistrationRequest & {
@@ -564,13 +558,6 @@ export type QueryDescriptor =
       readonly schemaVersion: 1;
     }
   | {
-      readonly kind: "process-history-window";
-      readonly project: ProjectRef;
-      readonly before: string | null;
-      readonly limit: number;
-      readonly schemaVersion: 1;
-    }
-  | {
       readonly kind: "current-metrics-of-project";
       readonly project: ProjectRef;
       readonly groupBy: "containerId";
@@ -628,8 +615,7 @@ export type EntityQueryDescriptor = Extract<
       | "projects-of-organization"
       | "services-of-project"
       | "services-of-project"
-      | "running-processes-of-project"
-      | "process-history-window";
+      | "running-processes-of-project";
   }
 >;
 
@@ -668,16 +654,6 @@ export const queryKeyOf = (descriptor: QueryDescriptor): QueryKey => {
           descriptor.kind,
           projectKeyOf(descriptor.project),
           canonicalStringSet(descriptor.statuses),
-          String(descriptor.schemaVersion),
-        ]),
-      );
-    case "process-history-window":
-      return QueryKey.make(
-        scopedKey([
-          descriptor.kind,
-          projectKeyOf(descriptor.project),
-          descriptor.before ?? "",
-          String(descriptor.limit),
           String(descriptor.schemaVersion),
         ]),
       );
@@ -1265,10 +1241,7 @@ export type CollectionQueryForRecord<Record extends ZeropsEntityRecord> =
     ? Extract<EntityQueryDescriptor, { readonly kind: "projects-of-organization" }>
     : Record extends ServiceRecord
       ? Extract<EntityQueryDescriptor, { readonly kind: "services-of-project" }>
-      : Extract<
-          EntityQueryDescriptor,
-          { readonly kind: "running-processes-of-project" | "process-history-window" }
-        >;
+      : Extract<EntityQueryDescriptor, { readonly kind: "running-processes-of-project" }>;
 
 export interface RetainedMembershipOperation<Member extends EntityRef = EntityRef> {
   readonly member: Member;
@@ -1607,12 +1580,6 @@ export type RuntimeInterestDescriptor =
   | { readonly kind: "project-services-check"; readonly project: ProjectRef }
   | { readonly kind: "project-current-metrics"; readonly project: ProjectRef }
   | { readonly kind: "project-activity"; readonly project: ProjectRef }
-  | {
-      readonly kind: "project-process-history";
-      readonly project: ProjectRef;
-      readonly before: string | null;
-      readonly limit: number;
-    }
   | {
       readonly kind: "project-metric-history";
       readonly project: ProjectRef;
@@ -2105,17 +2072,8 @@ export interface HistoryReadView {
   readonly observation: ViewObservation;
 }
 
-/**
- * Where a project's newest process history window (`project-process-history`, `before: null`)
- * stands: nobody asks for it, it is being read, it was read (and is held current while asked
- * for), or its read failed.
- */
-export type ProcessHistoryRead = "unread" | "reading" | "read" | "failed";
-
 export interface ProjectActivityRead {
   readonly running: CollectionRead<ProcessRecord>;
-  readonly retainedHistory: ReadonlyArray<EntityKnowledge<ProcessRecord>>;
-  readonly processHistory: ProcessHistoryRead;
   readonly observation: ViewObservation;
 }
 

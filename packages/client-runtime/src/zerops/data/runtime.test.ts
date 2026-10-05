@@ -1421,17 +1421,6 @@ describe("makeZeropsDataRuntime", () => {
 
   describe("a history interest is optional", () => {
     const histories = {
-      "process history": {
-        descriptor: {
-          kind: "project-process-history",
-          project: topologyDescriptor.project,
-          before: null,
-          limit: 20,
-        },
-        fails: (request: RegistrationRequest) =>
-          request.descriptor.kind === "query-membership" &&
-          request.descriptor.query.kind === "process-history-window",
-      },
       "metric history": {
         descriptor: {
           kind: "project-metric-history",

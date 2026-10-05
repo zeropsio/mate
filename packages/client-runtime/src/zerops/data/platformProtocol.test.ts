@@ -250,10 +250,9 @@ describe("Zerops platform protocol decoding", () => {
       },
       {
         descriptor: {
-          kind: "process-history-window" as const,
+          kind: "running-processes-of-project" as const,
           project,
-          limit: 10,
-          before: null,
+          statuses: ["RUNNING" as const],
           schemaVersion: 1 as const,
         },
         row: {
@@ -274,10 +273,9 @@ describe("Zerops platform protocol decoding", () => {
       },
       {
         descriptor: {
-          kind: "process-history-window" as const,
+          kind: "running-processes-of-project" as const,
           project,
-          limit: 10,
-          before: null,
+          statuses: ["RUNNING" as const],
           schemaVersion: 1 as const,
         },
         row: {
@@ -453,10 +451,9 @@ describe("Zerops platform protocol decoding", () => {
 
   it("decodes every Process status from indexed search, direct lists, and direct entities", () => {
     const descriptor = {
-      kind: "process-history-window" as const,
+      kind: "running-processes-of-project" as const,
       project,
-      limit: processStatuses.length,
-      before: null,
+      statuses: ["RUNNING" as const],
       schemaVersion: 1 as const,
     };
     const rows = processStatuses.map((status, index) => ({

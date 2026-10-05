@@ -44,11 +44,7 @@ type RunningQuery = Extract<
   QueryBaselineObservation["ticket"]["target"]["descriptor"],
   { readonly kind: "running-processes-of-project" }
 >;
-type HistoryQuery = Extract<
-  QueryBaselineObservation["ticket"]["target"]["descriptor"],
-  { readonly kind: "process-history-window" }
->;
-export type ActivityQueryState = QueryState<RunningQuery> | QueryState<HistoryQuery>;
+export type ActivityQueryState = QueryState<RunningQuery>;
 
 export interface ActivityReduction {
   readonly state: ActivityState;
@@ -178,11 +174,7 @@ function reduceQueryBaseline(
   observation: QueryBaselineObservation,
 ): ActivityReduction {
   const descriptor = observation.ticket.target.descriptor;
-  if (
-    descriptor.kind !== "running-processes-of-project" &&
-    descriptor.kind !== "process-history-window"
-  )
-    return { state, outcome: noOutcome() };
+  if (descriptor.kind !== "running-processes-of-project") return { state, outcome: noOutcome() };
   const key = queryKeyOf(descriptor);
   const existing = state.queries.get(key) ?? makeUnresolvedQuery(observation);
   if (
@@ -284,11 +276,7 @@ function reduceMembership(
   observation: QueryMembershipObservation,
 ): ActivityReduction {
   const descriptor = observation.registration.descriptor.query;
-  if (
-    descriptor.kind !== "running-processes-of-project" &&
-    descriptor.kind !== "process-history-window"
-  )
-    return { state, outcome: noOutcome() };
+  if (descriptor.kind !== "running-processes-of-project") return { state, outcome: noOutcome() };
   const key = queryKeyOf(descriptor);
   const existing = state.queries.get(key) ?? makeUnresolvedQuery(observation);
   const member = observation.member as ProcessRecord["ref"];
