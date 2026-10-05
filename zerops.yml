@@ -36,14 +36,13 @@ zerops:
       deployFiles:
         - apps/web/~dist
       envVariables:
-        # Hosted-static mode. Any value other than latest/nightly is silently
-        # ignored and the app falls through to the /pair screen instead of
-        # the Zerops flow.
+        # Hosted-static mode: no local server, the Zerops account flow is the
+        # one entry (`isHostedStaticApp`). Any value other than latest/nightly
+        # is silently ignored, and the app is then hosted-static only when it
+        # is served from VITE_HOSTED_APP_URL's origin.
         VITE_HOSTED_APP_CHANNEL: latest
-        # Where this client believes it is published. Only the settings
-        # "pair another device" link reads it, but left unset it defaults to
-        # upstream's app.t3.codes — a Zerops user handed a live pairing
-        # credential on somebody else's hosted app.
+        # Where this client is published, the origin `isHostedStaticApp`
+        # compares against; left unset it defaults to upstream's app.t3.codes.
         VITE_HOSTED_APP_URL: https://mate.zerops.io
         # `--filter` already leaves Electron out; this makes a stray install
         # of it cheap rather than a 100 MB download.
