@@ -146,6 +146,11 @@ export interface OperationRecord {
     | "uncertain-unasked"
     | "answered";
   readonly receipt: OperationReceipt | null;
+  /**
+   * The effect handles the owner's facts showed when it was sent (its kind's `effectHandles`):
+   * none of these can be its own. `null` where it was not sent from here (resumed).
+   */
+  readonly before: ReadonlyArray<string> | null;
   /** The owner's handles this account knows for it — given on resume, or from a receipt. */
   readonly handles: ReadonlyArray<string>;
   /** Observation ended without the owner's word: who must act next, never an invented failure. */

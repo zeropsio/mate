@@ -15,6 +15,8 @@ export type OperationInput =
       readonly intent: OperationIntent;
       /** Handles already known for it: a request resumed after a restart. */
       readonly handles?: ReadonlyArray<string>;
+      /** The effect handles the owner's facts showed just before the send. */
+      readonly before?: ReadonlyArray<string>;
     }
   /** The request went out and its answer was lost: whether the owner took it is unknown. */
   | { readonly kind: "operation-uncertain"; readonly requestId: string }
@@ -53,6 +55,7 @@ export function reduceOperation(
           submission: "recorded",
           receipt: null,
           handles: input.handles ?? [],
+          before: input.before ?? null,
           unresolved: null,
         }
       : withHandles(record, input.handles ?? []);

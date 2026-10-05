@@ -23,7 +23,7 @@ export interface UncertainAcceptance {
 /**
  * The operation's owner. A lost answer is resolved by what the owner can be asked: by the request
  * id where it keeps one (HQ), by an external handle where one is known (a Zerops process), or else
- * by the intended effect in the owner's facts (the kind's `acceptedBy`) — never by sending again.
+ * by the intended effect in the owner's facts (the kind's `effectHandles`) — never by sending again.
  */
 export interface OperationExecutor {
   readonly submit: (
@@ -64,8 +64,10 @@ export function makeOperations(options: {
   readonly makeId: () => string;
 }): Operations {
   const { store } = options;
+  const kindOf = (intent: OperationIntent) =>
+    operationKind(options.kinds ?? OPERATION_KINDS, intent);
   const executorOf = (intent: OperationIntent) => {
-    const owner = operationKind(options.kinds ?? OPERATION_KINDS, intent).executor;
+    const owner = kindOf(intent).executor;
     const executor = options.executors[owner];
     if (executor === undefined) throw new Error(`No executor for ${owner} is wired.`);
     return { owner, executor };
@@ -100,6 +102,24 @@ export function makeOperations(options: {
       },
     });
 
+  /**
+   * The one effect handle in the owner's facts that can only be this operation's: absent when it
+   * was sent, held by no other operation. None, or more than one, adopts nothing.
+   */
+  const adoptable = (requestId: string, intent: OperationIntent): string | null => {
+    const state = store.state();
+    const before = state.operations.get(requestId)?.before;
+    const effectHandles = kindOf(intent).effectHandles;
+    if (before === null || before === undefined || effectHandles === undefined) return null;
+    const claimed = new Set<string>();
+    for (const [other, record] of state.operations)
+      if (other !== requestId) for (const handle of record.handles) claimed.add(handle);
+    const candidates = effectHandles(readsOfState(state), intent).filter(
+      (handle) => !before.includes(handle) && !claimed.has(handle),
+    );
+    return candidates.length === 1 ? candidates[0]! : null;
+  };
+
   /** Files the owner's answer under this account's request id, whatever id the owner knows. */
   const admit = (receipt: OperationReceipt | null, requestId: string) =>
     Effect.sync(() =>
@@ -129,19 +149,16 @@ export function makeOperations(options: {
         onFailure: () => admit(null, requestId),
       });
     if (executor.lookup === undefined) {
-      const effect = operationKind(options.kinds ?? OPERATION_KINDS, intent).acceptedBy?.(
-        readsOfState(store.state()),
-        intent,
-      );
+      const adopted = adoptable(requestId, intent);
       return admit(
-        effect === null || effect === undefined
+        adopted === null
           ? null
           : {
               requestId,
-              operationId: effect.operationId,
+              operationId: adopted,
               executor: owner,
               affected: [],
-              handles: effect.handles,
+              handles: [adopted],
               acceptance: { kind: "accepted" },
               outcome: { kind: "pending" },
             },
@@ -167,7 +184,16 @@ export function makeOperations(options: {
     submit: (intent) =>
       Effect.gen(function* () {
         const requestId = options.makeId();
-        store.dispatch({ kind: "operation-recorded", requestId, intent });
+        const effectHandles = kindOf(intent).effectHandles;
+        store.dispatch({
+          kind: "operation-recorded",
+          requestId,
+          intent,
+          // What the owner's facts show before the send is never this operation's own effect.
+          ...(effectHandles === undefined
+            ? {}
+            : { before: effectHandles(readsOfState(store.state()), intent) }),
+        });
         yield* send(requestId, intent, true);
         return requestId;
       }),

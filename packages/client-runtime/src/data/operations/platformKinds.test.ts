@@ -42,10 +42,8 @@ const restartService = {
       return { kind: "failed", reason: `The restart process ended ${process.value.status}.` };
     return null;
   },
-  acceptedBy: (read: ProjectionReads) => {
-    const running = [...read.index("running", "p1")];
-    return running.length === 0 ? null : { operationId: running[0]!, handles: running };
-  },
+  /** The processes that would show a restart of the project's service: those running in it. */
+  effectHandles: (read: ProjectionReads) => [...read.index("running", "p1")],
 } as unknown as RegisteredOperationKind;
 
 const kinds = [...OPERATION_KINDS, restartService];
@@ -204,6 +202,63 @@ describe("an operation Zerops executes", () => {
       unreachable = false;
       yield* operations.retry("request-7");
       expect(progress(store, "request-7")).toEqual({ stage: "accepted", operationId: "proc-1" });
+    }),
+  );
+
+  it.effect.each<{
+    readonly name: string;
+    readonly before: ReadonlyArray<string>;
+    readonly after: ReadonlyArray<string>;
+    readonly claimed: ReadonlyArray<string>;
+    readonly adopted: string | null;
+  }>([
+    {
+      name: "a process that already ran before the send",
+      before: ["proc-old"],
+      after: ["proc-old"],
+      claimed: [],
+      adopted: null,
+    },
+    {
+      name: "a process another operation holds",
+      before: [],
+      after: ["proc-2", "proc-1"],
+      claimed: ["proc-2"],
+      adopted: "proc-1",
+    },
+    {
+      name: "two new processes, either of which may be someone else's",
+      before: [],
+      after: ["proc-1", "proc-3"],
+      claimed: [],
+      adopted: null,
+    },
+  ])("adopts after a lost answer only one new, unclaimed process: $name", (example) =>
+    Effect.gen(function* () {
+      const store = account();
+      const owner = zerops({ loseAnswer: true, unreachable: () => true });
+      const operations = makeOperations({
+        store,
+        kinds,
+        executors: { zerops: owner.executor },
+        makeId: ids(),
+      });
+      example.before.forEach((id) => processRow(store, id, "RUNNING", 1));
+      for (const handle of example.claimed)
+        yield* operations.resume(`held-${handle}`, RESTART, [handle]);
+
+      const requestId = yield* operations.submit(RESTART);
+      example.after
+        .filter((id) => !example.before.includes(id))
+        .forEach((id) => processRow(store, id, "RUNNING", 1));
+      yield* operations.retry(requestId);
+
+      expect(progress(store, requestId)).toEqual(
+        example.adopted === null
+          ? { stage: "uncertain", next: "ask-owner-again" }
+          : { stage: "reflected", operationId: example.adopted },
+      );
+      expect(owner.submitted).toEqual([requestId]);
     }),
   );
 });
