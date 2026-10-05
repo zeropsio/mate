@@ -4210,6 +4210,15 @@ function RunScroll({
     const heldAbove = () =>
       typeof scrollRef.current?.parentElement?.closest === "function" &&
       scrollRef.current.parentElement.closest("[data-room-easing]") !== null;
+    /**
+     * Whether a box of its card eases this moment — the live slot under it
+     * too: its box gives that ease its room, and the browser clamps its top
+     * as it does (a phone's slot easing beside a 5 px history moved it 2 px
+     * up between two reads; read as the person's, the run stopped following).
+     */
+    const cardEases = () =>
+      typeof scrollRef.current?.closest === "function" &&
+      scrollRef.current.closest("[data-run-chat]")?.querySelector("[data-room-easing]") != null;
     /** The page puts its top at `top`, and remembers where the browser took it. */
     const putAt = (element: HTMLElement, top: number) => {
       element.scrollTop = top;
@@ -4275,7 +4284,8 @@ function RunScroll({
       sized.box = position.clientHeight;
       sized.lines = position.scrollHeight;
       const person = movesAsPerson({
-        moving: gliding.frame !== 0 || (roomRef.current?.easing() ?? false) || heldAbove(),
+        moving:
+          gliding.frame !== 0 || (roomRef.current?.easing() ?? false) || heldAbove() || cardEases(),
         resized,
         msSinceInput: performance.now() - personAtRef.current,
         atFoot: standsAtFoot(position),
@@ -4307,7 +4317,8 @@ function RunScroll({
         grew,
         below: foot > element.scrollTop + 0.5,
         eases: easesRef.current,
-        roomEases: roomRef.current?.easing() ?? false,
+        // Its own boxes, or the slot squeezing it as it eases taller.
+        roomEases: (roomRef.current?.easing() ?? false) || cardEases(),
         gliding: gliding.frame !== 0,
       });
       // The card around it easing taller gives it the room it needs: it

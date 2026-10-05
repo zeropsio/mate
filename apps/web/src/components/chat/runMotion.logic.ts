@@ -106,7 +106,7 @@ export function keepsFoot({
   readonly below: boolean;
   /** Its room eases as lines join it: a live run, watched. */
   readonly eases: boolean;
-  /** A box in it eases this moment. */
+  /** A box of its card eases this moment: its own, or the live slot squeezing it. */
   readonly roomEases: boolean;
   /** A glide to its foot is in flight. */
   readonly gliding: boolean;
