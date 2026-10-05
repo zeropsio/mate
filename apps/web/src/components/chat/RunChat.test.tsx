@@ -2075,10 +2075,14 @@ describe("RunChat, as the person uses it", () => {
             });
           });
         },
-        /** It moves to `top` — whatever moved it: a wheel, keys, a find, focus — and is heard. */
+        /**
+         * The person moves it to `top` — a wheel, keys, a drag — and it is heard: their input
+         * first, as a browser gives it, then where it stands.
+         */
         scrolled: (top: number) => {
           box.scrollTop = top;
           act(() => {
+            scroll().props.onWheel();
             scroll().props.onScroll({
               currentTarget: {
                 scrollTop: box.scrollTop,
@@ -2203,6 +2207,21 @@ describe("RunChat, as the person uses it", () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    // Run 12, 18:58:18: a row going in resized it and the browser set its top 14 px up, with
+    // no input of the person's: it goes on following its foot (it stopped for 39 minutes,
+    // until the person scrolled it down by hand).
+    it("keeps following through a move its own box made, with no input of the person's", () => {
+      const run = liveScroll();
+      run.grow(400);
+      expect(run.fromFoot()).toBe(0);
+      // Its lines re-measured 6 px taller, and the browser set its top 14 px up.
+      run.box.scrollHeight += 6;
+      run.box.scrollTop -= 14;
+      run.heard();
+      run.grow(65);
+      expect(run.fromFoot()).toBe(0);
     });
 
     // A slow drag up while a thought streams: each wrap moves the foot on
