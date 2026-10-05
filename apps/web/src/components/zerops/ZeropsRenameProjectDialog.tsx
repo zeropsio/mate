@@ -12,7 +12,7 @@ import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import { useState } from "react";
 
 import {
-  projectRenameTrouble,
+  projectRenameLeftNotice,
   renamesLeft,
   type ProjectRename,
   type ProjectRenameFailure,
@@ -40,7 +40,7 @@ export function ZeropsRenameProjectDialog({
     }
     setLeft(renamesLeft(failures));
     setPending(false);
-    setError(projectRenameTrouble(failures));
+    setError(projectRenameLeftNotice(failures));
   };
 
   return (
@@ -65,6 +65,8 @@ export function ZeropsRenameProjectDialog({
       }}
       open
       pending={pending}
+      // A retry sends exactly the targets planned: the name is HQ's now and is not asked again.
+      readOnly={left.length > 0}
       submitLabel={left.length > 0 ? "Retry" : "Rename"}
       title="Rename the project"
       validate={(value) => (value.trim().length === 0 ? "Give the project a name." : undefined)}

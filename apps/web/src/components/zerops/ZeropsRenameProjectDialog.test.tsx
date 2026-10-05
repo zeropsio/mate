@@ -135,7 +135,9 @@ describe("ZeropsRenameProjectDialog", () => {
     expect(mock.dialog).toMatchObject({
       pending: false,
       submitLabel: "Retry",
-      error: "Shop - stage was not renamed to Harbor - stage in Zerops: No access.",
+      readOnly: true,
+      error:
+        "Shop - stage was not renamed to Harbor - stage in Zerops: No access. Still named Shop - stage in Zerops.",
     });
 
     await act(async () => {

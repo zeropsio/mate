@@ -117,3 +117,12 @@ export function projectRenameTrouble(failures: ReadonlyArray<ProjectRenameFailur
     )
     .join(" ");
 }
+
+/**
+ * What the rename dialog says after a partial failure: the trouble, and which projects keep their
+ * old name in Zerops — also where the person cancels instead of retrying.
+ */
+export function projectRenameLeftNotice(failures: ReadonlyArray<ProjectRenameFailure>): string {
+  const kept = failures.map(({ rename }) => rename.from).join(", ");
+  return `${projectRenameTrouble(failures)} Still named ${kept} in Zerops.`;
+}

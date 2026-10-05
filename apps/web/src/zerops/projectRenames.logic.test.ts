@@ -4,6 +4,7 @@ import {
   planProjectLeave,
   planProjectMove,
   planProjectRenames,
+  projectRenameLeftNotice,
   projectRenameTrouble,
   renameStillDue,
   renamesLeft,
@@ -164,5 +165,20 @@ describe("projectRenameTrouble", () => {
         },
       ]),
     ).toBe("SPN - stage was not renamed to Shop - stage in Zerops: No access.");
+  });
+});
+
+describe("projectRenameLeftNotice", () => {
+  it("says which projects keep their old name in Zerops", () => {
+    const failure = (from: string, to: string) => ({
+      rename: { projectId: from, from, to },
+      reason: "No access.",
+    });
+    expect(
+      projectRenameLeftNotice([
+        failure("SPN - stage", "Shop - stage"),
+        failure("Sage", "Shop - Sage"),
+      ]),
+    ).toContain("Still named SPN - stage, Sage in Zerops.");
   });
 });

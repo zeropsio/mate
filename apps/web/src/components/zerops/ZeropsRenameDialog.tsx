@@ -25,6 +25,7 @@ export function ZeropsRenameForm({
   submitLabel,
   validate,
   pending = false,
+  readOnly = false,
   error: refusal = null,
   onCancel,
   onSubmit,
@@ -37,6 +38,8 @@ export function ZeropsRenameForm({
   readonly validate: (value: string) => string | undefined;
   /** The press is in flight: the form waits for its answer and takes no second press. */
   readonly pending?: boolean;
+  /** The name is not the person's to change now. */
+  readonly readOnly?: boolean;
   /** Why the last press was refused, said in the dialog that made it. */
   readonly error?: string | null;
   readonly onCancel: () => void;
@@ -73,6 +76,7 @@ export function ZeropsRenameForm({
             onChange={(event) => {
               setValue(event.target.value);
             }}
+            readOnly={readOnly}
             value={value}
           />
           {submitted && error !== undefined ? (
