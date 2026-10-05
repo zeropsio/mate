@@ -3863,8 +3863,10 @@ no-cache`.
     by nothing; a Mate's name is its project's. _Why:_ a marker on a project with no Mate made a
     Mate row, a _Set up Mate_ and a taken name.
   - **A press holds its project at HQ** while it runs, and a press that stopped keeps its record
-    there. _Why:_ another browser could not tell a press still at work from one whose tab closed,
-    and guessed by the project's age.
+    there. A press runs until Zerops accepted the container's import and the project is closed off;
+    the minutes the container then takes to come up are the platform's, and another browser reads
+    them from the container itself ("Coming up"), not from a hold. _Why:_ another browser could not
+    tell a press still at work from one whose tab closed, and guessed by the project's age.
   - **A Mate update's outcome is the server it comes back as**, by version and boot id: another
     version is updated; the version it left on another boot did not take; the same boot is still
     updating. _Why:_ followed by version alone, a failed install waited for ever; followed by the
