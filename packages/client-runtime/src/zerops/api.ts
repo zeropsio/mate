@@ -2604,14 +2604,14 @@ export class ZeropsApiClient {
   /**
    * `PUT /service-stack/{id}/restart` with the user's own token. On a zcp
    * container a restart re-runs the platform recipe's install step, which
-   * picks up the current zcp release.
+   * picks up the current zcp release. Answers the restart's process id.
    */
   async restartService(
     serviceId: string,
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
+  ): Promise<{ readonly processId: string | undefined }> {
+    const process = await this.#request<{ readonly id?: unknown }>(
       `/service-stack/${serviceId}/restart`,
       { method: "PUT", signal: signal ?? null },
       {
@@ -2619,6 +2619,7 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
+    return { processId: typeof process?.id === "string" ? process.id : undefined };
   }
 
   /**
@@ -2740,14 +2741,14 @@ export class ZeropsApiClient {
 
   /**
    * `PUT /service-stack/{id}/start` with the user's own token — starts a
-   * STOPPED service (a zcp container included).
+   * STOPPED service (a zcp container included). Answers the start's process id.
    */
   async startService(
     serviceId: string,
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
+  ): Promise<{ readonly processId: string | undefined }> {
+    const process = await this.#request<{ readonly id?: unknown }>(
       `/service-stack/${serviceId}/start`,
       { method: "PUT", signal: signal ?? null },
       {
@@ -2755,6 +2756,7 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
+    return { processId: typeof process?.id === "string" ? process.id : undefined };
   }
 
   /**
