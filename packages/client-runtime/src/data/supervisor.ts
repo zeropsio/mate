@@ -130,6 +130,12 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
 
     return {
       run,
-      signal: (signal) => Effect.asVoid(Queue.offer(signals, signal)),
+      // The person's try-now, or a changed input, is the scopes' too: a refused scope revives only
+      // by it, never by its link's own attempts.
+      signal: (signal) =>
+        Effect.gen(function* () {
+          for (const scope of scopes) yield* dispatch({ kind: signal }, scope);
+          yield* Queue.offer(signals, signal);
+        }),
     };
   });

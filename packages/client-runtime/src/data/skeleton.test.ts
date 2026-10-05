@@ -19,7 +19,7 @@ import { classifyHttp, zeropsNavigationLink } from "./adapters/zerops.ts";
 import { scopeKeys } from "./model.ts";
 import { menuRow, menuRowKeys, type MenuRow } from "./projections/navigation.ts";
 import { makeAccountStore, type AccountStore } from "./store.ts";
-import { superviseLink } from "./supervisor.ts";
+import { superviseLink, type LinkSupervisor } from "./supervisor.ts";
 
 const ORG = "org";
 const SHOP = { orgId: ORG, row: { kind: "app", appId: "shop" } } as const;
@@ -114,6 +114,9 @@ const snapshot = (mates: ReadonlyMap<string, MateLiveView>): HqStructureEvent =>
   people: null,
 });
 
+/** The last started supervisors: Zerops', then HQ's. */
+const supervisors: LinkSupervisor[] = [];
+
 /** Both sources under their supervisors, as the account runtime will start them. */
 const start = (
   store: AccountStore,
@@ -132,8 +135,10 @@ const start = (
       hqNavigationLink({ orgId: ORG, source: relay.source, store }),
     ];
     const fibers: Array<Fiber.Fiber<never>> = [];
+    supervisors.length = 0;
     for (const link of links) {
       const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
+      supervisors.push(supervisor);
       fibers.push(yield* Effect.forkChild(supervisor.run));
     }
     yield* settle;
@@ -259,6 +264,16 @@ describe("the walking skeleton", () => {
         expect(store.state().streams.get(scopeKeys.projects(ORG))?.phase).toBe("refused");
         expect(shop.latest().status.display).toBe("refused");
         expect(shop.latest().projects[0]?.name).toMatchObject({ kind: "ready", value: "m1 name" });
+
+        // Time and the link's own attempts revive nothing; the person's try-now revives it all.
+        yield* TestClock.adjust("1 hour");
+        expect(store.state().streams.get(scopeKeys.projects(ORG))?.phase).toBe("refused");
+        refuse = false;
+        yield* supervisors[0]!.signal("manual-retry");
+        yield* settle;
+        expect(store.state().streams.get(scopeKeys.projects(ORG))?.phase).toBe("live");
+        expect(store.state().streams.get(scopeKeys.running(ORG))?.phase).toBe("live");
+        expect(shop.latest().status.display).toBe("live");
         for (const fiber of fibers) yield* Fiber.interrupt(fiber);
       }),
   );
