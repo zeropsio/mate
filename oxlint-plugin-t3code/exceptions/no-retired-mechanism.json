@@ -3920,62 +3920,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/mateRestart.ts",
-    "kind": "retired-token",
-    "fingerprint": "STOP_POLL_MS",
-    "owner": "data-layer rewrite: operations",
-    "reason": "a restart polls and gives up on its own clock; only the source settles an operation",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/mateRestart.ts",
-    "kind": "retired-token",
-    "fingerprint": "STOP_POLL_MS",
-    "owner": "data-layer rewrite: operations",
-    "reason": "a restart polls and gives up on its own clock; only the source settles an operation",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/mateRestart.ts",
-    "kind": "retired-token",
-    "fingerprint": "STOP_POLL_MS",
-    "owner": "data-layer rewrite: operations",
-    "reason": "a restart polls and gives up on its own clock; only the source settles an operation",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/mateRestart.ts",
-    "kind": "retired-token",
-    "fingerprint": "STOP_WAIT_CAP_MS",
-    "owner": "data-layer rewrite: operations",
-    "reason": "a restart polls and gives up on its own clock; only the source settles an operation",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/mateRestart.ts",
-    "kind": "retired-token",
-    "fingerprint": "STOP_WAIT_CAP_MS",
-    "owner": "data-layer rewrite: operations",
-    "reason": "a restart polls and gives up on its own clock; only the source settles an operation",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/mateRestart.ts",
-    "kind": "retired-token",
-    "fingerprint": "restartMateContainer(",
-    "owner": "data-layer rewrite: operations",
-    "reason": "a restart polls and gives up on its own clock; only the source settles an operation",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/mateRestart.ts",
-    "kind": "retired-token",
-    "fingerprint": "restartMateContainer(",
-    "owner": "data-layer rewrite: operations",
-    "reason": "a restart polls and gives up on its own clock; only the source settles an operation",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/mateScope.ts",
     "kind": "retired-token",
     "fingerprint": "shownInScope(",
@@ -4549,14 +4493,6 @@
     "fingerprint": "rememberMenu(",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateActions.tsx",
-    "kind": "retired-token",
-    "fingerprint": "restartMateContainer(",
-    "owner": "data-layer rewrite: operations",
-    "reason": "a restart polls and gives up on its own clock; only the source settles an operation",
     "expires": "never"
   },
   {

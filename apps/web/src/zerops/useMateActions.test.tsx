@@ -152,10 +152,8 @@ vi.mock("./useHqOffers", () => ({
       ? { kind: "allowed" }
       : { kind: "refused", reason: "not_structure_writer" },
 }));
-vi.mock("./mateRestart", async (original) => ({
-  ...(await original<typeof import("./mateRestart")>()),
-  restartMateContainer: mock.restartContainer,
-  mateRestartPorts: () => ({}),
+vi.mock("./mateRestart", () => ({
+  useRestartMate: () => mock.restartContainer,
 }));
 vi.mock("./zeropsContainers", () => ({
   readContainerInitAt: async () => null,

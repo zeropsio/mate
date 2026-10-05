@@ -162,6 +162,12 @@ vi.mock("~/zerops/useZeropsCreationVerdicts", () => ({
 vi.mock("~/zerops/zeropsContainers", () => ({
   useZeropsContainers: () => ({ health: new Map() }),
 }));
+vi.mock("~/zerops/ZeropsAccountData", () => ({
+  useAccountData: () => ({ orgId: "org-1" }),
+}));
+vi.mock("~/zerops/accountOperations", () => ({
+  useAccountOperations: () => ({ submit: () => new Promise(() => {}) }),
+}));
 vi.mock("~/zerops/zeropsDataContext", () => ({
   useZeropsData: () => ({ organizationRef: (id: string) => ({ id }), runtime: {} }),
   runZeropsCommand: () => Promise.resolve(),

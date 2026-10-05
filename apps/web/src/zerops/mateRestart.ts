@@ -1,118 +1,96 @@
 /**
- * Restarting a Mate's container, whatever state it is in. The platform refuses to restart a
- * service that has failed — `serviceStackIsFailed`, "Try to stop the stack and then start it
- * again" (measured on three Mates after a platform outage, 2026-10-01) — so a FAILED container is
- * stopped, its stop waited out, and started: the same *Restart* and *Try now* to the person.
+ * Restarting a Mate's container, whatever state it is in, as the account's `mate-restart`
+ * operation: Zerops executes it, a failed container is stopped and started once its stop's process
+ * has ended, and the restart's process says how it ended. Its container is then intended to come
+ * up as a restart's is (`intendContainer`), and shows restarting until it is back.
  */
-import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
-import { ZeropsServiceId, type ServiceRef } from "@t3tools/client-runtime/zerops/data";
+import { restartWay, type OperationProgress } from "@t3tools/client-runtime/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import type { TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import { useCallback } from "react";
 
+import { useAccountOperations } from "./accountOperations";
+import { useAccountData } from "./ZeropsAccountData";
 import { useZeropsCandidates } from "./useZeropsCandidates";
-import { intendContainer } from "./zeropsContainers";
-import { runZeropsCommand, useZeropsData, type ZeropsDataContextValue } from "./zeropsDataContext";
-import { useZeropsSession } from "./ZeropsSessionProvider";
+import { intendContainer, readContainerInitAt } from "./zeropsContainers";
 
-/** How a container is brought back from the status the listing reads for it. */
-export type RestartWay = "restart" | "stop-then-start";
-
-const SERVICE_STATUS_PREFIX = "SERVICE_";
-
-export function restartWay(status: string | undefined): RestartWay {
-  const normalized = status?.startsWith(SERVICE_STATUS_PREFIX)
-    ? status.slice(SERVICE_STATUS_PREFIX.length)
-    : status;
-  return normalized !== undefined && normalized.endsWith("FAILED") ? "stop-then-start" : "restart";
-}
-
-/** Between reads of the stop's process. */
-export const STOP_POLL_MS = 2_000;
-/** Past this the start is asked for anyway: a stop still running is the platform's to finish. */
-export const STOP_WAIT_CAP_MS = 120_000;
-
-const DONE_PROCESS_STATUSES: ReadonlySet<string> = new Set(["FINISHED", "FAILED", "CANCELED"]);
-
-export interface MateRestartPorts {
-  readonly restart: () => Promise<void>;
-  readonly stop: () => Promise<{ readonly processId: string | undefined }>;
-  readonly processStatus: (processId: string) => Promise<string | undefined>;
-  readonly start: () => Promise<void>;
-  readonly sleep: (ms: number) => Promise<void>;
-}
-
-export async function restartMateContainer(
-  status: string | undefined,
-  ports: MateRestartPorts,
-): Promise<void> {
-  if (restartWay(status) === "restart") {
-    await ports.restart();
-    return;
+/** What the person is told of a restart its owner did not take; `null` once Zerops took it. */
+function restartRefusal(progress: OperationProgress): string | null {
+  switch (progress.stage) {
+    case "refused":
+      return progress.reason;
+    case "unsent":
+      return "Zerops did not take the restart. Try again.";
+    case "uncertain":
+      return "Zerops did not answer whether it took the restart. Check the Mate before trying again.";
+    case "unresolved":
+      return `The Mate was stopped, but its stop could not be followed here. ${progress.nextAction ?? "Start the Mate"}.`;
+    default:
+      return null;
   }
-  const { processId } = await ports.stop();
-  if (processId !== undefined) {
-    for (let waited = 0; waited < STOP_WAIT_CAP_MS; waited += STOP_POLL_MS) {
-      const stopped = await ports.processStatus(processId);
-      if (stopped !== undefined && DONE_PROCESS_STATUSES.has(stopped)) break;
-      await ports.sleep(STOP_POLL_MS);
-    }
-  }
-  await ports.start();
 }
 
-/** The ports of a Mate's container restart, through the account's command layer. */
-export function mateRestartPorts(input: {
-  readonly client: Pick<ZeropsApiClient, "stopService" | "readProcessStatus">;
-  readonly runtime: ZeropsDataContextValue["runtime"];
-  readonly service: ServiceRef;
-}): MateRestartPorts {
-  const { client, runtime, service } = input;
-  return {
-    restart: async () => {
-      await runZeropsCommand(runtime.commands.restartService(service));
-    },
-    stop: () => client.stopService(service.serviceId),
-    processStatus: (processId) => client.readProcessStatus(processId),
-    start: async () => {
-      await runZeropsCommand(runtime.commands.startService(service));
-    },
-    sleep: (ms) =>
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, ms);
-      }),
-  };
+export interface RestartTarget {
+  /** The Mate's container. */
+  readonly key: TargetKey;
+  readonly projectId: string;
+  readonly serviceId: string;
+  /** The container's status as the listing reads it: a failed one is stopped, then started. */
+  readonly status: string | undefined;
 }
 
 /**
- * Brings back a Mate whose container failed, by its service: stopped and started, its container
- * then intended to come up as a restart's is (`intendContainer`). Answers false for a container
- * that has not failed — its *Try now* is the link's own retry — and for one the listing does not
- * hold.
+ * Restarts a Mate's container; resolves once Zerops took the restart and its container was
+ * intended to come back, or rejects with what to tell the person.
+ */
+export function useRestartMate(): (target: RestartTarget) => Promise<void> {
+  const operations = useAccountOperations();
+  const { orgId } = useAccountData();
+  return useCallback(
+    async (target) => {
+      if (orgId === null) throw new Error("No organization is open.");
+      // The container's initAt is read before the verb: the restart is over once it moves.
+      const initAt = await readContainerInitAt(target.key);
+      const { progress } = await operations.submit({
+        kind: "mate-restart",
+        orgId,
+        projectId: target.projectId,
+        serviceId: target.serviceId,
+        way: restartWay(target.status),
+      });
+      const refusal = restartRefusal(progress);
+      if (refusal !== null) throw new Error(refusal);
+      intendContainer(target.key, { kind: "restart", initAt });
+    },
+    [operations, orgId],
+  );
+}
+
+/**
+ * Brings back a Mate whose container failed, by its service. Answers false for a container that
+ * has not failed — its *Try now* is the link's own retry — and for one the listing does not hold.
  */
 export function useReviveFailedMate(): (serviceId: string | undefined) => boolean {
-  const { activeOrganization, client } = useZeropsSession();
-  const { projectRef, runtime } = useZeropsData();
   const { listing } = useZeropsCandidates();
+  const operations = useAccountOperations();
+  const { orgId } = useAccountData();
   return useCallback(
     (serviceId) => {
-      if (serviceId === undefined || activeOrganization === null) return false;
+      if (serviceId === undefined || orgId === null) return false;
       const candidate = heldCandidates(listing).rows.find((row) => row.service?.id === serviceId);
       if (candidate?.service === undefined) return false;
       if (restartWay(candidate.service.status) !== "stop-then-start") return false;
-      const service: ServiceRef = {
-        kind: "service",
-        project: projectRef(activeOrganization.id, candidate.project.id),
-        serviceId: ZeropsServiceId.make(serviceId),
-      };
       intendContainer(candidate.key, { kind: "restart" });
-      void restartMateContainer(
-        candidate.service.status,
-        mateRestartPorts({ client, runtime, service }),
-      ).catch(() => {
-        // Said by its row and its link once the listing reads it again.
+      // What it came to is said by its row and its link once the listing reads it again.
+      void operations.submit({
+        kind: "mate-restart",
+        orgId,
+        projectId: candidate.project.id,
+        serviceId,
+        way: "stop-then-start",
       });
       return true;
     },
-    [activeOrganization, client, listing, projectRef, runtime],
+    [listing, operations, orgId],
   );
 }

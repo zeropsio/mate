@@ -23,28 +23,33 @@ const mock = vi.hoisted(() => ({
 
 vi.mock("./ZeropsSessionProvider", () => {
   const client = {
+    listIntegrationTokens: async (clientId: string) => {
+      mock.reads.push(clientId);
+      return mock.tokens.map(({ tokenId, ...token }) => ({ id: tokenId, ...token }));
+    },
     deleteIntegrationToken: async ({ tokenId }: { readonly tokenId: string }) => {
       mock.deleted.push(tokenId);
     },
   };
   return { useZeropsSession: () => ({ client }) };
 });
-vi.mock("./zeropsDataContext", () => {
-  const data = {
-    organizationRef: (organizationId: string) => ({ organizationId }),
-    runtime: { scope: {}, cells: {} },
+vi.mock("./ZeropsAccountData", async () => {
+  const { RegistryContext } = await import("@effect/atom-react");
+  const { makeAccountStore } = await import("@t3tools/client-runtime/data");
+  const { useContext } = await import("react");
+  const stores = new WeakMap<object, ReturnType<typeof makeAccountStore>>();
+  return {
+    useAccountData: () => {
+      const registry = useContext(RegistryContext);
+      let store = stores.get(registry);
+      if (store === undefined) {
+        store = makeAccountStore(registry);
+        stores.set(registry, store);
+      }
+      return { store, orgId: null };
+    },
   };
-  return { useZeropsData: () => data };
 });
-vi.mock("./readZeropsCell", () => ({
-  readZeropsCell: async (
-    _cells: unknown,
-    request: { readonly organization: { organizationId: string } },
-  ) => {
-    mock.reads.push(request.organization.organizationId);
-    return mock.tokens;
-  },
-}));
 
 let cleanup: ReturnType<typeof useZeropsThrowawaySweep>;
 

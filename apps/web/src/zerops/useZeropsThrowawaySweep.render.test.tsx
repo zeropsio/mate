@@ -14,25 +14,35 @@ const mocks = vi.hoisted(() => ({
   debt: undefined as ThrowawayDebt | undefined,
   read: vi.fn(),
   remove: vi.fn(),
-  runtime: { scope: { account: "ada" }, cells: {} },
-  organizationRef: (id: string) => ({ organizationId: id }),
 }));
 vi.mock("./throwawayDebt", () => ({ accountThrowawayDebt: () => mocks.debt }));
-vi.mock("./readZeropsCell", () => ({
-  readZeropsCell: (...args: unknown[]) => mocks.read(...args),
-}));
-vi.mock("./zeropsDataContext", () => ({
-  useZeropsData: () => ({
-    runtime: mocks.runtime,
-    organizationRef: mocks.organizationRef,
-  }),
-}));
 vi.mock("./ZeropsSessionProvider", () => {
   const client = {
     session: { userId: "ada" },
+    listIntegrationTokens: async (clientId: string) =>
+      ((await mocks.read(clientId)) as ReadonlyArray<{ readonly tokenId: string }>).map(
+        ({ tokenId, ...token }) => ({ id: tokenId, ...token }),
+      ),
     deleteIntegrationToken: (...args: unknown[]) => mocks.remove(...args),
   };
   return { useZeropsSession: () => ({ client, user: { id: "ada" } }) };
+});
+vi.mock("./ZeropsAccountData", async () => {
+  const { RegistryContext } = await import("@effect/atom-react");
+  const { makeAccountStore } = await import("@t3tools/client-runtime/data");
+  const { useContext } = await import("react");
+  const stores = new WeakMap<object, ReturnType<typeof makeAccountStore>>();
+  return {
+    useAccountData: () => {
+      const registry = useContext(RegistryContext);
+      let store = stores.get(registry);
+      if (store === undefined) {
+        store = makeAccountStore(registry);
+        stores.set(registry, store);
+      }
+      return { store, orgId: null };
+    },
+  };
 });
 
 let tree: ReactTestRenderer | undefined;
@@ -109,10 +119,7 @@ describe("inventory throwaway cleanup", () => {
       mocks.remove.mockRejectedValueOnce(new Error("Delete failed again."));
       await again();
       expect(mocks.remove).toHaveBeenCalledTimes(1);
-      expect(mocks.remove).toHaveBeenCalledWith(
-        { clientId: "org-1", tokenId: "fresh" },
-        expect.any(AbortSignal),
-      );
+      expect(mocks.remove).toHaveBeenCalledWith({ clientId: "org-1", tokenId: "fresh" });
       expect(shown.failure).toBe("Delete failed again.");
       await act(async () => {
         await vi.advanceTimersByTimeAsync(60 * 60_000);
@@ -208,10 +215,7 @@ describe("inventory throwaway cleanup", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(mocks.read).toHaveBeenCalledTimes(1);
-    expect(mocks.remove).toHaveBeenCalledWith(
-      { clientId: "org-1", tokenId: "stale" },
-      expect.any(AbortSignal),
-    );
+    expect(mocks.remove).toHaveBeenCalledWith({ clientId: "org-1", tokenId: "stale" });
     expect(mocks.remove).toHaveBeenCalledTimes(1);
     expect(makeThrowawayDebt(storage).failedAt("org-1")).toBeNull();
     expect(shown.state).toBe("done");
@@ -355,7 +359,7 @@ describe("inventory throwaway cleanup", () => {
     expect(mocks.read).toHaveBeenCalledTimes(1);
   });
 
-  it("drops a late token list after the organization changes", async () => {
+  it("finishes a sweep its organization started after the organization changes, shown only there", async () => {
     mocks.debt!.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001, "mate-door:p:n1");
     let answer: ((value: typeof tokens) => void) | undefined;
     mocks.read.mockImplementation(
@@ -371,7 +375,27 @@ describe("inventory throwaway cleanup", () => {
     await act(async () => {
       answer!(tokens);
     });
-    expect(mocks.remove).not.toHaveBeenCalled();
-    expect(mocks.debt!.failedAt("org-1")).not.toBeNull();
+    // The obligation is the account's: its sweep runs to its end, and org-2 shows none of it.
+    expect(mocks.remove.mock.calls.map(([input]) => input.tokenId)).toEqual(["stale"]);
+    expect(mocks.debt!.failedAt("org-1")).toBeNull();
+    expect(shown.state).toBe("idle");
+  });
+
+  it("a sweep that broke says so and can be asked again", async () => {
+    const debt = mocks.debt!;
+    let broken = true;
+    mocks.debt = {
+      ...debt,
+      owed: (clientId, upToMs) => {
+        if (broken) throw new Error("Storage is unreadable.");
+        return debt.owed(clientId, upToMs);
+      },
+    };
+    debt.owe("org-1", NOW - THROWAWAY_SWEEP_AGE_MS - 1001, "mate-door:p:n1");
+    await mount();
+    expect(shown).toMatchObject({ state: "failed", failure: "Storage is unreadable." });
+    broken = false;
+    await again();
+    expect(shown.state).toBe("done");
   });
 });

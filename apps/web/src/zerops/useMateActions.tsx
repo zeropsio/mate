@@ -139,8 +139,7 @@ import {
   useInterruptedPresses,
   useMatePresses,
 } from "./matePress";
-import { mateRestartPorts, restartMateContainer } from "./mateRestart";
-import { intendContainer, readContainerInitAt } from "./zeropsContainers";
+import { useRestartMate } from "./mateRestart";
 import {
   planProjectLeave,
   planProjectMove,
@@ -439,36 +438,29 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     [activeOrganization, projectRef, refresh, runtime.commands, write],
   );
 
+  const restartMate = useRestartMate();
   const restart = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
       const serviceId = candidate.service?.id;
       if (activeOrganization === null || serviceId === undefined) return;
-      const project = projectRef(activeOrganization.id, candidate.project.id);
-      const service = {
-        kind: "service" as const,
-        project,
-        serviceId: ZeropsServiceId.make(serviceId),
-      };
       setPress({ pending: true, error: null });
       const isCurrent = captureAccountLifetime();
       // A container that failed is stopped and started: the platform refuses to restart it.
       void write(
         candidate.key,
-        // The container's initAt is read before the verb: the restart is over once it moves.
         () =>
-          readContainerInitAt(candidate.key)
-            .then((initAt) =>
-              restartMateContainer(
-                candidate.service?.status,
-                mateRestartPorts({ client, runtime, service }),
-              ).then(() => {
-                if (isCurrent()) {
-                  intendContainer(candidate.key, { kind: "restart", initAt });
-                  setDialog(null);
-                  setPress(UNPRESSED);
-                }
-              }),
-            )
+          restartMate({
+            key: candidate.key,
+            projectId: candidate.project.id,
+            serviceId,
+            status: candidate.service?.status,
+          })
+            .then(() => {
+              if (isCurrent()) {
+                setDialog(null);
+                setPress(UNPRESSED);
+              }
+            })
             .catch((cause: unknown) => {
               if (isCurrent()) setPress({ pending: false, error: zeropsErrorMessage(cause) });
               throw cause;
@@ -476,7 +468,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         refresh,
       );
     },
-    [activeOrganization, client, projectRef, refresh, runtime, setDialog, write],
+    [activeOrganization, refresh, restartMate, setDialog, write],
   );
 
   /** HQ's API, where a Mate's face and its application live (ADR 0002). */
