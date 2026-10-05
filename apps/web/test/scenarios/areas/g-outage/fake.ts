@@ -7,11 +7,12 @@ import type { ScenarioExtension, ScenarioDrivers } from "../../harness/scenario.
 import type { Page } from "puppeteer-core";
 import { outageConnection } from "../../fakes/g-outage/connection.ts";
 
+const hqOrigin = "https://hqzone.prg1-zerops.zone";
 const controls = new WeakMap<ScenarioDrivers, Awaited<ReturnType<typeof outageConnection>>>();
 
 export const installArea: ScenarioExtension = async (drivers) => {
-  const connection = await outageConnection(drivers.routes["https://hqzone.prg1-zerops.zone"]!);
-  drivers.routes["https://hqzone.prg1-zerops.zone"] = connection.origin;
+  const connection = await outageConnection(drivers.routes[hqOrigin]!);
+  drivers.routes[hqOrigin] = connection.origin;
   drivers.cleanup.push(connection.close);
   controls.set(drivers, connection);
 };
@@ -22,12 +23,40 @@ export function outageControls(drivers: ScenarioDrivers) {
   return connection;
 }
 
+/** Chrome freeze sends 1001; a deliberately stalled sleep must reach the client as silent loss. */
+export const installSilentSleep = (page: Page) =>
+  page.evaluateOnNewDocument(() => {
+    const sockets = new Set<WebSocket>();
+    const stalled = new WeakSet<WebSocket>();
+    window.WebSocket = new Proxy(window.WebSocket, {
+      construct(target, args, newTarget) {
+        const socket: WebSocket = Reflect.construct(target, args, newTarget);
+        if (new URL(String(args[0])).pathname !== "/api/structure/ws") return socket;
+        sockets.add(socket);
+        socket.addEventListener("close", (event) => {
+          sockets.delete(socket);
+          if (stalled.has(socket)) event.stopImmediatePropagation();
+        });
+        return socket;
+      },
+    });
+    Object.assign(window, {
+      scenarioStallSleepSocket() {
+        const open = [...sockets].filter((socket) => socket.readyState === WebSocket.OPEN);
+        if (open.length !== 1) throw new Error("Sleep requires exactly one open structure socket");
+        stalled.add(open[0]!);
+      },
+    });
+  });
+
+export const stallSleepSocket = (page: Page) =>
+  page.evaluate(() => {
+    (window as unknown as { scenarioStallSleepSocket(): void }).scenarioStallSleepSocket();
+  });
+
 export const refusedHqRetry = (page: Page) =>
   page.waitForResponse(
-    (response) =>
-      response.url().includes("/api/stream-ticket") &&
-      response.request().method() === "POST" &&
-      response.status() === 503,
+    (response) => new URL(response.url()).origin === hqOrigin && response.status() === 503,
     { timeout: 10_000 },
   );
 

@@ -83,6 +83,16 @@ describe("G: outages, sleep and several tabs", () => {
         yield* frozenMenuStillSays(s, "Shop", "Shop after wake");
         yield* Effect.promise(() => s.clock.wake(3_600_000));
         yield* showsWokenTab(s);
+        for (let step = 0; step < 5; step++) {
+          yield* Effect.promise(() =>
+            s.clock.advanceStepped(1_000, {
+              settle: () =>
+                s.page.evaluate(
+                  () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+                ),
+            }),
+          );
+        }
         yield* caughtUp(s, "Shop after wake");
         yield* checkpoint(s);
       }),

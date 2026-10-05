@@ -8,6 +8,8 @@ import {
   dropZerops,
   refusedHqRetry,
   refusedZeropsRetry,
+  installSilentSleep,
+  stallSleepSocket,
 } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
@@ -17,6 +19,7 @@ export const givenOutage = Effect.fn("outage.given")(function* () {
   const s = yield* createScenario([installArea]);
   yield* s.given.project("Ada", { mate: true, app: "Shop" });
   yield* Effect.promise(() => s.clock.install());
+  yield* Effect.promise(() => installSilentSleep(s.page));
   return s;
 });
 
@@ -142,7 +145,12 @@ export const heartbeatsWithoutSnapshot = (s: Scenario) =>
     }
   });
 
-export const stallsHq = (s: Scenario) => Effect.promise(() => outageControls(s.drivers).stall());
+export const stallsHq = (s: Scenario) =>
+  Effect.gen(function* () {
+    const stalled = yield* Effect.promise(() => outageControls(s.drivers).stall());
+    yield* Effect.promise(() => stallSleepSocket(s.page));
+    return stalled;
+  });
 
 export const frozenMenuStillSays = (s: Scenario, name: string, absent: string) =>
   Effect.promise(async () => {
