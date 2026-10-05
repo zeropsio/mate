@@ -328,6 +328,23 @@ describe("the live slot's schedule", () => {
     expect(slotRunningPast(rows.map((key) => ({ entry: entries.get(key)! })))).toBe(more);
   });
 
+  // Review of pass 42: a call that went live while notes waited their turn,
+  // and ended before its own came, was drawn in the history at once — above
+  // the notes still waiting to plop.
+  it("queues a live item that ended before its turn, after what waited before it", () => {
+    const played = play(
+      [
+        { at: 0, live: ["a"], record: [] },
+        { at: 100, live: [], record: ["a", "n1", "n2", "n3"] },
+        { at: 150, live: ["b"], record: ["a", "n1", "n2", "n3", "b"] },
+        { at: 400, live: [], record: ["a", "n1", "n2", "n3", "b"] },
+      ],
+      8000,
+    );
+    expect(played.shown.b).toBeGreaterThan(played.shown.n3!);
+    expect(played.plopped.b).toBeGreaterThan(played.plopped.n3!);
+  });
+
   it("leaves out of the history what arrived since the slot last heard, before it places it", () => {
     const slot = slotStart({ at: 0, live: [], record: ["c1"] });
     expect([...slotHoldsIn(slot, ["c1", "c2"])]).toEqual(["c2"]);

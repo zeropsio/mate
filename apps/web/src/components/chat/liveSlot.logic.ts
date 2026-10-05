@@ -314,7 +314,17 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
     entries[asked] = { ...entries[asked]!, answer };
     unseen = unseen.filter((key) => key !== answer);
   }
-  const pending = unseen.length === 0 ? slot.pending : [...slot.pending, ...unseen];
+  // A live item that ended before its turn in the slot came waits it out
+  // too, after what waited before it (review of pass 42: drawn in the
+  // history at once, above the notes still waiting to plop).
+  // One the record held already, else it arrives as unseen.
+  const endedWaiting = slot.live.filter(
+    (key) => slot.seen.has(key) && !live.has(key) && !inSlot.has(key) && !waitingAlready.has(key),
+  );
+  const pending =
+    unseen.length === 0 && endedWaiting.length === 0
+      ? slot.pending
+      : [...slot.pending, ...endedWaiting, ...unseen];
   const sameLive =
     offer.live.length === slot.live.length &&
     offer.live.every((key, index) => slot.live[index] === key);
