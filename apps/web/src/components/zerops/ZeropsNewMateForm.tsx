@@ -50,7 +50,7 @@ import { MateNameInput } from "./MateNameInput";
 import { WhatHappensNext } from "./WhatHappensNext";
 import { newMateNext } from "./whatHappensNext.logic";
 
-/** What the form hands over: the Mate's name — its project's too (D3) — the recipe and the face. */
+/** What the form hands over: the Mate's own name, which its project's is built from, the recipe and the face. */
 export interface NewMateChoice {
   readonly name: string;
   readonly recipe: EnvironmentRecipeChoice;

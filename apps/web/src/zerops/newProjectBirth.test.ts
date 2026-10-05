@@ -378,7 +378,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       "intent:app-acme:rose:seal",
       "create",
     ]);
-    expect(made.createProject).toHaveBeenCalledWith({ name: "Vera", birth: "b-vera" });
+    expect(made.createProject).toHaveBeenCalledWith({ name: "Acme CRM - Vera", birth: "b-vera" });
     expect(made.accepted).toHaveBeenCalledWith(
       "p-vera",
       expect.objectContaining({ appId: "app-acme", intent: "b-vera" }),
@@ -397,17 +397,17 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
 
   it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk>; readonly args: object }>([
     {
-      // D3: the project's name is its Mate's, whole; its application and face are HQ's, which
-      // the press's registration writes.
-      case: "named as its Mate is, and nothing of its place on the project",
+      // The project is named in full, its application's name and its Mate's; its application and
+      // face are HQ's, which the press's registration writes.
+      case: "named in full under its application, and nothing of its place on the project",
       ask: {},
-      args: { name: "Vera", birth: "b-1" },
+      args: { name: "Acme CRM - Vera", birth: "b-1" },
     },
     {
       // Its agents are its container's, which its press imports.
       case: "in the location chosen",
       ask: { locationId: "prg1", agents: ["claude-code"] },
-      args: { name: "Vera", location: "prg1", birth: "b-1" },
+      args: { name: "Acme CRM - Vera", location: "prg1", birth: "b-1" },
     },
   ])("creates its first Mate $case", async ({ ask, args }) => {
     const { ports: made } = ports();
@@ -888,7 +888,7 @@ describe("an added Mate held from the press", () => {
     await runNewProjectBirth(added(), fake, () => undefined);
     expect(fake.registerGroup).not.toHaveBeenCalled();
     expect(fake.recordBirth).not.toHaveBeenCalled();
-    expect(fake.createProject).toHaveBeenCalledWith({ name: "Ida" });
+    expect(fake.createProject).toHaveBeenCalledWith({ name: "Acme CRM - Ida" });
     expect(fake.accepted).toHaveBeenCalledWith("p-vera", null, PRESSED_AT);
   });
 });

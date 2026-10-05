@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { addedMateBirth } from "./useEnvironmentCreation";
+import { addedMateBirth, environmentProjectName } from "./useEnvironmentCreation";
 
 describe("addedMateBirth — the birth intent an added Mate is pressed under", () => {
   const hq = () => ({ recordBirth: vi.fn(async () => ({ id: "b-gus", face: "" })) });
@@ -54,5 +54,33 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
       }),
     ).toBeUndefined();
     expect(api.recordBirth).not.toHaveBeenCalled();
+  });
+});
+
+describe("environmentProjectName — what an environment's project is created as", () => {
+  it.each([
+    {
+      case: "a Mate, in full under its application",
+      role: "dev",
+      typed: "Rune",
+      name: "SPN - Rune",
+      shown: "Rune",
+    },
+    {
+      case: "a stage, as the person named it",
+      role: "stage",
+      typed: "SPN - stage",
+      name: "SPN - stage",
+      shown: "stage",
+    },
+    {
+      case: "a production named another way",
+      role: "prod",
+      typed: "Live",
+      name: "Live",
+      shown: "Live",
+    },
+  ] as const)("$case", ({ role, typed, name, shown }) => {
+    expect(environmentProjectName(role, "SPN", typed)).toEqual({ name, shown });
   });
 });

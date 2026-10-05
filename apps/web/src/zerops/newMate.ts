@@ -32,7 +32,7 @@ export interface NewMateCreation {
 }
 
 /**
- * An Add started over: the name — its project's too (D3) — and the face it was asked with.
+ * An Add started over: the Mate's own name and the face it was asked with.
  */
 export interface NewMateAgain {
   readonly botName: string;

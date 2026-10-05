@@ -78,8 +78,8 @@ export function recipeOptions(input: {
 }
 
 /**
- * A stage's or a production's form: one name, its project's, whether an agent runs in it or not —
- * its agent goes by it (D3).
+ * A stage's or a production's form: one name, its project's in full, whether an agent runs in it or
+ * not — its agent goes by what follows the application's name in it.
  */
 export interface CreationForm {
   readonly name: string;
@@ -196,10 +196,11 @@ export function hasCreationErrors(errors: CreationFormErrors): boolean {
 }
 
 /**
- * What to call a new stage or production: after its project and its role — `Todo - stage` — so it
- * reads in the organization's project list in Zerops, numbered once the plain name is taken. A
- * suggestion the person may change, here or in Zerops: nothing reads it back (D3). A Mate's project
- * is called what the Mate is.
+ * What to call a new stage or production: after its application and its role — `Todo - stage` — so
+ * it reads in the organization's project list in Zerops, numbered once the plain name is taken. A
+ * suggestion the person may change, here or in Zerops. Under its application the client shows what
+ * follows the `Todo - ` (`nameUnderApp`); a Mate's project is named in full the same way, its own
+ * name after the application's.
  */
 export function proposedEnvironmentName(input: {
   readonly groupName: string;
@@ -218,7 +219,7 @@ export function proposedEnvironmentName(input: {
 /**
  * The New Mate dialog asks three things — a name, a colour, a shape — and decides the rest: the
  * Mate gets its own copy of the project with the project's recipe deployed (the tier read from
- * the group repo's `main`), runs its agent, and its project is called what the Mate is (D3).
+ * the group repo's `main`), runs its agent, and its project is named in full, the application's name and the Mate's.
  */
 
 /** The name a new Mate's face follows: what is typed, or while the field is blank the last name typed. */

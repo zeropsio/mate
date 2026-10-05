@@ -10,7 +10,9 @@
  * The container does the rest whether this tab stays or not.
  */
 import {
+  appProjectName,
   formatMateFace,
+  nameUnderApp,
   planEnvironmentCreation,
   recipeTierServices,
   unionAgents,
@@ -124,6 +126,21 @@ export async function addedMateBirth(
   return id;
 }
 
+/**
+ * What an environment's project is created as in Zerops, and what the client shows it by under its
+ * application. A Mate's form asks for its own name and its project is named in full under the
+ * application ("SPN - Rune"); a stage's and a production's form asks for the whole name already
+ * (`proposedEnvironmentName`).
+ */
+export function environmentProjectName(
+  role: ZeropsEnvironmentRole,
+  groupName: string,
+  typed: string,
+): { readonly name: string; readonly shown: string } {
+  const name = role === "dev" ? appProjectName(groupName, typed) : typed.trim();
+  return { name, shown: nameUnderApp(name, groupName) };
+}
+
 export function useEnvironmentCreation(): (
   request: EnvironmentCreationRequest,
 ) => Promise<EnvironmentCreationRun> {
@@ -177,7 +194,7 @@ export function useEnvironmentCreation(): (
       const organization = activeOrganization;
       const isCurrent = captureAccountLifetime();
       const { group, role, choice } = request;
-      const { name } = choice;
+      const { name, shown } = environmentProjectName(role, group.name, choice.name);
       const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
 
       // A Mate's birth intent before its project: an HQ that cannot record it takes no project.
@@ -267,7 +284,7 @@ export function useEnvironmentCreation(): (
               groupId: group.groupId,
               groupName: group.name,
               kind: tier ?? "mate",
-              displayName: name,
+              displayName: shown,
               ...(choice.face === undefined ? {} : { face: choice.face }),
             },
           });

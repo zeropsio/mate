@@ -2,7 +2,7 @@
  * Adding an environment to a group, as a short form.
  *
  * A Mate is somebody: its dialog asks who — a name, a colour, a shape — and
- * decides the rest (`ZeropsNewMateForm`), its project named as it is (D3). A
+ * decides the rest (`ZeropsNewMateForm`), its project named in full after its application. A
  * stage or a production leaves three things to the person: what the
  * environment is called — the one name its project has, an agent in it going
  * by it too — whether it runs an agent, and what application goes in — the
@@ -49,7 +49,7 @@ import { ProcessSteps, type ProcessStep } from "./primitives";
 import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
 
 export interface EnvironmentCreationChoice {
-  /** The project's name: where an agent runs, the Mate's own (D3). */
+  /** A Mate's own name, which its project's is built from; a stage's or a production's whole project name. */
   readonly name: string;
   readonly withAgent: boolean;
   readonly recipe: EnvironmentRecipeChoice;
@@ -61,7 +61,7 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly groupName: string;
   readonly role: ZeropsEnvironmentRole;
   /**
-   * The name the form starts with: its project's, which is a Mate's own (D3), or a stage's or a
+   * The name the form starts with: a Mate's own, or a stage's or a
    * production's suggested after its project and role (`proposedEnvironmentName`).
    */
   readonly defaultName: string;

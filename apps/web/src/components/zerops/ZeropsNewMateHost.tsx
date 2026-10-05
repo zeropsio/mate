@@ -177,7 +177,7 @@ function NewMateDialog({
   return (
     <ZeropsEnvironmentCreationDialog
       closed={door.kind === "closed" ? door : undefined}
-      // A Mate's project is named as the Mate is (D3): started over, the name it was asked with.
+      // The Mate's own name, its project's built from it: started over, the name it was asked with.
       defaultName={defaultBotName}
       defaultTintFor={(name) =>
         name === again?.botName ? again.tint : newMateTint(candidates, name)

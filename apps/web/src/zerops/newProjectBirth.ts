@@ -10,7 +10,7 @@
  * - `registry` — the project's application in HQ, which is what makes the project exist. HQ names
  *   it: its id is the project's group from then on. Then its first Mate's birth intent there —
  *   its face, before its project exists — which the project is created under (F6c).
- * - `create` — its first Mate's Zerops project, named as the Mate is (D3), tagged into the project
+ * - `create` — its first Mate's Zerops project, named in full under its application, tagged into the project
  *   at birth. Once the platform takes it the Mate's birth carries the rest (`zeropsBirths.ts`), and
  *   the view hands the route to the Mate's own (`/mate/$projectId`), in its place.
  *
@@ -21,6 +21,7 @@
  * have taken anyway (`uncertain`), which a second try could make twice.
  */
 import {
+  appProjectName,
   formatMateFace,
   recipeTierServices,
   splitRecipeTier,
@@ -79,7 +80,7 @@ export interface NewProjectAsk {
   readonly agents: ReadonlyArray<ZeropsAgentType>;
   /**
    * Add a Mate, not a New project: the Mate goes into the project `name` that stands — no Git
-   * hosting or registration of the project's own — its Zerops project named as the Mate is (D3),
+   * hosting or registration of the project's own — its Zerops project named in full under it,
    * and its own registration written where `registers`.
    */
   readonly adds?:
@@ -130,8 +131,8 @@ export type NewProjectPatch = Partial<
 >;
 
 /**
- * What the first Mate's project is created with: the project alone, named as its Mate is (D3),
- * under its birth intent. Its application and face are HQ's, written by its press's registration
+ * What the first Mate's project is created with: the project alone, named in full — its
+ * application's name and its Mate's — under its birth intent. Its application and face are HQ's, written by its press's registration
  * before its container (F6b) — and its intent's before that (F6c).
  */
 export interface NewProjectCreation {
@@ -200,8 +201,8 @@ export function newProjectPlacement(
     groupId: ask.appId ?? ask.birthId,
     groupName: ask.name,
     kind: "mate",
-    // The group has no project of its own; its first Mate's project is named as the Mate is, the
-    // way every Mate added afterwards is (D3).
+    // The group has no project of its own; its first Mate's project is named in full, the
+    // application's name and the Mate's, and drawn by the Mate's own name under it.
     displayName: ask.botName,
     face: ask.face,
   };
@@ -369,7 +370,9 @@ export async function runNewProjectBirth(
   // no application and never writes the new-project registration.
   if (birth.adds !== undefined) {
     try {
-      const { project } = await ports.createProject({ name: birth.botName });
+      const { project } = await ports.createProject({
+        name: appProjectName(birth.name, birth.botName),
+      });
       ports.accepted(project.id, null, birth.startedAt);
       moved({ step: "created", projectId: project.id });
     } catch (cause) {
@@ -402,7 +405,7 @@ export async function runNewProjectBirth(
   let created: Awaited<ReturnType<NewProjectPorts["createProject"]>>;
   try {
     created = await ports.createProject({
-      name: newProjectPlacement(birth).displayName,
+      name: appProjectName(birth.name, birth.botName),
       ...(birth.locationId === null ? {} : { location: birth.locationId }),
       birth: intent,
     });
