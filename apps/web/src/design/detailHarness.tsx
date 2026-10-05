@@ -102,7 +102,7 @@ const ATTENTION = [
   },
   {
     kind: "not-live" as const,
-    text: "3 changes not live",
+    text: "3 changes waiting for production",
     verb: "Release",
     target: undefined,
   },
@@ -823,6 +823,8 @@ function Harness() {
             },
           ]}
           onAdd={() => {}}
+          onFinish={() => {}}
+          finishing={false}
           groupId="shop"
           name="Shop"
           crumbs={CRUMBS}
@@ -856,6 +858,8 @@ function Harness() {
             { kind: "slot", tier: "production", name: "Production", line: "Not added", add: true },
           ]}
           onAdd={() => {}}
+          onFinish={() => {}}
+          finishing={false}
           groupId="fresh"
           name="Design tokens"
           crumbs={CRUMBS}

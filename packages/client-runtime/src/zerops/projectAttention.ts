@@ -143,7 +143,7 @@ export function projectAttention(
  * many at least, as the release's summary says it.
  */
 export function changesNotLive(count: number, atLeast: boolean): string {
-  return `${changesCountWords(count, atLeast)} not live`;
+  return `${changesCountWords(count, atLeast)} waiting for production`;
 }
 
 /** How many changes: `1 change`, `12 changes`, `10000+ changes` where HQ stopped counting. */

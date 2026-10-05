@@ -223,7 +223,7 @@ describe("groupFlow", () => {
       release: { ...FSADFDASFSA.release, waiting: 10000, waitingAtLeast: true },
     });
     expect(flow.main.notLiveAtLeast).toBe(true);
-    expect(flow.nextStep.text).toBe("10000+ changes not live");
+    expect(flow.nextStep.text).toBe("10000+ changes waiting for production");
   });
 
   it("offers the release where production runs nothing and one change is merged (fsadfdasfsa)", () => {
@@ -242,7 +242,7 @@ describe("groupFlow", () => {
     });
     expect(flow.nextStep).toEqual({
       kind: "release",
-      text: "1 change not live",
+      text: "1 change waiting for production",
       verb: "Review release",
       target: { kind: "release", tag: "v0.1.0" },
     });

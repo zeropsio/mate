@@ -112,10 +112,10 @@ describe("projectAttention", () => {
   });
 
   it.each([
-    [1, false, "1 change not live"],
-    [4, false, "4 changes not live"],
+    [1, false, "1 change waiting for production"],
+    [4, false, "4 changes waiting for production"],
     // HQ stopped counting: at least that many.
-    [10000, true, "10000+ changes not live"],
+    [10000, true, "10000+ changes waiting for production"],
   ])("counts %i (at least: %s) as %s", (notLive, notLiveAtLeast, text) => {
     const [item] = projectAttention({ ...EMPTY, notLive, notLiveAtLeast, canRelease: true });
     expect(item?.text).toBe(text);

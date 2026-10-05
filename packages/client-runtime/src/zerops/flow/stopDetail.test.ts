@@ -302,7 +302,7 @@ describe("stopVerdict", () => {
       input: { waiting: 3, release: { offered: true, tag: "v0.1.14", reason: undefined } },
       expected: {
         tone: "busy",
-        text: "3 changes not live.",
+        text: "3 changes waiting for production.",
         detail: "Production runs v0.1.13",
         verb: { kind: "release", tag: "v0.1.14" },
       },
@@ -316,7 +316,7 @@ describe("stopVerdict", () => {
       },
       expected: {
         tone: "busy",
-        text: "10000+ changes not live.",
+        text: "10000+ changes waiting for production.",
         detail: "Production runs v0.1.13",
         verb: { kind: "release", tag: "v0.1.14" },
       },
@@ -355,7 +355,7 @@ describe("stopVerdict", () => {
       },
       expected: {
         tone: "busy",
-        text: "3 changes not live.",
+        text: "3 changes waiting for production.",
         detail: "Production runs v0.1.13",
         verb: { kind: "release", tag: "v0.1.14" },
       },
@@ -365,7 +365,7 @@ describe("stopVerdict", () => {
       input: { waiting: 1, release: { offered: false, tag: "v0.1.14", reason: undefined } },
       expected: {
         tone: "busy",
-        text: "1 change not live.",
+        text: "1 change waiting for production.",
         detail: "Production runs v0.1.13",
         verb: null,
       },
@@ -375,7 +375,7 @@ describe("stopVerdict", () => {
       input: { waiting: 2, release: { offered: true, tag: undefined, reason: undefined } },
       expected: {
         tone: "busy",
-        text: "2 changes not live.",
+        text: "2 changes waiting for production.",
         detail: "Production runs v0.1.13",
         verb: null,
       },
