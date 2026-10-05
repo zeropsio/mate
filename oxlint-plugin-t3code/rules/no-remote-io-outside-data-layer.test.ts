@@ -20,7 +20,7 @@ const FETCH_ENTRY: ExceptionEntry = {
   path: "apps/web/src/zerops/useSomething.ts",
   kind: "CallExpression",
   fingerprint: "fetch",
-  owner: "invariant 1",
+  owner: "data-layer rewrite: projects",
   reason: "fixture exception",
   expires: "never",
 };

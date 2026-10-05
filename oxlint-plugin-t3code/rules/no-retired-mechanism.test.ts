@@ -22,7 +22,7 @@ const KEEP_ENTRY: ExceptionEntry = {
   path: "apps/web/src/zerops/useFixtureMenu.ts",
   kind: "retired-token",
   fingerprint: "rememberMenuCandidates",
-  owner: "projects",
+  owner: "data-layer rewrite: projects",
   reason: "fixture exception",
   expires: "never",
 };

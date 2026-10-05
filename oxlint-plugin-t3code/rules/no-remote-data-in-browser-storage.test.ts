@@ -20,7 +20,7 @@ const KEEP_ENTRY: ExceptionEntry = {
   path: "apps/web/src/zerops/fixtureMemory.ts",
   kind: "CallExpression",
   fingerprint: `localStorage.setItem("mate:fixture")`,
-  owner: "invariant 9",
+  owner: "data-layer rewrite: projects",
   reason: "fixture exception",
   expires: "never",
 };
