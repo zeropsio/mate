@@ -23,7 +23,6 @@ import {
   recipeReach,
   releaseContentsCommits,
   waitingForProduction,
-  REVIEW_RELEASE_LABEL,
   type ChangeReadout,
   type ChangeReviewInput,
   type ReviewClose,
@@ -102,7 +101,6 @@ export function ZeropsChangeReview({
   target,
   titleId,
   onClose,
-  onReplace,
   back,
 }: {
   /** In a dialog over the conversation, or as the change's own page. */
@@ -115,8 +113,6 @@ export function ZeropsChangeReview({
    * and "← Release" or "← Roll back" goes back.
    */
   readonly back?: ReviewButton | undefined;
-  /** Opens another review in this one's place — the release, once this merged. */
-  readonly onReplace: (target: ReviewTarget) => void;
 }) {
   const reviewOffers = useChangeOffers()(target.groupId);
   const router = useRouter();
@@ -198,7 +194,6 @@ export function ZeropsChangeReview({
       back={back}
       onOpenPage={onOpenPage}
       onClose={onClose}
-      onReplace={onReplace}
       pull={pull}
       target={target}
       titleId={titleId}
@@ -217,7 +212,6 @@ function ChangeReviewData({
   target,
   titleId,
   onClose,
-  onReplace,
 }: {
   readonly reviewOffers: ZeropsChangeOffers | undefined;
   /** The project's flow; `undefined` while it waits its turn to be read. */
@@ -231,7 +225,6 @@ function ChangeReviewData({
   readonly target: ChangeTarget;
   readonly titleId: string | undefined;
   readonly onClose: () => void;
-  readonly onReplace: (target: ReviewTarget) => void;
 }) {
   const router = useRouter();
   const now = useNowMs();
@@ -381,9 +374,6 @@ function ChangeReviewData({
               });
             }
       }
-      onReviewRelease={() => {
-        onReplace({ kind: "release", groupId: target.groupId });
-      }}
       pictures={pictures}
       pull={pull}
       readout={detail.readout}
@@ -467,7 +457,6 @@ export interface ChangeReviewViewProps {
   /** Reads again what could not be read. */
   readonly onRetry?: (() => void) | undefined;
   readonly onOpenRun: (() => void) | undefined;
-  readonly onReviewRelease: () => void;
   readonly onMerge: () => void;
   /** Close without merging: asked, kept open, or pressed once asked. */
   readonly onClosing: (step: "ask" | "keep" | "press") => void;
@@ -548,8 +537,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const [questionClosed, setQuestionClosed] = useState(false);
   const answer = answeredDeploys(press);
   const fix = model.verdict.fix;
-  // Once merged, its one button is the release's review.
-  const next = model.primary?.label === REVIEW_RELEASE_LABEL;
   // Asked to close it: the button closes it, and the quiet word keeps it open.
   const asked =
     closing.kind === "asked" || closing.kind === "running" || closing.kind === "refused";
@@ -606,10 +593,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                   : closing.kind === "running"
                     ? "Closing"
                     : primary.label,
-              icon: next ? "tag" : undefined,
               onPress: () => {
                 if (asked) props.onClosing("press");
-                else if (next) props.onReviewRelease();
                 else props.onMerge();
               },
             }

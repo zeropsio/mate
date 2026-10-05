@@ -164,9 +164,6 @@ export function ZeropsReleaseReview({
   );
 }
 
-/** A change read from its release or roll back hands over to nothing: it is already merged. */
-const STAYS = () => {};
-
 /**
  * A release or a roll back, and a change it lists read in place, "← {back}" its way back: the
  * title is the shown step's.
@@ -197,7 +194,6 @@ function ChangeSteps({
           <ZeropsChangeReview
             back={{ label: back, onPress: steps.back }}
             onClose={onClose}
-            onReplace={STAYS}
             target={{ kind: "change", groupId, ...steps.shown }}
             titleId={onChange ? titleId : undefined}
           />

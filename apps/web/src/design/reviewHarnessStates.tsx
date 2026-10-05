@@ -476,7 +476,6 @@ function Change({
       onClosing={noop}
       onMerge={noop}
       onOpenRun={run.words === undefined && value.description === undefined ? undefined : noop}
-      onReviewRelease={noop}
       offers={offers}
       pictures={HARNESS_PICTURES}
       press={press}
@@ -1290,7 +1289,6 @@ export function ReviewDialogTry() {
           onOpenRun={noop}
           onClosing={noop}
           onMerge={noop}
-          onReviewRelease={noop}
           offers={DEVELOPS}
           pictures={HARNESS_PICTURES}
           press={IDLE}
@@ -1351,7 +1349,6 @@ function ReleaseTrySteps({ onClose }: { readonly onClose: () => void }) {
             onOpenRun={noop}
             onClosing={noop}
             onMerge={noop}
-            onReviewRelease={noop}
             offers={DEVELOPS}
             pictures={HARNESS_PICTURES}
             press={IDLE}

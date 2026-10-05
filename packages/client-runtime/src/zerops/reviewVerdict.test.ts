@@ -98,7 +98,8 @@ describe("change and release reviews share the release verdict", () => {
     );
     expect(offer.gate.allowed).toBe(allowed);
     expect(dialog.verdict.title).toBe(allowed ? "Ready to release" : "Nothing to release");
-    expect(footer.primary?.label).toBe(!merged ? "Merge" : allowed ? "Review release" : undefined);
+    // A merge ends its review: the release has its own doors (the owner, 2026-10-05).
+    expect(footer.primary?.label).toBe(merged ? undefined : "Merge");
     if (merged && !allowed) {
       expect(footer.consequence).toBe(RELEASE_NOTHING_NEW_ON_MAIN);
       expect(footer.verdict.why).not.toContain("waits for production");
@@ -290,14 +291,14 @@ describe("changeReview: the button says what will happen (R5)", () => {
 
   it.each<[string, Partial<ChangeReviewInput>, string, string | undefined]>([
     [
-      "production waiting: the next review is the release",
+      "production waiting: says so, and nothing more to press",
       {
         pull: pull({ merged: true, mergedAt: minutesAgo(1) }),
         waiting: { count: 1, live: "v0.1.0" },
         release: { allowed: true },
       },
       "Production still serves v0.1.0 until you release.",
-      "Review release",
+      undefined,
     ],
     [
       "no production: nothing more to press",

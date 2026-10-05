@@ -203,7 +203,6 @@ function render(
     onFix: noop,
     onAsk: async () => undefined,
     onOpenRun: undefined,
-    onReviewRelease: noop,
     onMerge: noop,
     onClosing: noop,
     onClose: noop,
@@ -290,10 +289,11 @@ describe("ChangeReviewView: a change after its merge", () => {
     expect(html).not.toContain("data-review-primary");
   });
 
-  it("a code change hands over to the release production waits for", () => {
+  it("a merged code change says production waits, and ends there", () => {
     const html = render(merged(), [changed("src/mail.ts")]);
     expect(textOf(html)).toContain("Production still serves v0.1.0 until you release.");
-    expect(html).toContain('data-zerops-primary-action="Review release"');
+    expect(html).not.toContain("data-review-primary");
+    expect(textOf(html)).not.toContain("Review release");
   });
 
   it("offers no Review release when production already runs the merged squash commit", () => {
@@ -482,7 +482,6 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
           target: { kind: "change", groupId: "group-orchard", repository: "apidev", number: 1 },
           titleId: "t",
           onClose: noop,
-          onReplace: noop,
         }),
       );
     });
