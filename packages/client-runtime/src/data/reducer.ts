@@ -8,6 +8,7 @@
  *
  * @module data/reducer
  */
+import { RUNNING_PROCESS_STATUSES } from "./demand.ts";
 import type {
   Access,
   AccountState,
@@ -306,13 +307,7 @@ function reduceEvidence(
   };
 }
 
-/** The statuses the running registration admits (`registration-formats.jsonl`). */
-const RUNNING_STATUSES: ReadonlySet<string> = new Set([
-  "PENDING",
-  "RUNNING",
-  "ROLLBACKING",
-  "CANCELING",
-]);
+const RUNNING_STATUSES: ReadonlySet<string> = new Set(RUNNING_PROCESS_STATUSES);
 
 /**
  * The running index for these processes: a process runs while its newest row is not terminal and

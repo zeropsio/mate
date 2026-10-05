@@ -105,10 +105,17 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
         return yield* dispatch({ kind: yield* Queue.take(signals) });
       });
 
+    /** Demand moves the link and its scopes together: navigation scopes live as long as it. */
+    const demand = (demanded: boolean) =>
+      Effect.gen(function* () {
+        for (const scope of scopes) yield* dispatch({ kind: "demand", demanded }, scope);
+        return yield* dispatch({ kind: "demand", demanded });
+      });
+
     const run = Effect.gen(function* () {
-      let directives = yield* dispatch({ kind: "demand", demanded: true });
+      let directives = yield* demand(true);
       while (true) directives = yield* step(directives);
-    }).pipe(Effect.onInterrupt(() => dispatch({ kind: "demand", demanded: false })));
+    }).pipe(Effect.onInterrupt(() => demand(false)));
 
     return {
       run,
