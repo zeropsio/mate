@@ -138,6 +138,11 @@ export interface ZeropsAgentActivity {
    */
   readonly liveStep?: LiveStepWords;
   /**
+   * Its turn is over and the helpers it launched work on (`agentActivityWaitsOnHelpers`): its run
+   * card waits on them, and its row says so in the card's words, its clock stopped with its turn.
+   */
+  readonly waitsOnHelpers?: true;
+  /**
    * The question the Mate waits on the person to answer, in its words: what a
    * needs-you row's third line says. The server relays it; absent while
    * nothing waits, or where it relays none (the row keeps its last words).
@@ -398,9 +403,29 @@ export function threadAgentActivity(
     task: agentActivitySubject(thread, "idle"),
     ...(thread.latestUserMessageAt === null ? {} : { askedAt: thread.latestUserMessageAt }),
     ...agentActivityLiveStep(thread, resolved.kind),
+    ...(agentActivityWaitsOnHelpers(thread, resolved.kind)
+      ? { waitsOnHelpers: true as const }
+      : {}),
     ...agentActivityQuestion(thread, resolved.kind),
     ...agentActivityErrorLine(thread, resolved.kind),
   };
+}
+
+/**
+ * Whether it works only on its helpers: no turn runs, and the server holds
+ * helpers live (run 11, D8: the menu read "Working on a reply" while the
+ * card said "Waiting for its helpers").
+ */
+export function agentActivityWaitsOnHelpers(
+  thread: Pick<AgentActivityThread, "backgroundLiveness" | "session" | "latestTurn">,
+  kind: ThreadStatusKind,
+): boolean {
+  return (
+    kind === "working" &&
+    thread.backgroundLiveness === "working" &&
+    thread.session?.status !== "running" &&
+    thread.latestTurn?.state !== "running"
+  );
 }
 
 /**
@@ -475,7 +500,13 @@ export function deriveZeropsAgentActivity(
  * question, no error, no pause — so no clock ticks and no *Stop* is offered from it.
  */
 export function restingActivity(activity: ZeropsAgentActivity): ZeropsAgentActivity {
-  const { liveStep: _step, question: _question, errorLine: _error, ...words } = activity;
+  const {
+    liveStep: _step,
+    waitsOnHelpers: _helpers,
+    question: _question,
+    errorLine: _error,
+    ...words
+  } = activity;
   return {
     ...words,
     kind: "idle",

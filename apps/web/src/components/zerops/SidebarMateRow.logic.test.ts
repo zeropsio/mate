@@ -414,6 +414,17 @@ describe("mateRowView — a row's state lives in its right slot and its third li
       strong: false,
       reply: { kind: "live", words: "Compile the gallery", code: "npm run compile" },
     },
+    // Run 11 (D8): the card's own words, its clock stopped with its turn.
+    {
+      case: "its turn over, its helpers at work",
+      input: activity({ kind: "working", face: "working", waitsOnHelpers: true }),
+      state: "working",
+      rowFace: "working",
+      slot: { kind: "age" },
+      dot: undefined,
+      strong: false,
+      reply: { kind: "live", words: "Waiting for its helpers", code: undefined },
+    },
     {
       case: "working, no step relayed",
       input: activity({ kind: "working", face: "working" }),

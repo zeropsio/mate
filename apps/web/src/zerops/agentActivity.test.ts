@@ -391,6 +391,18 @@ describe("threadAgentActivity", () => {
       subject: "Why does /api/items 500?",
     });
   });
+
+  // Run 11 (D8): its turn over, its helpers at work, the menu read "Working on
+  // a reply" while its card said "Waiting for its helpers".
+  it("knows a Mate whose turn is over waits on its helpers, and one at work does not", () => {
+    const after = shell({ backgroundLiveness: "working" });
+    expect(threadAgentActivity(after, undefined)).toMatchObject({
+      kind: "working",
+      waitsOnHelpers: true,
+    });
+    const both = { ...RUNNING, backgroundLiveness: "working" as const };
+    expect(threadAgentActivity(both, undefined).waitsOnHelpers).toBeUndefined();
+  });
 });
 
 describe("agentActivitySubject", () => {
