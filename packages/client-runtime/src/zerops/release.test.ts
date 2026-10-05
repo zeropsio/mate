@@ -13,6 +13,7 @@ import {
   releaseCandidate,
   releaseInFlight,
   releaseInFlightReason,
+  releaseUncheckedReason,
   releaseOffer,
   releaseRow,
   releaseStalled,
@@ -942,8 +943,32 @@ describe("firstReleaseHandoff", () => {
     },
     {
       case: "HQ's rule refuses the person the release",
-      input: { hasProduction: true, gate: NOT_RELEASER },
+      input: { hasProduction: true, gate: { ...NOT_RELEASER, refusedBy: "hq" as const } },
       want: "drop",
+    },
+    {
+      case: "main already has all of it",
+      input: {
+        hasProduction: true,
+        gate: { allowed: false, reason: RELEASE_NOTHING_NEW_ON_MAIN } as const,
+      },
+      want: "drop",
+    },
+    {
+      case: "HQ is not answering",
+      input: {
+        hasProduction: true,
+        gate: { allowed: false, reason: "HQ unavailable since 10:00." } as const,
+      },
+      want: "wait",
+    },
+    {
+      case: "what goes live could not be compared yet",
+      input: {
+        hasProduction: true,
+        gate: { allowed: false, reason: releaseUncheckedReason("HQ has no such commit.") } as const,
+      },
+      want: "wait",
     },
   ])("is $want when $case", ({ input, want }) => {
     expect(firstReleaseHandoff(input)).toBe(want);

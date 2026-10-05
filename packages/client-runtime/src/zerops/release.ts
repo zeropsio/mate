@@ -143,7 +143,12 @@ export function releaseEntries(
 
 export type ReleaseGate =
   | { readonly allowed: true }
-  | { readonly allowed: false; readonly reason: string };
+  | {
+      readonly allowed: false;
+      readonly reason: string;
+      /** Set where HQ's own rule said no — not where it could not be asked. */
+      readonly refusedBy?: "hq";
+    };
 
 /** Nothing is on `main` to release — a group whose Mates have landed nothing. */
 export const RELEASE_NOTHING_MERGED = "Nothing is merged to release.";
@@ -550,5 +555,12 @@ export function firstReleaseHandoff(input: {
 }): "wait" | "open" | "drop" {
   if (!input.hasProduction) return "wait";
   if (input.gate.allowed) return "open";
-  return input.gate.reason === RELEASE_CHECKING ? "wait" : "drop";
+  // Only what will not change by waiting ends it: nothing merged, nothing new, HQ's own refusal.
+  // HQ not answering, a comparison not yet read, a release under way all pass.
+  const { reason } = input.gate;
+  return reason === RELEASE_NOTHING_MERGED ||
+    reason === RELEASE_NOTHING_NEW_ON_MAIN ||
+    input.gate.refusedBy === "hq"
+    ? "drop"
+    : "wait";
 }

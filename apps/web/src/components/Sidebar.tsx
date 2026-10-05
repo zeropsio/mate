@@ -1870,9 +1870,9 @@ export default function Sidebar() {
           releases: flow.releases,
           environmentInputs: flow.environmentInputs,
         }),
-        // The stops the recipe offers and nobody has added: the project menu's
-        // *Add stage* and *Add production*.
-        missing: flow.missing,
+        // What the project menu's *Add stage* and *Add production* are offered from.
+        recipeRead: flow.recipeRead,
+        recipeTiers: flow.recipeTiers,
         // The version a release would tag.
         releaseTag: flow.release.suggestion,
         // The release on its way, which production's chip and menu say.

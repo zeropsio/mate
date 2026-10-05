@@ -178,6 +178,53 @@ export interface ProductionNote {
   readonly review: boolean;
 }
 
+/** An environment of an application in any state: held by HQ, made but not attached, or being made. */
+export interface HeldEnvironment {
+  /** Opaque: today its Zerops project's id. */
+  readonly id: string;
+  readonly tier: GroupEnvironmentTier;
+}
+
+/**
+ * What an application holds of each tier, in any state — HQ's record, a project the account made
+ * as one that HQ does not know in full, a creation under way, a Mate that is also the stage
+ * (`devstage`) — each counted once by its id (§9.6, §9.11).
+ */
+export function heldTiers(environments: ReadonlyArray<HeldEnvironment>): {
+  readonly stages: number;
+  readonly production: boolean;
+} {
+  const byId = new Map(environments.map((entry) => [entry.id, entry.tier] as const));
+  const tiers = [...byId.values()];
+  return {
+    stages: tiers.filter((tier) => tier === "stage").length,
+    production: tiers.includes("production"),
+  };
+}
+
+/**
+ * The one rule for whether a stage or a production may be added to an application — every door
+ * (the projects page's menu, the sidebar's, the Environments section, the question after a first
+ * merge) asks it. The recipe on `main` holds the tier; this person may add (`mayAddEnvironment`);
+ * and the tier is empty — a production is one, and HQ's `attach` takes a person who is not a
+ * writer only into an empty place (`slot_taken`), while a writer, an organization owner or admin,
+ * may add another stage.
+ */
+export function environmentAddable(input: {
+  readonly tier: GroupEnvironmentTier;
+  readonly recipeRead: boolean;
+  /** The tiers the recipe on `main` holds. */
+  readonly recipeTiers: ReadonlyArray<GroupEnvironmentTier>;
+  readonly mayAdd: boolean;
+  /** An organization owner or admin: HQ's writer of the structure. */
+  readonly writer: boolean;
+  readonly held: ReturnType<typeof heldTiers>;
+}): boolean {
+  if (!input.mayAdd || !input.recipeRead || !input.recipeTiers.includes(input.tier)) return false;
+  if (input.tier === "production") return !input.held.production;
+  return input.held.stages === 0 || input.writer;
+}
+
 /**
  * One row of an application's *Environments* section. An environment is keyed by an opaque `id`
  * (today its Zerops project's), never assumed to be a Zerops project here, so a production that
@@ -194,16 +241,26 @@ export type EnvironmentSlotRow =
   /** A Mate that is also the application's stage: the agent deploys there, HQ does not. */
   | { readonly kind: "devstage"; readonly id: string; readonly line: string }
   /**
-   * An environment whose creation is under way or failed, and HQ does not hold yet: it stands in
-   * the tier's place, so the tier is never offered a second time (§9.6).
+   * An environment whose creation is under way and HQ does not hold yet: it stands in the tier's
+   * place, so the tier is never offered a second time (§9.6).
    */
   | {
       readonly kind: "creating";
       readonly tier: GroupEnvironmentTier;
       readonly id: string;
       readonly line: string;
-      /** Whether *Try again* stands on it: the creation failed and this person may add. */
-      readonly retry: boolean;
+    }
+  /**
+   * A project made as the tier that HQ does not hold in full (not attached, its key not kept):
+   * the tier is not absent, and *Finish setup* is what completes it.
+   */
+  | {
+      readonly kind: "half-made";
+      readonly tier: GroupEnvironmentTier;
+      readonly id: string;
+      readonly line: string;
+      /** Whether *Finish setup* stands on it: this person may add. */
+      readonly finish: boolean;
     }
   /** A tier nobody added: quiet, never a step, a dot or a count. */
   | {
@@ -211,38 +268,38 @@ export type EnvironmentSlotRow =
       readonly tier: GroupEnvironmentTier;
       readonly name: string;
       readonly line: string;
-      /** Whether *Add* stands on it: the recipe holds the tier and this person may add. */
+      /** Whether *Add* stands on it (`environmentAddable`). */
       readonly add: boolean;
     };
 
 /** What production runs, as the section reads it. */
 export type ProductionRuns = "unknown" | "empty" | "deploying" | "running";
 
+/** A half-made environment's line. */
+export const ENVIRONMENT_UNFINISHED = "Setup isn't finished";
+
 /**
- * The *Environments* section of an application, always drawn: its stages (and a Mate that serves as
- * one), a slot for the stage when it has none, and production or its slot. Stage and production
- * are peers (P3): either, both or neither may exist, and neither waits on the other.
+ * The *Environments* section of an application, drawn once HQ's environments are read: its stages
+ * (and a Mate that serves as one), a slot for the stage when it has none, and production or its
+ * slot. Stage and production are peers (P3): either, both or neither may exist, and neither waits
+ * on the other.
  */
 export function environmentSlots(input: {
-  readonly environments: ReadonlyArray<{
-    readonly id: string;
-    readonly tier: GroupEnvironmentTier;
-  }>;
+  readonly environments: ReadonlyArray<HeldEnvironment>;
   /** Mates that are also the stage (`devstage`). */
   readonly devstages: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   /** Creations the platform accepted and HQ does not hold yet (the group tree's `pending`). */
-  readonly pending: ReadonlyArray<{
-    readonly id: string;
-    readonly tier: GroupEnvironmentTier;
-    readonly name: string;
-    readonly failed: boolean;
-  }>;
-  /** The tiers the recipe on `main` offers and the application lacks (`missingEnvironmentRows`). */
-  readonly missing: ReadonlyArray<GroupEnvironmentTier>;
+  readonly pending: ReadonlyArray<HeldEnvironment>;
+  /** Projects made as a tier that HQ does not hold in full (`halfMadeGroupEnvironments`). */
+  readonly halfMade: ReadonlyArray<HeldEnvironment>;
+  /** The tiers the recipe on `main` holds; meaningful once `recipeRead`. */
+  readonly recipeTiers: ReadonlyArray<GroupEnvironmentTier>;
   /** Whether the recipe is read: until it is, no slot is offered or said to wait for it. */
   readonly recipeRead: boolean;
   /** Whether this person may add an environment (`mayAddEnvironment`). */
   readonly mayAdd: boolean;
+  /** An organization owner or admin (`environmentAddable`). */
+  readonly writer: boolean;
   /** What production runs: nothing (`empty`), a deploy under way, a release, or not known. */
   readonly productionRuns: ProductionRuns;
   /** The changes merged and waiting for production, as the release counts them. */
@@ -254,50 +311,71 @@ export function environmentSlots(input: {
   /** The release tag on its way to production. */
   readonly releasing: string | undefined;
 }): ReadonlyArray<EnvironmentSlotRow> {
-  const slot = (tier: GroupEnvironmentTier): EnvironmentSlotRow => {
-    const offered = input.missing.includes(tier);
-    return {
-      kind: "slot",
+  const heldIds = new Set(input.environments.map((entry) => entry.id));
+  // HQ's record stands in for a creation or a half-made project it now holds.
+  const pending = input.pending.filter((entry) => !heldIds.has(entry.id));
+  const halfMade = input.halfMade.filter(
+    (entry) => !heldIds.has(entry.id) && !pending.some((other) => other.id === entry.id),
+  );
+  const held = heldTiers([
+    ...input.environments,
+    ...pending,
+    ...halfMade,
+    ...input.devstages.map(({ id }) => ({ id, tier: "stage" as const })),
+  ]);
+  const slot = (tier: GroupEnvironmentTier): EnvironmentSlotRow => ({
+    kind: "slot",
+    tier,
+    name: tier === "stage" ? "Stage" : "Production",
+    line:
+      input.recipeRead && !input.recipeTiers.includes(tier)
+        ? ENVIRONMENT_AWAITS_RECIPE
+        : ENVIRONMENT_NOT_ADDED,
+    add: environmentAddable({
       tier,
-      name: tier === "stage" ? "Stage" : "Production",
-      line: input.recipeRead && !offered ? ENVIRONMENT_AWAITS_RECIPE : ENVIRONMENT_NOT_ADDED,
-      add: input.mayAdd && input.recipeRead && offered,
-    };
-  };
-  const stages = input.environments.filter((entry) => entry.tier === "stage");
-  const production = input.environments.find((entry) => entry.tier === "production");
-  // The listing's member stands in a creation's place once HQ holds the project.
-  const held = new Set(input.environments.map((entry) => entry.id));
-  const creating = (tier: GroupEnvironmentTier) =>
-    input.pending
-      .filter((entry) => entry.tier === tier && !held.has(entry.id))
+      recipeRead: input.recipeRead,
+      recipeTiers: input.recipeTiers,
+      mayAdd: input.mayAdd,
+      writer: input.writer,
+      held,
+    }),
+  });
+  const coming = (tier: GroupEnvironmentTier): ReadonlyArray<EnvironmentSlotRow> => [
+    ...pending
+      .filter((entry) => entry.tier === tier)
       .map((entry): EnvironmentSlotRow => ({
         kind: "creating",
         tier,
         id: entry.id,
-        line: entry.failed
-          ? "Setup failed"
-          : tier === "stage"
-            ? STAGE_SETTING_UP
-            : PRODUCTION_SETTING_UP,
-        retry: entry.failed && input.mayAdd,
-      }));
-  const stagesComing = creating("stage");
-  const productionComing = creating("production");
+        line: tier === "stage" ? STAGE_SETTING_UP : PRODUCTION_SETTING_UP,
+      })),
+    ...halfMade
+      .filter((entry) => entry.tier === tier)
+      .map((entry): EnvironmentSlotRow => ({
+        kind: "half-made",
+        tier,
+        id: entry.id,
+        line: ENVIRONMENT_UNFINISHED,
+        finish: input.mayAdd,
+      })),
+  ];
+  const production = input.environments.find((entry) => entry.tier === "production");
   const rows: Array<EnvironmentSlotRow> = [
-    ...stages.map(({ id, tier }): EnvironmentSlotRow => ({
-      kind: "environment",
-      tier,
-      id,
-      note: undefined,
-    })),
+    ...input.environments
+      .filter((entry) => entry.tier === "stage")
+      .map(({ id, tier }): EnvironmentSlotRow => ({
+        kind: "environment",
+        tier,
+        id,
+        note: undefined,
+      })),
     ...input.devstages.map(({ id, name }): EnvironmentSlotRow => ({
       kind: "devstage",
       id,
       line: `${name} — the stage, deployed by its agent`,
     })),
+    ...coming("stage"),
   ];
-  rows.push(...stagesComing);
   if (rows.length === 0) rows.push(slot("stage"));
   if (production !== undefined)
     rows.push({
@@ -306,8 +384,11 @@ export function environmentSlots(input: {
       id: production.id,
       note: productionNote(input),
     });
-  else if (productionComing.length > 0) rows.push(...productionComing);
-  else rows.push(slot("production"));
+  else {
+    const rest = coming("production");
+    if (rest.length > 0) rows.push(...rest);
+    else rows.push(slot("production"));
+  }
   return rows;
 }
 

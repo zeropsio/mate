@@ -735,9 +735,8 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
         ],
       ]),
       releaseOffered: false,
-      missing: [
-        { kind: "missing-environment", tier: "stage", name: "Stage", line: "not set up yet" },
-      ],
+      recipeRead: true,
+      recipeTiers: ["stage", "production"],
     },
   ],
   [
@@ -776,15 +775,8 @@ const FLOWS = new Map<string, SidebarProjectFlow>([
       pullRequests: [],
       environments: new Map(),
       releaseOffered: false,
-      missing: [
-        { kind: "missing-environment", tier: "stage", name: "Stage", line: "not set up yet" },
-        {
-          kind: "missing-environment",
-          tier: "production",
-          name: "Production",
-          line: "not set up yet",
-        },
-      ],
+      recipeRead: true,
+      recipeTiers: ["stage", "production"],
     },
   ],
 ]);

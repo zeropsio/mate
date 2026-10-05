@@ -423,7 +423,7 @@ function projectFlow(
       failed: sides.failed,
       live: entry.tag === liveTag,
     });
-    return hasProduction === false ? { ...row, rollBack: false } : row;
+    return hasProduction === true ? row : { ...row, rollBack: false };
   });
   // Until HQ's releases, its repositories and the recipe are read, nothing is known to release:
   // the gate says it is checking.
@@ -447,7 +447,7 @@ function projectFlow(
     declarationsRead: stops !== undefined,
     environments: environmentInputs.map((entry) => stopRow(entry, releaseList)),
     environmentInputs,
-    missing: stops?.missing ?? [],
+    recipeTiers: recipe?.tiers ?? [],
     recipeRead: recipe !== undefined,
     pullRequests: changes?.pullRequests ?? [],
     changesKnown: changes !== undefined,

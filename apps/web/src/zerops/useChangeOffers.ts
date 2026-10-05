@@ -95,7 +95,11 @@ export function useReleasePermission(): (appId: string) => ReleaseGate | undefin
       const offer = state(app.can, "release");
       return offer.kind === "allowed"
         ? { allowed: true }
-        : { allowed: false, reason: words(offer) ?? "" };
+        : {
+            allowed: false,
+            reason: words(offer) ?? "",
+            ...(offer.kind === "refused" ? { refusedBy: "hq" as const } : {}),
+          };
     },
     [state, structure, words],
   );

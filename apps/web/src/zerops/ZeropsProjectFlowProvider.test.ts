@@ -529,6 +529,7 @@ describe("an application with no production", () => {
       allowed: false,
       reason: RELEASE_NO_PRODUCTION,
     });
+    expect(flow(undefined)?.releases.map((row) => row.rollBack)).toEqual([false, false]);
   });
 
   it("offers a roll back to an earlier release once a production is there", () => {

@@ -541,6 +541,10 @@ export {
 export {
   ENVIRONMENT_AWAITS_RECIPE,
   ENVIRONMENT_NOT_ADDED,
+  ENVIRONMENT_UNFINISHED,
+  environmentAddable,
+  heldTiers,
+  type HeldEnvironment,
   environmentSlots,
   halfMadeGroupEnvironments,
   type EnvironmentSlotRow,

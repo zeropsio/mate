@@ -111,9 +111,11 @@ const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
     environments: environments.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
     devstages: [],
     pending: [],
-    missing: [],
+    halfMade: [],
+    recipeTiers: [],
     recipeRead: false,
     mayAdd: false,
+    writer: false,
     productionRuns: "unknown",
     waiting: { count: 0, atLeast: false },
     mainHasCode: undefined,
@@ -151,6 +153,8 @@ function render(
       {...who}
       {...stops}
       slots={stops.slots ?? slotsOf(stops.environments)}
+      onFinish={() => {}}
+      finishing={false}
       onAdd={() => {}}
       names={{ mateNames: new Map() }}
       onAct={() => {}}
@@ -315,9 +319,11 @@ describe("ZeropsGroupPane", () => {
         environments: [],
         devstages: [],
         pending: [],
-        missing: ["stage", "production"],
+        halfMade: [],
+        recipeTiers: ["stage", "production"],
         recipeRead: true,
         mayAdd: true,
+        writer: false,
         productionRuns: "unknown",
         waiting: { count: 0, atLeast: false },
         mainHasCode: true,
@@ -325,6 +331,12 @@ describe("ZeropsGroupPane", () => {
         releasing: undefined,
         ...over,
       });
+
+    it("is not drawn before HQ's environments are read: nothing is known to be absent", () => {
+      const markup = render(undefined, { environments: [], slots: [] });
+      expect(markup).not.toContain("Environments");
+      expect(markup).not.toContain("Not added");
+    });
 
     it("is there with nothing added: two quiet slots, each with its Add", () => {
       const markup = render(undefined, { environments: [], slots: slots({}) });
@@ -336,7 +348,7 @@ describe("ZeropsGroupPane", () => {
     it("offers no Add to somebody who may not add, and says a tier waits for the recipe", () => {
       const markup = render(undefined, {
         environments: [],
-        slots: slots({ mayAdd: false, missing: ["stage"] }),
+        slots: slots({ mayAdd: false, recipeTiers: ["stage"] }),
       });
       expect(markup).not.toContain("Add stage");
       expect(markup).toContain("Waiting for the Mate&#x27;s recipe");
@@ -345,7 +357,7 @@ describe("ZeropsGroupPane", () => {
     it("says a Mate that is the stage is the stage, and asks no second one of the person", () => {
       const markup = render(undefined, {
         environments: [],
-        slots: slots({ devstages: [{ id: "dev", name: "Vera" }], missing: ["production"] }),
+        slots: slots({ devstages: [{ id: "dev", name: "Vera" }] }),
       });
       expect(markup).toContain("Vera — the stage, deployed by its agent");
       expect(markup).not.toContain("Add stage");
@@ -355,26 +367,21 @@ describe("ZeropsGroupPane", () => {
     it("says a production being created is being set up, and offers no second Add for it", () => {
       const markup = render(undefined, {
         environments: [],
-        slots: slots({
-          pending: [{ id: "p-new", tier: "production", name: "Shop - production", failed: false }],
-          missing: ["stage"],
-        }),
+        slots: slots({ pending: [{ id: "p-new", tier: "production" }] }),
       });
       expect(markup).toContain("Setting up production…");
       expect(markup).not.toContain("Add production");
     });
 
-    it("says a failed creation failed, with Try again and not a second Add", () => {
+    it("says a half-made environment is unfinished, with Finish setup and no Add for its tier", () => {
       const markup = render(undefined, {
         environments: [],
-        slots: slots({
-          pending: [{ id: "p-new", tier: "production", name: "Shop - production", failed: true }],
-          missing: ["stage"],
-        }),
+        slots: slots({ halfMade: [{ id: "p-half", tier: "production" }] }),
       });
-      expect(markup).toContain("Setup failed");
-      expect(markup).toContain("Try again");
+      expect(markup).toContain("Setup isn&#x27;t finished");
+      expect(markup).toContain("Finish setup");
       expect(markup).not.toContain("Add production");
+      expect(markup).not.toContain("Waiting for the Mate&#x27;s recipe");
     });
 
     it("says an empty production waits for its first release, with Review release where offered", () => {
@@ -383,7 +390,7 @@ describe("ZeropsGroupPane", () => {
         environments: [prod],
         slots: slots({
           environments: [{ id: "prod", tier: "production" }],
-          missing: [],
+          recipeTiers: [],
           productionRuns: "empty",
           releaseOffered: true,
         }),
@@ -1089,7 +1096,11 @@ describe("ZeropsStopPane", () => {
         untold: ["web"],
         offered: "v0.1.14",
       },
-      contains: ["1 change not live.", "Two-step checkout", "Can&#x27;t tell what web runs."],
+      contains: [
+        "1 change waiting for production.",
+        "Two-step checkout",
+        "Can&#x27;t tell what web runs.",
+      ],
     },
     {
       name: "a production none of whose services can be told offers its release, never all clear",
@@ -1117,7 +1128,7 @@ describe("ZeropsStopPane", () => {
         offered: "v0.1.14",
       },
       contains: [
-        "3 changes not live.",
+        "3 changes waiting for production.",
         "Production runs v0.1.13",
         "Waiting for release · 3",
         "Two-step checkout",
@@ -1135,7 +1146,11 @@ describe("ZeropsStopPane", () => {
         notLive: { total: 10000, atLeast: true },
         offered: "v0.1.14",
       },
-      contains: ["10000+ changes not live.", "Waiting for release · 10000+", "Two-step checkout"],
+      contains: [
+        "10000+ changes waiting for production.",
+        "Waiting for release · 10000+",
+        "Two-step checkout",
+      ],
     },
     {
       name: "a production whose deploy failed",

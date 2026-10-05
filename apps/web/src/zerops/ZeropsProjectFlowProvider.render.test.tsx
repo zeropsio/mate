@@ -676,7 +676,7 @@ describe("ZeropsProjectFlowProvider", () => {
     expect(flow?.environments.map(({ projectId, name }) => [projectId, name])).toEqual([
       ["prod-1", "harbor-prod"],
     ]);
-    expect(flow?.missing.map(({ tier }) => tier)).toEqual(["stage"]);
+    expect(flow?.recipeRead).toBe(true);
 
     await act(async () => {
       root.unmount();

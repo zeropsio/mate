@@ -31,12 +31,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { environmentsWithSnapshotAtom } from "~/state/shell";
-import {
-  hqEnvironmentsAtom,
-  hqPeopleAtom,
-  hqPlacementsAtom,
-  hqStructureAtom,
-} from "~/state/zerops";
+import { hqPeopleAtom, hqPlacementsAtom, hqStructureAtom } from "~/state/zerops";
 import {
   PROJECT_ORDER_CHOICES,
   readProjectsOnScreen,
@@ -104,7 +99,6 @@ import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useZeropsCreationVerdicts } from "~/zerops/useZeropsCreationVerdicts";
 import { useZeropsFirstBuilds } from "~/zerops/useZeropsFirstBuilds";
 import { drawnMateProjects, useMatesInventory } from "~/zerops/useMatesInventory";
-import { usePressesElsewhere } from "~/zerops/usePressesElsewhere";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useZeropsMateUpdateStates } from "~/zerops/useZeropsMateUpdate";
@@ -123,7 +117,6 @@ import {
   changeAsksForReview,
   changeState,
   firstReleaseHandoff,
-  halfMadeGroupEnvironments,
   assignCandidateMateTints,
   buildZeropsGroupTree,
   mateShapeOf,
@@ -174,11 +167,11 @@ import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
-import { useChangeOffers, useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
+import { useChangeOffers } from "~/zerops/useChangeOffers";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { officialHq, useAccountHq } from "~/zerops/accountHq";
-import { useFinishGroupEnvironment } from "~/zerops/useFinishGroupEnvironment";
+import { useHalfMadeEnvironments } from "~/zerops/useHalfMadeEnvironments";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useZeropsProjectFlow } from "~/zerops/projectFlowContext";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
@@ -998,7 +991,6 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
 
   // The organization's HQ, where the registry lives: its project is no project of the page's.
   const accountHq = useAccountHq(activeOrganization?.id);
-  const hq = accountHq.hq.kind === "official" ? accountHq.hq : undefined;
   // What says a project is its person's own, for Set up Mate on it (`plainEvidenceOf`): HQ's
   // records of every kind, its presses, its anchor, and what this tab is making. None while HQ's
   // structure is not known, so nothing is plain then.
@@ -1682,18 +1674,24 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   // A production just added is the intent to release (P7): the application whose production came
   // up waits here until HQ holds it and the gate says whether its first release is the person's to
   // review, which then opens by itself (`firstReleaseHandoff`).
-  const [handoffTo, setHandoffTo] = useState<string | null>(null);
+  const [handoffTo, setHandoffTo] = useState<{
+    readonly groupId: string;
+    readonly projectId: string;
+  } | null>(null);
   useEffect(() => {
     if (handoffTo === null) return;
-    const flow = groupDeploys.get(handoffTo);
+    const flow = groupDeploys.get(handoffTo.groupId);
     if (flow === undefined) return;
     const verdict = firstReleaseHandoff({
-      hasProduction: flow.environments.some((entry) => entry.tier === "production"),
+      // The project this press made, never another production that comes up later.
+      hasProduction: flow.environments.some(
+        (entry) => entry.tier === "production" && entry.projectId === handoffTo.projectId,
+      ),
       gate: flow.release.gate,
     });
     if (verdict === "wait") return;
     setHandoffTo(null);
-    if (verdict === "open") openReview({ kind: "release", groupId: handoffTo });
+    if (verdict === "open") openReview({ kind: "release", groupId: handoffTo.groupId });
   }, [groupDeploys, handoffTo, openReview]);
 
   /**
@@ -1951,35 +1949,14 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
           ? current
           : { ...current, outcome: { kind: "done", deployments: outcome.deployments } },
       );
-      if (role === "prod") setHandoffTo(groupId);
+      if (role === "prod") setHandoffTo({ groupId, projectId: outcome.projectId });
     },
     [activeOrganization, creationRunning, groupTree.groups, runCreation, setConnectError],
   );
 
-  // A stage or a production whose creation lost its last writes — its attach to its application,
-  // its deploy key — or whose key HQ does not hold, or holds broken (main E07), is said on its
-  // project's row and finished from its menu, when the person asks (`useFinishGroupEnvironment`).
-  // Only an application whose environments HQ has said says what it holds: one still unsaid would
-  // read as holding nothing, and every environment in it as half-made.
-  const heldEnvironments = useAtomValue(hqEnvironmentsAtom);
-  const mayKeepKey = useKeepDeployKeyOffer();
-  // A press still at a project — this browser's or another's, as HQ holds it — is its own to finish.
-  const pressOf = usePressesElsewhere(candidates);
-  const halfMade = useMemo(
-    () =>
-      heldEnvironments === null
-        ? []
-        : halfMadeGroupEnvironments({
-            projects: candidates.map((candidate) => candidate.project),
-            registry: registryState.registry,
-            environments: heldEnvironments,
-            // A key is minted only by somebody HQ offers keeping it (`keep_deploy_token`).
-            mayKey: (projectId) => mayKeepKey(projectId) === true,
-            pressing: (projectId) => pressOf(projectId) === "pressing",
-          }),
-    [candidates, heldEnvironments, mayKeepKey, pressOf, registryState.registry],
-  );
-  const finishing = useFinishGroupEnvironment({ client, clientId: activeOrganization?.id, hq });
+  // A stage or a production whose creation lost its last writes is said on its project's row and
+  // finished from its menu, when the person asks (`useHalfMadeEnvironments`).
+  const { halfMade, finishing } = useHalfMadeEnvironments(candidates);
 
   // Persisted cleanup debt is restored after a crash, once inventory admits the account.
   const throwawayCleanup = useZeropsThrowawaySweep({

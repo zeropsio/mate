@@ -5,6 +5,9 @@ import {
   type GroupFlow,
   type GroupFlowInput,
   type GroupNextStepKind,
+  type ZeropsGroup,
+  type ZeropsOrganization,
+  type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -24,9 +27,9 @@ import {
   stopLine,
   nextStepAwaitsSomebody,
   parseProjectsSearch,
-  environmentsOffered,
   matesKnownOf,
   mayAddEnvironment,
+  tiersAddable,
   rowMateActivitiesOf,
   risenFirst,
   rowRise,
@@ -1044,15 +1047,97 @@ describe("a project row's Mates — what each is on, and whether each is known",
   });
 });
 
-describe("environmentsOffered", () => {
-  const MISSING = [{ tier: "stage" }, { tier: "production" }] as const;
-  const org = { membershipId: "member-1", roleCode: "ADMIN" };
-  it.each([
-    ["an admin is offered both", org, MISSING],
-    ["a reader is offered none", { ...org, roleCode: "READ_ONLY" }, []],
-    ["nobody known is offered none", null, []],
-  ])("%s", (_name, organization, expected) => {
-    expect(environmentsOffered({ organization, projects: [], missing: MISSING })).toEqual(expected);
+describe("tiersAddable", () => {
+  const ME = "member-1";
+  type Tier = "stage" | "production";
+  const project = (id: string, userRoles?: ZeropsProject["userRoles"]) =>
+    ({
+      id,
+      name: id,
+      status: "ACTIVE",
+      ...(userRoles === undefined ? {} : { userRoles }),
+    }) as ZeropsProject;
+  const entry = (id: string, role: "dev" | "stage" | "prod" | "devstage") => ({
+    project: project(id),
+    role,
+  });
+  const ask = (over: {
+    org?: Partial<ZeropsOrganization> | null;
+    environments?: ReadonlyArray<{
+      project: ZeropsProject;
+      role: "dev" | "stage" | "prod" | "devstage";
+    }>;
+    pending?: ZeropsGroup["pending"];
+    hq?: ReadonlyArray<{ id: string; tier: Tier }>;
+    recipe?: { read: boolean; tiers: ReadonlyArray<Tier> };
+  }) =>
+    tiersAddable({
+      organization:
+        over.org === null
+          ? null
+          : ({
+              id: "o",
+              name: "Acme",
+              membershipId: ME,
+              roleCode: "ADMIN",
+              ...over.org,
+            } as ZeropsOrganization),
+      group: {
+        environments: over.environments ?? [entry("dev", "dev")],
+        pending: over.pending ?? [],
+      },
+      hq: over.hq ?? [],
+      recipe: over.recipe ?? { read: true, tiers: ["stage", "production"] },
+    });
+  const developer = { roleCode: "NO_ACCESS", canCreateProjects: true };
+  const mine = {
+    project: project("m", [{ clientUserId: ME, roleCode: "BASIC_USER" }]),
+    role: "dev" as const,
+  };
+
+  it.each<[string, Parameters<typeof ask>[0], ReadonlyArray<Tier>]>([
+    ["an admin, nothing added", {}, ["stage", "production"]],
+    ["nobody known", { org: null }, []],
+    ["the recipe not read", { recipe: { read: false, tiers: [] } }, []],
+    [
+      "a Mate that is also the stage, a developer: the stage is there",
+      { org: developer, environments: [mine, entry("v", "devstage")] },
+      ["production"],
+    ],
+    [
+      "a stage held, an admin: another may be added",
+      { environments: [entry("s", "stage")] },
+      ["stage", "production"],
+    ],
+    [
+      "a stage held, a developer: only a production",
+      { org: developer, environments: [mine, entry("s", "stage")] },
+      ["production"],
+    ],
+    [
+      "a production made as one, HQ not holding it",
+      { environments: [entry("p", "prod")] },
+      ["stage"],
+    ],
+    [
+      "a production being created",
+      { pending: [{ projectId: "n", kind: "production", name: "n", startedAt: 0 }] },
+      ["stage"],
+    ],
+    [
+      "a stage and a production HQ holds, counted once beside the projects",
+      {
+        environments: [entry("s", "stage"), entry("p", "prod")],
+        hq: [
+          { id: "s", tier: "stage" },
+          { id: "p", tier: "production" },
+        ],
+      },
+      ["stage"],
+    ],
+    ["the recipe holds only the stage", { recipe: { read: true, tiers: ["stage"] } }, ["stage"]],
+  ])("%s", (_name, over, expected) => {
+    expect(ask(over)).toEqual(expected);
   });
 });
 

@@ -71,6 +71,7 @@ import {
   type GroupFlowStop,
   type ListedStop,
   type MissingEnvironmentRow,
+  missingEnvironmentRows,
   type ZeropsOrganization,
   type StopComing,
   type ZeropsEnvironmentRole,
@@ -238,7 +239,7 @@ import {
 import {
   groupFlowInputOf,
   groupMemberFactsOf,
-  environmentsOffered,
+  tiersAddable,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import {
@@ -380,12 +381,9 @@ export interface SidebarProjectFlow {
    * built in interface for PR" (the owner, 2026-09-19).
    */
   readonly onOpenChange?: ((pull: FlowPullRequest) => void) | undefined;
-  /**
-   * The stops the group's recipe offers and nobody has added yet. A timeline
-   * that showed only its Mates never said a production was a next step (the
-   * owner, twice, 2026-09-17: "it never asked me to setup production").
-   */
-  readonly missing?: ReadonlyArray<MissingEnvironmentRow> | undefined;
+  /** Whether the group's recipe is read, and the tiers it holds: the project menu's *Add* offers. */
+  readonly recipeRead?: boolean | undefined;
+  readonly recipeTiers?: ReadonlyArray<GroupEnvironmentTier> | undefined;
   /** The version a release would tag. */
   readonly releaseTag?: string | undefined;
   /** The release tag on its way to production (`releaseInFlight`), which the chip says. */
@@ -1603,10 +1601,20 @@ export function SidebarZeropsTree<T extends RosterCandidate>({
             line={line}
             openStop={openStop}
             group={group}
-            missing={environmentsOffered({
-              organization,
-              projects: environments.map(({ item }) => item.project),
-              missing: getFlow?.(group.groupId)?.missing ?? NO_MISSING_TIERS,
+            missing={missingEnvironmentRows({
+              tiersOnMain: tiersAddable({
+                organization,
+                group,
+                hq: [...(getFlow?.(group.groupId)?.environments.values() ?? [])].map((row) => ({
+                  id: row.projectId,
+                  tier: row.tier,
+                })),
+                recipe: {
+                  read: getFlow?.(group.groupId)?.recipeRead === true,
+                  tiers: getFlow?.(group.groupId)?.recipeTiers ?? [],
+                },
+              }),
+              declarations: [],
             })}
             onAddMate={onAddMate}
             onSetUp={onSetUp}

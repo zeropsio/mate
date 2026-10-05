@@ -13,7 +13,7 @@ import type {
   FlowReleaseRow,
   GroupEnvironment,
   GroupEnvironmentRowInput,
-  MissingEnvironmentRow,
+  GroupEnvironmentTier,
   Moved,
   ProductionRun,
   ReleaseComparison,
@@ -77,9 +77,9 @@ export interface ZeropsProjectFlow {
   /** Stages first, then the production — the order code travels. */
   readonly environments: ReadonlyArray<EnvironmentRow>;
   readonly environmentInputs: ReadonlyArray<GroupEnvironmentRowInput>;
-  /** The tiers the recipe offers and the project lacks — the slots that offer *Add*. */
-  readonly missing: ReadonlyArray<MissingEnvironmentRow>;
-  /** Whether the recipe on `main` is read: until it is, `missing` is empty for want of an answer. */
+  /** The tiers the recipe on `main` holds; empty until it is read (`recipeRead`). */
+  readonly recipeTiers: ReadonlyArray<GroupEnvironmentTier>;
+  /** Whether the recipe on `main` is read: until it is, `recipeTiers` is empty for want of an answer. */
   readonly recipeRead: boolean;
   /** Every open change a push reached on the project's repositories, as HQ's stream says. */
   readonly pullRequests: ReadonlyArray<FlowPullRequest>;

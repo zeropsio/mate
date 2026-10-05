@@ -1484,19 +1484,7 @@ describe("the project's flow under it", () => {
   });
 
   it("offers to set up a stop the recipe has, in the project's menu rather than as a row", () => {
-    const html = withFlow(
-      [CRM_DEV],
-      flow({
-        missing: [
-          {
-            kind: "missing-environment",
-            tier: "production",
-            name: "Production",
-            line: "not set up yet",
-          },
-        ],
-      }),
-    );
+    const html = withFlow([CRM_DEV], flow({ recipeRead: true, recipeTiers: ["production"] }));
     // Not every project wants one, and a permanent row asking for something
     // optional reads as a fault (the owner, 2026-09-19).
     expect(html).not.toContain('data-zerops-surface="sidebar-environment-missing"');
@@ -1511,14 +1499,6 @@ describe("the project's flow under it", () => {
   // required, this shouldn't be there"; 2026-10-05: an absent environment is a quiet slot): the
   // menu never marks it as something waiting, whatever main holds.
   it("never dots a project for the production it does not have", () => {
-    const missing = [
-      {
-        kind: "missing-environment" as const,
-        tier: "production" as const,
-        name: "Production",
-        line: "not set up yet",
-      },
-    ];
     // The Mate has been spoken to, so an empty flow asks for no first task.
     const activity: ZeropsAgentActivity = {
       threadId: "thread-1" as ZeropsAgentActivity["threadId"],
@@ -1535,7 +1515,13 @@ describe("the project's flow under it", () => {
     };
     const html = render([CRM_DEV_CONNECTED], {
       getActivity: () => activity,
-      getFlow: () => flow({ pullRequests: [], merged: [pull(4, { merged: true })], missing }),
+      getFlow: () =>
+        flow({
+          pullRequests: [],
+          merged: [pull(4, { merged: true })],
+          recipeRead: true,
+          recipeTiers: ["production"],
+        }),
     });
     expect(html).not.toContain('data-zerops-surface="sidebar-project-next-step"');
     expect(html).not.toContain("no production yet");

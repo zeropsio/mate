@@ -4,7 +4,9 @@ import type { Shown } from "./knowledge/known.ts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  environmentAddable,
   environmentSlots,
+  heldTiers,
   halfMadeGroupEnvironments,
   missingEnvironmentRows,
   productionRunsOf,
@@ -219,8 +221,63 @@ describe("missingEnvironmentRows", () => {
   }
 });
 
-// The application's Environments section (MODEL §4, §9): always there; a row for what exists, a
-// quiet slot for a tier that does not, and the production's own line while no release ran.
+// The one rule for adding a tier, which every door asks (the menus, the Environments section, the
+// question after a first merge): the recipe holds the tier, the person may add, the tier is empty —
+// a production is one, a non-writer fills only an empty place (HQ `attach`: `slot_taken`), a writer
+// may add another stage.
+describe("environmentAddable", () => {
+  const BOTH = ["stage", "production"] as const;
+  const input = (
+    over: Partial<Parameters<typeof environmentAddable>[0]>,
+  ): Parameters<typeof environmentAddable>[0] => ({
+    tier: "stage",
+    recipeRead: true,
+    recipeTiers: BOTH,
+    mayAdd: true,
+    writer: false,
+    held: { stages: 0, production: false },
+    ...over,
+  });
+  it.each([
+    ["an empty stage, the recipe holds it", input({}), true],
+    ["an empty production", input({ tier: "production" }), true],
+    ["the person may not add", input({ mayAdd: false }), false],
+    ["the recipe is not read", input({ recipeRead: false }), false],
+    ["the recipe lacks the tier", input({ recipeTiers: ["stage"], tier: "production" }), false],
+    ["a stage is held, a non-writer", input({ held: { stages: 1, production: false } }), false],
+    [
+      "a stage is held, a writer: another stage",
+      input({ held: { stages: 1, production: false }, writer: true }),
+      true,
+    ],
+    [
+      "a production is held, even for a writer",
+      input({ tier: "production", held: { stages: 0, production: true }, writer: true }),
+      false,
+    ],
+    [
+      "a production is held: a stage may still be added",
+      input({ held: { stages: 0, production: true } }),
+      true,
+    ],
+  ])("is %s → %s", (_name, args, expected) => {
+    expect(environmentAddable(args)).toBe(expected);
+  });
+
+  it("counts every project once, whatever state it is in: HQ's, half-made, being made, a devstage", () => {
+    expect(
+      heldTiers([
+        { id: "a", tier: "stage" },
+        { id: "a", tier: "stage" },
+        { id: "b", tier: "production" },
+      ]),
+    ).toEqual({ stages: 1, production: true });
+    expect(heldTiers([])).toEqual({ stages: 0, production: false });
+  });
+});
+
+// The application's Environments section (MODEL §4, §9): a row for what exists, a quiet slot for a
+// tier that does not, and the production's own line while no release ran.
 describe("environmentSlots", () => {
   const STAGE = { id: "p-stage", tier: "stage" } as const;
   const PROD = { id: "p-prod", tier: "production" } as const;
@@ -228,9 +285,11 @@ describe("environmentSlots", () => {
     environments: [],
     devstages: [],
     pending: [],
-    missing: ["stage", "production"],
+    halfMade: [],
+    recipeTiers: ["stage", "production"],
     recipeRead: true,
     mayAdd: true,
+    writer: false,
     productionRuns: "unknown",
     waiting: { count: 0, atLeast: false },
     mainHasCode: true,
@@ -242,17 +301,20 @@ describe("environmentSlots", () => {
       row.kind === "slot"
         ? [row.kind, row.tier, row.line, row.add]
         : row.kind === "creating"
-          ? [row.kind, row.id, row.line, row.retry]
-          : row.kind === "devstage"
-            ? [row.kind, row.id, row.line]
-            : [row.kind, row.id, row.note?.text, row.note?.review],
+          ? [row.kind, row.id, row.line]
+          : row.kind === "half-made"
+            ? [row.kind, row.id, row.line, row.finish]
+            : row.kind === "devstage"
+              ? [row.kind, row.id, row.line]
+              : [row.kind, row.id, row.note?.text, row.note?.review],
     );
   const withProduction = (over: Partial<typeof base>): typeof base => ({
     ...base,
     environments: [PROD],
-    missing: [],
+    recipeTiers: [],
     ...over,
   });
+  const NO_STAGE_RECIPE = ["slot", "stage", "Waiting for the Mate's recipe", false];
 
   it.each<{
     case: string;
@@ -277,7 +339,7 @@ describe("environmentSlots", () => {
     },
     {
       case: "production without a stage: the stage stays a slot (production needs no stage)",
-      input: { ...base, environments: [PROD], missing: ["stage"] },
+      input: { ...base, environments: [PROD] },
       rows: [
         ["slot", "stage", "Not added", true],
         ["environment", "p-prod", undefined, undefined],
@@ -285,7 +347,7 @@ describe("environmentSlots", () => {
     },
     {
       case: "a stage without production",
-      input: { ...base, environments: [STAGE], missing: ["production"] },
+      input: { ...base, environments: [STAGE] },
       rows: [
         ["environment", "p-stage", undefined, undefined],
         ["slot", "production", "Not added", true],
@@ -293,15 +355,15 @@ describe("environmentSlots", () => {
     },
     {
       case: "a Mate that is also the stage counts as the stage",
-      input: { ...base, devstages: [{ id: "p-dev", name: "Vera" }], missing: ["production"] },
+      input: { ...base, devstages: [{ id: "p-dev", name: "Vera" }] },
       rows: [
         ["devstage", "p-dev", "Vera — the stage, deployed by its agent"],
         ["slot", "production", "Not added", true],
       ],
     },
     {
-      case: "the recipe does not offer production yet: it waits for the Mate's recipe",
-      input: { ...base, missing: ["stage"] },
+      case: "the recipe does not hold production yet: it waits for the Mate's recipe",
+      input: { ...base, recipeTiers: ["stage"] },
       rows: [
         ["slot", "stage", "Not added", true],
         ["slot", "production", "Waiting for the Mate's recipe", false],
@@ -309,17 +371,77 @@ describe("environmentSlots", () => {
     },
     {
       case: "the recipe is not read: nothing is claimed or offered",
-      input: { ...base, recipeRead: false, missing: [] },
+      input: { ...base, recipeRead: false, recipeTiers: [] },
       rows: [
         ["slot", "stage", "Not added", false],
         ["slot", "production", "Not added", false],
       ],
     },
     {
+      case: "a production being created is its row, never a second Add (§9.6)",
+      input: { ...base, pending: [{ id: "p-new", tier: "production" }] },
+      rows: [
+        ["slot", "stage", "Not added", true],
+        ["creating", "p-new", "Setting up production…"],
+      ],
+    },
+    {
+      case: "a stage being created stands in for the stage slot",
+      input: { ...base, pending: [{ id: "p-st", tier: "stage" }] },
+      rows: [
+        ["creating", "p-st", "Setting up a stage…"],
+        ["slot", "production", "Not added", true],
+      ],
+    },
+    {
+      case: "a stage being created beside a stage that exists is one more row",
+      input: { ...base, environments: [STAGE], pending: [{ id: "p-st2", tier: "stage" }] },
+      rows: [
+        ["environment", "p-stage", undefined, undefined],
+        ["creating", "p-st2", "Setting up a stage…"],
+        ["slot", "production", "Not added", true],
+      ],
+    },
+    {
+      case: "a production made but not held by HQ is half-made, with Finish setup — never absent",
+      input: { ...base, recipeTiers: ["stage"], halfMade: [{ id: "p-half", tier: "production" }] },
+      rows: [
+        ["slot", "stage", "Not added", true],
+        ["half-made", "p-half", "Setup isn't finished", true],
+      ],
+    },
+    {
+      case: "a half-made stage, the person may not finish it: the words only",
+      input: { ...base, mayAdd: false, halfMade: [{ id: "p-half", tier: "stage" }] },
+      rows: [
+        ["half-made", "p-half", "Setup isn't finished", false],
+        ["slot", "production", "Not added", false],
+      ],
+    },
+    {
+      case: "a creation or half-made project HQ already holds is the environment",
+      input: {
+        ...base,
+        environments: [PROD],
+        recipeTiers: [],
+        pending: [{ id: "p-prod", tier: "production" }],
+        halfMade: [{ id: "p-prod", tier: "production" }],
+      },
+      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", undefined, undefined]],
+    },
+    {
+      case: "a writer may add another stage: still no slot beside the stages, the menu offers it",
+      input: { ...base, environments: [STAGE], writer: true },
+      rows: [
+        ["environment", "p-stage", undefined, undefined],
+        ["slot", "production", "Not added", true],
+      ],
+    },
+    {
       case: "an empty production, main has code, the person may release: the first release",
       input: withProduction({ productionRuns: "empty", releaseOffered: true }),
       rows: [
-        ["slot", "stage", "Waiting for the Mate's recipe", false],
+        NO_STAGE_RECIPE,
         ["environment", "p-prod", "Empty — waiting for its first release", true],
       ],
     },
@@ -327,7 +449,7 @@ describe("environmentSlots", () => {
       case: "an empty production, main has code, the person may not release: only the information",
       input: withProduction({ productionRuns: "empty" }),
       rows: [
-        ["slot", "stage", "Waiting for the Mate's recipe", false],
+        NO_STAGE_RECIPE,
         ["environment", "p-prod", "Empty — waiting for its first release", false],
       ],
     },
@@ -335,7 +457,7 @@ describe("environmentSlots", () => {
       case: "an empty production while main is empty: waiting for the first merge",
       input: withProduction({ productionRuns: "empty", mainHasCode: false }),
       rows: [
-        ["slot", "stage", "Waiting for the Mate's recipe", false],
+        NO_STAGE_RECIPE,
         ["environment", "p-prod", "Empty — waiting for the first merge", false],
       ],
     },
@@ -346,18 +468,12 @@ describe("environmentSlots", () => {
         waiting: { count: 3, atLeast: false },
         releaseOffered: true,
       }),
-      rows: [
-        ["slot", "stage", "Waiting for the Mate's recipe", false],
-        ["environment", "p-prod", "3 changes waiting for production", true],
-      ],
+      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "3 changes waiting for production", true]],
     },
     {
       case: "production runs and one change waits, for somebody who may not release",
       input: withProduction({ productionRuns: "running", waiting: { count: 1, atLeast: false } }),
-      rows: [
-        ["slot", "stage", "Waiting for the Mate's recipe", false],
-        ["environment", "p-prod", "1 change waiting for production", false],
-      ],
+      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "1 change waiting for production", false]],
     },
     {
       case: "a release on its way is said, with nothing to press",
@@ -367,94 +483,12 @@ describe("environmentSlots", () => {
         releaseOffered: true,
         releasing: "v0.1.2",
       }),
-      rows: [
-        ["slot", "stage", "Waiting for the Mate's recipe", false],
-        ["environment", "p-prod", "Releasing v0.1.2…", false],
-      ],
+      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "Releasing v0.1.2…", false]],
     },
     {
       case: "production current: no line of its own",
       input: withProduction({ productionRuns: "running" }),
-      rows: [
-        ["slot", "stage", "Waiting for the Mate's recipe", false],
-        ["environment", "p-prod", undefined, undefined],
-      ],
-    },
-    {
-      case: "a production being created is its row, never a second Add (§9.6)",
-      input: {
-        ...base,
-        pending: [{ id: "p-new", tier: "production", name: "Todo - production", failed: false }],
-        missing: ["stage"],
-      },
-      rows: [
-        ["slot", "stage", "Not added", true],
-        ["creating", "p-new", "Setting up production…", false],
-      ],
-    },
-    {
-      case: "a production whose creation failed offers only Try again, to who may add",
-      input: {
-        ...base,
-        pending: [{ id: "p-new", tier: "production", name: "Todo - production", failed: true }],
-        missing: ["stage"],
-      },
-      rows: [
-        ["slot", "stage", "Not added", true],
-        ["creating", "p-new", "Setup failed", true],
-      ],
-    },
-    {
-      case: "a failed creation, somebody who may not add: the words only",
-      input: {
-        ...base,
-        mayAdd: false,
-        pending: [{ id: "p-new", tier: "production", name: "Todo - production", failed: true }],
-        missing: ["stage"],
-      },
-      rows: [
-        ["slot", "stage", "Not added", false],
-        ["creating", "p-new", "Setup failed", false],
-      ],
-    },
-    {
-      case: "a stage being created stands in for the stage slot",
-      input: {
-        ...base,
-        pending: [{ id: "p-st", tier: "stage", name: "Todo - stage", failed: false }],
-        missing: ["production"],
-      },
-      rows: [
-        ["creating", "p-st", "Setting up a stage…", false],
-        ["slot", "production", "Not added", true],
-      ],
-    },
-    {
-      case: "a stage being created beside a stage that exists is one more row",
-      input: {
-        ...base,
-        environments: [STAGE],
-        pending: [{ id: "p-st2", tier: "stage", name: "Todo - stage 2", failed: false }],
-        missing: ["production"],
-      },
-      rows: [
-        ["environment", "p-stage", undefined, undefined],
-        ["creating", "p-st2", "Setting up a stage…", false],
-        ["slot", "production", "Not added", true],
-      ],
-    },
-    {
-      case: "a creation HQ already holds is the environment, not a pending one",
-      input: {
-        ...base,
-        environments: [PROD],
-        pending: [{ id: "p-prod", tier: "production", name: "Todo - production", failed: false }],
-        missing: [],
-      },
-      rows: [
-        ["slot", "stage", "Waiting for the Mate's recipe", false],
-        ["environment", "p-prod", undefined, undefined],
-      ],
+      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", undefined, undefined]],
     },
   ])("$case", ({ input, rows }) => {
     expect(shape(environmentSlots(input))).toEqual(rows);

@@ -23,6 +23,9 @@ import {
   type FlowPullRequest,
   type Moved,
   type GroupEnvironmentTier,
+  type HeldEnvironment,
+  environmentAddable,
+  heldTiers,
   type GroupFlow,
   type GroupFlowComing,
   type GroupFlowInput,
@@ -34,6 +37,7 @@ import {
   type ReleaseGate,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
+  type ZeropsGroup,
   type ZeropsGroupPendingMember,
   type ZeropsOrganization,
   type ZeropsProject,
@@ -457,18 +461,53 @@ export function mayAddEnvironment(input: {
 }
 
 /**
- * The tiers a project's menu offers *Add* for: those the recipe holds and the application lacks,
- * to the people `mayAddEnvironment` names, and to nobody before the person's organization is known.
+ * The tiers a project's menu offers *Add* for — the one answer (`environmentAddable`) for the
+ * group as its tree holds it: its projects by role (a Mate that is also the stage counts as the
+ * stage), its creations under way, and what HQ records of it, each counted once; whether the
+ * recipe holds the tier; and whether this person may add (`mayAddEnvironment`) and is a writer.
+ * Nothing is offered before the person's organization is known.
  */
-export function environmentsOffered<Row>(input: {
+export function tiersAddable(input: {
   readonly organization: Parameters<typeof mayAddEnvironment>[0]["organization"] | null;
-  readonly projects: Parameters<typeof mayAddEnvironment>[0]["projects"];
-  readonly missing: ReadonlyArray<Row>;
-}): ReadonlyArray<Row> {
-  return input.organization !== null &&
-    mayAddEnvironment({ organization: input.organization, projects: input.projects })
-    ? input.missing
-    : [];
+  readonly group: Pick<ZeropsGroup, "environments" | "pending">;
+  /** The application's environments as HQ records them. */
+  readonly hq: ReadonlyArray<HeldEnvironment>;
+  readonly recipe: { readonly read: boolean; readonly tiers: ReadonlyArray<GroupEnvironmentTier> };
+}): ReadonlyArray<GroupEnvironmentTier> {
+  const { organization, group } = input;
+  if (organization === null) return [];
+  const mayAdd = mayAddEnvironment({
+    organization,
+    projects: group.environments.map((entry) => entry.project),
+  });
+  const held = heldTiers([
+    ...input.hq,
+    ...group.environments.flatMap((entry): ReadonlyArray<HeldEnvironment> => {
+      const tier =
+        entry.role === "prod"
+          ? "production"
+          : entry.role === "stage" || entry.role === "devstage"
+            ? "stage"
+            : undefined;
+      return tier === undefined ? [] : [{ id: entry.project.id, tier }];
+    }),
+    ...group.pending.flatMap((entry): ReadonlyArray<HeldEnvironment> =>
+      entry.kind === "stage" || entry.kind === "production"
+        ? [{ id: entry.projectId, tier: entry.kind }]
+        : [],
+    ),
+  ]);
+  const writer = roleAtLeast(organization.roleCode, "ADMIN");
+  return (["stage", "production"] as const).filter((tier) =>
+    environmentAddable({
+      tier,
+      recipeRead: input.recipe.read,
+      recipeTiers: input.recipe.tiers,
+      mayAdd,
+      writer,
+      held,
+    }),
+  );
 }
 
 /** The part of a group's project flow `groupFlow` reads. */

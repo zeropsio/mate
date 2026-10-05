@@ -240,8 +240,7 @@ function ChangeReviewData({
   const mates = useZeropsReviewMates(target.groupId);
   const pictures = useHqPictureSource();
   const addEnvironment = useAddEnvironment();
-  const missingTiers = useMemo(() => flow?.missing.map((row) => row.tier) ?? [], [flow?.missing]);
-  const question = useEnvironmentQuestionFacts(target.groupId, missingTiers);
+  const question = useEnvironmentQuestionFacts(target.groupId, flow);
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   const [closing, setClosing] = useState<ReviewClose>({ kind: "idle" });
   const change = { repository: pull.repository, number: pull.number };

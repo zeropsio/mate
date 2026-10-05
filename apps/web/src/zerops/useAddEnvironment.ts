@@ -1,17 +1,18 @@
 /**
  * What every door to *Add stage* and *Add production* asks: whether this person may add one to an
- * application (`mayAddEnvironment`), what the one question after a first merge may offer
- * (`questionFactsOf`), and the way in — the projects page's own creation form, asked for through
- * `useSetUpEnvironment`.
+ * application (`mayAddEnvironment`) and is a writer, what the one question after a first merge may
+ * offer (`questionFactsOf`), and the way in — the projects page's own creation form, asked for
+ * through `useSetUpEnvironment`.
  */
 import { useNavigate } from "@tanstack/react-router";
 import {
   buildZeropsGroupTree,
   readZeropsMembership,
-  type GroupEnvironmentTier,
+  type HeldEnvironment,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useCallback, useContext, useMemo } from "react";
 
 import { mayAddEnvironment } from "~/components/zerops/projects/projectsView.logic";
@@ -20,6 +21,7 @@ import { questionFactsOf } from "./addEnvironment.logic";
 import { HeldInventoryContext } from "./inventoryContext";
 import { placedPressesIn, useMatePresses } from "./matePress";
 import { useNewProjectBirths } from "./newProjectBirth";
+import type { ZeropsProjectFlow } from "./projectFlowContext";
 import { useSetUpEnvironment } from "./setUpEnvironment";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
@@ -37,16 +39,10 @@ function useGroupProjects(): (groupId: string) => ReadonlyArray<ZeropsProject> {
 }
 
 /**
- * The stages and productions of an application the platform accepted and HQ does not hold yet,
- * each as the group tree draws it from this tab's presses (`placedPressesIn`): being made, or
- * failed.
+ * The stages and productions of an application the platform accepted and HQ does not hold yet, as
+ * the group tree draws them from this tab's presses (`placedPressesIn`).
  */
-export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<{
-  readonly id: string;
-  readonly tier: GroupEnvironmentTier;
-  readonly name: string;
-  readonly failed: boolean;
-}> {
+export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<HeldEnvironment> {
   const { listing } = useZeropsCandidates();
   const presses = useMatePresses();
   const made = useNewProjectBirths((state) => state.births);
@@ -58,58 +54,76 @@ export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<{
           order: "name",
           births: placedPressesIn(presses, organizationId, Object.values(made)),
         }).groups.find((entry) => entry.group.groupId === groupId)?.group.pending ?? []
-      ).flatMap((member) =>
+      ).flatMap((member): ReadonlyArray<HeldEnvironment> =>
         member.kind === "stage" || member.kind === "production"
-          ? [
-              {
-                id: member.projectId,
-                tier: member.kind,
-                name: member.name,
-                failed: member.failed === true,
-              },
-            ]
+          ? [{ id: member.projectId, tier: member.kind }]
           : [],
       ),
     [groupId, listing, made, organizationId, presses],
   );
 }
 
-/** Whether this person may add a stage or a production to an application, by its id. */
-export function useMayAddEnvironment(): (groupId: string) => boolean {
+/**
+ * Whether this person may add a stage or a production to an application, by its id, and whether
+ * they are a writer of the structure (an organization owner or admin).
+ */
+export function useMayAddEnvironment(): (groupId: string) => {
+  readonly mayAdd: boolean;
+  readonly writer: boolean;
+} {
   const organization = useZeropsSession().activeOrganization;
   const projectsOf = useGroupProjects();
   return useCallback(
-    (groupId) =>
-      organization !== null && mayAddEnvironment({ organization, projects: projectsOf(groupId) }),
+    (groupId) => ({
+      mayAdd:
+        organization !== null && mayAddEnvironment({ organization, projects: projectsOf(groupId) }),
+      writer: organization !== null && roleAtLeast(organization.roleCode, "ADMIN"),
+    }),
     [organization, projectsOf],
   );
 }
 
 /**
- * What the one question after an application's first merge may offer, given the tiers the recipe
- * holds and the application lacks.
+ * What the one question after an application's first merge may offer: the one rule over what the
+ * application holds in any state — HQ's environments, the projects the account made as a tier
+ * (a Mate that is also the stage is a stage), creations under way.
  */
 export function useEnvironmentQuestionFacts(
   groupId: string,
-  missing: ReadonlyArray<GroupEnvironmentTier>,
+  flow: Pick<ZeropsProjectFlow, "recipeRead" | "recipeTiers" | "environmentInputs"> | undefined,
 ): ReturnType<typeof questionFactsOf> {
-  const mayAdd = useMayAddEnvironment()(groupId);
+  const { mayAdd, writer } = useMayAddEnvironment()(groupId);
   const projects = useGroupProjects()(groupId);
   const pending = useGroupPendingEnvironments(groupId);
   return useMemo(
     () =>
       questionFactsOf({
         mayAdd,
-        missing,
-        roles: projects.map((project) => readZeropsMembership(project).role),
-        pending: pending.map((entry) => entry.tier),
+        writer,
+        recipeRead: flow?.recipeRead === true,
+        recipeTiers: flow?.recipeTiers ?? [],
+        held: [
+          ...(flow?.environmentInputs ?? []).map((entry) => ({
+            id: entry.projectId,
+            tier: entry.tier,
+          })),
+          ...projects.flatMap((project): ReadonlyArray<HeldEnvironment> => {
+            const { role } = readZeropsMembership(project);
+            return role === "prod"
+              ? [{ id: project.id, tier: "production" }]
+              : role === "stage" || role === "devstage"
+                ? [{ id: project.id, tier: "stage" }]
+                : [];
+          }),
+          ...pending,
+        ],
       }),
-    [mayAdd, missing, pending, projects],
+    [flow, mayAdd, pending, projects, writer],
   );
 }
 
 /** Opens the creation form for a stage or a production of an application, on the projects page. */
-export function useAddEnvironment(): (groupId: string, tier: GroupEnvironmentTier) => void {
+export function useAddEnvironment(): (groupId: string, tier: HeldEnvironment["tier"]) => void {
   const ask = useSetUpEnvironment((state) => state.ask);
   const navigate = useNavigate();
   return useCallback(

@@ -137,6 +137,7 @@ import {
   useGroupPendingEnvironments,
   useMayAddEnvironment,
 } from "~/zerops/useAddEnvironment";
+import { useHalfMadeEnvironments } from "~/zerops/useHalfMadeEnvironments";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { useZeropsHistory, type ZeropsHistoryState } from "~/zerops/useZeropsHistory";
 import { cn } from "~/lib/utils";
@@ -725,10 +726,12 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
     notLiveAtLeast: waiting.atLeast,
     canRelease: release.offered,
   });
-  const mayAdd = useMayAddEnvironment()(groupId);
+  const { mayAdd, writer } = useMayAddEnvironment()(groupId);
   const addEnvironment = useAddEnvironment();
   const devstages = useDevstages(groupId);
   const pendingEnvironments = useGroupPendingEnvironments(groupId);
+  const { listing } = useZeropsCandidates();
+  const { halfMade, finishing } = useHalfMadeEnvironments(heldCandidates(listing).rows);
 
   if (flow === undefined) {
     return (
@@ -746,29 +749,36 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   }
 
   const production = environments.find((entry) => entry.tier === "production");
-  const slots = environmentSlots({
-    environments: environments.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
-    devstages,
-    pending: pendingEnvironments,
-    missing: flow.missing.map((row) => row.tier),
-    recipeRead: flow.recipeRead,
-    mayAdd,
-    productionRuns:
-      production === undefined
-        ? "unknown"
-        : productionRunsOf(flowValue?.deployments.get(production.projectId)),
-    waiting: { count: waiting.total, atLeast: waiting.atLeast },
-    // Entries are what `main` would put in a release: none says it holds no code, once the
-    // repositories and the recipe that names their services are both read.
-    mainHasCode:
-      flow.release.entries.length > 0
-        ? true
-        : flow.repos === undefined || !flow.recipeRead
-          ? undefined
-          : false,
-    releaseOffered: release.offered,
-    releasing: flow.release.inFlight,
-  });
+  const halfMadeHere = halfMade.filter((entry) => entry.groupId === groupId);
+  // Drawn once HQ has told the environments: before that, or where HQ refuses them to the reader,
+  // nothing is known to be absent.
+  const slots = !flow.declarationsRead
+    ? []
+    : environmentSlots({
+        environments: environments.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
+        devstages,
+        pending: pendingEnvironments,
+        halfMade: halfMadeHere.map((entry) => ({ id: entry.projectId, tier: entry.tier })),
+        recipeTiers: flow.recipeTiers,
+        recipeRead: flow.recipeRead,
+        mayAdd,
+        writer,
+        productionRuns:
+          production === undefined
+            ? "unknown"
+            : productionRunsOf(flowValue?.deployments.get(production.projectId)),
+        waiting: { count: waiting.total, atLeast: waiting.atLeast },
+        // Entries are what `main` would put in a release: none says it holds no code, once the
+        // repositories and the recipe that names their services are both read.
+        mainHasCode:
+          flow.release.entries.length > 0
+            ? true
+            : flow.repos === undefined || !flow.recipeRead
+              ? undefined
+              : false,
+        releaseOffered: release.offered,
+        releasing: flow.release.inFlight,
+      });
   return (
     <ZeropsGroupPane
       readFailures={
@@ -779,6 +789,11 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
       onAdd={(tier) => {
         addEnvironment(groupId, tier);
       }}
+      onFinish={(projectId) => {
+        const entry = halfMadeHere.find((candidate) => candidate.projectId === projectId);
+        if (entry !== undefined) finishing.finish(entry);
+      }}
+      finishing={finishing.finishing.has(groupId)}
       history={history}
       groupId={groupId}
       attention={attention.items}
@@ -830,6 +845,8 @@ export function ZeropsGroupPane({
   environments,
   slots,
   onAdd,
+  onFinish,
+  finishing,
   history,
   attention,
   groupId,
@@ -865,6 +882,10 @@ export function ZeropsGroupPane({
   readonly environments: ReadonlyArray<EnvironmentRow>;
   /** The *Environments* section's rows: what exists, and a slot for each tier that does not. */
   readonly slots: ReadonlyArray<EnvironmentSlotRow>;
+  /** *Finish setup*, pressed on a half-made environment, by its project. */
+  readonly onFinish: (id: string) => void;
+  /** An environment of this application is being finished now. */
+  readonly finishing: boolean;
   /** *Add stage* or *Add production*, pressed on a slot. */
   readonly onAdd: (tier: EnvironmentRow["tier"]) => void;
   readonly groupId: string;
@@ -967,84 +988,98 @@ export function ZeropsGroupPane({
         )}
       </Section>
 
-      <Section title="Environments">
-        <ul className="flex flex-col">
-          {slots.map((slot) => {
-            if (slot.kind === "devstage")
-              return (
-                <li className="px-2 py-2 text-sm text-muted-foreground" key={slot.id}>
-                  {slot.line}
-                </li>
-              );
-            if (slot.kind === "creating")
-              return (
-                <li className="flex min-w-0 items-center gap-3 px-2 py-2" key={slot.id}>
-                  <span className="shrink-0 text-sm font-medium text-muted-foreground">
-                    {slot.tier === "stage" ? "Stage" : "Production"}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+      {slots.length === 0 ? null : (
+        <Section title="Environments">
+          <ul className="flex flex-col">
+            {slots.map((slot) => {
+              if (slot.kind === "devstage")
+                return (
+                  <li className="px-2 py-2 text-sm text-muted-foreground" key={slot.id}>
                     {slot.line}
-                  </span>
-                  {slot.retry ? (
-                    <Button
-                      onClick={() => {
-                        onAdd(slot.tier);
-                      }}
-                      size="sm"
-                      variant="outline"
-                    >
-                      Try again
-                    </Button>
-                  ) : null}
-                </li>
-              );
-            if (slot.kind === "slot")
-              return (
-                <li className="flex min-w-0 items-center gap-3 px-2 py-2" key={slot.tier}>
-                  <span className="shrink-0 text-sm font-medium text-muted-foreground">
-                    {slot.name}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                    {slot.line}
-                  </span>
-                  {slot.add ? (
-                    <Button
-                      onClick={() => {
-                        onAdd(slot.tier);
-                      }}
-                      size="sm"
-                      variant="outline"
-                    >
-                      {`Add ${slot.name.toLocaleLowerCase()}`}
-                    </Button>
-                  ) : null}
-                </li>
-              );
-            const environment = environments.find((entry) => entry.projectId === slot.id);
-            if (environment === undefined) return null;
-            return (
-              <Fragment key={slot.id}>
-                <StopLine
-                  environment={environment}
-                  groupId={groupId}
-                  notice={withheldNotice?.(environment.projectId) ?? null}
-                  firstDeploy={firstDeployOf?.(environment.projectId)}
-                />
-                {slot.note === undefined ? null : (
-                  <li className="flex min-w-0 items-center gap-3 px-2 pb-2">
-                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                      {slot.note.text}
+                  </li>
+                );
+              if (slot.kind === "creating")
+                return (
+                  <li className="flex min-w-0 items-center gap-3 px-2 py-2" key={slot.id}>
+                    <span className="shrink-0 text-sm font-medium text-muted-foreground">
+                      {slot.tier === "stage" ? "Stage" : "Production"}
                     </span>
-                    {slot.note.review ? (
-                      <ReleaseAction release={release} variant="outline" />
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                      {slot.line}
+                    </span>
+                  </li>
+                );
+              if (slot.kind === "half-made")
+                return (
+                  <li className="flex min-w-0 items-center gap-3 px-2 py-2" key={slot.id}>
+                    <span className="shrink-0 text-sm font-medium text-muted-foreground">
+                      {slot.tier === "stage" ? "Stage" : "Production"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                      {slot.line}
+                    </span>
+                    {slot.finish ? (
+                      <Button
+                        disabled={finishing}
+                        onClick={() => {
+                          onFinish(slot.id);
+                        }}
+                        size="sm"
+                        variant="outline"
+                      >
+                        Finish setup
+                      </Button>
                     ) : null}
                   </li>
-                )}
-              </Fragment>
-            );
-          })}
-        </ul>
-      </Section>
+                );
+              if (slot.kind === "slot")
+                return (
+                  <li className="flex min-w-0 items-center gap-3 px-2 py-2" key={slot.tier}>
+                    <span className="shrink-0 text-sm font-medium text-muted-foreground">
+                      {slot.name}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                      {slot.line}
+                    </span>
+                    {slot.add ? (
+                      <Button
+                        onClick={() => {
+                          onAdd(slot.tier);
+                        }}
+                        size="sm"
+                        variant="outline"
+                      >
+                        {`Add ${slot.name.toLocaleLowerCase()}`}
+                      </Button>
+                    ) : null}
+                  </li>
+                );
+              const environment = environments.find((entry) => entry.projectId === slot.id);
+              if (environment === undefined) return null;
+              return (
+                <Fragment key={slot.id}>
+                  <StopLine
+                    environment={environment}
+                    groupId={groupId}
+                    notice={withheldNotice?.(environment.projectId) ?? null}
+                    firstDeploy={firstDeployOf?.(environment.projectId)}
+                  />
+                  {slot.note === undefined ? null : (
+                    <li className="flex min-w-0 items-center gap-3 px-2 pb-2">
+                      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                        {slot.note.text}
+                      </span>
+                      {slot.note.review ? (
+                        <ReleaseAction release={release} variant="outline" />
+                      ) : null}
+                    </li>
+                  )}
+                </Fragment>
+              );
+            })}
+          </ul>
+        </Section>
+      )}
 
       <Section title="In flight">
         {pullRequests.length === 0 ? (
