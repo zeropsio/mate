@@ -265,6 +265,56 @@ describe("ZeropsApiClient authentication", () => {
     expect(heard).toEqual(["org-1"]);
   });
 
+  // A Mate's deletion takes its project first, and the key that held only that project is gone with
+  // it: the platform answers its delete `400 clientUserConnectionNotFound` (measured live 4/4,
+  // 2026-10-05), as it answers a read of any token already deleted. That answer is the delete done;
+  // every other refusal stays the caller's failure.
+  it.each([
+    {
+      case: "a token the platform no longer has is deleted already",
+      status: 400,
+      body: {
+        error: {
+          code: "clientUserConnectionNotFound",
+          message: "Client user connection not found.",
+        },
+      },
+      deleted: true,
+    },
+    {
+      case: "another not-found is not taken for the token's",
+      status: 400,
+      body: { error: { code: "projectNotFound", message: "Project not found." } },
+      deleted: false,
+    },
+    {
+      case: "a malformed request stays a failure",
+      status: 400,
+      body: { error: { code: "invalidUserInput", message: "Invalid user input." } },
+      deleted: false,
+    },
+    {
+      case: "a refusal stays a failure",
+      status: 403,
+      body: {
+        error: {
+          code: "clientUserConnectionNotFound",
+          message: "Client user connection not found.",
+        },
+      },
+      deleted: false,
+    },
+  ])("deleting a token: $case", async ({ status, body, deleted }) => {
+    const stub = recordingFetch(() => jsonResponse(status, body));
+    const client = new ZeropsApiClient({ fetch: stub.fetch });
+    client.restoreSession(SESSION);
+
+    const outcome = client.deleteIntegrationToken({ clientId: "org-1", tokenId: "token-1" });
+
+    if (deleted) await expect(outcome).resolves.toBeUndefined();
+    else await expect(outcome).rejects.toBeInstanceOf(ZeropsApiError);
+  });
+
   it("remembers the user it last read for this session, and forgets it with the session", async () => {
     vi.useFakeTimers({ now: 5_000 });
     try {

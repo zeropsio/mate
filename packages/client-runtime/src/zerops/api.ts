@@ -575,6 +575,12 @@ function findString(value: unknown, keys: ReadonlyArray<string>): string | null 
   return null;
 }
 
+/** The platform's answer for an integration token it no longer has (`deleteIntegrationToken`). */
+const isTokenGone = (cause: unknown): boolean =>
+  cause instanceof ZeropsApiError &&
+  cause.status === 400 &&
+  cause.code === "clientUserConnectionNotFound";
+
 function errorKindFor(status: number, code: string | null): ZeropsApiErrorKind {
   if (status === 401) return "expired-session";
   if (status === 403) return "forbidden";
@@ -1492,6 +1498,10 @@ export class ZeropsApiClient {
    * The other half of every throwaway: one is minted for a single call and
    * deleted seconds later, and a deletion is immediate at the platform (the
    * value answers `401` within about 0.6 s, measured 2026-09-15).
+   *
+   * A token the platform no longer has is deleted already: it answers `400
+   * clientUserConnectionNotFound` for one, as a Mate's key is once the project it alone reached is
+   * deleted (measured live, 2026-10-05). That answer, and only that one, is the delete done.
    */
   async deleteIntegrationToken(
     input: { readonly clientId: string; readonly tokenId: string },
@@ -1507,6 +1517,8 @@ export class ZeropsApiClient {
           ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
         },
       );
+    } catch (cause) {
+      if (!isTokenGone(cause)) throw cause;
     } finally {
       // Landed or not, it may have: every reader of the organization's tokens reads them again.
       this.#tokensWritten(input.clientId);
