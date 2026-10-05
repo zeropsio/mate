@@ -695,7 +695,7 @@ describe("makeHqApi — the structure socket", () => {
         changes: null,
         mates: null,
         people: null,
-        presses: null,
+        presses: {},
       },
       { kind: "change", appId: "app-1", app: { id: "app-1", name: "Acme", projects: [] } },
     ]);
