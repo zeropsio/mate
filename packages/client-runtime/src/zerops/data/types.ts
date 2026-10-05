@@ -2252,11 +2252,6 @@ export interface ZeropsDataCommands {
     }>,
     CommandAdmissionError | AdapterError
   >;
-  readonly deleteProject: (
-    input: Omit<DeleteProjectCommandIntent, "kind" | "organization"> & {
-      readonly organization: OrganizationRef;
-    },
-  ) => Effect.Effect<CommandExecution<void>, CommandAdmissionError | AdapterError>;
 }
 
 export interface ZeropsDataRuntime {

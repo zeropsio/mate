@@ -127,13 +127,14 @@ import {
   pressFailure,
   useMatePress,
 } from "~/zerops/matePress";
+import { useDeleteProject } from "~/zerops/deleteProject";
 import { useReviveFailedMate } from "~/zerops/mateRestart";
 import { refreshMateSetup, useMateSetup } from "~/zerops/useMateSetup";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import type { MateSetup, MateSetupFailure } from "@t3tools/client-runtime/zerops/mateSetup";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
-import { runZeropsCommand, useZeropsData } from "~/zerops/zeropsDataContext";
+import { useZeropsData } from "~/zerops/zeropsDataContext";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { ConversationStripView } from "../chat/ConversationStrip";
@@ -186,7 +187,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const you = useMemo(() => personOf(user), [user]);
   // Which agent this project's other Mates use, read while it comes up: its sign-in is ready in it.
   useUsualAgent(projectId);
-  const { organizationRef, runtime } = useZeropsData();
+  const { organizationRef } = useZeropsData();
   const { listing, wholeForPerson, refresh: rereadListing } = useZeropsCandidates();
   const held = useMemo(() => heldCandidates(listing), [listing]);
   const listed = held.rows.find((candidate) => candidate.project.id === projectId);
@@ -586,6 +587,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // (`refinishNewProjectBirth`), and nothing above it moves.
   const finish = made === undefined ? finishSetupView(press) : undefined;
 
+  const deleteProject = useDeleteProject();
   const [removing, setRemoving] = useState(false);
   const [trouble, setTrouble] = useState<string | null>(null);
   const remove = () => {
@@ -596,8 +598,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     void removeFailedZeropsProject({
       projectId,
       organization,
-      deleteProject: (id) =>
-        runZeropsCommand(runtime.commands.deleteProject({ organization, projectId: id })),
+      deleteProject,
       forgetCreation: (id) => {
         forgetPress(id);
         forgetCreation(id);

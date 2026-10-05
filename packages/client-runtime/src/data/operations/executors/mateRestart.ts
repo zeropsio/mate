@@ -8,12 +8,11 @@
 import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/unstable/reactivity";
 
-import { ZeropsApiError } from "../../../zerops/api.ts";
-import { zeropsFault } from "../../../zerops/data/zeropsWire.ts";
 import type { OperationReceipt } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OwnerUnobservable, UncertainAcceptance } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
+import { verb } from "./write.ts";
 import { untilStopSettles } from "../mateRestart.ts";
 import type { AccountStore } from "../../store.ts";
 
@@ -27,25 +26,6 @@ export interface MateRestartPlatform {
     serviceId: string,
   ) => Promise<{ readonly processId?: string | undefined }>;
 }
-
-/**
- * A failed write whose answer may have been lost — no answer, a dropped socket, a server error —
- * may have applied: uncertain, never sent again blindly. A refusal keeps what Zerops said.
- */
-function faultOf(cause: unknown): StreamFault | UncertainAcceptance {
-  const message = cause instanceof Error ? cause.message : String(cause);
-  if (!(cause instanceof ZeropsApiError)) return { outcome: "uncertain-acceptance", message };
-  if (
-    cause.kind === "network" ||
-    cause.kind === "uncertain" ||
-    (cause.status !== null && cause.status >= 500)
-  )
-    return { outcome: "uncertain-acceptance", message };
-  return { ...zeropsFault(cause), message };
-}
-
-const verb = (call: () => Promise<{ readonly processId?: string | undefined }>) =>
-  Effect.tryPromise({ try: call, catch: faultOf });
 
 /**
  * Zerops as the owner of a Mate's restart. A failed container's stop holds its project's process

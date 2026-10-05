@@ -12,6 +12,7 @@ import type { AtomRegistry } from "effect/unstable/reactivity";
 
 import { linkKeys, type OperationReceipt } from "../model.ts";
 import { sameValue } from "../projections/equal.ts";
+import { UNOBSERVED_PHASES } from "../projections/operationEnd.ts";
 import type { AccountStore, Projection } from "../store.ts";
 import type { OperationKind } from "./kind.ts";
 
@@ -78,9 +79,6 @@ export const mateRestart: OperationKind<"mate-restart"> = {
     }),
 };
 
-/** Phases in which a link observes nothing more until something outside it changes. */
-const UNOBSERVED: ReadonlySet<string> = new Set(["paused", "refused", "unsupported", "closed"]);
-
 type StopWatch = "waiting" | "ended" | "unobservable";
 
 /**
@@ -101,7 +99,9 @@ const stopWatch: Projection<
       !read.index("running", projectId).has(processId)
     )
       return "ended";
-    return UNOBSERVED.has(read.stream(linkKeys.zerops(orgId)).phase) ? "unobservable" : "waiting";
+    return UNOBSERVED_PHASES.has(read.stream(linkKeys.zerops(orgId)).phase)
+      ? "unobservable"
+      : "waiting";
   },
 };
 

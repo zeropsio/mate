@@ -7,9 +7,11 @@ import { RegistryContext } from "@effect/atom-react";
 import {
   makeOperations,
   makeZeropsExecutor,
+  operationEnd,
   operationProgress,
   type AccountStore,
   type DetailDemand,
+  type OperationEnd,
   type OperationProgress,
   type Operations,
 } from "@t3tools/client-runtime/data";
@@ -33,6 +35,8 @@ export interface AccountOperations {
     /** What the owner said of how it ended, once it has; `null` before. */
     readonly evidence: string | null;
   }>;
+  /** Resolves once the operation is final for now, or can no longer be followed (`operationEnd`). */
+  readonly untilEnd: (requestId: string, orgId: string) => Promise<NonNullable<OperationEnd>>;
 }
 
 const coordinators = new WeakMap<AccountStore, WeakMap<SessionClient, AccountOperations>>();
@@ -64,7 +68,22 @@ function accountOperations(
     },
     makeId: randomUUID,
   });
+  const untilEnd = (requestId: string, orgId: string) =>
+    new Promise<NonNullable<OperationEnd>>((resolve) => {
+      const atom = store.data.project(operationEnd, { requestId, orgId });
+      let cancel: () => void = () => {};
+      cancel = registry.subscribe(
+        atom,
+        (end) => {
+          if (end === null) return;
+          resolve(end);
+          cancel();
+        },
+        { immediate: true },
+      );
+    });
   const made: AccountOperations = {
+    untilEnd,
     submit: async (intent) => {
       const requestId = await Effect.runPromise(operations.submit(intent));
       const outcome = store.state().operations.get(requestId)?.receipt?.outcome;

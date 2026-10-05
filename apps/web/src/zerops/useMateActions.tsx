@@ -139,6 +139,7 @@ import {
   useInterruptedPresses,
   useMatePresses,
 } from "./matePress";
+import { useDeleteProject } from "./deleteProject";
 import { useRestartMate } from "./mateRestart";
 import {
   planProjectLeave,
@@ -439,6 +440,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
 
   const restartMate = useRestartMate();
+  const deleteProject = useDeleteProject();
   const restart = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
       const serviceId = candidate.service?.id;
@@ -915,7 +917,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           const environments = currentAccountEnvironments();
           environments?.setDeleting(projectId, true);
           try {
-            await runZeropsCommand(runtime.commands.deleteProject({ organization, projectId }));
+            await deleteProject(projectId);
           } catch (cause) {
             environments?.setDeleting(projectId, false);
             throw cause;
@@ -959,11 +961,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     [
       activeOrganization,
       client,
+      deleteProject,
       leaveDeleted,
       mateKeyOf,
       hqApi,
       organizationRef,
-      runtime.commands,
       setDialog,
     ],
   );

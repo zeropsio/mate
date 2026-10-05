@@ -5,6 +5,7 @@
  * @module data/operations/kinds
  */
 import type { OperationIntent } from "../model.ts";
+import { deleteProject } from "./deleteProject.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateRestart } from "./mateRestart.ts";
 import { throwawaySweep } from "./throwawaySweep.ts";
@@ -21,7 +22,7 @@ export function defineOperationKinds(
   return kinds;
 }
 
-export const OPERATION_KINDS = defineOperationKinds([throwawaySweep, mateRestart]);
+export const OPERATION_KINDS = defineOperationKinds([throwawaySweep, mateRestart, deleteProject]);
 
 /** The kind an intent belongs to, in a registry: the account's, or a test's own. */
 export function operationKind(

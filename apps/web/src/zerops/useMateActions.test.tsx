@@ -152,6 +152,9 @@ vi.mock("./useHqOffers", () => ({
       ? { kind: "allowed" }
       : { kind: "refused", reason: "not_structure_writer" },
 }));
+vi.mock("./deleteProject", () => ({
+  useDeleteProject: () => mock.deleteProject,
+}));
 vi.mock("./mateRestart", () => ({
   useRestartMate: () => mock.restartContainer,
 }));
@@ -203,7 +206,6 @@ vi.mock("./zeropsDataContext", () => ({
       commands: {
         setProjectMemberRole: mock.setProjectMemberRole,
         renameProject: mock.renameProject,
-        deleteProject: mock.deleteProject,
       },
       reads: { setupMarker: () => null },
       cells: {

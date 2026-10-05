@@ -6,7 +6,6 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Latch from "effect/Latch";
-import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
@@ -95,7 +94,6 @@ import type {
   ZeropsVisibility,
 } from "./types.ts";
 import {
-  processKeyOf,
   DispatchOrdinal,
   InterestEpoch,
   InterestKey as InterestKeySchema,
@@ -4185,85 +4183,6 @@ export const makeZeropsDataRuntime = Effect.fn("ZeropsDataRuntime.make")(functio
             ? Effect.succeed({ attempt, value: result.value })
             : Effect.fail(missingCommandResult()),
         ),
-      ),
-    deleteProject: (input) =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const project: ProjectRef = {
-            kind: "project",
-            organization: input.organization,
-            projectId: ZeropsProjectId.make(input.projectId),
-          };
-          const lease = yield* acquire({ kind: "project-activity", project }).pipe(
-            Effect.mapError(
-              (error) =>
-                ({
-                  _tag: "ZeropsDataAdapterError" as const,
-                  kind: "rejected" as const,
-                  message: error.message,
-                  retryable: false,
-                  accountRevocationEvidence: false,
-                }) satisfies AdapterError,
-            ),
-          );
-          // Establish the stream before the write so even a fast terminal event is retained.
-          const observing = yield* AtomRegistry.toStream(options.atomRegistry, rootAtom).pipe(
-            Stream.filter(
-              (state) =>
-                state.closed ||
-                ["observing", "failed", "paused"].includes(
-                  state.interests.get(lease.interest)?.interest.status ?? "",
-                ),
-            ),
-            Stream.runHead,
-          );
-          if (
-            Option.isNone(observing) ||
-            observing.value.closed ||
-            observing.value.interests.get(lease.interest)?.interest.status !== "observing"
-          )
-            return yield* Effect.fail({
-              _tag: "ZeropsDataAdapterError",
-              kind: "rejected",
-              message: "The Zerops deletion process stream could not be opened.",
-              retryable: false,
-              accountRevocationEvidence: false,
-            } satisfies AdapterError);
-          const { attempt, result } = yield* runCommand({ kind: "delete-project", ...input });
-          if (
-            result.kind !== "delete-project" ||
-            options.atomRegistry.get(atoms.reads.operationProgress(attempt)).processes.length === 0
-          )
-            return yield* Effect.fail(missingCommandResult());
-          const outcome = yield* AtomRegistry.toStream(options.atomRegistry, rootAtom).pipe(
-            Stream.map((state): string | undefined => {
-              const statuses =
-                state.commands.get(attempt.attemptId)?.processRefs.map((ref) => {
-                  const lifecycle = state.activity.processes.get(processKeyOf(ref))?.lifecycle;
-                  return lifecycle?.knowledge === "observed" ? lifecycle.fields.status : undefined;
-                }) ?? [];
-              if (statuses.includes("FAILED") || statuses.includes("CANCELED"))
-                return "The Zerops deletion process failed or was canceled.";
-              if (statuses.length > 0 && statuses.every((status) => status === "FINISHED"))
-                return "finished";
-              const interest = state.interests.get(lease.interest)?.interest;
-              if (state.closed || interest?.status === "failed" || interest?.status === "paused")
-                return "The Zerops deletion process could not be followed. Check the project’s processes before deleting again.";
-              return undefined;
-            }),
-            Stream.filter((outcome): outcome is string => outcome !== undefined),
-            Stream.runHead,
-          );
-          if (Option.isNone(outcome) || outcome.value !== "finished")
-            return yield* Effect.fail({
-              _tag: "ZeropsDataAdapterError" as const,
-              kind: "rejected" as const,
-              message: Option.getOrElse(outcome, () => "Deletion observation ended."),
-              retryable: false,
-              accountRevocationEvidence: false,
-            } satisfies AdapterError);
-          return { attempt, value: result.value };
-        }),
       ),
   };
 

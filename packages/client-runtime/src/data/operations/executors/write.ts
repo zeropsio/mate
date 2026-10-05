@@ -1,0 +1,28 @@
+/**
+ * A Zerops write as an operation's send: what its answer classifies as. A write whose answer may
+ * have been lost — no answer, a dropped socket, a server error — may have applied: uncertain,
+ * never sent again blindly. A refusal keeps what Zerops said.
+ *
+ * @module data/operations/executors/write
+ */
+import * as Effect from "effect/Effect";
+
+import { ZeropsApiError } from "../../../zerops/api.ts";
+import { zeropsFault } from "../../../zerops/data/zeropsWire.ts";
+import type { StreamFault } from "../../streamMachine.ts";
+import type { UncertainAcceptance } from "../coordinator.ts";
+
+function faultOf(cause: unknown): StreamFault | UncertainAcceptance {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  if (!(cause instanceof ZeropsApiError)) return { outcome: "uncertain-acceptance", message };
+  if (
+    cause.kind === "network" ||
+    cause.kind === "uncertain" ||
+    (cause.status !== null && cause.status >= 500)
+  )
+    return { outcome: "uncertain-acceptance", message };
+  return { ...zeropsFault(cause), message };
+}
+
+/** One Zerops write, its failure classified. */
+export const verb = <A>(call: () => Promise<A>) => Effect.tryPromise({ try: call, catch: faultOf });

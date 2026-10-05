@@ -69,6 +69,7 @@ import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
+import { useDeleteProject } from "~/zerops/deleteProject";
 import { useRestartMate } from "~/zerops/mateRestart";
 import {
   birthPresses,
@@ -901,6 +902,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
   const [startingCandidateKey, setStartingCandidateKey] = useState<string | null>(null);
   const [restartingCandidateKey, setRestartingCandidateKey] = useState<string | null>(null);
   const restartMate = useRestartMate();
+  const deleteProject = useDeleteProject();
   const [removingCandidateKey, setRemovingCandidateKey] = useState<string | null>(null);
   const navigate = useNavigate();
   // The server that served this page gets one automatic identity exchange.
@@ -1552,8 +1554,7 @@ function ZeropsProjectsContent({ search }: { readonly search: ProjectsSearch }) 
         void removeFailedZeropsProject({
           projectId: candidate.project.id,
           organization,
-          deleteProject: (projectId) =>
-            runZeropsCommand(runtime.commands.deleteProject({ organization, projectId })),
+          deleteProject,
           forgetCreation: forgetPress,
         })
           .then((outcome) => {

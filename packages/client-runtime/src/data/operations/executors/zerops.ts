@@ -12,6 +12,7 @@ import type { ThrowawayDebt } from "../../../zerops/doorThrowaway.ts";
 import type { DetailDemand } from "../../demand.ts";
 import type { AccountStore } from "../../store.ts";
 import type { OperationExecutor } from "../coordinator.ts";
+import { deleteProjectExecutor } from "./deleteProject.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
 import { throwawaySweepExecutor } from "./throwawaySweep.ts";
 
@@ -20,6 +21,7 @@ type ZeropsOperationsClient = Pick<
   | "restartService"
   | "stopService"
   | "startService"
+  | "deleteProject"
   | "listIntegrationTokens"
   | "deleteIntegrationToken"
 >;
@@ -45,6 +47,9 @@ export function makeZeropsExecutor(input: {
     holdHistory: (projectId) =>
       input.demandDetail({ family: "process", listing: "history", ownerId: projectId }),
   });
+  const remove = deleteProjectExecutor({
+    deleteProject: (projectId) => client.deleteProject(projectId),
+  });
   const sweep = throwawaySweepExecutor({
     platform: {
       listIntegrationTokens: async (clientId) =>
@@ -64,6 +69,8 @@ export function makeZeropsExecutor(input: {
       switch (intent.kind) {
         case "mate-restart":
           return restart.submit(requestId, intent);
+        case "delete-project":
+          return remove(requestId, intent);
         case "throwaway-sweep":
           return sweep(requestId, intent);
       }
