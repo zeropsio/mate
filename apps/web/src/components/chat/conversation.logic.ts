@@ -1707,6 +1707,8 @@ export interface IncidentModel {
 /** What a dev-server call found: running, not running, or nothing (still running, another kind). */
 export function devServerRunning(operation: ZeropsOperation): boolean | null {
   if (operation.kind !== "devServer" || operation.phase === "running") return null;
+  // A log read checks nothing about the server.
+  if (devServerAction(operation) === "logs") return null;
   if (operation.phase === "failed") return false;
   if (operation.statusWord === "Not running") return false;
   if (operation.statusWord === "Running") return true;

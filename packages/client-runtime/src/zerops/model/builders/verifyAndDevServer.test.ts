@@ -145,3 +145,22 @@ describe("buildVerifyFields — the card names the service the checks ran on", (
     expect(fields.target).toEqual({ hostname: subject });
   });
 });
+
+// A log read checks nothing: zcp answers it with `running: false`, which read
+// as a dev server that had stopped ("medusadev · not running" beside a dev
+// that answered 200 a minute before).
+describe("buildDevServerFields — a log read finds nothing about running", () => {
+  it("reads as a read log, not as a server that is not running", () => {
+    const fields = buildDevServerFields(
+      call(
+        "zerops_dev_server",
+        { hostname: "medusadev", action: "logs" },
+        { action: "logs", hostname: "medusadev", running: false, logTail: "Server is ready" },
+      ),
+    );
+    expect(fields.statusWord).toBe("Read");
+    expect(fields.closing).toBe("Read the medusadev log.");
+    expect(fields.steps.map((step) => step.state)).not.toContain("failed");
+    expect(fields.explanation).toBeUndefined();
+  });
+});

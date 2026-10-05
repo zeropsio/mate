@@ -1457,6 +1457,11 @@ describe("standingIncidents — what the dock under the now line says of a servi
       shows: [],
     },
     {
+      name: "a log read checks nothing: nothing",
+      ops: [dev("s1", 1, "Health check", true), dev("s2", 2, "Logs", false)],
+      shows: [],
+    },
+    {
       name: "found, then started and running: gone",
       ops: [dev("s1", 1, "Status", false), dev("s2", 2, "Start", true)],
       shows: [],
