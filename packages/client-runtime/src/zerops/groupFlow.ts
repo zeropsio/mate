@@ -115,7 +115,7 @@ export interface GroupFlowStopInput {
   readonly projectId: string;
   readonly name: string;
   readonly tier: GroupEnvironmentTier;
-  /** Its row, where `environments.yaml` declares it and the deploy half read it. */
+  /** Its row, where HQ records the environment and its deploys (`environmentRowInputsOf`). */
   readonly row: EnvironmentRow | undefined;
   /** The platform's pushed answer (`ZeropsProjectFlowValue.deployments`); `undefined` unread. */
   readonly deployment: Shown<Deployment> | undefined;
@@ -150,13 +150,11 @@ export interface GroupFlowInput {
     readonly inFlight?: string | undefined;
   };
   /**
-   * Whether any of the project's code repositories has a commit on `main`,
-   * from a default-branch read of each (`GET /repos/{org}/{repo}/branches/main`).
-   * `undefined` where that was not read. A merged code change proves it
-   * either way.
+   * Whether any of the project's code repositories has a commit on `main`; `undefined` where it
+   * was not read, as no caller reads it today. A merged code change proves it either way.
    */
   readonly mainHasCode: boolean | undefined;
-  /** The commit `main` is at, from the same read; `undefined` where it was not read. */
+  /** The commit `main` is at; `undefined` where it was not read. */
   readonly mainHead: string | undefined;
   /**
    * Whether this person may add a production to this project now: the role is

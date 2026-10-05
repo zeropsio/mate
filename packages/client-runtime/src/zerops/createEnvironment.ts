@@ -97,7 +97,7 @@ export interface EnvironmentCreationInput {
 }
 
 export type EnvironmentCreationStep =
-  /** `POST /client/{clientId}/project`, tags included so it is never briefly ungrouped. */
+  /** `POST /client/{clientId}/project`, born with its one tag where it gets an agent. */
   | {
       readonly kind: "create-project";
       readonly name: string;
@@ -190,11 +190,11 @@ export type EnvironmentCreationPlan =
  * The ordered platform calls that stand up one environment, or the reason
  * there are none.
  *
- * Order is not arbitrary. The project is created **with its tags already on
- * it**, so it never exists as an untagged project that the group tree would
- * miss — and since the group tree is derived from the lag-free project list
- * rather than the trailing search index, the new environment appears in its
- * group immediately.
+ * Order is not arbitrary. Where the project belongs is HQ's record: a Mate's
+ * project is created under the birth intent HQ already holds (`birth`), and the
+ * press registers every environment in its application. The one tag it is born
+ * with, where it gets an agent, is the Zerops GUI's `mate` marker, which
+ * nothing here reads.
  *
  * The container is imported before the application's runtimes: it is the part
  * the user can start talking to, and on the roles that get one it is what
@@ -239,8 +239,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
     };
   }
 
-  // Membership first, then the name: naming is not a membership write, and
-  // routing it through one clears the group (`groups.ts`).
+  // The Zerops GUI's marker on a project with an agent; where it belongs is HQ's.
   const tagList = withAgent ? withZeropsMateTag([]) : [];
 
   // A recipe that describes a whole project creates one in a single call. Not

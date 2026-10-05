@@ -12,7 +12,7 @@ import {
 
 /** A tier as `main` holds it: a runtime built from the group's own repository, and a database. */
 const TIER_YAML =
-  "services:\n  - hostname: api\n    buildFromGit: https://gitea.test/acme/api\n    zeropsSetup: api\n  - hostname: db\n    type: postgresql@17\n";
+  "services:\n  - hostname: api\n    buildFromGit: https://hq.test/git/acme/api.git\n    zeropsSetup: api\n  - hostname: db\n    type: postgresql@17\n";
 /** What a Mate's creation imports itself: the managed services, with its project. */
 const MANAGED_YAML = "services:\n  - hostname: db\n    type: postgresql@17\n";
 
@@ -692,13 +692,17 @@ describe("runEnvironmentCreation — closing the project off", () => {
     });
   });
 
-  it("stops a stage's press at a refused registration: it has no close-off to keep", async () => {
+  it.each([
+    { what: "a Mate", role: "dev" },
+    { what: "a stage", role: "stage" },
+    { what: "a production", role: "prod" },
+  ] as const)("stops the press at a refused registration for $what", async ({ role }) => {
     const { platform } = fakePlatform({
       register: async () => {
         throw new Error("Only an owner may register it.");
       },
     });
-    const { outcome } = await run(plan("prod"), platform);
+    const { outcome } = await run(plan(role), platform);
     expect(outcome).toMatchObject({ ok: false, failedStep: { kind: "register" } });
   });
 });

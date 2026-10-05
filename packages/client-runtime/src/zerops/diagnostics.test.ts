@@ -229,8 +229,8 @@ describe("diagnosticFailure", () => {
     ],
     [
       "an HTTP status rides along",
-      { _tag: "GiteaError", status: 409 },
-      { code: "GiteaError", status: 409 },
+      { _tag: "ConnectionTransientError", status: 503 },
+      { code: "ConnectionTransientError", status: 503 },
     ],
     [
       "a plain error is its name",

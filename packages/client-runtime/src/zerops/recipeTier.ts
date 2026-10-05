@@ -1,6 +1,6 @@
 /**
- * The group repo's tiers, turned into what the platform imports — guide 4.3,
- * `../gitea-mate/docs/group-repo.md`.
+ * The recipe repository's tiers, turned into what the platform imports — guide 4.3. The
+ * repository is `group` in HQ, one per application.
  *
  * ## What the group repo holds
  *

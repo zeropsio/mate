@@ -643,7 +643,7 @@ describe("throwaway hygiene", () => {
   }
 
   // CM-3: the organization's write flag would lock these members out, and
-  // the door and the broker are what decide their roles.
+  // the door and HQ are what decide their roles.
   for (const row of [
     { member: "a BASIC_USER", roleCode: "BASIC_USER", override: null },
     { member: "a READ_ONLY-with-override", roleCode: "READ_ONLY", override: "ADMIN" },
