@@ -666,7 +666,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       // one (`finishSetupContainer`).
       const container = whole
         ? finishSetupContainer({
-            hasService: candidate.service !== undefined,
+            containerMissing: candidate.missingContainer === true,
             pressStopped,
             pressedElsewhere: pressedElsewhere(candidate.project.id),
           })
@@ -1225,16 +1225,17 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
 }
 
 /**
- * Whether a Mate's container never came: its project lists no zcp, and no press — this tab's, or
- * one another browser holds at HQ (`pressElsewhere`) — is importing one: importing one again
- * would make a second.
+ * Whether a Mate's container never came: a read of its project's services shows no zcp
+ * (`missingContainer`) — services not read yet, or unreadable, are unknown, never missing — and no
+ * press — this tab's, or one another browser holds at HQ (`pressElsewhere`) — is importing one:
+ * importing one again would make a second.
  */
 export function mateContainerMissing(
-  candidate: Pick<ZeropsCandidatePresentation, "service">,
+  candidate: Pick<ZeropsCandidatePresentation, "missingContainer">,
   pressedHere: boolean,
   pressedElsewhere: boolean,
 ): boolean {
-  return candidate.service === undefined && !pressedHere && !pressedElsewhere;
+  return candidate.missingContainer === true && !pressedHere && !pressedElsewhere;
 }
 
 /**
