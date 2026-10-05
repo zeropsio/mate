@@ -17,6 +17,23 @@ describe("the thread's error banner", () => {
     expect(html).not.toContain("claude auth login");
   });
 
+  // F7: the Mate is the subject, the agent only what the person signs in to — for a sign-in the
+  // driver refused and for a stream that died signed out alike.
+  it.each([
+    { case: "refused", error: SIGNED_OUT },
+    {
+      case: "expired mid-run",
+      error:
+        "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
+    },
+  ])("says the Mate is signed out where its sign-in was $case", ({ error }) => {
+    const html = renderToStaticMarkup(
+      <ThreadErrorBanner error={error} mate="Sage" onAuthorize={() => {}} />,
+    );
+    expect(html).toContain("Sage is signed out of Claude. Sign in again to continue.");
+    expect(html).toContain('data-zerops-primary-action="Authorize"');
+  });
+
   it("keeps the driver's own words where there is nowhere to sign in", () => {
     const html = renderToStaticMarkup(<ThreadErrorBanner error={SIGNED_OUT} />);
     expect(html).not.toContain('data-zerops-primary-action="Authorize"');

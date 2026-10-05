@@ -19,17 +19,39 @@
  */
 
 /**
- * Whether an error is an agent refusing for want of credentials.
+ * The agent a driver's words say is signed out, by the name the person signs in to; `null` where
+ * they say nothing of the kind.
  *
- * Matched on the one phrase every driver shares — Claude's
- * `claudeSignedOutMessage` and Antigravity's both open with it — rather than
- * on either one's full sentence, which carries a configured path and a binary
- * name that differ per environment.
+ * Matched on the phrases the drivers share rather than on any one's full sentence, which carries a
+ * configured path and a binary name that differ per environment: "could not authenticate" (Claude's
+ * `claudeSignedOutMessage`, Antigravity's) and "'s sign-in has expired" (a Claude stream that died
+ * signed out, `claudeStreamFailure`). The name is the one just before the phrase.
  */
-export function agentNeedsSignIn(error: string | null | undefined): boolean {
-  return error !== null && error !== undefined && error.includes("could not authenticate");
+export function signedOutAgent(error: string | null | undefined): string | null {
+  if (error === null || error === undefined) return null;
+  return SIGNED_OUT.exec(error)?.[1] ?? null;
 }
 
-/** What the banner says in place of a command nobody here can run. */
+const SIGNED_OUT =
+  /(?:^|\b)([A-Z][\w-]*(?: [A-Z][\w-]*)?)(?:'s sign-in has expired| could not authenticate)/u;
+
+/** Whether an error is an agent refusing for want of credentials (`signedOutAgent`). */
+export function agentNeedsSignIn(error: string | null | undefined): boolean {
+  return signedOutAgent(error) !== null;
+}
+
+/** What the banner says in place of a command nobody here can run, where no Mate is named. */
 export const AGENT_SIGN_IN_MESSAGE =
   "This agent is not signed in yet. Authorize it here and start a new thread.";
+
+/**
+ * An error as a Mate's surface says it: a sign-in failure with the Mate as its subject and the
+ * agent only what the person signs in to — "Sage is signed out of Claude. Sign in again to
+ * continue." (F7: the driver's words name Claude, and its adapter does not know the Mate). Any
+ * other error as it was said.
+ */
+export function mateErrorWords(error: string, mate: string | undefined): string {
+  const agent = signedOutAgent(error);
+  if (agent === null) return error;
+  return `${mate === undefined ? "Signed" : `${mate} is signed`} out of ${agent}. Sign in again to continue.`;
+}

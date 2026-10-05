@@ -862,6 +862,14 @@ describe("agentActivityErrorLine", () => {
       line: undefined,
     },
     { name: "no error kept, no line", lastError: null, kind: "failed", line: undefined },
+    // F7: under the Mate's name, its sign-in failure says what the person signs in to.
+    {
+      name: "a signed-out Mate says what to sign in to, not the driver's words",
+      lastError:
+        "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
+      kind: "failed",
+      line: "Signed out of Claude. Sign in again to continue.",
+    },
   ])("$name", ({ lastError, kind, line }) => {
     expect(agentActivityErrorLine({ session: session(lastError) }, kind).errorLine).toBe(line);
   });

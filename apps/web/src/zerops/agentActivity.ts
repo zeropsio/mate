@@ -41,6 +41,7 @@ import {
   type FlowPullRequest,
   type MatePoseFacts,
   type MateRunFacts,
+  mateErrorWords,
 } from "@t3tools/client-runtime/zerops";
 import type {
   EnvironmentId,
@@ -484,7 +485,10 @@ export function agentActivityQuestion(
   return question === undefined || question.length === 0 ? {} : { question };
 }
 
-/** The error's first line, while the Mate stands stopped on it. */
+/**
+ * The error's first line, while the Mate stands stopped on it; a sign-in failure in the row's
+ * words — under the Mate's name, what the person signs in to (`mateErrorWords`).
+ */
 export function agentActivityErrorLine(
   thread: Pick<AgentActivityThread, "session">,
   kind: ThreadStatusKind,
@@ -494,7 +498,7 @@ export function agentActivityErrorLine(
     ?.split("\n")
     .map((line) => line.trim())
     .find((line) => line.length > 0);
-  return first === undefined ? {} : { errorLine: maskSecrets(first) };
+  return first === undefined ? {} : { errorLine: maskSecrets(mateErrorWords(first, undefined)) };
 }
 
 export function deriveZeropsAgentActivity(

@@ -4116,3 +4116,12 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   - _Why:_ "a change asks for review only once described, and only after the run that made it";
     hiding every change of a working Mate hid one an earlier run had finished, and the two surfaces
     disagreed.
+- **2026-10-06** — **A sign-in failure is the Mate's, said in its words** (F7: the reason read
+  "Claude's sign-in has expired. Sign Claude in again, …" under Sage). Where a Mate is named, its
+  sign-in failure reads "Sage is signed out of Claude. Sign in again to continue." — the Mate the
+  subject, the agent only what the person signs in to; on the Mate's own menu row, under its name,
+  "Signed out of Claude. Sign in again to continue." The driver's words stay the driver's
+  (`apps/server/src/provider` is ported): the client recognises them (`signedOutAgent`, on "could
+  not authenticate" and "'s sign-in has expired") and says them (`mateErrorWords`) in the
+  conversation's banner, the menu row and the jump box.
+  - _Why:_ the adapter does not know the Mate's name, and the client does wherever it draws one.

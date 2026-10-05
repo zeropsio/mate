@@ -1,4 +1,8 @@
-import { AGENT_SIGN_IN_MESSAGE, agentNeedsSignIn } from "@t3tools/client-runtime/zerops";
+import {
+  AGENT_SIGN_IN_MESSAGE,
+  agentNeedsSignIn,
+  mateErrorWords,
+} from "@t3tools/client-runtime/zerops";
 import { memo } from "react";
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
@@ -38,8 +42,11 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
   error,
   onDismiss,
   onAuthorize,
+  mate,
 }: {
   error: string | null;
+  /** The Mate whose conversation it is: a sign-in failure says it as the Mate's (`mateErrorWords`). */
+  mate?: string | undefined;
   onDismiss?: () => void;
   /**
    * Opens the tray that signs the agent in, where the caller has one.
@@ -58,7 +65,9 @@ export const ThreadErrorBanner = memo(function ThreadErrorBanner({
       <div className="mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))] pt-3">
         <Alert variant="error" controlAlignment="first-line">
           <CircleAlertIcon />
-          <AlertDescription>{AGENT_SIGN_IN_MESSAGE}</AlertDescription>
+          <AlertDescription>
+            {mate === undefined ? AGENT_SIGN_IN_MESSAGE : mateErrorWords(error, mate)}
+          </AlertDescription>
           <AlertAction>
             <Button
               data-zerops-primary-action="Authorize"

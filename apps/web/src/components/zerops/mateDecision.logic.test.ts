@@ -139,4 +139,19 @@ describe("mateDecision — what a Mate waits on, as a surface answers it", () =>
   ] as const)("reads $kind as $expected", ({ kind, expected }) => {
     expect(mateDecision({ ...base, kind, failure: "The deploy timed out." })).toEqual(expected);
   });
+
+  // F7: a sign-in failure says the Mate is signed out, and what the person signs in to.
+  it("says a signed-out Mate's failure with the Mate as its subject", () => {
+    expect(
+      mateDecision({
+        ...base,
+        kind: "failed",
+        failure:
+          "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
+      }),
+    ).toEqual({
+      kind: "failure",
+      message: "Kai is signed out of Claude. Sign in again to continue.",
+    });
+  });
 });

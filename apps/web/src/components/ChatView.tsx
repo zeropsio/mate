@@ -8382,6 +8382,10 @@ export default function ChatView(props: ChatViewProps) {
 
         <ThreadErrorBanner
           error={visibleThreadError}
+          mate={(() => {
+            const mateAt = zeropsMateAt(zeropsMates, environmentId);
+            return mateAt.kind === "mate" ? mateAt.mate.name : undefined;
+          })()}
           // An agent that is not signed in is signed in here, not through a
           // shell on a container nobody has one on.
           onAuthorize={
