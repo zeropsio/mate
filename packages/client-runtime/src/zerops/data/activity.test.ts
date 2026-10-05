@@ -329,7 +329,7 @@ describe("a project's running processes after its organization's running read", 
 // per open: it has to know when that read landed, or failed (pass 36).
 describe("selectActivity — where the project's newest process history read stands", () => {
   const history = (
-    status: "establishing" | "observing" | "failed" | "paused" | null,
+    status: "establishing" | "observing" | "failed" | "retrying" | "paused" | null,
     descriptor: { readonly projectId?: string; readonly before?: string | null } = {},
   ) => {
     const state = makeInitialZeropsDataState(scope());
@@ -346,8 +346,15 @@ describe("selectActivity — where the project's newest process history read sta
               guarantee: "source-order-unverified" as const,
               sinceReceiptOrdinal: ReceiptOrdinal.make(1),
             }
-          : status === "failed"
-            ? { status, identity: id, reason: "boom", retryable: true, attempts: 1, retryAtMs: 9 }
+          : status === "failed" || status === "retrying"
+            ? {
+                status: "failed" as const,
+                identity: id,
+                reason: "boom",
+                retryable: status === "retrying",
+                attempts: 1,
+                retryAtMs: status === "retrying" ? 9 : null,
+              }
             : { status, identity: id, reason: "no-leases" as const };
     return reduce(state, {
       kind: "interest-upserted",
@@ -368,6 +375,9 @@ describe("selectActivity — where the project's newest process history read sta
     { name: "being read", state: history("establishing"), read: "reading" },
     { name: "read", state: history("observing"), read: "read" },
     { name: "its read failed", state: history("failed"), read: "failed" },
+    // Run 12: the socket's routine close every 30 minutes fails its reads with
+    // a retry scheduled; a settled card's one read is still on its way.
+    { name: "its read failed and is retried", state: history("retrying"), read: "reading" },
     { name: "let go", state: history("paused"), read: "unread" },
     {
       name: "another project's",
