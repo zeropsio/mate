@@ -80,7 +80,7 @@ export function movesAsPerson({
 /**
  * How a run's scroll keeps to its foot as what it holds or its box changed:
  * it `stays` where it is — scrolled up by the person, or a glide in flight
- * carries it; it `waits` a frame while the card around it eases taller, which
+ * carries it, re-aimed at the foot each frame; it `waits` a frame while the card around it eases taller, which
  * gives it the room it needs; it `puts` itself at its foot in the same frame,
  * so its end never leaves its foot — a height that eases (a line landing, a
  * bubble growing as its words stream) already moves on the room's curve, and
@@ -111,9 +111,9 @@ export function keepsFoot({
   /** A glide to its foot is in flight. */
   readonly gliding: boolean;
 }): "stays" | "waits" | "puts" | "glides" {
-  if (!follows) return "stays";
+  // A glide in flight re-aims at the foot every frame: a put would jump it there.
+  if (!follows || gliding) return "stays";
   if (heldAbove) return "waits";
   if (roomEases) return "puts";
-  if (grew && below && eases) return "glides";
-  return gliding ? "stays" : "puts";
+  return grew && below && eases ? "glides" : "puts";
 }

@@ -214,9 +214,10 @@ describe("keepsFoot", () => {
     },
     { what: "a glide to the foot in flight", given: { gliding: true }, keeps: "stays" },
     {
+      // It re-aims at the foot every frame: a put mid-way jumped it there.
       what: "a glide in flight as a room eases",
       given: { gliding: true, roomEases: true, grew: true },
-      keeps: "puts",
+      keeps: "stays",
     },
   ] as const)("$what: it $keeps", ({ given, keeps }) => {
     expect(keepsFoot({ ...at, ...given })).toBe(keeps);
