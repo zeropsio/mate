@@ -20,7 +20,10 @@ function fixtureOwner(options: {
   readonly loseAnswers: number;
   readonly loseRequests?: number;
   readonly unreachable?: () => boolean;
+  /** Sends refused at the door (`503`): never taken. */
+  readonly unavailable?: number;
 }) {
+  let unavailable = options.unavailable ?? 0;
   const held = new Map<string, OperationReceipt>();
   let answersToLose = options.loseAnswers;
   let requestsToLose = options.loseRequests ?? 0;
@@ -28,8 +31,12 @@ function fixtureOwner(options: {
   const submitted: string[] = [];
   const executor: OperationExecutor = {
     submit: (requestId, intent) =>
-      Effect.suspend(() => {
+      Effect.suspend((): ReturnType<OperationExecutor["submit"]> => {
         submitted.push(requestId);
+        if (unavailable > 0) {
+          unavailable -= 1;
+          return Effect.fail({ outcome: "transient", message: "HTTP 503" } as const);
+        }
         if (requestsToLose > 0) {
           requestsToLose -= 1;
           return Effect.fail({ outcome: "uncertain-acceptance", message: "No answer." } as const);
@@ -165,7 +172,10 @@ describe("makeOperations", () => {
           executor: owner.executor,
           makeId: ids(),
         }).submit(MOVE);
-        expect(progress(before, requestId).stage).toBe("uncertain");
+        expect(progress(before, requestId)).toEqual({
+          stage: "uncertain",
+          next: "ask-owner-again",
+        });
         expect(owner.submitted).toEqual([requestId]);
 
         // The tab restarts: its memory is gone, the request id is what it resumes by.
@@ -179,6 +189,38 @@ describe("makeOperations", () => {
         expect(owner.effects).toEqual([requestId]);
         expect(progress(after, requestId)).toEqual({ stage: "accepted", operationId: "op-1" });
       }),
+  );
+
+  it.effect("shows a send the owner never took as unsent, and sends it again under its id", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const owner = fixtureOwner({ loseAnswers: 0, unavailable: 1 });
+      const operations = makeOperations({ store, executor: owner.executor, makeId: ids() });
+
+      const requestId = yield* operations.submit(MOVE);
+      expect(progress(store, requestId)).toEqual({ stage: "unsent", next: "send-again" });
+      expect(owner.effects).toEqual([]);
+
+      yield* operations.retry(requestId);
+      expect(owner.submitted).toEqual([requestId, requestId]);
+      expect(owner.effects).toEqual([requestId]);
+      expect(progress(store, requestId).stage).toBe("accepted");
+    }),
+  );
+
+  it.effect("asks the owner again, never sends, when the person retries an uncertain one", () =>
+    Effect.gen(function* () {
+      let unreachable = true;
+      const owner = fixtureOwner({ loseAnswers: 1, unreachable: () => unreachable });
+      const store = account();
+      const operations = makeOperations({ store, executor: owner.executor, makeId: ids() });
+      const requestId = yield* operations.submit(MOVE);
+
+      unreachable = false;
+      yield* operations.retry(requestId);
+      expect(owner.submitted).toEqual([requestId]);
+      expect(progress(store, requestId).stage).toBe("accepted");
+    }),
   );
 
   it("ends an observation that ran out as unresolved, naming who acts next, never as failed", () => {

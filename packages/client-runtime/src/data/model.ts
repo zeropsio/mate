@@ -169,7 +169,15 @@ export interface OperationRecord {
   readonly requestId: string;
   readonly intent: OperationIntent;
   /** `uncertain`: sent, its answer lost — ask the owner by this id, never send again blindly. */
-  readonly submission: "recorded" | "uncertain" | "answered";
+  readonly submission:
+    | "recorded"
+    /** Not taken (refused at the door, never arrived): send again under the same id. */
+    | "unsent"
+    /** Answer lost, the owner being asked by the id. */
+    | "uncertain"
+    /** Answer lost and the owner could not be asked: ask again, never send blindly. */
+    | "uncertain-unasked"
+    | "answered";
   readonly receipt: OperationReceipt | null;
   /** Observation ended without the owner's word: who must act next, never an invented failure. */
   readonly unresolved: { readonly nextActor: string } | null;

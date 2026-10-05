@@ -13,7 +13,8 @@ import type { Projection, ProjectionReads } from "../store.ts";
 export type OperationProgress =
   | { readonly stage: "unknown" }
   | { readonly stage: "submitting" }
-  | { readonly stage: "uncertain" }
+  | { readonly stage: "unsent"; readonly next: "send-again" }
+  | { readonly stage: "uncertain"; readonly next: "asking-owner" | "ask-owner-again" }
   | { readonly stage: "refused"; readonly reason: string }
   | { readonly stage: "accepted" | "reflected"; readonly operationId: string }
   | {
@@ -54,7 +55,16 @@ export const operationProgress: Projection<string, OperationProgress> = {
         nextActor: record.unresolved.nextActor,
       };
     if (receipt === null)
-      return { stage: record.submission === "uncertain" ? "uncertain" : "submitting" };
+      switch (record.submission) {
+        case "unsent":
+          return { stage: "unsent", next: "send-again" };
+        case "uncertain":
+          return { stage: "uncertain", next: "asking-owner" };
+        case "uncertain-unasked":
+          return { stage: "uncertain", next: "ask-owner-again" };
+        default:
+          return { stage: "submitting" };
+      }
     if (receipt.acceptance.kind === "refused")
       return { stage: "refused", reason: receipt.acceptance.reason };
     return {

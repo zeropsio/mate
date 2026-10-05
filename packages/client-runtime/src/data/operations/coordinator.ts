@@ -31,6 +31,11 @@ export interface OperationExecutor {
 export interface Operations {
   /** Records, sends and reconciles one intent; answers with its request id. */
   readonly submit: (intent: OperationIntent) => Effect.Effect<string>;
+  /**
+   * The person's try-now: an unsent request is sent again, an uncertain one asked after — both
+   * under the original id. Anything else is left as it stands.
+   */
+  readonly retry: (requestId: string) => Effect.Effect<void>;
   /** Picks up a request this account sent before — after a restart — by its original id. */
   readonly resume: (requestId: string, intent: OperationIntent) => Effect.Effect<void>;
 }
@@ -65,8 +70,8 @@ export function makeOperations(options: {
               },
             }),
           );
-        // Not taken, and safe to send again under the same id when the person asks.
-        return Effect.void;
+        // Not taken: shown as unsent, sent again under the same id when the person asks.
+        return Effect.sync(() => store.dispatch({ kind: "operation-unsent", requestId }));
       },
     });
 
@@ -79,8 +84,9 @@ export function makeOperations(options: {
         store.dispatch({ kind: "operation-absent", requestId });
         return resend ? send(requestId, intent, false) : Effect.void;
       },
-      // The owner could not be asked: the operation stays visibly uncertain.
-      onFailure: () => Effect.void,
+      // The owner could not be asked: uncertain, with asking again as the next step.
+      onFailure: () =>
+        Effect.sync(() => store.dispatch({ kind: "operation-lookup-failed", requestId })),
     });
 
   return {
@@ -90,6 +96,15 @@ export function makeOperations(options: {
         store.dispatch({ kind: "operation-recorded", requestId, intent });
         yield* send(requestId, intent, true);
         return requestId;
+      }),
+    retry: (requestId) =>
+      Effect.suspend(() => {
+        const record = store.state().operations.get(requestId);
+        if (record === undefined || record.receipt !== null) return Effect.void;
+        if (record.submission === "unsent") return send(requestId, record.intent, true);
+        if (record.submission === "uncertain-unasked")
+          return reconcile(requestId, record.intent, true);
+        return Effect.void;
       }),
     resume: (requestId, intent) =>
       Effect.gen(function* () {

@@ -16,6 +16,10 @@ export type OperationInput =
     }
   /** The request went out and its answer was lost: whether the owner took it is unknown. */
   | { readonly kind: "operation-uncertain"; readonly requestId: string }
+  /** The owner did not take the request (it never arrived, or was turned away unread). */
+  | { readonly kind: "operation-unsent"; readonly requestId: string }
+  /** The owner could not be asked whether it took a request whose answer was lost. */
+  | { readonly kind: "operation-lookup-failed"; readonly requestId: string }
   /** The owner, asked by the original id, holds no such request: it was never taken. */
   | { readonly kind: "operation-absent"; readonly requestId: string }
   | { readonly kind: "operation-receipt"; readonly receipt: OperationReceipt }
@@ -47,6 +51,10 @@ export function reduceOperation(
   switch (input.kind) {
     case "operation-uncertain":
       return record.receipt === null ? { ...record, submission: "uncertain" } : record;
+    case "operation-unsent":
+      return record.receipt === null ? { ...record, submission: "unsent" } : record;
+    case "operation-lookup-failed":
+      return record.receipt === null ? { ...record, submission: "uncertain-unasked" } : record;
     case "operation-absent":
       return record.receipt === null ? { ...record, submission: "recorded" } : record;
     case "operation-receipt":
