@@ -1,24 +1,21 @@
 import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { createScenario } from "../../harness/scenario.ts";
-import { percentile } from "../../fakes/h-budget/traffic.ts";
+import { percentile, observeTabConnections } from "../../fakes/h-budget/traffic.ts";
+import type { Page } from "puppeteer-core";
 import { budgetObservations } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
-const sum = (counts: Map<string, number>) => [...counts.values()].reduce((a, b) => a + b, 0);
 
 export function budgets(s: Scenario) {
   const observation = budgetObservations(s.drivers);
-  const platformRequests = () =>
-    [...s.drivers.zerops.requests].reduce(
-      (count, [key, value]) => count + (key.startsWith("OPTIONS ") ? 0 : value),
-      0,
-    );
-  const registrations = () => sum(s.drivers.zerops.registrations);
   return {
     given: {
       mates: Effect.fn("budgets.given.mates")(function* (names: string[]) {
         for (const name of names) yield* s.given.project(name, { mate: true, app: "Shop" });
+      }),
+      plainProjects: Effect.fn("budgets.given.plainProjects")(function* (names: string[]) {
+        for (const name of names) yield* s.given.project(name);
       }),
       fiveTabs: Effect.fn("budgets.given.fiveTabs")(function* () {
         const tabs = [s];
@@ -31,6 +28,11 @@ export function budgets(s: Scenario) {
       }),
     },
     when: {
+      observeTabConnections: (pages: Page[]) =>
+        Effect.acquireRelease(
+          Effect.promise(() => observeTabConnections(pages, observation.hq.origin)),
+          (connections) => Effect.promise(() => connections.close()),
+        ),
       opensMate: (name: string) =>
         Effect.promise(async () => {
           await s.page
@@ -45,6 +47,8 @@ export function budgets(s: Scenario) {
           await observation.mateReady(name);
         }),
       hqFirstData: (count: number) => Effect.promise(() => observation.hq.firstData(count)),
+      browserSettled: Effect.promise(() => observation.browser.settled()),
+      hqStateSettled: Effect.promise(() => observation.hq.stateSettled()),
       menuReady: Effect.fn("budgets.menuReady")(function* (names: string[]) {
         yield* s.then.menu.row("Shop").appears();
         for (const name of names) yield* s.then.menu.row(name).appears();
@@ -53,12 +57,11 @@ export function budgets(s: Scenario) {
       nextHqSegment: Effect.promise(async () => {
         const next = observation.hq.segments.length + 1;
         observation.hq.endSegment();
-        await observation.hq.firstData(next);
+        await observation.hq.opened(next);
       }),
     },
     measure: {
-      platformRequests,
-      registrations,
+      browser: observation.browser.sample,
       hqSegments: () => observation.hq.segments,
       firstData: (after = 0) => {
         const samples = observation.hq.segments.slice(after).map((segment) => {

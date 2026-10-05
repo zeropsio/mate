@@ -3,15 +3,27 @@ import * as NodeEvents from "node:events";
 import { WebSocket, type RawData } from "ws";
 import { HQ_STREAM_SEGMENT_CLOSE } from "@t3tools/shared/hqStream";
 import { deadline, serve } from "../../harness/http.ts";
+import { settled } from "./activity.ts";
+import type { Page } from "puppeteer-core";
 
 const bytesOf = (data: RawData) =>
   Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
 
-/** Observe real HQ bytes, without interpreting or replacing its responses. */
+/** Menu sentinels identify state without depending on HQ's frame types or heartbeat cadence. */
+const carriesMenu = (bytes: Buffer) => ["Shop", "Ada", "Bea"].some((name) => bytes.includes(name));
+
+/** Observe real HQ bytes without replacing its responses. */
 export async function observeTraffic(origin: string) {
   const events = new NodeEvents.EventEmitter();
+  const stateEvents = new NodeEvents.EventEmitter();
   const links = new Map<WebSocket, WebSocket>();
-  const segments: { firstDataMs: number | null; downBytes: number; frames: number }[] = [];
+  const segments: {
+    open: boolean;
+    firstDataMs: number | null;
+    downBytes: number;
+    stateBytes: number;
+    frames: number;
+  }[] = [];
   const server = await serve(
     async (request) => {
       const response = await fetch(new URL(request.url.pathname + request.url.search, origin), {
@@ -36,7 +48,13 @@ export async function observeTraffic(origin: string) {
     },
     (client, url) => {
       const openedAt = performance.now();
-      const segment = { firstDataMs: null as number | null, downBytes: 0, frames: 0 };
+      const segment = {
+        open: false,
+        firstDataMs: null as number | null,
+        downBytes: 0,
+        stateBytes: 0,
+        frames: 0,
+      };
       segments.push(segment);
       const upstream = new WebSocket(
         new URL(url.pathname + url.search, origin.replace(/^http/u, "ws")),
@@ -49,11 +67,17 @@ export async function observeTraffic(origin: string) {
         else queued.push({ bytes, binary });
       });
       upstream.on("open", () => {
+        segment.open = true;
+        events.emit("open");
         for (const frame of queued) upstream.send(frame.bytes, { binary: frame.binary });
       });
       upstream.on("message", (data, binary) => {
         const bytes = bytesOf(data);
-        segment.firstDataMs ??= performance.now() - openedAt;
+        if (bytes.includes("Shop")) segment.firstDataMs ??= performance.now() - openedAt;
+        if (carriesMenu(bytes)) {
+          segment.stateBytes += bytes.length;
+          stateEvents.emit("activity");
+        }
         segment.downBytes += bytes.length;
         segment.frames++;
         if (client.readyState === WebSocket.OPEN) client.send(bytes, { binary });
@@ -74,6 +98,27 @@ export async function observeTraffic(origin: string) {
   return {
     ...server,
     segments,
+    stateSettled: () => settled(stateEvents, () => true, "HQ menu state quiet for 1 s"),
+    async opened(count: number) {
+      const ready = () => segments.filter((segment) => segment.open).length >= count;
+      if (ready()) return;
+      let check = () => {};
+      try {
+        await deadline(
+          new Promise<void>((resolve) => {
+            check = () => {
+              if (ready()) resolve();
+            };
+            events.on("open", check);
+            check();
+          }),
+          `${count} HQ socket opens`,
+          15_000,
+        );
+      } finally {
+        events.off("open", check);
+      }
+    },
     async firstData(count: number) {
       const ready = () =>
         segments.filter((segment) => segment.firstDataMs !== null).length >= count;
@@ -108,4 +153,26 @@ export function percentile(values: number[], fraction: number) {
   if (values.length === 0) throw new Error("A percentile needs samples");
   const sorted = values.toSorted((a, b) => a - b);
   return sorted[Math.max(0, Math.ceil(sorted.length * fraction) - 1)]!;
+}
+
+/** Observe each tab independently, so another tab cannot hide duplicate HQ connections. */
+export async function observeTabConnections(pages: Page[], origin: string) {
+  const socketOrigin = origin.replace(/^http/u, "ws");
+  const records = await Promise.all(
+    pages.map(async (page) => {
+      const session = await page.createCDPSession();
+      const record = { count: 0, session };
+      session.on("Network.webSocketCreated", ({ url }) => {
+        if (new URL(url).origin === socketOrigin) record.count++;
+      });
+      await session.send("Network.enable");
+      return record;
+    }),
+  );
+  return {
+    counts: () => records.map(({ count }) => count),
+    close: async () => {
+      await Promise.all(records.map(({ session }) => session.detach()));
+    },
+  };
 }

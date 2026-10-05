@@ -1,9 +1,11 @@
 import type { ScenarioDrivers, ScenarioExtension } from "../../harness/scenario.ts";
 import { observeTraffic } from "../../fakes/h-budget/traffic.ts";
 import { deadline } from "../../harness/http.ts";
+import { observeBrowserBudget } from "../../fakes/h-budget/browserBudget.ts";
 
 export interface BudgetObservations {
   hq: Awaited<ReturnType<typeof observeTraffic>>;
+  browser: Awaited<ReturnType<typeof observeBrowserBudget>>;
   mateHttp: Map<string, string[]>;
   mateReady: (name: string) => Promise<void>;
 }
@@ -11,6 +13,10 @@ export interface BudgetObservations {
 const observations = new WeakMap<ScenarioDrivers, BudgetObservations>();
 
 export const installBudget: ScenarioExtension = async (drivers) => {
+  const browser = await observeBrowserBudget(drivers.zerops);
+  drivers.routes["https://api.app-prg1.zerops.io"] = browser.origin;
+  drivers.routes["https://app.zerops.io"] = browser.origin;
+  drivers.cleanup.push(browser.close);
   const origin = "https://hqzone.prg1-zerops.zone";
   const hq = await observeTraffic(drivers.routes[origin]!);
   drivers.routes[origin] = hq.origin;
@@ -39,6 +45,7 @@ export const installBudget: ScenarioExtension = async (drivers) => {
   });
   observations.set(drivers, {
     hq,
+    browser,
     mateHttp,
     mateReady: (name) => {
       const receipt = connected.get(name);

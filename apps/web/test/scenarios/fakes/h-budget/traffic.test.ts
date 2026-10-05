@@ -3,12 +3,15 @@ import { WebSocket } from "ws";
 import { serve, deadline } from "../../harness/http.ts";
 import { observeTraffic, percentile } from "./traffic.ts";
 
-// Catches budget instrumentation rewriting HQ data or counting only its first frame.
-it("observes real payload bytes and first data without changing the upstream response", async () => {
+// Catches heartbeats or role answers satisfying first-data and unchanged-state budgets.
+it("ignores control traffic and measures first Shop data without rewriting frames", async () => {
+  const ping = JSON.stringify({ type: "ping" });
+  const roles = JSON.stringify({ type: "roles", rolesAnsweredAt: "now" });
+  const snapshot = JSON.stringify({ apps: [{ name: "Shop" }] });
   const upstream = await serve(
     () => ({ body: { real: "HQ" } }),
     (socket) => {
-      socket.send("first");
+      socket.send(ping);
       socket.on("message", (data, binary) => socket.send(data, { binary }));
     },
   );
@@ -19,19 +22,68 @@ it("observes real payload bytes and first data without changing the upstream res
       new Promise<string>((resolve) => socket.once("message", (data) => resolve(data.toString()))),
       "first data",
     );
-    await observer.firstData(1);
-    expect(await first).toBe("first");
+    await observer.opened(1);
+    expect(await first).toBe(ping);
+    expect(observer.segments[0]).toMatchObject({ firstDataMs: null, stateBytes: 0 });
     const echo = deadline(
       new Promise<string>((resolve) => socket.once("message", (data) => resolve(data.toString()))),
       "echo",
     );
-    socket.send("second");
-    expect(await echo).toBe("second");
-    expect(observer.segments[0]).toMatchObject({ frames: 2, downBytes: 11 });
+    socket.send(roles);
+    expect(await echo).toBe(roles);
+    expect(observer.segments[0]).toMatchObject({ firstDataMs: null, stateBytes: 0 });
+    const data = deadline(
+      new Promise<string>((resolve) =>
+        socket.once("message", (frame) => resolve(frame.toString())),
+      ),
+      "Shop state",
+    );
+    socket.send(snapshot);
+    await observer.firstData(1);
+    expect(await data).toBe(snapshot);
+    expect(observer.segments[0]).toMatchObject({
+      frames: 3,
+      downBytes: ping.length + roles.length + snapshot.length,
+      stateBytes: snapshot.length,
+    });
     expect(observer.segments[0]!.firstDataMs).toBeGreaterThanOrEqual(0);
     expect(await (await fetch(observer.origin)).json()).toEqual({ real: "HQ" });
   } finally {
     socket.terminate();
+    await observer.close();
+    await upstream.close();
+  }
+});
+
+// Catches an unchanged segment budget requiring a heartbeat or snapshot before it can pass.
+it("a replacement socket can open and settle with zero frames and zero state bytes", async () => {
+  const upstream = await serve(
+    () => ({ body: {} }),
+    () => {},
+  );
+  const observer = await observeTraffic(upstream.origin);
+  const first = new WebSocket(observer.origin.replace("http:", "ws:"));
+  let next: WebSocket | undefined;
+  try {
+    await observer.opened(1);
+    const closed = deadline(
+      new Promise<void>((resolve) => first.once("close", () => resolve())),
+      "segment ending",
+    );
+    observer.endSegment();
+    await closed;
+    next = new WebSocket(observer.origin.replace("http:", "ws:"));
+    await observer.opened(2);
+    await observer.stateSettled();
+    expect(observer.segments[1]).toMatchObject({
+      open: true,
+      frames: 0,
+      stateBytes: 0,
+      firstDataMs: null,
+    });
+  } finally {
+    first.terminate();
+    next?.terminate();
     await observer.close();
     await upstream.close();
   }

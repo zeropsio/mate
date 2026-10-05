@@ -26,12 +26,16 @@ describe("H: hosted client budgets", () => {
         const s = yield* createScenario([installBudget]);
         const b = budgets(s);
         yield* b.given.mates(names);
-        const before = b.measure.platformRequests();
+        const before = b.measure.browser();
         yield* s.given.signedIn;
         yield* b.when.menuReady(names);
-        const requests = b.measure.platformRequests() - before;
-        report(`H startup: ${requests} non-OPTIONS Zerops requests, 4 Mates`);
-        expect(requests, "Platform startup request budget").toBeLessThanOrEqual(80);
+        yield* b.when.browserSettled;
+        const sample = b.measure.browser();
+        const requests = sample.requests - before.requests;
+        report(
+          `H startup: browser total=${requests}, registrations=${sample.registrations - before.registrations}, other=${sample.otherRequests - before.otherRequests}; 4 Mates, settled`,
+        );
+        expect(requests, "Browser startup request budget").toBeLessThanOrEqual(60);
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -62,6 +66,7 @@ describe("H: hosted client budgets", () => {
           yield* tab.then.menu.row("Shop").appears();
         }
         const before = b.measure.hqSegments().length;
+        const connections = yield* b.when.observeTabConnections(tabs.map((tab) => tab.page));
         yield* Effect.forEach(tabs, (tab) => Effect.promise(() => tab.page.reload()), {
           concurrency: "unbounded",
         });
@@ -70,10 +75,11 @@ describe("H: hosted client budgets", () => {
           concurrency: "unbounded",
         });
         yield* Effect.promise(() => s.hq.ready());
-        expect(b.measure.hqSegments()).toHaveLength(before + 5);
+        for (const count of connections.counts())
+          expect(count, "At most one HQ connection per tab").toBeLessThanOrEqual(1);
         const timing = b.measure.firstData(before);
         report(
-          `H five tabs: p50=${timing.p50.toFixed(1)}ms p95=${timing.p95.toFixed(1)}ms; socket-to-first-real-HQ-frame`,
+          `H five tabs: p50=${timing.p50.toFixed(1)}ms p95=${timing.p95.toFixed(1)}ms; socket-to-first-Shop-frame`,
         );
         expect(timing.samples).toHaveLength(5);
         // Wire arrival excludes UI scheduling; the readiness wait allows 15 s on a loaded laptop.
@@ -142,20 +148,30 @@ describe("H: hosted client budgets", () => {
     );
 
     // Targets today's per-Mate startup reads, which make a large organization slow and expensive.
-    it.effect.fails("target: four-Mate startup uses at most twelve Zerops requests", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installBudget]);
-        const b = budgets(s);
-        yield* b.given.mates(names);
-        const before = b.measure.platformRequests();
-        yield* s.given.signedIn;
-        yield* b.when.menuReady(names);
-        yield* s.then.noExternalNetwork;
-        const requests = b.measure.platformRequests() - before;
-        report(`H target startup: ${requests} requests; target <=12`);
-        reachedTargets.add("target: four-Mate startup uses at most twelve Zerops requests");
-        expect(requests, "Startup must use units of Zerops requests").toBeLessThanOrEqual(12);
-      }),
+    it.effect.fails(
+      "target: browser startup uses at most eight registrations and eight other requests",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installBudget]);
+          const b = budgets(s);
+          yield* b.given.mates(names);
+          const before = b.measure.browser();
+          yield* s.given.signedIn;
+          yield* b.when.menuReady(names);
+          yield* b.when.browserSettled;
+          yield* s.then.noExternalNetwork;
+          const sample = b.measure.browser();
+          const registrations = sample.registrations - before.registrations;
+          const otherRequests = sample.otherRequests - before.otherRequests;
+          report(
+            `H target startup: browser registrations=${registrations}, other=${otherRequests}, total=${registrations + otherRequests}; targets <=8 each`,
+          );
+          reachedTargets.add(
+            "target: browser startup uses at most eight registrations and eight other requests",
+          );
+          expect(registrations, "Browser startup registrations").toBeLessThanOrEqual(8);
+          expect(otherRequests, "Browser startup non-registration requests").toBeLessThanOrEqual(8);
+        }),
     );
 
     // Targets menu registrations growing with the number of Mates instead of organization scope.
@@ -168,16 +184,33 @@ describe("H: hosted client budgets", () => {
               const s = yield* createScenario([installBudget]);
               const b = budgets(s);
               yield* b.given.mates(inventory);
-              const before = b.measure.registrations();
+              if (inventory.length === 4)
+                yield* b.given.plainProjects([
+                  "Plain1",
+                  "Plain2",
+                  "Plain3",
+                  "Plain4",
+                  "Plain5",
+                  "Plain6",
+                ]);
+              const before = b.measure.browser();
               yield* s.given.signedIn;
               yield* b.when.menuReady(inventory);
-              counts.push(b.measure.registrations() - before);
+              yield* b.when.browserSettled;
+              counts.push(b.measure.browser().registrations - before.registrations);
               yield* s.then.noExternalNetwork;
             }),
           );
         }
-        report(`H target registrations: 1 Mate=${counts[0]}, 4 Mates=${counts[1]}`);
+        report(
+          `H target registrations: 1 Mate=${counts[0]}, 4 Mates + 6 plain projects=${counts[1]}; settled, target <=8 and no growth`,
+        );
         reachedTargets.add("target: menu registrations do not grow from one to four Mates");
+        expect(counts[0], "One-Mate menu registration ceiling").toBeLessThanOrEqual(8);
+        expect(
+          counts[1],
+          "Four-Mate and plain-project menu registration ceiling",
+        ).toBeLessThanOrEqual(8);
         expect(
           counts[1],
           "Menu registration cost must be independent of Mate count",
@@ -195,9 +228,12 @@ describe("H: hosted client budgets", () => {
         yield* b.when.menuReady(["Ada", "Bea"]);
         yield* b.when.nextHqSegment;
         yield* s.then.menu.row("Shop").appears();
+        yield* b.when.hqStateSettled;
         yield* s.then.noExternalNetwork;
-        const bytes = b.measure.hqSegments()[1]!.downBytes;
-        report(`H target unchanged segment: ${bytes} payload bytes; target=0`);
+        const bytes = b.measure.hqSegments()[1]!.stateBytes;
+        report(
+          `H target unchanged segment: ${bytes} menu-state payload bytes; target=0, ignores ping/roles`,
+        );
         reachedTargets.add("target: an unchanged next HQ segment transfers no state payload");
         expect(bytes, "Unchanged HQ segment must not resend state").toBe(0);
       }),
