@@ -784,6 +784,12 @@ describe("ProviderCommandReactor", () => {
           ?.activities.filter((activity) => activity.kind === "provider.turn.start.failed");
         expect(harness.startSession).toHaveBeenCalledTimes(resent ? 2 : 1);
         expect(failures).toHaveLength(resent ? 0 : 1);
+        // The row reads one plain sentence with a code, never a stack.
+        if (!resent) {
+          expect(failures?.[0]?.payload).toMatchObject({
+            detail: "The agent's session closed before it got this message. (session-closed)",
+          });
+        }
       }),
   );
 
@@ -1603,7 +1609,7 @@ describe("ProviderCommandReactor", () => {
         ),
       ).toMatchObject({
         summary: "Provider session stop failed",
-        payload: { detail: "provider stop failed" },
+        payload: { detail: "provider stop failed (request-failed)" },
       });
 
       yield* dispatchCompact("before-running", "2026-01-01T00:00:02.000Z");
@@ -1728,12 +1734,14 @@ describe("ProviderCommandReactor", () => {
       expect(thread?.session).toMatchObject({
         status: "error",
         activeTurnId: null,
-        lastError: missingWorkspace.message,
+        lastError: `${missingWorkspace.message} (workspace-missing)`,
       });
       const failure = thread?.activities.find(
         (activity) => activity.kind === "provider.turn.start.failed",
       );
-      expect(failure?.payload).toMatchObject({ detail: missingWorkspace.message });
+      expect(failure?.payload).toMatchObject({
+        detail: `${missingWorkspace.message} (workspace-missing)`,
+      });
       expect(harness.runtimeSessions).toEqual([]);
       expect(harness.sendTurn).not.toHaveBeenCalled();
       expect(yield* Effect.promise(() => harness.readPendingTurnStarts())).toEqual([]);
@@ -4012,13 +4020,13 @@ describe("ProviderCommandReactor", () => {
         expect(thread?.session).toMatchObject({
           status: "stopped",
           activeTurnId: null,
-          lastError: "provider session disappeared",
+          lastError: "provider session disappeared (request-failed)",
         });
         expect(
           thread?.activities.find((activity) => activity.kind === "provider.turn.interrupt.failed"),
         ).toMatchObject({
           summary: "Provider turn interrupt failed",
-          payload: { detail: "provider session disappeared" },
+          payload: { detail: "provider session disappeared (request-failed)" },
         });
         expect(harness.stopSession).toHaveBeenCalledWith({ threadId: ThreadId.make("thread-1") });
       }),
@@ -4071,12 +4079,12 @@ describe("ProviderCommandReactor", () => {
       expect(thread?.session).toMatchObject({
         status: "stopped",
         activeTurnId: null,
-        lastError: "provider session disappeared",
+        lastError: "provider session disappeared (request-failed)",
       });
       expect(harness.stopSession).toHaveBeenCalledWith({ threadId: ThreadId.make("thread-1") });
       expect(
         thread?.activities.find((activity) => activity.kind === "provider.turn.interrupt.failed"),
-      ).toMatchObject({ payload: { detail: "provider session disappeared" } });
+      ).toMatchObject({ payload: { detail: "provider session disappeared (request-failed)" } });
     }),
   );
 

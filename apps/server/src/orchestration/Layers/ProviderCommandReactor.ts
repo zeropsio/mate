@@ -34,12 +34,9 @@ import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
 import { increment, orchestrationEventsProcessedTotal } from "../../observability/Metrics.ts";
 import {
-  ProviderAdapterProcessError,
   ProviderAdapterRequestError,
   ProviderAdapterSessionClosedError,
   ProviderAdapterSessionNotFoundError,
-  ProviderAdapterValidationError,
-  ProviderWorkspaceMissingError,
 } from "../../provider/Errors.ts";
 import type { ProviderServiceError } from "../../provider/Errors.ts";
 import { TextGeneration } from "../../textGeneration/TextGeneration.ts";
@@ -68,7 +65,7 @@ import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { withAgentNotes } from "../agentNotes.ts";
 import { makeSendLanes } from "../../sendLanes.ts";
 import { classifyModelSelectionChange, selectionAtSend } from "../modelSelectionChange.ts";
-const isProviderAdapterProcessError = Schema.is(ProviderAdapterProcessError);
+import { describeProviderFailure, formatProviderFailure } from "../providerFailureText.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
 const isProviderAdapterSessionClosedError = Schema.is(ProviderAdapterSessionClosedError);
 const isProviderAdapterSessionNotFoundError = Schema.is(ProviderAdapterSessionNotFoundError);
@@ -76,8 +73,6 @@ const isSessionGoneError = (
   error: ProviderServiceError,
 ): error is ProviderAdapterSessionClosedError | ProviderAdapterSessionNotFoundError =>
   isProviderAdapterSessionClosedError(error) || isProviderAdapterSessionNotFoundError(error);
-const isProviderAdapterValidationError = Schema.is(ProviderAdapterValidationError);
-const isProviderWorkspaceMissingError = Schema.is(ProviderWorkspaceMissingError);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 
 type ProviderIntentEvent = Extract<
@@ -387,22 +382,8 @@ const make = Effect.gen(function* () {
     if (turnsAfterCompaction.get(threadId) === queued) turnsAfterCompaction.delete(threadId);
   });
 
-  const formatFailureDetail = (cause: Cause.Cause<unknown>): string => {
-    const failReason = cause.reasons.find(Cause.isFailReason);
-    if (isProviderAdapterRequestError(failReason?.error)) {
-      return failReason.error.detail;
-    }
-    if (isProviderAdapterProcessError(failReason?.error)) {
-      return failReason.error.detail;
-    }
-    if (isProviderAdapterValidationError(failReason?.error)) {
-      return failReason.error.issue;
-    }
-    if (isProviderWorkspaceMissingError(failReason?.error)) {
-      return failReason.error.message;
-    }
-    return Cause.pretty(cause);
-  };
+  // One plain sentence and a code for the row; the cause goes to the log.
+  const formatFailureDetail = formatProviderFailure;
 
   const setThreadSession = (input: {
     readonly threadId: ThreadId;
@@ -1300,11 +1281,19 @@ const make = Effect.gen(function* () {
         return Effect.void;
       }
       const detail = formatFailureDetail(cause);
-      return setThreadSessionErrorOnTurnStartFailure({
+      return Effect.logError("provider turn start failed", {
         threadId: event.payload.threadId,
-        detail,
-        createdAt: event.payload.createdAt,
+        messageId: event.payload.messageId,
+        code: describeProviderFailure(cause).code,
+        cause: Cause.pretty(cause),
       }).pipe(
+        Effect.andThen(
+          setThreadSessionErrorOnTurnStartFailure({
+            threadId: event.payload.threadId,
+            detail,
+            createdAt: event.payload.createdAt,
+          }),
+        ),
         Effect.flatMap(() => appendTurnStartFailure("Provider turn start failed", detail)),
         Effect.asVoid,
       );
