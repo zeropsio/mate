@@ -4094,7 +4094,12 @@ medium < high < xhigh` (a driver's own order does not rank: Grok reports its lev
   and capped at 24 characters on its own part. The name's source stays Zerops; HQ still keeps none.
   Projects named before this were renamed once to the full form. **Supersedes** in the 2026-10-03
   D3 row: "a new Mate's project is named as the Mate is" and "no prefix is cut".
-  - _Open:_ renaming an application or moving a Mate leaves the old prefix in Zerops, so the Mate
-    reads whole until it is renamed; neither renames its projects yet.
+  - _Rule:_ renaming an application or moving a Mate renames its projects in Zerops. Each target is
+    planned before anything is written, from the application's old name (`<old> - X` becomes
+    `<new> - X`; a name without the old prefix is its own as a whole, so `Sage` becomes `<new> - Sage`),
+    then HQ's write goes first — refused, nothing else happens — and the projects follow, the
+    dialog or the move waiting for all of them. A project Zerops refuses is said with why and
+    retried with the same targets, never planned again from the new name (`New - Old - Rune`).
+    Leaving every application renames nothing.
   - _Why:_ the organization's project list in Zerops is where the projects of every application
     stand side by side; without the prefix a Mate's project says nothing of whose it is.
