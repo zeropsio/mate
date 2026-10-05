@@ -61,6 +61,19 @@ describe("deployBuildLookup — what the thread's project says of a build a depl
       input: input({ snapshot: { ...READ, unavailableReason: "forbidden" } }),
       expected: "unobservable",
     },
+    {
+      name: "Zerops unreachable past the grace before anything was read",
+      input: input({
+        snapshot: { processes: undefined, atMs: undefined, live: false, reconnecting: true },
+        unreachable: true,
+      }),
+      expected: "unobservable",
+    },
+    {
+      name: "Zerops unreachable past the grace with the project read",
+      input: input({ snapshot: { ...READ, live: false, reconnecting: true }, unreachable: true }),
+      expected: "running",
+    },
   ] as const)("$name: $expected", ({ input: given, expected }) => {
     expect(deployBuildLookup(given)("av-1")).toBe(expected);
   });

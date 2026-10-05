@@ -31,6 +31,8 @@ import {
   readsOperation,
   settledReadAfter,
   type SettledRead,
+  unreachableLasts,
+  unreachableSince,
 } from "@t3tools/client-runtime/zerops/activity/observe";
 import type { BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -105,6 +107,8 @@ export interface DeriveOperationObservationInput {
   readonly previousHistory: Observation | undefined;
   /** What this open of a settled operation had read of it, as of the previous draw. */
   readonly previousSettledRead?: SettledRead;
+  /** Since when Zerops was unreachable, as of the previous draw (`unreachableSince`). */
+  readonly previousUnreachableSinceMs?: number;
   readonly ceilingMs?: number;
 }
 
@@ -114,6 +118,8 @@ export interface DeriveOperationObservationResult {
   readonly history: Observation | undefined;
   readonly wantsPoll: boolean;
   readonly settledRead: SettledRead;
+  /** Since when Zerops has been unreachable; the caller hands it back next draw. */
+  readonly unreachableSinceMs?: number;
   /** The build whose log the card shows: the current read's, else the remembered one's — so a log once shown never leaves. */
   readonly buildLogQuery?: BuildLogQuery;
 }
@@ -183,6 +189,13 @@ export function deriveOperationObservation(
   const resolvedUnavailableReason = input.attributable
     ? unavailableReason
     : input.notAttributableReason;
+  const unreachableSinceMs = unreachableSince(
+    input.previousUnreachableSinceMs,
+    input.snapshot.reconnecting === true,
+    nowMs,
+  );
+  // Never read, and Zerops out past the grace: a settled one's one read failed.
+  const unreachableUnread = lastRead === undefined && unreachableLasts(unreachableSinceMs, nowMs);
   const state = observe(
     {
       attributable: input.attributable,
@@ -192,6 +205,7 @@ export function deriveOperationObservation(
         ? {}
         : { unavailableReason: resolvedUnavailableReason }),
       ...(lastRead === undefined ? {} : { lastRead }),
+      ...(unreachableSinceMs === undefined ? {} : { unreachableSinceMs }),
     },
     nowMs,
   );
@@ -206,7 +220,7 @@ export function deriveOperationObservation(
     : settledReadAfter(
         input.previousSettledRead ?? "pending",
         input.snapshot.processHistory ?? "unread",
-        input.attributable && unavailableReason !== undefined,
+        input.attributable && (unavailableReason !== undefined || unreachableUnread),
       );
   // `state.kind === "off"` covers every stop condition but the outcome —
   // not attributable, the ceiling, and any feed problem the activity feed or
@@ -228,6 +242,7 @@ export function deriveOperationObservation(
     history,
     wantsPoll,
     settledRead,
+    ...(unreachableSinceMs === undefined ? {} : { unreachableSinceMs }),
     ...(buildLogQuery === undefined ? {} : { buildLogQuery }),
   };
 }
@@ -278,11 +293,13 @@ export function useOperationObservation(
   const lastReadRef = useRef<LastRead | undefined>(undefined);
   const historyRef = useRef<Observation | undefined>(undefined);
   const settledReadRef = useRef<SettledRead>("pending");
+  const unreachableSinceRef = useRef<number | undefined>(undefined);
   if (target === null || target.key !== keyRef.current) {
     keyRef.current = target?.key ?? null;
     lastReadRef.current = undefined;
     historyRef.current = undefined;
     settledReadRef.current = "pending";
+    unreachableSinceRef.current = undefined;
   }
 
   // What the account store holds of the project is read at once, whoever
@@ -302,6 +319,9 @@ export function useOperationObservation(
       previousLastRead: lastReadRef.current,
       previousHistory,
       previousSettledRead: settledReadRef.current,
+      ...(unreachableSinceRef.current === undefined
+        ? {}
+        : { previousUnreachableSinceMs: unreachableSinceRef.current }),
     },
     nowMs,
   );
@@ -309,6 +329,7 @@ export function useOperationObservation(
   lastReadRef.current = result.lastRead;
   historyRef.current = result.history;
   settledReadRef.current = result.settledRead;
+  unreachableSinceRef.current = result.unreachableSinceMs;
   // The single source of truth for "should the store read it" is the
   // decision's own `wantsPoll`, from this render's snapshot.
   useProjectActivityDemand(result.wantsPoll ? (projectId ?? null) : null);

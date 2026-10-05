@@ -24,6 +24,11 @@ export interface ProjectActivitySnapshot {
    */
   readonly live: boolean;
   readonly unavailableReason?: string | undefined;
+  /**
+   * A read failed and the runtime retries it — the socket's routine reconnect,
+   * or an outage while it lasts: not the feed's error, and not live.
+   */
+  readonly reconnecting?: true;
   /** Where the project's newest process history read stands; `unread` when not said. */
   readonly processHistory?: ProcessHistoryRead;
 }
@@ -57,6 +62,11 @@ export function projectActivitySnapshotFromRead(
           ? "forbidden"
           : "expired-session"
         : failed?.reason;
+  const reconnecting =
+    unavailableReason === undefined &&
+    read.observation.required.some(
+      (interest) => interest.status === "failed" && interest.retryable,
+    );
   const knowledge = [...read.running.value, ...read.retainedHistory];
   const processes = knowledge.flatMap((entry) => {
     if (entry.knowledge !== "observed") return [];
@@ -83,6 +93,7 @@ export function projectActivitySnapshotFromRead(
       ...EMPTY_PROJECT_ACTIVITY_SNAPSHOT,
       processHistory: read.processHistory,
       ...(unavailableReason ? { unavailableReason } : {}),
+      ...(reconnecting ? { reconnecting: true as const } : {}),
     };
   }
   const required = read.observation.required;
@@ -92,6 +103,7 @@ export function projectActivitySnapshotFromRead(
     live: required.length > 0 && required.every((interest) => interest.status === "observing"),
     processHistory: read.processHistory,
     ...(unavailableReason ? { unavailableReason } : {}),
+    ...(reconnecting ? { reconnecting: true as const } : {}),
   };
 }
 

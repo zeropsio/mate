@@ -78,13 +78,24 @@ describe("projectActivitySnapshotFromRead", () => {
 // the feed's error.
 describe("what a failed interest makes of the read", () => {
   it.each([
-    { name: "a reconnect the runtime retries is no failure", retryable: true, reason: undefined },
-    { name: "a failure it does not retry is one", retryable: false, reason: "disconnect" },
-  ])("$name", ({ retryable, reason }) => {
+    {
+      name: "a reconnect the runtime retries is no failure",
+      retryable: true,
+      reason: undefined,
+      reconnecting: true,
+    },
+    {
+      name: "a failure it does not retry is one",
+      retryable: false,
+      reason: "disconnect",
+      reconnecting: undefined,
+    },
+  ])("$name", ({ retryable, reason, reconnecting }) => {
     const snapshot = projectActivitySnapshotFromRead(
       emptyRead([OBSERVING, { ...FAILED, retryable }]),
     );
     expect(snapshot.unavailableReason).toBe(reason);
+    expect(snapshot.reconnecting).toBe(reconnecting);
     expect(snapshot.live).toBe(false);
   });
 });

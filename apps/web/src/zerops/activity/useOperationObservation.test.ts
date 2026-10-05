@@ -81,6 +81,74 @@ describe("deriveOperationObservation — the hook's pure decision logic", () => 
     expect(result.wantsPoll).toBe(true);
   });
 
+  // Review of pass 43: a card that never read sat blank through a lasting
+  // outage — every read retried, nothing ever said. After the grace a read
+  // that ages gets, it says so; the routine reconnect stays quiet.
+  const RECONNECTING: ProjectActivitySnapshot = { ...EMPTY_SNAPSHOT, reconnecting: true };
+  it.each([
+    {
+      name: "running, within the grace",
+      running: true,
+      after: 5_000,
+      kind: "observing",
+      settledRead: "pending",
+    },
+    {
+      name: "running, past the grace",
+      running: true,
+      after: 15_000,
+      kind: "off",
+      settledRead: "pending",
+    },
+    {
+      name: "settled, within the grace",
+      running: false,
+      after: 5_000,
+      kind: "observing",
+      settledRead: "pending",
+    },
+    {
+      name: "settled, past the grace",
+      running: false,
+      after: 15_000,
+      kind: "off",
+      settledRead: "failed",
+    },
+  ] as const)(
+    "never read while Zerops is unreachable — $name",
+    ({ running, after, kind, settledRead }) => {
+      const first = deriveOperationObservation(
+        baseInput({ target: target({ running }), snapshot: RECONNECTING }),
+        NOW + 1_000,
+      );
+      expect(first.unreachableSinceMs).toBe(NOW + 1_000);
+      const later = deriveOperationObservation(
+        baseInput({
+          target: target({ running }),
+          snapshot: RECONNECTING,
+          ...(first.unreachableSinceMs === undefined
+            ? {}
+            : { previousUnreachableSinceMs: first.unreachableSinceMs }),
+          previousSettledRead: first.settledRead,
+        }),
+        NOW + 1_000 + after,
+      );
+      expect(later.state.kind).toBe(kind);
+      expect(later.settledRead).toBe(settledRead);
+      // A running one keeps reading, so it comes back with Zerops.
+      if (running) expect(later.wantsPoll).toBe(true);
+    },
+  );
+
+  it("Zerops back before the grace: the outage is forgotten", () => {
+    const back = deriveOperationObservation(
+      baseInput({ snapshot: snapshotOf([], NOW, true), previousUnreachableSinceMs: NOW - 9_000 }),
+      NOW,
+    );
+    expect(back.unreachableSinceMs).toBeUndefined();
+    expect(back.state.kind).toBe("observing");
+  });
+
   it("observing after the first read lands, folding the snapshot into an attribution", () => {
     const p = process({ appVersion: { status: "BUILDING", build: { pipelineStart: "t1" } } });
     const result = deriveOperationObservation(baseInput({ snapshot: snapshotOf([p], NOW) }), NOW);

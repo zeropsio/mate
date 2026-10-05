@@ -12,6 +12,8 @@ import {
   settledReadAfter,
   type OperationReadBound,
   type SettledRead,
+  unreachableLasts,
+  unreachableSince,
 } from "./observe.ts";
 
 const NOW = Date.parse("2026-09-02T10:00:00.000Z");
@@ -59,6 +61,18 @@ describe("observe — the three-state observation layer", () => {
       observation: { chips: [], readAtMs: NOW + 3_000 },
       elapsedMs: 3_000,
     });
+  });
+
+  // Review of pass 43: a card that never read sat blank through a lasting
+  // outage. After the same 10 s grace a read that ages gets, it says so; the
+  // socket's routine reconnect, back within it, stays quiet.
+  it.each([
+    { name: "within the grace: still waiting for its first read", after: 5_000, kind: "observing" },
+    { name: "past the grace: it says Zerops isn't answering", after: 15_000, kind: "off" },
+  ])("never read, Zerops unreachable — $name", ({ after, kind }) => {
+    const state = observe(baseInput({ unreachableSinceMs: NOW + 1_000 }), NOW + 1_000 + after);
+    expect(state.kind).toBe(kind);
+    if (state.kind === "off") expect(state.reason).toBe("stale-timeout");
   });
 
   it("off: ceiling once the 30-minute default ceiling is exceeded", () => {
@@ -490,5 +504,24 @@ describe("settledReadAfter — one read of a settled operation per open", () => 
     },
   ])("$name", ({ previous, history, feedFailed, next }) => {
     expect(settledReadAfter(previous, history, feedFailed)).toBe(next);
+  });
+});
+
+describe("since when Zerops has been unreachable", () => {
+  it.each([
+    { name: "it starts now", previous: undefined, reconnecting: true, since: NOW },
+    { name: "it keeps its start", previous: NOW - 4_000, reconnecting: true, since: NOW - 4_000 },
+    { name: "back again, it ends", previous: NOW - 4_000, reconnecting: false, since: undefined },
+    { name: "never unreachable", previous: undefined, reconnecting: false, since: undefined },
+  ])("$name", ({ previous, reconnecting, since }) => {
+    expect(unreachableSince(previous, reconnecting, NOW)).toBe(since);
+  });
+
+  it.each([
+    { name: "not unreachable", since: undefined, lasts: false },
+    { name: "within the grace", since: NOW - 10_000, lasts: false },
+    { name: "past the grace", since: NOW - 10_001, lasts: true },
+  ])("lasts: $name", ({ since, lasts }) => {
+    expect(unreachableLasts(since, NOW)).toBe(lasts);
   });
 });

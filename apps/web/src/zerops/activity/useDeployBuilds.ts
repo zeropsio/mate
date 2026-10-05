@@ -12,7 +12,8 @@ import {
 } from "@t3tools/client-runtime/zerops/activity/deployBuild";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsLifecycle } from "@t3tools/contracts";
-import { useMemo } from "react";
+import { UNREACHABLE_GRACE_MS } from "@t3tools/client-runtime/zerops/activity/observe";
+import { useEffect, useMemo, useState } from "react";
 
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { findInventoryProjectRef, projectAuthority, useZeropsInventory } from "../inventoryContext";
@@ -30,6 +31,8 @@ export interface DeployBuildsInput {
   /** The project as the inventory holds it: still loading, readable here, or not. */
   readonly project: "loading" | "readable" | "unreadable";
   readonly snapshot: ProjectActivitySnapshot;
+  /** Zerops unreachable past the grace (`unreachableLasts`): what was never read cannot be. */
+  readonly unreachable?: boolean;
 }
 
 const UNREAD = (): DeployBuildRead => "unread";
@@ -44,7 +47,8 @@ export function deployBuildLookup(
     !input.signedIn ||
     thread === "none" ||
     input.project === "unreadable" ||
-    input.snapshot.unavailableReason !== undefined
+    input.snapshot.unavailableReason !== undefined ||
+    (input.unreachable === true && input.snapshot.processes === undefined)
   ) {
     return UNOBSERVABLE;
   }
@@ -77,9 +81,22 @@ export function useDeployBuilds(lifecycle: Known<ZeropsLifecycle> | undefined): 
         : inventory.isLoading
           ? "loading"
           : "unreadable";
+  // Zerops unreachable past the grace, on a timer of its own: the routine
+  // reconnect is back within it, a lasting outage is not.
+  const reconnecting = snapshot.reconnecting === true;
+  const [lasted, setLasted] = useState(false);
+  useEffect(() => {
+    if (!reconnecting) return;
+    const timer = setTimeout(() => setLasted(true), UNREACHABLE_GRACE_MS);
+    return () => {
+      clearTimeout(timer);
+      setLasted(false);
+    };
+  }, [reconnecting]);
+  const unreachable = reconnecting && lasted;
   const builds = useMemo(
-    () => deployBuildLookup({ signedIn, thread, project, snapshot }),
-    [signedIn, thread, project, snapshot],
+    () => deployBuildLookup({ signedIn, thread, project, snapshot, unreachable }),
+    [signedIn, thread, project, snapshot, unreachable],
   );
   return { builds, projectId };
 }
