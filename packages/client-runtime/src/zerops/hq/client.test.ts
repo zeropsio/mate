@@ -1100,6 +1100,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     updatedAt: "2026-10-02T09:00:00.000Z",
     mergeability: "clean",
     behind: false,
+    ready: true,
     // HQ counts what was said on it, with the change.
     comments: 2,
   } as const;

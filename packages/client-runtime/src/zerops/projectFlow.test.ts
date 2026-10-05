@@ -75,6 +75,7 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
     updatedAt: "2026-10-02T09:00:00.000Z",
     mergeability: "clean",
     behind: false,
+    ready: true,
     comments: 0,
     ...over,
   });

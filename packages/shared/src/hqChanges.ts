@@ -146,6 +146,12 @@ export const HqChange = Schema.Struct({
   /** Whether `main` has moved past the change's merge base, judged with `mergeability`. */
   behind: Schema.Boolean,
   /**
+   * Whether it asks for review: the Mate described it at its head. A draft — before its first
+   * description, and again after a push the description has not caught up with — stays readable
+   * and never asks. Added after the rest: an older HQ's change, which knows no drafts, is ready.
+   */
+  ready: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+  /**
    * How many comments were said on it: the room its review's conversation holds while it reads
    * them. Added after the rest: an older HQ's change counts none.
    */
