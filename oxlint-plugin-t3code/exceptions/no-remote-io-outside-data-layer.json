@@ -144,14 +144,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsHqUpdate.tsx",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "invariant 1: static assets",
-    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsNewProjectHost.tsx",
     "kind": "CallExpression",
     "fingerprint": "fetch",
@@ -176,14 +168,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/lib/attachmentUploadQueue.ts",
-    "kind": "NewExpression",
-    "fingerprint": "new XMLHttpRequest",
-    "owner": "invariant 1: static assets",
-    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/lib/runtime.ts",
     "kind": "CallExpression",
     "fingerprint": "globalThis.fetch",
@@ -200,91 +184,11 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/openVsxThemes.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "invariant 1: static assets",
-    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/openVsxThemes.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "invariant 1: static assets",
-    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/openVsxThemes.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "invariant 1: static assets",
-    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/openVsxThemes.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "invariant 1: static assets",
-    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/openVsxThemes.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "invariant 1: static assets",
-    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/openVsxThemes.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "invariant 1: static assets",
-    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/openVsxThemes.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "invariant 1: static assets",
-    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/state/projects.ts",
     "kind": "CallExpression",
     "fingerprint": "createEnvironmentRpcQueryAtomFamily",
     "owner": "invariant 1: Mate identity/connection",
     "reason": "the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/terminal/ghostty/runtime.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "invariant 1: static assets",
-    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/terminal/ghostty/runtime.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "invariant 1: static assets",
-    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/threadNotifications.ts",
-    "kind": "CallExpression",
-    "fingerprint": "fetch",
-    "owner": "invariant 1: static assets",
-    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
     "expires": "never"
   },
   {

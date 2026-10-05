@@ -39,6 +39,19 @@ const ADAPTER_PATHS = [
   "packages/client-runtime/src/authorization/",
   "packages/client-runtime/src/relay/",
 ] as const;
+/** Modules that fetch or upload files, never source data; each one names its file. */
+const FILE_TRANSFER_PATHS: ReadonlySet<string> = new Set([
+  // Theme extensions and their manifests from Open VSX.
+  "apps/web/src/openVsxThemes.ts",
+  // The terminal's bundled wasm.
+  "apps/web/src/terminal/ghostty/runtime.ts",
+  // The bundled notification sounds.
+  "apps/web/src/threadNotifications.ts",
+  // A chat attachment uploaded with progress.
+  "apps/web/src/lib/attachmentUploadQueue.ts",
+  // The HQ core bundle shipped with the app.
+  "apps/web/src/components/zerops/ZeropsHqUpdate.tsx",
+]);
 const TEST_FILE_PATTERN =
   /(?:^|\/)(?:__tests__\/|__fixtures__\/|testing\/|[^/]+\.(?:test|spec|bench)\.[cm]?[jt]sx?$)/u;
 
@@ -51,6 +64,7 @@ const coveredPath = (filename: string): string | undefined => {
     if (index === -1) continue;
     const path = normalized.slice(index + 1);
     if (TEST_FILE_PATTERN.test(path)) return undefined;
+    if (FILE_TRANSFER_PATHS.has(path)) return undefined;
     return ADAPTER_PATHS.some((adapter) => path.startsWith(adapter)) ? undefined : path;
   }
   return undefined;

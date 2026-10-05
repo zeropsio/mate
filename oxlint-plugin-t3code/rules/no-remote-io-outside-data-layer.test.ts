@@ -147,6 +147,10 @@ describe("t3code/no-remote-io-outside-data-layer", () => {
   ]) {
     createOxlintRuleHarness(RULE, { filename }).valid(`does not guard ${filename}`, FETCH);
   }
+  createOxlintRuleHarness(RULE, { filename: "apps/web/src/terminal/ghostty/runtime.ts" }).valid(
+    "allows a module that fetches a bundled file, not source data",
+    `export const read = (url: string) => window.fetch(url);`,
+  );
   for (const filename of [
     "apps/mobile/src/features/zerops/screen.tsx",
     "packages/client-runtime/src/zerops/hq/journal.ts",
