@@ -77,6 +77,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
+import { flushSync } from "react-dom";
 
 import { cn } from "~/lib/utils";
 import { useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
@@ -111,6 +112,7 @@ import {
   type OutcomeModel,
 } from "./conversation.logic";
 import { calmClockMs } from "./nowLineCalm.logic";
+import { keepInPlace, scrollerOf } from "./keepInPlace";
 import { useCalmLine } from "./useCalmLine";
 import {
   SLOT_MAX_ROWS,
@@ -585,32 +587,120 @@ function markCappedEdges(box: HTMLElement): void {
   );
 }
 
-/**
- * One item's box (run 11, the owner: thinking "grows to a max height, then
- * scrolls inside with a fade"; "running commands and everything should have
- * scrollable max-height … when it plops, it needs to have the same height"):
- * at most four of the card's lines (`--run-item-cap`), live and in the
- * history alike, so a plop moves an item and never resizes it. What runs past
- * the cap scrolls inside it, a fade at an edge saying there is more. While
- * its item streams (`follows`) it keeps the newest words in view, until the
- * person scrolls it; carried by its line's key, it lands in the history where
- * it stood in the slot, and one nobody watched rests at its head.
- */
-function CappedBox({
-  follows = false,
-  detail = false,
-  part,
-  className,
-  children,
-}: {
+interface CappedBoxProps {
   readonly follows?: boolean;
   /** What the person opened under a call: twelve lines (`--run-detail-cap`). */
   readonly detail?: boolean;
   /** Which of its line's boxes it is, where the line has several. */
   readonly part?: string;
+  /**
+   * In the log: all of it, its item opened. What a call printed (`detail`)
+   * stands whole there — it is drawn only once its call is opened.
+   */
+  readonly open?: boolean;
+  /** In the log: whether what it holds runs past the cap, so its item offers the rest. */
+  readonly onCut?: (cut: boolean) => void;
   readonly className?: string;
   readonly children: ReactNode;
-}) {
+}
+
+/**
+ * One item's box: at most four of the card's lines (`--run-item-cap`), in the
+ * working row and in the log alike, so a plop moves an item and never resizes
+ * it (run 11). In the working row what runs past the cap scrolls inside it
+ * (`SlotBox`); in the log nothing scrolls inside it (`LogBox`).
+ */
+function CappedBox(props: CappedBoxProps) {
+  return use(InSlotContext) ? <SlotBox {...props} /> : <LogBox {...props} />;
+}
+
+/**
+ * An item's box in the log: it never scrolls (the owner, 2026-10-05: "it
+ * should show the start and then on expand it should show everything, no
+ * scroll inside in either case"). A scroll there caught the wheel of a person
+ * skimming the card, and a box cut at four lines with its scrollbar hidden
+ * said nothing of what ran past. Closed, it shows the head of what it holds —
+ * the head names it, the newest words were for while it ran — a fade at its
+ * foot where more runs past; opened by its item, all of it. One that stood at
+ * its end in the working row rolls back to its head as it lands, so the swap
+ * reads as the one box moving.
+ */
+function LogBox({ detail = false, part, open, onCut, className, children }: CappedBoxProps) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const whole = open ?? detail;
+  // Whether it stood at its end in the slot: carried from there, taken once.
+  const [stoodAtEnd, setStoodAtEnd] = useCarried(
+    part ?? (detail ? "detail-end" : "capped-end"),
+    () => false,
+  );
+  // Whether what it holds runs past the cap: measured while it stands closed
+  // and kept while it is open — one drawn open was cut, or it would not open.
+  const [cut, setCut] = useState(whole);
+  const wholeRef = useRef(whole);
+  const measureRef = useRef(() => {});
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const content = contentRef.current;
+    if (box === null || content === null) return;
+    const measure = () => {
+      if (!wholeRef.current) setCut(content.offsetHeight > box.clientHeight + 1);
+    };
+    measureRef.current = measure;
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const resized = new ResizeObserver(measure);
+    resized.observe(content);
+    return () => resized.disconnect();
+  }, []);
+  useLayoutEffect(() => {
+    wholeRef.current = whole;
+    // Closed again: what runs past the cap is measured anew.
+    if (!whole) measureRef.current();
+  }, [whole]);
+  const tellCut = useEffectEvent((next: boolean) => onCut?.(next));
+  useEffect(() => tellCut(cut), [cut]);
+  // Once, as it lands: the carried end is spent.
+  const rollBack = useEffectEvent(() => {
+    if (!stoodAtEnd) return;
+    setStoodAtEnd(false);
+    const box = boxRef.current;
+    const content = contentRef.current;
+    if (box === null || content === null || typeof content.animate !== "function") return;
+    const past = content.offsetHeight - box.clientHeight;
+    if (past < 1 || prefersReducedMotion()) return;
+    content.animate([{ transform: `translateY(${-past}px)` }, { transform: "none" }], {
+      duration: FOLD_EASE_MS,
+      easing: FOLD_EASING,
+    });
+  });
+  useLayoutEffect(() => rollBack(), []);
+  return (
+    <div
+      ref={boxRef}
+      className={cn("run-capped min-w-0", className)}
+      data-capped={detail ? "detail" : "item"}
+      data-capped-at="log"
+      data-more-below={cut && !whole ? "" : undefined}
+      data-whole={whole ? "" : undefined}
+    >
+      <div ref={contentRef} data-capped-held="">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * An item's box in the working row (run 11, the owner: thinking "grows to a
+ * max height, then scrolls inside with a fade"; "running commands and
+ * everything should have scrollable max-height"): what runs past the cap
+ * scrolls inside it, a fade at an edge saying there is more. While its item
+ * streams (`follows`) it keeps the newest words in view, until the person
+ * scrolls it; whether it stands at its end is carried by its line's key to
+ * the log, which rolls it back to its head.
+ */
+function SlotBox({ follows = false, detail = false, part, className, children }: CappedBoxProps) {
   const boxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -774,9 +864,83 @@ function OpensMark() {
 }
 
 /**
+ * Closes what `pressed` opened, keeping `pressed` where it stands on screen —
+ * or, where it is gone once closed, the foot of the bubble it stood in (K12).
+ */
+function collapseInPlace(pressed: HTMLElement, close: () => void) {
+  keepInPlace({
+    anchor: pressed,
+    fallback: pressed.closest<HTMLElement>("[data-chat-bubble], [data-chat-row]"),
+    scroller: scrollerOf(pressed),
+    change: () => flushSync(close),
+  });
+}
+
+/**
+ * A bubble's words in its item's box. In the working row, the box as it
+ * streams. In the log, the head of them; past the cap the bubble is a press
+ * onto the whole of them — "Show all" at its foot under the pointer — and
+ * "Show less" under them closes it again, standing where it was pressed.
+ */
+function OpensWhole({
+  follows = false,
+  what,
+  children,
+}: {
+  readonly follows?: boolean;
+  /** What it holds, for the press's name: "thought", "message", "question". */
+  readonly what: string;
+  readonly children: ReactNode;
+}) {
+  const inSlot = use(InSlotContext);
+  const disclosure = useDisclosure(false, "open");
+  const [cut, setCut] = useState(false);
+  if (inSlot) return <CappedBox follows={follows}>{children}</CappedBox>;
+  return (
+    <>
+      <div className="relative min-w-0">
+        <CappedBox onCut={setCut} open={disclosure.open}>
+          {children}
+        </CappedBox>
+        {cut && !disclosure.open ? (
+          <button
+            aria-expanded={false}
+            aria-label={`Show all of the ${what}`}
+            className="run-item-open absolute inset-0 cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+            data-chat-disclose
+            onClick={() => disclosure.set(true)}
+            type="button"
+          >
+            <span aria-hidden="true" className={cn(META, "run-item-more")}>
+              Show all
+            </span>
+          </button>
+        ) : null}
+      </div>
+      {disclosure.open ? (
+        <button
+          aria-expanded
+          className={cn(
+            META,
+            "mt-1 block cursor-pointer rounded-sm not-italic text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+          )}
+          // It stands at the foot of what it opened: closing folds what
+          // stands above it, and it stays under the pointer (K12).
+          onClick={(event) => collapseInPlace(event.currentTarget, () => disclosure.set(false))}
+          type="button"
+        >
+          Show less
+        </button>
+      ) : null}
+    </>
+  );
+}
+
+/**
  * What a call's detail says, in its own inset on the code's left edge — a
  * command's output, a report, an error: a well under what was run, never
- * text that drifts left of it. Past twelve lines it scrolls inside its box.
+ * text that drifts left of it. In the working row past twelve lines it
+ * scrolls inside its box; in the log it stands whole, as it was opened.
  */
 function OutputBlock({
   label = null,
@@ -1016,27 +1180,28 @@ function keyedByOccurrence(
 function QuestionBubble({ questions }: { readonly questions: ReadonlyArray<string> }) {
   return (
     <Bubble className={BUBBLE_PAD} kind="question" tone="speech">
-      <CappedBox>
+      <OpensWhole what="question">
         {keyedByOccurrence(questions).map(({ key, value }) => (
           <p key={key} className="whitespace-pre-wrap break-words">
             {value}
           </p>
         ))}
-      </CappedBox>
+      </OpensWhole>
     </Bubble>
   );
 }
 
 /**
  * Its words to the person on the way: the chat's bubble in its fullest fill,
- * in its item's box — the newest words in view while they stream.
+ * in its item's box — the newest words in view while they stream, its head
+ * in the log and the whole of them a press away.
  */
 function NoteBubble({ message }: { readonly message: ChatMessage }) {
   return (
     <Bubble className={BUBBLE_PAD} kind="note" tone="speech">
-      <CappedBox follows={Boolean(message.streaming)}>
+      <OpensWhole follows={Boolean(message.streaming)} what="message">
         <NoteWords message={message} />
-      </CappedBox>
+      </OpensWhole>
     </Bubble>
   );
 }
@@ -1076,17 +1241,17 @@ function useRunsPast(
 /**
  * A stretch of its thinking, the quietest thing in the card (K14): 13 px,
  * faint and italic on the faintest fill, in its item's box — its newest words
- * in view while it streams, the rest a scroll away (D4: nothing is cut
- * without a way to reach it).
+ * in view while it streams, its head in the log and the whole of it a press
+ * away (D4: nothing is cut without a way to reach it).
  */
 function ThoughtBubble({ messages }: { readonly messages: ReadonlyArray<ChatMessage> }) {
   const text = messages.map((message) => message.text).join("\n\n");
   if (text.trim().length === 0) return null;
   return (
     <Bubble className={THOUGHT_PAD} kind="thought" size={META} tone="thought">
-      <CappedBox follows={messages.some((message) => message.streaming)}>
+      <OpensWhole follows={messages.some((message) => message.streaming)} what="thought">
         <ThoughtParagraphs messages={messages} />
-      </CappedBox>
+      </OpensWhole>
     </Bubble>
   );
 }
@@ -1293,15 +1458,25 @@ function CallRow({
 
 /**
  * A command's code, in mono, in its item's box — a script never prints whole
- * into the chat (the owner, 2026-09-28: "I see 100s of LoC printed
- * directly"): four lines of it, the rest a scroll away, following the code as
- * it streams in. It is how, under what the command was for, on the words' own
- * edge: in the muted ink, failed too — its mark and its right edge say that
- * it failed.
+ * into the chat unasked (the owner, 2026-09-28: "I see 100s of LoC printed
+ * directly"): four lines of it, following the code as it streams in; in the
+ * log its head, and all of it once its call is opened. It is how, under what
+ * the command was for, on the words' own edge: in the muted ink, failed too —
+ * its mark and its right edge say that it failed.
  */
-function CommandCode({ script, follows }: { readonly script: string; readonly follows: boolean }) {
+function CommandCode({
+  script,
+  follows,
+  open,
+  onCut,
+}: {
+  readonly script: string;
+  readonly follows: boolean;
+  readonly open: boolean;
+  readonly onCut: (cut: boolean) => void;
+}) {
   return (
-    <CappedBox follows={follows}>
+    <CappedBox follows={follows} onCut={onCut} open={open}>
       <code
         className={cn(
           "block whitespace-pre-wrap break-words font-mono text-muted-foreground",
@@ -1341,7 +1516,9 @@ function StepBubble({
   const running = step.state === "running";
   const time = stepTime(step);
   const showsCode = script !== null && (!bare || step.codeLines > 1);
-  const opens = opensOnto({ control: "step", step, codeCut: false });
+  // In the log its code stands at its head: past the cap, the call opens onto the rest.
+  const [codeCut, setCodeCut] = useState(false);
+  const opens = opensOnto({ control: "step", step, codeCut: !inSlot && showsCode && codeCut });
   const title = step.words ?? step.code ?? "A command";
   const headline = (
     <Headline
@@ -1383,7 +1560,7 @@ function StepBubble({
       {opens ? (
         <DisclosureButton
           className={pad}
-          label={`${title}. ${disclosure.open ? "Hide" : "Show"} what it returned`}
+          label={`${title}. ${disclosure.open ? "Hide" : "Show"} ${outputs.length > 0 ? "what it returned" : "all of its code"}`}
           onToggle={disclosure.toggle}
           open={disclosure.open}
         >
@@ -1394,7 +1571,12 @@ function StepBubble({
       )}
       {showsCode ? (
         <div className="px-3 pb-1.75">
-          <CommandCode follows={inSlot && running} script={script} />
+          <CommandCode
+            follows={inSlot && running}
+            onCut={setCodeCut}
+            open={disclosure.open}
+            script={script}
+          />
         </div>
       ) : null}
       <StepPictures paths={step.images} />

@@ -426,7 +426,7 @@ describe("RunChat", () => {
       ]),
     );
     expect(markup).toMatch(
-      /data-chat-bubble="speech" data-chat-kind="question"><div[^>]*data-capped="item"[^>]*><div><p[^>]*>Should \/status be public\?</u,
+      /data-chat-bubble="speech" data-chat-kind="question"><div[^>]*><div[^>]*data-capped="item"[^>]*><div[^>]*><p[^>]*>Should \/status be public\?</u,
     );
     // Its answer stands nowhere else: whole, never cut to a line.
     expect(markup).toMatch(/<p class="[^"]*whitespace-pre-wrap[^"]*" data-chat-kind="person">/u);
@@ -1456,9 +1456,10 @@ describe("RunChat, as the person uses it", () => {
     expect(details()).toHaveLength(0);
   });
 
-  // What a call printed opens in a box of twelve lines, every line of it a
-  // scroll away inside it (run 11: one box for every item, no toggles).
-  it("opens a long output in its box, every line of it there", () => {
+  // What a call printed opens whole in the log, every line of it on the
+  // page, with no box of its own to scroll (the owner, 2026-10-05: "on expand
+  // it should show everything, no scroll inside").
+  it("opens a long output whole, every line of it there", () => {
     const printed = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n");
     const renderer = mount(
       record([
@@ -1468,7 +1469,8 @@ describe("RunChat, as the person uses it", () => {
     act(() => button(renderer, "Test").props.onClick());
     const box = renderer.root.find((node) => node.props["data-capped"] === "detail");
     expect(JSON.stringify(box.findByType("pre").children)).toContain("line 30");
-    expect(JSON.stringify(renderer.toJSON())).not.toContain("Show all");
+    expect(box.props["data-whole"]).toBe("");
+    expect(box.props.onScroll).toBeUndefined();
   });
 
   // A run the person comes back to opens closed (D3): its summary line alone
@@ -1736,24 +1738,29 @@ describe("RunChat, as the person uses it", () => {
   // A box lands as it stood in the slot (run 11): code that streamed in, its
   // newest lines in view, lands with them in view — its plop moves it, never
   // its words.
-  it("lands a box that followed its end in the slot at its end", () => {
+  // The owner, 2026-10-05: in the log an item "should show the start and then
+  // on expand it should show everything, no scroll inside in either case".
+  it("lands a box that followed its end in the slot at its head, with no scroll of its own", () => {
     vi.useFakeTimers();
     try {
-      const boxes: Array<{ scrollTop: number; scrollHeight: number; clientHeight: number }> = [];
+      const boxes: Array<{
+        scrollTop: number;
+        scrollHeight: number;
+        clientHeight: number;
+        props: Record<string, unknown>;
+      }> = [];
       const node = (element: { type: unknown; props: unknown }) => {
-        if (element.type !== "div" || !isItemBox(element)) {
-          return {
-            scrollTop: 0,
-            scrollHeight: 0,
-            clientHeight: 0,
-            toggleAttribute: () => undefined,
-          };
+        const props = element.props as Record<string, unknown>;
+        if (element.type === "div" && props["data-capped-held"] !== undefined) {
+          return { offsetHeight: 200 };
         }
+        if (element.type !== "div" || !isItemBox(element)) return itemBox();
         const box = {
           scrollTop: 0,
           scrollHeight: 200,
           clientHeight: 80,
           toggleAttribute: () => undefined,
+          props,
         };
         boxes.push(box);
         return box;
@@ -1778,6 +1785,7 @@ describe("RunChat, as the person uses it", () => {
           { createNodeMock: node },
         );
       });
+      // In the working row it follows the code to its end.
       expect(boxes.map((box) => box.scrollTop)).toEqual([120]);
       const landed = step(
         command("w9", SCRIPT, { callInput: { description: "Write the status route" } }),
@@ -1790,11 +1798,78 @@ describe("RunChat, as the person uses it", () => {
         ),
       );
       act(() => vi.advanceTimersByTime(SLOT_HOLD_MS + 100));
-      // The history's box mounted at its end, as the slot's stood.
-      expect(boxes.at(-1)?.scrollTop).toBe(120);
+      // In the log it stands at its head, never scrolled, the rest past its foot.
+      expect(boxes.at(-1)?.scrollTop).toBe(0);
+      const box = renderer.root.find(
+        (found) => found.type === "div" && found.props["data-capped-at"] === "log",
+      );
+      expect(box.props["data-more-below"]).toBe("");
+      expect(box.props["data-whole"]).toBeUndefined();
+      expect(box.props.onScroll).toBeUndefined();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  /** The log's boxes, each holding more than its cap: 200 px of words in 80. */
+  const cutBoxes = (element: { type: unknown; props: unknown }) => {
+    const props = element.props as Record<string, unknown>;
+    if (element.type === "div" && props["data-capped-held"] !== undefined) {
+      return { offsetHeight: 200 };
+    }
+    if (element.type === "div" && isItemBox(element)) {
+      return { ...itemBox(), scrollHeight: 200, clientHeight: 80 };
+    }
+    return itemBox();
+  };
+  const logBox = (renderer: ReactTestRenderer) =>
+    renderer.root.find((found) => found.type === "div" && found.props["data-capped-at"] === "log");
+
+  it("opens a command cut at its head onto all of its code, though it printed nothing", () => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(
+        <Rows>
+          <RunChat
+            row={record([
+              step(command("w1", SCRIPT, { callInput: { description: "Write the status route" } })),
+            ])}
+          />
+        </Rows>,
+        { createNodeMock: cutBoxes },
+      );
+    });
+    expect(logBox(renderer).props["data-whole"]).toBeUndefined();
+    const press = () => button(renderer, "Write the status route. Show all of its code");
+    act(() => press().props.onClick());
+    expect(logBox(renderer).props["data-whole"]).toBe("");
+    act(() => button(renderer, "Write the status route. Hide").props.onClick());
+    expect(logBox(renderer).props["data-whole"]).toBeUndefined();
+  });
+
+  it("opens a thought cut at its head with Show all, and closes it with Show less", () => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = mounted(
+        <Rows>
+          <RunChat row={record([thought("t1", "Reading the catalogue first.")])} />
+        </Rows>,
+        { createNodeMock: cutBoxes },
+      );
+    });
+    expect(logBox(renderer).props["data-more-below"]).toBe("");
+    act(() => button(renderer, "Show all of the thought").props.onClick());
+    expect(logBox(renderer).props["data-whole"]).toBe("");
+    expect(logBox(renderer).props["data-more-below"]).toBeUndefined();
+    const less = renderer.root.find(
+      (found) => found.type === "button" && found.children.includes("Show less"),
+    );
+    const place = { isConnected: true, getBoundingClientRect: () => ({ top: 0, bottom: 0 }) };
+    act(() =>
+      less.props.onClick({ currentTarget: { ...place, closest: () => null, parentElement: null } }),
+    );
+    expect(logBox(renderer).props["data-whole"]).toBeUndefined();
+    expect(button(renderer, "Show all of the thought")).toBeDefined();
   });
 
   // A live run's chat starts empty: its scroll must follow its foot from the
