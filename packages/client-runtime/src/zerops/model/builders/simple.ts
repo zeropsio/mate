@@ -50,7 +50,7 @@ export function buildSimpleFields(
   const decoded = decodeCall(call);
   const errorInfo = errorInfoFor(call, decoded);
   const phase = phaseFor(call.status);
-  const envChange = kind === "env" ? readEnvChange(call.input) : undefined;
+  const envChange = kind === "env" ? readEnvChange(call.input, decoded.document) : undefined;
   const subject =
     envChange === undefined
       ? (readSimpleSubject(call.input, decoded.document) ?? "the service")
@@ -101,7 +101,10 @@ export function buildSimpleFields(
     ],
     links: [],
     // The project, or a setup block a `.env` is written for, is no service to observe.
-    ...(envChange === undefined || (envChange.scope === "service" && envChange.action !== "dotenv")
+    ...(envChange === undefined ||
+    (envChange.scope === "service" &&
+      envChange.action !== "dotenv" &&
+      envChange.action !== "dotenvPreview")
       ? { target: { hostname: subject } }
       : {}),
     ...(envChange !== undefined ? { envChange } : {}),
@@ -140,21 +143,48 @@ const ENV_ACTIONS: Readonly<Record<string, ZeropsEnvChange["action"]>> = {
  * `generate-dotenv` writes a `.env` for its `setup` block. The variables are
  * only counted: their values can be secrets.
  */
-function readEnvChange(input: Record<string, unknown> | undefined): ZeropsEnvChange {
-  const action = ENV_ACTIONS[readInputString(input, "action") ?? ""] ?? "update";
+function readEnvChange(
+  input: Record<string, unknown> | undefined,
+  document: Record<string, unknown> | undefined,
+): ZeropsEnvChange {
+  const asked = ENV_ACTIONS[readInputString(input, "action") ?? ""] ?? "update";
+  // A preview writes nothing: it reads what a write would change.
+  const action = asked === "dotenv" && readFlexBool(input, "preview") ? "dotenvPreview" : asked;
   const project = input?.project === true || input?.project === "true";
   const service =
-    action === "dotenv"
+    action === "dotenv" || action === "dotenvPreview"
       ? (readInputString(input, "setup") ?? readInputString(input, "serviceHostname"))
       : readInputString(input, "serviceHostname");
   const count = action === "set" || action === "delete" ? variablesCount(input) : undefined;
-  const scope = project && action !== "dotenv" ? "project" : "service";
+  const scope = project && asked !== "dotenv" ? "project" : "service";
+  const refused = action === "dotenv" ? refusedByHand(document) : undefined;
   return {
     action,
     scope,
     ...(scope === "project" || service === undefined ? {} : { service }),
     ...(count === undefined ? {} : { count }),
+    ...(refused === undefined ? {} : { refused }),
   };
+}
+
+/**
+ * A `.env` zcp's safety gate refused to write (`refused`), by how many of its
+ * variables nothing sets (`diff.unowned`): set by hand, lost on a write.
+ */
+function refusedByHand(document: Record<string, unknown> | undefined): number | undefined {
+  if (document?.refused !== true) return undefined;
+  const diff = document.diff;
+  const unowned =
+    typeof diff === "object" && diff !== null && !Array.isArray(diff)
+      ? (diff as Record<string, unknown>).unowned
+      : undefined;
+  return Array.isArray(unowned) ? unowned.length : 0;
+}
+
+/** zcp's FlexBool (`internal/tools/flexbool.go`): a boolean, or "true" in any case. */
+function readFlexBool(input: Record<string, unknown> | undefined, key: string): boolean {
+  const value = input?.[key];
+  return value === true || (typeof value === "string" && value.toLowerCase() === "true");
 }
 
 /**

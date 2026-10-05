@@ -165,3 +165,36 @@ describe("buildSimpleFields — what an env call changed and where, by its input
     expect(fields.voice).toBe("Setting one of the project's variables.");
   });
 });
+
+// zcp returns success for a `generate-dotenv` that wrote nothing — a preview,
+// and a refusal by its safety gate (`internal/ops/env_generate.go`): neither
+// reads as "Wrote the .env" (pass 43).
+describe("buildSimpleFields — a .env that was not written says so", () => {
+  const dotenvCall = (input: Record<string, unknown>, result: Record<string, unknown>) => ({
+    ...simpleCall("zerops_env", "completed", result),
+    input,
+  });
+  const written = { path: "/var/www/.env", setup: "dev", services: 1, variables: 4 };
+  it.each([
+    {
+      name: "written",
+      input: { action: "generate-dotenv", setup: "dev" },
+      result: written,
+      envChange: { action: "dotenv", scope: "service", service: "dev" },
+    },
+    {
+      name: "a preview reads as a read, from its input",
+      input: { action: "generate-dotenv", setup: "dev", preview: "True" },
+      result: { ...written, preview: true },
+      envChange: { action: "dotenvPreview", scope: "service", service: "dev" },
+    },
+    {
+      name: "a refusal, and how many of its variables were set by hand",
+      input: { action: "generate-dotenv", setup: "dev" },
+      result: { ...written, refused: true, diff: { unowned: ["LOCAL_A", "LOCAL_B"] } },
+      envChange: { action: "dotenv", scope: "service", service: "dev", refused: 2 },
+    },
+  ])("$name", ({ input, result, envChange }) => {
+    expect(buildSimpleFields("env", dotenvCall(input, result)).envChange).toEqual(envChange);
+  });
+});

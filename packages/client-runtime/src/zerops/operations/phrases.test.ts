@@ -430,6 +430,26 @@ describe("envChangeWords — what an env call changed and where, never a value",
       words: "Set 2 of the service's variables",
     },
     { change: { scope: "service", action: "dotenv" }, tense: "done", words: "Wrote the .env" },
+    {
+      change: { scope: "service", service: "dev", action: "dotenvPreview" },
+      tense: "running",
+      words: "Reading what the .env for dev would change",
+    },
+    {
+      change: { scope: "service", service: "dev", action: "dotenvPreview" },
+      tense: "done",
+      words: "Read what the .env for dev would change",
+    },
+    {
+      change: { scope: "service", service: "dev", action: "dotenv", refused: 2 },
+      tense: "done",
+      words: "Didn't write the .env for dev: 2 of its variables were set by hand",
+    },
+    {
+      change: { scope: "service", service: "dev", action: "dotenv", refused: 1 },
+      tense: "done",
+      words: "Didn't write the .env for dev: one of its variables was set by hand",
+    },
   ] as const)("$words", ({ change, tense, words }) => {
     expect(envChangeWords(change, tense)).toBe(words);
   });
