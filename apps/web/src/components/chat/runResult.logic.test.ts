@@ -14,6 +14,7 @@ import {
   stripShowsFiles,
   rowPictures,
   resultRows,
+  standingPictures,
   runEffortWords,
   tileRatio,
   type ResultChange,
@@ -1022,6 +1023,62 @@ describe("rowPictures — every picture of a service under its row", () => {
       Object.fromEntries([...read.byRow].map(([key, list]) => [key, list.map((p) => p.key)])),
     ).toEqual(byRow);
     expect(read.rest.map((picture) => picture.key)).toEqual(rest);
+  });
+});
+
+describe("standingPictures — a picture that can no longer load is no result (N2)", () => {
+  const take = (key: string) => ({
+    kind: "check" as const,
+    key,
+    src: `data:image/png;base64,${key}`,
+    caption: "/",
+    page: "appdev-1f3c-3000.prg1.example.app/",
+    device: null,
+    failed: false,
+    ratio: 1.6,
+    label: key,
+  });
+  const file = (name: string) => ({
+    kind: "file" as const,
+    key: `file:/var/www/shots/${name}`,
+    path: `/var/www/shots/${name}`,
+    name,
+    label: name,
+  });
+
+  // Run 11: a symbol the turn downloaded and looked at stood as its result,
+  // a muted "Gone" box. A file whose read failed is left out, with no room
+  // held for it; one still being read keeps its tile; a check's own pixels
+  // never go.
+  it.each([
+    {
+      name: "every picture stands while each file reads or loaded",
+      pictures: [take("b1"), file("home.png"), file("map.png")],
+      gone: [],
+      standing: ["b1", "file:/var/www/shots/home.png", "file:/var/www/shots/map.png"],
+    },
+    {
+      name: "a file that can no longer be read is left out",
+      pictures: [file("home.png"), file("symbol.svg"), take("b1")],
+      gone: ["/var/www/shots/symbol.svg"],
+      standing: ["file:/var/www/shots/home.png", "b1"],
+    },
+    {
+      name: "every file gone leaves nothing of them",
+      pictures: [file("symbol.svg"), file("logo.png")],
+      gone: ["/var/www/shots/symbol.svg", "/var/www/shots/logo.png"],
+      standing: [],
+    },
+    {
+      name: "a check stands whatever the files say",
+      pictures: [take("b1")],
+      gone: ["/var/www/shots/home.png"],
+      standing: ["b1"],
+    },
+  ])("$name", ({ pictures, gone, standing }) => {
+    expect(standingPictures(pictures, new Set(gone)).map((picture) => picture.key)).toEqual(
+      standing,
+    );
   });
 });
 

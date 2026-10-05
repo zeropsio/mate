@@ -737,6 +737,19 @@ export function resultPictures(outcome: OutcomeModel): ReadonlyArray<ResultPictu
 }
 
 /**
+ * The pictures that stand as a run's result (run 11: a symbol the turn
+ * downloaded and looked at stood as its result, a muted "Gone" box): a file
+ * that can no longer be read is left out, with no room held for it; one
+ * still being read keeps its tile; a check's own pixels never go.
+ */
+export function standingPictures(
+  pictures: ReadonlyArray<ResultPicture>,
+  gone: ReadonlySet<string>,
+): ReadonlyArray<ResultPicture> {
+  return pictures.filter((picture) => picture.kind !== "file" || !gone.has(picture.path));
+}
+
+/**
  * The run's pictures by the row they stand under (the owner, 2026-09-30:
  * "showing only one of the images", under another service's row): each
  * page's pictures under the row of the service the page is at, in the order

@@ -5134,17 +5134,6 @@ button.run-result-tile:hover::after {
 .run-result-tile[data-failed]::after {
   box-shadow: inset 0 0 0 1px var(--color-status-failed);
 }
-/* A file that is gone keeps its tile, muted, saying so. */
-.run-result-gone {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  line-height: 18px;
-  color: var(--color-muted-foreground);
-}
 /* The last tile of a run with more: how many more, over its picture sunk
    into the tray. */
 .run-result-more {

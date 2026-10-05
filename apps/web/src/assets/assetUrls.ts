@@ -118,3 +118,32 @@ export function useAssetUrls(
     [preparedConnection, resources, results],
   );
 }
+
+/** Each resource's state, read together: its address once signed, a failure where it is not there. */
+export function useAssetUrlStates(
+  environmentId: EnvironmentId,
+  resources: ReadonlyArray<AssetResource>,
+): ReadonlyArray<AssetUrlState> {
+  const preparedConnection = usePreparedConnection(environmentId);
+  const results = useAtomValue(assetEnvironment.createUrls({ environmentId, resources }));
+  return useMemo(
+    () =>
+      results.map((result): AssetUrlState => {
+        if (AsyncResult.isFailure(result)) return { _tag: "Failure" };
+        if (preparedConnection._tag === "None" || !AsyncResult.isSuccess(result)) {
+          return { _tag: "Loading" };
+        }
+        const url = resolveAssetUrl(preparedConnection.value.httpBaseUrl, result.value.relativeUrl);
+        return url === null
+          ? { _tag: "Failure" }
+          : {
+              _tag: "Success",
+              url,
+              ...(result.value.imageDimensions !== undefined
+                ? { imageDimensions: result.value.imageDimensions }
+                : {}),
+            };
+      }),
+    [preparedConnection, results],
+  );
+}
