@@ -737,6 +737,34 @@ describe("ProviderCommandReactor", () => {
     }),
   );
 
+  effectIt.effect("a runtime mode change waiting for the lane never holds up a stop", () =>
+    Effect.gen(function* () {
+      const { harness, release } = yield* heldFirstSendHarness();
+      yield* harness.engine.dispatch({
+        type: "thread.runtime-mode.set",
+        commandId: CommandId.make("cmd-lane-runtime-mode-then-stop"),
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      yield* harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.make("cmd-lane-interrupt"),
+        threadId: ThreadId.make("thread-1"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      // The send still holds the lane, as Cursor's and Grok's do for a whole turn.
+      yield* Effect.promise(() =>
+        waitFor(
+          () => harness.interruptTurn.mock.calls.length + harness.stopSession.mock.calls.length > 0,
+          2_000,
+        ),
+      );
+      expect(harness.startSession).toHaveBeenCalledTimes(1);
+      yield* release;
+    }),
+  );
+
   effectIt.effect("a message that waited is sent with the thread's selection as it is now", () =>
     Effect.gen(function* () {
       const held = yield* Deferred.make<void>();

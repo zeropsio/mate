@@ -1967,7 +1967,9 @@ const make = Effect.gen(function* () {
           return;
         }
         const cachedModelSelection = threadModelSelections.get(event.payload.threadId);
-        // Through the thread's lane: never a restart under a message's send.
+        // Through the thread's lane, so never a restart under a message's
+        // send, and off the worker: a send can hold the lane for a whole turn
+        // (Cursor, Grok), and the worker serves every thread's stops and answers.
         yield* turnLanes(
           event.payload.threadId,
           ensureSessionForThread(
@@ -1975,6 +1977,16 @@ const make = Effect.gen(function* () {
             event.occurredAt,
             cachedModelSelection !== undefined ? { modelSelection: cachedModelSelection } : {},
           ),
+        ).pipe(
+          Effect.catchCause((cause) =>
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.void
+              : Effect.logWarning("provider command reactor failed to apply a runtime mode", {
+                  threadId: event.payload.threadId,
+                  cause: Cause.pretty(cause),
+                }),
+          ),
+          Effect.forkScoped,
         );
         return;
       }
