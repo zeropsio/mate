@@ -118,8 +118,10 @@ export class MateCredentials extends Context.Service<
     /** The id of the key the Mate of `projectId` named with its live credential; none unnamed. */
     readonly keyOf: (projectId: string) => Effect.Effect<string | null, SqlError>;
     /**
-     * {@link keyOf}, told to the person `userId` where they administer the Mate's project — who
-     * adopts it, or deletes it (`edit_mate_record`'s rule).
+     * The key the Mate's container holds, told to the person `userId` where they administer the
+     * Mate's project — who adopts it, finishes it, or deletes it (`edit_mate_record`'s rule): the
+     * one it last named that reads other projects ({@link keyWider}), which Finish setup's harden
+     * sets to its own project alone by this id, else {@link keyOf}.
      */
     readonly keyFor: (
       userId: string,
@@ -470,7 +472,9 @@ export const mateCredentialsLayer = (options: {
               if (!decision.allow) {
                 return yield* new StructureRefused({ code: "forbidden", reason: decision.reason });
               }
-              return yield* keyOf(projectId);
+              const [row] = yield* sql<{ readonly key: string | null }>`
+                SELECT key_wider_token_id AS key FROM hq_mate WHERE project_id = ${projectId}`;
+              return row?.key ?? (yield* keyOf(projectId));
             }),
           ),
         whoami: (credential) =>

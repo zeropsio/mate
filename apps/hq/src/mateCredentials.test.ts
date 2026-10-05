@@ -456,6 +456,10 @@ describe("mate credentials", () => {
             assert.isTrue(issued.keyWiderMoved);
             assert.isTrue(yield* mates.keyWider("P_MATE"));
 
+            // Finish setup's harden is told that key by its id, the one the Mate's container
+            // holds: a key found by its id is the Mate's to narrow (`planMateKey`).
+            assert.strictEqual(yield* mates.keyFor("owner", "P_MATE"), "tok-wide");
+
             // Not yet lowered: asked again, it still reads other projects.
             assert.isFalse(yield* mates.recheckKey("owner", "P_MATE"));
             assert.isTrue(yield* mates.keyWider("P_MATE"));

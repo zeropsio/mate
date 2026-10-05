@@ -3876,7 +3876,7 @@ no-cache`.
 - **2026-10-04** — **Finish setup takes an old Mate key's sibling grants off; HQ says which keys still
   reach further.**
   - HQ records a key wider than its project at enrollment and on its credential (`keyWider`, HQ
-    migration 0037). The Mate then offers Finish setup, whose harden leaves the key on its own
+    migration 0042). The Mate then offers Finish setup, whose harden leaves the key on its own
     project.
   - The client keeps no path for a Core older than that: the fleet's Cores are updated first, as
     an admin updates any Core from HQ's card (`ZeropsHqUpdate`).

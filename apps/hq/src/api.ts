@@ -44,8 +44,9 @@ import { RASTER_CONTENT_TYPES, rasterContentType } from "@t3tools/shared/hqAttac
  *   with `Authorization: Mate <credential>` → `{ projectId }`; `PUT /api/mate/key` `{ keyTokenId }`,
  *   the same → `204`: the id of the key the Mate's container holds, which `GET
  *   /api/mates/:projectId/key` → `{ keyTokenId }` tells the project's admin; a named key that
- *   also reads other projects is never kept, and its Mate's record says `keyWider` until its admin,
- *   having finished its setup, asks `POST /api/mates/:projectId/key-check` → `204` to read it again;
+ *   also reads other projects is never kept, and its Mate's record says `keyWider` — its id told
+ *   by that read, for Finish setup's harden to narrow — until its admin, having finished its setup,
+ *   asks `POST /api/mates/:projectId/key-check` → `204` to read it again;
  *   `GET /api/mate/self`, the same → the Mate's state (`@t3tools/shared/mateLink` `MateState`)
  *   with its changes (`@t3tools/shared/hqChanges` `MateChanges`).
  * - `POST /api/mates/:projectId/closed-off` → the Mate's state: its project closed off, recorded by
