@@ -123,6 +123,8 @@ export type ResultSub =
       readonly deletions: number;
       /** The run whose diff the files open. */
       readonly turnId: TurnId | null;
+      /** A run of several turns: the first, its diff the whole run's. */
+      readonly fromTurnId: TurnId | null;
     };
 
 export type ResultAction =
@@ -483,6 +485,7 @@ function changeRow(outcome: OutcomeModel, facts: ResultFacts): ResultRow | null 
             additions: files.additions,
             deletions: files.deletions,
             turnId: files.turnId,
+            fromTurnId: files.fromTurnId,
           },
     url: null,
     action: {

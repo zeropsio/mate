@@ -101,7 +101,7 @@ const OUTCOME: OutcomeModel = {
     },
   ],
   landed: [],
-  files: { count: 3, additions: 45, deletions: 3, turnId: TurnId.make("turn-1") },
+  files: { count: 3, additions: 45, deletions: 3, turnId: TurnId.make("turn-1"), fromTurnId: null },
   checks: { count: 1, views: 1, failures: 0, takes: [take("op:status")] },
   pictures: [],
   created: [],
@@ -595,7 +595,7 @@ describe("TurnReport", () => {
       (node) => node.type === "button" && node.children.includes("3 files"),
     );
     act(() => files.props.onClick());
-    expect(onOpenTurnDiff).toHaveBeenCalledWith(TurnId.make("turn-1"));
+    expect(onOpenTurnDiff).toHaveBeenCalledWith(TurnId.make("turn-1"), null);
   });
 
   // A service that stopped since comes back in red, saying since when.

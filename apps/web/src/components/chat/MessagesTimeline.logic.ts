@@ -2356,14 +2356,14 @@ export function deriveMessagesTimelineRows(input: {
     const working = (last.live && !answeredAlone) || waiting;
     const carded =
       (turn.live && !answeredAlone) || waiting || hasRecord || pausedHere || extras.length > 0;
-    const diff = turn.turnId === null ? null : (diffByTurnId.get(turn.turnId) ?? null);
+    const diffs = turn.span.turnIds.flatMap((turnId) => diffByTurnId.get(turnId) ?? []);
     const outcome =
       turn.live || waiting
         ? null
         : deriveOutcome({
             turn,
             landed: landedByTurnKey.get(turn.key) ?? [],
-            diff,
+            diffs,
             activity: turnActivity(turn),
             later: turnsAfter(structure, turn.key),
           });

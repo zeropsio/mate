@@ -2126,6 +2126,8 @@ export interface OutcomeModel {
     readonly additions: number;
     readonly deletions: number;
     readonly turnId: TurnId;
+    /** A run of several turns: the first whose diff it shows, its diff the whole run's. */
+    readonly fromTurnId: TurnId | null;
   } | null;
   readonly checks: {
     readonly count: number;
@@ -2506,7 +2508,8 @@ export function turnsAfter(
 export function deriveOutcome(input: {
   readonly turn: ConversationTurn;
   readonly landed: ReadonlyArray<ChangeLandedEntry>;
-  readonly diff: TurnDiffSummary | null;
+  /** The diff of each of its turns that has one, in order. */
+  readonly diffs: ReadonlyArray<TurnDiffSummary>;
   /** What its calls came to (`activityCounts`). */
   readonly activity?: ReadonlyArray<OutcomeActivity>;
   /** The conversation's turns after it (`turnsAfter`): what they took over since. */
@@ -2625,13 +2628,23 @@ export function deriveOutcome(input: {
       at: operation.settledAt ?? operation.anchorAt,
     }));
 
+  // Every turn of the run: the turns its helpers woke change files too
+  // (review of pass 42: a run's first turn launched them, and said none).
+  const changed = input.diffs.filter((diff) => diff.files.length > 0);
+  const first = changed[0];
+  const lastDiff = changed.at(-1);
   const files =
-    input.diff && input.diff.files.length > 0 && input.diff.turnId
+    first !== undefined && lastDiff !== undefined
       ? {
-          count: input.diff.files.length,
-          additions: input.diff.files.reduce((sum, file) => sum + (file.additions ?? 0), 0),
-          deletions: input.diff.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0),
-          turnId: input.diff.turnId,
+          count: new Set(changed.flatMap((diff) => diff.files.map((file) => file.path))).size,
+          additions: changed
+            .flatMap((diff) => diff.files)
+            .reduce((sum, file) => sum + (file.additions ?? 0), 0),
+          deletions: changed
+            .flatMap((diff) => diff.files)
+            .reduce((sum, file) => sum + (file.deletions ?? 0), 0),
+          turnId: lastDiff.turnId,
+          fromTurnId: first === lastDiff ? null : first.turnId,
         }
       : null;
 

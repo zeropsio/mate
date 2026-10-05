@@ -34,7 +34,7 @@ export interface TimelineRowSharedState {
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
   onRunShellCommand: ((command: string) => void) | undefined;
   onImageExpand: (preview: ExpandedImagePreview) => void;
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenTurnDiff: (turnId: TurnId, filePath?: string, fromTurnId?: TurnId) => void;
   /** Who the conversation is with: the Mate's name and colour. */
   speaker: ConversationSpeaker;
   /**

@@ -307,7 +307,7 @@ interface MessagesTimelineProps {
   runningTurnId: TurnId | null;
   turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   routeThreadKey: string;
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
+  onOpenTurnDiff: (turnId: TurnId, filePath?: string, fromTurnId?: TurnId) => void;
   supportsConversationRollback: boolean;
   /** The thread's provider driver: how its live field reads a batch (`batchesByTiming`). */
   provider?: string | null;
@@ -2478,7 +2478,9 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
     <div ref={markerRef} className="run-band">
       <TurnReport
         onOpenImage={ctx.onImageExpand}
-        onOpenTurnDiff={(turnId) => ctx.onOpenTurnDiff(turnId)}
+        onOpenTurnDiff={(turnId, fromTurnId) =>
+          ctx.onOpenTurnDiff(turnId, undefined, fromTurnId ?? undefined)
+        }
         outcome={row.outcome}
         settling={settling}
       />

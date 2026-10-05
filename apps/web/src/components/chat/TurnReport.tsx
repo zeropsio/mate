@@ -87,7 +87,7 @@ function RowSub({
   onOpenTurnDiff,
 }: {
   readonly row: ResultRow;
-  readonly onOpenTurnDiff: (turnId: TurnId) => void;
+  readonly onOpenTurnDiff: (turnId: TurnId, fromTurnId: TurnId | null) => void;
 }) {
   const timeline = useContext(TimelineRowCtx) as TimelineRowSharedState | null;
   const { sub } = row;
@@ -101,7 +101,7 @@ function RowSub({
     );
   }
   const files = sub.files === null ? null : sub.files === 1 ? "1 file" : `${sub.files} files`;
-  const { turnId } = sub;
+  const { turnId, fromTurnId } = sub;
   return (
     <span className="run-result-sub">
       {files === null ? null : turnId === null ? (
@@ -111,7 +111,7 @@ function RowSub({
         <button
           aria-label={`${files} changed in this run. Open the diff`}
           className="run-result-files"
-          onClick={() => onOpenTurnDiff(turnId)}
+          onClick={() => onOpenTurnDiff(turnId, fromTurnId)}
           type="button"
         >
           {files}
@@ -499,7 +499,7 @@ export function TurnReport({
   files,
 }: {
   readonly outcome: OutcomeModel;
-  readonly onOpenTurnDiff: (turnId: TurnId) => void;
+  readonly onOpenTurnDiff: (turnId: TurnId, fromTurnId: TurnId | null) => void;
   readonly onOpenImage: (preview: ExpandedImagePreview) => void;
   /** The person watched the turn run: its result rises in, once. */
   readonly settling?: boolean;

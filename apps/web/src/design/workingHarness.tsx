@@ -423,7 +423,7 @@ const REPORT: OutcomeModel = {
     },
   ],
   landed: [],
-  files: { count: 3, additions: 42, deletions: 7, turnId: TurnId.make("turn-1") },
+  files: { count: 3, additions: 42, deletions: 7, turnId: TurnId.make("turn-1"), fromTurnId: null },
   checks: { count: 5, views: 2, failures: 0, takes: [] },
   pictures: [],
   created: [],

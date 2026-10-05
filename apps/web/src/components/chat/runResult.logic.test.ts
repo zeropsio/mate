@@ -173,7 +173,7 @@ const STATUS_PAGE: ResultChange = { repository: "app", number: 2, title: "Add a 
 const NOVA = outcome({
   live: [service("appdev", { word: "Dev server running" })],
   checks: checks([take("op:b1", `${APPDEV}/status`)]),
-  files: { count: 3, additions: 45, deletions: 3, turnId: TURN },
+  files: { count: 3, additions: 45, deletions: 3, turnId: TURN, fromTurnId: null },
   change: { repository: "app", number: 2 },
   activity: [
     { kind: "edit", count: 3 },
@@ -195,7 +195,7 @@ const FEN = outcome({
     take("op:b4", `${STAGE}/world`, { deviceName: "iPhone 16" }),
     take("op:b5", `${STAGE}/world`, { deviceName: "iPad Pro" }),
   ]),
-  files: { count: 59, additions: 2400, deletions: 529, turnId: TURN },
+  files: { count: 59, additions: 2400, deletions: 529, turnId: TURN, fromTurnId: null },
   change: { repository: "world", number: 4 },
   activity: [
     { kind: "edit", count: 59 },
@@ -638,6 +638,7 @@ describe("resultRows", () => {
       additions: 45,
       deletions: 3,
       turnId: TURN,
+      fromTurnId: null,
     });
   });
 
@@ -1067,7 +1068,7 @@ describe("runEffortWords", () => {
     {
       name: "edits no change holds are counted",
       outcome: outcome({
-        files: { count: 2, additions: 3, deletions: 1, turnId: TURN },
+        files: { count: 2, additions: 3, deletions: 1, turnId: TURN, fromTurnId: null },
         activity: [
           { kind: "edit", count: 2 },
           { kind: "command", count: 1 },
