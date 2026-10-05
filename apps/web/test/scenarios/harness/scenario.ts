@@ -1,11 +1,14 @@
 // @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalFetchInEffect:off preferSchemaOverJson:off -- localhost wire drivers and failure diagnostics.
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import type { Page, BrowserContext } from "puppeteer-core";
 import { inject } from "vite-plus/test";
 import { expect } from "@effect/vitest";
 import { MateLinkUp, MateOverview } from "@t3tools/shared/mateLink";
 import {
   startCore,
+  seedCoreWorld,
   sessionFor,
   enrollMate,
   untilHealth,
@@ -30,13 +33,28 @@ export interface ScenarioDrivers {
   routes: Record<string, string>;
   onMate: ((mate: MateFake) => void)[];
   links: Map<string, Effect.Success<ReturnType<ScenarioDrivers["core"]["socket"]>>>;
+  owner: string;
+  appIds: Map<string, string>;
   cleanup: (() => Promise<void>)[];
 }
 
 export const createScenario = Effect.fn("scenarios.create")(function* (
   extensions: ScenarioExtension[] = [],
 ) {
-  const core = yield* startCore(true);
+  const cleanup: (() => Promise<void>)[] = [];
+  yield* Effect.addFinalizer(() =>
+    Effect.promise(async () => {
+      for (const close of cleanup.toReversed()) await close();
+    }),
+  );
+  const world = seedCoreWorld(yield* Clock.currentTimeMillis, true, "ORG");
+  const zerops = new ZeropsFake(world);
+  const api = yield* Effect.promise(() => serve(zerops.handle, zerops.socket));
+  zerops.origin = api.origin;
+  cleanup.push(api.close);
+  const core = yield* startCore(true, {
+    zeropsHttp: { baseUrl: `${api.origin}/api/rest/public`, world },
+  });
   yield* untilHealth(core.call, "active");
   const personal = core.fake.tokens.get("door-owner")!;
   core.fake.tokens.set("personal", {
@@ -44,19 +62,10 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     id: "personal",
     name: "Scenario personal access token",
   });
-  // Only test credentials; the anchor still names today's production-shaped public address.
+  zerops.people.set("personal", "owner");
   const owner = yield* sessionFor(core.call, "door-owner");
-  const zerops = new ZeropsFake(core.fake);
   const mates = new Map<string, MateFake>();
   const appIds = new Map<string, string>();
-  const cleanup: (() => Promise<void>)[] = [];
-  yield* Effect.addFinalizer(() =>
-    Effect.promise(async () => {
-      for (const close of cleanup.toReversed()) await close();
-    }),
-  );
-  const api = yield* Effect.promise(() => serve(zerops.handle, zerops.socket));
-  cleanup.push(api.close);
   const hq = yield* Effect.promise(() => hqConnection(core.origin));
   cleanup.push(hq.close);
   const routes: Record<string, string> = {
@@ -65,6 +74,8 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     "https://hqzone.prg1-zerops.zone": hq.origin,
   };
   const drivers = {
+    owner,
+    appIds,
     zerops,
     mates,
     core,
@@ -78,12 +89,103 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       await install(drivers);
     });
 
+  const persons = new Map<string, { token: string; grants: Record<string, string> }>();
+  const person = (
+    name: string,
+    options: {
+      role: "OWNER" | "Developer" | "NO_ACCESS" | "READ_ONLY";
+      grants?: Record<string, "OWNER" | "BASIC_USER" | "READ_ONLY">;
+    },
+  ) => {
+    const roleCode = options.role === "Developer" ? "NO_ACCESS" : options.role;
+    const token = name === "owner" ? "personal" : `personal-${name}`;
+    const members = zerops.world.members.get("ORG")!;
+    const existing = members.find((member) => member.userId === name);
+    const member = {
+      name,
+      kind: "person" as const,
+      userId: name,
+      clientUserId: `C-${name}`,
+      roleCode,
+      status: "ACTIVE",
+      canCreateProjects: roleCode === "OWNER",
+    };
+    if (existing) Object.assign(existing, member);
+    else members.push(member);
+    zerops.world.tokens.set(token, {
+      ...personal,
+      id: token,
+      name: `Scenario ${name}`,
+      roleCode,
+      createdByUser: name,
+    });
+    zerops.people.set(token, name);
+    persons.set(name, { token, grants: options.grants ?? {} });
+    zerops.world.projects = zerops.world.projects.map((project) => ({
+      ...project,
+      userRoles: [
+        ...project.userRoles.filter((grant) => grant.clientUserId !== member.clientUserId),
+        ...(options.grants?.[project.id]
+          ? [{ clientUserId: member.clientUserId, roleCode: options.grants[project.id]! }]
+          : []),
+      ],
+    }));
+  };
+  person("owner", { role: "OWNER" });
+  person("dev", { role: "Developer" });
+  person("reader", { role: "READ_ONLY" });
+  const projectRoles = (name: string) =>
+    [...persons].flatMap(([person, profile]) =>
+      profile.grants[name]
+        ? [{ clientUserId: `C-${person}`, roleCode: profile.grants[name]! }]
+        : [],
+    );
+  const app = Effect.fn("scenarios.given.app")(function* (name: string) {
+    if (appIds.has(name)) return appIds.get(name)!;
+    const response = yield* core.call("POST", "/api/apps", { session: owner, body: { name } });
+    if (response.status !== 201)
+      return yield* Effect.die(new Error(`HQ app creation refused: ${response.status}`));
+    const id = (response.body as { id: string }).id;
+    appIds.set(name, id);
+    return id;
+  });
   const project = Effect.fn("scenarios.given.project")(function* (
     name: string,
-    options: { mate?: boolean; app?: string; registered?: boolean } = {},
+    options: {
+      mate?: boolean;
+      app?: string;
+      kind?: "mate" | "stage" | "production";
+      environmentName?: string;
+      registered?: boolean;
+    } = {},
   ) {
-    if (!options.mate) {
-      zerops.put("project", { id: name, name, clientId: "ORG", status: "ACTIVE", tags: [] });
+    const kind = options.kind ?? (options.mate ? "mate" : undefined);
+    zerops.put("project", {
+      id: name,
+      name,
+      clientId: "ORG",
+      status: "ACTIVE",
+      tags: [],
+      userRoles: projectRoles(name),
+    });
+    if (kind !== "mate") {
+      if (options.app && kind && options.registered !== false) {
+        const appId = yield* app(options.app);
+        const response = yield* core.call("POST", `/api/apps/${appId}/projects`, {
+          session: owner,
+          body: {
+            projectId: name,
+            kind,
+            environment: { name: options.environmentName ?? name.toLowerCase() },
+          },
+        });
+        if (response.status !== 201)
+          return yield* Effect.die(
+            new Error(
+              `HQ environment attach refused: ${response.status} ${JSON.stringify(response.body)}`,
+            ),
+          );
+      }
       return;
     }
     const mate = new MateFake(name, name);
@@ -114,11 +216,18 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       key: "ZCP_MATE_ENABLED",
       content: "1",
     });
-    zerops.put("project", { id: name, name, clientId: "ORG", status: "ACTIVE", tags: [] });
+    zerops.put("project", {
+      id: name,
+      name,
+      clientId: "ORG",
+      status: "ACTIVE",
+      tags: [],
+      userRoles: projectRoles(name),
+    });
     if (options.registered === false) return;
     let credential: string;
     if (options.app) {
-      const placed = yield* mateInApp(core.call, core.fake, owner, name, options.app);
+      const placed = yield* mateInApp(core.call, core.fake, owner, name, options.app, appIds);
       credential = placed.credential;
       appIds.set(options.app, placed.appId);
     } else {
@@ -161,189 +270,250 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
 
   const web = yield* Effect.promise(() => openBrowser(inject("scenarioDist"), routes));
   cleanup.push(web.close);
-  const { page } = web;
-  let openedMate: MateFake | undefined;
-  let signedInDocument: number | undefined;
-  const given = {
-    org: (name: string) => {
-      zerops.orgName = name;
-    },
-    project,
-    signedIn: Effect.promise(async () => {
-      await web.setRoutes();
-      await page.goto(web.origin);
-      try {
-        await page
-          .locator("::-p-aria(Continue with your Zerops account)")
-          .setTimeout(10_000)
-          .click();
-        await visibleText(page, "sidebar-account", zerops.orgName);
-        signedInDocument = await page.evaluate(() => performance.timeOrigin);
-      } catch (error) {
-        throw new Error(
-          `${String(error)}\n${await page.evaluate(() => document.body.innerText)}\nBrowser errors: ${web.errors.join("\n")}\nRequests: ${JSON.stringify([...zerops.requests])}`,
-          { cause: error },
-        );
-      }
-    }),
-  };
-  const when = {
-    zerops: {
-      colleague: {
-        createsProject: (name: string, options: { mate?: boolean; enroll?: boolean } = {}) =>
-          Effect.andThen(
-            Effect.promise(async () => {
-              await zerops.waitForRegistration("project");
-            }),
-            project(name, { ...options, registered: options.enroll ?? false }),
-          ),
+  const actor = (page: Page, initialPerson = "owner") => {
+    let selectedPerson = initialPerson;
+    let openedMate: MateFake | undefined;
+    let signedInDocument: number | undefined;
+    const given = {
+      org: (name: string) => {
+        zerops.orgName = name;
       },
-    },
-    menu: {
-      opensMate: (name: string) =>
-        Effect.promise(async () => {
-          await clickText(page, "sidebar-mate", name);
-          openedMate = mates.get(name);
-        }),
-    },
-    conversation: {
-      sends: (message: string) =>
-        Effect.promise(async () => {
-          const editor = page.locator('::-p-aria([role="textbox"])');
-          await editor.fill(message);
-          await page.keyboard.press("Enter");
-        }),
-    },
-    hq: {
-      socket: {
-        drops: Effect.promise(async () => {
-          await hq.ready();
-          hq.drops();
+      project,
+      app,
+      person,
+      asPerson: (name: string) => {
+        if (signedInDocument !== undefined)
+          throw new Error("Choose person before sign-in; use a new context for another account");
+        if (!persons.has(name)) throw new Error(`Define person ${name} first`);
+        selectedPerson = name;
+      },
+      signedIn: Effect.promise(async () => {
+        web.setPerson(page, persons.get(selectedPerson)!.token);
+        await web.setRoutes();
+        await page.goto(web.origin);
+        try {
+          await page.waitForFunction(
+            () =>
+              [...document.querySelectorAll<HTMLButtonElement>("button")].some(
+                (button) => button.innerText.trim() === "Continue with your Zerops account",
+              ) ||
+              [
+                ...document.querySelectorAll<HTMLElement>(
+                  '[data-zerops-surface="sidebar-account"]',
+                ),
+              ].some((element) => element.getBoundingClientRect().height > 0),
+            { timeout: 10_000, polling: "raf" },
+          );
+          const hasButton = await page.evaluate(() =>
+            [...document.querySelectorAll<HTMLButtonElement>("button")].some(
+              (button) => button.innerText.trim() === "Continue with your Zerops account",
+            ),
+          );
+          if (hasButton)
+            await page
+              .locator("::-p-aria(Continue with your Zerops account)")
+              .setTimeout(10_000)
+              .click();
+          await visibleText(page, "sidebar-account", zerops.orgName);
+          signedInDocument = await page.evaluate(() => performance.timeOrigin);
+        } catch (error) {
+          throw new Error(
+            `${String(error)}\n${await page.evaluate(() => document.body.innerText)}\nBrowser errors: ${web.errors.join("\n")}\nRequests: ${JSON.stringify([...zerops.requests])}`,
+            { cause: error },
+          );
+        }
+      }),
+    };
+    const when = {
+      zerops: {
+        colleague: {
+          createsProject: (name: string, options: { mate?: boolean; enroll?: boolean } = {}) =>
+            Effect.andThen(
+              Effect.promise(async () => {
+                await zerops.waitForRegistration("project");
+              }),
+              project(name, { ...options, registered: options.enroll ?? false }),
+            ),
+        },
+      },
+      menu: {
+        opensMate: (name: string) =>
+          Effect.promise(async () => {
+            await clickText(page, "sidebar-mate", name);
+            openedMate = mates.get(name);
+          }),
+      },
+      conversation: {
+        sends: (message: string) =>
+          Effect.promise(async () => {
+            const editor = page.locator('::-p-aria([role="textbox"])');
+            await editor.fill(message);
+            await page.keyboard.press("Enter");
+          }),
+      },
+      hq: {
+        socket: {
+          drops: Effect.promise(async () => {
+            await hq.ready();
+            hq.drops();
+          }),
+          returns: Effect.sync(() => hq.returns()),
+        },
+        colleague: {
+          renamesProject: (from: string, name: string) =>
+            core
+              .call("PATCH", `/api/apps/${appIds.get(from)}`, { session: owner, body: { name } })
+              .pipe(
+                Effect.tap((response) =>
+                  response.status === 200
+                    ? Effect.void
+                    : Effect.die(new Error(`HQ rename refused: ${response.status}`)),
+                ),
+              ),
+        },
+      },
+    };
+    const then = {
+      hq: {
+        isUnavailable: Effect.promise(async () => {
           await page.waitForSelector('[data-zerops-surface="sidebar-hq-outage"]', {
             visible: true,
             timeout: 10_000,
           });
         }),
-        returns: Effect.sync(() => hq.returns()),
       },
-      colleague: {
-        renamesProject: (from: string, name: string) =>
-          core
-            .call("PATCH", `/api/apps/${appIds.get(from)}`, { session: owner, body: { name } })
-            .pipe(Effect.tap((response) => Effect.sync(() => expect(response.status).toBe(200)))),
-      },
-    },
-  };
-  const then = {
-    menu: {
-      keepsRows: (names: string[]) =>
-        Effect.promise(async () => {
-          const guard = await page.evaluateHandle((names) => {
-            const state = {
-              missing: [] as string[],
-              observer: undefined as MutationObserver | undefined,
-            };
-            const check = () => {
-              const rows = new Set(
-                [
-                  ...document.querySelectorAll<HTMLElement>(
-                    '[data-zerops-surface="sidebar-environments"]',
-                  ),
-                ].flatMap((element) => element.innerText.split("\n").map((line) => line.trim())),
-              );
-              for (const name of names)
-                if (!rows.has(name) && !state.missing.includes(name)) state.missing.push(name);
-            };
-            check();
-            state.observer = new MutationObserver(check);
-            state.observer.observe(document.body, {
-              childList: true,
-              subtree: true,
-              characterData: true,
-            });
-            return state;
-          }, names);
-          cleanup.push(() => guard.dispose());
-          return Effect.promise(async () => {
-            const missing = await guard.evaluate((state) => {
-              state.observer?.disconnect();
-              return state.missing;
-            });
-            expect(missing, "Menu rows disappeared during HQ outage").toEqual([]);
-          });
-        }),
-      row: (name: string) => ({
-        appears: (options: { within?: number } = {}) =>
+      menu: {
+        keepsRows: (names: string[]) =>
           Effect.promise(async () => {
-            try {
-              await visibleText(page, "sidebar-environments", name, options.within);
-            } catch (error) {
-              throw new Error(
-                `Menu row ${name} missing\n${await page.evaluate(() => document.body.innerText)}\n${web.errors.join("\n")}\n${JSON.stringify([...zerops.requests])}\nFrames: ${JSON.stringify([...zerops.framesByKind])}\nSubscriptions: ${JSON.stringify([...zerops.subscriptions.values()])}`,
-                { cause: error },
-              );
-            }
+            const guard = await page.evaluateHandle((names) => {
+              const state = {
+                missing: [] as string[],
+                observer: undefined as MutationObserver | undefined,
+              };
+              const check = () => {
+                const rows = new Set(
+                  [
+                    ...document.querySelectorAll<HTMLElement>(
+                      '[data-zerops-surface="sidebar-environments"]',
+                    ),
+                  ].flatMap((element) => element.innerText.split("\n").map((line) => line.trim())),
+                );
+                for (const name of names)
+                  if (!rows.has(name) && !state.missing.includes(name)) state.missing.push(name);
+              };
+              check();
+              state.observer = new MutationObserver(check);
+              state.observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                characterData: true,
+              });
+              return state;
+            }, names);
+            cleanup.push(() => guard.dispose());
+            return Effect.promise(async () => {
+              const missing = await guard.evaluate((state) => {
+                state.observer?.disconnect();
+                return state.missing;
+              });
+              expect(missing, "Menu rows disappeared during HQ outage").toEqual([]);
+            });
           }),
-      }),
-    },
-    conversation: {
-      appears: Effect.promise(async () => {
-        try {
-          await page.waitForSelector('[role="textbox"]', { visible: true, timeout: 15_000 });
-        } catch (error) {
-          throw new Error(
-            `${await page.evaluate(() => document.body.innerText)}\n${web.errors.join("\n")}\nRequests: ${JSON.stringify([...zerops.requests])}\nMate requests: ${JSON.stringify([...mates.values()].map((mate) => mate.requests.map((r) => r.tag)))}`,
-            { cause: error },
-          );
-        }
-      }),
-      showsMessage: (text: string) =>
-        Effect.promise(async () => {
-          if (!openedMate) throw new Error("Open a Mate before checking its timeline");
-          await openedMate.waitForMessage(text);
-          await page.waitForFunction(
-            (text) =>
-              (() => {
-                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-                while (walker.nextNode()) {
-                  const node = walker.currentNode;
-                  const element = node.parentElement;
-                  if (
-                    node.textContent === text &&
-                    element &&
-                    !element.closest('[role="textbox"]') &&
-                    element.getBoundingClientRect().height > 0
-                  )
-                    return true;
-                }
-                return false;
-              })(),
-            { timeout: 8000, polling: "raf" },
-            text,
-          );
-        }),
-    },
-    budget: {
-      zerops: {
-        requests: (kind: string) => ({
-          atMost: (limit: number) =>
-            expect(zerops.requestsByKind.get(kind) ?? 0).toBeLessThanOrEqual(limit),
-        }),
-        registrations: (kind: string) => ({
-          atMost: (limit: number) =>
-            expect(zerops.registrations.get(kind) ?? 0).toBeLessThanOrEqual(limit),
+        row: (name: string) => ({
+          appears: (options: { within?: number } = {}) =>
+            Effect.promise(async () => {
+              try {
+                await visibleText(page, "sidebar-environments", name, options.within);
+              } catch (error) {
+                throw new Error(
+                  `Menu row ${name} missing\n${await page.evaluate(() => document.body.innerText)}\n${web.errors.join("\n")}\n${JSON.stringify([...zerops.requests])}\nFrames: ${JSON.stringify([...zerops.framesByKind])}\nSubscriptions: ${JSON.stringify([...zerops.subscriptions.values()].map(({ kind, name, receiver, output, search }) => ({ kind, name, receiver, output, search })))}`,
+                  { cause: error },
+                );
+              }
+            }),
         }),
       },
-    },
-    noReload: Effect.promise(async () =>
-      expect(await page.evaluate(() => performance.timeOrigin)).toBe(signedInDocument),
-    ),
-    noExternalNetwork: Effect.sync(() => {
-      expect(web.blocked).toEqual([]);
-      expect([...mates.values()].flatMap((mate) => [...mate.unknownMethods])).toEqual([]);
-    }),
+      conversation: {
+        appears: Effect.promise(async () => {
+          try {
+            await page.waitForSelector('[role="textbox"]', { visible: true, timeout: 15_000 });
+          } catch (error) {
+            throw new Error(
+              `${await page.evaluate(() => document.body.innerText)}\n${web.errors.join("\n")}\nRequests: ${JSON.stringify([...zerops.requests])}\nMate requests: ${JSON.stringify([...mates.values()].map((mate) => mate.requests.map((r) => r.tag)))}`,
+              { cause: error },
+            );
+          }
+        }),
+        showsMessage: (text: string) =>
+          Effect.promise(async () => {
+            if (!openedMate) throw new Error("Open a Mate before checking its timeline");
+            await openedMate.waitForMessage(text);
+            await page.waitForFunction(
+              (text) =>
+                (() => {
+                  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                  while (walker.nextNode()) {
+                    const node = walker.currentNode;
+                    const element = node.parentElement;
+                    if (
+                      node.textContent === text &&
+                      element &&
+                      !element.closest('[role="textbox"]') &&
+                      element.getBoundingClientRect().height > 0
+                    )
+                      return true;
+                  }
+                  return false;
+                })(),
+              { timeout: 8000, polling: "raf" },
+              text,
+            );
+          }),
+      },
+      budget: {
+        zerops: {
+          requests: (kind: string) => ({
+            atMost: (limit: number) =>
+              expect(zerops.requestsByKind.get(kind) ?? 0).toBeLessThanOrEqual(limit),
+          }),
+          registrations: (kind: string) => ({
+            atMost: (limit: number) =>
+              expect(zerops.registrations.get(kind) ?? 0).toBeLessThanOrEqual(limit),
+          }),
+        },
+      },
+      noReload: Effect.promise(async () =>
+        expect(await page.evaluate(() => performance.timeOrigin)).toBe(signedInDocument),
+      ),
+      noExternalNetwork: Effect.sync(() => {
+        expect(web.blocked).toEqual([]);
+        expect(web.pageErrors, "Uncaught browser errors").toEqual([]);
+        expect([...mates.values()].flatMap((mate) => [...mate.unknownMethods])).toEqual([]);
+      }),
+    };
+    // The domain DSL's `then` is an assertion object, never a Promise callback.
+    // oxlint-disable-next-line unicorn/no-thenable
+    return { given, when, then, page, clock: web.clock(page) };
   };
-  // The domain DSL's `then` is an assertion object, never a Promise callback.
+  const primary = actor(web.page);
+  const newActor = Effect.fn("scenarios.given.browserActor")(function* (
+    options: { person?: string; context?: BrowserContext | "new" } = {},
+  ) {
+    const context =
+      options.context === "new" || options.context === undefined
+        ? yield* Effect.promise(() => web.newContext())
+        : options.context;
+    const page = yield* Effect.promise(() => web.newPage(context));
+    return actor(page, options.person ?? "owner");
+  });
   // oxlint-disable-next-line unicorn/no-thenable
-  return { given, when, then, drivers, page, web, hq };
+  return {
+    ...primary,
+    given: { ...primary.given, browserActor: newActor },
+    drivers,
+    web,
+    hq,
+    owner,
+    appIds,
+  };
 });

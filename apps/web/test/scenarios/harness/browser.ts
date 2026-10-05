@@ -1,8 +1,25 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Chrome and the static localhost server are Node test tools.
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
-import puppeteer, { type Page } from "puppeteer-core";
+import { afterEach, expect } from "vite-plus/test";
+import puppeteer, { type Page, type BrowserContext } from "puppeteer-core";
+import { clientClock } from "./clientClock.ts";
 import { serve } from "./http.ts";
+
+// Hooks remain outside it.fails: setup errors, blocked sockets and page errors cannot masquerade
+// as the expected Zerops-only inventory failure. Closed pages retain their diagnostics until here.
+const healthChecks: { pageErrors: string[]; blocked: string[] }[] = [];
+afterEach(() => {
+  const checks = healthChecks.splice(0);
+  expect(
+    checks.flatMap((check) => check.pageErrors),
+    "Uncaught browser errors",
+  ).toEqual([]);
+  expect(
+    checks.flatMap((check) => check.blocked),
+    "Unmapped browser network",
+  ).toEqual([]);
+});
 
 const contentTypes: Record<string, string> = {
   ".js": "text/javascript",
@@ -66,87 +83,143 @@ export async function openBrowser(dist: string, routes: Record<string, string>) 
       "--disable-features=MediaRouter,OptimizationHints,AutofillServerCommunication",
     ],
   });
-  const page = await browser.newPage();
-  await page.setBypassServiceWorker(true);
-  await page.setViewport({ width: 1280, height: 900 });
   const errors: string[] = [];
+  const pageErrors: string[] = [];
   const blocked: string[] = [];
-  page.on("pageerror", (error) => errors.push(String(error)));
-  page.on("console", (message) => {
-    if (["warn", "error"].includes(message.type())) errors.push(message.text());
+  healthChecks.push({ pageErrors, blocked });
+  const identities = new WeakMap<Page, string>();
+  let notifyViolation = () => {};
+  const networkViolation = new Promise<void>((resolve) => {
+    notifyViolation = resolve;
   });
-  await page.setRequestInterception(true);
-  page.on("request", async (request) => {
-    try {
-      const url = new URL(request.url());
-      if (["data:", "blob:"].includes(url.protocol)) {
-        await request.continue();
-        return;
-      }
-      const target = routes[url.origin];
-      if (target) {
-        const local = new URL(`${url.pathname}${url.search}`, target);
-        if (!["localhost", "127.0.0.1"].includes(local.hostname))
-          throw new Error("Fake route is not loopback");
-        const headers = { ...request.headers() };
-        delete headers.host;
-        delete headers["content-length"];
-        const response = await fetch(local, {
-          method: request.method(),
-          headers,
-          ...(request.hasPostData() ? { body: (await request.fetchPostData()) ?? "" } : {}),
-          redirect: "manual",
-        });
-        await request.respond({
-          status: response.status,
-          headers: Object.fromEntries(response.headers),
-          body: Buffer.from(await response.arrayBuffer()),
-        });
-      } else if (url.origin === web.origin) await request.continue();
-      else {
-        blocked.push(`${request.method()} ${url.origin}${url.pathname}`);
-        await request.abort("blockedbyclient");
-      }
-    } catch (error) {
-      errors.push(String(error));
-      if (!request.isInterceptResolutionHandled()) await request.abort();
-    }
-  });
-  // Only transport addresses change. The app still computes production container URLs and
-  // exchanges real frames; no stores, components or app functions are accessed here.
-  let routeScript: string | undefined;
-  const setRoutes = async () => {
-    if (routeScript) await page.removeScriptToEvaluateOnNewDocument(routeScript);
-    const script = await page.evaluateOnNewDocument((mapping) => {
-      const NativeWebSocket = window.WebSocket;
-      class ScenarioWebSocket extends NativeWebSocket {
-        static scenarioOrigins = mapping;
-        constructor(address: string | URL, protocols?: string | string[]) {
-          const url = new URL(String(address));
-          const httpOrigin = url.origin.replace(/^ws/u, "http");
-          const target = ScenarioWebSocket.scenarioOrigins[httpOrigin];
-          if (!target) throw new Error(`Unmapped websocket origin: ${httpOrigin}`);
-          const local = new URL(`${url.pathname}${url.search}`, target);
-          local.protocol = "ws:";
-          super(local, protocols);
-        }
-      }
-      window.WebSocket = ScenarioWebSocket;
-    }, routes);
-    routeScript = script.identifier;
-    await page.evaluate((mapping) => {
-      const socket = window.WebSocket as typeof WebSocket & {
-        scenarioOrigins?: Record<string, string>;
-      };
-      if (socket.scenarioOrigins) socket.scenarioOrigins = mapping;
-    }, routes);
+  const recordBlocked = (address: string) => {
+    blocked.push(address);
+    notifyViolation();
   };
+  const contextIdentities = new WeakMap<BrowserContext, string>();
+  const clocks = new WeakMap<Page, ReturnType<typeof clientClock>>();
+  const routeSetters = new Map<Page, () => Promise<void>>();
+  const newPage = async (context: BrowserContext = browser.defaultBrowserContext()) => {
+    const page = await context.newPage();
+    clocks.set(page, clientClock(page));
+    await page.setBypassServiceWorker(true);
+    await page.setViewport({ width: 1280, height: 900 });
+    page.on("pageerror", (error) => {
+      errors.push(String(error));
+      pageErrors.push(String(error));
+    });
+    await page.exposeFunction("scenarioBlockedSocket", (address: string) =>
+      recordBlocked(`WS ${address}`),
+    );
+    page.on("console", (message) => {
+      if (["warn", "error"].includes(message.type())) errors.push(message.text());
+    });
+    await page.setRequestInterception(true);
+    page.on("request", async (request) => {
+      try {
+        const url = new URL(request.url());
+        if (["data:", "blob:"].includes(url.protocol)) {
+          await request.continue();
+          return;
+        }
+        const target = routes[url.origin];
+        if (target) {
+          const local = new URL(`${url.pathname}${url.search}`, target);
+          if (!["localhost", "127.0.0.1"].includes(local.hostname))
+            throw new Error("Fake route is not loopback");
+          const headers = { ...request.headers() };
+          if (url.pathname === "/authorize-app")
+            headers["x-scenario-person"] = identities.get(page) ?? "personal";
+          delete headers.host;
+          delete headers["content-length"];
+          const response = await fetch(local, {
+            method: request.method(),
+            headers,
+            ...(request.hasPostData() ? { body: (await request.fetchPostData()) ?? "" } : {}),
+            redirect: "manual",
+          });
+          await request.respond({
+            status: response.status,
+            headers: Object.fromEntries(response.headers),
+            body: Buffer.from(await response.arrayBuffer()),
+          });
+        } else if (url.origin === web.origin) await request.continue();
+        else {
+          recordBlocked(`${request.method()} ${url.origin}${url.pathname}`);
+          await request.abort("blockedbyclient");
+        }
+      } catch (error) {
+        errors.push(String(error));
+        if (!request.isInterceptResolutionHandled()) await request.abort();
+      }
+    });
+    // Only transport addresses change. The app still computes production container URLs and
+    // exchanges real frames; no stores, components or app functions are accessed here.
+    let routeScript: string | undefined;
+    const setRoutes = async () => {
+      if (routeScript) await page.removeScriptToEvaluateOnNewDocument(routeScript);
+      const script = await page.evaluateOnNewDocument((mapping) => {
+        const NativeWebSocket = window.WebSocket;
+        class ScenarioWebSocket extends NativeWebSocket {
+          static scenarioOrigins = mapping;
+          constructor(address: string | URL, protocols?: string | string[]) {
+            const url = new URL(String(address));
+            const httpOrigin = url.origin.replace(/^ws/u, "http");
+            const target = ScenarioWebSocket.scenarioOrigins[httpOrigin];
+            if (!target) {
+              void (
+                window as unknown as { scenarioBlockedSocket(address: string): Promise<void> }
+              ).scenarioBlockedSocket(httpOrigin);
+              throw new Error(`Unmapped websocket origin: ${httpOrigin}`);
+            }
+            if (!["localhost", "127.0.0.1"].includes(new URL(target).hostname))
+              throw new Error("Fake websocket route is not loopback");
+            const local = new URL(`${url.pathname}${url.search}`, target);
+            local.protocol = "ws:";
+            super(local, protocols);
+          }
+        }
+        window.WebSocket = ScenarioWebSocket;
+      }, routes);
+      routeScript = script.identifier;
+      await page.evaluate((mapping) => {
+        const socket = window.WebSocket as typeof WebSocket & {
+          scenarioOrigins?: Record<string, string>;
+        };
+        if (socket.scenarioOrigins) socket.scenarioOrigins = mapping;
+      }, routes);
+    };
+    routeSetters.set(page, setRoutes);
+    page.once("close", () => routeSetters.delete(page));
+    await setRoutes();
+    return page;
+  };
+  const page = await newPage();
   return {
     page,
-    setRoutes,
+    newPage,
+    clock: (page: Page) => {
+      const clock = clocks.get(page);
+      if (!clock) throw new Error("Page belongs to a different scenario");
+      return clock;
+    },
+    newContext: () => browser.createBrowserContext(),
+    setPerson: (page: Page, token: string) => {
+      const context = page.browserContext();
+      const existing = contextIdentities.get(context);
+      if (existing && existing !== token)
+        throw new Error("Use a new browser context to sign in as another person");
+      contextIdentities.set(context, token);
+      identities.set(page, token);
+    },
+    setRoutes: async () => {
+      for (const update of routeSetters.values()) await update();
+    },
     origin: web.origin,
     errors,
+    pageErrors,
     blocked,
+    networkViolation,
     close: async () => {
       await browser.close();
       await web.close();

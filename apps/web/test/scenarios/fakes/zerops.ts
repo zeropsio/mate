@@ -1,3 +1,5 @@
+import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
+import { ZeropsWrites } from "./zeropsWrites.ts";
 import * as NodeEvents from "node:events";
 import type { WebSocket } from "ws";
 import type { FakeWorld } from "../../../../hq/test/harness/zeropsFake.ts";
@@ -18,12 +20,16 @@ interface Registration {
   kind: string;
   name: string;
   receiver: string;
+  socket: WebSocket | undefined;
+  apiToken: string;
   output: string;
   search: SearchTerm[];
   members: Set<string>;
 }
 export type Fault = {
-  status?: 401 | 403 | 404 | 429 | 500 | 502 | 503;
+  code?: string;
+  message?: string;
+  status?: number;
   retryAfter?: number;
   latency?: number;
   timeout?: boolean;
@@ -45,11 +51,12 @@ export class FakeClock {
   }
 }
 
-/** Shared with runningCore's injected Zerops API, not a second copy of the organization. */
+/** One platform world, served over HTTP to both the browser and real Core. */
 export class ZeropsFake {
   readonly clock = new FakeClock();
   readonly requests = new Map<string, number>();
   readonly requestsByKind = new Map<string, number>();
+  readonly requestsByCredential = new Map<string, Map<string, number>>();
   readonly registrations = new Map<string, number>();
   readonly faults = new Map<string, Fault>();
   readonly handlers: HttpHandler[] = [];
@@ -58,12 +65,19 @@ export class ZeropsFake {
   readonly events = new NodeEvents.EventEmitter();
   readonly subscriptions = new Map<string, Registration>();
   readonly framesByKind = new Map<string, number>();
+  readonly people = new Map<string, string>();
+  origin = "";
+  readonly writes: ZeropsWrites;
   private token = 0;
+  socketTokenTtl = 60_000;
+  private socketSerial = 0;
+  readonly socketTokens = new Map<string, { apiToken: string; expiresAt: number }>();
   private versions = new Map<string, number>();
   orgName = "KRLS";
   readonly world: FakeWorld;
   constructor(world: FakeWorld) {
     this.world = world;
+    this.writes = new ZeropsWrites(this);
   }
 
   matches(row: EntityRow, search: SearchTerm[]) {
@@ -113,7 +127,11 @@ export class ZeropsFake {
         zeropsSubdomainHost: p.id.toLowerCase(),
         _version: this.versions.get(`project:${p.id}`) ?? 1,
       }));
-    return [...(this.entities.get(kind)?.values() ?? [])];
+    return [...(this.entities.get(kind)?.values() ?? [])].map((row) =>
+      kind === "service-stack"
+        ? { isSystem: false, subdomainAccess: false, userData: [], activeAppVersion: null, ...row }
+        : row,
+    );
   }
 
   /** Full rows and list membership are independently sent, in the requested order. */
@@ -141,11 +159,40 @@ export class ZeropsFake {
       if (index < 0) this.world.projects.push(project);
       else this.world.projects[index] = project;
     }
+    if (kind === "service-stack") {
+      const service = {
+        id: row.id,
+        projectId: String(row.projectId),
+        name: String(row.name),
+        status: String(row.status ?? "ACTIVE"),
+        isSystem: Boolean(row.isSystem),
+        subdomainAccess: Boolean(row.subdomainAccess),
+        http:
+          (row.ports as { scheme?: string }[] | undefined)?.some((port) =>
+            ["http", "https"].includes(port.scheme ?? ""),
+          ) ?? false,
+        named: (() => {
+          const values = row.userData as { key: string; content: string }[] | undefined;
+          const id = values?.find((item) => item.key === "appVersionId")?.content;
+          return id
+            ? { id, name: values?.find((item) => item.key === "appVersionName")?.content ?? "" }
+            : null;
+        })(),
+        activeVersionId: (row.activeAppVersion as { id: string } | undefined)?.id ?? null,
+      };
+      const index = this.world.services.findIndex((item) => item.id === row.id);
+      if (index < 0) this.world.services.push(service);
+      else this.world.services[index] = { ...this.world.services[index]!, ...service };
+    }
     const full = this.rows(kind).find((p) => p.id === row.id)!;
     const send = (output: string) => {
       for (const registration of this.subscriptions.values()) {
         if (registration.kind !== kind || registration.output !== output) continue;
-        const matches = this.matches(full, registration.search);
+        const matches =
+          this.canRead(
+            registration.apiToken,
+            String(full.projectId ?? (kind === "project" ? full.id : "")),
+          ) && this.matches(full, registration.search);
         if (output === "updateStream") {
           if (matches) this.push(registration, { update: [full] });
         } else {
@@ -186,16 +233,17 @@ export class ZeropsFake {
     if (this.faults.get(`${registration.kind}:push`)?.silence) return;
     const key = `${registration.kind}:${registration.output}`;
     this.framesByKind.set(key, (this.framesByKind.get(key) ?? 0) + 1);
-    this.sockets
-      .get(registration.receiver)
-      ?.send(JSON.stringify({ type: "search", subscriptionName: registration.name, data }));
+    registration.socket?.send(
+      JSON.stringify({ type: "search", subscriptionName: registration.name, data }),
+    );
   }
 
   socket = (socket: WebSocket, url: URL) => {
     const parts = url.pathname.split("/");
     const receiver = parts.at(-2)!;
     const token = parts.at(-1)!;
-    if (!this.world.tokens.has(token)) {
+    const login = this.socketTokens.get(token);
+    if (!login || login.expiresAt <= this.clock.now || !this.world.tokens.has(login.apiToken)) {
       socket.close(1008);
       return;
     }
@@ -206,9 +254,9 @@ export class ZeropsFake {
       if (frame.type === "ping") socket.send(JSON.stringify({ type: "pong", data: null }));
     });
     socket.on("close", () => {
-      this.sockets.delete(receiver);
+      if (this.sockets.get(receiver) === socket) this.sockets.delete(receiver);
       for (const [key, registration] of this.subscriptions)
-        if (registration.receiver === receiver) this.subscriptions.delete(key);
+        if (registration.socket === socket) this.subscriptions.delete(key);
       this.events.emit("change");
     });
     this.events.emit("change");
@@ -251,10 +299,46 @@ export class ZeropsFake {
     }
   }
 
+  role(credential: string) {
+    const token = this.world.tokens.get(credential);
+    return (
+      this.world.members
+        .get(token?.orgId ?? "")
+        ?.find((member) => member.userId === this.people.get(credential))?.roleCode ??
+      token?.roleCode
+    );
+  }
+
+  canRead(credential: string, projectId: string) {
+    const token = this.world.tokens.get(credential);
+    if (!token) return false;
+    const project = this.world.projects.find((row) => row.id === projectId);
+    if (project && project.orgId !== token.orgId) return false;
+    if (roleAtLeast(this.role(credential), "READ_ONLY")) return true;
+    const person = this.people.get(credential);
+    const member = this.world.members.get(token.orgId)?.find((member) => member.userId === person);
+    const grant = person
+      ? project?.userRoles.find((grant) => grant.clientUserId === member?.clientUserId)?.roleCode
+      : token.projects.find((grant) => grant.projectId === projectId)?.roleCode;
+    return roleAtLeast(grant, "READ_ONLY");
+  }
+
+  error(status: number, code: string, message = code): WireResponse {
+    return {
+      status,
+      body: { error: { code, message, meta: [{ error: message, code, metadata: null }] } },
+    };
+  }
+
   handle: HttpHandler = async (request) => {
     const path = request.url.pathname.replace(/^\/api\/rest\/public/u, "");
     const key = `${request.method} ${path}`;
     this.requests.set(key, (this.requests.get(key) ?? 0) + 1);
+    const credential = request.headers.authorization?.replace(/^Bearer /u, "") ?? "anonymous";
+    if (!this.requestsByCredential.has(credential))
+      this.requestsByCredential.set(credential, new Map());
+    const spent = this.requestsByCredential.get(credential)!;
+    spent.set(key, (spent.get(key) ?? 0) + 1);
     this.events.emit("request");
     if (request.method !== "OPTIONS") {
       const kind = path.split("/")[1] ?? "unknown";
@@ -266,45 +350,86 @@ export class ZeropsFake {
     if (fault?.status)
       return {
         status: fault.status,
-        body: { code: "scenarioFault" },
+        ...this.error(
+          fault.status,
+          fault.code ??
+            (
+              {
+                400: "projectNotFound",
+                401: "notAuthorized",
+                403: "insufficientPermissions",
+                404: "notFound",
+                429: "tooManyRequests",
+                500: "internalServerError",
+                502: "badGateway",
+                503: "serviceUnavailable",
+              } as Record<number, string>
+            )[fault.status] ??
+            (fault.status >= 500 ? "internalServerError" : "scenarioFault"),
+          fault.message,
+        ),
         headers: fault.status === 429 ? { "Retry-After": String(fault.retryAfter ?? 1) } : {},
       };
     if (request.method === "OPTIONS") return { body: {} };
+    if (path.startsWith("/scenario-logs/")) return { body: { items: [] } };
     if (path === "/authorize-app") {
       const origin = new URL(request.url.searchParams.get("origin")!);
       if (!["localhost", "127.0.0.1"].includes(origin.hostname))
         throw new Error("Nonlocal hand-over destination");
-      const callback = `${origin.origin}${request.url.searchParams.get("path") ?? ""}/zerops/authorized#${new URLSearchParams({ token: "personal", state: request.url.searchParams.get("state")! })}`;
+      const callback = `${origin.origin}${request.url.searchParams.get("path") ?? ""}/zerops/authorized#${new URLSearchParams({ token: String(request.headers["x-scenario-person"] ?? "personal"), state: request.url.searchParams.get("state")! })}`;
       return { status: 302, headers: { location: callback }, body: {} };
     }
-    if (path === "/web-socket/login")
-      return this.world.tokens.has(String(request.body.token))
-        ? { body: { webSocketToken: request.body.token } }
-        : { status: 401 };
+    if (path === "/web-socket/login") {
+      const apiToken = String(request.body.token);
+      if (!this.world.tokens.has(apiToken))
+        return this.error(401, "notAuthorized", "Not authorized");
+      const webSocketToken = `socket-${++this.socketSerial}`;
+      this.socketTokens.set(webSocketToken, {
+        apiToken,
+        expiresAt: this.clock.now + this.socketTokenTtl,
+      });
+      return { body: { webSocketToken } };
+    }
     const bearer = request.headers.authorization?.replace(/^Bearer /u, "");
     if (!bearer || !this.world.tokens.has(bearer))
-      return { status: 401, body: { code: "notAuthorized" } };
+      return this.error(401, "notAuthorized", "Not authorized");
     for (const handler of this.handlers) {
       const response = await handler(request);
       if (response) return response;
     }
-    if (path === "/user/info")
+    const scope = path.match(/^\/project\/([^/]+)/u);
+    if (
+      scope &&
+      this.world.projects.some((project) => project.id === scope[1]) &&
+      !this.canRead(bearer, scope[1]!)
+    )
+      return this.error(403, "insufficientPermissions", "Insufficient permissions");
+    const written = await this.writes.handle(request, path, bearer);
+    if (written) return written;
+    if (path === "/user/info") {
+      const credential = this.world.tokens.get(bearer)!;
+      const person = this.people.get(bearer);
+      const member = (this.world.members.get(credential.orgId) ?? []).find(
+        (m) => m.userId === person,
+      );
       return {
         body: {
-          id: "owner",
-          email: "owner@example.test",
-          fullName: "Scenario Owner",
+          id: person ?? credential.id,
+          email: `${person ?? credential.id}@example.test`,
+          fullName: person ?? credential.name,
           clientUserList: [
             {
-              id: "C-owner",
-              clientId: "ORG",
-              status: "ACTIVE",
-              roleCode: "OWNER",
-              client: { id: "ORG", accountName: this.orgName },
+              id: member?.clientUserId ?? `C-${credential.id}`,
+              clientId: credential.orgId,
+              status: member?.status ?? "ACTIVE",
+              roleCode: member?.roleCode ?? credential.roleCode,
+              canCreateProjects: member?.canCreateProjects ?? credential.canCreateProjects,
+              client: { id: credential.orgId, accountName: this.orgName },
             },
           ],
         },
       };
+    }
     if (path.endsWith("/integration-token") && request.method === "POST") {
       const token = `throwaway-${++this.token}`;
       this.world.tokens.set(token, {
@@ -312,17 +437,19 @@ export class ZeropsFake {
         name: String(request.body.name),
         orgId: "ORG",
         roleCode: String(request.body.roleCode),
-        canCreateProjects: false,
-        canViewFinances: false,
-        canEditFinances: false,
-        projects: [],
+        canCreateProjects: Boolean(request.body.canCreateProjects),
+        canViewFinances: Boolean(request.body.canViewFinances),
+        canEditFinances: Boolean(request.body.canEditFinances),
+        projects: (request.body.projects ?? []) as { projectId: string; roleCode: string }[],
         createdMs: Date.now(),
-        createdByUser: "owner",
+        createdByUser: this.people.get(bearer) ?? "owner",
       });
       return { body: { id: token, token } };
     }
     if (/\/integration-token\//u.test(path) && request.method === "DELETE") {
-      this.world.tokens.delete(path.split("/").at(-1)!);
+      const id = path.split("/").at(-1)!;
+      for (const [value, token] of this.world.tokens)
+        if (token.id === id) this.world.tokens.delete(value);
       return { body: {} };
     }
     if (path === "/client/ORG/user/list")
@@ -330,11 +457,12 @@ export class ZeropsFake {
         body: {
           clientUserList: (this.world.members.get("ORG") ?? []).map((m) => ({
             id: m.clientUserId,
-            userId: m.kind === "token" ? undefined : m.userId,
+            userId: m.userId,
+            canCreateProjects: m.canCreateProjects,
             status: m.status,
             roleCode: m.roleCode,
             user: {
-              id: m.kind === "token" ? undefined : m.userId,
+              id: m.userId,
               fullName: m.name,
               email:
                 m.kind === "token" ? `token-${m.userId}@zerops.io` : `${m.userId}@example.test`,
@@ -342,13 +470,38 @@ export class ZeropsFake {
           })),
         },
       };
+    const tokenRead = path.match(/^\/client\/([^/]+)\/integration-token\/([^/]+)$/u);
+    if (tokenRead && request.method === "GET") {
+      const token = [...this.world.tokens.values()].find((token) => token.id === tokenRead[2]);
+      return token
+        ? { body: { ...token, created: new Date(token.createdMs).toISOString() } }
+        : this.error(400, "integrationTokenNotFound");
+    }
     if (path === "/client/ORG/integration-token/list")
       return { body: { integrationTokenList: [...this.world.tokens.values()] } };
     if (path === "/client/ORG/settings")
       return { body: { locationList: [], serviceStackList: [] } };
-    if (path.endsWith("/search")) return this.search(path.split("/")[1]!, request);
-    if (path === "/client/ORG/project")
+    const envFile = path.match(/^\/project\/([^/]+)\/env-file$/u);
+    if (envFile)
+      return {
+        body: {
+          envFile: (this.world.env.get(envFile[1]!) ?? [])
+            .map(
+              (env) =>
+                `${env.key}="${(env.sensitive && !roleAtLeast(this.role(bearer), "BASIC_USER") ? "REDACTED" : env.value).replace(/[\\"$]/gu, "\\$&")}"`,
+            )
+            .join("\n"),
+        },
+      };
+    const logs = path.match(/^\/project\/([^/]+)\/log$/u);
+    if (logs) return { body: { url: `${this.origin}/scenario-logs/${logs[1]}` } };
+    if (path.startsWith("/scenario-logs/")) return { body: { items: [] } };
+    if (path.endsWith("/search")) return this.search(path.split("/")[1]!, request, bearer);
+    if (path === "/client/ORG/project") {
+      if (!roleAtLeast(this.role(bearer), "READ_ONLY"))
+        return this.error(403, "insufficientPermissions", "Insufficient permissions");
       return { body: { list: this.rows("project"), total: this.rows("project").length } };
+    }
     const projectServices = path.match(/^\/project\/([^/]+)\/service-stack$/u);
     if (projectServices)
       return {
@@ -362,14 +515,28 @@ export class ZeropsFake {
     const single = path.match(/^\/(project|service-stack|app-version)\/([^/]+)$/u);
     if (single) {
       const row = this.rows(single[1]!).find((r) => r.id === single[2]);
-      return row ? { body: row } : { status: 404 };
+      if (row && !this.canRead(bearer, String(row.projectId ?? row.id)))
+        return this.error(403, "insufficientPermissions", "Insufficient permissions");
+      return row
+        ? { body: row }
+        : this.error(
+            400,
+            `${single[1] === "service-stack" ? "serviceStack" : single[1] === "app-version" ? "appVersion" : single[1]}NotFound`,
+            single[1] === "project" ? "Project not found." : undefined,
+          );
     }
     return undefined;
   };
 
-  private search(kind: string, request: WireRequest): WireResponse {
+  private search(kind: string, request: WireRequest, apiToken: string): WireResponse {
     const search = (request.body.search ?? []) as SearchTerm[];
-    const rows = this.rows(kind).filter((row) => this.matches(row, search));
+    const rows = this.rows(kind).filter(
+      (row) =>
+        this.canRead(apiToken, String(row.projectId ?? (kind === "project" ? row.id : ""))) &&
+        this.matches(row, search),
+    );
+    const limit = Number(request.body.limit ?? 1000);
+    const offset = Number(request.body.offset ?? 0);
     const output = String(request.body.wsOutputType ?? "");
     if (output) {
       const name = String(request.body.subscriptionName);
@@ -378,6 +545,8 @@ export class ZeropsFake {
         kind,
         name,
         receiver,
+        socket: this.sockets.get(receiver),
+        apiToken,
         output,
         search,
         members: new Set(rows.map((row) => row.id)),
@@ -390,7 +559,7 @@ export class ZeropsFake {
     return {
       body: request.body.disableOutput
         ? { success: true }
-        : { items: rows, totalHits: rows.length },
+        : { items: rows.slice(offset, offset + limit), totalHits: rows.length, limit, offset },
     };
   }
 }

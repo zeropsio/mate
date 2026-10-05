@@ -6,87 +6,142 @@ Run from the repository root:
 vp test run --config apps/web/test/scenarios/vitest.config.ts
 ```
 
-This standalone config runs `scenarios` and `scenario-drivers`; it is separate from `unit` and
-is not registered with CI. It builds the actual hosted production web bundle once in a temporary
-directory, launches fresh headless Chrome profiles, and starts real HQ Core with disposable
-Postgres databases and git roots through `apps/hq/test/harness`. No application module is imported
-into the browser or mocked. Only contracts/shared wire codecs are used by Mate drivers.
+The independent `scenarios` and `scenario-drivers` Vitest projects are separate from `unit` and
+are not wired into CI. One invocation builds the actual hosted production bundle in a temporary
+directory, launches headless Chrome, and starts real HQ Core with disposable Postgres/git roots
+through `apps/hq/test/harness`. Nothing imports application modules into the browser or replaces
+its stores. This lives in `apps/web/test` because the observable subject is the hosted web client;
+Core's established test infrastructure remains reusable by its own tests.
 
-Prerequisites: workspace dependencies, installed Chrome, and local Postgres binaries (the existing
-HQ harness finds Homebrew Postgres on macOS). Override Chrome with `MATE_CHROME_BIN` and Postgres
-with `MATE_PG_BIN`. Puppeteer Core never downloads a browser. For an already populated package
-cache, `pnpm install --offline` avoids registry access.
+Prerequisites: workspace dependencies, installed Chrome and local Postgres binaries. Override
+Chrome with `MATE_CHROME_BIN` and Postgres with `MATE_PG_BIN`. Puppeteer Core never downloads Chrome.
+Use `pnpm install --offline` when dependencies are absent and the package cache is populated.
+HTTP and WebSockets are routed to loopback only; Chrome background networking and external DNS
+are disabled. Both unmapped HTTP and WebSocket destinations fail the suite, even if the app catches
+an error. Uncaught page errors fail an `afterEach` hook outside expected-failure tests.
 
-## Layout and extension recipe
+## Layout
 
-- `harness/build.ts`, `http.ts`, `browser.ts`: build, loopback servers, network routing, Chrome.
-- `harness/scenario.ts`: composition and the foundation's domain `given / when / then` DSL.
-- `fakes/zerops.ts`: platform HTTP, realtime entities, membership, manual clock, faults and budgets.
+- `harness/{build,http,browser}.ts`: production build, loopback servers, pages/contexts and routing.
+- `harness/scenario.ts`: real Core composition and the foundation `given / when / then` DSL.
+- `harness/clientClock.ts`: opt-in browser timers and Chrome lifecycle controls.
+- `fakes/zerops.ts`: REST, socket login, subscriptions, versioned entity tables, faults and budgets.
+- `fakes/zeropsWrites.ts`: shared HTTP deployment/import driver and process transitions.
 - `fakes/mate.ts`: contract-checked environment, door/OAuth, RPC, snapshots and sequence replay.
-- `fakes/hqConnection.ts`: interruptible transport to real Core; no HQ response is invented.
-- `areas/foundation/examples.scenario.ts`: B, C and G examples.
+- `fakes/hqConnection.ts`: interruptible, endpoint-agnostic proxy to real Core.
+- `areas/foundation/examples.scenario.ts`: B (known failure and HQ path), C and G.
+- `areas/harness/extensions.scenario.ts`: reusable apps, tiers, identities, tabs and contexts proof.
+- `fakes/**/*.test.ts`: focused wire/HTTP/clock/proxy tests.
 
-Each A–H job owns `areas/<area>/`:
+## Exact extension recipe for A–H jobs
 
-1. Create `areas/<area>/<area>.scenario.ts`. The existing glob discovers it automatically. Use
+Each job owns `areas/<area>/` and optionally `fakes/<area>/`; no shared registration file changes:
+
+1. Add `areas/<area>/<name>.scenario.ts`. The existing glob discovers it. Use
    `it.layer(tempPostgresLayer, { excludeTestServices: true })` as the examples do.
-2. Create `areas/<area>/fake.ts` exporting a `ScenarioExtension`. Install it with
-   `yield* createScenario([installArea])`. No shared registry or config edit is needed.
-3. Extend `drivers.zerops.handlers` for additional HTTP endpoints and `drivers.zerops.put(kind, row)`
-   for new entity kinds. Filters are matched over row fields rather than a catalog of registrations.
-   Set `faults` by `METHOD /path`, or `<kind>:push` with `silence`. Advance `clock` explicitly for
-   configured latency. Counters are `requestsByKind`, `registrations` (`kind:output`) and
-   `framesByKind`; real Core's injected API calls remain in `drivers.core.fake.calls`.
-4. Use `drivers.onMate.push(mate => mate.rpcHandlers.push(handler))` to handle a new contract RPC on
-   every subsequently created Mate. A handler returns true when it owns the request. Validate its
-   payload/results using contracts; send with `mate.reply` / `mate.chunk`. `mate.handle` can also be
-   wrapped by an area driver. Additional localhost servers register their production origin in
-   `drivers.routes` and their close function in `drivers.cleanup` before `given.signedIn`.
-5. Put additional domain DSL helpers in `areas/<area>/dsl.ts`, composed around `createScenario`.
-   Keep endpoint, frame and identifier knowledge in your fake/driver module, never in a scenario.
-   Select only accessible roles, visible text and existing `data-zerops-surface` attributes.
-   Wait for observable conditions or driver receipts with bounded timeouts; never sleep.
-6. Add the one-line bug comment. Put focused fake tests in `fakes/<area>/*.test.ts`; the existing
-   `scenario-drivers` glob discovers them automatically. This directory is owned by your area too.
+2. Export a `ScenarioExtension` from `areas/<area>/fake.ts`; call
+   `yield* createScenario([installArea])`. Install before creating fixtures or signing in.
+3. Add HTTP endpoints with `drivers.zerops.handlers.push(handler)`; return `undefined` when an
+   endpoint belongs to another driver. Add any entity kind with `zerops.put(kind, fullRow)` or
+   remove it with `zerops.remove(kind, id)`. Full rows get increasing `_version`; registrations
+   match arbitrary fields, including organization-wide `clientId`. Use `entity-first` or
+   `membership-first` delivery explicitly. Drivers contain all endpoint/frame knowledge.
+4. Extend Mate RPCs with `drivers.onMate.push(mate => mate.rpcHandlers.push(handler))`.
+   Decode/encode using contracts/shared; reply with `mate.reply` or `mate.chunk`. Add localhost
+   servers to `drivers.routes` and their close functions to `drivers.cleanup`. Call
+   `scenario.web.setRoutes()` after changing routes on already open pages.
+5. Add area domain helpers in `areas/<area>/dsl.ts` around the returned scenario. Never put
+   endpoint/frame knowledge in scenarios. Select roles, visible text or existing
+   `data-zerops-surface` attributes. Wait on conditions/receipts with deadlines; never sleep.
+6. Add driver tests under `fakes/<area>/*.test.ts`, discovered automatically. Include each
+   scenario's one-line bug comment and prove it once with a temporary fake/input mutation.
 
-Cleanup is scoped to each scenario. Database state is disposable; nothing reads the maintainer's
-live Mate state, account files or credentials. Desktop and mobile are intentionally outside this
-hosted-web harness; no shared client behavior changes here.
+Public fixture and control APIs (all scoped to one scenario). Project fixture names also serve as
+synthetic ids: use URL-safe names. Environment names follow Core's lowercase naming rules:
 
-## Boundaries
+```ts
+const s = yield * createScenario([installArea]);
+yield * s.given.app("Shop"); // idempotent, also created automatically by given.project
+for (const name of ["Ada", "Bea"]) yield * s.given.project(name, { mate: true, app: "Shop" });
+yield * s.given.project("Shop-stage", { app: "Shop", kind: "stage", environmentName: "stage" });
+yield * s.given.project("Shop-live", { app: "Shop", kind: "production", environmentName: "live" });
+yield * s.given.project("Cara", { mate: true, app: "Other" });
+// owner is the real Core setup session; appIds maps names to real Core ids.
+const { owner, appIds } = s.drivers; // also s.owner / s.appIds
 
-The real hand-over button navigates to the fake `app.zerops.io/authorize-app`, which immediately
-approves a synthetic personal credential and returns the actual nonce to `/zerops/authorized`.
-The production callback handles the return normally; no storage/session seeding occurs. Mate door
-exchanges and HQ sessions then run over their real client paths. HTTP requests to production-shaped
-origins are fulfilled through localhost counterparts; a native-WebSocket subclass changes only the
-transport address to localhost. Unknown network destinations are blocked and asserted absent.
-Chrome background networking is disabled and external DNS resolution is disabled.
+s.given.person("colleague", { role: "Developer", grants: { Ada: "BASIC_USER" } });
+// OWNER, READ_ONLY and NO_ACCESS are supported too; Developer means NO_ACCESS + project grants.
+s.given.asPerson("colleague"); // choose BEFORE sign-in; defaults: owner, dev, reader
+// This is the real authorize-app hand-over, including nonce + production callback.
+yield * s.given.signedIn;
+const reader = yield * s.given.browserActor({ person: "reader" }); // new isolated context
+const otherTab =
+  yield * s.given.browserActor({ person: "reader", context: reader.page.browserContext() });
+yield * Effect.promise(() => reader.clock.install()); // BEFORE its first navigation
+yield * reader.given.signedIn;
+yield * otherTab.given.signedIn; // shares the real account session; another person requires new context
+// An actor has its own given/when/then/page/clock. web.newContext/newPage are also public.
 
-Fake Zerops reuses Core's `FakeWorld`; HQ runs with the existing harness's injected platform API,
-not through the browser-facing REST server. Project/member/token state is shared. HQ deploy behavior
-is the existing harness's model; new areas must synchronize native REST entities and realtime
-pushes with those operations explicitly. Platform authorization is token presence plus configured
-faults, not Zerops's full ACL implementation. Search operators are field-driven (`eq`, `ne`, `in`,
-`nin`/`notIn`, comparisons, `contains`); unsupported operators fail visibly. Search pagination and
-sorting are not yet modeled. Reconnect forgets all registrations; fresh registration answers the
-current state and never replays missed events.
+// Then sign in and drive conditions; advance actual browser positive timer waits explicitly.
+yield * Effect.promise(() => reader.clock.advance(30_000));
+yield * Effect.promise(() => reader.clock.sleep());
+yield * Effect.promise(() => reader.clock.wake(3_600_000));
+```
 
-Mate preserves the current typed snapshots, events, receipts and `afterSequence` replay, but does
-not execute providers, git or filesystem work. Its OAuth/door credentials are synthetic; signature,
-DPoP, expiration and authorization enforcement are not modeled. Area modules supply those failures
-when needed. HQ overview fixtures use a real enrolled Mate link. The base fixture sends one full
-overview; areas modeling work use `drivers.links.get(name)` to send further typed `MateLinkUp`
-overviews through that real link in their area driver.
+`advance(ms)` executes
+positive timers in deadline order, including chained backoff/Retry-After waits, and drains their
+microtasks. Zero-delay scheduler jobs and requestAnimationFrame stay native so React and condition
+waits keep running. `sleep()` freezes the renderer through CDP; `wake(elapsedMs)` resumes, advances
+Date, coalesces overdue timers, and emits online/pageshow signals. This is a renderer sleep model,
+not a full OS suspend: performance.now, network services and real HQ clocks remain native. Await
+fake receipts/UI conditions before the next clock advance; advancing is not a network drain.
+G exercises real client reconnect timers with this clock. Core's own 10-second HTTP timeout is
+native; it is not sped up by the page clock. For time-sensitive areas this split is the least
+intrusive seam: no application hooks, fake responses or altered backoff implementation.
 
-## Foundation B limitation and requested app seam
+Faults: `zerops.faults.set("GET /project/Ada", { status: 429, retryAfter: 7 })`, optionally `code`,
+`message`, `latency`, `timeout` or `silence`. Use `<kind>:push` + `silence` for realtime loss.
+`zerops.clock.advance(ms)` releases fake latency and expires socket credentials; it is separate
+from each page's clock. Await `zerops.waitForRequest(key, count)` before releasing pending latency.
+Counters: `requests` (method/path), `requestsByKind`, `requestsByCredential` (credential → method/path
+map), `registrations` and `framesByKind` (kind:output). Core's platform requests use these SAME
+HTTP counters; `core.fake.calls` is only meaningful with the default HQ in-memory test backend.
 
-The green B example creates a Mate-backed project, pushes its Zerops rows, and enrolls its Mate in
-real HQ (`enroll: true`). Today, projects without a Mate live in the Projects screen rather than
-the left menu. A newly pushed project without HQ enrollment also fails to enter the inventory:
-Chrome receives both membership and full-row frames and fetches `/project/Bea`, but no service
-inventory demand for Bea follows and the menu/Projects count stays unchanged. Removing `enroll: true`
-from B reproduces that failure. Request: confirm/establish access and inventory demand when a new
-organization membership arrives, so a Zerops-only addition can become visible without reload.
-No selector addition or application code change was made. The B area should carry that case as an
-explicit known failure until it is fixed; the green example covers today's full creation path.
+`scenario.hq.ready()` waits on any upstream HTTP response or WebSocket open + first frame;
+`drops()` cuts every HQ link/request and `returns()` restores forwarding. Proxy counters are
+`httpRequests`, `httpUpBytes`, `httpDownBytes`, `wsOpens`, `wsUpFrames`, `wsDownFrames`, `wsUpBytes`
+and `wsDownBytes` (payload bytes, not transport framing/headers). Outage assertions belong in
+`then.hq.isUnavailable`; `when` only drives actions. `then.noReload` compares document time origins.
+
+## Fidelity and known gaps
+
+Core is real and uses `makeZeropsApiHttp`, `makeZeropsDeployHttp`, and `makeZeropsObservationHttp`
+against the fake origin. `startCore(..., { zeropsHttp: { baseUrl, world } })` opts in; existing HQ
+tests retain their default in-memory adapters. Both browser and Core writes use the same world and
+versioned realtime tables. Deploy/import/subdomain jobs emit processes with project/action and
+timestamps; `zerops.writes.autoComplete = false` and `writes.transition(id, status, message?)` allow
+area drivers to control them. The default completes jobs at the first process/version read, as
+the existing HQ fake did. Domain `CANCELLED` maps to Zerops's measured wire spelling `CANCELED`.
+
+Measured revoked/gone error bodies are `{error:{code,message,meta}}`; a gone project is 400
+`projectNotFound`, a revoked token 401 `notAuthorized`. Search includes limit/offset/totalHits and
+slices items; sorting and unsupported operators are not modeled (unsupported operators fail).
+Login accepts a JSON API token without a Bearer header, mints distinct short-lived socket tokens,
+and rejects API tokens at the socket. Close removes only that socket's subscriptions. There is no
+replay: current state comes only from a fresh registration response. ACLs model org roles and
+project grants, not the entire production platform. Schema validation, region routing, deployment
+YAML/build execution, all native process fields and signed-log storage are approximated.
+
+The fake app.zerops.io approves the selected synthetic account and returns through the real
+`/zerops/authorized` entry point; no session/storage seeding. Mate uses typed wire snapshots and
+`afterSequence` replay but does not execute providers, git or filesystem operations. OAuth/door
+signatures, DPoP and expiry enforcement are synthetic. Real Core overview links are enrolled;
+use `drivers.links.get(name)` to send further contract-typed `MateLinkUp` overviews in an area driver.
+No real credentials/live databases are read. Desktop/mobile behavior is outside this hosted suite.
+
+B's Zerops-only case is explicitly `it.effect.fails`: after a colleague's push, today's client
+still misses the menu row within five seconds without HQ enrollment. Removing expected-failure
+marking fails at `Menu row Bea missing`. The green B example is explicitly the HQ enrollment path;
+it guards that path only. Request: establish inventory/access demand on a new organization list
+membership so the Zerops-only row appears without reload/HQ. No application change or new selector
+was needed for the harness. Remove `.fails` when the client supplies the target behavior.

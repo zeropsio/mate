@@ -15,17 +15,23 @@ import * as Schedule from "effect/Schedule";
 import { type Call, enrollMate } from "./runningCore.ts";
 import type { FakeWorld } from "./zeropsFake.ts";
 
-/** The owner makes an application and attaches `projectId` to it as a Mate, which enrolls. */
+/** Attach and enroll a Mate; an optional appIds registry reuses its application across calls. */
 export const mateInApp = (
   call: Call,
   fake: FakeWorld,
   owner: string,
   projectId: string,
   appName: string,
+  appIds?: Map<string, string>,
 ) =>
   Effect.gen(function* () {
-    const app = yield* call("POST", "/api/apps", { session: owner, body: { name: appName } });
-    const appId = (app.body as { readonly id: string }).id;
+    let appId = appIds?.get(appName);
+    if (!appId) {
+      const app = yield* call("POST", "/api/apps", { session: owner, body: { name: appName } });
+      assert.strictEqual(app.status, 201);
+      appId = (app.body as { readonly id: string }).id;
+      appIds?.set(appName, appId);
+    }
     const attached = yield* call("POST", `/api/apps/${appId}/projects`, {
       session: owner,
       body: { projectId, kind: "mate", mate: { face: "face-1" } },

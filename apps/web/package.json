@@ -76,6 +76,7 @@
     "unified": "^11.0.5",
     "vite": "catalog:",
     "vite-plus": "catalog:",
-    "ws": "8.21.3"
+    "ws": "8.21.3",
+    "yaml": "catalog:"
   }
 }

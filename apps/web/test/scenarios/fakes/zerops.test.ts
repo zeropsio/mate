@@ -20,6 +20,7 @@ async function rig() {
     createdByUser: "owner",
   });
   const fake = new ZeropsFake(world);
+  fake.people.set("personal", "owner");
   const server = await serve(fake.handle, fake.socket);
   const call = (path: string, body?: unknown) =>
     fetch(`${server.origin}/api/rest/public${path}`, {
@@ -31,8 +32,15 @@ async function rig() {
 }
 
 async function receiver(origin: string, id: string) {
+  const { webSocketToken } = await (
+    await fetch(`${origin}/api/rest/public/web-socket/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: "personal" }),
+    })
+  ).json();
   const ws = new WebSocket(
-    `${origin.replace("http:", "ws:")}/api/rest/public/web-socket/${id}/personal`,
+    `${origin.replace("http:", "ws:")}/api/rest/public/web-socket/${id}/${webSocketToken}`,
   );
   const messages: { type: string; subscriptionName?: string; data: Record<string, unknown> }[] = [];
   let changed = () => {};
@@ -73,9 +81,9 @@ describe("Zerops fake: measured wire guarantees", () => {
   it("accepts a personal token, org-wide filters, full versioned rows and membership-first delivery; reconnect registers current state", async () => {
     const { fake, server, call } = await rig();
     try {
-      expect(await (await call("/web-socket/login", { token: "personal" })).json()).toEqual({
-        webSocketToken: "personal",
-      });
+      expect(
+        (await (await call("/web-socket/login", { token: "personal" })).json()).webSocketToken,
+      ).not.toBe("personal");
       expect(
         (
           await fetch(`${server.origin}/api/rest/public/web-socket/login`, {
@@ -156,7 +164,111 @@ describe("Zerops fake: measured wire guarantees", () => {
     }
   });
 
-  it.each([401, 403, 404, 429, 500, 503] as const)(
+  it("closing an old socket cannot delete a replacement's registrations on the same receiver", async () => {
+    const { fake, server, call } = await rig();
+    try {
+      const first = await receiver(server.origin, "same");
+      await call("/project/search", {
+        receiverId: "same",
+        subscriptionName: "old",
+        wsOutputType: "listStream",
+        search: [],
+      });
+      const oldSocket = fake.sockets.get("same")!;
+      const second = await receiver(server.origin, "same");
+      await call("/project/search", {
+        receiverId: "same",
+        subscriptionName: "new",
+        wsOutputType: "listStream",
+        search: [],
+      });
+      const removed = deadline(
+        new Promise<void>((resolve) => oldSocket.once("close", () => resolve())),
+        "old socket cleanup",
+      );
+      await first.close();
+      await removed;
+      fake.put("project", { id: "Bea", name: "Bea", clientId: "ORG" });
+      expect(await second.take()).toMatchObject({
+        subscriptionName: "new",
+        data: { add: ["Bea"], delete: [] },
+      });
+      expect([...fake.subscriptions.values()].map((item) => item.name)).toEqual(["new"]);
+      await second.close();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("accepts only distinct, unexpired socket tokens minted by login", async () => {
+    const { fake, server, call } = await rig();
+    try {
+      const one = (await (await call("/web-socket/login", { token: "personal" })).json())
+        .webSocketToken;
+      const two = (await (await call("/web-socket/login", { token: "personal" })).json())
+        .webSocketToken;
+      expect(one).not.toBe(two);
+      expect(one).not.toBe("personal");
+      const refused = async (token: string) => {
+        const socket = new WebSocket(
+          `${server.origin.replace("http:", "ws:")}/web-socket/test/${token}`,
+        );
+        const frames: string[] = [];
+        socket.on("message", (frame) => frames.push(frame.toString()));
+        const code = await deadline(
+          new Promise<number>((resolve) => socket.once("close", resolve)),
+          "refused socket",
+        );
+        expect(code).toBe(1008);
+        expect(frames).toEqual([]);
+      };
+      await refused("personal");
+      const accepted = await receiver(server.origin, "valid");
+      await accepted.close();
+      fake.clock.advance(fake.socketTokenTtl);
+      await refused(one);
+      fake.world.tokens.delete("personal");
+      await refused(two);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("matches measured revoked/gone bodies and search pagination", async () => {
+    const { fake, server, call } = await rig();
+    try {
+      const missing = await call("/project/gone");
+      expect(missing.status).toBe(400);
+      expect(await missing.json()).toEqual({
+        error: {
+          code: "projectNotFound",
+          message: "Project not found.",
+          meta: [{ error: "Project not found.", code: "projectNotFound", metadata: null }],
+        },
+      });
+      for (const id of ["Ada", "Bea"]) fake.put("project", { id, name: id, clientId: "ORG" });
+      expect(await (await call("/project/search", { limit: 1, offset: 1 })).json()).toMatchObject({
+        items: [{ id: "Bea" }],
+        totalHits: 2,
+        limit: 1,
+        offset: 1,
+      });
+      fake.world.tokens.delete("personal");
+      const revoked = await call("/user/info");
+      expect(revoked.status).toBe(401);
+      expect(await revoked.json()).toEqual({
+        error: {
+          code: "notAuthorized",
+          message: "Not authorized",
+          meta: [{ error: "Not authorized", code: "notAuthorized", metadata: null }],
+        },
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it.each([401, 403, 404, 429, 500, 503, 504] as const)(
     "returns configurable %s, with Retry-After on 429",
     async (status) => {
       const { fake, server, call } = await rig();
@@ -164,6 +276,9 @@ describe("Zerops fake: measured wire guarantees", () => {
         fake.faults.set("GET /user/info", { status, retryAfter: 7 });
         const response = await call("/user/info");
         expect(response.status).toBe(status);
+        expect(await response.json()).toMatchObject({
+          error: { code: expect.any(String), message: expect.any(String), meta: expect.any(Array) },
+        });
         if (status === 429) expect(response.headers.get("retry-after")).toBe("7");
       } finally {
         await server.close();

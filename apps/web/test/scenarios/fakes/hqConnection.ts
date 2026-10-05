@@ -1,16 +1,39 @@
 import * as NodeEvents from "node:events";
-import { WebSocket } from "ws";
+import { WebSocket, type RawData } from "ws";
 import { deadline, serve } from "../harness/http.ts";
 
-/** A controllable network in front of REAL Core. Every body and frame comes from Core. */
+const bytesOf = (data: RawData) =>
+  Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
+
+/** A controllable, endpoint-agnostic network in front of REAL Core. */
 export async function hqConnection(coreOrigin: string) {
   let down = false;
+  let received = false;
   const links = new Map<WebSocket, WebSocket>();
   const events = new NodeEvents.EventEmitter();
-  let structures = 0;
+  const counters = {
+    httpRequests: 0,
+    httpUpBytes: 0,
+    httpDownBytes: 0,
+    wsOpens: 0,
+    wsUpFrames: 0,
+    wsDownFrames: 0,
+    wsUpBytes: 0,
+    wsDownBytes: 0,
+  };
+  const ready = () => {
+    received = true;
+    events.emit("ready");
+  };
   const server = await serve(
     async (request) => {
-      if (down) return { status: 503, body: { error: "scenario_network_down" } };
+      counters.httpRequests++;
+      counters.httpUpBytes += request.rawBody?.length ?? 0;
+      if (down) {
+        const body = { error: "scenario_network_down" };
+        counters.httpDownBytes += Buffer.byteLength(JSON.stringify(body));
+        return { status: 503, body };
+      }
       const response = await fetch(new URL(request.url.pathname + request.url.search, coreOrigin), {
         method: request.method,
         headers: Object.fromEntries(
@@ -22,14 +45,13 @@ export async function hqConnection(coreOrigin: string) {
         ),
         ...(["GET", "HEAD", "OPTIONS"].includes(request.method)
           ? {}
-          : { body: JSON.stringify(request.body) }),
+          : { body: new Uint8Array(request.rawBody ?? []).buffer }),
         redirect: "manual",
       });
-      return {
-        status: response.status,
-        bytes: Buffer.from(await response.arrayBuffer()),
-        headers: Object.fromEntries(response.headers),
-      };
+      const bytes = Buffer.from(await response.arrayBuffer());
+      counters.httpDownBytes += bytes.length;
+      ready();
+      return { status: response.status, bytes, headers: Object.fromEntries(response.headers) };
     },
     (client, url) => {
       if (down) {
@@ -40,24 +62,28 @@ export async function hqConnection(coreOrigin: string) {
         new URL(url.pathname + url.search, coreOrigin.replace(/^http/u, "ws")),
       );
       links.set(client, upstream);
-      const queued: Buffer[] = [];
-      client.on("message", (data) =>
-        upstream.readyState === WebSocket.OPEN
-          ? upstream.send(data.toString())
-          : queued.push(Buffer.from(data.toString())),
-      );
-      upstream.on("open", () => {
-        for (const frame of queued) upstream.send(frame);
+      const queued: { bytes: Buffer; binary: boolean }[] = [];
+      client.on("message", (data, isBinary) => {
+        const frame = bytesOf(data);
+        counters.wsUpFrames++;
+        counters.wsUpBytes += frame.length;
+        if (upstream.readyState === WebSocket.OPEN) upstream.send(frame, { binary: isBinary });
+        else queued.push({ bytes: frame, binary: isBinary });
       });
-      upstream.on("message", (data) => {
-        if (client.readyState === WebSocket.OPEN) client.send(data.toString());
-        if (url.pathname === "/api/structure/ws") {
-          structures++;
-          events.emit("structure");
-        }
+      upstream.on("open", () => {
+        counters.wsOpens++;
+        for (const frame of queued) upstream.send(frame.bytes, { binary: frame.binary });
+      });
+      upstream.on("message", (data, isBinary) => {
+        const frame = bytesOf(data);
+        counters.wsDownFrames++;
+        counters.wsDownBytes += frame.length;
+        if (client.readyState === WebSocket.OPEN) client.send(frame, { binary: isBinary });
+        ready();
       });
       upstream.on("close", (code) => {
-        if (client.readyState === WebSocket.OPEN) client.close(code === 1006 ? 1011 : code);
+        if (client.readyState === WebSocket.OPEN)
+          client.close(code === 1006 ? 1011 : code === 1005 ? 1000 : code);
         links.delete(client);
       });
       upstream.on("error", () => client.close(1011));
@@ -70,11 +96,12 @@ export async function hqConnection(coreOrigin: string) {
   return {
     ...server,
     links,
+    counters,
     async ready() {
-      if (structures) return;
+      if (received) return;
       await deadline(
-        new Promise<void>((resolve) => events.once("structure", resolve)),
-        "HQ structure stream",
+        new Promise<void>((resolve) => events.once("ready", resolve)),
+        "HQ transport response or first frame",
       );
     },
     drops() {
