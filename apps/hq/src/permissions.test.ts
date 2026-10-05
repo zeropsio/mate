@@ -1198,16 +1198,22 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
       "not_releaser",
     ],
     [
-      "org owner saves a snapshot before production exists",
+      "org owner, no production exists",
       { orgRole: "OWNER" },
-      releaseOf([], null),
-      "allow",
+      releaseOf(["P"], null),
+      "no_production",
     ],
     [
-      "org admin saves a snapshot despite a lowered dev grant",
+      "org admin, no production exists, despite a lowered dev grant",
       { orgRole: "ADMIN", override: "READ_ONLY" },
       releaseOf(["P"], null),
-      "allow",
+      "no_production",
+    ],
+    [
+      "org owner, no production and no project left",
+      { orgRole: "OWNER" },
+      releaseOf([], null),
+      "no_production",
     ],
     ["no production yet", { override: "BASIC_USER" }, releaseOf(["P"], null), "no_production"],
     // That it has none is told to whoever reads its changes, as its environments are.
@@ -1593,14 +1599,7 @@ describe("can — over the whole input space", () => {
       const reads = decide(principal, { verb: "read_change", target: { projectIds: app } }, point);
       const deploys = productionProjectId !== null && rankOn(point, productionProjectId) >= 2;
       const decision = outcome(decide(principal, request, point));
-      holds(
-        (decision === "allow") ===
-          (sees.allow &&
-            (deploys ||
-              (productionProjectId === null &&
-                (point.orgRole === "ADMIN" || point.orgRole === "OWNER")))),
-        "its production or snapshot authority",
-      );
+      holds((decision === "allow") === (sees.allow && deploys), "its production authority");
       holds(decision !== "allow" || reads.allow, "reads the changes it releases");
       // That it has no production is told only to whoever reads its changes.
       holds(decision !== "no_production" || reads.allow, "no production, told to a reader");

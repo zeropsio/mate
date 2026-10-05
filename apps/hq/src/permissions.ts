@@ -359,7 +359,7 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
       if (!seesApp(request.target.projectIds)) return deny("app_not_seen");
       return writesApp(request.target.projectIds) ? ALLOW : deny("not_app_developer");
     // A release, and a rollback, by whoever may deploy to the application's production: Basic user
-    // or above there (SPEC §3.3a). Before production exists, an org owner/admin may save a snapshot.
+    // or above there (SPEC §3.3a). Without a production nobody releases, the org writer included.
     case "release": {
       const { projectIds, productionProjectId } = request.target;
       // Its production is one of its projects, whatever HQ named beside it.
@@ -367,7 +367,6 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
       if (!seesApp(app)) return deny("app_not_seen");
       // That it has none is told to whoever reads its changes, as its environments are.
       if (productionProjectId === null) {
-        if (writer) return ALLOW;
         return deny(seesChanges(app) ? "no_production" : "not_releaser");
       }
       return roleAtLeast(roleOn(productionProjectId), "BASIC_USER")
