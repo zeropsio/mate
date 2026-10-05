@@ -147,23 +147,6 @@ describe("menuRow", () => {
       display: "catching-up",
     },
     {
-      name: "Zerops refuses the roster",
-      inputs: [
-        zerops,
-        hq,
-        [
-          streamEvent(scopeKeys.projects(ORG), {
-            kind: "fault",
-            jitter: 0,
-            fault: { outcome: "definitive-refusal", message: "403" },
-          }),
-        ],
-      ],
-      key: shop,
-      expected: {},
-      display: "refused",
-    },
-    {
       name: "access to a project denied: its name is withheld, not deleted",
       inputs: [zerops, hq, [{ kind: "access", family: "project", id: "s1", access: "denied" }]],
       key: shop,
@@ -194,24 +177,6 @@ describe("menuRow", () => {
         status: { display: "catching-up", lagging: [{ input: "producer", projectId: "m1" }] },
       },
       display: "catching-up",
-    },
-    {
-      name: "HQ refuses the reader: an unplaced project lacks its placement",
-      inputs: [
-        zerops,
-        [
-          streamEvent(scopeKeys.navigation(ORG), { kind: "demand", demanded: true }),
-          streamEvent(scopeKeys.navigation(ORG), { kind: "attempt" }),
-          streamEvent(scopeKeys.navigation(ORG), {
-            kind: "fault",
-            jitter: 0,
-            fault: { outcome: "definitive-refusal", message: "forbidden" },
-          }),
-        ],
-      ],
-      key: { kind: "project", projectId: "s1" },
-      expected: { title: { kind: "ready", value: "shop-stage", fresh: true } },
-      display: "partial",
     },
     {
       name: "running work before its scope's first baseline is not said, never false",

@@ -76,9 +76,20 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
               Effect.raceFirst(options.attempt(connect.generation), deadlines(connect.generation)),
             ),
           );
-          for (const scope of scopes) yield* dispatch({ kind: "parent-lost" }, scope);
-          if ("deadline" in ended) return yield* dispatch({ kind: "deadline" });
-          return yield* dispatch({ kind: "fault", fault: ended, jitter: yield* Random.next });
+          if ("deadline" in ended) {
+            for (const scope of scopes) yield* dispatch({ kind: "parent-lost" }, scope);
+            return yield* dispatch({ kind: "deadline" });
+          }
+          const jitter = yield* Random.next;
+          // A refusal of the link is its scopes' refusal too; any other end leaves them waiting.
+          const refused =
+            ended.outcome === "definitive-refusal" || ended.outcome === "authoritative-denial";
+          for (const scope of scopes)
+            yield* dispatch(
+              refused ? { kind: "fault", fault: ended, jitter } : { kind: "parent-lost" },
+              scope,
+            );
+          return yield* dispatch({ kind: "fault", fault: ended, jitter });
         }
         if (directives.some((directive) => directive.kind === "repair-session")) {
           const repaired = yield* Effect.exit(options.repairSession);

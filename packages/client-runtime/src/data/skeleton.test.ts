@@ -5,6 +5,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry, type Atom } from "effect/unstable/reactivity";
 
 import type { MateLiveView } from "@t3tools/shared/hqMates";
@@ -14,7 +15,7 @@ import type { HqStructureEvent } from "../zerops/hq/stream.ts";
 import { attentionOf, liveMate } from "./__fixtures__/account.ts";
 import { fixtureWire, settle, type WireRequest } from "./__fixtures__/zeropsWire.ts";
 import { hqNavigationLink, type HqStructureSource } from "./adapters/hq.ts";
-import { zeropsNavigationLink } from "./adapters/zerops.ts";
+import { classifyHttp, zeropsNavigationLink } from "./adapters/zerops.ts";
 import { scopeKeys } from "./model.ts";
 import { menuRow, menuRowKeys, type MenuRow } from "./projections/navigation.ts";
 import { makeAccountStore, type AccountStore } from "./store.ts";
@@ -25,13 +26,15 @@ const SHOP = { orgId: ORG, row: { kind: "app", appId: "shop" } } as const;
 
 const projectRow = (id: string) => ({ id, name: `${id} name`, status: "ACTIVE", _version: 1 });
 
-function zerops(projects: ReadonlyArray<string>) {
+function zerops(projects: ReadonlyArray<string>, refuse: () => boolean = () => false) {
   return fixtureWire((request: WireRequest) =>
-    Effect.succeed(
-      request.body?.wsOutputType === "updateStream"
-        ? { success: true }
-        : { items: request.path === "/project/search" ? projects.map(projectRow) : [] },
-    ),
+    refuse()
+      ? Effect.fail(classifyHttp(403))
+      : Effect.succeed(
+          request.body?.wsOutputType === "updateStream"
+            ? { success: true }
+            : { items: request.path === "/project/search" ? projects.map(projectRow) : [] },
+        ),
   );
 }
 
@@ -227,6 +230,56 @@ describe("the walking skeleton", () => {
       yield* relay.emit({ kind: "mate", projectId: "m1", value: newChat("c2") });
       expect(attention()).toMatchObject({ value: { latestChatId: "c3" } });
       expect(shop.count()).toBe(renders);
+      for (const fiber of fibers) yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect(
+    "shows the row refused, never catching up, when Zerops refuses the re-registration",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const store = makeAccountStore(registry);
+        let refuse = false;
+        const wire = zerops(["m1", "s1"], () => refuse);
+        const relay = hq();
+        const fibers = yield* start(store, wire, relay);
+        yield* relay.emit(snapshot(new Map()));
+        const shop = render(registry, store.data.project(menuRow, SHOP));
+        expect(shop.latest().status.display).toBe("live");
+
+        refuse = true;
+        yield* wire.drop({ outcome: "transient", message: "socket closed" });
+        yield* settle;
+        const link = store.state().streams.get(scopeKeys.zeropsLink(ORG));
+        yield* TestClock.adjust(link?.next.kind === "retry" ? link.next.at : 0);
+        yield* settle;
+
+        expect(store.state().streams.get(scopeKeys.zeropsLink(ORG))?.phase).toBe("refused");
+        expect(store.state().streams.get(scopeKeys.projects(ORG))?.phase).toBe("refused");
+        expect(shop.latest().status.display).toBe("refused");
+        expect(shop.latest().projects[0]?.name).toMatchObject({ kind: "ready", value: "m1 name" });
+        for (const fiber of fibers) yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect("leaves an unplaced project partial, not catching up, when HQ refuses the reader", () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const relay = hq();
+      const fibers = yield* start(store, zerops(["p9"]), relay);
+      yield* relay.fail(
+        new HqError({ kind: "refused", code: "forbidden", message: "Not a member of HQ." }),
+      );
+      yield* settle;
+      const row = render(
+        registry,
+        store.data.project(menuRow, { orgId: ORG, row: { kind: "project", projectId: "p9" } }),
+      );
+      expect(store.state().streams.get(scopeKeys.navigation(ORG))?.phase).toBe("refused");
+      expect(row.latest().title).toEqual({ kind: "ready", value: "p9 name", fresh: true });
+      expect(row.latest().status.display).toBe("partial");
       for (const fiber of fibers) yield* Fiber.interrupt(fiber);
     }),
   );
