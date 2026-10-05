@@ -654,6 +654,31 @@ describe("deriveWorkLogEntries", () => {
     expect(entries.map((entry) => entry.id)).toEqual(["tool-complete"]);
   });
 
+  it.each([
+    {
+      name: "a printed cause shows only its first line",
+      detail:
+        "ProviderAdapterSessionClosedError: the adapter thread is closed\n    at requireSession (adapter.ts:1:1)\n  [cause]: Error: Query closed",
+      shown: "ProviderAdapterSessionClosedError: the adapter thread is closed",
+    },
+    {
+      name: "a plain sentence with a code stays whole",
+      detail: "The agent's session closed before it got this message. (session-closed)",
+      shown: "The agent's session closed before it got this message. (session-closed)",
+    },
+  ])("a provider failure row never shows a stack: $name", ({ detail, shown }) => {
+    const [entry] = deriveWorkLogEntries([
+      makeActivity({
+        id: "turn-start-failed",
+        kind: "provider.turn.start.failed",
+        summary: "Provider turn start failed",
+        tone: "error",
+        payload: { detail },
+      }),
+    ]);
+    expect(entry?.detail).toBe(shown);
+  });
+
   it("drops runtime warnings with no displayable content, keeps ones with a preview", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

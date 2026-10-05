@@ -24,6 +24,7 @@ import {
   type SettingSource,
   type SDKUserMessage,
   type ModelUsage,
+  type Query as ClaudeSdkQuery,
 } from "@anthropic-ai/claude-agent-sdk";
 import { parseCliArgs } from "@t3tools/shared/cliArgs";
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
@@ -504,6 +505,7 @@ interface ClaudeQueryRuntime extends AsyncIterable<SDKMessage>, ClaudeMcpQuery {
   readonly setModel: (model?: string) => Promise<void>;
   readonly setPermissionMode: (mode: PermissionMode) => Promise<void>;
   readonly setMaxThinkingTokens: (maxThinkingTokens: number | null) => Promise<void>;
+  readonly applyFlagSettings: ClaudeSdkQuery["applyFlagSettings"];
   readonly close: () => void;
 }
 
@@ -5566,6 +5568,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     const modelSelection = selectedModel
       ? { ...selectedModel, model: resolveClaudeModelSlug(modelCatalog, selectedModel.model) }
       : undefined;
+    const previousRawEffort = getModelSelectionStringOptionValue(
+      context.startInput.modelSelection,
+      "effort",
+    );
     if (modelSelection) {
       context.startInput = { ...context.startInput, modelSelection };
     }
@@ -5606,9 +5612,37 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         modelSelection.model,
         getModelSelectionStringOptionValue(modelSelection, "effort"),
       );
-      context.currentEffort =
+      const nextEffort =
         getEffectiveClaudeAgentEffort(modelCatalog, turnEffort ?? null, modelSelection.model) ??
         undefined;
+      const ultracode = isClaudeCatalogUltracodeEffort(turnEffort ?? null);
+      const ultracodeChanged =
+        ultracode !==
+        isClaudeCatalogUltracodeEffort(
+          resolveClaudeCatalogEffort(modelCatalog, modelSelection.model, previousRawEffort) ?? null,
+        );
+      // Effort is a flag setting: the live session takes it on its next
+      // request, so a change never needs a new session. A CLI that refuses it
+      // never costs the message: the effort is tried again on the next send.
+      if (nextEffort !== context.currentEffort || ultracodeChanged) {
+        const settings = {
+          effortLevel: (nextEffort ?? null) as ClaudeSdkEffort | null,
+          ...(ultracodeChanged ? { ultracode: ultracode ? true : null } : {}),
+        };
+        const applied = yield* Effect.tryPromise(() =>
+          context.query.applyFlagSettings(settings),
+        ).pipe(
+          Effect.as(true),
+          Effect.catch((cause) =>
+            Effect.logWarning("claude.effort.apply-failed", {
+              threadId: input.threadId,
+              effort: nextEffort ?? null,
+              cause: toMessage(cause, "applyFlagSettings failed"),
+            }).pipe(Effect.as(false)),
+          ),
+        );
+        if (applied) context.currentEffort = nextEffort;
+      }
     }
 
     // Apply interaction mode by switching the SDK's permission mode.
@@ -5991,6 +6025,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
+      inSessionModelOptions: ["effort"],
+      closedSendUndelivered: true,
       threadProfile: { tools: true, reportsSpend: true },
     },
     compaction: { type: "slash-command", command: "/compact" },

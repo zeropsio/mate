@@ -1035,14 +1035,22 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
       ? payload.detail
       : null;
   const taskLabel = taskSummary || taskDetailAsLabel;
-  const detail = isTaskActivity
-    ? !taskDetailAsLabel &&
-      payload &&
-      typeof payload.detail === "string" &&
-      payload.detail.length > 0
-      ? stripTrailingExitCode(payload.detail).output
+  // A provider failure's row reads its first line: a cause printed with its
+  // stack (rows written before servers sent one sentence) never shows.
+  const isProviderFailure =
+    activity.kind.startsWith("provider.") && activity.kind.endsWith(".failed");
+  const detail = isProviderFailure
+    ? typeof payload?.detail === "string"
+      ? payload.detail.split("\n")[0]?.trim() || null
       : null
-    : extractToolDetail(payload, title ?? activity.summary);
+    : isTaskActivity
+      ? !taskDetailAsLabel &&
+        payload &&
+        typeof payload.detail === "string" &&
+        payload.detail.length > 0
+        ? stripTrailingExitCode(payload.detail).output
+        : null
+      : extractToolDetail(payload, title ?? activity.summary);
   const toolCallId = isTaskActivity ? null : extractToolCallId(payload);
   const responseId =
     typeof payload?.responseId === "string" && payload.responseId.trim().length > 0

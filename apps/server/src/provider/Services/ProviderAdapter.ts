@@ -50,6 +50,18 @@ export interface ProviderAdapterCapabilities {
    * Declares whether changing the model on an existing session is supported.
    */
   readonly sessionModelSwitch: ProviderSessionModelSwitchMode;
+  /**
+   * Model option ids (e.g. `effort`) the adapter applies to a live session on
+   * its next send. A change to any other option needs a new session. Omitted:
+   * none.
+   */
+  readonly inSessionModelOptions?: ReadonlyArray<string>;
+  /**
+   * True when a send failing with a closed or missing session never reached
+   * the agent (the adapter queues the prompt as its send's last step), so the
+   * send may be made again on a new session. Omitted: false.
+   */
+  readonly closedSendUndelivered?: boolean;
   /** Starts a resumed turn with no synthetic user prompt. Omitted means the
       adapter needs an explicit continuation instruction. */
   readonly promptlessTurnContinuation?: boolean;

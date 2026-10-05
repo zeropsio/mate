@@ -13,6 +13,7 @@ import {
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -74,6 +75,12 @@ export class WorkspaceHistory extends Context.Service<
       runId: string;
       cwd: string;
       continuationOf?: TurnId;
+      /**
+       * The turn the provider would steer this message into now, asked again
+       * while the message waits for the previous run: a message that ends up
+       * steering a turn joins that turn's run instead of starting its own.
+       */
+      liveTurn?: Effect.Effect<TurnId | undefined>;
     }) => Effect.Effect<void>;
     readonly bindTurn: (threadId: ThreadId, turnId: TurnId) => Effect.Effect<void>;
     readonly markDispatched: (threadId: ThreadId, runId: string) => Effect.Effect<void>;
@@ -95,6 +102,11 @@ export class WorkspaceHistory extends Context.Service<
     readonly cleanup: (threadId: ThreadId) => Effect.Effect<void>;
   }
 >()("t3/checkpointing/WorkspaceHistory") {}
+
+/** How long a new run waits for the thread's previous run to end before it starts beside it. */
+export const PREVIOUS_RUN_WAIT = Duration.seconds(20);
+/** How often a waiting message asks whether the provider's turn opened. */
+const LIVE_TURN_POLL = Duration.millis(250);
 
 export const make = Effect.gen(function* () {
   const store = yield* CheckpointStore;
@@ -274,20 +286,29 @@ export const make = Effect.gen(function* () {
   });
 
   const prepare: WorkspaceHistory["Service"]["prepare"] = Effect.fn("WorkspaceHistory.prepare")(
-    function* (input) {
+    function* ({ liveTurn, ...input }) {
       const runKey = key(input.threadId, input.runId);
-      const continuation =
-        input.continuationOf === undefined
-          ? undefined
-          : [...active.values()].find(
-              (r) =>
-                r.threadId === input.threadId && r.turnId === input.continuationOf && !r.finishing,
-            );
-      if (continuation) {
+      // A message sent while the agent's turn is open steers that turn, so it
+      // joins the thread's live run, by its turn or, when the run never heard
+      // of that turn (the binding moved, or never came), as the run in flight.
+      const runSteeredBy = (turnId: TurnId) => {
+        const live = [...active.values()].filter(
+          (r) => r.threadId === input.threadId && r.runId !== input.runId && !r.finishing,
+        );
+        return (
+          live.find((r) => r.turnId === turnId) ??
+          live.find((r) => r.ready && (r.turnId !== undefined || r.dispatched === true))
+        );
+      };
+      const join = Effect.fn("WorkspaceHistory.join")(function* (
+        continuation: NonNullable<ReturnType<typeof runSteeredBy>>,
+      ) {
         yield* Deferred.await(continuation.prepared);
         continuation.steering = true;
-        return;
-      }
+      });
+      const continuation =
+        input.continuationOf === undefined ? undefined : runSteeredBy(input.continuationOf);
+      if (continuation) return yield* join(continuation);
       const previous = [...active.values()].filter(
         (r) => r.threadId === input.threadId && r.runId !== input.runId,
       );
@@ -303,8 +324,39 @@ export const make = Effect.gen(function* () {
         ready: false,
       };
       active.set(runKey, entry);
+      const preparing = entry;
       yield* Effect.gen(function* () {
-        yield* Effect.forEach(previous, (r) => Deferred.await(r.done), { discard: true });
+        // Whether the message steers is asked after the wait, not before it: a
+        // turn that opened meanwhile takes the message into its run.
+        const steeredTurn =
+          liveTurn === undefined || previous.length === 0
+            ? Effect.never
+            : Effect.gen(function* () {
+                while (true) {
+                  const turnId = yield* liveTurn;
+                  if (turnId !== undefined) return turnId;
+                  yield* Effect.sleep(LIVE_TURN_POLL);
+                }
+              });
+        const steered = yield* Effect.forEach(previous, (r) => Deferred.await(r.done), {
+          discard: true,
+        }).pipe(
+          Effect.as(undefined),
+          Effect.raceFirst(steeredTurn),
+          Effect.timeoutOption(PREVIOUS_RUN_WAIT),
+          Effect.map(Option.getOrUndefined),
+        );
+        const joined = steered === undefined ? undefined : runSteeredBy(steered);
+        if (joined) {
+          yield* Deferred.succeed(preparing.done, undefined);
+          yield* Deferred.succeed(preparing.prepared, undefined);
+          active.delete(runKey);
+          return yield* join(joined);
+        }
+        // The previous run's end is this one's start, but a message never waits
+        // a whole run for it: past a short wait the two runs are told to overlap.
+        const unfinished: Array<string> = [];
+        for (const r of previous) if (!(yield* Deferred.isDone(r.done))) unfinished.push(r.runId);
         yield* captureLock
           .withPermits(1)(
             Effect.gen(function* () {
@@ -315,9 +367,12 @@ export const make = Effect.gen(function* () {
                 entry.ready = true;
                 return;
               }
-              const overlap = [...active.values()]
-                .filter((r) => r.threadId !== input.threadId && r.ready)
-                .map((r) => r.runId);
+              const overlap = [
+                ...unfinished,
+                ...[...active.values()]
+                  .filter((r) => r.threadId !== input.threadId && r.ready)
+                  .map((r) => r.runId),
+              ];
               const initial: CaptureRun = {
                 ...input,
                 turnId: null,

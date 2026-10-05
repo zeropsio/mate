@@ -100,6 +100,7 @@ class ReplayClaudeQuery implements AsyncIterable<SDKMessage> {
   readonly setModel = async (_model?: string): Promise<void> => {};
   readonly setPermissionMode = async (_mode: PermissionMode): Promise<void> => {};
   readonly setMaxThinkingTokens = async (_maxThinkingTokens: number | null): Promise<void> => {};
+  readonly applyFlagSettings = async (_settings: unknown): Promise<void> => {};
 
   readonly close = (): void => {
     this.done = true;

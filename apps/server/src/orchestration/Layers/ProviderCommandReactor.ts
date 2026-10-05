@@ -23,7 +23,6 @@ import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import * as Equal from "effect/Equal";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -35,10 +34,9 @@ import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
 import { increment, orchestrationEventsProcessedTotal } from "../../observability/Metrics.ts";
 import {
-  ProviderAdapterProcessError,
   ProviderAdapterRequestError,
-  ProviderAdapterValidationError,
-  ProviderWorkspaceMissingError,
+  ProviderAdapterSessionClosedError,
+  ProviderAdapterSessionNotFoundError,
 } from "../../provider/Errors.ts";
 import type { ProviderServiceError } from "../../provider/Errors.ts";
 import { TextGeneration } from "../../textGeneration/TextGeneration.ts";
@@ -65,10 +63,16 @@ import {
 import { VcsStatusBroadcaster } from "../../vcs/VcsStatusBroadcaster.ts";
 import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { withAgentNotes } from "../agentNotes.ts";
-const isProviderAdapterProcessError = Schema.is(ProviderAdapterProcessError);
+import { makeSendLanes } from "../../sendLanes.ts";
+import { classifyModelSelectionChange, selectionAtSend } from "../modelSelectionChange.ts";
+import { describeProviderFailure, formatProviderFailure } from "../providerFailureText.ts";
 const isProviderAdapterRequestError = Schema.is(ProviderAdapterRequestError);
-const isProviderAdapterValidationError = Schema.is(ProviderAdapterValidationError);
-const isProviderWorkspaceMissingError = Schema.is(ProviderWorkspaceMissingError);
+const isProviderAdapterSessionClosedError = Schema.is(ProviderAdapterSessionClosedError);
+const isProviderAdapterSessionNotFoundError = Schema.is(ProviderAdapterSessionNotFoundError);
+const isSessionGoneError = (
+  error: ProviderServiceError,
+): error is ProviderAdapterSessionClosedError | ProviderAdapterSessionNotFoundError =>
+  isProviderAdapterSessionClosedError(error) || isProviderAdapterSessionNotFoundError(error);
 const isProviderDriverKind = Schema.is(ProviderDriverKind);
 
 type ProviderIntentEvent = Extract<
@@ -244,6 +248,7 @@ const make = Effect.gen(function* () {
     );
 
   const threadModelSelections = new Map<string, ModelSelection>();
+  const turnLanes = makeSendLanes();
   const compactingThreadIds = new Set<ThreadId>();
   type QueuedTurnStart = Extract<ProviderIntentEvent, { type: "thread.turn-start-requested" }>;
   // Turn starts received while a thread compacts, replayed in order once its session is restored.
@@ -377,22 +382,8 @@ const make = Effect.gen(function* () {
     if (turnsAfterCompaction.get(threadId) === queued) turnsAfterCompaction.delete(threadId);
   });
 
-  const formatFailureDetail = (cause: Cause.Cause<unknown>): string => {
-    const failReason = cause.reasons.find(Cause.isFailReason);
-    if (isProviderAdapterRequestError(failReason?.error)) {
-      return failReason.error.detail;
-    }
-    if (isProviderAdapterProcessError(failReason?.error)) {
-      return failReason.error.detail;
-    }
-    if (isProviderAdapterValidationError(failReason?.error)) {
-      return failReason.error.issue;
-    }
-    if (isProviderWorkspaceMissingError(failReason?.error)) {
-      return failReason.error.message;
-    }
-    return Cause.pretty(cause);
-  };
+  // One plain sentence and a code for the row; the cause goes to the log.
+  const formatFailureDetail = formatProviderFailure;
 
   const setThreadSession = (input: {
     readonly threadId: ThreadId;
@@ -574,6 +565,26 @@ const make = Effect.gen(function* () {
     });
   });
 
+  /**
+   * The turn a message sent now would steer: the agent's own session's when
+   * it reports one running (the projection's lifecycle can lag it or lose the
+   * turn id mid-run), else the projection's, for sessions that never report a
+   * running turn (Cursor's stays ready through its turns).
+   */
+  const runningTurnFor = (threadId: ThreadId): Effect.Effect<TurnId | undefined> =>
+    Effect.gen(function* () {
+      const liveSession = (yield* providerService.listSessions()).find(
+        (session) => session.threadId === threadId,
+      );
+      if (liveSession?.status === "running" && liveSession.activeTurnId !== undefined) {
+        return liveSession.activeTurnId;
+      }
+      const thread = yield* resolveThreadShell(threadId);
+      return thread?.session?.status === "running"
+        ? (thread.session.activeTurnId ?? undefined)
+        : undefined;
+    }).pipe(Effect.orElseSucceed(() => undefined));
+
   const ensureSessionForThread = Effect.fn("ensureSessionForThread")(function* (
     threadId: ThreadId,
     createdAt: string,
@@ -589,10 +600,17 @@ const make = Effect.gen(function* () {
 
     const desiredRuntimeMode = thread.runtimeMode;
     const requestedModelSelection = options?.modelSelection;
+    // A closed session is no session: the next send needs a new one.
     const resolveActiveSession = (threadId: ThreadId) =>
       providerService
         .listSessions()
-        .pipe(Effect.map((sessions) => sessions.find((session) => session.threadId === threadId)));
+        .pipe(
+          Effect.map((sessions) =>
+            sessions.find(
+              (session) => session.threadId === threadId && session.status !== "closed",
+            ),
+          ),
+        );
 
     const activeSession = yield* resolveActiveSession(threadId);
     const activeThreadSession =
@@ -769,8 +787,8 @@ const make = Effect.gen(function* () {
     if (existingSessionThreadId) {
       const runtimeModeChanged = thread.runtimeMode !== thread.session?.runtimeMode;
       const cwdChanged = effectiveCwd !== activeSession?.cwd;
-      const sessionModelSwitch = (yield* providerService.getCapabilities(desiredInstanceId))
-        .sessionModelSwitch;
+      const capabilities = yield* providerService.getCapabilities(desiredInstanceId);
+      const sessionModelSwitch = capabilities.sessionModelSwitch;
       const modelChanged =
         requestedModelSelection !== undefined &&
         requestedModelSelection.model !== activeSession?.model;
@@ -778,11 +796,21 @@ const make = Effect.gen(function* () {
         requestedModelSelection !== undefined &&
         activeSession?.providerInstanceId !== requestedModelSelection.instanceId;
       const shouldRestartForModelChange = modelChanged && sessionModelSwitch === "unsupported";
-      const previousModelSelection = threadModelSelections.get(threadId);
+      const modelSelectionChange =
+        preferredProvider === "claudeAgent" && requestedModelSelection !== undefined
+          ? classifyModelSelectionChange({
+              previous: threadModelSelections.get(threadId),
+              requested: requestedModelSelection,
+              inSessionOptions: capabilities.inSessionModelOptions ?? [],
+              modelSwitchInSession: sessionModelSwitch === "in-session",
+            })
+          : "none";
+      // A running turn is never cut off for a model selection: a change only a
+      // new session can run waits until the session is idle.
+      const sessionRunning =
+        activeSession?.status === "running" || thread.session?.status === "running";
       const shouldRestartForModelSelectionChange =
-        preferredProvider === "claudeAgent" &&
-        requestedModelSelection !== undefined &&
-        !Equal.equals(previousModelSelection, requestedModelSelection);
+        modelSelectionChange === "new-session" && !sessionRunning;
 
       if (
         !runtimeModeChanged &&
@@ -791,6 +819,9 @@ const make = Effect.gen(function* () {
         !shouldRestartForModelChange &&
         !shouldRestartForModelSelectionChange
       ) {
+        if (requestedModelSelection !== undefined && modelSelectionChange !== "new-session") {
+          threadModelSelections.set(threadId, requestedModelSelection);
+        }
         yield* refreshWorkspaceSnapshot;
         return existingSessionThreadId;
       }
@@ -829,11 +860,13 @@ const make = Effect.gen(function* () {
         cwd: restartedSession.cwd,
       });
       yield* bindSessionToThread(restartedSession);
+      threadModelSelections.set(threadId, desiredModelSelection);
       return restartedSession.threadId;
     }
 
     const startedSession = yield* startProviderSession(undefined);
     yield* bindSessionToThread(startedSession);
+    threadModelSelections.set(threadId, desiredModelSelection);
     return startedSession.threadId;
   });
 
@@ -857,9 +890,6 @@ const make = Effect.gen(function* () {
       ...(input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {}),
       pendingTurnStart: true,
     });
-    if (input.modelSelection !== undefined) {
-      threadModelSelections.set(input.threadId, input.modelSelection);
-    }
     const normalizedInput = toNonEmptyProviderInput(
       withAgentNotes(input.messageText, input.agentNotes),
     );
@@ -1271,11 +1301,19 @@ const make = Effect.gen(function* () {
         return Effect.void;
       }
       const detail = formatFailureDetail(cause);
-      return setThreadSessionErrorOnTurnStartFailure({
+      return Effect.logError("provider turn start failed", {
         threadId: event.payload.threadId,
-        detail,
-        createdAt: event.payload.createdAt,
+        messageId: event.payload.messageId,
+        code: describeProviderFailure(cause).code,
+        cause: Cause.pretty(cause),
       }).pipe(
+        Effect.andThen(
+          setThreadSessionErrorOnTurnStartFailure({
+            threadId: event.payload.threadId,
+            detail,
+            createdAt: event.payload.createdAt,
+          }),
+        ),
         Effect.flatMap(() => appendTurnStartFailure("Provider turn start failed", detail)),
         Effect.asVoid,
       );
@@ -1459,9 +1497,6 @@ const make = Effect.gen(function* () {
             : { pendingTurnStart: true },
         );
         compactionSessionEnsured = true;
-        if (event.payload.modelSelection !== undefined) {
-          threadModelSelections.set(event.payload.threadId, event.payload.modelSelection);
-        }
         yield* providerService.compactThread(
           event.payload.threadId,
           event.payload.modelSelection,
@@ -1496,22 +1531,17 @@ const make = Effect.gen(function* () {
       turnsAfterCompaction.set(event.payload.threadId, queued);
       return;
     }
-    const sendPreparedTurn = Effect.gen(function* () {
+    const sendThroughLane = Effect.gen(function* () {
       const coordinator = Option.getOrUndefined(workspaceHistory);
-      // A crewmate's work is kept in its lane, never in checkpoints.
-      if (coordinator && thread.crew === undefined) {
-        const project = yield* resolveProject(thread.projectId);
-        const cwd = resolveThreadWorkspaceCwd({ thread, projects: project ? [project] : [] });
-        if (cwd)
-          yield* coordinator.prepare({
-            threadId: thread.id,
-            runId: event.payload.messageId,
-            cwd,
-            ...(thread.session?.status === "running" && thread.session.activeTurnId
-              ? { continuationOf: thread.session.activeTurnId }
-              : {}),
-          });
-      }
+      // A message that waited goes with the thread's selection as it is now.
+      const threadNow = yield* resolveThreadShell(thread.id);
+      const modelSelection = threadNow
+        ? selectionAtSend({
+            requested: event.payload.modelSelection,
+            threadWhenSent: thread.modelSelection,
+            threadNow: threadNow.modelSelection,
+          })
+        : event.payload.modelSelection;
       const sendTurnRequest = yield* buildSendTurnRequestForThread({
         threadId: event.payload.threadId,
         messageText: message.text,
@@ -1519,9 +1549,7 @@ const make = Effect.gen(function* () {
         // about somebody else's merge is not part of that.
         ...(event.payload.agentNotes !== undefined ? { agentNotes: event.payload.agentNotes } : {}),
         ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
-        ...(event.payload.modelSelection !== undefined
-          ? { modelSelection: event.payload.modelSelection }
-          : {}),
+        ...(modelSelection !== undefined ? { modelSelection } : {}),
         interactionMode: event.payload.interactionMode,
         createdAt: event.payload.createdAt,
       }).pipe(
@@ -1535,7 +1563,30 @@ const make = Effect.gen(function* () {
       }
 
       if (coordinator) yield* coordinator.markDispatched(thread.id, event.payload.messageId);
-      yield* providerService.sendTurn(sendTurnRequest.value).pipe(
+      const request = sendTurnRequest.value;
+      // A send that met a closed or missing session before the agent got it
+      // sets the session up again (resuming from the stored cursor) and goes
+      // once more: the person's message just goes through.
+      const resendOnNewSession = (error: ProviderServiceError) =>
+        Effect.gen(function* () {
+          const instanceId =
+            request.modelSelection?.instanceId ??
+            (threadNow ?? thread).session?.providerInstanceId ??
+            (threadNow ?? thread).modelSelection.instanceId;
+          const capabilities = yield* providerService.getCapabilities(instanceId);
+          if (capabilities.closedSendUndelivered !== true) return yield* Effect.fail(error);
+          yield* Effect.logWarning("provider session was gone at send; resending on a new one", {
+            threadId: thread.id,
+            reason: error._tag,
+          });
+          yield* ensureSessionForThread(thread.id, event.payload.createdAt, {
+            ...(modelSelection !== undefined ? { modelSelection } : {}),
+            pendingTurnStart: true,
+          });
+          return yield* providerService.sendTurn(request);
+        });
+      yield* providerService.sendTurn(request).pipe(
+        Effect.catchIf(isSessionGoneError, resendOnNewSession),
         Effect.asVoid,
         Effect.catchCause((cause) =>
           recoverTurnStartFailure(cause).pipe(
@@ -1547,7 +1598,29 @@ const make = Effect.gen(function* () {
           ),
         ),
       );
-    }).pipe(
+    });
+    const prepareTurn = Effect.gen(function* () {
+      const coordinator = Option.getOrUndefined(workspaceHistory);
+      // A crewmate's work is kept in its lane, never in checkpoints.
+      if (coordinator && thread.crew === undefined) {
+        const project = yield* resolveProject(thread.projectId);
+        const cwd = resolveThreadWorkspaceCwd({ thread, projects: project ? [project] : [] });
+        const liveTurn = runningTurnFor(thread.id);
+        const continuationOf = yield* liveTurn;
+        if (cwd)
+          yield* coordinator.prepare({
+            threadId: thread.id,
+            runId: event.payload.messageId,
+            cwd,
+            ...(continuationOf ? { continuationOf } : {}),
+            liveTurn,
+          });
+      }
+      // One lane per thread for a turn's session setup and its send: one
+      // message's setup never restarts the session under another's handshake.
+      yield* turnLanes(thread.id, sendThroughLane);
+    });
+    const sendPreparedTurn = prepareTurn.pipe(
       Effect.catchCause((cause) =>
         recoverTurnStartFailure(cause).pipe(
           Effect.ensuring(

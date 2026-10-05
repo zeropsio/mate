@@ -60,6 +60,7 @@ export class RecordingClaudeQuery implements AsyncIterable<SDKMessage> {
     this.setPermissionModeCalls.push(mode);
   };
   readonly setMaxThinkingTokens = async (_maxThinkingTokens: number | null): Promise<void> => {};
+  readonly applyFlagSettings = async (_settings: unknown): Promise<void> => {};
 
   readonly close = (): void => {
     this.done = true;

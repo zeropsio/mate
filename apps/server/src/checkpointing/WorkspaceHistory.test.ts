@@ -313,6 +313,82 @@ describe("Workspace history", () => {
     }).pipe(Effect.provide(testLayer)),
   );
 
+  it.effect("a steer joins the thread's live run even when no run carries its turn", () =>
+    Effect.gen(function* () {
+      const h = yield* harness();
+      yield* h.prepare();
+      yield* h.history.markDispatched(threadId, "request");
+      const steer = yield* h.history
+        .prepare({
+          threadId,
+          runId: "steer",
+          cwd: "/var/www",
+          continuationOf: TurnId.make("turn-the-run-never-heard-of"),
+        })
+        .pipe(Effect.timeout("1 second"), Effect.result, Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      expect(yield* Fiber.join(steer)).toMatchObject({ _tag: "Success" });
+      expect(yield* h.journal.get(threadId, "steer")).toBeUndefined();
+      expect(h.captures).toHaveLength(2);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect(
+    "a message sent before the turn it steers began joins that run, and the next one starts clean",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* harness();
+        const first = TurnId.make("turn-first");
+        const next = TurnId.make("turn-next");
+        let running: TurnId | undefined;
+        // A is sent; its turn has not started yet when B arrives.
+        yield* h.prepare("a");
+        yield* h.history.markDispatched(threadId, "a");
+        const b = yield* h.history
+          .prepare({
+            threadId,
+            runId: "b",
+            cwd: "/var/www",
+            liveTurn: Effect.sync(() => running),
+          })
+          .pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        yield* h.history.bindTurn(threadId, first);
+        running = first;
+        yield* TestClock.adjust("1 second");
+        yield* Fiber.join(b);
+        // B steered A's turn: it is part of A's run, never a run of its own.
+        expect(yield* h.journal.get(threadId, "b")).toBeUndefined();
+        yield* h.history.finish({ threadId, turnId: first, cwd: "/var/www" });
+        yield* h.history.release(threadId, first);
+        running = undefined;
+
+        const c = yield* h
+          .prepare("c")
+          .pipe(Effect.timeout("1 second"), Effect.result, Effect.forkChild);
+        yield* TestClock.adjust("2 seconds");
+        expect(yield* Fiber.join(c)).toMatchObject({ _tag: "Success" });
+        yield* h.history.markDispatched(threadId, "c");
+        yield* h.history.bindTurn(threadId, next);
+        expect((yield* h.journal.get(threadId, "c"))?.turnId).toBe(next);
+        expect((yield* h.journal.get(threadId, "c"))?.history.overlappingRunIds).toBeUndefined();
+      }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("a new request waits for a running run only briefly, and says they overlap", () =>
+    Effect.gen(function* () {
+      const h = yield* harness();
+      yield* h.prepare();
+      yield* h.history.bindTurn(threadId, turnId);
+      const second = yield* h.prepare("request-2").pipe(Effect.forkChild);
+      yield* TestClock.adjust(History.PREVIOUS_RUN_WAIT);
+      yield* Fiber.join(second);
+      const run = yield* h.journal.get(threadId, "request-2");
+      expect(run?.phase).toBe("prepared");
+      expect(run?.history.overlappingRunIds).toEqual(["request"]);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect(
     "a superseded provider turn cannot capture an end for a still-running steered span",
     () =>
