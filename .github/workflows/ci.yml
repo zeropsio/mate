@@ -89,6 +89,9 @@ jobs:
       - name: Reconcile no-direct-permission-rule exceptions
         run: node scripts/check-guard-exceptions.ts --rule no-direct-permission-rule
 
+      - name: Reconcile no-remote-io-outside-data-layer exceptions
+        run: node scripts/check-guard-exceptions.ts --rule no-remote-io-outside-data-layer
+
       - name: Check CSS theme tokens
         run: node scripts/check-css-tokens.ts
 

@@ -1,0 +1,1370 @@
+[
+  {
+    "path": "apps/mobile/src/features/cloud/linkEnvironment.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "effect/unstable/http",
+    "owner": "invariant 1: Mate transport",
+    "reason": "wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/ZeropsConnectRouteScreen.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.listServiceVariableNames",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/ZeropsConnectRouteScreen.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.readProjectEnv",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/ZeropsDataProvider.tsx",
+    "kind": "NewExpression",
+    "fingerprint": "new WebSocket",
+    "owner": "invariant 1: Mate identity/connection",
+    "reason": "the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.fetchUser",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.fetchUser",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.fetchUser",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.login",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.logout",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.verifyTotp",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/ZeropsSessionProvider.tsx",
+    "kind": "NewExpression",
+    "fingerprint": "new ZeropsApiClient",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/environment-ports.ts",
+    "kind": "CallExpression",
+    "fingerprint": "globalThis.fetch",
+    "owner": "invariant 1: Mate identity/connection",
+    "reason": "the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/environment-ports.ts",
+    "kind": "CallExpression",
+    "fingerprint": "globalThis.fetch",
+    "owner": "invariant 1: Mate identity/connection",
+    "reason": "the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/mate-descriptors.ts",
+    "kind": "CallExpression",
+    "fingerprint": "globalThis.fetch",
+    "owner": "invariant 1: Mate identity/connection",
+    "reason": "the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/cloud/linkEnvironment.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "effect/unstable/http",
+    "owner": "invariant 1: Mate transport",
+    "reason": "wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHqCard.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.listProjectProcesses",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHqCard.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.listProjectServices",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHqGate.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.listOrganizationMembers",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsHqUpdate.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: static assets",
+    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsNewProjectHost.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/environments/primary/auth.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "effect/unstable/http",
+    "owner": "invariant 1: Mate transport",
+    "reason": "wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/environments/primary/httpLayer.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "effect/unstable/http",
+    "owner": "invariant 1: Mate transport",
+    "reason": "wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/lib/attachmentUploadQueue.ts",
+    "kind": "NewExpression",
+    "fingerprint": "new XMLHttpRequest",
+    "owner": "invariant 1: static assets",
+    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/lib/runtime.ts",
+    "kind": "CallExpression",
+    "fingerprint": "globalThis.fetch",
+    "owner": "invariant 1: Mate transport",
+    "reason": "wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/observability/clientTracing.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "effect/unstable/http",
+    "owner": "invariant 1: Mate transport",
+    "reason": "wires the Mate HTTP transport in the app; moves into the client runtime's transport adapters",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/openVsxThemes.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: static assets",
+    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/openVsxThemes.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: static assets",
+    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/openVsxThemes.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: static assets",
+    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/openVsxThemes.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: static assets",
+    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/openVsxThemes.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: static assets",
+    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/openVsxThemes.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: static assets",
+    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/openVsxThemes.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: static assets",
+    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/state/projects.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcQueryAtomFamily",
+    "owner": "invariant 1: Mate identity/connection",
+    "reason": "the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/terminal/ghostty/runtime.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: static assets",
+    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/terminal/ghostty/runtime.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: static assets",
+    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/threadNotifications.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: static assets",
+    "reason": "fetches a bundled asset or uploads an attachment, not source data; a candidate for the adapter allowlist",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsDataProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.fetchProjectLogAccess",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsDataProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsDataProvider.tsx",
+    "kind": "NewExpression",
+    "fingerprint": "new WebSocket",
+    "owner": "invariant 1: Mate identity/connection",
+    "reason": "the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "api.closeChange",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "api.mergeChange",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "hqApi.addService",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "hqApi.redeploy",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "hqApi.release",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsProjectFlowProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "hqApi.rollback",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.adoptSession",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.adoptSession",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.fetchUser",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.fetchUser",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.fetchUser",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.fetchUser",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.fetchUser",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.fetchUser",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.login",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.register",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.verifyTotp",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+    "kind": "NewExpression",
+    "fingerprint": "new ZeropsApiClient",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/accountHq.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/accountHq.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/accountHq.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/accountHq.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/accountHq.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/accountHq.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/accountHq.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/accountHq.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/accountHq.ts",
+    "kind": "CallExpression",
+    "fingerprint": "makeHqApi",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/accountHq.ts",
+    "kind": "NewExpression",
+    "fingerprint": "new WebSocket",
+    "owner": "invariant 1: Mate identity/connection",
+    "reason": "the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/addGroupEnvironment.ts",
+    "kind": "CallExpression",
+    "fingerprint": "input.hq.structure",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/deployToken.ts",
+    "kind": "CallExpression",
+    "fingerprint": "hq.structure",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/deployToken.ts",
+    "kind": "CallExpression",
+    "fingerprint": "input.client.deleteIntegrationToken",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/deployToken.ts",
+    "kind": "CallExpression",
+    "fingerprint": "input.client.mintIntegrationToken",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/deployToken.ts",
+    "kind": "CallExpression",
+    "fingerprint": "input.hq.keepDeployToken",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/environmentPorts.ts",
+    "kind": "CallExpression",
+    "fingerprint": "globalThis.fetch",
+    "owner": "invariant 1: Mate identity/connection",
+    "reason": "the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/environmentPorts.ts",
+    "kind": "CallExpression",
+    "fingerprint": "globalThis.fetch",
+    "owner": "invariant 1: Mate identity/connection",
+    "reason": "the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/feeds.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcSubscriptionAtomFamily",
+    "owner": "invariant 1: Mate identity/connection",
+    "reason": "the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/feeds.ts",
+    "kind": "CallExpression",
+    "fingerprint": "createEnvironmentRpcSubscriptionAtomFamily",
+    "owner": "invariant 1: Mate identity/connection",
+    "reason": "the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/hqMateBirth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "api.createMate",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/hqMateBirth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "api.recordClosedOff",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/hqStructure.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/hqStructure.ts",
+    "kind": "CallExpression",
+    "fingerprint": "input.api.streamStructure",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/keptSessions.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/keptSessions.ts",
+    "kind": "CallExpression",
+    "fingerprint": "fetch",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/mateDescriptors.ts",
+    "kind": "CallExpression",
+    "fingerprint": "globalThis.fetch",
+    "owner": "invariant 1: Mate identity/connection",
+    "reason": "the app opens a Mate or Zerops stream or reads a Mate itself; the adapter owns it and the app reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/matePress.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).mateKey",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/matePress.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq).recheckKey",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/matePress.ts",
+    "kind": "CallExpression",
+    "fingerprint": "api.endPress",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/matePress.ts",
+    "kind": "CallExpression",
+    "fingerprint": "api.holdPress",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/matePress.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.readProjectCreation",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/matePress.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.readProjectEnv",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/matePress.ts",
+    "kind": "CallExpression",
+    "fingerprint": "hq.bindBirth",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/matePress.ts",
+    "kind": "CallExpression",
+    "fingerprint": "input.inputs.client.listProjectServices",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/mateRestart.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.readProcessStatus",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/mateRestart.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.stopService",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useChangePicture.ts",
+    "kind": "CallExpression",
+    "fingerprint": "hq.api.changeAttachment",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useDeleteGroup.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountHqApi(client, activeOrganization.id, officialHq(accountHq)).deleteApp",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useEnvironmentCreation.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountHqApi(client, organization.id, hq).bindBirth",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useEnvironmentCreation.ts",
+    "kind": "CallExpression",
+    "fingerprint": "hq.recordBirth",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useGitCredentials.ts",
+    "kind": "CallExpression",
+    "fingerprint": "api.gitCredentials",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useGitCredentials.ts",
+    "kind": "CallExpression",
+    "fingerprint": "api.issueGitCredential",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useGitCredentials.ts",
+    "kind": "CallExpression",
+    "fingerprint": "api.revokeGitCredential",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "api.createApp",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "api.moveProject",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "api.moveProject",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "client.deleteIntegrationToken",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "hqApi().completeProjectDeletion",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "hqApi().mateKey",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "hqApi().prepareProjectDeletion",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "hqApi().updateMate",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useNewProjectBirthPorts.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountHqApi(client, organizationId, hq).createApp",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useNewProjectBirthPorts.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountHqApi(client, organizationId, hq).recordBirth",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useRenameGroup.ts",
+    "kind": "CallExpression",
+    "fingerprint": "accountHqApi(client, activeOrganization.id, officialHq(accountHq)).renameApp",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useRepositorySource.ts",
+    "kind": "CallExpression",
+    "fingerprint": "api.repositorySource",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsChangeComments.ts",
+    "kind": "CallExpression",
+    "fingerprint": "hq.api.changeComments",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsChangeComments.ts",
+    "kind": "CallExpression",
+    "fingerprint": "hq.api.commentOnChange",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsChangeDetail.ts",
+    "kind": "CallExpression",
+    "fingerprint": "api.change",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsCompares.ts",
+    "kind": "CallExpression",
+    "fingerprint": "hq.api.compare",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsCreationVerdicts.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.readProjectCreation",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsLandedChange.ts",
+    "kind": "CallExpression",
+    "fingerprint": "hq.api.change",
+    "owner": "invariant 1: HQ",
+    "reason": "a hook or component calls the HQ client directly; the call moves behind the HQ adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsThrowawaySweep.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.deleteIntegrationToken",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsThrowawaySweep.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.deleteIntegrationToken",
+    "owner": "invariant 1: Zerops platform",
+    "reason": "a hook or component calls the Zerops client directly; the call moves behind the Zerops adapter and the view reads the projection",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/account/session.ts",
+    "kind": "NewExpression",
+    "fingerprint": "new ZeropsApiClient",
+    "owner": "invariant 1: sign-in/session",
+    "reason": "the session driver calls the Zerops client or ends a kept session directly; sign-in stays out of the rewrite's store, so this site is reviewed with it",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/doorThrowaway.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.deleteThrowaway",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/doorThrowaway.ts",
+    "kind": "CallExpression",
+    "fingerprint": "client.mintThrowaway",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.buildAndDeployAppVersion",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.createAppVersion",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.createPublicHttpRouting",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.fetchProject",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.importProject",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.listClientProjects",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.listClientProjects",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.listIntegrationTokens",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.listIntegrationTokens",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.listOrganizationMembers",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.listProjectServices",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.listProjectServices",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.listProjectServices",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.listPublicHttpRoutings",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.listServiceVariableNames",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.mintIntegrationToken",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.mintIntegrationToken",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.readProcessStatus",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.readProcessStatus",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.readProcessStatus",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.readProcessStatus",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.readProjectBirthEnv",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.readProjectBirthEnv",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.readProjectCreation",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.readProjectCreation",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.regenerateIntegrationToken",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.syncPublicHttpRouting",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.uploadAppVersionArchive",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.writeServiceSecret",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birth.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.writeServiceSecret",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birthJournal.ts",
+    "kind": "CallExpression",
+    "fingerprint": "this.deps.platform.createProjectEnv",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birthJournal.ts",
+    "kind": "CallExpression",
+    "fingerprint": "this.deps.platform.readProcessStatus",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birthJournal.ts",
+    "kind": "CallExpression",
+    "fingerprint": "this.deps.platform.readProjectBirthEnv",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birthJournal.ts",
+    "kind": "CallExpression",
+    "fingerprint": "this.deps.platform.readProjectBirthEnv",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birthJournal.ts",
+    "kind": "CallExpression",
+    "fingerprint": "this.deps.platform.readProjectBirthEnv",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birthJournal.ts",
+    "kind": "CallExpression",
+    "fingerprint": "this.deps.platform.readProjectBirthEnv",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/birthJournal.ts",
+    "kind": "CallExpression",
+    "fingerprint": "this.deps.platform.readProjectBirthEnv",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/update.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.buildAndDeployAppVersion",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/update.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.createAppVersion",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/update.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.listProjectProcesses",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/update.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.listProjectServices",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/update.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.readProcessStatus",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/hq/update.ts",
+    "kind": "CallExpression",
+    "fingerprint": "platform.uploadAppVersionArchive",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/runEnvironmentCreation.ts",
+    "kind": "CallExpression",
+    "fingerprint": "input.platform.createProject",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/runEnvironmentCreation.ts",
+    "kind": "CallExpression",
+    "fingerprint": "input.platform.importDevelopmentContainer",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/runEnvironmentCreation.ts",
+    "kind": "CallExpression",
+    "fingerprint": "input.platform.importProject",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/runEnvironmentCreation.ts",
+    "kind": "CallExpression",
+    "fingerprint": "input.platform.readProjectCreation",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/runEnvironmentCreation.ts",
+    "kind": "CallExpression",
+    "fingerprint": "input.platform.register",
+    "owner": "invariant 1: operations",
+    "reason": "an operation flow calls the Zerops platform client itself; the call moves behind the platform adapter",
+    "expires": "never"
+  }
+]
