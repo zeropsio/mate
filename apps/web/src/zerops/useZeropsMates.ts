@@ -19,7 +19,6 @@ import { Atom } from "effect/unstable/reactivity";
 import { zeropsEnvironmentsAtom } from "../state/zerops";
 import { registeredZeropsOrigins } from "./environmentOrigins";
 import {
-  knownMate,
   withEnvironmentsOutsideZerops,
   zeropsMateAt,
   zeropsMateDecisions,
@@ -27,7 +26,6 @@ import {
   type ZeropsMateDirectory,
   type ZeropsMateIdentity,
 } from "./mateIdentities";
-import { rememberedMateIdentity } from "./mateIdentityMemory";
 import { candidateListingAtom } from "./useZeropsCandidates";
 
 export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
@@ -48,9 +46,13 @@ export function useZeropsMate(environmentId: EnvironmentId): ZeropsMateAt {
   return zeropsMateAt(useZeropsMateDirectory(), environmentId);
 }
 
-/** The Mate a page draws in `environmentId` now (`knownMate`): read, or remembered until read. */
+/**
+ * The Mate a page draws in `environmentId` now: undefined until the directory names one there,
+ * so a page holds its place and never wears a guessed face (HANDOFF §4.4).
+ */
 export function useKnownMate(environmentId: EnvironmentId): ZeropsMateIdentity | undefined {
-  return knownMate(useZeropsMate(environmentId), () => rememberedMateIdentity(environmentId));
+  const at = useZeropsMate(environmentId);
+  return at.kind === "mate" ? at.mate : undefined;
 }
 
 /**

@@ -1,5 +1,6 @@
 import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-router";
 import { useAtomValue } from "@effect/atom-react";
+import { EnvironmentId } from "@t3tools/contracts";
 import { useEffect, useMemo } from "react";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
@@ -18,10 +19,8 @@ import { useThreadSelectionStore } from "../threadSelectionStore";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import { SidebarInset } from "~/components/ui/sidebar";
 import { PageWaitLine } from "~/components/zerops/WaitLine";
-import { HomeOpeningView, MateOpeningView } from "~/components/zerops/MateLinkStage";
-import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import { rememberedHomeLanding } from "~/zerops/lastConversationMemory";
-import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
+import { MateOpeningView } from "~/components/zerops/MateLinkStage";
+import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "~/zerops/waitLine.logic";
 import { resolveDoor } from "./-door";
 import { environmentIdFromPathname } from "./-environmentRoute";
@@ -133,24 +132,17 @@ function ChatRouteLayout() {
 }
 
 function ChatRoutePending() {
-  const { activeOrganization } = useZeropsSession();
   const pathname = useLocation({ select: (location) => location.pathname });
-  // The home with no environment handed over waits as the home itself will (`homeView`): its
-  // guess, the Mate it will land on as remembered, with nothing that takes input.
-  const homeLanding = useLocation({
-    select: (location) =>
-      location.pathname === "/" && !("environmentId" in location.search)
-        ? rememberedHomeLanding(activeOrganization?.id)
-        : null,
-  });
-  if (homeLanding !== null) return <HomeOpeningView environmentId={homeLanding.environmentId} />;
   const routed = environmentIdFromPathname(pathname);
   const threadId = pathname.split("/").filter((part) => part.length > 0)[1];
   const threadRef =
     routed === null || threadId === undefined
       ? null
       : resolveThreadRouteRef({ environmentId: routed, threadId });
-  if (threadRef !== null && rememberedMateIdentity(threadRef.environmentId) !== undefined) {
+  // A conversation's route draws the Mate's own view, its header's place held until the directory
+  // names who lives there; the home and an environment known to hold nobody wait with the line.
+  const whoLivesHere = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
+  if (threadRef !== null && whoLivesHere.kind !== "nobody") {
     return <MateOpeningView threadRef={threadRef} />;
   }
   return (
@@ -159,6 +151,8 @@ function ChatRoutePending() {
     </SidebarInset>
   );
 }
+
+const NO_ENVIRONMENT = EnvironmentId.make("none");
 
 export const Route = createFileRoute("/_chat")({
   beforeLoad: async ({ context, location }) => {
@@ -177,8 +171,8 @@ export const Route = createFileRoute("/_chat")({
   },
   component: ChatRouteLayout,
   // Its guard waits on the environment catalog: meanwhile the layout draws what the reload was
-  // drawing — the Mate's own view where this browser remembers it, else the page quiet with the
-  // boot's one line — and hands over the moment the guard answers.
+  // drawing — a conversation's Mate view, its face and name arriving as the directory reads them,
+  // else the page quiet with the boot's one line — and hands over the moment the guard answers.
   pendingComponent: ChatRoutePending,
   pendingMs: 0,
   pendingMinMs: 0,

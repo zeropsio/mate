@@ -9,18 +9,17 @@ vi.mock("~/zerops/accountEnvironments", () => ({
   useMateDetailRead: () => ({ failure: detail.failure, again: () => undefined }),
   useTryMateAgain: () => () => undefined,
 }));
-vi.mock("~/zerops/useZeropsMates", () => ({ useZeropsMate: () => ({ kind: "unknown" }) }));
+const QUILL = {
+  name: "Quill",
+  tint: "slate",
+  shape: "squircle",
+  project: "Orchard",
+  projectUrl: "https://app.example.test/project",
+  connected: false,
+} as const;
+const who = vi.hoisted(() => ({ at: { kind: "unknown" } as { kind: string; mate?: unknown } }));
+vi.mock("~/zerops/useZeropsMates", () => ({ useZeropsMate: () => who.at }));
 vi.mock("~/zerops/mateVoiceContext", () => ({ useMateVoice: () => ({ surface: "none" }) }));
-vi.mock("~/zerops/mateIdentityMemory", () => ({
-  rememberedMateIdentity: () => ({
-    name: "Quill",
-    tint: "slate",
-    shape: "squircle",
-    project: "Orchard",
-    projectUrl: "https://app.example.test/project",
-    connected: false,
-  }),
-}));
 vi.mock("./RouteStandIn", () => ({ RouteStandIn: () => <textarea data-stand-in="" /> }));
 vi.mock("./WaitLine", () => ({
   PageWaitLine: ({ text }: { text: string | null }) => <p>{text}</p>,
@@ -28,7 +27,7 @@ vi.mock("./WaitLine", () => ({
 vi.mock("./ZeropsMateComingPage", () => ({
   MateComingFrame: (props: { header: ReactNode; composer?: ReactNode; children: ReactNode }) => (
     <main>
-      {props.header}
+      <header>{props.header}</header>
       {props.children}
       {props.composer}
     </main>
@@ -38,20 +37,33 @@ vi.mock("./ZeropsMateComingPage", () => ({
 vi.mock("./MateLinkLine", () => ({ MateLinkLine: () => null, MateLinkProcesses: () => null }));
 vi.mock("./ZeropsMateEmptyState", () => ({ MateEmptyStateView: () => null }));
 
-import { HomeOpeningView, MateOpeningView, MateLinkStage } from "./MateLinkStage";
+import { MateOpeningView, MateLinkStage } from "./MateLinkStage";
 
 const ref = scopeThreadRef(EnvironmentId.make("env-quill"), ThreadId.make("thread-ivy"));
 
-describe("HomeOpeningView: the home's guess at its landing takes no input", () => {
-  it("draws the Mate's face, name and opening line, and no composer", () => {
-    const markup = renderToStaticMarkup(<HomeOpeningView environmentId={ref.environmentId} />);
-    expect(markup).toContain("Quill");
-    expect(markup).toContain("Opening Quill&#x27;s conversation…");
-    expect(markup).not.toMatch(/<textarea|<input|contenteditable|<button/u);
-  });
-
-  it("where a conversation's own route opens, its composer stands in", () => {
-    expect(renderToStaticMarkup(<MateOpeningView threadRef={ref} />)).toContain("data-stand-in");
+describe("MateOpeningView: a conversation's page lands when its Mate is known, never on a guess", () => {
+  it.each([
+    [
+      "who lives here unknown: the header's place held empty, the line unnamed, the composer in",
+      { kind: "unknown" },
+      ["<header></header>", "Opening the conversation…", "data-stand-in"],
+      ["Quill"],
+    ],
+    [
+      "the directory names the Mate: its face and name, its own line",
+      { kind: "mate", mate: QUILL },
+      ["<h1>Quill</h1>", "Opening Quill&#x27;s conversation…", "data-stand-in"],
+      [],
+    ],
+  ] as const)("%s", (_case, at, shown, absent) => {
+    who.at = at;
+    try {
+      const markup = renderToStaticMarkup(<MateOpeningView threadRef={ref} />);
+      for (const text of shown) expect(markup).toContain(text);
+      for (const text of absent) expect(markup).not.toContain(text);
+    } finally {
+      who.at = { kind: "unknown" };
+    }
   });
 });
 

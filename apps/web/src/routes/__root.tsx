@@ -1,9 +1,5 @@
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
-import {
-  scopedProjectKey,
-  scopeProjectRef,
-  scopeThreadRef,
-} from "@t3tools/client-runtime/environment";
+import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
   MATE_VOICE_QUIET_MS,
@@ -69,7 +65,6 @@ import { shellEnvironment } from "../state/shell";
 import { useAtomValue } from "@effect/atom-react";
 import { useAtomCommand } from "../state/use-atom-command";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
-import { candidateListingWholeAtom } from "../state/zerops";
 import {
   primaryServerConfigAtom,
   primaryServerConfigEventAtom,
@@ -96,15 +91,7 @@ import { useHqGate } from "../zerops/hqGate";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useHeldPast } from "~/zerops/useHeldPast";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
-import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { rememberLastConversation } from "~/zerops/lastConversationMemory";
-import {
-  mateDirectoryWhole,
-  rememberedMateIdentity,
-  rememberMateIdentities,
-} from "~/zerops/mateIdentityMemory";
-import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
-import { useZeropsMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
+import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -153,7 +140,7 @@ function RootRouteView() {
 function SignedInRootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
-  const { environments, isReady: environmentsReady } = useEnvironments();
+  const { environments } = useEnvironments();
   const door = resolveDoor(authGateState, {
     pathname,
     environmentCount: countDoorEnvironments(environments),
@@ -184,26 +171,8 @@ function SignedInRootRouteView() {
   const routeEnvironment =
     routeEnvironmentId === null ? null : EnvironmentId.make(routeEnvironmentId);
   const routeMate = useZeropsMate(routeEnvironment ?? NO_ENVIRONMENT);
-  // Who lives where, remembered for the next reload's first frame (`mateIdentityMemory`).
-  const mateDirectory = useZeropsMateDirectory();
-  // Whole once the listing is complete, or whole for the person looking, and every environment
-  // is registered: a Mate the directory then lacks has left, and is forgotten.
-  const { listing: mateListing } = useZeropsCandidates();
-  const listingWholeForPerson = useAtomValue(candidateListingWholeAtom);
-  const directoryWhole = mateDirectoryWhole({
-    listingComplete: heldCandidates(mateListing).complete,
-    wholeForPerson: listingWholeForPerson,
-    environmentsReady,
-  });
-  useEffect(() => {
-    rememberMateIdentities(mateDirectory, { complete: directoryWhole });
-  }, [directoryWhole, mateDirectory]);
-  const routeMateName =
-    routeMate.kind === "mate"
-      ? routeMate.mate.name
-      : routeEnvironment === null
-        ? undefined
-        : rememberedMateIdentity(routeEnvironment)?.name;
+  // The Mate's own name once the directory names it; until then the voice says "This Mate".
+  const routeMateName = routeMate.kind === "mate" ? routeMate.mate.name : undefined;
   // A draft's route names no environment; its voice is its environment's all the same.
   const draftReachability = useEnvironmentReachability(
     routeEnvironment === null && draftEnvironmentId !== null ? draftEnvironmentId : null,
@@ -245,13 +214,6 @@ function SignedInRootRouteView() {
     environmentId: routeEnvironmentId ?? undefined,
     threadId: pathname.split("/").filter((part) => part.length > 0)[1],
   });
-  // The conversation open last, on whichever route: the home's next cold load guesses by it.
-  const openEnvironmentId = routeThreadRef?.environmentId ?? null;
-  const openThreadId = routeThreadRef?.threadId ?? null;
-  useEffect(() => {
-    if (openEnvironmentId === null || openThreadId === null) return;
-    rememberLastConversation(scopeThreadRef(openEnvironmentId, openThreadId));
-  }, [openEnvironmentId, openThreadId]);
   useEffect(() => {
     mateDiagnostics.record({
       kind: "route-gate",

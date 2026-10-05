@@ -4,9 +4,8 @@
  * sign-in is read paints its footer as it last stood — the composer for the viewer's own, the
  * read-only strip for someone else's — instead of a composer it may take back. Kept by the
  * conversation, not its environment: a Mate's conversations run on different logins (a crewmate's,
- * another chat's agent), and each has its own answer. Beside the
- * identity memory (`mateIdentityMemory`): kept per account, bounded, and forgotten when the
- * account closes.
+ * another chat's agent), and each has its own answer. Kept per account, bounded, and forgotten
+ * when the account closes.
  */
 import type { RememberedWriter } from "@t3tools/client-runtime/zerops/conversationWriter";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";

@@ -29,16 +29,12 @@ describe("a wait's one line", () => {
   });
 
   it.each([
-    { conversationRoute: false, mateName: undefined, line: READING_PROJECTS_LINE },
-    { conversationRoute: false, mateName: "Gita", line: READING_PROJECTS_LINE },
-    { conversationRoute: true, mateName: undefined, line: null },
-    { conversationRoute: true, mateName: "Gita", line: "Opening Gita's conversation…" },
-  ])(
-    "the boot says $line on a conversation's route: $conversationRoute, the Mate: $mateName",
-    (row) => {
-      expect(bootWaitLine(row)).toBe(row.line);
-    },
-  );
+    { conversationRoute: false, line: READING_PROJECTS_LINE },
+    // The Mate's page says its own line once it knows the Mate: the frame never guesses a name.
+    { conversationRoute: true, line: null },
+  ])("the boot says $line on a conversation's route: $conversationRoute", (row) => {
+    expect(bootWaitLine(row.conversationRoute)).toBe(row.line);
+  });
 
   it.each([
     {

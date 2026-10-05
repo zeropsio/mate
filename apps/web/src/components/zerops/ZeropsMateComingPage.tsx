@@ -55,7 +55,6 @@ import {
 import { mateArriving, type ZeropsService } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
-import { rememberedMateOfProject } from "~/zerops/mateIdentityMemory";
 import { stageSpeaks } from "~/zerops/mateOpeningStage";
 import { ConversationFooterStandIn, standInFooter } from "./ConversationFooterStandIn";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -310,13 +309,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         return listed;
       return { ...listed, name: nameUnderApp(candidate.project.name, app) };
     }
-    // Before the listing is read, the Mate this browser last knew in the project: never a
-    // placeholder name, and its face from the first frame.
-    const known =
-      creation === undefined && press === undefined
-        ? rememberedMateOfProject(projectId)?.mate
-        : undefined;
-    if (known !== undefined) return { ...known, connected: false };
     const face = creation?.face ?? press?.placement?.face ?? NO_FACE;
     return {
       name: creation?.botName ?? press?.placement?.displayName ?? "",

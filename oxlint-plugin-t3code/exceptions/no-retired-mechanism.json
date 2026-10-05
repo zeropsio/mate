@@ -832,22 +832,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/MateLinkStage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedMateIdentity",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/MateLinkStage.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedMateIdentity",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/RouteStandIn.tsx",
     "kind": "retired-token",
     "fingerprint": "rememberedComposerControl",
@@ -1936,22 +1920,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedMateIdentity",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedMateIdentity",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/projects/ProjectList.tsx",
     "kind": "retired-token",
     "fingerprint": "lastRowRisen",
@@ -2352,123 +2320,11 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/routes/__root.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberLastConversation",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the last conversation is remembered to guess a landing; the home waits for a source",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/__root.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberLastConversation",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the last conversation is remembered to guess a landing; the home waits for a source",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/__root.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberMateIdentities",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/__root.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberMateIdentities",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/__root.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedMateIdentity",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/__root.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedMateIdentity",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.$environmentId.$threadId.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedMateIdentity",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.$environmentId.$threadId.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedMateIdentity",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.index.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedHomeLanding",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the last conversation is remembered to guess a landing; the home waits for a source",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.index.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedHomeLanding",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the last conversation is remembered to guess a landing; the home waits for a source",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/routes/_chat.index.tsx",
     "kind": "retired-token",
     "fingerprint": "useMatesSettled()",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "a settled flag for HQ Mates stands in for the stream's state; read the stream state",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedHomeLanding",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the last conversation is remembered to guess a landing; the home waits for a source",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedHomeLanding",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the last conversation is remembered to guess a landing; the home waits for a source",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedMateIdentity",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/routes/_chat.tsx",
-    "kind": "retired-token",
-    "fingerprint": "rememberedMateIdentity",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
     "expires": "never"
   },
   {
@@ -3917,62 +3773,6 @@
     "fingerprint": "zerops-mate.hq-verdict.v1",
     "owner": "data-layer rewrite: HQ structure/apps",
     "reason": "the official-HQ verdict is remembered in browser storage for a day; HQ says which is official",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/lastConversationMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "mate:zerops:last-conversation",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the last conversation is remembered to guess a landing; the home waits for a source",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/lastConversationMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "menuMemory()",
-    "owner": "data-layer rewrite: HQ structure/apps",
-    "reason": "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/lastConversationMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberLastConversation",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the last conversation is remembered to guess a landing; the home waits for a source",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/lastConversationMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedHomeLanding",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "the last conversation is remembered to guess a landing; the home waits for a source",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/mateIdentityMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "mate:zerops:mate-identities",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/mateIdentityMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberMateIdentities",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/mateIdentityMemory.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedMateIdentity",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
     "expires": "never"
   },
   {
@@ -5501,22 +5301,6 @@
     "fingerprint": "useZeropsMateUpdate",
     "owner": "data-layer rewrite: operations",
     "reason": "a Mate update settles to idle after a timer; only the source settles an operation",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMates.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedMateIdentity",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMates.ts",
-    "kind": "retired-token",
-    "fingerprint": "rememberedMateIdentity",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mate identities are remembered in browser storage for the first frame; the identity projection draws it",
     "expires": "never"
   },
   {

@@ -2370,7 +2370,7 @@ export default function ChatView(props: ChatViewProps) {
   // The banner names the Mate, never the environment's label: on a Mate that
   // is the container's internal host.
   const zeropsMates = useZeropsMateDirectory();
-  // Read, or remembered until read: the composer of a Mate's conversation says one thing at once.
+  // The Mate once the directory names it: the composer of a Mate's conversation says one thing.
   const knownMateHere = useKnownMate(environmentId);
   const mateLinkVoice = useMateVoice();
   const reviveFailedMate = useReviveFailedMate();

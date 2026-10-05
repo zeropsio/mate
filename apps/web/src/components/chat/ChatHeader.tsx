@@ -262,7 +262,7 @@ export const ChatHeader = memo(function ChatHeader({
   // While who lives here is not known, the header shows what both looks
   // share and leaves out what only one of them has.
   const whoLivesHere = useZeropsMate(activeThreadEnvironmentId);
-  // Read, or remembered until read (`knownMate`): a reload heads the page with the Mate at once.
+  // The Mate once the directory names it; until then the header leaves its place out.
   const mate = useKnownMate(activeThreadEnvironmentId);
   const showOpenInPicker = shouldShowOpenInPicker({
     activeProjectName,

@@ -1134,7 +1134,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     };
   }, [timelineViewportElement, rows.length]);
 
-  // Read, or remembered until read (`knownMate`): the conversation speaks in its Mate's name at once.
+  // The Mate once the directory names it: the conversation speaks in its name from then on.
   const mate = useKnownMate(activeThreadEnvironmentId);
   // A crewmate's conversation is the crewmate's: its name and its face speak
   // on every line — the work line too (ARCHITECTURE §6).

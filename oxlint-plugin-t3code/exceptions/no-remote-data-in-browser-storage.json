@@ -128,54 +128,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/zerops/lastConversationMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.getItem(LAST_CONVERSATION_MEMORY_KEY)",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "source data stays out of browser storage: remembers the last conversation so a cold load guesses where to land; the home waits for a source",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/lastConversationMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.removeItem(LAST_CONVERSATION_MEMORY_KEY)",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "source data stays out of browser storage: remembers the last conversation so a cold load guesses where to land; the home waits for a source",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/lastConversationMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.setItem(LAST_CONVERSATION_MEMORY_KEY)",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "source data stays out of browser storage: remembers the last conversation so a cold load guesses where to land; the home waits for a source",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/mateIdentityMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.getItem(MATE_IDENTITY_MEMORY_KEY)",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "source data stays out of browser storage: copies each Mate's name, face and project from the listing; the identity projection draws the first frame",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/mateIdentityMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.removeItem(MATE_IDENTITY_MEMORY_KEY)",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "source data stays out of browser storage: copies each Mate's name, face and project from the listing; the identity projection draws the first frame",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/zerops/mateIdentityMemory.ts",
-    "kind": "CallExpression",
-    "fingerprint": "accountLocalStorage.setItem(MATE_IDENTITY_MEMORY_KEY)",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "source data stays out of browser storage: copies each Mate's name, face and project from the listing; the identity projection draws the first frame",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/zerops/menuMemory.ts",
     "kind": "CallExpression",
     "fingerprint": "accountLocalStorage.getItem(MENU_MEMORY_STORAGE_KEY)",

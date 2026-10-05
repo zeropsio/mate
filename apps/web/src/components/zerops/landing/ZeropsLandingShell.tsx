@@ -10,7 +10,6 @@
  * product and one next action, while the legacy pairing route stays separate.
  */
 
-import { EnvironmentId } from "@t3tools/contracts";
 import { ExternalLinkIcon } from "lucide-react";
 import { useLayoutEffect, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -19,7 +18,6 @@ import { appBasePath } from "~/basePath";
 import { isElectron } from "~/env";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 import { bootFrameSlot, showAppFrame } from "~/zerops/bootFrame";
-import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
 import { useWaitLine } from "~/zerops/useWaitLine";
 import { BOOT_WAIT_LINE_MS, bootWaitLine } from "~/zerops/waitLine.logic";
 
@@ -142,15 +140,7 @@ function useFrameWaitLine(signedIn: boolean, own: string | undefined): string | 
         ? window.location.hash.replace(/^#/u, "").split("?")[0] || "/"
         : window.location.pathname;
   const routed = environmentIdFromAddress(pathname, appBasePath());
-  const text = !signedIn
-    ? null
-    : own !== undefined
-      ? own
-      : bootWaitLine({
-          conversationRoute: routed !== null,
-          mateName:
-            routed === null ? undefined : rememberedMateIdentity(EnvironmentId.make(routed))?.name,
-        });
+  const text = !signedIn ? null : own !== undefined ? own : bootWaitLine(routed !== null);
   const showing = useWaitLine(text, { delayMs: BOOT_WAIT_LINE_MS, from: "load" });
   return showing ? text : null;
 }

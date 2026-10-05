@@ -1,7 +1,8 @@
 /**
  * A Mate's page while its conversation cannot show yet (a reload before the catalog names its
- * thread, the route's link being made, the Mate down): its header — the face and the name — from
- * the first frame, as its conversation will draw it, awake where its container runs. Opening, the
+ * thread, the route's link being made, the Mate down): its header — the face and the name — as its
+ * conversation will draw it, awake where its container runs; until the directory names who lives
+ * there, the header's place held empty, never a guess (HANDOFF §4.4). Opening, the
  * page under it is quiet, with one line where the messages will land past its beat; where the link
  * has words of its own (a restart, a reconnect, a container that is not running) the Mate's face
  * stands asleep over its name with them, on one axis (`stageSpeaks`).
@@ -13,7 +14,6 @@ import type { ReactNode } from "react";
 import { useMateDetailRead, useTryMateAgain } from "~/zerops/accountEnvironments";
 import { MateDetailFailure } from "./MateDetailFailure";
 
-import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
 import { mateOpeningAwake, type ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { stageSpeaks } from "~/zerops/mateOpeningStage";
 import { useMateVoice } from "~/zerops/mateVoiceContext";
@@ -88,15 +88,13 @@ function MateLinkStageOf({
   const at = useZeropsMate(environmentId);
   // Try now asks its Mate again, its exchange as well as its link, as the banner's does.
   const tryAgain = useTryMateAgain();
-  // Before the catalog names it, the Mate this browser last knew there: a reload draws its page
-  // from the first frame, and the listing's word replaces it once read.
-  const known =
-    at.kind === "mate"
-      ? at.mate
-      : at.kind === "unknown"
-        ? rememberedMateIdentity(environmentId)
-        : undefined;
-  if (known === undefined) return <MateLinkWords voice={voice} />;
+  // Before the directory names who lives here, the page stands with its header's place held and
+  // its line unnamed: the face and the name arrive in place, nothing below them moves.
+  if (at.kind === "unknown" && !stageSpeaks(voice)) {
+    return <MateOpeningPage below={null} composer={composer} mate={undefined} />;
+  }
+  if (at.kind !== "mate") return <MateLinkWords voice={voice} />;
+  const known = at.mate;
   const mate = { ...known, connected: false };
   const askAgain = askAgainLabel(voice.actions);
   const onTryNow = askAgain === null ? undefined : () => tryAgain(environmentId);
@@ -116,8 +114,8 @@ function MateLinkStageOf({
           </>
         }
         composer={composer}
-        // Opening, it wears the pose its container has — awake where the listing has it running,
-        // as it was last known before that is read — not asleep for this page's own wait.
+        // Opening, it wears the pose its container has — awake where the listing has it running —
+        // not asleep for this page's own wait.
         mate={{ ...known, connected: mateOpeningAwake(known) }}
       />
     );
@@ -149,28 +147,31 @@ function MateLinkStageOf({
 
 /**
  * A Mate's conversation on its way: its header as the conversation draws it — the face and the
- * name, its menu and the panel toggles in their places, inert — the page quiet, one line where the
- * messages will land past its beat, and the composer standing in.
+ * name, its menu and the panel toggles in their places, inert; its place held empty while the Mate
+ * is not known — the page quiet, one line where the messages will land past its beat, and the
+ * composer standing in.
  */
 function MateOpeningPage({
   mate,
   composer,
   below,
 }: {
-  readonly mate: ZeropsMateIdentity;
+  readonly mate: ZeropsMateIdentity | undefined;
   readonly composer: ReactNode;
   readonly below: ReactNode;
 }) {
   return (
     <MateComingFrame
       composer={composer}
-      header={<MateComingHeader mate={mate} standsIn={{ subject: null }} />}
+      header={
+        mate === undefined ? null : <MateComingHeader mate={mate} standsIn={{ subject: null }} />
+      }
     >
       <PageWaitLine
         below={below}
         delayMs={OPENING_WAIT_LINE_MS}
         from="mount"
-        text={openingConversationLine(mate.name)}
+        text={openingConversationLine(mate?.name)}
       />
     </MateComingFrame>
   );
@@ -178,26 +179,10 @@ function MateOpeningPage({
 
 /**
  * A Mate's own view while its conversation is on its way (a reload, before the catalog names its
- * thread or before the chat layout can draw it): its header at once, the composer standing in —
+ * thread or before the chat layout can draw it): its header's place at once, the composer standing in —
  * typed into, the conversation's own draft, which its composer reads as it takes over — and the
  * one opening line past its beat, or the link's own words where it has any.
  */
-/**
- * The home's guess at where it lands — the Mate whose conversation was open last — while it works
- * it out (`homeView`): the face, the name and the opening line, with nothing that takes input, the
- * composer's place held empty; a wrong guess loses nothing typed, and gives way without motion.
- */
-export function HomeOpeningView({ environmentId }: { readonly environmentId: EnvironmentId }) {
-  return (
-    <MateLinkStage
-      composer={null}
-      environmentId={environmentId}
-      projectId={null}
-      voice={SILENT_STAGE}
-    />
-  );
-}
-
 export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const voice = useMateVoice();
   return (

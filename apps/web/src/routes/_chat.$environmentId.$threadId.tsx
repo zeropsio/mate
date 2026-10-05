@@ -11,7 +11,6 @@ import { EnvironmentId } from "@t3tools/contracts";
 
 import { SidebarInset } from "~/components/ui/sidebar";
 import { MateOpeningView } from "~/components/zerops/MateLinkStage";
-import { rememberedMateIdentity } from "~/zerops/mateIdentityMemory";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { useThreadDetail, useThreadShell, useThreadStatus } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
@@ -47,12 +46,6 @@ function ChatThreadRouteView() {
   });
   const serverThreadStarted = threadHasStarted(serverThreadDetail);
   const routeMate = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
-  const rememberedMate =
-    routeMate.kind === "mate"
-      ? routeMate.mate
-      : threadRef === null || routeMate.kind === "nobody"
-        ? undefined
-        : rememberedMateIdentity(threadRef.environmentId);
   useEffect(() => {
     if (!threadRef || !serverThreadStarted || !draftThread) {
       return;
@@ -78,11 +71,12 @@ function ChatThreadRouteView() {
     return null;
   }
 
-  // Its thread not read yet (a reload, before the catalog names it): the Mate's own view, from
-  // what this browser remembers of it, until the conversation takes over — never a blank pane.
+  // Its thread not read yet (a reload, before the catalog names it): the Mate's own view, its
+  // header's place held until the directory names who lives here, until the conversation takes
+  // over — never a blank pane, never a guessed face.
   const showsConversation =
     renderState === "ready" || (renderState === "loading" && serverThreadShell !== null);
-  if (!showsConversation && renderState !== "missing" && rememberedMate !== undefined) {
+  if (!showsConversation && renderState !== "missing" && routeMate.kind !== "nobody") {
     return <MateOpeningView threadRef={threadRef} />;
   }
 

@@ -8,7 +8,6 @@ import { AsyncResult } from "effect/unstable/reactivity";
 import { RotateCcwIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { HomeOpeningView } from "../components/zerops/MateLinkStage";
 import { PageWaitLine } from "../components/zerops/WaitLine";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
 import { sortScopedProjectsForSidebar } from "../components/Sidebar.logic";
@@ -29,7 +28,6 @@ import { useZeropsInventory } from "../zerops/inventoryContext";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { hqMatesAtom, zeropsEnvironmentsAtom } from "../state/zerops";
 import { homeTarget, homeView, hqHomeMate } from "../zerops/homeLanding.logic";
-import { rememberedHomeLanding } from "../zerops/lastConversationMemory";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { useMatesSettled } from "../zerops/useMatesSettled";
 import { BOOT_WAIT_LINE_MS, READING_PROJECTS_LINE } from "../zerops/waitLine.logic";
@@ -110,8 +108,6 @@ function IndexDraftLanding() {
       ]),
     [deleting, listing],
   );
-  // Read once, as the page opens: what it waits with never changes under the eye.
-  const [remembered] = useState(() => rememberedHomeLanding(activeOrganization?.id));
   const handleNewThread = useNewThreadHandler();
   const navigate = useNavigate();
   const { environmentId: targetSearch } = Route.useSearch();
@@ -217,7 +213,6 @@ function IndexDraftLanding() {
     landing: landing === null ? "unknown" : landing.kind === "none" ? "none" : "going",
     startFailed: startState.failed,
     targeted: targetEnvironmentId !== null,
-    remembered,
     hqMatesRead,
     organizationId: activeOrganization?.id ?? null,
     organization: organizationStatus,
@@ -285,10 +280,7 @@ function IndexDraftLanding() {
       );
     case "projects":
       return <ZeropsHostedLanding />;
-    // While it works out where to land, and on its way there: its guess, never blank — nothing
-    // in it takes input, so a wrong guess gives way, without motion, losing nothing typed.
-    case "opening":
-      return <HomeOpeningView environmentId={view.ref.environmentId} />;
+    // While it works out where to land, and on its way there: the wait line, never a guess.
     case "wait":
       return (
         <SidebarInset className="h-svh min-h-0 overflow-hidden md:h-dvh">

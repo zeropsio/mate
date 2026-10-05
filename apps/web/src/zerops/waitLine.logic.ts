@@ -22,16 +22,11 @@ export function openingConversationLine(mateName: string | undefined): string {
 }
 
 /**
- * What the app's frame says while the app cannot draw yet: on a conversation's route, the Mate's
- * own line once its name is known (nothing before — the line the Mate's page takes over); else
- * that the projects are read.
+ * What the app's frame says while the app cannot draw yet: on a conversation's route nothing —
+ * the Mate's page says its own line once it knows the Mate; else that the projects are read.
  */
-export function bootWaitLine(input: {
-  readonly conversationRoute: boolean;
-  readonly mateName: string | undefined;
-}): string | null {
-  if (!input.conversationRoute) return READING_PROJECTS_LINE;
-  return input.mateName === undefined ? null : openingConversationLine(input.mateName);
+export function bootWaitLine(conversationRoute: boolean): string | null {
+  return conversationRoute ? null : READING_PROJECTS_LINE;
 }
 
 /**
