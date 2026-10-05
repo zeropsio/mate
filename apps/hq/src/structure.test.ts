@@ -1240,6 +1240,14 @@ describe("structure", () => {
             [(yield* pressOf)?.heldForMs, (yield* pressOf)?.kind],
             [0, "stage"],
           );
+          // Its setup finished elsewhere — registered as its stage — its record is over.
+          yield* structure.attachProject("owner", team.id, { projectId: "P_STAGE", kind: "stage" });
+          assert.isUndefined(yield* pressOf);
+          yield* structure.holdPress("owner", "P_STAGE", {
+            owner: "press-t",
+            kind: "stage",
+            appId: team.id,
+          });
           // Its project gone from Zerops: its record goes with it.
           yield* Ref.update(view, (org) => ({
             ...org,

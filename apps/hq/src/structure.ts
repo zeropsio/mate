@@ -1123,6 +1123,10 @@ export const structureLayer = (options: {
                     INSERT INTO hq_app_project (project_id, app_id, kind, created_by)
                     VALUES (${input.projectId}, ${appId}::uuid, ${input.kind}, ${userId})`;
                     if (tier !== undefined) {
+                      // Registered: a stage's or a production's press is over, whoever finished it.
+                      yield* sql`
+                        DELETE FROM hq_press
+                        WHERE project_id = ${input.projectId} AND kind <> 'mate'`;
                       yield* recordEnvironment({
                         projectId: input.projectId,
                         appId,
