@@ -3863,11 +3863,10 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "browser");
   }, [activeThreadRef]);
-  const chromeMates = useZeropsMateDirectory();
   const chromeMate =
     activeThreadEnvironmentId === null
       ? undefined
-      : zeropsMateAt(chromeMates, activeThreadEnvironmentId);
+      : zeropsMateAt(zeropsMates, activeThreadEnvironmentId);
   const zeropsChrome = resolveZeropsChatChrome(activeThreadRef, {
     topology: zeropsTopology,
     agentAuth: zeropsAgentAuth,

@@ -1,5 +1,5 @@
 /** Rebuilds callable ports from the current account for a person's explicit retry. */
-import { withZeropsMateTag } from "@t3tools/client-runtime/zerops";
+import { appProjectName, withZeropsMateTag } from "@t3tools/client-runtime/zerops";
 import { accountHqApi } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
@@ -60,7 +60,7 @@ export function useNewProjectBirthPorts(): (ask: NewProjectAsk) => NewProjectPor
         void finishMateSetup({
           inputs: { client, data: { runtime, organizationRef, projectRef }, organizationId },
           projectId,
-          projectName: placement.displayName,
+          projectName: appProjectName(name, botName),
           // After its attach: a press that stops before it leaves a Mate HQ holds in its
           // application, which any browser finishes.
           container: { agents: ask.agents },
