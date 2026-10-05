@@ -4010,3 +4010,27 @@ no-cache`.
     build's end); a stand-up's quiet file (its zcp process by PID and start, and its turn); a Mate's
     retry cap kept across loads (the connection's own ladder, which a load starts over). Faces keep
     their own clocks: a pose is never a verdict.
+- **2026-10-05** — **An application's environments are progressive: nothing, a stage, a production or
+  both, in any order, and release exists only with a production.**
+  - **Merge is a finished act.** It asks nothing further; an absent stage or production is never a
+    dot, a count or a next step — a quiet slot with **Add** in the application's Environments section.
+  - **Stage and production are peers.** "Add stage" and "Add production" everywhere, neither
+    optional-labelled; a production needs no stage, a stage is never a gate.
+  - **One question, once, at the moment of intent:** right after a person's own merge of the
+    application's first code change (HQ's `firstCodeMerge`), when it has no production and the person
+    may add an environment — "where should it run?" with the missing tiers and **Not now**. Never on
+    reopen, never again.
+  - **No production, no release:** no Review release, no waiting count, no rollback, no snapshot (the
+    2026-10-04 snapshot exception is withdrawn; old snapshot rows stay as history). HQ refuses the
+    verb for everyone.
+  - **Adding a production is the intent to release:** it deploys nothing by itself — a production
+    attached from now on follows only releases made after it (its release floor) — and the client
+    hands over to the first release's review; the release is a person's press.
+  - **Supersedes** the "matches main's broker" half of SPEC §3.3a's release rule (main let an org
+    admin tag without a production): its "no release without production" half stands.
+  - _Why:_ the owner: "kdyz ji nemam tak by to nic z toho delat nemelo dokud ji nepridam … snapshot by
+    bez produkce nemel vzniknout"; "na poprve se zeptat jeslti chci tu produkci udelat … aby me to
+    pokaze neotravovalo pri jakemkoliv mergi"; "mel bych umet pridat produkci bez stage … kdyz nic
+    nemam tak bych mel mit moznost pridat bud stage, nebo rovnou produkci"; "UI a chovani ma byt
+    nejak progresivni, umoznovat vsechny mozne situace, efektivne a jasne je resit a propisovat do
+    ui".
