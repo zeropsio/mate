@@ -267,13 +267,20 @@ const TABLES: Readonly<Record<Verb, ReadonlyArray<Row>>> = {
     ],
     ["an invited owner", { orgRole: "OWNER", status: "INVITED" }, KEEP_TOKEN, "not_active_member"],
   ],
-  // A Mate's press held by the browser running it: by whoever reads its project.
+  // A press held by the browser running it: by Basic user or above on its project, so a reader
+  // alone cannot hold a press and block another's Finish setup.
   hold_press: [
     [
       "the one making it, Basic user there",
       { override: "BASIC_USER" },
       { verb: "hold_press", target: { projectId: "P" } },
       "allow",
+    ],
+    [
+      "org Read only reads but may not hold it",
+      { orgRole: "READ_ONLY" },
+      { verb: "hold_press", target: { projectId: "P" } },
+      "not_mate_operator",
     ],
     [
       "org none, no grant",

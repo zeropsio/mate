@@ -327,8 +327,13 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
 
   switch (request.verb) {
     case "read_project":
-    case "hold_press":
       return readsProject(request.target.projectId) ? ALLOW : deny("not_project_reader");
+    case "hold_press":
+      // A reader alone may not hold a press: a held press keeps another's Finish setup away.
+      if (!readsProject(request.target.projectId)) return deny("not_project_reader");
+      return roleAtLeast(roleOn(request.target.projectId), "BASIC_USER")
+        ? ALLOW
+        : deny("not_mate_operator");
     case "read_app":
       return seesApp(request.target.projectIds) ? ALLOW : deny("app_not_seen");
     case "read_change":
